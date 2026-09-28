@@ -1,0 +1,119 @@
+/** Inline rename of sessions and groups. */
+import { agentIcon } from "./agentIcon";
+import { agentName, taskTitle } from "./model";
+import type { Group, SessionInfo } from "./types";
+import { invoke } from "@tauri-apps/api/core";
+import { $, h, showError } from "./dom";
+import { saveGroup } from "./groups";
+import { itemKey, listItems } from "./keyboard";
+import { render } from "./render";
+import { S, sessions, upsert } from "./state";
+import { refocusTerminal } from "./view";
+
+/** What the operator has typed so far; a re-render rebuilds the input from it. */
+let renameDraft: string | null = null;
+
+/** The list item that held the keys when a rename began; Esc and Enter give them back to it. */
+let renameReturn: string | null = null;
+
+function rememberRow() {
+  const a = document.activeElement as HTMLElement | null;
+  renameReturn = a && $("sidebar-scroll").contains(a) ? itemKey(a) || null : null;
+}
+
+/** After a rename ends by key: back to the row it began on, else the terminal. */
+export function leaveRename() {
+  const key = renameReturn;
+  renameReturn = null;
+  const row = key ? listItems().find((x) => itemKey(x) === key) : undefined;
+  if (row) {
+    S.roveKey = key;
+    row.focus();
+  } else refocusTerminal();
+}
+
+export function startSessionRename(id: string) {
+  rememberRow();
+  S.renamingSession = id;
+  renameDraft = null;
+  render();
+  requestAnimationFrame(() => {
+    const input = document.querySelector<HTMLInputElement>("#sidebar-scroll input.rename-session");
+    input?.focus();
+    input?.select();
+  });
+}
+
+async function finishRename(id: string, name: string | null, byKey = false) {
+  if (S.renamingSession !== id) return;
+  S.renamingSession = null;
+  renameDraft = null;
+  if (name !== null) {
+    try {
+      const info = await invoke<SessionInfo>("rename_session", { session: id, name });
+      // The session may have ended during the call; do not bring it back.
+      if (sessions.has(id)) upsert(info);
+    } catch (e) {
+      showError(e);
+    }
+  }
+  render();
+  if (byKey) leaveRename();
+  else refocusTerminal();
+}
+
+export function renameRow(s: SessionInfo, color: string): HTMLElement {
+  const row = h("div", "session-row renaming");
+  row.style.setProperty("--pc", color);
+  const input = h("input", "rename-session");
+  input.type = "text";
+  input.value = renameDraft ?? s.name ?? taskTitle(s);
+  input.placeholder = s.title || s.label || agentName(s);
+  input.spellcheck = false;
+  input.dataset.key = "session-rename";
+  input.addEventListener("input", () => (renameDraft = input.value));
+  input.setAttribute("aria-label", "Session name. Empty uses the terminal title.");
+  let done = false;
+  const finish = (name: string | null, byKey = false) => {
+    if (done) return;
+    done = true;
+    void finishRename(s.id, name, byKey);
+  };
+  input.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") finish(input.value, true);
+    else if (e.key === "Escape") finish(null, true);
+    else return;
+    e.preventDefault();
+  });
+  // A re-render replaces the input; only a real blur ends the rename.
+  input.addEventListener("blur", () => {
+    if (input.isConnected) finish(input.value);
+  });
+  row.append(agentIcon(s), input);
+  return row;
+}
+
+export async function renameGroup(id: string, name: string, byKey = false) {
+  S.renaming = null;
+  const g = S.groups.find((x) => x.id === id);
+  const n = name.trim();
+  if (g && n && n !== g.name) {
+    g.name = n;
+    saveGroup(g);
+  }
+  render();
+  if (byKey) leaveRename();
+  else refocusTerminal();
+}
+
+export function startRename(g: Group) {
+  rememberRow();
+  S.renaming = { id: g.id, name: g.name };
+  render();
+  requestAnimationFrame(() => {
+    const input = $<HTMLElement>("sidebar-scroll").querySelector<HTMLInputElement>('input[data-key="group-rename"]');
+    input?.focus();
+    input?.select();
+  });
+}

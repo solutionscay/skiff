@@ -1,0 +1,14 @@
+[package]
+name = "skiff-client"
+description = "Async client for the skiffd socket"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+skiff-core.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true

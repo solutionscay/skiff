@@ -1,0 +1,378 @@
+//! Connects to `skiffd`, sends requests, and fans events out to subscribers.
+
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc, Mutex,
+    },
+};
+
+use anyhow::{anyhow, bail, Context, Result};
+use skiff_core::{
+    config::FolderInfo,
+    group::Group,
+    project::{AgentInfo, Project, Worktree},
+    protocol::{Envelope, Event, Request, Response, ServerMessage},
+    session::{SessionId, SessionInfo, SessionSpec},
+};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    net::UnixStream,
+    sync::{broadcast, mpsc, oneshot},
+};
+
+type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Response>>>>;
+
+/// A request with no reply after this long fails instead of hanging.
+const REPLY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
+pub struct Client {
+    /// The daemon's pid, from the socket's peer credentials.
+    pub daemon_pid: Option<i32>,
+    tx: mpsc::Sender<Vec<u8>>,
+    next_id: AtomicU64,
+    pending: Pending,
+    events: broadcast::Sender<Event>,
+    /// Set when the daemon closes the connection.
+    closed: Arc<AtomicBool>,
+}
+
+impl Client {
+    /// Must be called from inside a tokio runtime.
+    pub async fn connect(path: &Path) -> Result<Self> {
+        let stream = UnixStream::connect(path)
+            .await
+            .with_context(|| format!("connect {}", path.display()))?;
+        let daemon_pid = stream.peer_cred().ok().and_then(|c| c.pid());
+        let (rd, mut wr) = stream.into_split();
+
+        let (tx, mut rx) = mpsc::channel::<Vec<u8>>(1024);
+        tokio::spawn(async move {
+            while let Some(line) = rx.recv().await {
+                if wr.write_all(&line).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
+        let (events, _) = broadcast::channel(4096);
+        let closed = Arc::new(AtomicBool::new(false));
+        {
+            let pending = pending.clone();
+            let events = events.clone();
+            let closed = closed.clone();
+            tokio::spawn(async move {
+                let mut lines = BufReader::new(rd).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    match serde_json::from_str::<ServerMessage>(&line) {
+                        Ok(ServerMessage::Reply(r)) => {
+                            if let Some(s) = pending.lock().unwrap().remove(&r.id) {
+                                let _ = s.send(r.response);
+                            }
+                        }
+                        Ok(ServerMessage::Event(e)) => {
+                            let _ = events.send(e);
+                        }
+                        Err(e) => tracing::warn!("bad message from skiffd: {e}"),
+                    }
+                }
+                closed.store(true, Ordering::Relaxed);
+                // Dropping the senders wakes every waiting request with an error.
+                pending.lock().unwrap().clear();
+            });
+        }
+
+        Ok(Self {
+            daemon_pid,
+            tx,
+            next_id: AtomicU64::new(1),
+            pending,
+            events,
+            closed,
+        })
+    }
+
+    /// True once the daemon has closed the connection. No round trip.
+    pub fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::Relaxed) || self.tx.is_closed()
+    }
+
+    pub fn events(&self) -> broadcast::Receiver<Event> {
+        self.events.subscribe()
+    }
+
+    pub async fn request(&self, request: Request) -> Result<Response> {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let (s, r) = oneshot::channel();
+        self.pending.lock().unwrap().insert(id, s);
+        // After the reader cleared `pending`, nothing would answer. Checked
+        // after the insert: the reader sets `closed` before it clears.
+        if self.closed.load(Ordering::Relaxed) {
+            self.pending.lock().unwrap().remove(&id);
+            bail!("skiffd connection closed");
+        }
+        let mut line = serde_json::to_vec(&Envelope { id, request })?;
+        line.push(b'\n');
+        if self.tx.send(line).await.is_err() {
+            self.pending.lock().unwrap().remove(&id);
+            bail!("skiffd connection closed");
+        }
+        match tokio::time::timeout(REPLY_TIMEOUT, r).await {
+            Ok(reply) => reply.map_err(|_| anyhow!("skiffd connection closed")),
+            Err(_) => {
+                self.pending.lock().unwrap().remove(&id);
+                bail!("skiffd did not answer within {}s", REPLY_TIMEOUT.as_secs())
+            }
+        }
+    }
+
+    async fn expect_ok(&self, request: Request) -> Result<()> {
+        match self.request(request).await? {
+            Response::Ok => Ok(()),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn ping(&self) -> Result<String> {
+        Ok(self.hello().await?.0)
+    }
+
+    /// Daemon version and protocol number.
+    pub async fn hello(&self) -> Result<(String, u32)> {
+        match self.request(Request::Ping).await? {
+            Response::Pong { version, protocol } => Ok((version, protocol)),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn list_sessions(&self) -> Result<Vec<SessionInfo>> {
+        match self.request(Request::ListSessions).await? {
+            Response::Sessions { sessions } => Ok(sessions),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn create_session(&self, spec: SessionSpec) -> Result<SessionInfo> {
+        match self.request(Request::CreateSession { spec }).await? {
+            Response::Session { session } => Ok(session),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn write(&self, session: &str, data: Vec<u8>) -> Result<()> {
+        self.expect_ok(Request::Write {
+            session: session.to_string(),
+            data,
+        })
+        .await
+    }
+
+    pub async fn set_session_theme(&self, session: &str, theme: Option<String>) -> Result<SessionInfo> {
+        let req = Request::SetSessionTheme {
+            session: session.to_string(),
+            theme,
+        };
+        match self.request(req).await? {
+            Response::Session { session } => Ok(session),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn rename_session(&self, session: &str, name: &str) -> Result<SessionInfo> {
+        let req = Request::RenameSession {
+            session: session.to_string(),
+            name: name.to_string(),
+        };
+        match self.request(req).await? {
+            Response::Session { session } => Ok(session),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn resize(&self, session: &str, cols: u16, rows: u16) -> Result<()> {
+        self.expect_ok(Request::Resize {
+            session: session.to_string(),
+            cols,
+            rows,
+        })
+        .await
+    }
+
+    pub async fn subscribe(&self, session: &str) -> Result<()> {
+        self.expect_ok(Request::Subscribe {
+            session: session.to_string(),
+        })
+        .await
+    }
+
+    pub async fn unsubscribe(&self, session: &str) -> Result<()> {
+        self.expect_ok(Request::Unsubscribe {
+            session: session.to_string(),
+        })
+        .await
+    }
+
+    pub async fn kill(&self, session: &SessionId) -> Result<()> {
+        self.expect_ok(Request::Kill {
+            session: session.clone(),
+        })
+        .await
+    }
+
+    pub async fn list_projects(&self) -> Result<Vec<Project>> {
+        match self.request(Request::ListProjects).await? {
+            Response::Projects { projects } => Ok(projects),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn add_worktree(
+        &self,
+        project: &str,
+        branch: &str,
+        base: Option<String>,
+    ) -> Result<Worktree> {
+        let request = Request::AddWorktree {
+            project: project.to_string(),
+            branch: branch.to_string(),
+            base,
+        };
+        match self.request(request).await? {
+            Response::Worktree { worktree } => Ok(worktree),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn keys(&self) -> Result<std::collections::BTreeMap<String, String>> {
+        match self.request(Request::GetKeys).await? {
+            Response::Keys { keys } => Ok(keys),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn appearance(&self, set: Option<Option<String>>) -> Result<Option<String>> {
+        let req = match set {
+            Some(theme) => Request::SetAppearance { theme },
+            None => Request::GetAppearance,
+        };
+        match self.request(req).await? {
+            Response::Appearance { theme } => Ok(theme),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn list_themes(&self) -> Result<Vec<skiff_core::theme::TerminalTheme>> {
+        match self.request(Request::ListThemes).await? {
+            Response::Themes { themes } => Ok(themes),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn read_icon(&self, path: PathBuf) -> Result<Option<String>> {
+        match self.request(Request::ReadIcon { path }).await? {
+            Response::Icon { icon } => Ok(icon),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn set_project_icon(&self, project: String, icon: Option<String>) -> Result<()> {
+        self.expect_ok(Request::SetProjectIcon { project, icon }).await
+    }
+
+    pub async fn inspect_folder(&self, path: PathBuf) -> Result<FolderInfo> {
+        match self.request(Request::InspectFolder { path }).await? {
+            Response::Folder { folder } => Ok(folder),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn list_agents(&self) -> Result<Vec<AgentInfo>> {
+        self.agents_reply(Request::ListAgents).await
+    }
+
+    pub async fn set_agents(&self, enabled: Vec<String>) -> Result<Vec<AgentInfo>> {
+        self.agents_reply(Request::SetAgents { enabled }).await
+    }
+
+    pub async fn set_agent_command(&self, agent: String, command: String) -> Result<Vec<AgentInfo>> {
+        self.agents_reply(Request::SetAgentCommand { agent, command }).await
+    }
+
+    async fn agents_reply(&self, req: Request) -> Result<Vec<AgentInfo>> {
+        match self.request(req).await? {
+            Response::Agents { agents } => Ok(agents),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn add_project(
+        &self,
+        path: PathBuf,
+        name: Option<String>,
+        short: Option<String>,
+        color: Option<String>,
+        icon: Option<String>,
+        agents: Vec<String>,
+    ) -> Result<Project> {
+        let req = Request::AddProject {
+            path,
+            name,
+            short,
+            color,
+            icon,
+            agents,
+        };
+        match self.request(req).await? {
+            Response::Project { project } => Ok(project),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn remove_worktree(&self, project: &str, path: PathBuf) -> Result<()> {
+        self.expect_ok(Request::RemoveWorktree {
+            project: project.to_string(),
+            path,
+        })
+        .await
+    }
+
+    pub async fn list_groups(&self) -> Result<Vec<Group>> {
+        match self.request(Request::ListGroups).await? {
+            Response::Groups { groups } => Ok(groups),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn save_group(&self, group: Group) -> Result<Group> {
+        match self.request(Request::SaveGroup { group }).await? {
+            Response::Group { group } => Ok(group),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    pub async fn delete_group(&self, id: &str) -> Result<()> {
+        self.expect_ok(Request::DeleteGroup {
+            group: id.to_string(),
+        })
+        .await
+    }
+}

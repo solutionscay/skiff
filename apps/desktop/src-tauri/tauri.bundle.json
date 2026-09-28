@@ -1,0 +1,8 @@
+{
+  "build": {
+    "beforeBuildCommand": "sh scripts/sidecar.sh && pnpm build"
+  },
+  "bundle": {
+    "externalBin": ["binaries/skiffd"]
+  }
+}

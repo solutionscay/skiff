@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Skiff</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+  <body>
+    <div id="app">
+      <header id="topbar">
+        <div class="tb-cell wordmark">SKIFF</div>
+        <button id="open-switcher" type="button" class="tb-cell search">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+          <span class="spacer">Jump to project, worktree, or session</span><kbd>Ctrl K</kbd>
+        </button>
+        <div class="spacer"></div>
+        <button id="next-waiting" type="button" class="tb-cell nw" hidden>
+          <span class="dot waiting"></span><span id="next-waiting-label">Next waiting</span><kbd>Ctrl Shift W</kbd>
+        </button>
+        <button id="open-settings" type="button" class="tb-cell gear" aria-label="Settings" title="Settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        </button>
+      </header>
+      <div id="body">
+        <nav id="rail" aria-label="Projects"></nav>
+        <aside id="sidebar">
+          <div id="sidebar-scroll"></div>
+          <div id="select-bar" hidden></div>
+        </aside>
+        <main id="main">
+          <div id="banner">
+            <span id="keys-to">keys go to</span>
+            <span class="sq"></span>
+            <span id="focus-label" class="mono"></span>
+            <span class="spacer"></span>
+            <span id="group-label"></span>
+          </div>
+          <div id="terminal-host"></div>
+        </main>
+      </div>
+      <footer id="statusbar" role="status" aria-live="polite">
+        <span id="daemon" class="status-item"><span class="dot"></span><span id="daemon-label">connecting to skiffd</span></span>
+        <span id="counts" class="status-item"></span>
+        <span class="spacer"></span>
+        <span id="socket" class="status-item mono dim"></span>
+      </footer>
+    </div>
+  </body>
+</html>
