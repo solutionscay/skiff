@@ -1,4 +1,6 @@
-# Skiff
+<p align="center"><img src=".github/skiff.png" width="160" alt="Skiff mascot: a small boat with a robot at the helm"></p>
+
+<h1 align="center">Skiff</h1>
 
 A desktop app for running many coding agents side by side, on Linux.
 
