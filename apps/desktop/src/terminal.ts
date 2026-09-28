@@ -77,7 +77,16 @@ async function createPane(id: string): Promise<Pane> {
   term.open(box);
 
   // Returning false keeps the key out of the PTY. The window listener acts on it.
-  term.attachCustomKeyEventHandler((e) => appKey(e) === null);
+  term.attachCustomKeyEventHandler((e) => {
+    // Ctrl+Backspace deletes a word, as in VS Code: ^W works in bash, zsh,
+    // fish, vim and the agents. xterm.js would send ^H, one character.
+    if (e.key === "Backspace" && e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+      if (e.type === "keydown") term.input("\x17");
+      e.preventDefault();
+      return false;
+    }
+    return appKey(e) === null;
+  });
 
   term.onData((data) => {
     invoke("pty_write", { session: id, data }).catch(console.error);

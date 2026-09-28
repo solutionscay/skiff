@@ -31,7 +31,8 @@ const REPLY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 pub struct Client {
     /// The daemon's pid, from the socket's peer credentials.
     pub daemon_pid: Option<i32>,
-    tx: mpsc::Sender<Vec<u8>>,
+    /// Unbounded, so a keystroke is queued without a wait, in order.
+    tx: mpsc::UnboundedSender<Vec<u8>>,
     next_id: AtomicU64,
     pending: Pending,
     events: broadcast::Sender<Event>,
@@ -48,7 +49,7 @@ impl Client {
         let daemon_pid = stream.peer_cred().ok().and_then(|c| c.pid());
         let (rd, mut wr) = stream.into_split();
 
-        let (tx, mut rx) = mpsc::channel::<Vec<u8>>(1024);
+        let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
         tokio::spawn(async move {
             while let Some(line) = rx.recv().await {
                 if wr.write_all(&line).await.is_err() {
@@ -116,7 +117,7 @@ impl Client {
         }
         let mut line = serde_json::to_vec(&Envelope { id, request })?;
         line.push(b'\n');
-        if self.tx.send(line).await.is_err() {
+        if self.tx.send(line).is_err() {
             self.pending.lock().unwrap().remove(&id);
             bail!("skiffd connection closed");
         }
@@ -171,6 +172,19 @@ impl Client {
             data,
         })
         .await
+    }
+
+    /// Queues input and returns at once. Calls from one thread reach the PTY
+    /// in call order. The reply has no waiter, so the reader drops it.
+    pub fn write_now(&self, session: &str, data: Vec<u8>) -> Result<()> {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let request = Request::Write {
+            session: session.to_string(),
+            data,
+        };
+        let mut line = serde_json::to_vec(&Envelope { id, request })?;
+        line.push(b'\n');
+        self.tx.send(line).map_err(|_| anyhow!("skiffd connection closed"))
     }
 
     pub async fn set_session_theme(&self, session: &str, theme: Option<String>) -> Result<SessionInfo> {

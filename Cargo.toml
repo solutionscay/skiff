@@ -35,3 +35,11 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# Dev builds feel like release ones: every byte of terminal output runs
+# through the emulator, JSON and base64 code in these crates.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2

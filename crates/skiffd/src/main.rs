@@ -1,11 +1,16 @@
 use anyhow::{bail, Context, Result};
 use skiff_core::socket::socket_path;
-use skiffd::{server, session::SessionPool};
+use skiffd::{server, session::SessionPool, shellenv};
 use tokio::net::{UnixListener, UnixStream};
 use tracing_subscriber::EnvFilter;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    // Before the runtime starts any thread: it sets environment variables.
+    shellenv::import();
+    tokio::runtime::Runtime::new()?.block_on(run())
+}
+
+async fn run() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),

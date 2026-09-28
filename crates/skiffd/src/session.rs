@@ -30,6 +30,9 @@ pub const IDLE_AFTER: Duration = Duration::from_secs(5);
 /// Output is coalesced into at most one chunk per frame.
 pub const FRAME: Duration = Duration::from_millis(16);
 
+/// Output this soon after input is its echo. It skips coalescing.
+const ECHO_MS: u64 = 250;
+
 pub struct Session {
     info: Mutex<SessionInfo>,
     master: Mutex<Box<dyn MasterPty + Send>>,
@@ -41,6 +44,8 @@ pub struct Session {
     pub output: broadcast::Sender<Chunk>,
     /// Unix ms of the last PTY read. Atomic so the reader takes no lock for it.
     last_output: AtomicU64,
+    /// Unix ms of the last input from a client.
+    last_input: AtomicU64,
     /// Emulator plus unsent bytes. One lock, so a snapshot and the live
     /// stream never overlap or leave a gap.
     screen: Mutex<ScreenState>,
@@ -79,8 +84,10 @@ impl Session {
         let mut st = self.screen.lock().unwrap();
         let signals = st.screen.feed(chunk);
         st.pending.extend_from_slice(chunk);
-        // A chunk after a quiet frame goes out now, so typing echoes at once.
-        if st.last_flush.elapsed() >= FRAME {
+        // A chunk after a quiet frame goes out now, and so does the answer
+        // to a keystroke, even while the program streams output.
+        let echo = now_ms().saturating_sub(self.last_input.load(Ordering::Relaxed)) < ECHO_MS;
+        if echo || st.last_flush.elapsed() >= FRAME {
             st.flush(&self.output);
         }
         signals
@@ -229,6 +236,7 @@ impl SessionPool {
             killer: Mutex::new(killer),
             output,
             last_output: AtomicU64::new(info.last_output_at),
+            last_input: AtomicU64::new(0),
             screen: Mutex::new(ScreenState {
                 screen: Screen::new(spec.cols, spec.rows),
                 pending: Vec::new(),
@@ -317,6 +325,7 @@ impl SessionPool {
             .input
             .send(data.to_vec())
             .map_err(|_| anyhow!("session {id} no longer takes input"))?;
+        session.last_input.store(now_ms(), Ordering::Relaxed);
         // Input answers a waiting prompt.
         if session.info.lock().unwrap().state == SessionState::Waiting {
             self.set_state(&session, SessionState::Working);

@@ -16,13 +16,15 @@ use tauri::{
     async_runtime::JoinHandle,
     ipc::{Channel, InvokeResponseBody},
     menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder},
-    AppHandle, Emitter, State,
+    AppHandle, Emitter, Manager, State,
 };
 use tokio::sync::{broadcast, Mutex};
 
 #[derive(Default)]
 struct App {
     client: Mutex<Option<Arc<Client>>>,
+    /// The same connection, for keystrokes, which must not wait on a lock.
+    live: std::sync::Mutex<Option<Arc<Client>>>,
     subs: Mutex<HashMap<String, JoinHandle<()>>>,
     /// Set when the daemon speaks another protocol and could not be replaced.
     warning: Mutex<Option<String>>,
@@ -94,6 +96,7 @@ async fn ensure_client(app: &App) -> Result<(Arc<Client>, bool), String> {
                 }
                 let c = Arc::new(c);
                 *guard = Some(c.clone());
+                *app.live.lock().unwrap() = Some(c.clone());
                 return Ok((c, spawned));
             }
             Err(e) => {
@@ -163,6 +166,7 @@ async fn restart_daemon(app: State<'_, App>) -> Result<DaemonStatus, String> {
             None => Client::connect(&socket_path()).await.ok().and_then(|c| c.daemon_pid),
         };
         *guard = None;
+        *app.live.lock().unwrap() = None;
         if let Some(pid) = pid {
             stop_daemon(pid).await;
         }
@@ -211,10 +215,22 @@ async fn create_session(app: State<'_, App>, spec: SessionSpec) -> Result<Sessio
     c.create_session(spec).await.map_err(err)
 }
 
+/// Not async: it runs on the main thread, one call after another, so
+/// keystrokes reach the PTY in order. It waits for no lock and no reply.
 #[tauri::command]
-async fn pty_write(app: State<'_, App>, session: String, data: String) -> Result<(), String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.write(&session, data.into_bytes()).await.map_err(err)
+fn pty_write(handle: AppHandle, app: State<'_, App>, session: String, data: String) -> Result<(), String> {
+    let live = app.live.lock().unwrap().clone().filter(|c| !c.is_closed());
+    if let Some(c) = live {
+        return c.write_now(&session, data.into_bytes()).map_err(err);
+    }
+    // No connection yet. Rare: connect, then write.
+    tauri::async_runtime::spawn(async move {
+        let app = handle.state::<App>();
+        if let Ok((c, _)) = ensure_client(&app).await {
+            let _ = c.write(&session, data.into_bytes()).await;
+        }
+    });
+    Ok(())
 }
 
 #[tauri::command]
@@ -521,9 +537,12 @@ fn set_menu(app: AppHandle, menus: Vec<MenuSpec>) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // WebKitGTK paints a blank window on NVIDIA under Wayland when it renders
-    // through DMA-BUF. Turn that path off unless the user chose otherwise.
+    // through DMA-BUF. Turn that path off there, unless the user chose
+    // otherwise. Intel and AMD keep it: it is the faster path.
     #[cfg(target_os = "linux")]
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
+        && std::path::Path::new("/proc/driver/nvidia").exists()
+    {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
     tauri::Builder::default()
