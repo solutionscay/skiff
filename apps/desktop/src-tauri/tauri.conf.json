@@ -26,13 +26,21 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "deb",
+      "rpm",
+      "appimage"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "Run many coding agents side by side",
+    "longDescription": "Skiff groups agent terminals by project and Git worktree. Sessions live in the skiffd daemon and keep running when the window closes.",
+    "license": "MIT"
   }
 }

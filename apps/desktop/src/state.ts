@@ -68,6 +68,9 @@ export function upsert(info: SessionInfo) {
   else sessions.set(info.id, info);
 }
 
+/** The rail's "Other" entry: sessions outside every project (a removed worktree, a folder not added). */
+export const OTHER = "\u0000other";
+
 export const currentProject = () => S.projects.find((p) => p.name === S.selectedProject) ?? null;
 
 /** Sessions that sit under a group in the sidebar, not under their worktree. */

@@ -6,7 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { $, button, h } from "./dom";
 import { deleteGroup, loadGroups } from "./groups";
 import { render, scheduleRender } from "./render";
-import { activeGroupObj, born, gone, panes, place, removeErrors, S, sessions, shownIds, upsert } from "./state";
+import { activeGroupObj, born, gone, OTHER, panes, place, removeErrors, S, sessions, shownIds, upsert } from "./state";
 import { focusPane, showSingle, splitWith, unfocus, unsplit } from "./view";
 
 export function setDaemon(status: DaemonStatus) {
@@ -80,7 +80,7 @@ export async function loadProjects() {
   if (seq !== projectsSeq) return;
   if (list) S.projects = list;
   S.projectsError = err;
-  if (!S.projects.some((p) => p.name === S.selectedProject)) {
+  if (S.selectedProject !== OTHER && !S.projects.some((p) => p.name === S.selectedProject)) {
     const f = S.focused ? sessions.get(S.focused) : undefined;
     S.selectedProject = (f && place(f)?.project.name) || S.projects[0]?.name || null;
   }

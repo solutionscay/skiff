@@ -9,7 +9,7 @@ import { autoName, deleteGroup, saveGroup } from "./groups";
 import { ctxMenu } from "./menus";
 import { render } from "./render";
 import { clearSelection } from "./selection";
-import { activeGroupObj, currentLayout, FULL_HINT, groupOf, MAX_PANES, panes, place, S, selectedWorktree, sessions, shownIds, splitFull, worktreeSessions } from "./state";
+import { activeGroupObj, currentLayout, FULL_HINT, groupOf, MAX_PANES, OTHER, panes, place, S, selectedWorktree, sessions, shownIds, splitFull, worktreeSessions } from "./state";
 import { view } from "./terminal";
 
 /** Give the keys to a shown pane. */
@@ -25,6 +25,8 @@ export function focusPane(id: string, grab = true) {
   if (at) {
     S.selectedProject = at.project.name;
     selectedWorktree.set(at.project.name, at.worktree.path);
+  } else if (s) {
+    S.selectedProject = OTHER;
   }
   render();
   requestAnimationFrame(() => {

@@ -11,7 +11,7 @@ import { addProject, launchMenu } from "./panels";
 import { leaveRename, renameGroup, renameRow, startRename } from "./rename";
 import { render } from "./render";
 import { clearSelection, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
-import { accent, activeGroupObj, collapsed, currentProject, DEFAULT_ACCENT, enabledAgents, groupedIds, place, removeErrors, removing, S, selectedWorktree, sessions, worktreeSessions, shownIds } from "./state";
+import { accent, activeGroupObj, collapsed, currentProject, DEFAULT_ACCENT, OTHER, enabledAgents, groupedIds, place, removeErrors, removing, S, selectedWorktree, sessions, worktreeSessions, shownIds } from "./state";
 import { groupTheme } from "./themes";
 import { dragSessions, revealSession, selectProject, selectWorktree, showGroup } from "./view";
 
@@ -35,6 +35,22 @@ export function renderRail() {
     if (waiting) item.appendChild(h("span", "rail-waiting"));
     rail.appendChild(item);
   });
+  const hasOther = worktreeLines(null).length > 0;
+  // The last outside session ended: Other goes away, and the first project shows.
+  if (!hasOther && S.selectedProject === OTHER) S.selectedProject = S.projects[0]?.name ?? null;
+  if (hasOther) {
+    const item = h("div", "rail-item");
+    const on = S.selectedProject === OTHER;
+    const b = button("rail-chip rail-other" + (on ? " active" : ""), "…", () => {
+      S.selectedProject = OTHER;
+      render();
+    });
+    b.title = "Other: sessions outside every project";
+    b.setAttribute("aria-label", "Other sessions");
+    if (on) b.setAttribute("aria-current", "true");
+    item.appendChild(b);
+    rail.appendChild(item);
+  }
   const add = button("rail-chip rail-add", "+", () => void addProject.open());
   add.title = "Add project";
   add.setAttribute("aria-label", "Add project");
@@ -140,6 +156,7 @@ export function renderSidebar() {
   const caret = active instanceof HTMLInputElement ? active.selectionStart : null;
 
   side.replaceChildren();
+  if (S.selectedProject === OTHER) return renderOther(side, activeKey, caret);
   const p = currentProject();
   const color = accent(p);
 
@@ -176,12 +193,24 @@ export function renderSidebar() {
     for (const w of p.worktrees) side.appendChild(worktreeBlock(p, w, w.path === sel, color));
   }
 
-  const other = worktreeLines(null);
-  if (other.length) {
-    side.appendChild(h("div", "section-title", "OTHER"));
-    side.appendChild(sessionBlock(other, DEFAULT_ACCENT, null, true));
-  }
+  restoreFocus(side, activeKey, caret);
+}
 
+/** The "Other" view: sessions and groups whose folder is in no project. */
+function renderOther(side: HTMLElement, activeKey: string | undefined, caret: number | null) {
+  const head = h("div", "project-row");
+  head.style.setProperty("--pc", DEFAULT_ACCENT);
+  const title = h("div", "project-title");
+  title.append(h("span", "project-name", "Other"), h("span", "project-meta", "outside every project"));
+  head.appendChild(title);
+  side.appendChild(head);
+  const lines = worktreeLines(null);
+  if (lines.length) side.appendChild(sessionBlock(lines, DEFAULT_ACCENT, null, true));
+  else side.appendChild(h("div", "note-row", "No sessions"));
+  restoreFocus(side, activeKey, caret);
+}
+
+function restoreFocus(side: HTMLElement, activeKey: string | undefined, caret: number | null) {
   if (activeKey) {
     const again = side.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-key="${activeKey}"]`);
     if (again && !again.disabled) {
