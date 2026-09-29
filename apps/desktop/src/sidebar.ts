@@ -352,11 +352,13 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   if (w.is_main) pick.appendChild(h("span", "tag", "primary"));
   if (w.locked) pick.appendChild(h("span", "tag", "locked"));
   if (w.prunable) pick.appendChild(h("span", "tag", "prunable"));
+  if (removing.has(w.path)) pick.appendChild(h("span", "tag", "removing…"));
   pick.title = w.path;
+  row.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    worktreeMenu(p, w, e.clientX, e.clientY);
+  });
   row.appendChild(pick);
-  if (!w.is_main) {
-    row.appendChild(button("wt-act", removing.has(w.path) ? "removing…" : "remove", () => void removeWorktree(p, w)));
-  }
   const plus = button("wt-plus", "", () => launchMenu.open(plus, p, w));
   plus.dataset.wt = w.path;
   plus.setAttribute("aria-label", `Start a session in ${branchName(w)}`);
