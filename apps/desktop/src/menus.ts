@@ -20,7 +20,7 @@ import { render } from "./render";
 import { clearSelection, selectionPlan, splitSelection } from "./selection";
 import { enabledAgents, FULL_HINT, groupOf, MAX_PANES, place, removeErrors, removing, S, selectedWorktree, sessions, shownIds, splitFull } from "./state";
 import { groupThemeMenu, sessionThemeMenu, themeIdFor } from "./themes";
-import { closePane, focusPane, refocusTerminal, removeFromGroup, showGroup, splitWith, unsplit } from "./view";
+import { closePane, focusPane, refocusTerminal, removeFromGroup, showGroup, splitWith, unfocus, unsplit } from "./view";
 
 async function setIcon(p: Project, icon: string | null) {
   try {
@@ -165,6 +165,30 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
   ]);
 }
 
+const pick = (m: MenuEntry) => void ("run" in m && m.run?.());
+
+/**
+ * Delete or Backspace on a list row. With one way to remove it, that runs
+ * (End asks first). With more, a menu at the row asks which.
+ */
+export function deleteKeyMenu(el: HTMLElement) {
+  // A key opened it: show focus rings, so the first item reads as the one picked.
+  document.body.classList.add("kbd");
+  const r = el.getBoundingClientRect();
+  const [x, y] = [r.left + 24, r.bottom];
+  const g = S.groups.find((x) => x.id === el.dataset.group);
+  if (g && !el.dataset.session) return ctxMenu.open(x, y, `Group: ${g.name}`, groupCloseEntries(g));
+  const s = sessions.get(el.dataset.session ?? "");
+  if (!s) return;
+  const ids = S.selection.filter((id) => sessions.has(id));
+  if (ids.length > 1 && ids.includes(s.id)) return pick(endSelectedEntry(ids));
+  if (!groupOf(s.id)) return pick(endEntry(s));
+  ctxMenu.open(x, y, sessionLabel(s), [
+    { icon: "code-ungroup", label: "Remove from group", hint: "keeps running", run: () => removeFromGroup(s.id) },
+    endEntry(s),
+  ]);
+}
+
 /** Right-click, New session…: the + menu for this session's worktree, at the pointer. */
 function newSessionEntry(s: SessionInfo, x: number, y: number): MenuEntry[] {
   const at = place(s);
@@ -292,7 +316,7 @@ export function groupMenu(g: Group, x: number, y: number) {
     { head: "GROUP" },
     { icon: "tools-pencil", label: "Rename", hint: "double-click", run: () => startRename(g) },
     { icon: "code-terminal", label: "Terminal theme…", hint: "every pane", run: () => void groupThemeMenu(g) },
-    ...closeGroupEntries(g),
+    ...groupCloseEntries(g),
   ]);
 }
 
@@ -322,24 +346,61 @@ function groupStartEntries(g: Group): MenuEntry[] {
   return entries;
 }
 
-/**
- * With sessions: Ungroup keeps them running, Close group ends them all.
- * Empty: nothing to ungroup or end, so Close just drops the group.
- */
-function closeGroupEntries(g: Group): MenuEntry[] {
-  const ids = sessionsOf(g.layout).filter((id) => sessions.has(id));
+/** The same group actions serve context menus, the menu bar, and the palette. */
+export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: string }>[] {
+  const current = () => S.groups.find((x) => x.id === g?.id);
+  const idsOf = (group: Group) => sessionsOf(group.layout).filter((id) => sessions.has(id));
+  const hasSessions = !!g && idsOf(g).length > 0;
   const drop = () => {
-    if (g.id === S.activeGroup) unsplit(g);
+    // Group reloads replace objects while a menu or confirmation is open.
+    const group = current();
+    if (!group) return;
+    if (group.id === S.activeGroup) unsplit(group);
     else {
-      deleteGroup(g);
+      deleteGroup(group);
       render();
     }
   };
-  if (!ids.length) return [{ icon: "tools-trash-2", label: "Close group", hint: "no sessions", run: drop }];
-  return [
+  const end = async (close: boolean) => {
+    const group = current();
+    if (!group) return;
+    const ids = idsOf(group);
+    const running = ids.filter((id) => sessions.get(id)?.state !== "done");
+    if (running.length) {
+      const ok = await confirmAction({
+        title: close ? `Close ${group.name}?` : `Kill all sessions in ${group.name}?`,
+        body: `Stops ${running.length} running ${running.length === 1 ? "process" : "processes"} and removes the sessions. Their unsaved work in the terminal is lost.\n${close ? "The group closes." : "The group stays open."}`,
+        action: close ? "Close group" : "Kill all sessions",
+      });
+      if (!ok) return refocusTerminal();
+    }
+    clearSelection();
+    const results = await Promise.allSettled(ids.filter((id) => sessions.has(id)).map((id) => invoke("kill_session", { session: id })));
+    let failed = false;
+    for (const result of results) {
+      if (result.status === "rejected") {
+        failed = true;
+        showError(result.reason);
+      }
+    }
+    // Keep the group if a kill failed or a new session appeared during confirmation.
+    const latest = current();
+    if (close && !failed && latest && !idsOf(latest).some((id) => !ids.includes(id))) {
+      const active = latest.id === S.activeGroup;
+      deleteGroup(latest);
+      if (active) unfocus();
+    }
+    render();
+  };
+  const entries: Exclude<MenuEntry, { head: string }>[] = [];
+  if (hasSessions) entries.push(
     { icon: "code-ungroup", label: "Ungroup", hint: "sessions keep running", run: drop },
-    endManyEntry(ids, "Close group…", `Close ${g.name}?`, `ends ${ids.length} sessions`),
-  ];
+    { icon: "indicators-square-stop", label: "Kill all sessions…", hint: "group stays open", danger: true, run: () => void end(false) },
+  );
+  entries.push(
+    { icon: "tools-trash-2", label: hasSessions ? "Close group…" : "Close group", hint: hasSessions ? "ends sessions and removes group" : "no sessions", danger: true, disabled: !g, run: () => void end(true) },
+  );
+  return entries;
 }
 
 export async function removeWorktree(p: Project, w: Worktree) {

@@ -2,6 +2,7 @@
 import { type Action, actionFor } from "./keys";
 import { runAction } from "./commands";
 import { $, host } from "./dom";
+import { deleteKeyMenu } from "./menus";
 import { render } from "./render";
 import { clearSelection, extendSelection, keepRow, splitSelection } from "./selection";
 import { collapsed, panes, S } from "./state";
@@ -165,13 +166,32 @@ $("sidebar-scroll").addEventListener("keydown", (e) => {
     S.roveKey = wt;
     render();
     roveTarget()?.focus();
+  } else if ((e.key === "Delete" || e.key === "Backspace") && !e.ctrlKey && !e.altKey && !e.metaKey && (el.dataset.session || el.dataset.group)) {
+    deleteKeyMenu(el);
   } else if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
     const r = el.getBoundingClientRect();
     el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: r.left + 24, clientY: r.bottom }));
-  } else return;
+  } else if (!(el.dataset.session && passToTerminal(e, el.dataset.session))) return;
   e.preventDefault();
   e.stopPropagation();
 });
+
+/**
+ * A clicked session keeps the keys on its row. A key the list does not use
+ * moves them to the open terminal, and the terminal gets that key too.
+ */
+function passToTerminal(e: KeyboardEvent, id: string): boolean {
+  const term = S.focused === id ? panes.get(id)?.term : undefined;
+  if (!term || e.altKey || e.metaKey) return false;
+  let data = "";
+  if (e.key === "Enter") data = "\r";
+  else if (e.key.length === 1 && !e.ctrlKey) data = e.key;
+  else if (e.ctrlKey && /^[a-z]$/i.test(e.key)) data = String.fromCharCode(e.key.toUpperCase().charCodeAt(0) - 64);
+  else if (e.key !== "Escape") return false;
+  term.focus();
+  if (data) term.input(data);
+  return true;
+}
 
 $("sidebar-scroll").addEventListener("focusin", (e) => {
   const el = e.target as HTMLElement;

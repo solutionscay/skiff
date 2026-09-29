@@ -9,13 +9,13 @@ import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { $, h, showError } from "./dom";
 import { cycleRegion, toggleList } from "./keyboard";
-import { endEntry, newWorktree, splitMenu } from "./menus";
+import { endEntry, groupCloseEntries, newWorktree, splitMenu } from "./menus";
 import { addProject, launchMenu, settings } from "./panels";
 import { startRename, startSessionRename } from "./rename";
 import { accent, activeGroupObj, currentProject, currentWorktree, FONT_DEFAULT, place, S, sessions, shownIds, splitFull, worktreeSessions } from "./state";
 import { copySelection, openFind, paneCenter, pasteClipboard, setFontSize } from "./terminal";
 import { sessionThemeMenu } from "./themes";
-import { closePane, focusNextWaiting, goBack, moveFocus, refocusTerminal, revealSession, selectWorktree, stepSession, unsplit } from "./view";
+import { closePane, focusNextWaiting, goBack, moveFocus, refocusTerminal, revealSession, selectWorktree, stepSession } from "./view";
 
 interface Cmd {
   section: "File" | "Edit" | "View" | "Help";
@@ -60,8 +60,9 @@ function commands(): Cmd[] {
     { section: "View", label: "Add pane right…", key: k("split-right"), action: "split-right", run: act("split-right"), off: !shown || splitFull() },
     { section: "View", label: "Add pane below…", key: k("split-down"), action: "split-down", run: act("split-down"), off: !shown || splitFull() },
     { section: "View", label: shownIds().length > 1 ? "Remove from group" : "Close", key: k("close-pane"), action: "close-pane", run: act("close-pane"), off: !shown },
-    // An empty group has nothing to ungroup: the entry just closes it.
-    { section: "View", label: shownIds().some((id) => sessions.has(id)) ? "Ungroup" : "Close group", key: "", run: () => g && unsplit(g), off: !g },
+    ...groupCloseEntries(g).map((entry): Cmd => ({
+      section: "View", label: entry.label, key: "", run: () => entry.run?.(), off: entry.disabled,
+    })),
     { section: "View", label: "Next waiting", key: k("next-waiting"), action: "next-waiting", run: act("next-waiting") },
     { section: "View", label: "Back to last session", key: k("back"), action: "back", run: act("back"), off: !S.previous },
     { section: "View", label: "Bigger text", key: k("font-bigger"), action: "font-bigger", run: act("font-bigger") },

@@ -11,7 +11,7 @@ import { groupMenu, newWorktree, projectMenu, rowMenu, worktreeMenu } from "./me
 import { addProject, launchMenu } from "./panels";
 import { leaveRename, renameGroup, renameRow, startRename, startSessionRename } from "./rename";
 import { render } from "./render";
-import { clearSelection, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
+import { clearSelection, keepRow, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
 import { stateIcon } from "./stateIcon";
 import { accent, activeGroupObj, collapsed, currentProject, currentWorktree, DEFAULT_ACCENT, OTHER, enabledAgents, groupedIds, place, removeErrors, removing, S, selectedWorktree, sessions, worktreeSessions, shownIds } from "./state";
 import { groupTheme } from "./themes";
@@ -160,6 +160,9 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
       // A plain click opens and ends any selection. It never picks.
       clearSelection();
       revealSession(s.id);
+      // The keys stay on the row, as on a picked group's, so Delete can end it.
+      // Typing still reaches the terminal: see passToTerminal in keyboard.ts.
+      requestAnimationFrame(() => keepRow(s.id));
     }
   });
   row.addEventListener("contextmenu", (e) => {
