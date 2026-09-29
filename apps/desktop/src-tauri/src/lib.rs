@@ -318,6 +318,17 @@ fn config_path() -> String {
     skiff_core::config::config_path().display().to_string()
 }
 
+/// Opens projects.toml in the default editor. From Rust, because the opener's
+/// `**` scope does not match hidden folders such as ~/.config.
+#[tauri::command]
+fn open_config(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = skiff_core::config::config_path();
+    app.opener()
+        .open_path(path.display().to_string(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn get_keys(app: State<'_, App>) -> Result<std::collections::BTreeMap<String, String>, String> {
     let (c, _) = ensure_client(&app).await?;
@@ -619,6 +630,7 @@ pub fn run() {
             get_appearance,
             get_keys,
             config_path,
+            open_config,
             set_appearance,
             list_agents,
             set_agents,

@@ -6,7 +6,7 @@ import type { DaemonStatus } from "./types";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { $, h, showError } from "./dom";
 import { cycleRegion, toggleList } from "./keyboard";
 import { endEntry, newWorktree, splitMenu } from "./menus";
@@ -103,8 +103,7 @@ export function syncMenu() {
 void listen<string>("skiff:menu", (e) => menuRuns.get(e.payload)?.());
 
 async function openConfig() {
-  const path = await invoke<string>("config_path");
-  await openPath(path).catch(showError);
+  await invoke("open_config").catch(showError);
 }
 
 /** A plain modal for the shortcut sheet and About. Esc or a click outside closes it. */
