@@ -3,6 +3,7 @@ import { agentIcon } from "./agentIcon";
 import { isSlot, slotBody, slotHead } from "./canvas";
 import { createLayoutView, sessionsOf } from "./layout";
 import { taskTitle } from "./model";
+import { stateIcon } from "./stateIcon";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { FitAddon } from "@xterm/addon-fit";
@@ -278,7 +279,7 @@ function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   if (!s) return;
   head.classList.toggle("st-waiting", s.state === "waiting");
   head.classList.toggle("st-done", s.state === "done");
-  head.append(agentIcon(s), h("span", "title", taskTitle(s)));
+  head.append(agentIcon(s), h("span", "title", taskTitle(s)), stateIcon(s));
   const x = button("head-btn", "", () => closePane(id));
   const label = multi ? "Remove from group. The session keeps running." : "Close. The session keeps running.";
   x.title = label;

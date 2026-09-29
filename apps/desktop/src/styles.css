@@ -104,7 +104,8 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 .rail-chip.active { background: color-mix(in srgb, var(--pc) 15%, transparent); box-shadow: inset 3px 0 0 var(--pc); }
 .rail-add { color: var(--text-3); font-weight: 400; font-size: calc(18px * var(--zoom, 1)); }
 .rail-add:hover { color: var(--text); background: var(--bg-raised); }
-.rail-waiting { position: absolute; top: 0; right: 0; width: calc(10 * var(--u)); height: calc(10 * var(--u)); background: var(--state-waiting); pointer-events: none; }
+.rail-waiting { position: absolute; top: calc(-3 * var(--u)); right: calc(-3 * var(--u)); width: calc(16 * var(--u)); height: calc(16 * var(--u)); display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--state-waiting); color: var(--bg-deep); pointer-events: none; }
+.rail-waiting svg { width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: ring 1.6s ease-in-out infinite; transform-origin: 50% 10%; }
 
 #sidebar {
   width: calc(284 * var(--u)); flex-shrink: 0;
@@ -210,7 +211,13 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 }
 .session-row .anchored svg { position: absolute; left: calc(4 * var(--u)); top: 0; width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: sway 3s ease-in-out infinite; transform-origin: 50% 0; }
 @keyframes sway { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
-@media (prefers-reduced-motion: reduce) { .session-row .busy, .session-row .busy svg, .session-row .anchored svg { animation: none; } }
+.busy, .anchored, .belled, .finished { flex-shrink: 0; }
+.session-row .belled, .cell-head .belled { display: flex; align-items: center; justify-content: center; color: var(--state-waiting-text); width: calc(18 * var(--u)); height: calc(12 * var(--u)); flex-shrink: 0; }
+.belled svg { width: calc(11 * var(--u)); height: calc(11 * var(--u)); stroke-width: 2.5; animation: ring 1.6s ease-in-out infinite; transform-origin: 50% 10%; }
+@keyframes ring { 0%, 50%, 100% { transform: rotate(0); } 10% { transform: rotate(16deg); } 20% { transform: rotate(-14deg); } 30% { transform: rotate(10deg); } 40% { transform: rotate(-6deg); } }
+.session-row .finished, .cell-head .finished { display: flex; align-items: center; justify-content: center; color: var(--state-done); width: calc(18 * var(--u)); height: calc(12 * var(--u)); }
+.finished.failed { color: var(--state-waiting-text); }
+@media (prefers-reduced-motion: reduce) { .session-row .busy, .session-row .busy svg, .session-row .anchored svg, .belled svg, .rail-waiting svg { animation: none; } }
 .session-row { position: relative; user-select: none; }
 .session-row.selected { background: color-mix(in srgb, var(--state-working) 16%, transparent); box-shadow: inset 2px 0 0 var(--state-working); }
 
