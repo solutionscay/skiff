@@ -4,6 +4,8 @@
 
 A desktop app for running many coding agents side by side, on Linux and macOS.
 
+<p align="center"><img src=".github/screenshot.webp" alt="Skiff on macOS: a project with three worktrees, and three Claude Code sessions side by side over a project background"></p>
+
 You add a project (a Git repository), make worktrees in it, and start agent or shell sessions in each worktree. Sessions can sit side by side in a group. Each group has a name and a terminal theme, and so does each project.
 
 The first version stops there. It has no plugins, no hooks into agent configs, no Git client beyond worktrees, no file browser, and no automations. Settings live in one file, `projects.toml`.
