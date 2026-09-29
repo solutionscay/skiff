@@ -6,7 +6,7 @@ import { deleteKeyMenu } from "./menus";
 import { render } from "./render";
 import { clearSelection, extendSelection, keepRow, splitSelection } from "./selection";
 import { collapsed, panes, S } from "./state";
-import { refocusTerminal, selectProject } from "./view";
+import { refocusTerminal, revealSession, selectProject, showGroup } from "./view";
 
 /** Ctrl+1..9 selects a project (Command+1..9 on macOS). Not in the keymap: it is a range, not one key. */
 function projectKey(e: KeyboardEvent): number | null {
@@ -48,11 +48,13 @@ export function listItems(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-pick, #sidebar-scroll .group-pick, #sidebar-scroll button.session-row")];
 }
 
+/** Where the roving tab stop lands: the row for the pane on screen ("where I am"),
+ *  else the last-roved row, else the first row. */
 function roveTarget(): HTMLElement | undefined {
   const items = listItems();
   return (
-    items.find((x) => S.roveKey && itemKey(x) === S.roveKey) ??
     items.find((x) => x.classList.contains("focused")) ??
+    items.find((x) => S.roveKey && itemKey(x) === S.roveKey) ??
     items[0]
   );
 }
@@ -118,6 +120,36 @@ function focusEl(el: HTMLElement | null): boolean {
   return document.activeElement === el;
 }
 
+/**
+ * Up/Down browses the list without switching the terminal view. Pause on a
+ * row and it opens on its own; move again inside the pause and nothing
+ * happens, so scanning past several rows does not flicker the view.
+ */
+const REVEAL_DELAY_MS = 150;
+let revealTimer: ReturnType<typeof setTimeout> | undefined;
+
+function cancelReveal() {
+  clearTimeout(revealTimer);
+  revealTimer = undefined;
+}
+
+function scheduleReveal(el: HTMLElement) {
+  cancelReveal();
+  revealTimer = setTimeout(() => openRow(el), REVEAL_DELAY_MS);
+}
+
+/** Shows a session or picks a group. The row keeps the keys, as a click does. */
+function openRow(el: HTMLElement) {
+  const sid = el.dataset.session;
+  if (sid && S.focused !== sid) {
+    clearSelection();
+    revealSession(sid);
+    requestAnimationFrame(() => keepRow(sid));
+  } else if (el.classList.contains("group-pick") && el.dataset.group && (el.dataset.group !== S.activeGroup || el.dataset.group !== S.groupPicked)) {
+    showGroup(el.dataset.group, true);
+  }
+}
+
 /** Arrows inside the rail and the session list; Enter, Left/Right, Menu key. */
 $("rail").addEventListener("keydown", (e) => {
   if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
@@ -144,8 +176,10 @@ $("sidebar-scroll").addEventListener("keydown", (e) => {
     t.tabIndex = 0;
     S.roveKey = itemKey(t);
     t.focus();
+    scheduleReveal(t);
   };
   const wt = el.dataset.wt;
+  cancelReveal();
   if (e.shiftKey && (e.key === "ArrowDown" || e.key === "ArrowUp") && el.dataset.session) extendSelection(e.key === "ArrowDown" ? 1 : -1, el);
   else if (e.key === "Enter" && S.selection.length >= 2) splitSelection();
   else if (e.key === "Escape" && S.selection.length) {
@@ -161,6 +195,9 @@ $("sidebar-scroll").addEventListener("keydown", (e) => {
     // Enter on a worktree starts a terminal there.
     const plus = [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === wt);
     plus?.click();
+  } else if (e.key === "Enter") {
+    // Enter opens the row right away, instead of waiting out the pause.
+    openRow(el);
   } else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && wt) {
     if (e.key === "ArrowLeft") collapsed.add(wt);
     else collapsed.delete(wt);
@@ -198,3 +235,6 @@ $("sidebar-scroll").addEventListener("focusin", (e) => {
   const el = e.target as HTMLElement;
   if (listItems().includes(el)) S.roveKey = itemKey(el);
 });
+
+// Leaving the list (F6, Ctrl+Shift+L, a click elsewhere) drops any pending reveal.
+$("sidebar-scroll").addEventListener("focusout", () => cancelReveal());
