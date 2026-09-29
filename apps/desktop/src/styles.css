@@ -112,7 +112,7 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 .rail-chip {
   width: 100%; height: var(--row);
   display: flex; align-items: center; justify-content: center;
-  background: transparent; border: 0; border-bottom: 1px solid var(--rule);
+  background: transparent; border: 0;
   font-family: var(--mono); font-weight: 700; color: var(--pc);
 }
 .rail-chip.active { background: color-mix(in srgb, var(--pc) 15%, transparent); box-shadow: inset 3px 0 0 var(--pc); }
