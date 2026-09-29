@@ -2,8 +2,10 @@
 //! `spawn_blocking`.
 
 use std::{
+    collections::HashSet,
+    io::Write,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
 };
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -97,6 +99,42 @@ pub fn toplevel(dir: &Path) -> Result<PathBuf> {
 
 pub fn is_dirty(dir: &Path) -> Result<bool> {
     Ok(!git(dir, &["status", "--porcelain"])?.trim().is_empty())
+}
+
+/// Which of `paths`, relative to `dir`, git ignores. A folder needs a
+/// trailing `/` to match a pattern such as `target/`.
+pub fn ignored(dir: &Path, paths: &[String]) -> Result<HashSet<String>> {
+    if paths.is_empty() {
+        return Ok(HashSet::new());
+    }
+    let mut child = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["check-ignore", "-z", "--stdin"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("run git")?;
+    let mut input = Vec::new();
+    for p in paths {
+        input.extend_from_slice(p.as_bytes());
+        input.push(0);
+    }
+    // Written from a thread: git may fill its stdout pipe before it reads all of stdin.
+    let mut stdin = child.stdin.take().expect("piped stdin");
+    let writer = std::thread::spawn(move || stdin.write_all(&input));
+    let out = child.wait_with_output().context("run git")?;
+    let _ = writer.join();
+    // 1 means nothing is ignored. 128 is a real error, such as no repository.
+    if !out.status.success() && out.status.code() != Some(1) {
+        bail!(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .split('\0')
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect())
 }
 
 #[cfg(test)]

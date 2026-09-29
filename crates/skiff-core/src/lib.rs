@@ -3,6 +3,7 @@
 
 pub mod alias;
 pub mod config;
+pub mod files;
 pub mod git;
 pub mod group;
 pub mod project;

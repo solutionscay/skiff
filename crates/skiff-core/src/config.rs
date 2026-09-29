@@ -79,6 +79,10 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub layout: Layout,
     pub server: Option<ServerConfig>,
+    /// Shows a Files tree under each worktree. The app reads and writes it;
+    /// the daemon passes it by.
+    #[serde(default)]
+    pub files: bool,
 }
 
 impl ProjectConfig {
@@ -310,6 +314,7 @@ pub fn add_project(
         agents,
         layout: Layout::default(),
         server: None,
+        files: false,
     })
 }
 
@@ -368,6 +373,11 @@ pub fn set_project_color(project: &str, color: &str) -> Result<()> {
     set_project_key(project, "color", Some(color))
 }
 
+/// Sets `files = true` on the named project, or removes the key.
+pub fn set_project_files(project: &str, on: bool) -> Result<()> {
+    set_project_key(project, "files", on.then_some(true))
+}
+
 /// Rewrites the `[[project]]` order. Comments on each table move with it.
 pub fn reorder_projects(order: &[String]) -> Result<()> {
     let _edit = edit_lock();
@@ -398,7 +408,7 @@ pub fn reorder_projects(order: &[String]) -> Result<()> {
     write_atomic(&file, &doc.to_string())
 }
 
-fn set_project_key(project: &str, key: &str, value: Option<&str>) -> Result<()> {
+fn set_project_key(project: &str, key: &str, value: Option<impl Into<toml_edit::Value>>) -> Result<()> {
     let _edit = edit_lock();
     let file = config_path();
     let text = std::fs::read_to_string(&file).with_context(|| format!("read {}", file.display()))?;

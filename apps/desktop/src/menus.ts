@@ -12,6 +12,7 @@ import { open as openFile } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { loadProjects, newSession } from "./daemon";
 import { showError } from "./dom";
+import { setShowFiles, showsFiles } from "./files";
 import { launchMenu } from "./panels";
 import { deleteGroup } from "./groups";
 import { sessionsOf } from "./layout";
@@ -120,6 +121,9 @@ export function projectMenu(p: Project, x: number, y: number) {
     { icon: "documents-file-image", label: "Icon…", hint: "file, detect, none", sub: iconEntries(p) },
     { icon: "tools-sparkles", label: "Color…", hint: "accent", run: () => pickProjectColor(p) },
     { icon: "playback-image", label: "Background…", hint: "image behind terminals", sub: backgroundEntries(p) },
+    showsFiles(p)
+      ? { icon: "documents-folder-open", label: "Hide files", run: () => void setShowFiles(p, false) }
+      : { icon: "documents-folder-open", label: "Show files", hint: "tree under each worktree", run: () => void setShowFiles(p, true) },
   ]);
 }
 

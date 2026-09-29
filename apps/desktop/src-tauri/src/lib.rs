@@ -418,6 +418,45 @@ async fn read_image(path: PathBuf) -> Result<tauri::ipc::Response, String> {
     Ok(tauri::ipc::Response::new(bytes))
 }
 
+/// One folder for the sidebar's file tree. Read here, not in the daemon:
+/// the tree is a view, and the daemon owns only sessions.
+#[tauri::command]
+async fn list_dir(path: PathBuf) -> Result<Vec<skiff_core::files::Entry>, String> {
+    tokio::task::spawn_blocking(move || skiff_core::files::list_dir(&path))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(err)
+}
+
+/// Opens a file in its default app. From Rust, like open_config, because
+/// the opener's `**` scope does not match hidden folders such as .github.
+#[tauri::command]
+fn open_file(app: tauri::AppHandle, path: PathBuf) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_path(path.display().to_string(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+/// Projects with `files = true`. Read from projects.toml here, so an older
+/// daemon that does not send the key still works.
+#[tauri::command]
+fn files_projects() -> Result<Vec<String>, String> {
+    let cfg = skiff_core::config::load().map_err(err)?;
+    Ok(cfg.projects.into_iter().filter(|p| p.files).map(|p| p.name).collect())
+}
+
+#[tauri::command]
+fn set_project_files(project: String, on: bool) -> Result<(), String> {
+    skiff_core::config::set_project_files(&project, on).map_err(err)
+}
+
+#[tauri::command]
+fn reveal_file(app: tauri::AppHandle, path: PathBuf) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener().reveal_item_in_dir(path).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn set_project_color(
     app: State<'_, App>,
@@ -651,6 +690,11 @@ pub fn run() {
             set_project_color,
             set_project_background,
             read_image,
+            list_dir,
+            open_file,
+            reveal_file,
+            files_projects,
+            set_project_files,
             reorder_projects,
             read_icon,
             list_themes,

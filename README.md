@@ -8,7 +8,7 @@ A desktop app for running many coding agents side by side, on Linux and macOS.
 
 You add a project (a Git repository), make worktrees in it, and start agent or shell sessions in each worktree. Sessions can sit side by side in a group. Each group has a name and a terminal theme, and so does each project.
 
-The first version stops there. It has no plugins, no hooks into agent configs, no Git client beyond worktrees, no file browser, and no automations. Settings live in one file, `projects.toml`.
+The first version stops there. It has no plugins, no hooks into agent configs, no Git client beyond worktrees, no editor or file previews, and no automations. A project can show a Files tree under each worktree (`files = true`), but it only opens files in their default app. Settings live in one file, `projects.toml`.
 
 Sessions run in `skiffd`, a daemon that owns every PTY. You can close the window and the agents keep running. When the window opens again, each terminal shows its last screen.
 

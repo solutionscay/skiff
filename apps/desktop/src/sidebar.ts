@@ -6,6 +6,7 @@ import { glyph, sessionsOf } from "./layout";
 import { agentName, branchName, byStart, taskTitle, locate } from "./model";
 import type { Group, Project, SessionInfo, Worktree } from "./types";
 import { newSession } from "./daemon";
+import { filesBlock, showsFiles } from "./files";
 import { $, branchIcon, button, chevron, h, host, icon, plusIcon, projectIcon, showError } from "./dom";
 import { groupMenu, newWorktree, projectMenu, rowMenu, worktreeMenu } from "./menus";
 import { addProject, launchMenu } from "./panels";
@@ -292,7 +293,7 @@ type Caret = [start: number, end: number, dir: "forward" | "backward" | "none"];
 
 /** Where the pointer last was over the list, or null when it left. */
 let pointer: [number, number] | null = null;
-const HOVERABLE = ".session-row, .wt-pick, .wt-count, .group-pick";
+const HOVERABLE = ".session-row, .wt-pick, .wt-count, .group-pick, .file-row";
 {
   const side = $<HTMLElement>("sidebar-scroll");
   side.addEventListener("mousemove", (e) => (pointer = [e.clientX, e.clientY]));
@@ -434,6 +435,7 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   if (waiting) count.append(h("span", "waiting-note", `· ${waiting} waiting`));
   count.append(h("span", "spacer"), chevron(open));
   block.appendChild(sessionBlock(worktreeLines(w), color, count, open));
+  if (showsFiles(p)) block.appendChild(filesBlock(w));
 
   const err = removeErrors.get(w.path);
   if (err) block.appendChild(errorRow(err));

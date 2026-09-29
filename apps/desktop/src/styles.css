@@ -175,6 +175,31 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
   font-size: calc(11px * var(--zoom, 1)); color: var(--text-3);
 }
 .wt-count .waiting-note { color: var(--state-waiting-text); }
+/* Files: a launch-only tree under the sessions. Rows keep the 20px grid. */
+.files-block { display: flex; flex-direction: column; flex-shrink: 0; }
+.files-rows { display: flex; flex-direction: column; padding-bottom: calc(20 * var(--u)); }
+.file-row, .file-note {
+  position: relative;
+  height: calc(20 * var(--u)); width: 100%; flex-shrink: 0;
+  display: flex; align-items: center; gap: calc(4 * var(--u));
+  padding: 0 calc(16 * var(--u)) 0 calc((38 + var(--depth, 0) * 12) * var(--u));
+  background: transparent; border: 0; text-align: left;
+  font-size: calc(12px * var(--zoom, 1)); color: var(--text-2);
+}
+/* One guide per level, under each parent's chevron, like a group's nested sessions. */
+.file-row::before, .file-note::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: calc(44 * var(--u));
+  width: calc(var(--depth, 0) * 12 * var(--u));
+  background: repeating-linear-gradient(to right, var(--rule-strong) 0 1px, transparent 1px calc(12 * var(--u)));
+}
+.files-head .files-icon { flex-shrink: 0; color: var(--text-dim); }
+.file-lead { width: calc(12 * var(--u)); flex-shrink: 0; display: flex; align-items: center; color: var(--text-dim); }
+.file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-row.hidden-file .file-name { color: var(--text-dim); }
+.file-row.picked { background: color-mix(in srgb, var(--pc) 22%, transparent); }
+.file-row.picked .file-name { color: var(--text); }
+.file-note { color: var(--text-dim); padding-left: calc((54 + var(--depth, 0) * 12) * var(--u)); }
+.file-note.error { color: var(--error); }
 .chev { transition: transform 120ms; }
 .chev.closed { transform: rotate(-90deg); }
 .session-row {
@@ -677,8 +702,8 @@ body.dragging-session, body.dragging-session * { cursor: grabbing !important; us
 /* Hover and press on every clickable row and button. A layered image, not a
    background, so it sits on top of focused, selected and project tints. */
 :root { --hover: rgba(255, 255, 255, 0.05); --press: rgba(255, 255, 255, 0.09); }
-.session-row:hover, .wt-pick:hover, .wt-count:hover, .group-pick:hover, .rail-chip:hover,
-.session-row.hover, .wt-pick.hover, .wt-count.hover, .group-pick.hover,
+.session-row:hover, .wt-pick:hover, .wt-count:hover, .group-pick:hover, .file-row:hover, .rail-chip:hover,
+.session-row.hover, .wt-pick.hover, .wt-count.hover, .group-pick.hover, .file-row.hover,
 .set-tab:hover, .sw-row:hover, .sel-clear:hover, .set-done:hover, .ap-cancel:hover, .lm-item:hover {
   background-image: linear-gradient(var(--hover), var(--hover));
 }
