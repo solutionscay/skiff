@@ -16,6 +16,7 @@ async fn shell_session_streams_output_rings_bell_and_exits() {
     // that shell when it exits, and the session would not end.
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
     let spec = SessionSpec {
+        name: Some("Crew session".into()),
         command: Some(shell.clone()),
         args: vec![
             "-c".into(),
@@ -25,6 +26,7 @@ async fn shell_session_streams_output_rings_bell_and_exits() {
     };
     let info = pool.create(spec).unwrap();
     assert_eq!(Some(info.label.as_str()), shell.rsplit('/').next());
+    assert_eq!(info.name.as_deref(), Some("Crew session"));
     assert_eq!(info.state, SessionState::Working);
 
     let session = pool.get(&info.id).unwrap();

@@ -34,6 +34,9 @@ pub struct SessionSpec {
     /// Display name. Empty means: use the command's file name.
     #[serde(default)]
     pub label: String,
+    /// Initial session name. A user can replace this name later.
+    #[serde(default)]
+    pub name: Option<String>,
     #[serde(default)]
     pub role: Role,
     /// Working directory. `None` means the daemon's home directory.
@@ -73,7 +76,7 @@ pub struct SessionInfo {
     /// This terminal's own theme id; wins over the project's.
     #[serde(default)]
     pub theme: Option<String>,
-    /// A name the user gave. It wins over `title`.
+    /// The name Skiff or the user gave. It wins over `title`.
     #[serde(default)]
     pub name: Option<String>,
     /// The terminal title the program set (OSC 0 or 2), if any.

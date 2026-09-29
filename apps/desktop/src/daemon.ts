@@ -54,6 +54,7 @@ export async function newSession(
   const info = await invoke<SessionInfo>("create_session", {
     spec: {
       label: sessionLabel,
+      name: role === "agent" ? sessionLabel : null,
       role,
       cwd,
       command: words[0] ?? null,

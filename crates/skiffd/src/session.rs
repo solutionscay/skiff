@@ -252,7 +252,7 @@ impl SessionPool {
             pid: child.process_id(),
             exit_code: None,
             theme: None,
-            name: None,
+            name: spec.name.filter(|name| !name.trim().is_empty()),
             title: None,
             started_at: now_ms(),
             last_output_at: now_ms(),

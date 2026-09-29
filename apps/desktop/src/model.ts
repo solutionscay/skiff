@@ -44,9 +44,9 @@ export function agentName(s: SessionInfo): string {
   return s.command ? basename(s.command) : s.role;
 }
 
-/** The user's name wins; then the program's terminal title; then a label; then the agent. */
+/** A user or Skiff name wins. An agent label wins over its terminal title. */
 export function taskTitle(s: SessionInfo): string {
-  return s.name || s.title || s.label || agentName(s);
+  return s.name || (s.role === "agent" ? s.label || s.title : s.title || s.label) || agentName(s);
 }
 
 export function branchName(w: Worktree): string {

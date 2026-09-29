@@ -17,7 +17,7 @@ export interface SessionInfo {
   exit_code: number | null;
   /** This terminal's own theme id; wins over the project's. */
   theme: string | null;
-  /** A name the user gave; wins over `title`. */
+  /** A name Skiff or the user gave; wins over `title`. */
   name: string | null;
   /** Terminal title the program set, if any. */
   title: string | null;
