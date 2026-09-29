@@ -34,7 +34,11 @@ export function renderRail() {
     b.setAttribute("aria-label", p.name + (waiting ? `, ${waiting} waiting` : ""));
     if (p.name === S.selectedProject) b.setAttribute("aria-current", "true");
     item.appendChild(b);
-    if (waiting) item.appendChild(h("span", "rail-waiting"));
+    if (waiting) {
+      const bell = h("span", "rail-waiting");
+      bell.appendChild(icon('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>'));
+      item.appendChild(bell);
+    }
     rail.appendChild(item);
   });
   const hasOther = worktreeLines(null).length > 0;
@@ -158,21 +162,7 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
     const at = place(s);
     row.appendChild(h("span", "where mono", at ? branchName(at.worktree) : "other"));
   }
-  if (s.state === "working") {
-    // A skiff under way: it rocks while the water runs past.
-    const busy = h("span", "busy");
-    busy.title = "Working";
-    busy.appendChild(icon('<path d="M2 15h20l-4 5H6z"></path><path d="M12 15V3l7 10h-7"></path>'));
-    row.appendChild(busy);
-  } else if (s.state === "idle") {
-    // At anchor: the skiff is not moving, so the water is still and the anchor sways.
-    const at = h("span", "anchored");
-    at.title = "Idle";
-    at.appendChild(icon('<circle cx="12" cy="5" r="3"></circle><path d="M12 8v14"></path><path d="M5 12H2a10 10 0 0 0 20 0h-3"></path>'));
-    row.appendChild(at);
-  } else if (s.state === "waiting") {
-    row.appendChild(h("span", "time", s.state));
-  }
+  row.appendChild(stateIcon(s));
   return row;
 }
 
@@ -361,11 +351,13 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   if (w.is_main) pick.appendChild(h("span", "tag", "primary"));
   if (w.locked) pick.appendChild(h("span", "tag", "locked"));
   if (w.prunable) pick.appendChild(h("span", "tag", "prunable"));
+  if (removing.has(w.path)) pick.appendChild(h("span", "tag", "removing…"));
   pick.title = w.path;
+  row.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    worktreeMenu(p, w, e.clientX, e.clientY);
+  });
   row.appendChild(pick);
-  if (!w.is_main) {
-    row.appendChild(button("wt-act", removing.has(w.path) ? "removing…" : "remove", () => void removeWorktree(p, w)));
-  }
   const plus = button("wt-plus", "", () => launchMenu.open(plus, p, w));
   plus.dataset.wt = w.path;
   plus.setAttribute("aria-label", `Start a session in ${branchName(w)}`);
