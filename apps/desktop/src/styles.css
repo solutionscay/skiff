@@ -223,7 +223,7 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 .theme-chip { flex-shrink: 0; align-self: center; margin-right: calc(10 * var(--u)); width: calc(28 * var(--u)); height: calc(14 * var(--u)); display: flex; align-items: center; gap: calc(3 * var(--u)); padding: 0 calc(4 * var(--u)); box-shadow: inset 0 0 0 1px var(--rule-strong); }
 .chip-text { width: calc(8 * var(--u)); height: calc(2 * var(--u)); background: var(--fg); }
 .chip-cursor { width: calc(4 * var(--u)); height: calc(6 * var(--u)); background: var(--cur); }
-.group-count { flex-shrink: 0; font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
+.group-count { flex-shrink: 0; width: calc(18 * var(--u)); text-align: center; font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
 
 #select-bar { flex-shrink: 0; display: flex; flex-direction: column; background: var(--bg-raised); border-top: 1px solid var(--rule-strong); }
 #select-bar[hidden] { display: none; }
