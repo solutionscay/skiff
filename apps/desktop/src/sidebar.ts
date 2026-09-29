@@ -7,7 +7,7 @@ import { agentName, branchName, byStart, taskTitle, locate } from "./model";
 import type { Group, Project, SessionInfo, Worktree } from "./types";
 import { newSession } from "./daemon";
 import { $, branchIcon, button, chevron, h, host, icon, plusIcon, projectIcon, showError } from "./dom";
-import { groupMenu, newWorktree, projectMenu, removeWorktree, rowMenu } from "./menus";
+import { groupMenu, newWorktree, projectMenu, rowMenu, worktreeMenu } from "./menus";
 import { addProject, launchMenu } from "./panels";
 import { leaveRename, renameGroup, renameRow, startRename } from "./rename";
 import { render } from "./render";

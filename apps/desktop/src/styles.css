@@ -166,13 +166,6 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 .wt-pick svg { flex-shrink: 0; color: var(--text-2); }
 .wt-pick .branch { font-family: var(--mono); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .tag { flex-shrink: 0; font-size: calc(11px * var(--zoom, 1)); padding: 1px calc(6 * var(--u)); border: 1px solid var(--rule-strong); color: var(--text-3); }
-.wt-act {
-  flex-shrink: 0; padding: 0 calc(10 * var(--u));
-  background: transparent; border: 0; border-left: 1px solid var(--rule);
-  font-size: calc(12px * var(--zoom, 1)); color: var(--text-3);
-}
-.wt-act:hover { color: var(--text); background: var(--bg-raised); }
-.wt:not(.selected):not(:hover):not(:focus-within) .wt-act { opacity: 0; }
 
 .sessions-block { display: flex; flex-direction: column; flex-shrink: 0; }
 .wt-count {

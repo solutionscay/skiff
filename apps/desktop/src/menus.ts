@@ -149,6 +149,18 @@ export function projectMenu(p: Project, x: number, y: number) {
 
 export const ctxMenu = createMenu(() => refocusTerminal());
 
+/** A right-click on a worktree's branch row. */
+export function worktreeMenu(p: Project, w: Worktree, x: number, y: number) {
+  const entries: MenuEntry[] = [
+    { icon: "↗", label: "Show in file manager", run: () => void openPath(w.path).catch(showError) },
+    { icon: "⧉", label: "Copy path", run: () => void navigator.clipboard.writeText(w.path).catch(showError) },
+  ];
+  if (!w.is_main) {
+    entries.push({ icon: "×", label: "Remove worktree…", hint: "keeps the branch", danger: true, disabled: removing.has(w.path), run: () => void removeWorktree(p, w) });
+  }
+  ctxMenu.open(x, y, branchName(w), entries);
+}
+
 function sessionLabel(s: SessionInfo) {
   return `${agentName(s)} · ${taskTitle(s)}`;
 }
