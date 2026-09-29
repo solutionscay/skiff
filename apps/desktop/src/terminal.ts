@@ -51,7 +51,19 @@ function openPane(id: string): Promise<Pane> {
   return pending;
 }
 
+const FONT = "JetBrains Mono, ui-monospace, monospace";
+
+/**
+ * xterm measures a cell once, when the terminal opens. A font that is not
+ * loaded yet gives the fallback's width, and the fit leaves an empty margin
+ * until a reload. So every terminal waits for the bundled font.
+ */
+const fontReady = Promise.all(
+  ["400", "700"].map((w) => document.fonts.load(`${w} ${FONT_DEFAULT}px "JetBrains Mono"`)),
+).catch(() => undefined);
+
 async function createPane(id: string): Promise<Pane> {
+  await fontReady;
   const el = document.createElement("div");
   el.className = "pane";
   park.appendChild(el);
@@ -61,7 +73,7 @@ async function createPane(id: string): Promise<Pane> {
     cols: info?.cols ?? 80,
     rows: info?.rows ?? 24,
     theme: TERM_THEME,
-    fontFamily: "JetBrains Mono, Fira Code, ui-monospace, monospace",
+    fontFamily: FONT,
     fontSize: S.fontSize,
     lineHeight: 1.2,
     cursorBlink: true,
