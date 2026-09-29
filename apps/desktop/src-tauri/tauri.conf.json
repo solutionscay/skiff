@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.solutionscay.skiff",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "cargo build -p skiffd && pnpm dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"

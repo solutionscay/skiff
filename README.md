@@ -2,7 +2,7 @@
 
 <h1 align="center">Skiff</h1>
 
-A desktop app for running many coding agents side by side, on Linux.
+A desktop app for running many coding agents side by side, on Linux and macOS.
 
 You add a project (a Git repository), make worktrees in it, and start agent or shell sessions in each worktree. Sessions can sit side by side in a group. Each group has a name and a terminal theme, and so does each project.
 
@@ -12,7 +12,7 @@ Sessions run in `skiffd`, a daemon that owns every PTY. You can close the window
 
 ## Platforms
 
-Linux is the target for now. The app and the daemon talk over a Unix socket, which also works on macOS, so a macOS build may come later. Windows is not planned: it would need a different transport.
+Skiff runs on Linux and macOS. The app and the daemon talk over a Unix socket. Release packages are Linux only for now. On macOS, build from source (see Development).
 
 ## Layout
 
@@ -26,10 +26,11 @@ apps/desktop         Tauri v2 app, vanilla TypeScript + xterm.js
 ## Development
 
 ```
-cargo build --workspace          # builds skiffd and the app backend
-cargo test --workspace
 cd apps/desktop && pnpm install && pnpm tauri dev
+cargo test --workspace
 ```
+
+`pnpm tauri dev` builds `skiffd` first, then the app, and puts both in `target/debug`.
 
 The app starts `skiffd` on its own when the socket is not there. It looks for the binary
 next to its own executable, then on `PATH`. `SKIFF_DAEMON` overrides. `SKIFF_SOCKET`
