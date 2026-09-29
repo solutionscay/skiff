@@ -39,6 +39,10 @@ pub const FRAME: Duration = Duration::from_millis(16);
 /// redraw. It skips coalescing and does not mark the session working.
 const ECHO_MS: u64 = 250;
 
+/// The screen text is checked at most this often. Each check walks every cell,
+/// and what it feeds (idle detection, the approval prompt) works in seconds.
+const SCAN: Duration = Duration::from_millis(100);
+
 pub struct Session {
     info: Mutex<SessionInfo>,
     master: Mutex<Box<dyn MasterPty + Send>>,
@@ -67,6 +71,22 @@ struct ScreenState {
     codex_approval_visible: bool,
     pending: Vec<u8>,
     last_flush: Instant,
+    last_scan: Instant,
+    /// Output came since the last scan.
+    unscanned: bool,
+    /// A chunk since the last scan printed text.
+    printed: bool,
+    /// A chunk since the last scan printed text that was not an echo.
+    printed_work: bool,
+}
+
+/// What a scan of the screen found.
+#[derive(Default)]
+struct Scan {
+    /// New text on screen that is not an echo.
+    work: bool,
+    /// The Codex approval prompt just appeared.
+    approval_prompted: bool,
 }
 
 impl ScreenState {
@@ -75,6 +95,19 @@ impl ScreenState {
         if !self.pending.is_empty() {
             let _ = output.send(Arc::new(std::mem::take(&mut self.pending)));
         }
+    }
+
+    fn scan(&mut self) -> Scan {
+        let changed = self.printed && self.screen.text_changed();
+        let approval_visible = self.screen.has_codex_approval_prompt();
+        let approval_prompted = approval_visible && !self.codex_approval_visible;
+        self.codex_approval_visible = approval_visible;
+        let work = changed && self.printed_work;
+        self.last_scan = Instant::now();
+        self.unscanned = false;
+        self.printed = false;
+        self.printed_work = false;
+        Scan { work, approval_prompted }
     }
 }
 
@@ -97,29 +130,45 @@ impl Session {
         now_ms().saturating_sub(self.last_input.load(Ordering::Relaxed)) < ECHO_MS
     }
 
-    /// Feeds the emulator and queues the bytes. The second flag is true when
-    /// the chunk changed the text on screen; the third is a newly shown Codex
-    /// approval prompt.
-    fn push_output(&self, chunk: &[u8]) -> (Signals, bool, bool) {
+    /// Feeds the emulator and queues the bytes. Scans the screen when the last
+    /// scan is older than `SCAN`; the flusher scans what is left.
+    fn push_output(&self, chunk: &[u8]) -> (Signals, Scan) {
+        let echoing = self.echoing();
         let mut st = self.screen.lock().unwrap();
         let signals = st.screen.feed(chunk);
-        let changed = prints(chunk) && st.screen.text_changed();
-        let approval_visible = st.screen.has_codex_approval_prompt();
-        let approval_prompted = approval_visible && !st.codex_approval_visible;
-        st.codex_approval_visible = approval_visible;
+        st.unscanned = true;
+        if prints(chunk) {
+            st.printed = true;
+            st.printed_work |= !echoing;
+        }
+        let scan = if st.last_scan.elapsed() >= SCAN {
+            st.scan()
+        } else {
+            Scan::default()
+        };
         st.pending.extend_from_slice(chunk);
         // A chunk after a quiet frame goes out now, and so does the answer
         // to a keystroke, even while the program streams output.
         if self.echoing() || st.last_flush.elapsed() >= FRAME {
             st.flush(&self.output);
         }
-        (signals, changed, approval_prompted)
+        (signals, scan)
     }
 
     fn flush_output(&self) {
         let mut st = self.screen.lock().unwrap();
         if !st.pending.is_empty() {
             st.flush(&self.output);
+        }
+    }
+
+    /// Scans output that came after the last scan, so the end of a burst counts.
+    fn scan_due(&self) -> Scan {
+        let mut st = self.screen.lock().unwrap();
+        if st.unscanned && st.last_scan.elapsed() >= SCAN {
+            st.scan()
+        } else {
+            Scan::default()
         }
     }
 }
@@ -294,6 +343,10 @@ impl SessionPool {
                 codex_approval_visible: false,
                 pending: Vec::new(),
                 last_flush: Instant::now() - FRAME,
+                last_scan: Instant::now() - SCAN,
+                unscanned: false,
+                printed: false,
+                printed_work: false,
             }),
         });
         self.sessions
@@ -318,21 +371,13 @@ impl SessionPool {
                     };
                     let chunk = &buf[..n];
                     session.last_output.store(now_ms(), Ordering::Relaxed);
-                    let (signals, changed, approval_prompted) = session.push_output(chunk);
+                    let (signals, scan) = session.push_output(chunk);
                     // A bell means "the process wants you". It stays until the user
                     // types. The BEL that ends a title sequence is not a bell.
-                    // Work is new text on screen. An echo of typing, a redraw
-                    // after a resize, mode codes an idle program re-sends, or
-                    // a logo that only changes color are not.
-                    let work = !session.echoing() && changed;
-                    if work {
-                        session.last_work.store(now_ms(), Ordering::Relaxed);
-                    }
-                    if signals.bell || approval_prompted {
+                    if signals.bell {
                         pool.set_state(&session, SessionState::Waiting);
-                    } else if work && session.info.lock().unwrap().state != SessionState::Waiting {
-                        pool.set_state(&session, SessionState::Working);
                     }
+                    pool.apply_scan(&session, scan);
                     if let Some(title) = signals.title {
                         let title = title.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
                         if title.as_deref() == Some(SHELL_HANDOFF_TITLE) {
@@ -385,6 +430,20 @@ impl SessionPool {
             .context("spawn reader thread")?;
 
         Ok(info)
+    }
+
+    /// Work is new text on screen. An echo of typing, a redraw after a resize,
+    /// mode codes an idle program re-sends, or a logo that only changes color
+    /// are not.
+    fn apply_scan(&self, session: &Session, scan: Scan) {
+        if scan.work {
+            session.last_work.store(now_ms(), Ordering::Relaxed);
+        }
+        if scan.approval_prompted {
+            self.set_state(session, SessionState::Waiting);
+        } else if scan.work && session.info.lock().unwrap().state != SessionState::Waiting {
+            self.set_state(session, SessionState::Working);
+        }
     }
 
     fn set_state(&self, session: &Session, state: SessionState) {
@@ -556,7 +615,8 @@ impl SessionPool {
         Ok(())
     }
 
-    /// Sends output held back by coalescing, once per frame.
+    /// Sends output held back by coalescing, and scans held-back screen
+    /// changes, once per frame.
     pub fn spawn_flusher(self: &Arc<Self>) {
         let pool = self.clone();
         tokio::spawn(async move {
@@ -568,6 +628,7 @@ impl SessionPool {
                     pool.sessions.read().unwrap().values().cloned().collect();
                 for s in sessions {
                     s.flush_output();
+                    pool.apply_scan(&s, s.scan_due());
                 }
             }
         });
@@ -646,7 +707,47 @@ fn default_shell() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::prints;
+    use super::{prints, Screen, ScreenState, SCAN};
+    use std::time::Instant;
+
+    fn state() -> ScreenState {
+        ScreenState {
+            screen: Screen::new(40, 5),
+            codex_approval_visible: false,
+            pending: Vec::new(),
+            last_flush: Instant::now(),
+            last_scan: Instant::now() - SCAN,
+            unscanned: false,
+            printed: false,
+            printed_work: false,
+        }
+    }
+
+    fn print(st: &mut ScreenState, bytes: &[u8], echo: bool) {
+        st.screen.feed(bytes);
+        st.unscanned = true;
+        st.printed = true;
+        st.printed_work |= !echo;
+    }
+
+    #[test]
+    fn scan_counts_new_text_once() {
+        let mut st = state();
+        print(&mut st, b"hello", false);
+        assert!(st.scan().work);
+        assert!(!st.unscanned);
+        print(&mut st, b"", false);
+        assert!(!st.scan().work);
+    }
+
+    #[test]
+    fn echo_updates_the_baseline_without_work() {
+        let mut st = state();
+        print(&mut st, b"typed", true);
+        assert!(!st.scan().work);
+        print(&mut st, b"", false);
+        assert!(!st.scan().work);
+    }
 
     #[test]
     fn only_text_counts_as_printing() {
