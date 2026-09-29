@@ -149,6 +149,10 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
   row.dataset.session = s.id;
   if (o.in) row.dataset.inGroup = o.in.id;
   row.addEventListener("mousedown", (e) => {
+    // dragSessions prevents the browser's default mousedown behavior to avoid
+    // text selection, so focus the row explicitly before starting the drag.
+    // Otherwise Delete stays in the terminal after a mouse selection.
+    if (e.button === 0) row.focus();
     dragSessions(e, S.selection.length > 1 && S.selection.includes(s.id) ? [...S.selection] : [s.id]);
   });
   row.addEventListener("click", (e) => {
@@ -221,7 +225,10 @@ export function renderSidebar() {
   // Keep focus and the selected range in an inline control across re-renders,
   // so a render while a rename is open does not undo its select-all.
   const active = document.activeElement as HTMLElement | null;
-  const activeKey = active?.dataset?.key;
+  // The sidebar is rebuilt whenever sessions update. Keep focus on any list
+  // row as well as inline rename fields, otherwise a selected session loses
+  // its keyboard shortcuts after the next render.
+  const activeKey = active?.dataset?.key ?? active?.dataset?.session ?? active?.dataset?.wt ?? active?.dataset?.group;
   const caret: Caret | null = active instanceof HTMLInputElement && active.selectionStart !== null
     ? [active.selectionStart, active.selectionEnd ?? active.selectionStart, active.selectionDirection ?? "none"]
     : null;
@@ -305,8 +312,12 @@ function restoreHover() {
 function restoreFocus(side: HTMLElement, activeKey: string | undefined, caret: Caret | null) {
   restoreHover();
   if (activeKey) {
-    const again = side.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-key="${activeKey}"]`);
-    if (again && !again.disabled) {
+    const again = [...side.querySelectorAll<HTMLElement>("[data-key], [data-session], [data-wt], [data-group]")]
+      .find((el) => (el.dataset.key ?? el.dataset.session ?? el.dataset.wt ?? el.dataset.group) === activeKey);
+    const disabled = again instanceof HTMLButtonElement || again instanceof HTMLInputElement || again instanceof HTMLSelectElement
+      ? again.disabled
+      : false;
+    if (again && !disabled) {
       again.focus();
       if (caret !== null && again instanceof HTMLInputElement) again.setSelectionRange(...caret);
     }

@@ -169,7 +169,7 @@ const pick = (m: MenuEntry) => void ("run" in m && m.run?.());
 
 /**
  * Delete or Backspace on a list row. With one way to remove it, that runs
- * (End asks first). With more, a menu at the row asks which.
+ * (End or removal asks first). With more, a menu at the row asks which.
  */
 export function deleteKeyMenu(el: HTMLElement) {
   // A key opened it: show focus rings, so the first item reads as the one picked.
@@ -203,7 +203,21 @@ function themeEntry(s: SessionInfo): MenuEntry {
 /** Right-click, End session: stops the process and drops it from the list. */
 export function endEntry(s: SessionInfo): MenuEntry {
   if (s.state === "done") {
-    return { icon: "tools-trash-2", label: "Remove from list", hint: "already exited", danger: true, run: () => void endSession(s.id) };
+    return {
+      icon: "tools-trash-2",
+      label: "Remove from list…",
+      hint: "already exited",
+      danger: true,
+      run: async () => {
+        const ok = await confirmAction({
+          title: `Remove ${taskTitle(s)}?`,
+          body: "This session has already exited. Removing it clears it from the session list.",
+          action: "Remove session",
+        });
+        if (ok) void endSession(s.id);
+        else refocusTerminal();
+      },
+    };
   }
   return {
     icon: "indicators-square-stop",
