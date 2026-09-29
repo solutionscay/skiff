@@ -1,5 +1,6 @@
 /** skiffd: sessions, projects, events. */
 import { filledOf, isSlot, placeInSlot, slot } from "./canvas";
+import { agentCallsign } from "./agentNames";
 import { removePane, replacePane, sessionsOf } from "./layout";
 import type { AgentInfo, DaemonEvent, DaemonStatus, Project, SessionInfo, SplitDir } from "./types";
 import { invoke } from "@tauri-apps/api/core";
@@ -46,9 +47,12 @@ export async function newSession(
   // Projects list agents as command lines; the first word is the program.
   const words = (agent ?? "").trim().split(/\s+/).filter(Boolean);
   const visible = S.focused ? panes.get(S.focused) : undefined;
+  // Agent IDs are useful in the launch menu, but call signs make a new crew
+  // easier (and more fun) to tell apart once it is running.
+  const sessionLabel = role === "agent" ? agentCallsign([...sessions.values()].map((s) => s.label)) : label;
   const info = await invoke<SessionInfo>("create_session", {
     spec: {
-      label,
+      label: sessionLabel,
       role,
       cwd,
       command: words[0] ?? null,
