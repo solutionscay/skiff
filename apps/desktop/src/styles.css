@@ -365,11 +365,11 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .sw-empty { height: var(--row); display: flex; align-items: center; padding: 0 calc(16 * var(--u)); color: var(--text-3); }
 .sw-foot { height: calc(32 * var(--u)); display: flex; align-items: center; gap: calc(16 * var(--u)); padding: 0 calc(16 * var(--u)); border-top: 1px solid var(--rule); font-size: calc(11px * var(--zoom, 1)); color: var(--text-3); }
 
-#daemon-alert { min-height: var(--row); display: flex; align-items: center; gap: calc(16 * var(--u)); padding: 0 0 0 calc(16 * var(--u)); background: #2a1214; border-bottom: 1px solid #7a2a2e; color: #ffb3b3; font-size: calc(13px * var(--zoom, 1)); }
+#daemon-alert, #error-alert { min-height: var(--row); display: flex; align-items: center; gap: calc(16 * var(--u)); padding: 0 0 0 calc(16 * var(--u)); background: #2a1214; border-bottom: 1px solid #7a2a2e; color: #ffb3b3; font-size: calc(13px * var(--zoom, 1)); }
 
-#daemon-alert .alert-text { flex-grow: 1; padding: calc(8 * var(--u)) 0; }
-#daemon-alert .alert-btn { align-self: stretch; flex-shrink: 0; width: calc(144 * var(--u)); padding: 0; border: 0; border-left: 1px solid #7a2a2e; background: transparent; color: #ffb3b3; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; }
-#daemon-alert .alert-btn:hover { background: #3a181b; }
+#daemon-alert .alert-text, #error-alert .alert-text { flex-grow: 1; padding: calc(8 * var(--u)) 0; }
+#daemon-alert .alert-btn, #error-alert .alert-btn { align-self: stretch; flex-shrink: 0; width: calc(144 * var(--u)); padding: 0; border: 0; border-left: 1px solid #7a2a2e; background: transparent; color: #ffb3b3; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; }
+#daemon-alert .alert-btn:hover, #error-alert .alert-btn:hover { background: #3a181b; }
 
 /* Add project dialog. --pc is the chosen color. */
 #add-project {
