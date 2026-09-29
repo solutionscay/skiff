@@ -12,8 +12,11 @@ async fn shell_session_streams_output_rings_bell_and_exits() {
     let pool = SessionPool::new();
     let mut events = pool.events.subscribe();
 
+    // The user's shell runs as is. Any other program hands the terminal to
+    // that shell when it exits, and the session would not end.
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
     let spec = SessionSpec {
-        command: Some("sh".into()),
+        command: Some(shell.clone()),
         args: vec![
             "-c".into(),
             "sleep 0.2; printf 'hello\\a'; sleep 0.2".into(),
@@ -21,7 +24,7 @@ async fn shell_session_streams_output_rings_bell_and_exits() {
         ..Default::default()
     };
     let info = pool.create(spec).unwrap();
-    assert_eq!(info.label, "sh");
+    assert_eq!(Some(info.label.as_str()), shell.rsplit('/').next());
     assert_eq!(info.state, SessionState::Working);
 
     let session = pool.get(&info.id).unwrap();
