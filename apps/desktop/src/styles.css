@@ -198,19 +198,15 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 .session-row .busy svg { position: absolute; left: calc(4 * var(--u)); bottom: 1px; width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: rock 1.2s ease-in-out infinite; transform-origin: 50% 90%; }
 @keyframes water { to { background-position: calc(-6 * var(--u)) bottom; } }
 @keyframes rock { 0%, 100% { transform: rotate(-6deg) translateY(0); } 50% { transform: rotate(6deg) translateY(-1px); } }
-.session-row .anchored {
-  position: relative; color: var(--state-idle); width: calc(18 * var(--u)); height: calc(12 * var(--u)); overflow: hidden; flex-shrink: 0;
-  background: linear-gradient(90deg, var(--state-idle) 50%, transparent 0) left bottom / calc(6 * var(--u)) 1px repeat-x; opacity: 0.8;
-}
-.session-row .anchored svg { position: absolute; left: calc(4 * var(--u)); top: 0; width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: sway 3s ease-in-out infinite; transform-origin: 50% 0; }
-@keyframes sway { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
+.session-row .anchored { display: flex; align-items: center; justify-content: center; color: var(--state-idle); width: calc(18 * var(--u)); height: calc(12 * var(--u)); opacity: 0.8; }
+.session-row .anchored svg { width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; }
 .busy, .anchored, .belled, .finished { flex-shrink: 0; }
 .session-row .belled, .cell-head .belled { display: flex; align-items: center; justify-content: center; color: var(--state-waiting-text); width: calc(18 * var(--u)); height: calc(12 * var(--u)); flex-shrink: 0; }
 .belled svg { width: calc(11 * var(--u)); height: calc(11 * var(--u)); stroke-width: 2.5; animation: ring 1.6s ease-in-out infinite; transform-origin: 50% 10%; }
 @keyframes ring { 0%, 50%, 100% { transform: rotate(0); } 10% { transform: rotate(16deg); } 20% { transform: rotate(-14deg); } 30% { transform: rotate(10deg); } 40% { transform: rotate(-6deg); } }
 .session-row .finished, .cell-head .finished { display: flex; align-items: center; justify-content: center; color: var(--state-done); width: calc(18 * var(--u)); height: calc(12 * var(--u)); }
 .finished.failed { color: var(--state-waiting-text); }
-@media (prefers-reduced-motion: reduce) { .session-row .busy, .session-row .busy svg, .session-row .anchored svg, .belled svg, .rail-waiting svg { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .session-row .busy, .session-row .busy svg, .belled svg, .rail-waiting svg { animation: none; } }
 .session-row { position: relative; user-select: none; }
 .session-row.selected { background: color-mix(in srgb, var(--state-working) 16%, transparent); box-shadow: inset 2px 0 0 var(--state-working); }
 

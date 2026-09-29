@@ -60,7 +60,8 @@ function commands(): Cmd[] {
     { section: "View", label: "Add pane right…", key: k("split-right"), action: "split-right", run: act("split-right"), off: !shown || splitFull() },
     { section: "View", label: "Add pane below…", key: k("split-down"), action: "split-down", run: act("split-down"), off: !shown || splitFull() },
     { section: "View", label: shownIds().length > 1 ? "Remove from group" : "Close", key: k("close-pane"), action: "close-pane", run: act("close-pane"), off: !shown },
-    { section: "View", label: "Ungroup", key: "", run: () => g && unsplit(g), off: !g },
+    // An empty group has nothing to ungroup: the entry just closes it.
+    { section: "View", label: shownIds().some((id) => sessions.has(id)) ? "Ungroup" : "Close group", key: "", run: () => g && unsplit(g), off: !g },
     { section: "View", label: "Next waiting", key: k("next-waiting"), action: "next-waiting", run: act("next-waiting") },
     { section: "View", label: "Back to last session", key: k("back"), action: "back", run: act("back"), off: !S.previous },
     { section: "View", label: "Bigger text", key: k("font-bigger"), action: "font-bigger", run: act("font-bigger") },

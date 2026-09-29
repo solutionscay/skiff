@@ -125,6 +125,8 @@ export function onEvent(e: DaemonEvent) {
       if (s) {
         s.state = "done";
         s.exit_code = e.code;
+        // A shell that exits (Ctrl+D, `exit`) has nothing left to show: it closes.
+        if (s.role === "shell") invoke("kill_session", { session: s.id }).catch(console.error);
       }
       break;
     }

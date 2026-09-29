@@ -292,14 +292,7 @@ export function groupMenu(g: Group, x: number, y: number) {
     { head: "GROUP" },
     { icon: "tools-pencil", label: "Rename", hint: "double-click", run: () => startRename(g) },
     { icon: "code-terminal", label: "Terminal theme…", hint: "every pane", run: () => void groupThemeMenu(g) },
-    { icon: "code-ungroup", label: "Ungroup", hint: "sessions keep running", run: () => {
-      if (g.id === S.activeGroup) unsplit(g);
-      else {
-        deleteGroup(g);
-        render();
-      }
-    } },
-    ...closeGroupEntry(g),
+    ...closeGroupEntries(g),
   ]);
 }
 
@@ -329,11 +322,24 @@ function groupStartEntries(g: Group): MenuEntry[] {
   return entries;
 }
 
-/** Close group: ends every session in it. The daemon then drops the group. */
-function closeGroupEntry(g: Group): MenuEntry[] {
+/**
+ * With sessions: Ungroup keeps them running, Close group ends them all.
+ * Empty: nothing to ungroup or end, so Close just drops the group.
+ */
+function closeGroupEntries(g: Group): MenuEntry[] {
   const ids = sessionsOf(g.layout).filter((id) => sessions.has(id));
-  if (!ids.length) return [];
-  return [endManyEntry(ids, "Close group…", `Close ${g.name}?`, `ends ${ids.length} sessions`)];
+  const drop = () => {
+    if (g.id === S.activeGroup) unsplit(g);
+    else {
+      deleteGroup(g);
+      render();
+    }
+  };
+  if (!ids.length) return [{ icon: "tools-trash-2", label: "Close group", hint: "no sessions", run: drop }];
+  return [
+    { icon: "code-ungroup", label: "Ungroup", hint: "sessions keep running", run: drop },
+    endManyEntry(ids, "Close group…", `Close ${g.name}?`, `ends ${ids.length} sessions`),
+  ];
 }
 
 export async function removeWorktree(p: Project, w: Worktree) {

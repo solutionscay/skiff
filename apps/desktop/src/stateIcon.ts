@@ -20,7 +20,7 @@ export function stateIcon(s: SessionInfo): HTMLElement {
       // A skiff under way: it rocks while the water runs past.
       return mark("busy", "Working", SKIFF);
     case "idle":
-      // At anchor: the skiff is not moving, so the water is still and the anchor sways.
+      // At anchor: the skiff is not moving.
       return mark("anchored", "Idle", ANCHOR);
     case "waiting":
       // The bell rang: the process wants you.
