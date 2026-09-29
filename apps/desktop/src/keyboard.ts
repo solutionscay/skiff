@@ -141,7 +141,7 @@ function scheduleReveal(el: HTMLElement) {
 /** Shows a session or picks a group. The row keeps the keys, as a click does. */
 function openRow(el: HTMLElement) {
   const sid = el.dataset.session;
-  if (sid && S.focused !== sid) {
+  if (sid && (S.focused !== sid || S.groupPicked)) {
     clearSelection();
     revealSession(sid);
     requestAnimationFrame(() => keepRow(sid));
