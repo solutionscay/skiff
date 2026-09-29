@@ -38,6 +38,26 @@ The app starts `skiffd` on its own when the socket is not there. It looks for th
 next to its own executable, then on `PATH`. `SKIFF_DAEMON` overrides. `SKIFF_SOCKET`
 overrides the socket path, `SKIFF_CONFIG` the config file.
 
+### Changes to skiffd
+
+The daemon outlives the app. A rebuild does not replace the daemon that is running,
+so a change to `crates/skiffd` has no effect until you restart it:
+
+```
+cargo build -p skiffd      # pnpm tauri dev also does this
+pkill -x skiffd            # ends every open session
+```
+
+Then reload the window (Ctrl+R) or restart the app. The app starts the new binary
+on its next call.
+
+If a change bumps the wire protocol (`skiff_core::PROTOCOL`), the app replaces an old
+daemon without asking when no session is live. When sessions are live, it shows a
+"Restart skiffd" button instead.
+
+The daemon writes its log to `skiffd.log` next to the socket, which is
+`$XDG_RUNTIME_DIR/skiff/` on Linux.
+
 ## Packages
 
 ```
