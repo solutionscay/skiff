@@ -24,6 +24,58 @@ use tokio::{
 };
 
 type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Response>>>>;
+type Outputs = Arc<Mutex<HashMap<SessionId, OutputTx>>>;
+
+/// Output chunks a session's receiver may hold before it counts as lagged.
+const OUTPUT_QUEUE: usize = 4096;
+
+struct OutputTx {
+    tx: mpsc::Sender<Event>,
+    lagged: Arc<AtomicBool>,
+}
+
+/// Output and snapshots for one session, from [`Client::output`].
+pub struct Output {
+    rx: mpsc::Receiver<Event>,
+    lagged: Arc<AtomicBool>,
+}
+
+impl Output {
+    /// The next [`Event::Output`] or [`Event::Snapshot`]. `Lagged` means
+    /// chunks were dropped: subscribe again for a fresh snapshot. `Closed`
+    /// means the connection is gone or a newer receiver replaced this one.
+    pub async fn recv(&mut self) -> Result<Event, broadcast::error::RecvError> {
+        if self.lagged.swap(false, Ordering::Relaxed) {
+            return Err(broadcast::error::RecvError::Lagged(0));
+        }
+        self.rx.recv().await.ok_or(broadcast::error::RecvError::Closed)
+    }
+
+    /// Drops everything queued. After a lag, before subscribing again, so the
+    /// new snapshot has room.
+    pub fn clear(&mut self) {
+        while self.rx.try_recv().is_ok() {}
+        self.lagged.store(false, Ordering::Relaxed);
+    }
+}
+
+/// Hands output to its session's receiver alone, without a copy per listener.
+/// Never waits: a full queue marks the receiver lagged and drops the chunk.
+fn route(outputs: &Outputs, e: Event) {
+    let session = match &e {
+        Event::Output { session, .. } | Event::Snapshot { session, .. } => session.clone(),
+        _ => return,
+    };
+    let mut map = outputs.lock().unwrap();
+    let Some(o) = map.get(&session) else { return };
+    match o.tx.try_send(e) {
+        Ok(()) => {}
+        Err(mpsc::error::TrySendError::Full(_)) => o.lagged.store(true, Ordering::Relaxed),
+        Err(mpsc::error::TrySendError::Closed(_)) => {
+            map.remove(&session);
+        }
+    }
+}
 
 /// A request with no reply after this long fails instead of hanging.
 const REPLY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
@@ -35,7 +87,9 @@ pub struct Client {
     tx: mpsc::UnboundedSender<Vec<u8>>,
     next_id: AtomicU64,
     pending: Pending,
+    /// Every event except output and snapshots, which go to [`Self::output`].
     events: broadcast::Sender<Event>,
+    outputs: Outputs,
     /// Set when the daemon closes the connection.
     closed: Arc<AtomicBool>,
 }
@@ -61,8 +115,10 @@ impl Client {
         let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
         let (events, _) = broadcast::channel(4096);
         let closed = Arc::new(AtomicBool::new(false));
+        let outputs: Outputs = Arc::new(Mutex::new(HashMap::new()));
         {
             let pending = pending.clone();
+            let outputs = outputs.clone();
             let events = events.clone();
             let closed = closed.clone();
             tokio::spawn(async move {
@@ -74,6 +130,9 @@ impl Client {
                                 let _ = s.send(r.response);
                             }
                         }
+                        Ok(ServerMessage::Event(e @ (Event::Output { .. } | Event::Snapshot { .. }))) => {
+                            route(&outputs, e);
+                        }
                         Ok(ServerMessage::Event(e)) => {
                             let _ = events.send(e);
                         }
@@ -83,6 +142,7 @@ impl Client {
                 closed.store(true, Ordering::Relaxed);
                 // Dropping the senders wakes every waiting request with an error.
                 pending.lock().unwrap().clear();
+                outputs.lock().unwrap().clear();
             });
         }
 
@@ -92,6 +152,7 @@ impl Client {
             next_id: AtomicU64::new(1),
             pending,
             events,
+            outputs,
             closed,
         })
     }
@@ -220,6 +281,16 @@ impl Client {
         .await
     }
 
+    /// The receiver for one session's output. Take it before [`Self::subscribe`]:
+    /// the snapshot arrives before the reply. Replaces an earlier receiver.
+    pub fn output(&self, session: &str) -> Output {
+        let (tx, rx) = mpsc::channel(OUTPUT_QUEUE);
+        let lagged = Arc::new(AtomicBool::new(false));
+        let o = OutputTx { tx, lagged: lagged.clone() };
+        self.outputs.lock().unwrap().insert(session.to_string(), o);
+        Output { rx, lagged }
+    }
+
     pub async fn subscribe(&self, session: &str) -> Result<()> {
         self.expect_ok(Request::Subscribe {
             session: session.to_string(),
@@ -228,6 +299,7 @@ impl Client {
     }
 
     pub async fn unsubscribe(&self, session: &str) -> Result<()> {
+        self.outputs.lock().unwrap().remove(session);
         self.expect_ok(Request::Unsubscribe {
             session: session.to_string(),
         })

@@ -16,6 +16,12 @@ export interface Pane {
   webgl?: WebglAddon;
   /** The theme id this pane last drew with. */
   theme?: string;
+  /** Out of the layout: no output stream, so it costs nothing while hidden. */
+  parked: boolean;
+  /** Counts subscriptions. A chunk from an older one is dropped. */
+  stream: number;
+  /** Subscribe and unsubscribe calls, one after another, so they land in order. */
+  sub: Promise<void>;
 }
 
 /** Accent for sessions outside every project, and projects without `color`. */

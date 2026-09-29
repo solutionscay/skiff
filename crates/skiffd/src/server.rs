@@ -1,5 +1,6 @@
-//! One task per client connection. Requests are answered in order; events and
-//! subscribed output are interleaved on the same connection.
+//! One task per client connection. Fast requests are answered in order, slow
+//! ones in order on a second task; events and subscribed output are
+//! interleaved on the same connection.
 
 use std::{collections::HashMap, path::Path, sync::Arc};
 
@@ -50,6 +51,22 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
         }
     });
 
+    // Slow requests answer from here, in the order they came. A reply can
+    // pass one from this queue; the client matches replies by id.
+    let (slow_tx, mut slow_rx) = mpsc::unbounded_channel::<(u64, Request)>();
+    let slow_task = {
+        let tx = tx.clone();
+        let pool = pool.clone();
+        tokio::spawn(async move {
+            while let Some((id, request)) = slow_rx.recv().await {
+                let response = answer_slow(pool.clone(), request).await;
+                if tx.send(ServerMessage::Reply(Reply { id, response })).await.is_err() {
+                    break;
+                }
+            }
+        })
+    };
+
     let mut subs: HashMap<SessionId, JoinHandle<()>> = HashMap::new();
     let mut lines = BufReader::new(rd).lines();
     while let Some(line) = lines.next_line().await? {
@@ -84,12 +101,28 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
             Request::ListSessions => Response::Sessions {
                 sessions: pool.list(),
             },
-            Request::CreateSession { spec } => {
-                let pool = pool.clone();
-                match blocking(move || pool.create(spec)).await {
-                    Ok(session) => Response::Session { session },
-                    Err(e) => error(e),
+            req @ (Request::CreateSession { .. }
+            | Request::ListProjects
+            | Request::AddWorktree { .. }
+            | Request::GetKeys
+            | Request::GetAppearance
+            | Request::SetAppearance { .. }
+            | Request::ListThemes
+            | Request::ReadIcon { .. }
+            | Request::SetProjectBackground { .. }
+            | Request::SetProjectColor { .. }
+            | Request::ReorderProjects { .. }
+            | Request::SetProjectIcon { .. }
+            | Request::InspectFolder { .. }
+            | Request::ListAgents
+            | Request::SetAgentCommand { .. }
+            | Request::SetAgents { .. }
+            | Request::AddProject { .. }
+            | Request::RemoveWorktree { .. }) => {
+                if slow_tx.send((env.id, req)).is_err() {
+                    break;
                 }
+                continue;
             }
             Request::Write { session, data } => match pool.write(&session, &data) {
                 Ok(()) => Response::Ok,
@@ -169,147 +202,6 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
                 Ok(()) => Response::Ok,
                 Err(e) => error(e),
             },
-            Request::ListProjects => match blocking(project::list).await {
-                Ok(projects) => Response::Projects { projects },
-                Err(e) => error(e),
-            },
-            Request::AddWorktree {
-                project,
-                branch,
-                base,
-            } => match blocking(move || project::add_worktree(&project, &branch, base.as_deref()))
-                .await
-            {
-                Ok(worktree) => {
-                    let _ = pool.events.send(Event::ProjectsChanged {});
-                    Response::Worktree { worktree }
-                }
-                Err(e) => error(e),
-            },
-            Request::GetKeys => match blocking(|| Ok(skiff_core::config::load()?.keys)).await {
-                Ok(keys) => Response::Keys { keys },
-                Err(e) => error(e),
-            },
-            Request::GetAppearance => match blocking(|| Ok(skiff_core::config::load()?.appearance.theme)).await {
-                Ok(theme) => Response::Appearance { theme },
-                Err(e) => error(e),
-            },
-            Request::SetAppearance { theme } => {
-                let t = theme.clone();
-                match blocking(move || skiff_core::config::set_app_theme(t.as_deref())).await {
-                    Ok(()) => Response::Appearance { theme },
-                    Err(e) => error(e),
-                }
-            }
-            Request::ListThemes => match blocking(|| Ok(skiff_core::theme::list())).await {
-                Ok(themes) => Response::Themes { themes },
-                Err(e) => error(e),
-            },
-            Request::ReadIcon { path } => {
-                match blocking(move || Ok(skiff_core::project::data_url(&path))).await {
-                    Ok(icon) => Response::Icon { icon },
-                    Err(e) => error(e),
-                }
-            }
-            Request::SetProjectBackground { project, background } => {
-                match blocking(move || skiff_core::config::set_project_background(&project, background.as_deref())).await {
-                    Ok(()) => {
-                        let _ = pool.events.send(Event::ProjectsChanged {});
-                        Response::Ok
-                    }
-                    Err(e) => error(e),
-                }
-            }
-            Request::SetProjectColor { project, color } => {
-                match blocking(move || skiff_core::config::set_project_color(&project, &color)).await {
-                    Ok(()) => {
-                        let _ = pool.events.send(Event::ProjectsChanged {});
-                        Response::Ok
-                    }
-                    Err(e) => error(e),
-                }
-            }
-            Request::ReorderProjects { order } => {
-                match blocking(move || skiff_core::config::reorder_projects(&order)).await {
-                    Ok(()) => {
-                        let _ = pool.events.send(Event::ProjectsChanged {});
-                        Response::Ok
-                    }
-                    Err(e) => error(e),
-                }
-            }
-            Request::SetProjectIcon { project, icon } => {
-                match blocking(move || skiff_core::config::set_project_icon(&project, icon.as_deref())).await {
-                    Ok(()) => {
-                        let _ = pool.events.send(Event::ProjectsChanged {});
-                        Response::Ok
-                    }
-                    Err(e) => error(e),
-                }
-            }
-            Request::InspectFolder { path } => {
-                match blocking(move || Ok(skiff_core::config::inspect_folder(&path))).await {
-                    Ok(folder) => Response::Folder { folder },
-                    Err(e) => error(e),
-                }
-            }
-            Request::ListAgents => match blocking(|| Ok(skiff_core::project::agents())).await {
-                Ok(agents) => Response::Agents { agents },
-                Err(e) => error(e),
-            },
-            Request::SetAgentCommand { agent, command } => {
-                match blocking(move || {
-                    skiff_core::config::set_agent_command(&agent, &command)?;
-                    Ok(skiff_core::project::agents())
-                })
-                .await
-                {
-                    Ok(agents) => Response::Agents { agents },
-                    Err(e) => error(e),
-                }
-            }
-            Request::SetAgents { enabled } => {
-                match blocking(move || {
-                    skiff_core::config::set_enabled_agents(&enabled)?;
-                    Ok(skiff_core::project::agents())
-                })
-                .await
-                {
-                    Ok(agents) => Response::Agents { agents },
-                    Err(e) => error(e),
-                }
-            }
-            Request::AddProject {
-                path,
-                name,
-                short,
-                color,
-                icon,
-                agents,
-            } => {
-                match blocking(move || {
-                    let p = skiff_core::config::add_project(&path, name, short, color, icon, agents)?;
-                    Ok(skiff_core::project::Project::from_config(&p))
-                })
-                .await
-                {
-                    Ok(project) => {
-                        let _ = pool.events.send(Event::ProjectsChanged {});
-                        Response::Project { project }
-                    }
-                    Err(e) => error(e),
-                }
-            }
-            Request::RemoveWorktree { project, path } => {
-                let pool2 = pool.clone();
-                match blocking(move || remove_worktree(&pool2, &project, &path)).await {
-                    Ok(()) => {
-                        let _ = pool.events.send(Event::ProjectsChanged {});
-                        Response::Ok
-                    }
-                    Err(e) => error(e),
-                }
-            }
             Request::ListGroups => Response::Groups {
                 groups: pool.list_groups(),
             },
@@ -336,9 +228,168 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
         task.abort();
     }
     events_task.abort();
+    // Answer what is still queued before the writer closes.
+    drop(slow_tx);
+    let _ = slow_task.await;
     drop(tx);
     let _ = writer.await;
     Ok(())
+}
+
+/// Requests that wait on the disk, git, or a new process. They run in order
+/// on their own task, so input and resizes behind them are not held up.
+async fn answer_slow(pool: Arc<SessionPool>, request: Request) -> Response {
+    match request {
+        Request::CreateSession { spec } => {
+            let pool = pool.clone();
+            match blocking(move || pool.create(spec)).await {
+                Ok(session) => Response::Session { session },
+                Err(e) => error(e),
+            }
+        }
+        Request::ListProjects => match blocking(project::list).await {
+            Ok(projects) => Response::Projects { projects },
+            Err(e) => error(e),
+        },
+        Request::AddWorktree {
+            project,
+            branch,
+            base,
+        } => match blocking(move || project::add_worktree(&project, &branch, base.as_deref()))
+            .await
+        {
+            Ok(worktree) => {
+                let _ = pool.events.send(Event::ProjectsChanged {});
+                Response::Worktree { worktree }
+            }
+            Err(e) => error(e),
+        },
+        Request::GetKeys => match blocking(|| Ok(skiff_core::config::load()?.keys)).await {
+            Ok(keys) => Response::Keys { keys },
+            Err(e) => error(e),
+        },
+        Request::GetAppearance => match blocking(|| Ok(skiff_core::config::load()?.appearance.theme)).await {
+            Ok(theme) => Response::Appearance { theme },
+            Err(e) => error(e),
+        },
+        Request::SetAppearance { theme } => {
+            let t = theme.clone();
+            match blocking(move || skiff_core::config::set_app_theme(t.as_deref())).await {
+                Ok(()) => Response::Appearance { theme },
+                Err(e) => error(e),
+            }
+        }
+        Request::ListThemes => match blocking(|| Ok(skiff_core::theme::list())).await {
+            Ok(themes) => Response::Themes { themes },
+            Err(e) => error(e),
+        },
+        Request::ReadIcon { path } => {
+            match blocking(move || Ok(skiff_core::project::data_url(&path))).await {
+                Ok(icon) => Response::Icon { icon },
+                Err(e) => error(e),
+            }
+        }
+        Request::SetProjectBackground { project, background } => {
+            match blocking(move || skiff_core::config::set_project_background(&project, background.as_deref())).await {
+                Ok(()) => {
+                    let _ = pool.events.send(Event::ProjectsChanged {});
+                    Response::Ok
+                }
+                Err(e) => error(e),
+            }
+        }
+        Request::SetProjectColor { project, color } => {
+            match blocking(move || skiff_core::config::set_project_color(&project, &color)).await {
+                Ok(()) => {
+                    let _ = pool.events.send(Event::ProjectsChanged {});
+                    Response::Ok
+                }
+                Err(e) => error(e),
+            }
+        }
+        Request::ReorderProjects { order } => {
+            match blocking(move || skiff_core::config::reorder_projects(&order)).await {
+                Ok(()) => {
+                    let _ = pool.events.send(Event::ProjectsChanged {});
+                    Response::Ok
+                }
+                Err(e) => error(e),
+            }
+        }
+        Request::SetProjectIcon { project, icon } => {
+            match blocking(move || skiff_core::config::set_project_icon(&project, icon.as_deref())).await {
+                Ok(()) => {
+                    let _ = pool.events.send(Event::ProjectsChanged {});
+                    Response::Ok
+                }
+                Err(e) => error(e),
+            }
+        }
+        Request::InspectFolder { path } => {
+            match blocking(move || Ok(skiff_core::config::inspect_folder(&path))).await {
+                Ok(folder) => Response::Folder { folder },
+                Err(e) => error(e),
+            }
+        }
+        Request::ListAgents => match blocking(|| Ok(skiff_core::project::agents())).await {
+            Ok(agents) => Response::Agents { agents },
+            Err(e) => error(e),
+        },
+        Request::SetAgentCommand { agent, command } => {
+            match blocking(move || {
+                skiff_core::config::set_agent_command(&agent, &command)?;
+                Ok(skiff_core::project::agents())
+            })
+            .await
+            {
+                Ok(agents) => Response::Agents { agents },
+                Err(e) => error(e),
+            }
+        }
+        Request::SetAgents { enabled } => {
+            match blocking(move || {
+                skiff_core::config::set_enabled_agents(&enabled)?;
+                Ok(skiff_core::project::agents())
+            })
+            .await
+            {
+                Ok(agents) => Response::Agents { agents },
+                Err(e) => error(e),
+            }
+        }
+        Request::AddProject {
+            path,
+            name,
+            short,
+            color,
+            icon,
+            agents,
+        } => {
+            match blocking(move || {
+                let p = skiff_core::config::add_project(&path, name, short, color, icon, agents)?;
+                Ok(skiff_core::project::Project::from_config(&p))
+            })
+            .await
+            {
+                Ok(project) => {
+                    let _ = pool.events.send(Event::ProjectsChanged {});
+                    Response::Project { project }
+                }
+                Err(e) => error(e),
+            }
+        }
+        Request::RemoveWorktree { project, path } => {
+            let pool2 = pool.clone();
+            match blocking(move || remove_worktree(&pool2, &project, &path)).await {
+                Ok(()) => {
+                    let _ = pool.events.send(Event::ProjectsChanged {});
+                    Response::Ok
+                }
+                Err(e) => error(e),
+            }
+        }
+        _ => unreachable!("not a slow request"),
+    }
 }
 
 fn snapshot_event(session: &str, s: &Session, data: Vec<u8>) -> ServerMessage {

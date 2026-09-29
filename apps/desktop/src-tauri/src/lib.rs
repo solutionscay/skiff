@@ -462,7 +462,7 @@ async fn subscribe_output(
 ) -> Result<(), String> {
     let (c, _) = ensure_client(&app).await?;
     // Listen first: the snapshot arrives before the subscribe reply.
-    let mut rx = c.events();
+    let mut rx = c.output(&session);
     c.subscribe(&session).await.map_err(err)?;
     let sid = session.clone();
     // Weak, so a replaced client still drops and closes `rx`.
@@ -488,6 +488,7 @@ async fn subscribe_output(
                     // Output was lost. Ask for a fresh snapshot and skip
                     // everything before it.
                     live = false;
+                    rx.clear();
                     let Some(c) = client.upgrade() else { break };
                     if c.subscribe(&sid).await.is_err() {
                         break;
@@ -513,6 +514,7 @@ async fn unsubscribe_output(app: State<'_, App>, session: String) -> Result<(), 
 }
 
 /// Streams every non-output event: state changes, exits, created, removed.
+/// The client routes output elsewhere, so a busy terminal cannot make this lag.
 #[tauri::command]
 async fn subscribe_events(app: State<'_, App>, on_event: Channel<Event>) -> Result<(), String> {
     let (c, _) = ensure_client(&app).await?;
@@ -520,7 +522,6 @@ async fn subscribe_events(app: State<'_, App>, on_event: Channel<Event>) -> Resu
     tauri::async_runtime::spawn(async move {
         loop {
             match rx.recv().await {
-                Ok(Event::Output { .. } | Event::Snapshot { .. }) => {}
                 Ok(e) => {
                     if on_event.send(e).is_err() {
                         break;

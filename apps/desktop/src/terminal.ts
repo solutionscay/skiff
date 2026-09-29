@@ -77,7 +77,9 @@ async function createPane(id: string): Promise<Pane> {
     fontSize: S.fontSize,
     lineHeight: 1.2,
     cursorBlink: true,
-    scrollback: 5000,
+    // The daemon's snapshot holds 2000 lines. A pane shown again after it
+    // was parked keeps that much, so every pane keeps that much.
+    scrollback: 2000,
     allowProposedApi: true,
   });
   const fit = new FitAddon();
@@ -105,20 +107,13 @@ async function createPane(id: string): Promise<Pane> {
     invoke("pty_write", { session: id, data }).catch(console.error);
   });
 
-  const channel = new Channel<unknown>();
-  channel.onmessage = (m) => {
-    // A chunk can still arrive after session_removed disposed the terminal.
-    const s = sessions.get(id);
-    if (!s) return;
-    term.write(toBytes(m));
-    s.last_output_at = Date.now();
-  };
+  const pane: Pane = { el, term, fit, search, parked: false, stream: 0, sub: Promise.resolve() };
   const drop = () => {
     term.dispose();
     el.remove();
   };
   try {
-    await invoke("subscribe_output", { session: id, onOutput: channel });
+    await streamOutput(id, pane);
   } catch (e) {
     drop();
     throw e;
@@ -129,9 +124,38 @@ async function createPane(id: string): Promise<Pane> {
     throw new Error(`session ${id} is gone`);
   }
 
-  const pane: Pane = { el, term, fit, search };
   panes.set(id, pane);
   return pane;
+}
+
+/** Subscribes the pane to its session: a snapshot, then live output. */
+function streamOutput(id: string, pane: Pane): Promise<void> {
+  const n = ++pane.stream;
+  const channel = new Channel<unknown>();
+  channel.onmessage = (m) => {
+    // A chunk can still arrive after a park, or after session_removed
+    // disposed the terminal.
+    const s = sessions.get(id);
+    if (!s || pane.stream !== n) return;
+    pane.term.write(toBytes(m));
+    s.last_output_at = Date.now();
+  };
+  return invoke("subscribe_output", { session: id, onOutput: channel });
+}
+
+/** A pane out of the layout stops its stream; showing it again redraws it from a snapshot. */
+function parkPane(id: string, pane: Pane) {
+  park.appendChild(pane.el);
+  if (pane.parked) return;
+  pane.parked = true;
+  pane.stream++;
+  pane.sub = pane.sub.then(() => invoke<void>("unsubscribe_output", { session: id })).catch(console.error);
+}
+
+function unparkPane(id: string, pane: Pane) {
+  if (!pane.parked) return;
+  pane.parked = false;
+  pane.sub = pane.sub.then(() => streamOutput(id, pane)).catch(console.error);
 }
 
 export const view = createLayoutView(host, {
@@ -139,6 +163,7 @@ export const view = createLayoutView(host, {
     if (isSlot(id)) return slotBody(id, body);
     const pane = panes.get(id);
     if (pane) {
+      unparkPane(id, pane);
       body.appendChild(pane.el);
       return;
     }
@@ -215,7 +240,7 @@ export function renderLayout() {
   const layout = currentLayout();
   const changed = view.sync(layout);
   const shown = new Set(sessionsOf(layout));
-  for (const [id, p] of panes) if (!shown.has(id) && p.el.parentElement !== park) park.appendChild(p.el);
+  for (const [id, p] of panes) if (!shown.has(id) && (!p.parked || p.el.parentElement !== park)) parkPane(id, p);
   if (changed === "resized") fitShown();
   if (changed === "rebuilt") {
     for (const id of shown) {
