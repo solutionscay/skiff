@@ -1,6 +1,6 @@
 /**
- * The keymap. The terminal owns Ctrl+letter; Skiff uses Ctrl+Shift+letter,
- * like foot and GNOME Terminal. `[keys]` in projects.toml overrides any
+ * The keymap. The terminal owns Ctrl+letter; Skiff uses Ctrl+Shift+letter
+ * (the Command key is its macOS equivalent). `[keys]` overrides any
  * action: `palette = "ctrl+shift+p"`.
  */
 
@@ -10,6 +10,8 @@ export type Action =
   | "copy" | "paste" | "find" | "font-bigger" | "font-smaller" | "font-reset" | "settings" | "quit"
   | "focus-left" | "focus-right" | "focus-up" | "focus-down"
   | "region-next" | "region-prev" | "focus-list" | "session-next" | "session-prev" | "shortcuts";
+
+const isMac = navigator.userAgent.includes("Macintosh");
 
 export const DEFAULTS: Record<Action, string> = {
   palette: "ctrl+shift+p",
@@ -22,8 +24,8 @@ export const DEFAULTS: Record<Action, string> = {
   "next-waiting": "ctrl+shift+j",
   back: "ctrl+shift+b",
   rename: "ctrl+shift+r",
-  copy: "ctrl+shift+c",
-  paste: "ctrl+shift+v",
+  copy: isMac ? "ctrl+c" : "ctrl+shift+c",
+  paste: isMac ? "ctrl+v" : "ctrl+shift+v",
   find: "ctrl+shift+f",
   "font-bigger": "ctrl+=",
   "font-smaller": "ctrl+-",
@@ -77,6 +79,11 @@ let table: [Action, Combo][] = [];
 let labels: Record<string, string> = {};
 let combos: Record<string, Combo> = {};
 
+/** Ctrl in configuration means the platform's primary application modifier. */
+function primaryHeld(e: KeyboardEvent): boolean {
+  return isMac ? e.metaKey : e.ctrlKey;
+}
+
 /** Builds the keymap from the defaults and `[keys]` overrides. */
 export function setKeymap(overrides: Record<string, string>) {
   const specs: Record<string, string> = { ...DEFAULTS };
@@ -96,22 +103,21 @@ setKeymap({});
 
 /** The action a keydown triggers, if any. */
 export function actionFor(e: KeyboardEvent): Action | null {
-  if (e.metaKey) return null;
   const key = eventKey(e);
   for (const [action, c] of table) {
     // Ctrl+= and Ctrl+- also work with Shift held (Ctrl++ on most layouts).
     const anyShift = c.key === "=" || c.key === "-";
-    if (c.ctrl === e.ctrlKey && (anyShift || c.shift === e.shiftKey) && c.alt === e.altKey && c.key === key) return action;
+    if (c.ctrl === primaryHeld(e) && (anyShift || c.shift === e.shiftKey) && c.alt === e.altKey && c.key === key) return action;
   }
   return null;
 }
 
 function label(c: Combo): string {
   const k = c.key.startsWith("arrow") ? c.key.slice(5)[0].toUpperCase() + c.key.slice(6) : c.key.length === 1 ? c.key.toUpperCase() : c.key.toUpperCase();
-  return [c.ctrl && "Ctrl", c.alt && "Alt", c.shift && "Shift", k].filter(Boolean).join("+");
+  return [c.ctrl && (isMac ? "⌘" : "Ctrl"), c.alt && "Alt", c.shift && "Shift", k].filter(Boolean).join("+");
 }
 
-/** "Ctrl+Shift+T", for menus and the palette. */
+/** "Ctrl+Shift+T" (or "⌘+Shift+T"), for menus and the palette. */
 export function keyLabel(action: Action): string {
   return labels[action] ?? "";
 }
@@ -123,7 +129,7 @@ export function menuAccel(action: Action): string {
   const c = combos[action];
   if (!c) return "";
   const k = c.key.startsWith("arrow") ? "Arrow" + c.key[5].toUpperCase() + c.key.slice(6) : MENU_KEYS[c.key] ?? c.key.toUpperCase();
-  return [c.ctrl && "Ctrl", c.alt && "Alt", c.shift && "Shift", k].filter(Boolean).join("+");
+  return [c.ctrl && "CmdOrCtrl", c.alt && "Alt", c.shift && "Shift", k].filter(Boolean).join("+");
 }
 
 /** What each action does, for the shortcut sheet. Grouped as the menu bar is. */

@@ -8,9 +8,10 @@ import { clearSelection, extendSelection, keepRow, splitSelection } from "./sele
 import { collapsed, panes, S } from "./state";
 import { refocusTerminal, selectProject } from "./view";
 
-/** Ctrl+1..9 selects a project. Not in the keymap: it is a range, not one key. */
+/** Ctrl+1..9 selects a project (Command+1..9 on macOS). Not in the keymap: it is a range, not one key. */
 function projectKey(e: KeyboardEvent): number | null {
-  if (!e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return null;
+  const primary = navigator.userAgent.includes("Macintosh") ? e.metaKey : e.ctrlKey;
+  if (!primary || e.shiftKey || e.altKey || (navigator.userAgent.includes("Macintosh") ? e.ctrlKey : e.metaKey)) return null;
   const m = /^Digit([1-9])$/.exec(e.code);
   return m ? Number(m[1]) : null;
 }
