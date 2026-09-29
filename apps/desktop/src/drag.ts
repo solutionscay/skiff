@@ -5,6 +5,8 @@ export interface DropTarget {
   /** The pane's session, or null for an empty terminal area. */
   session: string | null;
   zone: Zone;
+  /** The rim of the whole area: the new pane wraps every pane, which makes a T shape. */
+  outer?: boolean;
 }
 
 interface Opts {
@@ -20,6 +22,8 @@ interface Opts {
 }
 
 const THRESHOLD = 5;
+/** Width of the rim, in px, where a drop wraps the whole layout. */
+const RIM = 28;
 
 function zoneAt(r: DOMRect, x: number, y: number): Zone {
   const fx = (x - r.left) / r.width;
@@ -78,6 +82,19 @@ export function beginDrag(down: MouseEvent, o: Opts) {
     m.preventDefault();
     ghost!.style.transform = `translate(${m.clientX + 12}px, ${m.clientY + 12}px)`;
     target = null;
+    const whole = cells.size > 0 && o.area ? o.area.getBoundingClientRect() : null;
+    if (whole && m.clientX >= whole.left && m.clientX < whole.right && m.clientY >= whole.top && m.clientY < whole.bottom) {
+      const d: [Zone, number][] = [["left", m.clientX - whole.left], ["right", whole.right - m.clientX - 1], ["top", m.clientY - whole.top], ["bottom", whole.bottom - m.clientY - 1]];
+      d.sort((a, b) => a[1] - b[1]);
+      if (d[0][1] < RIM) {
+        target = { session: null, zone: d[0][0], outer: true };
+        const p = previewRect(whole, target.zone);
+        Object.assign(preview!.style, { left: `${p.l}px`, top: `${p.t}px`, width: `${p.w}px`, height: `${p.h}px` });
+        preview!.hidden = false;
+        preview!.dataset.zone = target.zone;
+        return;
+      }
+    }
     for (const [session, r] of cells) {
       if (m.clientX >= r.left && m.clientX < r.right && m.clientY >= r.top && m.clientY < r.bottom) {
         target = { session, zone: zoneAt(r, m.clientX, m.clientY) };

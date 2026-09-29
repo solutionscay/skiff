@@ -1,3 +1,5 @@
+import { open as openFile } from "@tauri-apps/plugin-dialog";
+import { paintSettings, PANE_OPACITY_MIN, paneOpacity, setPaneOpacity, setSettingsBackground, settingsBackground } from "./backdrop";
 import { invoke } from "@tauri-apps/api/core";
 import type { AgentInfo, TerminalTheme } from "./types";
 import { themeGrid } from "./themeCards";
@@ -70,9 +72,17 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   function render() {
     // A rebuild keeps the list where it was scrolled.
     const scroll = root.querySelector(".set-main")?.scrollTop ?? 0;
+    // So does the focused field: a save on blur finishes after the click that moved focus to the next field.
+    const a = document.activeElement;
+    const field = a instanceof HTMLInputElement && root.contains(a) ? { label: a.getAttribute("aria-label"), at: a.selectionStart, to: a.selectionEnd } : null;
     draw();
     const main = root.querySelector(".set-main");
     if (main) main.scrollTop = scroll;
+    if (field?.label) {
+      const next = [...root.querySelectorAll<HTMLInputElement>("input")].find((i) => i.getAttribute("aria-label") === field.label);
+      next?.focus();
+      if (next && field.at !== null && field.to !== null) next.setSelectionRange(field.at, field.to);
+    }
   }
 
   function draw() {
@@ -173,7 +183,41 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         },
       }),
     );
-    main.append(intro, cards);
+    // Over a project's background image, panes are this opaque.
+    const op = el("div", "set-row set-opacity");
+    const slider = el("input", "c-cmd");
+    slider.type = "range";
+    slider.min = String(Math.round(PANE_OPACITY_MIN * 100));
+    slider.max = "100";
+    slider.value = String(Math.round(paneOpacity() * 100));
+    slider.setAttribute("aria-label", "Terminal opacity over a background image");
+    const val = el("span", "c-status", `${slider.value}%`);
+    slider.addEventListener("input", () => {
+      setPaneOpacity(Number(slider.value) / 100);
+      val.textContent = `${slider.value}%`;
+    });
+    op.append(el("span", "c-name", "Terminal opacity"), slider, val);
+    // An image behind this panel.
+    const img = el("div", "set-row set-opacity");
+    const pick = el("button", "c-cmd", settingsBackground() ? "Change image…" : "Choose image…");
+    pick.type = "button";
+    pick.addEventListener("click", async () => {
+      const file = await openFile({ title: "Settings background", filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "svg"] }] }).catch(() => null);
+      if (typeof file !== "string") return;
+      setSettingsBackground(file);
+      await paintSettings(root);
+      render();
+    });
+    const none = el("button", "c-status", "None");
+    none.type = "button";
+    none.disabled = !settingsBackground();
+    none.addEventListener("click", async () => {
+      setSettingsBackground(null);
+      await paintSettings(root);
+      render();
+    });
+    img.append(el("span", "c-name", "Settings image"), pick, none);
+    main.append(intro, img, op, cards);
     return main;
   }
 
@@ -193,6 +237,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   return {
     async open() {
       root.hidden = false;
+      void paintSettings(root);
       await look.load();
       agents = await invoke<AgentInfo[]>("list_agents").catch((e) => {
         error = String(e);

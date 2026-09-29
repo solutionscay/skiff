@@ -1,11 +1,12 @@
 /** The rail, the session list, the banner, the welcome screen. */
+import { invoke } from "@tauri-apps/api/core";
 import { filledOf, slotsOf } from "./canvas";
 import { agentIcon, launchIcon } from "./agentIcon";
 import { glyph, sessionsOf } from "./layout";
-import { agentName, branchName, byStart, relTime, taskTitle, locate } from "./model";
+import { agentName, branchName, byStart, taskTitle, locate } from "./model";
 import type { Group, Project, SessionInfo, Worktree } from "./types";
 import { newSession } from "./daemon";
-import { $, branchIcon, button, chevron, h, host, plusIcon, projectIcon, showError } from "./dom";
+import { $, branchIcon, button, chevron, h, host, icon, plusIcon, projectIcon, showError } from "./dom";
 import { groupMenu, newWorktree, projectMenu, removeWorktree, rowMenu } from "./menus";
 import { addProject, launchMenu } from "./panels";
 import { leaveRename, renameGroup, renameRow, startRename } from "./rename";
@@ -27,6 +28,7 @@ export function renderRail() {
       e.preventDefault();
       projectMenu(p, e.clientX, e.clientY);
     });
+    b.addEventListener("mousedown", (e) => dragProject(e, item, i));
     b.style.setProperty("--pc", accent(p));
     b.title = i < 9 ? `${p.name} (Ctrl ${i + 1})` : p.name;
     b.setAttribute("aria-label", p.name + (waiting ? `, ${waiting} waiting` : ""));
@@ -57,6 +59,53 @@ export function renderRail() {
   rail.appendChild(add);
 }
 
+/** Drag a rail chip to reorder projects. A press that does not move stays a click. */
+function dragProject(down: MouseEvent, item: HTMLElement, from: number) {
+  if (down.button !== 0 || S.projects.length < 2) return;
+  const sy = down.clientY;
+  const items = [...$<HTMLElement>("rail").querySelectorAll<HTMLElement>(".rail-item")].slice(0, S.projects.length);
+  let to = from;
+  let active = false;
+  const mark = () => {
+    items.forEach((el, i) => {
+      el.classList.toggle("drop-before", active && i === to && to < from);
+      el.classList.toggle("drop-after", active && i === to && to > from);
+    });
+  };
+  const move = (m: MouseEvent) => {
+    if (!active) {
+      if (Math.abs(m.clientY - sy) < 5) return;
+      active = true;
+      item.classList.add("dragging");
+      document.body.classList.add("dragging-rail");
+    }
+    to = items.findIndex((el) => m.clientY < el.getBoundingClientRect().bottom);
+    if (to < 0) to = items.length - 1;
+    mark();
+  };
+  const up = () => {
+    window.removeEventListener("mousemove", move);
+    window.removeEventListener("mouseup", up);
+    if (!active) return;
+    // The click that follows the release would select the project.
+    // A release off the chip fires no click, so the guard must not outlive this event.
+    const swallow = (c: Event) => c.stopPropagation();
+    window.addEventListener("click", swallow, true);
+    setTimeout(() => window.removeEventListener("click", swallow, true), 0);
+    document.body.classList.remove("dragging-rail");
+    item.classList.remove("dragging");
+    active = false;
+    mark();
+    if (to === from) return;
+    const [p] = S.projects.splice(from, 1);
+    S.projects.splice(to, 0, p);
+    render();
+    invoke("reorder_projects", { order: S.projects.map((x) => x.name) }).catch(showError);
+  };
+  window.addEventListener("mousemove", move);
+  window.addEventListener("mouseup", up);
+}
+
 /** One line in a session list: a session, or a group's header. */
 type Line = { session: SessionInfo; branch?: boolean; group?: undefined; in?: Group } | { group: Group };
 
@@ -64,20 +113,19 @@ type Line = { session: SessionInfo; branch?: boolean; group?: undefined; in?: Gr
 function sessionBlock(lines: Line[], color: string, head: HTMLElement | null, open: boolean): HTMLElement {
   const block = h("div", "sessions-block");
   const n = (head ? 1 : 0) + (open ? lines.length : 0);
-  block.style.height = `${Math.max(40, n * 20 + (open && lines.length ? 20 : 0))}px`;
+  block.style.height = `calc(${Math.max(40, n * 20 + (open && lines.length ? 20 : 0))} * var(--u))`;
   if (head) block.appendChild(head);
   if (!open) return block;
-  const now = Date.now();
   for (const l of lines) {
     if (l.group) block.appendChild(groupRow(l.group));
-    else block.appendChild(sessionRow(l.session, color, now, l));
+    else block.appendChild(sessionRow(l.session, color, l));
   }
   return block;
 }
 
-function sessionRow(s: SessionInfo, color: string, now: number, o: { branch?: boolean; in?: Group }): HTMLElement {
+function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: Group }): HTMLElement {
   if (S.renamingSession === s.id) return renameRow(s, color);
-  // State shows only when it matters: waiting stands out, done fades.
+  // State shows only when it matters: waiting stands out, working pulses, done fades.
   const cls = ["session-row", `st-${s.state}`];
   if (s.id === S.focused && !(o.in && o.in.id === S.groupPicked)) cls.push("focused");
   if (o.in) cls.push("nested");
@@ -110,7 +158,21 @@ function sessionRow(s: SessionInfo, color: string, now: number, o: { branch?: bo
     const at = place(s);
     row.appendChild(h("span", "where mono", at ? branchName(at.worktree) : "other"));
   }
-  row.appendChild(h("span", "time", s.state === "waiting" ? "waiting" : relTime(s.last_output_at, now)));
+  if (s.state === "working") {
+    // A skiff under way: it rocks while the water runs past.
+    const busy = h("span", "busy");
+    busy.title = "Working";
+    busy.appendChild(icon('<path d="M2 15h20l-4 5H6z"></path><path d="M12 15V3l7 10h-7"></path>'));
+    row.appendChild(busy);
+  } else if (s.state === "idle") {
+    // At anchor: the skiff is not moving, so the water is still and the anchor sways.
+    const at = h("span", "anchored");
+    at.title = "Idle";
+    at.appendChild(icon('<circle cx="12" cy="5" r="3"></circle><path d="M12 8v14"></path><path d="M5 12H2a10 10 0 0 0 20 0h-3"></path>'));
+    row.appendChild(at);
+  } else if (s.state === "waiting") {
+    row.appendChild(h("span", "time", s.state));
+  }
   return row;
 }
 

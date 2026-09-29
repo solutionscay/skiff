@@ -6,6 +6,7 @@ import { renderSelectBar } from "./selection";
 import { renderCounts, renderHeader, renderRail, renderSidebar } from "./sidebar";
 import { S } from "./state";
 import { renderLayout } from "./terminal";
+import { applyBackdrop } from "./backdrop";
 import { applyApp, applyThemes } from "./themes";
 
 /**
@@ -56,6 +57,7 @@ export function render() {
   renderLayout();
   applyThemes();
   applyApp();
+  applyBackdrop();
   renderHeader();
   renderCounts();
   applyTabOrder();

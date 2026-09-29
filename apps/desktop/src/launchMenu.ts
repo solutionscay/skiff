@@ -69,7 +69,7 @@ export function createLaunchMenu(o: Opts) {
     );
     const head = document.createElement("div");
     head.className = "lm-head";
-    head.textContent = "NEW GROUP, THEN AN AGENT PER PANE";
+    head.textContent = "NEW GROUP, THEN A SESSION PER PANE";
     const splits = o.splits().map((s, i) => {
       const g = document.createElement("span");
       g.className = "lm-glyph";

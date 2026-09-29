@@ -27,6 +27,97 @@ async function setIcon(p: Project, icon: string | null) {
   }
 }
 
+async function setColor(p: Project, color: string) {
+  try {
+    await invoke("set_project_color", { project: p.name, color });
+  } catch (e) {
+    showError(e);
+  }
+}
+
+/** The same accents new projects get, from skiff-core's PALETTE. */
+const SWATCHES = ["#b69cff", "#f28fd0", "#7ee0cb", "#e0c07e", "#9ec1ff", "#ff9e7a", "#c3e88d", "#d0c2ff"];
+
+function swatch(color: string): HTMLElement {
+  const s = document.createElement("span");
+  s.className = "lm-key";
+  s.style.cssText = `width:12px;height:12px;background:${color};justify-self:center;align-self:center`;
+  return s;
+}
+
+/** A second menu of accent colors, plus a picker for any other. */
+function colorEntries(p: Project): MenuEntry[] {
+  // The webview's own color input does not open on Linux, so ask for a hex code.
+  const custom = () =>
+    promptAction({
+      title: `Color for ${p.name}`,
+      body: "A hex color, for example #ff9e7a.",
+      placeholder: p.color ?? "#rrggbb",
+      action: "Set color",
+      submit: async (v) => {
+        const hex = v.trim().replace(/^#?/, "#").toLowerCase();
+        if (!/^#[0-9a-f]{6}$/.test(hex)) throw new Error("Use six hex digits, like #ff9e7a.");
+        await invoke("set_project_color", { project: p.name, color: hex });
+      },
+      onClose: refocusTerminal,
+    });
+  return [
+    ...SWATCHES.map((c) => ({ glyph: swatch(c), label: c, hint: c === p.color ? "current" : "", run: () => void setColor(p, c) })),
+    { icon: "◐", label: "Custom…", hint: "hex code", run: custom },
+  ];
+}
+
+async function setBackground(p: Project, background: string | null) {
+  try {
+    await invoke("set_project_background", { project: p.name, background });
+  } catch (e) {
+    showError(e);
+  }
+}
+
+/** One image behind every pane of the project's terminal area. */
+function backgroundEntries(p: Project): MenuEntry[] {
+  return [
+    {
+      icon: "▨",
+      label: "Choose image…",
+      hint: "png, jpg, webp",
+      run: async () => {
+        const file = await openFile({
+          title: `Background for ${p.name}`,
+          defaultPath: p.path,
+          filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "svg"] }],
+        }).catch(() => null);
+        if (typeof file === "string") await setBackground(p, file);
+      },
+    },
+    { icon: "∅", label: "None", hint: "plain background", disabled: !p.background, run: () => void setBackground(p, null) },
+  ];
+}
+
+/** One place for the rail icon: pick a file, detect one, or use letters. */
+function iconEntries(p: Project): MenuEntry[] {
+  return [
+    {
+      icon: "◧",
+      label: "Choose file…",
+      hint: "png, svg, ico",
+      run: async () => {
+        const file = await openFile({
+          title: `Icon for ${p.name}`,
+          defaultPath: p.path,
+          filters: [{ name: "Images", extensions: ["png", "svg", "ico", "jpg", "jpeg", "webp", "gif"] }],
+        }).catch(() => null);
+        if (typeof file !== "string") return;
+        const rel = file.startsWith(p.path + "/") ? file.slice(p.path.length + 1) : file;
+        await setIcon(p, rel);
+      },
+    },
+    { icon: "↺", label: "Detect", hint: "favicon, logo", run: () => void setIcon(p, null) },
+    { icon: "∅", label: "Letters only", hint: "no icon", run: () => void setIcon(p, "") },
+  ];
+}
+
 /** Ask for a branch, then make a worktree for it. Errors stay in the dialog. */
 export function newWorktree(p: Project) {
   S.justAdded = null;
@@ -50,23 +141,9 @@ export function projectMenu(p: Project, x: number, y: number) {
     { icon: "+", label: "New worktree…", disabled: !!p.error, run: () => newWorktree(p) },
     { icon: "↗", label: "Show in file manager", run: () => void openPath(p.path).catch(showError) },
     { icon: "⧉", label: "Copy path", run: () => void navigator.clipboard.writeText(p.path).catch(showError) },
-    {
-      icon: "◧",
-      label: "Set icon…",
-      hint: "png, svg, ico",
-      run: async () => {
-        const file = await openFile({
-          title: `Icon for ${p.name}`,
-          defaultPath: p.path,
-          filters: [{ name: "Images", extensions: ["png", "svg", "ico", "jpg", "jpeg", "webp", "gif"] }],
-        }).catch(() => null);
-        if (typeof file !== "string") return;
-        const rel = file.startsWith(p.path + "/") ? file.slice(p.path.length + 1) : file;
-        await setIcon(p, rel);
-      },
-    },
-    { icon: "↺", label: "Detect icon", hint: "favicon, logo", run: () => void setIcon(p, null) },
-    { icon: "∅", label: "No icon", hint: "use letters", run: () => void setIcon(p, "") },
+    { icon: "◧", label: "Icon…", hint: "file, detect, none", sub: iconEntries(p) },
+    { icon: "◐", label: "Color…", hint: "accent", sub: colorEntries(p) },
+    { icon: "▨", label: "Background…", hint: "image behind terminals", sub: backgroundEntries(p) },
   ]);
 }
 

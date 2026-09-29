@@ -12,9 +12,9 @@ import { $, showError } from "./dom";
 import { loadGroups } from "./groups";
 import { settings } from "./panels";
 import { render, scheduleRender } from "./render";
-import { S, sessions } from "./state";
+import { groupOf, S, sessions } from "./state";
 import { loadThemes } from "./themes";
-import { focusNextWaiting, showSingle } from "./view";
+import { focusNextWaiting, showGroup, showSingle } from "./view";
 
 // Skiff owns right-click. The webview's own menu (Back, Reload, Inspect)
 // never shows; text fields keep theirs for cut, copy and paste.
@@ -52,7 +52,8 @@ async function boot() {
   if (hint) hint.textContent = "Commands, sessions, worktrees";
   await loadGroups();
   const first = [...sessions.values()].sort(bySessionPriority)[0];
-  if (first) showSingle(first.id);
+  const g = first && groupOf(first.id);
+  if (first) g ? showGroup(g.id, false, first.id) : showSingle(first.id);
 
   let refreshing = false;
   setInterval(() => {
@@ -67,4 +68,7 @@ async function boot() {
   }, 10_000);
 }
 
-boot().catch(showError);
+// Show the app once the first data is in. A slow daemon does not hold it past 2 s.
+const reveal = () => document.body.classList.add("ready");
+setTimeout(reveal, 2000);
+boot().catch(showError).finally(reveal);

@@ -162,7 +162,7 @@ export function slotBody(id: string, body: HTMLElement) {
 export function slotHead(id: string, head: HTMLElement) {
   if (head.dataset.sig === "slot") return;
   head.dataset.sig = "slot";
-  head.replaceChildren(h("span", "title dim", "Pick an agent"));
+  head.replaceChildren(h("span", "title dim", "Start a session"));
   const x = button("head-btn", "", () => removeSlot(id));
   x.title = "Remove this pane";
   x.setAttribute("aria-label", "Remove this pane");

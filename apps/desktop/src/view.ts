@@ -191,6 +191,12 @@ function dropOn(t: DropTarget, dragged: string[]) {
   const target = t.session && sessionsOf(base).includes(t.session) ? t.session : null;
   if (sessionsOf(base).length + ids.length > MAX_PANES) return;
   clearSelection();
+  // The rim of the area: wrap every pane, so one pane spans the full width or height (a T shape).
+  if (t.outer && base) {
+    const dir: SplitDir = t.zone === "left" || t.zone === "right" ? "row" : "col";
+    const before = t.zone === "left" || t.zone === "top";
+    return applyLayout({ type: "split", dir, ratio: 0.5, a: before ? block : base, b: before ? base : block }, ids[0]);
+  }
   // Every shown pane was dragged, or nothing was shown: the block is the view.
   if (!base) return applyLayout(block, ids[0]);
   // The target pane was itself dragged away: put the block beside the rest.

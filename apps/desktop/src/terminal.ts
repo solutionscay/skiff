@@ -2,7 +2,7 @@
 import { agentIcon } from "./agentIcon";
 import { isSlot, slotBody, slotHead } from "./canvas";
 import { createLayoutView, sessionsOf } from "./layout";
-import { agentName, branchName, taskTitle } from "./model";
+import { taskTitle } from "./model";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { FitAddon } from "@xterm/addon-fit";
@@ -13,7 +13,7 @@ import { button, h, host, icon, park, showError, toBytes } from "./dom";
 import { saveGroup } from "./groups";
 import { appKey } from "./keyboard";
 import { ctxMenu, paneMenu } from "./menus";
-import { accent, activeGroupObj, currentLayout, opening, type Pane, panes, place, S, sessions, shownIds } from "./state";
+import { accent, activeGroupObj, FONT_DEFAULT, currentLayout, opening, type Pane, panes, place, S, sessions, shownIds } from "./state";
 import { closePane, dragSessions, focusPane } from "./view";
 
 const TERM_THEME = {
@@ -255,7 +255,7 @@ function fitSoon() {
 
 new ResizeObserver(() => fitSoon()).observe(host);
 
-/** One pane header: state, where, what, and the maximize and close buttons. */
+/** One pane header: the agent icon, the title, then the close button. */
 function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   if (isSlot(id)) return slotHead(id, head);
   if (!head.dataset.drag) {
@@ -271,20 +271,14 @@ function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   cell.classList.toggle("focused", id === S.focused);
   const multi = shownIds().length > 1;
   // Rebuild only on change, so a click that spans a daemon event still lands.
-  const sig = s ? JSON.stringify([s.state, s.exit_code, at?.project.name, at?.worktree.path, s.cwd, agentName(s), taskTitle(s), multi]) : "";
+  const sig = s ? JSON.stringify([s.state, s.exit_code, at?.project.name, taskTitle(s), multi]) : "";
   if (head.dataset.sig === sig) return;
   head.dataset.sig = sig;
   head.replaceChildren();
   if (!s) return;
   head.classList.toggle("st-waiting", s.state === "waiting");
   head.classList.toggle("st-done", s.state === "done");
-  head.append(
-    h("span", "project", at ? at.project.name : "other"),
-    h("span", "branch mono", at ? branchName(at.worktree) : s.cwd),
-    agentIcon(s),
-    h("span", "agent mono", agentName(s)),
-    h("span", "title", taskTitle(s)),
-  );
+  head.append(agentIcon(s), h("span", "title", taskTitle(s)));
   const x = button("head-btn", "", () => closePane(id));
   const label = multi ? "Remove from group. The session keeps running." : "Close. The session keeps running.";
   x.title = label;
@@ -316,8 +310,15 @@ export function setFontSize(n: number) {
     /* a private window keeps the size for this run only */
   }
   for (const p of panes.values()) p.term.options.fontSize = S.fontSize;
+  applyZoom();
   fitShown();
 }
+
+/** The app text follows the terminal size: 13 is 1x. */
+function applyZoom() {
+  document.documentElement.style.setProperty("--zoom", String(S.fontSize / FONT_DEFAULT));
+}
+applyZoom();
 
 /** The middle of the focused pane, where key-opened menus appear. */
 export function paneCenter(): [number, number] {

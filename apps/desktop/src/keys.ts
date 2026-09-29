@@ -7,7 +7,7 @@
 export type Action =
   | "palette" | "new-session" | "new-worktree" | "add-project"
   | "split-right" | "split-down" | "close-pane" | "next-waiting" | "back" | "rename"
-  | "copy" | "paste" | "find" | "font-bigger" | "font-smaller" | "font-reset" | "settings"
+  | "copy" | "paste" | "find" | "font-bigger" | "font-smaller" | "font-reset" | "settings" | "quit"
   | "focus-left" | "focus-right" | "focus-up" | "focus-down"
   | "region-next" | "region-prev" | "focus-list" | "session-next" | "session-prev" | "shortcuts";
 
@@ -29,6 +29,7 @@ export const DEFAULTS: Record<Action, string> = {
   "font-smaller": "ctrl+-",
   "font-reset": "ctrl+0",
   settings: "ctrl+,",
+  quit: "ctrl+shift+q",
   "focus-left": "ctrl+alt+left",
   "focus-right": "ctrl+alt+right",
   "focus-up": "ctrl+alt+up",
@@ -131,6 +132,7 @@ export const DESCRIBE: [string, Action, string][] = [
   ["File", "new-worktree", "New worktree"],
   ["File", "add-project", "Add project"],
   ["File", "settings", "Settings"],
+  ["File", "quit", "Quit Skiff. Sessions keep running in skiffd"],
   ["Edit", "copy", "Copy the terminal selection"],
   ["Edit", "paste", "Paste into the terminal"],
   ["Edit", "find", "Find in the terminal"],

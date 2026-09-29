@@ -45,6 +45,8 @@ export interface Project {
   agents: string[];
   /** Rail image as a data URL, configured or found in the repo. */
   icon: string | null;
+  /** Absolute path of the background image behind the terminals, when set. */
+  background: string | null;
   worktrees: Worktree[];
   /** Path missing, not a git repo, and so on. `worktrees` is empty then. */
   error: string | null;

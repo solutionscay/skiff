@@ -1,6 +1,6 @@
 /** One command list for the menu bar and the palette; key actions. */
 import { type Action, DESCRIBE, keyLabel, menuAccel } from "./keys";
-import { agentName, branchName, bySessionPriority, relTime, taskTitle } from "./model";
+import { agentName, branchName, bySessionPriority, taskTitle } from "./model";
 import { createSwitcher, type SwitchItem } from "./switcher";
 import type { DaemonStatus } from "./types";
 import { getVersion } from "@tauri-apps/api/app";
@@ -39,6 +39,7 @@ function commands(): Cmd[] {
     { section: "File", label: "New worktree…", key: k("new-worktree"), action: "new-worktree", run: act("new-worktree"), off: !currentProject() },
     { section: "File", label: "Add project…", key: k("add-project"), action: "add-project", run: act("add-project") },
     { section: "File", label: "Settings", key: k("settings"), action: "settings", run: act("settings") },
+    { section: "File", label: "Quit", key: k("quit"), action: "quit", run: act("quit") },
     { section: "Edit", label: "Copy", key: k("copy"), action: "copy", run: act("copy"), off: !s },
     { section: "Edit", label: "Paste", key: k("paste"), action: "paste", run: act("paste"), off: !s },
     { section: "Edit", label: "Find…", key: k("find"), action: "find", run: act("find"), off: !shown },
@@ -49,7 +50,7 @@ function commands(): Cmd[] {
       run: () => {
         if (!s) return;
         const e = endEntry(s);
-        if ("run" in e) e.run();
+        if ("run" in e) e.run?.();
       },
     },
     { section: "View", label: "Command palette", key: k("palette"), action: "palette", run: act("palette") },
@@ -196,7 +197,6 @@ function paletteCommands(): SwitchItem[] {
 }
 
 export const switcher = createSwitcher(() => {
-  const now = Date.now();
   const items: SwitchItem[] = paletteCommands();
   const found: SwitchItem[] = [...sessions.values()].sort(bySessionPriority).map((s) => {
     const at = place(s);
@@ -207,7 +207,7 @@ export const switcher = createSwitcher(() => {
       primary: `${agentName(s)} · ${taskTitle(s)}`,
       secondary: where,
       state: s.state,
-      meta: relTime(s.last_output_at, now),
+      meta: s.state === "waiting" || s.state === "idle" ? s.state : "",
       text: `${where} ${agentName(s)} ${taskTitle(s)} ${s.state}`,
       run: () => revealSession(s.id),
     };
@@ -266,6 +266,7 @@ export function runAction(a: Action) {
     case "font-smaller": return setFontSize(S.fontSize - 1);
     case "font-reset": return setFontSize(FONT_DEFAULT);
     case "settings": return void settings.open();
+    case "quit": return void invoke("quit_app").catch(showError);
     case "focus-left": return moveFocus("left");
     case "focus-right": return moveFocus("right");
     case "focus-up": return moveFocus("up");

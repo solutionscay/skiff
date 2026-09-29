@@ -67,15 +67,6 @@ export function bySessionPriority(a: SessionInfo, b: SessionInfo): number {
   return rank(a.state) - rank(b.state) || b.last_output_at - a.last_output_at || a.id.localeCompare(b.id);
 }
 
-export function relTime(ms: number, now = Date.now()): string {
-  if (!ms) return "";
-  const s = Math.max(0, Math.floor((now - ms) / 1000));
-  if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.floor(s / 60)}m`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h`;
-  return `${Math.floor(s / 86400)}d`;
-}
-
 /**
  * Subsequence match per space-separated token. Returns -1 when a token does not
  * match. Higher is better: consecutive characters and word starts score more.
