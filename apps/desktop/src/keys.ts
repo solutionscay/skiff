@@ -2,6 +2,11 @@
  * The keymap. The terminal owns Ctrl+letter; Skiff uses Ctrl+Shift+letter
  * (the Command key is its macOS equivalent). `[keys]` overrides any
  * action: `palette = "ctrl+shift+p"`.
+ *
+ * Arrows are the exception: focus-left/right/up/down take plain Ctrl+Arrow,
+ * which shadows the shell's Ctrl+Left/Right word-jump. Ctrl+Alt+Arrow was
+ * tried first to avoid that, but it collides with GNOME/KDE's workspace-
+ * switch shortcut, which eats the keys before the app ever sees them.
  */
 
 export type Action =
@@ -32,10 +37,10 @@ export const DEFAULTS: Record<Action, string> = {
   "font-reset": "ctrl+0",
   settings: "ctrl+,",
   quit: "ctrl+shift+q",
-  "focus-left": "ctrl+alt+left",
-  "focus-right": "ctrl+alt+right",
-  "focus-up": "ctrl+alt+up",
-  "focus-down": "ctrl+alt+down",
+  "focus-left": "ctrl+left",
+  "focus-right": "ctrl+right",
+  "focus-up": "ctrl+up",
+  "focus-down": "ctrl+down",
   "region-next": "f6",
   "region-prev": "shift+f6",
   "focus-list": "ctrl+shift+l",
