@@ -81,7 +81,8 @@ export function renameRow(s: SessionInfo, color: string): HTMLElement {
   };
   input.addEventListener("keydown", (e) => {
     e.stopPropagation();
-    if (e.key === "Enter") finish(input.value, true);
+    if (e.ctrlKey && e.key.toLowerCase() === "a") input.select();
+    else if (e.key === "Enter") finish(input.value, true);
     else if (e.key === "Escape") finish(null, true);
     else return;
     e.preventDefault();

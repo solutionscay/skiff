@@ -291,7 +291,7 @@ body.dragging-col, body.dragging-col * { cursor: col-resize !important; user-sel
 body.dragging-row, body.dragging-row * { cursor: row-resize !important; user-select: none; }
 body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: none; }
 
-/* One pane: a 40px head, then the terminal. The focused head carries the slip guard: a 2px rule in the project color. */
+/* One pane: a 40px head, then the terminal. The focused pane gets a 2px frame in the project color. */
 .cell { display: flex; flex-direction: column; overflow: hidden; background: var(--bg-deep); --pc: var(--project-default); }
 .cell-head {
   height: var(--row); flex-shrink: 0;
@@ -299,7 +299,10 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
   background: var(--bg-panel); border-bottom: 1px solid var(--rule);
   font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); white-space: nowrap; overflow: hidden;
 }
-.cell.focused .cell-head { background: color-mix(in srgb, var(--pc) 12%, var(--bg-panel)); box-shadow: inset calc(3 * var(--u)) 0 0 var(--pc), inset 0 1px 0 var(--pc); }
+.cell.focused .cell-head { background: color-mix(in srgb, var(--pc) 12%, var(--bg-panel)); }
+.cell { position: relative; }
+.cell.focused::after { content: ""; position: absolute; inset: 0; border: calc(2 * var(--u)) solid var(--pc); pointer-events: none; z-index: 5; }
+#terminal-host.group-picked .cell.focused::after { display: none; }
 .cell-head .title { color: var(--text); font-size: calc(16px * var(--zoom, 1)); font-weight: 600; flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cell:not(.focused) .cell-head .title { color: var(--text-3); font-weight: 500; }
 .cell-head .ctx { display: flex; align-items: center; gap: calc(8 * var(--u)); flex-shrink: 1; min-width: 0; font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); overflow: hidden; }
