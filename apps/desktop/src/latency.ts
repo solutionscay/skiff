@@ -18,7 +18,8 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { h, showError } from "./dom";
+import { button, h, showError } from "./dom";
+import { scheduleRender } from "./render";
 import { S } from "./state";
 
 interface Entry {
@@ -75,6 +76,7 @@ export function startTrace() {
         while (list.length && now - list[0].sent > 1000) done(list.shift()!);
     }, 500),
   ];
+  indicator();
   hud();
 }
 
@@ -88,6 +90,7 @@ export function stopTrace() {
   recent.clear();
   flush();
   hudEl?.remove();
+  indicatorEl?.remove();
 }
 
 /** keydown in a terminal: `timeStamp` is when the event was created. */
@@ -178,11 +181,25 @@ function values(rs: Row[], s: Stage): number[] {
 let hudEl: HTMLElement | null = null;
 let hudTimer: number | undefined;
 
+// While the trace runs the status bar says so, with the key count; a click stops it.
+let indicatorEl: HTMLButtonElement | null = null;
+
+function indicator() {
+  indicatorEl ??= button("status-item trace-indicator", "", () => {
+    stopTrace();
+    scheduleRender();
+  });
+  indicatorEl.title = "Stop latency trace";
+  indicatorEl.replaceChildren(h("span", "dot"), h("span", "", `Latency trace · ${rows.length} keys`));
+  if (!indicatorEl.isConnected) document.querySelector("#statusbar .spacer")?.before(indicatorEl);
+}
+
 function hud() {
   if (hudTimer !== undefined) return;
   hudTimer = window.setTimeout(() => {
     hudTimer = undefined;
     if (!on) return;
+    indicator();
     const cell = [...document.querySelectorAll<HTMLElement>(".cell")].find((c) => c.dataset.session === S.focused);
     if (!cell) return hudEl?.remove();
     hudEl ??= h("div", "latency-hud");
