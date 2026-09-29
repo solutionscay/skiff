@@ -1,5 +1,5 @@
 /** xterm panes: open, fit, font size, clipboard, find, pane headers. */
-import { agentIcon } from "./agentIcon";
+import { agentIcon, agentKind } from "./agentIcon";
 import { isSlot, slotBody, slotHead } from "./canvas";
 import { createLayoutView, sessionsOf } from "./layout";
 import { taskTitle } from "./model";
@@ -309,7 +309,7 @@ function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   cell.classList.toggle("focused", id === S.focused);
   const multi = shownIds().length > 1;
   // Rebuild only on change, so a click that spans a daemon event still lands.
-  const sig = s ? JSON.stringify([s.state, s.exit_code, at?.project.name, taskTitle(s), multi]) : "";
+  const sig = s ? JSON.stringify([s.state, s.exit_code, at?.project.name, taskTitle(s), agentKind(s), multi]) : "";
   if (head.dataset.sig === sig) return;
   head.dataset.sig = sig;
   head.replaceChildren();
@@ -364,9 +364,31 @@ export function paneCenter(): [number, number] {
   return r ? [r.left + r.width / 2 - 140, r.top + 60] : [window.innerWidth / 2 - 140, 120];
 }
 
+let copyNoticeTimer: number | undefined;
+
+function showCopyConfirmation(id: string) {
+  document.querySelectorAll(".copy-notice").forEach((el) => el.remove());
+  const head = [...document.querySelectorAll<HTMLElement>(".cell-head")]
+    .find((el) => el.parentElement?.dataset.session === id);
+  if (!head) return;
+  const notice = h("span", "copy-notice", "Copied");
+  notice.setAttribute("role", "status");
+  notice.setAttribute("aria-live", "polite");
+  head.querySelector(".head-btn")?.before(notice);
+  if (copyNoticeTimer) clearTimeout(copyNoticeTimer);
+  copyNoticeTimer = window.setTimeout(() => notice.remove(), 1600);
+}
+
 export async function copySelection() {
-  const text = S.focused ? panes.get(S.focused)?.term.getSelection() : "";
-  if (text) await writeText(text).catch(showError);
+  const id = S.focused;
+  const text = id ? panes.get(id)?.term.getSelection() : "";
+  if (!text) return;
+  try {
+    await writeText(text);
+    showCopyConfirmation(id!);
+  } catch (e) {
+    showError(e);
+  }
 }
 
 export async function pasteClipboard() {

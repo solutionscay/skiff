@@ -13,10 +13,22 @@ const BY_PROGRAM: Record<string, AgentKind> = {
 };
 const SHELLS = new Set(["bash", "zsh", "fish", "sh", "dash", "nu", "elvish", "xonsh", "ksh", "tcsh"]);
 
-/** Which icon a session gets: the + menu's agent id first, then the program. */
+function knownProgram(value: string | null | undefined): AgentKind | undefined {
+  if (!value) return undefined;
+  return BY_PROGRAM[basename(value.trim().split(/\s+/)[0] ?? "").toLowerCase()];
+}
+
+/**
+ * Which icon a session gets: the active program's terminal title first, then
+ * the + menu's agent id and original command. An interrupted agent leaves its
+ * launch label behind when the fallback shell starts a different agent.
+ */
 export function agentKind(s: SessionInfo): AgentKind {
-  if (BY_PROGRAM[s.label]) return BY_PROGRAM[s.label];
-  const prog = basename(s.command);
+  const titled = knownProgram(s.title);
+  if (titled) return titled;
+  const labeled = knownProgram(s.label);
+  if (labeled) return labeled;
+  const prog = basename(s.command).toLowerCase();
   if (BY_PROGRAM[prog]) return BY_PROGRAM[prog];
   if (s.role === "shell" || SHELLS.has(prog)) return "shell";
   return "other";
