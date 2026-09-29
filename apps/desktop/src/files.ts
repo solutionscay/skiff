@@ -73,14 +73,16 @@ const reveal = (path: string) => void invoke("reveal_file", { path }).catch(show
 const copy = (path: string) => void navigator.clipboard.writeText(path).catch(showError);
 
 export function filesBlock(w: Worktree): HTMLElement {
-  const block = h("div", "files-block");
   const isOpen = shown.has(w.path);
+  const block = h("div", "files-block");
   const head = button("wt-count files-head", "", () => toggle(w.path, shown));
   head.dataset.key = `files:${w.path}`;
   head.setAttribute("aria-expanded", String(isOpen));
+  const tgl = h("span", "files-toggle");
+  tgl.appendChild(chevron(isOpen));
   const glyph = icon('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path>');
   glyph.classList.add("files-icon");
-  head.append(glyph, h("span", "", "Files"), h("span", "spacer"), chevron(isOpen));
+  head.append(tgl, glyph, h("span", "", "Files"));
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     e.stopPropagation();

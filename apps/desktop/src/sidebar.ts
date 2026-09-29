@@ -122,28 +122,31 @@ function dragProject(down: MouseEvent, item: HTMLElement, from: number) {
 }
 
 /** One line in a session list: a session, or a group's header. */
-type Line = { session: SessionInfo; branch?: boolean; group?: undefined; in?: Group } | { group: Group };
+type Line =
+  | { session: SessionInfo; branch?: boolean; group?: undefined; in?: Group; groupRail?: boolean }
+  | { group: Group; hasPrevious: boolean; hasNext: boolean };
 
-/** 20px lines with a consistent 20px gap below the last session. */
+/** 20px lines, flush against whatever follows. */
 function sessionBlock(lines: Line[], color: string, head: HTMLElement | null, open: boolean): HTMLElement {
   const block = h("div", "sessions-block");
   const n = (head ? 1 : 0) + (open ? lines.length : 0);
-  block.style.height = `calc(${Math.max(40, n * 20 + (open && lines.length ? 20 : 0))} * var(--u))`;
+  block.style.height = `calc(${Math.max(40, n * 20)} * var(--u))`;
   if (head) block.appendChild(head);
   if (!open) return block;
   for (const l of lines) {
-    if (l.group) block.appendChild(groupRow(l.group));
+    if (l.group) block.appendChild(groupRow(l.group, l.hasPrevious, l.hasNext));
     else block.appendChild(sessionRow(l.session, color, l));
   }
   return block;
 }
 
-function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: Group }): HTMLElement {
+function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: Group; groupRail?: boolean }): HTMLElement {
   if (S.renamingSession === s.id) return renameRow(s, color);
   // State shows only when it matters: waiting stands out, working pulses, done fades.
   const cls = ["session-row", `st-${s.state}`];
   if (s.id === S.focused && !(o.in && o.in.id === S.groupPicked)) cls.push("focused");
   if (o.in) cls.push("nested");
+  if (o.groupRail) cls.push("group-rail");
   if (S.selection.includes(s.id)) cls.push("selected");
   const row = h("button", cls.join(" "));
   row.type = "button";
@@ -199,13 +202,17 @@ function worktreeLines(w: Worktree | null): Line[] {
     return g.cwd ? locate(S.projects, g.cwd)?.worktree ?? null : null;
   };
   const lines: Line[] = [];
-  for (const g of S.groups) {
-    if (home(g) !== w) continue;
-    lines.push({ group: g });
+  const groups = S.groups.filter((g) => home(g) === w);
+  for (const [groupIndex, g] of groups.entries()) {
+    const members: Array<{ session: SessionInfo; branch: boolean }> = [];
     for (const id of sessionsOf(g.layout)) {
       const m = sessions.get(id);
-      if (m) lines.push({ session: m, in: g, branch: (place(m)?.worktree ?? null) !== w });
+      if (m) members.push({ session: m, branch: (place(m)?.worktree ?? null) !== w });
     }
+    lines.push({ group: g, hasPrevious: groupIndex > 0, hasNext: groupIndex < groups.length - 1 });
+    members.forEach(({ session, branch }) => {
+      lines.push({ session, in: g, branch, groupRail: groupIndex < groups.length - 1 });
+    });
   }
   const grouped = groupedIds();
   const loose = w
@@ -330,9 +337,9 @@ const GROUP_COLORS = ["#9ec1ff", "#f28fd0", "#7ee0cb", "#e0c07e", "#ff9e7a", "#c
 
 const groupColor = (g: Group) => GROUP_COLORS[Math.max(0, S.groups.indexOf(g)) % GROUP_COLORS.length];
 
-function groupRow(g: Group): HTMLElement {
+function groupRow(g: Group, hasPrevious = false, hasNext = false): HTMLElement {
   const ids = filledOf(g.layout).filter((id) => sessions.has(id));
-  const row = h("div", "group-row" + (g.id === S.activeGroup && g.id === S.groupPicked ? " active" : ""));
+  const row = h("div", "group-row" + (hasPrevious ? " has-previous" : "") + (hasNext ? " has-next" : "") + (g.id === S.activeGroup && g.id === S.groupPicked ? " active" : ""));
   row.dataset.group = g.id;
   const theme = groupTheme(g);
   // A themed group takes its color from the theme: the cursor color, else ANSI blue.
@@ -399,10 +406,18 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   const block = h("div", "wt" + (selected ? " selected" : ""));
   block.style.setProperty("--pc", color);
 
+  const list = worktreeSessions(w);
+  const open = !collapsed.has(w.path);
+
   const row = h("div", "wt-row");
-  const pick = button("wt-pick", "", () => selectWorktree(p, w));
+  const pick = button("wt-pick", "", () => {
+    if (open) collapsed.add(w.path);
+    else collapsed.delete(w.path);
+    selectWorktree(p, w);
+  });
   pick.dataset.wt = w.path;
-  pick.append(branchIcon(), h("span", "branch", branchName(w)));
+  pick.setAttribute("aria-expanded", String(open));
+  pick.append(chevron(open), branchIcon(), h("span", "branch", branchName(w)));
   if (w.is_main) pick.appendChild(h("span", "tag", "primary"));
   if (w.locked) pick.appendChild(h("span", "tag", "locked"));
   if (w.prunable) pick.appendChild(h("span", "tag", "prunable"));
@@ -422,20 +437,16 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   row.appendChild(plus);
   block.appendChild(row);
 
-  const list = worktreeSessions(w);
-  const open = !collapsed.has(w.path);
-  const waiting = list.filter((s) => s.state === "waiting").length;
-  const count = button("wt-count", "", () => {
-    if (open) collapsed.add(w.path);
-    else collapsed.delete(w.path);
-    render();
-  });
-  count.setAttribute("aria-expanded", String(open));
-  count.append(h("span", "", `${list.length} ${list.length === 1 ? "session" : "sessions"}`));
-  if (waiting) count.append(h("span", "waiting-note", `· ${waiting} waiting`));
-  count.append(h("span", "spacer"), chevron(open));
-  block.appendChild(sessionBlock(worktreeLines(w), color, count, open));
-  if (showsFiles(p)) block.appendChild(filesBlock(w));
+  if (open) {
+    const waiting = list.filter((s) => s.state === "waiting").length;
+    const count = h("div", "wt-count");
+    count.append(h("span", "", `${list.length} ${list.length === 1 ? "session" : "sessions"}`));
+    if (waiting) count.append(h("span", "waiting-note", `· ${waiting} waiting`));
+    const body = h("div", "wt-body");
+    body.appendChild(sessionBlock(worktreeLines(w), color, count, true));
+    if (showsFiles(p)) body.appendChild(filesBlock(w));
+    block.appendChild(body);
+  }
 
   const err = removeErrors.get(w.path);
   if (err) block.appendChild(errorRow(err));
