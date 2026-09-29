@@ -462,6 +462,10 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .lm-item { width: 100%; height: var(--row); display: flex; align-items: center; gap: calc(12 * var(--u)); padding: 0 calc(16 * var(--u)); border: 0; border-bottom: 1px solid var(--rule); background: transparent; color: var(--text); text-align: left; }
 .lm-item:hover, .lm-item:focus-visible { background: var(--bg-raised); outline: 0; box-shadow: inset 2px 0 0 var(--text-3); }
 .lm-key { width: calc(10 * var(--u)); font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
+.lm-key:has(.rune) { display: inline-flex; align-items: center; justify-content: center; }
+.lm-key .rune { width: calc(14 * var(--u)); height: calc(14 * var(--u)); display: block; }
+.lm-item:not(:disabled):hover .lm-key .rune, .lm-item:focus-visible .lm-key .rune { color: var(--text-2); }
+.lm-item.danger .lm-key { color: inherit; }
 .lm-name { flex-grow: 1; font-size: calc(14px * var(--zoom, 1)); }
 .lm-hint { font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
 .lm-settings { border-bottom: 0; background: var(--bg); color: #9ec1ff; }
