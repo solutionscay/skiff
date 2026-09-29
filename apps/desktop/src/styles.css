@@ -43,6 +43,20 @@ button { font: inherit; color: inherit; cursor: pointer; border-radius: 0; }
    (body.kbd, set in main.ts). WebKitGTK treats clicks as focus-visible. */
 :focus, :focus-visible { outline: 0; }
 body.kbd button:focus, body.kbd [tabindex]:focus { outline: 1px solid var(--text-3); outline-offset: -1px; }
+/* The open session and the picked group already carry a left accent bar
+   (.session-row.focused, .group-row.active): a full outline rectangle on top
+   of that reads as a second, unrelated state, and the right edge (the only
+   side without an accent bar already there) is the noisiest part of it. A
+   top/bottom rule in the row's own accent reads as "the same highlight,
+   more of it" instead. */
+body.kbd .session-row.focused:focus {
+  outline: 0;
+  box-shadow: inset 2px 0 0 var(--pc), inset 0 1px 0 var(--pc), inset 0 -1px 0 var(--pc);
+}
+body.kbd .group-row.active .group-pick:focus {
+  outline: 0;
+  box-shadow: inset 0 1px 0 var(--gc), inset 0 -1px 0 var(--gc);
+}
 kbd {
   font-family: var(--mono);
   font-size: calc(11px * var(--zoom, 1));
@@ -227,9 +241,9 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
   /* Every icon animation steps a few times a second: a smooth one makes the
      webview draw a full frame on every display refresh while an agent works. */
   background: linear-gradient(90deg, var(--state-working) 50%, transparent 0) left bottom / calc(6 * var(--u)) 1px repeat-x;
-  animation: water 0.6s steps(3) infinite;
+  animation: water 0.6s steps(3) var(--water-delay, 0ms) infinite;
 }
-.session-row .busy svg, .cell-head .busy svg { position: absolute; left: calc(4 * var(--u)); bottom: 1px; width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: rock 1.2s steps(2) infinite; transform-origin: 50% 90%; }
+.session-row .busy svg, .cell-head .busy svg { position: absolute; left: calc(4 * var(--u)); bottom: 1px; width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: rock 1.2s steps(2) var(--skiff-delay, 0ms) infinite; transform-origin: 50% 90%; }
 @keyframes water { to { background-position: calc(-6 * var(--u)) bottom; } }
 @keyframes rock { 0%, 100% { transform: rotate(-6deg) translateY(0); } 50% { transform: rotate(6deg) translateY(-1px); } }
 .session-row .anchored { display: flex; align-items: center; justify-content: center; color: var(--state-idle); width: calc(18 * var(--u)); height: calc(12 * var(--u)); opacity: 0.8; }

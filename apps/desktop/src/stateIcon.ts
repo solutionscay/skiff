@@ -8,6 +8,18 @@ const BELL = '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d
 const OK = '<circle cx="12" cy="12" r="10"></circle><path d="M8 12l3 3 5-6"></path>';
 const FAILED = '<circle cx="12" cy="12" r="10"></circle><path d="M9 9l6 6M15 9l-6 6"></path>';
 
+function workingIcon(): HTMLElement {
+  const el = h("span", "busy");
+  el.title = "Working";
+  el.appendChild(icon(SKIFF));
+  // The sidebar is rebuilt while a session streams output. Start a replacement
+  // icon at the elapsed animation phase, rather than its static first frame.
+  const now = performance.now();
+  el.style.setProperty("--water-delay", `${-(now % 600)}ms`);
+  el.style.setProperty("--skiff-delay", `${-(now % 1200)}ms`);
+  return el;
+}
+
 export function stateIcon(s: SessionInfo): HTMLElement {
   const mark = (cls: string, title: string, paths: string) => {
     const el = h("span", cls);
@@ -18,7 +30,7 @@ export function stateIcon(s: SessionInfo): HTMLElement {
   switch (s.state) {
     case "working":
       // A skiff under way: it rocks while the water runs past.
-      return mark("busy", "Working", SKIFF);
+      return workingIcon();
     case "idle":
       // At anchor: the skiff is not moving.
       return mark("anchored", "Idle", ANCHOR);
