@@ -14,7 +14,7 @@ Sessions run in `skiffd`, a daemon that owns every PTY. You can close the window
 
 ## Platforms
 
-Skiff runs on Linux and macOS. The app and the daemon talk over a Unix socket. Release packages are Linux only for now. On macOS, build the package yourself (see Packages).
+Skiff runs on Linux and macOS. The app and the daemon talk over a Unix socket.
 
 ## Layout
 
