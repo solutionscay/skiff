@@ -88,16 +88,19 @@ impl Session {
         now_ms().saturating_sub(self.last_input.load(Ordering::Relaxed)) < ECHO_MS
     }
 
-    fn push_output(&self, chunk: &[u8]) -> Signals {
+    /// Feeds the emulator and queues the bytes. The flag is true when the
+    /// chunk changed the text on screen.
+    fn push_output(&self, chunk: &[u8]) -> (Signals, bool) {
         let mut st = self.screen.lock().unwrap();
         let signals = st.screen.feed(chunk);
+        let changed = prints(chunk) && st.screen.text_changed();
         st.pending.extend_from_slice(chunk);
         // A chunk after a quiet frame goes out now, and so does the answer
         // to a keystroke, even while the program streams output.
         if self.echoing() || st.last_flush.elapsed() >= FRAME {
             st.flush(&self.output);
         }
-        signals
+        (signals, changed)
     }
 
     fn flush_output(&self) {
@@ -299,12 +302,13 @@ impl SessionPool {
                     };
                     let chunk = &buf[..n];
                     session.last_output.store(now_ms(), Ordering::Relaxed);
-                    let signals = session.push_output(chunk);
+                    let (signals, changed) = session.push_output(chunk);
                     // A bell means "the process wants you". It stays until the user
                     // types. The BEL that ends a title sequence is not a bell.
-                    // Work is visible text. An echo of typing, a redraw after a
-                    // resize, or mode codes an idle program re-sends are not.
-                    let work = !session.echoing() && prints(chunk);
+                    // Work is new text on screen. An echo of typing, a redraw
+                    // after a resize, mode codes an idle program re-sends, or
+                    // a logo that only changes color are not.
+                    let work = !session.echoing() && changed;
                     if work {
                         session.last_work.store(now_ms(), Ordering::Relaxed);
                     }

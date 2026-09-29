@@ -3,6 +3,7 @@
 
 use std::{
     fmt::Write as _,
+    hash::{DefaultHasher, Hash, Hasher},
     sync::{Arc, Mutex},
 };
 
@@ -49,6 +50,8 @@ pub struct Screen {
     term: Term<Listener>,
     parser: Processor,
     signals: Listener,
+    /// Hash of the text at the last `text_changed`.
+    text: u64,
 }
 
 impl Screen {
@@ -62,12 +65,32 @@ impl Screen {
             term: Term::new(config, &size(cols, rows), signals.clone()),
             parser: Processor::new(),
             signals,
+            text: 0,
         }
     }
 
     pub fn feed(&mut self, bytes: &[u8]) -> Signals {
         self.parser.advance(&mut self.term, bytes);
         std::mem::take(&mut *self.signals.0.lock().unwrap())
+    }
+
+    /// True when the characters on screen or the scrollback changed since the
+    /// last call. Colors and cursor moves do not count, so an idle program
+    /// that animates a logo's colors is not at work.
+    pub fn text_changed(&mut self) -> bool {
+        let grid = self.term.grid();
+        let mut h = DefaultHasher::new();
+        grid.history_size().hash(&mut h);
+        for line in 0..grid.screen_lines() as i32 {
+            let row = &grid[Line(line)];
+            for c in 0..grid.columns() {
+                row[Column(c)].c.hash(&mut h);
+            }
+        }
+        let text = h.finish();
+        let changed = text != self.text;
+        self.text = text;
+        changed
     }
 
     pub fn resize(&mut self, cols: u16, rows: u16) {
@@ -249,6 +272,17 @@ fn color(out: &mut String, c: Color, base: u8) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn color_only_redraw_is_not_a_text_change() {
+        let mut s = Screen::new(20, 4);
+        s.feed(b"\x1b[1;1H\x1b[38;2;1;2;3mlogo");
+        assert!(s.text_changed());
+        s.feed(b"\x1b[1;1H\x1b[38;2;9;9;9mlogo");
+        assert!(!s.text_changed());
+        s.feed(b"\x1b[1;1Hlogs");
+        assert!(s.text_changed());
+    }
 
     #[test]
     fn title_bel_is_not_a_bell() {
