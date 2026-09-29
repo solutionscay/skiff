@@ -27,6 +27,11 @@ pub type Chunk = Arc<Vec<u8>>;
 /// No output for this long turns `working` into `idle`.
 pub const IDLE_AFTER: Duration = Duration::from_secs(3);
 
+/// A terminal title only the wrapper shell sets, right before it execs the
+/// fallback shell in place of an agent that just exited. Seeing it means the
+/// session is a plain shell now, not the agent it was launched as.
+const SHELL_HANDOFF_TITLE: &str = "skiff:shell-handoff";
+
 /// Output is coalesced into at most one chunk per frame.
 pub const FRAME: Duration = Duration::from_millis(16);
 
@@ -209,7 +214,9 @@ impl SessionPool {
         } else {
             let mut wrapped = vec![
                 "-c".to_string(),
-                "trap : INT; \"$@\"; exec \"$SKIFF_SHELL\" -l".to_string(),
+                format!(
+                    "trap : INT; \"$@\"; printf '\\033]0;{SHELL_HANDOFF_TITLE}\\007'; exec \"$SKIFF_SHELL\" -l"
+                ),
                 "skiff".to_string(),
                 program,
             ];
@@ -328,17 +335,37 @@ impl SessionPool {
                     }
                     if let Some(title) = signals.title {
                         let title = title.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
-                        let changed = {
-                            let mut info = session.info.lock().unwrap();
-                            let changed = info.title != title;
-                            info.title = title.clone();
-                            changed
-                        };
-                        if changed {
-                            let _ = pool.events.send(Event::Title {
-                                session: sid.clone(),
-                                title,
-                            });
+                        if title.as_deref() == Some(SHELL_HANDOFF_TITLE) {
+                            // The agent that owned this pane just exited and the
+                            // wrapper is about to exec the fallback shell in its
+                            // place. Forget the agent's label and command so the
+                            // icon falls back to a plain shell instead of the
+                            // agent that is no longer running.
+                            let shell_name = PathBuf::from(default_shell())
+                                .file_name()
+                                .map(|s| s.to_string_lossy().into_owned())
+                                .unwrap_or_else(default_shell);
+                            let info = {
+                                let mut info = session.info.lock().unwrap();
+                                info.title = None;
+                                info.label = shell_name.clone();
+                                info.command = shell_name;
+                                info.clone()
+                            };
+                            let _ = pool.events.send(Event::SessionUpdated { session: info });
+                        } else {
+                            let changed = {
+                                let mut info = session.info.lock().unwrap();
+                                let changed = info.title != title;
+                                info.title = title.clone();
+                                changed
+                            };
+                            if changed {
+                                let _ = pool.events.send(Event::Title {
+                                    session: sid.clone(),
+                                    title,
+                                });
+                            }
                         }
                     }
                 }
