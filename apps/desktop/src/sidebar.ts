@@ -24,7 +24,10 @@ export function renderRail() {
     const waiting = [...sessions.values()].filter((s) => s.state === "waiting" && place(s)?.project === p).length;
     const item = h("div", "rail-item");
     const b = button("rail-chip" + (p.name === S.selectedProject ? " active" : ""), p.icon ? "" : p.short, () => selectProject(p.name));
-    if (p.icon) b.appendChild(projectIcon(p, 20));
+    if (p.icon) {
+      b.classList.add("has-icon");
+      b.appendChild(projectIcon(p, 24));
+    }
     b.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       projectMenu(p, e.clientX, e.clientY);

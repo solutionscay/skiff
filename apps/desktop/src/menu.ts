@@ -1,3 +1,5 @@
+import { isRune, rune } from "./runes";
+
 export type MenuEntry =
   | { head: string }
   | {
@@ -73,7 +75,11 @@ export function createMenu(onClose: () => void) {
       b.setAttribute("role", "menuitem");
       const k = document.createElement("span");
       k.className = "lm-key mono";
-      k.textContent = e.icon ?? "";
+      // A rune name draws that icon; other text shows as it is.
+      const flip = e.icon?.endsWith(":flip");
+      const name = flip ? e.icon!.slice(0, -5) : e.icon ?? "";
+      if (isRune(name)) k.append(rune(name, 14, flip));
+      else k.textContent = e.icon ?? "";
       const n = document.createElement("span");
       n.className = "lm-name";
       n.textContent = e.label;

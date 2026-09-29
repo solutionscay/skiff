@@ -4,7 +4,8 @@ import { confirmAction, promptAction } from "./confirm";
 import { pickColor } from "./colorPicker";
 import { keyLabel } from "./keys";
 import { createMenu, type MenuEntry } from "./menu";
-import { agentName, basename, branchName, byStart, taskTitle } from "./model";
+import { agentName, basename, branchName, byStart, locate, taskTitle } from "./model";
+import { cwdOf, filledOf, slotsOf } from "./canvas";
 import type { Group, Project, SessionInfo, SplitDir, Worktree } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
@@ -19,7 +20,7 @@ import { render } from "./render";
 import { clearSelection, selectionPlan, splitSelection } from "./selection";
 import { enabledAgents, FULL_HINT, groupOf, MAX_PANES, place, removeErrors, removing, S, selectedWorktree, sessions, shownIds, splitFull } from "./state";
 import { groupThemeMenu, sessionThemeMenu, themeIdFor } from "./themes";
-import { closePane, focusPane, refocusTerminal, removeFromGroup, splitWith, unsplit } from "./view";
+import { closePane, focusPane, refocusTerminal, removeFromGroup, showGroup, splitWith, unsplit } from "./view";
 
 async function setIcon(p: Project, icon: string | null) {
   try {
@@ -54,7 +55,7 @@ async function setBackground(p: Project, background: string | null) {
 function backgroundEntries(p: Project): MenuEntry[] {
   return [
     {
-      icon: "▨",
+      icon: "playback-image-plus",
       label: "Choose image…",
       hint: "png, jpg, webp",
       run: async () => {
@@ -66,7 +67,7 @@ function backgroundEntries(p: Project): MenuEntry[] {
         if (typeof file === "string") await setBackground(p, file);
       },
     },
-    { icon: "∅", label: "None", hint: "plain background", disabled: !p.background, run: () => void setBackground(p, null) },
+    { icon: "indicators-minus", label: "None", hint: "plain background", disabled: !p.background, run: () => void setBackground(p, null) },
   ];
 }
 
@@ -74,7 +75,7 @@ function backgroundEntries(p: Project): MenuEntry[] {
 function iconEntries(p: Project): MenuEntry[] {
   return [
     {
-      icon: "◧",
+      icon: "documents-folder-open",
       label: "Choose file…",
       hint: "png, svg, ico",
       run: async () => {
@@ -88,8 +89,8 @@ function iconEntries(p: Project): MenuEntry[] {
         await setIcon(p, rel);
       },
     },
-    { icon: "↺", label: "Detect", hint: "favicon, logo", run: () => void setIcon(p, null) },
-    { icon: "∅", label: "Letters only", hint: "no icon", run: () => void setIcon(p, "") },
+    { icon: "schedule-refresh-cw", label: "Detect", hint: "favicon, logo", run: () => void setIcon(p, null) },
+    { icon: "indicators-minus", label: "Letters only", hint: "no icon", run: () => void setIcon(p, "") },
   ];
 }
 
@@ -113,12 +114,12 @@ export function newWorktree(p: Project) {
 /** The project's + in the sidebar, or a right-click on its rail chip. */
 export function projectMenu(p: Project, x: number, y: number) {
   ctxMenu.open(x, y, p.path, [
-    { icon: "+", label: "New worktree…", disabled: !!p.error, run: () => newWorktree(p) },
-    { icon: "↗", label: "Show in file manager", run: () => void openPath(p.path).catch(showError) },
-    { icon: "⧉", label: "Copy path", run: () => void navigator.clipboard.writeText(p.path).catch(showError) },
-    { icon: "◧", label: "Icon…", hint: "file, detect, none", sub: iconEntries(p) },
-    { icon: "◐", label: "Color…", hint: "accent", run: () => pickProjectColor(p) },
-    { icon: "▨", label: "Background…", hint: "image behind terminals", sub: backgroundEntries(p) },
+    { icon: "code-git-branch", label: "New worktree…", disabled: !!p.error, run: () => newWorktree(p) },
+    { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", run: () => void openPath(p.path).catch(showError) },
+    { icon: "code-copy", label: "Copy path", run: () => void navigator.clipboard.writeText(p.path).catch(showError) },
+    { icon: "documents-file-image", label: "Icon…", hint: "file, detect, none", sub: iconEntries(p) },
+    { icon: "tools-sparkles", label: "Color…", hint: "accent", run: () => pickProjectColor(p) },
+    { icon: "playback-image", label: "Background…", hint: "image behind terminals", sub: backgroundEntries(p) },
   ]);
 }
 
@@ -127,11 +128,11 @@ export const ctxMenu = createMenu(() => refocusTerminal());
 /** A right-click on a worktree's branch row. */
 export function worktreeMenu(p: Project, w: Worktree, x: number, y: number) {
   const entries: MenuEntry[] = [
-    { icon: "↗", label: "Show in file manager", run: () => void openPath(w.path).catch(showError) },
-    { icon: "⧉", label: "Copy path", run: () => void navigator.clipboard.writeText(w.path).catch(showError) },
+    { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", run: () => void openPath(w.path).catch(showError) },
+    { icon: "code-copy", label: "Copy path", run: () => void navigator.clipboard.writeText(w.path).catch(showError) },
   ];
   if (!w.is_main) {
-    entries.push({ icon: "×", label: "Remove worktree…", hint: "keeps the branch", danger: true, disabled: removing.has(w.path), run: () => void removeWorktree(p, w) });
+    entries.push({ icon: "tools-trash-2", label: "Remove worktree…", hint: "keeps the branch", danger: true, disabled: removing.has(w.path), run: () => void removeWorktree(p, w) });
   }
   ctxMenu.open(x, y, branchName(w), entries);
 }
@@ -147,7 +148,7 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
   ctxMenu.open(x, y, sessionLabel(s), [
     ...(plan
       ? [{
-          icon: "⊞",
+          icon: "code-group",
           label: plan.label === "New group" ? `Group ${n} selected` : plan.label,
           hint: plan.size > MAX_PANES ? FULL_HINT : "",
           disabled: plan.size > MAX_PANES,
@@ -155,10 +156,10 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
         }]
       : []),
     ...(groupOf(s.id)
-      ? [{ icon: "⊟", label: "Remove from group", hint: "keeps running", run: () => removeFromGroup(s.id) }]
+      ? [{ icon: "code-ungroup", label: "Remove from group", hint: "keeps running", run: () => removeFromGroup(s.id) }]
       : []),
     ...newSessionEntry(s, x, y),
-    { icon: "✎", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(s.id) },
+    { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(s.id) },
     themeEntry(s),
     picked ? endSelectedEntry(S.selection.filter((id) => sessions.has(id))) : endEntry(s),
   ]);
@@ -167,21 +168,21 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
 /** Right-click, New session…: the + menu for this session's worktree, at the pointer. */
 function newSessionEntry(s: SessionInfo, x: number, y: number): MenuEntry[] {
   const at = place(s);
-  return at ? [{ icon: "+", label: "New session…", hint: "agent or split", run: () => launchMenu.open({ x, y }, at.project, at.worktree) }] : [];
+  return at ? [{ icon: "indicators-plus", label: "New session…", hint: "agent or split", run: () => launchMenu.open({ x, y }, at.project, at.worktree) }] : [];
 }
 
 function themeEntry(s: SessionInfo): MenuEntry {
   const name = S.themes.find((t) => t.id === themeIdFor(s))?.name ?? "";
-  return { icon: "◐", label: "Terminal theme…", hint: name, run: () => void sessionThemeMenu(s) };
+  return { icon: "code-terminal", label: "Terminal theme…", hint: name, run: () => void sessionThemeMenu(s) };
 }
 
 /** Right-click, End session: stops the process and drops it from the list. */
 export function endEntry(s: SessionInfo): MenuEntry {
   if (s.state === "done") {
-    return { icon: "×", label: "Remove from list", hint: "already exited", danger: true, run: () => void endSession(s.id) };
+    return { icon: "tools-trash-2", label: "Remove from list", hint: "already exited", danger: true, run: () => void endSession(s.id) };
   }
   return {
-    icon: "■",
+    icon: "indicators-square-stop",
     label: "End session…",
     hint: "stops the process",
     danger: true,
@@ -212,10 +213,10 @@ function endManyEntry(ids: string[], label: string, title: string, hint = "stops
     for (const id of ids) void endSession(id);
   };
   if (!running.length) {
-    return { icon: "×", label: `Remove ${ids.length} from list`, hint: "already exited", danger: true, run: end };
+    return { icon: "tools-trash-2", label: `Remove ${ids.length} from list`, hint: "already exited", danger: true, run: end };
   }
   return {
-    icon: "■",
+    icon: "indicators-square-stop",
     label,
     hint,
     danger: true,
@@ -245,13 +246,13 @@ export function paneMenu(id: string, x: number, y: number) {
   if (id !== S.focused) focusPane(id);
   const full = splitFull();
   const entries: MenuEntry[] = [
-    { icon: "▯", label: "Add pane right…", hint: full ? FULL_HINT : keyLabel("split-right"), disabled: full, run: () => splitMenu(id, "row", x, y) },
-    { icon: "▭", label: "Add pane below…", hint: full ? FULL_HINT : keyLabel("split-down"), disabled: full, run: () => splitMenu(id, "col", x, y) },
-    { icon: "✎", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(id) },
+    { icon: "layouts-panel-left:flip", label: "Add pane right…", hint: full ? FULL_HINT : keyLabel("split-right"), disabled: full, run: () => splitMenu(id, "row", x, y) },
+    { icon: "layouts-panel-bottom", label: "Add pane below…", hint: full ? FULL_HINT : keyLabel("split-down"), disabled: full, run: () => splitMenu(id, "col", x, y) },
+    { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(id) },
   ];
   entries.push(themeEntry(s));
   if (shownIds().length > 1) {
-    entries.push({ icon: "×", label: "Remove from group", hint: keyLabel("close-pane"), run: () => closePane(id) });
+    entries.push({ icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), run: () => closePane(id) });
   }
   entries.push(endEntry(s));
   ctxMenu.open(x, y, sessionLabel(s), entries);
@@ -287,23 +288,52 @@ export function splitMenu(id: string, dir: SplitDir, x: number, y: number) {
 
 export function groupMenu(g: Group, x: number, y: number) {
   ctxMenu.open(x, y, `Group: ${g.name}`, [
-    { icon: "✎", label: "Rename", hint: "double-click", run: () => startRename(g) },
-    { icon: "◐", label: "Terminal theme…", hint: "every pane", run: () => void groupThemeMenu(g) },
-    { icon: "⊟", label: "Ungroup", hint: "sessions keep running", run: () => {
+    ...groupStartEntries(g),
+    { head: "GROUP" },
+    { icon: "tools-pencil", label: "Rename", hint: "double-click", run: () => startRename(g) },
+    { icon: "code-terminal", label: "Terminal theme…", hint: "every pane", run: () => void groupThemeMenu(g) },
+    { icon: "code-ungroup", label: "Ungroup", hint: "sessions keep running", run: () => {
       if (g.id === S.activeGroup) unsplit(g);
       else {
         deleteGroup(g);
         render();
       }
     } },
-    closeGroupEntry(g),
+    ...closeGroupEntry(g),
   ]);
 }
 
+/** Agents, then Shell: a new session in the group's first empty pane, else a new pane on the right. */
+function groupStartEntries(g: Group): MenuEntry[] {
+  const cwd = cwdOf(g);
+  const at = cwd ? locate(S.projects, cwd) : null;
+  const where = at ? branchName(at.worktree) : cwd ? basename(cwd) : "home";
+  const empty = slotsOf(g.layout)[0];
+  const filled = filledOf(g.layout).filter((id) => sessions.has(id));
+  const full = !empty && filled.length >= MAX_PANES;
+  const entries: MenuEntry[] = [{ head: `NEW IN ${where.toUpperCase()}` }];
+  for (const a of [...enabledAgents(), null]) {
+    entries.push({
+      glyph: launchIcon(a),
+      label: a?.id ?? "Shell",
+      hint: full ? FULL_HINT : a?.command ?? "$SHELL",
+      disabled: full,
+      run: () => {
+        if (g.id !== S.activeGroup) showGroup(g.id);
+        const target = g.focus && filled.includes(g.focus) ? g.focus : filled[0];
+        const place = empty ? { slot: empty } : { target, dir: "row" as const };
+        void newSession(cwd, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell", place).catch(showError);
+      },
+    });
+  }
+  return entries;
+}
+
 /** Close group: ends every session in it. The daemon then drops the group. */
-function closeGroupEntry(g: Group): MenuEntry {
+function closeGroupEntry(g: Group): MenuEntry[] {
   const ids = sessionsOf(g.layout).filter((id) => sessions.has(id));
-  return endManyEntry(ids, "Close group…", `Close ${g.name}?`, `ends ${ids.length} sessions`);
+  if (!ids.length) return [];
+  return [endManyEntry(ids, "Close group…", `Close ${g.name}?`, `ends ${ids.length} sessions`)];
 }
 
 export async function removeWorktree(p: Project, w: Worktree) {

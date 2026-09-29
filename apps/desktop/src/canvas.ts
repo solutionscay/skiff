@@ -60,7 +60,7 @@ export function focusFirstSlot() {
 }
 
 /** Where a group's empty panes start: its own folder, else its first session's. */
-function cwdOf(g: Group): string | null {
+export function cwdOf(g: Group): string | null {
   if (g.cwd) return g.cwd;
   const first = sessions.get(filledOf(g.layout)[0]);
   return first?.cwd ?? null;
