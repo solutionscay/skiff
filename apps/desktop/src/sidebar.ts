@@ -9,11 +9,11 @@ import { newSession } from "./daemon";
 import { $, branchIcon, button, chevron, h, host, icon, plusIcon, projectIcon, showError } from "./dom";
 import { groupMenu, newWorktree, projectMenu, rowMenu, worktreeMenu } from "./menus";
 import { addProject, launchMenu } from "./panels";
-import { leaveRename, renameGroup, renameRow, startRename } from "./rename";
+import { leaveRename, renameGroup, renameRow, startRename, startSessionRename } from "./rename";
 import { render } from "./render";
 import { clearSelection, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
 import { stateIcon } from "./stateIcon";
-import { accent, activeGroupObj, collapsed, currentProject, DEFAULT_ACCENT, OTHER, enabledAgents, groupedIds, place, removeErrors, removing, S, selectedWorktree, sessions, worktreeSessions, shownIds } from "./state";
+import { accent, activeGroupObj, collapsed, currentProject, currentWorktree, DEFAULT_ACCENT, OTHER, enabledAgents, groupedIds, place, removeErrors, removing, S, selectedWorktree, sessions, worktreeSessions, shownIds } from "./state";
 import { groupTheme } from "./themes";
 import { dragSessions, revealSession, selectProject, selectWorktree, showGroup } from "./view";
 
@@ -138,11 +138,14 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
   const row = h("button", cls.join(" "));
   row.type = "button";
   row.dataset.session = s.id;
+  if (o.in) row.dataset.inGroup = o.in.id;
   row.addEventListener("mousedown", (e) => {
     dragSessions(e, S.selection.length > 1 && S.selection.includes(s.id) ? [...S.selection] : [s.id]);
   });
   row.addEventListener("click", (e) => {
-    if (e.shiftKey) selectRange(s.id);
+    // detail counts clicks across the re-render the first click causes.
+    if (e.detail >= 2 && !e.shiftKey && !e.ctrlKey && !e.metaKey) startSessionRename(s.id);
+    else if (e.shiftKey) selectRange(s.id);
     else if (e.ctrlKey || e.metaKey) toggleSelect(s.id);
     else {
       // A plain click opens and ends any selection. It never picks.
@@ -157,7 +160,7 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
   row.style.setProperty("--pc", color);
   if (o.in) row.style.setProperty("--gc", groupColor(o.in));
   row.setAttribute("aria-label", `${agentName(s)}, ${taskTitle(s)}, ${s.state}`);
-  row.title = `${agentName(s)}: ${taskTitle(s)}`;
+  row.title = `${agentName(s)}: ${taskTitle(s)}. Double-click to rename.`;
   row.append(agentIcon(s), h("span", "title", taskTitle(s)));
   if (o.branch) {
     const at = place(s);
@@ -280,7 +283,8 @@ const groupColor = (g: Group) => GROUP_COLORS[Math.max(0, S.groups.indexOf(g)) %
 
 function groupRow(g: Group): HTMLElement {
   const ids = sessionsOf(g.layout);
-  const row = h("div", "group-row" + (g.id === S.activeGroup ? " active" : ""));
+  const row = h("div", "group-row" + (g.id === S.activeGroup && g.id === S.groupPicked ? " active" : ""));
+  row.dataset.group = g.id;
   const theme = groupTheme(g);
   // A themed group takes its color from the theme: the cursor color, else ANSI blue.
   row.style.setProperty("--gc", theme ? theme.cursor ?? theme.palette[4] ?? groupColor(g) : groupColor(g));
@@ -300,7 +304,8 @@ function groupRow(g: Group): HTMLElement {
     });
     input.addEventListener("keydown", (e) => {
       e.stopPropagation();
-      if (e.key === "Enter") void renameGroup(g.id, r.name, true);
+      if (e.ctrlKey && e.key.toLowerCase() === "a") input.select();
+      else if (e.key === "Enter") void renameGroup(g.id, r.name, true);
       else if (e.key === "Escape") {
         S.renaming = null;
         render();
@@ -480,3 +485,12 @@ function renderWelcome() {
   host.appendChild(box);
   welcomeBox = box;
 }
+
+// Right-click on the empty part of the list: the + menu for the current worktree.
+$<HTMLElement>("sidebar-scroll").addEventListener("contextmenu", (e) => {
+  if (e.defaultPrevented || (e.target as Element).closest("button, input, .wt-count")) return;
+  const at = currentWorktree();
+  if (!at) return;
+  e.preventDefault();
+  launchMenu.open({ x: e.clientX, y: e.clientY }, at.p, at.w);
+});

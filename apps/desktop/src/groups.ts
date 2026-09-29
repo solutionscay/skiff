@@ -1,13 +1,13 @@
 /** Groups (named splits): persistence through skiffd. */
-import { isSlot } from "./canvas";
-import { sessionsOf } from "./layout";
+import { isSlot, PRESETS } from "./canvas";
+import { sessionsOf, shapeName } from "./layout";
 import { agentName } from "./model";
 import type { Group } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { showError } from "./dom";
 import { render } from "./render";
 import { activeGroupObj, S, sessions, shownIds } from "./state";
-import { unfocus, unsplit } from "./view";
+import { unfocus } from "./view";
 
 /** Group writes run one at a time, so a new group has its id before the next save. */
 let groupQueue = Promise.resolve();
@@ -36,7 +36,14 @@ function persist(op: () => Promise<void>) {
     });
 }
 
+/** A group still named after a template follows its shape when panes come and go. */
+export function syncTemplateName(g: Group) {
+  const shape = shapeName(g.layout);
+  if (shape && shape !== g.name && PRESETS.some((p) => p.name === g.name)) g.name = shape;
+}
+
 export function saveGroup(g: Group) {
+  syncTemplateName(g);
   persist(async () => {
     if (!S.groups.includes(g)) return;
     const saved = await invoke<Group>("save_group", {
@@ -88,13 +95,6 @@ export async function loadGroups() {
   if (S.activeGroup && !activeGroupObj()) {
     S.activeGroup = null;
     S.single = S.focused && sessions.has(S.focused) ? S.focused : null;
-  }
-  // A pruned group with one pane left is not a split any more.
-  for (const g of [...S.groups]) {
-    if (sessionsOf(g.layout).length < 2) {
-      if (g.id === S.activeGroup) unsplit(g);
-      else deleteGroup(g);
-    }
   }
   const ids = shownIds();
   if (S.focused && !ids.includes(S.focused)) S.focused = ids.find((x) => !isSlot(x)) ?? null;

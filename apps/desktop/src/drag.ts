@@ -7,6 +7,8 @@ export interface DropTarget {
   zone: Zone;
   /** The rim of the whole area: the new pane wraps every pane, which makes a T shape. */
   outer?: boolean;
+  /** A group row in the sidebar: the sessions join that group. */
+  group?: string;
 }
 
 interface Opts {
@@ -16,6 +18,8 @@ interface Opts {
   cells: () => Map<string, DOMRect>;
   /** The whole terminal area, for a drop when no pane is shown. Null: no drop there. */
   area: HTMLElement | null;
+  /** Group rows in the sidebar that take a drop, read when the drag starts. */
+  groupRows?: () => { id: string; rect: DOMRect }[];
   drop: (t: DropTarget) => void;
   /** A press that never moved far enough: a plain click. */
   click?: () => void;
@@ -56,14 +60,22 @@ export function beginDrag(down: MouseEvent, o: Opts) {
   const sy = down.clientY;
   let active = false;
   let cells = new Map<string, DOMRect>();
+  let rows: { id: string; rect: DOMRect }[] = [];
   let target: DropTarget | null = null;
   let ghost: HTMLElement | null = null;
   let preview: HTMLElement | null = null;
+  /** Tooltips are off while dragging: they would sit over the drop target. */
+  const titled: [Element, string][] = [];
 
   const start = () => {
     active = true;
     cells = o.cells();
+    rows = o.groupRows?.() ?? [];
     document.body.classList.add("dragging-session");
+    for (const el of document.querySelectorAll("#sidebar-scroll [title]")) {
+      titled.push([el, el.getAttribute("title") ?? ""]);
+      el.removeAttribute("title");
+    }
     ghost = document.createElement("div");
     ghost.className = "drag-ghost";
     ghost.textContent = o.label;
@@ -82,6 +94,14 @@ export function beginDrag(down: MouseEvent, o: Opts) {
     m.preventDefault();
     ghost!.style.transform = `translate(${m.clientX + 12}px, ${m.clientY + 12}px)`;
     target = null;
+    const row = rows.find(({ rect: r }) => m.clientX >= r.left && m.clientX < r.right && m.clientY >= r.top && m.clientY < r.bottom);
+    if (row) {
+      target = { session: null, zone: "center", group: row.id };
+      Object.assign(preview!.style, { left: `${row.rect.left}px`, top: `${row.rect.top}px`, width: `${row.rect.width}px`, height: `${row.rect.height}px` });
+      preview!.hidden = false;
+      preview!.dataset.zone = "center";
+      return;
+    }
     const whole = cells.size > 0 && o.area ? o.area.getBoundingClientRect() : null;
     if (whole && m.clientX >= whole.left && m.clientX < whole.right && m.clientY >= whole.top && m.clientY < whole.bottom) {
       const d: [Zone, number][] = [["left", m.clientX - whole.left], ["right", whole.right - m.clientX - 1], ["top", m.clientY - whole.top], ["bottom", whole.bottom - m.clientY - 1]];
@@ -122,6 +142,8 @@ export function beginDrag(down: MouseEvent, o: Opts) {
     preview?.remove();
     ghost = preview = null;
     document.body.classList.remove("dragging-session");
+    for (const [el, t] of titled) if (el.isConnected) el.setAttribute("title", t);
+    titled.length = 0;
   };
 
   // The click that follows a drag's mouseup must not reach the row under it.

@@ -1,13 +1,13 @@
 /** skiffd: sessions, projects, events. */
-import { isSlot, placeInSlot } from "./canvas";
-import { removePane, sessionsOf } from "./layout";
+import { filledOf, isSlot, placeInSlot, slot } from "./canvas";
+import { removePane, replacePane, sessionsOf } from "./layout";
 import type { AgentInfo, DaemonEvent, DaemonStatus, Project, SessionInfo, SplitDir } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { $, button, h } from "./dom";
-import { deleteGroup, loadGroups } from "./groups";
+import { loadGroups, syncTemplateName } from "./groups";
 import { render, scheduleRender } from "./render";
 import { activeGroupObj, born, gone, OTHER, panes, place, removeErrors, S, sessions, shownIds, upsert } from "./state";
-import { focusPane, showSingle, splitWith, unfocus, unsplit } from "./view";
+import { focusPane, showSingle, splitWith, unfocus } from "./view";
 
 export function setDaemon(status: DaemonStatus) {
   const dot = $("daemon").querySelector(".dot") as HTMLElement;
@@ -163,14 +163,16 @@ function dropSession(id: string) {
   if (S.focused === id) S.focused = null;
   for (const g of S.groups) {
     if (!sessionsOf(g.layout).includes(id)) continue;
-    const next = removePane(g.layout, id);
-    if (next) g.layout = next;
-    if (g.focus === id) g.focus = sessionsOf(next)[0] ?? null;
+    let next = removePane(g.layout, id);
+    // The last session ended: the group stays, with an empty pane in its place.
+    if (filledOf(next).length === 0) next = replacePane(g.layout, id, slot);
+    if (next) {
+      g.layout = next;
+      syncTemplateName(g);
+    }
+    if (g.focus === id) g.focus = filledOf(next)[0] ?? null;
   }
-  const active = activeGroupObj();
   if (S.single === id) S.single = null;
-  if (active && sessionsOf(active.layout).length < 2) unsplit(active);
-  for (const g of [...S.groups]) if (sessionsOf(g.layout).length < 2) deleteGroup(g);
   const ids = shownIds();
   if (S.focused && !ids.includes(S.focused)) S.focused = null;
   if (!ids.length) return unfocus();

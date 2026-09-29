@@ -441,7 +441,14 @@ impl SessionPool {
                     }
                     true
                 }
-                None => false,
+                // The last pane: the group stays, with an empty slot in its place.
+                None => {
+                    g.layout = skiff_core::group::Layout::Pane {
+                        session: format!("slot:{}", &uuid::Uuid::new_v4().simple().to_string()[..8]),
+                    };
+                    g.focus = None;
+                    true
+                }
             }
         });
         drop(groups);

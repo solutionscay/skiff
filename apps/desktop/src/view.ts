@@ -1,10 +1,10 @@
 /** What the terminal area shows and which pane has the keys. */
 import { beginDrag, type DropTarget } from "./drag";
-import { build, type Direction, neighbor, removePane, replacePane, sessionsOf, splitPane } from "./layout";
+import { build, type Direction, leaf, neighbor, removePane, replacePane, sessionsOf, splitPane } from "./layout";
 import { bySessionPriority, taskTitle } from "./model";
 import type { Group, Layout, Project, SplitDir, Worktree } from "./types";
-import { focusFirstSlot, isSlot } from "./canvas";
-import { host } from "./dom";
+import { filledOf, focusFirstSlot, isSlot, slot, slotsOf } from "./canvas";
+import { host, showError } from "./dom";
 import { autoName, deleteGroup, saveGroup } from "./groups";
 import { ctxMenu } from "./menus";
 import { render } from "./render";
@@ -73,13 +73,13 @@ export function showGroup(id: string, pick = false, focus?: string) {
 
 /**
  * Show a new tree. Two or more panes are a group: the active one is updated,
- * else a new one is made. One pane is a single view and ends the group.
+ * else a new one is made. One pane stays in the active group; without one it is a single view.
  */
 export function applyLayout(next: Layout | null, focus: string | null) {
   const ids = sessionsOf(next);
   const g = activeGroupObj();
   const f = focus && ids.includes(focus) ? focus : ids[0] ?? null;
-  if (next && ids.length >= 2) {
+  if (next && (ids.length >= 2 || g)) {
     S.single = null;
     let target = g;
     if (target) {
@@ -94,7 +94,15 @@ export function applyLayout(next: Layout | null, focus: string | null) {
     }
     releaseFromOtherGroups(target, ids);
   } else {
-    if (g) deleteGroup(g);
+    if (g) {
+      // The group keeps its slot when its last session leaves.
+      g.layout = slot();
+      g.focus = null;
+      saveGroup(g);
+      S.single = null;
+      render();
+      return focusFirstSlot();
+    }
     S.activeGroup = null;
     S.single = f;
   }
@@ -109,23 +117,27 @@ function releaseFromOtherGroups(keep: Group, ids: string[]) {
     let layout: Layout | null = other.layout;
     for (const id of ids) layout = removePane(layout, id);
     if (layout === other.layout || sessionsOf(layout).join() === sessionsOf(other.layout).join()) continue;
-    if (!layout || sessionsOf(layout).length < 2) {
-      deleteGroup(other);
-    } else {
-      other.layout = layout;
-      if (other.focus && !sessionsOf(layout).includes(other.focus)) other.focus = sessionsOf(layout)[0];
-      saveGroup(other);
-    }
+    // Its last session left: the group stays, with an empty pane.
+    other.layout = layout ?? slot();
+    if (other.focus && !sessionsOf(other.layout).includes(other.focus)) other.focus = sessionsOf(other.layout).find((x) => !isSlot(x)) ?? null;
+    saveGroup(other);
   }
 }
 
-/** Take a session out of its group. One session left ends the group. */
+/** Take a session out of its group. */
 export function removeFromGroup(id: string) {
   const g = groupOf(id);
   if (!g) return;
   if (g.id === S.activeGroup) return closePane(id);
+  const kept = emptyLast(g, id);
+  if (kept) {
+    g.layout = kept;
+    g.focus = null;
+    saveGroup(g);
+    return render();
+  }
   const rest = removePane(g.layout, id);
-  if (!rest || sessionsOf(rest).length < 2) deleteGroup(g);
+  if (!rest) deleteGroup(g);
   else {
     g.layout = rest;
     if (g.focus === id) g.focus = sessionsOf(rest)[0];
@@ -154,7 +166,23 @@ export function revealSession(id: string) {
   else showSingle(id);
 }
 
+/** The group's layout with `id` swapped for an empty pane, when it was the last session: the group stays open. */
+function emptyLast(g: Group, id: string): Layout | null {
+  const rest = removePane(g.layout, id);
+  return filledOf(rest).length === 0 ? replacePane(g.layout, id, slot) : null;
+}
+
 export function closePane(id: string) {
+  const g = activeGroupObj();
+  const kept = g && sessionsOf(g.layout).includes(id) ? emptyLast(g, id) : null;
+  if (g && kept) {
+    g.layout = kept;
+    g.focus = null;
+    S.focused = null;
+    saveGroup(g);
+    render();
+    return focusFirstSlot();
+  }
   const next = removePane(currentLayout(), id);
   applyLayout(next, S.focused === id ? null : S.focused);
 }
@@ -184,6 +212,7 @@ export function moveFocus(dir: Direction) {
 function dropOn(t: DropTarget, dragged: string[]) {
   const ids = dragged.filter((id) => sessions.has(id));
   if (!ids.length) return;
+  if (t.group) return addToGroup(t.group, ids);
   if (ids.length === 1 && t.session === ids[0]) return;
   let base = currentLayout();
   for (const id of ids) base = removePane(base, id);
@@ -212,6 +241,42 @@ function dropOn(t: DropTarget, dragged: string[]) {
   applyLayout(next, ids[0]);
 }
 
+/** Drop sessions on a group row: they fill its empty panes, then split in. A full group takes no more. */
+function addToGroup(groupId: string, dragged: string[]) {
+  const g = S.groups.find((x) => x.id === groupId);
+  if (!g) return;
+  const ids = dragged.filter((id) => !sessionsOf(g.layout).includes(id));
+  if (!ids.length) return;
+  const room = MAX_PANES - sessionsOf(g.layout).length + slotsOf(g.layout).length;
+  if (ids.length > room) return showError(`The group is full (${MAX_PANES} panes).`);
+  releaseFromOtherGroups(g, ids);
+  let layout = g.layout;
+  for (const id of ids) {
+    const slot = slotsOf(layout)[0];
+    if (slot) layout = replacePane(layout, slot, () => leaf(id));
+    else if (sessionsOf(layout).length === 2) layout = splitPane(layout, sessionsOf(layout)[1], "col", id);
+    else layout = build([...sessionsOf(layout), id]);
+  }
+  g.layout = layout;
+  if (S.single && ids.includes(S.single)) S.single = null;
+  clearSelection();
+  saveGroup(g);
+  showGroup(g.id, false, ids[0]);
+}
+
+/** Each group's drop area: its header row and its nested session rows, as one box. */
+function groupRects() {
+  const boxes = new Map<string, DOMRect>();
+  for (const el of document.querySelectorAll<HTMLElement>("#sidebar-scroll .group-row, #sidebar-scroll .session-row[data-in-group]")) {
+    const id = el.dataset.group ?? el.dataset.inGroup;
+    if (!id) continue;
+    const r = el.getBoundingClientRect();
+    const b = boxes.get(id);
+    boxes.set(id, b ? new DOMRect(Math.min(b.left, r.left), Math.min(b.top, r.top), Math.max(b.right, r.right) - Math.min(b.left, r.left), Math.max(b.bottom, r.bottom) - Math.min(b.top, r.top)) : r);
+  }
+  return [...boxes].map(([id, rect]) => ({ id, rect }));
+}
+
 /** Start a drag of these sessions; a press that does not move stays a click. */
 export function dragSessions(e: MouseEvent, ids: string[]) {
   const first = sessions.get(ids[0]);
@@ -222,6 +287,7 @@ export function dragSessions(e: MouseEvent, ids: string[]) {
     label: blocked ? `${label}: ${FULL_HINT}` : label,
     cells: () => (blocked ? new Map() : view.cellRects()),
     area: blocked ? null : host,
+    groupRows: groupRects,
     drop: (t) => dropOn(t, ids),
   });
 }

@@ -47,6 +47,19 @@ export function build(ids: string[]): Layout {
   return { type: "split", dir: "col", ratio: 0.5, a: build(ids.slice(0, half)), b: build(ids.slice(half)) };
 }
 
+/** The template a layout's shape matches, by the names the + menu uses; null for any other shape. */
+export function shapeName(l: Layout): string | null {
+  if (l.type === "pane") return null;
+  const n = sessionsOf(l).length;
+  if (n === 2) return l.dir === "row" ? "2 side by side" : "2 stacked";
+  if (n === 3 && l.a.type === "pane" && l.b.type === "split") {
+    if (l.dir === "row") return l.b.dir === "col" ? "1 left, 2 right" : "3 side by side";
+    if (l.b.dir === "row") return "1 over 2";
+  }
+  if (n === 4 && l.dir === "col" && l.a.type === "split" && l.b.type === "split" && l.a.dir === "row" && l.b.dir === "row") return "2 by 2";
+  return null;
+}
+
 export interface Rect { session: string; x: number; y: number; w: number; h: number }
 
 export function rects(l: Layout, x: number, y: number, w: number, h: number, out: Rect[] = []): Rect[] {

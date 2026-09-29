@@ -15,7 +15,7 @@ import { focusPane, showSingle, unfocus } from "./view";
 
 export const isSlot = (id: string) => id.startsWith("slot:");
 
-const slot = () => leaf(`slot:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`);
+export const slot = () => leaf(`slot:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`);
 const sp = (dir: SplitDir, a: Layout, b: Layout, ratio = 0.5): Layout => ({ type: "split", dir, ratio, a, b });
 
 /** The layouts the + menu offers. Four panes at most, as any split. */
