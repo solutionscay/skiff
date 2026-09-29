@@ -13,6 +13,7 @@ import { Terminal } from "@xterm/xterm";
 import { button, h, host, icon, park, showError, toBytes } from "./dom";
 import { saveGroup } from "./groups";
 import { appKey } from "./keyboard";
+import { traceKey, traceOutput, traceRender, traceSend } from "./latency";
 import { ctxMenu, paneMenu } from "./menus";
 import { accent, activeGroupObj, FONT_DEFAULT, currentLayout, opening, type Pane, panes, place, S, sessions, shownIds } from "./state";
 import { closePane, dragSessions, focusPane } from "./view";
@@ -93,6 +94,7 @@ async function createPane(id: string): Promise<Pane> {
 
   // Returning false keeps the key out of the PTY. The window listener acts on it.
   term.attachCustomKeyEventHandler((e) => {
+    traceKey(id, e);
     // Ctrl+Backspace deletes a word, as in VS Code: ^W works in bash, zsh,
     // fish, vim and the agents. xterm.js would send ^H, one character.
     if (e.key === "Backspace" && e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
@@ -104,8 +106,10 @@ async function createPane(id: string): Promise<Pane> {
   });
 
   term.onData((data) => {
-    invoke("pty_write", { session: id, data }).catch(console.error);
+    const sent = traceSend(id);
+    invoke("pty_write", { session: id, data }).then(sent, console.error);
   });
+  term.onRender(() => traceRender(id));
 
   const pane: Pane = { el, term, fit, search, parked: false, stream: 0, sub: Promise.resolve() };
   const drop = () => {
@@ -137,7 +141,8 @@ function streamOutput(id: string, pane: Pane): Promise<void> {
     // disposed the terminal.
     const s = sessions.get(id);
     if (!s || pane.stream !== n) return;
-    pane.term.write(toBytes(m));
+    const bytes = toBytes(m);
+    pane.term.write(bytes, traceOutput(id, bytes.length));
     s.last_output_at = Date.now();
   };
   return invoke("subscribe_output", { session: id, onOutput: channel });

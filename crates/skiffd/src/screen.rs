@@ -93,6 +93,25 @@ impl Screen {
         changed
     }
 
+    /// Whether the visible terminal contains Codex's local-command approval
+    /// dialog. It does not emit BEL, so the daemon needs a small, specific
+    /// fallback to surface it as needing attention.
+    pub fn has_codex_approval_prompt(&self) -> bool {
+        let grid = self.term.grid();
+        let mut text = String::new();
+        for line in 0..grid.screen_lines() as i32 {
+            let row = &grid[Line(line)];
+            for column in 0..grid.columns() {
+                text.push(row[Column(column)].c);
+            }
+        }
+        // Terminal width can wrap either sentence. Ignore whitespace and blank
+        // cell sentinels while retaining enough wording to be specific.
+        let text: String = text.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+        text.contains("Wouldyouliketorunthefollowingcommand")
+            && text.contains("Pressentertoconfirmoresctocancel")
+    }
+
     pub fn resize(&mut self, cols: u16, rows: u16) {
         self.term.resize(size(cols, rows));
     }
@@ -291,6 +310,17 @@ mod tests {
         assert!(!sig.bell);
         assert_eq!(sig.title, Some(Some("fix worktrees".into())));
         assert!(s.feed(b"\x07").bell);
+    }
+
+    #[test]
+    fn recognizes_wrapped_codex_approval_prompt() {
+        let mut s = Screen::new(24, 8);
+        s.feed(b"Would you like to run the following command?\r\n\r\nPress enter to confirm or esc to cancel");
+        assert!(s.has_codex_approval_prompt());
+
+        let mut s = Screen::new(80, 24);
+        s.feed(b"Would you like to run this command?\r\nPress enter to continue");
+        assert!(!s.has_codex_approval_prompt());
     }
 
     #[test]

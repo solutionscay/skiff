@@ -10,7 +10,7 @@ pub type SessionId = String;
 pub enum SessionState {
     /// Output arrived recently.
     Working,
-    /// The process rang the bell and has had no input since.
+    /// The process asked for attention and has had no input since.
     Waiting,
     /// No output for a while.
     Idle,

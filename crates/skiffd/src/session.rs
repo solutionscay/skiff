@@ -56,6 +56,10 @@ pub struct Session {
 
 struct ScreenState {
     screen: Screen,
+    /// Whether the current screen has the approval prompt. Keeping the edge
+    /// prevents ordinary output after a confirmation from re-alerting on the
+    /// prompt still visible in the terminal.
+    codex_approval_visible: bool,
     pending: Vec<u8>,
     last_flush: Instant,
 }
@@ -88,19 +92,23 @@ impl Session {
         now_ms().saturating_sub(self.last_input.load(Ordering::Relaxed)) < ECHO_MS
     }
 
-    /// Feeds the emulator and queues the bytes. The flag is true when the
-    /// chunk changed the text on screen.
-    fn push_output(&self, chunk: &[u8]) -> (Signals, bool) {
+    /// Feeds the emulator and queues the bytes. The second flag is true when
+    /// the chunk changed the text on screen; the third is a newly shown Codex
+    /// approval prompt.
+    fn push_output(&self, chunk: &[u8]) -> (Signals, bool, bool) {
         let mut st = self.screen.lock().unwrap();
         let signals = st.screen.feed(chunk);
         let changed = prints(chunk) && st.screen.text_changed();
+        let approval_visible = st.screen.has_codex_approval_prompt();
+        let approval_prompted = approval_visible && !st.codex_approval_visible;
+        st.codex_approval_visible = approval_visible;
         st.pending.extend_from_slice(chunk);
         // A chunk after a quiet frame goes out now, and so does the answer
         // to a keystroke, even while the program streams output.
         if self.echoing() || st.last_flush.elapsed() >= FRAME {
             st.flush(&self.output);
         }
-        (signals, changed)
+        (signals, changed, approval_prompted)
     }
 
     fn flush_output(&self) {
@@ -276,6 +284,7 @@ impl SessionPool {
             last_work: AtomicU64::new(info.last_output_at),
             screen: Mutex::new(ScreenState {
                 screen: Screen::new(spec.cols, spec.rows),
+                codex_approval_visible: false,
                 pending: Vec::new(),
                 last_flush: Instant::now() - FRAME,
             }),
@@ -302,7 +311,7 @@ impl SessionPool {
                     };
                     let chunk = &buf[..n];
                     session.last_output.store(now_ms(), Ordering::Relaxed);
-                    let (signals, changed) = session.push_output(chunk);
+                    let (signals, changed, approval_prompted) = session.push_output(chunk);
                     // A bell means "the process wants you". It stays until the user
                     // types. The BEL that ends a title sequence is not a bell.
                     // Work is new text on screen. An echo of typing, a redraw
@@ -312,7 +321,7 @@ impl SessionPool {
                     if work {
                         session.last_work.store(now_ms(), Ordering::Relaxed);
                     }
-                    if signals.bell {
+                    if signals.bell || approval_prompted {
                         pool.set_state(&session, SessionState::Waiting);
                     } else if work && session.info.lock().unwrap().state != SessionState::Waiting {
                         pool.set_state(&session, SessionState::Working);

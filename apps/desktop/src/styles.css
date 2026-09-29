@@ -189,7 +189,7 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 .session-row .time { font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); flex-shrink: 0; }
 .session-row.st-waiting .title, .session-row.st-waiting .time { color: var(--state-waiting-text); }
 .session-row.st-done .title, .session-row.st-done .agent-icon { opacity: 0.5; }
-.session-row .busy {
+.session-row .busy, .cell-head .busy {
   position: relative; color: var(--state-working); width: calc(18 * var(--u)); height: calc(12 * var(--u)); overflow: hidden; flex-shrink: 0;
   /* The water: short dashes that run backward, so the boat looks under way. */
   /* Every icon animation steps a few times a second: a smooth one makes the
@@ -197,7 +197,7 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
   background: linear-gradient(90deg, var(--state-working) 50%, transparent 0) left bottom / calc(6 * var(--u)) 1px repeat-x;
   animation: water 0.6s steps(3) infinite;
 }
-.session-row .busy svg { position: absolute; left: calc(4 * var(--u)); bottom: 1px; width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: rock 1.2s steps(2) infinite; transform-origin: 50% 90%; }
+.session-row .busy svg, .cell-head .busy svg { position: absolute; left: calc(4 * var(--u)); bottom: 1px; width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: rock 1.2s steps(2) infinite; transform-origin: 50% 90%; }
 @keyframes water { to { background-position: calc(-6 * var(--u)) bottom; } }
 @keyframes rock { 0%, 100% { transform: rotate(-6deg) translateY(0); } 50% { transform: rotate(6deg) translateY(-1px); } }
 .session-row .anchored { display: flex; align-items: center; justify-content: center; color: var(--state-idle); width: calc(18 * var(--u)); height: calc(12 * var(--u)); opacity: 0.8; }
@@ -208,7 +208,7 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 @keyframes ring { 0%, 50%, 100% { transform: rotate(0); } 10% { transform: rotate(16deg); } 20% { transform: rotate(-14deg); } 30% { transform: rotate(10deg); } 40% { transform: rotate(-6deg); } }
 .session-row .finished, .cell-head .finished { display: flex; align-items: center; justify-content: center; color: var(--state-done); width: calc(18 * var(--u)); height: calc(12 * var(--u)); }
 .finished.failed { color: var(--state-waiting-text); }
-@media (prefers-reduced-motion: reduce) { .session-row .busy, .session-row .busy svg, .belled svg, .rail-waiting svg { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .session-row .busy, .cell-head .busy, .session-row .busy svg, .cell-head .busy svg, .belled svg, .rail-waiting svg { animation: none; } }
 .session-row { position: relative; user-select: none; }
 .session-row.selected { background: color-mix(in srgb, var(--state-working) 16%, transparent); box-shadow: inset 2px 0 0 var(--state-working); }
 
@@ -308,6 +308,7 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .cell-head .ctx .branch { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cell-head .ctx .agent { flex-shrink: 0; }
 .cell-head .ctx .sep { color: var(--rule-strong); flex-shrink: 0; }
+.cell-head .copy-notice { margin-left: auto; color: var(--state-done); font-size: calc(11 * var(--zoom, 1)); font-weight: 600; }
 .head-btn { width: var(--row); height: var(--row); flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-left: 1px solid var(--rule); background: transparent; color: var(--text-3); }
 .head-btn:hover { background: color-mix(in srgb, var(--text) 14%, transparent); color: var(--text); }
 .cell-body { flex-grow: 1; min-height: 0; position: relative; z-index: 0; }
@@ -472,7 +473,6 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 /* Settings covers the sidebar and the terminal, not the rail. */
 #settings { position: absolute; top: 0; bottom: 0; left: calc(72 * var(--u)); right: 0; z-index: 12; display: flex; background: var(--bg); }
 #settings[hidden] { display: none; }
-#settings.has-bg { background-color: var(--bg); background-size: cover; background-position: center; background-repeat: no-repeat; }
 .set-nav { width: calc(284 * var(--u)); flex-shrink: 0; display: flex; flex-direction: column; background: var(--bg-panel); border-right: 1px solid var(--rule); }
 .set-nav-head { height: calc(80 * var(--u)); display: flex; flex-direction: column; justify-content: center; gap: calc(4 * var(--u)); padding: 0 calc(16 * var(--u)); border-bottom: 1px solid var(--rule); }
 .set-title { font-size: calc(22px * var(--zoom, 1)); font-weight: 700; }
@@ -502,6 +502,12 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .set-agent.missing .c-name, .set-agent.missing .c-status { color: #6b7480; }
 .set-agent.missing .c-status .sq { background: #4a525c; }
 .set-agent.missing button.c-on { cursor: not-allowed; }
+.set-opacity { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) calc(120 * var(--u)); }
+.set-opacity .c-name { font-size: calc(13px * var(--zoom, 1)); color: var(--text-2); }
+.set-opacity .c-cmd { width: 100%; min-width: 0; box-sizing: border-box; border: 0; border-left: 1px solid var(--rule); border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font: calc(13px * var(--zoom, 1)) var(--font); text-align: left; }
+.set-opacity input[type="range"].c-cmd { appearance: none; -webkit-appearance: none; padding: 0 calc(12 * var(--u)); cursor: pointer; }
+.set-opacity input[type="range"].c-cmd::-webkit-slider-runnable-track { height: calc(3 * var(--u)); background: var(--rule-strong); }
+.set-opacity input[type="range"].c-cmd::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: calc(14 * var(--u)); height: calc(14 * var(--u)); margin-top: calc(-5.5 * var(--u)); border: 2px solid var(--bg-deep); border-radius: 50%; background: var(--state-working); }
 .switch { width: calc(28 * var(--u)); height: calc(14 * var(--u)); position: relative; border: 1px solid var(--rule-strong); background: var(--bg-deep); }
 .switch::after { content: ""; position: absolute; top: calc(2 * var(--u)); left: calc(2 * var(--u)); width: calc(8 * var(--u)); height: calc(8 * var(--u)); background: var(--text-dim); }
 .set-agent.on .switch { border-color: var(--state-working); background: color-mix(in srgb, var(--state-working) 25%, transparent); }

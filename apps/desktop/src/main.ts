@@ -12,6 +12,7 @@ import { switcher } from "./commands";
 import { loadProjects, onEvent, refreshSessions, setDaemon } from "./daemon";
 import { $, showError } from "./dom";
 import { loadGroups } from "./groups";
+import { initTrace } from "./latency";
 import { settings } from "./panels";
 import { render, scheduleRender } from "./render";
 import { FONT_DEFAULT, groupOf, S, sessions } from "./state";
@@ -33,6 +34,7 @@ async function boot() {
   $("open-settings").addEventListener("click", () => (settings.isOpen ? settings.close() : void settings.open()));
   render();
 
+  void initTrace();
   const status = await invoke<DaemonStatus>("daemon_status");
   setDaemon(status);
   if (!status.connected) return;

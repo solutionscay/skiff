@@ -313,6 +313,26 @@ async fn add_project(
         .map_err(err)
 }
 
+/// Where keystroke latency traces go: `SKIFF_TRACE=<file>`. Unset: no tracing.
+#[tauri::command]
+fn trace_enabled() -> bool {
+    std::env::var_os("SKIFF_TRACE").is_some()
+}
+
+/// Appends JSON lines from the page's latency trace.
+#[tauri::command]
+fn trace_write(lines: Vec<String>) -> Result<(), String> {
+    use std::io::Write;
+    let Some(path) = std::env::var_os("SKIFF_TRACE") else {
+        return Ok(());
+    };
+    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).map_err(|e| e.to_string())?;
+    for line in lines {
+        writeln!(f, "{line}").map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn config_path() -> String {
     skiff_core::config::config_path().display().to_string()
@@ -637,6 +657,8 @@ pub fn run() {
             get_appearance,
             get_keys,
             config_path,
+            trace_enabled,
+            trace_write,
             open_config,
             set_appearance,
             set_font_size,
