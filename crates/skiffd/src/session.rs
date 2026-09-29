@@ -185,8 +185,29 @@ impl SessionPool {
             Some(w) => (w[0].clone(), [&w[1..], &spec.args[..]].concat()),
             None => (command.clone(), spec.args.clone()),
         };
+        // A program that is not the shell hands the terminal to a shell when it
+        // exits, so Ctrl+C in an agent leaves a prompt instead of a dead pane.
+        // Ctrl+C signals the whole foreground group, the wrapper included; the
+        // `trap :` keeps the wrapper alive, and unlike `trap ''` the child does
+        // not inherit it, so the agent still gets SIGINT as normal.
+        let shell = default_shell();
+        let is_shell = program == shell
+            || std::path::Path::new(&program).file_name() == std::path::Path::new(&shell).file_name();
+        let (program, args) = if is_shell {
+            (program, args)
+        } else {
+            let mut wrapped = vec![
+                "-c".to_string(),
+                "trap : INT; \"$@\"; exec \"$SKIFF_SHELL\" -l".to_string(),
+                "skiff".to_string(),
+                program,
+            ];
+            wrapped.extend(args);
+            ("/bin/sh".to_string(), wrapped)
+        };
         let mut cmd = CommandBuilder::new(&program);
         cmd.args(&args);
+        cmd.env("SKIFF_SHELL", &shell);
         cmd.cwd(&cwd);
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
@@ -396,7 +417,7 @@ impl SessionPool {
     }
 
     /// Terminates the process and forgets the session. Drops it from every
-    /// group; a group with no pane left goes too.
+    /// group; a group left with no session keeps an empty slot.
     pub fn kill(&self, id: &str) -> Result<()> {
         let mut groups = self.groups.lock().unwrap();
         let session = self
