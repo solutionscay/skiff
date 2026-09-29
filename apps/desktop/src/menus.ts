@@ -197,7 +197,7 @@ function newSessionEntry(s: SessionInfo, x: number, y: number): MenuEntry[] {
 
 function themeEntry(s: SessionInfo): MenuEntry {
   const name = S.themes.find((t) => t.id === themeIdFor(s))?.name ?? "";
-  return { icon: "code-terminal", label: "Terminal theme…", hint: name, run: () => void sessionThemeMenu(s) };
+  return { icon: "tools-sparkles", label: "Terminal theme…", hint: name, run: () => void sessionThemeMenu(s) };
 }
 
 /** Right-click, End session: stops the process and drops it from the list. */
@@ -315,7 +315,7 @@ export function groupMenu(g: Group, x: number, y: number) {
     ...groupStartEntries(g),
     { head: "GROUP" },
     { icon: "tools-pencil", label: "Rename", hint: "double-click", run: () => startRename(g) },
-    { icon: "code-terminal", label: "Terminal theme…", hint: "every pane", run: () => void groupThemeMenu(g) },
+    { icon: "tools-sparkles", label: "Terminal theme…", hint: "every pane", run: () => void groupThemeMenu(g) },
     ...groupCloseEntries(g),
   ]);
 }
