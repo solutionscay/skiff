@@ -147,7 +147,7 @@ interface ViewOpts {
 }
 
 /** Structure without ratios, so a drag or a daemon round trip does not rebuild the DOM. */
-function shape(l: Layout | null): string {
+export function shape(l: Layout | null): string {
   if (!l) return "";
   return l.type === "pane" ? l.session : `${l.dir}(${shape(l.a)},${shape(l.b)})`;
 }

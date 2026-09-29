@@ -1,6 +1,6 @@
 /** What the terminal area shows and which pane has the keys. */
 import { beginDrag, type DropTarget } from "./drag";
-import { build, type Direction, leaf, neighbor, removePane, replacePane, sessionsOf, splitPane } from "./layout";
+import { build, type Direction, leaf, neighbor, removePane, replacePane, sessionsOf, shape, splitPane } from "./layout";
 import { bySessionPriority, taskTitle } from "./model";
 import type { Group, Layout, Project, SplitDir, Worktree } from "./types";
 import { filledOf, focusFirstSlot, isSlot, slot, slotsOf } from "./canvas";
@@ -205,39 +205,52 @@ export function moveFocus(dir: Direction) {
 }
 
 /**
- * Drop dragged sessions on a pane. An edge splits that pane there; the
+ * The layout a drop on a pane makes. An edge splits that pane there; the
  * center replaces it (its session keeps running). Several sessions land
- * as one block, tiled like Open in split.
+ * as one block, tiled like Open in split. Null: the drop changes nothing.
  */
-function dropOn(t: DropTarget, dragged: string[]) {
-  const ids = dragged.filter((id) => sessions.has(id));
-  if (!ids.length) return;
-  if (t.group) return addToGroup(t.group, ids);
-  if (ids.length === 1 && t.session === ids[0]) return;
-  let base = currentLayout();
+function dropLayout(t: DropTarget, ids: string[]): Layout | null {
+  if (ids.length === 1 && t.session === ids[0]) return null;
+  const now = currentLayout();
+  let base = now;
   for (const id of ids) base = removePane(base, id);
+  if (sessionsOf(base).length + ids.length > MAX_PANES) return null;
   const block = build(ids);
   const target = t.session && sessionsOf(base).includes(t.session) ? t.session : null;
-  if (sessionsOf(base).length + ids.length > MAX_PANES) return;
-  clearSelection();
+  let next: Layout;
   // The rim of the area: wrap every pane, so one pane spans the full width or height (a T shape).
   if (t.outer && base) {
     const dir: SplitDir = t.zone === "left" || t.zone === "right" ? "row" : "col";
     const before = t.zone === "left" || t.zone === "top";
-    return applyLayout({ type: "split", dir, ratio: 0.5, a: before ? block : base, b: before ? base : block }, ids[0]);
+    next = { type: "split", dir, ratio: 0.5, a: before ? block : base, b: before ? base : block };
   }
   // Every shown pane was dragged, or nothing was shown: the block is the view.
-  if (!base) return applyLayout(block, ids[0]);
+  else if (!base) next = block;
   // The target pane was itself dragged away: put the block beside the rest.
-  if (!target) return applyLayout({ type: "split", dir: "row", ratio: 0.5, a: base, b: block }, ids[0]);
-  let next: Layout;
-  if (t.zone === "center") {
-    next = replacePane(base, target, () => block);
-  } else {
+  else if (!target) next = { type: "split", dir: "row", ratio: 0.5, a: base, b: block };
+  else if (t.zone === "center") next = replacePane(base, target, () => block);
+  else {
     const dir: SplitDir = t.zone === "left" || t.zone === "right" ? "row" : "col";
     const before = t.zone === "left" || t.zone === "top";
     next = replacePane(base, target, (p) => ({ type: "split", dir, ratio: 0.5, a: before ? block : p, b: before ? p : block }));
   }
+  // A drop that puts the panes back where they are is no drop.
+  return shape(next) === shape(now) ? null : next;
+}
+
+/** A group row takes a drop only when it gains a session. */
+function groupGains(groupId: string, ids: string[]) {
+  const g = S.groups.find((x) => x.id === groupId);
+  return !!g && ids.some((id) => !sessionsOf(g.layout).includes(id));
+}
+
+function dropOn(t: DropTarget, dragged: string[]) {
+  const ids = dragged.filter((id) => sessions.has(id));
+  if (!ids.length) return;
+  if (t.group) return addToGroup(t.group, ids);
+  const next = dropLayout(t, ids);
+  if (!next) return;
+  clearSelection();
   applyLayout(next, ids[0]);
 }
 
@@ -283,11 +296,21 @@ export function dragSessions(e: MouseEvent, ids: string[]) {
   const label = ids.length > 1 ? `${ids.length} sessions` : first ? taskTitle(first) : "session";
   // A full split takes no more panes; moving a pane inside it still works.
   const blocked = splitFull() && ids.some((id) => !shownIds().includes(id));
+  // A dragged pane is no target for itself. When it is the whole view, the rim
+  // and the empty area would put it back where it is, so they are off too.
+  const alone = shownIds().length > 0 && shownIds().every((id) => ids.includes(id));
+  const cells = () => {
+    if (blocked) return new Map<string, DOMRect>();
+    const m = view.cellRects();
+    for (const id of ids) m.delete(id);
+    return m;
+  };
   beginDrag(e, {
     label: blocked ? `${label}: ${FULL_HINT}` : label,
-    cells: () => (blocked ? new Map() : view.cellRects()),
-    area: blocked ? null : host,
+    cells,
+    area: blocked || alone ? null : host,
     groupRows: groupRects,
+    accepts: (t) => (t.group ? groupGains(t.group, ids) : !!dropLayout(t, ids)),
     drop: (t) => dropOn(t, ids),
   });
 }
