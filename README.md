@@ -70,10 +70,13 @@ cd apps/desktop && pnpm bundle   # packages for the host OS, with skiffd inside
 On Linux this makes `.deb`, `.rpm` and AppImage. On macOS it makes `Skiff.app` and a `.dmg`.
 Packages land in `target/release/bundle/`.
 
-The macOS build is not signed. Another Mac blocks it at first open: right-click the app
+A local macOS build is not signed. Another Mac blocks it at first open: right-click the app
 and choose Open, or run `xattr -dr com.apple.quarantine /Applications/Skiff.app`.
 
-A `v*` tag builds the Linux packages in CI and attaches them to a draft release.
+A `v*` tag builds the Linux packages and the macOS `.dmg` (Apple Silicon) in CI and attaches
+them to a draft release. The `.dmg` is signed and notarized when these repository secrets
+are set: `APPLE_CERTIFICATE` (base64 `.p12`), `APPLE_CERTIFICATE_PASSWORD`,
+`APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific) and `APPLE_TEAM_ID`.
 
 ## License
 
