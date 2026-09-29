@@ -156,13 +156,12 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 /* Keep horizontal rules clear of the worktree theme strip. */
 .wt { position: relative; flex-shrink: 0; display: flex; flex-direction: column; box-shadow: inset 3px 0 0 color-mix(in srgb, var(--pc) 45%, transparent); }
 .wt.selected { box-shadow: inset 3px 0 0 var(--pc); }
-.wt::after, .wt-row::after, .files-head::before {
+.wt::after {
   content: ""; position: absolute; left: 3px; right: 0; height: 1px;
   background: var(--rule); pointer-events: none;
 }
 .wt::after { bottom: 0; }
 .wt-row { position: relative; height: var(--row); display: flex; background: linear-gradient(to right, transparent 0 3px, color-mix(in srgb, var(--bg-panel) 72%, var(--bg)) 3px); }
-.wt-row::after { bottom: 0; }
 .wt-pick {
   flex-grow: 1; min-width: 0;
   display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(12 * var(--u)) 0 calc(10 * var(--u));
@@ -184,7 +183,6 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 /* Files: a launch-only tree under the sessions. Rows keep the 20px grid. */
 .files-block { display: flex; flex-direction: column; flex-shrink: 0; }
 .files-head { position: relative; padding-left: calc(8 * var(--u)); background: linear-gradient(to right, transparent 0 3px, color-mix(in srgb, var(--bg-raised) 20%, var(--bg)) 3px); }
-.files-head::before { top: 0; }
 .files-toggle { width: calc(24 * var(--u)); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .files-rows { display: flex; flex-direction: column; }
 .file-row, .file-note {
@@ -474,7 +472,7 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 /* Settings button, the + on a worktree, and its menu. */
 #topbar .gear { width: calc(48 * var(--u)); justify-content: center; padding: 0; border: 0; background: transparent; color: var(--text-2); }
 #topbar .gear:hover { background: var(--bg-raised); color: var(--text); }
-.wt-plus { width: var(--row); height: var(--row); flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; border-left: 1px solid var(--rule); background: transparent; color: var(--text-2); }
+.wt-plus { width: var(--row); height: var(--row); flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--text-2); }
 .wt-plus:hover, .wt-plus[aria-expanded="true"] { background: var(--bg-raised); color: var(--text); }
 
 #launch-menu, #ctx-menu { position: fixed; z-index: 15; width: calc(280 * var(--u)); background: var(--bg-panel); border: 1px solid var(--rule-strong); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); }
