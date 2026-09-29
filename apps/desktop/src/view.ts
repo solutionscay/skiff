@@ -60,10 +60,14 @@ export function showGroup(id: string, pick = false, focus?: string) {
   const f = focus && ids.includes(focus) ? focus : g.focus && ids.includes(g.focus) ? g.focus : ids[0];
   if (f) focusPane(f, !pick);
   else {
-    // A canvas with every pane empty: the keys go to its first pane's list.
+    // A canvas with every pane empty: the keys go to its first pane's list,
+    // even when `pick` asked to keep them on the group row. There is no
+    // session yet for the row-keeps-the-keys trick (passToTerminal) to
+    // forward typing into, so the picker is the only way in.
     S.focused = null;
     render();
-    if (!pick) focusFirstSlot();
+    focusFirstSlot();
+    return;
   }
   if (pick) {
     S.roveKey = id;
