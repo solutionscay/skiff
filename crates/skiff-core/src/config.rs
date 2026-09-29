@@ -24,6 +24,8 @@ pub struct Appearance {
     /// The theme id the app and every terminal without its own theme use.
     /// Absent: Harbor.
     pub theme: Option<String>,
+    /// Terminal text size in points; the app text scales with it. Absent: 13.
+    pub font_size: Option<u8>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
@@ -427,6 +429,19 @@ pub fn set_app_theme(theme: Option<&str>) -> Result<()> {
             Some(v) => t["theme"] = toml_edit::value(v),
             None => {
                 t.remove("theme");
+            }
+        }
+        Ok(())
+    })
+}
+
+/// Sets `[appearance] font_size`, or removes it for the default.
+pub fn set_font_size(size: Option<u8>) -> Result<()> {
+    edit_table("appearance", |t| {
+        match size {
+            Some(v) => t["font_size"] = toml_edit::value(i64::from(v)),
+            None => {
+                t.remove("font_size");
             }
         }
         Ok(())

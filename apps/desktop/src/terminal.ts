@@ -340,7 +340,14 @@ host.addEventListener("contextmenu", (e) => {
   if (id) paneMenu(id, e.clientX, e.clientY);
 }, true);
 
-export function setFontSize(n: number) {
+let saveFontSize: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * The daemon's `[appearance]` keeps the size across machines and cleared
+ * caches. localStorage is the fallback for a daemon older than the setting.
+ * `save: false` applies a size the daemon already has.
+ */
+export function setFontSize(n: number, save = true) {
   S.fontSize = Math.min(28, Math.max(8, n));
   try {
     localStorage.setItem("skiff.fontSize", String(S.fontSize));
@@ -350,6 +357,10 @@ export function setFontSize(n: number) {
   for (const p of panes.values()) p.term.options.fontSize = S.fontSize;
   applyZoom();
   fitShown();
+  if (!save) return;
+  // A held key steps the size many times; the config file gets the last one.
+  clearTimeout(saveFontSize);
+  saveFontSize = setTimeout(() => invoke("set_font_size", { size: S.fontSize }).catch(console.error), 300);
 }
 
 /** The app text follows the terminal size: 13 is 1x. */

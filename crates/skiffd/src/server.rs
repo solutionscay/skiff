@@ -107,6 +107,7 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
             | Request::GetKeys
             | Request::GetAppearance
             | Request::SetAppearance { .. }
+            | Request::SetFontSize { .. }
             | Request::ListThemes
             | Request::ReadIcon { .. }
             | Request::SetProjectBackground { .. }
@@ -268,17 +269,21 @@ async fn answer_slow(pool: Arc<SessionPool>, request: Request) -> Response {
             Ok(keys) => Response::Keys { keys },
             Err(e) => error(e),
         },
-        Request::GetAppearance => match blocking(|| Ok(skiff_core::config::load()?.appearance.theme)).await {
-            Ok(theme) => Response::Appearance { theme },
-            Err(e) => error(e),
-        },
-        Request::SetAppearance { theme } => {
-            let t = theme.clone();
-            match blocking(move || skiff_core::config::set_app_theme(t.as_deref())).await {
-                Ok(()) => Response::Appearance { theme },
-                Err(e) => error(e),
-            }
-        }
+        Request::GetAppearance => appearance(blocking(|| Ok(skiff_core::config::load()?.appearance)).await),
+        Request::SetAppearance { theme } => appearance(
+            blocking(move || {
+                skiff_core::config::set_app_theme(theme.as_deref())?;
+                Ok(skiff_core::config::load()?.appearance)
+            })
+            .await,
+        ),
+        Request::SetFontSize { size } => appearance(
+            blocking(move || {
+                skiff_core::config::set_font_size(size)?;
+                Ok(skiff_core::config::load()?.appearance)
+            })
+            .await,
+        ),
         Request::ListThemes => match blocking(|| Ok(skiff_core::theme::list())).await {
             Ok(themes) => Response::Themes { themes },
             Err(e) => error(e),
@@ -434,6 +439,16 @@ fn remove_worktree(pool: &SessionPool, name: &str, path: &Path) -> Result<()> {
         bail!("worktree has uncommitted changes");
     }
     git::remove_worktree(&p.path, &wt.path)
+}
+
+fn appearance(a: Result<skiff_core::config::Appearance>) -> Response {
+    match a {
+        Ok(a) => Response::Appearance {
+            theme: a.theme,
+            font_size: a.font_size,
+        },
+        Err(e) => error(e),
+    }
 }
 
 fn error(e: anyhow::Error) -> Response {

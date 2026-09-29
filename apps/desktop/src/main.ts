@@ -6,7 +6,7 @@ import "./styles.css";
 
 import { keyLabel, setKeymap } from "./keys";
 import { bySessionPriority } from "./model";
-import type { DaemonEvent, DaemonStatus } from "./types";
+import type { Appearance, DaemonEvent, DaemonStatus } from "./types";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { switcher } from "./commands";
 import { loadProjects, onEvent, refreshSessions, setDaemon } from "./daemon";
@@ -14,7 +14,8 @@ import { $, showError } from "./dom";
 import { loadGroups } from "./groups";
 import { settings } from "./panels";
 import { render, scheduleRender } from "./render";
-import { groupOf, S, sessions } from "./state";
+import { FONT_DEFAULT, groupOf, S, sessions } from "./state";
+import { setFontSize } from "./terminal";
 import { loadThemes } from "./themes";
 import { focusNextWaiting, showGroup, showSingle } from "./view";
 
@@ -44,7 +45,14 @@ async function boot() {
   await Promise.all([
     loadProjects(),
     loadThemes(),
-    invoke<string | null>("get_appearance").then((t) => (S.appTheme = t)).catch(() => null),
+    invoke<Appearance>("get_appearance")
+      .then((a) => {
+        S.appTheme = a.theme;
+        // No size in the daemon yet: keep this machine's and hand it over.
+        if (a.font_size) setFontSize(a.font_size, false);
+        else if (S.fontSize !== FONT_DEFAULT) setFontSize(S.fontSize);
+      })
+      .catch(() => null),
     invoke<Record<string, string>>("get_keys").then(setKeymap).catch(() => null),
   ]);
   // The top bar's search button is the palette; show its real key.

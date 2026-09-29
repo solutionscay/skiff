@@ -71,6 +71,12 @@ export interface AgentInfo {
   enabled: boolean;
 }
 
+/** `[appearance]` in the daemon config. `font_size` is absent from an older daemon. */
+export interface Appearance {
+  theme: string | null;
+  font_size?: number | null;
+}
+
 export interface DaemonStatus {
   connected: boolean;
   version: string | null;

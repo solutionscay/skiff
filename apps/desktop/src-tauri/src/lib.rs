@@ -5,7 +5,7 @@ use std::{collections::HashMap, path::PathBuf, process::Stdio, sync::Arc, time::
 use serde::{Deserialize, Serialize};
 use skiff_client::Client;
 use skiff_core::{
-    config::FolderInfo,
+    config::{Appearance, FolderInfo},
     group::Group,
     project::{AgentInfo, Project, Worktree},
     protocol::Event,
@@ -336,15 +336,21 @@ async fn get_keys(app: State<'_, App>) -> Result<std::collections::BTreeMap<Stri
 }
 
 #[tauri::command]
-async fn get_appearance(app: State<'_, App>) -> Result<Option<String>, String> {
+async fn get_appearance(app: State<'_, App>) -> Result<Appearance, String> {
     let (c, _) = ensure_client(&app).await?;
     c.appearance(None).await.map_err(err)
 }
 
 #[tauri::command]
-async fn set_appearance(app: State<'_, App>, theme: Option<String>) -> Result<Option<String>, String> {
+async fn set_appearance(app: State<'_, App>, theme: Option<String>) -> Result<Appearance, String> {
     let (c, _) = ensure_client(&app).await?;
     c.appearance(Some(theme)).await.map_err(err)
+}
+
+#[tauri::command]
+async fn set_font_size(app: State<'_, App>, size: Option<u8>) -> Result<Appearance, String> {
+    let (c, _) = ensure_client(&app).await?;
+    c.set_font_size(size).await.map_err(err)
 }
 
 #[tauri::command]
@@ -633,6 +639,7 @@ pub fn run() {
             config_path,
             open_config,
             set_appearance,
+            set_font_size,
             list_agents,
             set_agents,
             set_agent_command,

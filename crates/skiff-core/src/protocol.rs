@@ -98,12 +98,17 @@ pub enum Request {
     },
     /// Key overrides from `[keys]`.
     GetKeys,
-    /// The app theme from `[appearance]`.
+    /// The app theme and text size from `[appearance]`.
     GetAppearance,
     /// Sets the app theme: a theme id, or `null` for Harbor.
     SetAppearance {
         #[serde(default)]
         theme: Option<String>,
+    },
+    /// Sets the text size: points, or `null` for the default.
+    SetFontSize {
+        #[serde(default)]
+        size: Option<u8>,
     },
     /// Every terminal theme: built in, foot's, and theme files.
     ListThemes,
@@ -184,7 +189,12 @@ pub enum Response {
     Agents { agents: Vec<AgentInfo> },
     Icon { icon: Option<String> },
     Themes { themes: Vec<crate::theme::TerminalTheme> },
-    Appearance { theme: Option<String> },
+    Appearance {
+        theme: Option<String>,
+        /// Absent from a daemon older than the setting.
+        #[serde(default)]
+        font_size: Option<u8>,
+    },
     Keys { keys: std::collections::BTreeMap<String, String> },
     Groups { groups: Vec<Group> },
     Group { group: Group },
