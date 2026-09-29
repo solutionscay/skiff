@@ -255,6 +255,8 @@ impl SessionPool {
         // Ctrl+C signals the whole foreground group, the wrapper included; the
         // `trap :` keeps the wrapper alive, and unlike `trap ''` the child does
         // not inherit it, so the agent still gets SIGINT as normal.
+        // Keep the daemon's prepared environment. A login shell resets PATH;
+        // another Ctrl+C during profile loading can leave agent commands missing.
         let shell = default_shell();
         let is_shell = program == shell
             || std::path::Path::new(&program).file_name() == std::path::Path::new(&shell).file_name();
@@ -264,7 +266,7 @@ impl SessionPool {
             let mut wrapped = vec![
                 "-c".to_string(),
                 format!(
-                    "trap : INT; \"$@\"; printf '\\033]0;{SHELL_HANDOFF_TITLE}\\007'; exec \"$SKIFF_SHELL\" -l"
+                    "trap : INT; \"$@\"; printf '\\033]0;{SHELL_HANDOFF_TITLE}\\007'; exec \"$SKIFF_SHELL\" -i"
                 ),
                 "skiff".to_string(),
                 program,
