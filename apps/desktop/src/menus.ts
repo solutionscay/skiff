@@ -1,6 +1,7 @@
 /** Right-click menus for projects, sessions, panes and groups. */
 import { launchIcon } from "./agentIcon";
 import { confirmAction, promptAction } from "./confirm";
+import { pickColor } from "./colorPicker";
 import { keyLabel } from "./keys";
 import { createMenu, type MenuEntry } from "./menu";
 import { agentName, basename, branchName, byStart, taskTitle } from "./model";
@@ -10,6 +11,7 @@ import { open as openFile } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { loadProjects, newSession } from "./daemon";
 import { showError } from "./dom";
+import { launchMenu } from "./panels";
 import { deleteGroup } from "./groups";
 import { sessionsOf } from "./layout";
 import { startRename, startSessionRename } from "./rename";
@@ -27,44 +29,17 @@ async function setIcon(p: Project, icon: string | null) {
   }
 }
 
-async function setColor(p: Project, color: string) {
-  try {
-    await invoke("set_project_color", { project: p.name, color });
-  } catch (e) {
-    showError(e);
-  }
-}
+const DEFAULT_COLOR = "#b69cff";
 
-/** The same accents new projects get, from skiff-core's PALETTE. */
-const SWATCHES = ["#b69cff", "#f28fd0", "#7ee0cb", "#e0c07e", "#9ec1ff", "#ff9e7a", "#c3e88d", "#d0c2ff"];
-
-function swatch(color: string): HTMLElement {
-  const s = document.createElement("span");
-  s.className = "lm-key";
-  s.style.cssText = `width:12px;height:12px;background:${color};justify-self:center;align-self:center`;
-  return s;
-}
-
-/** A second menu of accent colors, plus a picker for any other. */
-function colorEntries(p: Project): MenuEntry[] {
-  // The webview's own color input does not open on Linux, so ask for a hex code.
-  const custom = () =>
-    promptAction({
-      title: `Color for ${p.name}`,
-      body: "A hex color, for example #ff9e7a.",
-      placeholder: p.color ?? "#rrggbb",
-      action: "Set color",
-      submit: async (v) => {
-        const hex = v.trim().replace(/^#?/, "#").toLowerCase();
-        if (!/^#[0-9a-f]{6}$/.test(hex)) throw new Error("Use six hex digits, like #ff9e7a.");
-        await invoke("set_project_color", { project: p.name, color: hex });
-      },
-      onClose: refocusTerminal,
-    });
-  return [
-    ...SWATCHES.map((c) => ({ glyph: swatch(c), label: c, hint: c === p.color ? "current" : "", run: () => void setColor(p, c) })),
-    { icon: "◐", label: "Custom…", hint: "hex code", run: custom },
-  ];
+/** The color picker for a project's accent. */
+function pickProjectColor(p: Project) {
+  pickColor({
+    title: `Color for ${p.name}`,
+    start: p.color ?? DEFAULT_COLOR,
+    action: "Set color",
+    submit: (hex) => invoke("set_project_color", { project: p.name, color: hex }),
+    onClose: refocusTerminal,
+  });
 }
 
 async function setBackground(p: Project, background: string | null) {
@@ -142,7 +117,7 @@ export function projectMenu(p: Project, x: number, y: number) {
     { icon: "↗", label: "Show in file manager", run: () => void openPath(p.path).catch(showError) },
     { icon: "⧉", label: "Copy path", run: () => void navigator.clipboard.writeText(p.path).catch(showError) },
     { icon: "◧", label: "Icon…", hint: "file, detect, none", sub: iconEntries(p) },
-    { icon: "◐", label: "Color…", hint: "accent", sub: colorEntries(p) },
+    { icon: "◐", label: "Color…", hint: "accent", run: () => pickProjectColor(p) },
     { icon: "▨", label: "Background…", hint: "image behind terminals", sub: backgroundEntries(p) },
   ]);
 }
@@ -182,10 +157,17 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
     ...(groupOf(s.id)
       ? [{ icon: "⊟", label: "Remove from group", hint: "keeps running", run: () => removeFromGroup(s.id) }]
       : []),
+    ...newSessionEntry(s, x, y),
     { icon: "✎", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(s.id) },
     themeEntry(s),
     picked ? endSelectedEntry(S.selection.filter((id) => sessions.has(id))) : endEntry(s),
   ]);
+}
+
+/** Right-click, New session…: the + menu for this session's worktree, at the pointer. */
+function newSessionEntry(s: SessionInfo, x: number, y: number): MenuEntry[] {
+  const at = place(s);
+  return at ? [{ icon: "+", label: "New session…", hint: "agent or split", run: () => launchMenu.open({ x, y }, at.project, at.worktree) }] : [];
 }
 
 function themeEntry(s: SessionInfo): MenuEntry {

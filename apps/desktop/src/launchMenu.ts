@@ -55,17 +55,19 @@ export function createLaunchMenu(o: Opts) {
     return b;
   }
 
-  function open(at: HTMLElement, p: Project, w: Worktree) {
-    if (!menu.hidden && anchor === at) return close();
+  /** `at` is the + button it hangs off, or the point of a right-click. */
+  function open(at: HTMLElement | { x: number; y: number }, p: Project, w: Worktree) {
+    const el = at instanceof HTMLElement ? at : null;
+    if (el && !menu.hidden && anchor === el) return close();
     close(false);
-    anchor = at;
-    at.setAttribute("aria-expanded", "true");
+    anchor = el;
+    el?.setAttribute("aria-expanded", "true");
     const title = document.createElement("div");
     title.className = "lm-title";
     title.textContent = "START IN " + (w.branch ?? "detached").toUpperCase();
     const items: (AgentInfo | null)[] = [...o.agents(), null];
     const rows = items.map((a, i) =>
-      item(String(i + 1), a?.id ?? "Shell", a?.command ?? "$SHELL", () => o.start(p, w, a), "", launchIcon(a)),
+      item(String(i + 1), a?.id ?? "Shell", "", () => o.start(p, w, a), "", launchIcon(a)),
     );
     const head = document.createElement("div");
     head.className = "lm-head";
@@ -79,11 +81,13 @@ export function createLaunchMenu(o: Opts) {
     const settings = item("", "Agent settings…", "", () => o.openSettings(), "lm-settings");
     menu.replaceChildren(title, ...rows, head, ...splits, settings);
 
-    const r = at.getBoundingClientRect();
     menu.hidden = false;
     const h = menu.offsetHeight;
-    menu.style.left = `${r.right}px`;
-    menu.style.top = `${Math.max(0, Math.min(r.top, window.innerHeight - h))}px`;
+    const r = el ? el.getBoundingClientRect() : null;
+    const left = r ? r.right : at instanceof HTMLElement ? 0 : at.x;
+    const top = r ? r.top : at instanceof HTMLElement ? 0 : at.y;
+    menu.style.left = `${Math.max(0, Math.min(left, window.innerWidth - menu.offsetWidth))}px`;
+    menu.style.top = `${Math.max(0, Math.min(top, window.innerHeight - h))}px`;
     rows[0]?.focus();
   }
 
