@@ -90,7 +90,11 @@ export async function loadGroups() {
     const old = S.groups.find((x) => x.id === g.id);
     if (old?.focus && sessionsOf(g.layout).includes(old.focus)) g.focus = old.focus;
   }
-  S.groups = list;
+  // Groups emptied before the daemon kept their folder: no session and no
+  // place, so they piled up under Other. Drop them, unless one is on screen.
+  const stale = list.filter((g) => !g.cwd && g.id !== S.activeGroup && sessionsOf(g.layout).every(isSlot));
+  S.groups = list.filter((g) => !stale.includes(g));
+  for (const g of stale) persist(() => invoke("delete_group", { group: g.id }));
   const was = S.activeGroup;
   if (S.activeGroup && !activeGroupObj()) {
     S.activeGroup = null;

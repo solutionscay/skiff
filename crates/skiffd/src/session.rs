@@ -431,6 +431,7 @@ impl SessionPool {
             .remove(id)
             .ok_or_else(|| anyhow!("no such session: {id}"))?;
         let _ = session.killer.lock().unwrap().kill();
+        let cwd = session.info.lock().unwrap().cwd.clone();
         let mut pruned = false;
         groups.retain_mut(|g| {
             if !g.layout.sessions().iter().any(|s| s == id) {
@@ -446,7 +447,9 @@ impl SessionPool {
                     true
                 }
                 // The last pane: the group stays, with an empty slot in its place.
+                // It keeps the session's folder, so it stays in that worktree.
                 None => {
+                    g.cwd.get_or_insert_with(|| cwd.to_string_lossy().into_owned());
                     g.layout = skiff_core::group::Layout::Pane {
                         session: format!("slot:{}", &uuid::Uuid::new_v4().simple().to_string()[..8]),
                     };

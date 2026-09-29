@@ -4,7 +4,7 @@ import { removePane, replacePane, sessionsOf } from "./layout";
 import type { AgentInfo, DaemonEvent, DaemonStatus, Project, SessionInfo, SplitDir } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { $, button, h } from "./dom";
-import { loadGroups, syncTemplateName } from "./groups";
+import { deleteGroup, loadGroups, syncTemplateName } from "./groups";
 import { render, scheduleRender } from "./render";
 import { activeGroupObj, born, gone, OTHER, panes, place, removeErrors, S, sessions, shownIds, upsert } from "./state";
 import { focusPane, showSingle, splitWith, unfocus } from "./view";
@@ -163,11 +163,18 @@ function dropSession(id: string) {
   panes.delete(id);
   S.selection = S.selection.filter((x) => x !== id);
   if (S.focused === id) S.focused = null;
-  for (const g of S.groups) {
+  for (const g of [...S.groups]) {
     if (!sessionsOf(g.layout).includes(id)) continue;
     let next = removePane(g.layout, id);
-    // The last session ended: the group stays, with an empty pane in its place.
-    if (filledOf(next).length === 0) next = replacePane(g.layout, id, slot);
+    if (filledOf(next).length === 0) {
+      // The last session ended. A group on screen stays, with an empty pane in
+      // its place. One off screen has nothing left to show: it goes.
+      if (g.id !== S.activeGroup) {
+        deleteGroup(g);
+        continue;
+      }
+      next = replacePane(g.layout, id, slot);
+    }
     if (next) {
       g.layout = next;
       syncTemplateName(g);
