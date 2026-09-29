@@ -15,7 +15,12 @@ const SHELLS = new Set(["bash", "zsh", "fish", "sh", "dash", "nu", "elvish", "xo
 
 function knownProgram(value: string | null | undefined): AgentKind | undefined {
   if (!value) return undefined;
-  return BY_PROGRAM[basename(value.trim().split(/\s+/)[0] ?? "").toLowerCase()];
+  // Agent titles can start with a status glyph, for example "✳ Claude Code".
+  // Find a known program word instead of assuming the first title word is it.
+  for (const word of value.toLowerCase().split(/[^a-z0-9]+/)) {
+    const kind = BY_PROGRAM[word];
+    if (kind) return kind;
+  }
 }
 
 /**
