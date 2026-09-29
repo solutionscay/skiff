@@ -25,12 +25,13 @@ use crate::screen::{Screen, Signals};
 pub type Chunk = Arc<Vec<u8>>;
 
 /// No output for this long turns `working` into `idle`.
-pub const IDLE_AFTER: Duration = Duration::from_secs(5);
+pub const IDLE_AFTER: Duration = Duration::from_secs(3);
 
 /// Output is coalesced into at most one chunk per frame.
 pub const FRAME: Duration = Duration::from_millis(16);
 
-/// Output this soon after input is its echo. It skips coalescing.
+/// Output this soon after input or a resize answers it: an echo or a
+/// redraw. It skips coalescing and does not mark the session working.
 const ECHO_MS: u64 = 250;
 
 pub struct Session {
@@ -44,7 +45,9 @@ pub struct Session {
     pub output: broadcast::Sender<Chunk>,
     /// Unix ms of the last PTY read. Atomic so the reader takes no lock for it.
     last_output: AtomicU64,
-    /// Unix ms of the last input from a client.
+    /// Unix ms of the last output that was work: visible text, not an echo.
+    last_work: AtomicU64,
+    /// Unix ms of the last input or resize from a client.
     last_input: AtomicU64,
     /// Emulator plus unsent bytes. One lock, so a snapshot and the live
     /// stream never overlap or leave a gap.
@@ -80,14 +83,18 @@ impl Session {
         (st.screen.snapshot(), self.output.subscribe())
     }
 
+    /// True shortly after input: output now is the program answering a key.
+    fn echoing(&self) -> bool {
+        now_ms().saturating_sub(self.last_input.load(Ordering::Relaxed)) < ECHO_MS
+    }
+
     fn push_output(&self, chunk: &[u8]) -> Signals {
         let mut st = self.screen.lock().unwrap();
         let signals = st.screen.feed(chunk);
         st.pending.extend_from_slice(chunk);
         // A chunk after a quiet frame goes out now, and so does the answer
         // to a keystroke, even while the program streams output.
-        let echo = now_ms().saturating_sub(self.last_input.load(Ordering::Relaxed)) < ECHO_MS;
-        if echo || st.last_flush.elapsed() >= FRAME {
+        if self.echoing() || st.last_flush.elapsed() >= FRAME {
             st.flush(&self.output);
         }
         signals
@@ -173,8 +180,13 @@ impl SessionPool {
             })
             .map_err(|e| anyhow!("openpty: {e}"))?;
 
-        let mut cmd = CommandBuilder::new(&command);
-        cmd.args(&spec.args);
+        // An alias from the user's rc files stands for a command line.
+        let (program, args) = match skiff_core::alias::expand(&command) {
+            Some(w) => (w[0].clone(), [&w[1..], &spec.args[..]].concat()),
+            None => (command.clone(), spec.args.clone()),
+        };
+        let mut cmd = CommandBuilder::new(&program);
+        cmd.args(&args);
         cmd.cwd(&cwd);
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
@@ -237,6 +249,7 @@ impl SessionPool {
             output,
             last_output: AtomicU64::new(info.last_output_at),
             last_input: AtomicU64::new(0),
+            last_work: AtomicU64::new(info.last_output_at),
             screen: Mutex::new(ScreenState {
                 screen: Screen::new(spec.cols, spec.rows),
                 pending: Vec::new(),
@@ -268,9 +281,15 @@ impl SessionPool {
                     let signals = session.push_output(chunk);
                     // A bell means "the process wants you". It stays until the user
                     // types. The BEL that ends a title sequence is not a bell.
+                    // Work is visible text. An echo of typing, a redraw after a
+                    // resize, or mode codes an idle program re-sends are not.
+                    let work = !session.echoing() && prints(chunk);
+                    if work {
+                        session.last_work.store(now_ms(), Ordering::Relaxed);
+                    }
                     if signals.bell {
                         pool.set_state(&session, SessionState::Waiting);
-                    } else if session.info.lock().unwrap().state != SessionState::Waiting {
+                    } else if work && session.info.lock().unwrap().state != SessionState::Waiting {
                         pool.set_state(&session, SessionState::Working);
                     }
                     if let Some(title) = signals.title {
@@ -368,6 +387,8 @@ impl SessionPool {
             })
             .map_err(|e| anyhow!("resize: {e}"))?;
         session.screen.lock().unwrap().screen.resize(cols, rows);
+        // The program redraws for the new size. That is not work either.
+        session.last_input.store(now_ms(), Ordering::Relaxed);
         let mut info = session.info.lock().unwrap();
         info.cols = cols;
         info.rows = rows;
@@ -493,7 +514,7 @@ impl SessionPool {
                     // reader handles meanwhile is not overwritten with `idle`.
                     let id = {
                         let mut info = s.info.lock().unwrap();
-                        let last = s.last_output.load(Ordering::Relaxed);
+                        let last = s.last_work.load(Ordering::Relaxed);
                         let quiet = now_ms().saturating_sub(last) > IDLE_AFTER.as_millis() as u64;
                         if !quiet || info.state != SessionState::Working {
                             continue;
@@ -511,6 +532,55 @@ impl SessionPool {
     }
 }
 
+/// True when the bytes put text on the screen. Escape sequences and control
+/// characters alone do not. A sequence split across reads may misjudge one chunk.
+fn prints(bytes: &[u8]) -> bool {
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            0x1b => {
+                i += 1;
+                match bytes.get(i) {
+                    // CSI: parameters, then one final byte in 0x40..=0x7e.
+                    Some(b'[') => {
+                        i += 1;
+                        while i < bytes.len() && !(0x40..=0x7e).contains(&bytes[i]) {
+                            i += 1;
+                        }
+                    }
+                    // OSC, DCS, APC, PM, SOS: up to BEL or ST.
+                    Some(b']' | b'P' | b'_' | b'^' | b'X') => {
+                        while i < bytes.len() && bytes[i] != 0x07 && !(bytes[i] == b'\\' && bytes[i - 1] == 0x1b) {
+                            i += 1;
+                        }
+                    }
+                    // Charset designation: one more byte.
+                    Some(b'(' | b')' | b'*' | b'+' | b'#' | b'%') => i += 1,
+                    _ => {}
+                }
+            }
+            b if b < 0x20 || b == 0x7f => {}
+            _ => return true,
+        }
+        i += 1;
+    }
+    false
+}
+
 fn default_shell() -> String {
     std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::prints;
+
+    #[test]
+    fn only_text_counts_as_printing() {
+        assert!(!prints(b"\x1b(B\x0f\x1b[?2004h\x1b[?1000h\x1b[?1006h"));
+        assert!(!prints(b"\x1b]0;\xe2\x9c\xb3 Claude Code\x07\r\n"));
+        assert!(!prints(b"\x1b[?2026h\x1b[?25l\x1b[43;16H\x1b[?25h\x1b[?2026l"));
+        assert!(prints(b"\x1b[38;2;215;119;87m*\x1b[39m"));
+        assert!(prints("\x1b[3G✻".as_bytes()));
+    }
 }

@@ -1,6 +1,7 @@
 //! Shared types for Skiff: the session model, the daemon wire protocol,
 //! the `projects.toml` config, and the socket location.
 
+pub mod alias;
 pub mod config;
 pub mod git;
 pub mod group;
@@ -17,4 +18,4 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Bumped when a request or reply changes. A client that sees another
 /// number is talking to an older or newer daemon.
-pub const PROTOCOL: u32 = 15;
+pub const PROTOCOL: u32 = 17;

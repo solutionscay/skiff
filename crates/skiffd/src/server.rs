@@ -211,6 +211,33 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
                     Err(e) => error(e),
                 }
             }
+            Request::SetProjectBackground { project, background } => {
+                match blocking(move || skiff_core::config::set_project_background(&project, background.as_deref())).await {
+                    Ok(()) => {
+                        let _ = pool.events.send(Event::ProjectsChanged {});
+                        Response::Ok
+                    }
+                    Err(e) => error(e),
+                }
+            }
+            Request::SetProjectColor { project, color } => {
+                match blocking(move || skiff_core::config::set_project_color(&project, &color)).await {
+                    Ok(()) => {
+                        let _ = pool.events.send(Event::ProjectsChanged {});
+                        Response::Ok
+                    }
+                    Err(e) => error(e),
+                }
+            }
+            Request::ReorderProjects { order } => {
+                match blocking(move || skiff_core::config::reorder_projects(&order)).await {
+                    Ok(()) => {
+                        let _ = pool.events.send(Event::ProjectsChanged {});
+                        Response::Ok
+                    }
+                    Err(e) => error(e),
+                }
+            }
             Request::SetProjectIcon { project, icon } => {
                 match blocking(move || skiff_core::config::set_project_icon(&project, icon.as_deref())).await {
                     Ok(()) => {

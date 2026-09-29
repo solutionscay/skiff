@@ -307,6 +307,18 @@ impl Client {
         self.expect_ok(Request::SetProjectIcon { project, icon }).await
     }
 
+    pub async fn reorder_projects(&self, order: Vec<String>) -> Result<()> {
+        self.expect_ok(Request::ReorderProjects { order }).await
+    }
+
+    pub async fn set_project_background(&self, project: String, background: Option<String>) -> Result<()> {
+        self.expect_ok(Request::SetProjectBackground { project, background }).await
+    }
+
+    pub async fn set_project_color(&self, project: String, color: String) -> Result<()> {
+        self.expect_ok(Request::SetProjectColor { project, color }).await
+    }
+
     pub async fn inspect_folder(&self, path: PathBuf) -> Result<FolderInfo> {
         match self.request(Request::InspectFolder { path }).await? {
             Response::Folder { folder } => Ok(folder),

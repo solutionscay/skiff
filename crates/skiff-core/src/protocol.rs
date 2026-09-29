@@ -117,6 +117,16 @@ pub enum Request {
         #[serde(default)]
         icon: Option<String>,
     },
+    /// Sets the background image: a path, or `null` for none.
+    SetProjectBackground {
+        project: String,
+        #[serde(default)]
+        background: Option<String>,
+    },
+    /// Sets the project's accent color, a `#rrggbb` string.
+    SetProjectColor { project: String, color: String },
+    /// Puts the projects in this order in `projects.toml`. Names not listed keep their place after.
+    ReorderProjects { order: Vec<String> },
     /// What `add_project` would do for `path`. Writes nothing.
     InspectFolder {
         path: PathBuf,

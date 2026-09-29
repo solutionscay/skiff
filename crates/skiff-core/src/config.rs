@@ -69,6 +69,8 @@ pub struct ProjectConfig {
     /// Image for the rail: a path, relative to the project or absolute.
     /// Absent: detect one in the repo. Empty: no icon.
     pub icon: Option<String>,
+    /// Image behind the terminals: a path, relative to the project or absolute.
+    pub background: Option<String>,
     pub editor: Option<String>,
     #[serde(default)]
     pub agents: Vec<String>,
@@ -301,6 +303,7 @@ pub fn add_project(
         path,
         color: Some(color),
         icon,
+        background: None,
         editor: None,
         agents,
         layout: Layout::default(),
@@ -347,6 +350,50 @@ pub fn set_agent_command(id: &str, command: &str) -> Result<()> {
 /// Skiff detects an icon again; `Some("")` means no icon.
 pub fn set_project_icon(project: &str, icon: Option<&str>) -> Result<()> {
     set_project_key(project, "icon", icon)
+}
+
+/// Sets or removes `background` on the named project.
+pub fn set_project_background(project: &str, background: Option<&str>) -> Result<()> {
+    set_project_key(project, "background", background)
+}
+
+/// Sets `color` on the named project.
+pub fn set_project_color(project: &str, color: &str) -> Result<()> {
+    let hex = color.strip_prefix('#').unwrap_or("");
+    if hex.len() != 6 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        anyhow::bail!("not a #rrggbb color: {color}");
+    }
+    set_project_key(project, "color", Some(color))
+}
+
+/// Rewrites the `[[project]]` order. Comments on each table move with it.
+pub fn reorder_projects(order: &[String]) -> Result<()> {
+    let _edit = edit_lock();
+    let file = config_path();
+    let text = std::fs::read_to_string(&file).with_context(|| format!("read {}", file.display()))?;
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .with_context(|| format!("parse {}", file.display()))?;
+    let tables = doc
+        .get_mut("project")
+        .and_then(|i| i.as_array_of_tables_mut())
+        .ok_or_else(|| anyhow::anyhow!("no [[project]] in {}", file.display()))?;
+    let name = |t: &toml_edit::Table| t.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
+    let mut old: Vec<toml_edit::Table> = tables.iter().cloned().collect();
+    let positions: Vec<Option<_>> = old.iter().map(|t| t.position()).collect();
+    let mut sorted = Vec::with_capacity(old.len());
+    for n in order {
+        if let Some(i) = old.iter().position(|t| name(t) == *n) {
+            sorted.push(old.remove(i));
+        }
+    }
+    sorted.append(&mut old);
+    tables.clear();
+    for (mut t, pos) in sorted.into_iter().zip(positions) {
+        t.set_position(pos);
+        tables.push(t);
+    }
+    write_atomic(&file, &doc.to_string())
 }
 
 fn set_project_key(project: &str, key: &str, value: Option<&str>) -> Result<()> {

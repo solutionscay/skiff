@@ -359,6 +359,39 @@ async fn set_project_icon(
 }
 
 #[tauri::command]
+async fn reorder_projects(app: State<'_, App>, order: Vec<String>) -> Result<(), String> {
+    let (c, _) = ensure_client(&app).await?;
+    c.reorder_projects(order).await.map_err(err)
+}
+
+#[tauri::command]
+async fn set_project_background(
+    app: State<'_, App>,
+    project: String,
+    background: Option<String>,
+) -> Result<(), String> {
+    let (c, _) = ensure_client(&app).await?;
+    c.set_project_background(project, background).await.map_err(err)
+}
+
+/// A background image's raw bytes. The page turns them into a blob URL.
+#[tauri::command]
+async fn read_image(path: PathBuf) -> Result<tauri::ipc::Response, String> {
+    let bytes = tokio::fs::read(&path).await.map_err(|e| format!("read {}: {e}", path.display()))?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+#[tauri::command]
+async fn set_project_color(
+    app: State<'_, App>,
+    project: String,
+    color: String,
+) -> Result<(), String> {
+    let (c, _) = ensure_client(&app).await?;
+    c.set_project_color(project, color).await.map_err(err)
+}
+
+#[tauri::command]
 async fn inspect_folder(app: State<'_, App>, path: PathBuf) -> Result<FolderInfo, String> {
     let (c, _) = ensure_client(&app).await?;
     // An outdated daemon does not know this request. Say so at once.
@@ -510,6 +543,12 @@ struct MenuItemSpec {
 
 /// The menu bar. The page owns the command list and sends it whole on every
 /// change; a click comes back as `skiff:menu` with the item's id.
+/// Closes the app. Sessions live in skiffd and keep running.
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    app.exit(0);
+}
+
 #[tauri::command]
 fn set_menu(app: AppHandle, menus: Vec<MenuSpec>) -> Result<(), String> {
     let mut bar = MenuBuilder::new(&app);
@@ -555,6 +594,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             set_menu,
+            quit_app,
             daemon_status,
             list_sessions,
             create_session,
@@ -570,6 +610,10 @@ pub fn run() {
             restart_daemon,
             inspect_folder,
             set_project_icon,
+            set_project_color,
+            set_project_background,
+            read_image,
+            reorder_projects,
             read_icon,
             list_themes,
             get_appearance,

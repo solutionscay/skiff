@@ -29,6 +29,9 @@ pub struct Project {
     /// The rail image as a data URL, from `icon` or found in the repo.
     #[serde(default)]
     pub icon: Option<String>,
+    /// The background image's absolute path, when the file exists.
+    #[serde(default)]
+    pub background: Option<String>,
     pub worktrees: Vec<Worktree>,
     /// Why `worktrees` is empty, e.g. the path is missing or not a git repo.
     pub error: Option<String>,
@@ -51,6 +54,7 @@ impl Project {
             color: p.color.clone(),
             agents: p.agents.clone(),
             icon: icon_file(&p.path, p.icon.as_deref()).and_then(|f| data_url(&f)),
+            background: background_file(&p.path, p.background.as_deref()),
             worktrees,
             error,
         }
@@ -87,6 +91,13 @@ const ICON_NAMES: [&str; 11] = [
     "favicon.ico",
     "icon.ico",
 ];
+
+/// The configured background image, made absolute. `None` when unset or missing.
+pub fn background_file(project: &Path, configured: Option<&str>) -> Option<String> {
+    let p = Path::new(configured?.trim());
+    let p = if p.is_absolute() { p.to_path_buf() } else { project.join(p) };
+    p.is_file().then(|| p.display().to_string())
+}
 
 /// The icon file for a project: the configured one, else the first candidate.
 pub fn icon_file(project: &Path, configured: Option<&str>) -> Option<PathBuf> {
@@ -242,7 +253,8 @@ pub fn agents() -> Vec<AgentInfo> {
                 .filter(|c| !c.is_empty())
                 .unwrap_or_else(|| default.to_string());
             // Installed means the program, the first word, is on PATH.
-            let program = command.split_whitespace().next().unwrap_or(default);
+            let first = command.split_whitespace().next().unwrap_or(default);
+            let program = crate::alias::expand(first).map_or(first, |w| w[0].as_str());
             let installed = if program.contains('/') {
                 is_executable(Path::new(program))
             } else {

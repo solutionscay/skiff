@@ -3564,6 +3564,7 @@ dependencies = [
  "alacritty_terminal",
  "anyhow",
  "dirs 6.0.0",
+ "libc",
  "portable-pty",
  "serde_json",
  "skiff-core",
