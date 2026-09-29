@@ -9,9 +9,11 @@ import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { $, h, showError } from "./dom";
 import { cycleRegion, toggleList } from "./keyboard";
+import { copyReport, hasReport, startTrace, stopTrace, tracing } from "./latency";
 import { endEntry, groupCloseEntries, newWorktree, splitMenu } from "./menus";
 import { addProject, launchMenu, settings } from "./panels";
 import { startRename, startSessionRename } from "./rename";
+import { scheduleRender } from "./render";
 import { accent, activeGroupObj, currentProject, currentWorktree, FONT_DEFAULT, place, S, sessions, shownIds, splitFull, worktreeSessions } from "./state";
 import { copySelection, openFind, paneCenter, pasteClipboard, setFontSize } from "./terminal";
 import { sessionThemeMenu } from "./themes";
@@ -70,6 +72,14 @@ function commands(): Cmd[] {
     { section: "View", label: "Reset text size", key: k("font-reset"), action: "font-reset", run: act("font-reset") },
     { section: "Help", label: "Keyboard shortcuts", key: k("shortcuts"), action: "shortcuts", run: act("shortcuts") },
     { section: "Help", label: "Open projects.toml", key: "", run: () => void openConfig() },
+    {
+      section: "Help", label: tracing() ? "Stop latency trace" : "Start latency trace", key: "",
+      run: () => {
+        tracing() ? stopTrace() : startTrace();
+        scheduleRender();
+      },
+    },
+    { section: "Help", label: "Copy latency report", key: "", run: () => void copyReport(), off: !hasReport() },
     { section: "Help", label: "Report an issue", key: "", run: () => void openUrl(ISSUES_URL).catch(showError) },
     { section: "Help", label: "About Skiff", key: "", run: () => void showAbout() },
   ];

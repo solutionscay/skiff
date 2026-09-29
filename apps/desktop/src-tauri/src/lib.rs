@@ -313,20 +313,34 @@ async fn add_project(
         .map_err(err)
 }
 
-/// Where keystroke latency traces go: `SKIFF_TRACE=<file>`. Unset: no tracing.
+/// Where the keystroke latency trace goes: `SKIFF_TRACE=<file>`, or
+/// latency.jsonl in the app's log folder.
+fn trace_file(handle: &AppHandle) -> Result<PathBuf, String> {
+    if let Some(p) = std::env::var_os("SKIFF_TRACE") {
+        return Ok(PathBuf::from(p));
+    }
+    let dir = handle.path().app_log_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("latency.jsonl"))
+}
+
+/// The trace file, and whether SKIFF_TRACE asks for tracing from launch.
 #[tauri::command]
-fn trace_enabled() -> bool {
-    std::env::var_os("SKIFF_TRACE").is_some()
+fn trace_info(handle: AppHandle) -> Result<(String, bool), String> {
+    let path = trace_file(&handle)?;
+    Ok((path.display().to_string(), std::env::var_os("SKIFF_TRACE").is_some()))
 }
 
 /// Appends JSON lines from the page's latency trace.
 #[tauri::command]
-fn trace_write(lines: Vec<String>) -> Result<(), String> {
+fn trace_write(handle: AppHandle, lines: Vec<String>) -> Result<(), String> {
     use std::io::Write;
-    let Some(path) = std::env::var_os("SKIFF_TRACE") else {
-        return Ok(());
-    };
-    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).map_err(|e| e.to_string())?;
+    let path = trace_file(&handle)?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| e.to_string())?;
     for line in lines {
         writeln!(f, "{line}").map_err(|e| e.to_string())?;
     }
@@ -701,7 +715,7 @@ pub fn run() {
             get_appearance,
             get_keys,
             config_path,
-            trace_enabled,
+            trace_info,
             trace_write,
             open_config,
             set_appearance,

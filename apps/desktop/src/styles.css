@@ -734,3 +734,8 @@ button:active:not(:disabled), .sw-row:active {
 .cp-readout { display: flex; align-items: center; height: var(--row); border-bottom: 1px solid var(--rule); background: var(--bg-deep); }
 .cp-chip { width: var(--row); height: 100%; flex-shrink: 0; border-right: 1px solid var(--rule); }
 .cp-code { flex-grow: 1; height: 100%; padding: 0 calc(20 * var(--u)); border: 0; outline: 0; background: transparent; color: var(--text); font: calc(13px * var(--zoom, 1)) var(--mono); }
+
+/* Help → Start latency trace: numbers in a corner of the focused pane. */
+.latency-hud { position: absolute; right: calc(8 * var(--u)); bottom: calc(8 * var(--u)); z-index: 5; display: flex; flex-direction: column; align-items: flex-end; gap: calc(2 * var(--u)); padding: calc(6 * var(--u)) calc(8 * var(--u)); background: color-mix(in srgb, var(--bg-deep) 85%, transparent); border: 1px solid var(--rule-strong); color: var(--text-2); font: calc(11px * var(--zoom, 1)) var(--mono); pointer-events: none; }
+.latency-hud b { color: var(--text); font-size: calc(15px * var(--zoom, 1)); }
+.latency-hud.slow b { color: var(--state-waiting-text); }
