@@ -49,35 +49,6 @@ async function load(path: string) {
   if (path === wanted()) apply();
 }
 
-const SETTINGS_KEY = "skiff.settingsBackground";
-
-/** The image behind the Settings panel: a file path, or null. */
-export function settingsBackground(): string | null {
-  try {
-    return localStorage.getItem(SETTINGS_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function setSettingsBackground(path: string | null) {
-  try {
-    if (path) localStorage.setItem(SETTINGS_KEY, path);
-    else localStorage.removeItem(SETTINGS_KEY);
-  } catch {
-    /* the choice lasts for this run */
-  }
-}
-
-/** Puts the Settings image on `el`, or clears it. */
-export async function paintSettings(el: HTMLElement) {
-  const path = settingsBackground();
-  if (path && !urls.has(path)) await load(path);
-  const url = path ? urls.get(path) : null;
-  el.style.backgroundImage = url ? `linear-gradient(rgba(11, 14, 18, 0.6), rgba(11, 14, 18, 0.6)), url("${url}")` : "";
-  el.classList.toggle("has-bg", !!url);
-}
-
 /** The focused session's project, else the selected one. */
 function wanted(): string | null {
   const s = S.focused ? sessions.get(S.focused) : undefined;

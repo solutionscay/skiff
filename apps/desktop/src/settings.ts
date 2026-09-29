@@ -1,5 +1,4 @@
-import { open as openFile } from "@tauri-apps/plugin-dialog";
-import { paintSettings, PANE_OPACITY_MIN, paneOpacity, setPaneOpacity, setSettingsBackground, settingsBackground } from "./backdrop";
+import { PANE_OPACITY_MIN, paneOpacity, setPaneOpacity } from "./backdrop";
 import { invoke } from "@tauri-apps/api/core";
 import type { AgentInfo, TerminalTheme } from "./types";
 import { themeGrid } from "./themeCards";
@@ -197,27 +196,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       val.textContent = `${slider.value}%`;
     });
     op.append(el("span", "c-name", "Terminal opacity"), slider, val);
-    // An image behind this panel.
-    const img = el("div", "set-row set-opacity");
-    const pick = el("button", "c-cmd", settingsBackground() ? "Change image…" : "Choose image…");
-    pick.type = "button";
-    pick.addEventListener("click", async () => {
-      const file = await openFile({ title: "Settings background", filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "svg"] }] }).catch(() => null);
-      if (typeof file !== "string") return;
-      setSettingsBackground(file);
-      await paintSettings(root);
-      render();
-    });
-    const none = el("button", "c-status", "None");
-    none.type = "button";
-    none.disabled = !settingsBackground();
-    none.addEventListener("click", async () => {
-      setSettingsBackground(null);
-      await paintSettings(root);
-      render();
-    });
-    img.append(el("span", "c-name", "Settings image"), pick, none);
-    main.append(intro, img, op, cards);
+    main.append(intro, op, cards);
     return main;
   }
 
@@ -237,7 +216,6 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   return {
     async open() {
       root.hidden = false;
-      void paintSettings(root);
       await look.load();
       agents = await invoke<AgentInfo[]>("list_agents").catch((e) => {
         error = String(e);
