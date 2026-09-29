@@ -19,9 +19,18 @@ import { dragSessions, revealSession, selectProject, selectWorktree, showGroup }
 
 export function renderRail() {
   const rail = $<HTMLElement>("rail");
+  const hasOther = worktreeLines(null).length > 0;
+  // The last outside session ended: Other goes away, and the first project shows.
+  if (!hasOther && S.selectedProject === OTHER) S.selectedProject = S.projects[0]?.name ?? null;
+  const waitingIn = (p: Project) => [...sessions.values()].filter((s) => s.state === "waiting" && place(s)?.project === p).length;
+  // Renders run while agents print. A rebuilt chip loses its hover and hides
+  // its icon until trimmed again, so the rail changes only when what it shows does.
+  const sig = JSON.stringify([S.selectedProject, hasOther, S.projects.map((p) => [p.name, p.short, p.icon, accent(p), waitingIn(p)])]);
+  if (rail.dataset.sig === sig) return;
+  rail.dataset.sig = sig;
   rail.replaceChildren();
   S.projects.forEach((p, i) => {
-    const waiting = [...sessions.values()].filter((s) => s.state === "waiting" && place(s)?.project === p).length;
+    const waiting = waitingIn(p);
     const item = h("div", "rail-item");
     const b = button("rail-chip" + (p.name === S.selectedProject ? " active" : ""), p.icon ? "" : p.short, () => selectProject(p.name));
     if (p.icon) {
@@ -45,9 +54,6 @@ export function renderRail() {
     }
     rail.appendChild(item);
   });
-  const hasOther = worktreeLines(null).length > 0;
-  // The last outside session ended: Other goes away, and the first project shows.
-  if (!hasOther && S.selectedProject === OTHER) S.selectedProject = S.projects[0]?.name ?? null;
   if (hasOther) {
     const item = h("div", "rail-item");
     const on = S.selectedProject === OTHER;
@@ -209,10 +215,13 @@ function errorRow(text: string): HTMLElement {
 
 export function renderSidebar() {
   const side = $<HTMLElement>("sidebar-scroll");
-  // Keep focus and caret position in an inline control across re-renders.
+  // Keep focus and the selected range in an inline control across re-renders,
+  // so a render while a rename is open does not undo its select-all.
   const active = document.activeElement as HTMLElement | null;
   const activeKey = active?.dataset?.key;
-  const caret = active instanceof HTMLInputElement ? active.selectionStart : null;
+  const caret: Caret | null = active instanceof HTMLInputElement && active.selectionStart !== null
+    ? [active.selectionStart, active.selectionEnd ?? active.selectionStart, active.selectionDirection ?? "none"]
+    : null;
 
   side.replaceChildren();
   if (S.selectedProject === OTHER) return renderOther(side, activeKey, caret);
@@ -256,7 +265,7 @@ export function renderSidebar() {
 }
 
 /** The "Other" view: sessions and groups whose folder is in no project. */
-function renderOther(side: HTMLElement, activeKey: string | undefined, caret: number | null) {
+function renderOther(side: HTMLElement, activeKey: string | undefined, caret: Caret | null) {
   const head = h("div", "project-row");
   head.style.setProperty("--pc", DEFAULT_ACCENT);
   const title = h("div", "project-title");
@@ -269,12 +278,34 @@ function renderOther(side: HTMLElement, activeKey: string | undefined, caret: nu
   restoreFocus(side, activeKey, caret);
 }
 
-function restoreFocus(side: HTMLElement, activeKey: string | undefined, caret: number | null) {
+type Caret = [start: number, end: number, dir: "forward" | "backward" | "none"];
+
+/** Where the pointer last was over the list, or null when it left. */
+let pointer: [number, number] | null = null;
+const HOVERABLE = ".session-row, .wt-pick, .wt-count, .group-pick";
+{
+  const side = $<HTMLElement>("sidebar-scroll");
+  side.addEventListener("mousemove", (e) => (pointer = [e.clientX, e.clientY]));
+  side.addEventListener("mouseleave", () => (pointer = null));
+  side.addEventListener("mouseout", (e) => (e.target as HTMLElement).closest?.(".hover")?.classList.remove("hover"));
+}
+
+/**
+ * A rebuilt row has no :hover until the pointer moves, so the row under a
+ * still pointer flashes on every render. The class stands in until it moves.
+ */
+function restoreHover() {
+  if (!pointer) return;
+  document.elementFromPoint(...pointer)?.closest(HOVERABLE)?.classList.add("hover");
+}
+
+function restoreFocus(side: HTMLElement, activeKey: string | undefined, caret: Caret | null) {
+  restoreHover();
   if (activeKey) {
     const again = side.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-key="${activeKey}"]`);
     if (again && !again.disabled) {
       again.focus();
-      if (caret !== null && again instanceof HTMLInputElement) again.setSelectionRange(caret, caret);
+      if (caret !== null && again instanceof HTMLInputElement) again.setSelectionRange(...caret);
     }
   }
 }
@@ -285,7 +316,7 @@ const GROUP_COLORS = ["#9ec1ff", "#f28fd0", "#7ee0cb", "#e0c07e", "#ff9e7a", "#c
 const groupColor = (g: Group) => GROUP_COLORS[Math.max(0, S.groups.indexOf(g)) % GROUP_COLORS.length];
 
 function groupRow(g: Group): HTMLElement {
-  const ids = sessionsOf(g.layout);
+  const ids = filledOf(g.layout).filter((id) => sessions.has(id));
   const row = h("div", "group-row" + (g.id === S.activeGroup && g.id === S.groupPicked ? " active" : ""));
   row.dataset.group = g.id;
   const theme = groupTheme(g);

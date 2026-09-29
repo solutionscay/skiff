@@ -670,6 +670,7 @@ body.dragging-session, body.dragging-session * { cursor: grabbing !important; us
    background, so it sits on top of focused, selected and project tints. */
 :root { --hover: rgba(255, 255, 255, 0.05); --press: rgba(255, 255, 255, 0.09); }
 .session-row:hover, .wt-pick:hover, .wt-count:hover, .group-pick:hover, .rail-chip:hover,
+.session-row.hover, .wt-pick.hover, .wt-count.hover, .group-pick.hover,
 .set-tab:hover, .sw-row:hover, .sel-clear:hover, .set-done:hover, .ap-cancel:hover, .lm-item:hover {
   background-image: linear-gradient(var(--hover), var(--hover));
 }
