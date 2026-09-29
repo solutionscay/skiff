@@ -14,7 +14,7 @@ Sessions run in `skiffd`, a daemon that owns every PTY. You can close the window
 
 ## Platforms
 
-Skiff runs on Linux and macOS. The app and the daemon talk over a Unix socket. Release packages are Linux only for now. On macOS, build from source (see Development).
+Skiff runs on Linux and macOS. The app and the daemon talk over a Unix socket. Release packages are Linux only for now. On macOS, build the package yourself (see Packages).
 
 ## Layout
 
@@ -41,10 +41,16 @@ overrides the socket path, `SKIFF_CONFIG` the config file.
 ## Packages
 
 ```
-cd apps/desktop && pnpm bundle   # .deb, .rpm and AppImage, with skiffd inside
+cd apps/desktop && pnpm bundle   # packages for the host OS, with skiffd inside
 ```
 
-A `v*` tag builds the same packages in CI and attaches them to a draft release.
+On Linux this makes `.deb`, `.rpm` and AppImage. On macOS it makes `Skiff.app` and a `.dmg`.
+Packages land in `target/release/bundle/`.
+
+The macOS build is not signed. Another Mac blocks it at first open: right-click the app
+and choose Open, or run `xattr -dr com.apple.quarantine /Applications/Skiff.app`.
+
+A `v*` tag builds the Linux packages in CI and attaches them to a draft release.
 
 ## License
 
