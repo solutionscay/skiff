@@ -365,11 +365,13 @@ impl SessionPool {
 
     pub fn write(&self, id: &str, data: &[u8]) -> Result<()> {
         let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
+        // Stored before the send: the reader can see the echo before this
+        // thread runs again, and it must count as an echo, not as work.
+        session.last_input.store(now_ms(), Ordering::Relaxed);
         session
             .input
             .send(data.to_vec())
             .map_err(|_| anyhow!("session {id} no longer takes input"))?;
-        session.last_input.store(now_ms(), Ordering::Relaxed);
         // Input answers a waiting prompt.
         if session.info.lock().unwrap().state == SessionState::Waiting {
             self.set_state(&session, SessionState::Working);

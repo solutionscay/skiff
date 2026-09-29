@@ -105,7 +105,7 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 .rail-add { color: var(--text-3); font-weight: 400; font-size: calc(18px * var(--zoom, 1)); }
 .rail-add:hover { color: var(--text); background: var(--bg-raised); }
 .rail-waiting { position: absolute; top: 0; right: 0; width: calc(22 * var(--u)); height: calc(22 * var(--u)); display: flex; align-items: flex-start; justify-content: flex-end; padding: calc(3 * var(--u)) calc(3 * var(--u)) 0 0; box-sizing: border-box; border-bottom-left-radius: 100%; background: var(--state-waiting-bg); color: var(--state-waiting); pointer-events: none; }
-.rail-waiting svg { display: block; width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: ring 1.6s ease-in-out infinite; transform-origin: 50% 10%; }
+.rail-waiting svg { display: block; width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: ring 1.6s steps(1) infinite; transform-origin: 50% 10%; }
 
 #sidebar {
   width: calc(284 * var(--u)); flex-shrink: 0;
@@ -192,17 +192,19 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 .session-row .busy {
   position: relative; color: var(--state-working); width: calc(18 * var(--u)); height: calc(12 * var(--u)); overflow: hidden; flex-shrink: 0;
   /* The water: short dashes that run backward, so the boat looks under way. */
+  /* Every icon animation steps a few times a second: a smooth one makes the
+     webview draw a full frame on every display refresh while an agent works. */
   background: linear-gradient(90deg, var(--state-working) 50%, transparent 0) left bottom / calc(6 * var(--u)) 1px repeat-x;
-  animation: water 0.6s linear infinite;
+  animation: water 0.6s steps(3) infinite;
 }
-.session-row .busy svg { position: absolute; left: calc(4 * var(--u)); bottom: 1px; width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: rock 1.2s ease-in-out infinite; transform-origin: 50% 90%; }
+.session-row .busy svg { position: absolute; left: calc(4 * var(--u)); bottom: 1px; width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: rock 1.2s steps(2) infinite; transform-origin: 50% 90%; }
 @keyframes water { to { background-position: calc(-6 * var(--u)) bottom; } }
 @keyframes rock { 0%, 100% { transform: rotate(-6deg) translateY(0); } 50% { transform: rotate(6deg) translateY(-1px); } }
 .session-row .anchored { display: flex; align-items: center; justify-content: center; color: var(--state-idle); width: calc(18 * var(--u)); height: calc(12 * var(--u)); opacity: 0.8; }
 .session-row .anchored svg { width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; }
 .busy, .anchored, .belled, .finished { flex-shrink: 0; }
 .session-row .belled, .cell-head .belled { display: flex; align-items: center; justify-content: center; color: var(--state-waiting-text); width: calc(18 * var(--u)); height: calc(12 * var(--u)); flex-shrink: 0; }
-.belled svg { width: calc(11 * var(--u)); height: calc(11 * var(--u)); stroke-width: 2.5; animation: ring 1.6s ease-in-out infinite; transform-origin: 50% 10%; }
+.belled svg { width: calc(11 * var(--u)); height: calc(11 * var(--u)); stroke-width: 2.5; animation: ring 1.6s steps(1) infinite; transform-origin: 50% 10%; }
 @keyframes ring { 0%, 50%, 100% { transform: rotate(0); } 10% { transform: rotate(16deg); } 20% { transform: rotate(-14deg); } 30% { transform: rotate(10deg); } 40% { transform: rotate(-6deg); } }
 .session-row .finished, .cell-head .finished { display: flex; align-items: center; justify-content: center; color: var(--state-done); width: calc(18 * var(--u)); height: calc(12 * var(--u)); }
 .finished.failed { color: var(--state-waiting-text); }
