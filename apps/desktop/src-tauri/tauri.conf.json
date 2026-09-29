@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Skiff",
-  "version": "0.1.0",
   "identifier": "com.solutionscay.skiff",
   "build": {
     "beforeDevCommand": "cargo build -p skiffd && pnpm dev",
