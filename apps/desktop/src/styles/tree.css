@@ -29,9 +29,8 @@
 .wt.selected { box-shadow: inset 3px 0 0 var(--pc); }
 .wt::after {
   content: ""; position: absolute; left: 3px; right: 0; height: 1px;
-  background: var(--rule); pointer-events: none;
+  background: var(--rule); pointer-events: none; bottom: 0;
 }
-.wt::after { bottom: 0; }
 .wt-row { position: relative; height: var(--row); display: flex; background: linear-gradient(to right, transparent 0 3px, color-mix(in srgb, var(--bg-panel) 72%, var(--bg)) 3px); }
 .wt-pick {
   flex-grow: 1; min-width: 0;

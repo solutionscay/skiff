@@ -24,8 +24,7 @@
 }
 #banner #focus-label { color: var(--text); font-size: calc(13px * var(--zoom, 1)); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The pane head already names the focused session and the layout. The element stays for the code that fills it. */
-#banner { display: none; }
-#banner { padding-right: 0; }
+#banner { display: none; padding-right: 0; }
 #banner #focus-label { padding-right: calc(16 * var(--u)); }
 #group-label { display: flex; align-items: center; gap: calc(8 * var(--u)); padding-right: calc(16 * var(--u)); color: var(--text-2); font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
 #group-label:empty { display: none; }
