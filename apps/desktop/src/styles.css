@@ -120,8 +120,8 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 .rail-chip.active { background: color-mix(in srgb, var(--pc) 15%, transparent); box-shadow: inset 3px 0 0 var(--pc); }
 .rail-add { color: var(--text-3); font-weight: 400; font-size: calc(18px * var(--zoom, 1)); }
 .rail-add:hover { color: var(--text); background: var(--bg-raised); }
-.rail-waiting { position: absolute; top: 0; right: 0; width: calc(22 * var(--u)); height: calc(22 * var(--u)); display: flex; align-items: flex-start; justify-content: flex-end; padding: calc(3 * var(--u)) calc(3 * var(--u)) 0 0; box-sizing: border-box; border-bottom-left-radius: 100%; background: var(--state-waiting-bg); color: var(--state-waiting); pointer-events: none; }
-.rail-waiting svg { display: block; width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: ring 1.6s steps(1) infinite; transform-origin: 50% 10%; }
+.rail-waiting { position: absolute; top: calc(2 * var(--u)); right: calc(2 * var(--u)); display: flex; color: var(--state-waiting); pointer-events: none; }
+.rail-waiting svg { display: block; width: calc(12 * var(--u)); height: calc(12 * var(--u)); stroke-width: 2.5; /* a hard halo in the rail colour keeps the bell readable over any icon or theme */ filter: drop-shadow(0 0 0 var(--bg-deep)) drop-shadow(1px 0 0 var(--bg-deep)) drop-shadow(-1px 0 0 var(--bg-deep)) drop-shadow(0 1px 0 var(--bg-deep)) drop-shadow(0 -1px 0 var(--bg-deep)); animation: ring 1.6s steps(1) infinite; transform-origin: 50% 10%; }
 
 #sidebar {
   width: calc(284 * var(--u)); flex-shrink: 0;
@@ -540,7 +540,7 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .lm-item.danger .lm-key { color: inherit; }
 .lm-name { flex-grow: 1; font-size: calc(14px * var(--zoom, 1)); }
 .lm-hint { font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
-.lm-settings { border-bottom: 0; background: var(--bg); color: #9ec1ff; }
+.lm-settings { border-bottom: 0; background: var(--bg); color: var(--state-working); }
 .lm-settings .lm-name { font-size: calc(13px * var(--zoom, 1)); }
 
 /* Settings covers the sidebar and the terminal, not the rail. */
