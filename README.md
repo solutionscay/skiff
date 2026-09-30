@@ -4,7 +4,6 @@
 
 <p align="center">
   <a href="https://github.com/solutionscay/skiff/releases/latest"><img src="https://img.shields.io/github/v/release/solutionscay/skiff?include_prereleases&label=release" alt="Latest release"></a>
-  <a href="https://github.com/solutionscay/skiff/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/solutionscay/skiff/release.yml?label=build" alt="Release build status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/solutionscay/skiff" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey" alt="Platforms: Linux and macOS">
   <img src="https://img.shields.io/badge/status-pre--1.0-orange" alt="Status: pre-1.0">
