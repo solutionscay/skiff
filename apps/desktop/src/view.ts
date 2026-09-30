@@ -4,9 +4,8 @@ import { build, type Direction, leaf, neighbor, removePane, replacePane, session
 import { branchName, bySessionPriority, isUnread, locate, taskTitle } from "./model";
 import type { Group, Layout, Project, SplitDir, Worktree } from "./types";
 import { filledOf, focusFirstSlot, isSlot, slot, slotsOf } from "./canvas";
-import { host, showError } from "./dom";
+import { host, modalOpen, showError } from "./dom";
 import { autoName, deleteGroup, saveGroup } from "./groups";
-import { ctxMenu } from "./menus";
 import { render } from "./render";
 import { clearSelection } from "./selection";
 import { activeGroupObj, currentLayout, FULL_HINT, groupOf, MAX_PANES, OTHER, panes, place, S, selectedWorktree, sessions, shownIds, splitFull, worktreeSessions } from "./state";
@@ -44,7 +43,7 @@ export function focusPane(id: string, grab = true) {
     // A text field (a group name being typed) keeps them too.
     const a = document.activeElement;
     const typing = a instanceof HTMLInputElement && !host.contains(a);
-    if (ctxMenu.isOpen || typing || S.focused !== id || !grab || S.atRail) return;
+    if (modalOpen() || typing || S.focused !== id || !grab || S.atRail) return;
     const pane = panes.get(id);
     if (pane?.term.element) pane.term.focus();
     // Not open yet: the terminal takes the keys when it attaches.

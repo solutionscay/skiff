@@ -1,7 +1,7 @@
 /** App keys, Tab order, F6 regions, arrows in the lists. */
 import { type Action, actionFor } from "./keys";
 import { runAction } from "./commands";
-import { $, host } from "./dom";
+import { $, host, modalOpen } from "./dom";
 import { ctxMenu, deleteKeyMenu } from "./menus";
 import { render } from "./render";
 import { launchMenu } from "./panels";
@@ -25,9 +25,10 @@ export function appKey(e: KeyboardEvent): Action | number | null {
 }
 
 window.addEventListener("keydown", (e) => {
-  // Enter in an open menu picks the item, even with Ctrl+Shift still held from
-  // the shortcut that opened it. Otherwise Maximize (Ctrl+Shift+Enter) wins.
-  if (ctxMenu.isOpen && e.key === "Enter") return;
+  // An open menu or dialog keeps the keys until it closes. Holding Ctrl+Shift
+  // from the shortcut that opened it, then pressing Enter, picks the item
+  // instead of running Maximize.
+  if (modalOpen()) return;
   const key = appKey(e);
   if (key === null) return;
   e.preventDefault();
@@ -332,7 +333,7 @@ function passToTerminal(e: KeyboardEvent, id: string): boolean {
 // body and typed keys go nowhere, while a pane still shows as focused.
 window.addEventListener("keydown", (e) => {
   const a = document.activeElement;
-  if (e.defaultPrevented || (a && a !== document.body) || ctxMenu.isOpen || !S.focused) return;
+  if (e.defaultPrevented || (a && a !== document.body) || modalOpen() || !S.focused) return;
   if (!passToTerminal(e, S.focused)) return;
   e.preventDefault();
   e.stopPropagation();

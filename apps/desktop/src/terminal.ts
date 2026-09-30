@@ -10,11 +10,11 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
-import { button, h, host, icon, park, showError, toBytes } from "./dom";
+import { button, h, host, icon, modalOpen, park, showError, toBytes } from "./dom";
 import { saveGroup } from "./groups";
 import { appKey } from "./keyboard";
 import { traceKey, traceOutput, traceRender, traceSend } from "./latency";
-import { ctxMenu, paneMenu } from "./menus";
+import { paneMenu } from "./menus";
 import { accent, activeGroupObj, FONT_DEFAULT, opening, type Pane, panes, place, S, sessions, shownIds, viewLayout } from "./state";
 import { closePane, dragSessions, focusPane } from "./view";
 
@@ -204,7 +204,7 @@ export const view = createLayoutView(host, {
         fitShown();
         const grab = S.grab === id;
         if (grab) S.grab = null;
-        if (id === S.focused && (canTakeFocus() || (grab && !ctxMenu.isOpen))) p.term.focus();
+        if (id === S.focused && (canTakeFocus() || (grab && !modalOpen()))) p.term.focus();
       })
       .catch(console.error);
   },
@@ -293,7 +293,7 @@ export function renderLayout() {
 function canTakeFocus(): boolean {
   const a = document.activeElement;
   // An empty pane of a split canvas keeps the keys while it is being filled.
-  return !ctxMenu.isOpen && (!a || a === document.body || (host.contains(a) && !a.closest(".slot")));
+  return !modalOpen() && (!a || a === document.body || (host.contains(a) && !a.closest(".slot")));
 }
 
 let resizeTimer: number | undefined;
