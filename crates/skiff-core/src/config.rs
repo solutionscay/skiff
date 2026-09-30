@@ -101,6 +101,8 @@ pub struct ProjectConfig {
     pub files: bool,
     /// `false` hides the Changes section and the +/- counts. Absent: shown.
     pub changes: Option<bool>,
+    /// Theme id for this project's chrome and its terminals. Absent: the app theme.
+    pub theme: Option<String>,
 }
 
 impl ProjectConfig {
@@ -334,6 +336,7 @@ pub fn add_project(
         server: None,
         files: false,
         changes: None,
+        theme: None,
     })
 }
 
@@ -395,6 +398,11 @@ pub fn set_project_color(project: &str, color: &str) -> Result<()> {
 /// Sets `changes = false` on the named project, or removes the key: shown is the default.
 pub fn set_project_changes(project: &str, on: bool) -> Result<()> {
     set_project_key(project, "changes", (!on).then_some(false))
+}
+
+/// Sets `theme` on the named project, or removes the key: the app theme applies.
+pub fn set_project_theme(project: &str, theme: Option<&str>) -> Result<()> {
+    set_project_key(project, "theme", theme)
 }
 
 /// Sets `files = true` on the named project, or removes the key.

@@ -22,7 +22,7 @@ import { startRename, startSessionRename } from "./rename";
 import { render } from "./render";
 import { clearSelection, selectionPlan, splitSelection } from "./selection";
 import { enabledAgents, FULL_HINT, groupOf, MAX_PANES, place, removeErrors, removing, S, selectedWorktree, sessions, shownIds, splitFull } from "./state";
-import { groupThemeMenu, sessionThemeMenu, themeIdFor } from "./themes";
+import { groupThemeMenu, projectThemeMenu, sessionThemeMenu, themeIdFor } from "./themes";
 import { closePane, focusPane, refocusTerminal, removeFromGroup, showGroup, splitWith, unfocus, unsplit } from "./view";
 
 async function setIcon(p: Project, icon: string | null) {
@@ -122,6 +122,7 @@ export function projectMenu(p: Project, x: number, y: number) {
     { icon: "code-copy", label: "Copy path", run: () => void navigator.clipboard.writeText(p.path).catch(showError) },
     { icon: "documents-file-image", label: "Icon…", hint: "file, detect, none", sub: iconEntries(p) },
     { icon: "tools-sparkles", label: "Color…", hint: "accent", run: () => pickProjectColor(p) },
+    { icon: "tools-sparkles", label: "Theme…", hint: "app and terminals", run: () => void projectThemeMenu(p) },
     { icon: "playback-image", label: "Background…", hint: "image behind terminals", sub: backgroundEntries(p) },
     showsChanges(p)
       ? { icon: "code-git-branch", label: "Hide changes", run: () => void setShowChanges(p, false) }

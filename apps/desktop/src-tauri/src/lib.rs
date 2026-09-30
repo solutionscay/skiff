@@ -537,6 +537,18 @@ fn set_project_changes(project: String, on: bool) -> Result<(), String> {
     skiff_core::config::set_project_changes(&project, on).map_err(err)
 }
 
+/// Each project's own theme id, as `[name, id]`.
+#[tauri::command]
+fn project_themes() -> Result<Vec<(String, String)>, String> {
+    let cfg = skiff_core::config::load().map_err(err)?;
+    Ok(cfg.projects.into_iter().filter_map(|p| p.theme.map(|t| (p.name, t))).collect())
+}
+
+#[tauri::command]
+fn set_project_theme(project: String, theme: Option<String>) -> Result<(), String> {
+    skiff_core::config::set_project_theme(&project, theme.as_deref()).map_err(err)
+}
+
 #[tauri::command]
 fn set_project_files(project: String, on: bool) -> Result<(), String> {
     skiff_core::config::set_project_files(&project, on).map_err(err)
@@ -792,6 +804,8 @@ pub fn run() {
             hidden_changes_projects,
             set_project_changes,
             set_project_files,
+            project_themes,
+            set_project_theme,
             reorder_projects,
             read_icon,
             list_themes,

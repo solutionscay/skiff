@@ -3,11 +3,11 @@ import { applyAppTheme } from "./appTheme";
 import { sessionsOf } from "./layout";
 import { taskTitle } from "./model";
 import { pickTheme } from "./themeCards";
-import type { Group, SessionInfo, TerminalTheme } from "./types";
+import type { Group, Project, SessionInfo, TerminalTheme } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { showError } from "./dom";
 import { render } from "./render";
-import { panes, S, sessions } from "./state";
+import { currentProject, panes, place, S, sessions } from "./state";
 
 const DEFAULT_THEME = "builtin:harbor";
 
@@ -20,21 +20,34 @@ export async function loadThemes() {
   S.themes = list.map((t) => ({ ...t, id: canonTheme(t.id)!, source: t.source === "file" ? "file" : "built-in" }));
 }
 
-/** A project with no theme of its own uses the app theme; Harbor if the app follows projects. */
-function defaultTerminalTheme(): string {
-  return canonTheme(S.appTheme) ?? DEFAULT_THEME;
+/** Projects with a `theme` in projects.toml: name to theme id. */
+const projectThemes = new Map<string, string>();
+
+/** Reads each project's own theme. Called with every project reload. */
+export async function loadProjectThemes() {
+  const list = await invoke<[string, string][]>("project_themes").catch(() => []);
+  projectThemes.clear();
+  for (const [name, id] of list) projectThemes.set(name, canonTheme(id)!);
 }
 
-/** A terminal's theme: its own, else the app's. */
+/** The project's own theme id, or null when it follows the app. */
+export const projectTheme = (p: Project) => projectThemes.get(p.name) ?? null;
+
+/** A project's theme, else the app theme; Harbor if neither is set. */
+function themeFor(p: Project | null | undefined): string {
+  return (p && projectThemes.get(p.name)) || (canonTheme(S.appTheme) ?? DEFAULT_THEME);
+}
+
+/** A terminal's theme: its own, else its project's, else the app's. */
 export function themeIdFor(s: SessionInfo | undefined): string {
-  return (s && canonTheme(s.theme)) || defaultTerminalTheme();
+  return (s && canonTheme(s.theme)) || themeFor(s && place(s)?.project);
 }
 
 let appliedApp: string | undefined;
 
-/** The app's own colors: sidebar, top bar, panels. */
+/** The app's own colors: sidebar, top bar, panels. The selected project's theme wins. */
 export function applyApp() {
-  const want = canonTheme(S.appTheme) ?? DEFAULT_THEME;
+  const want = themeFor(currentProject());
   if (want === appliedApp) return;
   appliedApp = want;
   applyAppTheme(want === DEFAULT_THEME ? null : S.themes.find((t) => t.id === want) ?? null);
@@ -68,10 +81,10 @@ export function applyThemes() {
 /** Right-click a terminal, Terminal theme: this terminal only. */
 export async function sessionThemeMenu(s: SessionInfo) {
   await loadThemes();
-  const app = S.themes.find((t) => t.id === defaultTerminalTheme());
+  const app = S.themes.find((t) => t.id === themeFor(place(s)?.project));
   pickTheme(`Terminal theme: ${taskTitle(s)}`, S.themes, {
     active: canonTheme(s.theme),
-    none: { label: "Same as app", theme: app },
+    none: { label: "Same as project", theme: app },
     pick: (id) => {
       const live = sessions.get(s.id);
       if (!live) return;
@@ -91,10 +104,10 @@ export async function groupThemeMenu(g: Group) {
   const members = ids.map((id) => sessions.get(id)).filter((s): s is SessionInfo => !!s);
   const first = canonTheme(members[0]?.theme ?? null);
   const shared = members.every((s) => canonTheme(s.theme) === first) ? first : null;
-  const app = S.themes.find((t) => t.id === defaultTerminalTheme());
+  const app = S.themes.find((t) => t.id === themeFor(members[0] && place(members[0])?.project));
   pickTheme(`Terminal theme: ${g.name}`, S.themes, {
     active: shared,
-    none: { label: "Same as app", theme: app },
+    none: { label: "Same as project", theme: app },
     pick: (id) => {
       // Look sessions up now: one may have ended while the picker was open.
       for (const sid of ids) {
@@ -133,4 +146,22 @@ export function signatureColor(t: TerminalTheme): string {
 export function ownTheme(s: SessionInfo): TerminalTheme | null {
   const id = canonTheme(s.theme);
   return id ? S.themes.find((t) => t.id === id) ?? null : null;
+}
+
+/** Right-click a project, Theme: its chrome and every terminal without its own. */
+export async function projectThemeMenu(p: Project) {
+  await loadThemes();
+  const app = S.themes.find((t) => t.id === (canonTheme(S.appTheme) ?? DEFAULT_THEME));
+  pickTheme(`Theme: ${p.name}`, S.themes, {
+    active: projectTheme(p),
+    none: { label: "Same as app", theme: app },
+    pick: (id) => {
+      if (id) projectThemes.set(p.name, canonTheme(id)!);
+      else projectThemes.delete(p.name);
+      applyThemes();
+      applyApp();
+      render();
+      invoke("set_project_theme", { project: p.name, theme: id }).catch(showError);
+    },
+  });
 }
