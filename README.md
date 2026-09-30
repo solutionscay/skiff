@@ -4,7 +4,7 @@
 
 A desktop app for running many coding agents side by side, on Linux and macOS.
 
-<p align="center"><img src=".github/screenshot.webp" alt="Skiff on Linux: a project with two worktrees, and three agent sessions in a one-left, two-right layout over a project background"></p>
+<p align="center"><img src=".github/screenshot.webp" alt="Skiff on Linux: a project with its groups, changed files and file tree in the sidebar, and four agent sessions in a two-by-two layout, each with its own terminal theme"></p>
 
 You add a project (a Git repository), make worktrees in it, and start agent or shell sessions in each worktree. Sessions can sit side by side in a group. Each group has a name and a terminal theme, and so does each project.
 
