@@ -4,9 +4,9 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { $ } from "../ui/dom";
 import { showError } from "../ui/alerts";
-import { currentRow, cycleRegion, fromProject, stepList, stepRail, toProject } from "./keyboard";
+import { currentRow, cycleRegion, fromProject, listItems, stepList, stepRail, toProject } from "./keyboard";
 
-import { newWorktree, projectMenu, projectRun, splitMenu } from "../workspace/menus";
+import { newWorktree, projectMenu, projectRun, splitMenu, ungroup } from "../workspace/menus";
 import { ctxMenu } from "../ui/contextMenu";
 import { addProject, launchMenu, settings } from "./panels";
 
@@ -22,7 +22,7 @@ import { copySelection, pasteClipboard } from "../terminal/terminalClipboard";
 import { setFontSize } from "../terminal/terminalFont";
 
 import { modeGate, modeKeyBlocked, toggleFocusMode, toggleMaximize } from "./modes";
-import { closePane, focusNextWaiting, goBack, moveFocus } from "../workspace/view";
+import { closePane, focusNextWaiting, goBack, moveFocus, removeFromGroup } from "../workspace/view";
 import { switcher } from "./commandUi";
 import { showShortcuts } from "../ui/infoDialogs";
 function openNewSession() {
@@ -78,7 +78,7 @@ export function runAction(a: Action) {
       const [x, y] = paneCenter();
       return splitMenu(S.focused, a === "split-right" ? "row" : "col", x, y);
     }
-    case "close-pane": return shown ? closePane(S.focused!) : undefined;
+    case "close-pane": return closeKey(!!shown);
     case "next-waiting": return focusNextWaiting();
     case "back": return goBack();
     case "rename": {
@@ -109,6 +109,21 @@ export function runAction(a: Action) {
     case "focus-mode": return toggleFocusMode();
     case "maximize": return toggleMaximize();
   }
+}
+
+/**
+ * The close key picks its target as Rename does. A session row leaves its
+ * group, and a group row ungroups. Else the focused pane closes. Sessions
+ * keep running in every case.
+ */
+function closeKey(shown: boolean) {
+  const el = document.activeElement as HTMLElement | null;
+  const row = el && listItems().includes(el) ? el : undefined;
+  if (row?.dataset.session) return removeFromGroup(row.dataset.session);
+  const gid = row ? row.dataset.group : S.groupPicked;
+  const g = gid ? S.groups.find((x) => x.id === gid) : undefined;
+  if (g) return ungroup(g);
+  if (!row && shown) closePane(S.focused!);
 }
 
 /** The selected project's menu, at its rail icon. */

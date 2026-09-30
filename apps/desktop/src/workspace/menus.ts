@@ -186,7 +186,7 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
         }]
       : []),
     ...(groupOf(s.id)
-      ? [{ icon: "code-ungroup", label: "Remove from group", run: () => removeFromGroup(s.id) }]
+      ? [{ icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), run: () => removeFromGroup(s.id) }]
       : []),
     { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(s.id) },
     themeEntry(s),
@@ -213,7 +213,7 @@ export function deleteKeyMenu(el: HTMLElement) {
   if (ids.length > 1 && ids.includes(s.id)) return pick(endSelectedEntry(ids));
   if (!groupOf(s.id)) return pick(endEntry(s));
   ctxMenu.open(x, y, sessionLabel(s), [
-    { icon: "code-ungroup", label: "Remove from group", run: () => removeFromGroup(s.id) },
+    { icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), run: () => removeFromGroup(s.id) },
     endEntry(s),
   ]);
 }
@@ -381,6 +381,15 @@ function groupStartEntries(g: Group): MenuEntry[] {
   return entries;
 }
 
+/** Drops the group. Its sessions keep running and go back under their worktrees. */
+export function ungroup(g: Group) {
+  if (g.id === S.activeGroup) unsplit(g);
+  else {
+    deleteGroup(g);
+    render();
+  }
+}
+
 /** The same group actions serve context menus, the menu bar, and the palette. */
 export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: string }>[] {
   const current = () => S.groups.find((x) => x.id === g?.id);
@@ -389,12 +398,7 @@ export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: s
   const drop = () => {
     // Group reloads replace objects while a menu or confirmation is open.
     const group = current();
-    if (!group) return;
-    if (group.id === S.activeGroup) unsplit(group);
-    else {
-      deleteGroup(group);
-      render();
-    }
+    if (group) ungroup(group);
   };
   const end = async (close: boolean) => {
     const group = current();
@@ -434,7 +438,7 @@ export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: s
   };
   const entries: Exclude<MenuEntry, { head: string }>[] = [];
   if (hasSessions) entries.push(
-    { icon: "code-ungroup", label: "Ungroup", run: drop },
+    { icon: "code-ungroup", label: "Ungroup", hint: keyLabel("close-pane"), run: drop },
     { icon: "indicators-square-stop", label: "Kill all sessions…", danger: true, run: () => void end(false) },
   );
   entries.push(
