@@ -1,0 +1,60 @@
+/** Settings, the launch menu, and the Add project dialog. */
+import { startCanvas } from "../workspace/canvas";
+import { PRESETS } from "../workspace/layoutSlots";
+import { glyph } from "../workspace/layoutIcon";
+import { createAddProject } from "../workspace/addProject";
+import { createLaunchMenu } from "../ui/launchMenu";
+import { createSettings } from "../appearance/settings";
+import { invoke } from "@tauri-apps/api/core";
+import { loadProjects, newSession } from "./daemon";
+import { host } from "../terminal/terminalHost";
+import { showError } from "../ui/alerts";
+import { render } from "./render";
+import { collapsed, S, selectedWorktree } from "./state";
+import { enabledAgents } from "./stateQueries";
+
+import { loadThemes } from "../appearance/themes";
+import { refocusTerminal, selectProject } from "../workspace/view";
+
+export const settings = createSettings(
+  (a) => {
+    S.agents = a;
+    render();
+  },
+  () => refocusTerminal(),
+  {
+    themes: () => S.themes,
+    current: () => S.appTheme,
+    load: loadThemes,
+    set: (id) => {
+      S.appTheme = id;
+      render();
+      invoke("set_appearance", { theme: id }).catch(showError);
+    },
+  },
+);
+
+export const launchMenu = createLaunchMenu({
+  agents: enabledAgents,
+  start: (p, w, agent) => {
+    S.selectedProject = p.name;
+    selectedWorktree.set(p.name, w.path);
+    collapsed.delete(w.path);
+    S.justAdded = null;
+    newSession(w.path, agent?.command ?? null, agent?.id ?? "", agent ? "agent" : "shell").catch(showError);
+  },
+  openSettings: () => void settings.open(),
+  splits: () => PRESETS.map((s) => ({ name: s.name, glyph: glyph(s.make(), 18, 13) })),
+  split: (p, w, i) => startCanvas(p, w, i),
+  onClose: () => refocusTerminal(),
+});
+
+export const addProject = createAddProject(
+  async (p) => {
+    S.justAdded = p.name;
+    await loadProjects();
+    selectProject(p.name);
+    host.querySelector<HTMLButtonElement>(".welcome button")?.focus();
+  },
+  () => refocusTerminal(),
+);

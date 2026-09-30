@@ -77,7 +77,7 @@
 .file-row.hidden-file .file-name { color: var(--text-dim); }
 .file-note { color: var(--text-dim); padding-left: calc((60 + var(--depth, 0) * 12) * var(--u)); }
 .file-note.error { color: var(--error); }
-/* Changes: what git reports against HEAD. Hand-off only, no diff view. */
+/* Changes against HEAD. A selected file opens its diff in the peek. */
 .wt-diff, .change-counts { flex-shrink: 0; display: flex; gap: calc(4 * var(--u)); margin-left: auto; font-family: var(--mono); font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
 .diff-add { color: var(--diff-add); }
 .diff-del { color: var(--diff-del); }

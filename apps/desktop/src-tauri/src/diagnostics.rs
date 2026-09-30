@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
+/// Where the keystroke latency trace goes: `SKIFF_TRACE=<file>`, or
+/// latency.jsonl in the app's log folder.
 fn trace_file(handle: &AppHandle) -> Result<PathBuf, String> {
     if let Some(p) = std::env::var_os("SKIFF_TRACE") {
         return Ok(PathBuf::from(p));

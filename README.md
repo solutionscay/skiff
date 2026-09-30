@@ -47,6 +47,14 @@ crates/skiff-core    session model, wire protocol, projects.toml config
 crates/skiffd        daemon: owns every PTY, serves clients over a Unix socket
 crates/skiff-client  async client for the socket
 apps/desktop         Tauri v2 app, vanilla TypeScript + xterm.js
+  src/app            state, actions, keyboard, startup connections
+  src/ui             DOM builders, dialogs, menus
+  src/workspace      rail, session tree, layouts, files, project actions
+  src/terminal       xterm runtime, panes, search, clipboard, font size
+  src/appearance     themes, colors, icons, settings
+  src/platform       wire types, IPC bytes, file actions
+  src/diagnostics    latency traces and memory counts
+  src/styles         styles by owner, imported in cascade order
 ```
 
 ## Development

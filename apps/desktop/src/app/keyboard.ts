@@ -1,0 +1,368 @@
+/** App keys, Tab order, F6 regions, arrows in the lists. */
+import { type Action, actionFor } from "./keys";
+import { runAction } from "./actionDispatch";
+import { switcher } from "./commandUi";
+import { modeKeyBlocked } from "./modes";
+import { $, modalOpen } from "../ui/dom";
+import { host } from "../terminal/terminalHost";
+import { deleteKeyMenu } from "../workspace/menus";
+import { ctxMenu } from "../ui/contextMenu";
+import { render } from "./render";
+import { launchMenu } from "./panels";
+import { closeEntries } from "../workspace/projectClose";
+import { renameListItem } from "../workspace/rename";
+import { clearSelection, extendSelection, keepRow, splitSelection } from "../workspace/selection";
+import { collapsed, S } from "./state";
+
+import { panes } from "../terminal/terminalState";
+import { revealSession, selectProject, showGroup } from "../workspace/view";
+
+/** Ctrl+Shift+1..9 selects a project (Command+Shift+1..9 on macOS). Not in the keymap: it is a range, not one key. */
+function projectKey(e: KeyboardEvent): number | null {
+  const primary = navigator.userAgent.includes("Macintosh") ? e.metaKey : e.ctrlKey;
+  if (!primary || !e.shiftKey || e.altKey || (navigator.userAgent.includes("Macintosh") ? e.ctrlKey : e.metaKey)) return null;
+  const m = /^Digit([1-9])$/.exec(e.code);
+  return m ? Number(m[1]) : null;
+}
+
+/** Keys the app owns even while a terminal has focus. Everything else goes to the PTY. */
+export function appKey(e: KeyboardEvent): Action | number | null {
+  return actionFor(e) ?? projectKey(e);
+}
+
+window.addEventListener("keydown", (e) => {
+  // The open palette runs no app key but its own, which closes it. The key still
+  // reaches the palette input, so Ctrl+Shift+Enter picks and Ctrl+Shift+Up moves.
+  if (switcher.isOpen()) {
+    const key = appKey(e);
+    if (key === null) return;
+    e.preventDefault();
+    if (key === "palette") {
+      e.stopPropagation();
+      runAction(key);
+    }
+    return;
+  }
+  // An open menu or dialog keeps the keys until it closes. Holding Ctrl+Shift
+  // from the shortcut that opened it, then pressing Enter, picks the item
+  // instead of running Maximize.
+  if (modalOpen()) return;
+  const key = appKey(e);
+  if (key === null) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (typeof key === "string" && modeKeyBlocked(key)) return;
+  if (typeof key === "number") {
+    const p = S.projects[key - 1];
+    if (p) selectProject(p.name);
+  } else {
+    runAction(key);
+  }
+}, true);
+
+// Focus rings show only while the keyboard is in use (see body.kbd in styles.css).
+const NAV_KEYS = new Set(["Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "F6", "Home", "End"]);
+
+window.addEventListener("keydown", (e) => {
+  if (NAV_KEYS.has(e.key)) document.body.classList.add("kbd");
+}, true);
+window.addEventListener("mousedown", () => document.body.classList.remove("kbd"), true);
+
+export const itemKey = (el: HTMLElement) => el.dataset.session ?? el.dataset.wt ?? el.dataset.group ?? el.dataset.key ?? "";
+
+export function listItems(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .project-pick, #sidebar-scroll .wt-pick, #sidebar-scroll .group-pick, #sidebar-scroll button.session-row, #sidebar-scroll .files-head, #sidebar-scroll .file-row")];
+}
+
+/** Where we are in the list: the last-roved row, else the picked group, else the
+ *  session on screen. One row at most, whatever its kind. */
+export function currentRow(items = listItems()): HTMLElement | undefined {
+  const roved = S.roveKey ? items.find((x) => itemKey(x) === S.roveKey) : undefined;
+  if (roved) return roved;
+  if (S.groupPicked) return items.find((x) => x.dataset.group === S.groupPicked);
+  return S.focused ? items.find((x) => x.dataset.session === S.focused) : undefined;
+}
+
+/** The roving tab stop: the current row, else the first row. */
+function roveTarget(): HTMLElement | undefined {
+  return currentRow() ?? listItems()[0];
+}
+
+/** Moves the one highlight to the current row. */
+export function markCurrent() {
+  const items = listItems();
+  // On the rail, no row is lit, and no pane is framed: the keys are on the rail.
+  const cur = S.atRail ? undefined : currentRow(items);
+  host.classList.toggle("at-rail", S.atRail);
+  for (const x of items) x.classList.toggle("current", x === cur);
+  // The worktree marker goes with it: on the project row, no worktree is marked.
+  if (cur || S.atRail) for (const w of document.querySelectorAll("#sidebar-scroll .wt")) w.classList.toggle("selected", !!cur && w.contains(cur));
+}
+
+/**
+ * One Tab stop per region: the rail, the session list, the terminal.
+ * Everything else, the + buttons too, is reached by mouse, key, or palette.
+ */
+export function applyTabOrder() {
+  for (const el of document.querySelectorAll<HTMLElement>("#app button, #app [tabindex]")) {
+    // Settings is its own screen with its own Tab order; xterm keeps its textarea.
+    if (el.closest("#settings, .xterm")) continue;
+    el.tabIndex = -1;
+  }
+  const rail = document.querySelector<HTMLElement>("#rail .rail-chip.active") ?? document.querySelector<HTMLElement>("#rail .rail-chip");
+  if (rail) rail.tabIndex = 0;
+  const item = roveTarget();
+  if (item) item.tabIndex = 0;
+  markCurrent();
+}
+
+function regionOf(el: Element | null): number {
+  if (!el) return -1;
+  if (el.closest("#rail")) return 0;
+  if (el.closest("#sidebar-scroll")) return 1;
+  if (host.contains(el)) return 2;
+  return -1;
+}
+
+/** F6 and Shift+F6: rail, session list, terminal. */
+export function cycleRegion(dir: 1 | -1) {
+  document.body.classList.add("kbd");
+  const stops: (() => boolean)[] = [
+    () => focusEl(document.querySelector<HTMLElement>("#rail .rail-chip.active") ?? document.querySelector<HTMLElement>("#rail .rail-chip")),
+    () => focusEl(roveTarget() ?? null),
+    () => {
+      const t = S.focused ? panes.get(S.focused)?.term : undefined;
+      if (!t) return false;
+      t.focus();
+      return true;
+    },
+  ];
+  let i = regionOf(document.activeElement);
+  for (let n = 0; n < stops.length; n++) {
+    i = (i + dir + stops.length) % stops.length;
+    if (stops[i]()) return;
+  }
+}
+
+function focusEl(el: HTMLElement | null): boolean {
+  if (!el) return false;
+  el.focus();
+  return document.activeElement === el;
+}
+
+/** Shows a session or picks a group. The row keeps the keys, as a click does. */
+function openRow(el: HTMLElement) {
+  const sid = el.dataset.session;
+  if (sid && (S.focused !== sid || S.groupPicked)) {
+    clearSelection();
+    revealSession(sid);
+    requestAnimationFrame(() => keepRow(sid));
+  } else if (el.classList.contains("group-pick") && el.dataset.group && (el.dataset.group !== S.activeGroup || el.dataset.group !== S.groupPicked)) {
+    showGroup(el.dataset.group, true);
+  }
+}
+
+/**
+ * Ctrl+Shift+Down/Up: the next or previous row in the list. A session opens. A group
+ * opens with its row keeping the keys. A changed file loads its diff. Worktrees,
+ * headers and files take focus.
+ */
+export function stepList(dir: 1 | -1) {
+  const rows = listItems();
+  if (!rows.length) return;
+  // Moving on leaves any open menu behind.
+  ctxMenu.close(false);
+  launchMenu.close(false);
+  // From the highlighted row, wherever the keys are: a row, a menu, a diff, a terminal.
+  const cur = currentRow(rows);
+  const i = cur ? rows.indexOf(cur) : -1;
+  landOn(rows[i < 0 ? (dir > 0 ? 0 : rows.length - 1) : (i + dir + rows.length) % rows.length]);
+}
+
+/** Makes a row the current one. A session opens. A group opens with its row keeping
+ *  the keys. A changed file loads its diff. Other rows take focus. */
+function landOn(next: HTMLElement) {
+  S.roveKey = itemKey(next);
+  if (next.dataset.session) revealSession(next.dataset.session);
+  else if (next.dataset.group) {
+    document.body.classList.add("kbd");
+    showGroup(next.dataset.group, true);
+  } else if (next.classList.contains("change-row")) {
+    // The row's own Enter handler loads the diff.
+    next.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  } else {
+    document.body.classList.add("kbd");
+    markCurrent();
+    next.focus();
+  }
+}
+
+const activeChip = () => document.querySelector<HTMLElement>("#rail .rail-chip.active") ?? document.querySelector<HTMLElement>("#rail .rail-chip");
+
+/**
+ * Ctrl+Shift+Left: the keys go to the project on the rail. No sidebar row stays
+ * highlighted or selected; the panes stay as they are.
+ */
+export function toProject() {
+  ctxMenu.close(false);
+  launchMenu.close(false);
+  clearSelection();
+  S.groupPicked = null;
+  S.atRail = true;
+  // A render puts focus back on the row that had it, and that focus would end
+  // the rail level at once. Let go of the row first.
+  (document.activeElement as HTMLElement | null)?.blur();
+  render();
+  document.body.classList.add("kbd");
+  activeChip()?.focus();
+}
+
+/** Ctrl+Shift+Up/Down on the rail: the next or previous project. The keys stay on the rail. */
+export function stepRail(dir: 1 | -1) {
+  const chips = [...document.querySelectorAll<HTMLElement>("#rail .rail-chip:not(.rail-add)")];
+  if (!chips.length) return;
+  const i = chips.findIndex((c) => c.classList.contains("active"));
+  chips[(i + dir + chips.length) % chips.length].click();
+  activeChip()?.focus();
+}
+
+/** Ctrl+Shift+Right: from the rail back into the list, at its current row. */
+export function fromProject() {
+  if (!S.atRail) return;
+  leaveRail();
+  const row = currentRow() ?? listItems()[0];
+  if (row) landOn(row);
+}
+
+function leaveRail() {
+  S.atRail = false;
+  markCurrent();
+}
+
+// Anything that takes the keys outside the rail and its menus ends the rail level.
+document.addEventListener("focusin", (e) => {
+  if (S.atRail && !(e.target as Element).closest?.("#rail, #ctx-menu, #ctx-sub, #launch-menu")) leaveRail();
+});
+
+/** A Changes or Files header, or a row under one. Not a session, group or worktree. */
+const isSection = (el: HTMLElement) => !!el.dataset.key && !el.dataset.session && !el.dataset.wt && !el.dataset.group && !el.classList.contains("project-pick");
+
+/** Arrows inside the rail and the session list; Enter, Left/Right, Menu key. */
+$("rail").addEventListener("keydown", (e) => {
+  const chip = document.activeElement as HTMLElement | null;
+  if ((e.key === "Delete" || e.key === "Backspace") && !e.ctrlKey && !e.altKey && !e.metaKey && chip?.dataset.project) {
+    const p = S.projects.find((x) => x.name === chip.dataset.project);
+    if (!p) return;
+    e.preventDefault();
+    // Show focus rings, so the first item reads as the one picked.
+    document.body.classList.add("kbd");
+    const r = chip.getBoundingClientRect();
+    ctxMenu.open(r.right, r.top, p.name, closeEntries(p));
+    return;
+  }
+  // Projects move with Ctrl+Shift+Up/Down only. Plain arrows do nothing here.
+  if (e.key === "ArrowUp" || e.key === "ArrowDown") e.preventDefault();
+});
+
+$("sidebar-scroll").addEventListener("keydown", (e) => {
+  const el = document.activeElement as HTMLElement | null;
+  if (!el || el.tagName === "INPUT") return;
+  const items = listItems();
+  const i = items.indexOf(el);
+  if (i < 0) return;
+  const wt = el.dataset.wt;
+  if (e.shiftKey && (e.key === "ArrowDown" || e.key === "ArrowUp") && el.dataset.session) extendSelection(e.key === "ArrowDown" ? 1 : -1, el);
+  else if (e.key === "Enter" && S.selection.length >= 2) splitSelection();
+  else if (e.key === "Escape" && S.selection.length) {
+    const key = itemKey(el);
+    clearSelection();
+    render();
+    keepRow(key);
+  } else if (el.classList.contains("project-pick") && (e.key === "Enter" || e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+    // The project row, as a worktree row one level up: Enter or Space opens or
+    // closes all its worktrees, Right opens them, Left closes them. Its menu is
+    // the menu key or Ctrl+Shift+M, as on every row.
+    const p = S.projects.find((x) => `project:${x.name}` === el.dataset.key);
+    if (p) {
+      const paths = p.worktrees.map((w) => w.path);
+      const close = e.key === "ArrowLeft" || ((e.key === "Enter" || e.key === " ") && paths.some((w) => !collapsed.has(w)));
+      for (const w of paths) close ? collapsed.add(w) : collapsed.delete(w);
+      render();
+      roveTarget()?.focus();
+    }
+  } else if (el.classList.contains("project-pick") && (e.key === "Delete" || e.key === "Backspace") && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    const p = S.projects.find((x) => `project:${x.name}` === el.dataset.key);
+    const r = el.getBoundingClientRect();
+    if (p) ctxMenu.open(r.left + 24, r.bottom, p.name, closeEntries(p));
+  } else if (isSection(el) && (e.key === "Enter" || e.key === " ")) {
+    // A Changes or Files header or a folder: Enter opens or closes it.
+    el.click();
+  } else if (isSection(el) && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+    // Right opens, Left closes. On a file row they do nothing.
+    if (el.getAttribute("aria-expanded") === String(e.key === "ArrowLeft")) el.click();
+  } else if (!el.dataset.session && ["ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) {
+    // Rows move with Ctrl+Shift+Up/Down only. On a session row these keys go
+    // to its terminal below; elsewhere they do nothing, not even scroll.
+  } else if ((e.key === "Enter" || e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight") && wt) {
+    // A worktree: Enter or Space opens or closes it, Right opens, Left closes.
+    // Its + (start a session) is Ctrl+Shift+T, or New session in its menu.
+    const close = e.key === "ArrowLeft" || ((e.key === "Enter" || e.key === " ") && !collapsed.has(wt));
+    if (close) collapsed.add(wt);
+    else collapsed.delete(wt);
+    S.roveKey = wt;
+    render();
+    roveTarget()?.focus();
+  } else if (e.key === "Enter") {
+    // Enter opens the row right away, instead of waiting out the pause.
+    openRow(el);
+  } else if (e.key === "F2" && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && renameListItem(el)) {
+    // F2 renames the row in place, as in a file manager.
+  } else if ((e.key === "Delete" || e.key === "Backspace") && !e.ctrlKey && !e.altKey && !e.metaKey && (el.dataset.session || el.dataset.group)) {
+    deleteKeyMenu(el);
+  } else if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+    const r = el.getBoundingClientRect();
+    el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 24, clientY: r.bottom }));
+  } else if (!(el.dataset.session && passToTerminal(e, el.dataset.session))) return;
+  e.preventDefault();
+  e.stopPropagation();
+});
+
+/**
+ * A clicked session keeps the keys on its row. A key the list does not use
+ * moves them to the open terminal, and the terminal gets that key too.
+ */
+const ARROWS: Record<string, string> = { ArrowUp: "A", ArrowDown: "B", ArrowRight: "C", ArrowLeft: "D" };
+
+function passToTerminal(e: KeyboardEvent, id: string): boolean {
+  const term = S.focused === id ? panes.get(id)?.term : undefined;
+  if (!term || e.altKey || e.metaKey) return false;
+  let data = "";
+  const arrow = ARROWS[e.key];
+  if (arrow && !e.ctrlKey && !e.shiftKey) data = (term.modes.applicationCursorKeysMode ? "\x1bO" : "\x1b[") + arrow;
+  else if (e.key === "Enter") data = "\r";
+  else if (e.key.length === 1 && !e.ctrlKey) data = e.key;
+  else if (e.ctrlKey && /^[a-z]$/i.test(e.key)) data = String.fromCharCode(e.key.toUpperCase().charCodeAt(0) - 64);
+  else if (e.key !== "Escape") return false;
+  term.focus();
+  if (data) term.input(data);
+  return true;
+}
+
+// A render can drop the element that had the keys. Focus then falls to the
+// body and typed keys go nowhere, while a pane still shows as focused.
+window.addEventListener("keydown", (e) => {
+  const a = document.activeElement;
+  if (e.defaultPrevented || (a && a !== document.body) || modalOpen() || !S.focused) return;
+  if (!passToTerminal(e, S.focused)) return;
+  e.preventDefault();
+  e.stopPropagation();
+});
+
+// A pressed row is where we are. Not on focus: a render puts focus back on the
+// row that had it, which may no longer be the current one.
+$("sidebar-scroll").addEventListener("mousedown", (e) => {
+  const el = (e.target as HTMLElement).closest<HTMLElement>(".wt-pick, .group-pick, button.session-row, .files-head, .file-row");
+  if (!el || e.button !== 0) return;
+  S.roveKey = itemKey(el);
+  markCurrent();
+});

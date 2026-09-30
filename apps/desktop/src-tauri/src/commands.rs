@@ -113,8 +113,6 @@ pub(crate) async fn add_project(
         .map_err(err)
 }
 
-/// Where the keystroke latency trace goes: `SKIFF_TRACE=<file>`, or
-/// latency.jsonl in the app's log folder.
 #[tauri::command]
 pub(crate) fn config_path() -> String {
     skiff_core::config::config_path().display().to_string()
