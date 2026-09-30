@@ -29,7 +29,7 @@ export function storedSet(key: string): Set<string> {
 }
 
 /** Where the user was when the app last drew: restored at the next start. */
-export type Place = { project: string | null; session: string | null; group: string | null; picked: boolean };
+export type Place = { project: string | null; session: string | null; group: string | null; picked: boolean; mode: "focus" | "maximize" | null };
 
 const PLACE_KEY = "skiff.place";
 /** Off until the start has restored the saved place, so the first empty draw does not overwrite it. */

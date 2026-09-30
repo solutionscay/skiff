@@ -21,6 +21,7 @@ import { setFontSize } from "./terminal";
 import { loadThemes } from "./themes";
 import { loadPlace, trackPlace } from "./stored";
 import { startMemory } from "./memory";
+import { toggleFocusMode, toggleMaximize } from "./modes";
 import { focusNextWaiting, selectProject, showGroup, showSingle } from "./view";
 
 // Skiff owns right-click. The webview's own menu (Back, Reload, Inspect)
@@ -115,6 +116,11 @@ function restorePlace() {
   if (hasProject && S.selectedProject !== last.project) {
     S.selectedProject = last.project!;
     render();
+  }
+  // Focus mode or maximize, on the same session.
+  if (s && S.focused === s.id) {
+    if (last.mode === "maximize") toggleMaximize();
+    else if (last.mode === "focus") toggleFocusMode();
   }
 }
 

@@ -75,5 +75,6 @@ export function render() {
     session: S.focused,
     group: S.activeGroup,
     picked: !!S.groupPicked && S.groupPicked === S.activeGroup,
+    mode: S.maximized ? "maximize" : S.focusMode ? "focus" : null,
   });
 }
