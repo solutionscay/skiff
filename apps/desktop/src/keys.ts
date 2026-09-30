@@ -178,7 +178,7 @@ export const DESCRIBE: [string, Action, string][] = [
   ["View", "focus-right", "Focus the pane to the right"],
   ["View", "focus-up", "Focus the pane above"],
   ["View", "focus-down", "Focus the pane below"],
-  ["View", "focus-mode", "Focus mode: only the panes of this view. Moves out of the view end it"],
+  ["View", "focus-mode", "Focus mode: only the panes of this view. Ctrl+Shift+Up/Down step through them. Going to another view ends it"],
   ["View", "maximize", "Maximize the focused pane, and hide the rest. Press again to go back"],
   ["View", "font-bigger", "Bigger text"],
   ["View", "font-smaller", "Smaller text"],
