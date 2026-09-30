@@ -2,7 +2,7 @@
 
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
@@ -11,17 +11,16 @@ use std::{
 
 use anyhow::{anyhow, bail, Context, Result};
 use skiff_core::{
-    config::FolderInfo,
-    group::Group,
-    project::{AgentInfo, Project, Worktree},
     protocol::{Envelope, Event, Request, Response, ServerMessage},
-    session::{SessionId, SessionInfo, SessionSpec},
+    session::SessionId,
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::UnixStream,
     sync::{broadcast, mpsc, oneshot},
 };
+
+mod requests;
 
 type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Response>>>>;
 type Outputs = Arc<Mutex<HashMap<SessionId, OutputTx>>>;
@@ -199,88 +198,6 @@ impl Client {
         }
     }
 
-    pub async fn ping(&self) -> Result<String> {
-        Ok(self.hello().await?.0)
-    }
-
-    /// Daemon version and protocol number.
-    pub async fn hello(&self) -> Result<(String, u32)> {
-        match self.request(Request::Ping).await? {
-            Response::Pong { version, protocol } => Ok((version, protocol)),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn list_sessions(&self) -> Result<Vec<SessionInfo>> {
-        match self.request(Request::ListSessions).await? {
-            Response::Sessions { sessions } => Ok(sessions),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn create_session(&self, spec: SessionSpec) -> Result<SessionInfo> {
-        match self.request(Request::CreateSession { spec }).await? {
-            Response::Session { session } => Ok(session),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn write(&self, session: &str, data: Vec<u8>) -> Result<()> {
-        self.expect_ok(Request::Write {
-            session: session.to_string(),
-            data,
-        })
-        .await
-    }
-
-    /// Queues input and returns at once. Calls from one thread reach the PTY
-    /// in call order. The reply has no waiter, so the reader drops it.
-    pub fn write_now(&self, session: &str, data: Vec<u8>) -> Result<()> {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let request = Request::Write {
-            session: session.to_string(),
-            data,
-        };
-        let mut line = serde_json::to_vec(&Envelope { id, request })?;
-        line.push(b'\n');
-        self.tx.send(line).map_err(|_| anyhow!("skiffd connection closed"))
-    }
-
-    pub async fn set_session_theme(&self, session: &str, theme: Option<String>) -> Result<SessionInfo> {
-        let req = Request::SetSessionTheme {
-            session: session.to_string(),
-            theme,
-        };
-        match self.request(req).await? {
-            Response::Session { session } => Ok(session),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn rename_session(&self, session: &str, name: &str) -> Result<SessionInfo> {
-        let req = Request::RenameSession {
-            session: session.to_string(),
-            name: name.to_string(),
-        };
-        match self.request(req).await? {
-            Response::Session { session } => Ok(session),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn resize(&self, session: &str, cols: u16, rows: u16) -> Result<()> {
-        self.expect_ok(Request::Resize {
-            session: session.to_string(),
-            cols,
-            rows,
-        })
-        .await
-    }
-
     /// The receiver for one session's output. Take it before [`Self::subscribe`]:
     /// the snapshot can arrive before the reply. Replaces an earlier receiver.
     pub fn output(&self, session: &str) -> Output {
@@ -291,203 +208,4 @@ impl Client {
         Output { rx, lagged }
     }
 
-    pub async fn subscribe(&self, session: &str) -> Result<()> {
-        self.expect_ok(Request::Subscribe {
-            session: session.to_string(),
-        })
-        .await
-    }
-
-    pub async fn unsubscribe(&self, session: &str) -> Result<()> {
-        self.outputs.lock().unwrap().remove(session);
-        self.expect_ok(Request::Unsubscribe {
-            session: session.to_string(),
-        })
-        .await
-    }
-
-    pub async fn kill(&self, session: &SessionId) -> Result<()> {
-        self.expect_ok(Request::Kill {
-            session: session.clone(),
-        })
-        .await
-    }
-
-    pub async fn list_projects(&self) -> Result<Vec<Project>> {
-        match self.request(Request::ListProjects).await? {
-            Response::Projects { projects } => Ok(projects),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn add_worktree(
-        &self,
-        project: &str,
-        branch: &str,
-        base: Option<String>,
-    ) -> Result<Worktree> {
-        let request = Request::AddWorktree {
-            project: project.to_string(),
-            branch: branch.to_string(),
-            base,
-        };
-        match self.request(request).await? {
-            Response::Worktree { worktree } => Ok(worktree),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn keys(&self) -> Result<std::collections::BTreeMap<String, String>> {
-        match self.request(Request::GetKeys).await? {
-            Response::Keys { keys } => Ok(keys),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn appearance(&self, set: Option<Option<String>>) -> Result<skiff_core::config::Appearance> {
-        let req = match set {
-            Some(theme) => Request::SetAppearance { theme },
-            None => Request::GetAppearance,
-        };
-        self.appearance_reply(req).await
-    }
-
-    /// Sets the text size: points, or `None` for the default.
-    pub async fn set_font_size(&self, size: Option<u8>) -> Result<skiff_core::config::Appearance> {
-        self.appearance_reply(Request::SetFontSize { size }).await
-    }
-
-    async fn appearance_reply(&self, req: Request) -> Result<skiff_core::config::Appearance> {
-        match self.request(req).await? {
-            Response::Appearance { theme, font_size } => Ok(skiff_core::config::Appearance { theme, font_size }),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn list_themes(&self) -> Result<Vec<skiff_core::theme::TerminalTheme>> {
-        match self.request(Request::ListThemes).await? {
-            Response::Themes { themes } => Ok(themes),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn read_icon(&self, path: PathBuf) -> Result<Option<String>> {
-        match self.request(Request::ReadIcon { path }).await? {
-            Response::Icon { icon } => Ok(icon),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn set_project_icon(&self, project: String, icon: Option<String>) -> Result<()> {
-        self.expect_ok(Request::SetProjectIcon { project, icon }).await
-    }
-
-    pub async fn reorder_projects(&self, order: Vec<String>) -> Result<()> {
-        self.expect_ok(Request::ReorderProjects { order }).await
-    }
-
-    pub async fn set_project_background(&self, project: String, background: Option<String>) -> Result<()> {
-        self.expect_ok(Request::SetProjectBackground { project, background }).await
-    }
-
-    pub async fn set_project_color(&self, project: String, color: String) -> Result<()> {
-        self.expect_ok(Request::SetProjectColor { project, color }).await
-    }
-
-    pub async fn set_project_closed(&self, project: String, closed: bool) -> Result<()> {
-        self.expect_ok(Request::SetProjectClosed { project, closed }).await
-    }
-
-    pub async fn remove_project(&self, project: String) -> Result<()> {
-        self.expect_ok(Request::RemoveProject { project }).await
-    }
-
-    pub async fn inspect_folder(&self, path: PathBuf) -> Result<FolderInfo> {
-        match self.request(Request::InspectFolder { path }).await? {
-            Response::Folder { folder } => Ok(folder),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn list_agents(&self) -> Result<Vec<AgentInfo>> {
-        self.agents_reply(Request::ListAgents).await
-    }
-
-    pub async fn set_agents(&self, enabled: Vec<String>) -> Result<Vec<AgentInfo>> {
-        self.agents_reply(Request::SetAgents { enabled }).await
-    }
-
-    pub async fn set_agent_command(&self, agent: String, command: String) -> Result<Vec<AgentInfo>> {
-        self.agents_reply(Request::SetAgentCommand { agent, command }).await
-    }
-
-    async fn agents_reply(&self, req: Request) -> Result<Vec<AgentInfo>> {
-        match self.request(req).await? {
-            Response::Agents { agents } => Ok(agents),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn add_project(
-        &self,
-        path: PathBuf,
-        name: Option<String>,
-        short: Option<String>,
-        color: Option<String>,
-        icon: Option<String>,
-        agents: Vec<String>,
-    ) -> Result<Project> {
-        let req = Request::AddProject {
-            path,
-            name,
-            short,
-            color,
-            icon,
-            agents,
-        };
-        match self.request(req).await? {
-            Response::Project { project } => Ok(project),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn remove_worktree(&self, project: &str, path: PathBuf) -> Result<()> {
-        self.expect_ok(Request::RemoveWorktree {
-            project: project.to_string(),
-            path,
-        })
-        .await
-    }
-
-    pub async fn list_groups(&self) -> Result<Vec<Group>> {
-        match self.request(Request::ListGroups).await? {
-            Response::Groups { groups } => Ok(groups),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn save_group(&self, group: Group) -> Result<Group> {
-        match self.request(Request::SaveGroup { group }).await? {
-            Response::Group { group } => Ok(group),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn delete_group(&self, id: &str) -> Result<()> {
-        self.expect_ok(Request::DeleteGroup {
-            group: id.to_string(),
-        })
-        .await
-    }
 }
