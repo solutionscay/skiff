@@ -15,15 +15,14 @@ import { showError } from "./dom";
 import { hasChanges, setShowChanges, showsChanges } from "./changes";
 import { showDiff } from "./peek";
 import { setShowFiles, showsFiles } from "./files";
-import { launchMenu } from "./panels";
 import { deleteGroup } from "./groups";
 import { sessionsOf } from "./layout";
 import { startRename, startSessionRename } from "./rename";
 import { render } from "./render";
 import { clearSelection, selectionPlan, splitSelection } from "./selection";
-import { enabledAgents, FULL_HINT, groupOf, MAX_PANES, place, removeErrors, removing, S, selectedWorktree, sessions, shownIds, splitFull } from "./state";
-import { groupThemeMenu, projectThemeMenu, sessionThemeMenu, themeIdFor } from "./themes";
-import { closePane, focusPane, refocusTerminal, removeFromGroup, showGroup, splitWith, unfocus, unsplit } from "./view";
+import { enabledAgents, groupOf, MAX_PANES, place, removeErrors, removing, S, selectedWorktree, sessions, shownIds, splitFull } from "./state";
+import { groupThemeMenu, projectThemeMenu, sessionThemeMenu } from "./themes";
+import { focusPane, refocusTerminal, removeFromGroup, showGroup, splitWith, unfocus, unsplit } from "./view";
 
 async function setIcon(p: Project, icon: string | null) {
   try {
@@ -168,7 +167,6 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
       ? [{
           icon: "code-group",
           label: plan.label === "New group" ? `Group ${n} selected` : plan.label,
-          hint: plan.size > MAX_PANES ? FULL_HINT : "",
           disabled: plan.size > MAX_PANES,
           run: splitSelection,
         }]
@@ -176,7 +174,6 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
     ...(groupOf(s.id)
       ? [{ icon: "code-ungroup", label: "Remove from group", run: () => removeFromGroup(s.id) }]
       : []),
-    ...newSessionEntry(s, x, y),
     { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(s.id) },
     themeEntry(s),
     picked ? endSelectedEntry(S.selection.filter((id) => sessions.has(id))) : endEntry(s),
@@ -207,15 +204,8 @@ export function deleteKeyMenu(el: HTMLElement) {
   ]);
 }
 
-/** Right-click, New session…: the + menu for this session's worktree, at the pointer. */
-function newSessionEntry(s: SessionInfo, x: number, y: number): MenuEntry[] {
-  const at = place(s);
-  return at ? [{ icon: "indicators-plus", label: "New session…", run: () => launchMenu.open({ x, y }, at.project, at.worktree) }] : [];
-}
-
 function themeEntry(s: SessionInfo): MenuEntry {
-  const name = S.themes.find((t) => t.id === themeIdFor(s))?.name ?? "";
-  return { icon: "tools-sparkles", label: "Terminal theme…", hint: name, run: () => void sessionThemeMenu(s) };
+  return { icon: "tools-sparkles", label: "Terminal theme…", run: () => void sessionThemeMenu(s) };
 }
 
 /** Right-click, End session: stops the process and drops it from the list. */
@@ -299,13 +289,13 @@ export function paneMenu(id: string, x: number, y: number) {
   if (id !== S.focused) focusPane(id);
   const full = splitFull();
   const entries: MenuEntry[] = [
-    { icon: "layouts-panel-left:flip", label: "Add pane right…", hint: full ? FULL_HINT : keyLabel("split-right"), disabled: full, run: () => splitMenu(id, "row", x, y) },
-    { icon: "layouts-panel-bottom", label: "Add pane below…", hint: full ? FULL_HINT : keyLabel("split-down"), disabled: full, run: () => splitMenu(id, "col", x, y) },
+    { icon: "layouts-panel-left:flip", label: "Add pane right…", hint: keyLabel("split-right"), disabled: full, run: () => splitMenu(id, "row", x, y) },
+    { icon: "layouts-panel-bottom", label: "Add pane below…", hint: keyLabel("split-down"), disabled: full, run: () => splitMenu(id, "col", x, y) },
     { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(id) },
   ];
   entries.push(themeEntry(s));
   if (shownIds().length > 1) {
-    entries.push({ icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), run: () => closePane(id) });
+    entries.push({ icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), run: () => removeFromGroup(id) });
   }
   entries.push(endEntry(s));
   ctxMenu.open(x, y, sessionLabel(s), entries);
@@ -331,8 +321,7 @@ export function splitMenu(id: string, dir: SplitDir, x: number, y: number) {
   if (others.length) {
     entries.push({ head: "OPEN SESSION" });
     for (const o of others) {
-      const oat = place(o);
-      entries.push({ icon: "·", label: sessionLabel(o), hint: oat ? oat.project.name : "other", run: () => splitWith(id, dir, o.id) });
+      entries.push({ icon: "·", label: sessionLabel(o), run: () => splitWith(id, dir, o.id) });
     }
   }
   ctxMenu.open(x, y, `${dir === "row" ? "Add pane right" : "Add pane below"}:`, entries);
@@ -361,7 +350,6 @@ function groupStartEntries(g: Group): MenuEntry[] {
     entries.push({
       glyph: launchIcon(a),
       label: a?.id ?? "Shell",
-      hint: full ? FULL_HINT : "",
       disabled: full,
       run: () => {
         if (g.id !== S.activeGroup) showGroup(g.id);

@@ -17,6 +17,27 @@ export type MenuEntry =
     };
 
 /** One right-click menu for session rows, panes, and groups. Esc or a click outside closes it. */
+/** Where the pointer last was, and where it rested when a menu opened. */
+let pointerAt = [-1, -1];
+let restAt: number[] | null = null;
+window.addEventListener("mousemove", (e) => (pointerAt = [e.clientX, e.clientY]), true);
+
+/** Call when a menu opens. A menu drawn under a still pointer gets a move event
+ *  there; that one must not take the keys from the first item. */
+export function menuOpened() {
+  restAt = pointerAt;
+}
+
+/** The pointer takes the keys once it really moves, so one item is lit whether
+ *  pointer or arrows moved last. */
+export function followPointer(b: HTMLButtonElement) {
+  b.addEventListener("mousemove", (e) => {
+    if (restAt && e.clientX === restAt[0] && e.clientY === restAt[1]) return;
+    restAt = null;
+    if (!b.disabled && document.activeElement !== b) b.focus();
+  });
+}
+
 export function createMenu(onClose: () => void) {
   const menu = document.createElement("div");
   menu.id = "ctx-menu";
@@ -100,6 +121,7 @@ export function createMenu(onClose: () => void) {
           else if (flyOwner) closeFly();
         });
       }
+      followPointer(b);
       b.addEventListener("click", () => {
         if (e.sub) return openFly(b, e.sub, false);
         pick(() => e.run?.());
@@ -129,6 +151,7 @@ export function createMenu(onClose: () => void) {
 
   function open(x: number, y: number, title: string, entries: MenuEntry[], onDismiss?: () => void) {
     if (!menu.hidden) close(false);
+    menuOpened();
     dismiss = onDismiss ?? null;
     const t = document.createElement("div");
     t.className = "lm-title";

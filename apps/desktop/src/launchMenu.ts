@@ -1,5 +1,6 @@
 import type { AgentInfo, Project, Worktree } from "./types";
 import { launchIcon } from "./agentIcon";
+import { followPointer, menuOpened } from "./menu";
 
 interface Opts {
   /** Enabled agents, in order. */
@@ -36,6 +37,7 @@ export function createLaunchMenu(o: Opts) {
     b.type = "button";
     b.className = "lm-item " + cls;
     b.setAttribute("role", "menuitem");
+    followPointer(b);
     const k = document.createElement("span");
     k.className = "lm-key mono";
     k.textContent = key;
@@ -60,6 +62,7 @@ export function createLaunchMenu(o: Opts) {
     const el = at instanceof HTMLElement ? at : null;
     if (el && !menu.hidden && anchor === el) return close();
     close(false);
+    menuOpened();
     anchor = el;
     el?.setAttribute("aria-expanded", "true");
     const title = document.createElement("div");
