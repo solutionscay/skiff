@@ -5,3 +5,4 @@ pub mod screen;
 pub mod server;
 pub mod session;
 pub mod shellenv;
+pub mod workspace;

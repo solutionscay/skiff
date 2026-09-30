@@ -3,7 +3,7 @@
 use std::{
     collections::HashMap,
     io::{Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc, Mutex, RwLock,
@@ -18,9 +18,12 @@ use skiff_core::{
     protocol::Event,
     session::{now_ms, SessionId, SessionInfo, SessionSpec, SessionState},
 };
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Notify};
 
-use crate::screen::{Screen, Signals};
+use crate::{
+    screen::{Screen, Signals},
+    workspace::{self, SavedSession, Workspace},
+};
 
 pub type Chunk = Arc<Vec<u8>>;
 
@@ -186,6 +189,11 @@ pub struct SessionPool {
     groups: Mutex<Vec<Group>>,
     /// State changes, exits, creations, removals. Not output.
     pub events: broadcast::Sender<Event>,
+    /// Groups or sessions changed since the last save.
+    dirty: Notify,
+    /// What a restored session ran before the restart. Saved in place of its
+    /// shell, so the agent command survives more than one restart.
+    resumed: Mutex<HashMap<SessionId, (String, Vec<String>)>>,
 }
 
 impl Default for SessionPool {
@@ -195,9 +203,14 @@ impl Default for SessionPool {
             sessions: RwLock::new(HashMap::new()),
             groups: Mutex::new(Vec::new()),
             events,
+            dirty: Notify::new(),
+            resumed: Mutex::new(HashMap::new()),
         }
     }
 }
+
+/// Changes this close together are saved once.
+const SAVE_DELAY: Duration = Duration::from_millis(500);
 
 impl SessionPool {
     pub fn new() -> Arc<Self> {
@@ -221,6 +234,11 @@ impl SessionPool {
     }
 
     pub fn create(self: &Arc<Self>, spec: SessionSpec) -> Result<SessionInfo> {
+        self.spawn(spec, None)
+    }
+
+    /// Starts a session. `id` is the old one when a restore brings it back.
+    fn spawn(self: &Arc<Self>, spec: SessionSpec, id: Option<SessionId>) -> Result<SessionInfo> {
         let command = spec
             .command
             .clone()
@@ -303,7 +321,8 @@ impl SessionPool {
             .map_err(|e| anyhow!("take writer: {e}"))?;
         let killer = child.clone_killer();
 
-        let id: SessionId = uuid::Uuid::new_v4().simple().to_string()[..12].to_string();
+        let id: SessionId =
+            id.unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string()[..12].to_string());
         let info = SessionInfo {
             id: id.clone(),
             label,
@@ -365,6 +384,7 @@ impl SessionPool {
         let _ = self.events.send(Event::SessionCreated {
             session: info.clone(),
         });
+        self.dirty.notify_one();
 
         let pool = self.clone();
         let sid = id.clone();
@@ -407,6 +427,7 @@ impl SessionPool {
                                 info.clone()
                             };
                             let _ = pool.events.send(Event::SessionUpdated { session: info });
+                            pool.dirty.notify_one();
                         } else {
                             let changed = {
                                 let mut info = session.info.lock().unwrap();
@@ -491,6 +512,7 @@ impl SessionPool {
         let _ = self.events.send(Event::SessionUpdated {
             session: info.clone(),
         });
+        self.dirty.notify_one();
         Ok(info)
     }
 
@@ -501,6 +523,7 @@ impl SessionPool {
         let _ = self.events.send(Event::SessionUpdated {
             session: info.clone(),
         });
+        self.dirty.notify_one();
         Ok(info)
     }
 
@@ -538,32 +561,8 @@ impl SessionPool {
             .ok_or_else(|| anyhow!("no such session: {id}"))?;
         let _ = session.killer.lock().unwrap().kill();
         let cwd = session.info.lock().unwrap().cwd.clone();
-        let mut pruned = false;
-        groups.retain_mut(|g| {
-            if !g.layout.sessions().iter().any(|s| s == id) {
-                return true;
-            }
-            pruned = true;
-            match g.layout.without(id) {
-                Some(layout) => {
-                    g.layout = layout;
-                    if g.focus.as_deref() == Some(id) {
-                        g.focus = g.layout.sessions().into_iter().next();
-                    }
-                    true
-                }
-                // The last pane: the group stays, with an empty slot in its place.
-                // It keeps the session's folder, so it stays in that worktree.
-                None => {
-                    g.cwd.get_or_insert_with(|| cwd.to_string_lossy().into_owned());
-                    g.layout = skiff_core::group::Layout::Pane {
-                        session: format!("slot:{}", &uuid::Uuid::new_v4().simple().to_string()[..8]),
-                    };
-                    g.focus = None;
-                    true
-                }
-            }
-        });
+        let pruned = prune(&mut groups, id, &cwd);
+        self.resumed.lock().unwrap().remove(id);
         drop(groups);
         let _ = self.events.send(Event::SessionRemoved {
             session: id.to_string(),
@@ -571,6 +570,7 @@ impl SessionPool {
         if pruned {
             let _ = self.events.send(Event::GroupsChanged {});
         }
+        self.dirty.notify_one();
         Ok(())
     }
 
@@ -609,6 +609,7 @@ impl SessionPool {
         }
         drop(groups);
         let _ = self.events.send(Event::GroupsChanged {});
+        self.dirty.notify_one();
         Ok(group)
     }
 
@@ -621,7 +622,117 @@ impl SessionPool {
         }
         drop(groups);
         let _ = self.events.send(Event::GroupsChanged {});
+        self.dirty.notify_one();
         Ok(())
+    }
+
+    /// Every group and session as they stand. Exited sessions count: their
+    /// panes are still in the layout.
+    fn workspace(&self) -> Workspace {
+        let groups = self.groups.lock().unwrap();
+        let sessions = self.sessions.read().unwrap();
+        let resumed = self.resumed.lock().unwrap();
+        let mut saved: Vec<SavedSession> = sessions
+            .values()
+            .map(|s| {
+                let mut saved = SavedSession::from(&*s.info.lock().unwrap());
+                if let Some((command, args)) = resumed.get(&saved.id) {
+                    saved.command = command.clone();
+                    saved.args = args.clone();
+                }
+                saved
+            })
+            .collect();
+        saved.sort_by(|a, b| a.id.cmp(&b.id));
+        Workspace {
+            groups: groups.clone(),
+            sessions: saved,
+        }
+    }
+
+    /// Writes the workspace file now. On shutdown, so the last changes count.
+    pub fn save_now(&self) {
+        if let Err(e) = workspace::save(&workspace::path(), &self.workspace()) {
+            tracing::warn!("save workspace: {e:#}");
+        }
+    }
+
+    /// Writes the workspace file after changes, at most once per `SAVE_DELAY`.
+    pub fn spawn_saver(self: &Arc<Self>) {
+        let pool = self.clone();
+        tokio::spawn(async move {
+            loop {
+                pool.dirty.notified().await;
+                tokio::time::sleep(SAVE_DELAY).await;
+                let ws = pool.workspace();
+                let saved = tokio::task::spawn_blocking(move || workspace::save(&workspace::path(), &ws)).await;
+                if let Ok(Err(e)) = saved {
+                    tracing::warn!("save workspace: {e:#}");
+                }
+            }
+        });
+    }
+
+    /// Brings back the saved groups, and each saved session as a shell in its
+    /// folder under its old id, so the layouts still point at it. A session
+    /// that cannot start leaves its groups the way a kill would.
+    pub fn restore(self: &Arc<Self>) {
+        let file = workspace::path();
+        let ws = match workspace::load(&file) {
+            Ok(ws) => ws,
+            Err(e) => {
+                tracing::warn!("restore workspace: {e:#}");
+                return;
+            }
+        };
+        let mut groups = ws.groups;
+        let mut restored = 0;
+        for saved in ws.sessions {
+            // A worktree removed meanwhile: start in the home folder instead.
+            let cwd = saved.cwd.is_dir().then(|| saved.cwd.clone());
+            let spec = SessionSpec {
+                label: String::new(),
+                name: saved.name.clone(),
+                role: saved.role,
+                cwd,
+                command: None,
+                args: Vec::new(),
+                cols: saved.cols,
+                rows: saved.rows,
+                ..Default::default()
+            };
+            match self.spawn(spec, Some(saved.id.clone())) {
+                Ok(_) => {
+                    restored += 1;
+                    if !saved.command.is_empty() {
+                        self.resumed
+                            .lock()
+                            .unwrap()
+                            .insert(saved.id.clone(), (saved.command.clone(), saved.args.clone()));
+                    }
+                    if saved.theme.is_some() {
+                        let _ = self.set_theme(&saved.id, saved.theme);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("restore session {}: {e:#}", saved.id);
+                    prune(&mut groups, &saved.id, &saved.cwd);
+                }
+            }
+        }
+        // Drop panes whose session was never saved.
+        {
+            let sessions = self.sessions.read().unwrap();
+            for g in groups.iter_mut() {
+                for id in g.layout.sessions() {
+                    if !skiff_core::group::is_slot(&id) && !sessions.contains_key(&id) {
+                        prune(std::slice::from_mut(g), &id, Path::new(""));
+                    }
+                }
+            }
+        }
+        tracing::info!("restored {} groups and {restored} sessions from {}", groups.len(), file.display());
+        *self.groups.lock().unwrap() = groups;
     }
 
     /// Sends output held back by coalescing, and scans held-back screen
@@ -766,4 +877,35 @@ mod tests {
         assert!(prints(b"\x1b[38;2;215;119;87m*\x1b[39m"));
         assert!(prints("\x1b[3G✻".as_bytes()));
     }
+}
+
+/// Drops `id` from every group. A group left with no session keeps an empty
+/// slot, and the session's folder so it stays in that worktree. True when a
+/// group changed.
+fn prune(groups: &mut [Group], id: &str, cwd: &Path) -> bool {
+    let mut pruned = false;
+    for g in groups.iter_mut() {
+        if !g.layout.sessions().iter().any(|s| s == id) {
+            continue;
+        }
+        pruned = true;
+        match g.layout.without(id) {
+            Some(layout) => {
+                g.layout = layout;
+                if g.focus.as_deref() == Some(id) {
+                    g.focus = g.layout.sessions().into_iter().next();
+                }
+            }
+            None => {
+                if !cwd.as_os_str().is_empty() {
+                    g.cwd.get_or_insert_with(|| cwd.to_string_lossy().into_owned());
+                }
+                g.layout = skiff_core::group::Layout::Pane {
+                    session: format!("slot:{}", &uuid::Uuid::new_v4().simple().to_string()[..8]),
+                };
+                g.focus = None;
+            }
+        }
+    }
+    pruned
 }

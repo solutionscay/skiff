@@ -44,6 +44,8 @@ async fn run() -> Result<()> {
     }
 
     let pool = SessionPool::new();
+    pool.restore();
+    pool.spawn_saver();
     pool.spawn_idle_watcher();
     pool.spawn_flusher();
     tracing::info!("skiffd {} listening on {}", skiff_core::VERSION, path.display());
@@ -70,6 +72,7 @@ async fn run() -> Result<()> {
     }
 
     tracing::info!("skiffd shutting down");
+    pool.save_now();
     let _ = std::fs::remove_file(&path);
     Ok(())
 }

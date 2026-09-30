@@ -117,13 +117,16 @@ impl Screen {
     }
 
     /// Bytes that redraw scrollback, screen, cursor, and input modes on a
-    /// terminal of the same size. Starts with a full reset.
+    /// terminal of the same size. Starts with a full reset. The redraw sits
+    /// inside a synchronized update, so the client shows it in one frame
+    /// instead of a blank or half-drawn screen.
     pub fn snapshot(&self) -> Vec<u8> {
         let grid = self.term.grid();
         let mode = *self.term.mode();
         let cols = grid.columns();
         let mut out = String::with_capacity(64 * 1024);
-        out.push_str("\x1bc");
+        // The reset ends any synchronized update, so the new one starts after it.
+        out.push_str("\x1bc\x1b[?2026h");
         if mode.contains(TermMode::ALT_SCREEN) {
             out.push_str("\x1b[?1049h\x1b[H");
         }
@@ -181,6 +184,7 @@ impl Screen {
         ] {
             out.push_str(if mode.contains(flag) { set } else { unset });
         }
+        out.push_str("\x1b[?2026l");
         out.into_bytes()
     }
 }

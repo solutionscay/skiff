@@ -141,7 +141,7 @@ fn edit_lock() -> std::sync::MutexGuard<'static, ()> {
 
 /// Writes a temp file beside the target and renames it over, so a reader
 /// never sees a half-written file. Writes through a symlink to its target.
-fn write_atomic(file: &Path, text: &str) -> Result<()> {
+pub fn write_atomic(file: &Path, text: &str) -> Result<()> {
     let file = file.canonicalize().unwrap_or_else(|_| file.to_path_buf());
     let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let tmp = file.with_file_name(format!(".{name}.{}.tmp", std::process::id()));

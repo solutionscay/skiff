@@ -3566,6 +3566,7 @@ dependencies = [
  "dirs 6.0.0",
  "libc",
  "portable-pty",
+ "serde",
  "serde_json",
  "skiff-core",
  "tokio",
