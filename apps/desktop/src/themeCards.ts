@@ -89,6 +89,35 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
   return grid;
 }
 
+const KEYS: Record<string, "left" | "right" | "up" | "down" | "first" | "last"> = {
+  ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down", Home: "first", End: "last",
+};
+
+/** The card an arrow key lands on. Up and down keep to the nearest column; the ends stop. */
+function nextCard(cards: HTMLElement[], at: number, key: "left" | "right" | "up" | "down" | "first" | "last"): number {
+  if (key === "first") return 0;
+  if (key === "last") return cards.length - 1;
+  if (key === "left") return Math.max(0, at - 1);
+  if (key === "right") return Math.min(cards.length - 1, at + 1);
+  const rect = cards[at].getBoundingClientRect();
+  const dir = key === "down" ? 1 : -1;
+  let best = at;
+  let bestRow = Infinity;
+  let bestDx = Infinity;
+  for (const [i, c] of cards.entries()) {
+    const r = c.getBoundingClientRect();
+    const dy = (r.top - rect.top) * dir;
+    if (dy <= 1) continue;
+    const dx = Math.abs(r.left - rect.left);
+    if (dy < bestRow - 1 || (Math.abs(dy - bestRow) <= 1 && dx < bestDx)) {
+      best = i;
+      bestRow = dy;
+      bestDx = dx;
+    }
+  }
+  return best;
+}
+
 /** Terminal theme picker: a modal of cards. A click applies and closes. */
 export function pickTheme(title: string, themes: TerminalTheme[], o: CardOpts): void {
   const back = document.activeElement as HTMLElement | null;
@@ -124,7 +153,16 @@ export function pickTheme(title: string, themes: TerminalTheme[], o: CardOpts): 
     if (e.key === "Escape") {
       e.preventDefault();
       close();
+      return;
     }
+    const step = KEYS[e.key];
+    if (!step || e.ctrlKey || e.altKey || e.metaKey) return;
+    // Arrows move between cards, not the panel's scroll.
+    e.preventDefault();
+    document.body.classList.add("kbd");
+    const cards = [...body.querySelectorAll<HTMLButtonElement>(".tc-card")];
+    const at = cards.indexOf(document.activeElement as HTMLButtonElement);
+    cards[nextCard(cards, at < 0 ? 0 : at, step)]?.focus();
   });
   (body.querySelector<HTMLButtonElement>(".tc-card.active") ?? body.querySelector<HTMLButtonElement>(".tc-card"))?.focus();
 }
