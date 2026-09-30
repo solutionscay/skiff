@@ -21,6 +21,10 @@ export interface Pane {
   parked: boolean;
   /** Counts subscriptions. A chunk from an older one is dropped. */
   stream: number;
+  /** Bytes xterm parsed that Rust has not heard about yet. */
+  unacked: number;
+  /** An ack_output call is in flight. */
+  acking: boolean;
   /** Subscribe and unsubscribe calls, one after another, so they land in order. */
   sub: Promise<void>;
 }

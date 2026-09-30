@@ -111,7 +111,7 @@ async function createPane(id: string): Promise<Pane> {
   });
   term.onRender(() => traceRender(id));
 
-  const pane: Pane = { el, term, fit, search, parked: false, stream: 0, sub: Promise.resolve() };
+  const pane: Pane = { el, term, fit, search, parked: false, stream: 0, unacked: 0, acking: false, sub: Promise.resolve() };
   const drop = () => {
     term.dispose();
     el.remove();
@@ -142,10 +142,34 @@ function streamOutput(id: string, pane: Pane): Promise<void> {
     const s = sessions.get(id);
     if (!s || pane.stream !== n) return;
     const bytes = toBytes(m);
-    pane.term.write(bytes, traceOutput(id, bytes.length));
+    const traced = traceOutput(id, bytes.length);
+    pane.term.write(bytes, () => {
+      traced?.();
+      if (pane.stream === n) ackOutput(id, pane, n, bytes.length);
+    });
     s.last_output_at = Date.now();
   };
-  return invoke("subscribe_output", { session: id, onOutput: channel });
+  pane.unacked = 0;
+  return invoke("subscribe_output", { session: id, stream: n, onOutput: channel });
+}
+
+/**
+ * Tells Rust that xterm parsed `bytes`, so it keeps sending. One call is in
+ * flight at a time; acks that arrive meanwhile add up for the next one.
+ */
+function ackOutput(id: string, pane: Pane, stream: number, bytes: number) {
+  pane.unacked += bytes;
+  if (pane.acking) return;
+  pane.acking = true;
+  const sent = pane.unacked;
+  pane.unacked = 0;
+  invoke("ack_output", { session: id, stream, bytes: sent })
+    .catch(console.error)
+    .finally(() => {
+      pane.acking = false;
+      // What is left belongs to the current stream: a new one resets it.
+      if (pane.unacked) ackOutput(id, pane, pane.stream, 0);
+    });
 }
 
 /** A pane out of the layout stops its stream; showing it again redraws it from a snapshot. */
