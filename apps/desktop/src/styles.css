@@ -277,8 +277,8 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 @keyframes ring { 0%, 50%, 100% { transform: rotate(0); } 10% { transform: rotate(16deg); } 20% { transform: rotate(-14deg); } 30% { transform: rotate(10deg); } 40% { transform: rotate(-6deg); } }
 .session-row .finished, .cell-head .finished { display: flex; align-items: center; justify-content: center; color: var(--state-done); width: calc(18 * var(--u)); height: calc(12 * var(--u)); }
 .session-row .unread, .cell-head .unread { display: flex; align-items: center; justify-content: center; color: var(--diff-add); width: calc(18 * var(--u)); height: calc(12 * var(--u)); }
-.unread svg { width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: wave 1.2s steps(1) infinite; transform-origin: 20% 90%; }
-@keyframes wave { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-10deg) skewY(-6deg); } 50% { transform: rotate(0); } 75% { transform: rotate(10deg) skewY(6deg); } }
+.unread svg { width: calc(12 * var(--u)); height: calc(12 * var(--u)); stroke-width: 2.5; animation: wave 0.8s steps(1) infinite; transform-origin: 20% 90%; }
+@keyframes wave { 0%, 100% { transform: translateY(0) rotate(0); } 25% { transform: translateY(-2px) rotate(-18deg); } 50% { transform: translateY(0) rotate(0); } 75% { transform: translateY(-2px) rotate(18deg); } }
 .session-row.st-idle:has(.unread) .title { font-weight: 600; }
 .finished.failed { color: var(--state-waiting-text); }
 @media (prefers-reduced-motion: reduce) { .session-row .busy, .cell-head .busy, .session-row .busy svg, .cell-head .busy svg, .belled svg, .unread svg, .rail-waiting svg { animation: none; } }
