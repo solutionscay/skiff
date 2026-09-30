@@ -1,0 +1,18 @@
+* { box-sizing: border-box; }
+body { user-select: none; -webkit-user-select: none; }
+input, textarea, [contenteditable], .xterm, .xterm * { user-select: text; -webkit-user-select: text; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: calc(13px * var(--zoom, 1));
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; cursor: pointer; border-radius: 0; }
+/* Focus: nothing after a mouse press; a quiet 1px rule after keyboard use
+   (body.kbd, set in main.ts). WebKitGTK treats clicks as focus-visible. */
+:focus, :focus-visible { outline: 0; }
+body.kbd button:focus, body.kbd [tabindex]:focus { outline: 1px solid var(--text-3); outline-offset: -1px; }
+/* The active project's own highlight is enough on the rail. */
+body.kbd .rail-chip:focus { outline: 0; }

@@ -1,0 +1,9 @@
+/* Where we are: one row in the session list carries this, whatever its kind.
+   Focused, it adds a top and bottom rule in the same accent instead of an
+   outline, so it reads as more of the same highlight, not a second state. */
+#sidebar-scroll .current { background: color-mix(in srgb, var(--pc) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc); color: var(--text); }
+#sidebar-scroll .current :is(.title, .branch, .file-name, .group-name) { color: var(--text); }
+body.kbd #sidebar-scroll .current:focus {
+  outline: 0;
+  box-shadow: inset 2px 0 0 var(--pc), inset 0 1px 0 var(--pc), inset 0 -1px 0 var(--pc);
+}

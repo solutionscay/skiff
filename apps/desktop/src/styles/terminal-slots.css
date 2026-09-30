@@ -1,0 +1,10 @@
+/* Split canvas: an empty pane lists every agent as flush 40px rows, like the + menu. */
+.slot { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: calc(16 * var(--u)); background: var(--bg-deep); }
+.slot-list { width: min(320px, 100%); display: flex; flex-direction: column; border: 1px solid var(--rule-strong); background: var(--bg-panel); }
+.slot-item { height: var(--row); flex-shrink: 0; display: flex; align-items: center; gap: calc(12 * var(--u)); padding: 0 calc(16 * var(--u)); border: 0; background: transparent; color: var(--text); text-align: left; }
+.slot-key { width: calc(10 * var(--u)); flex-shrink: 0; font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
+.slot-name { flex-grow: 1; min-width: 0; font: calc(13px * var(--zoom, 1)) var(--mono); }
+.slot-cmd { flex-shrink: 1; min-width: 0; max-width: 45%; font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slot-wait { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
+.lm-glyph { width: calc(18 * var(--u)); flex-shrink: 0; display: flex; align-items: center; }
+.lm-glyph .glyph { color: var(--text-2); }

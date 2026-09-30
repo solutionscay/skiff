@@ -1,0 +1,28 @@
+.group-row { --gc: var(--text-3); }
+.group-row .glyph { color: var(--gc) !important; }
+.group-row { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--gc) 45%, transparent); }
+.cell-head.st-waiting { background: var(--state-waiting-bg) !important; border-bottom-color: var(--state-waiting-rule); box-shadow: inset calc(3 * var(--u)) 0 0 var(--state-waiting) !important; }
+.cell-head.st-waiting .title { color: var(--state-waiting-text) !important; }
+.cell-head.st-done .title { opacity: 0.5; }
+
+/* A group's members sit under its header; the branch shows where each lives. */
+.session-row .where { font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); flex-shrink: 0; max-width: calc(90 * var(--u)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A group inside a worktree: a 20px header line, its members indented under it. */
+.sessions-block .group-row { position: relative; height: calc(20 * var(--u)); border-bottom: 0; box-shadow: none; background: transparent; }
+.sessions-block .group-pick { gap: calc(8 * var(--u)); padding: 0 calc(16 * var(--u)) 0 calc(38 * var(--u)); font-size: calc(12px * var(--zoom, 1)); }
+.sessions-block .group-row > .glyph { margin-left: calc(38 * var(--u)); }
+.sessions-block .group-row .form-input { height: calc(20 * var(--u)); padding: 0 calc(8 * var(--u)); font-size: calc(12px * var(--zoom, 1)); }
+.sessions-block .group-row .glyph { width: calc(14 * var(--u)); height: calc(11 * var(--u)); }
+/* The guide joins group icons only. It leaves each group icon at its bottom
+   edge and reaches the top edge of the next group icon. */
+.sessions-block .group-row.has-previous::before,
+.sessions-block .group-row.has-next::after,
+.session-row.group-rail::before {
+  content: ""; position: absolute; left: calc(45 * var(--u)); width: 1px;
+  background: var(--gc, var(--text-3)); opacity: 0.7;
+}
+.sessions-block .group-row.has-previous::before { top: 0; height: calc(4.5 * var(--u)); }
+.sessions-block .group-row.has-next::after { top: calc(15.5 * var(--u)); bottom: 0; }
+.session-row.group-rail::before { top: 0; bottom: 0; }
+.session-row.nested { padding-left: calc(58 * var(--u)); }

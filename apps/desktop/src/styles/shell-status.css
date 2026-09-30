@@ -1,0 +1,10 @@
+#statusbar {
+  height: calc(32 * var(--u)); flex-shrink: 0;
+  display: flex; align-items: center; gap: calc(20 * var(--u)); padding: 0 calc(16 * var(--u));
+  background: var(--bg-deep); border-top: 1px solid var(--rule);
+  font-size: calc(12px * var(--zoom, 1)); color: var(--text-2);
+}
+.status-item { display: flex; align-items: center; gap: calc(6 * var(--u)); }
+/* Exactly the rail's width, so its right rule continues the rail's. */
+.dev-badge { align-self: stretch; flex-shrink: 0; justify-content: center; width: calc(72 * var(--u)); margin-left: calc(-16 * var(--u)); padding: 0; background: var(--state-waiting-bg); border-right: 1px solid var(--rule); color: var(--state-waiting-text); font: 700 calc(11px * var(--zoom, 1)) var(--mono); letter-spacing: 0.08em; }
+.status-item .dot { width: calc(7 * var(--u)); height: calc(7 * var(--u)); }

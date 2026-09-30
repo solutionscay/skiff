@@ -1,0 +1,16 @@
+#daemon-alert, #error-alert { min-height: var(--row); display: flex; align-items: center; gap: calc(16 * var(--u)); padding: 0 0 0 calc(16 * var(--u)); background: var(--error-bg); border-bottom: 1px solid var(--error-rule); color: var(--error-text); font-size: calc(13px * var(--zoom, 1)); }
+
+#daemon-alert .alert-text, #error-alert .alert-text { flex-grow: 1; padding: calc(8 * var(--u)) 0; }
+#daemon-alert .alert-btn, #error-alert .alert-btn { align-self: stretch; flex-shrink: 0; width: calc(144 * var(--u)); padding: 0; border: 0; border-left: 1px solid var(--error-rule); background: transparent; color: var(--error-text); font-size: calc(12px * var(--zoom, 1)); font-weight: 600; }
+#daemon-alert .alert-btn:hover, #error-alert .alert-btn:hover { background: var(--error-bg-hover); }
+
+/* An outdated skiffd: a top-bar cell, and the panel it opens. */
+#topbar .daemon-badge {
+  gap: calc(8 * var(--u)); border: 0; border-left: 1px solid var(--rule); border-right: 0;
+  background: transparent; color: var(--state-waiting-text); font-size: calc(12px * var(--zoom, 1)); font-weight: 500;
+}
+#topbar .daemon-badge:hover, #topbar .daemon-badge[aria-expanded="true"] { background: var(--state-waiting-bg); }
+#daemon-pop {
+  position: fixed; z-index: 50; width: calc(360 * var(--u));
+  background: var(--bg-panel); border: 1px solid var(--rule-strong); box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+}

@@ -1,0 +1,27 @@
+#switcher {
+  position: fixed; inset: 0; z-index: 10;
+  display: flex; justify-content: flex-start; align-items: flex-start;
+  padding: calc(48 * var(--u)) 0 0 max(calc(356 * var(--u) - 1px), calc(50vw - 280 * var(--u)));
+  background: color-mix(in srgb, var(--bg-deep) 70%, transparent);
+}
+/* Drops from the top bar: same left edge and width as the search cell, first rule at the bar's rule. */
+.sw-panel {
+  width: min(calc(560 * var(--u)), calc(100vw - 356 * var(--u) + 1px));
+  display: flex; flex-direction: column;
+  background: var(--bg-panel); border: 1px solid var(--rule-strong); border-top: 0;
+}
+.sw-input { height: calc(48 * var(--u)); display: flex; align-items: center; gap: calc(10 * var(--u)); padding: 0 calc(16 * var(--u)); border-bottom: 1px solid var(--rule); }
+.sw-input input { flex-grow: 1; height: 100%; border: 0; outline: 0; background: transparent; color: var(--text); font: calc(14px * var(--zoom, 1)) var(--font); }
+#sw-list { max-height: calc(400 * var(--u)); overflow-y: auto; display: flex; flex-direction: column; }
+.sw-row {
+  height: var(--row); flex-shrink: 0;
+  display: flex; align-items: center; gap: calc(10 * var(--u)); padding: 0 calc(16 * var(--u));
+  border-bottom: 1px solid var(--rule); cursor: pointer;
+}
+.sw-row.active { background: color-mix(in srgb, var(--pc) 15%, transparent); box-shadow: inset 3px 0 0 var(--pc); }
+.sw-row .kind { width: calc(72 * var(--u)); flex-shrink: 0; display: flex; align-items: center; gap: calc(6 * var(--u)); font-size: calc(11px * var(--zoom, 1)); color: var(--text-3); }
+.sw-row .primary { font-family: var(--mono); color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-row .secondary { color: var(--text-3); font-size: calc(12px * var(--zoom, 1)); flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-row .meta { color: var(--text-dim); font-size: calc(11px * var(--zoom, 1)); flex-shrink: 0; }
+.sw-empty { height: var(--row); display: flex; align-items: center; padding: 0 calc(16 * var(--u)); color: var(--text-3); }
+.sw-foot { height: calc(32 * var(--u)); display: flex; align-items: center; gap: calc(16 * var(--u)); padding: 0 calc(16 * var(--u)); border-top: 1px solid var(--rule); font-size: calc(11px * var(--zoom, 1)); color: var(--text-3); }

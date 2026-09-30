@@ -1,0 +1,54 @@
+/* Settings covers the sidebar and the terminal, not the rail. */
+#settings { position: absolute; top: 0; bottom: 0; left: calc(72 * var(--u)); right: 0; z-index: 12; display: flex; background: var(--bg); }
+#settings[hidden] { display: none; }
+.set-nav { width: calc(284 * var(--u)); flex-shrink: 0; display: flex; flex-direction: column; background: var(--bg-panel); border-right: 1px solid var(--rule); }
+.set-nav-head { height: calc(80 * var(--u)); display: flex; flex-direction: column; justify-content: center; gap: calc(4 * var(--u)); padding: 0 calc(16 * var(--u)); border-bottom: 1px solid var(--rule); }
+.set-title { font-size: calc(22px * var(--zoom, 1)); font-weight: 700; }
+.set-path { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
+.set-tab { height: var(--row); display: flex; align-items: center; padding: 0 calc(16 * var(--u)); border: 0; border-bottom: 1px solid var(--rule); background: transparent; color: var(--text); font-size: calc(13px * var(--zoom, 1)); text-align: left; }
+.set-tab.active { background: var(--bg-raised); box-shadow: inset 3px 0 0 var(--state-working); }
+.set-x { position: absolute; top: 0; right: 0; height: calc(80 * var(--u)); display: flex; align-items: center; padding: 0 calc(24 * var(--u)); border: 0; background: transparent; }
+.set-x:hover kbd { border-color: var(--text-3); color: var(--text); }
+.tc-x { align-self: stretch; display: flex; align-items: center; margin-right: -20px; padding: 0 20px; border: 0; background: transparent; }
+.tc-x:hover kbd { border-color: var(--text-3); color: var(--text); }
+.set-main { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; }
+.set-head { height: calc(80 * var(--u)); flex-shrink: 0; display: flex; flex-direction: column; justify-content: center; gap: calc(4 * var(--u)); padding: 0 calc(24 * var(--u)); border-bottom: 1px solid var(--rule); }
+.set-h { font-size: calc(18px * var(--zoom, 1)); font-weight: 700; }
+.set-sub { font-size: calc(13px * var(--zoom, 1)); color: var(--text-3); }
+.set-row { height: var(--row); flex-shrink: 0; display: grid; grid-template-columns: 72px 200px minmax(0, 1fr) 160px; align-items: center; border-bottom: 1px solid var(--rule); }
+.set-row > * { display: flex; align-items: center; height: 100%; padding: 0 calc(12 * var(--u)); }
+.set-row > * + * { border-left: 1px solid var(--rule); }
+.set-row .c-on { justify-content: center; padding: 0; }
+.set-cols { font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; color: var(--text-3); }
+.set-agent { color: var(--text-3); }
+.set-agent.on { color: var(--text); }
+.set-agent button.c-on { border: 0; border-bottom: 0; background: transparent; }
+.set-agent button.c-on:hover:not(:disabled) { background: var(--bg-panel); }
+.set-agent .c-name { font-size: calc(14px * var(--zoom, 1)); font-weight: 500; }
+.set-agent input.c-cmd { width: 100%; min-width: 0; border: 0; border-left: 1px solid var(--rule); border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font-size: calc(13px * var(--zoom, 1)); }
+.set-agent input.c-cmd::placeholder { color: var(--text-dim); }
+.set-agent input.c-cmd:focus { box-shadow: inset 0 -2px 0 var(--state-working); }
+.set-agent .c-status { gap: calc(8 * var(--u)); font-size: calc(12px * var(--zoom, 1)); }
+.set-agent .c-status .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); background: var(--ok); }
+.set-agent.missing .c-name, .set-agent.missing .c-status { color: var(--text-dim); }
+.set-agent.missing .c-status .sq { background: var(--rule-strong); }
+.set-agent.missing button.c-on { cursor: not-allowed; }
+.set-open { grid-template-columns: 200px minmax(0, 1fr); }
+.set-names-box { flex: 1 0 auto; min-height: calc(320 * var(--u)); display: flex; flex-direction: column; margin-top: calc(24 * var(--u)); border-top: 1px solid var(--rule); }
+.set-names-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; }
+.set-names-col { min-width: 0; display: flex; flex-direction: column; }
+.set-names-col + .set-names-col { border-left: 1px solid var(--rule); }
+.set-names-label { height: var(--row); flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(12 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
+.set-names-col textarea { flex: 1; min-height: 0; width: 100%; resize: none; border: 0; border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font-size: calc(13px * var(--zoom, 1)); padding: calc(8 * var(--u)) calc(12 * var(--u)); }
+.set-opacity { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) calc(120 * var(--u)); }
+.set-opacity .c-name { font-size: calc(13px * var(--zoom, 1)); color: var(--text-2); }
+.set-opacity .c-cmd { width: 100%; min-width: 0; box-sizing: border-box; border: 0; border-left: 1px solid var(--rule); border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font: calc(13px * var(--zoom, 1)) var(--font); text-align: left; }
+.set-opacity input[type="range"].c-cmd { appearance: none; -webkit-appearance: none; padding: 0 calc(12 * var(--u)); cursor: pointer; }
+.set-opacity input[type="range"].c-cmd::-webkit-slider-runnable-track { height: calc(3 * var(--u)); background: var(--rule-strong); }
+.set-opacity input[type="range"].c-cmd::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: calc(14 * var(--u)); height: calc(14 * var(--u)); margin-top: calc(-5.5 * var(--u)); border: 2px solid var(--bg-deep); border-radius: 50%; background: var(--state-working); }
+.switch { width: calc(28 * var(--u)); height: calc(14 * var(--u)); position: relative; border: 1px solid var(--rule-strong); background: var(--bg-deep); }
+.switch::after { content: ""; position: absolute; top: calc(2 * var(--u)); left: calc(2 * var(--u)); width: calc(8 * var(--u)); height: calc(8 * var(--u)); background: var(--text-dim); }
+.set-agent.on .switch { border-color: var(--state-working); background: color-mix(in srgb, var(--state-working) 25%, transparent); }
+.set-agent.on .switch::after { left: calc(16 * var(--u)); background: var(--state-working); }
+.set-error { padding: calc(10 * var(--u)) calc(24 * var(--u)); background: var(--error-bg); color: var(--error-text); font-size: calc(12px * var(--zoom, 1)); border-bottom: 1px solid var(--rule); }
+.set-note { padding: calc(16 * var(--u)) calc(24 * var(--u)); font-size: calc(12px * var(--zoom, 1)); line-height: 1.6; color: var(--text-dim); }

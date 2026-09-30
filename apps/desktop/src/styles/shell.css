@@ -1,0 +1,57 @@
+#app { height: 100%; display: flex; flex-direction: column; }
+
+#topbar {
+  height: calc(48 * var(--u)); flex-shrink: 0;
+  display: flex; align-items: stretch;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--rule);
+}
+#topbar .tb-cell { display: flex; align-items: center; padding: 0 calc(16 * var(--u)); border-right: 1px solid var(--rule); }
+#topbar .wordmark { width: calc(356 * var(--u)); font-family: "Space Grotesk", var(--font); font-weight: 700; font-size: calc(20px * var(--zoom, 1)); letter-spacing: 0.02em; }
+/* Centered on the window, as in VS Code. A narrow window pushes it right against the wordmark,
+   where the -1px margin lets the two rules share one line. */
+#topbar .search {
+  flex-grow: 1; min-width: 0; max-width: calc(560 * var(--u)); gap: calc(10 * var(--u));
+  margin-left: max(-1px, calc(50vw - 280 * var(--u) - 356 * var(--u)));
+  background: var(--bg-raised); border: 0; border-left: 1px solid var(--rule); border-right: 1px solid var(--rule);
+  color: var(--text-3); text-align: left;
+}
+#topbar .search svg { flex-shrink: 0; }
+#topbar .search .spacer { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#topbar .search kbd { flex-shrink: 0; }
+#topbar .nw {
+  gap: calc(8 * var(--u)); border: 0; border-left: 1px solid var(--state-waiting-rule); border-right: 0;
+  background: var(--state-waiting-bg); color: var(--state-waiting-text); font-weight: 500;
+}
+#topbar .nw kbd { border-color: var(--state-waiting-rule); color: var(--state-waiting-text); }
+
+#body { flex-grow: 1; min-height: 0; display: flex; position: relative; }
+
+#rail {
+  width: calc(72 * var(--u)); flex-shrink: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg-deep);
+  border-right: 1px solid var(--rule);
+  /* Animated rail marks must not create a horizontal scrollbar. */
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.rail-item { position: relative; }
+.rail-item.dragging { opacity: 0.5; }
+.rail-item.drop-before::before, .rail-item.drop-after::after { content: ""; position: absolute; left: 0; right: 0; height: 2px; background: var(--text); z-index: 1; pointer-events: none; }
+.rail-item.drop-before::before { top: -1px; }
+.rail-item.drop-after::after { bottom: -1px; }
+body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
+.rail-chip {
+  width: 100%; height: var(--row);
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 0;
+  font-family: var(--mono); font-weight: 700; color: var(--pc);
+}
+.rail-chip.active { background: color-mix(in srgb, var(--pc) 15%, transparent); box-shadow: inset 3px 0 0 var(--pc); }
+.rail-add { color: var(--text-3); font-weight: 400; font-size: calc(18px * var(--zoom, 1)); }
+.rail-add:hover { color: var(--text); background: var(--bg-raised); }
+.rail-waiting, .rail-unread { position: absolute; top: calc(2 * var(--u)); right: calc(2 * var(--u)); display: flex; color: var(--state-waiting); pointer-events: none; }
+.rail-unread { color: var(--diff-add); }
+.rail-waiting svg, .rail-unread svg { display: block; width: calc(12 * var(--u)); height: calc(12 * var(--u)); stroke-width: 2.5; /* a hard halo in the rail colour keeps the bell readable over any icon or theme */ filter: drop-shadow(0 0 0 var(--bg-deep)) drop-shadow(1px 0 0 var(--bg-deep)) drop-shadow(-1px 0 0 var(--bg-deep)) drop-shadow(0 1px 0 var(--bg-deep)) drop-shadow(0 -1px 0 var(--bg-deep)); animation: ring 1.6s steps(1) infinite; transform-origin: 50% 10%; }
+.rail-unread svg { animation: wave 0.8s steps(1) infinite; transform-origin: 20% 90%; }

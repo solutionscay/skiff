@@ -1,0 +1,8 @@
+/* Color picker: a saturation and value square, a hue strip, a hex readout. */
+.cp-area { position: relative; height: calc(200 * var(--u)); border-bottom: 1px solid var(--rule); cursor: crosshair; touch-action: none; }
+.cp-dot { position: absolute; width: calc(12 * var(--u)); height: calc(12 * var(--u)); margin: calc(-6 * var(--u)); border: 2px solid #fff; box-shadow: 0 0 0 1px #000; border-radius: 50%; pointer-events: none; }
+.cp-hue { position: relative; height: calc(24 * var(--u)); border-bottom: 1px solid var(--rule); cursor: ew-resize; touch-action: none; background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
+.cp-bar { position: absolute; top: 0; bottom: 0; width: calc(4 * var(--u)); margin-left: calc(-2 * var(--u)); background: #fff; box-shadow: 0 0 0 1px #000; pointer-events: none; }
+.cp-readout { display: flex; align-items: center; height: var(--row); border-bottom: 1px solid var(--rule); background: var(--bg-deep); }
+.cp-chip { width: var(--row); height: 100%; flex-shrink: 0; border-right: 1px solid var(--rule); }
+.cp-code { flex-grow: 1; height: 100%; padding: 0 calc(20 * var(--u)); border: 0; outline: 0; background: transparent; color: var(--text); font: calc(13px * var(--zoom, 1)) var(--mono); }

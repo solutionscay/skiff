@@ -1,0 +1,42 @@
+/* Harbor theme. These variables are the customization surface later. */
+:root {
+  --bg: #0f1216;
+  --bg-deep: #0b0e12;
+  --bg-panel: #13171c;
+  --bg-raised: #1b2129;
+  --rule: #232a33;
+  --rule-strong: #2f3742;
+  --text: #e6e8eb;
+  --text-2: #c3c9d1;
+  --text-3: #9aa3ae;
+  --text-dim: #7d8794;
+  --accent: #b69cff;
+  /* Project accent when projects.toml sets no color. Keep project hues off the state hues. */
+  --project-default: #b69cff;
+  --state-waiting: #ffb454;
+  --state-waiting-text: #ffcf8a;
+  --state-waiting-bg: #2a1f0e;
+  --state-waiting-rule: #6b4a17;
+  --state-working: #6b9cff;
+  --state-done: #9aa3ae;
+  --state-idle: #7d8794;
+  --error: #ff8a80;
+  --diff-add: #7fd08a;
+  --diff-del: #ff8a80;
+  /* Error banners, the destructive button, the ok dot, the modal scrim. */
+  --error-bg: #2a1214;
+  --error-bg-hover: #3a181b;
+  --error-rule: #7a2a2e;
+  --error-text: #ffb3b3;
+  --danger: #7a2a2e;
+  --danger-hover: #8e3237;
+  --danger-text: #ffe0e0;
+  --ok: #7ee0cb;
+  --scrim: rgba(5, 7, 10, 0.72);
+  /* Text on a filled --state-working button. */
+  --on-working: #0b0e12;
+  --font: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  --u: calc(1px * var(--zoom, 1));
+  --row: calc(40 * var(--u));
+}

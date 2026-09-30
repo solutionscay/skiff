@@ -1,0 +1,163 @@
+#sidebar {
+  width: calc(284 * var(--u)); flex-shrink: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--rule);
+  overflow: hidden;
+}
+#sidebar-scroll { flex-grow: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+
+.project-name { font-size: calc(22px * var(--zoom, 1)); font-weight: 700; color: var(--pc); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.note-row, .error-row {
+  min-height: var(--row); flex-shrink: 0;
+  display: flex; align-items: center; padding: calc(10 * var(--u)) calc(16 * var(--u));
+  border-bottom: 1px solid var(--rule);
+  font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); overflow-wrap: anywhere;
+}
+.error-row { color: var(--error); background: color-mix(in srgb, var(--error) 8%, transparent); white-space: pre-wrap; }
+
+.form-input {
+  flex-grow: 1; min-width: 0; height: 100%;
+  padding: 0 calc(16 * var(--u)); border: 0; border-radius: 0; outline: 0;
+  background: transparent; color: var(--text); font: calc(13px * var(--zoom, 1)) var(--mono);
+}
+.form-input:focus { box-shadow: inset 0 -2px 0 var(--state-working); }
+
+/* Keep horizontal rules clear of the worktree theme strip. */
+.wt { position: relative; flex-shrink: 0; display: flex; flex-direction: column; box-shadow: inset 3px 0 0 color-mix(in srgb, var(--pc) 45%, transparent); }
+.wt.selected { box-shadow: inset 3px 0 0 var(--pc); }
+.wt::after {
+  content: ""; position: absolute; left: 3px; right: 0; height: 1px;
+  background: var(--rule); pointer-events: none;
+}
+.wt::after { bottom: 0; }
+.wt-row { position: relative; height: var(--row); display: flex; background: linear-gradient(to right, transparent 0 3px, color-mix(in srgb, var(--bg-panel) 72%, var(--bg)) 3px); }
+.wt-pick {
+  flex-grow: 1; min-width: 0;
+  display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(12 * var(--u)) 0 calc(10 * var(--u));
+  background: transparent; border: 0; text-align: left; color: var(--text-2);
+}
+.wt.selected .wt-pick { color: var(--text); }
+.wt-pick svg { flex-shrink: 0; color: var(--text-2); }
+.wt-pick .branch { font-family: var(--mono); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tag { flex-shrink: 0; font-size: calc(11px * var(--zoom, 1)); padding: 1px calc(6 * var(--u)); border: 1px solid var(--rule-strong); color: var(--text-3); }
+
+.sessions-block { display: flex; flex-direction: column; flex-shrink: 0; }
+.wt-count {
+  height: calc(20 * var(--u)); width: 100%; flex-shrink: 0;
+  display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(16 * var(--u)) 0 calc(38 * var(--u));
+  background: transparent; border: 0; text-align: left;
+  font-size: calc(11px * var(--zoom, 1)); color: var(--text-3);
+}
+.wt-count .waiting-note { color: var(--state-waiting-text); }
+.wt-count .unread-note { color: var(--diff-add); }
+/* Files: a launch-only tree under the sessions. Rows keep the 20px grid. */
+.files-block { display: flex; flex-direction: column; flex-shrink: 0; }
+.files-head { position: relative; padding-left: calc(8 * var(--u)); background: linear-gradient(to right, transparent 0 3px, color-mix(in srgb, var(--bg-raised) 20%, var(--bg)) 3px); }
+.files-toggle { width: calc(24 * var(--u)); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.files-rows { display: flex; flex-direction: column; }
+.file-row, .file-note {
+  position: relative;
+  height: calc(20 * var(--u)); width: 100%; flex-shrink: 0;
+  display: flex; align-items: center; gap: calc(4 * var(--u));
+  padding: 0 calc(16 * var(--u)) 0 calc((44 + var(--depth, 0) * 12) * var(--u));
+  background: transparent; border: 0; text-align: left;
+  font-size: calc(12px * var(--zoom, 1)); color: var(--text-2);
+}
+/* One guide per level, under each parent's chevron, like a group's nested sessions. */
+.file-row::before, .file-note::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: calc(50 * var(--u));
+  width: calc(var(--depth, 0) * 12 * var(--u));
+  background: repeating-linear-gradient(to right, var(--rule-strong) 0 1px, transparent 1px calc(12 * var(--u)));
+}
+.files-head .files-icon { flex-shrink: 0; color: var(--text-dim); }
+.file-lead { width: calc(12 * var(--u)); flex-shrink: 0; display: flex; align-items: center; color: var(--text-dim); }
+.file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-row.hidden-file .file-name { color: var(--text-dim); }
+.file-note { color: var(--text-dim); padding-left: calc((60 + var(--depth, 0) * 12) * var(--u)); }
+.file-note.error { color: var(--error); }
+/* Changes: what git reports against HEAD. Hand-off only, no diff view. */
+.wt-diff, .change-counts { flex-shrink: 0; display: flex; gap: calc(4 * var(--u)); margin-left: auto; font-family: var(--mono); font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
+.diff-add { color: var(--diff-add); }
+.diff-del { color: var(--diff-del); }
+.changes-n { margin-left: auto; font-family: var(--mono); color: var(--text-3); }
+.change-row { gap: calc(6 * var(--u)); }
+.change-st { width: calc(12 * var(--u)); flex-shrink: 0; font-family: var(--mono); font-size: calc(11px * var(--zoom, 1)); font-weight: 700; }
+.st-M { color: var(--state-waiting); }
+.st-A { color: var(--diff-add); }
+.st-D { color: var(--diff-del); }
+.st-U { color: var(--error); }
+.change-row.st-gone .file-name { text-decoration: line-through; }
+.change-dir { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
+.chev { transition: transform 120ms; }
+.chev.closed { transform: rotate(-90deg); }
+.session-row {
+  height: calc(20 * var(--u)); width: 100%; flex-shrink: 0;
+  display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(16 * var(--u)) 0 calc(38 * var(--u));
+  background: transparent; border: 0; text-align: left;
+}
+.session-row .agent { font-family: var(--mono); font-size: calc(11px * var(--zoom, 1)); color: var(--text-2); flex-shrink: 0; }
+.session-row .title { font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-row .time { font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); flex-shrink: 0; }
+.session-row.st-waiting .title, .session-row.st-waiting .time { color: var(--state-waiting-text); }
+.session-row.st-done .title, .session-row.st-done .agent-icon { opacity: 0.5; }
+.session-row .busy, .cell-head .busy {
+  position: relative; color: var(--state-working); width: calc(18 * var(--u)); height: calc(12 * var(--u)); overflow: hidden; flex-shrink: 0;
+  /* The water: short dashes that run backward, so the boat looks under way. */
+  /* Every icon animation steps a few times a second: a smooth one makes the
+     webview draw a full frame on every display refresh while an agent works. */
+  background: linear-gradient(90deg, var(--state-working) 50%, transparent 0) left bottom / calc(6 * var(--u)) 1px repeat-x;
+  animation: water 0.6s steps(3) var(--water-delay, 0ms) infinite;
+}
+.session-row .busy svg, .cell-head .busy svg { position: absolute; left: calc(4 * var(--u)); bottom: 1px; width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: rock 1.2s steps(2) var(--skiff-delay, 0ms) infinite; transform-origin: 50% 90%; }
+@keyframes water { to { background-position: calc(-6 * var(--u)) bottom; } }
+@keyframes rock { 0%, 100% { transform: rotate(-6deg) translateY(0); } 50% { transform: rotate(6deg) translateY(-1px); } }
+.session-row .anchored { display: flex; align-items: center; justify-content: center; color: var(--state-idle); width: calc(18 * var(--u)); height: calc(12 * var(--u)); opacity: 0.8; }
+.session-row .anchored svg { width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; }
+.busy, .anchored, .belled, .finished, .unread { flex-shrink: 0; }
+.session-row .belled, .cell-head .belled { display: flex; align-items: center; justify-content: center; color: var(--state-waiting-text); width: calc(18 * var(--u)); height: calc(12 * var(--u)); flex-shrink: 0; }
+.belled svg { width: calc(11 * var(--u)); height: calc(11 * var(--u)); stroke-width: 2.5; animation: ring 1.6s steps(1) infinite; transform-origin: 50% 10%; }
+@keyframes ring { 0%, 50%, 100% { transform: rotate(0); } 10% { transform: rotate(16deg); } 20% { transform: rotate(-14deg); } 30% { transform: rotate(10deg); } 40% { transform: rotate(-6deg); } }
+.session-row .finished, .cell-head .finished { display: flex; align-items: center; justify-content: center; color: var(--state-done); width: calc(18 * var(--u)); height: calc(12 * var(--u)); }
+.session-row .unread, .cell-head .unread { display: flex; align-items: center; justify-content: center; color: var(--diff-add); width: calc(18 * var(--u)); height: calc(12 * var(--u)); }
+.unread svg { width: calc(12 * var(--u)); height: calc(12 * var(--u)); stroke-width: 2.5; animation: wave 0.8s steps(1) infinite; transform-origin: 20% 90%; }
+@keyframes wave { 0%, 100% { transform: translateY(0) rotate(0); } 25% { transform: translateY(-2px) rotate(-18deg); } 50% { transform: translateY(0) rotate(0); } 75% { transform: translateY(-2px) rotate(18deg); } }
+.session-row.st-idle:has(.unread) .title { font-weight: 600; }
+.finished.failed { color: var(--state-waiting-text); }
+@media (prefers-reduced-motion: reduce) { .session-row .busy, .cell-head .busy, .session-row .busy svg, .cell-head .busy svg, .belled svg, .unread svg, .rail-waiting svg, .rail-unread svg { animation: none; } }
+.session-row { position: relative; user-select: none; }
+.session-row.selected { background: color-mix(in srgb, var(--state-working) 16%, transparent); box-shadow: inset 2px 0 0 var(--state-working); }
+
+/* Groups: named splits, above every project. */
+.group-row { height: var(--row); flex-shrink: 0; display: flex; align-items: stretch; border-bottom: 1px solid var(--rule); --pc: var(--project-default); }
+.group-pick { flex-grow: 1; min-width: 0; display: flex; align-items: center; gap: calc(10 * var(--u)); padding: 0 calc(16 * var(--u)); border: 0; background: transparent; text-align: left; color: var(--text-2); }
+.group-row > .glyph { align-self: center; margin-left: calc(16 * var(--u)); flex-shrink: 0; }
+.group-row .form-input { padding: 0 calc(10 * var(--u)); }
+.glyph { flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1; color: var(--text-3); }
+.group-name { flex-grow: 1; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-count { flex-shrink: 0; width: calc(18 * var(--u)); text-align: center; font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
+
+#select-bar { flex-shrink: 0; display: flex; flex-direction: column; background: var(--bg-raised); border-top: 1px solid var(--rule-strong); }
+#select-bar[hidden] { display: none; }
+.sel-label { height: var(--row); flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(16 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid var(--rule); }
+.sel-label.ready { color: var(--text); }
+.sel-label.warn { background: var(--state-waiting-bg); color: var(--state-waiting-text); border-bottom-color: var(--state-waiting-rule); }
+.sel-actions { height: var(--row); display: flex; }
+.sel-open { flex-grow: 1; min-width: 0; padding: 0 calc(10 * var(--u)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; background: var(--state-working); color: var(--on-working); font-weight: 600; }
+.sel-open:disabled { background: transparent; color: var(--text-dim); font-weight: 500; cursor: not-allowed; box-shadow: inset 0 0 0 1px var(--rule); }
+.sel-clear { width: calc(96 * var(--u)); flex-shrink: 0; border: 0; border-left: 1px solid var(--rule-strong); background: transparent; color: var(--text-2); }
+
+.dot { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--state-idle); }
+.dot.accent { background: var(--accent); }
+.sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--pc, var(--project-default)); }
+.dot.waiting, .state.waiting { background: var(--state-waiting); }
+.state.waiting { background: none; color: var(--state-waiting-text); }
+.dot.working { background: var(--state-working); }
+.state.working { color: var(--state-working); }
+.dot.done { background: var(--state-done); }
+.state.done { color: var(--state-done); }
+.dot.idle { background: var(--state-idle); }
+.state.idle { color: var(--state-idle); }
+.dot.connected { background: var(--state-working); }
+.dot.error { background: var(--error); }

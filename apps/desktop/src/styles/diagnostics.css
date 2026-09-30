@@ -1,0 +1,7 @@
+/* Help → Start latency trace: numbers in a corner of the focused pane. */
+.latency-hud { position: absolute; right: calc(8 * var(--u)); bottom: calc(8 * var(--u)); z-index: 5; display: flex; flex-direction: column; align-items: flex-end; gap: calc(2 * var(--u)); padding: calc(6 * var(--u)) calc(8 * var(--u)); background: color-mix(in srgb, var(--bg-deep) 85%, transparent); border: 1px solid var(--rule-strong); color: var(--text-2); font: calc(11px * var(--zoom, 1)) var(--mono); pointer-events: none; }
+.latency-hud b { color: var(--text); font-size: calc(15px * var(--zoom, 1)); }
+.latency-hud.slow b { color: var(--state-waiting-text); }
+.trace-indicator { padding: 0; border: 0; background: transparent; color: var(--state-waiting-text); font: inherit; cursor: pointer; }
+.trace-indicator .dot { background: var(--state-waiting-text); border-radius: 50%; }
+.trace-indicator:hover { color: var(--text); }
