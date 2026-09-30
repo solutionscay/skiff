@@ -10,10 +10,10 @@
 
 export type Action =
   | "palette" | "new-session" | "new-worktree" | "add-project"
-  | "split-right" | "split-down" | "close-pane" | "next-waiting" | "back" | "rename"
+  | "split-right" | "split-down" | "close-pane" | "next-waiting" | "back" | "rename" | "theme"
   | "copy" | "paste" | "find" | "font-bigger" | "font-smaller" | "font-reset" | "settings" | "quit"
   | "focus-left" | "focus-right" | "focus-up" | "focus-down"
-  | "project-menu" | "project-folder" | "project-copy-path" | "project-color" | "project-theme" | "project-changes" | "project-files"
+  | "project-menu" | "project-folder" | "project-copy-path" | "project-color" | "project-changes" | "project-files"
   | "region-next" | "region-prev" | "session-next" | "session-prev" | "list-project" | "list-back" | "shortcuts"
   | "focus-mode" | "maximize";
 
@@ -30,6 +30,7 @@ export const DEFAULTS: Record<Action, string> = {
   "next-waiting": "ctrl+shift+j",
   back: "ctrl+shift+b",
   rename: "ctrl+shift+r",
+  theme: "ctrl+shift+x",
   copy: isMac ? "ctrl+c" : "ctrl+shift+c",
   paste: isMac ? "ctrl+v" : "ctrl+shift+v",
   find: "ctrl+shift+f",
@@ -46,7 +47,6 @@ export const DEFAULTS: Record<Action, string> = {
   "project-folder": "ctrl+shift+z",
   "project-copy-path": "ctrl+shift+y",
   "project-color": "ctrl+shift+k",
-  "project-theme": "ctrl+shift+x",
   "project-changes": "ctrl+shift+g",
   "project-files": "ctrl+shift+h",
   "region-next": "f6",
@@ -162,11 +162,11 @@ export const DESCRIBE: [string, Action, string][] = [
   ["Edit", "paste", "Paste into the terminal"],
   ["Edit", "find", "Find in the terminal"],
   ["Edit", "rename", "Rename the session, or the group or session row in the list"],
+  ["Edit", "theme", "Session theme, or the theme of the group or session row in the list. On the rail or another row, the project theme"],
   ["Project", "project-menu", "Menu for the highlighted row: worktree, group, session, Changes or Files. On the rail, the project menu"],
   ["Project", "project-folder", "Show the project in the file manager"],
   ["Project", "project-copy-path", "Copy the project path"],
   ["Project", "project-color", "Project color"],
-  ["Project", "project-theme", "Project theme"],
   ["Project", "project-changes", "Show or hide Changes"],
   ["Project", "project-files", "Show or hide Files"],
   ["View", "palette", "Command palette"],

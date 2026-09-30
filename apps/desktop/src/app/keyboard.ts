@@ -239,9 +239,10 @@ function leaveRail() {
   markCurrent();
 }
 
-// Anything that takes the keys outside the rail and its menus ends the rail level.
+// Anything that takes the keys outside the rail, its menus and dialogs ends the
+// rail level. A dialog such as the project theme gives focus back to the rail.
 document.addEventListener("focusin", (e) => {
-  if (S.atRail && !(e.target as Element).closest?.("#rail, #ctx-menu, #ctx-sub, #launch-menu")) leaveRail();
+  if (S.atRail && !(e.target as Element).closest?.("#rail, #ctx-menu, #ctx-sub, #launch-menu, .confirm-overlay")) leaveRail();
 });
 
 /** A Changes or Files header, or a row under one. Not a session, group or worktree. */

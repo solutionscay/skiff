@@ -56,7 +56,7 @@ function commands(): Cmd[] {
     { section: "Edit", label: "Paste", key: k("paste"), action: "paste", run: act("paste"), off: !s },
     { section: "Edit", label: "Find…", key: k("find"), action: "find", run: act("find"), off: !shown },
     { section: "Edit", label: "Rename session", key: k("rename"), action: "rename", run: act("rename"), off: !s },
-    { section: "Edit", label: "Terminal theme…", key: "", run: () => s && void sessionThemeMenu(s), off: !s },
+    { section: "Edit", label: "Session theme…", key: k("theme"), run: () => s && void sessionThemeMenu(s), off: !s },
     {
       section: "Edit", label: "End session…", key: "", off: !s,
       run: () => {

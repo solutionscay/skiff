@@ -110,8 +110,8 @@ function nextCard(cards: HTMLElement[], at: number, key: "left" | "right" | "up"
   return best;
 }
 
-/** Terminal theme picker: a modal of cards. A click applies and closes. */
-export function pickTheme(title: string, themes: TerminalTheme[], o: CardOpts): void {
+/** Theme picker: a modal of cards. `scope` says what the theme applies to. A click applies and closes. */
+export function pickTheme(title: string, scope: string, themes: TerminalTheme[], o: CardOpts): void {
   const back = document.activeElement as HTMLElement | null;
   const { overlay, panel } = dialogFrame("tc-panel", "dialog", title);
   const head = dialogHeader(title, () => close());
@@ -129,7 +129,7 @@ export function pickTheme(title: string, themes: TerminalTheme[], o: CardOpts): 
       },
     }),
   );
-  panel.append(head, body);
+  panel.append(head, h("div", "tc-scope", scope), body);
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
   overlay.addEventListener("mousedown", (e) => {

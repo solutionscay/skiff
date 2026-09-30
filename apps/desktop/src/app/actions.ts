@@ -12,7 +12,7 @@ import { addProject, launchMenu, settings } from "./panels";
 
 import { renameListItem, startRename, startSessionRename } from "../workspace/rename";
 
-import { FONT_DEFAULT, S } from "./state";
+import { FONT_DEFAULT, S, sessions } from "./state";
 import { currentProject, currentWorktree, shownIds, splitFull } from "./stateQueries";
 
 import { paneCenter } from "../terminal/terminal";
@@ -25,6 +25,7 @@ import { modeGate, modeKeyBlocked, toggleFocusMode, toggleMaximize } from "./mod
 import { closePane, focusNextWaiting, goBack, moveFocus, removeFromGroup } from "../workspace/view";
 import { switcher } from "./commandUi";
 import { showShortcuts } from "../ui/infoDialogs";
+import { groupThemeMenu, projectThemeMenu, sessionThemeMenu } from "../appearance/themes";
 function openNewSession() {
   // Its key works from inside a menu, such as the worktree menu that shows it: that menu goes.
   ctxMenu.close(false);
@@ -66,7 +67,6 @@ export function runAction(a: Action) {
     case "project-folder":
     case "project-copy-path":
     case "project-color":
-    case "project-theme":
     case "project-changes":
     case "project-files": {
       const p = currentProject();
@@ -87,6 +87,7 @@ export function runAction(a: Action) {
       const pg = S.groups.find((x) => x.id === S.groupPicked);
       return pg ? startRename(pg) : S.focused ? startSessionRename(S.focused) : undefined;
     }
+    case "theme": return openTheme();
     case "copy": return void copySelection();
     case "paste": return void pasteClipboard();
     case "find": return openFind();
@@ -124,6 +125,27 @@ function closeKey(shown: boolean) {
   const g = gid ? S.groups.find((x) => x.id === gid) : undefined;
   if (g) return ungroup(g);
   if (!row && shown) closePane(S.focused!);
+}
+
+/**
+ * The theme key acts on the highlighted row, as the menu key does: a session
+ * row gets its own theme and a group row every terminal in it. On the rail, or
+ * on a project, worktree, Changes or Files row, the project theme. With no row,
+ * the focused terminal.
+ */
+function openTheme() {
+  const project = () => {
+    const p = currentProject();
+    if (p) void projectThemeMenu(p);
+  };
+  if (S.atRail || document.activeElement?.closest("#rail")) return project();
+  const row = currentRow();
+  const sid = row ? row.dataset.session : S.focused;
+  const s = sid ? sessions.get(sid) : undefined;
+  if (s) return void sessionThemeMenu(s);
+  const g = row?.dataset.group ? S.groups.find((x) => x.id === row.dataset.group) : undefined;
+  if (g) return void groupThemeMenu(g);
+  project();
 }
 
 /** The selected project's menu, at its rail icon. */

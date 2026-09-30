@@ -18,5 +18,6 @@ body.kbd .tc-card:focus { outline: 0; border-color: var(--text); box-shadow: 0 0
 .tc-panel { width: 920px; max-width: calc(100vw - 32px); max-height: calc(100vh - 64px); display: flex; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--rule-strong); }
 .tc-head { height: 56px; flex-shrink: 0; display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid var(--rule); }
 .tc-title { flex-grow: 1; font-size: calc(16px * var(--zoom, 1)); font-weight: 700; }
+.tc-scope { flex-shrink: 0; padding: 10px 20px; border-bottom: 1px solid var(--rule); font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
 .tc-body { overflow-y: auto; padding: 16px 20px 20px; }
 .set-cards { padding: calc(16 * var(--u)) calc(24 * var(--u)) calc(24 * var(--u)); }

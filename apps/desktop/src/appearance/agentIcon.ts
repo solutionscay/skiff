@@ -67,7 +67,7 @@ export function agentIcon(s: SessionInfo, size = 14): HTMLSpanElement {
   const span = iconOf(agentKind(s), size);
   const t = ownTheme(s);
   if (t) {
-    span.title = `Terminal theme: ${t.name}`;
+    span.title = `Session theme: ${t.name}`;
     const c = ink(signatureColor(t));
     span.innerHTML = span.innerHTML.replace(/#[0-9a-f]{6}/gi, c);
   }

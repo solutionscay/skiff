@@ -26,7 +26,7 @@ const TREE_KEYS = new Set<Action>(["session-next", "session-prev", "list-project
 /** Keys that move between panes or add one: maximize shows one pane only. */
 const PANE_KEYS = new Set<Action>(["focus-left", "focus-right", "focus-up", "focus-down", "split-right", "split-down"]);
 /** Keys whose menus open at the rail or a tree row. The chrome comes back first. */
-const CHROME_KEYS = new Set<Action>(["new-session", "new-worktree", "add-project", "project-color", "project-theme", "project-changes", "project-files"]);
+const CHROME_KEYS = new Set<Action>(["new-session", "new-worktree", "add-project", "project-color", "project-changes", "project-files"]);
 
 /** The sessions shown at the last render. Focus mode ends when none of them stays. */
 let seen: string[] = [];

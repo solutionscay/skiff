@@ -125,7 +125,6 @@ export function projectRun(p: Project) {
     "project-folder": () => void openPath(p.path).catch(showError),
     "project-copy-path": () => void navigator.clipboard.writeText(p.path).catch(showError),
     "project-color": () => pickProjectColor(p),
-    "project-theme": () => void projectThemeMenu(p),
     "project-changes": () => void setShowChanges(p, !showsChanges(p)),
     "project-files": () => void setShowFiles(p, !showsFiles(p)),
   } as const;
@@ -145,7 +144,7 @@ export function projectMenu(p: Project, x: number, y: number) {
     { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
     { icon: "documents-file-image", label: "Icon…", sub: iconEntries(p) },
     { icon: "tools-sparkles", label: "Color…", hint: keyLabel("project-color"), run: run["project-color"] },
-    { icon: "tools-sparkles", label: "Theme…", hint: keyLabel("project-theme"), run: run["project-theme"] },
+    { icon: "tools-sparkles", label: "Project theme…", hint: keyLabel("theme"), run: () => void projectThemeMenu(p) },
     { icon: "playback-image", label: "Background…", sub: backgroundEntries(p) },
     { icon: "code-git-branch", label: showsChanges(p) ? "Hide changes" : "Show changes", hint: keyLabel("project-changes"), run: run["project-changes"] },
     { icon: "documents-folder-open", label: showsFiles(p) ? "Hide files" : "Show files", hint: keyLabel("project-files"), run: run["project-files"] },
@@ -219,7 +218,7 @@ export function deleteKeyMenu(el: HTMLElement) {
 }
 
 function themeEntry(s: SessionInfo): MenuEntry {
-  return { icon: "tools-sparkles", label: "Terminal theme…", run: () => void sessionThemeMenu(s) };
+  return { icon: "tools-sparkles", label: "Session theme…", hint: keyLabel("theme"), run: () => void sessionThemeMenu(s) };
 }
 
 /** Right-click, End session: stops the process and drops it from the list. */
@@ -351,7 +350,7 @@ export function groupMenu(g: Group, x: number, y: number) {
     ...groupStartEntries(g),
     { head: "GROUP" },
     { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startRename(g) },
-    { icon: "tools-sparkles", label: "Terminal theme…", run: () => void groupThemeMenu(g) },
+    { icon: "tools-sparkles", label: "Group theme…", hint: keyLabel("theme"), run: () => void groupThemeMenu(g) },
     ...groupCloseEntries(g),
   ]);
 }

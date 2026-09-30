@@ -80,11 +80,11 @@ export function applyThemes() {
   }
 }
 
-/** Right-click a terminal, Terminal theme: this terminal only. */
+/** Right-click a terminal, Session theme: this terminal only. */
 export async function sessionThemeMenu(s: SessionInfo) {
   await loadThemes();
   const app = S.themes.find((t) => t.id === themeFor(place(s)?.project));
-  pickTheme(`Terminal theme: ${taskTitle(s)}`, S.themes, {
+  pickTheme(`Session theme: ${taskTitle(s)}`, "This session only. It replaces the project theme.", S.themes, {
     active: canonTheme(s.theme),
     none: { label: "Same as project", theme: app },
     pick: (id) => {
@@ -99,7 +99,7 @@ export async function sessionThemeMenu(s: SessionInfo) {
   });
 }
 
-/** Right-click a group, Terminal theme: every terminal in it. */
+/** Right-click a group, Group theme: every terminal in it. */
 export async function groupThemeMenu(g: Group) {
   await loadThemes();
   const ids = sessionsOf(g.layout);
@@ -107,7 +107,7 @@ export async function groupThemeMenu(g: Group) {
   const first = canonTheme(members[0]?.theme ?? null);
   const shared = members.every((s) => canonTheme(s.theme) === first) ? first : null;
   const app = S.themes.find((t) => t.id === themeFor(members[0] && place(members[0])?.project));
-  pickTheme(`Terminal theme: ${g.name}`, S.themes, {
+  pickTheme(`Group theme: ${g.name}`, "Every session in this group. It replaces the project theme.", S.themes, {
     active: shared,
     none: { label: "Same as project", theme: app },
     pick: (id) => {
@@ -149,11 +149,11 @@ export function ownTheme(s: SessionInfo): TerminalTheme | null {
   return id ? S.themes.find((t) => t.id === id) ?? null : null;
 }
 
-/** Right-click a project, Theme: its chrome and every terminal without its own. */
+/** Right-click a project, Project theme: its chrome and every terminal without its own. */
 export async function projectThemeMenu(p: Project) {
   await loadThemes();
   const app = S.themes.find((t) => t.id === (canonTheme(S.appTheme) ?? HARBOR));
-  pickTheme(`Theme: ${p.name}`, S.themes, {
+  pickTheme(`Project theme: ${p.name}`, "This project and its sessions without a theme of their own. It replaces the app theme.", S.themes, {
     active: projectTheme(p),
     none: { label: "Same as app", theme: app },
     pick: (id) => {

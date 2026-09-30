@@ -200,7 +200,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const intro = h("div", "set-head");
     intro.append(
       h("div", "set-h", "Appearance"),
-      h("div", "set-sub", "Colors the app and every terminal. Right-click a terminal to give it its own theme."),
+      h("div", "set-sub", "App theme. Colors the app and every project and session without a theme of its own."),
     );
     const cur = look.current()?.replace(/^foot:/, "builtin:") ?? null;
     const cards = h("div", "set-cards");
