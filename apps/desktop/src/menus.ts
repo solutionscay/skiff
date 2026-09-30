@@ -11,6 +11,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { loadProjects, newSession } from "./daemon";
+import { launchMenu } from "./panels";
 import { showError } from "./dom";
 import { hasChanges, setShowChanges, showsChanges } from "./changes";
 import { showDiff } from "./peek";
@@ -143,7 +144,9 @@ export const ctxMenu = createMenu(() => refocusTerminal());
 
 /** A right-click on a worktree's branch row. */
 export function worktreeMenu(p: Project, w: Worktree, x: number, y: number) {
+  const plus = [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === w.path);
   const entries: MenuEntry[] = [
+    { icon: "indicators-plus", label: "New session…", hint: keyLabel("new-session"), disabled: !!p.error, run: () => launchMenu.open(plus ?? { x, y }, p, w) },
     ...(showsChanges(p) && hasChanges(w) ? [{ icon: "code-git-branch", label: "Review all changes", run: () => showDiff(w.path, branchName(w)) }] : []),
     { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", run: () => void openPath(w.path).catch(showError) },
     { icon: "code-copy", label: "Copy path", run: () => void navigator.clipboard.writeText(w.path).catch(showError) },

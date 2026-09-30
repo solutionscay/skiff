@@ -75,8 +75,8 @@ export function markCurrent() {
 }
 
 /**
- * One Tab stop per region: the rail, the new-worktree button, the session
- * list, the terminal. Everything else is reached by mouse, key, or palette.
+ * One Tab stop per region: the rail, the session list, the terminal.
+ * Everything else, the + buttons too, is reached by mouse, key, or palette.
  */
 export function applyTabOrder() {
   for (const el of document.querySelectorAll<HTMLElement>("#app button, #app [tabindex]")) {
@@ -86,8 +86,6 @@ export function applyTabOrder() {
   }
   const rail = document.querySelector<HTMLElement>("#rail .rail-chip.active") ?? document.querySelector<HTMLElement>("#rail .rail-chip");
   if (rail) rail.tabIndex = 0;
-  const addWt = document.querySelector<HTMLElement>("#sidebar-scroll .project-row .wt-plus");
-  if (addWt) addWt.tabIndex = 0;
   const item = roveTarget();
   if (item) item.tabIndex = 0;
   markCurrent();
@@ -96,18 +94,16 @@ export function applyTabOrder() {
 function regionOf(el: Element | null): number {
   if (!el) return -1;
   if (el.closest("#rail")) return 0;
-  if (el.closest(".project-row .wt-plus")) return 1;
-  if (el.closest("#sidebar-scroll")) return 2;
-  if (host.contains(el)) return 3;
+  if (el.closest("#sidebar-scroll")) return 1;
+  if (host.contains(el)) return 2;
   return -1;
 }
 
-/** F6 and Shift+F6: rail, new worktree, session list, terminal. */
+/** F6 and Shift+F6: rail, session list, terminal. */
 export function cycleRegion(dir: 1 | -1) {
   document.body.classList.add("kbd");
   const stops: (() => boolean)[] = [
     () => focusEl(document.querySelector<HTMLElement>("#rail .rail-chip.active") ?? document.querySelector<HTMLElement>("#rail .rail-chip")),
-    () => focusEl(document.querySelector<HTMLElement>("#sidebar-scroll .project-row .wt-plus")),
     () => focusEl(roveTarget() ?? null),
     () => {
       const t = S.focused ? panes.get(S.focused)?.term : undefined;
@@ -292,19 +288,18 @@ $("sidebar-scroll").addEventListener("keydown", (e) => {
   else if (e.key === "ArrowUp") go(i - 1);
   else if (e.key === "Home") go(0);
   else if (e.key === "End") go(items.length - 1);
-  else if (e.key === "Enter" && wt && el.classList.contains("wt-pick")) {
-    // Enter on a worktree starts a terminal there.
-    const plus = [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === wt);
-    plus?.click();
-  } else if (e.key === "Enter") {
-    // Enter opens the row right away, instead of waiting out the pause.
-    openRow(el);
-  } else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && wt) {
-    if (e.key === "ArrowLeft") collapsed.add(wt);
+  else if ((e.key === "Enter" || e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight") && wt) {
+    // A worktree: Enter or Space opens or closes it, Right opens, Left closes.
+    // Its + (start a session) is Ctrl+Shift+T, or New session in its menu.
+    const close = e.key === "ArrowLeft" || ((e.key === "Enter" || e.key === " ") && !collapsed.has(wt));
+    if (close) collapsed.add(wt);
     else collapsed.delete(wt);
     S.roveKey = wt;
     render();
     roveTarget()?.focus();
+  } else if (e.key === "Enter") {
+    // Enter opens the row right away, instead of waiting out the pause.
+    openRow(el);
   } else if (e.key === "F2" && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && renameListItem(el)) {
     // F2 renames the row in place, as in a file manager.
   } else if ((e.key === "Delete" || e.key === "Backspace") && !e.ctrlKey && !e.altKey && !e.metaKey && (el.dataset.session || el.dataset.group)) {

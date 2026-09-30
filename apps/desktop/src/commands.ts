@@ -163,7 +163,7 @@ const FIXED_SHORTCUTS: Shortcut[] = [
   ["Rail", "Open the focused project", "Enter / Space"],
   ["Session list", "Move through rows", "↑ / ↓"],
   ["Session list", "Move to the first or last row", "Home / End"],
-  ["Session list", "Start a session in the focused worktree", "Enter"],
+  ["Session list", "Open or close the focused worktree", "Enter / Space"],
   ["Session list", "Open the focused session or group", "Enter"],
   ["Session list", "Collapse or expand the focused worktree, Changes, Files or folder", "← / →"],
   ["Session list", "Open or close the focused Changes, Files or folder; open the focused file or diff", "Enter"],
@@ -300,6 +300,10 @@ export const switcher = createSwitcher(() => {
 }, refocusTerminal);
 
 function openNewSession() {
+  // The highlighted row's worktree, as its + would; else the focused one.
+  const row = S.atRail ? undefined : currentRow();
+  const rowPlus = row?.closest("#sidebar-scroll .wt")?.querySelector<HTMLElement>(".wt-plus");
+  if (rowPlus) return rowPlus.click();
   const at = currentWorktree();
   if (!at) return;
   const plus = [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === at.w.path);

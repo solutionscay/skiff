@@ -522,6 +522,9 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 #topbar .gear:hover { background: var(--bg-raised); color: var(--text); }
 .wt-plus { width: var(--row); height: var(--row); flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--text-2); }
 .wt-plus:hover, .wt-plus[aria-expanded="true"] { background: var(--bg-raised); color: var(--text); }
+/* A worktree's + shows on its row's hover, on the current row, or while its menu is open. */
+.wt-row .wt-plus { visibility: hidden; }
+.wt-row:hover .wt-plus, .wt-row:has(.current) .wt-plus, .wt-row .wt-plus[aria-expanded="true"] { visibility: visible; }
 
 /* Menus are solid whatever the theme: a panel color with alpha would show the list through them. */
 #launch-menu, #ctx-menu, #ctx-sub { --menu-bg: linear-gradient(var(--bg-panel), var(--bg-panel)), linear-gradient(var(--bg), var(--bg)) #000; }

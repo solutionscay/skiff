@@ -145,7 +145,7 @@ export function menuAccel(action: Action): string {
 
 /** What each action does, for the shortcut sheet. Grouped as the menu bar is. */
 export const DESCRIBE: [string, Action, string][] = [
-  ["File", "new-session", "New session in the focused worktree"],
+  ["File", "new-session", "New session in the highlighted worktree, as its + does"],
   ["File", "new-worktree", "New worktree"],
   ["File", "add-project", "Add project"],
   ["File", "settings", "Settings"],
@@ -178,7 +178,7 @@ export const DESCRIBE: [string, Action, string][] = [
   ["View", "font-bigger", "Bigger text"],
   ["View", "font-smaller", "Smaller text"],
   ["View", "font-reset", "Reset text size"],
-  ["Help", "region-next", "Next region: rail, new worktree, session list, terminal"],
+  ["Help", "region-next", "Next region: rail, session list, terminal"],
   ["Help", "region-prev", "Previous region"],
   ["Help", "shortcuts", "This sheet"],
 ];
