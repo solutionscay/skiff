@@ -2,13 +2,14 @@
 import { isSlot, PRESETS } from "./layoutSlots";
 import { sessionsOf, shapeName } from "./layout";
 
-
 import { agentName } from "./model";
 import type { Group } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { showError } from "./alerts";
 import { render } from "./render";
-import { activeGroupObj, S, sessions, shownIds } from "./state";
+import { S, sessions } from "./state";
+import { activeGroupObj, shownIds } from "./stateQueries";
+
 import { unfocus } from "./view";
 
 /** Group writes run one at a time, so a new group has its id before the next save. */

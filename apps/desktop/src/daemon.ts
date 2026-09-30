@@ -4,7 +4,6 @@ import { filledOf, isSlot, slot } from "./layoutSlots";
 import { agentCallsign } from "./agentNames";
 import { removePane, replacePane, sessionsOf } from "./layout";
 
-
 import type { AgentInfo, DaemonEvent, DaemonStatus, Project, SessionInfo, SplitDir } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { $, button, h } from "./dom";
@@ -13,7 +12,9 @@ import { loadProjectThemes } from "./themes";
 import { loadFilesSetting } from "./files";
 import { deleteGroup, loadGroups, syncTemplateName } from "./groups";
 import { render, scheduleRender } from "./render";
-import { activeGroupObj, born, gone, OTHER, panes, place, removeErrors, S, sessions, shownIds, upsert } from "./state";
+import { born, gone, OTHER, removeErrors, S, sessions, upsert } from "./state";
+import { activeGroupObj, place, shownIds } from "./stateQueries";
+import { panes } from "./terminalState";
 import { focusPane, showSingle, splitWith, unfocus } from "./view";
 
 export function setDaemon(status: DaemonStatus) {

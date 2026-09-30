@@ -2,14 +2,15 @@
 import { applyAppTheme } from "./appTheme";
 import { sessionsOf } from "./layout";
 
-
 import { taskTitle } from "./model";
 import { pickTheme } from "./themeCards";
 import type { Group, Project, SessionInfo, TerminalTheme } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { showError } from "./alerts";
-import { render } from "./render";
-import { currentProject, panes, place, S, sessions } from "./state";
+import { render } from "./renderRequest";
+import { S, sessions } from "./state";
+import { currentProject, place } from "./stateQueries";
+import { panes } from "./terminalState";
 
 const DEFAULT_THEME = "builtin:harbor";
 

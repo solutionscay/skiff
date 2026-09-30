@@ -1,5 +1,3 @@
-
-
 import { launchIcon } from "./agentIcon";
 
 import { branchName } from "./model";
@@ -12,10 +10,12 @@ import { host } from "./terminalHost";
 
 import { showError } from "./alerts";
 import { newWorktree } from "./menus";
+
 import { addProject } from "./panels";
 import { openClosedProject } from "./projectClose";
 
-import { accent, currentProject, enabledAgents, S, shownIds } from "./state";
+import { S } from "./state";
+import { accent, currentProject, enabledAgents, shownIds } from "./stateQueries";
 
 let welcomeSig = "";
 let welcomeBox: HTMLElement | null = null;

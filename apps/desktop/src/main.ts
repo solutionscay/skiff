@@ -1,3 +1,9 @@
+import { configureRender } from "./renderRequest";
+import { configurePaneActions } from "./paneActions";
+import { configureActionDispatch } from "./actionDispatch";
+import { configureCommandUi } from "./commandUi";
+import { runAction } from "./actions";
+import { focusPane, closePane, dragSessions } from "./view";
 import "@xterm/xterm/css/xterm.css";
 import "@fontsource/space-grotesk/latin-700.css";
 import "@fontsource/jetbrains-mono/latin-400.css";
@@ -16,13 +22,20 @@ import { loadGroups } from "./groups";
 import { initTrace } from "./latency";
 import { settings } from "./panels";
 import { render, scheduleRender } from "./render";
-import { FONT_DEFAULT, groupOf, S, sessions } from "./state";
-import { setFontSize } from "./terminal";
+import { FONT_DEFAULT, S, sessions } from "./state";
+import { groupOf } from "./stateQueries";
+
+import { setFontSize } from "./terminalFont";
 import { loadThemes } from "./themes";
 import { loadPlace, trackPlace } from "./stored";
 import { startMemory } from "./memory";
 import { toggleFocusMode, toggleMaximize } from "./modes";
 import { focusNextWaiting, selectProject, showGroup, showSingle } from "./view";
+
+configureRender(render);
+configurePaneActions({ focusPane, closePane, dragSessions });
+configureActionDispatch(runAction);
+configureCommandUi(switcher);
 
 // Skiff owns right-click. The webview's own menu (Back, Reload, Inspect)
 // never shows; text fields keep theirs for cut, copy and paste.

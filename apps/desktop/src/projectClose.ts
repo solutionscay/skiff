@@ -5,7 +5,7 @@
  */
 import { confirmAction } from "./confirm";
 import type { MenuEntry } from "./menu";
-import { ctxMenu } from "./menus";
+import { ctxMenu } from "./contextMenu";
 import { agentName, branchName, taskTitle } from "./model";
 import type { Project } from "./types";
 import { invoke } from "@tauri-apps/api/core";
@@ -13,7 +13,9 @@ import { loadProjects } from "./daemon";
 import { showError } from "./alerts";
 import { render } from "./render";
 import { clearSelection } from "./selection";
-import { collapsed, S, selectedWorktree, sessions, worktreeSessions } from "./state";
+import { collapsed, S, selectedWorktree, sessions } from "./state";
+import { worktreeSessions } from "./stateQueries";
+
 import { refocusTerminal, selectProject } from "./view";
 
 /** The project's sessions, and one line per worktree that has any, for a confirmation. */

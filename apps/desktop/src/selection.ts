@@ -1,12 +1,13 @@
 /** Multi-select in the session list, and the bar that splits it. */
 import { build, sessionsOf } from "./layout";
 
-
 import type { Group } from "./types";
 import { $, button, h } from "./dom";
 import { itemKey, listItems } from "./keyboard";
 import { render } from "./render";
-import { groupOf, MAX_PANES, S, sessions } from "./state";
+import { MAX_PANES, S, sessions } from "./state";
+import { groupOf } from "./stateQueries";
+
 import { applyLayout, refocusTerminal, showGroup } from "./view";
 
 /** Where a Shift+click range starts: the last row toggled, else the open session. */

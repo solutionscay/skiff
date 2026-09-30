@@ -2,7 +2,6 @@
 import { beginDrag, type DropTarget } from "./drag";
 import { build, type Direction, leaf, neighbor, removePane, replacePane, sessionsOf, shape, splitPane } from "./layout";
 
-
 import { branchName, bySessionPriority, isUnread, locate, taskTitle } from "./model";
 import type { Group, Layout, Project, SplitDir, Worktree } from "./types";
 import { focusFirstSlot } from "./canvas";
@@ -13,7 +12,9 @@ import { showError } from "./alerts";
 import { autoName, deleteGroup, saveGroup } from "./groups";
 import { render } from "./render";
 import { clearSelection } from "./selection";
-import { activeGroupObj, currentLayout, FULL_HINT, groupOf, MAX_PANES, OTHER, panes, place, S, selectedWorktree, sessions, shownIds, splitFull, worktreeSessions } from "./state";
+import { FULL_HINT, MAX_PANES, OTHER, S, selectedWorktree, sessions } from "./state";
+import { activeGroupObj, currentLayout, groupOf, place, shownIds, splitFull, worktreeSessions } from "./stateQueries";
+import { panes } from "./terminalState";
 import { closePeek } from "./peek";
 import { view } from "./terminal";
 

@@ -1,10 +1,11 @@
+import { ctxMenu } from "./contextMenu";
 /** Right-click menus for projects, sessions, panes and groups. */
 import { launchIcon } from "./agentIcon";
 import { confirmAction, promptAction } from "./confirm";
 import { pickColor } from "./colorPicker";
 import { keyLabel } from "./keys";
 import { toggleFocusMode, toggleMaximize } from "./modes";
-import { createMenu, type MenuEntry } from "./menu";
+import { type MenuEntry } from "./menu";
 import { agentName, basename, branchName, byStart, locate, taskTitle } from "./model";
 import { cwdOf } from "./canvas";
 import { filledOf, slotsOf } from "./layoutSlots";
@@ -22,11 +23,12 @@ import { deleteGroup } from "./groups";
 import { closeEntries } from "./projectClose";
 import { sessionsOf } from "./layout";
 
-
 import { startRename, startSessionRename } from "./rename";
 import { render } from "./render";
 import { clearSelection, selectionPlan, splitSelection } from "./selection";
-import { enabledAgents, groupOf, MAX_PANES, place, removeErrors, removing, S, selectedWorktree, sessions, shownIds, splitFull } from "./state";
+import { MAX_PANES, removeErrors, removing, S, selectedWorktree, sessions } from "./state";
+import { enabledAgents, groupOf, place, shownIds, splitFull } from "./stateQueries";
+
 import { groupThemeMenu, projectThemeMenu, sessionThemeMenu } from "./themes";
 import { focusPane, refocusTerminal, removeFromGroup, showGroup, splitWith, unfocus, unsplit } from "./view";
 
@@ -150,8 +152,6 @@ export function projectMenu(p: Project, x: number, y: number) {
     ...closeEntries(p),
   ]);
 }
-
-export const ctxMenu = createMenu(() => refocusTerminal());
 
 /** A right-click on a worktree's branch row. */
 export function worktreeMenu(p: Project, w: Worktree, x: number, y: number) {

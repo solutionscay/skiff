@@ -10,7 +10,9 @@ import { loadProjects, newSession } from "./daemon";
 import { host } from "./terminalHost";
 import { showError } from "./alerts";
 import { render } from "./render";
-import { collapsed, enabledAgents, S, selectedWorktree } from "./state";
+import { collapsed, S, selectedWorktree } from "./state";
+import { enabledAgents } from "./stateQueries";
+
 import { loadThemes } from "./themes";
 import { refocusTerminal, selectProject } from "./view";
 

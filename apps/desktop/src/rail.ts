@@ -9,12 +9,15 @@ import { icon } from "./icons";
 import { projectIcon } from "./projectIcon";
 import { showError } from "./alerts";
 import { projectMenu } from "./menus";
+
 import { addProject } from "./panels";
 
-import { render } from "./render";
+import { render } from "./renderRequest";
 
 import { FLAG } from "./stateIcon";
-import { accent, OTHER, place, S, sessions } from "./state";
+import { OTHER, S, sessions } from "./state";
+import { accent, place } from "./stateQueries";
+
 import { selectProject } from "./view";
 import { worktreeLines } from "./sidebarLines";
 export function renderRail() {

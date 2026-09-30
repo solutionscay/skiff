@@ -11,8 +11,10 @@ import { $, button, h } from "./dom";
 import { icon } from "./icons";
 import { showError } from "./alerts";
 import { markCurrent } from "./keyboard";
-import { panes, S } from "./state";
-import { FONT, TERM_THEME } from "./terminal";
+import { S } from "./state";
+
+import { panes } from "./terminalState";
+import { FONT, TERM_THEME } from "./terminalRuntime";
 
 let open: { el: HTMLElement; term: Terminal; fit: FitAddon; resize: ResizeObserver } | null = null;
 /** The last request. A slow diff that answers after a newer one is dropped. */

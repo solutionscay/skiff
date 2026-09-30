@@ -1,4 +1,3 @@
-
 import { slotsOf } from "./layoutSlots";
 
 import { sessionsOf } from "./layout";
@@ -8,7 +7,8 @@ import { branchName, taskTitle } from "./model";
 
 import { $, h } from "./dom";
 
-import { accent, activeGroupObj, currentProject, place, S, sessions } from "./state";
+import { S, sessions } from "./state";
+import { accent, activeGroupObj, currentProject, place } from "./stateQueries";
 
 /** Banner: which pane gets the next key, and the group it belongs to. */
 export function renderHeader() {

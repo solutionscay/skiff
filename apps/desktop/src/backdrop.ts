@@ -1,7 +1,8 @@
 /** The project's background image: one picture behind every pane of the terminal area. */
 import { invoke } from "@tauri-apps/api/core";
 import { host } from "./terminalHost";
-import { place, S, sessions } from "./state";
+import { S, sessions } from "./state";
+import { place } from "./stateQueries";
 
 const OPACITY_KEY = "skiff.paneOpacity";
 const OPACITY_MIN = 0.4;

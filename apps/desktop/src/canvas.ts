@@ -11,9 +11,10 @@ import { showError } from "./alerts";
 import { autoName, deleteGroup, saveGroup } from "./groups";
 import { leaf, removePane, replacePane, sessionsOf } from "./layout";
 
-
 import { render } from "./render";
-import { collapsed, enabledAgents, S, selectedWorktree, sessions } from "./state";
+import { collapsed, S, selectedWorktree, sessions } from "./state";
+import { enabledAgents } from "./stateQueries";
+
 import type { AgentInfo, Group, Project, Worktree } from "./types";
 import { focusPane, showSingle, unfocus } from "./view";
 

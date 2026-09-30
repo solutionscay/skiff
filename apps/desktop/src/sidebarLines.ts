@@ -1,12 +1,11 @@
-
-
 import { sessionsOf } from "./layout";
-
 
 import { byStart } from "./model";
 import type { Group, SessionInfo, Worktree } from "./types";
 
-import { groupedIds, place, S, sessions, worktreeSessions } from "./state";
+import { S, sessions } from "./state";
+import { groupedIds, place, worktreeSessions } from "./stateQueries";
+
 import { groupHome } from "./view";
 /** One line in a session list: a session, or a group's header. */
 export type Line =

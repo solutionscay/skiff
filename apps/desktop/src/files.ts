@@ -8,7 +8,7 @@ import type { Project, Worktree } from "./types";
 import { button, h } from "./dom";
 import { chevron, icon } from "./icons";
 import { showError } from "./alerts";
-import { ctxMenu } from "./menus";
+import { ctxMenu } from "./contextMenu";
 import { render } from "./render";
 import { storedSet } from "./stored";
 

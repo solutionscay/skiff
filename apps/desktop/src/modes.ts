@@ -8,13 +8,16 @@
  * palette, Back, a project key) work, and going there ends the mode.
  */
 import { isSlot } from "./layoutSlots";
-import { runAction } from "./commands";
+import { runAction } from "./actions";
 import { host } from "./terminalHost";
 import { currentRow } from "./keyboard";
 import type { Action } from "./keys";
 import { render } from "./render";
-import { S, shownIds } from "./state";
+import { S } from "./state";
+import { shownIds } from "./stateQueries";
+
 import { fitShown } from "./terminal";
+
 import { focusPane } from "./view";
 
 /** Keys that move in the rail or the tree, which focus mode hides. */

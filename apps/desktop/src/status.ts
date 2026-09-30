@@ -1,5 +1,3 @@
-
-
 import { isUnread } from "./model";
 
 import { $ } from "./dom";

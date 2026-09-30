@@ -9,8 +9,10 @@ import { renderRail } from "./rail";
 import { renderHeader } from "./header";
 import { renderCounts } from "./status";
 import { S } from "./state";
+
 import { savePlace } from "./stored";
 import { renderLayout } from "./terminal";
+
 import { applyBackdrop } from "./backdrop";
 import { applyApp, applyThemes } from "./themes";
 

@@ -9,11 +9,12 @@ import { button, h } from "./dom";
 import { chevron, icon } from "./icons";
 import { showError } from "./alerts";
 import type { MenuEntry } from "./menu";
-import { ctxMenu } from "./menus";
+import { ctxMenu } from "./contextMenu";
 import { branchName } from "./model";
 import { showDiff } from "./peek";
 import { render, scheduleRender } from "./render";
 import { S } from "./state";
+
 import { storedSet } from "./stored";
 
 type Change = { path: string; status: "M" | "A" | "D" | "U"; added: number | null; removed: number | null };

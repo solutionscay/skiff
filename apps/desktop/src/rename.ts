@@ -9,6 +9,7 @@ import { saveGroup } from "./groups";
 import { itemKey, listItems } from "./keyboard";
 import { render } from "./render";
 import { S, sessions, upsert } from "./state";
+
 import { refocusTerminal } from "./view";
 
 /** What the operator has typed so far; a re-render rebuilds the input from it. */

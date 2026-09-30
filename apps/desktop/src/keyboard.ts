@@ -1,16 +1,20 @@
 /** App keys, Tab order, F6 regions, arrows in the lists. */
 import { type Action, actionFor } from "./keys";
-import { runAction, switcher } from "./commands";
+import { runAction } from "./actionDispatch";
+import { switcher } from "./commandUi";
 import { modeKeyBlocked } from "./modes";
 import { $, modalOpen } from "./dom";
 import { host } from "./terminalHost";
-import { ctxMenu, deleteKeyMenu } from "./menus";
+import { deleteKeyMenu } from "./menus";
+import { ctxMenu } from "./contextMenu";
 import { render } from "./render";
 import { launchMenu } from "./panels";
 import { closeEntries } from "./projectClose";
 import { renameListItem } from "./rename";
 import { clearSelection, extendSelection, keepRow, splitSelection } from "./selection";
-import { collapsed, panes, S } from "./state";
+import { collapsed, S } from "./state";
+
+import { panes } from "./terminalState";
 import { revealSession, selectProject, showGroup } from "./view";
 
 /** Ctrl+Shift+1..9 selects a project (Command+Shift+1..9 on macOS). Not in the keymap: it is a range, not one key. */

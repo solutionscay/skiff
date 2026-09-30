@@ -15,13 +15,16 @@ import { $, button, h } from "./dom";
 import { branchIcon, chevron, icon, plusIcon } from "./icons";
 
 import { groupMenu, projectMenu, rowMenu, worktreeMenu } from "./menus";
+
 import { launchMenu } from "./panels";
 
 import { renameRow, startRename, startSessionRename } from "./rename";
 
 import { clearSelection, keepRow, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
 import { stateIcon } from "./stateIcon";
-import { accent, collapsed, currentProject, currentWorktree, DEFAULT_ACCENT, OTHER, place, removeErrors, removing, S, selectedWorktree, sessions, worktreeSessions } from "./state";
+import { collapsed, DEFAULT_ACCENT, OTHER, removeErrors, removing, S, selectedWorktree, sessions } from "./state";
+import { accent, currentProject, currentWorktree, place, worktreeSessions } from "./stateQueries";
+
 import { dragSessions, revealSession, selectWorktree, showGroup } from "./view";
 
 /** 20px lines, flush against whatever follows. */
