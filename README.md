@@ -2,6 +2,14 @@
 
 <h1 align="center">Skiff</h1>
 
+<p align="center">
+  <a href="https://github.com/solutionscay/skiff/releases/latest"><img src="https://img.shields.io/github/v/release/solutionscay/skiff?include_prereleases&label=release" alt="Latest release"></a>
+  <a href="https://github.com/solutionscay/skiff/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/solutionscay/skiff/release.yml?label=build" alt="Release build status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/solutionscay/skiff" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey" alt="Platforms: Linux and macOS">
+  <img src="https://img.shields.io/badge/status-pre--1.0-orange" alt="Status: pre-1.0">
+</p>
+
 A desktop app for running many coding agents side by side, on Linux and macOS.
 
 <p align="center"><img src=".github/screenshot.webp" alt="Skiff on Linux: a project with its groups, changed files and file tree in the sidebar, and four agent sessions in a two-by-two layout, each with its own terminal theme"></p>
