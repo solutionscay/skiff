@@ -11,11 +11,10 @@ export function renderCounts() {
   const working = all.filter((s) => s.state === "working").length;
   const unread = all.filter(isUnread).length;
   $("counts").textContent = `${all.length} sessions · ${waiting} waiting · ${unread} unread · ${working} working`;
-  const nw = $<HTMLButtonElement>("next-waiting");
-  nw.hidden = waiting + unread === 0;
-  $("next-waiting-label").textContent = waiting
-    ? `Next waiting (${waiting})`
-    : `Next unread (${unread})`;
+  $("next-waiting").hidden = waiting === 0;
+  $("waiting-count").textContent = String(waiting);
+  $("next-unread").hidden = unread === 0;
+  $("unread-count").textContent = String(unread);
 
   renderWelcome();
 }

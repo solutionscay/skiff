@@ -30,7 +30,7 @@ import { loadThemes } from "./appearance/themes";
 import { loadPlace, trackPlace } from "./app/stored";
 import { startMemory } from "./diagnostics/memory";
 import { toggleFocusMode, toggleMaximize } from "./app/modes";
-import { focusNextWaiting, selectProject, showGroup, showSingle } from "./workspace/view";
+import { focusNextUnread, focusNextWaiting, selectProject, showGroup, showSingle } from "./workspace/view";
 
 configureRender(render);
 configurePaneActions({ focusPane, closePane, dragSessions });
@@ -55,6 +55,7 @@ async function boot() {
     $("statusbar").prepend(badge);
   }
   $("next-waiting").addEventListener("click", focusNextWaiting);
+  $("next-unread").addEventListener("click", focusNextUnread);
   $("open-switcher").addEventListener("click", () => switcher.open());
   $("open-settings").addEventListener("click", () => (settings.isOpen ? settings.close() : void settings.open()));
   render();
@@ -86,8 +87,6 @@ async function boot() {
   // The top bar's search button is the palette; show its real key.
   const kbd = document.querySelector("#open-switcher kbd");
   if (kbd) kbd.textContent = keyLabel("palette").replace(/\+/g, " ");
-  const nwKbd = document.querySelector("#next-waiting kbd");
-  if (nwKbd) nwKbd.textContent = keyLabel("next-waiting").replace(/\+/g, " ");
   const hint = document.querySelector("#open-switcher .spacer");
   if (hint) hint.textContent = "Commands, sessions, worktrees";
   await loadGroups();

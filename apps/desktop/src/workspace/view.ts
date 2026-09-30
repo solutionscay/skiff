@@ -425,6 +425,12 @@ export function focusNextWaiting() {
   if (next) revealSession(next.id);
 }
 
+export function focusNextUnread() {
+  const unread = [...sessions.values()].filter(isUnread).sort(bySessionPriority);
+  const next = unread.find((s) => s.id !== S.focused) ?? unread[0];
+  if (next) revealSession(next.id);
+}
+
 export function goBack() {
   if (S.previous && sessions.has(S.previous)) revealSession(S.previous);
 }
