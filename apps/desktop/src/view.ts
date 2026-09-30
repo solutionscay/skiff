@@ -19,7 +19,11 @@ export function focusPane(id: string, grab = true) {
   closePeek();
   S.justAdded = null;
   S.grab = null;
-  if (grab) S.groupPicked = null;
+  if (grab) {
+    S.groupPicked = null;
+    // The keys go to this pane, so its row is where we are.
+    S.roveKey = id;
+  }
   if (S.focused && S.focused !== id) S.previous = S.focused;
   S.focused = id;
   const g = activeGroupObj();
@@ -38,7 +42,7 @@ export function focusPane(id: string, grab = true) {
     // A text field (a group name being typed) keeps them too.
     const a = document.activeElement;
     const typing = a instanceof HTMLInputElement && !host.contains(a);
-    if (ctxMenu.isOpen || typing || S.focused !== id || !grab) return;
+    if (ctxMenu.isOpen || typing || S.focused !== id || !grab || S.atRail) return;
     const pane = panes.get(id);
     if (pane?.term.element) pane.term.focus();
     // Not open yet: the terminal takes the keys when it attaches.
@@ -47,7 +51,9 @@ export function focusPane(id: string, grab = true) {
 }
 
 export function refocusTerminal() {
-  if (S.focused) panes.get(S.focused)?.term.focus();
+  // A menu opened from the rail gives the keys back to the rail.
+  if (S.atRail) document.querySelector<HTMLElement>("#rail .rail-chip.active")?.focus();
+  else if (S.focused) panes.get(S.focused)?.term.focus();
 }
 
 /** One session fills the area. Any group stays in the sidebar. */
@@ -64,7 +70,10 @@ export function showGroup(id: string, pick = false, focus?: string) {
   S.activeGroup = id;
   S.single = null;
   const ids = sessionsOf(g.layout).filter((x) => !isSlot(x));
-  if (pick) S.groupPicked = id;
+  if (pick) {
+    S.groupPicked = id;
+    S.roveKey = id;
+  }
   const f = focus && ids.includes(focus) ? focus : g.focus && ids.includes(g.focus) ? g.focus : ids[0];
   if (f) focusPane(f, !pick);
   else {
@@ -78,7 +87,6 @@ export function showGroup(id: string, pick = false, focus?: string) {
     return;
   }
   if (pick) {
-    S.roveKey = id;
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`#sidebar-scroll .group-pick[data-group="${id}"]`)?.focus());
   }
 }
@@ -140,7 +148,13 @@ function releaseFromOtherGroups(keep: Group, ids: string[]) {
 export function removeFromGroup(id: string) {
   const g = groupOf(id);
   if (!g) return;
-  if (g.id === S.activeGroup) return closePane(id);
+  if (g.id === S.activeGroup) {
+    // The session pops out of the group and stays selected, alone.
+    g.layout = emptyLast(g, id) ?? removePane(g.layout, id) ?? slot();
+    g.focus = sessionsOf(g.layout).find((x) => !isSlot(x)) ?? null;
+    saveGroup(g);
+    return showSingle(id);
+  }
   const kept = emptyLast(g, id);
   if (kept) {
     g.layout = kept;
@@ -384,7 +398,7 @@ export function unfocus() {
   S.activeGroup = null;
   (document.activeElement as HTMLElement | null)?.blur();
   render();
-  host.querySelector<HTMLButtonElement>(".welcome button")?.focus();
+  if (!S.atRail) host.querySelector<HTMLButtonElement>(".welcome button")?.focus();
 }
 
 export function selectProject(name: string) {

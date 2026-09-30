@@ -8,7 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { $, h, showError } from "./dom";
-import { cycleRegion, stepList } from "./keyboard";
+import { currentRow, cycleRegion, fromProject, stepList, stepRail, toProject } from "./keyboard";
 import { copyReport, hasReport, startTrace, stopTrace, tracing } from "./latency";
 import { endEntry, groupCloseEntries, newWorktree, projectMenu, projectRun, splitMenu } from "./menus";
 import { addProject, launchMenu, settings } from "./panels";
@@ -40,7 +40,7 @@ function commands(): Cmd[] {
     { section: "File", label: "New session…", key: k("new-session"), action: "new-session", run: act("new-session"), off: !currentWorktree() },
     { section: "File", label: "New worktree…", key: k("new-worktree"), action: "new-worktree", run: act("new-worktree"), off: !currentProject() },
     { section: "File", label: "Add project…", key: k("add-project"), action: "add-project", run: act("add-project") },
-    { section: "File", label: "Project menu…", key: k("project-menu"), action: "project-menu", run: act("project-menu"), off: !currentProject() },
+    { section: "File", label: "Project menu…", key: "", run: openProjectMenu, off: !currentProject() },
     { section: "File", label: "Settings", key: k("settings"), action: "settings", run: act("settings") },
     { section: "File", label: "Quit", key: k("quit"), action: "quit", run: act("quit") },
     { section: "Edit", label: "Copy", key: k("copy"), action: "copy", run: act("copy"), off: !s },
@@ -317,11 +317,15 @@ export function runAction(a: Action) {
     }
     case "add-project": return void addProject.open();
     case "project-menu": {
-      const p = currentProject();
-      const chip = document.querySelector<HTMLElement>("#rail .rail-chip.active");
-      if (!p || !chip) return;
-      const r = chip.getBoundingClientRect();
-      return projectMenu(p, r.right, r.top);
+      // The highlighted row's menu, as a right-click opens it: a worktree, a
+      // group, a session, or a Changes or Files row. The
+      // highlight, not DOM focus: a picked group can be current while focus
+      // rests elsewhere. On the rail, or with no row, the project menu.
+      const row = S.atRail || document.activeElement?.closest("#rail") ? undefined : currentRow();
+      if (!row) return openProjectMenu();
+      const b = row.getBoundingClientRect();
+      row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: b.left + 24, clientY: b.bottom }));
+      return;
     }
     case "project-folder":
     case "project-copy-path":
@@ -361,8 +365,19 @@ export function runAction(a: Action) {
     case "focus-down": return moveFocus("down");
     case "region-next": return cycleRegion(1);
     case "region-prev": return cycleRegion(-1);
-    case "session-next": return stepList(1);
-    case "session-prev": return stepList(-1);
+    case "session-next": return S.atRail ? stepRail(1) : stepList(1);
+    case "session-prev": return S.atRail ? stepRail(-1) : stepList(-1);
+    case "list-project": return toProject();
+    case "list-back": return fromProject();
     case "shortcuts": return showShortcuts();
   }
+}
+
+/** The selected project's menu, at its rail icon. */
+function openProjectMenu() {
+  const p = currentProject();
+  const chip = document.querySelector<HTMLElement>("#rail .rail-chip.active");
+  if (!p || !chip) return;
+  const r = chip.getBoundingClientRect();
+  projectMenu(p, r.right, r.top);
 }

@@ -145,7 +145,6 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
   if (S.renamingSession === s.id) return renameRow(s, color);
   // State shows only when it matters: waiting stands out, working pulses, done fades.
   const cls = ["session-row", `st-${s.state}`];
-  if (s.id === S.focused && !(o.in && o.in.id === S.groupPicked)) cls.push("focused");
   if (o.in) cls.push("nested");
   if (o.groupRail) cls.push("group-rail");
   if (S.selection.includes(s.id)) cls.push("selected");
@@ -334,7 +333,7 @@ const groupColor = (g: Group) => ink(GROUP_COLORS[Math.max(0, S.groups.indexOf(g
 
 function groupRow(g: Group, hasPrevious = false, hasNext = false): HTMLElement {
   const ids = filledOf(g.layout).filter((id) => sessions.has(id));
-  const row = h("div", "group-row" + (hasPrevious ? " has-previous" : "") + (hasNext ? " has-next" : "") + (g.id === S.activeGroup && g.id === S.groupPicked ? " active" : ""));
+  const row = h("div", "group-row" + (hasPrevious ? " has-previous" : "") + (hasNext ? " has-next" : "") );
   row.dataset.group = g.id;
   row.style.setProperty("--gc", groupColor(g));
   const lead = sessions.get(g.focus ?? ids[0]);

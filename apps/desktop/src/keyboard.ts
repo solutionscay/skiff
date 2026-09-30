@@ -4,6 +4,7 @@ import { runAction } from "./commands";
 import { $, host } from "./dom";
 import { ctxMenu, deleteKeyMenu } from "./menus";
 import { render } from "./render";
+import { launchMenu } from "./panels";
 import { renameListItem } from "./rename";
 import { clearSelection, extendSelection, keepRow, splitSelection } from "./selection";
 import { collapsed, panes, S } from "./state";
@@ -49,15 +50,28 @@ export function listItems(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-pick, #sidebar-scroll .group-pick, #sidebar-scroll button.session-row, #sidebar-scroll .files-head, #sidebar-scroll .file-row")];
 }
 
-/** Where the roving tab stop lands: the row for the pane on screen ("where I am"),
- *  else the last-roved row, else the first row. */
+/** Where we are in the list: the last-roved row, else the picked group, else the
+ *  session on screen. One row at most, whatever its kind. */
+export function currentRow(items = listItems()): HTMLElement | undefined {
+  const roved = S.roveKey ? items.find((x) => itemKey(x) === S.roveKey) : undefined;
+  if (roved) return roved;
+  if (S.groupPicked) return items.find((x) => x.dataset.group === S.groupPicked);
+  return S.focused ? items.find((x) => x.dataset.session === S.focused) : undefined;
+}
+
+/** The roving tab stop: the current row, else the first row. */
 function roveTarget(): HTMLElement | undefined {
+  return currentRow() ?? listItems()[0];
+}
+
+/** Moves the one highlight to the current row. */
+export function markCurrent() {
   const items = listItems();
-  return (
-    items.find((x) => x.classList.contains("focused")) ??
-    items.find((x) => S.roveKey && itemKey(x) === S.roveKey) ??
-    items[0]
-  );
+  // On the rail, no row is lit.
+  const cur = S.atRail ? undefined : currentRow(items);
+  for (const x of items) x.classList.toggle("current", x === cur);
+  // The worktree marker goes with it: on the project row, no worktree is marked.
+  if (cur || S.atRail) for (const w of document.querySelectorAll("#sidebar-scroll .wt")) w.classList.toggle("selected", !!cur && w.contains(cur));
 }
 
 /**
@@ -76,12 +90,13 @@ export function applyTabOrder() {
   if (addWt) addWt.tabIndex = 0;
   const item = roveTarget();
   if (item) item.tabIndex = 0;
+  markCurrent();
 }
 
 function regionOf(el: Element | null): number {
   if (!el) return -1;
   if (el.closest("#rail")) return 0;
-  if (el.closest(".project-row")) return 1;
+  if (el.closest(".project-row .wt-plus")) return 1;
   if (el.closest("#sidebar-scroll")) return 2;
   if (host.contains(el)) return 3;
   return -1;
@@ -144,31 +159,87 @@ function openRow(el: HTMLElement) {
   }
 }
 
-/** The row Ctrl+Shift+Up/Down last landed on. A diff or terminal takes the keys, so the row remembers the place. */
-let stepKey = "";
-
 /**
- * Ctrl+Shift+Down/Up: the next or previous session, Changes or Files header, or file row in
- * the list. A session opens. A changed file loads its diff. Headers and files take focus.
+ * Ctrl+Shift+Down/Up: the next or previous row in the list. A session opens. A group
+ * opens with its row keeping the keys. A changed file loads its diff. Worktrees,
+ * headers and files take focus.
  */
 export function stepList(dir: 1 | -1) {
-  const rows = listItems().filter((r) => !r.dataset.wt && !r.dataset.group);
+  const rows = listItems();
   if (!rows.length) return;
-  const active = document.activeElement as HTMLElement | null;
-  let i = active && rows.includes(active) ? rows.indexOf(active) : rows.findIndex((r) => itemKey(r) === stepKey);
-  if (i < 0) i = rows.findIndex((r) => r.dataset.session && r.dataset.session === S.focused);
-  const next = rows[i < 0 ? (dir > 0 ? 0 : rows.length - 1) : (i + dir + rows.length) % rows.length];
-  stepKey = itemKey(next);
-  S.roveKey = stepKey;
+  // Moving on leaves any open menu behind.
+  ctxMenu.close(false);
+  launchMenu.close(false);
+  // From the highlighted row, wherever the keys are: a row, a menu, a diff, a terminal.
+  const cur = currentRow(rows);
+  const i = cur ? rows.indexOf(cur) : -1;
+  landOn(rows[i < 0 ? (dir > 0 ? 0 : rows.length - 1) : (i + dir + rows.length) % rows.length]);
+}
+
+/** Makes a row the current one. A session opens. A group opens with its row keeping
+ *  the keys. A changed file loads its diff. Other rows take focus. */
+function landOn(next: HTMLElement) {
+  S.roveKey = itemKey(next);
   if (next.dataset.session) revealSession(next.dataset.session);
-  else if (next.classList.contains("change-row")) {
+  else if (next.dataset.group) {
+    document.body.classList.add("kbd");
+    showGroup(next.dataset.group, true);
+  } else if (next.classList.contains("change-row")) {
     // The row's own Enter handler loads the diff.
     next.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
   } else {
     document.body.classList.add("kbd");
+    markCurrent();
     next.focus();
   }
 }
+
+const activeChip = () => document.querySelector<HTMLElement>("#rail .rail-chip.active") ?? document.querySelector<HTMLElement>("#rail .rail-chip");
+
+/**
+ * Ctrl+Shift+Left: the keys go to the project on the rail. No sidebar row stays
+ * highlighted or selected; the panes stay as they are.
+ */
+export function toProject() {
+  ctxMenu.close(false);
+  launchMenu.close(false);
+  clearSelection();
+  S.groupPicked = null;
+  S.atRail = true;
+  // A render puts focus back on the row that had it, and that focus would end
+  // the rail level at once. Let go of the row first.
+  (document.activeElement as HTMLElement | null)?.blur();
+  render();
+  document.body.classList.add("kbd");
+  activeChip()?.focus();
+}
+
+/** Ctrl+Shift+Up/Down on the rail: the next or previous project. The keys stay on the rail. */
+export function stepRail(dir: 1 | -1) {
+  const chips = [...document.querySelectorAll<HTMLElement>("#rail .rail-chip:not(.rail-add)")];
+  if (!chips.length) return;
+  const i = chips.findIndex((c) => c.classList.contains("active"));
+  chips[(i + dir + chips.length) % chips.length].click();
+  activeChip()?.focus();
+}
+
+/** Ctrl+Shift+Right: from the rail back into the list, at its current row. */
+export function fromProject() {
+  if (!S.atRail) return;
+  leaveRail();
+  const row = currentRow() ?? listItems()[0];
+  if (row) landOn(row);
+}
+
+function leaveRail() {
+  S.atRail = false;
+  markCurrent();
+}
+
+// Anything that takes the keys outside the rail and its menus ends the rail level.
+document.addEventListener("focusin", (e) => {
+  if (S.atRail && !(e.target as Element).closest?.("#rail, #ctx-menu, #ctx-sub, #launch-menu")) leaveRail();
+});
 
 /** A Changes or Files header, or a row under one. Not a session, group or worktree. */
 const isSection = (el: HTMLElement) => !!el.dataset.key && !el.dataset.session && !el.dataset.wt && !el.dataset.group;
@@ -198,6 +269,7 @@ $("sidebar-scroll").addEventListener("keydown", (e) => {
     items.forEach((x) => (x.tabIndex = -1));
     t.tabIndex = 0;
     S.roveKey = itemKey(t);
+    markCurrent();
     t.focus();
     scheduleReveal(t);
   };
@@ -272,9 +344,13 @@ window.addEventListener("keydown", (e) => {
   e.stopPropagation();
 });
 
-$("sidebar-scroll").addEventListener("focusin", (e) => {
-  const el = e.target as HTMLElement;
-  if (listItems().includes(el)) S.roveKey = itemKey(el);
+// A pressed row is where we are. Not on focus: a render puts focus back on the
+// row that had it, which may no longer be the current one.
+$("sidebar-scroll").addEventListener("mousedown", (e) => {
+  const el = (e.target as HTMLElement).closest<HTMLElement>(".wt-pick, .group-pick, button.session-row, .files-head, .file-row");
+  if (!el || e.button !== 0) return;
+  S.roveKey = itemKey(el);
+  markCurrent();
 });
 
 // Leaving the list (F6, a click elsewhere) drops any pending reveal.

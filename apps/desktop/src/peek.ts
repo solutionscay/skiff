@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { $, button, h, icon, showError } from "./dom";
+import { markCurrent } from "./keyboard";
 import { panes, S } from "./state";
 import { FONT, TERM_THEME } from "./terminal";
 
@@ -24,6 +25,9 @@ export function closePeek() {
   open.el.remove();
   open = null;
   const back = S.focused ? panes.get(S.focused) : undefined;
+  // The keys go back to the pane, and the highlight to its row.
+  if (S.focused) S.roveKey = S.focused;
+  markCurrent();
   back?.term.focus();
 }
 

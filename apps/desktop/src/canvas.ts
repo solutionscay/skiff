@@ -51,6 +51,9 @@ export function startCanvas(p: Project, w: Worktree, preset: number) {
   S.activeGroup = g.id;
   S.single = null;
   S.focused = null;
+  // The new group is where we are: its row takes the highlight, not the worktree's.
+  S.roveKey = g.id;
+  S.groupPicked = null;
   render();
   focusFirstSlot();
 }

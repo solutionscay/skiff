@@ -172,6 +172,9 @@ export const S = {
   selection: [] as string[],
   /** The list item the session list's single Tab stop lands on. */
   roveKey: null as string | null,
+  /** The keys are on the rail (Ctrl+Shift+Left): Ctrl+Shift+Up/Down step through
+   *  projects, and no sidebar row is highlighted. Ctrl+Shift+Right goes back. */
+  atRail: false,
   /** A pane asked for the keys before its terminal opened. It takes them when it opens. */
   grab: null as string | null,
   /** The session focused before the current one, for Back. */

@@ -11,6 +11,7 @@ import { ctxMenu } from "./menus";
 import { branchName } from "./model";
 import { showDiff } from "./peek";
 import { render, scheduleRender } from "./render";
+import { S } from "./state";
 import { storedSet } from "./stored";
 
 type Change = { path: string; status: "M" | "A" | "D" | "U"; added: number | null; removed: number | null };
@@ -43,8 +44,6 @@ const lists = new Map<string, Change[]>();
 const loading = new Set<string>();
 /** Worktrees whose Changes section is open. Closed by default. */
 const shown = storedSet("skiff.changesOpen");
-/** The row a single click picked. A double click opens the file. */
-let picked: string | null = null;
 
 function load(wt: string) {
   if (loading.has(wt)) return;
@@ -137,9 +136,9 @@ export function changesBlock(w: Worktree): HTMLElement | null {
 function row(w: Worktree, c: Change): HTMLElement {
   const wt = w.path;
   const path = join(wt, c.path);
-  // The row whose diff shows is the picked row, however the diff was asked for.
+  // The row whose diff shows is the current row, however the diff was asked for.
   const show = () => {
-    picked = path;
+    S.roveKey = `change:${path}`;
     render();
     showDiff(wt, branchName(w), c.path);
   };
@@ -147,16 +146,12 @@ function row(w: Worktree, c: Change): HTMLElement {
   const slash = c.path.lastIndexOf("/");
   const name = c.path.slice(slash + 1);
   const dir = slash < 0 ? "" : c.path.slice(0, slash);
-  const r = h("button", "file-row change-row" + (gone ? " st-gone" : "") + (path === picked ? " picked" : ""));
+  const r = h("button", "file-row change-row" + (gone ? " st-gone" : "") );
   r.type = "button";
   r.dataset.key = `change:${path}`;
   r.title = `${c.path}${gone ? "\nDeleted" : ""}\nDouble-click to open the diff`;
-  r.addEventListener("click", (m) => {
-    picked = path;
-    // detail counts clicks across the re-render the first click causes.
-    if (m.detail >= 2) show();
-    else render();
-  });
+  // detail counts clicks across the re-render the first click causes.
+  r.addEventListener("click", (m) => m.detail >= 2 && show());
   r.addEventListener("keydown", (k) => {
     if (k.key !== "Enter") return;
     k.preventDefault();

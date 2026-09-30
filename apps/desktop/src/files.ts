@@ -23,8 +23,6 @@ const shown = storedSet("skiff.filesOpen");
 const expanded = storedSet("skiff.foldersOpen");
 /** Folders being read. */
 const reading = new Set<string>();
-/** The file or folder a single click picked. A double click opens a file. */
-let picked: string | null = null;
 
 const join = (dir: string, name: string) => `${dir}/${name}`;
 
@@ -128,7 +126,6 @@ function row(e: Entry, path: string, depth: number): HTMLElement {
   const cls = ["file-row"];
   if (e.dir) cls.push("dir");
   if (e.name.startsWith(".")) cls.push("hidden-file");
-  if (path === picked) cls.push("picked");
   const r = h("button", cls.join(" "));
   r.type = "button";
   r.dataset.key = `file:${path}`;
@@ -136,11 +133,9 @@ function row(e: Entry, path: string, depth: number): HTMLElement {
   r.title = e.dir ? path : `${path}\nDouble-click to open`;
   if (e.dir) r.setAttribute("aria-expanded", String(expanded.has(path)));
   r.addEventListener("click", (m) => {
-    picked = path;
     // detail counts clicks across the re-render the first click causes.
     if (e.dir) toggle(path, expanded);
     else if (m.detail >= 2) open(path);
-    else render();
   });
   r.addEventListener("keydown", (k) => {
     if (k.key !== "Enter" || e.dir) return;

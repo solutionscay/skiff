@@ -14,7 +14,7 @@ export type Action =
   | "copy" | "paste" | "find" | "font-bigger" | "font-smaller" | "font-reset" | "settings" | "quit"
   | "focus-left" | "focus-right" | "focus-up" | "focus-down"
   | "project-menu" | "project-folder" | "project-copy-path" | "project-color" | "project-theme" | "project-changes" | "project-files"
-  | "region-next" | "region-prev" | "session-next" | "session-prev" | "shortcuts";
+  | "region-next" | "region-prev" | "session-next" | "session-prev" | "list-project" | "list-back" | "shortcuts";
 
 const isMac = navigator.userAgent.includes("Macintosh");
 
@@ -52,6 +52,8 @@ export const DEFAULTS: Record<Action, string> = {
   "region-prev": "shift+f6",
   "session-next": "ctrl+shift+down",
   "session-prev": "ctrl+shift+up",
+  "list-project": "ctrl+shift+left",
+  "list-back": "ctrl+shift+right",
   shortcuts: "f1",
 };
 
@@ -152,7 +154,7 @@ export const DESCRIBE: [string, Action, string][] = [
   ["Edit", "paste", "Paste into the terminal"],
   ["Edit", "find", "Find in the terminal"],
   ["Edit", "rename", "Rename the session, or the group or session row in the list"],
-  ["Project", "project-menu", "Project menu for the selected project"],
+  ["Project", "project-menu", "Menu for the highlighted row: worktree, group, session, Changes or Files. On the rail, the project menu"],
   ["Project", "project-folder", "Show the project in the file manager"],
   ["Project", "project-copy-path", "Copy the project path"],
   ["Project", "project-color", "Project color"],
@@ -165,8 +167,10 @@ export const DESCRIBE: [string, Action, string][] = [
   ["View", "close-pane", "Close pane (the session keeps running)"],
   ["View", "next-waiting", "Next waiting session"],
   ["View", "back", "Back to the last session"],
-  ["View", "session-next", "Next session, Changes or Files row in the list. A changed file loads its diff"],
-  ["View", "session-prev", "Previous session, Changes or Files row in the list"],
+  ["View", "session-next", "Next row in the list: worktree, group, session, Changes or Files. A changed file loads its diff. On the rail, the next project"],
+  ["View", "session-prev", "Previous row in the list. On the rail, the previous project"],
+  ["View", "list-project", "To the rail: clears the list's highlight and selection. The panes stay"],
+  ["View", "list-back", "Back from the rail into the list"],
   ["View", "focus-left", "Focus the pane to the left"],
   ["View", "focus-right", "Focus the pane to the right"],
   ["View", "focus-up", "Focus the pane above"],
