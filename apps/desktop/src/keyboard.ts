@@ -25,6 +25,9 @@ export function appKey(e: KeyboardEvent): Action | number | null {
 }
 
 window.addEventListener("keydown", (e) => {
+  // Enter in an open menu picks the item, even with Ctrl+Shift still held from
+  // the shortcut that opened it. Otherwise Maximize (Ctrl+Shift+Enter) wins.
+  if (ctxMenu.isOpen && e.key === "Enter") return;
   const key = appKey(e);
   if (key === null) return;
   e.preventDefault();
