@@ -854,3 +854,15 @@ button:active:not(:disabled), .sw-row:active {
 .trace-indicator { padding: 0; border: 0; background: transparent; color: var(--state-waiting-text); font: inherit; cursor: pointer; }
 .trace-indicator .dot { background: var(--state-waiting-text); border-radius: 50%; }
 .trace-indicator:hover { color: var(--text); }
+
+/* Focus mode and maximize (modes.ts): the terminal area fills the window. */
+body.focus-mode :is(#topbar, #rail, #sidebar, #statusbar) { display: none; }
+/* A session waits out of view: one block on the pane-head row, top right. */
+#waiting-corner {
+  position: absolute; top: 0; right: 0; z-index: 6;
+  height: var(--row); display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(14 * var(--u));
+  border: 0; border-left: 1px solid var(--state-waiting-rule); border-bottom: 1px solid var(--state-waiting-rule);
+  background: var(--state-waiting-bg); color: var(--state-waiting-text); font-size: calc(12px * var(--zoom, 1)); font-weight: 500; white-space: nowrap;
+}
+#waiting-corner kbd { border-color: var(--state-waiting-rule); color: var(--state-waiting-text); }
+#terminal-host .cell.under-corner .cell-head { padding-right: var(--corner-w, 0px); }

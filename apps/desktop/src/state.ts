@@ -106,6 +106,12 @@ export function currentLayout(): Layout | null {
 
 export const shownIds = () => sessionsOf(currentLayout());
 
+/** What the terminal area draws: the saved view, or its one maximized pane. */
+export function viewLayout(): Layout | null {
+  const l = currentLayout();
+  return S.maximized && sessionsOf(l).includes(S.maximized) ? leaf(S.maximized) : l;
+}
+
 /** A group holds at most this many panes. */
 export const MAX_PANES = 4;
 
@@ -180,6 +186,10 @@ export const S = {
   atRail: false,
   /** A pane asked for the keys before its terminal opened. It takes them when it opens. */
   grab: null as string | null,
+  /** Focus mode: the terminal area alone, no rail, tree, top bar or status bar. */
+  focusMode: false,
+  /** The pane that fills the terminal area, or null. The window chrome hides too. */
+  maximized: null as string | null,
   /** The session focused before the current one, for Back. */
   previous: null as string | null,
 

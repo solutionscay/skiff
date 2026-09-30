@@ -15,7 +15,7 @@ import { saveGroup } from "./groups";
 import { appKey } from "./keyboard";
 import { traceKey, traceOutput, traceRender, traceSend } from "./latency";
 import { ctxMenu, paneMenu } from "./menus";
-import { accent, activeGroupObj, FONT_DEFAULT, currentLayout, opening, type Pane, panes, place, S, sessions, shownIds } from "./state";
+import { accent, activeGroupObj, FONT_DEFAULT, opening, type Pane, panes, place, S, sessions, shownIds, viewLayout } from "./state";
 import { closePane, dragSessions, focusPane } from "./view";
 
 export const TERM_THEME = {
@@ -268,7 +268,7 @@ function useWebgl(id: string, pane: Pane) {
 
 /** Draws the view and parks every terminal it does not show. */
 export function renderLayout() {
-  const layout = currentLayout();
+  const layout = viewLayout();
   const changed = view.sync(layout);
   const shown = new Set(sessionsOf(layout));
   for (const [id, p] of panes) if (!shown.has(id) && (!p.parked || p.el.parentElement !== park)) parkPane(id, p);

@@ -2,6 +2,7 @@
 import { syncMenu } from "./commands";
 import { host } from "./dom";
 import { applyTabOrder } from "./keyboard";
+import { renderModes, settleModes } from "./modes";
 import { renderSelectBar } from "./selection";
 import { renderCounts, renderHeader, renderRail, renderSidebar } from "./sidebar";
 import { S } from "./state";
@@ -51,6 +52,7 @@ window.addEventListener("pointermove", (e) => {
 
 export function render() {
   renderQueued = false;
+  settleModes();
   // App colors first: the sidebar's marks are inked against them.
   applyApp();
   host.classList.toggle("group-picked", !!S.groupPicked && S.groupPicked === S.activeGroup);
@@ -58,6 +60,7 @@ export function render() {
   renderSidebar();
   renderSelectBar();
   renderLayout();
+  renderModes();
   applyThemes();
   applyBackdrop();
   renderHeader();

@@ -14,7 +14,8 @@ export type Action =
   | "copy" | "paste" | "find" | "font-bigger" | "font-smaller" | "font-reset" | "settings" | "quit"
   | "focus-left" | "focus-right" | "focus-up" | "focus-down"
   | "project-menu" | "project-folder" | "project-copy-path" | "project-color" | "project-theme" | "project-changes" | "project-files"
-  | "region-next" | "region-prev" | "session-next" | "session-prev" | "list-project" | "list-back" | "shortcuts";
+  | "region-next" | "region-prev" | "session-next" | "session-prev" | "list-project" | "list-back" | "shortcuts"
+  | "focus-mode" | "maximize";
 
 const isMac = navigator.userAgent.includes("Macintosh");
 
@@ -55,6 +56,8 @@ export const DEFAULTS: Record<Action, string> = {
   "list-project": "ctrl+shift+left",
   "list-back": "ctrl+shift+right",
   shortcuts: "f1",
+  "focus-mode": "ctrl+shift+e",
+  maximize: "ctrl+shift+enter",
 };
 
 interface Combo { ctrl: boolean; shift: boolean; alt: boolean; key: string }
@@ -124,7 +127,7 @@ export function actionFor(e: KeyboardEvent): Action | null {
 }
 
 function label(c: Combo): string {
-  const k = c.key.startsWith("arrow") ? c.key.slice(5)[0].toUpperCase() + c.key.slice(6) : c.key.length === 1 ? c.key.toUpperCase() : c.key.toUpperCase();
+  const k = c.key.startsWith("arrow") ? c.key.slice(5)[0].toUpperCase() + c.key.slice(6) : c.key.length === 1 || /^f\d+$/.test(c.key) ? c.key.toUpperCase() : c.key[0].toUpperCase() + c.key.slice(1);
   return [c.ctrl && (isMac ? "⌘" : "Ctrl"), c.alt && "Alt", c.shift && "Shift", k].filter(Boolean).join("+");
 }
 
@@ -133,7 +136,7 @@ export function keyLabel(action: Action): string {
   return labels[action] ?? "";
 }
 
-const MENU_KEYS: Record<string, string> = { "=": "Equal", "-": "Minus", ",": "Comma", " ": "Space", escape: "Escape" };
+const MENU_KEYS: Record<string, string> = { "=": "Equal", "-": "Minus", ",": "Comma", " ": "Space", escape: "Escape", enter: "Enter" };
 
 /** The action's key as the menu bar spells it ("Ctrl+Shift+T"), or "" for none. */
 export function menuAccel(action: Action): string {
@@ -175,6 +178,8 @@ export const DESCRIBE: [string, Action, string][] = [
   ["View", "focus-right", "Focus the pane to the right"],
   ["View", "focus-up", "Focus the pane above"],
   ["View", "focus-down", "Focus the pane below"],
+  ["View", "focus-mode", "Focus mode: only the panes of this view. Moves out of the view end it"],
+  ["View", "maximize", "Maximize the focused pane, and hide the rest. Press again to go back"],
   ["View", "font-bigger", "Bigger text"],
   ["View", "font-smaller", "Smaller text"],
   ["View", "font-reset", "Reset text size"],
