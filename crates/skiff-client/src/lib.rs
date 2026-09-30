@@ -282,7 +282,7 @@ impl Client {
     }
 
     /// The receiver for one session's output. Take it before [`Self::subscribe`]:
-    /// the snapshot arrives before the reply. Replaces an earlier receiver.
+    /// the snapshot can arrive before the reply. Replaces an earlier receiver.
     pub fn output(&self, session: &str) -> Output {
         let (tx, rx) = mpsc::channel(OUTPUT_QUEUE);
         let lagged = Arc::new(AtomicBool::new(false));

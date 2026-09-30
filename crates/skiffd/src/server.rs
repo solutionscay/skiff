@@ -21,10 +21,20 @@ use crate::session::{Session, SessionPool};
 
 pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
     let (rd, mut wr) = stream.into_split();
+    // Output and snapshots.
     let (tx, mut rx) = mpsc::channel::<ServerMessage>(4096);
+    // Replies and state events. Small and few, so unbounded, and written
+    // first, so a busy terminal does not delay a reply or the sidebar.
+    let (ctl, mut ctl_rx) = mpsc::unbounded_channel::<ServerMessage>();
 
     let writer = tokio::spawn(async move {
-        while let Some(msg) = rx.recv().await {
+        loop {
+            let msg = tokio::select! {
+                biased;
+                Some(msg) = ctl_rx.recv() => msg,
+                Some(msg) = rx.recv() => msg,
+                else => break,
+            };
             let mut line = serde_json::to_vec(&msg)?;
             line.push(b'\n');
             wr.write_all(&line).await?;
@@ -34,12 +44,12 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
 
     // Every client hears every state change.
     let mut pool_events = pool.events.subscribe();
-    let tx_events = tx.clone();
+    let ctl_events = ctl.clone();
     let events_task = tokio::spawn(async move {
         loop {
             match pool_events.recv().await {
                 Ok(e) => {
-                    if tx_events.send(ServerMessage::Event(e)).await.is_err() {
+                    if ctl_events.send(ServerMessage::Event(e)).is_err() {
                         break;
                     }
                 }
@@ -55,12 +65,12 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
     // pass one from this queue; the client matches replies by id.
     let (slow_tx, mut slow_rx) = mpsc::unbounded_channel::<(u64, Request)>();
     let slow_task = {
-        let tx = tx.clone();
+        let ctl = ctl.clone();
         let pool = pool.clone();
         tokio::spawn(async move {
             while let Some((id, request)) = slow_rx.recv().await {
                 let response = answer_slow(pool.clone(), request).await;
-                if tx.send(ServerMessage::Reply(Reply { id, response })).await.is_err() {
+                if ctl.send(ServerMessage::Reply(Reply { id, response })).is_err() {
                     break;
                 }
             }
@@ -88,7 +98,7 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
                         message: format!("bad request: {e}"),
                     },
                 };
-                tx.send(ServerMessage::Reply(reply)).await?;
+                ctl.send(ServerMessage::Reply(reply))?;
                 continue;
             }
         };
@@ -220,7 +230,7 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
             id: env.id,
             response,
         };
-        if tx.send(ServerMessage::Reply(reply)).await.is_err() {
+        if ctl.send(ServerMessage::Reply(reply)).is_err() {
             break;
         }
     }
@@ -233,6 +243,7 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
     drop(slow_tx);
     let _ = slow_task.await;
     drop(tx);
+    drop(ctl);
     let _ = writer.await;
     Ok(())
 }

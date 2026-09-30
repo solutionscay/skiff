@@ -48,6 +48,7 @@ pub enum Request {
     },
     /// Start receiving output for this session on this connection. The daemon
     /// sends one [`Event::Snapshot`] first, then [`Event::Output`] from there on.
+    /// The reply can arrive before or after the snapshot.
     Subscribe {
         session: SessionId,
     },
