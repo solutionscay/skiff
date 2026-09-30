@@ -68,6 +68,8 @@ fn spawn_daemon() -> anyhow::Result<()> {
     if let Some(dir) = log.parent() {
         std::fs::create_dir_all(dir)?;
     }
+    // Keep the last daemon's log: it saw what the new one restores.
+    let _ = std::fs::rename(&log, log.with_extension("log.1"));
     let log = std::fs::File::create(&log)?;
     let mut cmd = std::process::Command::new(daemon_binary());
     cmd.stdin(Stdio::null())

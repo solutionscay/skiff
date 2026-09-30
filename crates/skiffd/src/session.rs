@@ -414,7 +414,8 @@ impl SessionPool {
                             // wrapper is about to exec the fallback shell in its
                             // place. Forget the agent's label and command so the
                             // icon falls back to a plain shell instead of the
-                            // agent that is no longer running.
+                            // agent that is no longer running. Its flags go
+                            // too: a restore must not pass them to the shell.
                             let shell_name = PathBuf::from(default_shell())
                                 .file_name()
                                 .map(|s| s.to_string_lossy().into_owned())
@@ -424,6 +425,7 @@ impl SessionPool {
                                 info.title = None;
                                 info.label = shell_name.clone();
                                 info.command = shell_name;
+                                info.args.clear();
                                 info.clone()
                             };
                             let _ = pool.events.send(Event::SessionUpdated { session: info });
