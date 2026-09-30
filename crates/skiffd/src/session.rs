@@ -191,9 +191,6 @@ pub struct SessionPool {
     pub events: broadcast::Sender<Event>,
     /// Groups or sessions changed since the last save.
     dirty: Notify,
-    /// What a restored session ran before the restart. Saved in place of its
-    /// shell, so the agent command survives more than one restart.
-    resumed: Mutex<HashMap<SessionId, (String, Vec<String>)>>,
 }
 
 impl Default for SessionPool {
@@ -204,7 +201,6 @@ impl Default for SessionPool {
             groups: Mutex::new(Vec::new()),
             events,
             dirty: Notify::new(),
-            resumed: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -564,7 +560,6 @@ impl SessionPool {
         let _ = session.killer.lock().unwrap().kill();
         let cwd = session.info.lock().unwrap().cwd.clone();
         let pruned = prune(&mut groups, id, &cwd);
-        self.resumed.lock().unwrap().remove(id);
         drop(groups);
         let _ = self.events.send(Event::SessionRemoved {
             session: id.to_string(),
@@ -633,17 +628,9 @@ impl SessionPool {
     fn workspace(&self) -> Workspace {
         let groups = self.groups.lock().unwrap();
         let sessions = self.sessions.read().unwrap();
-        let resumed = self.resumed.lock().unwrap();
         let mut saved: Vec<SavedSession> = sessions
             .values()
-            .map(|s| {
-                let mut saved = SavedSession::from(&*s.info.lock().unwrap());
-                if let Some((command, args)) = resumed.get(&saved.id) {
-                    saved.command = command.clone();
-                    saved.args = args.clone();
-                }
-                saved
-            })
+            .map(|s| SavedSession::from(&*s.info.lock().unwrap()))
             .collect();
         saved.sort_by(|a, b| a.id.cmp(&b.id));
         Workspace {
@@ -706,12 +693,6 @@ impl SessionPool {
             match self.spawn(spec, Some(saved.id.clone())) {
                 Ok(_) => {
                     restored += 1;
-                    if !saved.command.is_empty() {
-                        self.resumed
-                            .lock()
-                            .unwrap()
-                            .insert(saved.id.clone(), (saved.command.clone(), saved.args.clone()));
-                    }
                     if saved.theme.is_some() {
                         let _ = self.set_theme(&saved.id, saved.theme);
                     }
