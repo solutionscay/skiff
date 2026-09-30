@@ -3,10 +3,9 @@
  * (the Command key is its macOS equivalent). `[keys]` overrides any
  * action: `palette = "ctrl+shift+p"`.
  *
- * Arrows are the exception: focus-left/right/up/down take plain Ctrl+Arrow,
- * which shadows the shell's Ctrl+Left/Right word-jump. Ctrl+Alt+Arrow was
- * tried first to avoid that, but it collides with GNOME/KDE's workspace-
- * switch shortcut, which eats the keys before the app ever sees them.
+ * Primary-modifier shortcuts also use Shift. This leaves bare Ctrl sequences
+ * for the terminal. Pane focus also uses Alt to keep Ctrl+Shift+Arrow for
+ * terminal selection. `[keys]` can override a default when a platform needs it.
  */
 
 export type Action =
@@ -32,15 +31,15 @@ export const DEFAULTS: Record<Action, string> = {
   copy: isMac ? "ctrl+c" : "ctrl+shift+c",
   paste: isMac ? "ctrl+v" : "ctrl+shift+v",
   find: "ctrl+shift+f",
-  "font-bigger": "ctrl+=",
-  "font-smaller": "ctrl+-",
-  "font-reset": "ctrl+0",
-  settings: "ctrl+,",
+  "font-bigger": "ctrl+shift+=",
+  "font-smaller": "ctrl+shift+-",
+  "font-reset": "ctrl+shift+0",
+  settings: "ctrl+shift+,",
   quit: "ctrl+shift+q",
-  "focus-left": "ctrl+left",
-  "focus-right": "ctrl+right",
-  "focus-up": "ctrl+up",
-  "focus-down": "ctrl+down",
+  "focus-left": "ctrl+shift+alt+left",
+  "focus-right": "ctrl+shift+alt+right",
+  "focus-up": "ctrl+shift+alt+up",
+  "focus-down": "ctrl+shift+alt+down",
   "region-next": "f6",
   "region-prev": "shift+f6",
   "focus-list": "ctrl+shift+l",
@@ -110,9 +109,7 @@ setKeymap({});
 export function actionFor(e: KeyboardEvent): Action | null {
   const key = eventKey(e);
   for (const [action, c] of table) {
-    // Ctrl+= and Ctrl+- also work with Shift held (Ctrl++ on most layouts).
-    const anyShift = c.key === "=" || c.key === "-";
-    if (c.ctrl === primaryHeld(e) && (anyShift || c.shift === e.shiftKey) && c.alt === e.altKey && c.key === key) return action;
+    if (c.ctrl === primaryHeld(e) && c.shift === e.shiftKey && c.alt === e.altKey && c.key === key) return action;
   }
   return null;
 }

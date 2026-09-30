@@ -119,7 +119,7 @@ async function openConfig() {
 }
 
 /** A plain modal for the shortcut sheet and About. Esc or a click outside closes it. */
-function infoDialog(title: string, body: HTMLElement) {
+function infoDialog(title: string, body: HTMLElement, initialFocus?: HTMLElement) {
   const back = document.activeElement as HTMLElement | null;
   const overlay = h("div", "confirm-overlay");
   const panel = h("div", "info-panel");
@@ -147,31 +147,87 @@ function infoDialog(title: string, body: HTMLElement) {
       close();
     }
   });
-  panel.tabIndex = -1;
-  panel.focus();
+  if (initialFocus) initialFocus.focus();
+  else {
+    panel.tabIndex = -1;
+    panel.focus();
+  }
 }
 
-/** F1: every key from the live keymap, so [keys] overrides show. */
+type Shortcut = [section: string, what: string, key: string];
+
+/** Keyboard controls that do not come from the configurable action keymap. */
+const FIXED_SHORTCUTS: Shortcut[] = [
+  ["Projects", "Select project 1 through 9", `${navigator.userAgent.includes("Macintosh") ? "⌘" : "Ctrl"}+Shift+1…9`],
+  ["Rail", "Move between project icons", "↑ / ↓"],
+  ["Rail", "Open the focused project", "Enter / Space"],
+  ["Session list", "Move through rows", "↑ / ↓"],
+  ["Session list", "Move to the first or last row", "Home / End"],
+  ["Session list", "Start a session in the focused worktree", "Enter"],
+  ["Session list", "Open the focused session or group", "Enter"],
+  ["Session list", "Collapse or expand the focused worktree", "← / →"],
+  ["Session list", "Extend the session selection", "Shift+↑ / ↓"],
+  ["Session list", "Make a group from the selected sessions", "Enter"],
+  ["Session list", "Clear the session selection", "Esc"],
+  ["Session list", "Rename the focused session or group", "F2"],
+  ["Session list", "End a session or remove a group", "Delete / Backspace"],
+  ["Session list", "Open the row menu", "Menu / Shift+F10"],
+  ["Command palette", "Move through matches", "↑ / ↓"],
+  ["Command palette", "Run the selected match", "Enter"],
+  ["Command palette", "Close the palette", "Esc"],
+  ["Find in terminal", "Find the next or previous match", "Enter / Shift+Enter"],
+  ["Find in terminal", "Close the find bar", "Esc"],
+  ["Start-session menu", "Move through choices", "↑ / ↓"],
+  ["Start-session menu", "Start the numbered choice", "1…9"],
+  ["Start-session menu", "Close the menu", "Esc"],
+  ["Empty pane", "Move through session choices", "↑ / ↓"],
+  ["Empty pane", "Start the numbered choice", "1…9"],
+  ["Empty pane", "Move to the next empty pane", "Tab / Shift+Tab"],
+  ["Empty pane", "Remove the pane", "Delete"],
+  ["Menus", "Move through menu items", "↑ / ↓"],
+  ["Menus", "Open a submenu", "→ / Enter / Space"],
+  ["Menus", "Close a menu or submenu", "Esc / ←"],
+  ["Dialogs", "Close the dialog", "Esc"],
+  ["Dialogs", "Run the selected dialog action", "Enter"],
+];
+
+/** F1: all app controls. Action keys come from the live keymap. */
 function showShortcuts() {
+  const body = h("div", "keys-dialog");
+  const search = h("input", "keys-search") as HTMLInputElement;
+  search.type = "search";
+  search.autocomplete = "off";
+  search.spellcheck = false;
+  search.placeholder = "Find a shortcut";
+  search.setAttribute("aria-label", "Find a shortcut");
   const table = h("div", "keys-table");
-  let section = "";
-  for (const [sec, action, what] of DESCRIBE) {
-    if (sec !== section) {
-      table.appendChild(h("div", "keys-head", sec.toUpperCase()));
-      section = sec;
+  const shortcuts: Shortcut[] = [
+    ...DESCRIBE.map(([section, action, what]): Shortcut => [section, what, keyLabel(action)]),
+    ...FIXED_SHORTCUTS,
+  ];
+  const render = () => {
+    const query = search.value.trim().toLocaleLowerCase();
+    const shown = shortcuts.filter(([section, what, key]) =>
+      `${section} ${what} ${key}`.toLocaleLowerCase().includes(query),
+    );
+    table.replaceChildren();
+    let section = "";
+    for (const [sec, what, key] of shown) {
+      if (sec !== section) {
+        table.appendChild(h("div", "keys-head", sec.toUpperCase()));
+        section = sec;
+      }
+      const row = h("div", "keys-row");
+      row.append(h("span", "keys-what", what), h("kbd", "", key));
+      table.appendChild(row);
     }
-    const row = h("div", "keys-row");
-    row.append(h("span", "keys-what", what), h("kbd", "", keyLabel(action)));
-    table.appendChild(row);
-  }
-  for (const [what, key] of [["Select project 1–9", "Ctrl+1…9"], ["Rename the row, in the session list", "F2"]]) {
-    const extra = h("div", "keys-row");
-    extra.append(h("span", "keys-what", what), h("kbd", "", key));
-    table.appendChild(extra);
-  }
-  const note = h("div", "keys-note", "Change any key in projects.toml, for example [keys] palette = \"ctrl+shift+k\".");
-  table.appendChild(note);
-  infoDialog("Keyboard shortcuts", table);
+    if (!shown.length) table.appendChild(h("div", "keys-empty", "No shortcuts match."));
+    if (!query) table.appendChild(h("div", "keys-note", "Change an action key in projects.toml. For example: [keys] palette = \"ctrl+shift+k\"."));
+  };
+  search.addEventListener("input", render);
+  render();
+  body.append(search, table);
+  infoDialog("Keyboard shortcuts", body, search);
 }
 
 async function showAbout() {
