@@ -151,9 +151,9 @@ function row(w: Worktree, c: Change): HTMLElement {
   const r = h("button", "file-row change-row" + (gone ? " st-gone" : "") );
   r.type = "button";
   r.dataset.key = `change:${path}`;
-  r.title = `${c.path}${gone ? "\nDeleted" : ""}\nDouble-click to open the diff`;
-  // detail counts clicks across the re-render the first click causes.
-  r.addEventListener("click", (m) => m.detail >= 2 && show());
+  r.title = `${c.path}${gone ? "\nDeleted" : ""}\nClick to open the diff`;
+  // One click opens the diff. The second click of a double-click does not open it again.
+  r.addEventListener("click", (m) => m.detail === 1 && show());
   r.addEventListener("keydown", (k) => {
     if (k.key !== "Enter") return;
     k.preventDefault();
