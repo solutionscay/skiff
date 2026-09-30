@@ -115,6 +115,8 @@ kbd {
   display: flex; flex-direction: column;
   background: var(--bg-deep);
   border-right: 1px solid var(--rule);
+  /* Animated rail marks must not create a horizontal scrollbar. */
+  overflow-x: hidden;
   overflow-y: auto;
 }
 .rail-item { position: relative; }
