@@ -8,13 +8,16 @@ A desktop app for running many coding agents side by side, on Linux and macOS.
 
 You add a project (a Git repository), make worktrees in it, and start agent or shell sessions in each worktree. Sessions can sit side by side in a group. Each group has a name and a terminal theme, and so does each project.
 
-The first version stops there. It has no plugins, no hooks into agent configs, no Git client beyond worktrees, no editor or file previews, and no automations. A project can show a Files tree under each worktree (`files = true`), but it only opens files in their default app. Settings live in one file, `projects.toml`.
+Skiff does not edit or preview files. Each worktree lists its changed files, and a double-click shows the diff. Files open in the apps you choose under Settings › Open with (see the [wiki](https://github.com/solutionscay/skiff/wiki/Open-with)). There are no plugins, no hooks into agent configs, and no automations. Settings live in one file, `projects.toml`.
 
 Sessions run in `skiffd`, a daemon that owns every PTY. You can close the window and the agents keep running. When the window opens again, each terminal shows its last screen.
 
-## Platforms
+## Install
 
-Skiff runs on Linux and macOS. The app and the daemon talk over a Unix socket.
+Download the latest [release](https://github.com/solutionscay/skiff/releases/latest):
+
+- Linux (x86_64): `.deb`, `.rpm` or AppImage
+- macOS (Apple Silicon): `.dmg`, signed and notarized
 
 ## Layout
 
@@ -70,13 +73,8 @@ cd apps/desktop && pnpm bundle   # packages for the host OS, with skiffd inside
 On Linux this makes `.deb`, `.rpm` and AppImage. On macOS it makes `Skiff.app` and a `.dmg`.
 Packages land in `target/release/bundle/`.
 
-A local macOS build is not signed. Another Mac blocks it at first open: right-click the app
-and choose Open, or run `xattr -dr com.apple.quarantine /Applications/Skiff.app`.
-
-A `v*` tag builds the Linux packages and the macOS `.dmg` (Apple Silicon) in CI and attaches
-them to a draft release. The `.dmg` is signed and notarized when these repository secrets
-are set: `APPLE_CERTIFICATE` (base64 `.p12`), `APPLE_CERTIFICATE_PASSWORD`,
-`APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific) and `APPLE_TEAM_ID`.
+A `v*` tag builds every package in CI and attaches them to a draft release. CI signs and
+notarizes the `.dmg` with the `APPLE_*` repository secrets.
 
 ## License
 
