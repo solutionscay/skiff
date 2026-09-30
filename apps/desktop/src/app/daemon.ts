@@ -4,9 +4,10 @@ import { filledOf, isSlot, slot } from "../workspace/layoutSlots";
 import { agentCallsign } from "../appearance/agentNames";
 import { removePane, replacePane, sessionsOf } from "../workspace/layout";
 
-import type { AgentInfo, DaemonEvent, DaemonStatus, Project, SessionInfo, SplitDir } from "../platform/types";
+import type { AgentInfo, DaemonEvent, DaemonStatus, DaemonWarning, Project, SessionInfo, SplitDir } from "../platform/types";
 import { invoke } from "@tauri-apps/api/core";
 import { $, button, h } from "../ui/dom";
+import { showError } from "../ui/alerts";
 import { loadChangesSetting, reloadChanges } from "../workspace/changes";
 import { loadProjectThemes } from "../appearance/themes";
 import { loadFilesSetting } from "../workspace/files";
@@ -21,43 +22,59 @@ export function setDaemon(status: DaemonStatus) {
   const dot = $("daemon").querySelector(".dot") as HTMLElement;
   dot.className = "dot " + (status.connected ? "connected" : "error");
   $("daemon-label").textContent = status.connected
-    ? `skiffd ${status.version ?? ""}${status.spawned ? " (started)" : ""}`
-    : "skiffd unreachable";
+    ? `skiffd ${status.version ?? ""}${status.replaced ? ` (updated from ${status.replaced})` : status.spawned ? " (started)" : ""}`
+    : status.warning?.kind === "hung"
+      ? "skiffd not responding"
+      : "skiffd unreachable";
   $("socket").textContent = status.socket;
   daemonBadge(status.warning);
 }
 
+/** Badge text and panel title per warning. */
+const WARNINGS: Record<DaemonWarning["kind"], [string, string]> = {
+  outdated: ["Update pending", "Restart skiffd to finish the update"],
+  protocol: ["skiffd incompatible", "skiffd does not match this app"],
+  newer: ["skiffd newer", "skiffd is newer than this app"],
+  hung: ["skiffd not responding", "skiffd is not responding"],
+};
+
 /**
- * An outdated daemon: a cell in the top bar, beside Settings. It opens a
- * panel that says what a restart costs, so the restart stays the user's call.
+ * A daemon that differs from the app: a cell in the top bar, beside Settings.
+ * It opens a panel that says what a restart costs, so the restart stays the
+ * user's call. A daemon the app cannot work with opens the panel at once.
  */
-function daemonBadge(warning: string | null) {
+function daemonBadge(warning: DaemonWarning | null) {
   document.getElementById("daemon-badge")?.remove();
   document.getElementById("daemon-pop")?.remove();
   if (!warning) return;
   const badge = button("tb-cell daemon-badge", "", () => (pop.isConnected ? close() : open()));
   badge.id = "daemon-badge";
-  badge.append(h("span", "dot waiting"), "skiffd outdated");
+  const [label, title] = WARNINGS[warning.kind];
+  badge.append(h("span", "dot " + (warning.kind === "newer" ? "idle" : "waiting")), label);
   badge.setAttribute("aria-haspopup", "dialog");
   $("open-settings").before(badge);
 
   const pop = h("div", "");
   pop.id = "daemon-pop";
   pop.setAttribute("role", "dialog");
-  pop.setAttribute("aria-label", "skiffd is outdated");
-  const restart = button("confirm-act", "Restart skiffd", async () => {
+  pop.setAttribute("aria-label", title);
+  const n = warning.sessions;
+  const restart = button("confirm-act", n ? `Restart skiffd (stops ${n})` : "Restart skiffd", async () => {
     restart.disabled = true;
     restart.textContent = "Restarting…";
     try {
       await invoke("restart_daemon");
-    } finally {
       location.reload();
+    } catch (e) {
+      restart.disabled = false;
+      restart.textContent = "Restart skiffd";
+      showError(e);
     }
   });
   const later = button("confirm-cancel", "Not now", () => close());
   const foot = h("div", "confirm-foot");
   foot.append(later, restart);
-  pop.append(h("div", "confirm-title", "skiffd is older than this app"), h("div", "confirm-body", warning), foot);
+  pop.append(h("div", "confirm-title", title), h("div", "confirm-body", warning.message), foot);
 
   const outside = (e: MouseEvent) => {
     if (!pop.contains(e.target as Node) && !badge.contains(e.target as Node)) close();
@@ -83,6 +100,7 @@ function daemonBadge(warning: string | null) {
     close();
     badge.focus();
   });
+  if (warning.kind === "protocol" || warning.kind === "hung") requestAnimationFrame(open);
 }
 
 /** A new session is the single view, unless it came from a pane's Split menu. */

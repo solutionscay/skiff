@@ -86,12 +86,13 @@ pkill -x skiffd            # ends every open session
 Then reload the window (Ctrl+R) or restart the app. The app starts the new binary
 on its next call.
 
-If a change bumps the wire protocol (`skiff_core::PROTOCOL`), the app replaces an old
-daemon without asking when no session is live. When sessions are live, it shows a
-"Restart skiffd" button instead.
+At launch the app compares the daemon's version and protocol (`skiff_core::PROTOCOL`)
+with its own. It replaces an older or incompatible daemon without asking when no
+session is live. When sessions are live, it shows a "Restart skiffd" button instead.
 
-The daemon writes its log to `skiffd.log` next to the socket, which is
-`$XDG_RUNTIME_DIR/skiff/` on Linux.
+Debug builds use `skiffd-dev.sock` and `workspace-dev.json`, so `pnpm tauri dev` runs
+its own daemon beside the installed app. The daemon writes its log next to the socket
+(`skiffd.log` or `skiffd-dev.log`), which is `$XDG_RUNTIME_DIR/skiff/` on Linux.
 
 ## Packages
 

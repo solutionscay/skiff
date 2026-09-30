@@ -15,7 +15,7 @@ export function createAddProject(onAdded: (p: Project) => void, onClose: () => v
       if (busy) return;
       busy = true;
       try {
-        const dir = await openFolder({ directory: true, title: "Pick a folder in a git repository" }).catch(() => null);
+        const dir = await openFolder({ directory: true, title: "Pick a folder in a git repository" });
         if (typeof dir !== "string") return onClose();
         const folder = await invoke<FolderInfo>("inspect_folder", { path: dir });
         if (!folder.root || folder.error) throw new Error(folder.error ?? "Pick a folder in a git repository.");

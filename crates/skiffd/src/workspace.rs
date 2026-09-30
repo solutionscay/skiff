@@ -58,7 +58,8 @@ impl From<&SessionInfo> for SavedSession {
     }
 }
 
-/// `SKIFF_STATE` overrides. Otherwise `<state dir>/skiff/workspace.json`.
+/// `SKIFF_STATE` overrides. Otherwise `<state dir>/skiff/workspace.json`,
+/// or `workspace-dev.json` for a debug build, which runs its own daemon.
 pub fn path() -> PathBuf {
     if let Ok(p) = std::env::var("SKIFF_STATE") {
         return PathBuf::from(p);
@@ -67,7 +68,7 @@ pub fn path() -> PathBuf {
         .or_else(dirs::data_local_dir)
         .unwrap_or_else(|| PathBuf::from("."))
         .join("skiff")
-        .join("workspace.json")
+        .join(if cfg!(debug_assertions) { "workspace-dev.json" } else { "workspace.json" })
 }
 
 /// A missing file is an empty workspace, not an error.

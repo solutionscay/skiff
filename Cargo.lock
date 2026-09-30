@@ -3545,6 +3545,7 @@ name = "skiff-desktop"
 version = "0.6.2"
 dependencies = [
  "anyhow",
+ "libc",
  "serde",
  "serde_json",
  "skiff-client",

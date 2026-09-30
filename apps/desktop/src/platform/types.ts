@@ -86,8 +86,17 @@ export interface DaemonStatus {
   version: string | null;
   socket: string;
   spawned: boolean;
-  /** The daemon is outdated and could not be replaced. */
-  warning: string | null;
+  /** The daemon differs from this app and was not replaced. */
+  warning: DaemonWarning | null;
+  /** The version of an older daemon this app replaced at launch. */
+  replaced: string | null;
+}
+
+export interface DaemonWarning {
+  kind: "outdated" | "protocol" | "newer" | "hung";
+  message: string;
+  /** Live sessions a restart stops. `null` when the daemon did not say. */
+  sessions: number | null;
 }
 
 export interface FolderInfo {

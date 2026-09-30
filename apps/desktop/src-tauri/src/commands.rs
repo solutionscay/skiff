@@ -354,9 +354,9 @@ pub(crate) async fn remove_project(app: State<'_, App>, project: String) -> Resu
 #[tauri::command]
 pub(crate) async fn inspect_folder(app: State<'_, App>, path: PathBuf) -> Result<FolderInfo, String> {
     let (c, _) = ensure_client(&app).await?;
-    // An outdated daemon does not know this request. Say so at once.
-    if let Some(w) = app.warning.lock().await.clone() {
-        return Err(w);
+    // A daemon on another protocol may not know this request. Say so at once.
+    if let Some(w) = app.warning.lock().await.as_ref().filter(|w| w.kind == "protocol") {
+        return Err(w.message.clone());
     }
     c.inspect_folder(path).await.map_err(err)
 }

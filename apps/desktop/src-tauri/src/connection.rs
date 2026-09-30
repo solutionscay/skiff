@@ -14,8 +14,19 @@ pub(crate) struct App {
     pub(crate) subs: Mutex<HashMap<String, JoinHandle<()>>>,
     /// Per session: how far the page's xterm is behind its stream.
     pub(crate) flows: std::sync::Mutex<HashMap<String, Arc<Flow>>>,
-    /// Set when the daemon speaks another protocol and could not be replaced.
-    pub(crate) warning: Mutex<Option<String>>,
+    /// Set when the daemon differs from this app and was not replaced.
+    pub(crate) warning: Mutex<Option<Warning>>,
+    /// The version of a daemon this app replaced at launch.
+    pub(crate) replaced: Mutex<Option<String>>,
+}
+
+#[derive(Serialize, Clone)]
+pub(crate) struct Warning {
+    /// `outdated`, `protocol`, `newer` or `hung`.
+    pub(crate) kind: &'static str,
+    pub(crate) message: String,
+    /// Live sessions a restart would stop. `None` when the daemon did not say.
+    sessions: Option<usize>,
 }
 
 #[derive(Serialize, Clone)]
@@ -24,7 +35,8 @@ pub(crate) struct DaemonStatus {
     version: Option<String>,
     socket: String,
     spawned: bool,
-    warning: Option<String>,
+    warning: Option<Warning>,
+    replaced: Option<String>,
 }
 
 fn daemon_binary() -> PathBuf {
@@ -41,7 +53,7 @@ fn daemon_binary() -> PathBuf {
 }
 
 fn spawn_daemon() -> anyhow::Result<()> {
-    let log = socket_path().with_file_name("skiffd.log");
+    let log = socket_path().with_extension("log");
     if let Some(dir) = log.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -61,6 +73,9 @@ fn spawn_daemon() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A daemon that takes longer than this to answer `hello` is hung.
+const HELLO_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// Reuses a live connection, else connects, else starts the daemon and connects.
 /// A live connection costs no round trip: every keystroke comes through here.
 pub(crate) async fn ensure_client(app: &App) -> Result<(Arc<Client>, bool), String> {
@@ -73,77 +88,149 @@ pub(crate) async fn ensure_client(app: &App) -> Result<(Arc<Client>, bool), Stri
     *guard = None;
     let path = socket_path();
     let mut spawned = false;
+    let mut replaced = false;
     let mut last = String::new();
-    let mut replaced = 0;
-    for attempt in 0..40 {
-        match Client::connect(&path).await {
-            Ok(c) => {
-                if replaced < 1 && check_protocol(app, &c).await {
-                    // An older daemon with nothing running: replace it.
-                    replaced += 1;
-                    spawned = false;
-                    continue;
+    for _ in 0..40 {
+        let c = match Client::connect(&path).await {
+            Ok(c) => c,
+            Err(e) => {
+                last = format!("{e:#}");
+                if !spawned {
+                    spawn_daemon().map_err(|e| format!("start skiffd: {e:#}"))?;
+                    spawned = true;
                 }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                continue;
+            }
+        };
+        match check_daemon(app, &c, !replaced).await {
+            Check::Use => {
                 let c = Arc::new(c);
                 *guard = Some(c.clone());
                 *app.live.lock().unwrap() = Some(c.clone());
                 return Ok((c, spawned));
             }
-            Err(e) => {
-                last = format!("{e:#}");
-                if attempt == 0 || (replaced > 0 && !spawned) {
-                    spawn_daemon().map_err(|e| format!("start skiffd: {e:#}"))?;
-                    spawned = true;
-                }
-                tokio::time::sleep(Duration::from_millis(100)).await;
+            Check::Replaced => {
+                replaced = true;
+                spawned = false;
             }
+            Check::Hung => return Err("skiffd is not responding".into()),
         }
     }
     Err(format!("cannot reach skiffd at {}: {last}", path.display()))
 }
 
-/// True when the daemon speaks another protocol, runs no live session, and
-/// was stopped so a fresh one can start. Otherwise records a warning.
-async fn check_protocol(app: &App, c: &Client) -> bool {
-    let protocol = c.hello().await.map(|(_, p)| p).unwrap_or(0);
-    if protocol == skiff_core::PROTOCOL {
-        *app.warning.lock().await = None;
-        return false;
-    }
-    let live = c
-        .list_sessions()
-        .await
-        .map(|v| v.iter().filter(|s| s.state != SessionState::Done).count())
-        .unwrap_or(0);
-    if let (0, Some(pid)) = (live, c.daemon_pid) {
-        if stop_daemon(pid).await {
-            return true;
-        }
-    }
-    *app.warning.lock().await = Some(format!(
-        "skiffd is older than this app and runs {live} session(s). \
-         New features fail until it restarts. Restarting ends those sessions."
-    ));
-    false
+enum Check {
+    Use,
+    /// The old daemon was stopped: connect again, to a fresh one.
+    Replaced,
+    Hung,
 }
 
-/// SIGTERM, then wait up to 3 s for the process to go.
-async fn stop_daemon(pid: i32) -> bool {
-    let sent = std::process::Command::new("kill")
-        .arg(pid.to_string())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if !sent {
-        return false;
+/// Compares the daemon with this app. An older or incompatible daemon with
+/// no live session is replaced without a word. With live sessions, the
+/// restart is the user's call: this records a warning and keeps the daemon.
+async fn check_daemon(app: &App, c: &Client, may_replace: bool) -> Check {
+    let Ok(Ok((version, protocol))) = tokio::time::timeout(HELLO_TIMEOUT, c.hello()).await else {
+        *app.warning.lock().await = Some(Warning {
+            kind: "hung",
+            message: format!(
+                "skiffd accepts connections but did not answer within {}s. \
+                 This app cannot reach its sessions. Restarting stops it and starts a new one.",
+                HELLO_TIMEOUT.as_secs()
+            ),
+            sessions: None,
+        });
+        return Check::Hung;
+    };
+    let ours = skiff_core::VERSION;
+    let order = compare_versions(&version, ours);
+    let same_protocol = protocol == skiff_core::PROTOCOL;
+    if same_protocol && order.is_eq() {
+        *app.warning.lock().await = None;
+        return Check::Use;
     }
-    for _ in 0..30 {
-        if !std::path::Path::new(&format!("/proc/{pid}")).exists() {
-            break;
+    let live = tokio::time::timeout(HELLO_TIMEOUT, c.list_sessions())
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+        .map(|v| v.iter().filter(|s| s.state != SessionState::Done).count());
+    let stale = !same_protocol || order.is_lt();
+    if let (true, true, Some(0), Some(pid)) = (may_replace, stale, live, c.daemon_pid) {
+        if stop_daemon(pid).await {
+            *app.replaced.lock().await = Some(version);
+            return Check::Replaced;
         }
-        tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    true
+    let n = live.unwrap_or(0);
+    let running = match n {
+        1 => "1 session is running".to_string(),
+        n => format!("{n} sessions are running"),
+    };
+    let ends = "Restarting stops them. Panes come back as shells in their folders.";
+    let warning = if !same_protocol {
+        Warning {
+            kind: "protocol",
+            message: format!(
+                "skiffd {version} speaks another protocol than this app ({ours}). \
+                 Parts of the app fail until it restarts. {running}. {ends}"
+            ),
+            sessions: live,
+        }
+    } else if order.is_lt() {
+        Warning {
+            kind: "outdated",
+            message: format!(
+                "skiffd {version} still runs. Restart it to finish the update to {ours}. \
+                 {running}. {ends}"
+            ),
+            sessions: live,
+        }
+    } else {
+        Warning {
+            kind: "newer",
+            message: format!(
+                "skiffd {version} is newer than this app ({ours}). \
+                 They speak the same protocol, so the app keeps using it."
+            ),
+            sessions: live,
+        }
+    };
+    *app.warning.lock().await = Some(warning);
+    Check::Use
+}
+
+/// Orders dotted versions by number. A part that is not a number counts as 0.
+fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
+    let parts = |v: &str| -> Vec<u64> {
+        v.split(['.', '-', '+']).take(3).map(|p| p.parse().unwrap_or(0)).collect()
+    };
+    parts(a).cmp(&parts(b))
+}
+
+/// SIGTERM, up to 3 s to exit, then SIGKILL and up to 2 s more. A hung
+/// daemon may ignore SIGTERM. True once the process is gone: a new daemon
+/// refuses to start while the old one still holds the socket.
+async fn stop_daemon(pid: i32) -> bool {
+    // SAFETY: kill and waitpid take plain integers and touch no memory of ours.
+    let gone = || unsafe {
+        // The app may have started it: reap the zombie, which kill(0) still sees.
+        libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) == pid
+            || (libc::kill(pid, 0) != 0
+                && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH))
+    };
+    for (signal, ticks) in [(libc::SIGTERM, 30), (libc::SIGKILL, 20)] {
+        if unsafe { libc::kill(pid, signal) } != 0 {
+            return gone();
+        }
+        for _ in 0..ticks {
+            if gone() {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+    false
 }
 
 /// Stops the running daemon, which ends its sessions, and starts a new one.
@@ -158,7 +245,9 @@ pub(crate) async fn restart_daemon(app: State<'_, App>) -> Result<DaemonStatus, 
         *guard = None;
         *app.live.lock().unwrap() = None;
         if let Some(pid) = pid {
-            stop_daemon(pid).await;
+            if !stop_daemon(pid).await {
+                return Err(format!("skiffd (pid {pid}) did not stop"));
+            }
         }
         *app.warning.lock().await = None;
     }
@@ -178,17 +267,44 @@ pub(crate) async fn daemon_status(app: State<'_, App>) -> Result<DaemonStatus, S
     match ensure_client(&app).await {
         Ok((c, spawned)) => Ok(DaemonStatus {
             connected: true,
-            version: c.ping().await.ok(),
+            version: tokio::time::timeout(HELLO_TIMEOUT, c.ping()).await.ok().and_then(|r| r.ok()),
             socket,
             spawned,
             warning: app.warning.lock().await.clone(),
+            replaced: app.replaced.lock().await.clone(),
         }),
         Err(_) => Ok(DaemonStatus {
             connected: false,
             version: None,
             socket,
             spawned: false,
-            warning: None,
+            warning: app.warning.lock().await.clone(),
+            replaced: None,
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{compare_versions, stop_daemon};
+    use std::cmp::Ordering::*;
+
+    #[test]
+    fn orders_versions_by_number() {
+        assert_eq!(compare_versions("0.3.2", "0.5.0"), Less);
+        assert_eq!(compare_versions("0.10.0", "0.9.9"), Greater);
+        assert_eq!(compare_versions("0.5.0", "0.5.0"), Equal);
+    }
+
+    #[test]
+    fn kills_a_process_that_ignores_sigterm() {
+        let child = std::process::Command::new("sh")
+            .args(["-c", "trap '' TERM; sleep 30"])
+            .spawn()
+            .unwrap();
+        // Let the shell set its trap first.
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let rt = tokio::runtime::Builder::new_current_thread().enable_time().build().unwrap();
+        assert!(rt.block_on(stop_daemon(child.id() as i32)));
     }
 }
