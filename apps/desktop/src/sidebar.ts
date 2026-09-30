@@ -2,6 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { filledOf, slotsOf } from "./canvas";
 import { agentIcon, launchIcon } from "./agentIcon";
+import { ink } from "./appTheme";
 import { glyph, sessionsOf } from "./layout";
 import { agentName, branchName, byStart, taskTitle } from "./model";
 import type { Group, Project, SessionInfo, Worktree } from "./types";
@@ -329,7 +330,7 @@ function restoreFocus(side: HTMLElement, activeKey: string | undefined, caret: C
 /** One color per group, by creation order, so a group keeps its color. */
 const GROUP_COLORS = ["#9ec1ff", "#f28fd0", "#7ee0cb", "#e0c07e", "#ff9e7a", "#c3e88d"];
 
-const groupColor = (g: Group) => GROUP_COLORS[Math.max(0, S.groups.indexOf(g)) % GROUP_COLORS.length];
+const groupColor = (g: Group) => ink(GROUP_COLORS[Math.max(0, S.groups.indexOf(g)) % GROUP_COLORS.length]);
 
 function groupRow(g: Group, hasPrevious = false, hasNext = false): HTMLElement {
   const ids = filledOf(g.layout).filter((id) => sessions.has(id));

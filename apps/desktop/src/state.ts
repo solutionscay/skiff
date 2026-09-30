@@ -1,4 +1,5 @@
 /** Shared app state and the queries over it. `S` holds what several modules reassign. */
+import { ink } from "./appTheme";
 import { leaf, sessionsOf } from "./layout";
 import { byStart, locate, type Place } from "./model";
 import type { AgentInfo, Group, Layout, Project, SessionInfo, TerminalTheme, Worktree } from "./types";
@@ -47,7 +48,7 @@ export const removeErrors = new Map<string, string>();
 /** Worktrees with a remove in flight. */
 export const removing = new Set<string>();
 
-export const accent = (p: Project | null | undefined) => p?.color || DEFAULT_ACCENT;
+export const accent = (p: Project | null | undefined) => (p?.color ? ink(p.color) : DEFAULT_ACCENT);
 
 /** locate() per cwd, cached until the project list changes. Renders call it for every row. */
 let placeFor: Project[] | null = null;

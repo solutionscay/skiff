@@ -1,4 +1,5 @@
 import type { AgentInfo, SessionInfo } from "./types";
+import { ink } from "./appTheme";
 import { ownTheme, signatureColor } from "./themes";
 import { basename } from "./model";
 
@@ -67,7 +68,8 @@ export function agentIcon(s: SessionInfo, size = 14): HTMLSpanElement {
   const t = ownTheme(s);
   if (t) {
     span.title = `Terminal theme: ${t.name}`;
-    span.innerHTML = span.innerHTML.replace(/#[0-9a-f]{6}/gi, signatureColor(t));
+    const c = ink(signatureColor(t));
+    span.innerHTML = span.innerHTML.replace(/#[0-9a-f]{6}/gi, c);
   }
   return span;
 }
@@ -83,6 +85,6 @@ function iconOf(kind: AgentKind, size: number): HTMLSpanElement {
   const span = document.createElement("span");
   span.className = `agent-icon ${kind}`;
   span.setAttribute("aria-hidden", "true");
-  span.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 16 16">${GLYPHS[kind]}</svg>`;
+  span.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 16 16">${GLYPHS[kind].replace(/#[0-9a-f]{6}/gi, ink)}</svg>`;
   return span;
 }

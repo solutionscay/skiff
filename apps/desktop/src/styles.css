@@ -23,6 +23,18 @@
   --error: #ff8a80;
   --diff-add: #7fd08a;
   --diff-del: #ff8a80;
+  /* Error banners, the destructive button, the ok dot, the modal scrim. */
+  --error-bg: #2a1214;
+  --error-bg-hover: #3a181b;
+  --error-rule: #7a2a2e;
+  --error-text: #ffb3b3;
+  --danger: #7a2a2e;
+  --danger-hover: #8e3237;
+  --danger-text: #ffe0e0;
+  --ok: #7ee0cb;
+  --scrim: rgba(5, 7, 10, 0.72);
+  /* Text on a filled --state-working button. */
+  --on-working: #0b0e12;
   --font: "IBM Plex Sans", system-ui, sans-serif;
   --mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
   --u: calc(1px * var(--zoom, 1));
@@ -291,7 +303,7 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 .sel-label.ready { color: var(--text); }
 .sel-label.warn { background: var(--state-waiting-bg); color: var(--state-waiting-text); border-bottom-color: var(--state-waiting-rule); }
 .sel-actions { height: var(--row); display: flex; }
-.sel-open { flex-grow: 1; min-width: 0; padding: 0 calc(10 * var(--u)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; background: var(--state-working); color: var(--bg-deep); font-weight: 600; }
+.sel-open { flex-grow: 1; min-width: 0; padding: 0 calc(10 * var(--u)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; background: var(--state-working); color: var(--on-working); font-weight: 600; }
 .sel-open:disabled { background: transparent; color: var(--text-dim); font-weight: 500; cursor: not-allowed; box-shadow: inset 0 0 0 1px var(--rule); }
 .sel-clear { width: calc(96 * var(--u)); flex-shrink: 0; border: 0; border-left: 1px solid var(--rule-strong); background: transparent; color: var(--text-2); }
 
@@ -389,7 +401,7 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 /* The whole terminal fades at --pane-alpha, so a background image shows through. One image sits behind the whole area.
    The canvas itself stays opaque: a transparent WebGL canvas leaves ghost frames. */
 #terminal-host .pane { opacity: var(--pane-alpha, 1); }
-#terminal-host.has-bg { background: linear-gradient(rgba(11, 14, 18, 0.35), rgba(11, 14, 18, 0.35)), var(--bg-image) center / cover no-repeat, var(--bg-deep); }
+#terminal-host.has-bg { background: linear-gradient(color-mix(in srgb, var(--bg-deep) 35%, transparent), color-mix(in srgb, var(--bg-deep) 35%, transparent)), var(--bg-image) center / cover no-repeat, var(--bg-deep); }
 #terminal-host.has-bg .cell { background: transparent; }
 /* A pane joins its body once the terminal opens. Until then the body shows the same dimmed look, so the image does not flash at full strength. */
 #terminal-host.has-bg .cell-body:empty { background: color-mix(in srgb, var(--bg-deep) calc(var(--pane-alpha, 1) * 100%), transparent); }
@@ -440,17 +452,17 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .sw-empty { height: var(--row); display: flex; align-items: center; padding: 0 calc(16 * var(--u)); color: var(--text-3); }
 .sw-foot { height: calc(32 * var(--u)); display: flex; align-items: center; gap: calc(16 * var(--u)); padding: 0 calc(16 * var(--u)); border-top: 1px solid var(--rule); font-size: calc(11px * var(--zoom, 1)); color: var(--text-3); }
 
-#daemon-alert, #error-alert { min-height: var(--row); display: flex; align-items: center; gap: calc(16 * var(--u)); padding: 0 0 0 calc(16 * var(--u)); background: #2a1214; border-bottom: 1px solid #7a2a2e; color: #ffb3b3; font-size: calc(13px * var(--zoom, 1)); }
+#daemon-alert, #error-alert { min-height: var(--row); display: flex; align-items: center; gap: calc(16 * var(--u)); padding: 0 0 0 calc(16 * var(--u)); background: var(--error-bg); border-bottom: 1px solid var(--error-rule); color: var(--error-text); font-size: calc(13px * var(--zoom, 1)); }
 
 #daemon-alert .alert-text, #error-alert .alert-text { flex-grow: 1; padding: calc(8 * var(--u)) 0; }
-#daemon-alert .alert-btn, #error-alert .alert-btn { align-self: stretch; flex-shrink: 0; width: calc(144 * var(--u)); padding: 0; border: 0; border-left: 1px solid #7a2a2e; background: transparent; color: #ffb3b3; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; }
-#daemon-alert .alert-btn:hover, #error-alert .alert-btn:hover { background: #3a181b; }
+#daemon-alert .alert-btn, #error-alert .alert-btn { align-self: stretch; flex-shrink: 0; width: calc(144 * var(--u)); padding: 0; border: 0; border-left: 1px solid var(--error-rule); background: transparent; color: var(--error-text); font-size: calc(12px * var(--zoom, 1)); font-weight: 600; }
+#daemon-alert .alert-btn:hover, #error-alert .alert-btn:hover { background: var(--error-bg-hover); }
 
 /* Add project dialog. --pc is the chosen color. */
 #add-project {
   position: fixed; inset: 0; z-index: 20;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(5, 7, 10, 0.72);
+  background: var(--scrim);
 }
 #add-project[hidden] { display: none; }
 .ap-panel { width: calc(640 * var(--u)); max-width: calc(100vw - calc(32 * var(--u))); display: flex; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--rule-strong); }
@@ -474,8 +486,8 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .ap-side-btn:hover { background: var(--rule-strong); }
 .ap-status { min-height: var(--row); display: flex; align-items: center; gap: calc(10 * var(--u)); padding: calc(8 * var(--u)) calc(20 * var(--u)) calc(8 * var(--u)) calc(120 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(12px * var(--zoom, 1)); line-height: 1.4; color: var(--text-3); }
 .ap-status[hidden] { display: none; }
-.ap-dot { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: #7ee0cb; }
-.ap-status.bad { background: #2a1214; color: #ffb3b3; }
+.ap-dot { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--ok); }
+.ap-status.bad { background: var(--error-bg); color: var(--error-text); }
 .ap-status.bad .ap-dot { background: var(--error); }
 .ap-swatches { flex-grow: 1; display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(12 * var(--u)); border-left: 1px solid var(--rule); }
 .ap-swatch { width: calc(24 * var(--u)); height: calc(24 * var(--u)); padding: 0; border: 0; background: var(--sw); }
@@ -485,12 +497,12 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .ap-card { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: calc(4 * var(--u)); padding: 0 calc(16 * var(--u)); box-shadow: inset 3px 0 0 var(--pc); }
 .ap-card-name { font-size: calc(20px * var(--zoom, 1)); font-weight: 700; color: var(--pc); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ap-card-path { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ap-error { padding: calc(10 * var(--u)) calc(20 * var(--u)); background: #2a1214; border-bottom: 1px solid var(--rule); color: #ffb3b3; font-size: calc(12px * var(--zoom, 1)); }
+.ap-error { padding: calc(10 * var(--u)) calc(20 * var(--u)); background: var(--error-bg); border-bottom: 1px solid var(--rule); color: var(--error-text); font-size: calc(12px * var(--zoom, 1)); }
 .ap-error[hidden] { display: none; }
 .ap-foot { height: calc(56 * var(--u)); display: flex; align-items: center; padding-left: calc(20 * var(--u)); }
 .ap-note { flex-grow: 1; font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); }
 .ap-cancel { height: 100%; padding: 0 calc(20 * var(--u)); background: transparent; border: 0; border-left: 1px solid var(--rule); color: var(--text-2); font-size: calc(13px * var(--zoom, 1)); }
-.ap-submit { width: calc(136 * var(--u)); height: 100%; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: var(--state-working); color: var(--bg-deep); font-size: calc(13px * var(--zoom, 1)); font-weight: 600; }
+.ap-submit { width: calc(136 * var(--u)); height: 100%; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: var(--state-working); color: var(--on-working); font-size: calc(13px * var(--zoom, 1)); font-weight: 600; }
 .ap-submit kbd { opacity: 0.7; }
 .ap-submit.blocked { background: var(--bg-raised); color: var(--text-2); }
 .ap-submit.blocked:hover { background: var(--rule-strong); }
@@ -500,7 +512,7 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .welcome { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(16 * var(--u)); background: var(--bg-deep); text-align: center; }
 .welcome-title { font-size: calc(22px * var(--zoom, 1)); font-weight: 700; }
 .welcome-text { max-width: calc(420 * var(--u)); font-size: calc(14px * var(--zoom, 1)); line-height: 1.5; color: var(--text-3); }
-.welcome-primary { height: var(--row); padding: 0 calc(20 * var(--u)); border: 0; background: var(--state-working); color: var(--bg-deep); font-size: calc(14px * var(--zoom, 1)); font-weight: 600; }
+.welcome-primary { height: var(--row); padding: 0 calc(20 * var(--u)); border: 0; background: var(--state-working); color: var(--on-working); font-size: calc(14px * var(--zoom, 1)); font-weight: 600; }
 .welcome-actions { display: flex; border: 1px solid var(--rule-strong); }
 .welcome-actions button { height: var(--row); display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(20 * var(--u)); border: 0; border-right: 1px solid var(--rule-strong); background: var(--bg-raised); color: var(--text); font: calc(13px * var(--zoom, 1)) var(--mono); }
 .welcome-actions button:hover { background: var(--rule-strong); }
@@ -529,7 +541,7 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 #ctx-menu .lm-key { width: calc(14 * var(--u)); font-size: calc(12px * var(--zoom, 1)); }
 #ctx-menu .lm-name { font-size: calc(13px * var(--zoom, 1)); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #ctx-menu .lm-hint { flex-shrink: 0; max-width: calc(120 * var(--u)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lm-item.danger { color: #ffb3b3; }
+.lm-item.danger { color: var(--error-text); }
 .lm-title { height: calc(32 * var(--u)); display: flex; align-items: center; padding: 0 calc(16 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; color: var(--text-3); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .lm-item { width: 100%; height: var(--row); display: flex; align-items: center; gap: calc(12 * var(--u)); padding: 0 calc(16 * var(--u)); border: 0; border-bottom: 1px solid var(--rule); background: transparent; color: var(--text); text-align: left; }
 .lm-item:hover, .lm-item:focus-visible { background: var(--bg-raised); outline: 0; box-shadow: inset 2px 0 0 var(--text-3); }
@@ -571,9 +583,9 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .set-agent input.c-cmd::placeholder { color: var(--text-dim); }
 .set-agent input.c-cmd:focus { box-shadow: inset 0 -2px 0 var(--state-working); }
 .set-agent .c-status { gap: calc(8 * var(--u)); font-size: calc(12px * var(--zoom, 1)); }
-.set-agent .c-status .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); background: #7ee0cb; }
-.set-agent.missing .c-name, .set-agent.missing .c-status { color: #6b7480; }
-.set-agent.missing .c-status .sq { background: #4a525c; }
+.set-agent .c-status .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); background: var(--ok); }
+.set-agent.missing .c-name, .set-agent.missing .c-status { color: var(--text-dim); }
+.set-agent.missing .c-status .sq { background: var(--rule-strong); }
 .set-agent.missing button.c-on { cursor: not-allowed; }
 .set-open { grid-template-columns: 200px minmax(0, 1fr); }
 .set-opacity { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) calc(120 * var(--u)); }
@@ -586,7 +598,7 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .switch::after { content: ""; position: absolute; top: calc(2 * var(--u)); left: calc(2 * var(--u)); width: calc(8 * var(--u)); height: calc(8 * var(--u)); background: var(--text-dim); }
 .set-agent.on .switch { border-color: var(--state-working); background: color-mix(in srgb, var(--state-working) 25%, transparent); }
 .set-agent.on .switch::after { left: calc(16 * var(--u)); background: var(--state-working); }
-.set-error { padding: calc(10 * var(--u)) calc(24 * var(--u)); background: #2a1214; color: #ffb3b3; font-size: calc(12px * var(--zoom, 1)); border-bottom: 1px solid var(--rule); }
+.set-error { padding: calc(10 * var(--u)) calc(24 * var(--u)); background: var(--error-bg); color: var(--error-text); font-size: calc(12px * var(--zoom, 1)); border-bottom: 1px solid var(--rule); }
 .set-note { padding: calc(16 * var(--u)) calc(24 * var(--u)); font-size: calc(12px * var(--zoom, 1)); line-height: 1.6; color: var(--text-dim); }
 
 /* Agent icons in session rows and pane headers. */
@@ -661,7 +673,7 @@ body.dragging-session.drop-refused, body.dragging-session.drop-refused * { curso
 .project-name .project-icon { display: inline-block; vertical-align: -3px; margin-right: calc(10 * var(--u)); object-fit: contain; }
 
 /* Confirm dialog for actions that cannot be undone. */
-.confirm-overlay { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(5, 7, 10, 0.72); }
+.confirm-overlay { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: var(--scrim); }
 .confirm-panel { width: calc(480 * var(--u)); max-width: calc(100vw - calc(32 * var(--u))); display: flex; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--rule-strong); }
 .confirm-title { height: calc(56 * var(--u)); display: flex; align-items: center; padding: 0 calc(20 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(16px * var(--zoom, 1)); font-weight: 700; }
 .confirm-body { padding: calc(16 * var(--u)) calc(20 * var(--u)); font-size: calc(13px * var(--zoom, 1)); line-height: 1.6; color: var(--text-2); border-bottom: 1px solid var(--rule); white-space: pre-line; }
@@ -669,8 +681,8 @@ body.dragging-session.drop-refused, body.dragging-session.drop-refused * { curso
 .confirm-cancel, .confirm-act { width: calc(144 * var(--u)); border: 0; border-left: 1px solid var(--rule); font-size: calc(13px * var(--zoom, 1)); }
 .confirm-cancel { background: transparent; color: var(--text-2); }
 .confirm-cancel:hover { background: var(--bg-raised); }
-.confirm-act { background: #7a2a2e; color: #ffe0e0; font-weight: 600; }
-.confirm-act:hover { background: #8e3237; }
+.confirm-act { background: var(--danger); color: var(--danger-text); font-weight: 600; }
+.confirm-act:hover { background: var(--danger-hover); }
 
 /* The project row: 40px, name left, + right in the worktree + column. */
 .project-row { height: var(--row); flex-shrink: 0; display: flex; align-items: stretch; background: var(--bg-panel); box-shadow: inset 3px 0 0 var(--pc), inset 0 -1px 0 var(--rule-strong); }
@@ -691,10 +703,10 @@ body.dragging-session.drop-refused, body.dragging-session.drop-refused * { curso
 /* Prompt dialog: the confirm panel with one text field. */
 .prompt-input { height: var(--row); padding: 0 calc(20 * var(--u)); border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font: calc(13px * var(--zoom, 1)) var(--mono); }
 .prompt-input:focus { box-shadow: inset 0 -2px 0 var(--state-working); }
-.prompt-error { padding: calc(10 * var(--u)) calc(20 * var(--u)); background: #2a1214; border-bottom: 1px solid var(--rule); color: #ffb3b3; font-size: calc(12px * var(--zoom, 1)); white-space: pre-wrap; overflow-wrap: anywhere; }
+.prompt-error { padding: calc(10 * var(--u)) calc(20 * var(--u)); background: var(--error-bg); border-bottom: 1px solid var(--rule); color: var(--error-text); font-size: calc(12px * var(--zoom, 1)); white-space: pre-wrap; overflow-wrap: anywhere; }
 .prompt-error:empty { display: none; }
-.confirm-act.go { background: var(--state-working); color: var(--bg-deep); }
-.confirm-act.go:hover { background: #86adff; }
+.confirm-act.go { background: var(--state-working); color: var(--on-working); }
+.confirm-act.go:hover { background: color-mix(in srgb, var(--state-working) 85%, var(--text)); }
 .confirm-act:disabled { cursor: progress; }
 
 /* Theme menu: a strip of the theme's colors in place of the icon. */

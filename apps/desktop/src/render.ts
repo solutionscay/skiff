@@ -50,13 +50,14 @@ window.addEventListener("pointermove", (e) => {
 
 export function render() {
   renderQueued = false;
+  // App colors first: the sidebar's marks are inked against them.
+  applyApp();
   host.classList.toggle("group-picked", !!S.groupPicked && S.groupPicked === S.activeGroup);
   renderRail();
   renderSidebar();
   renderSelectBar();
   renderLayout();
   applyThemes();
-  applyApp();
   applyBackdrop();
   renderHeader();
   renderCounts();
