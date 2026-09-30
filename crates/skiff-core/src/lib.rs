@@ -11,6 +11,7 @@ pub mod project;
 pub mod protocol;
 pub mod session;
 pub mod socket;
+mod shell;
 pub mod theme;
 
 pub use group::{Group, Layout, SplitDir};

@@ -1,6 +1,8 @@
 //! Thin wrappers over the `git` binary. Blocking: async callers use
 //! `spawn_blocking`.
 
+use crate::shell::shell_quote;
+
 use std::{
     collections::HashSet,
     io::Write,
@@ -151,10 +153,6 @@ pub fn changes(dir: &Path) -> Result<Vec<Change>> {
 
 /// The diff command when `[open] diff` sets none.
 pub const DEFAULT_DIFF: &str = "git diff --color=always";
-
-fn shell_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
-}
 
 /// A changed file's diff against HEAD, or the whole worktree's, printed by
 /// `command` in the worktree at `width` columns. `{target}` in the command

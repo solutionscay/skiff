@@ -1,6 +1,8 @@
 //! Which app opens a file, from `[open]` in the config. Skiff never shows a
 //! file itself: it runs the user's command, or hands the file to the OS.
 
+use crate::shell::shell_quote;
+
 use std::{
     io::Read,
     path::Path,
@@ -33,10 +35,6 @@ fn is_text(file: &Path) -> bool {
         return false;
     }
     !buf.contains(&0)
-}
-
-fn shell_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
 }
 
 /// Runs `command` on `file` in the file's folder. `{path}` becomes the file;
