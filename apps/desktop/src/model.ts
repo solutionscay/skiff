@@ -53,8 +53,13 @@ export function branchName(w: Worktree): string {
   return w.branch ?? "(detached)";
 }
 
+/** Finished out of sight: a result waits to be read. */
+export function isUnread(s: SessionInfo): boolean {
+  return s.state === "idle" && !!s.unread;
+}
+
 export function rank(s: SessionInfo): number {
-  if (s.state === "idle" && s.unread) return 1;
+  if (isUnread(s)) return 1;
   return { waiting: 0, working: 2, idle: 3, done: 4 }[s.state];
 }
 

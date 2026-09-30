@@ -1,7 +1,7 @@
 /** What the terminal area shows and which pane has the keys. */
 import { beginDrag, type DropTarget } from "./drag";
 import { build, type Direction, leaf, neighbor, removePane, replacePane, sessionsOf, shape, splitPane } from "./layout";
-import { branchName, bySessionPriority, locate, taskTitle } from "./model";
+import { branchName, bySessionPriority, isUnread, locate, taskTitle } from "./model";
 import type { Group, Layout, Project, SplitDir, Worktree } from "./types";
 import { filledOf, focusFirstSlot, isSlot, slot, slotsOf } from "./canvas";
 import { host, showError } from "./dom";
@@ -414,7 +414,8 @@ export function selectProject(name: string) {
 }
 
 export function focusNextWaiting() {
-  const waiting = [...sessions.values()].filter((s) => s.state === "waiting").sort(bySessionPriority);
+  // Bells first, then unread results: the sort ranks waiting ahead of unread.
+  const waiting = [...sessions.values()].filter((s) => s.state === "waiting" || isUnread(s)).sort(bySessionPriority);
   const next = waiting.find((s) => s.id !== S.focused) ?? waiting[0];
   if (next) revealSession(next.id);
 }

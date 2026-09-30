@@ -4,7 +4,7 @@ import { filledOf, slotsOf } from "./canvas";
 import { agentIcon, launchIcon } from "./agentIcon";
 import { ink } from "./appTheme";
 import { glyph, sessionsOf } from "./layout";
-import { agentName, branchName, byStart, taskTitle } from "./model";
+import { agentName, branchName, byStart, isUnread, taskTitle } from "./model";
 import type { Group, Project, SessionInfo, Worktree } from "./types";
 import { newSession } from "./daemon";
 import { changeCounts, changesBlock, showsChanges } from "./changes";
@@ -16,7 +16,7 @@ import { openClosedProject } from "./projectClose";
 import { leaveRename, renameGroup, renameRow, startRename, startSessionRename } from "./rename";
 import { render } from "./render";
 import { clearSelection, keepRow, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
-import { stateIcon } from "./stateIcon";
+import { FLAG, stateIcon } from "./stateIcon";
 import { accent, activeGroupObj, collapsed, currentProject, currentWorktree, DEFAULT_ACCENT, OTHER, enabledAgents, groupedIds, place, removeErrors, removing, S, selectedWorktree, sessions, worktreeSessions, shownIds } from "./state";
 import { dragSessions, groupHome, revealSession, selectProject, selectWorktree, showGroup } from "./view";
 
@@ -28,12 +28,14 @@ export function renderRail() {
   const waitingIn = (p: Project) => [...sessions.values()].filter((s) => s.state === "waiting" && place(s)?.project === p).length;
   // Renders run while agents print. A rebuilt chip loses its hover and hides
   // its icon until trimmed again, so the rail changes only when what it shows does.
-  const sig = JSON.stringify([S.selectedProject, hasOther, S.projects.map((p) => [p.name, p.short, p.icon, accent(p), waitingIn(p)])]);
+  const unreadIn = (p: Project) => [...sessions.values()].filter((s) => isUnread(s) && place(s)?.project === p).length;
+  const sig = JSON.stringify([S.selectedProject, hasOther, S.projects.map((p) => [p.name, p.short, p.icon, accent(p), waitingIn(p), unreadIn(p)])]);
   if (rail.dataset.sig === sig) return;
   rail.dataset.sig = sig;
   rail.replaceChildren();
   S.projects.forEach((p, i) => {
     const waiting = waitingIn(p);
+    const unread = unreadIn(p);
     const item = h("div", "rail-item");
     const b = button("rail-chip" + (p.name === S.selectedProject ? " active" : ""), p.icon ? "" : p.short, () => selectProject(p.name));
     if (p.icon) {
@@ -48,13 +50,18 @@ export function renderRail() {
     b.dataset.project = p.name;
     b.style.setProperty("--pc", accent(p));
     b.title = i < 9 ? `${p.name} (${navigator.userAgent.includes("Macintosh") ? "⌘" : "Ctrl"}+Shift+${i + 1})` : p.name;
-    b.setAttribute("aria-label", p.name + (waiting ? `, ${waiting} waiting` : ""));
+    b.setAttribute("aria-label", p.name + (waiting ? `, ${waiting} waiting` : unread ? `, ${unread} unread` : ""));
     if (p.name === S.selectedProject) b.setAttribute("aria-current", "true");
     item.appendChild(b);
     if (waiting) {
       const bell = h("span", "rail-waiting");
       bell.appendChild(icon('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>'));
       item.appendChild(bell);
+    } else if (unread) {
+      // The bell wins: a question outranks a result.
+      const flag = h("span", "rail-unread");
+      flag.appendChild(icon(FLAG));
+      item.appendChild(flag);
     }
     rail.appendChild(item);
   });
@@ -437,7 +444,9 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
     const waiting = list.filter((s) => s.state === "waiting").length;
     const count = h("div", "wt-count");
     count.append(h("span", "", `${list.length} ${list.length === 1 ? "session" : "sessions"}`));
+    const unread = list.filter(isUnread).length;
     if (waiting) count.append(h("span", "waiting-note", `· ${waiting} waiting`));
+    if (unread) count.append(h("span", "unread-note", `· ${unread} unread`));
     const body = h("div", "wt-body");
     body.appendChild(sessionBlock(worktreeLines(w), color, count, true));
     const changes = showsChanges(p) ? changesBlock(w) : null;
@@ -483,10 +492,13 @@ export function renderCounts() {
   const all = [...sessions.values()];
   const waiting = all.filter((s) => s.state === "waiting").length;
   const working = all.filter((s) => s.state === "working").length;
-  $("counts").textContent = `${all.length} sessions · ${waiting} waiting · ${working} working`;
+  const unread = all.filter(isUnread).length;
+  $("counts").textContent = `${all.length} sessions · ${waiting} waiting · ${unread} unread · ${working} working`;
   const nw = $<HTMLButtonElement>("next-waiting");
-  nw.hidden = waiting === 0;
-  $("next-waiting-label").textContent = `Next waiting (${waiting})`;
+  nw.hidden = waiting + unread === 0;
+  $("next-waiting-label").textContent = waiting
+    ? `Next waiting (${waiting})`
+    : `Next unread (${unread})`;
 
   renderWelcome();
 }

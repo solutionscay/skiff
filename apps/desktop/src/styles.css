@@ -132,8 +132,10 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 .rail-chip.active { background: color-mix(in srgb, var(--pc) 15%, transparent); box-shadow: inset 3px 0 0 var(--pc); }
 .rail-add { color: var(--text-3); font-weight: 400; font-size: calc(18px * var(--zoom, 1)); }
 .rail-add:hover { color: var(--text); background: var(--bg-raised); }
-.rail-waiting { position: absolute; top: calc(2 * var(--u)); right: calc(2 * var(--u)); display: flex; color: var(--state-waiting); pointer-events: none; }
-.rail-waiting svg { display: block; width: calc(12 * var(--u)); height: calc(12 * var(--u)); stroke-width: 2.5; /* a hard halo in the rail colour keeps the bell readable over any icon or theme */ filter: drop-shadow(0 0 0 var(--bg-deep)) drop-shadow(1px 0 0 var(--bg-deep)) drop-shadow(-1px 0 0 var(--bg-deep)) drop-shadow(0 1px 0 var(--bg-deep)) drop-shadow(0 -1px 0 var(--bg-deep)); animation: ring 1.6s steps(1) infinite; transform-origin: 50% 10%; }
+.rail-waiting, .rail-unread { position: absolute; top: calc(2 * var(--u)); right: calc(2 * var(--u)); display: flex; color: var(--state-waiting); pointer-events: none; }
+.rail-unread { color: var(--diff-add); }
+.rail-waiting svg, .rail-unread svg { display: block; width: calc(12 * var(--u)); height: calc(12 * var(--u)); stroke-width: 2.5; /* a hard halo in the rail colour keeps the bell readable over any icon or theme */ filter: drop-shadow(0 0 0 var(--bg-deep)) drop-shadow(1px 0 0 var(--bg-deep)) drop-shadow(-1px 0 0 var(--bg-deep)) drop-shadow(0 1px 0 var(--bg-deep)) drop-shadow(0 -1px 0 var(--bg-deep)); animation: ring 1.6s steps(1) infinite; transform-origin: 50% 10%; }
+.rail-unread svg { animation: wave 0.8s steps(1) infinite; transform-origin: 20% 90%; }
 
 #sidebar {
   width: calc(284 * var(--u)); flex-shrink: 0;
@@ -208,6 +210,7 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
   font-size: calc(11px * var(--zoom, 1)); color: var(--text-3);
 }
 .wt-count .waiting-note { color: var(--state-waiting-text); }
+.wt-count .unread-note { color: var(--diff-add); }
 /* Files: a launch-only tree under the sessions. Rows keep the 20px grid. */
 .files-block { display: flex; flex-direction: column; flex-shrink: 0; }
 .files-head { position: relative; padding-left: calc(8 * var(--u)); background: linear-gradient(to right, transparent 0 3px, color-mix(in srgb, var(--bg-raised) 20%, var(--bg)) 3px); }
@@ -281,7 +284,7 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 @keyframes wave { 0%, 100% { transform: translateY(0) rotate(0); } 25% { transform: translateY(-2px) rotate(-18deg); } 50% { transform: translateY(0) rotate(0); } 75% { transform: translateY(-2px) rotate(18deg); } }
 .session-row.st-idle:has(.unread) .title { font-weight: 600; }
 .finished.failed { color: var(--state-waiting-text); }
-@media (prefers-reduced-motion: reduce) { .session-row .busy, .cell-head .busy, .session-row .busy svg, .cell-head .busy svg, .belled svg, .unread svg, .rail-waiting svg { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .session-row .busy, .cell-head .busy, .session-row .busy svg, .cell-head .busy svg, .belled svg, .unread svg, .rail-waiting svg, .rail-unread svg { animation: none; } }
 .session-row { position: relative; user-select: none; }
 .session-row.selected { background: color-mix(in srgb, var(--state-working) 16%, transparent); box-shadow: inset 2px 0 0 var(--state-working); }
 
