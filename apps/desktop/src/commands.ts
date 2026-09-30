@@ -18,7 +18,7 @@ import { scheduleRender } from "./render";
 import { accent, activeGroupObj, currentProject, currentWorktree, FONT_DEFAULT, place, S, sessions, shownIds, splitFull, worktreeSessions } from "./state";
 import { copySelection, openFind, paneCenter, pasteClipboard, setFontSize } from "./terminal";
 import { sessionThemeMenu } from "./themes";
-import { modeGate, toggleFocusMode, toggleMaximize } from "./modes";
+import { modeGate, modeKeyBlocked, toggleFocusMode, toggleMaximize } from "./modes";
 import { closePane, focusNextWaiting, goBack, moveFocus, refocusTerminal, revealSession, selectWorktree } from "./view";
 
 interface Cmd {
@@ -72,8 +72,8 @@ function commands(): Cmd[] {
     })),
     { section: "View", label: "Next waiting", key: k("next-waiting"), action: "next-waiting", run: act("next-waiting") },
     { section: "View", label: "Back to last session", key: k("back"), action: "back", run: act("back"), off: !S.previous },
-    { section: "View", label: S.focusMode ? "Leave focus mode" : "Focus mode", key: k("focus-mode"), action: "focus-mode", run: act("focus-mode"), off: !S.focusMode && !shown },
-    { section: "View", label: S.maximized ? "Restore pane" : "Maximize pane", key: k("maximize"), action: "maximize", run: act("maximize"), off: !S.maximized && !shown },
+    { section: "View", label: S.focusMode ? "Leave focus mode" : "Focus mode", key: k("focus-mode"), action: "focus-mode", run: act("focus-mode"), off: (!S.focusMode && !shown) || modeKeyBlocked("focus-mode") },
+    { section: "View", label: S.maximized ? "Restore pane" : "Maximize pane", key: k("maximize"), action: "maximize", run: act("maximize"), off: (!S.maximized && !shown) || modeKeyBlocked("maximize") },
     { section: "View", label: "Bigger text", key: k("font-bigger"), action: "font-bigger", run: act("font-bigger") },
     { section: "View", label: "Smaller text", key: k("font-smaller"), action: "font-smaller", run: act("font-smaller") },
     { section: "View", label: "Reset text size", key: k("font-reset"), action: "font-reset", run: act("font-reset") },
@@ -339,7 +339,8 @@ function openNewSession() {
 
 export function runAction(a: Action) {
   const shown = S.focused && shownIds().includes(S.focused);
-  if (modeGate(a)) return;
+  // The native menu runs its accelerators through here, not through the key handler.
+  if (modeKeyBlocked(a) || modeGate(a)) return;
   switch (a) {
     case "palette": return switcher.toggle();
     case "new-session": return openNewSession();
