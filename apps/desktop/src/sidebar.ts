@@ -6,7 +6,7 @@ import { glyph, sessionsOf } from "./layout";
 import { agentName, branchName, byStart, taskTitle } from "./model";
 import type { Group, Project, SessionInfo, Worktree } from "./types";
 import { newSession } from "./daemon";
-import { changeCounts, changesBlock } from "./changes";
+import { changeCounts, changesBlock, showsChanges } from "./changes";
 import { filesBlock, showsFiles } from "./files";
 import { $, branchIcon, button, chevron, h, host, icon, plusIcon, projectIcon, showError } from "./dom";
 import { groupMenu, newWorktree, projectMenu, rowMenu, worktreeMenu } from "./menus";
@@ -405,7 +405,7 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   if (w.locked) pick.appendChild(h("span", "tag", "locked"));
   if (w.prunable) pick.appendChild(h("span", "tag", "prunable"));
   if (removing.has(w.path)) pick.appendChild(h("span", "tag", "removing…"));
-  const diff = changeCounts(w);
+  const diff = showsChanges(p) ? changeCounts(w) : null;
   if (diff) pick.appendChild(diff);
   pick.title = w.path;
   row.addEventListener("contextmenu", (e) => {
@@ -429,7 +429,7 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
     if (waiting) count.append(h("span", "waiting-note", `· ${waiting} waiting`));
     const body = h("div", "wt-body");
     body.appendChild(sessionBlock(worktreeLines(w), color, count, true));
-    const changes = changesBlock(w);
+    const changes = showsChanges(p) ? changesBlock(w) : null;
     if (changes) body.appendChild(changes);
     if (showsFiles(p)) body.appendChild(filesBlock(w));
     block.appendChild(body);

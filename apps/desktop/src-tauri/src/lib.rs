@@ -525,6 +525,18 @@ fn files_projects() -> Result<Vec<String>, String> {
     Ok(cfg.projects.into_iter().filter(|p| p.files).map(|p| p.name).collect())
 }
 
+/// Projects with `changes = false`.
+#[tauri::command]
+fn hidden_changes_projects() -> Result<Vec<String>, String> {
+    let cfg = skiff_core::config::load().map_err(err)?;
+    Ok(cfg.projects.into_iter().filter(|p| p.changes == Some(false)).map(|p| p.name).collect())
+}
+
+#[tauri::command]
+fn set_project_changes(project: String, on: bool) -> Result<(), String> {
+    skiff_core::config::set_project_changes(&project, on).map_err(err)
+}
+
 #[tauri::command]
 fn set_project_files(project: String, on: bool) -> Result<(), String> {
     skiff_core::config::set_project_files(&project, on).map_err(err)
@@ -777,6 +789,8 @@ pub fn run() {
             open_file,
             reveal_file,
             files_projects,
+            hidden_changes_projects,
+            set_project_changes,
             set_project_files,
             reorder_projects,
             read_icon,

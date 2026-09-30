@@ -5,7 +5,7 @@ import { removePane, replacePane, sessionsOf } from "./layout";
 import type { AgentInfo, DaemonEvent, DaemonStatus, Project, SessionInfo, SplitDir } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { $, button, h } from "./dom";
-import { reloadChanges } from "./changes";
+import { loadChangesSetting, reloadChanges } from "./changes";
 import { loadFilesSetting } from "./files";
 import { deleteGroup, loadGroups, syncTemplateName } from "./groups";
 import { render, scheduleRender } from "./render";
@@ -79,7 +79,7 @@ export async function loadProjects() {
   let list: Project[] | null = null;
   let err: string | null = null;
   try {
-    [list] = await Promise.all([invoke<Project[]>("list_projects"), loadFilesSetting()]);
+    [list] = await Promise.all([invoke<Project[]>("list_projects"), loadFilesSetting(), loadChangesSetting()]);
   } catch (e) {
     err = String(e);
   }

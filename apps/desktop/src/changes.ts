@@ -4,7 +4,7 @@
  * other apps. No diff view: reviewing a change is another app's job.
  */
 import { invoke } from "@tauri-apps/api/core";
-import type { Worktree } from "./types";
+import type { Project, Worktree } from "./types";
 import { button, chevron, h, icon, showError } from "./dom";
 import type { MenuEntry } from "./menu";
 import { ctxMenu } from "./menus";
@@ -13,6 +13,29 @@ import { showDiff } from "./peek";
 import { render, scheduleRender } from "./render";
 
 type Change = { path: string; status: "M" | "A" | "D" | "U"; added: number | null; removed: number | null };
+
+/** Projects with `changes = false` in projects.toml. Changes show by default. */
+const hidden = new Set<string>();
+
+export const showsChanges = (p: Project) => !hidden.has(p.name);
+
+/** Reads which projects hide changes. Called with every project reload. */
+export async function loadChangesSetting() {
+  const names = await invoke<string[]>("hidden_changes_projects").catch(() => []);
+  hidden.clear();
+  for (const n of names) hidden.add(n);
+}
+
+export async function setShowChanges(p: Project, show: boolean) {
+  try {
+    await invoke("set_project_changes", { project: p.name, on: show });
+    if (show) hidden.delete(p.name);
+    else hidden.add(p.name);
+    render();
+  } catch (e) {
+    showError(e);
+  }
+}
 
 /** The last read of each worktree. The sidebar renders from here, never waiting. */
 const lists = new Map<string, Change[]>();

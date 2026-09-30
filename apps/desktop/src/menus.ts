@@ -12,7 +12,7 @@ import { open as openFile } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { loadProjects, newSession } from "./daemon";
 import { showError } from "./dom";
-import { hasChanges } from "./changes";
+import { hasChanges, setShowChanges, showsChanges } from "./changes";
 import { showDiff } from "./peek";
 import { setShowFiles, showsFiles } from "./files";
 import { launchMenu } from "./panels";
@@ -123,6 +123,9 @@ export function projectMenu(p: Project, x: number, y: number) {
     { icon: "documents-file-image", label: "Icon…", hint: "file, detect, none", sub: iconEntries(p) },
     { icon: "tools-sparkles", label: "Color…", hint: "accent", run: () => pickProjectColor(p) },
     { icon: "playback-image", label: "Background…", hint: "image behind terminals", sub: backgroundEntries(p) },
+    showsChanges(p)
+      ? { icon: "code-git-branch", label: "Hide changes", run: () => void setShowChanges(p, false) }
+      : { icon: "code-git-branch", label: "Show changes", hint: "changed files and +/- counts", run: () => void setShowChanges(p, true) },
     showsFiles(p)
       ? { icon: "documents-folder-open", label: "Hide files", run: () => void setShowFiles(p, false) }
       : { icon: "documents-folder-open", label: "Show files", hint: "tree under each worktree", run: () => void setShowFiles(p, true) },
@@ -134,7 +137,7 @@ export const ctxMenu = createMenu(() => refocusTerminal());
 /** A right-click on a worktree's branch row. */
 export function worktreeMenu(p: Project, w: Worktree, x: number, y: number) {
   const entries: MenuEntry[] = [
-    ...(hasChanges(w) ? [{ icon: "code-git-branch", label: "Review all changes", run: () => showDiff(w.path, branchName(w)) }] : []),
+    ...(showsChanges(p) && hasChanges(w) ? [{ icon: "code-git-branch", label: "Review all changes", run: () => showDiff(w.path, branchName(w)) }] : []),
     { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", run: () => void openPath(w.path).catch(showError) },
     { icon: "code-copy", label: "Copy path", run: () => void navigator.clipboard.writeText(w.path).catch(showError) },
   ];

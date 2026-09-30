@@ -99,6 +99,8 @@ pub struct ProjectConfig {
     /// the daemon passes it by.
     #[serde(default)]
     pub files: bool,
+    /// `false` hides the Changes section and the +/- counts. Absent: shown.
+    pub changes: Option<bool>,
 }
 
 impl ProjectConfig {
@@ -331,6 +333,7 @@ pub fn add_project(
         layout: Layout::default(),
         server: None,
         files: false,
+        changes: None,
     })
 }
 
@@ -387,6 +390,11 @@ pub fn set_project_color(project: &str, color: &str) -> Result<()> {
         anyhow::bail!("not a #rrggbb color: {color}");
     }
     set_project_key(project, "color", Some(color))
+}
+
+/// Sets `changes = false` on the named project, or removes the key: shown is the default.
+pub fn set_project_changes(project: &str, on: bool) -> Result<()> {
+    set_project_key(project, "changes", (!on).then_some(false))
 }
 
 /// Sets `files = true` on the named project, or removes the key.
