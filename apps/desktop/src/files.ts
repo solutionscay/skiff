@@ -8,6 +8,7 @@ import type { Project, Worktree } from "./types";
 import { button, chevron, h, icon, showError } from "./dom";
 import { ctxMenu } from "./menus";
 import { render } from "./render";
+import { storedSet } from "./stored";
 
 type Entry = { name: string; dir: boolean };
 type Listing = Entry[] | { error: string };
@@ -17,9 +18,11 @@ const on = new Set<string>();
 /** The last listing of each folder read. The sidebar renders from here, never waiting. */
 const listings = new Map<string, Listing>();
 /** Worktrees whose Files section is open. Closed by default. */
-const shown = new Set<string>();
+const shown = storedSet("skiff.filesOpen");
 /** Open folders, by path. */
-const expanded = new Set<string>();
+const expanded = storedSet("skiff.foldersOpen");
+/** Folders being read. */
+const reading = new Set<string>();
 /** The file or folder a single click picked. A double click opens a file. */
 let picked: string | null = null;
 
@@ -46,10 +49,15 @@ export async function setShowFiles(p: Project, show: boolean) {
 }
 
 function load(dir: string) {
+  if (reading.has(dir)) return;
+  reading.add(dir);
   invoke<Entry[]>("list_dir", { path: dir })
     .then((entries) => listings.set(dir, entries))
     .catch((e) => listings.set(dir, { error: String(e) }))
-    .finally(render);
+    .finally(() => {
+      reading.delete(dir);
+      render();
+    });
 }
 
 /** Reads again `root` and every open folder under it. */
@@ -102,7 +110,11 @@ export function filesBlock(w: Worktree): HTMLElement {
 
 function folder(into: HTMLElement, dir: string, depth: number) {
   const l = listings.get(dir);
-  if (!l) into.appendChild(note("…", depth));
+  if (!l) {
+    // Open from a past run: read it the first time it shows.
+    load(dir);
+    into.appendChild(note("…", depth));
+  }
   else if (!Array.isArray(l)) into.appendChild(note(l.error, depth, true));
   else if (!l.length) into.appendChild(note("Empty", depth));
   else for (const e of l) {

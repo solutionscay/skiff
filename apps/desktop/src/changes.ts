@@ -11,6 +11,7 @@ import { ctxMenu } from "./menus";
 import { branchName } from "./model";
 import { showDiff } from "./peek";
 import { render, scheduleRender } from "./render";
+import { storedSet } from "./stored";
 
 type Change = { path: string; status: "M" | "A" | "D" | "U"; added: number | null; removed: number | null };
 
@@ -41,7 +42,7 @@ export async function setShowChanges(p: Project, show: boolean) {
 const lists = new Map<string, Change[]>();
 const loading = new Set<string>();
 /** Worktrees whose Changes section is open. Closed by default. */
-const shown = new Set<string>();
+const shown = storedSet("skiff.changesOpen");
 /** The row a single click picked. A double click opens the file. */
 let picked: string | null = null;
 
