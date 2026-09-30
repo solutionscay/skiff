@@ -60,7 +60,6 @@ function backgroundEntries(p: Project): MenuEntry[] {
     {
       icon: "playback-image-plus",
       label: "Choose image…",
-      hint: "png, jpg, webp",
       run: async () => {
         const file = await openFile({
           title: `Background for ${p.name}`,
@@ -70,7 +69,7 @@ function backgroundEntries(p: Project): MenuEntry[] {
         if (typeof file === "string") await setBackground(p, file);
       },
     },
-    { icon: "indicators-minus", label: "None", hint: "plain background", disabled: !p.background, run: () => void setBackground(p, null) },
+    { icon: "indicators-minus", label: "None", disabled: !p.background, run: () => void setBackground(p, null) },
   ];
 }
 
@@ -80,7 +79,6 @@ function iconEntries(p: Project): MenuEntry[] {
     {
       icon: "documents-folder-open",
       label: "Choose file…",
-      hint: "png, svg, ico",
       run: async () => {
         const file = await openFile({
           title: `Icon for ${p.name}`,
@@ -92,8 +90,8 @@ function iconEntries(p: Project): MenuEntry[] {
         await setIcon(p, rel);
       },
     },
-    { icon: "schedule-refresh-cw", label: "Detect", hint: "favicon, logo", run: () => void setIcon(p, null) },
-    { icon: "indicators-minus", label: "Letters only", hint: "no icon", run: () => void setIcon(p, "") },
+    { icon: "schedule-refresh-cw", label: "Detect", run: () => void setIcon(p, null) },
+    { icon: "indicators-minus", label: "Letters only", run: () => void setIcon(p, "") },
   ];
 }
 
@@ -120,16 +118,16 @@ export function projectMenu(p: Project, x: number, y: number) {
     { icon: "code-git-branch", label: "New worktree…", disabled: !!p.error, run: () => newWorktree(p) },
     { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", run: () => void openPath(p.path).catch(showError) },
     { icon: "code-copy", label: "Copy path", run: () => void navigator.clipboard.writeText(p.path).catch(showError) },
-    { icon: "documents-file-image", label: "Icon…", hint: "file, detect, none", sub: iconEntries(p) },
-    { icon: "tools-sparkles", label: "Color…", hint: "accent", run: () => pickProjectColor(p) },
-    { icon: "tools-sparkles", label: "Theme…", hint: "app and terminals", run: () => void projectThemeMenu(p) },
-    { icon: "playback-image", label: "Background…", hint: "image behind terminals", sub: backgroundEntries(p) },
+    { icon: "documents-file-image", label: "Icon…", sub: iconEntries(p) },
+    { icon: "tools-sparkles", label: "Color…", run: () => pickProjectColor(p) },
+    { icon: "tools-sparkles", label: "Theme…", run: () => void projectThemeMenu(p) },
+    { icon: "playback-image", label: "Background…", sub: backgroundEntries(p) },
     showsChanges(p)
       ? { icon: "code-git-branch", label: "Hide changes", run: () => void setShowChanges(p, false) }
-      : { icon: "code-git-branch", label: "Show changes", hint: "changed files and +/- counts", run: () => void setShowChanges(p, true) },
+      : { icon: "code-git-branch", label: "Show changes", run: () => void setShowChanges(p, true) },
     showsFiles(p)
       ? { icon: "documents-folder-open", label: "Hide files", run: () => void setShowFiles(p, false) }
-      : { icon: "documents-folder-open", label: "Show files", hint: "tree under each worktree", run: () => void setShowFiles(p, true) },
+      : { icon: "documents-folder-open", label: "Show files", run: () => void setShowFiles(p, true) },
   ]);
 }
 
@@ -143,7 +141,7 @@ export function worktreeMenu(p: Project, w: Worktree, x: number, y: number) {
     { icon: "code-copy", label: "Copy path", run: () => void navigator.clipboard.writeText(w.path).catch(showError) },
   ];
   if (!w.is_main) {
-    entries.push({ icon: "tools-trash-2", label: "Remove worktree…", hint: "keeps the branch", danger: true, disabled: removing.has(w.path), run: () => void removeWorktree(p, w) });
+    entries.push({ icon: "tools-trash-2", label: "Remove worktree…", danger: true, disabled: removing.has(w.path), run: () => void removeWorktree(p, w) });
   }
   ctxMenu.open(x, y, branchName(w), entries);
 }
@@ -167,7 +165,7 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
         }]
       : []),
     ...(groupOf(s.id)
-      ? [{ icon: "code-ungroup", label: "Remove from group", hint: "keeps running", run: () => removeFromGroup(s.id) }]
+      ? [{ icon: "code-ungroup", label: "Remove from group", run: () => removeFromGroup(s.id) }]
       : []),
     ...newSessionEntry(s, x, y),
     { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(s.id) },
@@ -195,7 +193,7 @@ export function deleteKeyMenu(el: HTMLElement) {
   if (ids.length > 1 && ids.includes(s.id)) return pick(endSelectedEntry(ids));
   if (!groupOf(s.id)) return pick(endEntry(s));
   ctxMenu.open(x, y, sessionLabel(s), [
-    { icon: "code-ungroup", label: "Remove from group", hint: "keeps running", run: () => removeFromGroup(s.id) },
+    { icon: "code-ungroup", label: "Remove from group", run: () => removeFromGroup(s.id) },
     endEntry(s),
   ]);
 }
@@ -203,7 +201,7 @@ export function deleteKeyMenu(el: HTMLElement) {
 /** Right-click, New session…: the + menu for this session's worktree, at the pointer. */
 function newSessionEntry(s: SessionInfo, x: number, y: number): MenuEntry[] {
   const at = place(s);
-  return at ? [{ icon: "indicators-plus", label: "New session…", hint: "agent or split", run: () => launchMenu.open({ x, y }, at.project, at.worktree) }] : [];
+  return at ? [{ icon: "indicators-plus", label: "New session…", run: () => launchMenu.open({ x, y }, at.project, at.worktree) }] : [];
 }
 
 function themeEntry(s: SessionInfo): MenuEntry {
@@ -217,7 +215,6 @@ export function endEntry(s: SessionInfo): MenuEntry {
     return {
       icon: "tools-trash-2",
       label: "Remove from list…",
-      hint: "already exited",
       danger: true,
       run: async () => {
         const ok = await confirmAction({
@@ -233,7 +230,6 @@ export function endEntry(s: SessionInfo): MenuEntry {
   return {
     icon: "indicators-square-stop",
     label: "End session…",
-    hint: "stops the process",
     danger: true,
     // A running agent loses its work: ask once more.
     run: async () => {
@@ -254,7 +250,7 @@ function endSelectedEntry(ids: string[]): MenuEntry {
 }
 
 /** Ends several sessions after one confirm. Sessions that already exited go without asking. */
-function endManyEntry(ids: string[], label: string, title: string, hint = "stops the processes"): MenuEntry {
+function endManyEntry(ids: string[], label: string, title: string): MenuEntry {
   const running = ids.filter((id) => sessions.get(id)?.state !== "done");
   const end = () => {
     clearSelection();
@@ -262,12 +258,11 @@ function endManyEntry(ids: string[], label: string, title: string, hint = "stops
     for (const id of ids) void endSession(id);
   };
   if (!running.length) {
-    return { icon: "tools-trash-2", label: `Remove ${ids.length} from list`, hint: "already exited", danger: true, run: end };
+    return { icon: "tools-trash-2", label: `Remove ${ids.length} from list`, danger: true, run: end };
   }
   return {
     icon: "indicators-square-stop",
     label,
-    hint,
     danger: true,
     run: async () => {
       const ok = await confirmAction({
@@ -340,7 +335,7 @@ export function groupMenu(g: Group, x: number, y: number) {
     ...groupStartEntries(g),
     { head: "GROUP" },
     { icon: "tools-pencil", label: "Rename", hint: "double-click", run: () => startRename(g) },
-    { icon: "tools-sparkles", label: "Terminal theme…", hint: "every pane", run: () => void groupThemeMenu(g) },
+    { icon: "tools-sparkles", label: "Terminal theme…", run: () => void groupThemeMenu(g) },
     ...groupCloseEntries(g),
   ]);
 }
@@ -419,11 +414,11 @@ export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: s
   };
   const entries: Exclude<MenuEntry, { head: string }>[] = [];
   if (hasSessions) entries.push(
-    { icon: "code-ungroup", label: "Ungroup", hint: "sessions keep running", run: drop },
-    { icon: "indicators-square-stop", label: "Kill all sessions…", hint: "group stays open", danger: true, run: () => void end(false) },
+    { icon: "code-ungroup", label: "Ungroup", run: drop },
+    { icon: "indicators-square-stop", label: "Kill all sessions…", danger: true, run: () => void end(false) },
   );
   entries.push(
-    { icon: "tools-trash-2", label: hasSessions ? "Close group…" : "Close group", hint: hasSessions ? "ends sessions and removes group" : "no sessions", danger: true, disabled: !g, run: () => void end(true) },
+    { icon: "tools-trash-2", label: hasSessions ? "Close group…" : "Close group", danger: true, disabled: !g, run: () => void end(true) },
   );
   return entries;
 }
