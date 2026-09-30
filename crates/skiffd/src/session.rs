@@ -35,6 +35,10 @@ const SHELL_HANDOFF_TITLE: &str = "skiff:shell-handoff";
 /// Output is coalesced into at most one chunk per frame.
 pub const FRAME: Duration = Duration::from_millis(16);
 
+/// A chunk goes out once it holds this much, before the frame ends. A client
+/// parses a chunk in one go, so a large one stalls it.
+const MAX_CHUNK: usize = 64 * 1024;
+
 /// Output this soon after input or a resize answers it: an echo or a
 /// redraw. It skips coalescing and does not mark the session working.
 const ECHO_MS: u64 = 250;
@@ -149,22 +153,25 @@ impl Session {
         st.pending.extend_from_slice(chunk);
         // A chunk after a quiet frame goes out now, and so does the answer
         // to a keystroke, even while the program streams output.
-        if self.echoing() || st.last_flush.elapsed() >= FRAME {
+        if self.echoing() || st.last_flush.elapsed() >= FRAME || st.pending.len() >= MAX_CHUNK {
             st.flush(&self.output);
         }
         (signals, scan)
     }
 
+    /// Skips a screen that is locked, so one busy session cannot hold up the
+    /// flusher for the rest. The reader flushes it, or the next tick does.
     fn flush_output(&self) {
-        let mut st = self.screen.lock().unwrap();
+        let Ok(mut st) = self.screen.try_lock() else { return };
         if !st.pending.is_empty() {
             st.flush(&self.output);
         }
     }
 
-    /// Scans output that came after the last scan, so the end of a burst counts.
+    /// Scans output that came after the last scan, so the end of a burst
+    /// counts. A locked screen waits for the next tick.
     fn scan_due(&self) -> Scan {
-        let mut st = self.screen.lock().unwrap();
+        let Ok(mut st) = self.screen.try_lock() else { return Scan::default() };
         if st.unscanned && st.last_scan.elapsed() >= SCAN {
             st.scan()
         } else {
