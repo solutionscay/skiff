@@ -1,3 +1,4 @@
+import { rgb } from "./colors";
 import { h } from "./dom";
 import { dialogActions, dialogFrame } from "./dialogParts";
 
@@ -6,8 +7,7 @@ import { dialogActions, dialogFrame } from "./dialogParts";
 type Hsv = [number, number, number];
 
 function toHsv(hex: string): Hsv {
-  const n = parseInt(hex.replace("#", ""), 16);
-  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => v / 255);
+  const [r, g, b] = rgb(hex).map((v) => v / 255);
   const max = Math.max(r, g, b);
   const d = max - Math.min(r, g, b);
   let h = 0;

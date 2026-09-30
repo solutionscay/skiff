@@ -1,3 +1,5 @@
+import { open, reveal, copy } from "./fileActions";
+import { sectionHeader } from "./sectionHeader";
 /**
  * The Changes section under each worktree, and the +/- counts on its row.
  * It lists what git reports as changed against HEAD and hands files to
@@ -5,8 +7,8 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import type { Project, Worktree } from "./types";
-import { button, h } from "./dom";
-import { chevron, icon } from "./icons";
+import { h } from "./dom";
+import { icon } from "./icons";
 import { showError } from "./alerts";
 import type { MenuEntry } from "./menu";
 import { ctxMenu } from "./contextMenu";
@@ -92,9 +94,6 @@ export function changeCounts(w: Worktree): HTMLElement | null {
 export const hasChanges = (w: Worktree) => !!lists.get(w.path)?.length;
 
 const join = (wt: string, rel: string) => `${wt}/${rel}`;
-const open = (path: string) => void invoke("open_file", { path }).catch(showError);
-const reveal = (path: string) => void invoke("reveal_file", { path }).catch(showError);
-const copy = (path: string) => void navigator.clipboard.writeText(path).catch(showError);
 
 function toggle(wt: string) {
   if (shown.has(wt)) shown.delete(wt);
@@ -111,14 +110,9 @@ export function changesBlock(w: Worktree): HTMLElement | null {
   if (!list?.length) return null;
   const isOpen = shown.has(w.path);
   const block = h("div", "files-block changes-block");
-  const head = button("wt-count files-head", "", () => toggle(w.path));
-  head.dataset.key = `changes:${w.path}`;
-  head.setAttribute("aria-expanded", String(isOpen));
-  const tgl = h("span", "files-toggle");
-  tgl.appendChild(chevron(isOpen));
   const glyph = icon('<path d="M12 3v12"></path><path d="M6 9h12"></path><path d="M6 21h12"></path>');
-  glyph.classList.add("files-icon");
-  head.append(tgl, glyph, h("span", "", "Changes"), h("span", "changes-n", String(list.length)));
+  const head = sectionHeader(`changes:${w.path}`, "Changes", isOpen, glyph, () => toggle(w.path));
+  head.appendChild(h("span", "changes-n", String(list.length)));
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     e.stopPropagation();

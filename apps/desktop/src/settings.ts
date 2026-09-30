@@ -1,3 +1,4 @@
+import { HARBOR } from "./colors";
 import { escapeButton } from "./dialogParts";
 import { PANE_OPACITY_MIN, paneOpacity, setPaneOpacity } from "./backdrop";
 import { h } from "./dom";
@@ -17,8 +18,6 @@ export interface AppearanceHooks {
   load: () => Promise<void>;
   set: (id: string | null) => void;
 }
-
-const HARBOR = "builtin:harbor";
 
 export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () => void, look: AppearanceHooks) {
   const root = h("div");

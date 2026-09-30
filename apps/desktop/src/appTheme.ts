@@ -1,11 +1,6 @@
+import { rgb, type Rgb } from "./colors";
 import type { TerminalTheme } from "./types";
 
-type Rgb = [number, number, number];
-
-const rgb = (hex: string): Rgb => {
-  const n = parseInt(hex.replace("#", "").slice(0, 6), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-};
 const toHex = (c: Rgb) => "#" + c.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, "0")).join("");
 /** `a` moved `t` of the way to `b`. */
 const mix = (a: string, b: string, t: number) => {

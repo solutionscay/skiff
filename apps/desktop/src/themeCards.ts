@@ -1,11 +1,8 @@
+import { rgb } from "./colors";
 import { dialogFrame, dialogHeader } from "./dialogParts";
 import { h } from "./dom";
 import type { TerminalTheme } from "./types";
 
-const rgb = (hex: string) => {
-  const n = parseInt(hex.replace("#", "").slice(0, 6), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-};
 const mix = (a: string, b: string, t: number) => {
   const x = rgb(a);
   const y = rgb(b);

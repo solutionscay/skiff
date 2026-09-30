@@ -1,3 +1,5 @@
+import { open, reveal, copy } from "./fileActions";
+import { sectionHeader } from "./sectionHeader";
 /**
  * The Files section under each worktree, for projects with `files = true`.
  * It lists folders and opens files with their Open with command or default app. No edits, no
@@ -5,7 +7,7 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import type { Project, Worktree } from "./types";
-import { button, h } from "./dom";
+import { h } from "./dom";
 import { chevron, icon } from "./icons";
 import { showError } from "./alerts";
 import { ctxMenu } from "./contextMenu";
@@ -76,21 +78,11 @@ function toggle(dir: string, set: Set<string>) {
   render();
 }
 
-const open = (path: string) => void invoke("open_file", { path }).catch(showError);
-const reveal = (path: string) => void invoke("reveal_file", { path }).catch(showError);
-const copy = (path: string) => void navigator.clipboard.writeText(path).catch(showError);
-
 export function filesBlock(w: Worktree): HTMLElement {
   const isOpen = shown.has(w.path);
   const block = h("div", "files-block");
-  const head = button("wt-count files-head", "", () => toggle(w.path, shown));
-  head.dataset.key = `files:${w.path}`;
-  head.setAttribute("aria-expanded", String(isOpen));
-  const tgl = h("span", "files-toggle");
-  tgl.appendChild(chevron(isOpen));
   const glyph = icon('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path>');
-  glyph.classList.add("files-icon");
-  head.append(tgl, glyph, h("span", "", "Files"));
+  const head = sectionHeader(`files:${w.path}`, "Files", isOpen, glyph, () => toggle(w.path, shown));
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     e.stopPropagation();

@@ -1,3 +1,4 @@
+import { HARBOR, rgb } from "./colors";
 /** Terminal and app themes. */
 import { applyAppTheme } from "./appTheme";
 import { sessionsOf } from "./layout";
@@ -11,8 +12,6 @@ import { render } from "./renderRequest";
 import { S, sessions } from "./state";
 import { currentProject, place } from "./stateQueries";
 import { panes } from "./terminalState";
-
-const DEFAULT_THEME = "builtin:harbor";
 
 /** Foot themes became built-ins; old `foot:x` choices mean `builtin:x`. */
 const canonTheme = (id: string | null) => (id ? id.replace(/^foot:/, "builtin:") : id);
@@ -38,7 +37,7 @@ export const projectTheme = (p: Project) => projectThemes.get(p.name) ?? null;
 
 /** A project's theme, else the app theme; Harbor if neither is set. */
 function themeFor(p: Project | null | undefined): string {
-  return (p && projectThemes.get(p.name)) || (canonTheme(S.appTheme) ?? DEFAULT_THEME);
+  return (p && projectThemes.get(p.name)) || (canonTheme(S.appTheme) ?? HARBOR);
 }
 
 /** A terminal's theme: its own, else its project's, else the app's. */
@@ -53,7 +52,7 @@ export function applyApp() {
   const want = themeFor(currentProject());
   if (want === appliedApp) return;
   appliedApp = want;
-  applyAppTheme(want === DEFAULT_THEME ? null : S.themes.find((t) => t.id === want) ?? null);
+  applyAppTheme(want === HARBOR ? null : S.themes.find((t) => t.id === want) ?? null);
 }
 
 function xtermTheme(t: TerminalTheme) {
@@ -73,7 +72,7 @@ export function applyThemes() {
   for (const [id, pane] of panes) {
     const want = themeIdFor(sessions.get(id));
     if (pane.theme === want) continue;
-    const t = S.themes.find((x) => x.id === want) ?? S.themes.find((x) => x.id === DEFAULT_THEME);
+    const t = S.themes.find((x) => x.id === want) ?? S.themes.find((x) => x.id === HARBOR);
     if (!t) continue;
     pane.theme = want;
     pane.term.options.theme = xtermTheme(t);
@@ -127,8 +126,7 @@ export async function groupThemeMenu(g: Group) {
 }
 
 const chroma = (hex: string) => {
-  const n = parseInt(hex.replace("#", "").slice(0, 6), 16);
-  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  const c = rgb(hex);
   return (Math.max(...c) - Math.min(...c)) / 255;
 };
 
@@ -154,7 +152,7 @@ export function ownTheme(s: SessionInfo): TerminalTheme | null {
 /** Right-click a project, Theme: its chrome and every terminal without its own. */
 export async function projectThemeMenu(p: Project) {
   await loadThemes();
-  const app = S.themes.find((t) => t.id === (canonTheme(S.appTheme) ?? DEFAULT_THEME));
+  const app = S.themes.find((t) => t.id === (canonTheme(S.appTheme) ?? HARBOR));
   pickTheme(`Theme: ${p.name}`, S.themes, {
     active: projectTheme(p),
     none: { label: "Same as app", theme: app },
