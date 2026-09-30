@@ -35,11 +35,16 @@ pub struct Project {
     pub worktrees: Vec<Worktree>,
     /// Why `worktrees` is empty, e.g. the path is missing or not a git repo.
     pub error: Option<String>,
+    /// Out of the rail until it opens again. Its worktrees are not read.
+    #[serde(default)]
+    pub closed: bool,
 }
 
 impl Project {
     pub fn from_config(p: &ProjectConfig) -> Self {
-        let (worktrees, error) = if !p.path.is_dir() {
+        let (worktrees, error) = if p.closed {
+            (Vec::new(), None)
+        } else if !p.path.is_dir() {
             (Vec::new(), Some(format!("{} does not exist", p.path.display())))
         } else {
             match git::list_worktrees(&p.path) {
@@ -57,6 +62,7 @@ impl Project {
             background: background_file(&p.path, p.background.as_deref()),
             worktrees,
             error,
+            closed: p.closed,
         }
     }
 }

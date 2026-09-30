@@ -160,7 +160,10 @@ export const S = {
   /** The session whose title is an input for renaming. */
   renamingSession: null as string | null,
 
+  /** Open projects, in rail order. */
   projects: [] as Project[],
+  /** Closed projects: kept with their settings, out of the rail. */
+  closedProjects: [] as Project[],
   projectsError: null as string | null,
   selectedProject: null as string | null,
   /** Known agents with installed and enabled state, from list_agents. */

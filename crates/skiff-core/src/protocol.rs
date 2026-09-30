@@ -133,6 +133,10 @@ pub enum Request {
     SetProjectColor { project: String, color: String },
     /// Puts the projects in this order in `projects.toml`. Names not listed keep their place after.
     ReorderProjects { order: Vec<String> },
+    /// Closes the project, or opens it again. Its settings stay in `projects.toml`.
+    SetProjectClosed { project: String, closed: bool },
+    /// Drops the project and its settings from `projects.toml`. The folder stays.
+    RemoveProject { project: String },
     /// What `add_project` would do for `path`. Writes nothing.
     InspectFolder {
         path: PathBuf,

@@ -51,6 +51,9 @@ export function saveGroup(g: Group) {
     });
     if (saved.id !== g.id) {
       if (S.activeGroup === g.id) S.activeGroup = saved.id;
+      if (S.groupPicked === g.id) S.groupPicked = saved.id;
+      // The row's highlight follows the group to its saved id.
+      if (S.roveKey === g.id) S.roveKey = saved.id;
       if (S.renaming?.id === g.id) S.renaming.id = saved.id;
       g.id = saved.id;
       render();

@@ -123,6 +123,8 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
             | Request::SetProjectBackground { .. }
             | Request::SetProjectColor { .. }
             | Request::ReorderProjects { .. }
+            | Request::SetProjectClosed { .. }
+            | Request::RemoveProject { .. }
             | Request::SetProjectIcon { .. }
             | Request::InspectFolder { .. }
             | Request::ListAgents
@@ -325,6 +327,24 @@ async fn answer_slow(pool: Arc<SessionPool>, request: Request) -> Response {
         }
         Request::ReorderProjects { order } => {
             match blocking(move || skiff_core::config::reorder_projects(&order)).await {
+                Ok(()) => {
+                    let _ = pool.events.send(Event::ProjectsChanged {});
+                    Response::Ok
+                }
+                Err(e) => error(e),
+            }
+        }
+        Request::SetProjectClosed { project, closed } => {
+            match blocking(move || skiff_core::config::set_project_closed(&project, closed)).await {
+                Ok(()) => {
+                    let _ = pool.events.send(Event::ProjectsChanged {});
+                    Response::Ok
+                }
+                Err(e) => error(e),
+            }
+        }
+        Request::RemoveProject { project } => {
+            match blocking(move || skiff_core::config::remove_project(&project)).await {
                 Ok(()) => {
                     let _ = pool.events.send(Event::ProjectsChanged {});
                     Response::Ok

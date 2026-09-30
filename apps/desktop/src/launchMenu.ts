@@ -59,7 +59,10 @@ export function createLaunchMenu(o: Opts) {
 
   /** `at` is the + button it hangs off, or the point of a right-click. */
   function open(at: HTMLElement | { x: number; y: number }, p: Project, w: Worktree) {
-    const el = at instanceof HTMLElement ? at : null;
+    // A render may have replaced the + a menu held on to: hang off the one on screen.
+    const el = at instanceof HTMLElement
+      ? at.isConnected ? at : document.querySelector<HTMLElement>(`#sidebar-scroll .wt-plus[data-wt="${CSS.escape(w.path)}"]`)
+      : null;
     if (el && !menu.hidden && anchor === el) return close();
     close(false);
     menuOpened();

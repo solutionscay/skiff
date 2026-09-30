@@ -400,6 +400,14 @@ impl Client {
         self.expect_ok(Request::SetProjectColor { project, color }).await
     }
 
+    pub async fn set_project_closed(&self, project: String, closed: bool) -> Result<()> {
+        self.expect_ok(Request::SetProjectClosed { project, closed }).await
+    }
+
+    pub async fn remove_project(&self, project: String) -> Result<()> {
+        self.expect_ok(Request::RemoveProject { project }).await
+    }
+
     pub async fn inspect_folder(&self, path: PathBuf) -> Result<FolderInfo> {
         match self.request(Request::InspectFolder { path }).await? {
             Response::Folder { folder } => Ok(folder),

@@ -50,6 +50,8 @@ export interface Project {
   worktrees: Worktree[];
   /** Path missing, not a git repo, and so on. `worktrees` is empty then. */
   error: string | null;
+  /** Out of the rail until it opens again. Its worktrees are not read. Absent from an older daemon. */
+  closed?: boolean;
 }
 
 export type DaemonEvent =

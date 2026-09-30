@@ -623,6 +623,18 @@ async fn set_project_color(
 }
 
 #[tauri::command]
+async fn set_project_closed(app: State<'_, App>, project: String, closed: bool) -> Result<(), String> {
+    let (c, _) = ensure_client(&app).await?;
+    c.set_project_closed(project, closed).await.map_err(err)
+}
+
+#[tauri::command]
+async fn remove_project(app: State<'_, App>, project: String) -> Result<(), String> {
+    let (c, _) = ensure_client(&app).await?;
+    c.remove_project(project).await.map_err(err)
+}
+
+#[tauri::command]
 async fn inspect_folder(app: State<'_, App>, path: PathBuf) -> Result<FolderInfo, String> {
     let (c, _) = ensure_client(&app).await?;
     // An outdated daemon does not know this request. Say so at once.
@@ -923,6 +935,8 @@ pub fn run() {
             inspect_folder,
             set_project_icon,
             set_project_color,
+            set_project_closed,
+            remove_project,
             set_project_background,
             read_image,
             list_dir,

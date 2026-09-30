@@ -20,23 +20,65 @@ export function setDaemon(status: DaemonStatus) {
     ? `skiffd ${status.version ?? ""}${status.spawned ? " (started)" : ""}`
     : "skiffd unreachable";
   $("socket").textContent = status.socket;
-  document.getElementById("daemon-alert")?.remove();
-  if (status.warning) {
-    const alert = h("div", "");
-    alert.id = "daemon-alert";
-    alert.setAttribute("role", "alert");
-    const restart = button("alert-btn", "Restart skiffd", async () => {
-      restart.disabled = true;
-      restart.textContent = "Restarting…";
-      try {
-        await invoke("restart_daemon");
-      } finally {
-        location.reload();
-      }
-    });
-    alert.append(h("span", "alert-text", status.warning), restart);
-    $("body").before(alert);
+  daemonBadge(status.warning);
+}
+
+/**
+ * An outdated daemon: a cell in the top bar, beside Settings. It opens a
+ * panel that says what a restart costs, so the restart stays the user's call.
+ */
+function daemonBadge(warning: string | null) {
+  document.getElementById("daemon-badge")?.remove();
+  document.getElementById("daemon-pop")?.remove();
+  if (!warning) return;
+  const badge = button("tb-cell daemon-badge", "", () => (pop.isConnected ? close() : open()));
+  badge.id = "daemon-badge";
+  badge.append(h("span", "dot waiting"), "skiffd outdated");
+  badge.setAttribute("aria-haspopup", "dialog");
+  $("open-settings").before(badge);
+
+  const pop = h("div", "");
+  pop.id = "daemon-pop";
+  pop.setAttribute("role", "dialog");
+  pop.setAttribute("aria-label", "skiffd is outdated");
+  const restart = button("confirm-act", "Restart skiffd", async () => {
+    restart.disabled = true;
+    restart.textContent = "Restarting…";
+    try {
+      await invoke("restart_daemon");
+    } finally {
+      location.reload();
+    }
+  });
+  const later = button("confirm-cancel", "Not now", () => close());
+  const foot = h("div", "confirm-foot");
+  foot.append(later, restart);
+  pop.append(h("div", "confirm-title", "skiffd is older than this app"), h("div", "confirm-body", warning), foot);
+
+  const outside = (e: MouseEvent) => {
+    if (!pop.contains(e.target as Node) && !badge.contains(e.target as Node)) close();
+  };
+  function open() {
+    const r = badge.getBoundingClientRect();
+    pop.style.top = `${r.bottom + 4}px`;
+    pop.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
+    document.body.appendChild(pop);
+    badge.setAttribute("aria-expanded", "true");
+    window.addEventListener("mousedown", outside, true);
+    later.focus();
   }
+  function close() {
+    pop.remove();
+    badge.setAttribute("aria-expanded", "false");
+    window.removeEventListener("mousedown", outside, true);
+  }
+  pop.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+    badge.focus();
+  });
 }
 
 /** A new session is the single view, unless it came from a pane's Split menu. */
@@ -86,7 +128,10 @@ export async function loadProjects() {
   }
   // A later call started while this one waited: its answer is newer.
   if (seq !== projectsSeq) return;
-  if (list) S.projects = list;
+  if (list) {
+    S.projects = list.filter((p) => !p.closed);
+    S.closedProjects = list.filter((p) => p.closed);
+  }
   S.projectsError = err;
   if (S.selectedProject !== OTHER && !S.projects.some((p) => p.name === S.selectedProject)) {
     const f = S.focused ? sessions.get(S.focused) : undefined;

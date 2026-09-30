@@ -453,6 +453,17 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 #daemon-alert .alert-btn, #error-alert .alert-btn { align-self: stretch; flex-shrink: 0; width: calc(144 * var(--u)); padding: 0; border: 0; border-left: 1px solid var(--error-rule); background: transparent; color: var(--error-text); font-size: calc(12px * var(--zoom, 1)); font-weight: 600; }
 #daemon-alert .alert-btn:hover, #error-alert .alert-btn:hover { background: var(--error-bg-hover); }
 
+/* An outdated skiffd: a top-bar cell, and the panel it opens. */
+#topbar .daemon-badge {
+  gap: calc(8 * var(--u)); border: 0; border-left: 1px solid var(--rule); border-right: 0;
+  background: transparent; color: var(--state-waiting-text); font-size: calc(12px * var(--zoom, 1)); font-weight: 500;
+}
+#topbar .daemon-badge:hover, #topbar .daemon-badge[aria-expanded="true"] { background: var(--state-waiting-bg); }
+#daemon-pop {
+  position: fixed; z-index: 50; width: calc(360 * var(--u));
+  background: var(--bg-panel); border: 1px solid var(--rule-strong); box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+}
+
 /* Add project dialog. --pc is the chosen color. */
 #add-project {
   position: fixed; inset: 0; z-index: 20;
@@ -523,6 +534,10 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .wt-plus { width: var(--row); height: var(--row); flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--text-2); }
 .wt-plus:hover, .wt-plus[aria-expanded="true"] { background: var(--bg-raised); color: var(--text); }
 /* A worktree's + shows on its row's hover, on the current row, or while its menu is open. */
+/* The worktree is current: the whole band lights, its counts and + included, as the project row does. */
+#sidebar-scroll .wt-row:has(> .wt-pick.current) { background: linear-gradient(to right, transparent 0 3px, color-mix(in srgb, var(--pc) 22%, transparent) 3px); box-shadow: inset 2px 0 0 var(--pc); }
+#sidebar-scroll .wt-pick.current, body.kbd #sidebar-scroll .wt-pick.current:focus { background: transparent; box-shadow: none; }
+body.kbd #sidebar-scroll .wt-row:has(> .wt-pick.current:focus) { box-shadow: inset 2px 0 0 var(--pc), inset 0 1px 0 var(--pc), inset 0 -1px 0 var(--pc); }
 .wt-row .wt-plus { visibility: hidden; }
 .wt-row:hover .wt-plus, .wt-row:has(.current) .wt-plus, .wt-row .wt-plus[aria-expanded="true"] { visibility: visible; }
 
@@ -574,6 +589,8 @@ body.kbd .lm-item:focus, body.kbd .slot-item:focus { outline: 0; }
 .set-tab.active { background: var(--bg-raised); box-shadow: inset 3px 0 0 var(--state-working); }
 .set-x { position: absolute; top: 0; right: 0; height: calc(80 * var(--u)); display: flex; align-items: center; padding: 0 calc(24 * var(--u)); border: 0; background: transparent; }
 .set-x:hover kbd { border-color: var(--text-3); color: var(--text); }
+.tc-x { align-self: stretch; display: flex; align-items: center; margin-right: -20px; padding: 0 20px; border: 0; background: transparent; }
+.tc-x:hover kbd { border-color: var(--text-3); color: var(--text); }
 .set-main { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; }
 .set-head { height: calc(80 * var(--u)); flex-shrink: 0; display: flex; flex-direction: column; justify-content: center; gap: calc(4 * var(--u)); padding: 0 calc(24 * var(--u)); border-bottom: 1px solid var(--rule); }
 .set-h { font-size: calc(18px * var(--zoom, 1)); font-weight: 700; }
@@ -703,6 +720,10 @@ body.dragging-session.drop-refused, body.dragging-session.drop-refused * { curso
 .project-row .project-name { font-size: calc(15px * var(--zoom, 1)); font-weight: 700; color: var(--pc); }
 .project-row .project-name.dim { color: var(--text-3); }
 .project-meta { flex-shrink: 0; font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
+/* The project row is current: the whole row lights, ⋯ included, not just the name. */
+#sidebar-scroll .project-row:has(> .project-pick.current) { background: color-mix(in srgb, var(--pc) 22%, var(--bg-panel)); }
+#sidebar-scroll .project-pick.current, body.kbd #sidebar-scroll .project-pick.current:focus { background: transparent; box-shadow: none; }
+body.kbd #sidebar-scroll .project-row:has(> .project-pick.current:focus) { box-shadow: inset 3px 0 0 var(--pc), inset 0 1px 0 var(--pc), inset 0 -1px 0 var(--pc); }
 
 /* Add project: icon row. None/Detect is 96px, Browse lines up with the folder's Browse. */
 .ap-icon-cur { flex-grow: 1; min-width: 0; display: flex; align-items: center; gap: calc(10 * var(--u)); padding: 0 calc(12 * var(--u)); border-left: 1px solid var(--rule); background: var(--bg-deep); }

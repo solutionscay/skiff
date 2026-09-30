@@ -5,6 +5,7 @@ import { $, host } from "./dom";
 import { ctxMenu, deleteKeyMenu } from "./menus";
 import { render } from "./render";
 import { launchMenu } from "./panels";
+import { closeEntries } from "./projectClose";
 import { renameListItem } from "./rename";
 import { clearSelection, extendSelection, keepRow, splitSelection } from "./selection";
 import { collapsed, panes, S } from "./state";
@@ -47,7 +48,7 @@ window.addEventListener("mousedown", () => document.body.classList.remove("kbd")
 export const itemKey = (el: HTMLElement) => el.dataset.session ?? el.dataset.wt ?? el.dataset.group ?? el.dataset.key ?? "";
 
 export function listItems(): HTMLElement[] {
-  return [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-pick, #sidebar-scroll .group-pick, #sidebar-scroll button.session-row, #sidebar-scroll .files-head, #sidebar-scroll .file-row")];
+  return [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .project-pick, #sidebar-scroll .wt-pick, #sidebar-scroll .group-pick, #sidebar-scroll button.session-row, #sidebar-scroll .files-head, #sidebar-scroll .file-row")];
 }
 
 /** Where we are in the list: the last-roved row, else the picked group, else the
@@ -124,24 +125,6 @@ function focusEl(el: HTMLElement | null): boolean {
   if (!el) return false;
   el.focus();
   return document.activeElement === el;
-}
-
-/**
- * Up/Down browses the list without switching the terminal view. Pause on a
- * row and it opens on its own; move again inside the pause and nothing
- * happens, so scanning past several rows does not flicker the view.
- */
-const REVEAL_DELAY_MS = 150;
-let revealTimer: ReturnType<typeof setTimeout> | undefined;
-
-function cancelReveal() {
-  clearTimeout(revealTimer);
-  revealTimer = undefined;
-}
-
-function scheduleReveal(el: HTMLElement) {
-  cancelReveal();
-  revealTimer = setTimeout(() => openRow(el), REVEAL_DELAY_MS);
 }
 
 /** Shows a session or picks a group. The row keeps the keys, as a click does. */
@@ -239,20 +222,23 @@ document.addEventListener("focusin", (e) => {
 });
 
 /** A Changes or Files header, or a row under one. Not a session, group or worktree. */
-const isSection = (el: HTMLElement) => !!el.dataset.key && !el.dataset.session && !el.dataset.wt && !el.dataset.group;
+const isSection = (el: HTMLElement) => !!el.dataset.key && !el.dataset.session && !el.dataset.wt && !el.dataset.group && !el.classList.contains("project-pick");
 
 /** Arrows inside the rail and the session list; Enter, Left/Right, Menu key. */
 $("rail").addEventListener("keydown", (e) => {
-  if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-  const chips = [...document.querySelectorAll<HTMLElement>("#rail .rail-chip")];
-  const i = chips.indexOf(document.activeElement as HTMLElement);
-  const next = chips[(i + (e.key === "ArrowDown" ? 1 : -1) + chips.length) % chips.length];
-  if (next) {
+  const chip = document.activeElement as HTMLElement | null;
+  if ((e.key === "Delete" || e.key === "Backspace") && !e.ctrlKey && !e.altKey && !e.metaKey && chip?.dataset.project) {
+    const p = S.projects.find((x) => x.name === chip.dataset.project);
+    if (!p) return;
     e.preventDefault();
-    chips.forEach((c) => (c.tabIndex = -1));
-    next.tabIndex = 0;
-    next.focus();
+    // Show focus rings, so the first item reads as the one picked.
+    document.body.classList.add("kbd");
+    const r = chip.getBoundingClientRect();
+    ctxMenu.open(r.right, r.top, p.name, closeEntries(p));
+    return;
   }
+  // Projects move with Ctrl+Shift+Up/Down only. Plain arrows do nothing here.
+  if (e.key === "ArrowUp" || e.key === "ArrowDown") e.preventDefault();
 });
 
 $("sidebar-scroll").addEventListener("keydown", (e) => {
@@ -261,17 +247,7 @@ $("sidebar-scroll").addEventListener("keydown", (e) => {
   const items = listItems();
   const i = items.indexOf(el);
   if (i < 0) return;
-  const go = (j: number) => {
-    const t = items[(j + items.length) % items.length];
-    items.forEach((x) => (x.tabIndex = -1));
-    t.tabIndex = 0;
-    S.roveKey = itemKey(t);
-    markCurrent();
-    t.focus();
-    scheduleReveal(t);
-  };
   const wt = el.dataset.wt;
-  cancelReveal();
   if (e.shiftKey && (e.key === "ArrowDown" || e.key === "ArrowUp") && el.dataset.session) extendSelection(e.key === "ArrowDown" ? 1 : -1, el);
   else if (e.key === "Enter" && S.selection.length >= 2) splitSelection();
   else if (e.key === "Escape" && S.selection.length) {
@@ -279,17 +255,32 @@ $("sidebar-scroll").addEventListener("keydown", (e) => {
     clearSelection();
     render();
     keepRow(key);
+  } else if (el.classList.contains("project-pick") && (e.key === "Enter" || e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+    // The project row, as a worktree row one level up: Enter or Space opens or
+    // closes all its worktrees, Right opens them, Left closes them. Its menu is
+    // the menu key or Ctrl+Shift+M, as on every row.
+    const p = S.projects.find((x) => `project:${x.name}` === el.dataset.key);
+    if (p) {
+      const paths = p.worktrees.map((w) => w.path);
+      const close = e.key === "ArrowLeft" || ((e.key === "Enter" || e.key === " ") && paths.some((w) => !collapsed.has(w)));
+      for (const w of paths) close ? collapsed.add(w) : collapsed.delete(w);
+      render();
+      roveTarget()?.focus();
+    }
+  } else if (el.classList.contains("project-pick") && (e.key === "Delete" || e.key === "Backspace") && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    const p = S.projects.find((x) => `project:${x.name}` === el.dataset.key);
+    const r = el.getBoundingClientRect();
+    if (p) ctxMenu.open(r.left + 24, r.bottom, p.name, closeEntries(p));
   } else if (isSection(el) && (e.key === "Enter" || e.key === " ")) {
     // A Changes or Files header or a folder: Enter opens or closes it.
     el.click();
   } else if (isSection(el) && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
     // Right opens, Left closes. On a file row they do nothing.
     if (el.getAttribute("aria-expanded") === String(e.key === "ArrowLeft")) el.click();
-  } else if (e.key === "ArrowDown") go(i + 1);
-  else if (e.key === "ArrowUp") go(i - 1);
-  else if (e.key === "Home") go(0);
-  else if (e.key === "End") go(items.length - 1);
-  else if ((e.key === "Enter" || e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight") && wt) {
+  } else if (!el.dataset.session && ["ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) {
+    // Rows move with Ctrl+Shift+Up/Down only. On a session row these keys go
+    // to its terminal below; elsewhere they do nothing, not even scroll.
+  } else if ((e.key === "Enter" || e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight") && wt) {
     // A worktree: Enter or Space opens or closes it, Right opens, Left closes.
     // Its + (start a session) is Ctrl+Shift+T, or New session in its menu.
     const close = e.key === "ArrowLeft" || ((e.key === "Enter" || e.key === " ") && !collapsed.has(wt));
@@ -307,7 +298,7 @@ $("sidebar-scroll").addEventListener("keydown", (e) => {
     deleteKeyMenu(el);
   } else if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
     const r = el.getBoundingClientRect();
-    el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: r.left + 24, clientY: r.bottom }));
+    el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 24, clientY: r.bottom }));
   } else if (!(el.dataset.session && passToTerminal(e, el.dataset.session))) return;
   e.preventDefault();
   e.stopPropagation();
@@ -317,11 +308,15 @@ $("sidebar-scroll").addEventListener("keydown", (e) => {
  * A clicked session keeps the keys on its row. A key the list does not use
  * moves them to the open terminal, and the terminal gets that key too.
  */
+const ARROWS: Record<string, string> = { ArrowUp: "A", ArrowDown: "B", ArrowRight: "C", ArrowLeft: "D" };
+
 function passToTerminal(e: KeyboardEvent, id: string): boolean {
   const term = S.focused === id ? panes.get(id)?.term : undefined;
   if (!term || e.altKey || e.metaKey) return false;
   let data = "";
-  if (e.key === "Enter") data = "\r";
+  const arrow = ARROWS[e.key];
+  if (arrow && !e.ctrlKey && !e.shiftKey) data = (term.modes.applicationCursorKeysMode ? "\x1bO" : "\x1b[") + arrow;
+  else if (e.key === "Enter") data = "\r";
   else if (e.key.length === 1 && !e.ctrlKey) data = e.key;
   else if (e.ctrlKey && /^[a-z]$/i.test(e.key)) data = String.fromCharCode(e.key.toUpperCase().charCodeAt(0) - 64);
   else if (e.key !== "Escape") return false;
@@ -348,6 +343,3 @@ $("sidebar-scroll").addEventListener("mousedown", (e) => {
   S.roveKey = itemKey(el);
   markCurrent();
 });
-
-// Leaving the list (F6, a click elsewhere) drops any pending reveal.
-$("sidebar-scroll").addEventListener("focusout", () => cancelReveal());

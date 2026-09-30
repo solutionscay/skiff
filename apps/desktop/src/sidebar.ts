@@ -12,6 +12,7 @@ import { filesBlock, showsFiles } from "./files";
 import { $, branchIcon, button, chevron, h, host, icon, plusIcon, projectIcon, showError } from "./dom";
 import { groupMenu, newWorktree, projectMenu, rowMenu, worktreeMenu } from "./menus";
 import { addProject, launchMenu } from "./panels";
+import { openClosedProject } from "./projectClose";
 import { leaveRename, renameGroup, renameRow, startRename, startSessionRename } from "./rename";
 import { render } from "./render";
 import { clearSelection, keepRow, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
@@ -44,6 +45,7 @@ export function renderRail() {
       projectMenu(p, e.clientX, e.clientY);
     });
     b.addEventListener("mousedown", (e) => dragProject(e, item, i));
+    b.dataset.project = p.name;
     b.style.setProperty("--pc", accent(p));
     b.title = i < 9 ? `${p.name} (${navigator.userAgent.includes("Macintosh") ? "⌘" : "Ctrl"}+Shift+${i + 1})` : p.name;
     b.setAttribute("aria-label", p.name + (waiting ? `, ${waiting} waiting` : ""));
@@ -240,8 +242,9 @@ export function renderSidebar() {
   const p = currentProject();
   const color = accent(p);
 
-  // One 40px row: the name, and a + for the project menu in the column of
-  // every worktree's +. The rail shows the icon; the path is in the tooltip.
+  // One 40px row: the name, and ⋯ for the project menu in the column of every
+  // worktree's +. The name is the list's first row, so the keys reach the menu.
+  // The rail shows the icon; the path is in the tooltip.
   const head = h("div", "project-row");
   head.style.setProperty("--pc", color);
   const title = h("div", "project-title");
@@ -254,15 +257,23 @@ export function renderSidebar() {
   }
   head.appendChild(title);
   if (p) {
-    const add = button("wt-plus", "", () => {
-      const r = add.getBoundingClientRect();
+    title.classList.add("project-pick");
+    title.dataset.key = `project:${p.name}`;
+    title.tabIndex = -1;
+    title.setAttribute("aria-expanded", String(p.worktrees.some((w) => !collapsed.has(w.path))));
+    const more = button("wt-plus", "", () => {
+      const r = more.getBoundingClientRect();
       projectMenu(p, r.right, r.top);
     });
-    add.title = "New worktree, and more";
-    add.setAttribute("aria-label", `${p.name} actions`);
-    add.setAttribute("aria-haspopup", "menu");
-    add.appendChild(plusIcon());
-    head.appendChild(add);
+    more.title = "Project menu: new worktree, color, close…";
+    more.setAttribute("aria-label", `${p.name} menu`);
+    more.setAttribute("aria-haspopup", "menu");
+    more.appendChild(icon('<circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle>'));
+    head.appendChild(more);
+    head.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      projectMenu(p, e.clientX, e.clientY);
+    });
   }
   side.appendChild(head);
 
@@ -488,14 +499,29 @@ function renderWelcome() {
   const p = currentProject();
   const w = p?.worktrees.find((x) => x.is_main) ?? p?.worktrees[0];
   // Same content: keep the element, and the focus and hover on its buttons.
-  const sig = JSON.stringify([S.projects.length, !!S.projectsError, p?.name, p?.color, w?.path, S.justAdded === p?.name, !!S.focused, shownIds().length, enabledAgents().map((a) => a.id)]);
+  const sig = JSON.stringify([S.projects.length, S.closedProjects.map((x) => x.name), !!S.projectsError, p?.name, p?.color, w?.path, S.justAdded === p?.name, !!S.focused, shownIds().length, enabledAgents().map((a) => a.id)]);
   if (sig === welcomeSig && (!welcomeBox || welcomeBox.isConnected)) return;
   welcomeSig = sig;
   host.querySelector(".empty")?.remove();
   welcomeBox?.remove();
   welcomeBox = null;
   const box = h("div", "welcome");
-  if (S.projects.length === 0 && !S.projectsError) {
+  if (S.projects.length === 0 && S.closedProjects.length && !S.projectsError) {
+    // Every project is closed: open one again, or add another.
+    const actions = h("div", "welcome-actions");
+    for (const c of S.closedProjects) {
+      const b = button("", c.name, () => void openClosedProject(c));
+      b.style.color = accent(c);
+      actions.appendChild(b);
+    }
+    const add = button("", "add project…", () => void addProject.open());
+    actions.appendChild(add);
+    box.append(
+      h("div", "welcome-title", "No open project"),
+      h("div", "welcome-text", "Open a closed project again, with its settings, or add another."),
+      actions,
+    );
+  } else if (S.projects.length === 0 && !S.projectsError) {
     const add = button("welcome-primary", "Add project", () => void addProject.open());
     const hint = h("div", "welcome-hint", "or edit ");
     hint.appendChild(h("span", "mono", "~/.config/skiff/projects.toml"));

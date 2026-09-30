@@ -10,8 +10,9 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { $, h, showError } from "./dom";
 import { currentRow, cycleRegion, fromProject, stepList, stepRail, toProject } from "./keyboard";
 import { copyReport, hasReport, startTrace, stopTrace, tracing } from "./latency";
-import { endEntry, groupCloseEntries, newWorktree, projectMenu, projectRun, splitMenu } from "./menus";
+import { ctxMenu, endEntry, groupCloseEntries, newWorktree, projectMenu, projectRun, splitMenu } from "./menus";
 import { addProject, launchMenu, settings } from "./panels";
+import { closedProjectsMenu, closeProject, openClosedProject, removeProject } from "./projectClose";
 import { renameListItem, startRename, startSessionRename } from "./rename";
 import { scheduleRender } from "./render";
 import { accent, activeGroupObj, currentProject, currentWorktree, FONT_DEFAULT, place, S, sessions, shownIds, splitFull, worktreeSessions } from "./state";
@@ -40,7 +41,10 @@ function commands(): Cmd[] {
     { section: "File", label: "New session…", key: k("new-session"), action: "new-session", run: act("new-session"), off: !currentWorktree() },
     { section: "File", label: "New worktree…", key: k("new-worktree"), action: "new-worktree", run: act("new-worktree"), off: !currentProject() },
     { section: "File", label: "Add project…", key: k("add-project"), action: "add-project", run: act("add-project") },
+    { section: "File", label: "Open closed project…", key: "", run: openClosedMenu, off: !S.closedProjects.length },
     { section: "File", label: "Project menu…", key: "", run: openProjectMenu, off: !currentProject() },
+    { section: "File", label: "Close project", key: "", run: () => withProject(closeProject), off: !currentProject() },
+    { section: "File", label: "Remove project…", key: "", run: () => withProject(removeProject), off: !currentProject() },
     { section: "File", label: "Settings", key: k("settings"), action: "settings", run: act("settings") },
     { section: "File", label: "Quit", key: k("quit"), action: "quit", run: act("quit") },
     { section: "Edit", label: "Copy", key: k("copy"), action: "copy", run: act("copy"), off: !s },
@@ -88,7 +92,7 @@ function commands(): Cmd[] {
 const ISSUES_URL = "https://github.com/solutionscay/skiff/issues/new";
 
 /** Where a group of commands starts a new block in its menu. */
-const BREAK_BEFORE = new Set(["Settings", "Copy", "Rename session", "Command palette", "Add pane right…", "Next waiting", "Bigger text", "Open projects.toml", "About Skiff"]);
+const BREAK_BEFORE = new Set(["Project menu…", "Settings", "Copy", "Rename session", "Command palette", "Add pane right…", "Next waiting", "Bigger text", "Open projects.toml", "About Skiff"]);
 
 let menuRuns = new Map<string, () => void>();
 let menuSent = "";
@@ -127,7 +131,14 @@ function infoDialog(title: string, body: HTMLElement, initialFocus?: HTMLElement
   panel.setAttribute("aria-modal", "true");
   panel.setAttribute("aria-label", title);
   const head = h("div", "tc-head");
-  head.append(h("div", "tc-title", title), h("kbd", "", "Esc"));
+  // Esc in the corner, as in Settings: a click closes too.
+  const x = h("button", "tc-x");
+  x.type = "button";
+  x.title = "Close (Esc)";
+  x.setAttribute("aria-label", "Close");
+  x.appendChild(h("kbd", "", "Esc"));
+  x.addEventListener("click", () => close());
+  head.append(h("div", "tc-title", title), x);
   const scroll = h("div", "info-body");
   scroll.appendChild(body);
   panel.append(head, scroll);
@@ -159,10 +170,10 @@ type Shortcut = [section: string, what: string, key: string];
 /** Keyboard controls that do not come from the configurable action keymap. */
 const FIXED_SHORTCUTS: Shortcut[] = [
   ["Projects", "Select project 1 through 9", `${navigator.userAgent.includes("Macintosh") ? "⌘" : "Ctrl"}+Shift+1…9`],
-  ["Rail", "Move between project icons", "↑ / ↓"],
   ["Rail", "Open the focused project", "Enter / Space"],
-  ["Session list", "Move through rows", "↑ / ↓"],
-  ["Session list", "Move to the first or last row", "Home / End"],
+  ["Rail", "Close or remove the focused project", "Delete / Backspace"],
+  ["Session list", "Open or close all worktrees from the project row", "Enter / Space / ← / →"],
+  ["Session list", "Close or remove the project from the project row", "Delete / Backspace"],
   ["Session list", "Open or close the focused worktree", "Enter / Space"],
   ["Session list", "Open the focused session or group", "Enter"],
   ["Session list", "Collapse or expand the focused worktree, Changes, Files or folder", "← / →"],
@@ -283,6 +294,17 @@ export const switcher = createSwitcher(() => {
     };
   });
   items.push(...found);
+  for (const p of S.closedProjects) {
+    items.push({
+      kind: "command",
+      color: accent(p),
+      primary: `Open project: ${p.name}`,
+      secondary: "closed",
+      meta: "",
+      text: `open closed project ${p.name}`,
+      run: () => void openClosedProject(p),
+    });
+  }
   for (const p of S.projects) {
     for (const w of p.worktrees) {
       items.push({
@@ -300,6 +322,8 @@ export const switcher = createSwitcher(() => {
 }, refocusTerminal);
 
 function openNewSession() {
+  // Its key works from inside a menu, such as the worktree menu that shows it: that menu goes.
+  ctxMenu.close(false);
   // The highlighted row's worktree, as its + would; else the focused one.
   const row = S.atRail ? undefined : currentRow();
   const rowPlus = row?.closest("#sidebar-scroll .wt")?.querySelector<HTMLElement>(".wt-plus");
@@ -375,6 +399,17 @@ export function runAction(a: Action) {
     case "list-back": return fromProject();
     case "shortcuts": return showShortcuts();
   }
+}
+
+const withProject = (f: (p: NonNullable<ReturnType<typeof currentProject>>) => Promise<void>) => {
+  const p = currentProject();
+  if (p) void f(p);
+};
+
+/** The closed projects, at the rail's + button. */
+function openClosedMenu() {
+  const r = document.querySelector<HTMLElement>("#rail .rail-add")?.getBoundingClientRect();
+  closedProjectsMenu(r ? r.right : 80, r ? r.top : 80);
 }
 
 /** The selected project's menu, at its rail icon. */

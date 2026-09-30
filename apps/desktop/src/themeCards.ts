@@ -127,7 +127,14 @@ export function pickTheme(title: string, themes: TerminalTheme[], o: CardOpts): 
   panel.setAttribute("aria-modal", "true");
   panel.setAttribute("aria-label", title);
   const head = el("div", "tc-head");
-  head.append(el("div", "tc-title", title), el("kbd", "", "Esc"));
+  // Esc in the corner, as in Settings: a click closes too.
+  const x = el("button", "tc-x");
+  x.type = "button";
+  x.title = "Close (Esc)";
+  x.setAttribute("aria-label", "Close");
+  x.appendChild(el("kbd", "", "Esc"));
+  x.addEventListener("click", () => close());
+  head.append(el("div", "tc-title", title), x);
   const body = el("div", "tc-body");
   const close = () => {
     overlay.remove();

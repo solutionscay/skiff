@@ -17,6 +17,7 @@ import { hasChanges, setShowChanges, showsChanges } from "./changes";
 import { showDiff } from "./peek";
 import { setShowFiles, showsFiles } from "./files";
 import { deleteGroup } from "./groups";
+import { closeEntries } from "./projectClose";
 import { sessionsOf } from "./layout";
 import { startRename, startSessionRename } from "./rename";
 import { render } from "./render";
@@ -127,7 +128,12 @@ export function projectRun(p: Project) {
 /** The project's + in the sidebar, or a right-click on its rail chip. */
 export function projectMenu(p: Project, x: number, y: number) {
   const run = projectRun(p);
+  // New session goes to the project's selected worktree, else its main one, as Ctrl+Shift+T does.
+  const sel = selectedWorktree.get(p.name);
+  const w = p.worktrees.find((x) => x.path === sel) ?? p.worktrees.find((x) => x.is_main) ?? p.worktrees[0];
+  const plus = w && [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === w.path);
   ctxMenu.open(x, y, p.path, [
+    { icon: "indicators-plus", label: "New session…", hint: keyLabel("new-session"), disabled: !w, run: () => w && launchMenu.open(plus ?? { x, y }, p, w) },
     { icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
     { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: run["project-folder"] },
     { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
@@ -137,6 +143,7 @@ export function projectMenu(p: Project, x: number, y: number) {
     { icon: "playback-image", label: "Background…", sub: backgroundEntries(p) },
     { icon: "code-git-branch", label: showsChanges(p) ? "Hide changes" : "Show changes", hint: keyLabel("project-changes"), run: run["project-changes"] },
     { icon: "documents-folder-open", label: showsFiles(p) ? "Hide files" : "Show files", hint: keyLabel("project-files"), run: run["project-files"] },
+    ...closeEntries(p),
   ]);
 }
 

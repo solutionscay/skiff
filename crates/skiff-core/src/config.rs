@@ -103,6 +103,9 @@ pub struct ProjectConfig {
     pub changes: Option<bool>,
     /// Theme id for this project's chrome and its terminals. Absent: the app theme.
     pub theme: Option<String>,
+    /// Closed: kept with its settings, but out of the rail until it opens again.
+    #[serde(default)]
+    pub closed: bool,
 }
 
 impl ProjectConfig {
@@ -235,10 +238,11 @@ pub fn inspect_folder(dir: &Path) -> FolderInfo {
     info.short = short_name(&info.name);
     info.branch = worktrees.iter().find(|w| w.is_main).and_then(|w| w.branch.clone());
     info.worktrees = worktrees.len();
+    // A closed project opens again: add_project reopens it.
     if let Some(p) = cfg
         .projects
         .iter()
-        .find(|p| crate::project::same_path(&p.path, &root))
+        .find(|p| !p.closed && crate::project::same_path(&p.path, &root))
     {
         info.error = Some(format!("Already added as the project {}.", p.name));
     }
@@ -251,7 +255,8 @@ pub fn inspect_folder(dir: &Path) -> FolderInfo {
 }
 
 /// Appends a `[[project]]` for the git repository that contains `dir`.
-/// Comments and layout in the file are kept.
+/// Comments and layout in the file are kept. A closed project for that
+/// repository opens again with its own settings; the arguments do not apply.
 pub fn add_project(
     dir: &Path,
     name: Option<String>,
@@ -265,11 +270,15 @@ pub fn add_project(
         anyhow::bail!(e);
     }
     let path = info.root.expect("root is set when there is no error");
-    let _edit = edit_lock();
     let cfg = load()?;
     if let Some(p) = cfg.projects.iter().find(|p| crate::project::same_path(&p.path, &path)) {
-        anyhow::bail!("Already added as the project {}.", p.name);
+        if !p.closed {
+            anyhow::bail!("Already added as the project {}.", p.name);
+        }
+        set_project_closed(&p.name, false)?;
+        return Ok(ProjectConfig { closed: false, ..p.clone() });
     }
+    let _edit = edit_lock();
     let name = name
         .map(|n| n.trim().to_string())
         .filter(|n| !n.is_empty())
@@ -337,6 +346,7 @@ pub fn add_project(
         files: false,
         changes: None,
         theme: None,
+        closed: false,
     })
 }
 
@@ -408,6 +418,35 @@ pub fn set_project_theme(project: &str, theme: Option<&str>) -> Result<()> {
 /// Sets `files = true` on the named project, or removes the key.
 pub fn set_project_files(project: &str, on: bool) -> Result<()> {
     set_project_key(project, "files", on.then_some(true))
+}
+
+/// Sets `closed = true` on the named project, or removes the key to open it again.
+pub fn set_project_closed(project: &str, closed: bool) -> Result<()> {
+    set_project_key(project, "closed", closed.then_some(true))
+}
+
+/// Drops the named project's `[[project]]` table and its settings. The
+/// folder stays. Comments and layout around the other tables are kept.
+pub fn remove_project(project: &str) -> Result<()> {
+    let _edit = edit_lock();
+    let file = config_path();
+    let text = std::fs::read_to_string(&file).with_context(|| format!("read {}", file.display()))?;
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .with_context(|| format!("parse {}", file.display()))?;
+    let tables = doc
+        .get_mut("project")
+        .and_then(|i| i.as_array_of_tables_mut())
+        .ok_or_else(|| anyhow::anyhow!("no [[project]] in {}", file.display()))?;
+    let i = tables
+        .iter()
+        .position(|t| t.get("name").and_then(|n| n.as_str()) == Some(project))
+        .ok_or_else(|| anyhow::anyhow!("no such project: {project}"))?;
+    tables.remove(i);
+    if tables.is_empty() {
+        doc.remove("project");
+    }
+    write_atomic(&file, &doc.to_string())
 }
 
 /// Rewrites the `[[project]]` order. Comments on each table move with it.
