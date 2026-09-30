@@ -14,3 +14,10 @@
   position: fixed; z-index: 50; width: calc(360 * var(--u));
   background: var(--bg-panel); border: 1px solid var(--rule-strong); box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
 }
+
+/* The sessions a skiffd restart stops. */
+.restart-list { max-height: calc(280 * var(--u)); overflow-y: auto; border-bottom: 1px solid var(--rule); font-size: calc(12px * var(--zoom, 1)); }
+.restart-place { padding: calc(8 * var(--u)) calc(20 * var(--u)) calc(4 * var(--u)); color: var(--text-3); font-weight: 600; }
+.restart-row { display: flex; align-items: center; gap: calc(8 * var(--u)); padding: calc(4 * var(--u)) calc(20 * var(--u)); color: var(--text-2); }
+.restart-name { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.restart-state { color: var(--text-3); }

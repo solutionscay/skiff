@@ -4,10 +4,10 @@ import { filledOf, isSlot, slot } from "../workspace/layoutSlots";
 import { agentCallsign } from "../appearance/agentNames";
 import { removePane, replacePane, sessionsOf } from "../workspace/layout";
 
-import type { AgentInfo, DaemonEvent, DaemonStatus, DaemonWarning, Project, SessionInfo, SplitDir } from "../platform/types";
+import type { AgentInfo, DaemonEvent, DaemonStatus, Project, SessionInfo, SplitDir } from "../platform/types";
 import { invoke } from "@tauri-apps/api/core";
-import { $, button, h } from "../ui/dom";
-import { showError } from "../ui/alerts";
+import { $ } from "../ui/dom";
+import { daemonBadge, restartIfIdle } from "./daemonRestart";
 import { loadChangesSetting, reloadChanges } from "../workspace/changes";
 import { loadProjectThemes } from "../appearance/themes";
 import { loadFilesSetting } from "../workspace/files";
@@ -28,79 +28,6 @@ export function setDaemon(status: DaemonStatus) {
       : "skiffd unreachable";
   $("socket").textContent = status.socket;
   daemonBadge(status.warning);
-}
-
-/** Badge text and panel title per warning. */
-const WARNINGS: Record<DaemonWarning["kind"], [string, string]> = {
-  outdated: ["Update pending", "Restart skiffd to finish the update"],
-  protocol: ["skiffd incompatible", "skiffd does not match this app"],
-  newer: ["skiffd newer", "skiffd is newer than this app"],
-  hung: ["skiffd not responding", "skiffd is not responding"],
-};
-
-/**
- * A daemon that differs from the app: a cell in the top bar, beside Settings.
- * It opens a panel that says what a restart costs, so the restart stays the
- * user's call. A daemon the app cannot work with opens the panel at once.
- */
-function daemonBadge(warning: DaemonWarning | null) {
-  document.getElementById("daemon-badge")?.remove();
-  document.getElementById("daemon-pop")?.remove();
-  if (!warning) return;
-  const badge = button("tb-cell daemon-badge", "", () => (pop.isConnected ? close() : open()));
-  badge.id = "daemon-badge";
-  const [label, title] = WARNINGS[warning.kind];
-  badge.append(h("span", "dot " + (warning.kind === "newer" ? "idle" : "waiting")), label);
-  badge.setAttribute("aria-haspopup", "dialog");
-  $("open-settings").before(badge);
-
-  const pop = h("div", "");
-  pop.id = "daemon-pop";
-  pop.setAttribute("role", "dialog");
-  pop.setAttribute("aria-label", title);
-  const n = warning.sessions;
-  const restart = button("confirm-act", n ? `Restart skiffd (stops ${n})` : "Restart skiffd", async () => {
-    restart.disabled = true;
-    restart.textContent = "Restarting…";
-    try {
-      await invoke("restart_daemon");
-      location.reload();
-    } catch (e) {
-      restart.disabled = false;
-      restart.textContent = "Restart skiffd";
-      showError(e);
-    }
-  });
-  const later = button("confirm-cancel", "Not now", () => close());
-  const foot = h("div", "confirm-foot");
-  foot.append(later, restart);
-  pop.append(h("div", "confirm-title", title), h("div", "confirm-body", warning.message), foot);
-
-  const outside = (e: MouseEvent) => {
-    if (!pop.contains(e.target as Node) && !badge.contains(e.target as Node)) close();
-  };
-  function open() {
-    const r = badge.getBoundingClientRect();
-    pop.style.top = `${r.bottom + 4}px`;
-    pop.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
-    document.body.appendChild(pop);
-    badge.setAttribute("aria-expanded", "true");
-    window.addEventListener("mousedown", outside, true);
-    later.focus();
-  }
-  function close() {
-    pop.remove();
-    badge.setAttribute("aria-expanded", "false");
-    window.removeEventListener("mousedown", outside, true);
-  }
-  pop.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape") return;
-    e.preventDefault();
-    e.stopPropagation();
-    close();
-    badge.focus();
-  });
-  if (warning.kind === "protocol" || warning.kind === "hung") requestAnimationFrame(open);
 }
 
 /** A new session is the single view, unless it came from a pane's Split menu. */
@@ -215,6 +142,7 @@ export function onEvent(e: DaemonEvent) {
         // An agent that stops working may have written files or added a worktree.
         else reposStale();
       }
+      restartIfIdle();
       break;
     }
     case "exit": {
@@ -238,6 +166,7 @@ export function onEvent(e: DaemonEvent) {
     }
     case "session_removed": {
       dropSession(e.session);
+      restartIfIdle();
       return;
     }
     case "projects_changed":
