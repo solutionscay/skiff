@@ -286,8 +286,7 @@ export function renderLayout() {
       if (p) useWebgl(id, p);
     }
     requestAnimationFrame(() => {
-      // While a pane grows or shrinks (modes.ts), the held fit comes when it stops.
-      if (performance.now() >= heldUntil) fitShown();
+      fitShown();
       for (const id of shown) {
         const p = panes.get(id);
         if (p) p.term.refresh(0, p.term.rows - 1);
@@ -309,7 +308,9 @@ let resizeTimer: number | undefined;
 const resizePending = new Set<string>();
 
 /** Fit every visible terminal now; tell the daemon the new sizes once the drag settles. */
-function fitShown() {
+export function fitShown() {
+  cancelAnimationFrame(fitFrame);
+  fitFrame = 0;
   const shown = [...panes].filter(([, p]) => p.el.parentElement !== park && p.el.isConnected);
   for (const [id, p] of shown) {
     p.fit.fit();
@@ -326,22 +327,9 @@ function fitShown() {
 }
 
 let fitFrame = 0;
-let heldUntil = 0;
-let holdTimer: number | undefined;
-
-/** No fits while the chrome slides (modes.ts): one fit when it stops, not one per frame. */
-export function holdFits(ms: number) {
-  heldUntil = performance.now() + ms;
-  clearTimeout(holdTimer);
-  holdTimer = window.setTimeout(() => {
-    heldUntil = 0;
-    fitShown();
-  }, ms);
-}
-
 /** fitShown once per frame: a window or divider drag fires many resizes. */
 function fitSoon() {
-  if (fitFrame || performance.now() < heldUntil) return;
+  if (fitFrame) return;
   fitFrame = requestAnimationFrame(() => {
     fitFrame = 0;
     fitShown();

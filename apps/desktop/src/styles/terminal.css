@@ -34,7 +34,7 @@
 #terminal-host .park { display: none; }
 #terminal-host .zoom-badge { position: absolute; top: calc(12 * var(--u)); left: 50%; transform: translateX(-50%); z-index: 20; padding: calc(4 * var(--u)) calc(10 * var(--u)); background: var(--bg-raised); border: 1px solid var(--rule-strong); color: var(--text); font-family: var(--mono); font-size: 12px; pointer-events: none; white-space: nowrap; }
 #terminal-host .layout { position: absolute; inset: 0; display: flex; }
-#terminal-host .layout > * { flex: 1 1 0; }
+#terminal-host .layout > * { flex: 1 1 0; min-width: 0; min-height: 0; }
 .split { display: flex; min-width: 0; min-height: 0; }
 .split.row { flex-direction: row; }
 .split.col { flex-direction: column; }
@@ -60,8 +60,9 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 }
 .cell.focused .cell-head { background: color-mix(in srgb, var(--pc) 12%, var(--bg-panel)); }
 .cell { position: relative; }
-/* A pane that grows or shrinks for maximize (modes.ts) moves over the others. */
-.cell.lifted { position: absolute; z-index: 6; }
+/* Terminal dimensions stay fixed while the outer box moves and clips. */
+.mode-lift { position: absolute; z-index: 6; background: var(--bg-deep); pointer-events: none; }
+.mode-ghost { position: absolute; z-index: 4; pointer-events: none; }
 .cell.focused::after { content: ""; position: absolute; inset: 0; border: calc(2 * var(--u)) solid var(--pc); pointer-events: none; z-index: 5; }
 #terminal-host:is(.group-picked, .at-rail) .cell.focused::after { display: none; }
 .cell-head .title { color: var(--text); font-size: calc(16px * var(--zoom, 1)); font-weight: 600; flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }

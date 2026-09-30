@@ -1,9 +1,2 @@
-/* Focus mode and maximize (modes.ts): the chrome slides out and the terminal area fills the window.
-   The terminals fit once, when the slide ends (holdFits). Hidden after the slide, so Tab skips it. */
-#topbar, #rail, #sidebar, #statusbar { transition: margin 200ms cubic-bezier(.2, .7, .2, 1), opacity 160ms ease, visibility 0s; }
-body.focus-mode :is(#topbar, #rail, #sidebar, #statusbar) { opacity: 0; visibility: hidden; transition: margin 200ms cubic-bezier(.2, .7, .2, 1), opacity 160ms ease, visibility 0s 200ms; }
-body.focus-mode #topbar { margin-top: calc(-48 * var(--u)); }
-body.focus-mode #statusbar { margin-bottom: calc(-32 * var(--u)); }
-body.focus-mode #rail { margin-left: calc(-72 * var(--u)); }
-body.focus-mode #sidebar { margin-left: calc(-284 * var(--u)); }
-@media (prefers-reduced-motion: reduce) { #topbar, #rail, #sidebar, #statusbar { transition: none !important; } }
+/* Final layout first. modes.ts slides the chrome with transform and opacity. */
+body.focus-mode :is(#topbar, #rail, #sidebar, #statusbar) { position: fixed; z-index: 8; opacity: 0; visibility: hidden; pointer-events: none; }

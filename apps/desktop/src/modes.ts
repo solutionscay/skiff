@@ -14,7 +14,7 @@ import { currentRow } from "./keyboard";
 import type { Action } from "./keys";
 import { render } from "./render";
 import { S, shownIds } from "./state";
-import { holdFits } from "./terminal";
+import { fitShown } from "./terminal";
 import { focusPane } from "./view";
 
 /** Keys that move in the rail or the tree, which focus mode hides. */
@@ -87,90 +87,97 @@ export function toggleFocusMode() {
 export function toggleMaximize() {
   if (S.maximized) return restore();
   if (!S.focused || !shownIds().includes(S.focused)) return;
-  const id = S.focused;
-  const cell = cellOf(id);
-  const others = [...host.querySelectorAll<HTMLElement>(".cell")].filter((c) => c !== cell);
-  S.maximized = id;
-  if (!cell || !others.length || reduced()) return enter();
-  // The view keeps its panes while the pane grows over them and they fade out.
-  // Then the layout drops them.
-  const from = slotOf(cell);
-  S.growing = true;
-  holdFits(SLIDE_MS + 20);
+  S.maximized = S.focused;
   enter();
-  lift(cell, from, FULL, others.map((c) => fade(c, 1, 0)), () => {
-    S.growing = false;
-    render();
-  });
 }
 
 /** Back from maximize: the pane shrinks into its slot and the other panes fade in. */
 function restore() {
-  const id = S.maximized!;
-  drop();
   S.maximized = null;
-  holdFits(SLIDE_MS + 20);
   focusPane(S.focused!);
-  const cell = cellOf(id);
-  if (!cell || reduced()) return;
-  const others = [...host.querySelectorAll<HTMLElement>(".cell")].filter((c) => c !== cell);
-  if (!others.length) return;
-  lift(cell, FULL, slotOf(cell), others.map((c) => fade(c, 0, 1)));
 }
 
-/** The chrome's slide in styles.css takes this long. */
-const SLIDE_MS = 200;
+const SLIDE_MS = 180;
 const EASE = "cubic-bezier(.2, .7, .2, 1)";
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
-const cellOf = (id: string) => host.querySelector<HTMLElement>(`.cell[data-session="${CSS.escape(id)}"]`);
+const chrome = () => [...document.querySelectorAll<HTMLElement>("#topbar, #rail, #sidebar, #statusbar")];
+const cells = () => [...host.querySelectorAll<HTMLElement>(".layout .cell, .mode-lift > .cell")];
+const motion: { animation: Animation; clean: () => void }[] = [];
 
-/** A place in the terminal area, in percent of it: it holds while the chrome slides. */
-type Box = { left: string; top: string; width: string; height: string };
-const FULL: Box = { left: "0%", top: "0%", width: "100%", height: "100%" };
-
-function slotOf(cell: HTMLElement): Box {
-  const area = host.querySelector<HTMLElement>(".layout")!.getBoundingClientRect();
-  const r = cell.getBoundingClientRect();
-  const pc = (n: number, of: number) => `${(n / of) * 100}%`;
-  return { left: pc(r.left - area.left, area.width), top: pc(r.top - area.top, area.height), width: pc(r.width, area.width), height: pc(r.height, area.height) };
-}
-
-function fade(el: HTMLElement, from: number, to: number): Animation {
-  return el.animate([{ opacity: from }, { opacity: to }], { duration: SLIDE_MS, easing: EASE, fill: "forwards" });
-}
-
-/** The pane out of its slot, over the others, and what it leaves behind. */
-let lifted: { cell: HTMLElement; slot: HTMLElement; anims: Animation[] } | null = null;
-
-/**
- * Moves a pane from one place to another over the other panes. It moves, it does
- * not scale: the header and the text keep their size. An empty box keeps its
- * slot, so the other panes stay where they are.
- */
-function lift(cell: HTMLElement, from: Box, to: Box, fades: Animation[], done?: () => void) {
-  const slot = document.createElement("div");
-  slot.style.flex = cell.style.flex;
-  cell.before(slot);
-  cell.classList.add("lifted");
-  const move = cell.animate([from, to], { duration: SLIDE_MS, easing: EASE, fill: "forwards" });
-  const mine = (lifted = { cell, slot, anims: [move, ...fades] });
-  move.onfinish = () => {
-    if (lifted !== mine) return;
-    // Render first: the pane takes its new place before it lets go of the old one.
-    done?.();
-    drop();
+function animate(el: HTMLElement, frames: Keyframe[], clean = () => {}) {
+  const animation = el.animate(frames, { duration: SLIDE_MS, easing: EASE });
+  const entry = { animation, clean };
+  motion.push(entry);
+  animation.onfinish = () => {
+    const i = motion.indexOf(entry);
+    if (i < 0) return;
+    motion.splice(i, 1);
+    animation.cancel();
+    clean();
   };
 }
 
-/** Ends a lift at once. */
 function drop() {
-  if (!lifted) return;
-  const { cell, slot, anims } = lifted;
-  lifted = null;
-  S.growing = false;
-  for (const a of anims) a.cancel();
-  slot.remove();
-  cell.classList.remove("lifted");
+  for (const { animation, clean } of motion.splice(0)) {
+    animation.cancel();
+    clean();
+  }
+}
+
+// A window resize needs the live layout, rather than a lift with fixed dimensions.
+window.addEventListener("resize", drop);
+
+type ChromeBox = { rect: DOMRect; opacity: string; visible: boolean };
+type Before = {
+  area: DOMRect;
+  panes: Map<string, DOMRect>;
+  chrome: Map<HTMLElement, ChromeBox>;
+  ghosts: { el: HTMLElement; rect: DOMRect }[];
+};
+let before: Before | null = null;
+let wasHidden = false;
+let wasMaximized: string | null = null;
+
+/** A still image preserves the fade after a terminal goes to the park. */
+function snapshot(cell: HTMLElement): HTMLElement {
+  const copy = cell.cloneNode(true) as HTMLElement;
+  const canvases = copy.querySelectorAll("canvas");
+  cell.querySelectorAll("canvas").forEach((canvas, i) => {
+    canvases[i].getContext("2d")?.drawImage(canvas, 0, 0);
+  });
+  copy.removeAttribute("data-session");
+  copy.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
+  copy.inert = true;
+  copy.setAttribute("aria-hidden", "true");
+  return copy;
+}
+
+/** Final terminal dimensions stay fixed while the surrounding box moves and clips. */
+function lift(cell: HTMLElement, from: DOMRect, to: DOMRect, area: DOMRect, dx: number, dy: number) {
+  const slot = document.createElement("div");
+  slot.style.flex = cell.style.flex;
+  cell.before(slot);
+  const box = document.createElement("div");
+  box.className = "mode-lift";
+  const width = Math.max(from.width, to.width);
+  const height = Math.max(from.height, to.height);
+  Object.assign(box.style, {
+    left: `${to.left - area.left}px`, top: `${to.top - area.top}px`,
+    width: `${width}px`, height: `${height}px`,
+  });
+  cell.style.width = `${to.width}px`;
+  cell.style.height = `${to.height}px`;
+  box.appendChild(cell);
+  host.appendChild(box);
+  animate(box, [
+    { transform: `translate(${from.left - to.left - dx}px, ${from.top - to.top - dy}px)`, clipPath: `inset(0 ${width - from.width}px ${height - from.height}px 0)` },
+    { transform: "translate(0, 0)", clipPath: `inset(0 ${width - to.width}px ${height - to.height}px 0)` },
+  ], () => {
+    slot.replaceWith(cell);
+    cell.style.removeProperty("width");
+    cell.style.removeProperty("height");
+    box.remove();
+  });
 }
 
 function enter() {
@@ -181,7 +188,6 @@ function enter() {
 }
 
 export function leaveModes() {
-  drop();
   S.focusMode = false;
   S.maximized = null;
   if (S.focused) focusPane(S.focused);
@@ -193,19 +199,83 @@ export function settleModes() {
   const shown = shownIds();
   if (S.maximized && (S.maximized !== S.focused || !shown.includes(S.maximized))) {
     S.maximized = null;
-    drop();
   }
   // A split or a closed pane keeps some of the sessions. Another view keeps none.
   if (S.focusMode && !shown.some((id) => seen.includes(id))) S.focusMode = false;
   seen = shown;
+  if (hidden() === wasHidden && S.maximized === wasMaximized) return;
+  // Read the visible positions before cancelling an interrupted transition.
+  const oldCells = cells();
+  before = reduced() ? null : {
+    area: host.getBoundingClientRect(),
+    panes: new Map(oldCells.map((cell) => [cell.dataset.session!, cell.getBoundingClientRect()])),
+    chrome: new Map(chrome().map((el) => {
+      const style = getComputedStyle(el);
+      return [el, { rect: el.getBoundingClientRect(), opacity: style.opacity, visible: style.visibility === "visible" }];
+    })),
+    ghosts: S.maximized ? oldCells.filter((cell) => cell.dataset.session !== S.maximized).map((cell) => ({ el: snapshot(cell), rect: cell.getBoundingClientRect() })) : [],
+  };
+  drop();
 }
-
-let wasHidden = false;
 
 /** Runs after the layout: hides the chrome while a mode is on. */
 export function renderModes() {
   const on = hidden();
-  if (on !== wasHidden && !reduced()) holdFits(SLIDE_MS + 20);
+  const chromeChanged = on !== wasHidden;
+  const paneChanged = S.maximized !== wasMaximized;
+  if (!chromeChanged && !paneChanged) return;
   wasHidden = on;
+  wasMaximized = S.maximized;
+  const old = before;
+  before = null;
+  for (const el of chrome()) {
+    if (on && chromeChanged) {
+      const r = old?.chrome.get(el)?.rect ?? el.getBoundingClientRect();
+      Object.assign(el.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    } else if (!on) {
+      for (const prop of ["left", "top", "width", "height"]) el.style.removeProperty(prop);
+    }
+    el.inert = on;
+  }
   document.body.classList.toggle("focus-mode", on);
+  // Fit before the first animation frame. Animation never changes these dimensions.
+  fitShown();
+  if (!old || reduced()) return;
+  const area = host.getBoundingClientRect();
+  const dx = old.area.left - area.left;
+  const dy = old.area.top - area.top;
+  const finalCells = cells().map((cell) => ({ cell, rect: cell.getBoundingClientRect() }));
+  if (chromeChanged) {
+    animate(host, [
+      { transform: `translate(${dx}px, ${dy}px)` },
+      { transform: "translate(0, 0)" },
+    ]);
+    for (const el of chrome()) {
+      const r = el.getBoundingClientRect();
+      const away = el.id === "topbar" ? `translateY(${-r.bottom}px)`
+        : el.id === "statusbar" ? `translateY(${innerHeight - r.top}px)` : `translateX(${-r.right}px)`;
+      const previous = old.chrome.get(el)!;
+      const from = previous.visible ? `translate(${previous.rect.left - r.left}px, ${previous.rect.top - r.top}px)` : away;
+      animate(el, [
+        { transform: from, opacity: previous.opacity, visibility: "visible" },
+        { transform: on ? away : "translate(0, 0)", opacity: on ? 0 : 1, visibility: "visible" },
+      ]);
+    }
+  }
+  if (paneChanged) {
+    for (const { cell, rect } of finalCells) {
+      const from = old.panes.get(cell.dataset.session!);
+      if (from) lift(cell, from, rect, area, chromeChanged ? dx : 0, chromeChanged ? dy : 0);
+      else animate(cell, [{ opacity: 0 }, { opacity: 1 }]);
+    }
+    for (const { el, rect } of old.ghosts) {
+      el.classList.add("mode-ghost");
+      Object.assign(el.style, {
+        left: `${rect.left - area.left - (chromeChanged ? dx : 0)}px`, top: `${rect.top - area.top - (chromeChanged ? dy : 0)}px`,
+        width: `${rect.width}px`, height: `${rect.height}px`,
+      });
+      host.appendChild(el);
+      animate(el, [{ opacity: 1 }, { opacity: 0 }], () => el.remove());
+    }
+  }
 }
