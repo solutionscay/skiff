@@ -380,6 +380,47 @@ async fn set_appearance(app: State<'_, App>, theme: Option<String>) -> Result<Ap
     let (c, _) = ensure_client(&app).await?;
     c.appearance(Some(theme)).await.map_err(err)
 }
+/// Memory in bytes: this app with its WebKit children, and skiffd without the
+/// sessions it runs. Proportional set size, so shared libraries count once.
+/// `None` off Linux.
+#[tauri::command]
+fn memory_usage() -> Option<(u64, u64)> {
+    #[cfg(target_os = "linux")]
+    {
+        let procs: Vec<(u32, u32, String)> = std::fs::read_dir("/proc")
+            .ok()?
+            .filter_map(|e| {
+                let pid: u32 = e.ok()?.file_name().to_str()?.parse().ok()?;
+                let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+                // `pid (comm) state ppid ...`; comm may hold spaces and parens.
+                let (head, tail) = stat.rsplit_once(')')?;
+                let comm = head.split_once('(')?.1.to_string();
+                let ppid = tail.split_whitespace().nth(1)?.parse().ok()?;
+                Some((pid, ppid, comm))
+            })
+            .collect();
+        let me = std::process::id();
+        let app = std::iter::once(me)
+            .chain(procs.iter().filter(|p| p.1 == me).map(|p| p.0))
+            .map(pss)
+            .sum();
+        let daemon = procs.iter().filter(|p| p.2 == "skiffd").map(|p| pss(p.0)).sum();
+        Some((app, daemon))
+    }
+    #[cfg(not(target_os = "linux"))]
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn pss(pid: u32) -> u64 {
+    let kb = |file: &str, key: &str| {
+        let text = std::fs::read_to_string(format!("/proc/{pid}/{file}")).ok()?;
+        let line = text.lines().find(|l| l.starts_with(key))?;
+        line[key.len()..].trim().trim_end_matches("kB").trim().parse::<u64>().ok()
+    };
+    kb("smaps_rollup", "Pss:").or_else(|| kb("status", "VmRSS:")).unwrap_or(0) * 1024
+}
+
 
 #[tauri::command]
 async fn set_font_size(app: State<'_, App>, size: Option<u8>) -> Result<Appearance, String> {
@@ -830,3 +871,4 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+            memory_usage,

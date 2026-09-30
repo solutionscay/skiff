@@ -18,6 +18,7 @@ import { render, scheduleRender } from "./render";
 import { FONT_DEFAULT, groupOf, S, sessions } from "./state";
 import { setFontSize } from "./terminal";
 import { loadThemes } from "./themes";
+import { startMemory } from "./memory";
 import { focusNextWaiting, showGroup, showSingle } from "./view";
 
 // Skiff owns right-click. The webview's own menu (Back, Reload, Inspect)
@@ -43,6 +44,7 @@ async function boot() {
   events.onmessage = onEvent;
   await invoke("subscribe_events", { onEvent: events });
 
+  startMemory();
   await refreshSessions();
   await Promise.all([
     loadProjects(),
