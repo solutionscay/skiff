@@ -1,6 +1,7 @@
 /** Settings, the launch menu, and the Add project dialog. */
-import { PRESETS, startCanvas } from "./canvas";
-import { glyph } from "./layout";
+import { startCanvas } from "./canvas";
+import { PRESETS } from "./layoutSlots";
+import { glyph } from "./layoutIcon";
 import { createAddProject } from "./addProject";
 import { createLaunchMenu } from "./launchMenu";
 import { createSettings } from "./settings";

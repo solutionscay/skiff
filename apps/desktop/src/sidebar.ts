@@ -1,144 +1,28 @@
-/** The rail, the session list, the banner, the welcome screen. */
-import { invoke } from "@tauri-apps/api/core";
-import { filledOf, slotsOf } from "./canvas";
-import { agentIcon, launchIcon } from "./agentIcon";
+import { worktreeLines, type Line } from "./sidebarLines";
+import { groupRenameInput } from "./rename";
+/** The session tree and its focus, caret, and hover restoration. */
+
+import { filledOf } from "./layoutSlots";
+import { agentIcon } from "./agentIcon";
 import { ink } from "./appTheme";
-import { glyph, sessionsOf } from "./layout";
-import { agentName, branchName, byStart, isUnread, taskTitle } from "./model";
+import { glyph } from "./layoutIcon";
+import { agentName, branchName, isUnread, taskTitle } from "./model";
 import type { Group, Project, SessionInfo, Worktree } from "./types";
-import { newSession } from "./daemon";
+
 import { changeCounts, changesBlock, showsChanges } from "./changes";
 import { filesBlock, showsFiles } from "./files";
 import { $, button, h } from "./dom";
 import { branchIcon, chevron, icon, plusIcon } from "./icons";
-import { host } from "./terminalHost";
-import { projectIcon } from "./projectIcon";
-import { showError } from "./alerts";
-import { groupMenu, newWorktree, projectMenu, rowMenu, worktreeMenu } from "./menus";
-import { addProject, launchMenu } from "./panels";
-import { openClosedProject } from "./projectClose";
-import { leaveRename, renameGroup, renameRow, startRename, startSessionRename } from "./rename";
-import { render } from "./render";
+
+import { groupMenu, projectMenu, rowMenu, worktreeMenu } from "./menus";
+import { launchMenu } from "./panels";
+
+import { renameRow, startRename, startSessionRename } from "./rename";
+
 import { clearSelection, keepRow, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
-import { FLAG, stateIcon } from "./stateIcon";
-import { accent, activeGroupObj, collapsed, currentProject, currentWorktree, DEFAULT_ACCENT, OTHER, enabledAgents, groupedIds, place, removeErrors, removing, S, selectedWorktree, sessions, worktreeSessions, shownIds } from "./state";
-import { dragSessions, groupHome, revealSession, selectProject, selectWorktree, showGroup } from "./view";
-
-export function renderRail() {
-  const rail = $<HTMLElement>("rail");
-  const hasOther = worktreeLines(null).length > 0;
-  // The last outside session ended: Other goes away, and the first project shows.
-  if (!hasOther && S.selectedProject === OTHER) S.selectedProject = S.projects[0]?.name ?? null;
-  const waitingIn = (p: Project) => [...sessions.values()].filter((s) => s.state === "waiting" && place(s)?.project === p).length;
-  // Renders run while agents print. A rebuilt chip loses its hover and hides
-  // its icon until trimmed again, so the rail changes only when what it shows does.
-  const unreadIn = (p: Project) => [...sessions.values()].filter((s) => isUnread(s) && place(s)?.project === p).length;
-  const sig = JSON.stringify([S.selectedProject, hasOther, S.projects.map((p) => [p.name, p.short, p.icon, accent(p), waitingIn(p), unreadIn(p)])]);
-  if (rail.dataset.sig === sig) return;
-  rail.dataset.sig = sig;
-  rail.replaceChildren();
-  S.projects.forEach((p, i) => {
-    const waiting = waitingIn(p);
-    const unread = unreadIn(p);
-    const item = h("div", "rail-item");
-    const b = button("rail-chip" + (p.name === S.selectedProject ? " active" : ""), p.icon ? "" : p.short, () => selectProject(p.name));
-    if (p.icon) {
-      b.classList.add("has-icon");
-      b.appendChild(projectIcon(p, 24));
-    }
-    b.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      projectMenu(p, e.clientX, e.clientY);
-    });
-    b.addEventListener("mousedown", (e) => dragProject(e, item, i));
-    b.dataset.project = p.name;
-    b.style.setProperty("--pc", accent(p));
-    b.title = i < 9 ? `${p.name} (${navigator.userAgent.includes("Macintosh") ? "⌘" : "Ctrl"}+Shift+${i + 1})` : p.name;
-    b.setAttribute("aria-label", p.name + (waiting ? `, ${waiting} waiting` : unread ? `, ${unread} unread` : ""));
-    if (p.name === S.selectedProject) b.setAttribute("aria-current", "true");
-    item.appendChild(b);
-    if (waiting) {
-      const bell = h("span", "rail-waiting");
-      bell.appendChild(icon('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>'));
-      item.appendChild(bell);
-    } else if (unread) {
-      // The bell wins: a question outranks a result.
-      const flag = h("span", "rail-unread");
-      flag.appendChild(icon(FLAG));
-      item.appendChild(flag);
-    }
-    rail.appendChild(item);
-  });
-  if (hasOther) {
-    const item = h("div", "rail-item");
-    const on = S.selectedProject === OTHER;
-    const b = button("rail-chip rail-other" + (on ? " active" : ""), "…", () => {
-      S.selectedProject = OTHER;
-      render();
-    });
-    b.title = "Other: sessions outside every project";
-    b.setAttribute("aria-label", "Other sessions");
-    if (on) b.setAttribute("aria-current", "true");
-    item.appendChild(b);
-    rail.appendChild(item);
-  }
-  const add = button("rail-chip rail-add", "+", () => void addProject.open());
-  add.title = "Add project";
-  add.setAttribute("aria-label", "Add project");
-  rail.appendChild(add);
-}
-
-/** Drag a rail chip to reorder projects. A press that does not move stays a click. */
-function dragProject(down: MouseEvent, item: HTMLElement, from: number) {
-  if (down.button !== 0 || S.projects.length < 2) return;
-  const sy = down.clientY;
-  const items = [...$<HTMLElement>("rail").querySelectorAll<HTMLElement>(".rail-item")].slice(0, S.projects.length);
-  let to = from;
-  let active = false;
-  const mark = () => {
-    items.forEach((el, i) => {
-      el.classList.toggle("drop-before", active && i === to && to < from);
-      el.classList.toggle("drop-after", active && i === to && to > from);
-    });
-  };
-  const move = (m: MouseEvent) => {
-    if (!active) {
-      if (Math.abs(m.clientY - sy) < 5) return;
-      active = true;
-      item.classList.add("dragging");
-      document.body.classList.add("dragging-rail");
-    }
-    to = items.findIndex((el) => m.clientY < el.getBoundingClientRect().bottom);
-    if (to < 0) to = items.length - 1;
-    mark();
-  };
-  const up = () => {
-    window.removeEventListener("mousemove", move);
-    window.removeEventListener("mouseup", up);
-    if (!active) return;
-    // The click that follows the release would select the project.
-    // A release off the chip fires no click, so the guard must not outlive this event.
-    const swallow = (c: Event) => c.stopPropagation();
-    window.addEventListener("click", swallow, true);
-    setTimeout(() => window.removeEventListener("click", swallow, true), 0);
-    document.body.classList.remove("dragging-rail");
-    item.classList.remove("dragging");
-    active = false;
-    mark();
-    if (to === from) return;
-    const [p] = S.projects.splice(from, 1);
-    S.projects.splice(to, 0, p);
-    render();
-    invoke("reorder_projects", { order: S.projects.map((x) => x.name) }).catch(showError);
-  };
-  window.addEventListener("mousemove", move);
-  window.addEventListener("mouseup", up);
-}
-
-/** One line in a session list: a session, or a group's header. */
-type Line =
-  | { session: SessionInfo; branch?: boolean; group?: undefined; in?: Group; groupRail?: boolean }
-  | { group: Group; hasPrevious: boolean; hasNext: boolean };
+import { stateIcon } from "./stateIcon";
+import { accent, collapsed, currentProject, currentWorktree, DEFAULT_ACCENT, OTHER, place, removeErrors, removing, S, selectedWorktree, sessions, worktreeSessions } from "./state";
+import { dragSessions, revealSession, selectWorktree, showGroup } from "./view";
 
 /** 20px lines, flush against whatever follows. */
 function sessionBlock(lines: Line[], color: string, head: HTMLElement | null, open: boolean): HTMLElement {
@@ -201,32 +85,6 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
   }
   row.appendChild(stateIcon(s));
   return row;
-}
-
-/**
- * A worktree's lines: its groups (a group lives in the worktree of its first
- * session) with their members, then its sessions in no group.
- */
-function worktreeLines(w: Worktree | null): Line[] {
-  const lines: Line[] = [];
-  const groups = S.groups.filter((g) => groupHome(g) === w);
-  for (const [groupIndex, g] of groups.entries()) {
-    const members: Array<{ session: SessionInfo; branch: boolean }> = [];
-    for (const id of sessionsOf(g.layout)) {
-      const m = sessions.get(id);
-      if (m) members.push({ session: m, branch: (place(m)?.worktree ?? null) !== w });
-    }
-    lines.push({ group: g, hasPrevious: groupIndex > 0, hasNext: groupIndex < groups.length - 1 });
-    members.forEach(({ session, branch }) => {
-      lines.push({ session, in: g, branch, groupRail: groupIndex < groups.length - 1 });
-    });
-  }
-  const grouped = groupedIds();
-  const loose = w
-    ? worktreeSessions(w)
-    : [...sessions.values()].filter((x) => !place(x)).sort(byStart);
-  for (const m of loose) if (!grouped.has(m.id)) lines.push({ session: m });
-  return lines;
 }
 
 function errorRow(text: string): HTMLElement {
@@ -361,28 +219,7 @@ function groupRow(g: Group, hasPrevious = false, hasNext = false): HTMLElement {
   const lead = sessions.get(g.focus ?? ids[0]);
   row.style.setProperty("--pc", accent(lead ? place(lead)?.project : null));
   if (S.renaming?.id === g.id) {
-    const r = S.renaming;
-    const input = h("input", "form-input");
-    input.type = "text";
-    input.value = r.name;
-    input.spellcheck = false;
-    input.dataset.key = "group-rename";
-    input.setAttribute("aria-label", "Group name");
-    input.addEventListener("input", () => (r.name = input.value));
-    input.addEventListener("blur", () => {
-      if (S.renaming === r && input.isConnected) void renameGroup(g.id, r.name);
-    });
-    input.addEventListener("keydown", (e) => {
-      e.stopPropagation();
-      if (e.ctrlKey && e.key.toLowerCase() === "a") input.select();
-      else if (e.key === "Enter") void renameGroup(g.id, r.name, true);
-      else if (e.key === "Escape") {
-        S.renaming = null;
-        render();
-        leaveRename();
-      } else return;
-      e.preventDefault();
-    });
+    const input = groupRenameInput(g);
     row.append(glyph(g.layout), input);
     return row;
   }
@@ -462,118 +299,6 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   const err = removeErrors.get(w.path);
   if (err) block.appendChild(errorRow(err));
   return block;
-}
-
-/** Banner: which pane gets the next key, and the group it belongs to. */
-export function renderHeader() {
-  const s = S.focused ? sessions.get(S.focused) : undefined;
-  const at = s ? place(s) : null;
-  const main = $<HTMLElement>("main");
-  main.style.setProperty("--pc", accent(at?.project ?? currentProject()));
-
-  const label = $("focus-label");
-  const keysTo = $("keys-to");
-  const g = activeGroupObj();
-  const groupLabel = $("group-label");
-  groupLabel.replaceChildren();
-  if (g) {
-    const n = sessionsOf(g.layout).length;
-    const empty = slotsOf(g.layout).length;
-    groupLabel.append(glyph(g.layout), h("span", "", g.name), h("span", "dim", empty ? `${empty} of ${n} empty` : `${n} panes`));
-  }
-  if (!s) {
-    keysTo.textContent = g && slotsOf(g.layout).length ? "pick an agent for each empty pane" : "no session to type into";
-    label.textContent = "";
-    return;
-  }
-  keysTo.textContent = "keys go to";
-  label.textContent = at
-    ? `${at.project.name} / ${branchName(at.worktree)} / ${taskTitle(s)}`
-    : `${s.cwd} / ${taskTitle(s)}`;
-}
-
-export function renderCounts() {
-  const all = [...sessions.values()];
-  const waiting = all.filter((s) => s.state === "waiting").length;
-  const working = all.filter((s) => s.state === "working").length;
-  const unread = all.filter(isUnread).length;
-  $("counts").textContent = `${all.length} sessions · ${waiting} waiting · ${unread} unread · ${working} working`;
-  const nw = $<HTMLButtonElement>("next-waiting");
-  nw.hidden = waiting + unread === 0;
-  $("next-waiting-label").textContent = waiting
-    ? `Next waiting (${waiting})`
-    : `Next unread (${unread})`;
-
-  renderWelcome();
-}
-
-let welcomeSig = "";
-let welcomeBox: HTMLElement | null = null;
-
-/** First run: add a project. Just added, or nothing focused: start an agent. */
-function renderWelcome() {
-  const p = currentProject();
-  const w = p?.worktrees.find((x) => x.is_main) ?? p?.worktrees[0];
-  // Same content: keep the element, and the focus and hover on its buttons.
-  const sig = JSON.stringify([S.projects.length, S.closedProjects.map((x) => x.name), !!S.projectsError, p?.name, p?.color, w?.path, S.justAdded === p?.name, !!S.focused, shownIds().length, enabledAgents().map((a) => a.id)]);
-  if (sig === welcomeSig && (!welcomeBox || welcomeBox.isConnected)) return;
-  welcomeSig = sig;
-  host.querySelector(".empty")?.remove();
-  welcomeBox?.remove();
-  welcomeBox = null;
-  const box = h("div", "welcome");
-  if (S.projects.length === 0 && S.closedProjects.length && !S.projectsError) {
-    // Every project is closed: open one again, or add another.
-    const actions = h("div", "welcome-actions");
-    for (const c of S.closedProjects) {
-      const b = button("", c.name, () => void openClosedProject(c));
-      b.style.color = accent(c);
-      actions.appendChild(b);
-    }
-    const add = button("", "add project…", () => void addProject.open());
-    actions.appendChild(add);
-    box.append(
-      h("div", "welcome-title", "No open project"),
-      h("div", "welcome-text", "Open a closed project again, with its settings, or add another."),
-      actions,
-    );
-  } else if (S.projects.length === 0 && !S.projectsError) {
-    const add = button("welcome-primary", "Add project", () => void addProject.open());
-    const hint = h("div", "welcome-hint", "or edit ");
-    hint.appendChild(h("span", "mono", "~/.config/skiff/projects.toml"));
-    box.append(
-      h("div", "welcome-title", "Add your first project"),
-      h("div", "welcome-text", "Pick a folder in a git repository. Skiff lists its worktrees and runs agents in them."),
-      add,
-      hint,
-    );
-  } else if (p && w && !shownIds().length && (S.justAdded === p.name || !S.focused)) {
-    const title = h("div", "welcome-title");
-    const name = h("span", "", p.name);
-    name.style.color = accent(p);
-    title.append(name, S.justAdded === p.name ? " is ready" : "");
-    const text = h("div", "welcome-text", "Start an agent in ");
-    text.append(h("span", "mono", branchName(w)), ", or make a worktree for a task first.");
-    const actions = h("div", "welcome-actions");
-    for (const a of [...enabledAgents(), null]) {
-      const b = button("", "", () => {
-        S.justAdded = null;
-        newSession(w.path, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell").catch(showError);
-      });
-      b.append(launchIcon(a), a ? a.id : "shell");
-      actions.appendChild(b);
-    }
-    const wt = button("", "", () => newWorktree(p));
-    wt.append(branchIcon(), "worktree…");
-    actions.appendChild(wt);
-    box.append(title, text, actions);
-  } else if (!S.focused && !shownIds().length) {
-    box.append(h("div", "welcome-text", "No session. Press + on a worktree to start one."));
-  } else {
-    return;
-  }
-  host.appendChild(box);
-  welcomeBox = box;
 }
 
 // Right-click on the empty part of the list: the + menu for the current worktree.

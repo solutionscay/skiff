@@ -1,0 +1,40 @@
+
+
+import { sessionsOf } from "./layout";
+
+
+import { byStart } from "./model";
+import type { Group, SessionInfo, Worktree } from "./types";
+
+import { groupedIds, place, S, sessions, worktreeSessions } from "./state";
+import { groupHome } from "./view";
+/** One line in a session list: a session, or a group's header. */
+export type Line =
+  | { session: SessionInfo; branch?: boolean; group?: undefined; in?: Group; groupRail?: boolean }
+  | { group: Group; hasPrevious: boolean; hasNext: boolean };
+
+/**
+ * A worktree's lines: its groups (a group lives in the worktree of its first
+ * session) with their members, then its sessions in no group.
+ */
+export function worktreeLines(w: Worktree | null): Line[] {
+  const lines: Line[] = [];
+  const groups = S.groups.filter((g) => groupHome(g) === w);
+  for (const [groupIndex, g] of groups.entries()) {
+    const members: Array<{ session: SessionInfo; branch: boolean }> = [];
+    for (const id of sessionsOf(g.layout)) {
+      const m = sessions.get(id);
+      if (m) members.push({ session: m, branch: (place(m)?.worktree ?? null) !== w });
+    }
+    lines.push({ group: g, hasPrevious: groupIndex > 0, hasNext: groupIndex < groups.length - 1 });
+    members.forEach(({ session, branch }) => {
+      lines.push({ session, in: g, branch, groupRail: groupIndex < groups.length - 1 });
+    });
+  }
+  const grouped = groupedIds();
+  const loose = w
+    ? worktreeSessions(w)
+    : [...sessions.values()].filter((x) => !place(x)).sort(byStart);
+  for (const m of loose) if (!grouped.has(m.id)) lines.push({ session: m });
+  return lines;
+}

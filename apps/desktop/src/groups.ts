@@ -1,6 +1,8 @@
 /** Groups (named splits): persistence through skiffd. */
-import { isSlot, PRESETS } from "./canvas";
+import { isSlot, PRESETS } from "./layoutSlots";
 import { sessionsOf, shapeName } from "./layout";
+
+
 import { agentName } from "./model";
 import type { Group } from "./types";
 import { invoke } from "@tauri-apps/api/core";

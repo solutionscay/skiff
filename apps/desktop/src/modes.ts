@@ -7,7 +7,7 @@
  * Up/Down. Keys that go to another view (Next waiting, the
  * palette, Back, a project key) work, and going there ends the mode.
  */
-import { isSlot } from "./canvas";
+import { isSlot } from "./layoutSlots";
 import { runAction } from "./commands";
 import { host } from "./terminalHost";
 import { currentRow } from "./keyboard";

@@ -6,7 +6,8 @@ import { keyLabel } from "./keys";
 import { toggleFocusMode, toggleMaximize } from "./modes";
 import { createMenu, type MenuEntry } from "./menu";
 import { agentName, basename, branchName, byStart, locate, taskTitle } from "./model";
-import { cwdOf, filledOf, slotsOf } from "./canvas";
+import { cwdOf } from "./canvas";
+import { filledOf, slotsOf } from "./layoutSlots";
 import type { Group, Project, SessionInfo, SplitDir, Worktree } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
@@ -20,6 +21,8 @@ import { setShowFiles, showsFiles } from "./files";
 import { deleteGroup } from "./groups";
 import { closeEntries } from "./projectClose";
 import { sessionsOf } from "./layout";
+
+
 import { startRename, startSessionRename } from "./rename";
 import { render } from "./render";
 import { clearSelection, selectionPlan, splitSelection } from "./selection";

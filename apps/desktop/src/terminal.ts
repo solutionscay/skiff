@@ -1,7 +1,10 @@
 /** xterm panes: open, fit, font size, clipboard, find, pane headers. */
 import { agentIcon, agentKind } from "./agentIcon";
-import { isSlot, slotBody, slotHead } from "./canvas";
-import { createLayoutView, sessionsOf } from "./layout";
+import { slotBody, slotHead } from "./canvas";
+import { isSlot } from "./layoutSlots";
+import { sessionsOf } from "./layout";
+import { createLayoutView } from "./layoutView";
+
 import { type Action, keyLabel } from "./keys";
 import { toggleFocusMode, toggleMaximize } from "./modes";
 import { rune, type RuneName } from "./runes";

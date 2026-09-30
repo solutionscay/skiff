@@ -129,3 +129,29 @@ export function startRename(g: Group) {
     input?.select();
   });
 }
+
+export function groupRenameInput(g: Group): HTMLInputElement {
+    const r = S.renaming!;
+    const input = h("input", "form-input");
+    input.type = "text";
+    input.value = r.name;
+    input.spellcheck = false;
+    input.dataset.key = "group-rename";
+    input.setAttribute("aria-label", "Group name");
+    input.addEventListener("input", () => (r.name = input.value));
+    input.addEventListener("blur", () => {
+      if (S.renaming === r && input.isConnected) void renameGroup(g.id, r.name);
+    });
+    input.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.ctrlKey && e.key.toLowerCase() === "a") input.select();
+      else if (e.key === "Enter") void renameGroup(g.id, r.name, true);
+      else if (e.key === "Escape") {
+        S.renaming = null;
+        render();
+        leaveRename();
+      } else return;
+      e.preventDefault();
+    });
+    return input;
+}

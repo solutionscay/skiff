@@ -1,7 +1,10 @@
 /** skiffd: sessions, projects, events. */
-import { filledOf, isSlot, placeInSlot, slot } from "./canvas";
+import { placeInSlot } from "./canvas";
+import { filledOf, isSlot, slot } from "./layoutSlots";
 import { agentCallsign } from "./agentNames";
 import { removePane, replacePane, sessionsOf } from "./layout";
+
+
 import type { AgentInfo, DaemonEvent, DaemonStatus, Project, SessionInfo, SplitDir } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { $, button, h } from "./dom";

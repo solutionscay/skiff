@@ -1,9 +1,12 @@
 /** What the terminal area shows and which pane has the keys. */
 import { beginDrag, type DropTarget } from "./drag";
 import { build, type Direction, leaf, neighbor, removePane, replacePane, sessionsOf, shape, splitPane } from "./layout";
+
+
 import { branchName, bySessionPriority, isUnread, locate, taskTitle } from "./model";
 import type { Group, Layout, Project, SplitDir, Worktree } from "./types";
-import { filledOf, focusFirstSlot, isSlot, slot, slotsOf } from "./canvas";
+import { focusFirstSlot } from "./canvas";
+import { filledOf, isSlot, slot, slotsOf } from "./layoutSlots";
 import { host } from "./terminalHost";
 import { modalOpen } from "./dom";
 import { showError } from "./alerts";
@@ -424,4 +427,3 @@ export function focusNextWaiting() {
 export function goBack() {
   if (S.previous && sessions.has(S.previous)) revealSession(S.previous);
 }
-
