@@ -30,12 +30,21 @@ document.addEventListener("contextmenu", (e) => {
 });
 
 async function boot() {
+  // `tauri dev` build: a badge in the status bar tells it apart from an installed Skiff.
+  if (import.meta.env.DEV) {
+    const badge = document.createElement("span");
+    badge.className = "status-item dev-badge";
+    badge.textContent = "DEV";
+    badge.title = "Development build (tauri dev)";
+    $("statusbar").prepend(badge);
+  }
   $("next-waiting").addEventListener("click", focusNextWaiting);
   $("open-switcher").addEventListener("click", () => switcher.open());
   $("open-settings").addEventListener("click", () => (settings.isOpen ? settings.close() : void settings.open()));
   render();
 
   void initTrace();
+  startMemory();
   const status = await invoke<DaemonStatus>("daemon_status");
   setDaemon(status);
   if (!status.connected) return;
@@ -44,7 +53,6 @@ async function boot() {
   events.onmessage = onEvent;
   await invoke("subscribe_events", { onEvent: events });
 
-  startMemory();
   await refreshSessions();
   await Promise.all([
     loadProjects(),
