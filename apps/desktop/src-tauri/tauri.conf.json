@@ -38,8 +38,8 @@
       "icons/icon.ico"
     ],
     "category": "DeveloperTool",
-    "shortDescription": "Run many coding agents side by side",
-    "longDescription": "Skiff groups agent terminals by project and Git worktree. Sessions live in the skiffd daemon and keep running when the window closes.",
+    "shortDescription": "A minimalist workspace for coding agents",
+    "longDescription": "Skiff keeps agent and shell sessions organized across projects and Git worktrees. Themes and terminal layouts help you keep track of your work. Editing and previews stay in the apps you already use. Sessions keep running when the window closes.",
     "license": "MIT"
   }
 }

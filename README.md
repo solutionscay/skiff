@@ -9,9 +9,23 @@
   <img src="https://img.shields.io/badge/status-pre--1.0-orange" alt="Status: pre-1.0">
 </p>
 
-A desktop app for running many coding agents side by side, on Linux and macOS.
+A minimalist desktop workspace for coding agents on Linux and macOS.
+
+Skiff keeps sessions organized across projects and Git worktrees. Editing and
+previews stay in the apps you already use.
 
 <p align="center"><img src=".github/screenshot.webp" alt="Skiff on Linux: a project with its groups, changed files and file tree in the sidebar, and four agent sessions in a two-by-two layout, each with its own terminal theme"></p>
+
+## Philosophy
+
+Skiff has a deliberately small scope: reduce the mental effort of managing
+multiple sessions, and use existing apps for the rest.
+
+Project and terminal themes give you a visual cue about where you are. Named
+groups and terminal layouts keep related sessions together, so you can arrange
+them to suit the work.
+
+## How it works
 
 You add a project (a Git repository), make worktrees in it, and start agent or shell sessions in each worktree. Sessions can sit side by side in a group. Each group has a name and a terminal theme, and so does each project.
 
@@ -86,3 +100,7 @@ notarizes the `.dmg` with the `APPLE_*` repository secrets.
 ## License
 
 MIT
+
+## Social preview
+
+The GitHub social preview image is [`.github/social-preview.png`](.github/social-preview.png).

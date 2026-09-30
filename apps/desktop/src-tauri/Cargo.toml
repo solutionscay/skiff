@@ -1,6 +1,6 @@
 [package]
 name = "skiff-desktop"
-description = "Skiff desktop app"
+description = "A minimalist desktop workspace for coding agents"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
