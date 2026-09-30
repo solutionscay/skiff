@@ -73,6 +73,15 @@ function stepPane(dir: 1 | -1) {
 }
 
 export function toggleFocusMode() {
+  // From maximize, focus mode shows the view's panes again with the chrome still hidden.
+  if (S.maximized) {
+    const id = S.maximized;
+    S.maximized = null;
+    S.focusMode = true;
+    focusPane(S.focused!);
+    for (const c of host.querySelectorAll<HTMLElement>(".cell")) if (c.dataset.session !== id) animate(c, [{ opacity: 0 }, { opacity: 1 }]);
+    return;
+  }
   if (hidden()) return leaveModes();
   if (!S.focused || !shownIds().includes(S.focused)) return;
   S.focusMode = true;
