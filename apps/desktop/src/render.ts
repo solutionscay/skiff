@@ -5,6 +5,7 @@ import { applyTabOrder } from "./keyboard";
 import { renderSelectBar } from "./selection";
 import { renderCounts, renderHeader, renderRail, renderSidebar } from "./sidebar";
 import { S } from "./state";
+import { savePlace } from "./stored";
 import { renderLayout } from "./terminal";
 import { applyBackdrop } from "./backdrop";
 import { applyApp, applyThemes } from "./themes";
@@ -63,4 +64,10 @@ export function render() {
   renderCounts();
   applyTabOrder();
   syncMenu();
+  savePlace({
+    project: S.selectedProject,
+    session: S.focused,
+    group: S.activeGroup,
+    picked: !!S.groupPicked && S.groupPicked === S.activeGroup,
+  });
 }

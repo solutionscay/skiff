@@ -27,3 +27,36 @@ export function storedSet(key: string): Set<string> {
   };
   return set;
 }
+
+/** Where the user was when the app last drew: restored at the next start. */
+export type Place = { project: string | null; session: string | null; group: string | null; picked: boolean };
+
+const PLACE_KEY = "skiff.place";
+/** Off until the start has restored the saved place, so the first empty draw does not overwrite it. */
+let tracking = false;
+let placeSig = "";
+
+export function loadPlace(): Partial<Place> {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(PLACE_KEY) ?? "{}");
+    return v && typeof v === "object" ? (v as Partial<Place>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function trackPlace() {
+  tracking = true;
+}
+
+export function savePlace(p: Place) {
+  if (!tracking) return;
+  const sig = JSON.stringify(p);
+  if (sig === placeSig) return;
+  placeSig = sig;
+  try {
+    localStorage.setItem(PLACE_KEY, sig);
+  } catch {
+    /* the place lasts for this run */
+  }
+}

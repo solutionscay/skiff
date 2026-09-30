@@ -18,8 +18,9 @@ import { render, scheduleRender } from "./render";
 import { FONT_DEFAULT, groupOf, S, sessions } from "./state";
 import { setFontSize } from "./terminal";
 import { loadThemes } from "./themes";
+import { loadPlace, trackPlace } from "./stored";
 import { startMemory } from "./memory";
-import { focusNextWaiting, showGroup, showSingle } from "./view";
+import { focusNextWaiting, selectProject, showGroup, showSingle } from "./view";
 
 // Skiff owns right-click. The webview's own menu (Back, Reload, Inspect)
 // never shows; text fields keep theirs for cut, copy and paste.
@@ -75,9 +76,8 @@ async function boot() {
   const hint = document.querySelector("#open-switcher .spacer");
   if (hint) hint.textContent = "Commands, sessions, worktrees";
   await loadGroups();
-  const first = [...sessions.values()].sort(bySessionPriority)[0];
-  const g = first && groupOf(first.id);
-  if (first) g ? showGroup(g.id, false, first.id) : showSingle(first.id);
+  restorePlace();
+  trackPlace();
 
   let refreshing = false;
   setInterval(() => {
@@ -90,6 +90,31 @@ async function boot() {
         scheduleRender();
       });
   }, 10_000);
+}
+
+/** Back to the project, session and group open when the app last ran. Without
+ *  one, the first session by priority. */
+function restorePlace() {
+  const last = loadPlace();
+  const s = last.session ? sessions.get(last.session) : undefined;
+  const lastGroup = last.group ? S.groups.find((x) => x.id === last.group) : undefined;
+  const hasProject = !!last.project && S.projects.some((p) => p.name === last.project);
+  if (lastGroup && (last.picked || !s)) showGroup(lastGroup.id, !!last.picked, s?.id);
+  else if (s) {
+    const g = groupOf(s.id);
+    if (g) showGroup(g.id, false, s.id);
+    else showSingle(s.id);
+  } else if (hasProject) selectProject(last.project!);
+  else {
+    const first = [...sessions.values()].sort(bySessionPriority)[0];
+    const g = first && groupOf(first.id);
+    if (first) g ? showGroup(g.id, false, first.id) : showSingle(first.id);
+  }
+  // The project on screen may not be the open session's.
+  if (hasProject && S.selectedProject !== last.project) {
+    S.selectedProject = last.project!;
+    render();
+  }
 }
 
 // Show the app once the first data is in. A slow daemon does not hold it past 2 s.
