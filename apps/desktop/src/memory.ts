@@ -24,7 +24,7 @@ async function update() {
   el.title = `App ${mb(app)} · skiffd ${mb(daemon)}\nSessions not counted`;
 }
 
-/** Reads now, then every 5 seconds. A read is one pass over /proc. */
+/** Reads now, then every 5 seconds. */
 export function startMemory() {
   void update();
   window.setInterval(update, 5000);

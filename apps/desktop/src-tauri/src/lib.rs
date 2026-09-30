@@ -381,8 +381,8 @@ async fn get_keys(app: State<'_, App>) -> Result<std::collections::BTreeMap<Stri
 }
 
 /// Memory in bytes: this app with its WebKit children, and skiffd without the
-/// sessions it runs. Proportional set size, so shared libraries count once.
-/// `None` off Linux.
+/// sessions it runs. Linux reports proportional set size, so shared libraries
+/// count once; macOS reports resident set size.
 #[tauri::command]
 fn memory_usage() -> Option<(u64, u64)> {
     #[cfg(target_os = "linux")]
@@ -407,7 +407,41 @@ fn memory_usage() -> Option<(u64, u64)> {
         let daemon = procs.iter().filter(|p| p.2 == "skiffd").map(|p| pss(p.0)).sum();
         Some((app, daemon))
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    {
+        let output = std::process::Command::new("ps")
+            .args(["-axo", "pid=,ppid=,rss=,comm="])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let procs: Vec<(u32, u32, u64, String)> = String::from_utf8(output.stdout)
+            .ok()?
+            .lines()
+            .filter_map(|line| {
+                let mut fields = line.split_whitespace();
+                let pid = fields.next()?.parse().ok()?;
+                let ppid = fields.next()?.parse().ok()?;
+                let rss_kb: u64 = fields.next()?.parse().ok()?;
+                let command = fields.next()?.to_string();
+                Some((pid, ppid, rss_kb * 1024, command))
+            })
+            .collect();
+        let me = std::process::id();
+        let app = procs
+            .iter()
+            .filter(|p| p.0 == me || p.1 == me)
+            .map(|p| p.2)
+            .sum();
+        let daemon = procs
+            .iter()
+            .filter(|p| std::path::Path::new(&p.3).file_name().is_some_and(|name| name == "skiffd"))
+            .map(|p| p.2)
+            .sum();
+        Some((app, daemon))
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     None
 }
 
