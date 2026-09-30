@@ -3,6 +3,7 @@ import { launchIcon } from "./agentIcon";
 import { confirmAction, promptAction } from "./confirm";
 import { pickColor } from "./colorPicker";
 import { keyLabel } from "./keys";
+import { toggleFocusMode, toggleMaximize } from "./modes";
 import { createMenu, type MenuEntry } from "./menu";
 import { agentName, basename, branchName, byStart, locate, taskTitle } from "./model";
 import { cwdOf, filledOf, slotsOf } from "./canvas";
@@ -303,6 +304,11 @@ export function paneMenu(id: string, x: number, y: number) {
     { icon: "layouts-panel-bottom", label: "Add pane below…", hint: keyLabel("split-down"), disabled: full, run: () => splitMenu(id, "col", x, y) },
     { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(id) },
   ];
+  // These act on the pane you right-clicked, which the line above just focused.
+  if (shownIds().length > 1) {
+    entries.push({ icon: S.maximized ? "view-restore" : "view-maximize", label: S.maximized ? "Restore pane" : "Maximize pane", hint: keyLabel("maximize"), run: toggleMaximize });
+  }
+  entries.push({ icon: "view-focus", label: S.focusMode ? "Leave focus mode" : "Focus mode", hint: keyLabel("focus-mode"), run: toggleFocusMode });
   entries.push(themeEntry(s));
   if (shownIds().length > 1) {
     entries.push({ icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), run: () => removeFromGroup(id) });

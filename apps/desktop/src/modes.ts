@@ -75,12 +75,8 @@ function stepPane(dir: 1 | -1) {
 export function toggleFocusMode() {
   // From maximize, focus mode shows the view's panes again with the chrome still hidden.
   if (S.maximized) {
-    const id = S.maximized;
-    S.maximized = null;
     S.focusMode = true;
-    focusPane(S.focused!);
-    for (const c of host.querySelectorAll<HTMLElement>(".cell")) if (c.dataset.session !== id) animate(c, [{ opacity: 0 }, { opacity: 1 }]);
-    return;
+    return restore();
   }
   if (hidden()) return leaveModes();
   if (!S.focused || !shownIds().includes(S.focused)) return;
@@ -89,35 +85,92 @@ export function toggleFocusMode() {
 }
 
 export function toggleMaximize() {
-  if (S.maximized) {
-    const id = S.maximized;
-    S.maximized = null;
-    focusPane(S.focused!);
-    // The other panes come back into their slots.
-    for (const c of host.querySelectorAll<HTMLElement>(".cell")) if (c.dataset.session !== id) animate(c, [{ opacity: 0 }, { opacity: 1 }]);
-    return;
-  }
+  if (S.maximized) return restore();
   if (!S.focused || !shownIds().includes(S.focused)) return;
-  const from = cellOf(S.focused)?.getBoundingClientRect();
-  S.maximized = S.focused;
+  const id = S.focused;
+  const cell = cellOf(id);
+  const others = [...host.querySelectorAll<HTMLElement>(".cell")].filter((c) => c !== cell);
+  S.maximized = id;
+  if (!cell || !others.length || reduced()) return enter();
+  // The view keeps its panes while the pane grows over them and they fade out.
+  // Then the layout drops them.
+  const from = slotOf(cell);
+  S.growing = true;
+  holdFits(SLIDE_MS + 20);
   enter();
-  // The pane grows out of its slot. A clip, not a scale, so the text does not stretch.
-  const cell = cellOf(S.maximized);
-  if (!from || !cell) return;
-  const to = cell.getBoundingClientRect();
-  animate(cell, [
-    { clipPath: `inset(${from.top - to.top}px ${to.right - from.right}px ${to.bottom - from.bottom}px ${from.left - to.left}px)` },
-    { clipPath: "inset(0px)" },
-  ]);
+  lift(cell, from, FULL, others.map((c) => fade(c, 1, 0)), () => {
+    S.growing = false;
+    render();
+  });
+}
+
+/** Back from maximize: the pane shrinks into its slot and the other panes fade in. */
+function restore() {
+  const id = S.maximized!;
+  drop();
+  S.maximized = null;
+  holdFits(SLIDE_MS + 20);
+  focusPane(S.focused!);
+  const cell = cellOf(id);
+  if (!cell || reduced()) return;
+  const others = [...host.querySelectorAll<HTMLElement>(".cell")].filter((c) => c !== cell);
+  if (!others.length) return;
+  lift(cell, FULL, slotOf(cell), others.map((c) => fade(c, 0, 1)));
 }
 
 /** The chrome's slide in styles.css takes this long. */
 const SLIDE_MS = 200;
+const EASE = "cubic-bezier(.2, .7, .2, 1)";
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const cellOf = (id: string) => host.querySelector<HTMLElement>(`.cell[data-session="${CSS.escape(id)}"]`);
 
-function animate(el: HTMLElement, frames: Keyframe[]) {
-  if (!reduced()) el.animate(frames, { duration: SLIDE_MS, easing: "cubic-bezier(.2, .7, .2, 1)" });
+/** A place in the terminal area, in percent of it: it holds while the chrome slides. */
+type Box = { left: string; top: string; width: string; height: string };
+const FULL: Box = { left: "0%", top: "0%", width: "100%", height: "100%" };
+
+function slotOf(cell: HTMLElement): Box {
+  const area = host.querySelector<HTMLElement>(".layout")!.getBoundingClientRect();
+  const r = cell.getBoundingClientRect();
+  const pc = (n: number, of: number) => `${(n / of) * 100}%`;
+  return { left: pc(r.left - area.left, area.width), top: pc(r.top - area.top, area.height), width: pc(r.width, area.width), height: pc(r.height, area.height) };
+}
+
+function fade(el: HTMLElement, from: number, to: number): Animation {
+  return el.animate([{ opacity: from }, { opacity: to }], { duration: SLIDE_MS, easing: EASE, fill: "forwards" });
+}
+
+/** The pane out of its slot, over the others, and what it leaves behind. */
+let lifted: { cell: HTMLElement; slot: HTMLElement; anims: Animation[] } | null = null;
+
+/**
+ * Moves a pane from one place to another over the other panes. It moves, it does
+ * not scale: the header and the text keep their size. An empty box keeps its
+ * slot, so the other panes stay where they are.
+ */
+function lift(cell: HTMLElement, from: Box, to: Box, fades: Animation[], done?: () => void) {
+  const slot = document.createElement("div");
+  slot.style.flex = cell.style.flex;
+  cell.before(slot);
+  cell.classList.add("lifted");
+  const move = cell.animate([from, to], { duration: SLIDE_MS, easing: EASE, fill: "forwards" });
+  const mine = (lifted = { cell, slot, anims: [move, ...fades] });
+  move.onfinish = () => {
+    if (lifted !== mine) return;
+    // Render first: the pane takes its new place before it lets go of the old one.
+    done?.();
+    drop();
+  };
+}
+
+/** Ends a lift at once. */
+function drop() {
+  if (!lifted) return;
+  const { cell, slot, anims } = lifted;
+  lifted = null;
+  S.growing = false;
+  for (const a of anims) a.cancel();
+  slot.remove();
+  cell.classList.remove("lifted");
 }
 
 function enter() {
@@ -128,6 +181,7 @@ function enter() {
 }
 
 export function leaveModes() {
+  drop();
   S.focusMode = false;
   S.maximized = null;
   if (S.focused) focusPane(S.focused);
@@ -137,7 +191,10 @@ export function leaveModes() {
 /** Runs before each render: a move away from the view ends the mode. */
 export function settleModes() {
   const shown = shownIds();
-  if (S.maximized && (S.maximized !== S.focused || !shown.includes(S.maximized))) S.maximized = null;
+  if (S.maximized && (S.maximized !== S.focused || !shown.includes(S.maximized))) {
+    S.maximized = null;
+    drop();
+  }
   // A split or a closed pane keeps some of the sessions. Another view keeps none.
   if (S.focusMode && !shown.some((id) => seen.includes(id))) S.focusMode = false;
   seen = shown;

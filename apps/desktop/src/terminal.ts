@@ -2,6 +2,9 @@
 import { agentIcon, agentKind } from "./agentIcon";
 import { isSlot, slotBody, slotHead } from "./canvas";
 import { createLayoutView, sessionsOf } from "./layout";
+import { type Action, keyLabel } from "./keys";
+import { toggleFocusMode, toggleMaximize } from "./modes";
+import { rune, type RuneName } from "./runes";
 import { taskTitle } from "./model";
 import { stateIcon } from "./stateIcon";
 import { Channel, invoke } from "@tauri-apps/api/core";
@@ -279,7 +282,8 @@ export function renderLayout() {
       if (p) useWebgl(id, p);
     }
     requestAnimationFrame(() => {
-      fitShown();
+      // While a pane grows or shrinks (modes.ts), the held fit comes when it stops.
+      if (performance.now() >= heldUntil) fitShown();
       for (const id of shown) {
         const p = panes.get(id);
         if (p) p.term.refresh(0, p.term.rows - 1);
@@ -351,6 +355,13 @@ function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
     head.addEventListener("mousedown", (e) => {
       if (!(e.target as Element).closest("button")) dragSessions(e, [id]);
     });
+    // A double-click on the header zooms the pane: maximize in a split, focus mode alone.
+    head.addEventListener("dblclick", (e) => {
+      if ((e.target as Element).closest("button")) return;
+      if (id !== S.focused) focusPane(id);
+      if (shownIds().length > 1) toggleMaximize();
+      else toggleFocusMode();
+    });
   }
   const s = sessions.get(id);
   const at = s ? place(s) : null;
@@ -358,7 +369,7 @@ function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   cell.classList.toggle("focused", id === S.focused);
   const multi = shownIds().length > 1;
   // Rebuild only on change, so a click that spans a daemon event still lands.
-  const sig = s ? JSON.stringify([s.state, s.exit_code, s.unread, at?.project.name, taskTitle(s), agentKind(s), multi]) : "";
+  const sig = s ? JSON.stringify([s.state, s.exit_code, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi]) : "";
   if (head.dataset.sig === sig) return;
   head.dataset.sig = sig;
   head.replaceChildren();
@@ -366,6 +377,22 @@ function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   head.classList.toggle("st-waiting", s.state === "waiting");
   head.classList.toggle("st-done", s.state === "done");
   head.append(agentIcon(s), h("span", "title", taskTitle(s)), stateIcon(s));
+  // Mouse controls for the two view modes. The pane is focused first: they act on the focused pane.
+  const viewBtn = (name: RuneName, label: string, key: Action, run: () => void) => {
+    const b = button("head-btn", "", () => {
+      if (id !== S.focused) focusPane(id);
+      run();
+    });
+    b.title = `${label} (${keyLabel(key)})`;
+    b.setAttribute("aria-label", label);
+    b.appendChild(rune(name, 12));
+    head.appendChild(b);
+  };
+  if (multi) {
+    const max = S.maximized === id;
+    viewBtn(max ? "view-restore" : "view-maximize", max ? "Restore pane" : "Maximize pane", "maximize", toggleMaximize);
+  }
+  viewBtn("view-focus", S.focusMode ? "Leave focus mode" : "Focus mode", "focus-mode", toggleFocusMode);
   const x = button("head-btn", "", () => closePane(id));
   const label = multi ? "Remove from group. The session keeps running." : "Close. The session keeps running.";
   x.title = label;

@@ -187,6 +187,9 @@ const FIXED_SHORTCUTS: Shortcut[] = [
   ["Session list", "Rename the focused session or group", "F2"],
   ["Session list", "End a session or remove a group", "Delete / Backspace"],
   ["Session list", "Open the row menu", "Menu / Shift+F10"],
+  ["Panes", "Focus mode, or Maximize in a split, and back", "Pane header buttons"],
+  ["Panes", "Maximize in a split, focus mode alone, and back", "Double-click the pane header"],
+  ["Panes", "Focus mode, Maximize, Add pane, Rename", "Right-click the pane"],
   ["Command palette", "Move through matches", "↑ / ↓"],
   ["Command palette", "Run the selected match", "Enter"],
   ["Command palette", "Close the palette", "Esc"],
@@ -341,6 +344,8 @@ export function runAction(a: Action) {
   const shown = S.focused && shownIds().includes(S.focused);
   // The native menu runs its accelerators through here, not through the key handler.
   if (modeKeyBlocked(a) || modeGate(a)) return;
+  // The open palette holds every other action; its own key closes it.
+  if (switcher.isOpen() && a !== "palette") return;
   switch (a) {
     case "palette": return switcher.toggle();
     case "new-session": return openNewSession();

@@ -1,6 +1,6 @@
 /** App keys, Tab order, F6 regions, arrows in the lists. */
 import { type Action, actionFor } from "./keys";
-import { runAction } from "./commands";
+import { runAction, switcher } from "./commands";
 import { modeKeyBlocked } from "./modes";
 import { $, host, modalOpen } from "./dom";
 import { ctxMenu, deleteKeyMenu } from "./menus";
@@ -26,6 +26,18 @@ export function appKey(e: KeyboardEvent): Action | number | null {
 }
 
 window.addEventListener("keydown", (e) => {
+  // The open palette runs no app key but its own, which closes it. The key still
+  // reaches the palette input, so Ctrl+Shift+Enter picks and Ctrl+Shift+Up moves.
+  if (switcher.isOpen()) {
+    const key = appKey(e);
+    if (key === null) return;
+    e.preventDefault();
+    if (key === "palette") {
+      e.stopPropagation();
+      runAction(key);
+    }
+    return;
+  }
   // An open menu or dialog keeps the keys until it closes. Holding Ctrl+Shift
   // from the shortcut that opened it, then pressing Enter, picks the item
   // instead of running Maximize.
