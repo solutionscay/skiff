@@ -297,17 +297,23 @@ function canTakeFocus(): boolean {
 }
 
 let resizeTimer: number | undefined;
+/** Panes fitted since the last pty_resize. A later fit adds to them: it must not drop an earlier pane's new size. */
+const resizePending = new Set<string>();
 
 /** Fit every visible terminal now; tell the daemon the new sizes once the drag settles. */
 function fitShown() {
   const shown = [...panes].filter(([, p]) => p.el.parentElement !== park && p.el.isConnected);
-  for (const [, p] of shown) p.fit.fit();
+  for (const [id, p] of shown) {
+    p.fit.fit();
+    resizePending.add(id);
+  }
   clearTimeout(resizeTimer);
   resizeTimer = window.setTimeout(() => {
-    for (const [id, p] of shown) {
-      if (!panes.has(id)) continue;
-      invoke("pty_resize", { session: id, cols: p.term.cols, rows: p.term.rows }).catch(console.error);
+    for (const id of resizePending) {
+      const p = panes.get(id);
+      if (p) invoke("pty_resize", { session: id, cols: p.term.cols, rows: p.term.rows }).catch(console.error);
     }
+    resizePending.clear();
   }, 50);
 }
 
