@@ -1,6 +1,8 @@
 import { PANE_OPACITY_MIN, paneOpacity, setPaneOpacity } from "./backdrop";
+import { button } from "./dom";
 import { invoke } from "@tauri-apps/api/core";
 import type { AgentInfo, TerminalTheme } from "./types";
+import { agentNameList, setAgentNameList } from "./agentNames";
 import { themeGrid } from "./themeCards";
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""): HTMLElementTagNameMap[K] {
@@ -101,16 +103,13 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       });
       return b;
     });
-    const done = el("button", "set-done", "Done");
-    done.type = "button";
-    done.addEventListener("click", close);
-    nav.append(head, ...tabs, el("div", "spacer"), done);
+    nav.append(head, ...tabs);
     if (tab === "appearance") {
-      root.replaceChildren(nav, appearance());
+      root.replaceChildren(nav, appearance(), closeButton());
       return;
     }
     if (tab === "open") {
-      root.replaceChildren(nav, openWith());
+      root.replaceChildren(nav, openWith(), closeButton());
       return;
     }
 
@@ -150,7 +149,6 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
           e.preventDefault();
           cmd.blur();
         } else if (e.key === "Escape") {
-          e.stopPropagation();
           cmd.value = a.command === a.default_command ? "" : a.command;
           cmd.blur();
         }
@@ -168,7 +166,44 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       main.appendChild(err);
     }
     main.appendChild(el("div", "set-note", "Empty command: the default runs. Type a full command line to change it, for example claude --dangerously-skip-permissions. Saved under [agents] in projects.toml."));
-    root.replaceChildren(nav, main);
+    main.appendChild(callSigns());
+    root.replaceChildren(nav, main, closeButton());
+  }
+
+  /** Esc, in the top right corner as in the theme picker. A click closes. */
+  function closeButton(): HTMLButtonElement {
+    const x = button("set-x", "", close);
+    x.title = "Close (Esc)";
+    x.setAttribute("aria-label", "Close settings");
+    x.appendChild(el("kbd", "", "Esc"));
+    return x;
+  }
+
+  /** The words that make up the names of new agent sessions. */
+  function callSigns(): HTMLElement {
+    const box = el("div", "set-names-box");
+    const head = el("div", "set-head");
+    head.append(
+      el("div", "set-h", "Agent names"),
+      el("div", "set-sub", "A new agent session is named a title plus a name, such as Captain Kraken. One entry per line. Empty a list to restore its defaults."),
+    );
+    box.appendChild(head);
+    const cols = el("div", "set-names-cols");
+    for (const [list, label] of [["ranks", "TITLES"], ["nouns", "NAMES"]] as const) {
+      const col = el("div", "set-names-col");
+      const area = el("textarea", "mono");
+      area.spellcheck = false;
+      area.value = agentNameList(list).join("\n");
+      area.setAttribute("aria-label", `Agent ${label.toLowerCase()}`);
+      area.addEventListener("blur", () => {
+        setAgentNameList(list, area.value.split("\n"));
+        area.value = agentNameList(list).join("\n");
+      });
+      col.append(el("div", "set-names-label", label), area);
+      cols.appendChild(col);
+    }
+    box.appendChild(cols);
+    return box;
   }
 
   /** App colors made from a terminal theme. A click applies it. */
@@ -246,7 +281,6 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
           e.preventDefault();
           cmd.blur();
         } else if (e.key === "Escape") {
-          e.stopPropagation();
           cmd.value = o[key];
           cmd.blur();
         }
@@ -266,16 +300,18 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   }
 
   function close() {
+    // Leaving a name list saves it.
+    if (document.activeElement instanceof HTMLTextAreaElement) document.activeElement.blur();
     root.hidden = true;
     onClose();
   }
 
-  root.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      close();
-    }
+  // On the document, so Escape works wherever focus is. Menus and dialogs
+  // over settings stop the key first.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || root.hidden || e.defaultPrevented) return;
+    e.preventDefault();
+    close();
   });
 
   return {
