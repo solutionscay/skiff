@@ -379,7 +379,7 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .cell.focused .cell-head { background: color-mix(in srgb, var(--pc) 12%, var(--bg-panel)); }
 .cell { position: relative; }
 .cell.focused::after { content: ""; position: absolute; inset: 0; border: calc(2 * var(--u)) solid var(--pc); pointer-events: none; z-index: 5; }
-#terminal-host.group-picked .cell.focused::after { display: none; }
+#terminal-host:is(.group-picked, .at-rail) .cell.focused::after { display: none; }
 .cell-head .title { color: var(--text); font-size: calc(16px * var(--zoom, 1)); font-weight: 600; flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cell:not(.focused) .cell-head .title { color: var(--text-3); font-weight: 500; }
 .cell-head .ctx { display: flex; align-items: center; gap: calc(8 * var(--u)); flex-shrink: 1; min-width: 0; font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); overflow: hidden; }
@@ -787,8 +787,8 @@ body.kbd .tc-card:focus { outline: 0; border-color: var(--text); box-shadow: 0 0
 .keys-note { padding: calc(14 * var(--u)) calc(20 * var(--u)); font-size: calc(12px * var(--zoom, 1)); line-height: 1.6; color: var(--text-dim); }
 .keys-empty { padding: calc(20 * var(--u)); color: var(--text-dim); font-size: calc(13px * var(--zoom, 1)); }
 
-#terminal-host.group-picked .cell.focused .cell-head { background: var(--bg-panel); box-shadow: none; }
-#terminal-host.group-picked .cell.focused .cell-head .title { color: var(--text-3); }
+#terminal-host:is(.group-picked, .at-rail) .cell.focused .cell-head { background: var(--bg-panel); box-shadow: none; }
+#terminal-host:is(.group-picked, .at-rail) .cell.focused .cell-head .title { color: var(--text-3); }
 
 /* Hover and press on every clickable row and button. A layered image, not a
    background, so it sits on top of focused, selected and project tints. */

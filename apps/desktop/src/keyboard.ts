@@ -67,8 +67,9 @@ function roveTarget(): HTMLElement | undefined {
 /** Moves the one highlight to the current row. */
 export function markCurrent() {
   const items = listItems();
-  // On the rail, no row is lit.
+  // On the rail, no row is lit, and no pane is framed: the keys are on the rail.
   const cur = S.atRail ? undefined : currentRow(items);
+  host.classList.toggle("at-rail", S.atRail);
   for (const x of items) x.classList.toggle("current", x === cur);
   // The worktree marker goes with it: on the project row, no worktree is marked.
   if (cur || S.atRail) for (const w of document.querySelectorAll("#sidebar-scroll .wt")) w.classList.toggle("selected", !!cur && w.contains(cur));
