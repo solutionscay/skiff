@@ -509,10 +509,9 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .welcome-actions button svg { flex-shrink: 0; color: var(--text-2); }
 .welcome-hint { font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); }
 
-/* Right-edge controls sit on a 48px column grid so their edges line up:
-   gear and pane buttons 48, Unsplit 96, Restart skiffd 144. */
-/* Settings button, the + on a worktree, and its menu. */
-#topbar .gear { width: calc(48 * var(--u)); justify-content: center; padding: 0; border: 0; background: transparent; color: var(--text-2); }
+/* Settings button, the + on a worktree, and its menu. The gear is as wide
+   as a pane's close button (--row), so the two line up at the right edge. */
+#topbar .gear { width: var(--row); justify-content: center; padding: 0; border: 0; background: transparent; color: var(--text-2); }
 #topbar .gear:hover { background: var(--bg-raised); color: var(--text); }
 .wt-plus { width: var(--row); height: var(--row); flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--text-2); }
 .wt-plus:hover, .wt-plus[aria-expanded="true"] { background: var(--bg-raised); color: var(--text); }
