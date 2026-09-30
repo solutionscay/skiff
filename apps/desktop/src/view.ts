@@ -1,7 +1,7 @@
 /** What the terminal area shows and which pane has the keys. */
 import { beginDrag, type DropTarget } from "./drag";
 import { build, type Direction, leaf, neighbor, removePane, replacePane, sessionsOf, shape, splitPane } from "./layout";
-import { bySessionPriority, taskTitle } from "./model";
+import { branchName, bySessionPriority, locate, taskTitle } from "./model";
 import type { Group, Layout, Project, SplitDir, Worktree } from "./types";
 import { filledOf, focusFirstSlot, isSlot, slot, slotsOf } from "./canvas";
 import { host, showError } from "./dom";
@@ -294,6 +294,40 @@ function groupRects() {
   return [...boxes].map(([id, rect]) => ({ id, rect }));
 }
 
+/** A group lives in the worktree of its first session. A canvas with no session yet lives where it was made. */
+export function groupHome(g: Group): Worktree | null {
+  const first = sessions.get(filledOf(g.layout)[0]);
+  if (first) return place(first)?.worktree ?? null;
+  return g.cwd ? locate(S.projects, g.cwd)?.worktree ?? null : null;
+}
+
+const home = (id: string) => {
+  const s = sessions.get(id);
+  return s ? place(s)?.worktree.path ?? null : null;
+};
+
+/**
+ * Why a drop would mix worktrees, or null. A session's process runs where it
+ * started, so a pane or group never shows a session from another worktree.
+ * Undefined: the target has no worktree yet, so any session fits.
+ */
+function mixesWorktrees(t: DropTarget, ids: string[]): string | null {
+  let target: string | null | undefined;
+  if (t.group) {
+    const g = S.groups.find((x) => x.id === t.group);
+    target = g ? groupHome(g)?.path ?? (filledOf(g.layout).length ? null : undefined) : undefined;
+  } else {
+    const other = t.session ?? shownIds().find((id) => !ids.includes(id));
+    target = other ? home(other) : undefined;
+  }
+  if (target === undefined) return null;
+  const off = ids.find((id) => home(id) !== target);
+  if (!off) return null;
+  const s = sessions.get(off);
+  const at = s ? place(s) : null;
+  return `Runs in ${at ? branchName(at.worktree) : "another folder"}`;
+}
+
 /** Start a drag of these sessions; a press that does not move stays a click. */
 export function dragSessions(e: MouseEvent, ids: string[]) {
   const first = sessions.get(ids[0]);
@@ -314,6 +348,7 @@ export function dragSessions(e: MouseEvent, ids: string[]) {
     cells,
     area: blocked || alone ? null : host,
     groupRows: groupRects,
+    refuses: (t) => mixesWorktrees(t, ids),
     accepts: (t) => (t.group ? groupGains(t.group, ids) : !!dropLayout(t, ids)),
     drop: (t) => dropOn(t, ids),
   });

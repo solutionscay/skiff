@@ -442,6 +442,15 @@ async fn list_dir(path: PathBuf) -> Result<Vec<skiff_core::files::Entry>, String
         .map_err(err)
 }
 
+/// The changed files of one worktree, for the sidebar's Changes section.
+#[tauri::command]
+async fn git_changes(path: PathBuf) -> Result<Vec<skiff_core::git::Change>, String> {
+    tokio::task::spawn_blocking(move || skiff_core::git::changes(&path))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(err)
+}
+
 /// Opens a file in its default app. From Rust, like open_config, because
 /// the opener's `**` scope does not match hidden folders such as .github.
 #[tauri::command]
@@ -705,6 +714,7 @@ pub fn run() {
             set_project_background,
             read_image,
             list_dir,
+            git_changes,
             open_file,
             reveal_file,
             files_projects,

@@ -20,6 +20,8 @@ interface Opts {
   area: HTMLElement | null;
   /** Group rows in the sidebar that take a drop, read when the drag starts. */
   groupRows?: () => { id: string; rect: DOMRect }[];
+  /** Why the target takes no drop, shown on the ghost. Null: no objection. */
+  refuses?: (t: DropTarget) => string | null;
   /** False: the drop would change nothing, so the target shows no highlight. */
   accepts?: (t: DropTarget) => boolean;
   drop: (t: DropTarget) => void;
@@ -121,7 +123,11 @@ export function beginDrag(down: MouseEvent, o: Opts) {
     m.preventDefault();
     ghost!.style.transform = `translate(${m.clientX + 12}px, ${m.clientY + 12}px)`;
     const h = hit(m.clientX, m.clientY);
-    target = h && (o.accepts?.(h.t) ?? true) ? h.t : null;
+    const why = h ? o.refuses?.(h.t) ?? null : null;
+    ghost!.textContent = why ?? o.label;
+    ghost!.classList.toggle("refused", !!why);
+    document.body.classList.toggle("drop-refused", !!why);
+    target = h && !why && (o.accepts?.(h.t) ?? true) ? h.t : null;
     if (target) {
       const p = h!.p;
       Object.assign(preview!.style, { left: `${p.l}px`, top: `${p.t}px`, width: `${p.w}px`, height: `${p.h}px` });
@@ -137,7 +143,7 @@ export function beginDrag(down: MouseEvent, o: Opts) {
     ghost?.remove();
     preview?.remove();
     ghost = preview = null;
-    document.body.classList.remove("dragging-session");
+    document.body.classList.remove("dragging-session", "drop-refused");
     for (const [el, t] of titled) if (el.isConnected) el.setAttribute("title", t);
     titled.length = 0;
   };

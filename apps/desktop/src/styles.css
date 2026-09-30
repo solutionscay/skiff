@@ -21,6 +21,8 @@
   --state-done: #9aa3ae;
   --state-idle: #7d8794;
   --error: #ff8a80;
+  --diff-add: #7fd08a;
+  --diff-del: #ff8a80;
   --font: "IBM Plex Sans", system-ui, sans-serif;
   --mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
   --u: calc(1px * var(--zoom, 1));
@@ -221,6 +223,19 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 .file-row.picked .file-name { color: var(--text); }
 .file-note { color: var(--text-dim); padding-left: calc((60 + var(--depth, 0) * 12) * var(--u)); }
 .file-note.error { color: var(--error); }
+/* Changes: what git reports against HEAD. Hand-off only, no diff view. */
+.wt-diff, .change-counts { flex-shrink: 0; display: flex; gap: calc(4 * var(--u)); margin-left: auto; font-family: var(--mono); font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
+.diff-add { color: var(--diff-add); }
+.diff-del { color: var(--diff-del); }
+.changes-n { margin-left: auto; font-family: var(--mono); color: var(--text-3); }
+.change-row { gap: calc(6 * var(--u)); }
+.change-st { width: calc(12 * var(--u)); flex-shrink: 0; font-family: var(--mono); font-size: calc(11px * var(--zoom, 1)); font-weight: 700; }
+.st-M { color: var(--state-waiting); }
+.st-A { color: var(--diff-add); }
+.st-D { color: var(--diff-del); }
+.st-U { color: var(--error); }
+.change-row.st-gone .file-name { text-decoration: line-through; }
+.change-dir { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
 .chev { transition: transform 120ms; }
 .chev.closed { transform: rotate(-90deg); }
 .session-row {
@@ -586,6 +601,8 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 }
 .drop-preview[hidden] { display: none; }
 body.dragging-session, body.dragging-session * { cursor: grabbing !important; user-select: none !important; }
+body.dragging-session.drop-refused, body.dragging-session.drop-refused * { cursor: not-allowed !important; }
+.drag-ghost.refused { border-color: var(--error); color: var(--error); }
 .cell-head { cursor: grab; }
 .cell-head button { cursor: pointer; }
 

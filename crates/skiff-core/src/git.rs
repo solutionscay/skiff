@@ -101,6 +101,68 @@ pub fn is_dirty(dir: &Path) -> Result<bool> {
     Ok(!git(dir, &["status", "--porcelain"])?.trim().is_empty())
 }
 
+/// One changed file in a worktree, against HEAD: staged and unstaged together.
+#[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct Change {
+    /// Relative to the worktree root.
+    pub path: String,
+    /// `M` modified, `A` added or untracked, `D` deleted, `U` unmerged.
+    pub status: char,
+    /// Lines added and removed. `None` for a binary file.
+    pub added: Option<u32>,
+    pub removed: Option<u32>,
+}
+
+/// Untracked files larger than this show no line count.
+const COUNT_LIMIT: u64 = 1 << 20;
+
+/// The changed files of the worktree at `dir`, sorted by path.
+pub fn changes(dir: &Path) -> Result<Vec<Change>> {
+    let status = git(dir, &["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"])?;
+    // Fails in a repository with no commit yet: every file then shows no count.
+    let numstat = git(dir, &["diff", "HEAD", "--numstat", "-z", "--no-renames"]).unwrap_or_default();
+    let mut counts = std::collections::HashMap::new();
+    for rec in numstat.split('\0').filter(|r| !r.is_empty()) {
+        let mut f = rec.splitn(3, '\t');
+        let (Some(a), Some(r), Some(p)) = (f.next(), f.next(), f.next()) else { continue };
+        counts.insert(p.to_string(), (a.parse().ok(), r.parse().ok()));
+    }
+    let mut list = Vec::new();
+    for rec in status.split('\0').filter(|r| r.len() > 3) {
+        let (xy, path) = rec.split_at(3);
+        let (x, y) = (xy.as_bytes()[0], xy.as_bytes()[1]);
+        let status = match (x, y) {
+            (b'?', _) => 'A',
+            (b'U', _) | (_, b'U') | (b'A', b'A') | (b'D', b'D') => 'U',
+            (b'D', _) | (_, b'D') => 'D',
+            (b'A', _) => 'A',
+            _ => 'M',
+        };
+        let (added, removed) = match counts.get(path) {
+            Some(&c) => c,
+            None if x == b'?' => (count_lines(&dir.join(path)), Some(0)),
+            None => (None, None),
+        };
+        list.push(Change { path: path.to_string(), status, added, removed });
+    }
+    list.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(list)
+}
+
+/// Lines in a new text file. `None` for a binary or large file.
+fn count_lines(path: &Path) -> Option<u32> {
+    if std::fs::metadata(path).ok()?.len() > COUNT_LIMIT {
+        return None;
+    }
+    let bytes = std::fs::read(path).ok()?;
+    if bytes.contains(&0) {
+        return None;
+    }
+    let n = bytes.iter().filter(|&&b| b == b'\n').count();
+    let last = !bytes.is_empty() && !bytes.ends_with(b"\n");
+    Some((n + last as usize) as u32)
+}
+
 /// Which of `paths`, relative to `dir`, git ignores. A folder needs a
 /// trailing `/` to match a pattern such as `target/`.
 pub fn ignored(dir: &Path, paths: &[String]) -> Result<HashSet<String>> {
@@ -140,6 +202,39 @@ pub fn ignored(dir: &Path, paths: &[String]) -> Result<HashSet<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn changes_counts_lines_per_file() {
+        let root = std::env::temp_dir().join(format!("skiff-changes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let run = |args: &[&str]| assert!(Command::new("git").arg("-C").arg(&root).args(args).status().unwrap().success());
+        run(&["init", "-q"]);
+        run(&["config", "user.email", "t@t"]);
+        run(&["config", "user.name", "t"]);
+        std::fs::write(root.join("a.txt"), "1\n2\n3\n").unwrap();
+        std::fs::write(root.join("gone.txt"), "x\n").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-qm", "init"]);
+        std::fs::write(root.join("a.txt"), "1\ntwo\n3\n4\n").unwrap();
+        std::fs::remove_file(root.join("gone.txt")).unwrap();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/new.rs"), "fn main() {}\nlast").unwrap();
+        std::fs::write(root.join("blob.bin"), [0u8, 1, 2]).unwrap();
+
+        let got = changes(&root).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        let c = |path: &str, status, added, removed| Change { path: path.into(), status, added, removed };
+        assert_eq!(
+            got,
+            [
+                c("a.txt", 'M', Some(2), Some(1)),
+                c("blob.bin", 'A', None, Some(0)),
+                c("gone.txt", 'D', Some(0), Some(1)),
+                c("src/new.rs", 'A', Some(2), Some(0)),
+            ]
+        );
+    }
 
     #[test]
     fn parses_porcelain_z() {

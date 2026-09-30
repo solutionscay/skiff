@@ -5,6 +5,7 @@ import { removePane, replacePane, sessionsOf } from "./layout";
 import type { AgentInfo, DaemonEvent, DaemonStatus, Project, SessionInfo, SplitDir } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { $, button, h } from "./dom";
+import { reloadChanges } from "./changes";
 import { loadFilesSetting } from "./files";
 import { deleteGroup, loadGroups, syncTemplateName } from "./groups";
 import { render, scheduleRender } from "./render";
@@ -96,6 +97,23 @@ export async function loadProjects() {
   render();
 }
 
+let staleTimer: number | undefined;
+
+/**
+ * Reads worktrees and changed files again, once a burst of calls settles.
+ * Both change outside Skiff: an agent's `git worktree add`, an editor's save.
+ */
+export function reposStale() {
+  window.clearTimeout(staleTimer);
+  staleTimer = window.setTimeout(() => {
+    void loadProjects();
+    reloadChanges();
+  }, 400);
+}
+
+// Back from a terminal, an editor or a diff tool.
+window.addEventListener("focus", reposStale);
+
 /** Pulls `last_output_at` and anything missed, so relative times stay true. Drops what the daemon no longer has. */
 export async function refreshSessions() {
   const fresh = new Set<string>();
@@ -123,6 +141,8 @@ export function onEvent(e: DaemonEvent) {
       if (s) {
         s.state = e.state;
         if (e.state === "working") s.last_output_at = Date.now();
+        // An agent that stops working may have written files or added a worktree.
+        else reposStale();
       }
       break;
     }

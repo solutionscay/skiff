@@ -3,9 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { filledOf, slotsOf } from "./canvas";
 import { agentIcon, launchIcon } from "./agentIcon";
 import { glyph, sessionsOf } from "./layout";
-import { agentName, branchName, byStart, taskTitle, locate } from "./model";
+import { agentName, branchName, byStart, taskTitle } from "./model";
 import type { Group, Project, SessionInfo, Worktree } from "./types";
 import { newSession } from "./daemon";
+import { changeCounts, changesBlock } from "./changes";
 import { filesBlock, showsFiles } from "./files";
 import { $, branchIcon, button, chevron, h, host, icon, plusIcon, projectIcon, showError } from "./dom";
 import { groupMenu, newWorktree, projectMenu, rowMenu, worktreeMenu } from "./menus";
@@ -16,7 +17,7 @@ import { clearSelection, keepRow, selectRange, toggleSelect, toggleSelectGroup }
 import { stateIcon } from "./stateIcon";
 import { accent, activeGroupObj, collapsed, currentProject, currentWorktree, DEFAULT_ACCENT, OTHER, enabledAgents, groupedIds, place, removeErrors, removing, S, selectedWorktree, sessions, worktreeSessions, shownIds } from "./state";
 import { groupTheme } from "./themes";
-import { dragSessions, revealSession, selectProject, selectWorktree, showGroup } from "./view";
+import { dragSessions, groupHome, revealSession, selectProject, selectWorktree, showGroup } from "./view";
 
 export function renderRail() {
   const rail = $<HTMLElement>("rail");
@@ -195,14 +196,8 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
  * session) with their members, then its sessions in no group.
  */
 function worktreeLines(w: Worktree | null): Line[] {
-  // A canvas with no session yet lives where it was made.
-  const home = (g: Group) => {
-    const first = sessions.get(filledOf(g.layout)[0]);
-    if (first) return place(first)?.worktree ?? null;
-    return g.cwd ? locate(S.projects, g.cwd)?.worktree ?? null : null;
-  };
   const lines: Line[] = [];
-  const groups = S.groups.filter((g) => home(g) === w);
+  const groups = S.groups.filter((g) => groupHome(g) === w);
   for (const [groupIndex, g] of groups.entries()) {
     const members: Array<{ session: SessionInfo; branch: boolean }> = [];
     for (const id of sessionsOf(g.layout)) {
@@ -422,6 +417,8 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   if (w.locked) pick.appendChild(h("span", "tag", "locked"));
   if (w.prunable) pick.appendChild(h("span", "tag", "prunable"));
   if (removing.has(w.path)) pick.appendChild(h("span", "tag", "removing…"));
+  const diff = changeCounts(w);
+  if (diff) pick.appendChild(diff);
   pick.title = w.path;
   row.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -444,6 +441,8 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
     if (waiting) count.append(h("span", "waiting-note", `· ${waiting} waiting`));
     const body = h("div", "wt-body");
     body.appendChild(sessionBlock(worktreeLines(w), color, count, true));
+    const changes = changesBlock(w);
+    if (changes) body.appendChild(changes);
     if (showsFiles(p)) body.appendChild(filesBlock(w));
     block.appendChild(body);
   }
