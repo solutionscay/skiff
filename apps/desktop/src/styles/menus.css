@@ -35,7 +35,7 @@ body.kbd .lm-item:focus, body.kbd .slot-item:focus { outline: 0; }
 .lm-key:has(.rune) { display: inline-flex; align-items: center; justify-content: center; }
 .lm-key .rune { width: calc(14 * var(--u)); height: calc(14 * var(--u)); display: block; }
 .lm-item:focus .lm-key .rune { color: var(--text-2); }
-.lm-item.danger .lm-key { color: inherit; }
+.lm-item.danger .lm-key, .lm-item.danger .lm-key .rune { color: inherit; }
 .lm-name { flex-grow: 1; font-size: calc(14px * var(--zoom, 1)); }
 .lm-hint { font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
 .lm-settings { border-bottom: 0; background: var(--bg); color: var(--state-working); }
