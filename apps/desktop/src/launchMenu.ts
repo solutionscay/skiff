@@ -1,3 +1,4 @@
+import { menuRow } from "./menuRow";
 import type { AgentInfo, Project, Worktree } from "./types";
 import { launchIcon } from "./agentIcon";
 import { followPointer, menuOpened } from "./menu";
@@ -33,20 +34,9 @@ export function createLaunchMenu(o: Opts) {
   }
 
   function item(key: string, name: string, hint: string, run: () => void, cls = "", icon?: HTMLElement) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "lm-item " + cls;
-    b.setAttribute("role", "menuitem");
+    const { row: b, key: k, name: n, trailing: h } = menuRow(name, hint, "lm-item " + cls);
     followPointer(b);
-    const k = document.createElement("span");
-    k.className = "lm-key mono";
     k.textContent = key;
-    const n = document.createElement("span");
-    n.className = "lm-name";
-    n.textContent = name;
-    const h = document.createElement("span");
-    h.className = "lm-hint mono";
-    h.textContent = hint;
     b.append(k);
     if (icon) b.append(icon);
     b.append(n, h);

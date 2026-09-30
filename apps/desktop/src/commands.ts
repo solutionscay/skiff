@@ -1,3 +1,4 @@
+import { dialogFrame, dialogHeader } from "./dialogParts";
 /** One command list for the menu bar and the palette; key actions. */
 import { type Action, DESCRIBE, keyLabel, menuAccel } from "./keys";
 import { agentName, branchName, bySessionPriority, taskTitle } from "./model";
@@ -7,7 +8,8 @@ import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { $, h, showError } from "./dom";
+import { $, h } from "./dom";
+import { showError } from "./alerts";
 import { currentRow, cycleRegion, fromProject, stepList, stepRail, toProject } from "./keyboard";
 import { copyReport, hasReport, startTrace, stopTrace, tracing } from "./latency";
 import { ctxMenu, endEntry, groupCloseEntries, newWorktree, projectMenu, projectRun, splitMenu } from "./menus";
@@ -128,20 +130,8 @@ async function openConfig() {
 /** A plain modal for the shortcut sheet and About. Esc or a click outside closes it. */
 function infoDialog(title: string, body: HTMLElement, initialFocus?: HTMLElement) {
   const back = document.activeElement as HTMLElement | null;
-  const overlay = h("div", "confirm-overlay");
-  const panel = h("div", "info-panel");
-  panel.setAttribute("role", "dialog");
-  panel.setAttribute("aria-modal", "true");
-  panel.setAttribute("aria-label", title);
-  const head = h("div", "tc-head");
-  // Esc in the corner, as in Settings: a click closes too.
-  const x = h("button", "tc-x");
-  x.type = "button";
-  x.title = "Close (Esc)";
-  x.setAttribute("aria-label", "Close");
-  x.appendChild(h("kbd", "", "Esc"));
-  x.addEventListener("click", () => close());
-  head.append(h("div", "tc-title", title), x);
+  const { overlay, panel } = dialogFrame("info-panel", "dialog", title);
+  const head = dialogHeader(title, () => close());
   const scroll = h("div", "info-body");
   scroll.appendChild(body);
   panel.append(head, scroll);

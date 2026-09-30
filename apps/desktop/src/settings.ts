@@ -1,16 +1,10 @@
+import { escapeButton } from "./dialogParts";
 import { PANE_OPACITY_MIN, paneOpacity, setPaneOpacity } from "./backdrop";
-import { button } from "./dom";
+import { h } from "./dom";
 import { invoke } from "@tauri-apps/api/core";
 import type { AgentInfo, TerminalTheme } from "./types";
 import { agentNameList, setAgentNameList } from "./agentNames";
 import { themeGrid } from "./themeCards";
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text) e.textContent = text;
-  return e;
-}
 
 /**
  * Full-window settings over the sidebar and terminal. One section for now:
@@ -27,7 +21,7 @@ export interface AppearanceHooks {
 const HARBOR = "builtin:harbor";
 
 export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () => void, look: AppearanceHooks) {
-  const root = el("div");
+  const root = h("div");
   root.id = "settings";
   root.hidden = true;
   root.setAttribute("role", "dialog");
@@ -90,12 +84,12 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   }
 
   function draw() {
-    const nav = el("div", "set-nav");
-    const head = el("div", "set-nav-head");
-    head.append(el("div", "set-title", "Settings"), el("div", "set-path mono", "~/.config/skiff/projects.toml"));
+    const nav = h("div", "set-nav");
+    const head = h("div", "set-nav-head");
+    head.append(h("div", "set-title", "Settings"), h("div", "set-path mono", "~/.config/skiff/projects.toml"));
     const names = { agents: "Agents", appearance: "Appearance", open: "Open with" };
     const tabs = (["agents", "appearance", "open"] as const).map((t) => {
-      const b = el("button", "set-tab" + (tab === t ? " active" : ""), names[t]);
+      const b = h("button", "set-tab" + (tab === t ? " active" : ""), names[t]);
       b.type = "button";
       b.addEventListener("click", () => {
         tab = t;
@@ -113,28 +107,28 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       return;
     }
 
-    const main = el("div", "set-main");
-    const intro = el("div", "set-head");
+    const main = h("div", "set-main");
+    const intro = h("div", "set-head");
     intro.append(
-      el("div", "set-h", "Agents"),
-      el("div", "set-sub", "Turn on the agents you use. The + button on a worktree offers them, plus a plain shell."),
+      h("div", "set-h", "Agents"),
+      h("div", "set-sub", "Turn on the agents you use. The + button on a worktree offers them, plus a plain shell."),
     );
-    const cols = el("div", "set-row set-cols");
-    cols.append(el("span", "c-on", ""), el("span", "c-name", "AGENT"), el("span", "c-cmd", "COMMAND"), el("span", "c-status", "STATUS"));
+    const cols = h("div", "set-row set-cols");
+    cols.append(h("span", "c-on", ""), h("span", "c-name", "AGENT"), h("span", "c-cmd", "COMMAND"), h("span", "c-status", "STATUS"));
     main.append(intro, cols);
     for (const a of agents) {
-      const row = el("div", "set-row set-agent" + (a.enabled ? " on" : "") + (a.installed ? "" : " missing"));
-      const sw = el("button", "c-on");
+      const row = h("div", "set-row set-agent" + (a.enabled ? " on" : "") + (a.installed ? "" : " missing"));
+      const sw = h("button", "c-on");
       sw.type = "button";
       sw.disabled = !a.installed;
       sw.setAttribute("role", "switch");
       sw.setAttribute("aria-checked", String(a.enabled));
       sw.setAttribute("aria-label", `${a.id} ${a.enabled ? "on" : "off"}`);
       sw.title = a.installed ? "" : `${a.command.split(/\s+/)[0]} is not on PATH`;
-      sw.appendChild(el("span", "switch"));
+      sw.appendChild(h("span", "switch"));
       sw.addEventListener("click", () => void toggle(a.id));
 
-      const cmd = el("input", "c-cmd mono");
+      const cmd = h("input", "c-cmd mono");
       cmd.value = a.command === a.default_command ? "" : a.command;
       cmd.placeholder = a.default_command;
       cmd.spellcheck = false;
@@ -155,43 +149,39 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       });
       cmd.addEventListener("blur", save);
 
-      const status = el("span", "c-status");
-      status.append(el("span", "sq"), a.installed ? "installed" : "not on PATH");
-      row.append(sw, el("span", "c-name", a.id), cmd, status);
+      const status = h("span", "c-status");
+      status.append(h("span", "sq"), a.installed ? "installed" : "not on PATH");
+      row.append(sw, h("span", "c-name", a.id), cmd, status);
       main.appendChild(row);
     }
     if (error) {
-      const err = el("div", "set-error", error);
+      const err = h("div", "set-error", error);
       err.setAttribute("role", "alert");
       main.appendChild(err);
     }
-    main.appendChild(el("div", "set-note", "Empty command: the default runs. Type a full command line to change it, for example claude --dangerously-skip-permissions. Saved under [agents] in projects.toml."));
+    main.appendChild(h("div", "set-note", "Empty command: the default runs. Type a full command line to change it, for example claude --dangerously-skip-permissions. Saved under [agents] in projects.toml."));
     main.appendChild(callSigns());
     root.replaceChildren(nav, main, closeButton());
   }
 
   /** Esc, in the top right corner as in the theme picker. A click closes. */
   function closeButton(): HTMLButtonElement {
-    const x = button("set-x", "", close);
-    x.title = "Close (Esc)";
-    x.setAttribute("aria-label", "Close settings");
-    x.appendChild(el("kbd", "", "Esc"));
-    return x;
+    return escapeButton("set-x", "Close settings", close);
   }
 
   /** The words that make up the names of new agent sessions. */
   function callSigns(): HTMLElement {
-    const box = el("div", "set-names-box");
-    const head = el("div", "set-head");
+    const box = h("div", "set-names-box");
+    const head = h("div", "set-head");
     head.append(
-      el("div", "set-h", "Agent names"),
-      el("div", "set-sub", "A new agent session is named a title plus a name, such as Captain Kraken. One entry per line. Empty a list to restore its defaults."),
+      h("div", "set-h", "Agent names"),
+      h("div", "set-sub", "A new agent session is named a title plus a name, such as Captain Kraken. One entry per line. Empty a list to restore its defaults."),
     );
     box.appendChild(head);
-    const cols = el("div", "set-names-cols");
+    const cols = h("div", "set-names-cols");
     for (const [list, label] of [["ranks", "TITLES"], ["nouns", "NAMES"]] as const) {
-      const col = el("div", "set-names-col");
-      const area = el("textarea", "mono");
+      const col = h("div", "set-names-col");
+      const area = h("textarea", "mono");
       area.spellcheck = false;
       area.value = agentNameList(list).join("\n");
       area.setAttribute("aria-label", `Agent ${label.toLowerCase()}`);
@@ -199,7 +189,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         setAgentNameList(list, area.value.split("\n"));
         area.value = agentNameList(list).join("\n");
       });
-      col.append(el("div", "set-names-label", label), area);
+      col.append(h("div", "set-names-label", label), area);
       cols.appendChild(col);
     }
     box.appendChild(cols);
@@ -208,14 +198,14 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
 
   /** App colors made from a terminal theme. A click applies it. */
   function appearance(): HTMLElement {
-    const main = el("div", "set-main");
-    const intro = el("div", "set-head");
+    const main = h("div", "set-main");
+    const intro = h("div", "set-head");
     intro.append(
-      el("div", "set-h", "Appearance"),
-      el("div", "set-sub", "Colors the app and every terminal. Right-click a terminal to give it its own theme."),
+      h("div", "set-h", "Appearance"),
+      h("div", "set-sub", "Colors the app and every terminal. Right-click a terminal to give it its own theme."),
     );
     const cur = look.current()?.replace(/^foot:/, "builtin:") ?? null;
-    const cards = el("div", "set-cards");
+    const cards = h("div", "set-cards");
     cards.appendChild(
       themeGrid(look.themes(), {
         active: cur ?? HARBOR,
@@ -226,19 +216,19 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       }),
     );
     // Over a project's background image, panes are this opaque.
-    const op = el("div", "set-row set-opacity");
-    const slider = el("input", "c-cmd");
+    const op = h("div", "set-row set-opacity");
+    const slider = h("input", "c-cmd");
     slider.type = "range";
     slider.min = String(Math.round(PANE_OPACITY_MIN * 100));
     slider.max = "100";
     slider.value = String(Math.round(paneOpacity() * 100));
     slider.setAttribute("aria-label", "Terminal opacity over a background image");
-    const val = el("span", "c-status", `${slider.value}%`);
+    const val = h("span", "c-status", `${slider.value}%`);
     slider.addEventListener("input", () => {
       setPaneOpacity(Number(slider.value) / 100);
       val.textContent = `${slider.value}%`;
     });
-    op.append(el("span", "c-name", "Terminal opacity"), slider, val);
+    op.append(h("span", "c-name", "Terminal opacity"), slider, val);
     main.append(intro, op, cards);
     return main;
   }
@@ -262,16 +252,16 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
 
   /** Which apps Skiff hands things to. */
   function openWith(): HTMLElement {
-    const main = el("div", "set-main");
-    const intro = el("div", "set-head");
-    intro.append(el("div", "set-h", "Open with"));
-    const cols = el("div", "set-row set-open set-cols");
-    cols.append(el("span", "c-name", "SHOWS"), el("span", "c-cmd", "COMMAND"));
+    const main = h("div", "set-main");
+    const intro = h("div", "set-head");
+    intro.append(h("div", "set-h", "Open with"));
+    const cols = h("div", "set-row set-open set-cols");
+    cols.append(h("span", "c-name", "SHOWS"), h("span", "c-cmd", "COMMAND"));
     main.append(intro, cols);
     const o = openSet;
     if (o) for (const { key, label } of OPEN_ROWS) {
-      const row = el("div", "set-row set-open set-agent on");
-      const cmd = el("input", "c-cmd mono");
+      const row = h("div", "set-row set-open set-agent on");
+      const cmd = h("input", "c-cmd mono");
       cmd.value = o[key];
       cmd.placeholder = key === "diff" ? o.default_diff : "default app";
       cmd.spellcheck = false;
@@ -288,11 +278,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       cmd.addEventListener("blur", () => {
         if (cmd.value.trim() !== o[key].trim()) void setOpen(key, cmd.value);
       });
-      row.append(el("span", "c-name", label), cmd);
+      row.append(h("span", "c-name", label), cmd);
       main.appendChild(row);
     }
     if (error) {
-      const err = el("div", "set-error", error);
+      const err = h("div", "set-error", error);
       err.setAttribute("role", "alert");
       main.appendChild(err);
     }

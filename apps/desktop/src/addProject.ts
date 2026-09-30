@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFolder } from "@tauri-apps/plugin-dialog";
-import { showError } from "./dom";
+import { showError } from "./alerts";
 import type { FolderInfo, Project } from "./types";
 
 /**

@@ -1,3 +1,6 @@
+import { h } from "./dom";
+import { dialogActions, dialogFrame } from "./dialogParts";
+
 /** A color picker drawn in the page: the webview's own color input does not open on Linux. */
 
 type Hsv = [number, number, number];
@@ -39,38 +42,25 @@ function drag(el: HTMLElement, on: (x: number, y: number) => void) {
 
 export function pickColor(o: { title: string; start: string; action: string; submit: (hex: string) => Promise<void>; onClose?: () => void }): void {
   let hsv = toHsv(/^#[0-9a-f]{6}$/i.test(o.start) ? o.start : "#7ee0cb");
-  const el = (tag: string, cls: string, text?: string) => {
-    const x = document.createElement(tag);
-    x.className = cls;
-    if (text) x.textContent = text;
-    return x;
-  };
-  const overlay = el("div", "confirm-overlay");
-  const panel = el("div", "confirm-panel");
-  panel.setAttribute("role", "dialog");
-  panel.setAttribute("aria-modal", "true");
-  panel.setAttribute("aria-label", o.title);
-  const area = el("div", "cp-area");
-  const areaDot = el("div", "cp-dot");
+
+  const { overlay, panel } = dialogFrame("confirm-panel", "dialog", o.title);
+  const area = h("div", "cp-area");
+  const areaDot = h("div", "cp-dot");
   area.append(areaDot);
-  const hue = el("div", "cp-hue");
-  const hueDot = el("div", "cp-bar");
+  const hue = h("div", "cp-hue");
+  const hueDot = h("div", "cp-bar");
   hue.append(hueDot);
-  const readout = el("div", "cp-readout");
-  const chip = el("span", "cp-chip");
-  const code = el("input", "cp-code") as HTMLInputElement;
+  const readout = h("div", "cp-readout");
+  const chip = h("span", "cp-chip");
+  const code = h("input", "cp-code");
   code.spellcheck = false;
   code.maxLength = 7;
   code.setAttribute("aria-label", "Hex color");
   readout.append(chip, code);
-  const error = el("div", "prompt-error");
+  const error = h("div", "prompt-error");
   error.setAttribute("role", "alert");
-  const foot = el("div", "confirm-foot");
-  const cancel = el("button", "confirm-cancel", "Cancel") as HTMLButtonElement;
-  const act = el("button", "confirm-act go", o.action) as HTMLButtonElement;
-  cancel.type = act.type = "button";
-  foot.append(cancel, act);
-  panel.append(el("div", "confirm-title", o.title), area, hue, readout, error, foot);
+  const { foot, cancel, act } = dialogActions(o.action, "confirm-act go");
+  panel.append(h("div", "confirm-title", o.title), area, hue, readout, error, foot);
   overlay.append(panel);
   document.body.append(overlay);
 

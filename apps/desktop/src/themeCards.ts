@@ -1,11 +1,6 @@
+import { dialogFrame, dialogHeader } from "./dialogParts";
+import { h } from "./dom";
 import type { TerminalTheme } from "./types";
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text) e.textContent = text;
-  return e;
-}
 
 const rgb = (hex: string) => {
   const n = parseInt(hex.replace("#", "").slice(0, 6), 16);
@@ -24,22 +19,22 @@ const isLight = (hex: string) => {
 /** A small Skiff window in the theme's colors: a sidebar and a few terminal lines. */
 function preview(t: TerminalTheme): HTMLElement {
   const p = t.palette;
-  const box = el("span", "tc-preview");
+  const box = h("span", "tc-preview");
   box.style.background = t.background;
-  const side = el("span", "tc-side");
+  const side = h("span", "tc-side");
   side.style.background = mix(t.background, t.foreground, 0.06);
   side.style.borderRight = `1px solid ${mix(t.background, t.foreground, 0.16)}`;
   for (const w of [70, 50, 60]) {
-    const bar = el("span", "tc-bar");
+    const bar = h("span", "tc-bar");
     bar.style.width = `${w}%`;
     bar.style.background = mix(t.background, t.foreground, 0.35);
     side.appendChild(bar);
   }
-  const term = el("span", "tc-term");
+  const term = h("span", "tc-term");
   const line = (parts: [string, string][]) => {
-    const l = el("span", "tc-line");
+    const l = h("span", "tc-line");
     for (const [text, color] of parts) {
-      const s = el("span", "", text);
+      const s = h("span", "", text);
       s.style.color = color;
       l.appendChild(s);
     }
@@ -49,10 +44,10 @@ function preview(t: TerminalTheme): HTMLElement {
   line([["   Compiling", p[2]], [" skiffd", t.foreground]]);
   line([["warning", p[3]], [": unused var", mix(t.foreground, t.background, 0.3)]]);
   line([["error", p[1]], ["[E0308]", p[5]], [" types", p[6]]]);
-  const cursor = el("span", "tc-cursor");
+  const cursor = h("span", "tc-cursor");
   cursor.style.background = t.cursor ?? t.foreground;
-  const last = el("span", "tc-line");
-  const prompt = el("span", "", "$ ");
+  const last = h("span", "tc-line");
+  const prompt = h("span", "", "$ ");
   prompt.style.color = p[2];
   last.append(prompt, cursor);
   term.appendChild(last);
@@ -70,16 +65,16 @@ export interface CardOpts {
 
 /** A grid of theme cards. A click picks; nothing previews on hover. */
 export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
-  const grid = el("div", "tc-grid");
+  const grid = h("div", "tc-grid");
   const card = (t: TerminalTheme, id: string | null, label: string, badge: string) => {
     const on = o.active === id;
-    const b = el("button", "tc-card" + (on ? " active" : ""));
+    const b = h("button", "tc-card" + (on ? " active" : ""));
     b.type = "button";
     b.setAttribute("aria-pressed", String(on));
     b.appendChild(preview(t));
-    const foot = el("span", "tc-foot");
-    foot.append(el("span", "tc-name", label), el("span", "tc-badge", badge));
-    if (on) foot.appendChild(el("span", "tc-state", "✓ Active"));
+    const foot = h("span", "tc-foot");
+    foot.append(h("span", "tc-name", label), h("span", "tc-badge", badge));
+    if (on) foot.appendChild(h("span", "tc-state", "✓ Active"));
     b.appendChild(foot);
     b.addEventListener("click", () => o.pick(id));
     return b;
@@ -121,21 +116,9 @@ function nextCard(cards: HTMLElement[], at: number, key: "left" | "right" | "up"
 /** Terminal theme picker: a modal of cards. A click applies and closes. */
 export function pickTheme(title: string, themes: TerminalTheme[], o: CardOpts): void {
   const back = document.activeElement as HTMLElement | null;
-  const overlay = el("div", "confirm-overlay");
-  const panel = el("div", "tc-panel");
-  panel.setAttribute("role", "dialog");
-  panel.setAttribute("aria-modal", "true");
-  panel.setAttribute("aria-label", title);
-  const head = el("div", "tc-head");
-  // Esc in the corner, as in Settings: a click closes too.
-  const x = el("button", "tc-x");
-  x.type = "button";
-  x.title = "Close (Esc)";
-  x.setAttribute("aria-label", "Close");
-  x.appendChild(el("kbd", "", "Esc"));
-  x.addEventListener("click", () => close());
-  head.append(el("div", "tc-title", title), x);
-  const body = el("div", "tc-body");
+  const { overlay, panel } = dialogFrame("tc-panel", "dialog", title);
+  const head = dialogHeader(title, () => close());
+  const body = h("div", "tc-body");
   const close = () => {
     overlay.remove();
     back?.focus?.();

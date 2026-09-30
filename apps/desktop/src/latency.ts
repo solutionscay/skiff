@@ -18,7 +18,8 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { button, h, showError } from "./dom";
+import { button, h } from "./dom";
+import { showError } from "./alerts";
 import { scheduleRender } from "./render";
 import { S } from "./state";
 

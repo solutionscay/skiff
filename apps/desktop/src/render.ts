@@ -1,6 +1,6 @@
 /** render() and the throttled render for daemon events. */
 import { syncMenu } from "./commands";
-import { host } from "./dom";
+import { host } from "./terminalHost";
 import { applyTabOrder } from "./keyboard";
 import { renderModes, settleModes } from "./modes";
 import { renderSelectBar } from "./selection";

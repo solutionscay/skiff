@@ -5,7 +5,9 @@
  */
 import { launchIcon } from "./agentIcon";
 import { newSession } from "./daemon";
-import { button, h, icon, showError } from "./dom";
+import { button, h } from "./dom";
+import { icon } from "./icons";
+import { showError } from "./alerts";
 import { autoName, deleteGroup, saveGroup } from "./groups";
 import { leaf, removePane, replacePane, sessionsOf } from "./layout";
 import { render } from "./render";

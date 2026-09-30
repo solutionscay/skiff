@@ -1,3 +1,6 @@
+import { h } from "./dom";
+import { dialogActions, dialogFrame } from "./dialogParts";
+
 /**
  * One modal for actions that cannot be undone. Resolves true on the action,
  * false on Cancel, Esc, or a click outside. Enter runs the action.
@@ -5,33 +8,16 @@
 export function confirmAction(o: { title: string; body: string; action: string }): Promise<boolean> {
   return new Promise((resolve) => {
     const back = document.activeElement as HTMLElement | null;
-    const overlay = document.createElement("div");
-    overlay.className = "confirm-overlay";
-    const panel = document.createElement("div");
-    panel.className = "confirm-panel";
-    panel.setAttribute("role", "alertdialog");
-    panel.setAttribute("aria-modal", "true");
-    const title = document.createElement("div");
-    title.className = "confirm-title";
+    const { overlay, panel } = dialogFrame("confirm-panel", "alertdialog");
+    const title = h("div", "confirm-title");
     title.id = "confirm-title";
     title.textContent = o.title;
-    const body = document.createElement("div");
-    body.className = "confirm-body";
+    const body = h("div", "confirm-body");
     body.id = "confirm-body";
     body.textContent = o.body;
     panel.setAttribute("aria-labelledby", title.id);
     panel.setAttribute("aria-describedby", body.id);
-    const foot = document.createElement("div");
-    foot.className = "confirm-foot";
-    const cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.className = "confirm-cancel";
-    cancel.textContent = "Cancel";
-    const act = document.createElement("button");
-    act.type = "button";
-    act.className = "confirm-act";
-    act.textContent = o.action;
-    foot.append(cancel, act);
+    const { foot, cancel, act } = dialogActions(o.action);
     panel.append(title, body, foot);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
@@ -75,39 +61,19 @@ export function promptAction(o: {
   submit: (value: string) => Promise<void>;
   onClose?: () => void;
 }): void {
-  const overlay = document.createElement("div");
-  overlay.className = "confirm-overlay";
-  const panel = document.createElement("div");
-  panel.className = "confirm-panel";
-  panel.setAttribute("role", "dialog");
-  panel.setAttribute("aria-modal", "true");
-  panel.setAttribute("aria-label", o.title);
-  const title = document.createElement("div");
-  title.className = "confirm-title";
+  const { overlay, panel } = dialogFrame("confirm-panel", "dialog", o.title);
+  const title = h("div", "confirm-title");
   title.textContent = o.title;
-  const body = document.createElement("div");
-  body.className = "confirm-body";
+  const body = h("div", "confirm-body");
   body.textContent = o.body;
-  const input = document.createElement("input");
-  input.className = "prompt-input";
+  const input = h("input", "prompt-input");
   input.type = "text";
   input.spellcheck = false;
   input.placeholder = o.placeholder;
   input.setAttribute("aria-label", o.placeholder);
-  const error = document.createElement("div");
-  error.className = "prompt-error";
+  const error = h("div", "prompt-error");
   error.setAttribute("role", "alert");
-  const foot = document.createElement("div");
-  foot.className = "confirm-foot";
-  const cancel = document.createElement("button");
-  cancel.type = "button";
-  cancel.className = "confirm-cancel";
-  cancel.textContent = "Cancel";
-  const act = document.createElement("button");
-  act.type = "button";
-  act.className = "confirm-act go";
-  act.textContent = o.action;
-  foot.append(cancel, act);
+  const { foot, cancel, act } = dialogActions(o.action, "confirm-act go");
   panel.append(title, body, input, error, foot);
   overlay.appendChild(panel);
   document.body.appendChild(overlay);

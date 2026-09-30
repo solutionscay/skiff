@@ -1,5 +1,6 @@
 /** The mark for a session's state: skiff under way, anchor, bell, unread flag, or a finished flag. */
-import { h, icon } from "./dom";
+import { h } from "./dom";
+import { icon } from "./icons";
 import type { SessionInfo } from "./types";
 
 const SKIFF = '<path d="M2 15h20l-4 5H6z"></path><path d="M12 15V3l7 10h-7"></path>';

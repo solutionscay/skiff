@@ -1,3 +1,4 @@
+import { menuRow } from "./menuRow";
 import { isRune, rune } from "./runes";
 
 export type MenuEntry =
@@ -89,24 +90,13 @@ export function createMenu(onClose: () => void) {
         hd.textContent = e.head;
         return hd;
       }
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "lm-item" + (e.danger ? " danger" : "");
+      const { row: b, key: k, name: n, trailing: hint } = menuRow(e.label, e.sub ? "›" : e.hint ?? "", "lm-item" + (e.danger ? " danger" : ""));
       b.disabled = !!e.disabled;
-      b.setAttribute("role", "menuitem");
-      const k = document.createElement("span");
-      k.className = "lm-key mono";
       // A rune name draws that icon; other text shows as it is.
       const flip = e.icon?.endsWith(":flip");
       const name = flip ? e.icon!.slice(0, -5) : e.icon ?? "";
       if (isRune(name)) k.append(rune(name, 14, flip));
       else k.textContent = e.icon ?? "";
-      const n = document.createElement("span");
-      n.className = "lm-name";
-      n.textContent = e.label;
-      const hint = document.createElement("span");
-      hint.className = "lm-hint mono";
-      hint.textContent = e.sub ? "›" : e.hint ?? "";
       b.append(e.glyph ?? k, n, hint);
       if (e.sub) b.setAttribute("aria-haspopup", "menu");
       if (e.hover) {

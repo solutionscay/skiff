@@ -13,7 +13,7 @@ import { open as openFile } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { keepGroup, loadProjects, newSession, releaseGroup } from "./daemon";
 import { launchMenu } from "./panels";
-import { showError } from "./dom";
+import { showError } from "./alerts";
 import { hasChanges, setShowChanges, showsChanges } from "./changes";
 import { showDiff } from "./peek";
 import { setShowFiles, showsFiles } from "./files";

@@ -7,7 +7,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import { $, button, h, icon, showError } from "./dom";
+import { $, button, h } from "./dom";
+import { icon } from "./icons";
+import { showError } from "./alerts";
 import { markCurrent } from "./keyboard";
 import { panes, S } from "./state";
 import { FONT, TERM_THEME } from "./terminal";

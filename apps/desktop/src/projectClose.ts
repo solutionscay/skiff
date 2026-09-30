@@ -10,7 +10,7 @@ import { agentName, branchName, taskTitle } from "./model";
 import type { Project } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { loadProjects } from "./daemon";
-import { showError } from "./dom";
+import { showError } from "./alerts";
 import { render } from "./render";
 import { clearSelection } from "./selection";
 import { collapsed, S, selectedWorktree, sessions, worktreeSessions } from "./state";

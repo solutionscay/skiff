@@ -5,7 +5,9 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import type { Project, Worktree } from "./types";
-import { button, chevron, h, icon, showError } from "./dom";
+import { button, h } from "./dom";
+import { chevron, icon } from "./icons";
+import { showError } from "./alerts";
 import type { MenuEntry } from "./menu";
 import { ctxMenu } from "./menus";
 import { branchName } from "./model";

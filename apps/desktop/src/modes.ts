@@ -9,7 +9,7 @@
  */
 import { isSlot } from "./canvas";
 import { runAction } from "./commands";
-import { host } from "./dom";
+import { host } from "./terminalHost";
 import { currentRow } from "./keyboard";
 import type { Action } from "./keys";
 import { render } from "./render";

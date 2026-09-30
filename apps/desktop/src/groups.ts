@@ -4,7 +4,7 @@ import { sessionsOf, shapeName } from "./layout";
 import { agentName } from "./model";
 import type { Group } from "./types";
 import { invoke } from "@tauri-apps/api/core";
-import { showError } from "./dom";
+import { showError } from "./alerts";
 import { render } from "./render";
 import { activeGroupObj, S, sessions, shownIds } from "./state";
 import { unfocus } from "./view";

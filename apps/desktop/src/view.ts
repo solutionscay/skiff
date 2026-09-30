@@ -4,7 +4,9 @@ import { build, type Direction, leaf, neighbor, removePane, replacePane, session
 import { branchName, bySessionPriority, isUnread, locate, taskTitle } from "./model";
 import type { Group, Layout, Project, SplitDir, Worktree } from "./types";
 import { filledOf, focusFirstSlot, isSlot, slot, slotsOf } from "./canvas";
-import { host, modalOpen, showError } from "./dom";
+import { host } from "./terminalHost";
+import { modalOpen } from "./dom";
+import { showError } from "./alerts";
 import { autoName, deleteGroup, saveGroup } from "./groups";
 import { render } from "./render";
 import { clearSelection } from "./selection";

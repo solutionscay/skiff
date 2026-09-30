@@ -2,7 +2,8 @@
 import { type Action, actionFor } from "./keys";
 import { runAction, switcher } from "./commands";
 import { modeKeyBlocked } from "./modes";
-import { $, host, modalOpen } from "./dom";
+import { $, modalOpen } from "./dom";
+import { host } from "./terminalHost";
 import { ctxMenu, deleteKeyMenu } from "./menus";
 import { render } from "./render";
 import { launchMenu } from "./panels";

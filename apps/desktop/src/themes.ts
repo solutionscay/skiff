@@ -5,7 +5,7 @@ import { taskTitle } from "./model";
 import { pickTheme } from "./themeCards";
 import type { Group, Project, SessionInfo, TerminalTheme } from "./types";
 import { invoke } from "@tauri-apps/api/core";
-import { showError } from "./dom";
+import { showError } from "./alerts";
 import { render } from "./render";
 import { currentProject, panes, place, S, sessions } from "./state";
 
