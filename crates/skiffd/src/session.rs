@@ -11,8 +11,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{anyhow, bail, Context, Result};
-use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
+use anyhow::{anyhow, Context, Result};
+use portable_pty::{native_pty_system, ChildKiller, MasterPty, PtySize};
 use skiff_core::{
     group::Group,
     protocol::Event,
@@ -22,8 +22,13 @@ use tokio::sync::{broadcast, Notify};
 
 use crate::{
     screen::{Screen, Signals},
-    workspace::{self, SavedSession, Workspace},
+    workspace::{SavedSession, Workspace},
 };
+
+mod groups;
+mod persistence;
+mod launch;
+use groups::prune;
 
 pub type Chunk = Arc<Vec<u8>>;
 
@@ -266,41 +271,7 @@ impl SessionPool {
             })
             .map_err(|e| anyhow!("openpty: {e}"))?;
 
-        // An alias from the user's rc files stands for a command line.
-        let (program, args) = match skiff_core::alias::expand(&command) {
-            Some(w) => (w[0].clone(), [&w[1..], &spec.args[..]].concat()),
-            None => (command.clone(), spec.args.clone()),
-        };
-        // A program that is not the shell hands the terminal to a shell when it
-        // exits, so Ctrl+C in an agent leaves a prompt instead of a dead pane.
-        // Ctrl+C signals the whole foreground group, the wrapper included; the
-        // `trap :` keeps the wrapper alive, and unlike `trap ''` the child does
-        // not inherit it, so the agent still gets SIGINT as normal.
-        // Keep the daemon's prepared environment. A login shell resets PATH;
-        // another Ctrl+C during profile loading can leave agent commands missing.
-        let shell = default_shell();
-        let is_shell = program == shell
-            || std::path::Path::new(&program).file_name() == std::path::Path::new(&shell).file_name();
-        let (program, args) = if is_shell {
-            (program, args)
-        } else {
-            let mut wrapped = vec![
-                "-c".to_string(),
-                format!(
-                    "trap : INT; \"$@\"; printf '\\033]0;{SHELL_HANDOFF_TITLE}\\007'; exec \"$SKIFF_SHELL\" -i"
-                ),
-                "skiff".to_string(),
-                program,
-            ];
-            wrapped.extend(args);
-            ("/bin/sh".to_string(), wrapped)
-        };
-        let mut cmd = CommandBuilder::new(&program);
-        cmd.args(&args);
-        cmd.env("SKIFF_SHELL", &shell);
-        cmd.cwd(&cwd);
-        cmd.env("TERM", "xterm-256color");
-        cmd.env("COLORTERM", "truecolor");
+        let cmd = launch::launch_command(&spec, &command, &cwd);
         let mut child = pair
             .slave
             .spawn_command(cmd)
@@ -571,153 +542,6 @@ impl SessionPool {
         Ok(())
     }
 
-    pub fn list_groups(&self) -> Vec<Group> {
-        self.groups.lock().unwrap().clone()
-    }
-
-    /// Creates the group when `id` is empty, else replaces it.
-    pub fn save_group(&self, mut group: Group) -> Result<Group> {
-        let mut groups = self.groups.lock().unwrap();
-        let ids = group.layout.sessions();
-        {
-            let sessions = self.sessions.read().unwrap();
-            for (i, s) in ids.iter().enumerate() {
-                if ids[..i].contains(s) {
-                    bail!("session {s} appears twice in the layout");
-                }
-                if !skiff_core::group::is_slot(s) && !sessions.contains_key(s) {
-                    bail!("no such session: {s}");
-                }
-            }
-        }
-        if group.focus.as_ref().is_some_and(|f| !ids.contains(f)) {
-            group.focus = None;
-        }
-        group.layout.clamp_ratios();
-        if group.id.is_empty() {
-            group.id = uuid::Uuid::new_v4().simple().to_string()[..12].to_string();
-            groups.push(group.clone());
-        } else {
-            let slot = groups
-                .iter_mut()
-                .find(|g| g.id == group.id)
-                .ok_or_else(|| anyhow!("no such group: {}", group.id))?;
-            *slot = group.clone();
-        }
-        drop(groups);
-        let _ = self.events.send(Event::GroupsChanged {});
-        self.dirty.notify_one();
-        Ok(group)
-    }
-
-    pub fn delete_group(&self, id: &str) -> Result<()> {
-        let mut groups = self.groups.lock().unwrap();
-        let before = groups.len();
-        groups.retain(|g| g.id != id);
-        if groups.len() == before {
-            bail!("no such group: {id}");
-        }
-        drop(groups);
-        let _ = self.events.send(Event::GroupsChanged {});
-        self.dirty.notify_one();
-        Ok(())
-    }
-
-    /// Every group and session as they stand. Exited sessions count: their
-    /// panes are still in the layout.
-    fn workspace(&self) -> Workspace {
-        let groups = self.groups.lock().unwrap();
-        let sessions = self.sessions.read().unwrap();
-        let mut saved: Vec<SavedSession> = sessions
-            .values()
-            .map(|s| SavedSession::from(&*s.info.lock().unwrap()))
-            .collect();
-        saved.sort_by(|a, b| a.id.cmp(&b.id));
-        Workspace {
-            groups: groups.clone(),
-            sessions: saved,
-        }
-    }
-
-    /// Writes the workspace file now. On shutdown, so the last changes count.
-    pub fn save_now(&self) {
-        if let Err(e) = workspace::save(&workspace::path(), &self.workspace()) {
-            tracing::warn!("save workspace: {e:#}");
-        }
-    }
-
-    /// Writes the workspace file after changes, at most once per `SAVE_DELAY`.
-    pub fn spawn_saver(self: &Arc<Self>) {
-        let pool = self.clone();
-        tokio::spawn(async move {
-            loop {
-                pool.dirty.notified().await;
-                tokio::time::sleep(SAVE_DELAY).await;
-                let ws = pool.workspace();
-                let saved = tokio::task::spawn_blocking(move || workspace::save(&workspace::path(), &ws)).await;
-                if let Ok(Err(e)) = saved {
-                    tracing::warn!("save workspace: {e:#}");
-                }
-            }
-        });
-    }
-
-    /// Brings back the saved groups, and each saved session as a shell in its
-    /// folder under its old id, so the layouts still point at it. A session
-    /// that cannot start leaves its groups the way a kill would.
-    pub fn restore(self: &Arc<Self>) {
-        let file = workspace::path();
-        let ws = match workspace::load(&file) {
-            Ok(ws) => ws,
-            Err(e) => {
-                tracing::warn!("restore workspace: {e:#}");
-                return;
-            }
-        };
-        let mut groups = ws.groups;
-        let mut restored = 0;
-        for saved in ws.sessions {
-            // A worktree removed meanwhile: start in the home folder instead.
-            let cwd = saved.cwd.is_dir().then(|| saved.cwd.clone());
-            let spec = SessionSpec {
-                label: String::new(),
-                name: saved.name.clone(),
-                role: saved.role,
-                cwd,
-                command: None,
-                args: Vec::new(),
-                cols: saved.cols,
-                rows: saved.rows,
-                ..Default::default()
-            };
-            match self.spawn(spec, Some(saved.id.clone())) {
-                Ok(_) => {
-                    restored += 1;
-                    if saved.theme.is_some() {
-                        let _ = self.set_theme(&saved.id, saved.theme);
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("restore session {}: {e:#}", saved.id);
-                    prune(&mut groups, &saved.id, &saved.cwd);
-                }
-            }
-        }
-        // Drop panes whose session was never saved.
-        {
-            let sessions = self.sessions.read().unwrap();
-            for g in groups.iter_mut() {
-                for id in g.layout.sessions() {
-                    if !skiff_core::group::is_slot(&id) && !sessions.contains_key(&id) {
-                        prune(std::slice::from_mut(g), &id, Path::new(""));
-                    }
-                }
-            }
-        }
-        tracing::info!("restored {} groups and {restored} sessions from {}", groups.len(), file.display());
-        *self.groups.lock().unwrap() = groups;
-    }
-
     /// Sends output held back by coalescing, and scans held-back screen
     /// changes, once per frame.
     pub fn spawn_flusher(self: &Arc<Self>) {
@@ -860,35 +684,4 @@ mod tests {
         assert!(prints(b"\x1b[38;2;215;119;87m*\x1b[39m"));
         assert!(prints("\x1b[3G✻".as_bytes()));
     }
-}
-
-/// Drops `id` from every group. A group left with no session keeps an empty
-/// slot, and the session's folder so it stays in that worktree. True when a
-/// group changed.
-fn prune(groups: &mut [Group], id: &str, cwd: &Path) -> bool {
-    let mut pruned = false;
-    for g in groups.iter_mut() {
-        if !g.layout.sessions().iter().any(|s| s == id) {
-            continue;
-        }
-        pruned = true;
-        match g.layout.without(id) {
-            Some(layout) => {
-                g.layout = layout;
-                if g.focus.as_deref() == Some(id) {
-                    g.focus = g.layout.sessions().into_iter().next();
-                }
-            }
-            None => {
-                if !cwd.as_os_str().is_empty() {
-                    g.cwd.get_or_insert_with(|| cwd.to_string_lossy().into_owned());
-                }
-                g.layout = skiff_core::group::Layout::Pane {
-                    session: format!("slot:{}", &uuid::Uuid::new_v4().simple().to_string()[..8]),
-                };
-                g.focus = None;
-            }
-        }
-    }
-    pruned
 }
