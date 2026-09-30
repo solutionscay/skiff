@@ -1,6 +1,7 @@
 /** App keys, Tab order, F6 regions, arrows in the lists. */
 import { type Action, actionFor } from "./keys";
 import { runAction } from "./commands";
+import { modeKeyBlocked } from "./modes";
 import { $, host, modalOpen } from "./dom";
 import { ctxMenu, deleteKeyMenu } from "./menus";
 import { render } from "./render";
@@ -33,6 +34,7 @@ window.addEventListener("keydown", (e) => {
   if (key === null) return;
   e.preventDefault();
   e.stopPropagation();
+  if (typeof key === "string" && modeKeyBlocked(key)) return;
   if (typeof key === "number") {
     const p = S.projects[key - 1];
     if (p) selectProject(p.name);

@@ -10,6 +10,7 @@
 import { isSlot } from "./canvas";
 import { runAction } from "./commands";
 import { host } from "./dom";
+import { currentRow } from "./keyboard";
 import type { Action } from "./keys";
 import { render } from "./render";
 import { S, shownIds } from "./state";
@@ -27,6 +28,22 @@ const CHROME_KEYS = new Set<Action>(["new-session", "new-worktree", "add-project
 let seen: string[] = [];
 
 const hidden = () => S.focusMode || !!S.maximized;
+
+/**
+ * Entering a mode needs a session to act on. Focus mode takes a session row or
+ * a group row. Maximize takes a session row only: a group has no one pane. A
+ * worktree, Changes, Files, a project row or the rail is not a session. Leaving
+ * a mode always works, since the tree is hidden then.
+ */
+export function modeKeyBlocked(a: Action): boolean {
+  if (a !== "focus-mode" && a !== "maximize") return false;
+  if (hidden()) return false;
+  if (S.atRail) return true;
+  const row = currentRow();
+  if (!row) return false;
+  if (row.dataset.session) return false;
+  return !(a === "focus-mode" && row.dataset.group);
+}
 
 /** True when the mode takes the key: it does nothing, or already ran. */
 export function modeGate(a: Action): boolean {
