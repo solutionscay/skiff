@@ -45,7 +45,7 @@ export function renderRail() {
     });
     b.addEventListener("mousedown", (e) => dragProject(e, item, i));
     b.style.setProperty("--pc", accent(p));
-    b.title = i < 9 ? `${p.name} (Ctrl ${i + 1})` : p.name;
+    b.title = i < 9 ? `${p.name} (${navigator.userAgent.includes("Macintosh") ? "⌘" : "Ctrl"}+Shift+${i + 1})` : p.name;
     b.setAttribute("aria-label", p.name + (waiting ? `, ${waiting} waiting` : ""));
     if (p.name === S.selectedProject) b.setAttribute("aria-current", "true");
     item.appendChild(b);
