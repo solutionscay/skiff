@@ -7,7 +7,7 @@ import { render } from "./render";
 import { renameListItem } from "./rename";
 import { clearSelection, extendSelection, keepRow, splitSelection } from "./selection";
 import { collapsed, panes, S } from "./state";
-import { refocusTerminal, revealSession, selectProject, showGroup } from "./view";
+import { revealSession, selectProject, showGroup } from "./view";
 
 /** Ctrl+Shift+1..9 selects a project (Command+Shift+1..9 on macOS). Not in the keymap: it is a range, not one key. */
 function projectKey(e: KeyboardEvent): number | null {
@@ -43,10 +43,10 @@ window.addEventListener("keydown", (e) => {
 }, true);
 window.addEventListener("mousedown", () => document.body.classList.remove("kbd"), true);
 
-export const itemKey = (el: HTMLElement) => el.dataset.session ?? el.dataset.wt ?? el.dataset.group ?? "";
+export const itemKey = (el: HTMLElement) => el.dataset.session ?? el.dataset.wt ?? el.dataset.group ?? el.dataset.key ?? "";
 
 export function listItems(): HTMLElement[] {
-  return [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-pick, #sidebar-scroll .group-pick, #sidebar-scroll button.session-row")];
+  return [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-pick, #sidebar-scroll .group-pick, #sidebar-scroll button.session-row, #sidebar-scroll .files-head, #sidebar-scroll .file-row")];
 }
 
 /** Where the roving tab stop lands: the row for the pane on screen ("where I am"),
@@ -108,13 +108,6 @@ export function cycleRegion(dir: 1 | -1) {
   }
 }
 
-/** Ctrl+Shift+L: into the session list, or back to the terminal. For keyboards with no F6. */
-export function toggleList() {
-  document.body.classList.add("kbd");
-  if (regionOf(document.activeElement) === 2) refocusTerminal();
-  else focusEl(roveTarget() ?? null);
-}
-
 function focusEl(el: HTMLElement | null): boolean {
   if (!el) return false;
   el.focus();
@@ -150,6 +143,35 @@ function openRow(el: HTMLElement) {
     showGroup(el.dataset.group, true);
   }
 }
+
+/** The row Ctrl+Shift+Up/Down last landed on. A diff or terminal takes the keys, so the row remembers the place. */
+let stepKey = "";
+
+/**
+ * Ctrl+Shift+Down/Up: the next or previous session, Changes or Files header, or file row in
+ * the list. A session opens. A changed file loads its diff. Headers and files take focus.
+ */
+export function stepList(dir: 1 | -1) {
+  const rows = listItems().filter((r) => !r.dataset.wt && !r.dataset.group);
+  if (!rows.length) return;
+  const active = document.activeElement as HTMLElement | null;
+  let i = active && rows.includes(active) ? rows.indexOf(active) : rows.findIndex((r) => itemKey(r) === stepKey);
+  if (i < 0) i = rows.findIndex((r) => r.dataset.session && r.dataset.session === S.focused);
+  const next = rows[i < 0 ? (dir > 0 ? 0 : rows.length - 1) : (i + dir + rows.length) % rows.length];
+  stepKey = itemKey(next);
+  S.roveKey = stepKey;
+  if (next.dataset.session) revealSession(next.dataset.session);
+  else if (next.classList.contains("change-row")) {
+    // The row's own Enter handler loads the diff.
+    next.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  } else {
+    document.body.classList.add("kbd");
+    next.focus();
+  }
+}
+
+/** A Changes or Files header, or a row under one. Not a session, group or worktree. */
+const isSection = (el: HTMLElement) => !!el.dataset.key && !el.dataset.session && !el.dataset.wt && !el.dataset.group;
 
 /** Arrows inside the rail and the session list; Enter, Left/Right, Menu key. */
 $("rail").addEventListener("keydown", (e) => {
@@ -188,6 +210,12 @@ $("sidebar-scroll").addEventListener("keydown", (e) => {
     clearSelection();
     render();
     keepRow(key);
+  } else if (isSection(el) && (e.key === "Enter" || e.key === " ")) {
+    // A Changes or Files header or a folder: Enter opens or closes it.
+    el.click();
+  } else if (isSection(el) && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+    // Right opens, Left closes. On a file row they do nothing.
+    if (el.getAttribute("aria-expanded") === String(e.key === "ArrowLeft")) el.click();
   } else if (e.key === "ArrowDown") go(i + 1);
   else if (e.key === "ArrowUp") go(i - 1);
   else if (e.key === "Home") go(0);
@@ -249,5 +277,5 @@ $("sidebar-scroll").addEventListener("focusin", (e) => {
   if (listItems().includes(el)) S.roveKey = itemKey(el);
 });
 
-// Leaving the list (F6, Ctrl+Shift+L, a click elsewhere) drops any pending reveal.
+// Leaving the list (F6, a click elsewhere) drops any pending reveal.
 $("sidebar-scroll").addEventListener("focusout", () => cancelReveal());

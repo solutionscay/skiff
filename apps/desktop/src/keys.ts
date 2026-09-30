@@ -13,7 +13,8 @@ export type Action =
   | "split-right" | "split-down" | "close-pane" | "next-waiting" | "back" | "rename"
   | "copy" | "paste" | "find" | "font-bigger" | "font-smaller" | "font-reset" | "settings" | "quit"
   | "focus-left" | "focus-right" | "focus-up" | "focus-down"
-  | "region-next" | "region-prev" | "focus-list" | "session-next" | "session-prev" | "shortcuts";
+  | "project-menu" | "project-folder" | "project-copy-path" | "project-color" | "project-theme" | "project-changes" | "project-files"
+  | "region-next" | "region-prev" | "session-next" | "session-prev" | "shortcuts";
 
 const isMac = navigator.userAgent.includes("Macintosh");
 
@@ -40,9 +41,15 @@ export const DEFAULTS: Record<Action, string> = {
   "focus-right": "ctrl+shift+alt+right",
   "focus-up": "ctrl+shift+alt+up",
   "focus-down": "ctrl+shift+alt+down",
+  "project-menu": "ctrl+shift+m",
+  "project-folder": "ctrl+shift+z",
+  "project-copy-path": "ctrl+shift+y",
+  "project-color": "ctrl+shift+k",
+  "project-theme": "ctrl+shift+x",
+  "project-changes": "ctrl+shift+g",
+  "project-files": "ctrl+shift+h",
   "region-next": "f6",
   "region-prev": "shift+f6",
-  "focus-list": "ctrl+shift+l",
   "session-next": "ctrl+shift+down",
   "session-prev": "ctrl+shift+up",
   shortcuts: "f1",
@@ -145,14 +152,21 @@ export const DESCRIBE: [string, Action, string][] = [
   ["Edit", "paste", "Paste into the terminal"],
   ["Edit", "find", "Find in the terminal"],
   ["Edit", "rename", "Rename the session, or the group or session row in the list"],
+  ["Project", "project-menu", "Project menu for the selected project"],
+  ["Project", "project-folder", "Show the project in the file manager"],
+  ["Project", "project-copy-path", "Copy the project path"],
+  ["Project", "project-color", "Project color"],
+  ["Project", "project-theme", "Project theme"],
+  ["Project", "project-changes", "Show or hide Changes"],
+  ["Project", "project-files", "Show or hide Files"],
   ["View", "palette", "Command palette"],
   ["View", "split-right", "Add pane right"],
   ["View", "split-down", "Add pane below"],
   ["View", "close-pane", "Close pane (the session keeps running)"],
   ["View", "next-waiting", "Next waiting session"],
   ["View", "back", "Back to the last session"],
-  ["View", "session-next", "Next session in the list"],
-  ["View", "session-prev", "Previous session in the list"],
+  ["View", "session-next", "Next session, Changes or Files row in the list. A changed file loads its diff"],
+  ["View", "session-prev", "Previous session, Changes or Files row in the list"],
   ["View", "focus-left", "Focus the pane to the left"],
   ["View", "focus-right", "Focus the pane to the right"],
   ["View", "focus-up", "Focus the pane above"],
@@ -162,6 +176,5 @@ export const DESCRIBE: [string, Action, string][] = [
   ["View", "font-reset", "Reset text size"],
   ["Help", "region-next", "Next region: rail, new worktree, session list, terminal"],
   ["Help", "region-prev", "Previous region"],
-  ["Help", "focus-list", "Into the session list, or back to the terminal"],
   ["Help", "shortcuts", "This sheet"],
 ];

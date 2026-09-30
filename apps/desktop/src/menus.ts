@@ -112,22 +112,31 @@ export function newWorktree(p: Project) {
   });
 }
 
+/** What each project key does to the selected project. The project menu runs the same. */
+export function projectRun(p: Project) {
+  return {
+    "project-folder": () => void openPath(p.path).catch(showError),
+    "project-copy-path": () => void navigator.clipboard.writeText(p.path).catch(showError),
+    "project-color": () => pickProjectColor(p),
+    "project-theme": () => void projectThemeMenu(p),
+    "project-changes": () => void setShowChanges(p, !showsChanges(p)),
+    "project-files": () => void setShowFiles(p, !showsFiles(p)),
+  } as const;
+}
+
 /** The project's + in the sidebar, or a right-click on its rail chip. */
 export function projectMenu(p: Project, x: number, y: number) {
+  const run = projectRun(p);
   ctxMenu.open(x, y, p.path, [
-    { icon: "code-git-branch", label: "New worktree…", disabled: !!p.error, run: () => newWorktree(p) },
-    { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", run: () => void openPath(p.path).catch(showError) },
-    { icon: "code-copy", label: "Copy path", run: () => void navigator.clipboard.writeText(p.path).catch(showError) },
+    { icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
+    { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: run["project-folder"] },
+    { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
     { icon: "documents-file-image", label: "Icon…", sub: iconEntries(p) },
-    { icon: "tools-sparkles", label: "Color…", run: () => pickProjectColor(p) },
-    { icon: "tools-sparkles", label: "Theme…", run: () => void projectThemeMenu(p) },
+    { icon: "tools-sparkles", label: "Color…", hint: keyLabel("project-color"), run: run["project-color"] },
+    { icon: "tools-sparkles", label: "Theme…", hint: keyLabel("project-theme"), run: run["project-theme"] },
     { icon: "playback-image", label: "Background…", sub: backgroundEntries(p) },
-    showsChanges(p)
-      ? { icon: "code-git-branch", label: "Hide changes", run: () => void setShowChanges(p, false) }
-      : { icon: "code-git-branch", label: "Show changes", run: () => void setShowChanges(p, true) },
-    showsFiles(p)
-      ? { icon: "documents-folder-open", label: "Hide files", run: () => void setShowFiles(p, false) }
-      : { icon: "documents-folder-open", label: "Show files", run: () => void setShowFiles(p, true) },
+    { icon: "code-git-branch", label: showsChanges(p) ? "Hide changes" : "Show changes", hint: keyLabel("project-changes"), run: run["project-changes"] },
+    { icon: "documents-folder-open", label: showsFiles(p) ? "Hide files" : "Show files", hint: keyLabel("project-files"), run: run["project-files"] },
   ]);
 }
 
@@ -333,7 +342,7 @@ export function groupMenu(g: Group, x: number, y: number) {
   ctxMenu.open(x, y, `Group: ${g.name}`, [
     ...groupStartEntries(g),
     { head: "GROUP" },
-    { icon: "tools-pencil", label: "Rename", run: () => startRename(g) },
+    { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startRename(g) },
     { icon: "tools-sparkles", label: "Terminal theme…", run: () => void groupThemeMenu(g) },
     ...groupCloseEntries(g),
   ]);

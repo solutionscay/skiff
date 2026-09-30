@@ -8,16 +8,16 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { $, h, showError } from "./dom";
-import { cycleRegion, toggleList } from "./keyboard";
+import { cycleRegion, stepList } from "./keyboard";
 import { copyReport, hasReport, startTrace, stopTrace, tracing } from "./latency";
-import { endEntry, groupCloseEntries, newWorktree, splitMenu } from "./menus";
+import { endEntry, groupCloseEntries, newWorktree, projectMenu, projectRun, splitMenu } from "./menus";
 import { addProject, launchMenu, settings } from "./panels";
 import { renameListItem, startRename, startSessionRename } from "./rename";
 import { scheduleRender } from "./render";
 import { accent, activeGroupObj, currentProject, currentWorktree, FONT_DEFAULT, place, S, sessions, shownIds, splitFull, worktreeSessions } from "./state";
 import { copySelection, openFind, paneCenter, pasteClipboard, setFontSize } from "./terminal";
 import { sessionThemeMenu } from "./themes";
-import { closePane, focusNextWaiting, goBack, moveFocus, refocusTerminal, revealSession, selectWorktree, stepSession } from "./view";
+import { closePane, focusNextWaiting, goBack, moveFocus, refocusTerminal, revealSession, selectWorktree } from "./view";
 
 interface Cmd {
   section: "File" | "Edit" | "View" | "Help";
@@ -40,6 +40,7 @@ function commands(): Cmd[] {
     { section: "File", label: "New session…", key: k("new-session"), action: "new-session", run: act("new-session"), off: !currentWorktree() },
     { section: "File", label: "New worktree…", key: k("new-worktree"), action: "new-worktree", run: act("new-worktree"), off: !currentProject() },
     { section: "File", label: "Add project…", key: k("add-project"), action: "add-project", run: act("add-project") },
+    { section: "File", label: "Project menu…", key: k("project-menu"), action: "project-menu", run: act("project-menu"), off: !currentProject() },
     { section: "File", label: "Settings", key: k("settings"), action: "settings", run: act("settings") },
     { section: "File", label: "Quit", key: k("quit"), action: "quit", run: act("quit") },
     { section: "Edit", label: "Copy", key: k("copy"), action: "copy", run: act("copy"), off: !s },
@@ -58,7 +59,6 @@ function commands(): Cmd[] {
     { section: "View", label: "Command palette", key: k("palette"), action: "palette", run: act("palette") },
     { section: "View", label: "Next session", key: k("session-next"), action: "session-next", run: act("session-next") },
     { section: "View", label: "Previous session", key: k("session-prev"), action: "session-prev", run: act("session-prev") },
-    { section: "View", label: "Session list / terminal", key: k("focus-list"), action: "focus-list", run: act("focus-list") },
     { section: "View", label: "Add pane right…", key: k("split-right"), action: "split-right", run: act("split-right"), off: !shown || splitFull() },
     { section: "View", label: "Add pane below…", key: k("split-down"), action: "split-down", run: act("split-down"), off: !shown || splitFull() },
     { section: "View", label: shownIds().length > 1 ? "Remove from group" : "Close", key: k("close-pane"), action: "close-pane", run: act("close-pane"), off: !shown },
@@ -165,7 +165,8 @@ const FIXED_SHORTCUTS: Shortcut[] = [
   ["Session list", "Move to the first or last row", "Home / End"],
   ["Session list", "Start a session in the focused worktree", "Enter"],
   ["Session list", "Open the focused session or group", "Enter"],
-  ["Session list", "Collapse or expand the focused worktree", "← / →"],
+  ["Session list", "Collapse or expand the focused worktree, Changes, Files or folder", "← / →"],
+  ["Session list", "Open or close the focused Changes, Files or folder; open the focused file or diff", "Enter"],
   ["Session list", "Extend the session selection", "Shift+↑ / ↓"],
   ["Session list", "Make a group from the selected sessions", "Enter"],
   ["Session list", "Clear the session selection", "Esc"],
@@ -315,6 +316,22 @@ export function runAction(a: Action) {
       return p ? newWorktree(p) : undefined;
     }
     case "add-project": return void addProject.open();
+    case "project-menu": {
+      const p = currentProject();
+      const chip = document.querySelector<HTMLElement>("#rail .rail-chip.active");
+      if (!p || !chip) return;
+      const r = chip.getBoundingClientRect();
+      return projectMenu(p, r.right, r.top);
+    }
+    case "project-folder":
+    case "project-copy-path":
+    case "project-color":
+    case "project-theme":
+    case "project-changes":
+    case "project-files": {
+      const p = currentProject();
+      return p ? projectRun(p)[a]() : undefined;
+    }
     case "split-right":
     case "split-down": {
       if (!S.focused || !shown || splitFull()) return;
@@ -344,9 +361,8 @@ export function runAction(a: Action) {
     case "focus-down": return moveFocus("down");
     case "region-next": return cycleRegion(1);
     case "region-prev": return cycleRegion(-1);
-    case "focus-list": return toggleList();
-    case "session-next": return stepSession(1);
-    case "session-prev": return stepSession(-1);
+    case "session-next": return stepList(1);
+    case "session-prev": return stepList(-1);
     case "shortcuts": return showShortcuts();
   }
 }

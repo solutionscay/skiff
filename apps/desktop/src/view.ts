@@ -407,11 +407,3 @@ export function goBack() {
   if (S.previous && sessions.has(S.previous)) revealSession(S.previous);
 }
 
-/** Open the next or previous session in the order the list shows. */
-export function stepSession(dir: 1 | -1) {
-  const rows = [...document.querySelectorAll<HTMLElement>("#sidebar-scroll button.session-row")].filter((r) => r.dataset.session);
-  if (!rows.length) return;
-  const i = rows.findIndex((r) => r.dataset.session === S.focused);
-  const next = rows[i < 0 ? (dir > 0 ? 0 : rows.length - 1) : (i + dir + rows.length) % rows.length];
-  revealSession(next.dataset.session!);
-}
