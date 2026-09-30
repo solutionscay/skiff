@@ -3,9 +3,10 @@
  * and the status bar: the panes of the current view fill the window. Maximize
  * shows only the focused pane, with the same chrome hidden. Ctrl+Shift+Up/Down
  * step through the panes of the view, as they step through its rows in the
- * tree. Ctrl+Shift+Left/Right do nothing, and while maximized neither does
- * Up/Down. Keys that go to another view (Next waiting, the
- * palette, Back, a project key) work, and going there ends the mode.
+ * tree. While maximized, the next pane is maximized in its place.
+ * Ctrl+Shift+Left/Right do nothing. Keys that go to another view (Next
+ * waiting, the palette, Back, a project key) work, and going there ends the
+ * mode.
  */
 import { isSlot } from "../workspace/layoutSlots";
 import { runAction } from "./actions";
@@ -53,7 +54,7 @@ export function modeGate(a: Action): boolean {
   if (!hidden()) return false;
   if (S.maximized && PANE_KEYS.has(a)) return true;
   // Ctrl+Shift+Up/Down step through the group's panes, as they step through its rows in the tree.
-  if (!S.maximized && (a === "session-next" || a === "session-prev")) {
+  if (a === "session-next" || a === "session-prev") {
     stepPane(a === "session-next" ? 1 : -1);
     return true;
   }
@@ -67,12 +68,14 @@ export function modeGate(a: Action): boolean {
   return false;
 }
 
-/** The next or previous pane of the view, in tree order, wrapping at the ends. */
+/** The next or previous pane of the view, in tree order, wrapping at the ends. Maximize moves with it. */
 function stepPane(dir: 1 | -1) {
   const ids = shownIds().filter((id) => !isSlot(id));
   const i = S.focused ? ids.indexOf(S.focused) : -1;
   if (ids.length < 2 || i < 0) return;
-  focusPane(ids[(i + dir + ids.length) % ids.length]);
+  const next = ids[(i + dir + ids.length) % ids.length];
+  if (S.maximized) S.maximized = next;
+  focusPane(next);
 }
 
 export function toggleFocusMode() {

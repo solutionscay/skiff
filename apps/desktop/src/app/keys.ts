@@ -179,7 +179,7 @@ export const DESCRIBE: [string, Action, string][] = [
   ["View", "focus-up", "Focus the pane above"],
   ["View", "focus-down", "Focus the pane below"],
   ["View", "focus-mode", "Focus mode: hide the rail, tree and bars. On a session or group row, not a worktree, Changes or Files. From maximize it shows the view's panes again. Ctrl+Shift+Up/Down step through them. Going to another view ends it"],
-  ["View", "maximize", "Maximize the focused pane, and hide the rest. On a session row only. Press again to go back"],
+  ["View", "maximize", "Maximize the focused pane, and hide the rest. On a session row only. Ctrl+Shift+Up/Down maximize the next pane of the view. Press again to go back"],
   ["View", "font-bigger", "Bigger text"],
   ["View", "font-smaller", "Smaller text"],
   ["View", "font-reset", "Reset text size"],
