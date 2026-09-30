@@ -1,5 +1,6 @@
 import { menuRow } from "./menuRow";
 import { isRune, rune } from "./runes";
+import { eventLabel } from "../app/keys";
 
 export type MenuEntry =
   | { head: string }
@@ -112,6 +113,7 @@ export function createMenu(onClose: () => void) {
         });
       }
       followPointer(b);
+      if (e.hint && !e.sub) b.dataset.hint = e.hint;
       b.addEventListener("click", () => {
         if (e.sub) return openFly(b, e.sub, false);
         pick(() => e.run?.());
@@ -165,6 +167,18 @@ export function createMenu(onClose: () => void) {
     return true;
   };
 
+  /** A key that an item shows as its hint picks that item, as a click does.
+   *  The item runs on the menu's own target, so the key acts on that project,
+   *  group or session. Enter still picks the lit item: Ctrl+Shift held from the
+   *  key that opened the menu must not run Maximize. */
+  const hintKey = (root: HTMLElement, e: KeyboardEvent) => {
+    if ((!e.ctrlKey && !e.metaKey && !e.altKey) || e.key === "Enter" || e.key === " ") return false;
+    const want = eventLabel(e);
+    const b = [...root.querySelectorAll<HTMLButtonElement>(".lm-item[data-hint]:not(:disabled)")].find((x) => x.dataset.hint === want);
+    b?.click();
+    return !!b;
+  };
+
   menu.addEventListener("keydown", (e) => {
     const cur = document.activeElement as HTMLButtonElement | null;
     if (e.key === "Escape") close();
@@ -173,7 +187,7 @@ export function createMenu(onClose: () => void) {
       const sub = flyOwner === cur && !fly.hidden ? null : cur;
       if (sub) sub.click();
       fly.querySelector<HTMLButtonElement>(".lm-item:not(:disabled)")?.focus();
-    } else if (!nav(menu, e)) return;
+    } else if (!nav(menu, e) && !hintKey(menu, e)) return;
     e.preventDefault();
     e.stopPropagation();
   });
@@ -183,7 +197,7 @@ export function createMenu(onClose: () => void) {
       const owner = flyOwner;
       closeFly();
       owner?.focus();
-    } else if (!nav(fly, e)) return;
+    } else if (!nav(fly, e) && !hintKey(fly, e)) return;
     e.preventDefault();
     e.stopPropagation();
   });

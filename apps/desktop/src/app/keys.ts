@@ -131,6 +131,11 @@ function label(c: Combo): string {
   return [c.ctrl && (isMac ? "⌘" : "Ctrl"), c.alt && "Alt", c.shift && "Shift", k].filter(Boolean).join("+");
 }
 
+/** A keydown spelled as keyLabel spells a key, so a menu can match its hints. */
+export function eventLabel(e: KeyboardEvent): string {
+  return label({ ctrl: primaryHeld(e), shift: e.shiftKey, alt: e.altKey, key: eventKey(e) });
+}
+
 /** "Ctrl+Shift+T" (or "⌘+Shift+T"), for menus and the palette. */
 export function keyLabel(action: Action): string {
   return labels[action] ?? "";
