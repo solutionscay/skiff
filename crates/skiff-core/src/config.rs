@@ -15,6 +15,8 @@ pub struct Config {
     pub agents: Agents,
     #[serde(default)]
     pub appearance: Appearance,
+    #[serde(default)]
+    pub open: Open,
     #[serde(default, rename = "project")]
     pub projects: Vec<ProjectConfig>,
 }
@@ -26,6 +28,20 @@ pub struct Appearance {
     pub theme: Option<String>,
     /// Terminal text size in points; the app text scales with it. Absent: 13.
     pub font_size: Option<u8>,
+}
+
+/// Which apps Skiff hands things to.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct Open {
+    /// The command that prints a changed file's diff for the peek. `{target}`
+    /// becomes what to compare. Absent: `git diff --color=always`.
+    pub diff: Option<String>,
+    /// Opens text files. `{path}` becomes the file. Absent: the OS default app.
+    pub text: Option<String>,
+    /// Opens `.md` files. Absent: the OS default app.
+    pub markdown: Option<String>,
+    /// Opens `.html` files. Absent: the OS default app.
+    pub html: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
@@ -452,6 +468,25 @@ pub fn set_font_size(size: Option<u8>) -> Result<()> {
             Some(v) => t["font_size"] = toml_edit::value(i64::from(v)),
             None => {
                 t.remove("font_size");
+            }
+        }
+        Ok(())
+    })
+}
+
+/// The keys `[open]` takes.
+pub const OPEN_KEYS: [&str; 4] = ["diff", "text", "markdown", "html"];
+
+/// Sets one `[open]` command, or removes it for the default.
+pub fn set_open(key: &str, command: Option<&str>) -> Result<()> {
+    if !OPEN_KEYS.contains(&key) {
+        anyhow::bail!("unknown [open] key: {key}");
+    }
+    edit_table("open", |t| {
+        match command {
+            Some(v) => t[key] = toml_edit::value(v),
+            None => {
+                t.remove(key);
             }
         }
         Ok(())

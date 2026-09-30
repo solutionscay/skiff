@@ -18,7 +18,7 @@ import { ctxMenu, paneMenu } from "./menus";
 import { accent, activeGroupObj, FONT_DEFAULT, currentLayout, opening, type Pane, panes, place, S, sessions, shownIds } from "./state";
 import { closePane, dragSessions, focusPane } from "./view";
 
-const TERM_THEME = {
+export const TERM_THEME = {
   background: "#0b0e12",
   foreground: "#e6e8eb",
   cursor: "#e6e8eb",
@@ -52,7 +52,7 @@ function openPane(id: string): Promise<Pane> {
   return pending;
 }
 
-const FONT = "JetBrains Mono, ui-monospace, monospace";
+export const FONT = "JetBrains Mono, ui-monospace, monospace";
 
 /**
  * xterm measures a cell once, when the terminal opens. A font that is not

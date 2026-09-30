@@ -8,6 +8,8 @@ import type { Worktree } from "./types";
 import { button, chevron, h, icon, showError } from "./dom";
 import type { MenuEntry } from "./menu";
 import { ctxMenu } from "./menus";
+import { branchName } from "./model";
+import { showDiff } from "./peek";
 import { render, scheduleRender } from "./render";
 
 type Change = { path: string; status: "M" | "A" | "D" | "U"; added: number | null; removed: number | null };
@@ -60,6 +62,9 @@ export function changeCounts(w: Worktree): HTMLElement | null {
   return el;
 }
 
+/** Whether the worktree has changes, as last read. */
+export const hasChanges = (w: Worktree) => !!lists.get(w.path)?.length;
+
 const join = (wt: string, rel: string) => `${wt}/${rel}`;
 const open = (path: string) => void invoke("open_file", { path }).catch(showError);
 const reveal = (path: string) => void invoke("reveal_file", { path }).catch(showError);
@@ -92,20 +97,28 @@ export function changesBlock(w: Worktree): HTMLElement | null {
     e.preventDefault();
     e.stopPropagation();
     ctxMenu.open(e.clientX, e.clientY, "Changes", [
+      { icon: "code-git-branch", label: "Review all changes", run: () => showDiff(w.path, branchName(w)) },
       { icon: "schedule-refresh-cw", label: "Refresh", run: () => load(w.path) },
     ]);
   });
   block.appendChild(head);
   if (isOpen) {
     const rows = h("div", "files-rows");
-    for (const c of list) rows.appendChild(row(w.path, c));
+    for (const c of list) rows.appendChild(row(w, c));
     block.appendChild(rows);
   }
   return block;
 }
 
-function row(wt: string, c: Change): HTMLElement {
+function row(w: Worktree, c: Change): HTMLElement {
+  const wt = w.path;
   const path = join(wt, c.path);
+  // The row whose diff shows is the picked row, however the diff was asked for.
+  const show = () => {
+    picked = path;
+    render();
+    showDiff(wt, branchName(w), c.path);
+  };
   const gone = c.status === "D";
   const slash = c.path.lastIndexOf("/");
   const name = c.path.slice(slash + 1);
@@ -113,18 +126,18 @@ function row(wt: string, c: Change): HTMLElement {
   const r = h("button", "file-row change-row" + (gone ? " st-gone" : "") + (path === picked ? " picked" : ""));
   r.type = "button";
   r.dataset.key = `change:${path}`;
-  r.title = gone ? `${c.path}\nDeleted` : `${c.path}\nDouble-click to open in its default app`;
+  r.title = `${c.path}${gone ? "\nDeleted" : ""}\nDouble-click to open the diff`;
   r.addEventListener("click", (m) => {
     picked = path;
     // detail counts clicks across the re-render the first click causes.
-    if (m.detail >= 2 && !gone) open(path);
+    if (m.detail >= 2) show();
     else render();
   });
   r.addEventListener("keydown", (k) => {
-    if (k.key !== "Enter" || gone) return;
+    if (k.key !== "Enter") return;
     k.preventDefault();
     k.stopPropagation();
-    open(path);
+    show();
   });
   const st = h("span", `change-st st-${c.status}`, c.status);
   const counts = h("span", "change-counts");
@@ -137,10 +150,13 @@ function row(wt: string, c: Change): HTMLElement {
   r.addEventListener("contextmenu", (m) => {
     m.preventDefault();
     m.stopPropagation();
-    const items: MenuEntry[] = gone ? [] : [
-      { icon: "indicators-square-arrow-out-up-right", label: "Open", hint: "default app", run: () => open(path) },
-      { icon: "documents-folder-open", label: "Show in file manager", run: () => reveal(path) },
+    const items: MenuEntry[] = [
+      { icon: "code-git-branch", label: "Show diff", hint: "Enter", run: show },
     ];
+    if (!gone) items.push(
+      { icon: "indicators-square-arrow-out-up-right", label: "Open file", run: () => open(path) },
+      { icon: "documents-folder-open", label: "Show in file manager", run: () => reveal(path) },
+    );
     items.push({ icon: "code-copy", label: "Copy path", run: () => copy(path) });
     ctxMenu.open(m.clientX, m.clientY, name, items);
   });

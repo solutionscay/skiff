@@ -451,10 +451,66 @@ async fn git_changes(path: PathBuf) -> Result<Vec<skiff_core::git::Change>, Stri
         .map_err(err)
 }
 
-/// Opens a file in its default app. From Rust, like open_config, because
-/// the opener's `**` scope does not match hidden folders such as .github.
+/// A diff for the peek, printed by the command under `[open] diff`.
 #[tauri::command]
-fn open_file(app: tauri::AppHandle, path: PathBuf) -> Result<(), String> {
+async fn git_diff(path: PathBuf, file: Option<String>, cols: u16) -> Result<String, String> {
+    let command = skiff_core::config::load().ok().and_then(|c| c.open.diff);
+    tokio::task::spawn_blocking(move || skiff_core::git::diff_text(&path, file.as_deref(), command.as_deref(), cols))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(err)
+}
+
+/// The `[open]` commands, empty for a default, and the default diff command.
+#[derive(serde::Serialize)]
+struct OpenSettings {
+    diff: String,
+    text: String,
+    markdown: String,
+    html: String,
+    default_diff: &'static str,
+}
+
+fn open_settings_now() -> Result<OpenSettings, String> {
+    let o = skiff_core::config::load().map_err(err)?.open;
+    Ok(OpenSettings {
+        diff: o.diff.unwrap_or_default(),
+        text: o.text.unwrap_or_default(),
+        markdown: o.markdown.unwrap_or_default(),
+        html: o.html.unwrap_or_default(),
+        default_diff: skiff_core::git::DEFAULT_DIFF,
+    })
+}
+
+#[tauri::command]
+fn open_settings() -> Result<OpenSettings, String> {
+    open_settings_now()
+}
+
+/// Sets one `[open]` command. Empty: the default.
+#[tauri::command]
+fn set_open(key: String, command: String) -> Result<OpenSettings, String> {
+    let c = command.trim();
+    skiff_core::config::set_open(&key, (!c.is_empty()).then_some(c)).map_err(err)?;
+    open_settings_now()
+}
+
+/// Opens a file with its `[open]` command, else in its default app. From
+/// Rust, like open_config, because the opener's `**` scope does not match
+/// hidden folders such as .github.
+#[tauri::command]
+async fn open_file(app: tauri::AppHandle, path: PathBuf) -> Result<(), String> {
+    let open = skiff_core::config::load().map(|c| c.open).unwrap_or_default();
+    let file = path.clone();
+    let cmd = tokio::task::spawn_blocking(move || skiff_core::open::command_for(&file, &open))
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(cmd) = cmd {
+        return tokio::task::spawn_blocking(move || skiff_core::open::launch(&cmd, &path))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(err);
+    }
     use tauri_plugin_opener::OpenerExt;
     app.opener()
         .open_path(path.display().to_string(), None::<&str>)
@@ -715,6 +771,9 @@ pub fn run() {
             read_image,
             list_dir,
             git_changes,
+            git_diff,
+            open_settings,
+            set_open,
             open_file,
             reveal_file,
             files_projects,

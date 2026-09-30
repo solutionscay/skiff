@@ -33,7 +33,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   document.getElementById("body")!.appendChild(root);
 
   let agents: AgentInfo[] = [];
-  let tab: "agents" | "appearance" = "agents";
+  let tab: "agents" | "appearance" | "open" = "agents";
+  type OpenKey = "diff" | "text" | "markdown" | "html";
+  type OpenSettings = Record<OpenKey, string> & { default_diff: string };
+  let openSet: OpenSettings | null = null;
   let error: string | null = null;
   let saving = false;
 
@@ -88,8 +91,9 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const nav = el("div", "set-nav");
     const head = el("div", "set-nav-head");
     head.append(el("div", "set-title", "Settings"), el("div", "set-path mono", "~/.config/skiff/projects.toml"));
-    const tabs = (["agents", "appearance"] as const).map((t) => {
-      const b = el("button", "set-tab" + (tab === t ? " active" : ""), t === "agents" ? "Agents" : "Appearance");
+    const names = { agents: "Agents", appearance: "Appearance", open: "Open with" };
+    const tabs = (["agents", "appearance", "open"] as const).map((t) => {
+      const b = el("button", "set-tab" + (tab === t ? " active" : ""), names[t]);
       b.type = "button";
       b.addEventListener("click", () => {
         tab = t;
@@ -103,6 +107,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     nav.append(head, ...tabs, el("div", "spacer"), done);
     if (tab === "appearance") {
       root.replaceChildren(nav, appearance());
+      return;
+    }
+    if (tab === "open") {
+      root.replaceChildren(nav, openWith());
       return;
     }
 
@@ -200,6 +208,63 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     return main;
   }
 
+  async function setOpen(key: OpenKey, command: string) {
+    error = null;
+    try {
+      openSet = await invoke<OpenSettings>("set_open", { key, command });
+    } catch (e) {
+      error = String(e);
+    }
+    render();
+  }
+
+  const OPEN_ROWS: { key: OpenKey; label: string }[] = [
+    { key: "diff", label: "Diffs" },
+    { key: "text", label: "Text files" },
+    { key: "markdown", label: "Markdown" },
+    { key: "html", label: "HTML" },
+  ];
+
+  /** Which apps Skiff hands things to. */
+  function openWith(): HTMLElement {
+    const main = el("div", "set-main");
+    const intro = el("div", "set-head");
+    intro.append(el("div", "set-h", "Open with"));
+    const cols = el("div", "set-row set-open set-cols");
+    cols.append(el("span", "c-name", "SHOWS"), el("span", "c-cmd", "COMMAND"));
+    main.append(intro, cols);
+    const o = openSet;
+    if (o) for (const { key, label } of OPEN_ROWS) {
+      const row = el("div", "set-row set-open set-agent on");
+      const cmd = el("input", "c-cmd mono");
+      cmd.value = o[key];
+      cmd.placeholder = key === "diff" ? o.default_diff : "default app";
+      cmd.spellcheck = false;
+      cmd.setAttribute("aria-label", `${label} command`);
+      cmd.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          cmd.blur();
+        } else if (e.key === "Escape") {
+          e.stopPropagation();
+          cmd.value = o[key];
+          cmd.blur();
+        }
+      });
+      cmd.addEventListener("blur", () => {
+        if (cmd.value.trim() !== o[key].trim()) void setOpen(key, cmd.value);
+      });
+      row.append(el("span", "c-name", label), cmd);
+      main.appendChild(row);
+    }
+    if (error) {
+      const err = el("div", "set-error", error);
+      err.setAttribute("role", "alert");
+      main.appendChild(err);
+    }
+    return main;
+  }
+
   function close() {
     root.hidden = true;
     onClose();
@@ -217,6 +282,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     async open() {
       root.hidden = false;
       await look.load();
+      openSet = await invoke<OpenSettings>("open_settings").catch(() => null);
       agents = await invoke<AgentInfo[]>("list_agents").catch((e) => {
         error = String(e);
         return [];

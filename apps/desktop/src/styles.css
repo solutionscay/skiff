@@ -309,7 +309,22 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 .dot.connected { background: var(--state-working); }
 .dot.error { background: var(--error); }
 
-#main { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; }
+#main { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+/* The peek: a read-only view over the whole terminal area. Not a pane. */
+/* Under Settings (12) and the menus (15), over the panes. */
+.peek { position: absolute; inset: 0; z-index: 11; display: flex; flex-direction: column; background: var(--bg-deep); }
+.peek-head {
+  height: var(--row); flex-shrink: 0;
+  display: flex; align-items: center; gap: calc(10 * var(--u)); padding-left: calc(16 * var(--u));
+  background: var(--bg-panel); border-bottom: 1px solid var(--rule); position: relative;
+  font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); white-space: nowrap;
+}
+/* The accent stripe sits over the header's children, so a hovered button never hides it. */
+.peek-head::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--pc); pointer-events: none; }
+.peek-kind { font-family: var(--mono); font-weight: 700; color: var(--pc); text-transform: uppercase; letter-spacing: 0.06em; }
+.peek-title { color: var(--text); font-size: calc(14px * var(--zoom, 1)); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.peek-where { color: var(--text-3); flex-grow: 1; }
+.peek-body { flex-grow: 1; min-height: 0; padding: calc(8 * var(--u)) 0 0 calc(12 * var(--u)); }
 #main { --pc: var(--project-default); }
 #banner {
   height: var(--row); flex-shrink: 0;
@@ -561,6 +576,7 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .set-agent.missing .c-name, .set-agent.missing .c-status { color: #6b7480; }
 .set-agent.missing .c-status .sq { background: #4a525c; }
 .set-agent.missing button.c-on { cursor: not-allowed; }
+.set-open { grid-template-columns: 200px minmax(0, 1fr); }
 .set-opacity { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) calc(120 * var(--u)); }
 .set-opacity .c-name { font-size: calc(13px * var(--zoom, 1)); color: var(--text-2); }
 .set-opacity .c-cmd { width: 100%; min-width: 0; box-sizing: border-box; border: 0; border-left: 1px solid var(--rule); border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font: calc(13px * var(--zoom, 1)) var(--font); text-align: left; }

@@ -149,6 +149,51 @@ pub fn changes(dir: &Path) -> Result<Vec<Change>> {
     Ok(list)
 }
 
+/// The diff command when `[open] diff` sets none.
+pub const DEFAULT_DIFF: &str = "git diff --color=always";
+
+fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
+/// A changed file's diff against HEAD, or the whole worktree's, printed by
+/// `command` in the worktree at `width` columns. `{target}` in the command
+/// becomes what to compare; without it, the target goes at the end. An
+/// untracked file compares with an empty file. The whole-worktree view leaves
+/// untracked files out.
+pub fn diff_text(dir: &Path, file: Option<&str>, command: Option<&str>, width: u16) -> Result<String> {
+    let target = match file {
+        None => "HEAD".to_string(),
+        Some(f) if git(dir, &["ls-files", "--error-unmatch", "--", f]).is_ok() => format!("HEAD -- {}", shell_quote(f)),
+        Some(f) => format!("--no-index -- /dev/null {}", shell_quote(f)),
+    };
+    let command = command.map(str::trim).filter(|c| !c.is_empty()).unwrap_or(DEFAULT_DIFF);
+    let script = if command.contains("{target}") {
+        command.replace("{target}", &target)
+    } else {
+        format!("{command} {target}")
+    };
+    let out = Command::new("sh")
+        .args(["-c", &script])
+        .current_dir(dir)
+        // Printed to a pipe, tools drop color and guess the width. Tell them both.
+        .env("COLUMNS", width.to_string())
+        .env("DFT_COLOR", "always")
+        .env("DFT_WIDTH", width.to_string())
+        .env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_KEY_0", "core.quotePath")
+        .env("GIT_CONFIG_VALUE_0", "false")
+        .stdin(Stdio::null())
+        .output()
+        .context("run the diff command")?;
+    // Diff tools exit 1 when the files differ.
+    if !out.status.success() && out.status.code() != Some(1) {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        bail!("{script} failed: {}", if err.is_empty() { out.status.to_string() } else { err });
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
 /// Lines in a new text file. `None` for a binary or large file.
 fn count_lines(path: &Path) -> Option<u32> {
     if std::fs::metadata(path).ok()?.len() > COUNT_LIMIT {
@@ -234,6 +279,32 @@ mod tests {
                 c("src/new.rs", 'A', Some(2), Some(0)),
             ]
         );
+    }
+
+    #[test]
+    fn diff_command_gets_the_target() {
+        let root = std::env::temp_dir().join(format!("skiff-diffcmd-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let run = |args: &[&str]| assert!(Command::new("git").arg("-C").arg(&root).args(args).status().unwrap().success());
+        run(&["init", "-q"]);
+        run(&["config", "user.email", "t@t"]);
+        run(&["config", "user.name", "t"]);
+        std::fs::write(root.join("a b.txt"), "1\n").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-qm", "init"]);
+        std::fs::write(root.join("a b.txt"), "2\n").unwrap();
+        std::fs::write(root.join("new.txt"), "n\n").unwrap();
+
+        let plain = diff_text(&root, Some("a b.txt"), Some("git diff"), 80).unwrap();
+        let untracked = diff_text(&root, Some("new.txt"), None, 80).unwrap();
+        let placed = diff_text(&root, Some("a b.txt"), Some("git diff {target} | wc -l"), 80).unwrap();
+        let failed = diff_text(&root, None, Some("false-command-that-is-missing"), 80);
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(plain.contains("-1") && plain.contains("+2"), "{plain}");
+        assert!(untracked.contains("+++ b/new.txt"), "{untracked}");
+        assert!(placed.trim().parse::<u32>().unwrap() > 3, "{placed}");
+        assert!(failed.is_err());
     }
 
     #[test]

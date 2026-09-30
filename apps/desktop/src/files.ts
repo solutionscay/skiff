@@ -1,6 +1,6 @@
 /**
  * The Files section under each worktree, for projects with `files = true`.
- * It lists folders and opens files in their default app. No edits, no
+ * It lists folders and opens files with their Open with command or default app. No edits, no
  * previews, no watching: a folder is read again when it opens, or on Refresh.
  */
 import { invoke } from "@tauri-apps/api/core";
@@ -121,7 +121,7 @@ function row(e: Entry, path: string, depth: number): HTMLElement {
   r.type = "button";
   r.dataset.key = `file:${path}`;
   r.style.setProperty("--depth", String(depth));
-  r.title = e.dir ? path : `${path}\nDouble-click to open in its default app`;
+  r.title = e.dir ? path : `${path}\nDouble-click to open`;
   if (e.dir) r.setAttribute("aria-expanded", String(expanded.has(path)));
   r.addEventListener("click", (m) => {
     picked = path;
@@ -149,7 +149,7 @@ function row(e: Entry, path: string, depth: number): HTMLElement {
           { icon: "code-copy", label: "Copy path", run: () => copy(path) },
         ]
       : [
-          { icon: "indicators-square-arrow-out-up-right", label: "Open", hint: "default app", run: () => open(path) },
+          { icon: "indicators-square-arrow-out-up-right", label: "Open", run: () => open(path) },
           { icon: "documents-folder-open", label: "Show in file manager", run: () => reveal(path) },
           { icon: "code-copy", label: "Copy path", run: () => copy(path) },
         ]);

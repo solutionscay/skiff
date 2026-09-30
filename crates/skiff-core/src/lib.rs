@@ -6,6 +6,7 @@ pub mod config;
 pub mod files;
 pub mod git;
 pub mod group;
+pub mod open;
 pub mod project;
 pub mod protocol;
 pub mod session;

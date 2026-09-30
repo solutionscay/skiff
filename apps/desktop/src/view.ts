@@ -10,10 +10,13 @@ import { ctxMenu } from "./menus";
 import { render } from "./render";
 import { clearSelection } from "./selection";
 import { activeGroupObj, currentLayout, FULL_HINT, groupOf, MAX_PANES, OTHER, panes, place, S, selectedWorktree, sessions, shownIds, splitFull, worktreeSessions } from "./state";
+import { closePeek } from "./peek";
 import { view } from "./terminal";
 
 /** Give the keys to a shown pane. */
 export function focusPane(id: string, grab = true) {
+  // Going to a session leaves the peek.
+  closePeek();
   S.justAdded = null;
   S.grab = null;
   if (grab) S.groupPicked = null;
