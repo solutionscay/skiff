@@ -346,7 +346,7 @@ function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   cell.classList.toggle("focused", id === S.focused);
   const multi = shownIds().length > 1;
   // Rebuild only on change, so a click that spans a daemon event still lands.
-  const sig = s ? JSON.stringify([s.state, s.exit_code, at?.project.name, taskTitle(s), agentKind(s), multi]) : "";
+  const sig = s ? JSON.stringify([s.state, s.exit_code, s.unread, at?.project.name, taskTitle(s), agentKind(s), multi]) : "";
   if (head.dataset.sig === sig) return;
   head.dataset.sig = sig;
   head.replaceChildren();

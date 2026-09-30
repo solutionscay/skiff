@@ -1,4 +1,4 @@
-import type { Project, SessionInfo, SessionState, Worktree } from "./types";
+import type { Project, SessionInfo, Worktree } from "./types";
 
 export interface Place {
   project: Project;
@@ -53,8 +53,9 @@ export function branchName(w: Worktree): string {
   return w.branch ?? "(detached)";
 }
 
-export function rank(state: SessionState): number {
-  return { waiting: 0, working: 1, idle: 2, done: 3 }[state];
+export function rank(s: SessionInfo): number {
+  if (s.state === "idle" && s.unread) return 1;
+  return { waiting: 0, working: 2, idle: 3, done: 4 }[s.state];
 }
 
 /** Display order: oldest first. It never changes with state. */
@@ -64,7 +65,7 @@ export function byStart(a: SessionInfo, b: SessionInfo): number {
 
 /** Which session to focus: waiting first, then most recent output. Not for display. */
 export function bySessionPriority(a: SessionInfo, b: SessionInfo): number {
-  return rank(a.state) - rank(b.state) || b.last_output_at - a.last_output_at || a.id.localeCompare(b.id);
+  return rank(a) - rank(b) || b.last_output_at - a.last_output_at || a.id.localeCompare(b.id);
 }
 
 /**

@@ -25,6 +25,8 @@ export interface SessionInfo {
   started_at: number;
   /** Unix ms. */
   last_output_at: number;
+  /** Client only. It finished working while the user looked elsewhere. */
+  unread?: boolean;
 }
 
 export interface Worktree {

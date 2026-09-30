@@ -26,6 +26,8 @@ export function focusPane(id: string, grab = true) {
   }
   if (S.focused && S.focused !== id) S.previous = S.focused;
   S.focused = id;
+  const seen = sessions.get(id);
+  if (seen) seen.unread = false;
   const g = activeGroupObj();
   if (g) g.focus = id;
   const s = sessions.get(id);

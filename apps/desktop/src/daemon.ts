@@ -185,6 +185,9 @@ export function onEvent(e: DaemonEvent) {
     case "state": {
       const s = sessions.get(e.session);
       if (s) {
+        // A turn that ends out of sight leaves a result to read. Focus clears it.
+        if (e.state === "idle" && s.state === "working" && S.focused !== s.id) s.unread = true;
+        else if (e.state !== "idle") s.unread = false;
         s.state = e.state;
         if (e.state === "working") s.last_output_at = Date.now();
         // An agent that stops working may have written files or added a worktree.
