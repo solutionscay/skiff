@@ -167,6 +167,8 @@ export const S = {
   selection: [] as string[],
   /** The list item the session list's single Tab stop lands on. */
   roveKey: null as string | null,
+  /** A pane asked for the keys before its terminal opened. It takes them when it opens. */
+  grab: null as string | null,
   /** The session focused before the current one, for Back. */
   previous: null as string | null,
 

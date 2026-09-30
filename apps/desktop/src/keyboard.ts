@@ -2,8 +2,9 @@
 import { type Action, actionFor } from "./keys";
 import { runAction } from "./commands";
 import { $, host } from "./dom";
-import { deleteKeyMenu } from "./menus";
+import { ctxMenu, deleteKeyMenu } from "./menus";
 import { render } from "./render";
+import { renameListItem } from "./rename";
 import { clearSelection, extendSelection, keepRow, splitSelection } from "./selection";
 import { collapsed, panes, S } from "./state";
 import { refocusTerminal, revealSession, selectProject, showGroup } from "./view";
@@ -204,6 +205,8 @@ $("sidebar-scroll").addEventListener("keydown", (e) => {
     S.roveKey = wt;
     render();
     roveTarget()?.focus();
+  } else if (e.key === "F2" && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && renameListItem(el)) {
+    // F2 renames the row in place, as in a file manager.
   } else if ((e.key === "Delete" || e.key === "Backspace") && !e.ctrlKey && !e.altKey && !e.metaKey && (el.dataset.session || el.dataset.group)) {
     deleteKeyMenu(el);
   } else if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
@@ -230,6 +233,16 @@ function passToTerminal(e: KeyboardEvent, id: string): boolean {
   if (data) term.input(data);
   return true;
 }
+
+// A render can drop the element that had the keys. Focus then falls to the
+// body and typed keys go nowhere, while a pane still shows as focused.
+window.addEventListener("keydown", (e) => {
+  const a = document.activeElement;
+  if (e.defaultPrevented || (a && a !== document.body) || ctxMenu.isOpen || !S.focused) return;
+  if (!passToTerminal(e, S.focused)) return;
+  e.preventDefault();
+  e.stopPropagation();
+});
 
 $("sidebar-scroll").addEventListener("focusin", (e) => {
   const el = e.target as HTMLElement;

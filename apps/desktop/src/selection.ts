@@ -46,6 +46,8 @@ export function toggleSelectGroup(g: Group) {
 /** A selection gesture leaves the keys on the row, so Shift+Up/Down and Esc carry on from it. */
 export function keepRow(id: string) {
   S.roveKey = id;
+  // The row claims the keys: a terminal still attaching must not take them when it opens.
+  S.grab = null;
   listItems().find((x) => itemKey(x) === id)?.focus();
 }
 

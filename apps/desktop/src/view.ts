@@ -15,6 +15,7 @@ import { view } from "./terminal";
 /** Give the keys to a shown pane. */
 export function focusPane(id: string, grab = true) {
   S.justAdded = null;
+  S.grab = null;
   if (grab) S.groupPicked = null;
   if (S.focused && S.focused !== id) S.previous = S.focused;
   S.focused = id;
@@ -34,7 +35,11 @@ export function focusPane(id: string, grab = true) {
     // A text field (a group name being typed) keeps them too.
     const a = document.activeElement;
     const typing = a instanceof HTMLInputElement && !host.contains(a);
-    if (!ctxMenu.isOpen && !typing && S.focused === id && grab) panes.get(id)?.term.focus();
+    if (ctxMenu.isOpen || typing || S.focused !== id || !grab) return;
+    const pane = panes.get(id);
+    if (pane?.term.element) pane.term.focus();
+    // Not open yet: the terminal takes the keys when it attaches.
+    else S.grab = id;
   });
 }
 

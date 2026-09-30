@@ -12,7 +12,7 @@ import { cycleRegion, toggleList } from "./keyboard";
 import { copyReport, hasReport, startTrace, stopTrace, tracing } from "./latency";
 import { endEntry, groupCloseEntries, newWorktree, splitMenu } from "./menus";
 import { addProject, launchMenu, settings } from "./panels";
-import { startRename, startSessionRename } from "./rename";
+import { renameListItem, startRename, startSessionRename } from "./rename";
 import { scheduleRender } from "./render";
 import { accent, activeGroupObj, currentProject, currentWorktree, FONT_DEFAULT, place, S, sessions, shownIds, splitFull, worktreeSessions } from "./state";
 import { copySelection, openFind, paneCenter, pasteClipboard, setFontSize } from "./terminal";
@@ -164,9 +164,11 @@ function showShortcuts() {
     row.append(h("span", "keys-what", what), h("kbd", "", keyLabel(action)));
     table.appendChild(row);
   }
-  const extra = h("div", "keys-row");
-  extra.append(h("span", "keys-what", "Select project 1–9"), h("kbd", "", "Ctrl+1…9"));
-  table.appendChild(extra);
+  for (const [what, key] of [["Select project 1–9", "Ctrl+1…9"], ["Rename the row, in the session list", "F2"]]) {
+    const extra = h("div", "keys-row");
+    extra.append(h("span", "keys-what", what), h("kbd", "", key));
+    table.appendChild(extra);
+  }
   const note = h("div", "keys-note", "Change any key in projects.toml, for example [keys] palette = \"ctrl+shift+k\".");
   table.appendChild(note);
   infoDialog("Keyboard shortcuts", table);
@@ -267,6 +269,8 @@ export function runAction(a: Action) {
     case "next-waiting": return focusNextWaiting();
     case "back": return goBack();
     case "rename": {
+      // In the list, the row with the keys: arrowing to a row does not open it at once.
+      if (renameListItem(document.activeElement as HTMLElement | null)) return;
       const pg = S.groups.find((x) => x.id === S.groupPicked);
       return pg ? startRename(pg) : S.focused ? startSessionRename(S.focused) : undefined;
     }

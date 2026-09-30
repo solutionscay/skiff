@@ -178,7 +178,9 @@ export const view = createLayoutView(host, {
         body.appendChild(p.el);
         useWebgl(id, p);
         fitShown();
-        if (id === S.focused && canTakeFocus()) p.term.focus();
+        const grab = S.grab === id;
+        if (grab) S.grab = null;
+        if (id === S.focused && (canTakeFocus() || (grab && !ctxMenu.isOpen))) p.term.focus();
       })
       .catch(console.error);
   },
@@ -363,9 +365,21 @@ export function setFontSize(n: number, save = true) {
   applyZoom();
   fitShown();
   if (!save) return;
+  showZoom();
   // A held key steps the size many times; the config file gets the last one.
   clearTimeout(saveFontSize);
   saveFontSize = setTimeout(() => invoke("set_font_size", { size: S.fontSize }).catch(console.error), 300);
+}
+
+let zoomTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Ctrl+Plus/Minus: the size as a percent of the default, briefly, over the terminals. */
+function showZoom() {
+  const badge = host.querySelector<HTMLElement>(".zoom-badge") ?? host.appendChild(h("div", "zoom-badge"));
+  badge.setAttribute("role", "status");
+  badge.textContent = `${Math.round((S.fontSize / FONT_DEFAULT) * 100)}%`;
+  clearTimeout(zoomTimer);
+  zoomTimer = setTimeout(() => badge.remove(), 1200);
 }
 
 /** The app text follows the terminal size: 13 is 1x. */

@@ -108,6 +108,16 @@ export async function renameGroup(id: string, name: string, byKey = false) {
   else refocusTerminal();
 }
 
+/** Renames the list item that holds the keys: a session or a group. False for anything else. */
+export function renameListItem(el: HTMLElement | null): boolean {
+  if (!el || !listItems().includes(el)) return false;
+  const g = el.dataset.group ? S.groups.find((x) => x.id === el.dataset.group) : undefined;
+  if (el.dataset.session) startSessionRename(el.dataset.session);
+  else if (g) startRename(g);
+  else return false;
+  return true;
+}
+
 export function startRename(g: Group) {
   rememberRow();
   S.renaming = { id: g.id, name: g.name };

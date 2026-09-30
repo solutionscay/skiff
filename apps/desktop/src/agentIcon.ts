@@ -1,4 +1,5 @@
 import type { AgentInfo, SessionInfo } from "./types";
+import { ownTheme, signatureColor } from "./themes";
 import { basename } from "./model";
 
 export type AgentKind = "claude" | "codex" | "gemini" | "grok" | "opencode" | "shell" | "other";
@@ -57,8 +58,18 @@ const GLYPHS: Record<AgentKind, string> = {
     '<rect x="2" y="3" width="12" height="10" fill="none" stroke="#9aa3ae" stroke-width="1.6"/><path d="M4.5 6.5l2 1.5-2 1.5" fill="none" stroke="#9aa3ae" stroke-width="1.4"/>',
 };
 
+/**
+ * A session with a terminal theme of its own draws its glyph in the theme's
+ * signature color. It follows the session, so it holds inside any group.
+ */
 export function agentIcon(s: SessionInfo, size = 14): HTMLSpanElement {
-  return iconOf(agentKind(s), size);
+  const span = iconOf(agentKind(s), size);
+  const t = ownTheme(s);
+  if (t) {
+    span.title = `Terminal theme: ${t.name}`;
+    span.innerHTML = span.innerHTML.replace(/#[0-9a-f]{6}/gi, signatureColor(t));
+  }
+  return span;
 }
 
 /** The icon a new session of this agent gets. `null` is a plain shell. */

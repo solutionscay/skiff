@@ -16,7 +16,6 @@ import { render } from "./render";
 import { clearSelection, keepRow, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
 import { stateIcon } from "./stateIcon";
 import { accent, activeGroupObj, collapsed, currentProject, currentWorktree, DEFAULT_ACCENT, OTHER, enabledAgents, groupedIds, place, removeErrors, removing, S, selectedWorktree, sessions, worktreeSessions, shownIds } from "./state";
-import { groupTheme } from "./themes";
 import { dragSessions, groupHome, revealSession, selectProject, selectWorktree, showGroup } from "./view";
 
 export function renderRail() {
@@ -336,9 +335,7 @@ function groupRow(g: Group, hasPrevious = false, hasNext = false): HTMLElement {
   const ids = filledOf(g.layout).filter((id) => sessions.has(id));
   const row = h("div", "group-row" + (hasPrevious ? " has-previous" : "") + (hasNext ? " has-next" : "") + (g.id === S.activeGroup && g.id === S.groupPicked ? " active" : ""));
   row.dataset.group = g.id;
-  const theme = groupTheme(g);
-  // A themed group takes its color from the theme: the cursor color, else ANSI blue.
-  row.style.setProperty("--gc", theme ? theme.cursor ?? theme.palette[4] ?? groupColor(g) : groupColor(g));
+  row.style.setProperty("--gc", groupColor(g));
   const lead = sessions.get(g.focus ?? ids[0]);
   row.style.setProperty("--pc", accent(lead ? place(lead)?.project : null));
   if (S.renaming?.id === g.id) {
@@ -372,15 +369,6 @@ function groupRow(g: Group, hasPrevious = false, hasNext = false): HTMLElement {
   pick.type = "button";
   pick.title = "Double-click to rename";
   pick.append(glyph(g.layout), h("span", "group-name", g.name));
-  if (theme) {
-    const strip = h("span", "theme-chip");
-    strip.title = `Terminal theme: ${theme.name}`;
-    strip.style.background = theme.background;
-    strip.style.setProperty("--fg", theme.foreground);
-    strip.style.setProperty("--cur", theme.cursor ?? theme.palette[4] ?? theme.foreground);
-    strip.append(h("span", "chip-text"), h("span", "chip-cursor"));
-    pick.append(strip);
-  }
   pick.append(h("span", "group-count", String(ids.length)));
   pick.addEventListener("click", (e) => {
     if (e.ctrlKey || e.metaKey) return toggleSelectGroup(g);

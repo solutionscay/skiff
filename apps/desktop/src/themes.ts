@@ -78,6 +78,7 @@ export async function sessionThemeMenu(s: SessionInfo) {
       live.theme = id;
       applyThemes();
       applyApp();
+      render();
       invoke<SessionInfo>("set_session_theme", { session: s.id, theme: id }).catch(showError);
     },
   });
@@ -109,10 +110,27 @@ export async function groupThemeMenu(g: Group) {
   });
 }
 
-/** The theme every terminal in the group was given by hand, or null when they differ or none was set. */
-export function groupTheme(g: Group): TerminalTheme | null {
-  const ids = sessionsOf(g.layout).map((id) => canonTheme(sessions.get(id)?.theme ?? null));
-  const first = ids[0];
-  if (!first || !ids.every((id) => id === first)) return null;
-  return S.themes.find((t) => t.id === first) ?? null;
+const chroma = (hex: string) => {
+  const n = parseInt(hex.replace("#", "").slice(0, 6), 16);
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  return (Math.max(...c) - Math.min(...c)) / 255;
+};
+
+/**
+ * The one color that says which theme this is. The built-in themes share one
+ * ANSI palette and differ by their text color, so a tinted foreground wins;
+ * then a tinted cursor; else the most vivid bright color, red aside (it reads
+ * as an error). Backgrounds are all near black, so they tell nothing apart.
+ */
+export function signatureColor(t: TerminalTheme): string {
+  if (chroma(t.foreground) > 0.1) return t.foreground;
+  if (t.cursor && chroma(t.cursor) > 0.1) return t.cursor;
+  const brights = t.palette.slice(10, 15);
+  return brights.reduce((a, b) => (chroma(b) > chroma(a) ? b : a), brights[0] ?? t.foreground);
+}
+
+/** The theme this terminal was given by hand, or null when it follows the app. */
+export function ownTheme(s: SessionInfo): TerminalTheme | null {
+  const id = canonTheme(s.theme);
+  return id ? S.themes.find((t) => t.id === id) ?? null : null;
 }
