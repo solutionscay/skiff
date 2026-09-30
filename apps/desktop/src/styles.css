@@ -276,7 +276,7 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 .belled svg { width: calc(11 * var(--u)); height: calc(11 * var(--u)); stroke-width: 2.5; animation: ring 1.6s steps(1) infinite; transform-origin: 50% 10%; }
 @keyframes ring { 0%, 50%, 100% { transform: rotate(0); } 10% { transform: rotate(16deg); } 20% { transform: rotate(-14deg); } 30% { transform: rotate(10deg); } 40% { transform: rotate(-6deg); } }
 .session-row .finished, .cell-head .finished { display: flex; align-items: center; justify-content: center; color: var(--state-done); width: calc(18 * var(--u)); height: calc(12 * var(--u)); }
-.session-row .unread, .cell-head .unread { display: flex; align-items: center; justify-content: center; color: var(--state-working); width: calc(18 * var(--u)); height: calc(12 * var(--u)); }
+.session-row .unread, .cell-head .unread { display: flex; align-items: center; justify-content: center; color: var(--diff-add); width: calc(18 * var(--u)); height: calc(12 * var(--u)); }
 .unread svg { width: calc(10 * var(--u)); height: calc(10 * var(--u)); stroke-width: 2.5; animation: wave 1.2s steps(1) infinite; transform-origin: 20% 90%; }
 @keyframes wave { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-10deg) skewY(-6deg); } 50% { transform: rotate(0); } 75% { transform: rotate(10deg) skewY(6deg); } }
 .session-row.st-idle:has(.unread) .title { font-weight: 600; }
@@ -856,5 +856,12 @@ button:active:not(:disabled), .sw-row:active {
 .trace-indicator .dot { background: var(--state-waiting-text); border-radius: 50%; }
 .trace-indicator:hover { color: var(--text); }
 
-/* Focus mode and maximize (modes.ts): the terminal area fills the window. */
-body.focus-mode :is(#topbar, #rail, #sidebar, #statusbar) { display: none; }
+/* Focus mode and maximize (modes.ts): the chrome slides out and the terminal area fills the window.
+   The terminals fit once, when the slide ends (holdFits). Hidden after the slide, so Tab skips it. */
+#topbar, #rail, #sidebar, #statusbar { transition: margin 200ms cubic-bezier(.2, .7, .2, 1), opacity 160ms ease, visibility 0s; }
+body.focus-mode :is(#topbar, #rail, #sidebar, #statusbar) { opacity: 0; visibility: hidden; transition: margin 200ms cubic-bezier(.2, .7, .2, 1), opacity 160ms ease, visibility 0s 200ms; }
+body.focus-mode #topbar { margin-top: calc(-48 * var(--u)); }
+body.focus-mode #statusbar { margin-bottom: calc(-32 * var(--u)); }
+body.focus-mode #rail { margin-left: calc(-72 * var(--u)); }
+body.focus-mode #sidebar { margin-left: calc(-284 * var(--u)); }
+@media (prefers-reduced-motion: reduce) { #topbar, #rail, #sidebar, #statusbar { transition: none !important; } }

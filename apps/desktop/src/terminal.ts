@@ -318,10 +318,22 @@ function fitShown() {
 }
 
 let fitFrame = 0;
+let heldUntil = 0;
+let holdTimer: number | undefined;
+
+/** No fits while the chrome slides (modes.ts): one fit when it stops, not one per frame. */
+export function holdFits(ms: number) {
+  heldUntil = performance.now() + ms;
+  clearTimeout(holdTimer);
+  holdTimer = window.setTimeout(() => {
+    heldUntil = 0;
+    fitShown();
+  }, ms);
+}
 
 /** fitShown once per frame: a window or divider drag fires many resizes. */
 function fitSoon() {
-  if (fitFrame) return;
+  if (fitFrame || performance.now() < heldUntil) return;
   fitFrame = requestAnimationFrame(() => {
     fitFrame = 0;
     fitShown();

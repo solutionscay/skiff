@@ -9,9 +9,11 @@
  */
 import { isSlot } from "./canvas";
 import { runAction } from "./commands";
+import { host } from "./dom";
 import type { Action } from "./keys";
 import { render } from "./render";
 import { S, shownIds } from "./state";
+import { holdFits } from "./terminal";
 import { focusPane } from "./view";
 
 /** Keys that move in the rail or the tree, which focus mode hides. */
@@ -62,12 +64,34 @@ export function toggleFocusMode() {
 
 export function toggleMaximize() {
   if (S.maximized) {
+    const id = S.maximized;
     S.maximized = null;
-    return focusPane(S.focused!);
+    focusPane(S.focused!);
+    // The other panes come back into their slots.
+    for (const c of host.querySelectorAll<HTMLElement>(".cell")) if (c.dataset.session !== id) animate(c, [{ opacity: 0 }, { opacity: 1 }]);
+    return;
   }
   if (!S.focused || !shownIds().includes(S.focused)) return;
+  const from = cellOf(S.focused)?.getBoundingClientRect();
   S.maximized = S.focused;
   enter();
+  // The pane grows out of its slot. A clip, not a scale, so the text does not stretch.
+  const cell = cellOf(S.maximized);
+  if (!from || !cell) return;
+  const to = cell.getBoundingClientRect();
+  animate(cell, [
+    { clipPath: `inset(${from.top - to.top}px ${to.right - from.right}px ${to.bottom - from.bottom}px ${from.left - to.left}px)` },
+    { clipPath: "inset(0px)" },
+  ]);
+}
+
+/** The chrome's slide in styles.css takes this long. */
+const SLIDE_MS = 200;
+const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const cellOf = (id: string) => host.querySelector<HTMLElement>(`.cell[data-session="${CSS.escape(id)}"]`);
+
+function animate(el: HTMLElement, frames: Keyframe[]) {
+  if (!reduced()) el.animate(frames, { duration: SLIDE_MS, easing: "cubic-bezier(.2, .7, .2, 1)" });
 }
 
 function enter() {
@@ -93,7 +117,12 @@ export function settleModes() {
   seen = shown;
 }
 
+let wasHidden = false;
+
 /** Runs after the layout: hides the chrome while a mode is on. */
 export function renderModes() {
-  document.body.classList.toggle("focus-mode", hidden());
+  const on = hidden();
+  if (on !== wasHidden && !reduced()) holdFits(SLIDE_MS + 20);
+  wasHidden = on;
+  document.body.classList.toggle("focus-mode", on);
 }
