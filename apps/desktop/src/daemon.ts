@@ -228,6 +228,11 @@ export function onEvent(e: DaemonEvent) {
   scheduleRender();
 }
 
+/** Groups that must survive their last session ending off screen: "Kill all sessions" keeps the group. */
+const kept = new Set<string>();
+export const keepGroup = (id: string) => void kept.add(id);
+export const releaseGroup = (id: string) => void kept.delete(id);
+
 /** The daemon pruned the session from its groups; groups_changed brings them. Here the view drops it at once. */
 function dropSession(id: string) {
   gone.add(id);
@@ -244,7 +249,7 @@ function dropSession(id: string) {
     if (filledOf(next).length === 0) {
       // The last session ended. A group on screen stays, with an empty pane in
       // its place. One off screen has nothing left to show: it goes.
-      if (g.id !== S.activeGroup) {
+      if (g.id !== S.activeGroup && !kept.has(g.id)) {
         deleteGroup(g);
         continue;
       }

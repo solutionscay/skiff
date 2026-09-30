@@ -577,6 +577,12 @@ body.kbd #sidebar-scroll .wt-row:has(> .wt-pick.current:focus) { box-shadow: ins
   box-shadow: inset 2px 0 0 var(--pc, var(--project-default));
 }
 body.kbd .lm-item:focus, body.kbd .slot-item:focus { outline: 0; }
+/* A destructive item lights in the error colour, not the project's: a saturated project colour under red text is muddy. */
+.lm-item.danger:focus, .lm-item.danger:hover {
+  color: var(--error-text);
+  background: color-mix(in srgb, var(--error-text) 12%, transparent);
+  box-shadow: inset 2px 0 0 var(--error-text);
+}
 .lm-key { width: calc(10 * var(--u)); font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
 .lm-key:has(.rune) { display: inline-flex; align-items: center; justify-content: center; }
 .lm-key .rune { width: calc(14 * var(--u)); height: calc(14 * var(--u)); display: block; }

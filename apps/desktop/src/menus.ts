@@ -11,7 +11,7 @@ import type { Group, Project, SessionInfo, SplitDir, Worktree } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { loadProjects, newSession } from "./daemon";
+import { keepGroup, loadProjects, newSession, releaseGroup } from "./daemon";
 import { launchMenu } from "./panels";
 import { showError } from "./dom";
 import { hasChanges, setShowChanges, showsChanges } from "./changes";
@@ -400,13 +400,16 @@ export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: s
     const running = ids.filter((id) => sessions.get(id)?.state !== "done");
     if (running.length) {
       const ok = await confirmAction({
-        title: close ? `Close ${group.name}?` : `Kill all sessions in ${group.name}?`,
-        body: `Stops ${running.length} running ${running.length === 1 ? "process" : "processes"} and removes the sessions. Their unsaved work in the terminal is lost.\n${close ? "The group closes." : "The group stays open."}`,
+        // Not the group's name: an unnamed group is called "1 over 2", which reads as noise here.
+        title: close ? "Close this group?" : "Kill all sessions in this group?",
+        body: `This stops ${running.length} running ${running.length === 1 ? "process" : "processes"} and deletes ${running.length === 1 ? "its session" : "their sessions"}. Unsaved work in ${running.length === 1 ? "it" : "them"} is lost.\n${close ? "The group closes too." : "The group stays, with empty panes."}`,
         action: close ? "Close group" : "Kill all sessions",
       });
       if (!ok) return refocusTerminal();
     }
     clearSelection();
+    // Killing keeps the group: it does not go when its last session ends off screen.
+    if (!close) keepGroup(group.id);
     const results = await Promise.allSettled(ids.filter((id) => sessions.has(id)).map((id) => invoke("kill_session", { session: id })));
     let failed = false;
     for (const result of results) {
@@ -422,6 +425,8 @@ export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: s
       deleteGroup(latest);
       if (active) unfocus();
     }
+    // The exits arrive as events, after the kills return.
+    setTimeout(() => releaseGroup(group.id), 3000);
     render();
   };
   const entries: Exclude<MenuEntry, { head: string }>[] = [];
