@@ -94,9 +94,12 @@ kbd {
 }
 #topbar .tb-cell { display: flex; align-items: center; padding: 0 calc(16 * var(--u)); border-right: 1px solid var(--rule); }
 #topbar .wordmark { width: calc(356 * var(--u)); font-family: "Space Grotesk", var(--font); font-weight: 700; font-size: calc(20px * var(--zoom, 1)); letter-spacing: 0.02em; }
+/* Centered on the window, as in VS Code. A narrow window pushes it right against the wordmark,
+   where the -1px margin lets the two rules share one line. */
 #topbar .search {
   flex-grow: 1; min-width: 0; max-width: calc(560 * var(--u)); gap: calc(10 * var(--u));
-  background: var(--bg-raised); border: 0; border-right: 1px solid var(--rule);
+  margin-left: max(-1px, calc(50vw - 280 * var(--u) - 356 * var(--u)));
+  background: var(--bg-raised); border: 0; border-left: 1px solid var(--rule); border-right: 1px solid var(--rule);
   color: var(--text-3); text-align: left;
 }
 #topbar .search svg { flex-shrink: 0; }
@@ -427,12 +430,12 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 #switcher {
   position: fixed; inset: 0; z-index: 10;
   display: flex; justify-content: flex-start; align-items: flex-start;
-  padding: calc(48 * var(--u)) 0 0 calc(356 * var(--u));
+  padding: calc(48 * var(--u)) 0 0 max(calc(356 * var(--u) - 1px), calc(50vw - 280 * var(--u)));
   background: color-mix(in srgb, var(--bg-deep) 70%, transparent);
 }
 /* Drops from the top bar: same left edge and width as the search cell, first rule at the bar's rule. */
 .sw-panel {
-  width: min(calc(560 * var(--u)), calc(100vw - 356 * var(--u)));
+  width: min(calc(560 * var(--u)), calc(100vw - 356 * var(--u) + 1px));
   display: flex; flex-direction: column;
   background: var(--bg-panel); border: 1px solid var(--rule-strong); border-top: 0;
 }
