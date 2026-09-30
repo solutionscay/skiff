@@ -314,7 +314,6 @@ export function splitMenu(id: string, dir: SplitDir, x: number, y: number) {
     entries.push({
       glyph: launchIcon(a),
       label: a?.id ?? "Shell",
-      hint: a?.command ?? "$SHELL",
       run: () => void newSession(cwd, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell", { target: id, dir }).catch(showError),
     });
   }
@@ -334,7 +333,7 @@ export function groupMenu(g: Group, x: number, y: number) {
   ctxMenu.open(x, y, `Group: ${g.name}`, [
     ...groupStartEntries(g),
     { head: "GROUP" },
-    { icon: "tools-pencil", label: "Rename", hint: "double-click", run: () => startRename(g) },
+    { icon: "tools-pencil", label: "Rename", run: () => startRename(g) },
     { icon: "tools-sparkles", label: "Terminal theme…", run: () => void groupThemeMenu(g) },
     ...groupCloseEntries(g),
   ]);
@@ -353,7 +352,7 @@ function groupStartEntries(g: Group): MenuEntry[] {
     entries.push({
       glyph: launchIcon(a),
       label: a?.id ?? "Shell",
-      hint: full ? FULL_HINT : a?.command ?? "$SHELL",
+      hint: full ? FULL_HINT : "",
       disabled: full,
       run: () => {
         if (g.id !== S.activeGroup) showGroup(g.id);
