@@ -57,4 +57,3 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 .rail-waiting, .rail-unread { position: absolute; top: calc(2 * var(--u)); right: calc(2 * var(--u)); display: flex; color: var(--state-waiting); pointer-events: none; }
 .rail-unread { color: var(--diff-add); }
 .rail-waiting svg, .rail-unread svg { display: block; width: calc(12 * var(--u)); height: calc(12 * var(--u)); stroke-width: 2.5; /* a hard halo in the rail colour keeps the bell readable over any icon or theme */ filter: drop-shadow(0 0 0 var(--bg-deep)) drop-shadow(1px 0 0 var(--bg-deep)) drop-shadow(-1px 0 0 var(--bg-deep)) drop-shadow(0 1px 0 var(--bg-deep)) drop-shadow(0 -1px 0 var(--bg-deep)); animation: ring 1.6s steps(1) infinite; transform-origin: 50% 10%; }
-.rail-unread svg { animation: wave 0.8s steps(1) infinite; transform-origin: 20% 90%; }

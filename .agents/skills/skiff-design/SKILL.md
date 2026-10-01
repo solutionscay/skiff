@@ -43,7 +43,7 @@ Test every change with three questions:
   - Red shows errors and destructive items only. A destructive item stays red when lit.
 - **Highlight, do not outline.** The current row and the lit menu item get a 22% project-color tint and a 2px inset bar on the left. A focus ring shows only after keyboard use (`body.kbd`), as a quiet 1px line.
 - **Shadows on floating surfaces only.** Menus and dialogs have shadows. Menus are solid, never translucent.
-- **Little motion.** Layout transitions are 120ms or less. Looping animations (the waiting bell, the mascot) use `steps()`. Smooth loops cost frames on WebKit and in power-saver mode.
+- **Little motion.** Layout transitions are 120ms or less. Only the working skiff and the mascot loop, and they use `steps()`. Bells and flags stay still. Smooth loops cost frames on WebKit and in power-saver mode.
 - **Icons.** The Rune Icons outline set, stroke `currentColor`, 14px in menus. Add only the icons that the code uses.
 
 ## Theme scope
