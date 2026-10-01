@@ -1,5 +1,6 @@
-/* Menus are solid whatever the theme: a panel color with alpha would show the list through them. */
-#launch-menu, #ctx-menu, #ctx-sub { --menu-bg: linear-gradient(var(--bg-panel), var(--bg-panel)), linear-gradient(var(--bg), var(--bg)) #000; }
+/* Menus are solid whatever the theme: a panel color with alpha would show the list through them.
+   Their own compositing layer keeps the sidebar's overlay scrollbar and the dividers from painting over them. */
+#launch-menu, #ctx-menu, #ctx-sub { --menu-bg: linear-gradient(var(--bg-panel), var(--bg-panel)), linear-gradient(var(--bg), var(--bg)) #000; transform: translateZ(0); isolation: isolate; }
 #launch-menu, #ctx-menu { position: fixed; z-index: 15; width: calc(280 * var(--u)); background: var(--menu-bg); border: 1px solid var(--rule-strong); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); }
 #launch-menu[hidden], #ctx-menu[hidden] { display: none; }
 #ctx-sub { position: fixed; z-index: 16; width: calc(280 * var(--u)); max-height: calc(100vh - calc(16 * var(--u))); overflow-y: auto; background: var(--menu-bg); border: 1px solid var(--rule-strong); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); }
