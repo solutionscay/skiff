@@ -51,6 +51,7 @@ async fn run() -> Result<()> {
     pool.spawn_idle_watcher();
     pool.spawn_flusher();
     pool.spawn_away_watcher();
+    pool.spawn_foreground_watcher();
     tracing::info!("skiffd {} listening on {}", skiff_core::VERSION, path.display());
 
     let ctrl_c = tokio::signal::ctrl_c();

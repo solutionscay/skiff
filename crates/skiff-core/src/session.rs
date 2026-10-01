@@ -67,6 +67,9 @@ pub struct SessionInfo {
     pub role: Role,
     pub cwd: PathBuf,
     pub command: String,
+    /// Program in the PTY's foreground process group, when available.
+    #[serde(default)]
+    pub foreground_program: Option<String>,
     pub args: Vec<String>,
     pub state: SessionState,
     pub cols: u16,

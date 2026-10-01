@@ -26,11 +26,14 @@ function knownProgram(value: string | null | undefined): AgentKind | undefined {
 }
 
 /**
- * Which icon a session gets: the active program's terminal title first, then
- * the + menu's agent id and original command. An interrupted agent leaves its
- * launch label behind when the fallback shell starts a different agent.
+ * Use the foreground program when the daemon can read it. Older daemons
+ * fall back to the terminal title, launch label and original command.
  */
 export function agentKind(s: SessionInfo): AgentKind {
+  if (s.foreground_program) {
+    const prog = basename(s.foreground_program).toLowerCase();
+    return BY_PROGRAM[prog] ?? (SHELLS.has(prog) ? "shell" : "other");
+  }
   const titled = knownProgram(s.title);
   if (titled) return titled;
   const labeled = knownProgram(s.label);

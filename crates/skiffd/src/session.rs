@@ -26,6 +26,7 @@ use crate::{
 };
 
 mod away;
+mod foreground;
 mod groups;
 mod persistence;
 mod launch;
@@ -297,6 +298,7 @@ impl SessionPool {
             role: spec.role,
             cwd,
             command,
+            foreground_program: None,
             args: spec.args,
             state: SessionState::Working,
             cols: spec.cols,

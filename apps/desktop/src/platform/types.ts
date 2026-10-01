@@ -9,6 +9,8 @@ export interface SessionInfo {
   role: Role;
   cwd: string;
   command: string;
+  /** Program in the PTY's foreground process group. Absent from older daemons. */
+  foreground_program?: string | null;
   args: string[];
   state: SessionState;
   cols: number;
