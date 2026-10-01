@@ -8,6 +8,11 @@
 /* A group's members sit under its header; the branch shows where each lives. */
 .session-row .where { font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); flex-shrink: 0; max-width: calc(90 * var(--u)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* A session from another worktree that works in this one: a dim pointer, not a second session. */
+.pointer-row { cursor: pointer; opacity: 0.6; }
+.pointer-row .title { font-style: italic; }
+.cell-head .where { font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
 /* A group inside a worktree: a 20px header line, its members indented under it. */
 .sessions-block .group-row { position: relative; height: calc(20 * var(--u)); border-bottom: 0; box-shadow: none; background: transparent; }
 .sessions-block .group-pick { gap: calc(8 * var(--u)); padding: 0 calc(16 * var(--u)) 0 calc(38 * var(--u)); font-size: calc(12px * var(--zoom, 1)); }

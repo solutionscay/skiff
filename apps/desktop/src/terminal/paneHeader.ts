@@ -5,7 +5,7 @@ import { isSlot } from "../workspace/layoutSlots";
 import { type Action, keyLabel } from "../app/keys";
 import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { rune, type RuneName } from "../ui/runes";
-import { taskTitle } from "../workspace/model";
+import { branchName, taskTitle } from "../workspace/model";
 import { stateIcon } from "../appearance/stateIcon";
 
 import { button, h } from "../ui/dom";
@@ -13,7 +13,7 @@ import { button, h } from "../ui/dom";
 import { icon } from "../ui/icons";
 
 import { S, sessions } from "../app/state";
-import { accent, place, shownIds } from "../app/stateQueries";
+import { accent, awayPlaces, place, shownIds } from "../app/stateQueries";
 
 import { closePane, dragSessions, focusPane } from "./paneActions";
 /** One pane header: the agent icon, the title, then the close button. */
@@ -38,15 +38,18 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   cell.style.setProperty("--pc", accent(at?.project));
   cell.classList.toggle("focused", id === S.focused);
   const multi = shownIds().length > 1;
+  const away = s ? awayPlaces(s).map((a) => branchName(a.worktree)).join(", ") : "";
   // Rebuild only on change, so a click that spans a daemon event still lands.
-  const sig = s ? JSON.stringify([s.state, s.exit_code, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi]) : "";
+  const sig = s ? JSON.stringify([s.state, s.exit_code, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, away]) : "";
   if (head.dataset.sig === sig) return;
   head.dataset.sig = sig;
   head.replaceChildren();
   if (!s) return;
   head.classList.toggle("st-waiting", s.state === "waiting");
   head.classList.toggle("st-done", s.state === "done");
-  head.append(agentIcon(s), h("span", "title", taskTitle(s)), stateIcon(s));
+  head.append(agentIcon(s), h("span", "title", taskTitle(s)));
+  if (away) head.appendChild(h("span", "where mono", `${at ? branchName(at.worktree) : "other"} → working in ${away}`));
+  head.appendChild(stateIcon(s));
   // Mouse controls for the two view modes. The pane is focused first: they act on the focused pane.
   const viewBtn = (name: RuneName, label: string, key: Action, run: () => void) => {
     const b = button("head-btn", "", () => {

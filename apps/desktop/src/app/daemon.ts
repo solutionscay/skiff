@@ -131,6 +131,11 @@ export function onEvent(e: DaemonEvent) {
       if (s) s.title = e.title;
       break;
     }
+    case "away": {
+      const s = sessions.get(e.session);
+      if (s) s.away = e.away;
+      break;
+    }
     case "state": {
       const s = sessions.get(e.session);
       if (s) {

@@ -25,8 +25,20 @@ export interface SessionInfo {
   started_at: number;
   /** Unix ms. */
   last_output_at: number;
+  /** Other worktrees its processes ran in during the last minute. Absent from an older daemon. */
+  away?: Away[];
   /** Client only. It finished working while the user looked elsewhere. */
   unread?: boolean;
+}
+
+/** A worktree other than the session's own, where one of its processes ran. */
+export interface Away {
+  /** The worktree root. */
+  path: string;
+  /** The last process seen there. */
+  command: string;
+  /** Unix ms. */
+  at: number;
 }
 
 export interface Worktree {
@@ -64,7 +76,8 @@ export type DaemonEvent =
   | { event: "session_updated"; session: SessionInfo }
   | { event: "projects_changed" }
   | { event: "groups_changed" }
-  | { event: "title"; session: string; title: string | null };
+  | { event: "title"; session: string; title: string | null }
+  | { event: "away"; session: string; away: Away[] };
 
 export interface AgentInfo {
   id: string;

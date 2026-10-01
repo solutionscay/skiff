@@ -2,7 +2,7 @@ import { DEFAULT_ACCENT, MAX_PANES, S, sessions, selectedWorktree } from "./stat
 
 import { ink } from "../appearance/appTheme";
 import { leaf, sessionsOf } from "../workspace/layout";
-import { byStart, locate, type Place } from "../workspace/model";
+import { byStart, locate, samePath, type Place } from "../workspace/model";
 import type { AgentInfo, Group, Layout, Project, SessionInfo, Worktree } from "../platform/types";
 
 /** What the + menu offers, in order. */
@@ -28,6 +28,22 @@ export function place(s: SessionInfo): Place | null {
     placeMemo.set(s.cwd, at);
   }
   return at;
+}
+
+/** The worktrees the session works in other than its own, as the project list knows them. */
+export function awayPlaces(s: SessionInfo): Place[] {
+  const home = place(s)?.worktree;
+  const out: Place[] = [];
+  for (const a of s.away ?? []) {
+    const at = locate(S.projects, a.path);
+    if (at && at.worktree !== home && samePath(at.worktree.path, a.path) && !out.some((o) => o.worktree === at.worktree)) out.push(at);
+  }
+  return out;
+}
+
+/** Sessions from other worktrees that work in `w`. */
+export function visitors(w: Worktree): SessionInfo[] {
+  return [...sessions.values()].filter((s) => awayPlaces(s).some((a) => a.worktree === w)).sort(byStart);
 }
 
 export const currentProject = () => S.projects.find((p) => p.name === S.selectedProject) ?? null;

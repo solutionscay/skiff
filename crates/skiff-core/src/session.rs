@@ -88,6 +88,20 @@ pub struct SessionInfo {
     /// Unix ms of the last PTY read.
     #[serde(default)]
     pub last_output_at: u64,
+    /// Other worktrees the session's processes ran in during the last minute.
+    #[serde(default)]
+    pub away: Vec<Away>,
+}
+
+/// A worktree other than the session's own, where one of its processes ran.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Away {
+    /// The worktree root: the deepest folder with a `.git` entry.
+    pub path: PathBuf,
+    /// The name of the last process seen there.
+    pub command: String,
+    /// Unix ms of the last time a process was seen there.
+    pub at: u64,
 }
 
 /// Milliseconds since the Unix epoch.

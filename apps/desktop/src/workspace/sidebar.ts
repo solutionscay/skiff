@@ -6,7 +6,7 @@ import { filledOf } from "./layoutSlots";
 import { agentIcon } from "../appearance/agentIcon";
 import { ink } from "../appearance/appTheme";
 import { glyph } from "./layoutIcon";
-import { agentName, branchName, isUnread, taskTitle } from "./model";
+import { agentName, basename, branchName, isUnread, taskTitle } from "./model";
 import type { Group, Project, SessionInfo, Worktree } from "../platform/types";
 
 import { changeCounts, changesBlock, showsChanges } from "./changes";
@@ -23,7 +23,7 @@ import { renameRow, startRename, startSessionRename } from "./rename";
 import { clearSelection, keepRow, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
 import { stateIcon } from "../appearance/stateIcon";
 import { collapsed, DEFAULT_ACCENT, OTHER, removeErrors, removing, S, selectedWorktree, sessions } from "../app/state";
-import { accent, currentProject, currentWorktree, place, worktreeSessions } from "../app/stateQueries";
+import { accent, awayPlaces, currentProject, currentWorktree, place, worktreeSessions } from "../app/stateQueries";
 
 import { dragSessions, revealSession, selectWorktree, showGroup } from "./view";
 
@@ -36,6 +36,7 @@ function sessionBlock(lines: Line[], color: string, head: HTMLElement | null, op
   if (!open) return block;
   for (const l of lines) {
     if (l.group) block.appendChild(groupRow(l.group, l.hasPrevious, l.hasNext));
+    else if (l.pointer) block.appendChild(pointerRow(l.pointer));
     else block.appendChild(sessionRow(l.session, color, l));
   }
   return block;
@@ -86,7 +87,30 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
     const at = place(s);
     row.appendChild(h("span", "where mono", at ? branchName(at.worktree) : "other"));
   }
+  const away = awayPlaces(s);
+  if (away.length) {
+    const names = away.map((a) => branchName(a.worktree)).join(", ");
+    const tag = h("span", "where away mono", `→ ${names}`);
+    row.appendChild(tag);
+  }
   row.appendChild(stateIcon(s));
+  return row;
+}
+
+/**
+ * A session from another worktree that works in this one. Not a second
+ * session: a click goes to the real one. The keys skip it.
+ */
+function pointerRow(s: SessionInfo): HTMLElement {
+  const at = place(s);
+  const from = at ? branchName(at.worktree) : basename(s.cwd);
+  const row = h("div", "session-row pointer-row");
+  row.append(agentIcon(s), h("span", "title", taskTitle(s)), h("span", "where mono", `from ${from}`));
+  row.addEventListener("click", () => {
+    clearSelection();
+    revealSession(s.id);
+    requestAnimationFrame(() => keepRow(s.id));
+  });
   return row;
 }
 

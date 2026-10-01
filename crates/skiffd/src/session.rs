@@ -25,6 +25,7 @@ use crate::{
     workspace::{SavedSession, Workspace},
 };
 
+mod away;
 mod groups;
 mod persistence;
 mod launch;
@@ -307,6 +308,7 @@ impl SessionPool {
             title: None,
             started_at: now_ms(),
             last_output_at: now_ms(),
+            away: Vec::new(),
         };
 
         let (input, input_rx) = std::sync::mpsc::channel::<Vec<u8>>();

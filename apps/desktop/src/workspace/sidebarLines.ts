@@ -4,13 +4,14 @@ import { byStart } from "./model";
 import type { Group, SessionInfo, Worktree } from "../platform/types";
 
 import { S, sessions } from "../app/state";
-import { groupedIds, place, worktreeSessions } from "../app/stateQueries";
+import { groupedIds, place, visitors, worktreeSessions } from "../app/stateQueries";
 
 import { groupHome } from "./view";
-/** One line in a session list: a session, or a group's header. */
+/** One line in a session list: a session, a group's header, or a pointer to a session from another worktree that works here. */
 export type Line =
-  | { session: SessionInfo; branch?: boolean; group?: undefined; in?: Group; groupRail?: boolean }
-  | { group: Group; hasPrevious: boolean; hasNext: boolean };
+  | { session: SessionInfo; branch?: boolean; group?: undefined; pointer?: undefined; in?: Group; groupRail?: boolean }
+  | { group: Group; hasPrevious: boolean; hasNext: boolean; pointer?: undefined }
+  | { pointer: SessionInfo; group?: undefined };
 
 /**
  * A worktree's lines: its groups (a group lives in the worktree of its first
@@ -35,5 +36,6 @@ export function worktreeLines(w: Worktree | null): Line[] {
     ? worktreeSessions(w)
     : [...sessions.values()].filter((x) => !place(x)).sort(byStart);
   for (const m of loose) if (!grouped.has(m.id)) lines.push({ session: m });
+  if (w) for (const m of visitors(w)) lines.push({ pointer: m });
   return lines;
 }

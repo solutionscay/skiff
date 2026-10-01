@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::FolderInfo;
 use crate::group::Group;
 use crate::project::{AgentInfo, Project, Worktree};
-use crate::session::{SessionId, SessionInfo, SessionSpec, SessionState};
+use crate::session::{Away, SessionId, SessionInfo, SessionSpec, SessionState};
 
 /// Base64 for byte payloads so the wire stays valid UTF-8 JSON.
 pub mod b64 {
@@ -233,6 +233,11 @@ pub enum Event {
     State {
         session: SessionId,
         state: SessionState,
+    },
+    /// The worktrees other than its own where the session works changed.
+    Away {
+        session: SessionId,
+        away: Vec<Away>,
     },
     /// The program set or cleared its terminal title.
     Title {
