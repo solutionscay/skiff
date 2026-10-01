@@ -16,6 +16,7 @@ import { S, sessions } from "../app/state";
 import { accent, awayPlaces, place, shownIds } from "../app/stateQueries";
 
 import { closePane, dragSessions, focusPane } from "./paneActions";
+import { resumeOffer, resumePane } from "./resume";
 /** One pane header: the agent icon, the title, then the close button. */
 export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   if (isSlot(id)) return slotHead(id, head);
@@ -46,7 +47,7 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   const multi = shownIds().length > 1;
   const away = s ? awayPlaces(s).map((a) => branchName(a.worktree)).join(", ") : "";
   // Rebuild only on change, so a click that spans a daemon event still lands.
-  const sig = s ? JSON.stringify([s.state, s.exit_code, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, away]) : "";
+  const sig = s ? JSON.stringify([s.state, s.exit_code, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, away, resumeOffer(s)]) : "";
   if (head.dataset.sig === sig) return;
   head.dataset.sig = sig;
   head.replaceChildren();
@@ -56,7 +57,20 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   // The state reads with the name it belongs to, not with the buttons.
   head.append(agentIcon(s), h("span", "title", taskTitle(s)), stateIcon(s));
   if (away) head.appendChild(h("span", "where mono", `${at ? branchName(at.worktree) : "other"} → working in ${away}`));
+  // After a restart: the agent this pane ran, and a button to get back to it.
+  const offer = resumeOffer(s);
+  if (offer) head.appendChild(h("span", "where", `was ${offer.agent}${offer.title ? " · " + offer.title : ""}`));
   head.appendChild(h("span", "head-gap"));
+  if (offer) {
+    const r = button("head-resume", "Resume", () => {
+      // Measure first: focusing redraws the head, and a replaced button measures as 0,0.
+      const at = r.getBoundingClientRect();
+      if (id !== S.focused) focusPane(id);
+      resumePane(id, { x: at.left, y: at.bottom, right: at.right });
+    });
+    r.title = `Resume ${offer.agent} in this pane`;
+    head.appendChild(r);
+  }
   // Mouse controls for the two view modes. The pane is focused first: they act on the focused pane.
   const viewBtn = (name: RuneName, label: string, key: Action, run: () => void) => {
     const b = button("head-btn", "", () => {

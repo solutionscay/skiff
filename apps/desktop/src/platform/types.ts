@@ -29,8 +29,18 @@ export interface SessionInfo {
   last_output_at: number;
   /** Other worktrees its processes ran in during the last minute. Absent from an older daemon. */
   away?: Away[];
+  /** The last agent seen in front, and its title. Absent from an older daemon. */
+  was?: Was | null;
+  /** `was` as a restore found it, until an agent runs again. Absent from an older daemon. */
+  resume?: Was | null;
   /** Client only. It finished working while the user looked elsewhere. */
   unread?: boolean;
+}
+
+/** An agent that ran in a session, and the last title it set. */
+export interface Was {
+  agent: string;
+  title: string | null;
 }
 
 /** A worktree other than the session's own, where one of its processes ran. */

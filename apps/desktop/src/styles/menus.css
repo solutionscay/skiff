@@ -12,7 +12,7 @@
 .lm-head { height: calc(28 * var(--u)); display: flex; align-items: center; padding: 0 calc(16 * var(--u)); background: var(--bg); border-bottom: 1px solid var(--rule); font-size: calc(10px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; color: var(--text-dim); }
 #ctx-menu .lm-key { width: calc(14 * var(--u)); font-size: calc(12px * var(--zoom, 1)); }
 #ctx-menu .lm-name { font-size: calc(13px * var(--zoom, 1)); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#ctx-menu .lm-hint { flex-shrink: 0; max-width: calc(120 * var(--u)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ctx-menu .lm-hint { flex-shrink: 0; max-width: calc(180 * var(--u)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lm-item.danger { color: var(--error-text); }
 .lm-title { height: calc(32 * var(--u)); display: flex; align-items: center; padding: 0 calc(16 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; color: var(--text-3); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .lm-item { width: 100%; height: var(--row); display: flex; align-items: center; gap: calc(12 * var(--u)); padding: 0 calc(16 * var(--u)); border: 0; background: transparent; color: var(--text); text-align: left; }

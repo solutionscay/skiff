@@ -31,6 +31,7 @@ import { enabledAgents, groupOf, place, shownIds, splitFull } from "../app/state
 
 import { groupThemeMenu, projectThemeMenu, sessionThemeMenu } from "../appearance/themes";
 import { focusPane, refocusTerminal, removeFromGroup, showGroup, splitWith, unsplit } from "./view";
+import { resumeAllEntry, resumeOffer, resumePane } from "../terminal/resume";
 
 async function setIcon(p: Project, icon: string | null) {
   try {
@@ -327,6 +328,8 @@ export function paneMenu(id: string, x: number, y: number) {
     { icon: "layouts-panel-bottom", label: "Add pane below…", hint: keyLabel("split-down"), disabled: full, run: () => splitMenu(id, "col", x, y) },
     { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(id) },
   ];
+  const offer = resumeOffer(s);
+  if (offer) entries.unshift({ icon: "schedule-refresh-cw", label: `Resume ${offer.agent}`, run: () => resumePane(id, { x, y }) });
   // These act on the pane you right-clicked, which the line above just focused.
   if (shownIds().length > 1) {
     entries.push({ icon: S.maximized ? "view-restore" : "view-maximize", label: S.maximized ? "Restore pane" : "Maximize pane", hint: keyLabel("maximize"), run: toggleMaximize });
@@ -367,7 +370,9 @@ export function splitMenu(id: string, dir: SplitDir, x: number, y: number) {
 }
 
 export function groupMenu(g: Group, x: number, y: number) {
+  const resume = resumeAllEntry(sessionsOf(g.layout));
   ctxMenu.open(x, y, `Group: ${g.name}`, [
+    ...(resume ? [resume] : []),
     ...groupStartEntries(g),
     { head: "GROUP" },
     { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startRename(g) },

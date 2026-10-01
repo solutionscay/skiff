@@ -85,6 +85,9 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .cell:not(.focused) .cell-head:not(.hover) .head-btn { visibility: hidden; }
 .head-btn + .head-btn { margin-left: calc(-10 * var(--u)); }
 .head-btn:hover { background: color-mix(in srgb, var(--text) 14%, transparent); color: var(--text); }
+/* Shown on every restored pane, focused or not: it needs a look. */
+.head-resume { height: calc(24 * var(--u)); flex-shrink: 0; margin-right: calc(8 * var(--u)); padding: 0 calc(10 * var(--u)); border: 1px solid var(--rule-strong); background: transparent; color: var(--text); font-size: calc(12px * var(--zoom, 1)); }
+.head-resume:hover { background: color-mix(in srgb, var(--pc) 22%, transparent); border-color: var(--pc); }
 .cell-body { flex-grow: 1; min-height: 0; position: relative; z-index: 0; }
 /* The whole terminal fades at --pane-alpha, so a background image shows through. One image sits behind the whole area.
    The canvas itself stays opaque: a transparent WebGL canvas leaves ghost frames. */
