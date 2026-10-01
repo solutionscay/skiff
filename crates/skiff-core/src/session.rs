@@ -94,6 +94,23 @@ pub struct SessionInfo {
     /// Other worktrees the session's processes ran in during the last minute.
     #[serde(default)]
     pub away: Vec<Away>,
+    /// The last agent seen in front, kept across restores so the pane can offer
+    /// to resume it.
+    #[serde(default)]
+    pub was: Option<Was>,
+    /// `was` as a restore found it. The pane offers to resume it until an
+    /// agent runs there again.
+    #[serde(default)]
+    pub resume: Option<Was>,
+}
+
+/// An agent that ran in a session, and the last title it set.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Was {
+    /// The agent kind, as the foreground watcher names it: "claude", "codex"...
+    pub agent: String,
+    #[serde(default)]
+    pub title: Option<String>,
 }
 
 /// A worktree other than the session's own, where one of its processes ran.

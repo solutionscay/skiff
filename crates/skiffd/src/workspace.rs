@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use skiff_core::{
     group::Group,
-    session::{Role, SessionId, SessionInfo},
+    session::{Role, SessionId, SessionInfo, Was},
 };
 
 #[derive(Serialize, Deserialize, Default)]
@@ -37,6 +37,9 @@ pub struct SavedSession {
     pub args: Vec<String>,
     #[serde(default)]
     pub theme: Option<String>,
+    /// The last agent seen in the pane, shown after a restore.
+    #[serde(default)]
+    pub was: Option<Was>,
     pub cols: u16,
     pub rows: u16,
 }
@@ -52,6 +55,7 @@ impl From<&SessionInfo> for SavedSession {
             command: info.command.clone(),
             args: info.args.clone(),
             theme: info.theme.clone(),
+            was: info.was.clone(),
             cols: info.cols,
             rows: info.rows,
         }

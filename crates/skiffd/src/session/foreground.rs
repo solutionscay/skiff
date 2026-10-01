@@ -1,6 +1,6 @@
 //! Track the current foreground program without shell hooks or agent changes.
 use super::{away::proc, SessionPool};
-use skiff_core::{protocol::Event, session::SessionState};
+use skiff_core::{protocol::Event, session::{SessionState, Was}};
 use std::{
     collections::{HashMap, VecDeque},
     path::Path,
@@ -40,29 +40,57 @@ impl SessionPool {
                 continue;
             };
             let argv = proc::argv(group);
-            let program = agent_program(&name, &argv)
-                .map(str::to_owned)
-                .or_else(|| {
-                    // The launch wrapper shares its group with the initial agent.
-                    // An interactive shell can also start a pipeline in one group.
-                    let tree = tree.get_or_insert_with(proc::children);
-                    agent_in_group(group, tree)
-                })
-                .unwrap_or(name);
-            let changed = {
+            let agent = agent_program(&name, &argv).map(str::to_owned).or_else(|| {
+                // The launch wrapper shares its group with the initial agent.
+                // An interactive shell can also start a pipeline in one group.
+                let tree = tree.get_or_insert_with(proc::children);
+                agent_in_group(group, tree)
+            });
+            let program = agent.clone().unwrap_or(name);
+            let (changed, was_changed) = {
                 let mut info = session.info.lock().unwrap();
-                if info.foreground_program.as_deref() == Some(&program) {
-                    None
+                // Keep the agent in front and its title, so a restore can offer it.
+                // Agents lead the title with a status glyph that changes as they work.
+                let title = info
+                    .title
+                    .as_deref()
+                    .map(|t| t.trim_start_matches(|c: char| !c.is_alphanumeric()).to_string())
+                    .filter(|t| !t.is_empty());
+                // An agent's own name ("Claude Code") is no title. Keep the last real one.
+                let title = title.filter(|t| !generic_title(t)).or_else(|| {
+                    info.was.as_ref().filter(|w| Some(&w.agent) == agent.as_ref()).and_then(|w| w.title.clone())
+                });
+                let was = agent.map(|agent| Was { agent, title });
+                // An agent in front ends the offer to resume.
+                let resumed = was.is_some() && info.resume.take().is_some();
+                let was_changed = was.is_some() && info.was != was;
+                if was_changed {
+                    info.was = was;
+                }
+                if info.foreground_program.as_deref() == Some(&program) && !resumed {
+                    (None, was_changed)
                 } else {
                     info.foreground_program = Some(program);
-                    Some(info.clone())
+                    (Some(info.clone()), was_changed)
                 }
             };
+            if was_changed {
+                self.dirty.notify_one();
+            }
             if let Some(session) = changed {
                 let _ = self.events.send(Event::SessionUpdated { session });
             }
         }
     }
+}
+
+/// The title an agent shows before a conversation has a topic: its own name.
+pub(crate) fn generic_title(title: &str) -> bool {
+    let t = title.trim().to_lowercase();
+    matches!(
+        t.as_str(),
+        "claude" | "claude code" | "codex" | "openai codex" | "opencode" | "gemini" | "gemini cli" | "antigravity" | "agy" | "grok" | "grok build"
+    )
 }
 
 fn agent_in_group(group: u32, tree: &HashMap<u32, Vec<u32>>) -> Option<String> {

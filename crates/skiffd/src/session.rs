@@ -311,6 +311,8 @@ impl SessionPool {
             started_at: now_ms(),
             last_output_at: now_ms(),
             away: Vec::new(),
+            was: None,
+            resume: None,
         };
 
         let (input, input_rx) = std::sync::mpsc::channel::<Vec<u8>>();

@@ -76,6 +76,11 @@ impl SessionPool {
                     if saved.theme.is_some() {
                         let _ = self.set_theme(&saved.id, saved.theme);
                     }
+                    if let Some(s) = self.get(&saved.id) {
+                        let mut info = s.info.lock().unwrap();
+                        info.resume = saved.was.clone();
+                        info.was = saved.was;
+                    }
                 }
                 Err(e) => {
                     tracing::warn!("restore session {}: {e:#}", saved.id);
