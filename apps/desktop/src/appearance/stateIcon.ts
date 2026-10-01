@@ -4,7 +4,6 @@ import { icon } from "../ui/icons";
 import type { SessionInfo } from "../platform/types";
 
 const SKIFF = '<path d="M2 15h20l-4 5H6z"></path><path d="M12 15V3l7 10h-7"></path>';
-const ANCHOR = '<circle cx="12" cy="5" r="3"></circle><path d="M12 8v14"></path><path d="M5 12H2a10 10 0 0 0 20 0h-3"></path>';
 const BELL = '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>';
 const OK = '<circle cx="12" cy="12" r="10"></circle><path d="M8 12l3 3 5-6"></path>';
 export const FLAG = '<path d="M5 21V4"></path><path d="M5 4h13l-3 4.5 3 4.5H5"></path>';
@@ -34,8 +33,8 @@ export function stateIcon(s: SessionInfo): HTMLElement {
     case "idle":
       // Finished while you were away: the result is waiting to be read.
       if (s.unread) return mark("unread", FLAG);
-      // At anchor: the skiff is not moving.
-      return mark("anchored", ANCHOR);
+      // Idle is the normal state: no mark.
+      return h("span", "anchored");
     case "waiting":
       // The bell rang: the process wants you.
       return mark("belled", BELL);

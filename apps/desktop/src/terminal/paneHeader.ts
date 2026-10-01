@@ -47,9 +47,10 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   if (!s) return;
   head.classList.toggle("st-waiting", s.state === "waiting");
   head.classList.toggle("st-done", s.state === "done");
-  head.append(agentIcon(s), h("span", "title", taskTitle(s)));
+  // The state reads with the name it belongs to, not with the buttons.
+  head.append(agentIcon(s), h("span", "title", taskTitle(s)), stateIcon(s));
   if (away) head.appendChild(h("span", "where mono", `${at ? branchName(at.worktree) : "other"} → working in ${away}`));
-  head.appendChild(stateIcon(s));
+  head.appendChild(h("span", "head-gap"));
   // Mouse controls for the two view modes. The pane is focused first: they act on the focused pane.
   const viewBtn = (name: RuneName, label: string, key: Action, run: () => void) => {
     const b = button("head-btn", "", () => {

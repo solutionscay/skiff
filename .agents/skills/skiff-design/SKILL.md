@@ -32,6 +32,8 @@ Test every change with three questions:
 ## Visual rules
 
 - **Square and flush.** `border-radius: 0` everywhere. Only dots are round. Panes touch, with no gaps and no floating cards.
+- **A line marks a region edge.** The rail, the list, the terminal area, the top bar and the panes have lines between them. Inside a region, rows align on the grid without lines. Worktrees part with space.
+- **Show only what needs a look.** A normal state shows nothing: an idle session has no mark, and a count the rows already show is left out. A pane's buttons show on the focused pane only. A file's folder shows on the current row and on hover.
 - **One rule weight.** Lines are 1px `--rule`. Edges of floating surfaces use `--rule-strong`. Do not stack accent lines.
 - **One row grid.** Rows, menu items, headers and bar buttons are `--row` high (40px at zoom 1). Side padding is 16px. Lines align across the rail, the sidebar and the terminal area.
 - **Everything zooms.** Write lengths as `calc(N * var(--u))` and font sizes as `calc(Npx * var(--zoom, 1))`. Do not use raw px for layout.

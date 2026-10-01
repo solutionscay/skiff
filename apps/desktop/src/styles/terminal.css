@@ -64,11 +64,15 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .mode-ghost { position: absolute; z-index: 4; pointer-events: none; }
 .cell.focused::after { content: ""; position: absolute; inset: 0; border: calc(2 * var(--u)) solid var(--pc); pointer-events: none; z-index: 5; }
 #terminal-host:is(.group-picked, .at-rail) .cell.focused::after { display: none; }
-.cell-head .title { color: var(--text); font-size: calc(16px * var(--zoom, 1)); font-weight: 600; flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cell-head .title { color: var(--text); font-size: calc(16px * var(--zoom, 1)); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cell:not(.focused) .cell-head .title { color: var(--text-3); font-weight: 500; }
+.cell-head .head-gap { flex-grow: 1; }
 .cell-head .copy-notice { margin-left: auto; color: var(--state-done); font-size: calc(11 * var(--zoom, 1)); font-weight: 600; }
-.head-btn { width: var(--row); align-self: stretch; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-left: 1px solid var(--rule); background: transparent; color: var(--text-3); }
-/* The head's gap stops at the buttons: they sit flush, one rule between each. */
+.head-btn { width: var(--row); align-self: stretch; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--text-3); }
+/* Only the focused pane shows its buttons. Not on hover: a working agent rebuilds the head
+   as its title changes, and WebKit then drops and restores :hover, so the buttons flicker.
+   The head's gap stops at the buttons: they sit flush. */
+.cell:not(.focused) .head-btn { visibility: hidden; }
 .head-btn + .head-btn { margin-left: calc(-10 * var(--u)); }
 .head-btn:hover { background: color-mix(in srgb, var(--text) 14%, transparent); color: var(--text); }
 .cell-body { flex-grow: 1; min-height: 0; position: relative; z-index: 0; }

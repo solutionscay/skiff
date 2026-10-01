@@ -31,7 +31,7 @@ import { dragSessions, revealSession, selectWorktree, showGroup } from "./view";
 function sessionBlock(lines: Line[], color: string, head: HTMLElement | null, open: boolean): HTMLElement {
   const block = h("div", "sessions-block");
   const n = (head ? 1 : 0) + (open ? lines.length : 0);
-  block.style.height = `calc(${Math.max(40, n * 20)} * var(--u))`;
+  block.style.height = `calc(${n ? Math.max(40, n * 20) : 0} * var(--u))`;
   if (head) block.appendChild(head);
   if (!open) return block;
   for (const l of lines) {
@@ -144,7 +144,7 @@ export function renderSidebar() {
   head.style.setProperty("--pc", color);
   const title = h("div", "project-title");
   if (p) {
-    title.append(h("span", "project-name", p.name), h("span", "project-meta", p.error ? "error" : `${p.worktrees.length} ${p.worktrees.length === 1 ? "worktree" : "worktrees"}`));
+    title.append(h("span", "project-name", p.name), ...(p.error ? [h("span", "project-meta", "error")] : []));
   } else {
     title.append(h("span", "project-name dim", S.projects.length ? "No project selected" : "No projects"));
   }
@@ -250,7 +250,6 @@ function groupRow(g: Group, hasPrevious = false, hasNext = false): HTMLElement {
   pick.dataset.group = g.id;
   pick.type = "button";
   pick.append(glyph(g.layout), h("span", "group-name", g.name));
-  pick.append(h("span", "group-count", String(ids.length)));
   pick.addEventListener("click", (e) => {
     if (e.ctrlKey || e.metaKey) return toggleSelectGroup(g);
     // detail counts clicks across the re-render the first click causes.
@@ -286,7 +285,8 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   if (w.locked) pick.appendChild(h("span", "tag", "locked"));
   if (w.prunable) pick.appendChild(h("span", "tag", "prunable"));
   if (removing.has(w.path)) pick.appendChild(h("span", "tag", "removing…"));
-  const diff = showsChanges(p) ? changeCounts(w) : null;
+  // The rows under an open worktree show the detail.
+  const diff = showsChanges(p) && !open ? changeCounts(w) : null;
   if (diff) pick.appendChild(diff);
   row.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -303,11 +303,11 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
 
   if (open) {
     const waiting = list.filter((s) => s.state === "waiting").length;
-    const count = h("div", "wt-count");
-    count.append(h("span", "", `${list.length} ${list.length === 1 ? "session" : "sessions"}`));
+    // Only what needs a look: the rows below already show how many sessions there are.
     const unread = list.filter(isUnread).length;
-    if (waiting) count.append(h("span", "waiting-note", `· ${waiting} waiting`));
-    if (unread) count.append(h("span", "unread-note", `· ${unread} unread`));
+    const count = waiting || unread ? h("div", "wt-count") : null;
+    if (waiting) count!.append(h("span", "waiting-note", `${waiting} waiting`));
+    if (unread) count!.append(h("span", "unread-note", `${waiting ? "· " : ""}${unread} unread`));
     const body = h("div", "wt-body");
     body.appendChild(sessionBlock(worktreeLines(w), color, count, true));
     const changes = showsChanges(p) ? changesBlock(w) : null;

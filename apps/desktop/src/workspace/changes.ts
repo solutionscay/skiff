@@ -111,7 +111,8 @@ export function changesBlock(w: Worktree): HTMLElement | null {
   const block = h("div", "files-block changes-block");
   const glyph = icon('<path d="M12 3v12"></path><path d="M6 9h12"></path><path d="M6 21h12"></path>');
   const head = sectionHeader(`changes:${w.path}`, "Changes", isOpen, glyph, () => toggle(w.path));
-  head.appendChild(h("span", "changes-n", String(list.length)));
+  // Open, the rows show how many.
+  if (!isOpen) head.appendChild(h("span", "changes-n", String(list.length)));
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     e.stopPropagation();
