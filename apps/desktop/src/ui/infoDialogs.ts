@@ -133,6 +133,7 @@ export async function showAbout() {
   row("App", app);
   row("Daemon", status?.version ?? "not reachable");
   row("Socket", status?.socket ?? "?");
+  if (status?.pid) row("Pid", String(status.pid));
   row("Config", config);
   table.appendChild(h("div", "keys-note", "Skiff runs coding agents side by side. Sessions live in skiffd and keep running when the window closes."));
   infoDialog("About Skiff", table);

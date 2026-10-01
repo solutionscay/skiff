@@ -98,6 +98,8 @@ export interface DaemonStatus {
   connected: boolean;
   version: string | null;
   socket: string;
+  /** The daemon's pid, when the app could read it. */
+  pid: number | null;
   spawned: boolean;
   /** The daemon differs from this app and was not replaced. */
   warning: DaemonWarning | null;

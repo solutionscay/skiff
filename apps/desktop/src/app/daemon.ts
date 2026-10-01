@@ -26,7 +26,7 @@ export function setDaemon(status: DaemonStatus) {
     : status.warning?.kind === "hung"
       ? "skiffd not responding"
       : "skiffd unreachable";
-  $("socket").textContent = status.socket;
+  $("socket").textContent = status.pid ? `${status.socket} · pid ${status.pid}` : status.socket;
   daemonBadge(status.warning);
 }
 
