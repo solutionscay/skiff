@@ -12,6 +12,13 @@ sidebar/tree, pane, split, group, region, roving item, and the current keybindin
 so new code and comments stay consistent with the existing ones instead of inventing
 competing names for the same thing.
 
+## Design
+
+Read the [wiki Design page](https://github.com/solutionscay/skiff/wiki/Design) before
+changing anything the user sees or presses: styles, menus, dialogs, keys, labels or
+themes. Claude Code and Codex load the same rules as the `skiff-design` skill
+(`.agents/skills/skiff-design`).
+
 ## Development
 
 See the README's [Development](README.md#development) section for build and run
