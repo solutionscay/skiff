@@ -172,24 +172,45 @@ function sessionLabel(s: SessionInfo) {
 }
 
 export function rowMenu(s: SessionInfo, x: number, y: number) {
-  const n = S.selection.length;
-  const picked = n > 1 && S.selection.includes(s.id);
-  const plan = picked ? selectionPlan() : null;
+  const ids = S.selection.filter((id) => sessions.has(id));
+  if (ids.length > 1 && ids.includes(s.id)) return selectionMenu(ids, x, y);
   ctxMenu.open(x, y, sessionLabel(s), [
-    ...(plan
-      ? [{
-          icon: "code-group",
-          label: plan.label === "New group" ? `Group ${n} selected` : plan.label,
-          disabled: plan.size > MAX_PANES,
-          run: splitSelection,
-        }]
-      : []),
     ...(groupOf(s.id)
       ? [{ icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), run: () => removeFromGroup(s.id) }]
       : []),
     { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(s.id) },
     themeEntry(s),
-    picked ? endSelectedEntry(S.selection.filter((id) => sessions.has(id))) : endEntry(s),
+    endEntry(s),
+  ]);
+}
+
+/**
+ * The menu of a row in a multi-selection acts on every selected session. Rename and
+ * the theme act on one session, so they are left out. No hints: the keys act on one row.
+ */
+function selectionMenu(ids: string[], x: number, y: number) {
+  const plan = selectionPlan();
+  const grouped = ids.filter((id) => groupOf(id));
+  ctxMenu.open(x, y, `${ids.length} sessions selected`, [
+    ...(plan
+      ? [{
+          icon: "code-group",
+          label: plan.label === "New group" ? `Group ${ids.length} sessions` : plan.label,
+          disabled: plan.size > MAX_PANES,
+          run: splitSelection,
+        }]
+      : []),
+    ...(grouped.length
+      ? [{
+          icon: "code-ungroup",
+          label: grouped.length === 1 ? "Remove 1 from its group" : `Remove ${grouped.length} from their groups`,
+          run: () => {
+            clearSelection();
+            for (const id of grouped) removeFromGroup(id);
+          },
+        }]
+      : []),
+    endSelectedEntry(ids),
   ]);
 }
 
