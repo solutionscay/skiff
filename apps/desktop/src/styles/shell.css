@@ -7,12 +7,11 @@
   border-bottom: 1px solid var(--rule);
 }
 #topbar .tb-cell { display: flex; align-items: center; padding: 0 calc(16 * var(--u)); border-right: 1px solid var(--rule); }
-#topbar .wordmark { width: calc(356 * var(--u)); font-family: "Space Grotesk", var(--font); font-weight: 700; font-size: calc(20px * var(--zoom, 1)); letter-spacing: 0.02em; }
-/* Centered on the window, as in VS Code. A narrow window pushes it right against the wordmark,
-   where the -1px margin lets the two rules share one line. */
+#topbar .wordmark { width: calc(356 * var(--u)); font-family: "Space Grotesk", var(--font); font-weight: 700; font-size: calc(20px * var(--zoom, 1)); letter-spacing: 0.02em; border-right: 0; }
+/* Centered on the window, as in VS Code. A narrow window pushes it right against the wordmark. */
 #topbar .search {
   flex-grow: 1; min-width: 0; max-width: calc(560 * var(--u)); gap: calc(10 * var(--u));
-  margin-left: max(-1px, calc(50vw - 280 * var(--u) - 356 * var(--u)));
+  margin-left: max(0px, calc(50vw - 280 * var(--u) - 356 * var(--u)));
   background: var(--bg-raised); border: 0; border-left: 1px solid var(--rule); border-right: 1px solid var(--rule);
   color: var(--text-3); text-align: left;
 }
