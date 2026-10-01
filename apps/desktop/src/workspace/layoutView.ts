@@ -39,6 +39,8 @@ export function createLayoutView(host: HTMLElement, o: ViewOpts) {
   let cells = new Map<string, Cell>();
   /** First-side element of each split, by path from the root. */
   let firsts = new Map<string, HTMLElement>();
+  // A pane can change size while the terminal area's outer size stays fixed.
+  const resize = new ResizeObserver(() => o.resized());
 
   const basis = (r: number) => `0 0 calc(${(r * 100).toFixed(3)}% - 0.5px)`;
 
@@ -52,6 +54,7 @@ export function createLayoutView(host: HTMLElement, o: ViewOpts) {
       const body = document.createElement("div");
       body.className = "cell-body";
       cell.append(head, body);
+      resize.observe(body);
       const id = l.session;
       // Head buttons act on click; a focus render on mousedown would replace them first.
       cell.addEventListener("mousedown", (e) => {
@@ -127,6 +130,7 @@ export function createLayoutView(host: HTMLElement, o: ViewOpts) {
     let rebuilt: "rebuilt" | "resized" | false = false;
     if (next !== key) {
       key = next;
+      resize.disconnect();
       cells = new Map();
       firsts = new Map();
       root.replaceChildren(...(layout ? [node(layout, "")] : []));

@@ -14,6 +14,7 @@ import { markCurrent } from "../app/keyboard";
 import { S } from "../app/state";
 
 import { panes } from "./terminalState";
+import { fitShown } from "./terminal";
 import { FONT, TERM_THEME } from "./terminalRuntime";
 
 let open: { el: HTMLElement; term: Terminal; fit: FitAddon; resize: ResizeObserver } | null = null;
@@ -28,6 +29,11 @@ export function closePeek() {
   open.term.dispose();
   open.el.remove();
   open = null;
+  // Refit and repaint the live panes after the overlay leaves the screen.
+  fitShown();
+  for (const p of panes.values()) {
+    if (!p.parked && p.el.isConnected) p.term.refresh(0, p.term.rows - 1);
+  }
   const back = S.focused ? panes.get(S.focused) : undefined;
   // The keys go back to the pane, and the highlight to its row.
   if (S.focused) S.roveKey = S.focused;
