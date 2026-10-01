@@ -20,6 +20,7 @@ import { launchMenu } from "../app/panels";
 
 import { renameRow, startRename, startSessionRename } from "./rename";
 
+import { itemKey, listItems } from "../app/keyboard";
 import { clearSelection, keepRow, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
 import { stateIcon } from "../appearance/stateIcon";
 import { collapsed, DEFAULT_ACCENT, OTHER, removeErrors, removing, S, selectedWorktree, sessions } from "../app/state";
@@ -131,9 +132,14 @@ export function renderSidebar() {
   const caret: Caret | null = active instanceof HTMLInputElement && active.selectionStart !== null
     ? [active.selectionStart, active.selectionEnd ?? active.selectionStart, active.selectionDirection ?? "none"]
     : null;
+  // The rows after the focused one, then the rows before it, nearest first. If the
+  // focused row goes (its session ended), the cursor moves to the next one left.
+  const items = listItems();
+  const at = active ? items.indexOf(active) : -1;
+  const near = at < 0 ? [] : [...items.slice(at + 1), ...items.slice(0, at).reverse()].map(itemKey);
 
   side.replaceChildren();
-  if (S.selectedProject === OTHER) return renderOther(side, activeKey, caret);
+  if (S.selectedProject === OTHER) return renderOther(side, activeKey, caret, near);
   const p = currentProject();
   const color = accent(p);
 
@@ -176,11 +182,11 @@ export function renderSidebar() {
     for (const w of p.worktrees) side.appendChild(worktreeBlock(p, w, w.path === sel, color));
   }
 
-  restoreFocus(side, activeKey, caret);
+  restoreFocus(side, activeKey, caret, near);
 }
 
 /** The "Other" view: sessions and groups whose folder is in no project. */
-function renderOther(side: HTMLElement, activeKey: string | undefined, caret: Caret | null) {
+function renderOther(side: HTMLElement, activeKey: string | undefined, caret: Caret | null, near: string[]) {
   const head = h("div", "project-row");
   head.style.setProperty("--pc", DEFAULT_ACCENT);
   const title = h("div", "project-title");
@@ -190,7 +196,7 @@ function renderOther(side: HTMLElement, activeKey: string | undefined, caret: Ca
   const lines = worktreeLines(null);
   if (lines.length) side.appendChild(sessionBlock(lines, DEFAULT_ACCENT, null, true));
   else side.appendChild(h("div", "note-row", "No sessions"));
-  restoreFocus(side, activeKey, caret);
+  restoreFocus(side, activeKey, caret, near);
 }
 
 type Caret = [start: number, end: number, dir: "forward" | "backward" | "none"];
@@ -214,7 +220,7 @@ function restoreHover() {
   document.elementFromPoint(...pointer)?.closest(HOVERABLE)?.classList.add("hover");
 }
 
-function restoreFocus(side: HTMLElement, activeKey: string | undefined, caret: Caret | null) {
+function restoreFocus(side: HTMLElement, activeKey: string | undefined, caret: Caret | null, near: string[]) {
   restoreHover();
   if (activeKey) {
     const again = [...side.querySelectorAll<HTMLElement>("[data-key], [data-session], [data-wt], [data-group]")]
@@ -225,6 +231,10 @@ function restoreFocus(side: HTMLElement, activeKey: string | undefined, caret: C
     if (again && !disabled) {
       again.focus();
       if (caret !== null && again instanceof HTMLInputElement) again.setSelectionRange(...caret);
+    } else if (!again) {
+      const keys = new Set(listItems().map(itemKey));
+      const next = near.find((k) => keys.has(k));
+      if (next) keepRow(next);
     }
   }
 }
