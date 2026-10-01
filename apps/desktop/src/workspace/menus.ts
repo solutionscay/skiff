@@ -30,7 +30,7 @@ import { MAX_PANES, removeErrors, removing, S, selectedWorktree, sessions } from
 import { enabledAgents, groupOf, place, shownIds, splitFull } from "../app/stateQueries";
 
 import { groupThemeMenu, projectThemeMenu, sessionThemeMenu } from "../appearance/themes";
-import { focusPane, refocusTerminal, removeFromGroup, showGroup, splitWith, unfocus, unsplit } from "./view";
+import { focusPane, refocusTerminal, removeFromGroup, showGroup, splitWith, unsplit } from "./view";
 
 async function setIcon(p: Project, icon: string | null) {
   try {
@@ -399,7 +399,7 @@ export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: s
     const group = current();
     if (group) ungroup(group);
   };
-  const end = async (close: boolean) => {
+  const end = async () => {
     const group = current();
     if (!group) return;
     const ids = idsOf(group);
@@ -407,41 +407,30 @@ export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: s
     if (running.length) {
       const ok = await confirmAction({
         // Not the group's name: an unnamed group is called "1 over 2", which reads as noise here.
-        title: close ? "Close this group?" : "Kill all sessions in this group?",
-        body: `This stops ${running.length} running ${running.length === 1 ? "process" : "processes"} and deletes ${running.length === 1 ? "its session" : "their sessions"}. Unsaved work in ${running.length === 1 ? "it" : "them"} is lost.\n${close ? "The group closes too." : "The group stays, with empty panes."}`,
-        action: close ? "Close group" : "Kill all sessions",
+        title: "Kill all sessions in this group?",
+        body: `This stops ${running.length} running ${running.length === 1 ? "process" : "processes"} and deletes ${running.length === 1 ? "its session" : "their sessions"}. Unsaved work in ${running.length === 1 ? "it" : "them"} is lost.\nThe group stays, with empty panes.`,
+        action: "Kill all sessions",
       });
       if (!ok) return refocusTerminal();
     }
     clearSelection();
     // Killing keeps the group: it does not go when its last session ends off screen.
-    if (!close) keepGroup(group.id);
+    keepGroup(group.id);
     const results = await Promise.allSettled(ids.filter((id) => sessions.has(id)).map((id) => invoke("kill_session", { session: id })));
-    let failed = false;
     for (const result of results) {
       if (result.status === "rejected") {
-        failed = true;
         showError(result.reason);
       }
-    }
-    // Keep the group if a kill failed or a new session appeared during confirmation.
-    const latest = current();
-    if (close && !failed && latest && !idsOf(latest).some((id) => !ids.includes(id))) {
-      const active = latest.id === S.activeGroup;
-      deleteGroup(latest);
-      if (active) unfocus();
     }
     // The exits arrive as events, after the kills return.
     setTimeout(() => releaseGroup(group.id), 3000);
     render();
   };
-  const entries: Exclude<MenuEntry, { head: string }>[] = [];
+  const entries: Exclude<MenuEntry, { head: string }>[] = [
+    { icon: "code-ungroup", label: "Ungroup", hint: keyLabel("close-pane"), disabled: !g, run: drop },
+  ];
   if (hasSessions) entries.push(
-    { icon: "code-ungroup", label: "Ungroup", hint: keyLabel("close-pane"), run: drop },
-    { icon: "indicators-square-stop", label: "Kill all sessions…", danger: true, run: () => void end(false) },
-  );
-  entries.push(
-    { icon: "tools-trash-2", label: hasSessions ? "Close group…" : "Close group", danger: true, disabled: !g, run: () => void end(true) },
+    { icon: "indicators-square-stop", label: "Kill all sessions…", danger: true, run: () => void end() },
   );
   return entries;
 }
