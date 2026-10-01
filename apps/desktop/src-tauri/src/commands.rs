@@ -92,9 +92,10 @@ pub(crate) async fn remove_worktree(
     app: State<'_, App>,
     project: String,
     path: PathBuf,
+    force: bool,
 ) -> Result<(), String> {
     let (c, _) = ensure_client(&app).await?;
-    c.remove_worktree(&project, path).await.map_err(err)
+    c.remove_worktree(&project, path, force).await.map_err(err)
 }
 
 #[tauri::command]

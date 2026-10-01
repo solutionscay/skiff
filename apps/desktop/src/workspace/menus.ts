@@ -447,7 +447,19 @@ export async function removeWorktree(p: Project, w: Worktree) {
   removeErrors.delete(w.path);
   render();
   try {
-    await invoke("remove_worktree", { project: p.name, path: w.path });
+    try {
+      await invoke("remove_worktree", { project: p.name, path: w.path, force: false });
+    } catch (e) {
+      // skiffd refuses uncommitted changes. Ask again, and force only on a yes.
+      if (!String(e).includes("uncommitted changes")) throw e;
+      const force = await confirmAction({
+        title: `Worktree ${branchName(w)} has uncommitted changes`,
+        body: "Removing it deletes them. You cannot get them back.\nCommits on the branch stay.",
+        action: "Remove anyway",
+      });
+      if (!force) return refocusTerminal();
+      await invoke("remove_worktree", { project: p.name, path: w.path, force: true });
+    }
     if (selectedWorktree.get(p.name) === w.path) selectedWorktree.delete(p.name);
     await loadProjects();
   } catch (e) {

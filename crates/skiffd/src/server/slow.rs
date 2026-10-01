@@ -171,9 +171,9 @@ pub(super) async fn answer_slow(pool: Arc<SessionPool>, request: Request) -> Res
                 Err(e) => error(e),
             }
         }
-        Request::RemoveWorktree { project, path } => {
+        Request::RemoveWorktree { project, path, force } => {
             let pool2 = pool.clone();
-            match blocking(move || remove_worktree(&pool2, &project, &path)).await {
+            match blocking(move || remove_worktree(&pool2, &project, &path, force)).await {
                 Ok(()) => {
                     let _ = pool.events.send(Event::ProjectsChanged {});
                     Response::Ok
@@ -191,9 +191,9 @@ async fn blocking<T: Send + 'static>(
     tokio::task::spawn_blocking(f).await?
 }
 
-/// Refuses the main worktree, uncommitted changes, and live sessions inside.
-/// Never forces.
-fn remove_worktree(pool: &SessionPool, name: &str, path: &Path) -> Result<()> {
+/// Refuses the main worktree and live sessions inside. Refuses uncommitted
+/// changes unless `force`.
+fn remove_worktree(pool: &SessionPool, name: &str, path: &Path, force: bool) -> Result<()> {
     let p = project::find(name)?;
     let wt = git::list_worktrees(&p.path)?
         .into_iter()
@@ -213,10 +213,10 @@ fn remove_worktree(pool: &SessionPool, name: &str, path: &Path) -> Result<()> {
     if let Some(s) = live {
         bail!("session \"{}\" is still running in this worktree", s.label);
     }
-    if wt.path.is_dir() && git::is_dirty(&wt.path)? {
+    if !force && wt.path.is_dir() && git::is_dirty(&wt.path)? {
         bail!("worktree has uncommitted changes");
     }
-    git::remove_worktree(&p.path, &wt.path)
+    git::remove_worktree(&p.path, &wt.path, force)
 }
 
 fn appearance(a: Result<skiff_core::config::Appearance>) -> Response {

@@ -163,10 +163,13 @@ pub enum Request {
     },
     /// Brings back the default agents the user removed.
     RestoreAgents,
-    /// Refuses the main worktree, uncommitted changes, and live sessions inside.
+    /// Refuses the main worktree and live sessions inside. Refuses uncommitted
+    /// changes unless `force`, which deletes them.
     RemoveWorktree {
         project: String,
         path: PathBuf,
+        #[serde(default)]
+        force: bool,
     },
     ListGroups,
     /// Empty `group.id` creates a group. Otherwise replaces that group.

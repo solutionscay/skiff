@@ -94,10 +94,11 @@ impl Client {
         }
     }
 
-    pub async fn remove_worktree(&self, project: &str, path: PathBuf) -> Result<()> {
+    pub async fn remove_worktree(&self, project: &str, path: PathBuf, force: bool) -> Result<()> {
         self.expect_ok(Request::RemoveWorktree {
             project: project.to_string(),
             path,
+            force,
         })
         .await
     }

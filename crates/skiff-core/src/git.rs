@@ -86,10 +86,15 @@ pub fn add_worktree(repo: &Path, branch: &str, path: &Path, base: Option<&str>) 
     git(repo, &args).map(drop)
 }
 
-/// Never forces. Git refuses a dirty or locked worktree on its own.
-pub fn remove_worktree(repo: &Path, path: &Path) -> Result<()> {
+/// Without `force`, git refuses a dirty worktree. A locked one is refused either way.
+pub fn remove_worktree(repo: &Path, path: &Path, force: bool) -> Result<()> {
     let path = path.to_str().ok_or_else(|| anyhow!("path is not UTF-8"))?;
-    git(repo, &["worktree", "remove", path]).map(drop)
+    let mut args = vec!["worktree", "remove"];
+    if force {
+        args.push("--force");
+    }
+    args.extend(["--", path]);
+    git(repo, &args).map(drop)
 }
 
 /// The top-level directory of the repository that contains `dir`.
