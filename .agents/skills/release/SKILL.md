@@ -26,7 +26,9 @@ A `v*` tag triggers `.github/workflows/release.yml`. CI builds the Linux package
 7. Tag and push: `git tag vX.Y.Z && git push origin main vX.Y.Z`.
 8. Wait for the run: `gh run watch` (about 10 minutes).
 9. Check the assets: `gh release view vX.Y.Z --json isDraft,assets`.
-   Expect `.AppImage`, `.deb`, `.rpm` and `.dmg`.
+   Expect `.AppImage`, `.deb`, `.rpm` and `.dmg`, each twice: once with the version in
+   the name, and once as `Skiff_amd64.deb`, `Skiff_x86_64.rpm`, `Skiff_amd64.AppImage`,
+   `Skiff_aarch64.dmg`. The website links to the second set.
 10. Publish only when the operator says so: `gh release edit vX.Y.Z --draft=false --latest`.
 
 ## Rules

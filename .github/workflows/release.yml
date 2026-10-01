@@ -55,6 +55,12 @@ jobs:
         run: |
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft --generate-notes
           gh release upload "$GITHUB_REF_NAME" --clobber target/release/bundle/deb/*.deb target/release/bundle/rpm/*.rpm target/release/bundle/appimage/*.AppImage
+          # Copies without the version, so releases/latest/download/<name> always works.
+          mkdir -p stable
+          cp target/release/bundle/deb/*.deb stable/Skiff_amd64.deb
+          cp target/release/bundle/rpm/*.rpm stable/Skiff_x86_64.rpm
+          cp target/release/bundle/appimage/*.AppImage stable/Skiff_amd64.AppImage
+          gh release upload "$GITHUB_REF_NAME" --clobber stable/*
 
   macos:
     runs-on: macos-14
@@ -107,3 +113,7 @@ jobs:
         run: |
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft --generate-notes
           gh release upload "$GITHUB_REF_NAME" --clobber target/release/bundle/dmg/*.dmg
+          # A copy without the version, so releases/latest/download/<name> always works.
+          mkdir -p stable
+          cp target/release/bundle/dmg/*.dmg stable/Skiff_aarch64.dmg
+          gh release upload "$GITHUB_REF_NAME" --clobber stable/*
