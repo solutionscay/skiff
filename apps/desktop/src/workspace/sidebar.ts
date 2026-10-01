@@ -81,7 +81,6 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
   row.style.setProperty("--pc", color);
   if (o.in) row.style.setProperty("--gc", groupColor(o.in));
   row.setAttribute("aria-label", `${agentName(s)}, ${taskTitle(s)}, ${s.state}`);
-  row.title = `${agentName(s)}: ${taskTitle(s)}. Double-click to rename.`;
   row.append(agentIcon(s), h("span", "title", taskTitle(s)));
   if (o.branch) {
     const at = place(s);
@@ -140,16 +139,14 @@ export function renderSidebar() {
 
   // One 40px row: the name, and ⋯ for the project menu in the column of every
   // worktree's +. The name is the list's first row, so the keys reach the menu.
-  // The rail shows the icon; the path is in the tooltip.
+  // The rail shows the icon.
   const head = h("div", "project-row");
   head.style.setProperty("--pc", color);
   const title = h("div", "project-title");
   if (p) {
     title.append(h("span", "project-name", p.name), h("span", "project-meta", p.error ? "error" : `${p.worktrees.length} ${p.worktrees.length === 1 ? "worktree" : "worktrees"}`));
-    title.title = p.path;
   } else {
     title.append(h("span", "project-name dim", S.projects.length ? "No project selected" : "No projects"));
-    title.title = S.projectsError ?? "Add one with + in the rail";
   }
   head.appendChild(title);
   if (p) {
@@ -161,7 +158,6 @@ export function renderSidebar() {
       const r = more.getBoundingClientRect();
       projectMenu(p, r.right, r.top);
     });
-    more.title = "Project menu: new worktree, color, close…";
     more.setAttribute("aria-label", `${p.name} menu`);
     more.setAttribute("aria-haspopup", "menu");
     more.appendChild(icon('<circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle>'));
@@ -253,7 +249,6 @@ function groupRow(g: Group, hasPrevious = false, hasNext = false): HTMLElement {
   const pick = h("button", "group-pick");
   pick.dataset.group = g.id;
   pick.type = "button";
-  pick.title = "Double-click to rename";
   pick.append(glyph(g.layout), h("span", "group-name", g.name));
   pick.append(h("span", "group-count", String(ids.length)));
   pick.addEventListener("click", (e) => {
@@ -293,7 +288,6 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   if (removing.has(w.path)) pick.appendChild(h("span", "tag", "removing…"));
   const diff = showsChanges(p) ? changeCounts(w) : null;
   if (diff) pick.appendChild(diff);
-  pick.title = w.path;
   row.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     worktreeMenu(p, w, e.clientX, e.clientY);
@@ -303,7 +297,6 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   plus.dataset.wt = w.path;
   plus.setAttribute("aria-label", `Start a session in ${branchName(w)}`);
   plus.setAttribute("aria-haspopup", "menu");
-  plus.title = "Start a session";
   plus.appendChild(plusIcon());
   row.appendChild(plus);
   block.appendChild(row);

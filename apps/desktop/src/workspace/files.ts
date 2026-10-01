@@ -124,7 +124,6 @@ function row(e: Entry, path: string, depth: number): HTMLElement {
   r.type = "button";
   r.dataset.key = `file:${path}`;
   r.style.setProperty("--depth", String(depth));
-  r.title = e.dir ? path : `${path}\nDouble-click to open`;
   if (e.dir) r.setAttribute("aria-expanded", String(expanded.has(path)));
   r.addEventListener("click", (m) => {
     // detail counts clicks across the re-render the first click causes.

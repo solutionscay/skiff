@@ -12,7 +12,6 @@ const FAILED = '<circle cx="12" cy="12" r="10"></circle><path d="M9 9l6 6M15 9l-
 
 function workingIcon(): HTMLElement {
   const el = h("span", "busy");
-  el.title = "Working";
   el.appendChild(icon(SKIFF));
   // The sidebar is rebuilt while a session streams output. Start a replacement
   // icon at the elapsed animation phase, rather than its static first frame.
@@ -23,9 +22,8 @@ function workingIcon(): HTMLElement {
 }
 
 export function stateIcon(s: SessionInfo): HTMLElement {
-  const mark = (cls: string, title: string, paths: string) => {
+  const mark = (cls: string, paths: string) => {
     const el = h("span", cls);
-    el.title = title;
     el.appendChild(icon(paths));
     return el;
   };
@@ -35,15 +33,15 @@ export function stateIcon(s: SessionInfo): HTMLElement {
       return workingIcon();
     case "idle":
       // Finished while you were away: the result is waiting to be read.
-      if (s.unread) return mark("unread", "Finished. Not read yet", FLAG);
+      if (s.unread) return mark("unread", FLAG);
       // At anchor: the skiff is not moving.
-      return mark("anchored", "Idle", ANCHOR);
+      return mark("anchored", ANCHOR);
     case "waiting":
       // The bell rang: the process wants you.
-      return mark("belled", "Needs attention", BELL);
+      return mark("belled", BELL);
     case "done":
       return s.exit_code && s.exit_code !== 0
-        ? mark("finished failed", `Exited with code ${s.exit_code}`, FAILED)
-        : mark("finished", "Exited", OK);
+        ? mark("finished failed", FAILED)
+        : mark("finished", OK);
   }
 }

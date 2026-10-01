@@ -85,7 +85,6 @@ export function changeCounts(w: Worktree): HTMLElement | null {
     del += c.removed ?? 0;
   }
   const el = h("span", "wt-diff");
-  el.title = `${list.length} changed ${list.length === 1 ? "file" : "files"}`;
   el.append(h("span", "diff-add", `+${add}`), h("span", "diff-del", `−${del}`));
   return el;
 }
@@ -146,7 +145,6 @@ function row(w: Worktree, c: Change): HTMLElement {
   const r = h("button", "file-row change-row" + (gone ? " st-gone" : "") );
   r.type = "button";
   r.dataset.key = `change:${path}`;
-  r.title = `${c.path}${gone ? "\nDeleted" : ""}\nClick to open the diff`;
   // One click opens the diff. The second click of a double-click does not open it again.
   r.addEventListener("click", (m) => m.detail === 1 && show());
   r.addEventListener("keydown", (k) => {
