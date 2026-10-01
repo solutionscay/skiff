@@ -6,6 +6,7 @@
     "beforeDevCommand": "cargo build -p skiffd && pnpm dev",
     "devUrl": "http://127.0.0.1:1421",
     "beforeBuildCommand": "pnpm build",
+    "beforeBundleCommand": "sh scripts/appstream.sh",
     "frontendDist": "../dist"
   },
   "app": {
@@ -45,7 +46,8 @@
     "linux": {
       "deb": {
         "files": {
-          "/usr/share/metainfo/com.solutionscay.skiff.metainfo.xml": "linux/com.solutionscay.skiff.metainfo.xml"
+          "/usr/share/metainfo/com.solutionscay.skiff.metainfo.xml": "linux/com.solutionscay.skiff.metainfo.xml",
+          "/usr/share/swcatalog/xml/com.solutionscay.skiff.xml": "linux/generated/com.solutionscay.skiff.xml"
         }
       },
       "rpm": {
