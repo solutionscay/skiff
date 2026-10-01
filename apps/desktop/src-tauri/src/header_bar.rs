@@ -60,6 +60,9 @@ pub(crate) fn install(app: &AppHandle, window: &WebviewWindow) -> tauri::Result<
     // A click on a header button must not keep the keys from the page.
     menu.set_focus_on_click(false);
     search.set_focus_on_click(false);
+    // Flat, as in current GNOME apps: the frame shows on hover only.
+    menu.set_relief(gtk::ReliefStyle::None);
+    search.set_relief(gtk::ReliefStyle::None);
 
     bar.pack_end(&menu);
     bar.pack_end(&search);
