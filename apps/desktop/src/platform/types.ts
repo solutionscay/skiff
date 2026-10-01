@@ -85,7 +85,10 @@ export interface AgentInfo {
   id: string;
   /** What the + menu runs: the user's command, else the default. */
   command: string;
+  /** Empty for a custom agent. */
   default_command: string;
+  /** Added by the user. Absent from an older daemon. */
+  custom?: boolean;
   installed: boolean;
   enabled: boolean;
 }

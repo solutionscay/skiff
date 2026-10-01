@@ -14,26 +14,128 @@ pub fn set_enabled_agents(enabled: &[String]) -> Result<()> {
 }
 
 /// Sets `[agents.commands] <id> = "<command>"`. An empty command removes the
-/// override, so the default applies again.
+/// override, so the default applies again. An id Skiff does not know is a
+/// custom agent: setting it adds the agent, and an empty command removes it.
+/// Setting a removed default brings it back.
 pub fn set_agent_command(id: &str, command: &str) -> Result<()> {
+    let id = agent_name(id)?;
     let command = command.trim();
     edit_agents(|t| {
-        let cmds = t
-            .entry("commands")
-            .or_insert_with(|| {
-                let mut c = toml_edit::Table::new();
-                c.set_implicit(false);
-                toml_edit::Item::Table(c)
-            })
-            .as_table_mut()
-            .ok_or_else(|| anyhow::anyhow!("`agents.commands` is not a table"))?;
         if command.is_empty() {
-            cmds.remove(id);
-        } else {
-            cmds[id] = toml_edit::value(command);
+            commands(t)?.remove(id);
+            if !is_known(id) {
+                enabled_list(t, |l| l.retain(|v| v.as_str() != Some(id)));
+            }
+            return Ok(());
+        }
+        let new = !is_known(id) && !commands(t)?.contains_key(id);
+        commands(t)?[id] = toml_edit::value(command);
+        unremove(t, id);
+        // A new agent starts on.
+        if new {
+            enabled_list(t, |l| l.push(id));
         }
         Ok(())
     })
+}
+
+/// Takes an agent out of the list. A default goes to `[agents] removed`, so
+/// `restore_agents` can bring it back.
+pub fn remove_agent(id: &str) -> Result<()> {
+    edit_agents(|t| {
+        drop_agent(t, id)?;
+        Ok(())
+    })
+}
+
+/// Gives an agent a new name. It keeps its command and its switch.
+pub fn rename_agent(id: &str, name: &str) -> Result<()> {
+    let name = agent_name(name)?;
+    if name == id {
+        return Ok(());
+    }
+    let list = crate::project::agents();
+    let Some(cur) = list.iter().find(|a| a.id == id) else {
+        anyhow::bail!("no agent named {id}");
+    };
+    if list.iter().any(|a| a.id == name) {
+        anyhow::bail!("an agent named {name} exists");
+    }
+    let command = cur.command.clone();
+    edit_agents(|t| {
+        let was_on = drop_agent(t, id)?;
+        commands(t)?[name] = toml_edit::value(command.as_str());
+        unremove(t, name);
+        if was_on {
+            enabled_list(t, |l| l.push(name));
+        }
+        Ok(())
+    })
+}
+
+/// Brings back every removed default.
+pub fn restore_agents() -> Result<()> {
+    edit_agents(|t| {
+        t.remove("removed");
+        Ok(())
+    })
+}
+
+fn agent_name(id: &str) -> Result<&str> {
+    let id = id.trim();
+    if id.is_empty() {
+        anyhow::bail!("an agent needs a name");
+    }
+    Ok(id)
+}
+
+fn is_known(id: &str) -> bool {
+    crate::project::KNOWN_AGENTS.iter().any(|&(k, _)| k == id)
+}
+
+/// Removes the agent's command and switch. True when the enabled list had it.
+fn drop_agent(t: &mut toml_edit::Table, id: &str) -> Result<bool> {
+    commands(t)?.remove(id);
+    let mut was_on = false;
+    enabled_list(t, |l| {
+        was_on = l.iter().any(|v| v.as_str() == Some(id));
+        l.retain(|v| v.as_str() != Some(id));
+    });
+    if is_known(id) {
+        let removed = t
+            .entry("removed")
+            .or_insert_with(|| toml_edit::value(toml_edit::Array::new()))
+            .as_array_mut()
+            .ok_or_else(|| anyhow::anyhow!("`agents.removed` is not a list"))?;
+        if !removed.iter().any(|v| v.as_str() == Some(id)) {
+            removed.push(id);
+        }
+    }
+    Ok(was_on)
+}
+
+fn unremove(t: &mut toml_edit::Table, id: &str) {
+    if let Some(l) = t.get_mut("removed").and_then(|e| e.as_array_mut()) {
+        l.retain(|v| v.as_str() != Some(id));
+    }
+}
+
+/// Edits `[agents] enabled` when it is set. Absent means every installed agent.
+fn enabled_list(t: &mut toml_edit::Table, f: impl FnOnce(&mut toml_edit::Array)) {
+    if let Some(l) = t.get_mut("enabled").and_then(|e| e.as_array_mut()) {
+        f(l);
+    }
+}
+
+fn commands(t: &mut toml_edit::Table) -> Result<&mut toml_edit::Table> {
+    t.entry("commands")
+        .or_insert_with(|| {
+            let mut c = toml_edit::Table::new();
+            c.set_implicit(false);
+            toml_edit::Item::Table(c)
+        })
+        .as_table_mut()
+        .ok_or_else(|| anyhow::anyhow!("`agents.commands` is not a table"))
 }
 
 /// Sets or removes `icon` on the named project. `None` removes the key, so

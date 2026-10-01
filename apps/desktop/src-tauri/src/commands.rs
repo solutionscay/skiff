@@ -378,6 +378,24 @@ pub(crate) async fn set_agent_command(
 }
 
 #[tauri::command]
+pub(crate) async fn rename_agent(app: State<'_, App>, agent: String, name: String) -> Result<Vec<AgentInfo>, String> {
+    let (c, _) = ensure_client(&app).await?;
+    c.rename_agent(agent, name).await.map_err(err)
+}
+
+#[tauri::command]
+pub(crate) async fn remove_agent(app: State<'_, App>, agent: String) -> Result<Vec<AgentInfo>, String> {
+    let (c, _) = ensure_client(&app).await?;
+    c.remove_agent(agent).await.map_err(err)
+}
+
+#[tauri::command]
+pub(crate) async fn restore_agents(app: State<'_, App>) -> Result<Vec<AgentInfo>, String> {
+    let (c, _) = ensure_client(&app).await?;
+    c.restore_agents().await.map_err(err)
+}
+
+#[tauri::command]
 pub(crate) async fn set_agents(app: State<'_, App>, enabled: Vec<String>) -> Result<Vec<AgentInfo>, String> {
     let (c, _) = ensure_client(&app).await?;
     c.set_agents(enabled).await.map_err(err)

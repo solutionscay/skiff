@@ -131,6 +131,9 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
             | Request::InspectFolder { .. }
             | Request::ListAgents
             | Request::SetAgentCommand { .. }
+            | Request::RenameAgent { .. }
+            | Request::RemoveAgent { .. }
+            | Request::RestoreAgents
             | Request::SetAgents { .. }
             | Request::AddProject { .. }
             | Request::RemoveWorktree { .. }) => {

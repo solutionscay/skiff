@@ -58,15 +58,26 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     }
   }
 
-  async function setCommand(id: string, command: string) {
+  /** Sends an agent edit to the daemon and shows the list it answers with. */
+  async function editAgents(cmd: string, args: Record<string, string> = {}) {
     error = null;
     try {
-      agents = await invoke<AgentInfo[]>("set_agent_command", { agent: id, command });
+      agents = await invoke<AgentInfo[]>(cmd, args);
       onAgents(agents);
     } catch (e) {
       error = String(e);
     }
     render();
+  }
+
+  const setCommand = (agent: string, command: string) => editAgents("set_agent_command", { agent, command });
+
+  /** Removes the agent. The keys go to the row that takes its place. */
+  async function removeAgent(agent: string) {
+    const at = agents.findIndex((a) => a.id === agent);
+    await editAgents("remove_agent", { agent });
+    const rows = root.querySelectorAll<HTMLElement>(".set-agent:not(.set-add) .set-rm");
+    (rows[Math.min(at, rows.length - 1)] ?? root.querySelector<HTMLElement>(".set-add input"))?.focus();
   }
 
   function render() {
@@ -112,6 +123,14 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const main = h("div", "set-main");
     const intro = h("div", "set-head");
     intro.append(h("div", "set-h", "Agents"));
+    // Only a removed default can come back.
+    if (DEFAULT_AGENTS.some((d) => !agents.some((a) => a.id === d))) {
+      intro.classList.add("set-head-row");
+      const back = h("button", "set-rm", "Restore defaults");
+      back.type = "button";
+      back.addEventListener("click", () => void editAgents("restore_agents"));
+      intro.appendChild(back);
+    }
     const cols = h("div", "set-row set-cols");
     cols.append(h("span", "c-on", ""), h("span", "c-name", "AGENT"), h("span", "c-cmd", "COMMAND"), h("span", "c-status", "STATUS"));
     main.append(intro, cols);
@@ -128,31 +147,59 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       sw.addEventListener("click", () => void toggle(a.id));
 
       const cmd = h("input", "c-cmd mono");
-      cmd.value = a.command === a.default_command ? "" : a.command;
+      // A known agent shows its default as the placeholder. A custom one has no default.
+      const cur = a.custom || a.command !== a.default_command ? a.command : "";
+      cmd.value = cur;
       cmd.placeholder = a.default_command;
       cmd.spellcheck = false;
       cmd.setAttribute("aria-label", `${a.id} command`);
       const save = () => {
         const v = cmd.value.trim();
-        const cur = a.command === a.default_command ? "" : a.command;
-        if (v !== cur) void setCommand(a.id, v);
+        // Remove takes a custom agent away. An empty field does not.
+        if (a.custom && !v) cmd.value = cur;
+        else if (v !== cur) void setCommand(a.id, v);
       };
       cmd.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
           e.preventDefault();
           cmd.blur();
         } else if (e.key === "Escape") {
-          cmd.value = a.command === a.default_command ? "" : a.command;
+          cmd.value = cur;
           cmd.blur();
         }
       });
       cmd.addEventListener("blur", save);
 
+      const name = h("input", "c-name");
+      name.value = a.id;
+      name.spellcheck = false;
+      name.setAttribute("aria-label", `${a.id} name`);
+      name.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          name.blur();
+        } else if (e.key === "Escape") {
+          name.value = a.id;
+          name.blur();
+        }
+      });
+      name.addEventListener("blur", () => {
+        const v = name.value.trim();
+        if (!v) name.value = a.id;
+        else if (v !== a.id) void editAgents("rename_agent", { agent: a.id, name: v });
+      });
+
       const status = h("span", "c-status");
       status.append(h("span", "sq"), a.installed ? "installed" : "not on PATH");
-      row.append(sw, h("span", "c-name", a.id), cmd, status);
+      const rm = h("button", "set-rm", "Remove");
+      rm.type = "button";
+      rm.setAttribute("aria-label", `Remove ${a.id}`);
+      rm.addEventListener("click", () => void removeAgent(a.id));
+      status.appendChild(rm);
+      row.append(sw, name, cmd, status);
       main.appendChild(row);
     }
+    main.appendChild(addRow());
     if (error) {
       const err = h("div", "set-error", error);
       err.setAttribute("role", "alert");
@@ -160,6 +207,54 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     }
     main.appendChild(callSigns());
     root.replaceChildren(nav, main, closeButton());
+  }
+
+  /** The agents Skiff ships with. Restore defaults brings back any the user removed. */
+  const DEFAULT_AGENTS = ["claude", "codex", "gemini", "grok", "opencode"];
+
+  /** A blank row that adds a custom agent: a name and the command line it runs. */
+  function addRow(): HTMLElement {
+    const row = h("div", "set-row set-agent set-add");
+    const name = h("input", "c-name");
+    name.placeholder = "Add agent";
+    name.spellcheck = false;
+    name.setAttribute("aria-label", "New agent name");
+    const cmd = h("input", "c-cmd mono");
+    cmd.placeholder = "command, for example aider --model sonnet";
+    cmd.spellcheck = false;
+    cmd.setAttribute("aria-label", "New agent command");
+    const add = h("button", "set-rm", "Add");
+    add.type = "button";
+    const submit = () => {
+      const id = name.value.trim();
+      const command = cmd.value.trim();
+      if (!id || !command) return (id ? cmd : name).focus();
+      if (agents.some((a) => a.id === id)) {
+        error = `An agent named ${id} exists. Change its command in its row.`;
+        return render();
+      }
+      void setCommand(id, command).then(() => {
+        // A skiffd from before custom agents saves the line but does not list it.
+        if (error || agents.some((a) => a.id === id)) return;
+        error = `Saved ${id} to projects.toml. Restart skiffd to show it.`;
+        render();
+      });
+    };
+    for (const f of [name, cmd])
+      f.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          submit();
+        } else if (e.key === "Escape" && f.value) {
+          e.stopPropagation();
+          name.value = cmd.value = "";
+        }
+      });
+    add.addEventListener("click", submit);
+    const end = h("span", "c-status");
+    end.appendChild(add);
+    row.append(h("span", "c-on"), name, cmd, end);
+    return row;
   }
 
   /** Esc, in the top right corner as in the theme picker. A click closes. */
@@ -261,7 +356,6 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     render();
   }
 
-
   async function setOpen(key: OpenKey, command: string) {
     error = null;
     try {
@@ -361,8 +455,13 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       return e.preventDefault();
     }
     if (!el.closest(".set-main")) return;
-    const text = el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type !== "range");
-    if (!vertical && (text || el instanceof HTMLInputElement)) return;
+    const text = el instanceof HTMLInputElement && el.type !== "range";
+    // A text field moves its caret, and lets Left or Right out only at its start or end.
+    if (!vertical && (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !text))) return;
+    if (!vertical && text) {
+      const edge = e.key === "ArrowLeft" ? 0 : el.value.length;
+      if (el.selectionStart !== edge || el.selectionEnd !== edge) return;
+    }
     if (el instanceof HTMLTextAreaElement) {
       const v = el.value;
       if (up ? v.lastIndexOf("\n", el.selectionStart - 1) >= 0 : v.indexOf("\n", el.selectionEnd) >= 0) return;
@@ -376,7 +475,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     if (!vertical && Math.abs(stops[to].getBoundingClientRect().top - el.getBoundingClientRect().top) > 1) to = at;
     // Left from the start of a row goes back to the tab.
     if (to === at && e.key === "ArrowLeft") return enterSection(false);
-    stops[to].focus();
+    const next = stops[to];
+    next.focus();
+    // Into a text field from the right, the caret starts at its end.
+    if (next instanceof HTMLInputElement && next.type !== "range" && e.key === "ArrowLeft") next.setSelectionRange(next.value.length, next.value.length);
   });
 
   /** The list keys, as Settings reads them. True when Settings used the key. */

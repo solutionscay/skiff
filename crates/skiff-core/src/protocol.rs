@@ -152,6 +152,17 @@ pub enum Request {
         agent: String,
         command: String,
     },
+    /// Gives an agent a new name.
+    RenameAgent {
+        agent: String,
+        name: String,
+    },
+    /// Takes an agent out of the list.
+    RemoveAgent {
+        agent: String,
+    },
+    /// Brings back the default agents the user removed.
+    RestoreAgents,
     /// Refuses the main worktree, uncommitted changes, and live sessions inside.
     RemoveWorktree {
         project: String,

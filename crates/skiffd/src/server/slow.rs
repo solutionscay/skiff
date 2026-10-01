@@ -136,6 +136,9 @@ pub(super) async fn answer_slow(pool: Arc<SessionPool>, request: Request) -> Res
                 Err(e) => error(e),
             }
         }
+        Request::RenameAgent { agent, name } => agents_after(move || skiff_core::config::rename_agent(&agent, &name)).await,
+        Request::RemoveAgent { agent } => agents_after(move || skiff_core::config::remove_agent(&agent)).await,
+        Request::RestoreAgents => agents_after(skiff_core::config::restore_agents).await,
         Request::SetAgents { enabled } => {
             match blocking(move || {
                 skiff_core::config::set_enabled_agents(&enabled)?;
@@ -222,6 +225,19 @@ fn appearance(a: Result<skiff_core::config::Appearance>) -> Response {
             theme: a.theme,
             font_size: a.font_size,
         },
+        Err(e) => error(e),
+    }
+}
+
+/// Runs a config edit, then answers with the agent list.
+async fn agents_after(f: impl FnOnce() -> anyhow::Result<()> + Send + 'static) -> Response {
+    match blocking(move || {
+        f()?;
+        Ok(skiff_core::project::agents())
+    })
+    .await
+    {
+        Ok(agents) => Response::Agents { agents },
         Err(e) => error(e),
     }
 }

@@ -15,6 +15,18 @@ impl Client {
         self.agents_reply(Request::SetAgentCommand { agent, command }).await
     }
 
+    pub async fn rename_agent(&self, agent: String, name: String) -> Result<Vec<AgentInfo>> {
+        self.agents_reply(Request::RenameAgent { agent, name }).await
+    }
+
+    pub async fn remove_agent(&self, agent: String) -> Result<Vec<AgentInfo>> {
+        self.agents_reply(Request::RemoveAgent { agent }).await
+    }
+
+    pub async fn restore_agents(&self) -> Result<Vec<AgentInfo>> {
+        self.agents_reply(Request::RestoreAgents).await
+    }
+
     async fn agents_reply(&self, req: Request) -> Result<Vec<AgentInfo>> {
         match self.request(req).await? {
             Response::Agents { agents } => Ok(agents),

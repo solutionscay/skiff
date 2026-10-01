@@ -237,7 +237,11 @@ pub struct AgentInfo {
     pub id: String,
     /// The command line the + menu runs: the user's, else the default.
     pub command: String,
+    /// Empty for a custom agent.
     pub default_command: String,
+    /// Added by the user, not one of `KNOWN_AGENTS`.
+    #[serde(default)]
+    pub custom: bool,
     /// Found on the daemon's PATH.
     pub installed: bool,
     /// Offered in the + menu. Only an installed agent can be enabled.
@@ -249,9 +253,19 @@ pub fn agents() -> Vec<AgentInfo> {
     let path = std::env::var_os("PATH").unwrap_or_default();
     let dirs: Vec<PathBuf> = std::env::split_paths(&path).collect();
     let cfg = crate::config::load().map(|c| c.agents).unwrap_or_default();
+    // Known agents first, then the user's own, in the order the file sorts them.
+    let custom: Vec<(&str, &str)> = cfg
+        .commands
+        .iter()
+        .filter(|(id, c)| !c.trim().is_empty() && !KNOWN_AGENTS.iter().any(|&(k, _)| k == id.as_str()))
+        .map(|(id, _)| (id.as_str(), ""))
+        .collect();
     KNOWN_AGENTS
         .iter()
-        .map(|&(id, default)| {
+        .copied()
+        .filter(|&(id, _)| !cfg.removed.iter().any(|r| r == id))
+        .chain(custom)
+        .map(|(id, default)| {
             let command = cfg
                 .commands
                 .get(id)
@@ -271,6 +285,7 @@ pub fn agents() -> Vec<AgentInfo> {
                 id: id.to_string(),
                 command,
                 default_command: default.to_string(),
+                custom: !KNOWN_AGENTS.iter().any(|&(k, _)| k == id),
                 installed,
                 enabled: installed && on,
             }

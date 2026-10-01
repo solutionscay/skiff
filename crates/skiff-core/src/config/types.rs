@@ -50,6 +50,9 @@ pub struct Agents {
     /// Command lines that replace the defaults, by agent id.
     #[serde(default)]
     pub commands: std::collections::BTreeMap<String, String>,
+    /// Default agents the user took out. Restore brings them back.
+    #[serde(default)]
+    pub removed: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
