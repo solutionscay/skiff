@@ -19,6 +19,11 @@ changing anything the user sees or presses: styles, menus, dialogs, keys, labels
 themes. Claude Code and Codex load the same rules as the `skiff-design` skill
 (`.agents/skills/skiff-design`).
 
+## Keys
+
+Before you add or change a keyboard shortcut, load the `skiff-keys` skill
+(`.agents/skills/skiff-keys`). It lists where each key lives and what to keep in step.
+
 ## Development
 
 See the README's [Development](README.md#development) section for build and run
