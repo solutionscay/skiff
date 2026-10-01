@@ -45,6 +45,8 @@ export function runAction(a: Action) {
   if (modeKeyBlocked(a) || modeGate(a)) return;
   // The open palette holds every other action; its own key closes it.
   if (switcher.isOpen() && a !== "palette") return;
+  // Settings holds the keys as a dialog does. The list keys step its sections.
+  if (settings.isOpen && (settings.runKey(a) || (a !== "settings" && a !== "quit"))) return;
   switch (a) {
     case "palette": return switcher.toggle();
     case "new-session": return openNewSession();

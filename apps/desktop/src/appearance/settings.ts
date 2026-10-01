@@ -6,7 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { AgentInfo, TerminalTheme } from "../platform/types";
 import { agentNameList, setAgentNameList } from "./agentNames";
 import { themeGrid } from "./themeCards";
-import { actionFor } from "../app/keys";
+import { type Action, actionFor } from "../app/keys";
 
 /**
  * Settings over the sidebar and terminal: agents, appearance, and Open with.
@@ -306,21 +306,19 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     root.querySelector<HTMLElement>(".set-main :is(button, input, textarea, [tabindex]):not(:disabled)")?.focus();
   }
 
+  /** The list keys, as Settings reads them. True when Settings used the key. */
+  function runKey(a: Action | null): boolean {
+    if (a === "session-next" || a === "session-prev") stepTab(a === "session-next" ? 1 : -1);
+    else if (a === "list-project" || a === "list-back") enterSection(a === "list-back");
+    else return false;
+    return true;
+  }
+
   // On the document, so Escape works wherever focus is. Menus and dialogs
   // over settings stop the key first.
   document.addEventListener("keydown", (e) => {
     if (root.hidden || e.defaultPrevented || document.querySelector("#ctx-menu:not([hidden]), #launch-menu:not([hidden]), .confirm-overlay")) return;
-    const a = actionFor(e);
-    if (a === "session-next" || a === "session-prev") {
-      e.preventDefault();
-      stepTab(a === "session-next" ? 1 : -1);
-      return;
-    }
-    if (a === "list-project" || a === "list-back") {
-      e.preventDefault();
-      enterSection(a === "list-back");
-      return;
-    }
+    if (runKey(actionFor(e))) return e.preventDefault();
     if (e.key !== "Escape") return;
     e.preventDefault();
     close();
@@ -339,6 +337,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       root.querySelector<HTMLButtonElement>(".set-agent .c-on:not(:disabled)")?.focus();
     },
     close,
+    /** The native menu runs its accelerators here, not through the keydown above. */
+    runKey: (a: Action) => !root.hidden && runKey(a),
     get isOpen() {
       return !root.hidden;
     },

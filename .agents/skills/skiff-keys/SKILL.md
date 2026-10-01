@@ -34,6 +34,7 @@ Screens that hold the keys reuse action keys with a local meaning. Settings (`ap
 
 - Never hardcode a key label in UI text. Use `keyLabel(action)`. A key in a note, such as "Ctrl+Shift+Up/Down" in a `DESCRIBE` line, is the only exception. Check those notes when a default changes.
 - A local handler matches action keys with `actionFor(e)`, not raw `e.key` checks. Then `[keys]` overrides work there too.
+- An action with a menu bar item (`commands.ts`) has a native accelerator. The menu takes that key before the page sees a keydown, and calls `runAction()`. A screen that gives such a key a local meaning must also catch it in `runAction()`, as Settings does with `settings.runKey()`.
 - A new action needs all of these: an `Action` member, a `DEFAULTS` key, a `DESCRIBE` line, a `runAction()` case, and a `commands.ts` entry where a menu item fits.
 - A new fixed key needs a `FIXED_SHORTCUTS` row in the right section.
 - A local meaning for an action key goes at the end of its `DESCRIBE` line: "In Settings, the next section".
