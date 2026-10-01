@@ -86,8 +86,9 @@ pkill -x skiffd            # ends every open session
 Then reload the window (Ctrl+R) or restart the app. The app starts the new binary
 on its next call.
 
-At launch the app compares the daemon's version and protocol (`skiff_core::PROTOCOL`)
-with its own. It replaces an older or incompatible daemon without asking when no
+skiffd has its own version (`crates/skiffd` and `crates/skiff-core`), apart from the
+app version. At launch the app compares the running daemon's version and protocol
+(`skiff_core::PROTOCOL`) with the skiffd it ships. It replaces an older or incompatible daemon without asking when no
 session is live. When sessions are live, it shows a "Restart skiffd" button instead.
 
 Debug builds use `skiffd-dev.sock` and `workspace-dev.json`, so `pnpm tauri dev` runs

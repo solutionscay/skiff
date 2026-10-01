@@ -17,6 +17,10 @@ pub mod theme;
 pub use group::{Group, Layout, SplitDir};
 pub use project::{Project, Worktree};
 
+/// The skiffd version. It moves apart from the app version: a release bumps it
+/// only when `crates/skiffd` or `crates/skiff-core` changed. The app compares
+/// the running daemon with this, so a release without daemon changes asks for
+/// no restart.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Bumped when a request or reply changes. A client that sees another

@@ -145,6 +145,7 @@ async fn check_daemon(app: &App, c: &Client, may_replace: bool) -> Check {
         });
         return Check::Hung;
     };
+    // The skiffd this app ships with, not the app version.
     let ours = skiff_core::VERSION;
     let order = compare_versions(&version, ours);
     let same_protocol = protocol == skiff_core::PROTOCOL;

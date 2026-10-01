@@ -135,7 +135,7 @@ export async function showAbout() {
     table.appendChild(r);
   };
   row("App", app);
-  row("Daemon", status?.version ?? "not reachable");
+  row("skiffd", status?.version ?? "not reachable");
   row("Socket", status?.socket ?? "?");
   if (status?.pid) row("Pid", String(status.pid));
   row("Config", config);
