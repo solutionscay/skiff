@@ -51,3 +51,9 @@
 .set-agent.on .switch { border-color: var(--state-working); background: color-mix(in srgb, var(--state-working) 25%, transparent); }
 .set-agent.on .switch::after { left: calc(16 * var(--u)); background: var(--state-working); }
 .set-error { padding: calc(10 * var(--u)) calc(24 * var(--u)); background: var(--error-bg); color: var(--error-text); font-size: calc(12px * var(--zoom, 1)); border-bottom: 1px solid var(--rule); }
+.set-seg { display: flex; align-items: stretch; padding: 0; }
+.set-seg-item { flex: 1; min-width: 0; padding: 0 calc(12 * var(--u)); border: 0; border-radius: 0; background: transparent; color: var(--text-3); font: calc(13px * var(--zoom, 1)) var(--font); white-space: nowrap; }
+.set-seg-item + .set-seg-item { border-left: 1px solid var(--rule); }
+.set-seg-item:hover { color: var(--text); }
+.set-seg-item.on { background: var(--bg-raised); color: var(--text); box-shadow: inset 0 -2px 0 var(--state-working); }
+.set-menu .c-status { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }

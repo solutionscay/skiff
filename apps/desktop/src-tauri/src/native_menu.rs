@@ -1,22 +1,22 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder}};
 
 #[derive(Deserialize)]
 pub(crate) struct MenuSpec {
-    title: String,
-    items: Vec<MenuItemSpec>,
+    pub(crate) title: String,
+    pub(crate) items: Vec<MenuItemSpec>,
 }
 
 #[derive(Deserialize)]
-struct MenuItemSpec {
+pub(crate) struct MenuItemSpec {
     /// None draws a separator.
-    id: Option<String>,
+    pub(crate) id: Option<String>,
     #[serde(default)]
-    label: String,
+    pub(crate) label: String,
     #[serde(default)]
-    accel: String,
+    pub(crate) accel: String,
     #[serde(default)]
-    enabled: bool,
+    pub(crate) enabled: bool,
 }
 
 /// The menu bar. The page owns the command list and sends it whole on every
@@ -29,6 +29,10 @@ pub(crate) fn quit_app(app: AppHandle) {
 
 #[tauri::command]
 pub(crate) fn set_menu(app: AppHandle, menus: Vec<MenuSpec>) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    if crate::header_bar::active() {
+        return crate::header_bar::set_menu(&app, menus);
+    }
     let mut bar = MenuBuilder::new(&app);
     for m in &menus {
         let mut sub = SubmenuBuilder::new(&app, &m.title);
@@ -49,4 +53,47 @@ pub(crate) fn set_menu(app: AppHandle, menus: Vec<MenuSpec>) -> Result<(), Strin
     }
     app.set_menu(bar.build().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[derive(Serialize)]
+pub(crate) struct MenuLayout {
+    /// The window can show a header bar: Linux only.
+    available: bool,
+    /// `header-bar`, `menu-bar`, or None for the automatic choice.
+    chosen: Option<String>,
+    /// What the automatic choice gives on this desktop.
+    auto: &'static str,
+    /// What the window shows now. A change shows the next time Skiff opens.
+    current: &'static str,
+}
+
+fn layout_now() -> MenuLayout {
+    let chosen = skiff_core::config::load().ok().and_then(|c| c.appearance.menu_layout);
+    #[cfg(target_os = "linux")]
+    let (available, auto, header) = (true, crate::header_bar::on_gnome(), crate::header_bar::active());
+    #[cfg(not(target_os = "linux"))]
+    let (available, auto, header) = (false, false, false);
+    let name = |h: bool| if h { "header-bar" } else { "menu-bar" };
+    MenuLayout { available, chosen, auto: name(auto), current: name(header) }
+}
+
+#[tauri::command]
+pub(crate) fn menu_layout() -> MenuLayout {
+    layout_now()
+}
+
+/// Sets `[appearance] menu_layout`. None: the automatic choice.
+#[tauri::command]
+pub(crate) fn set_menu_layout(layout: Option<String>) -> Result<MenuLayout, String> {
+    skiff_core::config::set_menu_layout(layout.as_deref()).map_err(|e| e.to_string())?;
+    Ok(layout_now())
+}
+
+/// Dark or light window chrome. Only the GNOME header bar uses it.
+#[tauri::command]
+pub(crate) fn set_window_dark(app: AppHandle, dark: bool) {
+    #[cfg(target_os = "linux")]
+    crate::header_bar::set_dark(&app, dark);
+    #[cfg(not(target_os = "linux"))]
+    let _ = (app, dark);
 }

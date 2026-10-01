@@ -63,6 +63,25 @@ pub fn set_font_size(size: Option<u8>) -> Result<()> {
     })
 }
 
+/// The values `[appearance] menu_layout` takes.
+pub const MENU_LAYOUTS: [&str; 2] = ["header-bar", "menu-bar"];
+
+/// Sets `[appearance] menu_layout`, or removes it for the automatic choice.
+pub fn set_menu_layout(layout: Option<&str>) -> Result<()> {
+    if let Some(v) = layout.filter(|v| !MENU_LAYOUTS.contains(v)) {
+        anyhow::bail!("unknown menu layout: {v}");
+    }
+    edit_table("appearance", |t| {
+        match layout {
+            Some(v) => t["menu_layout"] = toml_edit::value(v),
+            None => {
+                t.remove("menu_layout");
+            }
+        }
+        Ok(())
+    })
+}
+
 /// The keys `[open]` takes.
 pub const OPEN_KEYS: [&str; 4] = ["diff", "text", "markdown", "html"];
 

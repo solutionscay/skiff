@@ -31,10 +31,13 @@ read -r -p "Release v$old -> v$new? [y/N] " ok
 
 sed -i "0,/^version = \"$old\"$/s//version = \"$new\"/" Cargo.toml
 sed -i "0,/\"version\": \"$old\"/s//\"version\": \"$new\"/" apps/desktop/package.json
+# Software stores list the releases from the AppStream metadata.
+metainfo=apps/desktop/src-tauri/linux/com.solutionscay.skiff.metainfo.xml
+sed -i "s|^\(\s*\)<releases>$|&\n\1  <release version=\"$new\" date=\"$(date +%F)\"/>|" "$metainfo"
 # Refresh the workspace entries in Cargo.lock. Dependencies stay as they are.
 cargo metadata --format-version 1 >/dev/null
 
-git add Cargo.toml Cargo.lock apps/desktop/package.json
+git add Cargo.toml Cargo.lock apps/desktop/package.json "$metainfo"
 git commit -q -m "Release v$new"
 git tag -a "v$new" -m "v$new"
 git push -q origin main "v$new"

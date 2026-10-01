@@ -24,6 +24,9 @@ pub struct Appearance {
     pub theme: Option<String>,
     /// Terminal text size in points; the app text scales with it. Absent: 13.
     pub font_size: Option<u8>,
+    /// Linux: `header-bar` or `menu-bar`. Absent: the header bar on GNOME,
+    /// else the menu bar. The app reads it when the window opens.
+    pub menu_layout: Option<String>,
 }
 
 /// Which apps Skiff hands things to.

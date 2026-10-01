@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { rgb, type Rgb } from "./colors";
 import type { TerminalTheme } from "../platform/types";
 
@@ -83,6 +84,7 @@ export function applyAppTheme(t: TerminalTheme | null) {
     root.removeProperty("color-scheme");
     surfaces = ["#0f1216", "#13171c", "#1b2129"];
     lightScheme = false;
+    void invoke("set_window_dark", { dark: true }).catch(() => {});
     return;
   }
   const bg = t.background;
@@ -120,6 +122,8 @@ export function applyAppTheme(t: TerminalTheme | null) {
   set["--press"] = lightScheme ? "rgba(0, 0, 0, 0.09)" : "rgba(255, 255, 255, 0.09)";
   for (const [k, v] of Object.entries(set)) root.setProperty(k, v);
   root.setProperty("color-scheme", lightScheme ? "light" : "dark");
+  // The GNOME header bar and its menu follow the app theme.
+  void invoke("set_window_dark", { dark: !lightScheme }).catch(() => {});
 }
 
 /** Error banners, the destructive button, the ok dot, and the modal scrim, from the theme's red and green. */

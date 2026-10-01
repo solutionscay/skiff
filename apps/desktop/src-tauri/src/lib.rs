@@ -5,9 +5,11 @@ mod commands;
 mod diagnostics;
 mod streaming;
 mod native_menu;
+#[cfg(target_os = "linux")]
+mod header_bar;
 
 use connection::App;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -25,12 +27,25 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(App::default())
+        // The window starts hidden: GTK takes a header bar only before it shows.
+        .setup(|app| {
+            let Some(window) = app.get_webview_window("main") else { return Ok(()) };
+            #[cfg(target_os = "linux")]
+            if header_bar::wanted() {
+                header_bar::install(app.handle(), &window)?;
+            }
+            window.show()?;
+            Ok(())
+        })
         .on_menu_event(|app, event| {
             let _ = app.emit("skiff:menu", event.id().as_ref());
         })
         .invoke_handler(tauri::generate_handler![
             native_menu::set_menu,
             native_menu::quit_app,
+            native_menu::menu_layout,
+            native_menu::set_menu_layout,
+            native_menu::set_window_dark,
             connection::daemon_status,
             commands::list_sessions,
             commands::create_session,

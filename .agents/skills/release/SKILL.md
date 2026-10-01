@@ -13,6 +13,8 @@ A `v*` tag triggers `.github/workflows/release.yml`. CI builds the Linux package
 1. Get the version from the operator. Use the form `X.Y.Z`.
 2. Check that the working tree is clean and you are on `main`.
 3. Set the version in `Cargo.toml` (`[workspace.package]`) and `apps/desktop/package.json`.
+   Add `<release version="X.Y.Z" date="YYYY-MM-DD"/>` at the top of `<releases>` in
+   `apps/desktop/src-tauri/linux/com.solutionscay.skiff.metainfo.xml`.
 4. Refresh the lockfile: `cargo update --workspace --offline`.
 5. Commit: `git commit -am "release: prepare vX.Y.Z"`.
 6. Tag and push: `git tag vX.Y.Z && git push origin main vX.Y.Z`.

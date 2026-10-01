@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata for the Linux packages. scripts/release.sh adds each release. -->
+<component type="desktop-application">
+  <id>com.solutionscay.skiff</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>Skiff</name>
+  <summary>A minimalist workspace for coding agents</summary>
+  <developer id="com.solutionscay">
+    <name>Solutions Cay LLC</name>
+  </developer>
+
+  <description>
+    <p>
+      Skiff keeps agent and shell sessions organized across projects and Git
+      worktrees. Themes and terminal layouts help you keep track of your work.
+    </p>
+    <p>
+      Editing and previews stay in the apps you already use. Sessions run in a
+      daemon and keep running when the window closes.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">Skiff.desktop</launchable>
+  <provides>
+    <binary>skiff-desktop</binary>
+  </provides>
+
+  <categories>
+    <category>Development</category>
+  </categories>
+  <keywords>
+    <keyword>agent</keyword>
+    <keyword>terminal</keyword>
+    <keyword>worktree</keyword>
+    <keyword>git</keyword>
+  </keywords>
+
+  <url type="homepage">https://github.com/solutionscay/skiff</url>
+  <url type="bugtracker">https://github.com/solutionscay/skiff/issues</url>
+  <url type="help">https://github.com/solutionscay/skiff/wiki</url>
+  <url type="vcs-browser">https://github.com/solutionscay/skiff</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>A project with its sessions, changed files and file tree, and three agent sessions side by side</caption>
+      <image type="source" width="1920" height="1080">https://raw.githubusercontent.com/solutionscay/skiff/main/.github/screenshot.png</image>
+    </screenshot>
+  </screenshots>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.6.4" date="2026-10-01"/>
+    <release version="0.6.3" date="2026-09-30"/>
+    <release version="0.6.2" date="2026-09-30"/>
+    <release version="0.6.1" date="2026-09-30"/>
+  </releases>
+</component>

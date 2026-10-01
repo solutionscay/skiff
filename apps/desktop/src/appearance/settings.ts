@@ -33,6 +33,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   type OpenKey = "diff" | "text" | "markdown" | "html";
   type OpenSettings = Record<OpenKey, string> & { default_diff: string };
   let openSet: OpenSettings | null = null;
+  type MenuLayout = { available: boolean; chosen: string | null; auto: string; current: string };
+  let menuSet: MenuLayout | null = null;
   let error: string | null = null;
   let saving = false;
 
@@ -222,9 +224,43 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       val.textContent = `${slider.value}%`;
     });
     op.append(h("span", "c-name", "Terminal opacity"), slider, val);
-    main.append(intro, op, cards);
+    main.append(intro, op);
+    if (menuSet?.available) main.appendChild(menuLayout(menuSet));
+    main.appendChild(cards);
     return main;
   }
+
+  /** Linux: the GNOME header bar or the menu bar. GTK sets it when the window opens. */
+  function menuLayout(m: MenuLayout): HTMLElement {
+    const row = h("div", "set-row set-opacity set-menu");
+    const pick = h("div", "c-cmd set-seg");
+    pick.setAttribute("role", "radiogroup");
+    pick.setAttribute("aria-label", "Menu layout");
+    const auto = m.auto === "header-bar" ? "Auto (header bar)" : "Auto (menu bar)";
+    const choices: [string | null, string][] = [[null, auto], ["header-bar", "Header bar"], ["menu-bar", "Menu bar"]];
+    for (const [value, label] of choices) {
+      const b = h("button", "set-seg-item" + (m.chosen === value ? " on" : ""), label);
+      b.type = "button";
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", String(m.chosen === value));
+      b.addEventListener("click", () => void setMenuLayout(value));
+      pick.appendChild(b);
+    }
+    const pending = (m.chosen ?? m.auto) !== m.current;
+    row.append(h("span", "c-name", "Menu"), pick, h("span", "c-status", pending ? "On restart" : ""));
+    return row;
+  }
+
+  async function setMenuLayout(layout: string | null) {
+    error = null;
+    try {
+      menuSet = await invoke<MenuLayout>("set_menu_layout", { layout });
+    } catch (e) {
+      error = String(e);
+    }
+    render();
+  }
+
 
   async function setOpen(key: OpenKey, command: string) {
     error = null;
@@ -366,6 +402,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       root.hidden = false;
       await look.load();
       openSet = await invoke<OpenSettings>("open_settings").catch(() => null);
+      menuSet = await invoke<MenuLayout>("menu_layout").catch(() => null);
       agents = await invoke<AgentInfo[]>("list_agents").catch((e) => {
         error = String(e);
         return [];

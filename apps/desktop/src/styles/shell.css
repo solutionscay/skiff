@@ -19,6 +19,7 @@
 #topbar .search svg { flex-shrink: 0; }
 #topbar .search .spacer { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #topbar .search kbd { flex-shrink: 0; }
+body.header-bar #topbar .search { display: none; }
 /* Quiet cells: the rail and the tree carry the motion, the top bar only counts. */
 #topbar .nx { gap: calc(8 * var(--u)); border: 0; border-left: 1px solid var(--rule); background: transparent; color: var(--text-2); }
 #topbar .nx:hover { background: var(--bg-raised); color: var(--text); }

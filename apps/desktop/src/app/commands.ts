@@ -124,6 +124,8 @@ export function syncMenu() {
 }
 
 void listen<string>("skiff:menu", (e) => menuRuns.get(e.payload)?.());
+// The search button in the GNOME header bar.
+void listen("skiff:search", () => runAction("palette"));
 
 async function openConfig() {
   await invoke("open_config").catch(showError);

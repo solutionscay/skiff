@@ -89,6 +89,10 @@ async function boot() {
   if (kbd) kbd.textContent = keyLabel("palette").replace(/\+/g, " ");
   const hint = document.querySelector("#open-switcher .spacer");
   if (hint) hint.textContent = "Commands, sessions, worktrees";
+  // The GNOME header bar has its own search button.
+  void invoke<{ current: string }>("menu_layout")
+    .then((m) => document.body.classList.toggle("header-bar", m.current === "header-bar"))
+    .catch(() => null);
   await loadGroups();
   restorePlace();
   trackPlace();

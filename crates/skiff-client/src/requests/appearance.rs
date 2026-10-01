@@ -26,7 +26,7 @@ impl Client {
 
     async fn appearance_reply(&self, req: Request) -> Result<skiff_core::config::Appearance> {
         match self.request(req).await? {
-            Response::Appearance { theme, font_size } => Ok(skiff_core::config::Appearance { theme, font_size }),
+            Response::Appearance { theme, font_size } => Ok(skiff_core::config::Appearance { theme, font_size, ..Default::default() }),
             Response::Error { message } => bail!(message),
             other => bail!("unexpected reply: {other:?}"),
         }

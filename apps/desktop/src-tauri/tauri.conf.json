@@ -13,6 +13,7 @@
     "windows": [
       {
         "title": "Skiff",
+        "visible": false,
         "width": 1440,
         "height": 900,
         "minWidth": 960,
@@ -40,6 +41,23 @@
     "category": "DeveloperTool",
     "shortDescription": "A minimalist workspace for coding agents",
     "longDescription": "Skiff keeps agent and shell sessions organized across projects and Git worktrees. Themes and terminal layouts help you keep track of your work. Editing and previews stay in the apps you already use. Sessions keep running when the window closes.",
-    "license": "MIT"
+    "license": "MIT",
+    "linux": {
+      "deb": {
+        "files": {
+          "/usr/share/metainfo/com.solutionscay.skiff.metainfo.xml": "linux/com.solutionscay.skiff.metainfo.xml"
+        }
+      },
+      "rpm": {
+        "files": {
+          "/usr/share/metainfo/com.solutionscay.skiff.metainfo.xml": "linux/com.solutionscay.skiff.metainfo.xml"
+        }
+      },
+      "appimage": {
+        "files": {
+          "/usr/share/metainfo/com.solutionscay.skiff.metainfo.xml": "linux/com.solutionscay.skiff.metainfo.xml"
+        }
+      }
+    }
   }
 }
