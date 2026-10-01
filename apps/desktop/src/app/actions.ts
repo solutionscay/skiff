@@ -3,6 +3,7 @@ import { type Action } from "./keys";
 import { invoke } from "@tauri-apps/api/core";
 
 import { $ } from "../ui/dom";
+import { copy, open, reveal } from "../platform/fileActions";
 import { showError } from "../ui/alerts";
 import { currentRow, cycleRegion, fromProject, listItems, stepList, stepRail, toProject } from "./keyboard";
 
@@ -67,7 +68,13 @@ export function runAction(a: Action) {
       return;
     }
     case "project-folder":
-    case "project-copy-path":
+    case "project-copy-path": {
+      // On a file or change row, the key acts on that file.
+      const path = rowPath();
+      if (path) return a === "project-copy-path" ? copy(path.path) : path.dir ? open(path.path) : reveal(path.path);
+      const p = currentProject();
+      return p ? projectRun(p)[a]() : undefined;
+    }
     case "project-color":
     case "project-changes":
     case "project-files": {
@@ -157,4 +164,11 @@ export function openProjectMenu() {
   if (!p || !chip) return;
   const r = chip.getBoundingClientRect();
   projectMenu(p, r.right, r.top);
+}
+
+/** The file of the highlighted Files or Changes row, if that is the row. */
+function rowPath(): { path: string; dir: boolean } | null {
+  const row = S.atRail ? undefined : currentRow();
+  const m = row?.dataset.key?.match(/^(file|change):(.*)$/);
+  return m ? { path: m[2], dir: row!.classList.contains("dir") } : null;
 }

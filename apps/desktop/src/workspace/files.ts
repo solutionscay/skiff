@@ -8,6 +8,7 @@ import { sectionHeader } from "../ui/sectionHeader";
 import { invoke } from "@tauri-apps/api/core";
 import type { Project, Worktree } from "../platform/types";
 import { h } from "../ui/dom";
+import { keyLabel } from "../app/keys";
 import { chevron, icon } from "../ui/icons";
 import { showError } from "../ui/alerts";
 import { ctxMenu } from "../ui/contextMenu";
@@ -145,13 +146,13 @@ function row(e: Entry, path: string, depth: number): HTMLElement {
     ctxMenu.open(m.clientX, m.clientY, e.name, e.dir
       ? [
           { icon: "schedule-refresh-cw", label: "Refresh", run: () => refresh(path) },
-          { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", run: () => open(path) },
-          { icon: "code-copy", label: "Copy path", run: () => copy(path) },
+          { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: () => open(path) },
+          { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: () => copy(path) },
         ]
       : [
-          { icon: "indicators-square-arrow-out-up-right", label: "Open", run: () => open(path) },
-          { icon: "documents-folder-open", label: "Show in file manager", run: () => reveal(path) },
-          { icon: "code-copy", label: "Copy path", run: () => copy(path) },
+          { icon: "indicators-square-arrow-out-up-right", label: "Open", hint: "Enter", run: () => open(path) },
+          { icon: "documents-folder-open", label: "Show in file manager", hint: keyLabel("project-folder"), run: () => reveal(path) },
+          { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: () => copy(path) },
         ]);
   });
   return r;

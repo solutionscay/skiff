@@ -8,6 +8,7 @@ import { sectionHeader } from "../ui/sectionHeader";
 import { invoke } from "@tauri-apps/api/core";
 import type { Project, Worktree } from "../platform/types";
 import { h } from "../ui/dom";
+import { keyLabel } from "../app/keys";
 import { icon } from "../ui/icons";
 import { showError } from "../ui/alerts";
 import type { MenuEntry } from "../ui/menu";
@@ -148,11 +149,13 @@ function row(w: Worktree, c: Change): HTMLElement {
   r.dataset.key = `change:${path}`;
   // One click opens the diff. The second click of a double-click does not open it again.
   r.addEventListener("click", (m) => m.detail === 1 && show());
+  // Enter shows the diff. Shift+Enter opens the file itself.
   r.addEventListener("keydown", (k) => {
-    if (k.key !== "Enter") return;
+    if (k.key !== "Enter" || k.ctrlKey || k.metaKey || k.altKey) return;
     k.preventDefault();
     k.stopPropagation();
-    show();
+    if (!k.shiftKey) show();
+    else if (!gone) open(path);
   });
   const st = h("span", `change-st st-${c.status}`, c.status);
   const counts = h("span", "change-counts");
@@ -169,10 +172,10 @@ function row(w: Worktree, c: Change): HTMLElement {
       { icon: "code-git-branch", label: "Show diff", hint: "Enter", run: show },
     ];
     if (!gone) items.push(
-      { icon: "indicators-square-arrow-out-up-right", label: "Open file", run: () => open(path) },
-      { icon: "documents-folder-open", label: "Show in file manager", run: () => reveal(path) },
+      { icon: "indicators-square-arrow-out-up-right", label: "Open file", hint: "Shift+Enter", run: () => open(path) },
+      { icon: "documents-folder-open", label: "Show in file manager", hint: keyLabel("project-folder"), run: () => reveal(path) },
     );
-    items.push({ icon: "code-copy", label: "Copy path", run: () => copy(path) });
+    items.push({ icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: () => copy(path) });
     ctxMenu.open(m.clientX, m.clientY, name, items);
   });
   return r;

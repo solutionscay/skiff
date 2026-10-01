@@ -51,6 +51,7 @@ const FIXED_SHORTCUTS: Shortcut[] = [
   ["Session list", "Open the focused session or group", "Enter"],
   ["Session list", "Collapse or expand the focused worktree, Changes, Files or folder", "← / →"],
   ["Session list", "Open or close the focused Changes, Files or folder; open the focused file or diff", "Enter"],
+  ["Session list", "Open the file of the focused change", "Shift+Enter"],
   ["Session list", "Extend the session selection", "Shift+↑ / ↓"],
   ["Session list", "Make a group from the selected sessions", "Enter"],
   ["Session list", "Clear the session selection", "Esc"],
