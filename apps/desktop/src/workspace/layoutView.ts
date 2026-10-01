@@ -26,7 +26,7 @@ function nodeAt(l: Layout, path: string): Layout {
 }
 
 /**
- * Renders a layout tree into `host` as nested flex boxes with 1px dividers.
+ * Renders a layout tree into `host` as nested flex boxes with dividers that take no room.
  * Rebuilds the DOM only when the tree shape changes.
  */
 export function createLayoutView(host: HTMLElement, o: ViewOpts) {
@@ -42,7 +42,7 @@ export function createLayoutView(host: HTMLElement, o: ViewOpts) {
   // A pane can change size while the terminal area's outer size stays fixed.
   const resize = new ResizeObserver(() => o.resized());
 
-  const basis = (r: number) => `0 0 calc(${(r * 100).toFixed(3)}% - 0.5px)`;
+  const basis = (r: number) => `0 0 ${(r * 100).toFixed(3)}%`;
 
   function node(l: Layout, path: string): HTMLElement {
     if (l.type === "pane") {

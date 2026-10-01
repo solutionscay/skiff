@@ -22,6 +22,10 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   if (!head.dataset.drag) {
     // Drag a pane by its header to move it within the layout.
     head.dataset.drag = "1";
+    // The buttons show on hover too. A class, not :hover: the head rebuilds its children
+    // as an agent's title changes, and WebKit drops :hover until the pointer moves.
+    head.addEventListener("mouseenter", () => head.classList.add("hover"));
+    head.addEventListener("mouseleave", () => head.classList.remove("hover"));
     head.addEventListener("mousedown", (e) => {
       if (!(e.target as Element).closest("button")) dragSessions(e, [id]);
     });
@@ -37,6 +41,8 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   const at = s ? place(s) : null;
   cell.style.setProperty("--pc", accent(at?.project));
   cell.classList.toggle("focused", id === S.focused);
+  // A session picked in the list shows in its pane too, so a picked pair reads as one.
+  cell.classList.toggle("selected", S.selection.includes(id));
   const multi = shownIds().length > 1;
   const away = s ? awayPlaces(s).map((a) => branchName(a.worktree)).join(", ") : "";
   // Rebuild only on change, so a click that spans a daemon event still lands.

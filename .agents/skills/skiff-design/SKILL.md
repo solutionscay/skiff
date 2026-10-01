@@ -33,7 +33,7 @@ Test every change with three questions:
 
 - **Square and flush.** `border-radius: 0` everywhere. Only dots are round. Panes touch, with no gaps and no floating cards.
 - **A line marks a region edge.** The rail, the list, the terminal area, the top bar and the panes have lines between them. Inside a region, rows align on the grid without lines. Worktrees part with space.
-- **Show only what needs a look.** A normal state shows nothing: an idle session has no mark, and a count the rows already show is left out. A pane's buttons show on the focused pane only. A file's folder shows on the current row and on hover.
+- **Show only what needs a look.** A normal state shows nothing: an idle session has no mark, and a count the rows already show is left out. A pane's buttons show on the focused pane and on a hovered header. A file's folder shows on the current row and on hover.
 - **One rule weight.** Lines are 1px `--rule`. Edges of floating surfaces use `--rule-strong`. Do not stack accent lines.
 - **One row grid.** Rows, menu items, headers and bar buttons are `--row` high (40px at zoom 1). Side padding is 16px. Lines align across the rail, the sidebar and the terminal area.
 - **Everything zooms.** Write lengths as `calc(N * var(--u))` and font sizes as `calc(Npx * var(--zoom, 1))`. Do not use raw px for layout.
@@ -43,7 +43,7 @@ Test every change with three questions:
   - Project color (`--pc`) shows location: the rail chip, the 3px project bar, the current row and the lit menu item.
   - State colors show session state: amber for waiting, blue for working, grey for done and idle. Project colors stay away from state colors.
   - Red shows errors and destructive items only. A destructive item stays red when lit.
-- **Highlight, do not outline.** The current row and the lit menu item get a 22% project-color tint and a 2px inset bar on the left. A focus ring shows only after keyboard use (`body.kbd`), as a quiet 1px line.
+- **Highlight, do not outline.** The current row and the lit menu item get a 22% project-color tint and a 2px inset bar on the left. A focus ring shows only after keyboard use (`body.kbd`), as a quiet 1px line. A pane picked in the list gets a 2px frame in the working blue, as the focused pane gets one in its project color.
 - **Shadows on floating surfaces only.** Menus and dialogs have shadows. Menus are solid, never translucent.
 - **Little motion.** Layout transitions are 120ms or less. Only the working skiff and the mascot loop, and they use `steps()`. Bells and flags stay still. Smooth loops cost frames on WebKit and in power-saver mode.
 - **Icons.** The Rune Icons outline set, stroke `currentColor`, 14px in menus. Add only the icons that the code uses.
