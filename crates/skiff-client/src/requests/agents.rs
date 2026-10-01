@@ -7,6 +7,15 @@ impl Client {
         self.agents_reply(Request::ListAgents).await
     }
 
+    /// What an agent's session list command printed in `cwd`.
+    pub async fn list_agent_sessions(&self, command: Vec<String>, cwd: std::path::PathBuf) -> Result<String> {
+        match self.request(Request::ListAgentSessions { command, cwd }).await? {
+            Response::Output { stdout } => Ok(stdout),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
     pub async fn set_agents(&self, enabled: Vec<String>) -> Result<Vec<AgentInfo>> {
         self.agents_reply(Request::SetAgents { enabled }).await
     }

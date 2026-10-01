@@ -369,6 +369,12 @@ pub(crate) async fn list_agents(app: State<'_, App>) -> Result<Vec<AgentInfo>, S
 }
 
 #[tauri::command]
+pub(crate) async fn list_agent_sessions(app: State<'_, App>, command: Vec<String>, cwd: String) -> Result<String, String> {
+    let (c, _) = ensure_client(&app).await?;
+    c.list_agent_sessions(command, cwd.into()).await.map_err(err)
+}
+
+#[tauri::command]
 pub(crate) async fn set_agent_command(
     app: State<'_, App>,
     agent: String,

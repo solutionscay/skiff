@@ -130,6 +130,7 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
             | Request::SetProjectIcon { .. }
             | Request::InspectFolder { .. }
             | Request::ListAgents
+            | Request::ListAgentSessions { .. }
             | Request::SetAgentCommand { .. }
             | Request::RenameAgent { .. }
             | Request::RemoveAgent { .. }

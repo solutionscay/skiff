@@ -143,6 +143,12 @@ pub enum Request {
     },
     /// The known agent CLIs, installed and enabled.
     ListAgents,
+    /// Runs an agent's own session list command in a folder, for the
+    /// resume list. Answers with what it printed.
+    ListAgentSessions {
+        command: Vec<String>,
+        cwd: PathBuf,
+    },
     /// Saves which agents the + menu offers.
     SetAgents {
         enabled: Vec<String>,
@@ -206,6 +212,7 @@ pub enum Response {
     Project { project: Project },
     Folder { folder: FolderInfo },
     Agents { agents: Vec<AgentInfo> },
+    Output { stdout: String },
     Icon { icon: Option<String> },
     Themes { themes: Vec<crate::theme::TerminalTheme> },
     Appearance {

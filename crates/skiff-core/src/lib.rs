@@ -25,4 +25,4 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Bumped when a request or reply changes. A client that sees another
 /// number is talking to an older or newer daemon.
-pub const PROTOCOL: u32 = 21;
+pub const PROTOCOL: u32 = 22;

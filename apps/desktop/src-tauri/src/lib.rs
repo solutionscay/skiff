@@ -92,6 +92,7 @@ pub fn run() {
             commands::set_appearance,
             commands::set_font_size,
             commands::list_agents,
+            commands::list_agent_sessions,
             commands::set_agents,
             commands::set_agent_command,
             commands::rename_agent,
