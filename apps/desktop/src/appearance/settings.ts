@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { AgentInfo, TerminalTheme } from "../platform/types";
 import { agentNameList, setAgentNameList } from "./agentNames";
 import { themeGrid } from "./themeCards";
+import { actionFor } from "../app/keys";
 
 /**
  * Settings over the sidebar and terminal: agents, appearance, and Open with.
@@ -27,7 +28,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   document.getElementById("body")!.appendChild(root);
 
   let agents: AgentInfo[] = [];
-  let tab: "agents" | "appearance" | "open" = "agents";
+  const TABS = ["agents", "appearance", "open"] as const;
+  let tab: (typeof TABS)[number] = "agents";
   type OpenKey = "diff" | "text" | "markdown" | "html";
   type OpenSettings = Record<OpenKey, string> & { default_diff: string };
   let openSet: OpenSettings | null = null;
@@ -86,7 +88,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const head = h("div", "set-nav-head");
     head.append(h("div", "set-title", "Settings"), h("div", "set-path mono", "~/.config/skiff/projects.toml"));
     const names = { agents: "Agents", appearance: "Appearance", open: "Open with" };
-    const tabs = (["agents", "appearance", "open"] as const).map((t) => {
+    const tabs = TABS.map((t) => {
       const b = h("button", "set-tab" + (tab === t ? " active" : ""), names[t]);
       b.type = "button";
       b.addEventListener("click", () => {
@@ -107,10 +109,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
 
     const main = h("div", "set-main");
     const intro = h("div", "set-head");
-    intro.append(
-      h("div", "set-h", "Agents"),
-      h("div", "set-sub", "Turn on the agents you use. The + button on a worktree offers them, plus a plain shell."),
-    );
+    intro.append(h("div", "set-h", "Agents"));
     const cols = h("div", "set-row set-cols");
     cols.append(h("span", "c-on", ""), h("span", "c-name", "AGENT"), h("span", "c-cmd", "COMMAND"), h("span", "c-status", "STATUS"));
     main.append(intro, cols);
@@ -157,7 +156,6 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       err.setAttribute("role", "alert");
       main.appendChild(err);
     }
-    main.appendChild(h("div", "set-note", "Empty command: the default runs. Type a full command line to change it, for example claude --dangerously-skip-permissions. Saved under [agents] in projects.toml."));
     main.appendChild(callSigns());
     root.replaceChildren(nav, main, closeButton());
   }
@@ -171,10 +169,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   function callSigns(): HTMLElement {
     const box = h("div", "set-names-box");
     const head = h("div", "set-head");
-    head.append(
-      h("div", "set-h", "Agent names"),
-      h("div", "set-sub", "A new agent session is named a title plus a name, such as Captain Kraken. One entry per line. Empty a list to restore its defaults."),
-    );
+    head.append(h("div", "set-h", "Agent names"));
     box.appendChild(head);
     const cols = h("div", "set-names-cols");
     for (const [list, label] of [["ranks", "TITLES"], ["nouns", "NAMES"]] as const) {
@@ -294,10 +289,39 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     onClose();
   }
 
+  /** Ctrl+Shift+Up/Down: the previous or next section, as on the rail. The keys go to its tab. */
+  function stepTab(dir: 1 | -1) {
+    // Leaving a field saves it, as a click on a tab does.
+    (document.activeElement as HTMLElement | null)?.blur();
+    tab = TABS[(TABS.indexOf(tab) + dir + TABS.length) % TABS.length];
+    draw();
+    document.body.classList.add("kbd");
+    root.querySelector<HTMLButtonElement>(".set-tab.active")?.focus();
+  }
+
+  /** Ctrl+Shift+Right: into the section, at its first control. Ctrl+Shift+Left: back to its tab. */
+  function enterSection(into: boolean) {
+    document.body.classList.add("kbd");
+    if (!into) return root.querySelector<HTMLButtonElement>(".set-tab.active")?.focus();
+    root.querySelector<HTMLElement>(".set-main :is(button, input, textarea, [tabindex]):not(:disabled)")?.focus();
+  }
+
   // On the document, so Escape works wherever focus is. Menus and dialogs
   // over settings stop the key first.
   document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || root.hidden || e.defaultPrevented) return;
+    if (root.hidden || e.defaultPrevented || document.querySelector("#ctx-menu:not([hidden]), #launch-menu:not([hidden]), .confirm-overlay")) return;
+    const a = actionFor(e);
+    if (a === "session-next" || a === "session-prev") {
+      e.preventDefault();
+      stepTab(a === "session-next" ? 1 : -1);
+      return;
+    }
+    if (a === "list-project" || a === "list-back") {
+      e.preventDefault();
+      enterSection(a === "list-back");
+      return;
+    }
+    if (e.key !== "Escape") return;
     e.preventDefault();
     close();
   });
