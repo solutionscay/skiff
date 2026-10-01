@@ -5,7 +5,7 @@ import { h } from "../ui/dom";
 import { invoke } from "@tauri-apps/api/core";
 import type { AgentInfo, TerminalTheme } from "../platform/types";
 import { agentNameList, setAgentNameList } from "./agentNames";
-import { themeGrid } from "./themeCards";
+import { nextCard, themeGrid } from "./themeCards";
 import { type Action, actionFor } from "../app/keys";
 
 /**
@@ -305,6 +305,43 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     if (!into) return root.querySelector<HTMLButtonElement>(".set-tab.active")?.focus();
     root.querySelector<HTMLElement>(".set-main :is(button, input, textarea, [tabindex]):not(:disabled)")?.focus();
   }
+
+  /**
+   * Plain arrows. On a tab, Up/Down change the section and Right goes into it.
+   * In a section, Up/Down go to the nearest control above or below, and Left/Right
+   * along the row. Text keeps its own keys: Left/Right move the caret, and a name
+   * list lets Up/Down out only from its first or last line.
+   */
+  root.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || !e.key.startsWith("Arrow")) return;
+    const el = document.activeElement as HTMLElement | null;
+    if (!el || !root.contains(el)) return;
+    const up = e.key === "ArrowUp";
+    const vertical = up || e.key === "ArrowDown";
+    if (el.classList.contains("set-tab")) {
+      if (vertical) stepTab(up ? -1 : 1);
+      else if (e.key === "ArrowRight") enterSection(true);
+      else return;
+      return e.preventDefault();
+    }
+    if (!el.closest(".set-main")) return;
+    const text = el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type !== "range");
+    if (!vertical && (text || el instanceof HTMLInputElement)) return;
+    if (el instanceof HTMLTextAreaElement) {
+      const v = el.value;
+      if (up ? v.lastIndexOf("\n", el.selectionStart - 1) >= 0 : v.indexOf("\n", el.selectionEnd) >= 0) return;
+    }
+    const stops = [...root.querySelectorAll<HTMLElement>(".set-main :is(button, input, textarea):not(:disabled)")];
+    const at = stops.indexOf(el);
+    if (at < 0) return;
+    e.preventDefault();
+    let to = nextCard(stops, at, up ? "up" : e.key === "ArrowDown" ? "down" : e.key === "ArrowLeft" ? "left" : "right");
+    // Left and Right keep to the row.
+    if (!vertical && Math.abs(stops[to].getBoundingClientRect().top - el.getBoundingClientRect().top) > 1) to = at;
+    // Left from the start of a row goes back to the tab.
+    if (to === at && e.key === "ArrowLeft") return enterSection(false);
+    stops[to].focus();
+  });
 
   /** The list keys, as Settings reads them. True when Settings used the key. */
   function runKey(a: Action | null): boolean {

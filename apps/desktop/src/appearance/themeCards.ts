@@ -86,7 +86,7 @@ const KEYS: Record<string, "left" | "right" | "up" | "down" | "first" | "last"> 
 };
 
 /** The card an arrow key lands on. Up and down keep to the nearest column; the ends stop. */
-function nextCard(cards: HTMLElement[], at: number, key: "left" | "right" | "up" | "down" | "first" | "last"): number {
+export function nextCard(cards: HTMLElement[], at: number, key: "left" | "right" | "up" | "down" | "first" | "last"): number {
   if (key === "first") return 0;
   if (key === "last") return cards.length - 1;
   if (key === "left") return Math.max(0, at - 1);
