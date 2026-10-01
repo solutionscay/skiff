@@ -29,6 +29,7 @@ import { setFontSize } from "./terminal/terminalFont";
 import { loadThemes } from "./appearance/themes";
 import { loadPlace, trackPlace } from "./app/stored";
 import { startMemory } from "./diagnostics/memory";
+import { watchStatusbar } from "./workspace/status";
 import { toggleFocusMode, toggleMaximize } from "./app/modes";
 import { focusNextUnread, focusNextWaiting, selectProject, showGroup, showSingle } from "./workspace/view";
 
@@ -66,6 +67,7 @@ async function boot() {
     .catch(() => null);
   void initTrace();
   startMemory();
+  watchStatusbar();
   const status = await invoke<DaemonStatus>("daemon_status");
   setDaemon(status);
   if (!status.connected) return;

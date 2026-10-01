@@ -4,7 +4,14 @@
   background: var(--bg-deep); border-top: 1px solid var(--rule);
   font-size: calc(12px * var(--zoom, 1)); color: var(--text-2);
 }
-.status-item { display: flex; align-items: center; gap: calc(6 * var(--u)); }
+/* Items never wrap. status.ts drops whole items when the bar runs out of room. */
+#statusbar { overflow: hidden; }
+.status-item { display: flex; align-items: center; gap: calc(6 * var(--u)); white-space: nowrap; flex-shrink: 0; }
+.status-item[hidden] { display: none; }
 /* Exactly the rail's width, so its right rule continues the rail's. */
 .dev-badge { align-self: stretch; flex-shrink: 0; justify-content: center; width: calc(72 * var(--u)); margin-left: calc(-16 * var(--u)); padding: 0; background: var(--state-waiting-bg); border-right: 1px solid var(--rule); color: var(--state-waiting-text); font: 700 calc(11px * var(--zoom, 1)) var(--mono); letter-spacing: 0.08em; }
 .status-item .dot { width: calc(7 * var(--u)); height: calc(7 * var(--u)); }
+/* Copies the daemon pid. Quiet until hovered; green for a moment after a copy. */
+.status-copy { display: flex; align-items: center; justify-content: center; width: calc(20 * var(--u)); height: calc(20 * var(--u)); margin-left: calc(-2 * var(--u)); padding: 0; border: 0; background: transparent; color: var(--text-3); }
+.status-copy:hover { background: color-mix(in srgb, var(--text) 14%, transparent); color: var(--text); }
+.status-copy.copied { color: var(--ok); }

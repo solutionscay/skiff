@@ -6,7 +6,9 @@ import { removePane, replacePane, sessionsOf } from "../workspace/layout";
 
 import type { AgentInfo, DaemonEvent, DaemonStatus, Project, SessionInfo, SplitDir } from "../platform/types";
 import { invoke } from "@tauri-apps/api/core";
-import { $ } from "../ui/dom";
+import { $, h } from "../ui/dom";
+import { rune } from "../ui/runes";
+import { showError } from "../ui/alerts";
 import { daemonBadge, restartIfIdle } from "./daemonRestart";
 import { loadChangesSetting, reloadChanges } from "../workspace/changes";
 import { loadProjectThemes } from "../appearance/themes";
@@ -26,8 +28,33 @@ export function setDaemon(status: DaemonStatus) {
     : status.warning?.kind === "hung"
       ? "skiffd not responding"
       : "skiffd unreachable";
-  $("socket").textContent = status.pid ? `${status.socket} · pid ${status.pid}` : status.socket;
+  const socket = $("socket");
+  if (status.pid) socket.replaceChildren(`${status.socket} · pid ${status.pid}`, pidCopy(status.pid));
+  else socket.textContent = status.socket;
   daemonBadge(status.warning);
+}
+
+let copiedTimer: number | undefined;
+
+/** A small button after the pid that copies the number. */
+function pidCopy(pid: number): HTMLButtonElement {
+  const b = h("button", "status-copy");
+  b.type = "button";
+  b.title = "Copy pid";
+  b.setAttribute("aria-label", `Copy pid ${pid}`);
+  b.appendChild(rune("code-copy", 12));
+  b.addEventListener("click", () => {
+    navigator.clipboard.writeText(String(pid)).then(() => {
+      b.classList.add("copied");
+      b.title = "Copied";
+      clearTimeout(copiedTimer);
+      copiedTimer = window.setTimeout(() => {
+        b.classList.remove("copied");
+        b.title = "Copy pid";
+      }, 1200);
+    }, showError);
+  });
+  return b;
 }
 
 /** A new session is the single view, unless it came from a pane's Split menu. */
