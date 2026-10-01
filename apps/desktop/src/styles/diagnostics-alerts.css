@@ -6,7 +6,7 @@
 
 /* An outdated skiffd: a top-bar cell, and the panel it opens. */
 #topbar .daemon-badge {
-  gap: calc(8 * var(--u)); border: 0; border-left: 1px solid var(--rule); border-right: 0;
+  gap: calc(8 * var(--u)); border: 0;
   background: transparent; color: var(--state-waiting-text); font-size: calc(12px * var(--zoom, 1)); font-weight: 500;
 }
 #topbar .daemon-badge:hover, #topbar .daemon-badge[aria-expanded="true"] { background: var(--state-waiting-bg); }

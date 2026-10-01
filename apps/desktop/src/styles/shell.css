@@ -21,7 +21,7 @@
 #topbar .search kbd { flex-shrink: 0; }
 body.header-bar #topbar .search { display: none; }
 /* Quiet cells: the rail and the tree carry the motion, the top bar only counts. */
-#topbar .nx { gap: calc(8 * var(--u)); border: 0; border-left: 1px solid var(--rule); background: transparent; color: var(--text-2); }
+#topbar .nx { gap: calc(8 * var(--u)); border: 0; background: transparent; color: var(--text-2); }
 #topbar .nx:hover { background: var(--bg-raised); color: var(--text); }
 #topbar .nx svg { flex-shrink: 0; width: calc(13 * var(--u)); height: calc(13 * var(--u)); }
 #topbar .nx .num { font: 600 calc(12px * var(--zoom, 1)) var(--mono); font-variant-numeric: tabular-nums; }
