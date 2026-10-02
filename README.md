@@ -41,6 +41,8 @@ Download the latest [release](https://github.com/solutionscay/skiff/releases/lat
 - Linux (x86_64): `.deb`, `.rpm` or AppImage
 - macOS (Apple Silicon): `.dmg`, signed and notarized
 
+The `skiff` command drives sessions and groups from a shell or an agent. See the [wiki CLI page](https://github.com/solutionscay/skiff/wiki/CLI).
+
 ## Themes
 
 Themes apply to the app, a project, or a session. A session theme replaces the
@@ -72,6 +74,7 @@ colors, so a program's dark blocks can still appear inside a light terminal.
 crates/skiff-core    session model, wire protocol, projects.toml config
 crates/skiffd        daemon: owns every PTY, serves clients over a Unix socket
 crates/skiff-client  async client for the socket
+crates/skiff-cli     the `skiff` command: sessions and groups from the shell
 apps/desktop         Tauri v2 app, vanilla TypeScript + xterm.js
   src/app            state, actions, keyboard, startup connections
   src/ui             DOM builders, dialogs, menus

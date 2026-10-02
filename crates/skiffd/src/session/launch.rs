@@ -4,7 +4,7 @@ use std::path::Path;
 use super::{default_shell, SHELL_HANDOFF_TITLE};
 
 /// The command for the PTY, and whether it is the shell itself.
-pub(super) fn launch_command(spec: &SessionSpec, command: &str, cwd: &Path) -> (CommandBuilder, bool) {
+pub(super) fn launch_command(spec: &SessionSpec, command: &str, cwd: &Path, id: &str) -> (CommandBuilder, bool) {
     // An alias from the user's rc files stands for a command line.
     let (program, args) = match skiff_core::alias::expand(command) {
         Some(w) => (w[0].clone(), [&w[1..], &spec.args[..]].concat()),
@@ -41,5 +41,8 @@ pub(super) fn launch_command(spec: &SessionSpec, command: &str, cwd: &Path) -> (
     cmd.cwd(cwd);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
+    // So the `skiff` CLI in a pane knows its own session and reaches this daemon.
+    cmd.env("SKIFF_SESSION", id);
+    cmd.env("SKIFF_SOCKET", skiff_core::socket::socket_path());
     (cmd, is_shell)
 }

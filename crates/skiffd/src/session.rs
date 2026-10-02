@@ -330,7 +330,9 @@ impl SessionPool {
             })
             .map_err(|e| anyhow!("openpty: {e}"))?;
 
-        let (cmd, is_shell) = launch::launch_command(&spec, &command, &cwd);
+        let id: SessionId =
+            id.unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string()[..12].to_string());
+        let (cmd, is_shell) = launch::launch_command(&spec, &command, &cwd, &id);
         let mut child = pair
             .slave
             .spawn_command(cmd)
@@ -347,8 +349,6 @@ impl SessionPool {
             .map_err(|e| anyhow!("take writer: {e}"))?;
         let killer = child.clone_killer();
 
-        let id: SessionId =
-            id.unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string()[..12].to_string());
         let info = SessionInfo {
             id: id.clone(),
             label,

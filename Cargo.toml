@@ -4,6 +4,7 @@ members = [
   "crates/skiff-core",
   "crates/skiff-client",
   "crates/skiffd",
+  "crates/skiff-cli",
   "apps/desktop/src-tauri",
 ]
 
@@ -27,6 +28,7 @@ dirs = "6"
 toml = "1"
 portable-pty = "0.9"
 uuid = { version = "1", features = ["v4"] }
+clap = { version = "4", features = ["derive"] }
 
 [profile.release]
 codegen-units = 1
