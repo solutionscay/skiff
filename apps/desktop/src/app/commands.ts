@@ -19,7 +19,7 @@ import { closedProjectsMenu, closeProject, openClosedProject, removeProject } fr
 
 import { scheduleRender } from "./render";
 import { S, sessions } from "./state";
-import { accent, activeGroupObj, currentProject, currentWorktree, place, shownIds, splitFull, worktreeSessions } from "./stateQueries";
+import { accent, activeGroupObj, currentProject, currentWorktree, inShownGroup, place, shownIds, splitFull, worktreeSessions } from "./stateQueries";
 
 import { sessionThemeMenu } from "../appearance/themes";
 import { modeKeyBlocked } from "./modes";
@@ -70,7 +70,7 @@ function commands(): Cmd[] {
     { section: "View", label: "Previous session", key: k("session-prev"), action: "session-prev", run: act("session-prev") },
     { section: "View", label: "Add pane right…", key: k("split-right"), action: "split-right", run: act("split-right"), off: !shown || splitFull() },
     { section: "View", label: "Add pane below…", key: k("split-down"), action: "split-down", run: act("split-down"), off: !shown || splitFull() },
-    { section: "View", label: shownIds().length > 1 ? "Remove from group" : "Close", key: k("close-pane"), action: "close-pane", run: act("close-pane"), off: !shown },
+    { section: "View", label: "Remove from group", key: k("close-pane"), action: "close-pane", run: act("close-pane"), off: !(S.focused && inShownGroup(S.focused)) },
     ...groupCloseEntries(g).map((entry): Cmd => ({
       section: "View", label: entry.label, key: "", run: () => entry.run?.(), off: entry.disabled,
     })),

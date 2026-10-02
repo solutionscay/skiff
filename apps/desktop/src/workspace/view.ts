@@ -13,9 +13,10 @@ import { autoName, deleteGroup, saveGroup } from "../app/groups";
 import { render } from "../app/render";
 import { clearSelection } from "./selection";
 import { FULL_HINT, MAX_PANES, OTHER, S, selectedWorktree, sessions } from "../app/state";
-import { activeGroupObj, currentLayout, groupOf, place, shownIds, splitFull, worktreeSessions } from "../app/stateQueries";
+import { activeGroupObj, currentLayout, groupOf, inShownGroup, place, shownIds, splitFull, worktreeSessions } from "../app/stateQueries";
 import { panes } from "../terminal/terminalState";
 import { closePeek } from "../terminal/peek";
+import { listItems } from "../app/keyboard";
 import { view } from "../terminal/terminal";
 
 /** Give the keys to a shown pane. */
@@ -205,19 +206,31 @@ function emptyLast(g: Group, id: string): Layout | null {
   return filledOf(rest).length === 0 ? replacePane(g.layout, id, slot) : null;
 }
 
+/**
+ * The pane's × and the close key: the session leaves the group on screen and
+ * stays selected, alone. A single pane has no group to leave: nothing happens.
+ */
 export function closePane(id: string) {
-  const g = activeGroupObj();
-  const kept = g && sessionsOf(g.layout).includes(id) ? emptyLast(g, id) : null;
-  if (g && kept) {
-    g.layout = kept;
-    g.focus = null;
-    S.focused = null;
-    saveGroup(g);
-    render();
-    return focusFirstSlot();
+  if (inShownGroup(id)) removeFromGroup(id);
+}
+
+/** The pane beside `id` that takes the keys when `id` ends: left, right, up, then down. */
+export function paneNear(id: string): string | null {
+  const rects = view.cellRects();
+  for (const dir of ["left", "right", "up", "down"] as const) {
+    const n = neighbor(rects, id, dir);
+    if (n && !isSlot(n)) return n;
   }
-  const next = removePane(currentLayout(), id);
-  applyLayout(next, S.focused === id ? null : S.focused);
+  return null;
+}
+
+/** The session row after `id` in the list, else the one before it. */
+export function rowNear(id: string): string | null {
+  const rows = listItems().filter((el) => el.dataset.session);
+  const at = rows.findIndex((el) => el.dataset.session === id);
+  if (at < 0) return null;
+  const near = [...rows.slice(at + 1), ...rows.slice(0, at).reverse()];
+  return near.map((el) => el.dataset.session!).find((x) => x !== id && sessions.has(x)) ?? null;
 }
 
 /** Keep the focused pane as a single view and drop the group. Sessions keep running. */

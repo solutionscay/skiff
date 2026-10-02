@@ -18,7 +18,7 @@ import { render, scheduleRender } from "./render";
 import { born, gone, OTHER, removeErrors, S, sessions, upsert } from "./state";
 import { activeGroupObj, place, shownIds } from "./stateQueries";
 import { panes } from "../terminal/terminalState";
-import { focusPane, showSingle, splitWith, unfocus } from "../workspace/view";
+import { focusPane, paneNear, revealSession, rowNear, showSingle, splitWith, unfocus } from "../workspace/view";
 
 export function setDaemon(status: DaemonStatus) {
   const dot = $("daemon").querySelector(".dot") as HTMLElement;
@@ -220,6 +220,9 @@ export const releaseGroup = (id: string) => void kept.delete(id);
 function dropSession(id: string) {
   gone.add(id);
   if (!sessions.has(id)) return;
+  // The keys go to a neighbor, picked while the pane and its row are still there:
+  // the pane beside it in a group, else the next session row in the list.
+  const near = S.focused !== id ? null : shownIds().length > 1 ? paneNear(id) : S.single === id ? rowNear(id) : null;
   sessions.delete(id);
   panes.get(id)?.term.dispose();
   panes.get(id)?.el.remove();
@@ -247,7 +250,8 @@ function dropSession(id: string) {
   if (S.single === id) S.single = null;
   const ids = shownIds();
   if (S.focused && !ids.includes(S.focused)) S.focused = null;
-  if (!ids.length) return unfocus();
+  if (near && ids.includes(near)) return focusPane(near);
+  if (!ids.length) return near && sessions.has(near) ? revealSession(near) : unfocus();
   if (!S.focused) {
     const next = activeGroupObj()?.focus ?? ids.find((x) => !isSlot(x));
     if (next) return focusPane(next);

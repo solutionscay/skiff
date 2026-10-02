@@ -123,8 +123,8 @@ export function runAction(a: Action) {
 
 /**
  * The close key picks its target as Rename does. A session row leaves its
- * group, and a group row ungroups. Else the focused pane closes. Sessions
- * keep running in every case.
+ * group, and a group row ungroups. Else the focused pane leaves its group;
+ * a single pane has none, so nothing happens. Sessions keep running in every case.
  */
 function closeKey(shown: boolean) {
   const el = document.activeElement as HTMLElement | null;

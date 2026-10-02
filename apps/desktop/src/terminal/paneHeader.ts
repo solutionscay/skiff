@@ -13,7 +13,7 @@ import { button, h } from "../ui/dom";
 import { icon } from "../ui/icons";
 
 import { S, sessions } from "../app/state";
-import { accent, awayPlaces, place, shownIds } from "../app/stateQueries";
+import { accent, awayPlaces, inShownGroup, place, shownIds } from "../app/stateQueries";
 
 import { closePane, dragSessions, focusPane } from "./paneActions";
 import { resumeOffer, resumePane } from "./resume";
@@ -45,9 +45,10 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   // A session picked in the list shows in its pane too, so a picked pair reads as one.
   cell.classList.toggle("selected", S.selection.includes(id));
   const multi = shownIds().length > 1;
+  const grouped = inShownGroup(id);
   const away = s ? awayPlaces(s).map((a) => branchName(a.worktree)).join(", ") : "";
   // Rebuild only on change, so a click that spans a daemon event still lands.
-  const sig = s ? JSON.stringify([s.state, s.exit_code, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, away, resumeOffer(s)]) : "";
+  const sig = s ? JSON.stringify([s.state, s.exit_code, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, grouped, away, resumeOffer(s)]) : "";
   if (head.dataset.sig === sig) return;
   head.dataset.sig = sig;
   head.replaceChildren();
@@ -87,10 +88,13 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
     viewBtn(max ? "view-restore" : "view-maximize", max ? "Restore pane" : "Maximize pane", "maximize", toggleMaximize);
   }
   viewBtn("view-focus", S.focusMode ? "Leave focus mode" : "Focus mode", "focus-mode", toggleFocusMode);
-  const x = button("head-btn", "", () => closePane(id));
-  const label = multi ? "Remove from group. The session keeps running." : "Close. The session keeps running.";
-  x.title = label;
-  x.setAttribute("aria-label", label);
-  x.appendChild(icon('<path d="M6 6l12 12M18 6L6 18"></path>'));
-  head.appendChild(x);
+  // Only a pane of a group has a × : it takes the session out and keeps it selected.
+  if (grouped) {
+    const x = button("head-btn", "", () => closePane(id));
+    const label = "Remove from group. The session keeps running.";
+    x.title = `${label} (${keyLabel("close-pane")})`;
+    x.setAttribute("aria-label", label);
+    x.appendChild(icon('<path d="M6 6l12 12M18 6L6 18"></path>'));
+    head.appendChild(x);
+  }
 }

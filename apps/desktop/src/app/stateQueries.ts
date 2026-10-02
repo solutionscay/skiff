@@ -70,6 +70,9 @@ export function currentLayout(): Layout | null {
 
 export const shownIds = () => sessionsOf(currentLayout());
 
+/** True when `id` is a pane of the group on screen. Only such a pane has a group to leave. */
+export const inShownGroup = (id: string) => !!activeGroupObj() && shownIds().includes(id);
+
 /** What the terminal area draws: the saved view, or its one maximized pane. */
 export function viewLayout(): Layout | null {
   const l = currentLayout();

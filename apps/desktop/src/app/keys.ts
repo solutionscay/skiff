@@ -172,7 +172,7 @@ export const DESCRIBE: [string, Action, string][] = [
   ["View", "palette", "Command palette"],
   ["View", "split-right", "Add pane right"],
   ["View", "split-down", "Add pane below"],
-  ["View", "close-pane", "Close the pane, or take the session row in the list out of its group. On a group row, ungroup. Sessions keep running"],
+  ["View", "close-pane", "Take the session out of its group: the focused pane, or the session row in the list. It stays selected. On a group row, ungroup. Sessions keep running"],
   ["View", "next-waiting", "Next waiting session"],
   ["View", "back", "Back to the last session"],
   ["View", "session-next", "Next row in the list: worktree, group, session, Changes or Files. A changed file loads its diff. On the rail, the next project. In Settings, the next section"],
