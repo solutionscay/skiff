@@ -23,34 +23,34 @@ Test every change with three questions:
 
 ## Product rules
 
-- **Panes are for sessions.** Files, diffs and viewers open in another app's window or a terminal window (Settings › Open with). A new "open X" feature launches a window. It never adds a pane.
-- **Sessions outlive the window.** `skiffd` owns every PTY. Closing a pane, a group or the window does not end a session. Only End or Kill does, and both ask first.
-- **Hands off the agent setup.** Skiff installs no hooks or plugins, injects no flags, and writes nothing into an agent's config or data folder. An integration, if one exists, is a separate package that the user installs.
-- **Restore as shells.** After a restart, each pane comes back as a shell in its folder. Skiff does not guess agent state.
+- **Panes are for sessions.** Files and viewers open in another app's window (Settings › Open with). Diffs use a read-only peek over the terminals. The Diffs command prints its output into the peek. The peek never adds a session pane.
+- **Sessions outlive the window.** `skiffd` owns every PTY. Closing a pane, a group or the window does not end a session. End and Kill ask first. Closing or removing a project also ends its sessions. Close asks when sessions run; Remove always asks.
+- **Hands off the agent setup.** Skiff installs no hooks or plugins and writes nothing into an agent's config or data folder. On request, Resume runs the agent's CLI resume command. An integration, if one exists, is a separate package that the user installs.
+- **Restore as shells.** After a daemon restart, each saved session comes back as a shell in its folder. Resume offers the agent's picker, a conversation list, or Continue latest. The user chooses how to resume. Reopening the window reconnects to live sessions.
 - **One settings file.** `projects.toml` holds the settings. Customization is declarative: TOML and themes. Skiff has no plugins and no automations.
 
 ## Visual rules
 
-- **Square and flush.** `border-radius: 0` everywhere. Only dots are round. Panes touch, with no gaps and no floating cards.
-- **A line marks a region edge.** The rail, the list, the terminal area, the top bar and the panes have lines between them. Inside a region, rows align on the grid without lines. Worktrees part with space.
-- **Show only what needs a look.** A normal state shows nothing: an idle session has no mark, and a count the rows already show is left out. A pane's buttons show on the focused pane and on a hovered header. A file's folder shows on the current row and on hover.
-- **One rule weight.** Lines are 1px `--rule`. Edges of floating surfaces use `--rule-strong`. Do not stack accent lines.
-- **One row grid.** Rows, menu items, headers and bar buttons are `--row` high (40px at zoom 1). Side padding is 16px. Lines align across the rail, the sidebar and the terminal area.
-- **Everything zooms.** Write lengths as `calc(N * var(--u))` and font sizes as `calc(Npx * var(--zoom, 1))`. Do not use raw px for layout.
-- **Tokens only.** Colors come from `styles/tokens.css`. Components contain no hex values. A theme changes the tokens.
-- **Two typefaces.** IBM Plex Sans for the UI: 13px body, 11 to 12px for meta text and hints, weights 500 to 700 for emphasis. JetBrains Mono for terminals and code.
+- **Square and flush.** `border-radius: 0` everywhere. Dots and slider thumbs are round. Panes touch, with no gaps and no floating cards.
+- **A line marks a region edge.** The rail, the sidebar, the terminal area, the top bar and the panes have lines between them. Worktrees part with space.
+- **Show only what needs a look.** An idle session has no mark unless it has unread output. Pane buttons show on the focused pane and on a hovered header. A changed file's folder shows on the current row and on hover.
+- **One rule weight.** Lines are 1px `--rule`. Pane dividers and edges of floating surfaces use `--rule-strong`. Do not stack accent lines.
+- **One row grid.** Main rows, menu items and pane headers are `--row` high (40px at zoom 1). Session rows, file rows and section headers use 20px. The top bar is 48px. Standard side padding is 16px; nested rows use indentation.
+- **Everything zooms.** Write lengths as `calc(N * var(--u))` and font sizes as `calc(Npx * var(--zoom, 1))`. Rules and small accent bars use fixed pixel widths. Measured positions use pixels.
+- **Tokens only.** Colors come from `styles/tokens.css`. A theme changes the tokens. The color picker uses fixed white and black for its cursor contrast.
+- **Typefaces.** IBM Plex Sans for the UI: 13px body, 11 to 12px for meta text and hints, weights 500 to 700 for emphasis. JetBrains Mono for terminals and code. The wordmark uses Space Grotesk.
 - **Each color has one job.**
   - Project color (`--pc`) shows location: the rail chip, the 3px project bar, the current row and the lit menu item.
   - State colors show session state: amber for waiting, blue for working, grey for done and idle. Project colors stay away from state colors.
-  - Red shows errors and destructive items only. A destructive item stays red when lit.
-- **Highlight, do not outline.** The current row and the lit menu item get a 22% project-color tint and a 2px inset bar on the left. A focus ring shows only after keyboard use (`body.kbd`), as a quiet 1px line. A pane picked in the list gets a 2px frame in the working blue, as the focused pane gets one in its project color.
+  - Red shows errors, destructive items and deleted lines in diffs. Green marks added lines and unread output. A destructive item stays red when lit.
+- **Highlight, do not outline.** The current row and the lit menu item get a 22% project-color tint and a 2px inset bar on the left. The project row retains its 3px project bar. A focus ring shows only after keyboard use (`body.kbd`), as a quiet 1px line. A selected pane gets a 2px frame in the working blue. The focused pane gets one in its project color.
 - **Shadows on floating surfaces only.** Menus and dialogs have shadows. Menus are solid, never translucent.
-- **Little motion.** Layout transitions are 120ms or less. Only the working skiff and the mascot loop, and they use `steps()`. Bells and flags stay still. Smooth loops cost frames on WebKit and in power-saver mode.
+- **Little motion.** Small transitions take 120ms. Focus mode and maximize take 180ms and obey reduced-motion settings. The working skiff loops with `steps()`. Bells and flags stay still. Smooth loops cost frames on WebKit and in power-saver mode.
 - **Icons.** The Rune Icons outline set, stroke `currentColor`, 14px in menus. Add only the icons that the code uses.
 
 ## Theme scope
 
-Themes cascade: app, then project, then group or session. A lower level replaces the one above it.
+Themes cascade: app, then project, then session. A lower level replaces the one above it. A group theme sets the theme of each member session.
 
 - Each picker names its scope in the title: "Project theme: skiff", "Session theme: Sea Dog Mermaid".
 - A line under the title says what the theme covers.
@@ -62,12 +62,12 @@ Themes are location cues. One look tells you which project or session you are in
 
 - **Keyboard and mouse are equal.** An action has one implementation. Its key, its menu item and its palette entry all call it.
 - **Ctrl+Shift for the app.** App keys are Ctrl+Shift+letter (⌘+Shift on macOS). Bare Ctrl belongs to the terminal. Users override keys in `[keys]`, and F1 shows the live keymap. Never hardcode a key label: use `keyLabel(action)`.
-- **Keys act on what is highlighted.** On the rail, a key acts on the project. On a session row, it acts on that session. On a group row, it acts on the group. On a project, worktree, Changes or Files row, it acts on the project. With no row, it acts on the focused pane.
+- **Keys act on what is highlighted.** The menu and theme keys use the highlighted scope. New session uses the row's worktree, else the focused pane's worktree. End session uses a highlighted session row, else the focused session. Close pane follows the row with DOM focus, else the focused pane or picked group. File-manager and copy-path keys use the highlighted file when there is one. See the [Glossary](https://github.com/solutionscay/skiff/wiki/Glossary).
 - **Menus show their keys, and the keys work.** An item's hint key picks that item while the menu is open. Enter always picks the lit item.
 - **One highlight.** The list has one current row at most. The focused pane's frame hides when the keys are elsewhere, such as on the rail or on a group row.
 - **Focus goes back.** A menu or dialog gives the keys back to the rail, row or terminal that opened it. It does not change the selection.
 - **Three regions.** The rail, the list and the terminal have one tab stop each. F6 steps through them.
-- **Ask before you destroy.** Destructive actions ask, and they say what keeps running. Other actions do not ask.
+- **Ask before you destroy.** Actions that end live sessions or remove a project ask. They say which sessions end and what stays. Removing a selection of already exited sessions needs no confirmation. Other actions do not ask.
 
 ## Words
 
