@@ -33,6 +33,8 @@ Skiff does not edit or preview files. Each worktree lists its changed files, and
 
 Sessions run in `skiffd`, a daemon that owns every PTY. You can close the window and the agents keep running. When the window opens again, each terminal shows its last screen.
 
+Each session row shows what needs you. A bell means an agent asks for approval. A flag means an agent finished its turn, or a shell command ended, while you were in another pane. `skiffd` reads this from the screen and from the program in front of the terminal, not from hooks. When you come back to a pane, a line marks where you stopped reading.
+
 ## Install
 
 Download the latest [release](https://github.com/solutionscay/skiff/releases/latest):
