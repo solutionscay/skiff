@@ -79,6 +79,7 @@ const FIXED_SHORTCUTS: Shortcut[] = [
   ["Empty pane", "Remove the pane", "Delete"],
   ["Menus", "Move through menu items", "↑ / ↓"],
   ["Menus", "Open a submenu", "→ / Enter / Space"],
+  ["Menus", "In Add pane and group menus, start the numbered choice", "1…9"],
   ["Menus", "Close a menu or submenu", "Esc / ←"],
   ["Dialogs", "Close the dialog", "Esc"],
   ["Dialogs", "Run the selected dialog action", "Enter"],

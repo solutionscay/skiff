@@ -13,7 +13,7 @@ import { leaf, removePane, replacePane, sessionsOf } from "./layout";
 
 import { render } from "../app/render";
 import { collapsed, S, selectedWorktree, sessions } from "../app/state";
-import { enabledAgents } from "../app/stateQueries";
+import { launchChoices, launchDigit } from "../app/stateQueries";
 
 import type { AgentInfo, Group, Project, Worktree } from "../platform/types";
 import { focusPane, showSingle, unfocus } from "./view";
@@ -115,7 +115,7 @@ function removeSlot(id: string) {
   else unfocus();
 }
 
-/** An empty pane: every enabled agent, then Shell, as one flush list. Digits pick. */
+/** An empty pane: Shell, then every enabled agent, as one flush list. Digits pick. */
 export function slotBody(id: string, body: HTMLElement) {
   const box = h("div", "slot");
   box.dataset.slot = id;
@@ -125,9 +125,9 @@ export function slotBody(id: string, body: HTMLElement) {
     return void body.replaceChildren(box);
   }
   const list = h("div", "slot-list");
-  [...enabledAgents(), null].forEach((a, i) => {
+  launchChoices().forEach((a, i) => {
     const b = button("slot-item", "", () => void fill(id, a, body));
-    b.append(h("span", "slot-key mono", i < 9 ? String(i + 1) : ""), launchIcon(a), h("span", "slot-name", a ? a.id : "shell"), h("span", "slot-cmd mono", a?.command ?? "$SHELL"));
+    b.append(h("span", "slot-key mono", launchDigit(i)), launchIcon(a), h("span", "slot-name", a ? a.id : "shell"), h("span", "slot-cmd mono", a?.command ?? "$SHELL"));
     list.appendChild(b);
   });
   box.append(list);

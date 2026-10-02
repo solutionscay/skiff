@@ -15,7 +15,7 @@ import { addProject } from "../app/panels";
 import { openClosedProject } from "./projectClose";
 
 import { S } from "../app/state";
-import { accent, currentProject, enabledAgents, shownIds } from "../app/stateQueries";
+import { accent, currentProject, launchChoices, shownIds } from "../app/stateQueries";
 
 let welcomeSig = "";
 let welcomeBox: HTMLElement | null = null;
@@ -25,7 +25,7 @@ export function renderWelcome() {
   const p = currentProject();
   const w = p?.worktrees.find((x) => x.is_main) ?? p?.worktrees[0];
   // Same content: keep the element, and the focus and hover on its buttons.
-  const sig = JSON.stringify([S.projects.length, S.closedProjects.map((x) => x.name), !!S.projectsError, p?.name, p?.color, w?.path, S.justAdded === p?.name, !!S.focused, shownIds().length, enabledAgents().map((a) => a.id)]);
+  const sig = JSON.stringify([S.projects.length, S.closedProjects.map((x) => x.name), !!S.projectsError, p?.name, p?.color, w?.path, S.justAdded === p?.name, !!S.focused, shownIds().length, launchChoices().map((a) => a?.id)]);
   if (sig === welcomeSig && (!welcomeBox || welcomeBox.isConnected)) return;
   welcomeSig = sig;
   host.querySelector(".empty")?.remove();
@@ -65,7 +65,7 @@ export function renderWelcome() {
     const text = h("div", "welcome-text", "Start an agent in ");
     text.append(h("span", "mono", branchName(w)), ", or make a worktree for a task first.");
     const actions = h("div", "welcome-actions");
-    for (const a of [...enabledAgents(), null]) {
+    for (const a of launchChoices()) {
       const b = button("", "", () => {
         S.justAdded = null;
         newSession(w.path, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell").catch(showError);

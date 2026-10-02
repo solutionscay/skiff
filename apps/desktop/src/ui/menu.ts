@@ -172,8 +172,10 @@ export function createMenu(onClose: () => void) {
    *  group or session. Enter still picks the lit item: Ctrl+Shift held from the
    *  key that opened the menu must not run Maximize. */
   const hintKey = (root: HTMLElement, e: KeyboardEvent) => {
-    if ((!e.ctrlKey && !e.metaKey && !e.altKey) || e.key === "Enter" || e.key === " ") return false;
-    const want = eventLabel(e);
+    // A bare digit picks a start-list item, which shows its digit as the hint.
+    const digit = !e.ctrlKey && !e.metaKey && !e.altKey && /^[1-9]$/.test(e.key);
+    if ((!digit && !e.ctrlKey && !e.metaKey && !e.altKey) || e.key === "Enter" || e.key === " ") return false;
+    const want = digit ? e.key : eventLabel(e);
     const b = [...root.querySelectorAll<HTMLButtonElement>(".lm-item[data-hint]:not(:disabled)")].find((x) => x.dataset.hint === want);
     b?.click();
     return !!b;

@@ -2,10 +2,11 @@ import { menuRow } from "./menuRow";
 import type { AgentInfo, Project, Worktree } from "../platform/types";
 import { launchIcon } from "../appearance/agentIcon";
 import { followPointer, menuOpened } from "./menu";
+import { launchDigit } from "../app/stateQueries";
 
 interface Opts {
-  /** Enabled agents, in order. */
-  agents: () => AgentInfo[];
+  /** Shell (null), then enabled agents. */
+  choices: () => (AgentInfo | null)[];
   /** `agent` null starts a plain shell. */
   start: (p: Project, w: Worktree, agent: AgentInfo | null) => void;
   openSettings: () => void;
@@ -15,7 +16,7 @@ interface Opts {
   onClose: () => void;
 }
 
-/** The + menu on a worktree: enabled agents, then Shell. Digits pick, Esc closes. */
+/** The + menu on a worktree: Shell, then enabled agents. Digits pick, Esc closes. */
 export function createLaunchMenu(o: Opts) {
   const menu = document.createElement("div");
   menu.id = "launch-menu";
@@ -61,9 +62,8 @@ export function createLaunchMenu(o: Opts) {
     const title = document.createElement("div");
     title.className = "lm-title";
     title.textContent = "START IN " + (w.branch ?? "detached").toUpperCase();
-    const items: (AgentInfo | null)[] = [...o.agents(), null];
-    const rows = items.map((a, i) =>
-      item(String(i + 1), a?.id ?? "Shell", "", () => o.start(p, w, a), "", launchIcon(a)),
+    const rows = o.choices().map((a, i) =>
+      item(launchDigit(i), a?.id ?? "Shell", "", () => o.start(p, w, a), "", launchIcon(a)),
     );
     const head = document.createElement("div");
     head.className = "lm-head";

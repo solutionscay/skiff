@@ -11,7 +11,7 @@ import { host } from "../terminal/terminalHost";
 import { showError } from "../ui/alerts";
 import { render } from "./render";
 import { collapsed, S, selectedWorktree } from "./state";
-import { enabledAgents } from "./stateQueries";
+import { launchChoices } from "./stateQueries";
 
 import { loadThemes } from "../appearance/themes";
 import { refocusTerminal, selectProject } from "../workspace/view";
@@ -35,7 +35,7 @@ export const settings = createSettings(
 );
 
 export const launchMenu = createLaunchMenu({
-  agents: enabledAgents,
+  choices: launchChoices,
   start: (p, w, agent) => {
     S.selectedProject = p.name;
     selectedWorktree.set(p.name, w.path);

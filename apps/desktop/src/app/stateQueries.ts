@@ -5,10 +5,19 @@ import { leaf, sessionsOf } from "../workspace/layout";
 import { byStart, locate, samePath, type Place } from "../workspace/model";
 import type { AgentInfo, Group, Layout, Project, SessionInfo, Worktree } from "../platform/types";
 
-/** What the + menu offers, in order. */
+/** Agents turned on in Settings, in their configured order. */
 export function enabledAgents(): AgentInfo[] {
   return S.agents.filter((a) => a.enabled);
 }
+
+/** What every start list offers, in order: Shell (null) first, so it is always 1, then the enabled agents.
+ *  The + menu, Add pane, group menus, empty panes and the welcome screen all read this. */
+export function launchChoices(): (AgentInfo | null)[] {
+  return [null, ...enabledAgents()];
+}
+
+/** The digit that picks the choice at `i` in a start list, or "" past 9. */
+export const launchDigit = (i: number) => (i < 9 ? String(i + 1) : "");
 
 export const accent = (p: Project | null | undefined) => (p?.color ? ink(p.color) : DEFAULT_ACCENT);
 

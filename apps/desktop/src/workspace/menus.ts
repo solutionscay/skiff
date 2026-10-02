@@ -27,7 +27,7 @@ import { startRename, startSessionRename } from "./rename";
 import { render } from "../app/render";
 import { clearSelection, selectionPlan, splitSelection } from "./selection";
 import { MAX_PANES, removeErrors, removing, S, selectedWorktree, sessions } from "../app/state";
-import { enabledAgents, groupOf, place, shownIds, splitFull } from "../app/stateQueries";
+import { groupOf, launchChoices, launchDigit, place, shownIds, splitFull } from "../app/stateQueries";
 
 import { groupThemeMenu, projectThemeMenu, sessionThemeMenu } from "../appearance/themes";
 import { focusPane, refocusTerminal, removeFromGroup, showGroup, splitWith, unsplit } from "./view";
@@ -353,13 +353,14 @@ export function splitMenu(id: string, dir: SplitDir, x: number, y: number) {
   const cwd = at ? at.worktree.path : s.cwd;
   const where = at ? branchName(at.worktree) : basename(s.cwd);
   const entries: MenuEntry[] = [{ head: `NEW IN ${where.toUpperCase()}` }];
-  for (const a of [...enabledAgents(), null]) {
+  launchChoices().forEach((a, i) => {
     entries.push({
       glyph: launchIcon(a),
       label: a?.id ?? "Shell",
+      hint: launchDigit(i),
       run: () => void newSession(cwd, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell", { target: id, dir }).catch(showError),
     });
-  }
+  });
   const shown = shownIds();
   const others = [...sessions.values()].filter((o) => !shown.includes(o.id)).sort(byStart);
   if (others.length) {
@@ -383,7 +384,7 @@ export function groupMenu(g: Group, x: number, y: number) {
   ]);
 }
 
-/** Agents, then Shell: a new session in the group's first empty pane, else a new pane on the right. */
+/** Shell, then agents: a new session in the group's first empty pane, else a new pane on the right. */
 function groupStartEntries(g: Group): MenuEntry[] {
   const cwd = cwdOf(g);
   const at = cwd ? locate(S.projects, cwd) : null;
@@ -392,10 +393,11 @@ function groupStartEntries(g: Group): MenuEntry[] {
   const filled = filledOf(g.layout).filter((id) => sessions.has(id));
   const full = !empty && filled.length >= MAX_PANES;
   const entries: MenuEntry[] = [{ head: `NEW IN ${where.toUpperCase()}` }];
-  for (const a of [...enabledAgents(), null]) {
+  launchChoices().forEach((a, i) => {
     entries.push({
       glyph: launchIcon(a),
       label: a?.id ?? "Shell",
+      hint: launchDigit(i),
       disabled: full,
       run: () => {
         if (g.id !== S.activeGroup) showGroup(g.id);
@@ -404,7 +406,7 @@ function groupStartEntries(g: Group): MenuEntry[] {
         void newSession(cwd, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell", place).catch(showError);
       },
     });
-  }
+  });
   return entries;
 }
 
