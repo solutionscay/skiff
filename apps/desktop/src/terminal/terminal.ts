@@ -42,8 +42,8 @@ export const view = createLayoutView(host, {
         const grab = S.grab === id;
         if (grab) S.grab = null;
         if (id === S.focused && (canTakeFocus() || (grab && !modalOpen()))) p.term.focus();
-        // The pane did not exist when it got the keys, after a reload of the app.
-        if (id === S.focused) arrive(id);
+        // A pane on screen shows where the user stopped reading, keys or not.
+        arrive(id);
       })
       .catch(console.error);
   },
@@ -66,6 +66,8 @@ export function renderLayout() {
   const changed = view.sync(layout);
   const shown = new Set(sessionsOf(layout));
   for (const [id, p] of panes) if (!shown.has(id) && (!p.parked || p.el.parentElement !== park)) parkPane(id, p);
+  // The waterline is for what the user can see, not only the pane with the keys.
+  for (const id of shown) if (panes.has(id)) arrive(id);
   if (changed === "resized") fitShown();
   if (changed === "rebuilt") {
     for (const id of shown) {

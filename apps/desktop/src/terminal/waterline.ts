@@ -149,7 +149,7 @@ export function leave(id: string) {
   save();
 }
 
-/** The pane has the keys again: show where the user stopped reading. */
+/** The pane is on screen again: show where the user stopped reading. */
 export function arrive(id: string) {
   if (!marks.has(id) || lines.has(id)) return;
   const pane = panes.get(id);
