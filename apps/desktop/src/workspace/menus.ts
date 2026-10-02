@@ -249,6 +249,7 @@ export function endEntry(s: SessionInfo): MenuEntry {
     return {
       icon: "tools-trash-2",
       label: "Remove from list…",
+      hint: keyLabel("end-session"),
       danger: true,
       run: async () => {
         const ok = await confirmAction({
@@ -264,6 +265,7 @@ export function endEntry(s: SessionInfo): MenuEntry {
   return {
     icon: "indicators-square-stop",
     label: "End session…",
+    hint: keyLabel("end-session"),
     danger: true,
     // A running agent loses its work: ask once more.
     run: async () => {

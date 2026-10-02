@@ -13,7 +13,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { showError } from "../ui/alerts";
 
 import { copyReport, hasReport, startTrace, stopTrace, tracing } from "../diagnostics/latency";
-import { endEntry, groupCloseEntries } from "../workspace/menus";
+import { groupCloseEntries } from "../workspace/menus";
 
 import { closedProjectsMenu, closeProject, openClosedProject, removeProject } from "../workspace/projectClose";
 
@@ -58,12 +58,8 @@ function commands(): Cmd[] {
     { section: "Edit", label: "Rename session", key: k("rename"), action: "rename", run: act("rename"), off: !s },
     { section: "Edit", label: "Session theme…", key: k("theme"), run: () => s && void sessionThemeMenu(s), off: !s },
     {
-      section: "Edit", label: "End session…", key: "", off: !s,
-      run: () => {
-        if (!s) return;
-        const e = endEntry(s);
-        if ("run" in e) e.run?.();
-      },
+      section: "Edit", label: "End session…", key: k("end-session"), action: "end-session", off: !s,
+      run: act("end-session"),
     },
     { section: "View", label: "Command palette", key: k("palette"), action: "palette", run: act("palette") },
     { section: "View", label: "Next session", key: k("session-next"), action: "session-next", run: act("session-next") },

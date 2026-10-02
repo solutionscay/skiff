@@ -7,7 +7,7 @@ import { copy, open, reveal } from "../platform/fileActions";
 import { showError } from "../ui/alerts";
 import { currentRow, cycleRegion, fromProject, listItems, stepList, stepRail, toProject } from "./keyboard";
 
-import { newWorktree, projectMenu, projectRun, splitMenu, ungroup } from "../workspace/menus";
+import { endEntry, newWorktree, projectMenu, projectRun, splitMenu, ungroup } from "../workspace/menus";
 import { ctxMenu } from "../ui/contextMenu";
 import { addProject, launchMenu, settings } from "./panels";
 
@@ -97,6 +97,7 @@ export function runAction(a: Action) {
       return pg ? startRename(pg) : S.focused ? startSessionRename(S.focused) : undefined;
     }
     case "theme": return openTheme();
+    case "end-session": return endCurrentSession();
     case "copy": return void copySelection();
     case "paste": return void pasteClipboard();
     case "find": return openFind();
@@ -155,6 +156,14 @@ function openTheme() {
   const g = row?.dataset.group ? S.groups.find((x) => x.id === row.dataset.group) : undefined;
   if (g) return void groupThemeMenu(g);
   project();
+}
+
+/** End the highlighted session, or the focused pane's session, as its menu item does. */
+function endCurrentSession() {
+  const row = S.atRail ? undefined : currentRow();
+  const session = sessions.get(row?.dataset.session ?? S.focused ?? "");
+  const entry = session && endEntry(session);
+  if (entry && "run" in entry) entry.run?.();
 }
 
 /** The selected project's menu, at its rail icon. */

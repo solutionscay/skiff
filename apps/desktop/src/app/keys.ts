@@ -9,7 +9,7 @@
  */
 
 export type Action =
-  | "palette" | "new-session" | "new-worktree" | "add-project"
+  | "palette" | "new-session" | "new-worktree" | "add-project" | "end-session"
   | "split-right" | "split-down" | "close-pane" | "next-waiting" | "back" | "rename" | "theme"
   | "copy" | "paste" | "find" | "font-bigger" | "font-smaller" | "font-reset" | "settings" | "quit"
   | "focus-left" | "focus-right" | "focus-up" | "focus-down"
@@ -24,6 +24,7 @@ export const DEFAULTS: Record<Action, string> = {
   "new-session": "ctrl+shift+t",
   "new-worktree": "ctrl+shift+n",
   "add-project": "ctrl+shift+o",
+  "end-session": "ctrl+shift+k",
   "split-right": "ctrl+shift+d",
   "split-down": "ctrl+shift+s",
   "close-pane": "ctrl+shift+w",
@@ -46,7 +47,7 @@ export const DEFAULTS: Record<Action, string> = {
   "project-menu": "ctrl+shift+m",
   "project-folder": "ctrl+shift+z",
   "project-copy-path": "ctrl+shift+y",
-  "project-color": "ctrl+shift+k",
+  "project-color": "ctrl+shift+i",
   "project-changes": "ctrl+shift+g",
   "project-files": "ctrl+shift+h",
   "region-next": "f6",
@@ -163,6 +164,7 @@ export const DESCRIBE: [string, Action, string][] = [
   ["Edit", "find", "Find in the terminal"],
   ["Edit", "rename", "Rename the session, or the group or session row in the list"],
   ["Edit", "theme", "Session theme, or the theme of the group or session row in the list. On the rail or another row, the project theme"],
+  ["Edit", "end-session", "End the highlighted session, or the focused pane's session. It asks first"],
   ["Project", "project-menu", "Menu for the highlighted row: worktree, group, session, Changes or Files. On the rail, the project menu"],
   ["Project", "project-folder", "Show the project in the file manager. On a file or change row, that file"],
   ["Project", "project-copy-path", "Copy the project path. On a file or change row, that file's path"],
