@@ -89,6 +89,14 @@ impl Client {
         .await
     }
 
+    /// The session's pane has the keys. Clears its unread flag and agent exit.
+    pub async fn seen(&self, session: &str) -> Result<()> {
+        self.expect_ok(Request::Seen {
+            session: session.to_string(),
+        })
+        .await
+    }
+
     pub async fn kill(&self, session: &SessionId) -> Result<()> {
         self.expect_ok(Request::Kill {
             session: session.clone(),

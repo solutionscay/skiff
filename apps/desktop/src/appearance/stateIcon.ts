@@ -2,6 +2,7 @@
 import { h } from "../ui/dom";
 import { icon } from "../ui/icons";
 import type { SessionInfo } from "../platform/types";
+import { agentFailed } from "../workspace/model";
 
 const SKIFF = '<path d="M2 15h20l-4 5H6z"></path><path d="M12 15V3l7 10h-7"></path>';
 const BELL = '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>';
@@ -26,17 +27,19 @@ export function stateIcon(s: SessionInfo): HTMLElement {
     el.appendChild(icon(paths));
     return el;
   };
+  // The agent ended with an error, and the pane is a shell now.
+  if (agentFailed(s)) return mark("finished failed", FAILED);
   switch (s.state) {
     case "working":
       // A skiff under way: it rocks while the water runs past.
       return workingIcon();
     case "idle":
-      // Finished while you were away: the result is waiting to be read.
+      // A turn or a command ended while you were away: the result is waiting to be read.
       if (s.unread) return mark("unread", FLAG);
       // Idle is the normal state: no mark.
       return h("span", "anchored");
     case "waiting":
-      // The bell rang: the process wants you.
+      // The agent asks for approval, or a program rang the bell.
       return mark("belled", BELL);
     case "done":
       return s.exit_code && s.exit_code !== 0

@@ -33,7 +33,7 @@ Test every change with three questions:
 
 - **Square and flush.** `border-radius: 0` everywhere. Dots and slider thumbs are round. Panes touch, with no gaps and no floating cards.
 - **A line marks a region edge.** The rail, the sidebar, the terminal area, the top bar and the panes have lines between them. Worktrees part with space.
-- **Show only what needs a look.** An idle session has no mark unless it has unread output. Pane buttons show on the focused pane and on a hovered header. A changed file's folder shows on the current row and on hover.
+- **Show only what needs a look.** An idle session has no mark unless it has unread output. A shell at its prompt has no mark. The bell means an agent asks for approval. The flag means a turn or a command ended out of sight. Pane buttons show on the focused pane and on a hovered header. A changed file's folder shows on the current row and on hover.
 - **One rule weight.** Lines are 1px `--rule`. Pane dividers and edges of floating surfaces use `--rule-strong`. Do not stack accent lines.
 - **One row grid.** Main rows, menu items and pane headers are `--row` high (40px at zoom 1). Session rows, file rows and section headers use 20px. The top bar is 48px. Standard side padding is 16px; nested rows use indentation.
 - **Everything zooms.** Write lengths as `calc(N * var(--u))` and font sizes as `calc(Npx * var(--zoom, 1))`. Rules and small accent bars use fixed pixel widths. Measured positions use pixels.

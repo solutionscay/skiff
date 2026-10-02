@@ -8,7 +8,7 @@ use skiffd::session::SessionPool;
 use tokio::sync::broadcast::error::RecvError;
 
 #[tokio::test]
-async fn shell_session_streams_output_rings_bell_and_exits() {
+async fn shell_session_streams_output_and_exits() {
     let pool = SessionPool::new();
     let mut events = pool.events.subscribe();
 
@@ -56,41 +56,9 @@ async fn shell_session_streams_output_rings_bell_and_exits() {
     }
 
     assert!(String::from_utf8_lossy(&bytes).contains("hello"));
-    assert!(saw_waiting, "BEL should set the waiting state");
+    assert!(!saw_waiting, "a shell's own BEL is no call for the user");
     assert_eq!(exit_code, Some(Some(0)));
     assert_eq!(pool.get(&info.id).unwrap().info().state, SessionState::Done);
-}
-
-#[tokio::test]
-async fn codex_approval_prompt_marks_session_waiting_without_a_bell() {
-    let pool = SessionPool::new();
-    let mut events = pool.events.subscribe();
-    let spec = SessionSpec {
-        command: Some("sh".into()),
-        args: vec![
-            "-c".into(),
-            "printf 'Would you like to run the following command?\\nPress enter to confirm or esc to cancel'; sleep 2".into(),
-        ],
-        cols: 120,
-        rows: 40,
-        ..Default::default()
-    };
-    let info = pool.create(spec).unwrap();
-
-    let deadline = tokio::time::sleep(Duration::from_secs(5));
-    tokio::pin!(deadline);
-    loop {
-        tokio::select! {
-            event = events.recv() => match event {
-                Ok(Event::State { session, state: SessionState::Waiting }) if session == info.id => break,
-                Ok(_) | Err(RecvError::Lagged(_)) => {}
-                Err(RecvError::Closed) => panic!("event stream closed"),
-            },
-            _ = &mut deadline => panic!("Codex approval prompt did not mark the session waiting"),
-        }
-    }
-
-    pool.kill(&info.id).unwrap();
 }
 
 #[tokio::test]

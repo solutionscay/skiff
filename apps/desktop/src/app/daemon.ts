@@ -16,6 +16,7 @@ import { loadFilesSetting } from "../workspace/files";
 import { deleteGroup, loadGroups, syncTemplateName } from "./groups";
 import { render, scheduleRender } from "./render";
 import { born, gone, OTHER, removeErrors, S, sessions, upsert } from "./state";
+import { hasKeys, markSeen } from "./seen";
 import { activeGroupObj, place, shownIds } from "./stateQueries";
 import { panes } from "../terminal/terminalState";
 import { focusPane, paneNear, revealSession, rowNear, showSingle, splitWith, unfocus } from "../workspace/view";
@@ -135,6 +136,12 @@ export function reposStale() {
 
 // Back from a terminal, an editor or a diff tool.
 window.addEventListener("focus", reposStale);
+// The focused pane is in front of the user again: its result is seen.
+window.addEventListener("focus", () => {
+  if (!S.focused) return;
+  markSeen(S.focused);
+  scheduleRender();
+});
 
 /** Pulls `last_output_at` and anything missed, so relative times stay true. Drops what the daemon no longer has. */
 export async function refreshSessions() {
@@ -166,9 +173,6 @@ export function onEvent(e: DaemonEvent) {
     case "state": {
       const s = sessions.get(e.session);
       if (s) {
-        // A turn that ends out of sight leaves a result to read. Focus clears it.
-        if (e.state === "idle" && s.state === "working" && S.focused !== s.id) s.unread = true;
-        else if (e.state !== "idle") s.unread = false;
         s.state = e.state;
         if (e.state === "working") s.last_output_at = Date.now();
         // An agent that stops working may have written files or added a worktree.
@@ -193,7 +197,10 @@ export function onEvent(e: DaemonEvent) {
       upsert(e.session);
       break;
     case "session_updated": {
-      if (sessions.has(e.session.id)) upsert(e.session);
+      if (!sessions.has(e.session.id)) break;
+      upsert(e.session);
+      // A turn that ends in the pane with the keys leaves nothing to read.
+      if (hasKeys(e.session.id)) markSeen(e.session.id);
       break;
     }
     case "session_removed": {

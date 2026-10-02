@@ -80,6 +80,7 @@ impl SessionPool {
                         let mut info = s.info.lock().unwrap();
                         info.resume = saved.was.clone();
                         info.was = saved.was;
+                        info.agent_exit = saved.agent_exit;
                     }
                 }
                 Err(e) => {

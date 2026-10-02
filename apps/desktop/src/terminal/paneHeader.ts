@@ -48,7 +48,7 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   const grouped = inShownGroup(id);
   const away = s ? awayPlaces(s).map((a) => branchName(a.worktree)).join(", ") : "";
   // Rebuild only on change, so a click that spans a daemon event still lands.
-  const sig = s ? JSON.stringify([s.state, s.exit_code, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, grouped, away, resumeOffer(s)]) : "";
+  const sig = s ? JSON.stringify([s.state, s.exit_code, s.agent_exit, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, grouped, away, resumeOffer(s)]) : "";
   if (head.dataset.sig === sig) return;
   head.dataset.sig = sig;
   head.replaceChildren();

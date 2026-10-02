@@ -4,15 +4,17 @@ use serde::{Deserialize, Serialize};
 
 pub type SessionId = String;
 
-/// Derived from the PTY stream only. Skiff installs nothing into agent configs.
+/// Derived from the PTY stream and the foreground process only. Skiff
+/// installs nothing into agent configs.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionState {
-    /// Output arrived recently.
+    /// New text arrived recently. A shell at its prompt is never working.
     Working,
-    /// The process asked for attention and has had no input since.
+    /// An agent shows its approval prompt, or another program rang the bell
+    /// and has had no input since.
     Waiting,
-    /// No output for a while.
+    /// No new text for a while.
     Idle,
     /// The process exited.
     Done,
@@ -102,6 +104,14 @@ pub struct SessionInfo {
     /// agent runs there again.
     #[serde(default)]
     pub resume: Option<Was>,
+    /// An agent finished its turn, or a command finished in a shell, and no
+    /// client has seen the pane since.
+    #[serde(default)]
+    pub unread: bool,
+    /// The exit code of the last agent the launch wrapper ran here, until a
+    /// client sees the pane or an agent runs there again.
+    #[serde(default)]
+    pub agent_exit: Option<i32>,
 }
 
 /// An agent that ran in a session, and the last title it set.

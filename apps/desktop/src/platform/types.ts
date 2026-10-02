@@ -33,8 +33,10 @@ export interface SessionInfo {
   was?: Was | null;
   /** `was` as a restore found it, until an agent runs again. Absent from an older daemon. */
   resume?: Was | null;
-  /** Client only. It finished working while the user looked elsewhere. */
+  /** An agent's turn or a shell command ended, and no pane with the keys has shown it since. Absent from an older daemon. */
   unread?: boolean;
+  /** Exit code of the last agent the pane ran, until a pane with the keys shows it. Absent from an older daemon. */
+  agent_exit?: number | null;
 }
 
 /** An agent that ran in a session, and the last title it set. */

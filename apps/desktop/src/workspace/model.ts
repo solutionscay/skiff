@@ -58,6 +58,11 @@ export function isUnread(s: SessionInfo): boolean {
   return s.state === "idle" && !!s.unread;
 }
 
+/** The last agent in the pane ended with an error. Ctrl+C (130) is the user's own action. */
+export function agentFailed(s: SessionInfo): boolean {
+  return s.state !== "done" && s.agent_exit != null && s.agent_exit !== 0 && s.agent_exit !== 130;
+}
+
 export function rank(s: SessionInfo): number {
   if (isUnread(s)) return 1;
   return { waiting: 0, working: 2, idle: 3, done: 4 }[s.state];

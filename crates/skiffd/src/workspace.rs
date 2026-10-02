@@ -40,6 +40,9 @@ pub struct SavedSession {
     /// The last agent seen in the pane, shown after a restore.
     #[serde(default)]
     pub was: Option<Was>,
+    /// The exit code of the last agent, when no client has seen it yet.
+    #[serde(default)]
+    pub agent_exit: Option<i32>,
     pub cols: u16,
     pub rows: u16,
 }
@@ -56,6 +59,7 @@ impl From<&SessionInfo> for SavedSession {
             args: info.args.clone(),
             theme: info.theme.clone(),
             was: info.was.clone(),
+            agent_exit: info.agent_exit,
             cols: info.cols,
             rows: info.rows,
         }

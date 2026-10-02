@@ -93,23 +93,56 @@ impl Screen {
         changed
     }
 
-    /// Whether the visible terminal contains Codex's local-command approval
-    /// dialog. It does not emit BEL, so the daemon needs a small, specific
-    /// fallback to surface it as needing attention.
-    pub fn has_codex_approval_prompt(&self) -> bool {
+    /// The last `n` rows of the screen that hold text, joined, in lower case
+    /// and without white space. A narrow pane wraps a line anywhere, so the
+    /// match ignores where the words break.
+    fn bottom_text(&self, n: usize) -> String {
         let grid = self.term.grid();
-        let mut text = String::new();
-        for line in 0..grid.screen_lines() as i32 {
+        let mut rows = Vec::with_capacity(n);
+        for line in (0..grid.screen_lines() as i32).rev() {
             let row = &grid[Line(line)];
-            for column in 0..grid.columns() {
-                text.push(row[Column(column)].c);
+            let text: String = (0..grid.columns())
+                .map(|c| row[Column(c)].c)
+                .filter(|c| !c.is_whitespace() && *c != '\0')
+                .flat_map(char::to_lowercase)
+                .collect();
+            if !text.is_empty() {
+                rows.push(text);
+                if rows.len() == n {
+                    break;
+                }
             }
         }
-        // Terminal width can wrap either sentence. Ignore whitespace and blank
-        // cell sentinels while retaining enough wording to be specific.
-        let text: String = text.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
-        text.contains("Wouldyouliketorunthefollowingcommand")
-            && text.contains("Pressentertoconfirmoresctocancel")
+        rows.reverse();
+        rows.concat()
+    }
+
+    /// Whether `agent` shows a prompt that stops its turn until the user
+    /// answers: an approval, a question, or the trust check at start. The
+    /// agents ring no bell for it, so the daemon reads the screen.
+    ///
+    /// Each agent draws the prompt in place of its input box, with a line of
+    /// key hints at the bottom of the screen. The match reads only those last
+    /// rows, so the same words in the conversation above do not count.
+    pub fn approval_prompt(&self, agent: &str) -> bool {
+        match agent {
+            // "Esc to cancel · Tab to amend", "Enter to confirm · Esc to cancel".
+            "claude" => self.bottom_text(2).contains("esctocancel"),
+            "codex" => self.bottom_text(2).contains("pressentertoconfirmoresctocancel"),
+            // "Allow once   Allow always   Reject".
+            "opencode" => {
+                let t = self.bottom_text(4);
+                t.contains("allowonce") && t.contains("reject")
+            }
+            // "↑/↓ Navigate · tab Amend", "↑/↓ Navigate · enter Confirm".
+            "gemini" => self.bottom_text(3).contains("↑/↓navigate"),
+            // "1/4:select │ Tab:next option │ ...".
+            "grok" => {
+                let t = self.bottom_text(2);
+                t.contains(":select") && t.contains("tab:nextoption")
+            }
+            _ => false,
+        }
     }
 
     pub fn resize(&mut self, cols: u16, rows: u16) {
@@ -316,15 +349,68 @@ mod tests {
         assert!(s.feed(b"\x07").bell);
     }
 
+    /// A screen of 60 columns that ends with these rows.
+    fn screen_with(rows: &[&str]) -> Screen {
+        let mut s = Screen::new(60, 16);
+        s.feed(b"an earlier line of the conversation\r\n\r\n");
+        s.feed(rows.join("\r\n").as_bytes());
+        s
+    }
+
+    // The rows below come from real screens: Claude Code 2.1.287, Codex
+    // 0.159.3, OpenCode 1.18.34, Antigravity CLI 1.2.14 and Grok 1.0.46.
     #[test]
-    fn recognizes_wrapped_codex_approval_prompt() {
+    fn recognizes_each_agents_approval_prompt() {
+        let claude = [" Do you want to proceed?", " ❯ 1. Yes", "   3. No", "", " Esc to cancel · Tab to amend"];
+        assert!(screen_with(&claude).approval_prompt("claude"));
+        let trust = [" ❯ No, exit", "   Yes, I trust this folder", "", " Enter to confirm · Esc to cancel"];
+        assert!(screen_with(&trust).approval_prompt("claude"));
+
+        let codex = ["  Would you like to run the following command?", "› 1. Yes, proceed (y)", "  Press enter to confirm or esc to cancel"];
+        assert!(screen_with(&codex).approval_prompt("codex"));
+
+        let opencode = ["  ┃  △ Permission required", "  ┃  $ touch probe.txt", "  ┃", "  ┃   Allow once   Allow always   Reject      ⇆ select", "  ┃"];
+        assert!(screen_with(&opencode).approval_prompt("opencode"));
+
+        let gemini = ["Run this command?", "> 1. Yes, run command", "  4. No, cancel", "  ↑/↓ Navigate · tab Amend", "esc to cancel          Gemini 3.8 Flash"];
+        assert!(screen_with(&gemini).approval_prompt("gemini"));
+
+        let grok = ["  ┃  2 (○) Yes, proceed", "  ┃  3 (○) No, reject (type to add feedback)", "  ┃", "  1/4:select  │  Tab:next option  │  Ctrl+c:cancel"];
+        assert!(screen_with(&grok).approval_prompt("grok"));
+
+        // A prompt of one agent is not a prompt of another, or of a shell.
+        assert!(!screen_with(&claude).approval_prompt("codex"));
+        assert!(!screen_with(&claude).approval_prompt("bash"));
+    }
+
+    #[test]
+    fn a_wrapped_prompt_still_matches() {
         let mut s = Screen::new(24, 8);
         s.feed(b"Would you like to run the following command?\r\n\r\nPress enter to confirm or esc to cancel");
-        assert!(s.has_codex_approval_prompt());
+        assert!(s.approval_prompt("codex"));
+    }
 
-        let mut s = Screen::new(80, 24);
-        s.feed(b"Would you like to run this command?\r\nPress enter to continue");
-        assert!(!s.has_codex_approval_prompt());
+    #[test]
+    fn idle_and_working_screens_are_no_prompt() {
+        let claude_idle = ["────────────", "❯ ", "────────────", "", "  ⏸ manual mode on · ← for agents"];
+        assert!(!screen_with(&claude_idle).approval_prompt("claude"));
+        let claude_work = ["✻ Scurrying… (3s · ↓ 147 tokens)", "────────────", "❯ ", "────────────", "  ⏸ manual mode on"];
+        assert!(!screen_with(&claude_work).approval_prompt("claude"));
+        let codex_work = ["• Working (2s • esc to interrupt)", "", "› Ask Codex to do anything", "", "  ← for agents · ? for shortcuts"];
+        assert!(!screen_with(&codex_work).approval_prompt("codex"));
+        let opencode_work = ["  ┃  Build · Big Pickle OpenCode Zen", "  ╹▀▀▀▀▀▀▀▀▀", "   ⬝⬝⬝⬝  esc interrupt       tab agents  ctrl+p commands"];
+        assert!(!screen_with(&opencode_work).approval_prompt("opencode"));
+        let gemini_work = ["⣟  Generating...", "────────────", ">", "────────────", "esc to cancel          Gemini 3.8 Flash"];
+        assert!(!screen_with(&gemini_work).approval_prompt("gemini"));
+        let grok_idle = ["  │ ❯                              │", "  ╰──── Grok 4.7 (high) · always-approve ─╯", "  Shift+Tab:mode  │  Ctrl+.:shortcuts"];
+        assert!(!screen_with(&grok_idle).approval_prompt("grok"));
+    }
+
+    #[test]
+    fn prompt_words_in_the_conversation_do_not_count() {
+        // The agent quotes a prompt, then draws its input box under it.
+        let quoted = [" Do you want to proceed?", " Esc to cancel · Tab to amend", "────────────", "❯ ", "────────────", "  ⏸ manual mode on"];
+        assert!(!screen_with(&quoted).approval_prompt("claude"));
     }
 
     #[test]

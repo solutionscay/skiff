@@ -66,6 +66,11 @@ pub enum Request {
         #[serde(default)]
         theme: Option<String>,
     },
+    /// The session's pane has the keys: the user has seen it. Clears
+    /// `unread` and `agent_exit`.
+    Seen {
+        session: SessionId,
+    },
     /// Terminate the process and drop the session.
     Kill {
         session: SessionId,

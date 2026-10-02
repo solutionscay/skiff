@@ -17,6 +17,7 @@ import { activeGroupObj, currentLayout, groupOf, inShownGroup, place, shownIds, 
 import { panes } from "../terminal/terminalState";
 import { closePeek } from "../terminal/peek";
 import { listItems } from "../app/keyboard";
+import { hasKeys, markSeen } from "../app/seen";
 import { view } from "../terminal/terminal";
 
 /** Give the keys to a shown pane. */
@@ -32,8 +33,7 @@ export function focusPane(id: string, grab = true) {
   }
   if (S.focused && S.focused !== id) S.previous = S.focused;
   S.focused = id;
-  const seen = sessions.get(id);
-  if (seen) seen.unread = false;
+  if (hasKeys(id)) markSeen(id);
   const g = activeGroupObj();
   if (g) g.focus = id;
   const s = sessions.get(id);

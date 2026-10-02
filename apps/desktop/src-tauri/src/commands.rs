@@ -64,6 +64,13 @@ pub(crate) async fn rename_session(
     c.rename_session(&session, &name).await.map_err(err)
 }
 
+/// The session's pane has the keys: its unread flag and agent exit go.
+#[tauri::command]
+pub(crate) async fn session_seen(app: State<'_, App>, session: String) -> Result<(), String> {
+    let (c, _) = ensure_client(&app).await?;
+    c.seen(&session).await.map_err(err)
+}
+
 #[tauri::command]
 pub(crate) async fn kill_session(app: State<'_, App>, session: String) -> Result<(), String> {
     let (c, _) = ensure_client(&app).await?;

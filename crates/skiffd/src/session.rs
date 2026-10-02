@@ -5,7 +5,7 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
         Arc, Mutex, RwLock,
     },
     time::{Duration, Instant},
@@ -37,10 +37,31 @@ pub type Chunk = Arc<Vec<u8>>;
 /// No output for this long turns `working` into `idle`.
 pub const IDLE_AFTER: Duration = Duration::from_secs(3);
 
+/// A stretch of work shorter than this is no turn: a status line that
+/// redraws, a notice. Its end leaves nothing to read.
+const MIN_TURN_MS: u64 = 1500;
+
 /// A terminal title only the wrapper shell sets, right before it execs the
 /// fallback shell in place of an agent that just exited. Seeing it means the
-/// session is a plain shell now, not the agent it was launched as.
+/// session is a plain shell now, not the agent it was launched as. The exit
+/// code of the agent follows a colon: `skiff:shell-handoff:1`.
 const SHELL_HANDOFF_TITLE: &str = "skiff:shell-handoff";
+
+/// What runs in front of a session. It selects the rules for the bell and
+/// the unread flag, so a shell and an agent each get rules that are true.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Front {
+    /// The shell at its prompt. It is never working and never rings.
+    Shell,
+    /// A program the shell runs. Its end is a result to read.
+    Command,
+    /// A supported agent, by the name the foreground watcher gives it. Its
+    /// approval prompt is read from the screen.
+    Agent(&'static str),
+    /// A program the launch wrapper runs that is no supported agent. The bell
+    /// is its only way to call the user.
+    Program,
+}
 
 /// Output is coalesced into at most one chunk per frame.
 pub const FRAME: Duration = Duration::from_millis(16);
@@ -72,6 +93,18 @@ pub struct Session {
     last_work: AtomicU64,
     /// Unix ms of the last input or resize from a client.
     last_input: AtomicU64,
+    /// Unix ms when the current stretch of work began.
+    work_started: AtomicU64,
+    /// No stretch of work has ended yet under the program in front. The first
+    /// one is the program drawing itself, not a turn.
+    fresh: AtomicBool,
+    /// The PTY's root process is a shell: launched as one, or handed off to.
+    shell: AtomicBool,
+    front: Mutex<Front>,
+    /// The foreground process group `front` was read from. 0 before the first read.
+    group: AtomicU32,
+    /// `waiting` came from a bell, so input answers it.
+    belled: AtomicBool,
     /// Emulator plus unsent bytes. One lock, so a snapshot and the live
     /// stream never overlap or leave a gap.
     screen: Mutex<ScreenState>,
@@ -79,10 +112,6 @@ pub struct Session {
 
 struct ScreenState {
     screen: Screen,
-    /// Whether the current screen has the approval prompt. Keeping the edge
-    /// prevents ordinary output after a confirmation from re-alerting on the
-    /// prompt still visible in the terminal.
-    codex_approval_visible: bool,
     pending: Vec<u8>,
     last_flush: Instant,
     last_scan: Instant,
@@ -97,10 +126,12 @@ struct ScreenState {
 /// What a scan of the screen found.
 #[derive(Default)]
 struct Scan {
+    /// The scan ran. The fields below say nothing when it did not.
+    scanned: bool,
     /// New text on screen that is not an echo.
     work: bool,
-    /// The Codex approval prompt just appeared.
-    approval_prompted: bool,
+    /// The agent in front shows its approval prompt.
+    approval: bool,
 }
 
 impl ScreenState {
@@ -111,17 +142,18 @@ impl ScreenState {
         }
     }
 
-    fn scan(&mut self) -> Scan {
+    fn scan(&mut self, front: Front) -> Scan {
         let changed = self.printed && self.screen.text_changed();
-        let approval_visible = self.screen.has_codex_approval_prompt();
-        let approval_prompted = approval_visible && !self.codex_approval_visible;
-        self.codex_approval_visible = approval_visible;
+        let approval = match front {
+            Front::Agent(agent) => self.screen.approval_prompt(agent),
+            _ => false,
+        };
         let work = changed && self.printed_work;
         self.last_scan = Instant::now();
         self.unscanned = false;
         self.printed = false;
         self.printed_work = false;
-        Scan { work, approval_prompted }
+        Scan { scanned: true, work, approval }
     }
 }
 
@@ -144,10 +176,27 @@ impl Session {
         now_ms().saturating_sub(self.last_input.load(Ordering::Relaxed)) < ECHO_MS
     }
 
+    pub(crate) fn front(&self) -> Front {
+        *self.front.lock().unwrap()
+    }
+
+    /// The process group in front of the PTY. One ioctl.
+    #[cfg(unix)]
+    pub(crate) fn foreground_group(&self) -> Option<u32> {
+        self.master.lock().unwrap().process_group_leader().map(|pid| pid as u32)
+    }
+
+    #[cfg(not(unix))]
+    pub(crate) fn foreground_group(&self) -> Option<u32> {
+        None
+    }
+
     /// Feeds the emulator and queues the bytes. Scans the screen when the last
-    /// scan is older than `SCAN`; the flusher scans what is left.
-    fn push_output(&self, chunk: &[u8]) -> (Signals, Scan) {
+    /// scan is older than `SCAN`; the flusher scans what is left. The last
+    /// value is true when the chunk answers a key.
+    fn push_output(&self, chunk: &[u8]) -> (Signals, Scan, bool) {
         let echoing = self.echoing();
+        let front = self.front();
         let mut st = self.screen.lock().unwrap();
         let signals = st.screen.feed(chunk);
         st.unscanned = true;
@@ -156,7 +205,7 @@ impl Session {
             st.printed_work |= !echoing;
         }
         let scan = if st.last_scan.elapsed() >= SCAN {
-            st.scan()
+            st.scan(front)
         } else {
             Scan::default()
         };
@@ -166,7 +215,7 @@ impl Session {
         if self.echoing() || st.last_flush.elapsed() >= FRAME || st.pending.len() >= MAX_CHUNK {
             st.flush(&self.output);
         }
-        (signals, scan)
+        (signals, scan, echoing)
     }
 
     /// Skips a screen that is locked, so one busy session cannot hold up the
@@ -181,9 +230,10 @@ impl Session {
     /// Scans output that came after the last scan, so the end of a burst
     /// counts. A locked screen waits for the next tick.
     fn scan_due(&self) -> Scan {
+        let front = self.front();
         let Ok(mut st) = self.screen.try_lock() else { return Scan::default() };
         if st.unscanned && st.last_scan.elapsed() >= SCAN {
-            st.scan()
+            st.scan(front)
         } else {
             Scan::default()
         }
@@ -273,7 +323,7 @@ impl SessionPool {
             })
             .map_err(|e| anyhow!("openpty: {e}"))?;
 
-        let cmd = launch::launch_command(&spec, &command, &cwd);
+        let (cmd, is_shell) = launch::launch_command(&spec, &command, &cwd);
         let mut child = pair
             .slave
             .spawn_command(cmd)
@@ -313,6 +363,8 @@ impl SessionPool {
             away: Vec::new(),
             was: None,
             resume: None,
+            unread: false,
+            agent_exit: None,
         };
 
         let (input, input_rx) = std::sync::mpsc::channel::<Vec<u8>>();
@@ -339,9 +391,15 @@ impl SessionPool {
             last_output: AtomicU64::new(info.last_output_at),
             last_input: AtomicU64::new(0),
             last_work: AtomicU64::new(info.last_output_at),
+            work_started: AtomicU64::new(info.last_output_at),
+            fresh: AtomicBool::new(true),
+            shell: AtomicBool::new(is_shell),
+            // The foreground watcher names the agent within a second.
+            front: Mutex::new(if is_shell { Front::Shell } else { Front::Program }),
+            group: AtomicU32::new(0),
+            belled: AtomicBool::new(false),
             screen: Mutex::new(ScreenState {
                 screen: Screen::new(spec.cols, spec.rows),
-                codex_approval_visible: false,
                 pending: Vec::new(),
                 last_flush: Instant::now() - FRAME,
                 last_scan: Instant::now() - SCAN,
@@ -373,16 +431,26 @@ impl SessionPool {
                     };
                     let chunk = &buf[..n];
                     session.last_output.store(now_ms(), Ordering::Relaxed);
-                    let (signals, scan) = session.push_output(chunk);
-                    // A bell means "the process wants you". It stays until the user
-                    // types. The BEL that ends a title sequence is not a bell.
-                    if signals.bell {
-                        pool.set_state(&session, SessionState::Waiting);
+                    let (signals, scan, echo) = session.push_output(chunk);
+                    // A bell that answers a key is no call: the user is at the
+                    // keys. The BEL that ends a title sequence is not a bell.
+                    if signals.bell && !echo {
+                        pool.bell(&session);
+                    }
+                    // A program that starts or ends prints. Read the group in
+                    // front now, so the state does not wait for the watcher.
+                    if scan.scanned {
+                        if let Some(group) = session.foreground_group() {
+                            if group != session.group.load(Ordering::Relaxed) {
+                                pool.classify(&session, &mut None);
+                            }
+                        }
                     }
                     pool.apply_scan(&session, scan);
                     if let Some(title) = signals.title {
                         let title = title.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
-                        if title.as_deref() == Some(SHELL_HANDOFF_TITLE) {
+                        let handoff = title.as_deref().and_then(|t| t.strip_prefix(SHELL_HANDOFF_TITLE));
+                        if let Some(code) = handoff {
                             // The agent that owned this pane just exited and the
                             // wrapper is about to exec the fallback shell in its
                             // place. Forget the agent's label and command so the
@@ -393,12 +461,14 @@ impl SessionPool {
                                 .file_name()
                                 .map(|s| s.to_string_lossy().into_owned())
                                 .unwrap_or_else(default_shell);
+                            session.shell.store(true, Ordering::Relaxed);
                             let info = {
                                 let mut info = session.info.lock().unwrap();
                                 info.title = None;
                                 info.label = shell_name.clone();
                                 info.command = shell_name;
                                 info.args.clear();
+                                info.agent_exit = code.strip_prefix(':').and_then(|c| c.parse().ok());
                                 info.clone()
                             };
                             let _ = pool.events.send(Event::SessionUpdated { session: info });
@@ -437,16 +507,39 @@ impl SessionPool {
         Ok(info)
     }
 
+    /// A bell outside the echo of a key. A shell rings for its own reasons.
+    /// A supported agent says what it wants on the screen, and its bell does
+    /// not say why it rang. For every other program the bell is the call.
+    fn bell(&self, session: &Session) {
+        if matches!(session.front(), Front::Command | Front::Program) {
+            session.belled.store(true, Ordering::Relaxed);
+            self.set_state(session, SessionState::Waiting);
+        }
+    }
+
     /// Work is new text on screen. An echo of typing, a redraw after a resize,
     /// mode codes an idle program re-sends, or a logo that only changes color
-    /// are not.
+    /// are not. Text at a shell prompt is not work either.
     fn apply_scan(&self, session: &Session, scan: Scan) {
+        if !scan.scanned {
+            return;
+        }
+        let front = session.front();
+        if front == Front::Shell {
+            return;
+        }
         if scan.work {
             session.last_work.store(now_ms(), Ordering::Relaxed);
         }
-        if scan.approval_prompted {
+        let waiting = session.info.lock().unwrap().state == SessionState::Waiting;
+        if scan.approval {
+            session.belled.store(false, Ordering::Relaxed);
             self.set_state(session, SessionState::Waiting);
-        } else if scan.work && session.info.lock().unwrap().state != SessionState::Waiting {
+        } else if waiting && matches!(front, Front::Agent(_)) && !session.belled.load(Ordering::Relaxed) {
+            // The prompt left the screen: the user answered it.
+            session.last_work.store(now_ms(), Ordering::Relaxed);
+            self.set_state(session, SessionState::Working);
+        } else if scan.work && !waiting {
             self.set_state(session, SessionState::Working);
         }
     }
@@ -457,10 +550,76 @@ impl SessionPool {
             if info.state == state || info.state == SessionState::Done {
                 return;
             }
+            if state == SessionState::Working && info.state == SessionState::Idle {
+                session.work_started.store(now_ms(), Ordering::Relaxed);
+            }
             info.state = state;
             info.id.clone()
         };
         let _ = self.events.send(Event::State { session: id, state });
+    }
+
+    /// Records the program in front. A program that ends and leaves the shell
+    /// in front is a result to read.
+    pub(crate) fn set_front(&self, session: &Session, front: Front) {
+        let old = std::mem::replace(&mut *session.front.lock().unwrap(), front);
+        if old == front {
+            return;
+        }
+        session.belled.store(false, Ordering::Relaxed);
+        let agent = matches!(front, Front::Agent(_));
+        if agent {
+            session.fresh.store(true, Ordering::Relaxed);
+            // The screen was last read without this agent's prompt rule.
+            if let Ok(mut st) = session.screen.try_lock() {
+                st.unscanned = true;
+            }
+        }
+        let (state, updated) = {
+            let mut info = session.info.lock().unwrap();
+            if info.state == SessionState::Done {
+                return;
+            }
+            let mut state = None;
+            let mut changed = false;
+            if front == Front::Shell {
+                if info.state != SessionState::Idle {
+                    info.state = SessionState::Idle;
+                    state = Some(info.id.clone());
+                }
+                changed = !info.unread;
+                info.unread = true;
+            } else if agent && info.agent_exit.take().is_some() {
+                changed = true;
+                // The exit code is saved with the workspace.
+                self.dirty.notify_one();
+            }
+            (state, changed.then(|| info.clone()))
+        };
+        if let Some(session) = state {
+            let _ = self.events.send(Event::State { session, state: SessionState::Idle });
+        }
+        if let Some(session) = updated {
+            let _ = self.events.send(Event::SessionUpdated { session });
+        }
+    }
+
+    /// A client's pane for the session has the keys: the user has seen it.
+    pub fn seen(&self, id: &str) -> Result<()> {
+        let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
+        let updated = {
+            let mut info = session.info.lock().unwrap();
+            let changed = info.unread || info.agent_exit.is_some();
+            info.unread = false;
+            if info.agent_exit.take().is_some() {
+                self.dirty.notify_one();
+            }
+            changed.then(|| info.clone())
+        };
+        if let Some(session) = updated {
+            let _ = self.events.send(Event::SessionUpdated { session });
+        }
+        Ok(())
     }
 
     pub fn write(&self, id: &str, data: &[u8]) -> Result<()> {
@@ -472,8 +631,10 @@ impl SessionPool {
             .input
             .send(data.to_vec())
             .map_err(|_| anyhow!("session {id} no longer takes input"))?;
-        // Input answers a waiting prompt.
-        if session.info.lock().unwrap().state == SessionState::Waiting {
+        // Input answers a bell. An agent's prompt goes when the screen says so.
+        if session.belled.swap(false, Ordering::Relaxed)
+            && session.info.lock().unwrap().state == SessionState::Waiting
+        {
             self.set_state(&session, SessionState::Working);
         }
         Ok(())
@@ -567,7 +728,8 @@ impl SessionPool {
         });
     }
 
-    /// Flips quiet `working` sessions to `idle`.
+    /// Flips quiet `working` sessions to `idle`. For an agent, the end of a
+    /// stretch of work is the end of its turn: a result to read.
     pub fn spawn_idle_watcher(self: &Arc<Self>) {
         let pool = self.clone();
         tokio::spawn(async move {
@@ -577,25 +739,45 @@ impl SessionPool {
                 let sessions: Vec<Arc<Session>> =
                     pool.sessions.read().unwrap().values().cloned().collect();
                 for s in sessions {
-                    // Check and flip under one lock, so a bell or output the
-                    // reader handles meanwhile is not overwritten with `idle`.
-                    let id = {
-                        let mut info = s.info.lock().unwrap();
-                        let last = s.last_work.load(Ordering::Relaxed);
-                        let quiet = now_ms().saturating_sub(last) > IDLE_AFTER.as_millis() as u64;
-                        if !quiet || info.state != SessionState::Working {
-                            continue;
-                        }
-                        info.state = SessionState::Idle;
-                        info.id.clone()
-                    };
-                    let _ = pool.events.send(Event::State {
-                        session: id,
-                        state: SessionState::Idle,
-                    });
+                    pool.idle_if_quiet(&s);
                 }
             }
         });
+    }
+
+    fn idle_if_quiet(&self, s: &Session) {
+        let front = s.front();
+        // Check and flip under one lock, so a bell or output the reader
+        // handles meanwhile is not overwritten with `idle`.
+        let (id, updated) = {
+            let mut info = s.info.lock().unwrap();
+            let last = s.last_work.load(Ordering::Relaxed);
+            let quiet = now_ms().saturating_sub(last) > IDLE_AFTER.as_millis() as u64;
+            if !quiet || info.state != SessionState::Working {
+                return;
+            }
+            info.state = SessionState::Idle;
+            let stretch = last.saturating_sub(s.work_started.load(Ordering::Relaxed));
+            let fresh = s.fresh.swap(false, Ordering::Relaxed);
+            let turn = !fresh
+                && match front {
+                    // An agent redraws its status line while it does nothing.
+                    Front::Agent(_) => stretch >= MIN_TURN_MS,
+                    Front::Program => true,
+                    // A quiet command in a shell has not finished. Its end
+                    // shows when the shell is in front again.
+                    Front::Shell | Front::Command => false,
+                };
+            let updated = (turn && !info.unread).then(|| {
+                info.unread = true;
+                info.clone()
+            });
+            (info.id.clone(), updated)
+        };
+        let _ = self.events.send(Event::State { session: id, state: SessionState::Idle });
+        if let Some(session) = updated {
+            let _ = self.events.send(Event::SessionUpdated { session });
+        }
     }
 }
 
@@ -640,13 +822,12 @@ fn default_shell() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{prints, Screen, ScreenState, SCAN};
+    use super::{prints, Front, Screen, ScreenState, SCAN};
     use std::time::Instant;
 
     fn state() -> ScreenState {
         ScreenState {
             screen: Screen::new(40, 5),
-            codex_approval_visible: false,
             pending: Vec::new(),
             last_flush: Instant::now(),
             last_scan: Instant::now() - SCAN,
@@ -667,19 +848,19 @@ mod tests {
     fn scan_counts_new_text_once() {
         let mut st = state();
         print(&mut st, b"hello", false);
-        assert!(st.scan().work);
+        assert!(st.scan(Front::Program).work);
         assert!(!st.unscanned);
         print(&mut st, b"", false);
-        assert!(!st.scan().work);
+        assert!(!st.scan(Front::Program).work);
     }
 
     #[test]
     fn echo_updates_the_baseline_without_work() {
         let mut st = state();
         print(&mut st, b"typed", true);
-        assert!(!st.scan().work);
+        assert!(!st.scan(Front::Program).work);
         print(&mut st, b"", false);
-        assert!(!st.scan().work);
+        assert!(!st.scan(Front::Program).work);
     }
 
     #[test]

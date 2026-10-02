@@ -3,7 +3,8 @@ use skiff_core::session::SessionSpec;
 use std::path::Path;
 use super::{default_shell, SHELL_HANDOFF_TITLE};
 
-pub(super) fn launch_command(spec: &SessionSpec, command: &str, cwd: &Path) -> CommandBuilder {
+/// The command for the PTY, and whether it is the shell itself.
+pub(super) fn launch_command(spec: &SessionSpec, command: &str, cwd: &Path) -> (CommandBuilder, bool) {
     // An alias from the user's rc files stands for a command line.
     let (program, args) = match skiff_core::alias::expand(command) {
         Some(w) => (w[0].clone(), [&w[1..], &spec.args[..]].concat()),
@@ -13,7 +14,8 @@ pub(super) fn launch_command(spec: &SessionSpec, command: &str, cwd: &Path) -> C
     // exits, so Ctrl+C in an agent leaves a prompt instead of a dead pane.
     // Ctrl+C signals the whole foreground group, the wrapper included; the
     // `trap :` keeps the wrapper alive, and unlike `trap ''` the child does
-    // not inherit it, so the agent still gets SIGINT as normal.
+    // not inherit it, so the agent still gets SIGINT as normal. The title
+    // carries the program's exit code, which the hand-off would lose.
     // Keep the daemon's prepared environment. A login shell resets PATH;
     // another Ctrl+C during profile loading can leave agent commands missing.
     let shell = default_shell();
@@ -25,7 +27,7 @@ pub(super) fn launch_command(spec: &SessionSpec, command: &str, cwd: &Path) -> C
         let mut wrapped = vec![
             "-c".to_string(),
             format!(
-                "trap : INT; \"$@\"; printf '\\033]0;{SHELL_HANDOFF_TITLE}\\007'; exec \"$SKIFF_SHELL\" -i"
+                "trap : INT; \"$@\"; printf '\\033]0;{SHELL_HANDOFF_TITLE}:%s\\007' \"$?\"; exec \"$SKIFF_SHELL\" -i"
             ),
             "skiff".to_string(),
             program,
@@ -39,5 +41,5 @@ pub(super) fn launch_command(spec: &SessionSpec, command: &str, cwd: &Path) -> C
     cmd.cwd(cwd);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
-    cmd
+    (cmd, is_shell)
 }

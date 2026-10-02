@@ -1,10 +1,10 @@
 //! Track the current foreground program without shell hooks or agent changes.
-use super::{away::proc, SessionPool};
+use super::{away::proc, Front, Session, SessionPool};
 use skiff_core::{protocol::Event, session::{SessionState, Was}};
 use std::{
     collections::{HashMap, VecDeque},
     path::Path,
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
     time::Duration,
 };
 
@@ -23,63 +23,73 @@ impl SessionPool {
         let sessions: Vec<_> = self.sessions.read().unwrap().values().cloned().collect();
         let mut tree = None;
         for session in sessions {
-            if session.info.lock().unwrap().state == SessionState::Done {
-                continue;
+            self.classify(&session, &mut tree);
+        }
+    }
+
+    /// Reads the program in front of one session: its name for the client,
+    /// the agent to offer after a restore, and the rules for its state.
+    /// `tree` is the process tree, read once for a pass over many sessions.
+    pub(crate) fn classify(&self, session: &Session, tree: &mut Option<HashMap<u32, Vec<u32>>>) {
+        let pid = {
+            let info = session.info.lock().unwrap();
+            if info.state == SessionState::Done {
+                return;
             }
-            #[cfg(unix)]
-            let group = session
-                .master
-                .lock()
-                .unwrap()
-                .process_group_leader()
-                .map(|pid| pid as u32);
-            #[cfg(not(unix))]
-            let group: Option<u32> = None;
-            let Some(group) = group else { continue };
-            let Some(name) = proc::name(group) else {
-                continue;
-            };
-            let argv = proc::argv(group);
-            let agent = agent_program(&name, &argv).map(str::to_owned).or_else(|| {
-                // The launch wrapper shares its group with the initial agent.
-                // An interactive shell can also start a pipeline in one group.
-                let tree = tree.get_or_insert_with(proc::children);
-                agent_in_group(group, tree)
+            info.pid
+        };
+        let Some(group) = session.foreground_group() else { return };
+        let Some(name) = proc::name(group) else { return };
+        let argv = proc::argv(group);
+        let agent = agent_program(&name, &argv).or_else(|| {
+            // The launch wrapper shares its group with the initial agent.
+            // An interactive shell can also start a pipeline in one group.
+            agent_in_group(group, tree.get_or_insert_with(proc::children))
+        });
+        session.group.store(group, Ordering::Relaxed);
+        self.set_front(
+            session,
+            match agent {
+                Some(agent) => Front::Agent(agent),
+                None if !session.shell.load(Ordering::Relaxed) => Front::Program,
+                None if Some(group) == pid => Front::Shell,
+                None => Front::Command,
+            },
+        );
+        let agent = agent.map(str::to_owned);
+        let program = agent.clone().unwrap_or(name);
+        let (changed, was_changed) = {
+            let mut info = session.info.lock().unwrap();
+            // Keep the agent in front and its title, so a restore can offer it.
+            // Agents lead the title with a status glyph that changes as they work.
+            let title = info
+                .title
+                .as_deref()
+                .map(|t| t.trim_start_matches(|c: char| !c.is_alphanumeric()).to_string())
+                .filter(|t| !t.is_empty());
+            // An agent's own name ("Claude Code") is no title. Keep the last real one.
+            let title = title.filter(|t| !generic_title(t)).or_else(|| {
+                info.was.as_ref().filter(|w| Some(&w.agent) == agent.as_ref()).and_then(|w| w.title.clone())
             });
-            let program = agent.clone().unwrap_or(name);
-            let (changed, was_changed) = {
-                let mut info = session.info.lock().unwrap();
-                // Keep the agent in front and its title, so a restore can offer it.
-                // Agents lead the title with a status glyph that changes as they work.
-                let title = info
-                    .title
-                    .as_deref()
-                    .map(|t| t.trim_start_matches(|c: char| !c.is_alphanumeric()).to_string())
-                    .filter(|t| !t.is_empty());
-                // An agent's own name ("Claude Code") is no title. Keep the last real one.
-                let title = title.filter(|t| !generic_title(t)).or_else(|| {
-                    info.was.as_ref().filter(|w| Some(&w.agent) == agent.as_ref()).and_then(|w| w.title.clone())
-                });
-                let was = agent.map(|agent| Was { agent, title });
-                // An agent in front ends the offer to resume.
-                let resumed = was.is_some() && info.resume.take().is_some();
-                let was_changed = was.is_some() && info.was != was;
-                if was_changed {
-                    info.was = was;
-                }
-                if info.foreground_program.as_deref() == Some(&program) && !resumed {
-                    (None, was_changed)
-                } else {
-                    info.foreground_program = Some(program);
-                    (Some(info.clone()), was_changed)
-                }
-            };
+            let was = agent.map(|agent| Was { agent, title });
+            // An agent in front ends the offer to resume.
+            let resumed = was.is_some() && info.resume.take().is_some();
+            let was_changed = was.is_some() && info.was != was;
             if was_changed {
-                self.dirty.notify_one();
+                info.was = was;
             }
-            if let Some(session) = changed {
-                let _ = self.events.send(Event::SessionUpdated { session });
+            if info.foreground_program.as_deref() == Some(&program) && !resumed {
+                (None, was_changed)
+            } else {
+                info.foreground_program = Some(program);
+                (Some(info.clone()), was_changed)
             }
+        };
+        if was_changed {
+            self.dirty.notify_one();
+        }
+        if let Some(session) = changed {
+            let _ = self.events.send(Event::SessionUpdated { session });
         }
     }
 }
@@ -93,7 +103,7 @@ pub(crate) fn generic_title(title: &str) -> bool {
     )
 }
 
-fn agent_in_group(group: u32, tree: &HashMap<u32, Vec<u32>>) -> Option<String> {
+fn agent_in_group(group: u32, tree: &HashMap<u32, Vec<u32>>) -> Option<&'static str> {
     let mut queue = VecDeque::from([group]);
     while let Some(pid) = queue.pop_front() {
         if let Some(children) = tree.get(&pid) {
@@ -103,7 +113,7 @@ fn agent_in_group(group: u32, tree: &HashMap<u32, Vec<u32>>) -> Option<String> {
                 }
                 if let Some(name) = proc::name(child) {
                     if let Some(agent) = agent_program(&name, &proc::argv(child)) {
-                        return Some(agent.to_owned());
+                        return Some(agent);
                     }
                 }
                 queue.push_back(child);
