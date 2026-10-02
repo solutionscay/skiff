@@ -114,29 +114,8 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
                 sessions: pool.list(),
             },
             req @ (Request::CreateSession { .. }
-            | Request::ListProjects
-            | Request::AddWorktree { .. }
-            | Request::GetKeys
-            | Request::GetAppearance
-            | Request::SetAppearance { .. }
-            | Request::SetFontSize { .. }
-            | Request::ListThemes
-            | Request::SetProjectBackground { .. }
-            | Request::SetProjectColor { .. }
-            | Request::ReorderProjects { .. }
-            | Request::SetProjectClosed { .. }
-            | Request::RemoveProject { .. }
-            | Request::SetProjectIcon { .. }
-            | Request::InspectFolder { .. }
             | Request::ListAgents
-            | Request::ListAgentSessions { .. }
-            | Request::SetAgentCommand { .. }
-            | Request::RenameAgent { .. }
-            | Request::RemoveAgent { .. }
-            | Request::RestoreAgents
-            | Request::SetAgents { .. }
-            | Request::AddProject { .. }
-            | Request::RemoveWorktree { .. }) => {
+            | Request::ListAgentSessions { .. }) => {
                 if slow_tx.send((env.id, req)).is_err() {
                     break;
                 }

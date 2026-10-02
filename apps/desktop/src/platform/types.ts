@@ -90,7 +90,6 @@ export type DaemonEvent =
   | { event: "session_created"; session: SessionInfo }
   | { event: "session_removed"; session: string }
   | { event: "session_updated"; session: SessionInfo }
-  | { event: "projects_changed" }
   | { event: "groups_changed" }
   | { event: "title"; session: string; title: string | null }
   | { event: "away"; session: string; away: Away[] };

@@ -8,9 +8,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::FolderInfo;
 use crate::group::Group;
-use crate::project::{AgentInfo, Project, Worktree};
+use crate::project::AgentInfo;
 use crate::session::{Away, SessionId, SessionInfo, SessionSpec, SessionState};
 
 /// Base64 for byte payloads so the wire stays valid UTF-8 JSON.
@@ -75,73 +74,6 @@ pub enum Request {
     Kill {
         session: SessionId,
     },
-    /// Rereads `projects.toml` and each project's worktrees.
-    ListProjects,
-    /// New branch in `<parent>/<dir>-worktrees/<branch>`, from `base` or HEAD.
-    AddWorktree {
-        project: String,
-        branch: String,
-        #[serde(default)]
-        base: Option<String>,
-    },
-    /// Appends the git repository that contains `path` to `projects.toml`.
-    /// `name` defaults to the directory name.
-    AddProject {
-        path: PathBuf,
-        #[serde(default)]
-        name: Option<String>,
-        /// Rail label. Derived from `name` when absent.
-        #[serde(default)]
-        short: Option<String>,
-        /// A free palette color when absent.
-        #[serde(default)]
-        color: Option<String>,
-        /// Absent: detect. `""`: no icon. A path: relative to the repo or absolute.
-        #[serde(default)]
-        icon: Option<String>,
-        #[serde(default)]
-        agents: Vec<String>,
-    },
-    /// Key overrides from `[keys]`.
-    GetKeys,
-    /// The app theme and text size from `[appearance]`.
-    GetAppearance,
-    /// Sets the app theme: a theme id, or `null` for Harbor.
-    SetAppearance {
-        #[serde(default)]
-        theme: Option<String>,
-    },
-    /// Sets the text size: points, or `null` for the default.
-    SetFontSize {
-        #[serde(default)]
-        size: Option<u8>,
-    },
-    /// Every terminal theme: built in, foot's, and theme files.
-    ListThemes,
-    /// Sets the rail icon: a path, `""` for none, or `null` to detect again.
-    SetProjectIcon {
-        project: String,
-        #[serde(default)]
-        icon: Option<String>,
-    },
-    /// Sets the background image: a path, or `null` for none.
-    SetProjectBackground {
-        project: String,
-        #[serde(default)]
-        background: Option<String>,
-    },
-    /// Sets the project's accent color, a `#rrggbb` string.
-    SetProjectColor { project: String, color: String },
-    /// Puts the projects in this order in `projects.toml`. Names not listed keep their place after.
-    ReorderProjects { order: Vec<String> },
-    /// Closes the project, or opens it again. Its settings stay in `projects.toml`.
-    SetProjectClosed { project: String, closed: bool },
-    /// Drops the project and its settings from `projects.toml`. The folder stays.
-    RemoveProject { project: String },
-    /// What `add_project` would do for `path`. Writes nothing.
-    InspectFolder {
-        path: PathBuf,
-    },
     /// The known agent CLIs, installed and enabled.
     ListAgents,
     /// Runs an agent's own session list command in a folder, for the
@@ -149,34 +81,6 @@ pub enum Request {
     ListAgentSessions {
         command: Vec<String>,
         cwd: PathBuf,
-    },
-    /// Saves which agents the + menu offers.
-    SetAgents {
-        enabled: Vec<String>,
-    },
-    /// Replaces an agent's command line. Empty restores the default.
-    SetAgentCommand {
-        agent: String,
-        command: String,
-    },
-    /// Gives an agent a new name.
-    RenameAgent {
-        agent: String,
-        name: String,
-    },
-    /// Takes an agent out of the list.
-    RemoveAgent {
-        agent: String,
-    },
-    /// Brings back the default agents the user removed.
-    RestoreAgents,
-    /// Refuses the main worktree and live sessions inside. Refuses uncommitted
-    /// changes unless `force`, which deletes them.
-    RemoveWorktree {
-        project: String,
-        path: PathBuf,
-        #[serde(default)]
-        force: bool,
     },
     ListGroups,
     /// Empty `group.id` creates a group. Otherwise replaces that group.
@@ -208,20 +112,8 @@ pub enum Response {
     },
     Sessions { sessions: Vec<SessionInfo> },
     Session { session: SessionInfo },
-    Projects { projects: Vec<Project> },
-    Worktree { worktree: Worktree },
-    Project { project: Project },
-    Folder { folder: FolderInfo },
     Agents { agents: Vec<AgentInfo> },
     Output { stdout: String },
-    Themes { themes: Vec<crate::theme::TerminalTheme> },
-    Appearance {
-        theme: Option<String>,
-        /// Absent from a daemon older than the setting.
-        #[serde(default)]
-        font_size: Option<u8>,
-    },
-    Keys { keys: std::collections::BTreeMap<String, String> },
     Groups { groups: Vec<Group> },
     Group { group: Group },
     Error { message: String },
@@ -279,8 +171,6 @@ pub enum Event {
     SessionRemoved {
         session: SessionId,
     },
-    /// A worktree was added or removed. Clients reload projects.
-    ProjectsChanged {},
     /// A group was saved, deleted, or lost a killed session. Clients reload groups.
     GroupsChanged {},
 }

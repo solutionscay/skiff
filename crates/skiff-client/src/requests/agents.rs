@@ -3,42 +3,19 @@ use anyhow::{bail, Result};
 use skiff_core::{project::AgentInfo, protocol::{Request, Response}};
 
 impl Client {
+    /// The agents, installed or not on the sessions' PATH.
     pub async fn list_agents(&self) -> Result<Vec<AgentInfo>> {
-        self.agents_reply(Request::ListAgents).await
+        match self.request(Request::ListAgents).await? {
+            Response::Agents { agents } => Ok(agents),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
     }
 
     /// What an agent's session list command printed in `cwd`.
     pub async fn list_agent_sessions(&self, command: Vec<String>, cwd: std::path::PathBuf) -> Result<String> {
         match self.request(Request::ListAgentSessions { command, cwd }).await? {
             Response::Output { stdout } => Ok(stdout),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    pub async fn set_agents(&self, enabled: Vec<String>) -> Result<Vec<AgentInfo>> {
-        self.agents_reply(Request::SetAgents { enabled }).await
-    }
-
-    pub async fn set_agent_command(&self, agent: String, command: String) -> Result<Vec<AgentInfo>> {
-        self.agents_reply(Request::SetAgentCommand { agent, command }).await
-    }
-
-    pub async fn rename_agent(&self, agent: String, name: String) -> Result<Vec<AgentInfo>> {
-        self.agents_reply(Request::RenameAgent { agent, name }).await
-    }
-
-    pub async fn remove_agent(&self, agent: String) -> Result<Vec<AgentInfo>> {
-        self.agents_reply(Request::RemoveAgent { agent }).await
-    }
-
-    pub async fn restore_agents(&self) -> Result<Vec<AgentInfo>> {
-        self.agents_reply(Request::RestoreAgents).await
-    }
-
-    async fn agents_reply(&self, req: Request) -> Result<Vec<AgentInfo>> {
-        match self.request(req).await? {
-            Response::Agents { agents } => Ok(agents),
             Response::Error { message } => bail!(message),
             other => bail!("unexpected reply: {other:?}"),
         }

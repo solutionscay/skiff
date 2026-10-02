@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use skiff_core::{config::{Appearance, FolderInfo}, group::Group, project::{AgentInfo, Project, Worktree}, session::{SessionInfo, SessionSpec}};
+use skiff_core::{group::Group, project::AgentInfo, session::{SessionInfo, SessionSpec}};
 use tauri::{AppHandle, Manager, State};
 use crate::connection::{App, ensure_client, err};
 
@@ -78,50 +78,6 @@ pub(crate) async fn kill_session(app: State<'_, App>, session: String) -> Result
 }
 
 #[tauri::command]
-pub(crate) async fn list_projects(app: State<'_, App>) -> Result<Vec<Project>, String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.list_projects().await.map_err(err)
-}
-
-#[tauri::command]
-pub(crate) async fn add_worktree(
-    app: State<'_, App>,
-    project: String,
-    branch: String,
-    base: Option<String>,
-) -> Result<Worktree, String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.add_worktree(&project, &branch, base).await.map_err(err)
-}
-
-#[tauri::command]
-pub(crate) async fn remove_worktree(
-    app: State<'_, App>,
-    project: String,
-    path: PathBuf,
-    force: bool,
-) -> Result<(), String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.remove_worktree(&project, path, force).await.map_err(err)
-}
-
-#[tauri::command]
-pub(crate) async fn add_project(
-    app: State<'_, App>,
-    path: PathBuf,
-    name: Option<String>,
-    short: Option<String>,
-    color: Option<String>,
-    icon: Option<String>,
-    agents: Option<Vec<String>>,
-) -> Result<Project, String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.add_project(path, name, short, color, icon, agents.unwrap_or_default())
-        .await
-        .map_err(err)
-}
-
-#[tauri::command]
 pub(crate) fn config_path() -> String {
     skiff_core::config::config_path().display().to_string()
 }
@@ -135,33 +91,6 @@ pub(crate) fn open_config(app: tauri::AppHandle) -> Result<(), String> {
     app.opener()
         .open_path(path.display().to_string(), None::<&str>)
         .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub(crate) async fn get_keys(app: State<'_, App>) -> Result<std::collections::BTreeMap<String, String>, String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.keys().await.map_err(err)
-}
-
-/// Memory in bytes: this app with its WebKit children, and skiffd without the
-/// sessions it runs. Linux reports proportional set size, so shared libraries
-/// count once; macOS reports resident set size.
-#[tauri::command]
-pub(crate) async fn get_appearance(app: State<'_, App>) -> Result<Appearance, String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.appearance(None).await.map_err(err)
-}
-
-#[tauri::command]
-pub(crate) async fn set_appearance(app: State<'_, App>, theme: Option<String>) -> Result<Appearance, String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.appearance(Some(theme)).await.map_err(err)
-}
-
-#[tauri::command]
-pub(crate) async fn set_font_size(app: State<'_, App>, size: Option<u8>) -> Result<Appearance, String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.set_font_size(size).await.map_err(err)
 }
 
 #[tauri::command]
@@ -183,32 +112,6 @@ pub(crate) fn open_theme_folder(app: tauri::AppHandle) -> Result<(), String> {
     let path = skiff_core::theme::theme_dir().ok_or("Cannot find the theme folder")?;
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     app.opener().open_path(path.display().to_string(), None::<&str>).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub(crate) async fn set_project_icon(
-    app: State<'_, App>,
-    project: String,
-    icon: Option<String>,
-) -> Result<(), String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.set_project_icon(project, icon).await.map_err(err)
-}
-
-#[tauri::command]
-pub(crate) async fn reorder_projects(app: State<'_, App>, order: Vec<String>) -> Result<(), String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.reorder_projects(order).await.map_err(err)
-}
-
-#[tauri::command]
-pub(crate) async fn set_project_background(
-    app: State<'_, App>,
-    project: String,
-    background: Option<String>,
-) -> Result<(), String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.set_project_background(project, background).await.map_err(err)
 }
 
 /// A background image's raw bytes. The page turns them into a blob URL.
@@ -347,38 +250,6 @@ pub(crate) fn reveal_file(app: tauri::AppHandle, path: PathBuf) -> Result<(), St
 }
 
 #[tauri::command]
-pub(crate) async fn set_project_color(
-    app: State<'_, App>,
-    project: String,
-    color: String,
-) -> Result<(), String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.set_project_color(project, color).await.map_err(err)
-}
-
-#[tauri::command]
-pub(crate) async fn set_project_closed(app: State<'_, App>, project: String, closed: bool) -> Result<(), String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.set_project_closed(project, closed).await.map_err(err)
-}
-
-#[tauri::command]
-pub(crate) async fn remove_project(app: State<'_, App>, project: String) -> Result<(), String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.remove_project(project).await.map_err(err)
-}
-
-#[tauri::command]
-pub(crate) async fn inspect_folder(app: State<'_, App>, path: PathBuf) -> Result<FolderInfo, String> {
-    let (c, _) = ensure_client(&app).await?;
-    // A daemon on another protocol may not know this request. Say so at once.
-    if let Some(w) = app.warning.lock().await.as_ref().filter(|w| w.kind == "protocol") {
-        return Err(w.message.clone());
-    }
-    c.inspect_folder(path).await.map_err(err)
-}
-
-#[tauri::command]
 pub(crate) async fn list_agents(app: State<'_, App>) -> Result<Vec<AgentInfo>, String> {
     let (c, _) = ensure_client(&app).await?;
     c.list_agents().await.map_err(err)
@@ -388,40 +259,6 @@ pub(crate) async fn list_agents(app: State<'_, App>) -> Result<Vec<AgentInfo>, S
 pub(crate) async fn list_agent_sessions(app: State<'_, App>, command: Vec<String>, cwd: String) -> Result<String, String> {
     let (c, _) = ensure_client(&app).await?;
     c.list_agent_sessions(command, cwd.into()).await.map_err(err)
-}
-
-#[tauri::command]
-pub(crate) async fn set_agent_command(
-    app: State<'_, App>,
-    agent: String,
-    command: String,
-) -> Result<Vec<AgentInfo>, String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.set_agent_command(agent, command).await.map_err(err)
-}
-
-#[tauri::command]
-pub(crate) async fn rename_agent(app: State<'_, App>, agent: String, name: String) -> Result<Vec<AgentInfo>, String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.rename_agent(agent, name).await.map_err(err)
-}
-
-#[tauri::command]
-pub(crate) async fn remove_agent(app: State<'_, App>, agent: String) -> Result<Vec<AgentInfo>, String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.remove_agent(agent).await.map_err(err)
-}
-
-#[tauri::command]
-pub(crate) async fn restore_agents(app: State<'_, App>) -> Result<Vec<AgentInfo>, String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.restore_agents().await.map_err(err)
-}
-
-#[tauri::command]
-pub(crate) async fn set_agents(app: State<'_, App>, enabled: Vec<String>) -> Result<Vec<AgentInfo>, String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.set_agents(enabled).await.map_err(err)
 }
 
 #[tauri::command]

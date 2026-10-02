@@ -23,6 +23,14 @@ pub use project::{Project, Worktree};
 /// no restart.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Bumped when a request or reply changes. A client that sees another
-/// number is talking to an older or newer daemon.
+/// The daemon's wire contract. An app that sees another number asks the user
+/// to restart skiffd, which stops every session, so raise it only when a new
+/// app cannot use the daemon that ran before it:
+///
+/// - Raise it when a request, reply or event the app uses changes shape or
+///   meaning, or when the app needs a new request and has no fallback.
+/// - Do not raise it to add a request, a reply, an event or an optional
+///   (`#[serde(default)]`) field. An older daemon answers an unknown request
+///   with an error, and both sides skip a message they cannot read.
+/// - Do not raise it to remove a request the app no longer sends.
 pub const PROTOCOL: u32 = 24;

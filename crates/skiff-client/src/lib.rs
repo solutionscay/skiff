@@ -135,7 +135,17 @@ impl Client {
                         Ok(ServerMessage::Event(e)) => {
                             let _ = events.send(e);
                         }
-                        Err(e) => tracing::warn!("bad message from skiffd: {e}"),
+                        // A newer daemon can send a reply or event this client does not know.
+                        // Skip it, but fail the request it answers instead of waiting out the timeout.
+                        Err(e) => {
+                            tracing::warn!("bad message from skiffd: {e}");
+                            let id = serde_json::from_str::<serde_json::Value>(&line)
+                                .ok()
+                                .and_then(|v| v.get("id").and_then(|i| i.as_u64()));
+                            if let Some(s) = id.and_then(|id| pending.lock().unwrap().remove(&id)) {
+                                let _ = s.send(Response::Error { message: format!("unreadable reply from skiffd: {e}") });
+                            }
+                        }
                     }
                 }
                 closed.store(true, Ordering::Relaxed);

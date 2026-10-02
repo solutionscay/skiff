@@ -35,6 +35,9 @@ pub(crate) fn trace_write(handle: AppHandle, lines: Vec<String>) -> Result<(), S
     Ok(())
 }
 
+/// Memory in bytes: this app with its WebKit children, and skiffd without the
+/// sessions it runs. Linux reports proportional set size, so shared libraries
+/// count once; macOS reports resident set size.
 #[tauri::command]
 pub(crate) fn memory_usage() -> Option<(u64, u64)> {
     #[cfg(target_os = "linux")]

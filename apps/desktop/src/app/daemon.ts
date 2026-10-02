@@ -6,6 +6,7 @@ import { removePane, replacePane, sessionsOf } from "../workspace/layout";
 
 import type { AgentInfo, DaemonEvent, DaemonStatus, Project, SessionInfo, SplitDir } from "../platform/types";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { $, h } from "../ui/dom";
 import { rune } from "../ui/runes";
 import { showError } from "../ui/alerts";
@@ -135,6 +136,8 @@ export function reposStale() {
   }, 400);
 }
 
+// The app edited projects.toml or a worktree.
+void listen("skiff:projects-changed", () => void loadProjects());
 // Back from a terminal, an editor or a diff tool.
 window.addEventListener("focus", reposStale);
 // The focused pane is in front of the user again: its result is seen.
@@ -213,9 +216,6 @@ export function onEvent(e: DaemonEvent) {
       restartIfIdle();
       return;
     }
-    case "projects_changed":
-      void loadProjects();
-      return;
     case "groups_changed":
       void loadGroups();
       return;
