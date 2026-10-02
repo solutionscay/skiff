@@ -10,7 +10,6 @@
   position: fixed; z-index: 29; pointer-events: none; box-sizing: border-box;
   background: color-mix(in srgb, var(--state-working) 18%, transparent);
   border: 2px solid var(--state-working);
-  transition: left 60ms, top 60ms, width 60ms, height 60ms;
 }
 .drop-preview[hidden] { display: none; }
 body.dragging-session, body.dragging-session * { cursor: grabbing !important; user-select: none !important; }

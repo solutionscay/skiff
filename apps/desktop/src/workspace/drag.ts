@@ -32,13 +32,21 @@ interface Opts {
 const THRESHOLD = 5;
 /** Width of the rim, in px, where a drop wraps the whole layout. */
 const RIM = 28;
+/** The top rim is thin: pane headers sit there, and a drop on a header means "above this pane". */
+const RIM_TOP = 8;
+/** Extra rim width, in px, while the pointer is already on the rim, so the edge does not flicker. */
+const RIM_HOLD = 6;
+/** How much closer, as a fraction of the pane, a new edge must be before the zone moves to it. */
+const ZONE_HOLD = 0.08;
 
-function zoneAt(r: DOMRect, x: number, y: number): Zone {
+/** The pane's nearest edge. Near a diagonal the current zone holds, so the preview does not flip back and forth. */
+function zoneAt(r: DOMRect, x: number, y: number, held?: Zone): Zone {
   const fx = (x - r.left) / r.width;
   const fy = (y - r.top) / r.height;
   const d: [Zone, number][] = [["left", fx], ["right", 1 - fx], ["top", fy], ["bottom", 1 - fy]];
   d.sort((a, b) => a[1] - b[1]);
-  return d[0][0];
+  const keep = held && d.find(([z]) => z === held);
+  return keep && keep[1] - d[0][1] < ZONE_HOLD ? held! : d[0][0];
 }
 
 function previewRect(r: DOMRect, z: Zone): { l: number; t: number; w: number; h: number } {
@@ -68,6 +76,13 @@ export function beginDrag(down: MouseEvent, o: Opts) {
   let cells = new Map<string, DOMRect>();
   let rows: { id: string; rect: DOMRect }[] = [];
   let target: DropTarget | null = null;
+  /** The last hit, accepted or not: the zone and rim hold against it. */
+  let last: DropTarget | null = null;
+  /** The preview box as last painted, so an unchanged frame writes nothing. */
+  let painted = "";
+  let frame = 0;
+  let mx = 0;
+  let my = 0;
   let ghost: HTMLElement | null = null;
   let preview: HTMLElement | null = null;
   /** Tooltips are off while dragging: they would sit over the drop target. */
@@ -102,11 +117,12 @@ export function beginDrag(down: MouseEvent, o: Opts) {
     if (area && cells.size > 0 && inside(area, x, y)) {
       const d: [Zone, number][] = [["left", x - area.left], ["right", area.right - x - 1], ["top", y - area.top], ["bottom", area.bottom - y - 1]];
       d.sort((a, b) => a[1] - b[1]);
-      if (d[0][1] < RIM) return { t: { session: null, zone: d[0][0], outer: true }, p: previewRect(area, d[0][0]) };
+      const rim = (d[0][0] === "top" ? RIM_TOP : RIM) + (last?.outer ? RIM_HOLD : 0);
+      if (d[0][1] < rim) return { t: { session: null, zone: d[0][0], outer: true }, p: previewRect(area, d[0][0]) };
     }
     for (const [session, r] of cells) {
       if (inside(r, x, y)) {
-        const zone = zoneAt(r, x, y);
+        const zone = zoneAt(r, x, y, last && !last.outer && last.session === session ? last.zone : undefined);
         return { t: { session, zone }, p: previewRect(r, zone) };
       }
     }
@@ -121,25 +137,39 @@ export function beginDrag(down: MouseEvent, o: Opts) {
       start();
     }
     m.preventDefault();
-    ghost!.style.transform = `translate(${m.clientX + 12}px, ${m.clientY + 12}px)`;
-    const h = hit(m.clientX, m.clientY);
+    mx = m.clientX;
+    my = m.clientY;
+    // One paint per frame: mice that report faster than the screen do not queue extra layout work.
+    if (!frame) frame = requestAnimationFrame(paint);
+  };
+
+  const paint = () => {
+    frame = 0;
+    if (!ghost || !preview) return;
+    ghost.style.transform = `translate(${mx + 12}px, ${my + 12}px)`;
+    const h = hit(mx, my);
+    last = h?.t ?? null;
     const why = h ? o.refuses?.(h.t) ?? null : null;
-    ghost!.textContent = why ?? o.label;
-    ghost!.classList.toggle("refused", !!why);
+    const text = why ?? o.label;
+    if (ghost.textContent !== text) ghost.textContent = text;
+    ghost.classList.toggle("refused", !!why);
     document.body.classList.toggle("drop-refused", !!why);
     target = h && !why && (o.accepts?.(h.t) ?? true) ? h.t : null;
-    if (target) {
-      const p = h!.p;
-      Object.assign(preview!.style, { left: `${p.l}px`, top: `${p.t}px`, width: `${p.w}px`, height: `${p.h}px` });
-    }
-    preview!.hidden = !target;
-    preview!.dataset.zone = target?.zone ?? "";
+    const p = target ? h!.p : null;
+    const key = p ? `${p.l},${p.t},${p.w},${p.h},${target!.zone}` : "";
+    if (key === painted) return;
+    painted = key;
+    if (p) Object.assign(preview.style, { left: `${p.l}px`, top: `${p.t}px`, width: `${p.w}px`, height: `${p.h}px` });
+    preview.hidden = !p;
+    preview.dataset.zone = target?.zone ?? "";
   };
 
   let cancelled = false;
 
   /** Remove the ghost and preview. Listeners stay until the button comes up. */
   const clear = () => {
+    cancelAnimationFrame(frame);
+    frame = 0;
     ghost?.remove();
     preview?.remove();
     ghost = preview = null;
@@ -155,6 +185,8 @@ export function beginDrag(down: MouseEvent, o: Opts) {
     window.removeEventListener("mousemove", move, true);
     window.removeEventListener("mouseup", up, true);
     window.removeEventListener("keydown", key, true);
+    // A move still waiting for its frame decides the target.
+    if (frame && active && !cancelled) paint();
     clear();
     if (!active && !cancelled) {
       o.click?.();
