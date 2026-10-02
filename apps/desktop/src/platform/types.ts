@@ -74,6 +74,8 @@ export interface Project {
   /** Absolute path of the background image behind the terminals, when set. */
   background: string | null;
   worktrees: Worktree[];
+  /** The branch the main checkout normally holds. `null` when unknown or from an older skiffd. */
+  default_branch?: string | null;
   /** Path missing, not a git repo, and so on. `worktrees` is empty then. */
   error: string | null;
   /** Out of the rail until it opens again. Its worktrees are not read. Absent from an older daemon. */

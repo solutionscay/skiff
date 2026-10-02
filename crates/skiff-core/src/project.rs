@@ -33,6 +33,9 @@ pub struct Project {
     #[serde(default)]
     pub background: Option<String>,
     pub worktrees: Vec<Worktree>,
+    /// The branch the main checkout normally holds: origin's HEAD, else `main` or `master`.
+    #[serde(default)]
+    pub default_branch: Option<String>,
     /// Why `worktrees` is empty, e.g. the path is missing or not a git repo.
     pub error: Option<String>,
     /// Out of the rail until it opens again. Its worktrees are not read.
@@ -60,6 +63,7 @@ impl Project {
             agents: p.agents.clone(),
             icon: icon_file(&p.path, p.icon.as_deref()).and_then(|f| data_url(&f)),
             background: background_file(&p.path, p.background.as_deref()),
+            default_branch: if worktrees.is_empty() { None } else { git::default_branch(&p.path) },
             worktrees,
             error,
             closed: p.closed,

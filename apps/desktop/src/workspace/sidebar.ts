@@ -291,7 +291,9 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   pick.dataset.wt = w.path;
   pick.setAttribute("aria-expanded", String(open));
   pick.append(chevron(open), branchIcon(), h("span", "branch", branchName(w)));
-  if (w.is_main) pick.appendChild(h("span", "tag", "primary"));
+  // The main checkout shows its tag only while it is off its usual branch.
+  const usual = p.default_branch ? w.branch === p.default_branch : ["main", "master"].includes(w.branch ?? "");
+  if (w.is_main && !usual) pick.appendChild(h("span", "tag", "main folder"));
   if (w.locked) pick.appendChild(h("span", "tag", "locked"));
   if (w.prunable) pick.appendChild(h("span", "tag", "prunable"));
   if (removing.has(w.path)) pick.appendChild(h("span", "tag", "removing…"));

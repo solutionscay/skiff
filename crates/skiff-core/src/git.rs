@@ -97,6 +97,20 @@ pub fn remove_worktree(repo: &Path, path: &Path, force: bool) -> Result<()> {
     git(repo, &args).map(drop)
 }
 
+/// The branch the main checkout normally holds: origin's HEAD, else a local
+/// `main` or `master`. `None` when none of them exists.
+pub fn default_branch(repo: &Path) -> Option<String> {
+    if let Ok(r) = git(repo, &["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]) {
+        if let Some(b) = r.trim().strip_prefix("origin/") {
+            return Some(b.to_string());
+        }
+    }
+    ["main", "master"]
+        .into_iter()
+        .find(|b| git(repo, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{b}")]).is_ok())
+        .map(String::from)
+}
+
 /// The top-level directory of the repository that contains `dir`.
 pub fn toplevel(dir: &Path) -> Result<PathBuf> {
     let out = git(dir, &["rev-parse", "--show-toplevel"])
