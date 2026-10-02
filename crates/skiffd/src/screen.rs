@@ -134,12 +134,19 @@ impl Screen {
                 let t = self.bottom_text(4);
                 t.contains("allowonce") && t.contains("reject")
             }
-            // "↑/↓ Navigate · tab Amend", "↑/↓ Navigate · enter Confirm".
-            "gemini" => self.bottom_text(3).contains("↑/↓navigate"),
-            // "1/4:select │ Tab:next option │ ...".
+            "gemini" => {
+                // Antigravity (agy): "↑/↓ Navigate · tab Amend", "↑/↓ Navigate · enter Confirm".
+                // Gemini CLI: "Allow once", "Allow for this session", "No, suggest changes (esc)".
+                let t = self.bottom_text(10);
+                t.contains("↑/↓navigate") || (t.contains("allowonce") && t.contains("suggestchanges"))
+            }
             "grok" => {
-                let t = self.bottom_text(2);
-                t.contains(":select") && t.contains("tab:nextoption")
+                // "1/4:select │ Tab:next option │ ...", or a command's
+                // "Allow once", "Always allow this command", "Reject".
+                let t = self.bottom_text(10);
+                let hints = self.bottom_text(2);
+                (hints.contains(":select") && hints.contains("tab:nextoption"))
+                    || (t.contains("allowonce") && t.contains("reject"))
             }
             _ => false,
         }
@@ -153,9 +160,12 @@ impl Screen {
         }
         let t = self.bottom_text(6);
         match agent {
-            // "✻ Thinking… (esc to interrupt)", "• Working (2s • esc to interrupt)".
-            "claude" | "codex" => t.contains("esctointerrupt"),
-            "opencode" => t.contains("escinterrupt"),
+            // "esc to interrupt", "• Working (2s • esc to interrupt)". The key
+            // follows the user's keymap, so the match leaves it out.
+            "claude" | "codex" => t.contains("tointerrupt"),
+            // "esc interrupt", and "esc again to interrupt" after one Esc.
+            "opencode" => t.contains("escinterrupt") || t.contains("tointerrupt"),
+            // "(esc to cancel, 12s)".
             "gemini" => t.contains("esctocancel"),
             _ => false,
         }
@@ -235,6 +245,49 @@ impl Screen {
         }
         out.push_str("\x1b[?2026l");
         out.into_bytes()
+    }
+}
+
+/// What an agent's window title says about its turn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TitleState {
+    Busy,
+    /// The agent waits for the user's answer.
+    Action,
+    Ready,
+}
+
+/// Reads the state an agent puts in its window title. `None` when the agent
+/// has no known title state, or this title carries none.
+///
+/// - Claude Code: "◐ " or "◑ " while busy, "✳ " otherwise.
+/// - Codex: a braille spinner while busy, "[ ! ] Action Required" for an
+///   answer. Its default title has the spinner first.
+/// - Gemini CLI: "✦ " or "⏲ " while busy, "✋ " for an answer, "◇ " when ready.
+pub fn title_state(agent: &str, title: &str) -> Option<TitleState> {
+    let first = title.trim_start().chars().next()?;
+    match agent {
+        "claude" => match first {
+            '\u{25d0}'..='\u{25d3}' => Some(TitleState::Busy),
+            '\u{2733}' => Some(TitleState::Ready),
+            _ => None,
+        },
+        "codex" => {
+            if title.contains("Action Required") {
+                Some(TitleState::Action)
+            } else if title.chars().any(|c| ('\u{2801}'..='\u{28ff}').contains(&c)) {
+                Some(TitleState::Busy)
+            } else {
+                Some(TitleState::Ready)
+            }
+        }
+        "gemini" => match first {
+            '\u{2726}' | '\u{23f2}' => Some(TitleState::Busy),
+            '\u{270b}' => Some(TitleState::Action),
+            '\u{25c7}' => Some(TitleState::Ready),
+            _ => None,
+        },
+        _ => None,
     }
 }
 
@@ -428,6 +481,12 @@ mod tests {
         let gemini_work = ["⣟  Generating...", "────────────", ">", "────────────", "esc to cancel          Gemini 3.8 Flash"];
         assert!(!screen_with(&gemini_work).approval_prompt("gemini"));
         assert!(screen_with(&gemini_work).busy_line("gemini"));
+        let gemini_cli = ["Allow execution of: 'ls'?", "● 1. Allow once", "  2. Allow for this session", "  3. No, suggest changes (esc)"];
+        assert!(screen_with(&gemini_cli).approval_prompt("gemini"));
+        let grok_cmd = ["$ rm -rf build", "  Allow once", "  Always allow this command", "  Reject"];
+        assert!(screen_with(&grok_cmd).approval_prompt("grok"));
+        assert!(screen_with(&["  esc again to interrupt"]).busy_line("opencode"));
+        assert!(screen_with(&["• Working (3s • ctrl+c to interrupt)"]).busy_line("codex"));
         let grok_idle = ["  │ ❯                              │", "  ╰──── Grok 4.7 (high) · always-approve ─╯", "  Shift+Tab:mode  │  Ctrl+.:shortcuts"];
         assert!(!screen_with(&grok_idle).approval_prompt("grok"));
     }
@@ -450,5 +509,23 @@ mod tests {
         assert!(snap.contains("three"));
         assert!(snap.contains("\x1b[3;6H"), "cursor after 'three': {snap:?}");
         assert!(snap.contains("\x1b[?2004h"));
+    }
+
+    #[test]
+    fn title_states() {
+        use super::{title_state, TitleState::*};
+        assert_eq!(title_state("claude", "◐ Fix the bug"), Some(Busy));
+        assert_eq!(title_state("claude", "◑ Fix the bug"), Some(Busy));
+        assert_eq!(title_state("claude", "✳ Fix the bug"), Some(Ready));
+        assert_eq!(title_state("claude", "Fix the bug"), None);
+        assert_eq!(title_state("codex", "⠋ Fix the bug | skiff"), Some(Busy));
+        assert_eq!(title_state("codex", "Fix the bug | skiff"), Some(Ready));
+        assert_eq!(title_state("codex", "[ ! ] Action Required | skiff"), Some(Action));
+        assert_eq!(title_state("codex", "[ . ] Action Required | skiff"), Some(Action));
+        assert_eq!(title_state("gemini", "✦  Working… (skiff)"), Some(Busy));
+        assert_eq!(title_state("gemini", "⏲  Working… (skiff)"), Some(Busy));
+        assert_eq!(title_state("gemini", "✋  Action Required (skiff)"), Some(Action));
+        assert_eq!(title_state("gemini", "◇  Ready (skiff)"), Some(Ready));
+        assert_eq!(title_state("opencode", "OC | Fix the bug"), None);
     }
 }

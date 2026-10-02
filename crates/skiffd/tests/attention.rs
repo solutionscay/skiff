@@ -147,6 +147,35 @@ sleep 30"#,
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn an_agent_title_keeps_a_quiet_turn_working() {
+    let pool = pool();
+    // Claude Code puts ◐ in its title while busy and ✳ when not. Its turn
+    // here has a quiet tool call longer than the idle time.
+    let agent = fake_agent(
+        "claude",
+        r#"printf '\033]0;\342\234\263 Claude Code\007Claude ready\n'
+read task
+printf '\033]0;\342\227\220 task\007'
+sleep 4.5
+printf 'answer\n'
+printf '\033]0;\342\234\263 task\007'
+sleep 30"#,
+    );
+    let info = pool
+        .create(SessionSpec { command: Some(agent.display().to_string()), cols: 100, rows: 30, ..Default::default() })
+        .unwrap();
+    until(&pool, &info.id, 8, "the agent did not go idle after it started", |i| i.state == SessionState::Idle).await;
+    pool.write(&info.id, b"do it\n").unwrap();
+    until(&pool, &info.id, 4, "the busy title did not set working", |i| i.state == SessionState::Working).await;
+    tokio::time::sleep(Duration::from_millis(3800)).await;
+    assert_eq!(pool.get(&info.id).unwrap().info().state, SessionState::Working, "a quiet tool call ended the turn");
+    let done = until(&pool, &info.id, 8, "the end of the turn did not set unread", |i| i.unread).await;
+    assert_eq!(done.state, SessionState::Idle);
+    pool.kill(&info.id).unwrap();
+    let _ = std::fs::remove_dir_all(agent.parent().unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn the_exit_code_of_a_program_survives_the_hand_off() {
     let pool = pool();
     let info = pool

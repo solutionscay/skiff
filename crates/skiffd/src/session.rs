@@ -21,7 +21,7 @@ use skiff_core::{
 use tokio::sync::{broadcast, Notify};
 
 use crate::{
-    screen::{Screen, Signals},
+    screen::{title_state, Screen, Signals, TitleState},
     workspace::{SavedSession, Workspace},
 };
 
@@ -101,6 +101,8 @@ pub struct Session {
     /// The agent's busy line showed in the current stretch of work: it is a
     /// turn, however short.
     busy_seen: AtomicBool,
+    /// What the agent in front last said in its window title.
+    title_state: Mutex<Option<TitleState>>,
     /// The PTY's root process is a shell: launched as one, or handed off to.
     shell: AtomicBool,
     front: Mutex<Front>,
@@ -399,6 +401,7 @@ impl SessionPool {
             work_started: AtomicU64::new(info.last_output_at),
             fresh: AtomicBool::new(true),
             busy_seen: AtomicBool::new(false),
+            title_state: Mutex::new(None),
             shell: AtomicBool::new(is_shell),
             // The foreground watcher names the agent within a second.
             front: Mutex::new(if is_shell { Front::Shell } else { Front::Program }),
@@ -480,6 +483,7 @@ impl SessionPool {
                             let _ = pool.events.send(Event::SessionUpdated { session: info });
                             pool.dirty.notify_one();
                         } else {
+                            pool.apply_title(&session, title.as_deref());
                             let changed = {
                                 let mut info = session.info.lock().unwrap();
                                 let changed = info.title != title;
@@ -541,7 +545,8 @@ impl SessionPool {
             session.busy_seen.store(true, Ordering::Relaxed);
         }
         let waiting = session.info.lock().unwrap().state == SessionState::Waiting;
-        if scan.approval {
+        let asks = *session.title_state.lock().unwrap() == Some(TitleState::Action);
+        if scan.approval || asks {
             session.belled.store(false, Ordering::Relaxed);
             self.set_state(session, SessionState::Waiting);
         } else if waiting && matches!(front, Front::Agent(_)) && !session.belled.load(Ordering::Relaxed) {
@@ -550,6 +555,37 @@ impl SessionPool {
             self.set_state(session, SessionState::Working);
         } else if scan.work && !waiting {
             self.set_state(session, SessionState::Working);
+        }
+    }
+
+    /// The window title of a supported agent: busy keeps it working and
+    /// proves a turn, an action-required title sets the bell.
+    fn apply_title(&self, session: &Session, title: Option<&str>) {
+        let Front::Agent(agent) = session.front() else { return };
+        let state = title.and_then(|t| title_state(agent, t));
+        let old = std::mem::replace(&mut *session.title_state.lock().unwrap(), state);
+        if old == state {
+            return;
+        }
+        match state {
+            Some(TitleState::Busy) => {
+                session.busy_seen.store(true, Ordering::Relaxed);
+                session.last_work.store(now_ms(), Ordering::Relaxed);
+                if session.info.lock().unwrap().state != SessionState::Waiting {
+                    self.set_state(session, SessionState::Working);
+                }
+            }
+            Some(TitleState::Action) => {
+                session.belled.store(false, Ordering::Relaxed);
+                self.set_state(session, SessionState::Waiting);
+            }
+            Some(TitleState::Ready) | None => {
+                // The busy title kept the session working. Its end starts the
+                // quiet time now, so the turn ends IDLE_AFTER from here.
+                if old == Some(TitleState::Busy) {
+                    session.last_work.store(now_ms(), Ordering::Relaxed);
+                }
+            }
         }
     }
 
@@ -576,6 +612,7 @@ impl SessionPool {
             return;
         }
         session.belled.store(false, Ordering::Relaxed);
+        *session.title_state.lock().unwrap() = None;
         let agent = matches!(front, Front::Agent(_));
         if agent {
             session.fresh.store(true, Ordering::Relaxed);
@@ -756,6 +793,10 @@ impl SessionPool {
 
     fn idle_if_quiet(&self, s: &Session) {
         let front = s.front();
+        // The title says the agent works: a quiet tool call is still work.
+        if *s.title_state.lock().unwrap() == Some(TitleState::Busy) {
+            return;
+        }
         // Check and flip under one lock, so a bell or output the reader
         // handles meanwhile is not overwritten with `idle`.
         let (id, updated) = {
