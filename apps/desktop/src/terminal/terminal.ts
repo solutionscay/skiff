@@ -94,14 +94,34 @@ let resizeTimer: number | undefined;
 /** Panes fitted since the last pty_resize. A later fit adds to them: it must not drop an earlier pane's new size. */
 const resizePending = new Set<string>();
 
+/**
+ * Frames left to wait for a terminal that cannot measure yet. A terminal
+ * opens in the hidden park, where xterm measures no cell, and it measures
+ * only after a frame on screen. A fit before that does nothing, and the
+ * pane keeps the size skiffd saved.
+ */
+let fitTries = 0;
+const FIT_TRIES = 10;
+
 /** Fit every visible terminal now; tell the daemon the new sizes once the drag settles. */
 export function fitShown() {
   cancelAnimationFrame(fitFrame);
   fitFrame = 0;
   const shown = [...panes].filter(([, p]) => p.el.parentElement !== park && p.el.isConnected);
+  let unmeasured = false;
   for (const [id, p] of shown) {
+    if (!p.fit.proposeDimensions()) {
+      unmeasured = true;
+      continue;
+    }
     p.fit.fit();
     resizePending.add(id);
+  }
+  if (unmeasured && fitTries < FIT_TRIES) {
+    fitTries++;
+    fitSoon();
+  } else {
+    fitTries = 0;
   }
   clearTimeout(resizeTimer);
   resizeTimer = window.setTimeout(() => {
