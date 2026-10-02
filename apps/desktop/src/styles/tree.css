@@ -50,8 +50,6 @@ body:has(#ctx-menu:not([hidden]), #launch-menu:not([hidden])) #sidebar-scroll { 
   background: transparent; border: 0; text-align: left;
   font-size: calc(11px * var(--zoom, 1)); color: var(--text-3);
 }
-.wt-count .waiting-note { color: var(--state-waiting-text); }
-.wt-count .unread-note { color: var(--diff-add); }
 /* Files: a launch-only tree under the sessions. Rows keep the 20px grid. */
 .files-block { display: flex; flex-direction: column; flex-shrink: 0; }
 .files-head { position: relative; padding-left: calc(8 * var(--u)); background: linear-gradient(to right, transparent 0 3px, color-mix(in srgb, var(--bg-raised) 20%, var(--bg)) 3px); }

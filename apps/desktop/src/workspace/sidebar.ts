@@ -6,7 +6,7 @@ import { filledOf } from "./layoutSlots";
 import { agentIcon } from "../appearance/agentIcon";
 import { ink } from "../appearance/appTheme";
 import { glyph } from "./layoutIcon";
-import { agentName, basename, branchName, isUnread, taskTitle } from "./model";
+import { agentName, basename, branchName, taskTitle } from "./model";
 import type { Group, Project, SessionInfo, Worktree } from "../platform/types";
 
 import { changeCounts, changesBlock, showsChanges } from "./changes";
@@ -24,17 +24,15 @@ import { itemKey, listItems } from "../app/keyboard";
 import { clearSelection, keepRow, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
 import { stateIcon } from "../appearance/stateIcon";
 import { collapsed, DEFAULT_ACCENT, OTHER, removeErrors, removing, S, selectedWorktree, sessions } from "../app/state";
-import { accent, awayPlaces, currentProject, currentWorktree, place, worktreeSessions } from "../app/stateQueries";
+import { accent, awayPlaces, currentProject, currentWorktree, place } from "../app/stateQueries";
 
 import { dragSessions, revealSession, selectWorktree, showGroup } from "./view";
 
 /** 20px lines, flush against whatever follows. */
-function sessionBlock(lines: Line[], color: string, head: HTMLElement | null, open: boolean): HTMLElement {
+function sessionBlock(lines: Line[], color: string): HTMLElement {
   const block = h("div", "sessions-block");
-  const n = (head ? 1 : 0) + (open ? lines.length : 0);
+  const n = lines.length;
   block.style.height = `calc(${n ? Math.max(40, n * 20) : 0} * var(--u))`;
-  if (head) block.appendChild(head);
-  if (!open) return block;
   for (const l of lines) {
     if (l.group) block.appendChild(groupRow(l.group, l.hasPrevious, l.hasNext));
     else if (l.pointer) block.appendChild(pointerRow(l.pointer));
@@ -194,7 +192,7 @@ function renderOther(side: HTMLElement, activeKey: string | undefined, caret: Ca
   head.appendChild(title);
   side.appendChild(head);
   const lines = worktreeLines(null);
-  if (lines.length) side.appendChild(sessionBlock(lines, DEFAULT_ACCENT, null, true));
+  if (lines.length) side.appendChild(sessionBlock(lines, DEFAULT_ACCENT));
   else side.appendChild(h("div", "note-row", "No sessions"));
   restoreFocus(side, activeKey, caret, near);
 }
@@ -279,7 +277,6 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   const block = h("div", "wt" + (selected ? " selected" : ""));
   block.style.setProperty("--pc", color);
 
-  const list = worktreeSessions(w);
   const open = !collapsed.has(w.path);
 
   const row = h("div", "wt-row");
@@ -314,14 +311,10 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   block.appendChild(row);
 
   if (open) {
-    const waiting = list.filter((s) => s.state === "waiting").length;
-    // Only what needs a look: the rows below already show how many sessions there are.
-    const unread = list.filter(isUnread).length;
-    const count = waiting || unread ? h("div", "wt-count") : null;
-    if (waiting) count!.append(h("span", "waiting-note", `${waiting} waiting`));
-    if (unread) count!.append(h("span", "unread-note", `${waiting ? "· " : ""}${unread} unread`));
+    // No count line: the rows carry their own marks, and a line that comes
+    // and goes would move the whole tree.
     const body = h("div", "wt-body");
-    body.appendChild(sessionBlock(worktreeLines(w), color, count, true));
+    body.appendChild(sessionBlock(worktreeLines(w), color));
     const changes = showsChanges(p) ? changesBlock(w) : null;
     if (changes) body.appendChild(changes);
     if (showsFiles(p)) body.appendChild(filesBlock(w));
