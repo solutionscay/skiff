@@ -18,6 +18,7 @@ import { saveGroup } from "../app/groups";
 import { paneMenu } from "../workspace/menus";
 
 import { S } from "../app/state";
+import { keysOffPanes } from "../app/seen";
 import { activeGroupObj, viewLayout } from "../app/stateQueries";
 import { panes } from "./terminalState";
 import { arrive } from "./waterline";
@@ -48,7 +49,8 @@ export const view = createLayoutView(host, {
   },
   head: paneHead,
   focus: (id) => {
-    if (!isSlot(id) && id !== S.focused) focusPane(id);
+    // The focused pane of a picked group is not selected yet: a click selects it.
+    if (!isSlot(id) && (id !== S.focused || keysOffPanes())) focusPane(id);
   },
   menu: (id, e) => paneMenu(id, e.clientX, e.clientY),
   resized: () => fitSoon(),

@@ -17,7 +17,6 @@ import { activeGroupObj, currentLayout, groupOf, inShownGroup, place, shownIds, 
 import { panes } from "../terminal/terminalState";
 import { closePeek } from "../terminal/peek";
 import { listItems } from "../app/keyboard";
-import { hasKeys, markSeen } from "../app/seen";
 import * as waterline from "../terminal/waterline";
 import { view } from "../terminal/terminal";
 
@@ -37,7 +36,6 @@ export function focusPane(id: string, grab = true) {
     waterline.leave(S.focused);
   }
   S.focused = id;
-  if (hasKeys(id)) markSeen(id);
   waterline.arrive(id);
   const g = activeGroupObj();
   if (g) g.focus = id;

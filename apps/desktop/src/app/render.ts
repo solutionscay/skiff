@@ -9,6 +9,7 @@ import { renderRail } from "../workspace/rail";
 import { renderHeader } from "../workspace/header";
 import { renderCounts } from "../workspace/status";
 import { S } from "./state";
+import { hasKeys, markSeen } from "./seen";
 
 import { savePlace } from "./stored";
 import { renderLayout } from "../terminal/terminal";
@@ -61,6 +62,8 @@ export function render() {
   // App colors first: the sidebar's marks are inked against them.
   applyApp();
   host.classList.toggle("group-picked", !!S.groupPicked && S.groupPicked === S.activeGroup);
+  // The keys can reach a pane without a focus change: the group row or the rail lets go.
+  if (S.focused && hasKeys(S.focused)) markSeen(S.focused);
   renderRail();
   renderSidebar();
   renderSelectBar();

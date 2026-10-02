@@ -3,8 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { S, sessions } from "./state";
 
-/** True when `id` is the focused pane of the active window. Its result is in front of the user. */
-export const hasKeys = (id: string) => S.focused === id && document.hasFocus();
+/** A picked group row or the rail holds the keys: the focused pane is shown but not selected. */
+export const keysOffPanes = () => S.atRail || (!!S.groupPicked && S.groupPicked === S.activeGroup);
+
+/** True when `id` is the selected pane of the active window. Its result is in front of the user. */
+export const hasKeys = (id: string) => S.focused === id && document.hasFocus() && !keysOffPanes();
 
 /** Drops the session's unread flag and failed mark, here and in the daemon. */
 export function markSeen(id: string) {

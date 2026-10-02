@@ -140,7 +140,6 @@ window.addEventListener("focus", reposStale);
 // The focused pane is in front of the user again: its result is seen.
 window.addEventListener("focus", () => {
   if (!S.focused) return;
-  markSeen(S.focused);
   waterline.arrive(S.focused);
   scheduleRender();
 });
