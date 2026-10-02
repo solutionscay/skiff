@@ -1,0 +1,14 @@
+# Imported from the operator Foot configuration.
+name = "Sonar"
+color_family = "Blue"
+main_color = "#6ec8e8"
+
+[terminal]
+foreground = "#6ec8e8"
+background = "#04121c"
+cursor = "#08001a"
+cursor_foreground = "#ff00ff"
+selection = "#4400aa"
+selection_foreground = "#ffffff"
+regular = ["#08001a", "#ff1177", "#aaff00", "#ffdd00", "#3366ff", "#cc00ff", "#00ffcc", "#d8c8ff"]
+bright = ["#440066", "#ff4499", "#ccff33", "#ffff00", "#33aaff", "#ff00ff", "#00ffff", "#ffffff"]

@@ -1,5 +1,19 @@
 /* Theme cards: a grid split by 1px rules, a small window preview, name and badge. */
-.tc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(208px, 1fr)); gap: 16px; }
+.tc-tools { display: flex; flex-wrap: wrap; gap: calc(8 * var(--u)); }
+.tc-search, .tc-tool, .tc-swatches { height: var(--row); border: 1px solid var(--rule-strong); background: var(--bg-panel); color: var(--text); font: inherit; }
+.tc-search { flex: 1; min-width: calc(160 * var(--u)); padding: 0 calc(12 * var(--u)); }
+.tc-swatches { display: flex; align-items: center; gap: calc(4 * var(--u)); padding: 0 calc(8 * var(--u)); }
+.tc-swatch { width: calc(20 * var(--u)); height: calc(20 * var(--u)); padding: 0; border: 1px solid transparent; background: var(--sw); cursor: pointer; }
+.tc-swatch.all { width: auto; padding: 0 calc(6 * var(--u)); background: none; color: var(--text-3); font: inherit; font-size: calc(12px * var(--zoom, 1)); }
+.tc-swatch:hover { border-color: var(--text-3); }
+.tc-swatch.all:hover { color: var(--text); }
+.tc-swatch[aria-pressed="true"] { border-color: var(--text); box-shadow: inset 0 0 0 1px var(--bg-panel); }
+.tc-swatch.all[aria-pressed="true"] { color: var(--text); box-shadow: none; }
+.tc-tool { width: var(--row); display: flex; align-items: center; justify-content: center; padding: 0; color: var(--text-3); cursor: pointer; }
+.tc-tool:hover { background: var(--bg-raised); color: var(--text); }
+.tc-tool:disabled { color: var(--text-dim); cursor: wait; }
+.tc-status { padding: calc(8 * var(--u)) 0; color: var(--text-3); font-size: calc(12px * var(--zoom, 1)); overflow-wrap: anywhere; }
+.tc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(240 * var(--u))), 1fr)); gap: calc(16 * var(--u)); }
 .tc-card { display: flex; flex-direction: column; padding: 0; border: 1px solid var(--rule-strong); background: var(--bg-panel); color: var(--text-2); text-align: left; cursor: pointer; position: relative; }
 .tc-card:hover .tc-name, .tc-card:focus-visible .tc-name { color: var(--text); }
 body.kbd .tc-card:focus { outline: 0; border-color: var(--text); box-shadow: 0 0 0 1px var(--text); }
@@ -11,7 +25,8 @@ body.kbd .tc-card:focus { outline: 0; border-color: var(--text); box-shadow: 0 0
 .tc-term { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; padding: 9px 10px; font: 10px/1.35 var(--mono); white-space: nowrap; overflow: hidden; }
 .tc-line { display: block; overflow: hidden; text-overflow: clip; }
 .tc-cursor { display: inline-block; width: 6px; height: 11px; vertical-align: -2px; }
-.tc-foot { height: var(--row); display: flex; align-items: center; gap: 8px; padding: 0 12px; border-top: 1px solid var(--rule); }
+.tc-foot { min-height: var(--row); display: flex; flex-wrap: wrap; align-items: center; gap: calc(8 * var(--u)); padding: calc(8 * var(--u)) calc(12 * var(--u)); border-top: 1px solid var(--rule); }
+.tc-signature { width: calc(10 * var(--u)); height: calc(10 * var(--u)); flex-shrink: 0; }
 .tc-name { flex-grow: 1; min-width: 0; font-size: calc(13px * var(--zoom, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tc-badge { flex-shrink: 0; font-size: calc(10px * var(--zoom, 1)); padding: 1px 6px; border: 1px solid var(--rule-strong); color: var(--text-3); }
 .tc-state { flex-shrink: 0; font-size: calc(11px * var(--zoom, 1)); font-weight: 600; color: var(--state-working); }

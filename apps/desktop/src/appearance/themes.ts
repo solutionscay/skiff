@@ -1,4 +1,4 @@
-import { HARBOR, rgb } from "./colors";
+import { DEFAULT_THEME, isLight, mix, readable } from "./colors";
 /** Terminal and app themes. */
 import { applyAppTheme } from "./appTheme";
 import { sessionsOf } from "../workspace/layout";
@@ -15,6 +15,10 @@ import { panes } from "../terminal/terminalState";
 
 /** Foot themes became built-ins; old `foot:x` choices mean `builtin:x`. */
 const canonTheme = (id: string | null) => (id ? id.replace(/^foot:/, "builtin:") : id);
+const knownTheme = (id: string | null) => {
+  const canonical = canonTheme(id);
+  return S.themes.some((t) => t.id === canonical) ? canonical! : DEFAULT_THEME;
+};
 
 export async function loadThemes() {
   const list = await invoke<TerminalTheme[]>("list_themes").catch(() => S.themes);
@@ -35,14 +39,14 @@ export async function loadProjectThemes() {
 /** The project's own theme id, or null when it follows the app. */
 export const projectTheme = (p: Project) => projectThemes.get(p.name) ?? null;
 
-/** A project's theme, else the app theme; Harbor if neither is set. */
+/** A project's theme, else the app theme; Ultraviolet if neither is set. */
 function themeFor(p: Project | null | undefined): string {
-  return (p && projectThemes.get(p.name)) || (canonTheme(S.appTheme) ?? HARBOR);
+  return knownTheme((p && projectThemes.get(p.name)) || S.appTheme);
 }
 
 /** A terminal's theme: its own, else its project's, else the app's. */
 export function themeIdFor(s: SessionInfo | undefined): string {
-  return (s && canonTheme(s.theme)) || themeFor(s && place(s)?.project);
+  return s?.theme ? knownTheme(s.theme) : themeFor(s && place(s)?.project);
 }
 
 let appliedApp: string | undefined;
@@ -52,16 +56,18 @@ export function applyApp() {
   const want = themeFor(currentProject());
   if (want === appliedApp) return;
   appliedApp = want;
-  applyAppTheme(want === HARBOR ? null : S.themes.find((t) => t.id === want) ?? null);
+  applyAppTheme(S.themes.find((t) => t.id === want) ?? null);
 }
 
-function xtermTheme(t: TerminalTheme) {
+export function xtermTheme(t: TerminalTheme) {
   const [black, red, green, yellow, blue, magenta, cyan, white, brightBlack, brightRed, brightGreen, brightYellow, brightBlue, brightMagenta, brightCyan, brightWhite] = t.palette;
   return {
-    foreground: t.foreground,
+    foreground: isLight(t.background) ? readable(t.foreground, [t.background], 7) : t.foreground,
     background: t.background,
     cursor: t.cursor ?? t.foreground,
-    selectionBackground: t.selection ?? brightBlack,
+    cursorAccent: t.cursor_foreground,
+    selectionBackground: t.selection ?? mix(t.background, t.foreground, 0.25),
+    selectionForeground: t.selection_foreground ?? (isLight(t.background) ? readable(t.foreground, [t.selection ?? mix(t.background, t.foreground, 0.25)], 4.5) : undefined),
     black, red, green, yellow, blue, magenta, cyan, white,
     brightBlack, brightRed, brightGreen, brightYellow, brightBlue, brightMagenta, brightCyan, brightWhite,
   };
@@ -72,11 +78,17 @@ export function applyThemes() {
   for (const [id, pane] of panes) {
     const want = themeIdFor(sessions.get(id));
     if (pane.theme === want) continue;
-    const t = S.themes.find((x) => x.id === want) ?? S.themes.find((x) => x.id === HARBOR);
+    const t = S.themes.find((x) => x.id === want) ?? S.themes.find((x) => x.id === DEFAULT_THEME);
     if (!t) continue;
     pane.theme = want;
     pane.term.options.theme = xtermTheme(t);
+    // xterm halves this target for ANSI dim text, which light themes use often.
+    pane.term.options.minimumContrastRatio = isLight(t.background) ? 7 : 1;
     pane.el.style.background = t.background;
+    pane.el.style.colorScheme = isLight(t.background) ? "light" : "dark";
+    pane.el.style.setProperty("--wl-bg", t.background);
+    pane.el.style.setProperty("--wl-rule", readable(mix(t.background, t.foreground, 0.22), [t.background], 3));
+    pane.el.style.setProperty("--wl-text", readable(t.foreground, [t.background], 4.5));
   }
 }
 
@@ -86,6 +98,7 @@ export async function sessionThemeMenu(s: SessionInfo) {
   const app = S.themes.find((t) => t.id === themeFor(place(s)?.project));
   pickTheme(`Session theme: ${taskTitle(s)}`, "This session only. It replaces the project theme.", S.themes, {
     active: canonTheme(s.theme),
+    reload: async () => { await loadThemes(); return S.themes; },
     none: { label: "Same as project", theme: app },
     pick: (id) => {
       const live = sessions.get(s.id);
@@ -109,6 +122,7 @@ export async function groupThemeMenu(g: Group) {
   const app = S.themes.find((t) => t.id === themeFor(members[0] && place(members[0])?.project));
   pickTheme(`Group theme: ${g.name}`, "Every session in this group. It replaces the project theme.", S.themes, {
     active: shared,
+    reload: async () => { await loadThemes(); return S.themes; },
     none: { label: "Same as project", theme: app },
     pick: (id) => {
       // Look sessions up now: one may have ended while the picker was open.
@@ -125,22 +139,9 @@ export async function groupThemeMenu(g: Group) {
   });
 }
 
-const chroma = (hex: string) => {
-  const c = rgb(hex);
-  return (Math.max(...c) - Math.min(...c)) / 255;
-};
-
-/**
- * The one color that says which theme this is. The built-in themes share one
- * ANSI palette and differ by their text color, so a tinted foreground wins;
- * then a tinted cursor; else the most vivid bright color, red aside (it reads
- * as an error). Backgrounds are all near black, so they tell nothing apart.
- */
+/** The main color supplied by the theme, else its foreground. */
 export function signatureColor(t: TerminalTheme): string {
-  if (chroma(t.foreground) > 0.1) return t.foreground;
-  if (t.cursor && chroma(t.cursor) > 0.1) return t.cursor;
-  const brights = t.palette.slice(10, 15);
-  return brights.reduce((a, b) => (chroma(b) > chroma(a) ? b : a), brights[0] ?? t.foreground);
+  return t.main_color ?? t.foreground;
 }
 
 /** The theme this terminal was given by hand, or null when it follows the app. */
@@ -152,9 +153,10 @@ export function ownTheme(s: SessionInfo): TerminalTheme | null {
 /** Right-click a project, Project theme: its chrome and every terminal without its own. */
 export async function projectThemeMenu(p: Project) {
   await loadThemes();
-  const app = S.themes.find((t) => t.id === (canonTheme(S.appTheme) ?? HARBOR));
+  const app = S.themes.find((t) => t.id === (knownTheme(S.appTheme)));
   pickTheme(`Project theme: ${p.name}`, "This project and its sessions without a theme of their own. It replaces the app theme.", S.themes, {
     active: projectTheme(p),
+    reload: async () => { await loadThemes(); return S.themes; },
     none: { label: "Same as app", theme: app },
     pick: (id) => {
       if (id) projectThemes.set(p.name, canonTheme(id)!);

@@ -82,6 +82,8 @@ pub fn run() {
             commands::set_project_theme,
             commands::reorder_projects,
             commands::list_themes,
+            commands::import_themes,
+            commands::open_theme_folder,
             commands::get_appearance,
             diagnostics::memory_usage,
             commands::get_keys,

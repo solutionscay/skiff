@@ -1,0 +1,14 @@
+# Built on the operator Foot palette.
+name = "Battleship"
+color_family = "Neutral"
+main_color = "#c2c2c2"
+
+[terminal]
+foreground = "#c2c2c2"
+background = "#0c0c0c"
+cursor = "#08001a"
+cursor_foreground = "#ff00ff"
+selection = "#4400aa"
+selection_foreground = "#ffffff"
+regular = ["#08001a", "#ff1177", "#aaff00", "#ffdd00", "#3366ff", "#cc00ff", "#00ffcc", "#d8c8ff"]
+bright = ["#440066", "#ff4499", "#ccff33", "#ffff00", "#33aaff", "#ff00ff", "#00ffff", "#ffffff"]

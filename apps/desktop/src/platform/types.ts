@@ -165,6 +165,8 @@ export interface Group {
   cwd?: string | null;
 }
 
+export type ThemeColorFamily = "Neutral" | "Beige" | "Red" | "Orange" | "Yellow" | "Green" | "Cyan" | "Blue" | "Purple" | "Pink";
+
 export interface TerminalTheme {
   /** builtin:<slug> or file:<name>. */
   id: string;
@@ -173,7 +175,11 @@ export interface TerminalTheme {
   foreground: string;
   background: string;
   cursor: string | null;
+  cursor_foreground?: string;
   selection: string | null;
+  selection_foreground?: string;
+  color_family?: ThemeColorFamily;
+  main_color?: string;
   /** ANSI 0–15. */
   palette: string[];
   /** App colors from the theme file (Superset's ui block), when it has them. */

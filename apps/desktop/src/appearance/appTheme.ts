@@ -1,33 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import { rgb, type Rgb } from "./colors";
+import { contrast, isLight, mix, readable } from "./colors";
 import type { TerminalTheme } from "../platform/types";
 
-const toHex = (c: Rgb) => "#" + c.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, "0")).join("");
-/** `a` moved `t` of the way to `b`. */
-const mix = (a: string, b: string, t: number) => {
-  const x = rgb(a);
-  const y = rgb(b);
-  return toHex([0, 1, 2].map((i) => x[i] + (y[i] - x[i]) * t) as Rgb);
-};
-const luminance = (hex: string) => {
-  const [r, g, b] = rgb(hex);
-  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-};
-/** WCAG relative luminance. */
-const relLum = (hex: string) => {
-  const [r, g, b] = rgb(hex).map((v) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-};
-/** WCAG contrast ratio, 1 to 21. */
-const contrast = (a: string, b: string) => {
-  const [x, y] = [relLum(a), relLum(b)].sort((m, n) => n - m);
-  return (x + 0.05) / (y + 0.05);
-};
-
-/** The surfaces text and marks sit on: bg, panel, raised. Harbor until a theme applies. */
+/** The surfaces text and marks sit on: bg, panel, raised. Stylesheet defaults until a theme applies. */
 let surfaces = ["#0f1216", "#13171c", "#1b2129"];
 let lightScheme = false;
 
@@ -38,13 +13,7 @@ let lightScheme = false;
  */
 function legible(c: string, ratio: number, on = surfaces): string {
   if (!/^#[0-9a-f]{6}/i.test(c)) return c;
-  const end = lightScheme ? "#000000" : "#ffffff";
-  const ok = (x: string) => on.every((s) => contrast(x, s) >= ratio);
-  for (let t = 0; t <= 1; t += 0.05) {
-    const x = mix(c, end, t);
-    if (ok(x)) return x;
-  }
-  return end;
+  return readable(c, on, ratio);
 }
 
 /**
@@ -61,7 +30,7 @@ const TEXT_MIN: Record<string, number> = {
   "--state-working": 3, "--state-waiting": 3, "--project-default": 3, "--accent": 3,
 };
 
-/** The CSS variables the app theme sets. Harbor is the stylesheet itself. */
+/** The CSS variables the app theme sets. The stylesheet provides the loading fallback. */
 const VARS = [
   "--bg", "--bg-deep", "--bg-panel", "--bg-raised", "--rule", "--rule-strong",
   "--text", "--text-2", "--text-3", "--text-dim",
@@ -75,7 +44,7 @@ const VARS = [
 /**
  * App colors from a terminal theme: surfaces step from the background toward
  * the foreground, text steps back, and the states take the theme's blue,
- * yellow, and red. `null` returns to the stylesheet's Harbor.
+ * yellow, and red. `null` returns to the stylesheet defaults.
  */
 export function applyAppTheme(t: TerminalTheme | null) {
   const root = document.documentElement.style;
@@ -89,7 +58,7 @@ export function applyAppTheme(t: TerminalTheme | null) {
   }
   const bg = t.background;
   const fg = t.foreground;
-  const light = luminance(bg) > 0.5;
+  const light = isLight(bg);
   const [, red, , yellow, blue, magenta] = t.palette;
   const set: Record<string, string> = t.ui ? fromUi(t.ui, t) : {
     "--bg": bg,
@@ -115,7 +84,7 @@ export function applyAppTheme(t: TerminalTheme | null) {
   set["--accent"] = set["--project-default"];
   // Enforce contrast last, so theme files and derived mixes both pass.
   surfaces = [set["--bg"], set["--bg-panel"], set["--bg-raised"]];
-  lightScheme = luminance(set["--bg"]) > 0.5;
+  lightScheme = isLight(set["--bg"]);
   for (const [k, min] of Object.entries(TEXT_MIN)) set[k] = legible(set[k], min);
   Object.assign(set, alerts(set, t.palette[2]));
   set["--hover"] = lightScheme ? "rgba(0, 0, 0, 0.05)" : "rgba(255, 255, 255, 0.05)";
@@ -161,7 +130,7 @@ function fromUi(u: Record<string, string>, t: TerminalTheme): Record<string, str
   const border = u.border ?? mix(bg, fg, 0.14);
   return {
     "--bg": bg,
-    "--bg-deep": u.tertiary ?? u.sidebar ?? mix(bg, "#000000", 0.25),
+    "--bg-deep": u.tertiary ?? u.sidebar ?? (isLight(bg) ? mix(bg, fg, 0.04) : mix(bg, "#000000", 0.25)),
     "--bg-panel": u.sidebar ?? u.card ?? mix(bg, fg, 0.05),
     "--bg-raised": u.secondary ?? u.muted ?? mix(bg, fg, 0.1),
     "--rule": border,

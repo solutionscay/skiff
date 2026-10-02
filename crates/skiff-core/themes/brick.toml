@@ -1,0 +1,14 @@
+# Built on the operator Foot palette.
+name = "Brick"
+color_family = "Red"
+main_color = "#d87272"
+
+[terminal]
+foreground = "#d87272"
+background = "#100808"
+cursor = "#08001a"
+cursor_foreground = "#ff00ff"
+selection = "#4400aa"
+selection_foreground = "#ffffff"
+regular = ["#08001a", "#ff1177", "#aaff00", "#ffdd00", "#3366ff", "#cc00ff", "#00ffcc", "#d8c8ff"]
+bright = ["#440066", "#ff4499", "#ccff33", "#ffff00", "#33aaff", "#ff00ff", "#00ffff", "#ffffff"]

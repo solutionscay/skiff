@@ -1,21 +1,16 @@
-import { rgb } from "./colors";
+import { isLight, mix, readable } from "./colors";
+import { COLOR_FAMILIES, themeProfile } from "./themeProfile";
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { dialogFrame, dialogHeader } from "../ui/dialogParts";
 import { h } from "../ui/dom";
+import { icon } from "../ui/icons";
 import type { TerminalTheme } from "../platform/types";
-
-const mix = (a: string, b: string, t: number) => {
-  const x = rgb(a);
-  const y = rgb(b);
-  return "#" + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join("");
-};
-const isLight = (hex: string) => {
-  const [r, g, b] = rgb(hex);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 128;
-};
 
 /** A small Skiff window in the theme's colors: a sidebar and a few terminal lines. */
 function preview(t: TerminalTheme): HTMLElement {
-  const p = t.palette;
+  const p = t.palette.map((c) => isLight(t.background) ? readable(c, [t.background], 7) : c);
+  const fg = isLight(t.background) ? readable(t.foreground, [t.background], 7) : t.foreground;
   const box = h("span", "tc-preview");
   box.style.background = t.background;
   const side = h("span", "tc-side");
@@ -37,20 +32,34 @@ function preview(t: TerminalTheme): HTMLElement {
     }
     term.appendChild(l);
   };
-  line([["~/skiff", p[2]], [" main", p[4]], [" $ cargo test", t.foreground]]);
-  line([["   Compiling", p[2]], [" skiffd", t.foreground]]);
-  line([["warning", p[3]], [": unused var", mix(t.foreground, t.background, 0.3)]]);
-  line([["error", p[1]], ["[E0308]", p[5]], [" types", p[6]]]);
+  line([["~/skiff main $ cargo test", fg]]);
+  line([["   Compiling skiffd", fg]]);
+  line([["warning", p[3]], [": unused var", readable(mix(fg, t.background, 0.3), [t.background], 4.5)]]);
+  line([["error", p[1]], ["[E0308] types", fg]]);
   const cursor = h("span", "tc-cursor");
   cursor.style.background = t.cursor ?? t.foreground;
   const last = h("span", "tc-line");
   const prompt = h("span", "", "$ ");
-  prompt.style.color = p[2];
+  prompt.style.color = fg;
   last.append(prompt, cursor);
   term.appendChild(last);
   box.append(side, term);
   return box;
 }
+
+/** A representative hue for each color family's swatch. */
+const SWATCH: Record<string, string> = {
+  Neutral: "#8a8f98", Beige: "#e4d2ac", Red: "#e5484d", Orange: "#f07630", Yellow: "#e8c547", Green: "#46a758",
+  Cyan: "#2fb7c4", Blue: "#3e7bfa", Purple: "#8e5cf6", Pink: "#e45fa8",
+  Unclassified: "#8a8f98",
+};
+
+export interface ThemeFilters {
+  query: string;
+  family: string | null;
+}
+
+const pickerFilters: ThemeFilters = { query: "", family: null };
 
 export interface CardOpts {
   /** The id shown as active. */
@@ -58,27 +67,128 @@ export interface CardOpts {
   pick: (id: string | null) => void;
   /** A first card that clears the choice, e.g. "Same as app". */
   none?: { label: string; theme: TerminalTheme | undefined };
+  reload?: () => Promise<TerminalTheme[]>;
+  filters?: ThemeFilters;
 }
 
 /** A grid of theme cards. A click picks; nothing previews on hover. */
 export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
+  const filters = o.filters ?? { query: "", family: null };
+  const browser = h("div", "tc-browser");
+  const tools = h("div", "tc-tools");
+  const search = h("input", "tc-search");
+  search.type = "search";
+  search.placeholder = "Find by name or color";
+  search.setAttribute("aria-label", "Find theme by name or color");
+  search.value = filters.query;
+  // One swatch per color family. "All" clears the filter.
+  const swatches = h("div", "tc-swatches");
+  swatches.setAttribute("role", "group");
+  swatches.setAttribute("aria-label", "Theme color");
+  const swatch = (value: string | null) => {
+    const b = h("button", "tc-swatch" + (value ? "" : " all"), value ? "" : "All");
+    b.type = "button";
+    b.title = value ?? "All colors";
+    b.setAttribute("aria-label", value ?? "All colors");
+    b.setAttribute("aria-pressed", String(value === filters.family));
+    if (value) b.style.setProperty("--sw", SWATCH[value]);
+    b.addEventListener("click", () => {
+      filters.family = value;
+      for (const s of swatches.children) s.setAttribute("aria-pressed", String(s === b));
+      draw();
+    });
+    return b;
+  };
+  swatches.append(swatch(null), ...COLOR_FAMILIES.map(swatch));
+  tools.append(search, swatches);
+  const status = h("div", "tc-status");
+  status.setAttribute("role", "status");
   const grid = h("div", "tc-grid");
   const card = (t: TerminalTheme, id: string | null, label: string, badge: string) => {
     const on = o.active === id;
     const b = h("button", "tc-card" + (on ? " active" : ""));
     b.type = "button";
+    b.dataset.theme = id ?? "";
     b.setAttribute("aria-pressed", String(on));
     b.appendChild(preview(t));
     const foot = h("span", "tc-foot");
+    const signature = h("span", "tc-signature");
+    signature.style.background = themeProfile(t).color;
+    signature.setAttribute("aria-hidden", "true");
+    foot.appendChild(signature);
     foot.append(h("span", "tc-name", label), h("span", "tc-badge", badge));
     if (on) foot.appendChild(h("span", "tc-state", "✓ Active"));
     b.appendChild(foot);
-    b.addEventListener("click", () => o.pick(id));
+    b.addEventListener("click", () => {
+      o.active = id;
+      // Update the mark in place. Keep the filter, scroll and focused card.
+      for (const c of grid.querySelectorAll<HTMLButtonElement>(".tc-card")) {
+        const active = c.dataset.theme === (id ?? "");
+        c.classList.toggle("active", active);
+        c.setAttribute("aria-pressed", String(active));
+        c.querySelector(".tc-state")?.remove();
+        if (active) c.querySelector(".tc-foot")?.appendChild(h("span", "tc-state", "✓ Active"));
+      }
+      o.pick(id);
+    });
     return b;
   };
-  if (o.none?.theme) grid.appendChild(card(o.none.theme, null, o.none.label, "default"));
-  for (const t of themes) grid.appendChild(card(t, t.id, t.name, isLight(t.background) ? "Light" : "Dark"));
-  return grid;
+  const draw = () => {
+    grid.replaceChildren();
+    if (o.none?.theme) grid.appendChild(card(o.none.theme, null, o.none.label, "default"));
+    const words = filters.query.toLowerCase().trim().split(/\s+/);
+    const shown = themes.filter((t) => {
+      const p = themeProfile(t);
+      const text = `${t.name} ${p.family}`.toLowerCase();
+      return words.every((word) => text.includes(word))
+        && (!filters.family || filters.family === p.family);
+    });
+    for (const t of shown) {
+      const p = themeProfile(t);
+      grid.appendChild(card(t, t.id, t.name, p.family));
+    }
+    status.textContent = `${shown.length} of ${themes.length} themes`;
+  };
+  search.addEventListener("input", () => {
+    filters.query = search.value;
+    draw();
+  });
+  if (o.reload) {
+    const tool = (label: string, paths: string) => {
+      const b = h("button", "tc-tool");
+      b.type = "button";
+      b.title = label;
+      b.setAttribute("aria-label", label);
+      const svg = icon(paths);
+      svg.setAttribute("width", "16");
+      svg.setAttribute("height", "16");
+      b.appendChild(svg);
+      return b;
+    };
+    const add = tool("Import themes…", '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path>');
+    const folder = tool("Open theme folder", '<path d="M3 6h6l2 2h10v11H3z"></path>');
+    const reload = async () => { themes = await o.reload!(); draw(); };
+    add.addEventListener("click", async () => {
+      try {
+        const paths = await open({ multiple: true, title: "Import theme files" });
+        if (!paths) return;
+        add.disabled = true;
+        const errors = await invoke<string[]>("import_themes", { paths: Array.isArray(paths) ? paths : [paths] });
+        await reload();
+        if (errors.length) status.textContent = errors.join("; ");
+      } catch (e) { status.textContent = String(e); }
+      finally { add.disabled = false; }
+    });
+    folder.addEventListener("click", () => {
+      invoke("open_theme_folder").catch((e) => { status.textContent = String(e); });
+      // Pick up files the user drops in the folder when they come back.
+      window.addEventListener("focus", () => { if (browser.isConnected) reload().catch(() => {}); }, { once: true });
+    });
+    tools.append(add, folder);
+  }
+  browser.append(tools, status, grid);
+  draw();
+  return browser;
 }
 
 const KEYS: Record<string, "left" | "right" | "up" | "down" | "first" | "last"> = {
@@ -123,6 +233,7 @@ export function pickTheme(title: string, scope: string, themes: TerminalTheme[],
   body.appendChild(
     themeGrid(themes, {
       ...o,
+      filters: o.filters ?? pickerFilters,
       pick: (id) => {
         close();
         o.pick(id);
@@ -143,6 +254,7 @@ export function pickTheme(title: string, scope: string, themes: TerminalTheme[],
       return;
     }
     const step = KEYS[e.key];
+    if (!(e.target instanceof HTMLElement) || !e.target.closest(".tc-card")) return;
     if (!step || e.ctrlKey || e.altKey || e.metaKey) return;
     // Arrows move between cards, not the panel's scroll.
     e.preventDefault();
@@ -151,5 +263,5 @@ export function pickTheme(title: string, scope: string, themes: TerminalTheme[],
     const at = cards.indexOf(document.activeElement as HTMLButtonElement);
     cards[nextCard(cards, at < 0 ? 0 : at, step)]?.focus();
   });
-  (body.querySelector<HTMLButtonElement>(".tc-card.active") ?? body.querySelector<HTMLButtonElement>(".tc-card"))?.focus();
+  body.querySelector<HTMLInputElement>(".tc-search")?.focus();
 }

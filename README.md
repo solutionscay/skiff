@@ -41,6 +41,31 @@ Download the latest [release](https://github.com/solutionscay/skiff/releases/lat
 - Linux (x86_64): `.deb`, `.rpm` or AppImage
 - macOS (Apple Silicon): `.dmg`, signed and notarized
 
+## Themes
+
+Themes apply to the app, a project, or a session. A session theme replaces the
+project theme. A project theme replaces the app theme.
+
+The 34 built-in themes use the operator's Foot palette. Their
+Skiff TOML files live in `crates/skiff-core/themes`. Ultraviolet is the default.
+Each file declares `color_family` and `main_color`. The picker uses these
+values for its color filter and swatch. Themes without a declared color group
+show as Unclassified.
+
+Use the theme picker to search by name or filter by main color.
+Select **Import themes…** to add multiple files. Skiff supports its own TOML,
+Superset JSON, Foot INI, Alacritty TOML, Ghostty, and base16 or base24 YAML.
+Each file needs a foreground, a background, and all 16 ANSI colors. Import
+keeps existing files with the same name and reports files it cannot read.
+
+**Open theme folder** opens the `themes` folder beside `projects.toml`.
+You can copy files there. The list refreshes when you return to Skiff. There is no theme count
+limit. Theme files contain color values, so a large collection needs little space.
+
+Light terminal themes use contrast correction for text. The waterline uses
+each pane's background. Programs can supply their own text and background
+colors, so a program's dark blocks can still appear inside a light terminal.
+
 ## Layout
 
 ```

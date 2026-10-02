@@ -6,6 +6,11 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum ColorFamily {
+    Neutral, Beige, Red, Orange, Yellow, Green, Cyan, Blue, Purple, Pink,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct TerminalTheme {
     /// `builtin:<slug>` or `file:<file name>`. Old `foot:<slug>` ids mean `builtin:<slug>`.
     pub id: String,
@@ -15,7 +20,16 @@ pub struct TerminalTheme {
     pub foreground: String,
     pub background: String,
     pub cursor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor_foreground: Option<String>,
     pub selection: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_foreground: Option<String>,
+    /// Explicit visual category; never inferred from a nearly black background.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color_family: Option<ColorFamily>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub main_color: Option<String>,
     /// ANSI 0–15: regular 0–7, then bright 0–7. `#rrggbb`.
     pub palette: Vec<String>,
     /// App colors a theme file brings (Superset's `ui` block: background,
@@ -26,124 +40,61 @@ pub struct TerminalTheme {
 }
 
 /// The default when a project names no theme.
-pub const DEFAULT_THEME: &str = "builtin:harbor";
+pub const DEFAULT_THEME: &str = "builtin:foot";
 
-const BUILTIN: &[(&str, &str, &str, &str, [&str; 16])] = &[
-    ("harbor", "Harbor", "#e6e8eb", "#0b0e12", [
-        "#0f1216", "#ff8a80", "#7ee0cb", "#ffb454", "#6b9cff", "#b69cff", "#7ee0cb", "#c3c9d1",
-        "#7d8794", "#ffb3b3", "#a4f0e0", "#ffcf8a", "#9ec1ff", "#d0c2ff", "#a4f0e0", "#ffffff",
-    ]),
-    ("gruvbox-dark", "Gruvbox Dark", "#ebdbb2", "#282828", [
-        "#282828", "#cc241d", "#98971a", "#d79921", "#458588", "#b16286", "#689d6a", "#a89984",
-        "#928374", "#fb4934", "#b8bb26", "#fabd2f", "#83a598", "#d3869b", "#8ec07c", "#ebdbb2",
-    ]),
-    ("nord", "Nord", "#d8dee9", "#2e3440", [
-        "#3b4252", "#bf616a", "#a3be8c", "#ebcb8b", "#81a1c1", "#b48ead", "#88c0d0", "#e5e9f0",
-        "#4c566a", "#bf616a", "#a3be8c", "#ebcb8b", "#81a1c1", "#b48ead", "#8fbcbb", "#eceff4",
-    ]),
-    ("dracula", "Dracula", "#f8f8f2", "#282a36", [
-        "#21222c", "#ff5555", "#50fa7b", "#f1fa8c", "#bd93f9", "#ff79c6", "#8be9fd", "#f8f8f2",
-        "#6272a4", "#ff6e6e", "#69ff94", "#ffffa5", "#d6acff", "#ff92df", "#a4ffff", "#ffffff",
-    ]),
-    ("catppuccin-mocha", "Catppuccin Mocha", "#cdd6f4", "#1e1e2e", [
-        "#45475a", "#f38ba8", "#a6e3a1", "#f9e2af", "#89b4fa", "#f5c2e7", "#94e2d5", "#bac2de",
-        "#585b70", "#f38ba8", "#a6e3a1", "#f9e2af", "#89b4fa", "#f5c2e7", "#94e2d5", "#a6adc8",
-    ]),
-    ("tokyo-night", "Tokyo Night", "#c0caf5", "#1a1b26", [
-        "#15161e", "#f7768e", "#9ece6a", "#e0af68", "#7aa2f7", "#bb9af7", "#7dcfff", "#a9b1d6",
-        "#414868", "#f7768e", "#9ece6a", "#e0af68", "#7aa2f7", "#bb9af7", "#7dcfff", "#c0caf5",
-    ]),
-    ("one-dark", "One Dark", "#abb2bf", "#282c34", [
-        "#282c34", "#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2", "#abb2bf",
-        "#5c6370", "#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2", "#ffffff",
-    ]),
-    ("rose-pine", "Rosé Pine", "#e0def4", "#191724", [
-        "#26233a", "#eb6f92", "#31748f", "#f6c177", "#9ccfd8", "#c4a7e7", "#ebbcba", "#e0def4",
-        "#6e6a86", "#eb6f92", "#31748f", "#f6c177", "#9ccfd8", "#c4a7e7", "#ebbcba", "#e0def4",
-    ]),
-    ("kanagawa", "Kanagawa", "#dcd7ba", "#1f1f28", [
-        "#090618", "#c34043", "#76946a", "#c0a36e", "#7e9cd8", "#957fb8", "#6a9589", "#c8c093",
-        "#727169", "#e82424", "#98bb6c", "#e6c384", "#7fb4ca", "#938aa9", "#7aa89f", "#dcd7ba",
-    ]),
-    ("everforest-dark", "Everforest Dark", "#d3c6aa", "#2d353b", [
-        "#475258", "#e67e80", "#a7c080", "#dbbc7f", "#7fbbb3", "#d699b6", "#83c092", "#d3c6aa",
-        "#475258", "#e67e80", "#a7c080", "#dbbc7f", "#7fbbb3", "#d699b6", "#83c092", "#d3c6aa",
-    ]),
-    ("solarized-dark", "Solarized Dark", "#839496", "#002b36", [
-        "#073642", "#dc322f", "#859900", "#b58900", "#268bd2", "#d33682", "#2aa198", "#eee8d5",
-        "#002b36", "#cb4b16", "#586e75", "#657b83", "#839496", "#6c71c4", "#93a1a1", "#fdf6e3",
-    ]),
-    ("solarized-light", "Solarized Light", "#657b83", "#fdf6e3", [
-        "#073642", "#dc322f", "#859900", "#b58900", "#268bd2", "#d33682", "#2aa198", "#eee8d5",
-        "#002b36", "#cb4b16", "#586e75", "#657b83", "#839496", "#6c71c4", "#93a1a1", "#fdf6e3",
-    ]),
+const BUILTIN: &[(&str, &str)] = &[
+    ("foot", include_str!("../themes/foot.toml")),
+    ("default", include_str!("../themes/default.toml")),
+    ("neon-tropic", include_str!("../themes/neon-tropic.toml")),
+    ("moonlight", include_str!("../themes/moonlight.toml")),
+    ("ember", include_str!("../themes/ember.toml")),
+    ("lagoon", include_str!("../themes/lagoon.toml")),
+    ("violet-pulse", include_str!("../themes/violet-pulse.toml")),
+    ("manila-brief", include_str!("../themes/manila-brief.toml")),
+    ("navy-cut", include_str!("../themes/navy-cut.toml")),
+    ("pad-39", include_str!("../themes/pad-39.toml")),
+    ("galley-7", include_str!("../themes/galley-7.toml")),
+    ("dradis", include_str!("../themes/dradis.toml")),
+    ("candy", include_str!("../themes/candy.toml")),
+    ("hail-mary", include_str!("../themes/hail-mary.toml")),
+    ("pirate", include_str!("../themes/pirate.toml")),
+    ("jungle-canopy", include_str!("../themes/jungle-canopy.toml")),
+    ("macaw", include_str!("../themes/macaw.toml")),
+    ("sonar", include_str!("../themes/sonar.toml")),
+    ("ice-station", include_str!("../themes/ice-station.toml")),
+    ("prussian", include_str!("../themes/prussian.toml")),
+    ("adriatic", include_str!("../themes/adriatic.toml")),
+    ("blue-note", include_str!("../themes/blue-note.toml")),
+    ("flare", include_str!("../themes/flare.toml")),
+    ("brick", include_str!("../themes/brick.toml")),
+    ("afterburner", include_str!("../themes/afterburner.toml")),
+    ("lemon-drop", include_str!("../themes/lemon-drop.toml")),
+    ("emerald", include_str!("../themes/emerald.toml")),
+    ("riptide", include_str!("../themes/riptide.toml")),
+    ("glacier", include_str!("../themes/glacier.toml")),
+    ("nebula", include_str!("../themes/nebula.toml")),
+    ("flamingo", include_str!("../themes/flamingo.toml")),
+    ("dusty-rose", include_str!("../themes/dusty-rose.toml")),
+    ("battleship", include_str!("../themes/battleship.toml")),
+    ("driftwood", include_str!("../themes/driftwood.toml")),
 ];
 
-/// The palette of the Foot themes: 16 colors shared, each theme its own background and text.
-const FOOT_PALETTE: [&str; 16] = [
-    "#08001a", "#ff1177", "#aaff00", "#ffdd00", "#3366ff", "#cc00ff", "#00ffcc", "#d8c8ff",
-    "#440066", "#ff4499", "#ccff33", "#ffff00", "#33aaff", "#ff00ff", "#00ffff", "#ffffff",
-];
-
-/// Foot themes: (slug, name, foreground, background) over FOOT_PALETTE.
-const FOOT: &[(&str, &str, &str, &str)] = &[
-    ("foot", "Ultraviolet", "#e0ccff", "#08001a"),
-    ("default", "Blackout", "#eee8d5", "#000000"),
-    ("neon-tropic", "Neon Tropic", "#7dffc3", "#060807"),
-    ("moonlight", "Moonlight", "#c4d2e8", "#07080e"),
-    ("ember", "Ember", "#ffb86a", "#0a0705"),
-    ("lagoon", "Lagoon", "#7ef0d8", "#050c0c"),
-    ("violet-pulse", "Violet Pulse", "#dcc4ff", "#08050e"),
-    ("manila-brief", "Manila Brief", "#e4d2ac", "#0e0c08"),
-    ("navy-cut", "Navy Cut", "#eccc94", "#060a07"),
-    ("pad-39", "Pad 39", "#ced6d0", "#08090d"),
-    ("galley-7", "Galley 7", "#d2d0b0", "#0a0a08"),
-    ("dradis", "DRADIS", "#e8a838", "#070503"),
-    ("candy", "Candy", "#ffc6e8", "#1a0512"),
-    ("hail-mary", "Hail Mary", "#ff6455", "#05040a"),
-    ("pirate", "Pirate", "#e8bf5c", "#03100e"),
-    ("jungle-canopy", "Jungle Canopy", "#8fdc6a", "#040c05"),
-    ("macaw", "Macaw", "#ffcf3f", "#050a04"),
-    ("sonar", "Sonar", "#6ec8e8", "#04121c"),
-    ("ice-station", "Ice Station", "#b8d4f0", "#080c16"),
-    ("prussian", "Prussian", "#5a9fd4", "#07101c"),
-    ("adriatic", "Adriatic", "#4fd4ff", "#04161e"),
-    ("blue-note", "Blue Note", "#8eb4ff", "#0c1424"),
-];
-
-/// Every theme: Harbor, the Foot themes, the classics, then theme files by name.
+/// The operator Foot themes, bundled as Skiff TOML, then imported theme files.
 pub fn list() -> Vec<TerminalTheme> {
-    let theme = |slug: &str, name: &str, fg: &str, bg: &str, pal: &[&str; 16]| TerminalTheme {
-        id: format!("builtin:{slug}"),
-        name: name.to_string(),
-        source: "built-in".into(),
-        foreground: fg.to_string(),
-        background: bg.to_string(),
-        cursor: None,
-        selection: None,
-        palette: pal.iter().map(|c| c.to_string()).collect(),
-        ui: None,
-    };
-    let mut out = Vec::new();
-    let mut files: Vec<(TerminalTheme, Option<String>)> = theme_dir()
+    let mut out: Vec<_> = BUILTIN.iter().map(|(slug, text)| {
+        let mut t = parse_file(Path::new(&format!("{slug}.toml")), text)
+            .expect("bundled theme is valid Skiff TOML");
+        t.id = format!("builtin:{slug}");
+        t.source = "built-in".into();
+        t
+    }).collect();
+    let mut files: Vec<_> = theme_dir()
         .and_then(|d| std::fs::read_dir(d).ok())
         .map(|rd| rd.flatten().filter_map(|e| from_file(&e.path())).collect())
         .unwrap_or_default();
     files.sort_by(|a, b| a.0.name.to_lowercase().cmp(&b.0.name.to_lowercase()));
-    let same = |a: &str, b: &str| a.eq_ignore_ascii_case(b);
-    let (harbor, classics) = BUILTIN.split_first().expect("Harbor is first");
-    out.push(theme(harbor.0, harbor.1, harbor.2, harbor.3, &harbor.4));
-    out.extend(FOOT.iter().map(|(slug, name, fg, bg)| theme(slug, name, fg, bg, &FOOT_PALETTE)));
-    // A theme file replaces a classic of the same name: it may carry app colors.
-    out.extend(
-        classics
-            .iter()
-            .filter(|c| !files.iter().any(|(f, _)| same(&f.name, c.1)))
-            .map(|(slug, name, fg, bg, pal)| theme(slug, name, fg, bg, pal)),
-    );
     for (mut f, author) in files {
-        // Never shadow one of the Foot themes: keep both, the file with its author.
-        if FOOT.iter().any(|x| same(x.1, &f.name)) {
+        if out.iter().any(|t| t.name.eq_ignore_ascii_case(&f.name)) {
             f.name = format!("{} ({})", f.name, author.unwrap_or_else(|| "file".into()));
         }
         out.push(f);
@@ -151,8 +102,44 @@ pub fn list() -> Vec<TerminalTheme> {
     out
 }
 
-fn theme_dir() -> Option<PathBuf> {
+pub fn theme_dir() -> Option<PathBuf> {
     crate::config::config_path().parent().map(|d| d.join("themes"))
+}
+
+/// Copy supported themes into the theme folder. Existing files stay intact.
+/// Return errors per file so one bad file does not stop a bulk import.
+pub fn import_files(paths: &[PathBuf]) -> Vec<String> {
+    let Some(dir) = theme_dir() else { return vec!["Cannot find the theme folder".into()] };
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        return vec![e.to_string()];
+    }
+    paths.iter().filter_map(|path| {
+        import_file(path, &dir).err().map(|e| format!("{}: {e}", path.display()))
+    }).collect()
+}
+
+fn import_file(path: &Path, dir: &Path) -> Result<(), String> {
+    use std::io::Write;
+    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let valid = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("json")) {
+        from_json(path, &text).is_some()
+    } else {
+        parse_file(path, &text).is_some()
+    };
+    if !valid {
+        return Err("Unsupported or incomplete theme. It needs foreground, background, and 16 ANSI colors".into());
+    }
+    let name = path.file_name().ok_or("Missing file name")?;
+    let target = dir.join(name);
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&target)
+        .map_err(|e| if e.kind() == std::io::ErrorKind::AlreadyExists {
+            "A theme file with this name already exists".into()
+        } else { e.to_string() })?;
+    if let Err(e) = file.write_all(text.as_bytes()) {
+        let _ = std::fs::remove_file(target);
+        return Err(e.to_string());
+    }
+    Ok(())
 }
 
 /// `#rrggbb` from `rrggbb`, `#rrggbb`, or `0xrrggbb`.
@@ -201,15 +188,19 @@ fn finish(
         foreground: fg?,
         background: bg?,
         cursor,
+        cursor_foreground: None,
         selection,
+        selection_foreground: None,
+        color_family: None,
+        main_color: None,
         palette: palette?,
         ui: None,
     })
 }
 
 fn parse_foot(text: &str, id: String, name: String, source: &str) -> Option<TerminalTheme> {
-    let kv: Vec<(String, String)> = pairs(text)
-        .into_iter()
+    let all = pairs(text);
+    let kv: Vec<(String, String)> = all.iter().cloned()
         .filter(|(s, _, _)| s == "colors" || s == "colors-dark")
         .map(|(_, k, v)| (k, v))
         .collect();
@@ -220,11 +211,14 @@ fn parse_foot(text: &str, id: String, name: String, source: &str) -> Option<Term
             pal.push(get(&format!("{p}{i}")));
         }
     }
-    let cursor = kv
-        .iter()
-        .find(|(k, _)| k == "cursor")
-        .and_then(|(_, v)| v.split_whitespace().nth(1).and_then(hex));
-    finish(id, name, source, get("foreground"), get("background"), pal, cursor, get("selection-background"))
+    let cursor_colors = all.iter().find(|(s, k, _)| s == "cursor" && k == "color")
+        .map(|(_, _, v)| v.as_str())
+        .or_else(|| kv.iter().find(|(k, _)| k == "cursor").map(|(_, v)| v.as_str()));
+    let cursor = cursor_colors.and_then(|v| v.split_whitespace().nth(1).and_then(hex));
+    let mut theme = finish(id, name, source, get("foreground"), get("background"), pal, cursor, get("selection-background"))?;
+    theme.cursor_foreground = cursor_colors.and_then(|v| v.split_whitespace().next().and_then(hex));
+    theme.selection_foreground = get("selection-foreground");
+    Some(theme)
 }
 
 /// A theme file, with its author when the file names one.
@@ -254,6 +248,14 @@ fn from_json(path: &Path, text: &str) -> Option<(TerminalTheme, Option<String>)>
     let name = v.get("name").and_then(|x| x.as_str()).unwrap_or(&stem).to_string();
     let mut t = finish(format!("file:{file}"), name, "file", c("foreground"), c("background"), pal, c("cursor"), c("selectionBackground"))?;
     t.ui = ui;
+    t.cursor_foreground = c("cursorAccent");
+    t.selection_foreground = c("selectionForeground");
+    if let Some(family) = v.get("color_family") {
+        t.color_family = Some(serde_json::from_value(family.clone()).ok()?);
+    }
+    if let Some(color) = v.get("main_color") {
+        t.main_color = Some(hex(color.as_str()?)?);
+    }
     let author = v.get("author").and_then(|x| x.as_str()).map(|a| {
         // "Pavel Pertsev (port: Baris Can Sayin)" -> "Pavel Pertsev"
         a.split(" (").next().unwrap_or(a).to_string()
@@ -302,7 +304,16 @@ fn parse_file(path: &Path, text: &str) -> Option<TerminalTheme> {
                 return None;
             }
             let name = doc.get("name").and_then(|v| v.as_str()).map(String::from).unwrap_or(name);
-            return finish(id, name, "file", s("foreground"), s("background"), pal, s("cursor"), s("selection"));
+            let mut theme = finish(id, name, "file", s("foreground"), s("background"), pal, s("cursor"), s("selection"))?;
+            theme.cursor_foreground = s("cursor_foreground");
+            theme.selection_foreground = s("selection_foreground");
+            if let Some(family) = doc.get("color_family") {
+                theme.color_family = Some(family.clone().try_into().ok()?);
+            }
+            if let Some(color) = doc.get("main_color") {
+                theme.main_color = Some(hex(color.as_str()?)?);
+            }
+            return Some(theme);
         }
         // Alacritty: [colors.primary], [colors.normal], [colors.bright].
         let colors = doc.get("colors").and_then(|v| v.as_table())?;
@@ -339,16 +350,43 @@ mod tests {
     use super::*;
 
     #[test]
+    fn imports_valid_themes_without_overwriting_files() {
+        let dir = std::env::temp_dir().join(format!("skiff-theme-import-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("source");
+        let target = dir.join("themes");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        let path = source.join("sample.toml");
+        let text = "name = 'Sample'\n[terminal]\nforeground = '#112233'\nbackground = '#ffffff'\nregular = ['#000000', '#ff0000', '#00ff00', '#ffff00', '#0000ff', '#ff00ff', '#00ffff', '#ffffff']\nbright = ['#111111', '#ff1111', '#11ff11', '#ffff11', '#1111ff', '#ff11ff', '#11ffff', '#eeeeee']\n";
+        std::fs::write(&path, text).unwrap();
+        import_file(&path, &target).unwrap();
+        assert_eq!(std::fs::read_to_string(target.join("sample.toml")).unwrap(), text);
+        assert!(import_file(&path, &target).unwrap_err().contains("already exists"));
+        std::fs::write(&path, "[terminal]\nbackground = '#ffffff'\n").unwrap();
+        assert!(import_file(&path, &target).unwrap_err().contains("incomplete"));
+        assert_eq!(std::fs::read_to_string(target.join("sample.toml")).unwrap(), text);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn reads_foot_and_base16() {
         let foot = "[colors]\nbackground=08001a\nforeground=e0ccff\nregular0=000000\nregular1=ff0000\nregular2=00ff00\nregular3=ffff00\nregular4=0000ff\nregular5=ff00ff\nregular6=00ffff\nregular7=ffffff\nbright0=111111\nbright1=ff1111\nbright2=11ff11\nbright3=ffff11\nbright4=1111ff\nbright5=ff11ff\nbright6=11ffff\nbright7=eeeeee\n";
         let t = parse_foot(foot, "x".into(), "X".into(), "foot").unwrap();
-    assert!(t.ui.is_none());
+        assert!(t.ui.is_none());
         assert_eq!(t.background, "#08001a");
         assert_eq!(t.palette.len(), 16);
         assert_eq!(t.palette[9], "#ff1111");
-        // Theme files on this machine may replace some classics.
-        let n = builtin_count();
-        assert!(n >= 1 + FOOT.len() && n <= BUILTIN.len() + FOOT.len());
+        assert_eq!(builtin_count(), 34);
+        for theme in list().into_iter().filter(|t| t.source == "built-in") {
+            assert!(theme.color_family.is_some(), "{}", theme.name);
+            assert_eq!(theme.main_color.as_ref(), Some(&theme.foreground));
+            assert_eq!(theme.cursor.as_deref(), Some("#08001a"));
+            assert_eq!(theme.cursor_foreground.as_deref(), Some("#ff00ff"));
+            assert_eq!(theme.selection.as_deref(), Some("#4400aa"));
+            assert_eq!(theme.selection_foreground.as_deref(), Some("#ffffff"));
+            assert_eq!(theme.palette.len(), 16);
+        }
     }
 
     fn builtin_count() -> usize {

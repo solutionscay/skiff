@@ -1,11 +1,11 @@
-import { HARBOR } from "./colors";
+import { DEFAULT_THEME } from "./colors";
 import { escapeButton } from "../ui/dialogParts";
 import { PANE_OPACITY_MIN, paneOpacity, setPaneOpacity } from "./backdrop";
 import { h } from "../ui/dom";
 import { invoke } from "@tauri-apps/api/core";
 import type { AgentInfo, TerminalTheme } from "../platform/types";
 import { agentNameList, setAgentNameList } from "./agentNames";
-import { nextCard, themeGrid } from "./themeCards";
+import { nextCard, themeGrid, type ThemeFilters } from "./themeCards";
 import { type Action, actionFor } from "../app/keys";
 
 /**
@@ -13,7 +13,7 @@ import { type Action, actionFor } from "../app/keys";
  */
 export interface AppearanceHooks {
   themes: () => TerminalTheme[];
-  /** A theme id, or null for Harbor. */
+  /** A theme id, or null for the default Foot theme. */
   current: () => string | null;
   load: () => Promise<void>;
   set: (id: string | null) => void;
@@ -30,6 +30,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   let agents: AgentInfo[] = [];
   const TABS = ["agents", "appearance", "open"] as const;
   let tab: (typeof TABS)[number] = "agents";
+  const themeFilters: ThemeFilters = { query: "", family: null };
   type OpenKey = "diff" | "text" | "markdown" | "html";
   type OpenSettings = Record<OpenKey, string> & { default_diff: string };
   let openSet: OpenSettings | null = null;
@@ -107,6 +108,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       b.addEventListener("click", () => {
         tab = t;
         draw();
+        if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
       });
       return b;
     });
@@ -298,10 +300,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const cards = h("div", "set-cards");
     cards.appendChild(
       themeGrid(look.themes(), {
-        active: cur ?? HARBOR,
+        active: look.themes().some((t) => t.id === cur) ? cur : DEFAULT_THEME,
+        filters: themeFilters,
+        reload: async () => { await look.load(); return look.themes(); },
         pick: (id) => {
-          look.set(id === HARBOR ? null : id);
-          render();
+          look.set(id === DEFAULT_THEME ? null : id);
         },
       }),
     );
@@ -433,7 +436,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   function enterSection(into: boolean) {
     document.body.classList.add("kbd");
     if (!into) return root.querySelector<HTMLButtonElement>(".set-tab.active")?.focus();
-    root.querySelector<HTMLElement>(".set-main :is(button, input, textarea, [tabindex]):not(:disabled)")?.focus();
+    if (tab === "appearance") return root.querySelector<HTMLInputElement>(".tc-search")?.focus();
+    root.querySelector<HTMLElement>(".set-main :is(button, input, select, textarea, [tabindex]):not(:disabled)")?.focus();
   }
 
   /**
@@ -455,6 +459,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       return e.preventDefault();
     }
     if (!el.closest(".set-main")) return;
+    if (el instanceof HTMLSelectElement) return;
     const text = el instanceof HTMLInputElement && el.type !== "range";
     // A text field moves its caret, and lets Left or Right out only at its start or end.
     if (!vertical && (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !text))) return;
@@ -466,7 +471,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       const v = el.value;
       if (up ? v.lastIndexOf("\n", el.selectionStart - 1) >= 0 : v.indexOf("\n", el.selectionEnd) >= 0) return;
     }
-    const stops = [...root.querySelectorAll<HTMLElement>(".set-main :is(button, input, textarea):not(:disabled)")];
+    const stops = [...root.querySelectorAll<HTMLElement>(".set-main :is(button, input, select, textarea):not(:disabled)")];
     const at = stops.indexOf(el);
     if (at < 0) return;
     e.preventDefault();
@@ -510,7 +515,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         return [];
       });
       render();
-      root.querySelector<HTMLButtonElement>(".set-agent .c-on:not(:disabled)")?.focus();
+      if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
+      else root.querySelector<HTMLButtonElement>(".set-agent .c-on:not(:disabled)")?.focus();
     },
     close,
     /** The native menu runs its accelerators here, not through the keydown above. */

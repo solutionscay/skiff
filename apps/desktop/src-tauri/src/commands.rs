@@ -165,9 +165,24 @@ pub(crate) async fn set_font_size(app: State<'_, App>, size: Option<u8>) -> Resu
 }
 
 #[tauri::command]
-pub(crate) async fn list_themes(app: State<'_, App>) -> Result<Vec<skiff_core::theme::TerminalTheme>, String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.list_themes().await.map_err(err)
+pub(crate) async fn list_themes() -> Result<Vec<skiff_core::theme::TerminalTheme>, String> {
+    // The desktop ships its theme catalogue. A running daemon can be older.
+    tokio::task::spawn_blocking(skiff_core::theme::list)
+        .await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub(crate) async fn import_themes(paths: Vec<PathBuf>) -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(move || skiff_core::theme::import_files(&paths))
+        .await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub(crate) fn open_theme_folder(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = skiff_core::theme::theme_dir().ok_or("Cannot find the theme folder")?;
+    std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    app.opener().open_path(path.display().to_string(), None::<&str>).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

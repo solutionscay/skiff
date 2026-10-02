@@ -1,0 +1,14 @@
+# Built on the operator Foot palette.
+name = "Dusty Rose"
+color_family = "Pink"
+main_color = "#d89aaa"
+
+[terminal]
+foreground = "#d89aaa"
+background = "#110a0c"
+cursor = "#08001a"
+cursor_foreground = "#ff00ff"
+selection = "#4400aa"
+selection_foreground = "#ffffff"
+regular = ["#08001a", "#ff1177", "#aaff00", "#ffdd00", "#3366ff", "#cc00ff", "#00ffcc", "#d8c8ff"]
+bright = ["#440066", "#ff4499", "#ccff33", "#ffff00", "#33aaff", "#ff00ff", "#00ffff", "#ffffff"]
