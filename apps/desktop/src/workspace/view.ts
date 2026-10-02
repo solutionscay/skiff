@@ -388,11 +388,24 @@ export function dragSessions(e: MouseEvent, ids: string[]) {
  * a session of this worktree stays. Else the worktree's best session shows,
  * in its group if it has one. No session: nothing has the keys.
  */
+/** The session last focused in each worktree, by path. A return to the worktree opens it again. */
+const lastFocus = new Map<string, string>();
+
+/** Notes where the keys are before a project or worktree switch moves them. */
+function noteFocus() {
+  const s = S.focused ? sessions.get(S.focused) : undefined;
+  const at = s ? place(s) : null;
+  if (s && at) lastFocus.set(at.worktree.path, s.id);
+}
+
 export function selectWorktree(project: Project, w: Worktree) {
+  noteFocus();
   S.selectedProject = project.name;
   selectedWorktree.set(project.name, w.path);
   const here = worktreeSessions(w);
   if (here.some((x) => shownIds().includes(x.id))) return render();
+  const last = lastFocus.get(w.path);
+  if (last && here.some((x) => x.id === last)) return revealSession(last);
   const best = here.sort(bySessionPriority)[0];
   if (best) revealSession(best.id);
   else unfocus();
@@ -411,6 +424,7 @@ export function unfocus() {
 export function selectProject(name: string) {
   const p = S.projects.find((x) => x.name === name);
   if (!p) return;
+  noteFocus();
   S.selectedProject = name;
   const path = selectedWorktree.get(name);
   const w = p.worktrees.find((x) => x.path === path) ?? p.worktrees.find((x) => x.is_main) ?? p.worktrees[0];
