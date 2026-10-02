@@ -16,6 +16,7 @@
 .lm-item.danger { color: var(--error-text); }
 .lm-title { height: calc(32 * var(--u)); display: flex; align-items: center; padding: 0 calc(16 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; color: var(--text-3); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .lm-item { width: 100%; height: var(--row); display: flex; align-items: center; gap: calc(12 * var(--u)); padding: 0 calc(16 * var(--u)); border: 0; background: transparent; color: var(--text); text-align: left; }
+.lm-item:disabled, .lm-item:disabled:hover { opacity: 0.4; cursor: default; background-image: none; }
 /* No rules between items: the section heads carry the only breaks. */
 .lm-item + .lm-head { border-top: 1px solid var(--rule); }
 /* The item with the keys: the sidebar's current-row shade and bar, never an
