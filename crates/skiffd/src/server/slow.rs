@@ -55,12 +55,6 @@ pub(super) async fn answer_slow(pool: Arc<SessionPool>, request: Request) -> Res
             Ok(themes) => Response::Themes { themes },
             Err(e) => error(e),
         },
-        Request::ReadIcon { path } => {
-            match blocking(move || Ok(skiff_core::project::data_url(&path))).await {
-                Ok(icon) => Response::Icon { icon },
-                Err(e) => error(e),
-            }
-        }
         Request::SetProjectBackground { project, background } => {
             match blocking(move || skiff_core::config::set_project_background(&project, background.as_deref())).await {
                 Ok(()) => {

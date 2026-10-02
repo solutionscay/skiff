@@ -121,7 +121,6 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
             | Request::SetAppearance { .. }
             | Request::SetFontSize { .. }
             | Request::ListThemes
-            | Request::ReadIcon { .. }
             | Request::SetProjectBackground { .. }
             | Request::SetProjectColor { .. }
             | Request::ReorderProjects { .. }

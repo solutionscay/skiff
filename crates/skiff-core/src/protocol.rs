@@ -118,10 +118,6 @@ pub enum Request {
     },
     /// Every terminal theme: built in, foot's, and theme files.
     ListThemes,
-    /// A small image as a data URL, for previews.
-    ReadIcon {
-        path: PathBuf,
-    },
     /// Sets the rail icon: a path, `""` for none, or `null` to detect again.
     SetProjectIcon {
         project: String,
@@ -218,7 +214,6 @@ pub enum Response {
     Folder { folder: FolderInfo },
     Agents { agents: Vec<AgentInfo> },
     Output { stdout: String },
-    Icon { icon: Option<String> },
     Themes { themes: Vec<crate::theme::TerminalTheme> },
     Appearance {
         theme: Option<String>,

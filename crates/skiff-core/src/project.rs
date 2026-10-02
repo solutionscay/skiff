@@ -284,7 +284,7 @@ pub fn agents() -> Vec<AgentInfo> {
             } else {
                 dirs.iter().any(|d| is_executable(&d.join(program)))
             };
-            let on = cfg.enabled.as_ref().map_or(true, |e| e.iter().any(|x| x == id));
+            let on = cfg.enabled.as_ref().is_none_or(|e| e.iter().any(|x| x == id));
             AgentInfo {
                 id: id.to_string(),
                 command,

@@ -30,14 +30,6 @@ impl Client {
         }
     }
 
-    pub async fn read_icon(&self, path: PathBuf) -> Result<Option<String>> {
-        match self.request(Request::ReadIcon { path }).await? {
-            Response::Icon { icon } => Ok(icon),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
     pub async fn set_project_icon(&self, project: String, icon: Option<String>) -> Result<()> {
         self.expect_ok(Request::SetProjectIcon { project, icon }).await
     }

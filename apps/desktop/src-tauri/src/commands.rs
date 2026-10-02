@@ -171,12 +171,6 @@ pub(crate) async fn list_themes(app: State<'_, App>) -> Result<Vec<skiff_core::t
 }
 
 #[tauri::command]
-pub(crate) async fn read_icon(app: State<'_, App>, path: PathBuf) -> Result<Option<String>, String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.read_icon(path).await.map_err(err)
-}
-
-#[tauri::command]
 pub(crate) async fn set_project_icon(
     app: State<'_, App>,
     project: String,

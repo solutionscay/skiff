@@ -21,8 +21,6 @@ let open: { el: HTMLElement; term: Terminal; fit: FitAddon; resize: ResizeObserv
 /** The last request. A slow diff that answers after a newer one is dropped. */
 let seq = 0;
 
-export const peekOpen = () => !!open;
-
 export function closePeek() {
   if (!open) return;
   open.resize.disconnect();
