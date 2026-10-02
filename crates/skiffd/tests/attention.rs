@@ -100,19 +100,22 @@ async fn a_program_that_rings_the_bell_waits_until_input() {
 async fn an_agent_waits_at_its_prompt_and_its_turn_end_is_unread() {
     let pool = pool();
     // It draws itself and goes quiet. After a line of input it works, asks for
-    // approval without a bell, works again after the answer, and stops.
+    // approval without a bell, works again after the answer, and stops. Later
+    // it prints a recap with no busy line, which is no turn.
     let agent = fake_agent(
         "codex",
         r#"printf 'Codex ready\n'
 read task
-for i in 1 2 3 4 5; do printf 'working %s\n' "$i"; sleep 0.4; done
+for i in 1 2 3 4 5; do printf 'Working (%ss - esc to interrupt)\n' "$i"; sleep 0.4; done
 printf 'Would you like to run the following command?\n  $ touch x\n'
 printf 'Press enter to confirm or esc to cancel\n'
 sleep 0.4; printf '\r'
 read answer
 printf '\033[2J\033[H'
-for i in 1 2 3 4 5; do printf 'running %s\n' "$i"; sleep 0.4; done
-printf 'Done.\n'
+for i in 1 2 3 4 5; do printf 'Working (%ss - esc to interrupt)\n' "$i"; sleep 0.4; done
+printf '\033[2J\033[HDone.\n'
+read again
+for i in 1 2 3 4 5; do printf 'recap %s\n' "$i"; sleep 0.4; done
 sleep 30"#,
     );
     let info = pool
@@ -133,6 +136,12 @@ sleep 30"#,
     until(&pool, &info.id, 4, "the answer did not end waiting", |i| i.state == SessionState::Working).await;
     let done = until(&pool, &info.id, 10, "the end of the turn did not set unread", |i| i.unread).await;
     assert_eq!(done.state, SessionState::Idle);
+
+    pool.seen(&info.id).unwrap();
+    pool.write(&info.id, b"\n").unwrap();
+    until(&pool, &info.id, 4, "the recap did not count as output", |i| i.state == SessionState::Working).await;
+    let recap = until(&pool, &info.id, 8, "the agent did not go idle after the recap", |i| i.state == SessionState::Idle).await;
+    assert!(!recap.unread, "text with no busy line set the unread flag");
     pool.kill(&info.id).unwrap();
     let _ = std::fs::remove_dir_all(agent.parent().unwrap());
 }

@@ -98,6 +98,9 @@ pub struct Session {
     /// No stretch of work has ended yet under the program in front. The first
     /// one is the program drawing itself, not a turn.
     fresh: AtomicBool,
+    /// The agent's busy line showed in the current stretch of work: it is a
+    /// turn, however short.
+    busy_seen: AtomicBool,
     /// The PTY's root process is a shell: launched as one, or handed off to.
     shell: AtomicBool,
     front: Mutex<Front>,
@@ -132,6 +135,8 @@ struct Scan {
     work: bool,
     /// The agent in front shows its approval prompt.
     approval: bool,
+    /// The agent in front shows its busy line.
+    busy: bool,
 }
 
 impl ScreenState {
@@ -144,16 +149,16 @@ impl ScreenState {
 
     fn scan(&mut self, front: Front) -> Scan {
         let changed = self.printed && self.screen.text_changed();
-        let approval = match front {
-            Front::Agent(agent) => self.screen.approval_prompt(agent),
-            _ => false,
+        let (approval, busy) = match front {
+            Front::Agent(agent) => (self.screen.approval_prompt(agent), self.screen.busy_line(agent)),
+            _ => (false, false),
         };
         let work = changed && self.printed_work;
         self.last_scan = Instant::now();
         self.unscanned = false;
         self.printed = false;
         self.printed_work = false;
-        Scan { scanned: true, work, approval }
+        Scan { scanned: true, work, approval, busy }
     }
 }
 
@@ -393,6 +398,7 @@ impl SessionPool {
             last_work: AtomicU64::new(info.last_output_at),
             work_started: AtomicU64::new(info.last_output_at),
             fresh: AtomicBool::new(true),
+            busy_seen: AtomicBool::new(false),
             shell: AtomicBool::new(is_shell),
             // The foreground watcher names the agent within a second.
             front: Mutex::new(if is_shell { Front::Shell } else { Front::Program }),
@@ -530,6 +536,9 @@ impl SessionPool {
         }
         if scan.work {
             session.last_work.store(now_ms(), Ordering::Relaxed);
+        }
+        if scan.busy {
+            session.busy_seen.store(true, Ordering::Relaxed);
         }
         let waiting = session.info.lock().unwrap().state == SessionState::Waiting;
         if scan.approval {
@@ -759,15 +768,21 @@ impl SessionPool {
             info.state = SessionState::Idle;
             let stretch = last.saturating_sub(s.work_started.load(Ordering::Relaxed));
             let fresh = s.fresh.swap(false, Ordering::Relaxed);
-            let turn = !fresh
-                && match front {
-                    // An agent redraws its status line while it does nothing.
+            let busy = s.busy_seen.swap(false, Ordering::Relaxed);
+            let turn = match front {
+                // The busy line proves a turn, even a fast one, or the first
+                // after a resume. Without it, text is a recap or a redraw.
+                Front::Agent(agent) if crate::screen::has_busy_line(agent) => busy,
+                _ => !fresh && match front {
+                    // An agent with no known busy line redraws its status
+                    // line while it does nothing.
                     Front::Agent(_) => stretch >= MIN_TURN_MS,
                     Front::Program => true,
                     // A quiet command in a shell has not finished. Its end
                     // shows when the shell is in front again.
                     Front::Shell | Front::Command => false,
-                };
+                },
+            };
             let updated = (turn && !info.unread).then(|| {
                 info.unread = true;
                 info.clone()

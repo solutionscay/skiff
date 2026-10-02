@@ -145,6 +145,22 @@ impl Screen {
         }
     }
 
+    /// The agent shows the line it keeps up while it works, above its input
+    /// box. Proof of a turn, however short. Grok has no such line known yet.
+    pub fn busy_line(&self, agent: &str) -> bool {
+        if !has_busy_line(agent) {
+            return false;
+        }
+        let t = self.bottom_text(6);
+        match agent {
+            // "✻ Thinking… (esc to interrupt)", "• Working (2s • esc to interrupt)".
+            "claude" | "codex" => t.contains("esctointerrupt"),
+            "opencode" => t.contains("escinterrupt"),
+            "gemini" => t.contains("esctocancel"),
+            _ => false,
+        }
+    }
+
     pub fn resize(&mut self, cols: u16, rows: u16) {
         self.term.resize(size(cols, rows));
     }
@@ -220,6 +236,12 @@ impl Screen {
         out.push_str("\x1b[?2026l");
         out.into_bytes()
     }
+}
+
+/// The agents whose busy line `Screen::busy_line` knows. For them, only that
+/// line makes a turn: text they print without it (a recap, a status line) is not one.
+pub fn has_busy_line(agent: &str) -> bool {
+    matches!(agent, "claude" | "codex" | "opencode" | "gemini")
 }
 
 fn size(cols: u16, rows: u16) -> TermSize {
@@ -398,10 +420,14 @@ mod tests {
         assert!(!screen_with(&claude_work).approval_prompt("claude"));
         let codex_work = ["• Working (2s • esc to interrupt)", "", "› Ask Codex to do anything", "", "  ← for agents · ? for shortcuts"];
         assert!(!screen_with(&codex_work).approval_prompt("codex"));
+        assert!(screen_with(&codex_work).busy_line("codex"));
+        assert!(!screen_with(&["› Ask Codex to do anything", "", "  ← for agents · ? for shortcuts"]).busy_line("codex"));
         let opencode_work = ["  ┃  Build · Big Pickle OpenCode Zen", "  ╹▀▀▀▀▀▀▀▀▀", "   ⬝⬝⬝⬝  esc interrupt       tab agents  ctrl+p commands"];
         assert!(!screen_with(&opencode_work).approval_prompt("opencode"));
+        assert!(screen_with(&opencode_work).busy_line("opencode"));
         let gemini_work = ["⣟  Generating...", "────────────", ">", "────────────", "esc to cancel          Gemini 3.8 Flash"];
         assert!(!screen_with(&gemini_work).approval_prompt("gemini"));
+        assert!(screen_with(&gemini_work).busy_line("gemini"));
         let grok_idle = ["  │ ❯                              │", "  ╰──── Grok 4.7 (high) · always-approve ─╯", "  Shift+Tab:mode  │  Ctrl+.:shortcuts"];
         assert!(!screen_with(&grok_idle).approval_prompt("grok"));
     }
