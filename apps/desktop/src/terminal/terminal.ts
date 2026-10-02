@@ -63,11 +63,13 @@ export const view = createLayoutView(host, {
 /** Draws the view and parks every terminal it does not show. */
 export function renderLayout() {
   const layout = viewLayout();
+  const hidden = new Set([...panes].filter(([, p]) => p.parked).map(([id]) => id));
   const changed = view.sync(layout);
   const shown = new Set(sessionsOf(layout));
   for (const [id, p] of panes) if (!shown.has(id) && (!p.parked || p.el.parentElement !== park)) parkPane(id, p);
   // The waterline is for what the user can see, not only the pane with the keys.
-  for (const id of shown) if (panes.has(id)) arrive(id);
+  // Only a pane that comes back on screen: one that stayed in view was not left.
+  for (const id of shown) if (hidden.has(id)) arrive(id);
   if (changed === "resized") fitShown();
   if (changed === "rebuilt") {
     for (const id of shown) {
