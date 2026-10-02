@@ -1,6 +1,7 @@
 /** A daemon that differs from the app: the top-bar badge, and the restart it offers. */
 import { invoke } from "@tauri-apps/api/core";
 import type { DaemonWarning, SessionInfo } from "../platform/types";
+import { muteInput } from "../terminal/terminalRuntime";
 import { showError } from "../ui/alerts";
 import { dialogFrame } from "../ui/dialogParts";
 import { $, button, h } from "../ui/dom";
@@ -26,10 +27,12 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 async function restartNow() {
   whenIdle = false;
+  muteInput(true);
   try {
     await invoke("restart_daemon");
     location.reload();
   } catch (e) {
+    muteInput(false);
     showError(e);
     daemonBadge(shown);
   }

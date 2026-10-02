@@ -40,6 +40,17 @@ export const TERM_THEME = {
   brightWhite: "#ffffff",
 };
 
+/**
+ * Set when skiffd restarts. A restored session keeps its id, so a key or a
+ * mouse report sent meanwhile would reach the new shell as text.
+ */
+let inputOff = false;
+
+/** Drops all terminal input while `off`. A restart reloads the page after. */
+export function muteInput(off: boolean) {
+  inputOff = off;
+}
+
 export function openPane(id: string): Promise<Pane> {
   const existing = panes.get(id);
   if (existing) return Promise.resolve(existing);
@@ -105,6 +116,7 @@ async function createPane(id: string): Promise<Pane> {
   });
 
   term.onData((data) => {
+    if (inputOff) return;
     const sent = traceSend(id);
     invoke("pty_write", { session: id, data }).then(sent, console.error);
   });
