@@ -15,6 +15,8 @@ export interface Pane {
   parked: boolean;
   /** Counts subscriptions. A chunk from an older one is dropped. */
   stream: number;
+  /** The subscription whose output the terminal last drew. Until it equals `stream`, the rows are from before the snapshot. */
+  wrote: number;
   /** Bytes xterm parsed that Rust has not heard about yet. */
   unacked: number;
   /** An ack_output call is in flight. */

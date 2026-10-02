@@ -17,6 +17,7 @@ import { deleteGroup, loadGroups, syncTemplateName } from "./groups";
 import { render, scheduleRender } from "./render";
 import { born, gone, OTHER, removeErrors, S, sessions, upsert } from "./state";
 import { hasKeys, markSeen } from "./seen";
+import * as waterline from "../terminal/waterline";
 import { activeGroupObj, place, shownIds } from "./stateQueries";
 import { panes } from "../terminal/terminalState";
 import { focusPane, paneNear, revealSession, rowNear, showSingle, splitWith, unfocus } from "../workspace/view";
@@ -140,7 +141,12 @@ window.addEventListener("focus", reposStale);
 window.addEventListener("focus", () => {
   if (!S.focused) return;
   markSeen(S.focused);
+  waterline.arrive(S.focused);
   scheduleRender();
+});
+// The user went to another app: what the focused pane shows now is what they read.
+window.addEventListener("blur", () => {
+  if (S.focused) waterline.leave(S.focused);
 });
 
 /** Pulls `last_output_at` and anything missed, so relative times stay true. Drops what the daemon no longer has. */
@@ -231,6 +237,7 @@ function dropSession(id: string) {
   // the pane beside it in a group, else the next session row in the list.
   const near = S.focused !== id ? null : shownIds().length > 1 ? paneNear(id) : S.single === id ? rowNear(id) : null;
   sessions.delete(id);
+  waterline.forget(id);
   panes.get(id)?.term.dispose();
   panes.get(id)?.el.remove();
   panes.delete(id);

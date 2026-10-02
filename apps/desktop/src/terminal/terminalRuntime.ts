@@ -15,6 +15,7 @@ import { traceKey, traceOutput, traceRender, traceSend } from "../diagnostics/la
 import { FONT_DEFAULT, S, sessions } from "../app/state";
 import { shownIds } from "../app/stateQueries";
 import { opening, type Pane, panes } from "./terminalState";
+import * as waterline from "./waterline";
 
 export const TERM_THEME = {
   background: "#0b0e12",
@@ -107,9 +108,15 @@ async function createPane(id: string): Promise<Pane> {
     const sent = traceSend(id);
     invoke("pty_write", { session: id, data }).then(sent, console.error);
   });
-  term.onRender(() => traceRender(id));
+  term.onRender(() => {
+    traceRender(id);
+    waterline.update(id);
+  });
+  term.onScroll(() => waterline.update(id));
+  // A key the terminal takes: the user reads from here now. App keys never get here.
+  term.onKey(() => waterline.clear(id));
 
-  const pane: Pane = { el, term, fit, search, parked: false, stream: 0, unacked: 0, acking: false, sub: Promise.resolve() };
+  const pane: Pane = { el, term, fit, search, parked: false, stream: 0, wrote: 0, unacked: 0, acking: false, sub: Promise.resolve() };
   const drop = () => {
     term.dispose();
     el.remove();
@@ -143,7 +150,10 @@ function streamOutput(id: string, pane: Pane): Promise<void> {
     const traced = traceOutput(id, bytes.length);
     pane.term.write(bytes, () => {
       traced?.();
-      if (pane.stream === n) ackOutput(id, pane, n, bytes.length);
+      if (pane.stream !== n) return;
+      ackOutput(id, pane, n, bytes.length);
+      pane.wrote = n;
+      waterline.ready(id);
     });
     s.last_output_at = Date.now();
   };

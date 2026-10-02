@@ -18,6 +18,7 @@ import { panes } from "../terminal/terminalState";
 import { closePeek } from "../terminal/peek";
 import { listItems } from "../app/keyboard";
 import { hasKeys, markSeen } from "../app/seen";
+import * as waterline from "../terminal/waterline";
 import { view } from "../terminal/terminal";
 
 /** Give the keys to a shown pane. */
@@ -31,9 +32,13 @@ export function focusPane(id: string, grab = true) {
     // The keys go to this pane, so its row is where we are.
     S.roveKey = id;
   }
-  if (S.focused && S.focused !== id) S.previous = S.focused;
+  if (S.focused && S.focused !== id) {
+    S.previous = S.focused;
+    waterline.leave(S.focused);
+  }
   S.focused = id;
   if (hasKeys(id)) markSeen(id);
+  waterline.arrive(id);
   const g = activeGroupObj();
   if (g) g.focus = id;
   const s = sessions.get(id);
@@ -426,6 +431,7 @@ export function selectWorktree(project: Project, w: Worktree) {
 
 /** No session has the keys: hide every pane and offer to start one here. */
 export function unfocus() {
+  if (S.focused) waterline.leave(S.focused);
   S.focused = null;
   S.single = null;
   S.activeGroup = null;

@@ -20,6 +20,7 @@ import { paneMenu } from "../workspace/menus";
 import { S } from "../app/state";
 import { activeGroupObj, viewLayout } from "../app/stateQueries";
 import { panes } from "./terminalState";
+import { arrive } from "./waterline";
 import { focusPane } from "./paneActions";
 
 export const view = createLayoutView(host, {
@@ -40,6 +41,8 @@ export const view = createLayoutView(host, {
         const grab = S.grab === id;
         if (grab) S.grab = null;
         if (id === S.focused && (canTakeFocus() || (grab && !modalOpen()))) p.term.focus();
+        // The pane did not exist when it got the keys, after a reload of the app.
+        if (id === S.focused) arrive(id);
       })
       .catch(console.error);
   },
