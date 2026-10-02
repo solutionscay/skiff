@@ -77,6 +77,9 @@ function commands(): Cmd[] {
     { section: "View", label: "Bigger text", key: k("font-bigger"), action: "font-bigger", run: act("font-bigger") },
     { section: "View", label: "Smaller text", key: k("font-smaller"), action: "font-smaller", run: act("font-smaller") },
     { section: "View", label: "Reset text size", key: k("font-reset"), action: "font-reset", run: act("font-reset") },
+    { section: "View", label: "Bigger app text", key: k("app-font-bigger"), action: "app-font-bigger", run: act("app-font-bigger") },
+    { section: "View", label: "Smaller app text", key: k("app-font-smaller"), action: "app-font-smaller", run: act("app-font-smaller") },
+    { section: "View", label: "Reset app text size", key: k("app-font-reset"), action: "app-font-reset", run: act("app-font-reset") },
     { section: "Help", label: "Keyboard shortcuts", key: k("shortcuts"), action: "shortcuts", run: act("shortcuts") },
     { section: "Help", label: "Open projects.toml", key: "", run: () => void openConfig() },
     {

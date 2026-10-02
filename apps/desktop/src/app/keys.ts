@@ -11,7 +11,8 @@
 export type Action =
   | "palette" | "new-session" | "new-worktree" | "add-project" | "end-session"
   | "split-right" | "split-down" | "close-pane" | "next-waiting" | "back" | "rename" | "theme"
-  | "copy" | "paste" | "find" | "font-bigger" | "font-smaller" | "font-reset" | "settings" | "quit"
+  | "copy" | "paste" | "find" | "font-bigger" | "font-smaller" | "font-reset"
+  | "app-font-bigger" | "app-font-smaller" | "app-font-reset" | "settings" | "quit"
   | "focus-left" | "focus-right" | "focus-up" | "focus-down"
   | "project-menu" | "project-folder" | "project-copy-path" | "project-color" | "project-changes" | "project-files"
   | "region-next" | "region-prev" | "session-next" | "session-prev" | "list-project" | "list-back" | "shortcuts"
@@ -38,6 +39,9 @@ export const DEFAULTS: Record<Action, string> = {
   "font-bigger": "ctrl+shift+=",
   "font-smaller": "ctrl+shift+-",
   "font-reset": "ctrl+shift+0",
+  "app-font-bigger": "ctrl+shift+alt+=",
+  "app-font-smaller": "ctrl+shift+alt+-",
+  "app-font-reset": "ctrl+shift+alt+0",
   settings: "ctrl+shift+,",
   quit: "ctrl+shift+q",
   "focus-left": "ctrl+shift+alt+left",
@@ -187,9 +191,12 @@ export const DESCRIBE: [string, Action, string][] = [
   ["View", "focus-down", "Focus the pane below"],
   ["View", "focus-mode", "Focus mode: hide the rail, tree and bars. On a session or group row, not a worktree, Changes or Files. From maximize it shows the view's panes again. Ctrl+Shift+Up/Down step through them. Going to another view ends it"],
   ["View", "maximize", "Maximize the focused pane, and hide the rest. On a session row only. Ctrl+Shift+Up/Down maximize the next pane of the view. Press again to go back"],
-  ["View", "font-bigger", "Bigger text"],
-  ["View", "font-smaller", "Smaller text"],
-  ["View", "font-reset", "Reset text size"],
+  ["View", "font-bigger", "Bigger text. In a terminal, that pane only"],
+  ["View", "font-smaller", "Smaller text. In a terminal, that pane only"],
+  ["View", "font-reset", "Reset text size. In a terminal, the pane goes back to the app size"],
+  ["View", "app-font-bigger", "Bigger app text: the app and every terminal"],
+  ["View", "app-font-smaller", "Smaller app text"],
+  ["View", "app-font-reset", "Reset app text size"],
   ["Help", "region-next", "Next region: rail, session list, terminal"],
   ["Help", "region-prev", "Previous region"],
   ["Help", "shortcuts", "This sheet"],

@@ -17,29 +17,74 @@ let saveFontSize: ReturnType<typeof setTimeout> | undefined;
  * `save: false` applies a size the daemon already has.
  */
 export function setFontSize(n: number, save = true) {
-  S.fontSize = Math.min(28, Math.max(8, n));
+  S.fontSize = clamp(n);
   try {
     localStorage.setItem("skiff.fontSize", String(S.fontSize));
   } catch {
     /* a private window keeps the size for this run only */
   }
-  for (const p of panes.values()) p.term.options.fontSize = S.fontSize;
+  for (const [id, p] of panes) p.term.options.fontSize = paneFontSize(id);
   applyZoom();
   fitShown();
   if (!save) return;
-  showZoom();
+  showZoom(host, `App ${percent(S.fontSize)}`);
   // A held key steps the size many times; the config file gets the last one.
   clearTimeout(saveFontSize);
   saveFontSize = setTimeout(() => invoke("set_font_size", { size: S.fontSize }).catch(console.error), 300);
 }
 
+/** Each session's steps away from the app size, so an app zoom scales it too. */
+const PANE_KEY = "skiff.paneFont";
+const offsets: Record<string, number> = loadOffsets();
+
+function loadOffsets(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(PANE_KEY) ?? "{}") as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+
+/** The text size of one session's terminal. */
+export function paneFontSize(id: string): number {
+  return clamp(S.fontSize + (offsets[id] ?? 0));
+}
+
+/** Changes one terminal only. `step` 0 gives it the app size again. */
+export function stepPaneFont(id: string, step: -1 | 0 | 1) {
+  const p = panes.get(id);
+  if (!p) return;
+  const size = step ? clamp(paneFontSize(id) + step) : S.fontSize;
+  if (size === S.fontSize) delete offsets[id];
+  else offsets[id] = size - S.fontSize;
+  try {
+    localStorage.setItem(PANE_KEY, JSON.stringify(offsets));
+  } catch {
+    /* a private window keeps the size for this run only */
+  }
+  p.term.options.fontSize = size;
+  fitShown();
+  showZoom(p.el, percent(size));
+}
+
+/** The session whose terminal has the keys, if one has them. */
+export function keysInPane(): string | undefined {
+  const a = document.activeElement;
+  if (!a || !S.focused) return undefined;
+  return panes.get(S.focused)?.el.contains(a) ? S.focused : undefined;
+}
+
+const clamp = (n: number) => Math.min(28, Math.max(8, n));
+const percent = (n: number) => `${Math.round((n / FONT_DEFAULT) * 100)}%`;
+
 let zoomTimer: ReturnType<typeof setTimeout> | undefined;
 
-/** Ctrl+Plus/Minus: the size as a percent of the default, briefly, over the terminals. */
-function showZoom() {
-  const badge = host.querySelector<HTMLElement>(".zoom-badge") ?? host.appendChild(h("div", "zoom-badge"));
+/** The new size as a percent of the default, briefly, over what it changed. */
+function showZoom(over: HTMLElement, text: string) {
+  host.querySelectorAll(".zoom-badge").forEach((b) => b.remove());
+  const badge = over.appendChild(h("div", "zoom-badge"));
   badge.setAttribute("role", "status");
-  badge.textContent = `${Math.round((S.fontSize / FONT_DEFAULT) * 100)}%`;
+  badge.textContent = text;
   clearTimeout(zoomTimer);
   zoomTimer = setTimeout(() => badge.remove(), 1200);
 }

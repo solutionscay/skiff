@@ -12,7 +12,8 @@ import { toBytes } from "../platform/ipcBytes";
 import { appKey } from "../app/keyboard";
 import { traceKey, traceOutput, traceRender, traceSend } from "../diagnostics/latency";
 
-import { FONT_DEFAULT, S, sessions } from "../app/state";
+import { FONT_DEFAULT, sessions } from "../app/state";
+import { paneFontSize } from "./terminalFont";
 import { shownIds } from "../app/stateQueries";
 import { opening, type Pane, panes } from "./terminalState";
 import * as waterline from "./waterline";
@@ -85,7 +86,7 @@ async function createPane(id: string): Promise<Pane> {
     rows: info?.rows ?? 24,
     theme: TERM_THEME,
     fontFamily: FONT,
-    fontSize: S.fontSize,
+    fontSize: paneFontSize(id),
     lineHeight: 1.2,
     cursorBlink: true,
     // The daemon's snapshot holds 2000 lines. A pane shown again after it

@@ -20,7 +20,7 @@ import { paneCenter } from "../terminal/terminal";
 
 import { openFind } from "../terminal/terminalSearch";
 import { copySelection, pasteClipboard } from "../terminal/terminalClipboard";
-import { setFontSize } from "../terminal/terminalFont";
+import { keysInPane, setFontSize, stepPaneFont } from "../terminal/terminalFont";
 
 import { modeGate, modeKeyBlocked, toggleFocusMode, toggleMaximize } from "./modes";
 import { closePane, focusNextWaiting, goBack, moveFocus, removeFromGroup } from "../workspace/view";
@@ -101,9 +101,12 @@ export function runAction(a: Action) {
     case "copy": return void copySelection();
     case "paste": return void pasteClipboard();
     case "find": return openFind();
-    case "font-bigger": return setFontSize(S.fontSize + 1);
-    case "font-smaller": return setFontSize(S.fontSize - 1);
-    case "font-reset": return setFontSize(FONT_DEFAULT);
+    case "font-bigger": return fontKey(1);
+    case "font-smaller": return fontKey(-1);
+    case "font-reset": return fontKey(0);
+    case "app-font-bigger": return setFontSize(S.fontSize + 1);
+    case "app-font-smaller": return setFontSize(S.fontSize - 1);
+    case "app-font-reset": return setFontSize(FONT_DEFAULT);
     case "settings": return void settings.open();
     case "quit": return void invoke("quit_app").catch(showError);
     case "focus-left": return moveFocus("left");
@@ -180,4 +183,11 @@ function rowPath(): { path: string; dir: boolean } | null {
   const row = S.atRail ? undefined : currentRow();
   const m = row?.dataset.key?.match(/^(file|change):(.*)$/);
   return m ? { path: m[2], dir: row!.classList.contains("dir") } : null;
+}
+
+/** With the keys in a terminal, that pane's text. Elsewhere, the app's. */
+function fontKey(step: -1 | 0 | 1) {
+  const id = keysInPane();
+  if (id) return stepPaneFont(id, step);
+  setFontSize(step ? S.fontSize + step : FONT_DEFAULT);
 }
