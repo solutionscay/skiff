@@ -24,9 +24,6 @@ A `v*` tag triggers `.github/workflows/release.yml`. CI builds the Linux package
    Do not raise `PROTOCOL` in `crates/skiff-core/src/lib.rs` in a release. The change that
    breaks the wire raises it, under the rule written next to it. If `PROTOCOL` changed since
    the tag, tell the operator: users with live sessions must restart skiffd.
-   Do not raise `PROTOCOL` in `crates/skiff-core/src/lib.rs` in a release. The change that
-   breaks the wire raises it, under the rule written next to it. If `PROTOCOL` changed since
-   the tag, tell the operator: users with live sessions must restart skiffd.
 5. Refresh the lockfile: `cargo update --workspace --offline`.
 6. Commit: `git commit -am "release: prepare vX.Y.Z"`.
 7. Tag and push: `git tag vX.Y.Z && git push origin main vX.Y.Z`.
