@@ -52,8 +52,6 @@ export function paneFontSize(id: string): number {
 
 /** Changes one terminal only. `step` 0 gives it the app size again. */
 export function stepPaneFont(id: string, step: -1 | 0 | 1) {
-  const p = panes.get(id);
-  if (!p) return;
   const size = step ? clamp(paneFontSize(id) + step) : S.fontSize;
   if (size === S.fontSize) delete offsets[id];
   else offsets[id] = size - S.fontSize;
@@ -62,16 +60,23 @@ export function stepPaneFont(id: string, step: -1 | 0 | 1) {
   } catch {
     /* a private window keeps the size for this run only */
   }
-  p.term.options.fontSize = size;
+  const p = panes.get(id);
+  if (p) p.term.options.fontSize = size;
   fitShown();
-  showZoom(p.el, percent(size));
+  showZoom(p?.el.isConnected ? p.el : host, percent(size));
 }
 
-/** The session whose terminal has the keys, if one has them. */
-export function keysInPane(): string | undefined {
-  const a = document.activeElement;
-  if (!a || !S.focused) return undefined;
-  return panes.get(S.focused)?.el.contains(a) ? S.focused : undefined;
+/**
+ * The session the font keys act on: a highlighted session row, else the
+ * focused pane while the keys are in the terminal area. None on the rail,
+ * a group row or any other row: those zoom the app.
+ */
+export function fontTarget(): string | undefined {
+  const a = document.activeElement as HTMLElement | null;
+  const row = a?.closest<HTMLElement>("#sidebar-scroll [data-session]");
+  if (row) return row.dataset.session;
+  if (S.atRail || S.groupPicked || !S.focused) return undefined;
+  return !a || a === document.body || (host.contains(a) && !a.closest(".slot")) ? S.focused : undefined;
 }
 
 const clamp = (n: number) => Math.min(28, Math.max(8, n));

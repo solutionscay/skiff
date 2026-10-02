@@ -20,7 +20,7 @@ import { paneCenter } from "../terminal/terminal";
 
 import { openFind } from "../terminal/terminalSearch";
 import { copySelection, pasteClipboard } from "../terminal/terminalClipboard";
-import { keysInPane, setFontSize, stepPaneFont } from "../terminal/terminalFont";
+import { fontTarget, setFontSize, stepPaneFont } from "../terminal/terminalFont";
 
 import { modeGate, modeKeyBlocked, toggleFocusMode, toggleMaximize } from "./modes";
 import { closePane, focusNextWaiting, goBack, moveFocus, removeFromGroup } from "../workspace/view";
@@ -185,9 +185,9 @@ function rowPath(): { path: string; dir: boolean } | null {
   return m ? { path: m[2], dir: row!.classList.contains("dir") } : null;
 }
 
-/** With the keys in a terminal, that pane's text. Elsewhere, the app's. */
+/** On a highlighted session, that pane's text. Elsewhere, the app's. */
 function fontKey(step: -1 | 0 | 1) {
-  const id = keysInPane();
+  const id = fontTarget();
   if (id) return stepPaneFont(id, step);
   setFontSize(step ? S.fontSize + step : FONT_DEFAULT);
 }
