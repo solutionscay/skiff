@@ -1,5 +1,5 @@
 import { open, reveal, copy } from "../platform/fileActions";
-import { previewFile, previewFolder } from "../terminal/peek";
+import { setRowActs } from "./rowActs";
 import { sectionHeader } from "../ui/sectionHeader";
 /**
  * The Files section under each worktree, for projects with `files = true`.
@@ -84,11 +84,10 @@ export function filesBlock(w: Worktree): HTMLElement {
   const isOpen = shown.has(w.path);
   const block = h("div", "files-block");
   const glyph = icon('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path>');
-  const head = sectionHeader(`files:${w.path}`, "Files", isOpen, glyph, () => {
-    previewFolder(w.path);
-    toggle(w.path, shown);
-  });
-  head.addEventListener("focus", () => previewFolder(w.path));
+  const key = `files:${w.path}`;
+  // A click selects the row on mousedown (keyboard.ts), then opens or closes it.
+  const head = sectionHeader(key, "Files", isOpen, glyph, () => toggle(w.path, shown));
+  setRowActs(key, { preview: { kind: "folder", path: w.path }, fold: folds(w.path, shown) });
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -129,23 +128,17 @@ function row(e: Entry, path: string, depth: number): HTMLElement {
   const r = h("button", cls.join(" "));
   r.type = "button";
   r.dataset.key = `file:${path}`;
+  setRowActs(r.dataset.key, e.dir
+    ? { preview: { kind: "folder", path }, fold: folds(path, expanded) }
+    : { preview: { kind: "file", path }, open: () => open(path) });
   r.style.setProperty("--depth", String(depth));
   if (e.dir) r.setAttribute("aria-expanded", String(expanded.has(path)));
+  // The mousedown selected the row and its preview (keyboard.ts). A click on a
+  // folder opens or closes it; a double-click on a file opens it.
   r.addEventListener("click", (m) => {
     // detail counts clicks across the re-render the first click causes.
-    if (e.dir) {
-      previewFolder(path);
-      toggle(path, expanded);
-    }
+    if (e.dir) toggle(path, expanded);
     else if (m.detail >= 2) open(path);
-    else previewFile(path);
-  });
-  r.addEventListener("focus", () => e.dir ? previewFolder(path) : previewFile(path));
-  r.addEventListener("keydown", (k) => {
-    if (k.key !== "Enter" || e.dir) return;
-    k.preventDefault();
-    k.stopPropagation();
-    open(path);
   });
   const lead = h("span", "file-lead");
   if (e.dir) lead.appendChild(chevron(expanded.has(path)));
@@ -167,6 +160,11 @@ function row(e: Entry, path: string, depth: number): HTMLElement {
   });
   return r;
 }
+
+/** Space, Left and Right on a folder row: `open` sets it, no argument flips it. */
+const folds = (path: string, set: Set<string>) => (open?: boolean) => {
+  if (open === undefined || open !== set.has(path)) toggle(path, set);
+};
 
 function note(text: string, depth: number, error = false): HTMLElement {
   const n = h("div", "file-note" + (error ? " error" : ""), text);

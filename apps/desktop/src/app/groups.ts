@@ -10,7 +10,7 @@ import { render } from "./render";
 import { S, sessions } from "./state";
 import { activeGroupObj, shownIds } from "./stateQueries";
 
-import { unfocus } from "../workspace/view";
+import { inBackground, unfocus } from "../workspace/view";
 
 /** Group writes run one at a time, so a new group has its id before the next save. */
 let groupQueue = Promise.resolve();
@@ -108,6 +108,6 @@ export async function loadGroups() {
   }
   const ids = shownIds();
   if (S.focused && !ids.includes(S.focused)) S.focused = ids.find((x) => !isSlot(x)) ?? null;
-  if (was && !S.activeGroup && !S.single) unfocus();
+  if (was && !S.activeGroup && !S.single) inBackground(unfocus);
   else render();
 }

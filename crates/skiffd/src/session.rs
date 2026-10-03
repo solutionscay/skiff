@@ -703,6 +703,16 @@ impl SessionPool {
         Ok(())
     }
 
+    /// Writes `data` as a paste: inside bracketed paste when the program
+    /// asked for it, else as typed text.
+    pub fn paste(&self, id: &str, data: &[u8]) -> Result<()> {
+        let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
+        if !session.screen.lock().unwrap().screen.bracketed_paste() {
+            return self.write(id, data);
+        }
+        self.write(id, &bracketed(data))
+    }
+
     pub fn rename(&self, id: &str, name: &str) -> Result<SessionInfo> {
         let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
         let name = name.trim();
@@ -912,6 +922,24 @@ fn prints(bytes: &[u8]) -> bool {
         i += 1;
     }
     false
+}
+
+/// `data` between bracketed paste marks. An end mark inside the data would
+/// end the paste early and let the rest run as keys, so it is taken out.
+fn bracketed(data: &[u8]) -> Vec<u8> {
+    const END: &[u8] = b"\x1b[201~";
+    let mut out = b"\x1b[200~".to_vec();
+    let mut i = 0;
+    while i < data.len() {
+        if data[i..].starts_with(END) {
+            i += END.len();
+        } else {
+            out.push(data[i]);
+            i += 1;
+        }
+    }
+    out.extend_from_slice(END);
+    out
 }
 
 fn default_shell() -> String {

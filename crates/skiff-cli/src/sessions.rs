@@ -172,9 +172,9 @@ async fn group_cwd(c: &Client, g: &Group) -> Result<Option<PathBuf>> {
     Ok(dir.filter(|d| d.is_dir()))
 }
 
-/// The pause before Enter, so a TUI reads the text as typing, not a paste
-/// that ends in a newline.
-const ENTER_DELAY: Duration = Duration::from_millis(80);
+/// The pause before Enter. A TUI without bracketed paste guesses pastes
+/// from fast input, and takes an Enter that comes too soon as a newline.
+const ENTER_DELAY: Duration = Duration::from_millis(200);
 
 pub async fn send(c: &Client, arg: &str, text: &[String], enter: bool, raw: bool) -> Result<()> {
     let all = c.list_sessions().await?;
@@ -189,8 +189,20 @@ pub async fn send(c: &Client, arg: &str, text: &[String], enter: bool, raw: bool
     if !raw {
         data = enter_keys(&data);
     }
+    // `--enter` presses Enter once. A newline at the end of the text, as a
+    // heredoc or a file has, would only add a blank line before it.
+    if enter {
+        while data.last() == Some(&b'\r') || data.last() == Some(&b'\n') {
+            data.pop();
+        }
+    }
     if !data.is_empty() {
-        c.write(&s.id, data).await?;
+        if raw {
+            c.write(&s.id, data).await?;
+        } else {
+            // A paste, so the program keeps the text's newlines as text.
+            c.paste(&s.id, data).await?;
+        }
     }
     if enter {
         tokio::time::sleep(ENTER_DELAY).await;

@@ -16,8 +16,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import { keepGroup, loadProjects, newSession, releaseGroup } from "../app/daemon";
 import { launchMenu } from "../app/panels";
 import { showError } from "../ui/alerts";
-import { hasChanges, setShowChanges, showsChanges } from "./changes";
-import { showDiff } from "../terminal/peek";
+import { hasChanges, reviewChanges, setShowChanges, showsChanges } from "./changes";
 import { setShowFiles, showsFiles } from "./files";
 import { deleteGroup } from "../app/groups";
 import { closeEntries } from "./projectClose";
@@ -158,7 +157,7 @@ export function worktreeMenu(p: Project, w: Worktree, x: number, y: number) {
   const plus = [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === w.path);
   const entries: MenuEntry[] = [
     { icon: "indicators-plus", label: "New session…", hint: keyLabel("new-session"), disabled: !!p.error, run: () => launchMenu.open(plus ?? { x, y }, p, w) },
-    ...(showsChanges(p) && hasChanges(w) ? [{ icon: "code-git-branch", label: "Review all changes", run: () => showDiff(w.path, branchName(w)) }] : []),
+    ...(showsChanges(p) && hasChanges(w) ? [{ icon: "code-git-branch", label: "Review all changes", run: () => reviewChanges(w) }] : []),
     { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", run: () => void openPath(w.path).catch(showError) },
     { icon: "code-copy", label: "Copy path", run: () => void navigator.clipboard.writeText(w.path).catch(showError) },
   ];

@@ -2,6 +2,7 @@
 import { syncMenu } from "./commands";
 import { host } from "../terminal/terminalHost";
 import { applyTabOrder } from "./keyboard";
+import { syncPreview } from "../terminal/peek";
 import { renderModes, settleModes } from "./modes";
 import { renderSelectBar } from "../workspace/selection";
 import { renderSidebar } from "../workspace/sidebar";
@@ -74,6 +75,8 @@ export function render() {
   renderHeader();
   renderCounts();
   applyTabOrder();
+  // The current row may have changed: a preview whose row it no longer is ends.
+  syncPreview();
   syncMenu();
   savePlace({
     project: S.selectedProject,

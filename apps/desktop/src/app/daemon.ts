@@ -18,10 +18,10 @@ import { deleteGroup, loadGroups, syncTemplateName } from "./groups";
 import { render, scheduleRender } from "./render";
 import { born, gone, OTHER, removeErrors, S, sessions, upsert } from "./state";
 import { hasKeys, markSeen } from "./seen";
-import { peekExited, peekUpdated, strayPeek } from "../terminal/peek";
+import { peekExited, peekUpdated, previewToken, strayPeek } from "../terminal/peek";
 import { activeGroupObj, place, shownIds } from "./stateQueries";
 import { panes } from "../terminal/terminalState";
-import { focusPane, paneNear, revealSession, rowNear, showSingle, splitWith, unfocus } from "../workspace/view";
+import { focusPane, inBackground, paneNear, revealSession, rowNear, showSingle, splitWith, unfocus } from "../workspace/view";
 
 export function setDaemon(status: DaemonStatus) {
   const dot = $("daemon").querySelector(".dot") as HTMLElement;
@@ -70,6 +70,9 @@ export async function newSession(
 ) {
   // Projects list agents as command lines; the first word is the program.
   const words = (agent ?? "").trim().split(/\s+/).filter(Boolean);
+  // The user owns the request until they move: a click or key elsewhere, or a new preview.
+  const mark = () => `${previewToken()} ${S.roveKey} ${S.focused} ${S.activeGroup}`;
+  const before = mark();
   const visible = S.focused ? panes.get(S.focused) : undefined;
   // Agent IDs are useful in the launch menu, but call signs make a new crew
   // easier (and more fun) to tell apart once it is running.
@@ -88,9 +91,17 @@ export async function newSession(
   });
   for (const b of born) b.add(info.id);
   upsert(info);
-  if (where && "slot" in where) placeInSlot(where.slot, info.id);
-  else if (where) splitWith(where.target, where.dir, info.id);
-  else showSingle(info.id);
+  // The user may have moved to a preview while it started: it shows under the preview.
+  const place = () => {
+    if (where && "slot" in where) placeInSlot(where.slot, info.id);
+    else if (where) splitWith(where.target, where.dir, info.id);
+    else showSingle(info.id);
+  };
+  // Not moved: it shows and takes the keys. Moved: it waits in the list, and a
+  // split or empty pane it was asked for still gets it, without the keys.
+  if (mark() === before) place();
+  else if (where) inBackground(place, true);
+  else render();
 }
 
 let projectsSeq = 0;
@@ -236,6 +247,10 @@ export const releaseGroup = (id: string) => void kept.delete(id);
 
 /** The daemon pruned the session from its groups; groups_changed brings them. Here the view drops it at once. */
 function dropSession(id: string) {
+  inBackground(() => dropPane(id));
+}
+
+function dropPane(id: string) {
   gone.add(id);
   if (!sessions.has(id)) return;
   // The keys go to a neighbor, picked while the pane and its row are still there:

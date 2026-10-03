@@ -14,9 +14,10 @@ import { showError } from "../ui/alerts";
 import type { MenuEntry } from "../ui/menu";
 import { ctxMenu } from "../ui/contextMenu";
 import { branchName } from "./model";
-import { showDiff } from "../terminal/peek";
+import { setRowActs } from "./rowActs";
+import { select } from "../app/keyboard";
 import { render, scheduleRender } from "../app/render";
-import { S } from "../app/state";
+import { collapsed } from "../app/state";
 
 import { storedSet } from "../app/stored";
 
@@ -104,6 +105,14 @@ function toggle(wt: string) {
   render();
 }
 
+/** Review all changes: the worktree's Changes row becomes current, and its diff takes the keys. */
+export function reviewChanges(w: Worktree) {
+  // The row must be in the list to be current.
+  collapsed.delete(w.path);
+  render();
+  select(`changes:${w.path}`, true, true);
+}
+
 /** The section, or null when the worktree has no changes. */
 export function changesBlock(w: Worktree): HTMLElement | null {
   const list = listFor(w);
@@ -111,14 +120,20 @@ export function changesBlock(w: Worktree): HTMLElement | null {
   const isOpen = shown.has(w.path);
   const block = h("div", "files-block changes-block");
   const glyph = icon('<path d="M12 3v12"></path><path d="M6 9h12"></path><path d="M6 21h12"></path>');
-  const head = sectionHeader(`changes:${w.path}`, "Changes", isOpen, glyph, () => toggle(w.path));
+  const key = `changes:${w.path}`;
+  // A click selects the row on mousedown (keyboard.ts), then opens or closes it.
+  const head = sectionHeader(key, "Changes", isOpen, glyph, () => toggle(w.path));
+  setRowActs(key, {
+    preview: { kind: "diff", wt: w.path, branch: branchName(w) },
+    fold: (open) => { if (open === undefined || open !== shown.has(w.path)) toggle(w.path); },
+  });
   // Open, the rows show how many.
   if (!isOpen) head.appendChild(h("span", "changes-n", String(list.length)));
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     e.stopPropagation();
     ctxMenu.open(e.clientX, e.clientY, "Changes", [
-      { icon: "code-git-branch", label: "Review all changes", run: () => showDiff(w.path, branchName(w)) },
+      { icon: "code-git-branch", label: "Review all changes", run: () => reviewChanges(w) },
       { icon: "schedule-refresh-cw", label: "Refresh", run: () => load(w.path) },
     ]);
   });
@@ -134,29 +149,19 @@ export function changesBlock(w: Worktree): HTMLElement | null {
 function row(w: Worktree, c: Change): HTMLElement {
   const wt = w.path;
   const path = join(wt, c.path);
-  // The row whose diff shows is the current row, however the diff was asked for.
-  const show = () => {
-    S.roveKey = `change:${path}`;
-    render();
-    showDiff(wt, branchName(w), c.path);
-  };
+  const key = `change:${path}`;
   const gone = c.status === "D";
+  // The row's diff shows while it is current. Shift+Enter opens the file itself.
+  setRowActs(key, { preview: { kind: "diff", wt, branch: branchName(w), file: c.path }, open: gone ? undefined : () => open(path) });
+  const show = () => select(key, true, true);
   const slash = c.path.lastIndexOf("/");
   const name = c.path.slice(slash + 1);
   const dir = slash < 0 ? "" : c.path.slice(0, slash);
   const r = h("button", "file-row change-row" + (gone ? " st-gone" : "") );
   r.type = "button";
-  r.dataset.key = `change:${path}`;
-  // One click opens the diff. The second click of a double-click does not open it again.
-  r.addEventListener("click", (m) => m.detail === 1 && show());
-  // Enter shows the diff. Shift+Enter opens the file itself.
-  r.addEventListener("keydown", (k) => {
-    if (k.key !== "Enter" || k.ctrlKey || k.metaKey || k.altKey) return;
-    k.preventDefault();
-    k.stopPropagation();
-    if (!k.shiftKey) show();
-    else if (!gone) open(path);
-  });
+  r.dataset.key = key;
+  // The mousedown selects the row, and its diff shows (keyboard.ts). Enter
+  // gives the diff the keys; Shift+Enter opens the file (keyboard.ts).
   const st = h("span", `change-st st-${c.status}`, c.status);
   const counts = h("span", "change-counts");
   if (c.added === null) counts.textContent = "bin";

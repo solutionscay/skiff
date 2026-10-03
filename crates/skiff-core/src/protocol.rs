@@ -39,6 +39,11 @@ pub enum Request {
         session: SessionId,
         #[serde(with = "b64")]
         data: Vec<u8>,
+        /// The data is a paste. The daemon wraps it in bracketed paste when
+        /// the program turned that on, so the program does not take its
+        /// newlines, or a fast Enter after it, as part of the text.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        paste: bool,
     },
     Resize {
         session: SessionId,
@@ -222,7 +227,7 @@ mod tests {
         let line = r#"{"id":1,"cmd":"write","session":"s1","data":"aGk="}"#;
         let env: Envelope = serde_json::from_str(line).unwrap();
         match env.request {
-            Request::Write { session, data } => {
+            Request::Write { session, data, .. } => {
                 assert_eq!(session, "s1");
                 assert_eq!(data, b"hi");
             }
