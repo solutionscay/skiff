@@ -3626,7 +3626,7 @@ checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
 name = "skiff-cli"
-version = "1.2.3"
+version = "1.2.4"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -3643,7 +3643,7 @@ dependencies = [
 
 [[package]]
 name = "skiff-client"
-version = "1.2.3"
+version = "1.2.4"
 dependencies = [
  "anyhow",
  "serde_json",
@@ -3654,7 +3654,7 @@ dependencies = [
 
 [[package]]
 name = "skiff-core"
-version = "0.6.10"
+version = "0.6.11"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3667,7 +3667,7 @@ dependencies = [
 
 [[package]]
 name = "skiff-desktop"
-version = "1.2.3"
+version = "1.2.4"
 dependencies = [
  "anyhow",
  "gtk",
@@ -3686,7 +3686,7 @@ dependencies = [
 
 [[package]]
 name = "skiffd"
-version = "0.6.10"
+version = "0.6.11"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
