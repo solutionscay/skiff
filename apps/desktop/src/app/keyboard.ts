@@ -16,7 +16,7 @@ import { collapsed, S } from "./state";
 
 import { panes } from "../terminal/terminalState";
 import { revealSession, selectProject, showGroup } from "../workspace/view";
-import { focusPeek, leavePeek, peekBlocksAction } from "../terminal/peek";
+import { focusPeek, keysToPreview, leavePeek, peekBlocksAction } from "../terminal/peek";
 
 /** Ctrl+Shift+1..9 selects a project (Command+Shift+1..9 on macOS). Not in the keymap: it is a range, not one key. */
 function projectKey(e: KeyboardEvent): number | null {
@@ -168,8 +168,9 @@ function openRow(el: HTMLElement) {
 
 /**
  * Ctrl+Shift+Down/Up: the next or previous row in the list. A session opens. A group
- * opens with its row keeping the keys. A changed file loads its diff. Worktrees,
- * headers and files take focus.
+ * opens with its row keeping the keys. A changed file loads its diff. A file or
+ * folder shows its preview, and the preview takes the keys. Worktrees and other
+ * headers take focus.
  */
 export function stepList(dir: 1 | -1) {
   const rows = listItems();
@@ -199,6 +200,8 @@ function landOn(next: HTMLElement) {
     document.body.classList.add("kbd");
     markCurrent();
     next.focus();
+    // A file or folder preview takes the keys, as a session's pane does.
+    if (next.classList.contains("file-row") || next.classList.contains("files-head")) keysToPreview();
   }
 }
 

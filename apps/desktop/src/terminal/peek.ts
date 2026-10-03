@@ -65,6 +65,8 @@ const parked = new Map<string, Peek>();
 let invitation: HTMLElement | null = null;
 let previewPath: string | null = null;
 let selection = 0;
+/** The selection whose preview takes the keys when it is ready. */
+let keysFor = -1;
 
 function clearInvitation() {
   invitation?.remove();
@@ -128,6 +130,16 @@ export function focusPeek(): boolean {
   if (!open?.shown || open.el.hidden) return false;
   open.term.focus();
   return true;
+}
+
+/**
+ * Ctrl+Shift+Up/Down reached a file or folder: its preview takes the keys, as a
+ * session's pane does. A tool gets the terminal. An Open button gets focus.
+ */
+export function keysToPreview() {
+  keysFor = selection;
+  if (open && !open.shown) open.takeFocus = true;
+  else focusPeek();
 }
 
 /** Takes the peek down. Its command ends, unless it is an app that runs on. */
@@ -406,9 +418,15 @@ function showInvitation(kind: string, path: string, label?: string, run?: () => 
   const body = h("div", "file-preview-body");
   if (label && run) body.append(h("div", "file-preview-name", name), button("file-preview-open", label, run));
   el.append(head, body);
+  // Tab does nothing here, as it leaves no pane.
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Tab") e.preventDefault();
+  });
+  const hadKeys = !!invitation?.contains(document.activeElement);
   clearInvitation();
   invitation = el;
   $("main").appendChild(el);
+  if (hadKeys || keysFor === selection) focusPeek();
 }
 
 /** Folder selection stays in the preview until the user goes to a session. */
@@ -436,7 +454,7 @@ export function previewFile(path: string) {
   void invoke<FilePreview>("preview_file", { path }).then((p) => {
     if (mine !== selection) return;
     if (p.peek && p.script) {
-      void run("file", name, dir, p.script, p.cwd, false);
+      void run("file", name, dir, p.script, p.cwd, mine === keysFor);
       return;
     }
     showInvitation("file", path, `Open in ${p.app}`, () => openFile(path));

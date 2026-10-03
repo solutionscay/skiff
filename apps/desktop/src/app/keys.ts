@@ -181,7 +181,7 @@ export const DESCRIBE: [string, Action, string][] = [
   ["View", "close-pane", "Take the session out of its group: the focused pane, or the session row in the list. It stays selected. On a group row, ungroup. Sessions keep running"],
   ["View", "next-waiting", "Next waiting session"],
   ["View", "back", "Back to the last session"],
-  ["View", "session-next", "Next row in the list: worktree, group, session, Changes or Files. A changed file loads its diff. On the rail, the next project. In Settings, the next section"],
+  ["View", "session-next", "Next row in the list: worktree, group, session, Changes or Files. A changed file loads its diff. A file or folder preview takes the keys. On the rail, the next project. In Settings, the next section"],
   ["View", "session-prev", "Previous row in the list. On the rail, the previous project. In Settings, the previous section"],
   ["View", "list-project", "To the rail: clears the list's highlight and selection. The panes stay. In Settings, to the section tabs"],
   ["View", "list-back", "Back from the rail into the list. In Settings, into the section"],
