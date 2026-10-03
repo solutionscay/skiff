@@ -120,6 +120,9 @@ async function createPane(id: string): Promise<Pane> {
 
   term.onData((data) => {
     if (inputOff) return;
+    // Text or a paste: the user reads from here now. Replies the terminal
+    // sends on its own (focus, mouse, cursor reports) start with ESC.
+    if (!data.startsWith("\x1b") || data.startsWith("\x1b[200~")) waterline.clear(id);
     const sent = traceSend(id);
     invoke("pty_write", { session: id, data }).then(sent, console.error);
   });
@@ -128,7 +131,7 @@ async function createPane(id: string): Promise<Pane> {
     waterline.update(id);
   });
   term.onScroll(() => waterline.update(id));
-  // A key the terminal takes: the user reads from here now. App keys never get here.
+  // A key the terminal takes, arrows and Esc too. App keys never get here.
   term.onKey(() => waterline.clear(id));
 
   const pane: Pane = { el, term, fit, search, parked: false, stream: 0, wrote: 0, unacked: 0, acking: false, sub: Promise.resolve() };

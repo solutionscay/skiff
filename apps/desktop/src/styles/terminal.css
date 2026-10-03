@@ -103,10 +103,8 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 #terminal-host .pane { position: absolute; inset: 0; padding: calc(8 * var(--u)) 0 calc(8 * var(--u)) calc(12 * var(--u)); }
 /* The terminal opens in this box: FitAddon measures its parent, so the pane's padding stays out. */
 #terminal-host .pane .term-box { width: 100%; height: 100%; }
-/* The waterline: where the user last read. One 2px rule and one dim layer over the terminal. It draws no terminal rows. */
-.waterline { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
-.waterline-dim { position: absolute; left: 0; right: 0; top: 0; background: color-mix(in srgb, var(--wl-bg, var(--bg-deep)) 50%, transparent); }
-.waterline-rule { position: absolute; left: 0; right: 0; height: 2px; background: var(--wl-rule, var(--rule-strong)); }
+/* The waterline: where the user last read. One 2px rule over the terminal. It draws no terminal rows and dims nothing. */
+.waterline { position: absolute; left: 0; right: 0; height: 2px; z-index: 6; pointer-events: none; background: var(--wl-rule, var(--rule-strong)); }
 .waterline-label { position: absolute; right: calc(16 * var(--u)); top: calc(1px - 8 * var(--u)); padding: 0 calc(6 * var(--u)); background: var(--wl-bg, var(--bg-deep)); color: var(--wl-text, var(--text-3)); font: calc(11px * var(--zoom, 1)) / calc(16 * var(--u)) var(--font); white-space: nowrap; }
 #terminal-host .empty {
   position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(8 * var(--u));
