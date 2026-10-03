@@ -23,6 +23,7 @@ import { activeGroupObj, viewLayout } from "../app/stateQueries";
 import { panes } from "./terminalState";
 import { arrive } from "./waterline";
 import { focusPane } from "./paneActions";
+import { previewOnScreen } from "./peek";
 
 export const view = createLayoutView(host, {
   attach: (id, body) => {
@@ -41,7 +42,7 @@ export const view = createLayoutView(host, {
         fitShown();
         const grab = S.grab === id;
         if (grab) S.grab = null;
-        if (id === S.focused && (canTakeFocus() || (grab && !modalOpen()))) p.term.focus();
+        if (id === S.focused && (canTakeFocus() || (grab && !modalOpen() && !previewOnScreen()))) p.term.focus();
         // A pane on screen shows where the user stopped reading, keys or not.
         arrive(id);
       })
@@ -91,7 +92,8 @@ export function renderLayout() {
 function canTakeFocus(): boolean {
   const a = document.activeElement;
   // An empty pane of a split canvas keeps the keys while it is being filled.
-  return !modalOpen() && (!a || a === document.body || (host.contains(a) && !a.closest(".slot")));
+  // A preview over the panes keeps the keys until the user leaves it.
+  return !modalOpen() && !previewOnScreen() && (!a || a === document.body || (host.contains(a) && !a.closest(".slot")));
 }
 
 let resizeTimer: number | undefined;

@@ -15,14 +15,37 @@ import { clearSelection } from "./selection";
 import { FULL_HINT, MAX_PANES, OTHER, S, selectedWorktree, sessions } from "../app/state";
 import { activeGroupObj, currentLayout, groupOf, inShownGroup, place, shownIds, splitFull, worktreeSessions } from "../app/stateQueries";
 import { panes } from "../terminal/terminalState";
-import { leavePeek } from "../terminal/peek";
-import { listItems } from "../app/keyboard";
+import { previewOnScreen } from "../terminal/peek";
+import { currentRow, listItems } from "../app/keyboard";
 import * as waterline from "../terminal/waterline";
 import { view } from "../terminal/terminal";
 
+let background = 0;
+let held = 0;
+
+/**
+ * Pane changes that come from skiffd, not from the user: a session ends, the
+ * groups reload. While a preview shows, they change the panes under it and
+ * leave the current row and the keys alone.
+ */
+export function inBackground(fn: () => void, always = false) {
+  background++;
+  if (always) held++;
+  try {
+    fn();
+  } finally {
+    background--;
+    if (always) held--;
+  }
+}
+
+/** `always`: it never takes the row or the keys, preview or not. */
+const quiet = () => held > 0 || (background > 0 && previewOnScreen());
+
 /** Give the keys to a shown pane. */
 export function focusPane(id: string, grab = true) {
-  leavePeek();
+  const background = quiet();
+  if (background) grab = false;
   S.justAdded = null;
   S.grab = null;
   if (grab) {
@@ -40,7 +63,10 @@ export function focusPane(id: string, grab = true) {
   if (g) g.focus = id;
   const s = sessions.get(id);
   const at = s ? place(s) : null;
-  if (at) {
+  // A change in the background keeps the sidebar where the user is.
+  if (background) {
+    // The project and worktree stay as they are.
+  } else if (at) {
     S.selectedProject = at.project.name;
     selectedWorktree.set(at.project.name, at.worktree.path);
   } else if (s) {
@@ -52,7 +78,8 @@ export function focusPane(id: string, grab = true) {
     // A text field (a group name being typed) keeps them too.
     const a = document.activeElement;
     const typing = a instanceof HTMLInputElement && !host.contains(a);
-    if (modalOpen() || typing || S.focused !== id || !grab || S.atRail) return;
+    // A preview over the panes keeps the keys. Leaving it ends it first.
+    if (modalOpen() || typing || S.focused !== id || !grab || S.atRail || previewOnScreen()) return;
     const pane = panes.get(id);
     if (pane?.term.element) pane.term.focus();
     // Not open yet: the terminal takes the keys when it attaches.
@@ -63,6 +90,8 @@ export function focusPane(id: string, grab = true) {
 export function refocusTerminal() {
   // A menu opened from the rail gives the keys back to the rail.
   if (S.atRail) document.querySelector<HTMLElement>("#rail .rail-chip.active")?.focus();
+  // A preview covers the panes: the keys go back to its row, not to a pane under it.
+  else if (previewOnScreen()) currentRow()?.focus();
   else if (S.focused) panes.get(S.focused)?.term.focus();
 }
 
@@ -414,7 +443,6 @@ function noteFocus() {
 }
 
 export function selectWorktree(project: Project, w: Worktree) {
-  leavePeek();
   noteFocus();
   S.selectedProject = project.name;
   selectedWorktree.set(project.name, w.path);
@@ -429,14 +457,14 @@ export function selectWorktree(project: Project, w: Worktree) {
 
 /** No session has the keys: hide every pane and offer to start one here. */
 export function unfocus() {
-  leavePeek();
   if (S.focused) waterline.leave(S.focused);
   S.focused = null;
   S.single = null;
   S.activeGroup = null;
-  (document.activeElement as HTMLElement | null)?.blur();
+  const keep = quiet();
+  if (!keep) (document.activeElement as HTMLElement | null)?.blur();
   render();
-  if (!S.atRail) host.querySelector<HTMLButtonElement>(".welcome button")?.focus();
+  if (!S.atRail && !previewOnScreen()) host.querySelector<HTMLButtonElement>(".welcome button")?.focus();
 }
 
 export function selectProject(name: string) {

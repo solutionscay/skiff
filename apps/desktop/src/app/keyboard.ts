@@ -16,7 +16,8 @@ import { collapsed, S } from "./state";
 
 import { panes } from "../terminal/terminalState";
 import { revealSession, selectProject, showGroup } from "../workspace/view";
-import { focusPeek, keysToPreview, leavePeek, peekBlocksAction } from "../terminal/peek";
+import { enterPreview, giveKeys, peekBlocksAction, previewOnScreen, startPreview } from "../terminal/peek";
+import { rowActs } from "../workspace/rowActs";
 
 /** Ctrl+Shift+1..9 selects a project (Command+Shift+1..9 on macOS). Not in the keymap: it is a range, not one key. */
 function projectKey(e: KeyboardEvent): number | null {
@@ -55,7 +56,6 @@ window.addEventListener("keydown", (e) => {
   e.stopPropagation();
   if (typeof key === "string" && modeKeyBlocked(key)) return;
   if (typeof key === "number") {
-    leavePeek();
     const p = S.projects[key - 1];
     if (p) selectProject(p.name);
   } else {
@@ -134,7 +134,7 @@ export function cycleRegion(dir: 1 | -1) {
     () => focusEl(document.querySelector<HTMLElement>("#rail .rail-chip.active") ?? document.querySelector<HTMLElement>("#rail .rail-chip")),
     () => focusEl(roveTarget() ?? null),
     () => {
-      if (focusPeek()) return true;
+      if (giveKeys()) return true;
       const t = S.focused ? panes.get(S.focused)?.term : undefined;
       if (!t) return false;
       t.focus();
@@ -184,24 +184,36 @@ export function stepList(dir: 1 | -1) {
   landOn(rows[i < 0 ? (dir > 0 ? 0 : rows.length - 1) : (i + dir + rows.length) % rows.length]);
 }
 
+/**
+ * The one way the current row changes: a click or Ctrl+Shift+Up/Down. The
+ * highlight moves, and the main area shows the row's preview, or the panes.
+ * `keys`: the preview takes the keys, as a session's pane does.
+ */
+export function select(key: string, keys: boolean, fresh = false) {
+  S.atRail = false;
+  S.roveKey = key;
+  // The highlight and the one Tab stop move together.
+  applyTabOrder();
+  startPreview(key, keys, fresh);
+}
+
 /** Makes a row the current one. A session opens. A group opens with its row keeping
- *  the keys. A changed file loads its diff. Other rows take focus. */
+ *  the keys. A file, folder or change shows its preview, which takes the keys.
+ *  Other rows take focus. */
 function landOn(next: HTMLElement) {
-  leavePeek();
-  S.roveKey = itemKey(next);
-  if (next.dataset.session) revealSession(next.dataset.session);
-  else if (next.dataset.group) {
-    document.body.classList.add("kbd");
+  const key = itemKey(next);
+  document.body.classList.add("kbd");
+  if (next.dataset.session) {
+    S.roveKey = key;
+    revealSession(next.dataset.session);
+  } else if (next.dataset.group) {
+    S.roveKey = key;
     showGroup(next.dataset.group, true);
-  } else if (next.classList.contains("change-row")) {
-    // The row's own Enter handler loads the diff.
-    next.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  } else if (rowActs(key)?.preview) {
+    select(key, true);
   } else {
-    document.body.classList.add("kbd");
-    markCurrent();
+    select(key, false);
     next.focus();
-    // A file or folder preview takes the keys, as a session's pane does.
-    if (next.classList.contains("file-row") || next.classList.contains("files-head")) keysToPreview();
   }
 }
 
@@ -212,7 +224,6 @@ const activeChip = () => document.querySelector<HTMLElement>("#rail .rail-chip.a
  * highlighted or selected; the panes stay as they are.
  */
 export function toProject() {
-  leavePeek();
   ctxMenu.close(false);
   launchMenu.close(false);
   clearSelection();
@@ -304,12 +315,23 @@ $("sidebar-scroll").addEventListener("keydown", (e) => {
     const p = S.projects.find((x) => `project:${x.name}` === el.dataset.key);
     const r = el.getBoundingClientRect();
     if (p) ctxMenu.open(r.left + 24, r.bottom, p.name, closeEntries(p));
-  } else if (isSection(el) && (e.key === "Enter" || e.key === " ")) {
-    // A Changes or Files header or a folder: Enter opens or closes it.
-    el.click();
+  } else if (isSection(el) && e.key === "Enter" && e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    // Shift+Enter on a change opens the file itself.
+    rowActs(itemKey(el))?.open?.();
+  } else if (isSection(el) && e.key === "Enter" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    // Enter goes into what the row shows: a tool or diff takes the keys, a
+    // card runs its button. A row with no preview opens or closes.
+    const key = itemKey(el);
+    if (rowActs(key)?.preview) {
+      select(key, false);
+      enterPreview();
+    } else rowActs(key)?.fold?.();
+  } else if (isSection(el) && e.key === " ") {
+    // Space opens or closes a Changes, Files or folder row.
+    rowActs(itemKey(el))?.fold?.();
   } else if (isSection(el) && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
     // Right opens, Left closes. On a file row they do nothing.
-    if (el.getAttribute("aria-expanded") === String(e.key === "ArrowLeft")) el.click();
+    rowActs(itemKey(el))?.fold?.(e.key === "ArrowRight");
   } else if (!el.dataset.session && ["ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) {
     // Rows move with Ctrl+Shift+Up/Down only. On a session row these keys go
     // to its terminal below; elsewhere they do nothing, not even scroll.
@@ -370,9 +392,23 @@ window.addEventListener("keydown", (e) => {
 
 // A pressed row is where we are. Not on focus: a render puts focus back on the
 // row that had it, which may no longer be the current one.
+// A right-click on a file, folder or change selects it too, so its menu acts on what shows.
 $("sidebar-scroll").addEventListener("mousedown", (e) => {
   const el = (e.target as HTMLElement).closest<HTMLElement>(".wt-pick, .group-pick, button.session-row, .files-head, .file-row");
-  if (!el || e.button !== 0) return;
-  S.roveKey = itemKey(el);
-  markCurrent();
+  if (!el) return;
+  const key = itemKey(el);
+  const preview = !!rowActs(key)?.preview;
+  if (e.button !== 0 && !(e.button === 2 && preview)) return;
+  if (preview && (e.ctrlKey || e.metaKey || e.shiftKey)) return;
+  select(key, false);
+  // WebKit does not focus a clicked button. The row keeps the keys for Enter and Space.
+  if (preview) el.focus();
 });
+
+// Tab from the list goes into a preview on screen, not to a pane under it.
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab" || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || modalOpen()) return;
+  if (!(e.target as Element).closest?.("#sidebar-scroll") || !previewOnScreen()) return;
+  e.preventDefault();
+  giveKeys();
+}, true);

@@ -22,6 +22,7 @@ import { renameRow, startRename, startSessionRename } from "./rename";
 
 import { itemKey, listItems } from "../app/keyboard";
 import { clearSelection, keepRow, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
+import { startPreview } from "../terminal/peek";
 import { stateIcon } from "../appearance/stateIcon";
 import { collapsed, DEFAULT_ACCENT, OTHER, removeErrors, removing, S, selectedWorktree, sessions } from "../app/state";
 import { accent, awayPlaces, currentProject, currentWorktree, place } from "../app/stateQueries";
@@ -232,7 +233,11 @@ function restoreFocus(side: HTMLElement, activeKey: string | undefined, caret: C
     } else if (!again) {
       const keys = new Set(listItems().map(itemKey));
       const next = near.find((k) => keys.has(k));
-      if (next) keepRow(next);
+      if (next) {
+        keepRow(next);
+        // The row that takes the place of the current one shows its preview, or the panes.
+        startPreview(next, false);
+      }
     }
   }
 }

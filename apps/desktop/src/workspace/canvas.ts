@@ -6,6 +6,7 @@
 import { launchIcon } from "../appearance/agentIcon";
 import { newSession } from "../app/daemon";
 import { button, h } from "../ui/dom";
+import { previewOnScreen } from "../terminal/peek";
 import { icon } from "../ui/icons";
 import { showError } from "../ui/alerts";
 import { autoName, deleteGroup, saveGroup } from "../app/groups";
@@ -47,7 +48,9 @@ export function startCanvas(p: Project, w: Worktree, preset: number) {
 }
 
 export function focusFirstSlot() {
-  requestAnimationFrame(() => document.querySelector<HTMLElement>("#terminal-host .slot button")?.focus());
+  requestAnimationFrame(() => {
+    if (!previewOnScreen()) document.querySelector<HTMLElement>("#terminal-host .slot button")?.focus();
+  });
 }
 
 /** Where a group's empty panes start: its own folder, else its first session's. */
