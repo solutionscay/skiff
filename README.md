@@ -41,7 +41,7 @@ Download the latest [release](https://github.com/solutionscay/skiff/releases/lat
 - Linux (x86_64): `.deb`, `.rpm` or AppImage
 - macOS (Apple Silicon): `.dmg`, signed and notarized
 
-The `skiff` command drives sessions and groups from a shell or an agent. See the [wiki CLI page](https://github.com/solutionscay/skiff/wiki/CLI).
+The `skiff` command drives sessions and groups from a shell or an agent. It ships with the app and updates with it. The `.deb` and `.rpm` install it to `/usr/bin`. The AppImage copies it to `~/.local/bin` when it starts. The macOS app links it into `/usr/local/bin`, or `/opt/homebrew/bin` when it can write there. Otherwise run Help › Install skiff command… once. See the [wiki CLI page](https://github.com/solutionscay/skiff/wiki/CLI).
 
 ## Themes
 

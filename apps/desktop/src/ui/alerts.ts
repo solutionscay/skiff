@@ -6,11 +6,20 @@ import { $, button, h } from "./dom";
  */
 export function showError(e: unknown) {
   console.error(e);
+  showBar(e instanceof Error ? e.message : String(e), "alert");
+}
+
+/** The same bar for a result the user asked for. */
+export function showNotice(text: string) {
+  showBar(text, "status");
+}
+
+function showBar(text: string, role: string) {
   document.getElementById("error-alert")?.remove();
   const alert = h("div", "");
   alert.id = "error-alert";
-  alert.setAttribute("role", "alert");
-  const text = e instanceof Error ? e.message : String(e);
+  alert.setAttribute("role", role);
+  if (role === "status") alert.className = "notice";
   alert.append(h("span", "alert-text", text), button("alert-btn", "Dismiss", () => alert.remove()));
   $("body").before(alert);
 }

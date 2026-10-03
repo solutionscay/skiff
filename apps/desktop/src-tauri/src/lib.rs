@@ -1,5 +1,6 @@
 //! The desktop app is a client of `skiffd`. It owns no PTY.
 
+mod cli_path;
 mod connection;
 mod commands;
 mod config;
@@ -30,6 +31,7 @@ pub fn run() {
         .manage(App::default())
         // The window starts hidden: GTK takes a header bar only before it shows.
         .setup(|app| {
+            std::thread::spawn(cli_path::sync);
             let Some(window) = app.get_webview_window("main") else { return Ok(()) };
             #[cfg(target_os = "linux")]
             if header_bar::wanted() {
@@ -48,6 +50,7 @@ pub fn run() {
             native_menu::set_menu_layout,
             native_menu::set_window_dark,
             connection::daemon_status,
+            cli_path::install_cli,
             commands::list_sessions,
             commands::create_session,
             commands::pty_write,

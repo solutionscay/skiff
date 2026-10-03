@@ -13,7 +13,7 @@ Full reference: https://github.com/solutionscay/skiff/wiki/CLI
 
 Do these steps before the first command in a task.
 
-1. Run `skiff status`. If the command is not found, stop. Tell the user to install it: `cargo install --path crates/skiff-cli` from a Skiff checkout. If it says skiffd is not running, stop and tell the user to open Skiff.
+1. Run `skiff status`. If the command is not found, stop. Tell the user to run Help › Install skiff command… in Skiff. The app ships the CLI and keeps it up to date. If it says skiffd is not running, stop and tell the user to open Skiff.
 2. Check `$SKIFF_SESSION`. If it is set, you run inside a Skiff pane, and `.` means your own session. `--group .` means the group your pane is in.
 3. Run `skiff ls --json` and `skiff group ls --json` to see what exists. Read JSON, not the tables.
 

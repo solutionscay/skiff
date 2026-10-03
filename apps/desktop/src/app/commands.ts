@@ -10,7 +10,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
-import { showError } from "../ui/alerts";
+import { showError, showNotice } from "../ui/alerts";
+import { confirmAction } from "../ui/confirm";
 
 import { copyReport, hasReport, startTrace, stopTrace, tracing } from "../diagnostics/latency";
 import { groupCloseEntries } from "../workspace/menus";
@@ -82,6 +83,7 @@ function commands(): Cmd[] {
     { section: "View", label: "Reset app text size", key: k("app-font-reset"), action: "app-font-reset", run: act("app-font-reset") },
     { section: "Help", label: "Keyboard shortcuts", key: k("shortcuts"), action: "shortcuts", run: act("shortcuts") },
     { section: "Help", label: "Open projects.toml", key: "", run: () => void openConfig() },
+    { section: "Help", label: "Install skiff command…", key: "", run: () => void installCli() },
     {
       section: "Help", label: tracing() ? "Stop latency trace" : "Start latency trace", key: "",
       run: () => {
@@ -125,6 +127,21 @@ export function syncMenu() {
 void listen<string>("skiff:menu", (e) => menuRuns.get(e.payload)?.());
 // The search button in the GNOME header bar.
 void listen("skiff:search", () => runAction("palette"));
+
+async function installCli() {
+  const ok = await confirmAction({
+    title: "Install skiff command",
+    body: "Put the skiff command on your PATH, so shells and agents can drive Skiff. macOS can ask for your password.",
+    action: "Install",
+  });
+  if (!ok) return;
+  try {
+    const path = await invoke<string>("install_cli");
+    showNotice(`The skiff command is at ${path}. Open a new shell to use it.`);
+  } catch (e) {
+    if (String(e) !== "cancelled") showError(e);
+  }
+}
 
 async function openConfig() {
   await invoke("open_config").catch(showError);

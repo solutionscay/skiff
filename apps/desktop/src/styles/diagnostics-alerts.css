@@ -3,6 +3,10 @@
 #daemon-alert .alert-text, #error-alert .alert-text { flex-grow: 1; padding: calc(8 * var(--u)) 0; }
 #daemon-alert .alert-btn, #error-alert .alert-btn { align-self: stretch; flex-shrink: 0; width: calc(144 * var(--u)); padding: 0; border: 0; border-left: 1px solid var(--error-rule); background: transparent; color: var(--error-text); font-size: calc(12px * var(--zoom, 1)); font-weight: 600; }
 #daemon-alert .alert-btn:hover, #error-alert .alert-btn:hover { background: var(--error-bg-hover); }
+/* The same bar for a result the user asked for: neutral, not red. */
+#error-alert.notice { background: var(--bg-panel); border-bottom-color: var(--rule); color: var(--text); }
+#error-alert.notice .alert-btn { border-left-color: var(--rule); color: var(--text-2); }
+#error-alert.notice .alert-btn:hover { background: var(--bg-raised); }
 
 /* An outdated skiffd: a top-bar cell, and the panel it opens. */
 #topbar .daemon-badge {
