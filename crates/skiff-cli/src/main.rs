@@ -137,7 +137,7 @@ enum Cmd {
     /// Show and set the command that opens a diff or a file.
     #[command(
         name = "open-with",
-        after_help = "Keys: diff, text, markdown, html. `{path}` in a command becomes the file; without it the file goes at the end. `{target}` in the diff command becomes what to compare.\nPeek runs a terminal tool over the panes. Window starts an app with its own window. A file with no command opens in the system's default app.\nChanges apply to the next file or diff the app opens."
+        after_help = "Keys: diff, text, markdown, html. `{path}` in a command becomes the file; without it the file goes at the end. `{target}` in the diff command becomes what to compare.\nA terminal tool shows in the peek over the panes. An app with its own window just starts. A file with no command opens in the system's default app.\nChanges apply to the next file or diff the app opens."
     )]
     OpenWith {
         #[command(subcommand)]
@@ -192,25 +192,19 @@ enum GroupCmd {
 
 #[derive(Subcommand)]
 enum OpenWithCmd {
-    /// List each key, its command, and where it runs.
+    /// List each key and its command.
     Ls {
         #[arg(long)]
         json: bool,
     },
-    /// Set a key's command, where it runs, or both.
+    /// Set a key's command.
     Set {
         #[arg(value_enum)]
         key: OpenKey,
         /// The command, quoted as one argument.
-        command: Option<String>,
-        /// A terminal tool: run it in the peek.
-        #[arg(long, conflicts_with = "window")]
-        peek: bool,
-        /// An app with its own window: start it and let it go.
-        #[arg(long)]
-        window: bool,
+        command: String,
     },
-    /// Clear a key. The default command and place apply.
+    /// Clear a key. The default applies.
     Clear {
         #[arg(value_enum)]
         key: OpenKey,

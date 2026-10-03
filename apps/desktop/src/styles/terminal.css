@@ -2,6 +2,8 @@
 /* The peek: a read-only view over the whole terminal area. Not a pane. */
 /* Under Settings (12) and the menus (15), over the panes. */
 .peek { position: absolute; inset: 0; z-index: 11; display: flex; flex-direction: column; background: var(--bg-deep); }
+/* A command that has not shown what it is yet: laid out, so its terminal has a size, but not seen. */
+.peek.pending { visibility: hidden; pointer-events: none; }
 .peek-head {
   height: var(--row); flex-shrink: 0;
   display: flex; align-items: center; gap: calc(10 * var(--u)); padding-left: calc(16 * var(--u));

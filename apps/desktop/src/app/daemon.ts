@@ -19,7 +19,7 @@ import { render, scheduleRender } from "./render";
 import { born, gone, OTHER, removeErrors, S, sessions, upsert } from "./state";
 import { hasKeys, markSeen } from "./seen";
 import * as waterline from "../terminal/waterline";
-import { peekExited, peekSession } from "../terminal/peek";
+import { peekExited, peekUpdated, strayPeek } from "../terminal/peek";
 import { activeGroupObj, place, shownIds } from "./stateQueries";
 import { panes } from "../terminal/terminalState";
 import { focusPane, paneNear, revealSession, rowNear, showSingle, splitWith, unfocus } from "../workspace/view";
@@ -168,9 +168,9 @@ export async function refreshSessions() {
   } finally {
     born.delete(fresh);
   }
-  // Peek tools are not sessions to the user. One that is not the open peek's
-  // was left behind by an earlier run of the app.
-  for (const s of list) if (s.peek && s.id !== peekSession()) invoke("kill_session", { session: s.id }).catch(console.error);
+  // Peek commands are not sessions to the user. One that is not the open
+  // peek's was left behind, or is an app that runs on.
+  for (const s of list) if (s.peek) strayPeek(s);
   list = list.filter((s) => !s.peek);
   const listed = new Set(list.map((s) => s.id));
   for (const s of list) if (!gone.has(s.id)) upsert(s);
@@ -217,7 +217,8 @@ export function onEvent(e: DaemonEvent) {
       upsert(e.session);
       break;
     case "session_updated": {
-      if (!sessions.has(e.session.id) || e.session.peek) break;
+      if (e.session.peek) return peekUpdated(e.session);
+      if (!sessions.has(e.session.id)) break;
       upsert(e.session);
       // A turn that ends in the pane with the keys leaves nothing to read.
       if (hasKeys(e.session.id)) markSeen(e.session.id);

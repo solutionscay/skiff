@@ -69,6 +69,11 @@ impl Screen {
         }
     }
 
+    /// The program drew on the alternate screen: it is full-screen.
+    pub fn alt(&self) -> bool {
+        self.term.mode().contains(TermMode::ALT_SCREEN)
+    }
+
     pub fn feed(&mut self, bytes: &[u8]) -> Signals {
         self.parser.advance(&mut self.term, bytes);
         std::mem::take(&mut *self.signals.0.lock().unwrap())

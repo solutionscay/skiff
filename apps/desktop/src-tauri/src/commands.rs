@@ -144,10 +144,11 @@ pub(crate) async fn git_changes(path: PathBuf) -> Result<Vec<skiff_core::git::Ch
 #[derive(serde::Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum Opened {
-    /// A terminal tool: the page runs `script` in the peek, in `cwd`.
-    Peek { script: String, cwd: PathBuf },
-    /// An app with its own window started.
-    Window,
+    /// The page runs `script` in the peek, in `cwd`. It shows only if the
+    /// script turns out to be a terminal tool.
+    Run { script: String, cwd: PathBuf },
+    /// No command is set, and the default app took the file.
+    Default,
     /// No command is set, and the OS has no app for the file.
     NoApp { message: String },
 }
@@ -155,10 +156,9 @@ pub(crate) enum Opened {
 async fn run_plan(plan: skiff_core::open::Plan, cwd: PathBuf, file: PathBuf) -> Result<Opened, String> {
     use skiff_core::open::Plan;
     tokio::task::spawn_blocking(move || match plan {
-        Plan::Peek(script) => Ok(Opened::Peek { script, cwd }),
-        Plan::Window(script) => skiff_core::open::start(&script, &cwd).map(|_| Opened::Window).map_err(err),
+        Plan::Run(script) => Ok(Opened::Run { script, cwd }),
         Plan::Default => Ok(match skiff_core::open::open_default(&file) {
-            Ok(()) => Opened::Window,
+            Ok(()) => Opened::Default,
             Err(e) => Opened::NoApp { message: format!("{e:#}") },
         }),
     })
@@ -185,19 +185,16 @@ pub(crate) struct OpenSettings {
     markdown: String,
     html: String,
     default_diff: &'static str,
-    /// The rows whose command runs in the peek.
-    peek: Vec<&'static str>,
 }
 
 fn open_settings_now() -> Result<OpenSettings, String> {
     let o = skiff_core::config::load().map_err(err)?.open;
     Ok(OpenSettings {
-        diff: o.diff.clone().unwrap_or_default(),
-        text: o.text.clone().unwrap_or_default(),
-        markdown: o.markdown.clone().unwrap_or_default(),
-        html: o.html.clone().unwrap_or_default(),
+        diff: o.diff.unwrap_or_default(),
+        text: o.text.unwrap_or_default(),
+        markdown: o.markdown.unwrap_or_default(),
+        html: o.html.unwrap_or_default(),
         default_diff: skiff_core::git::DEFAULT_DIFF,
-        peek: skiff_core::config::OPEN_KEYS.into_iter().filter(|k| o.in_peek(k)).collect(),
     })
 }
 
@@ -211,13 +208,6 @@ pub(crate) fn open_settings() -> Result<OpenSettings, String> {
 pub(crate) fn set_open(key: String, command: String) -> Result<OpenSettings, String> {
     let c = command.trim();
     skiff_core::config::set_open(&key, (!c.is_empty()).then_some(c)).map_err(err)?;
-    open_settings_now()
-}
-
-/// Runs the peek or window setting for one `[open]` row.
-#[tauri::command]
-pub(crate) fn set_open_peek(key: String, peek: bool) -> Result<OpenSettings, String> {
-    skiff_core::config::set_open_peek(&key, peek).map_err(err)?;
     open_settings_now()
 }
 

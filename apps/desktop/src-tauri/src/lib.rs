@@ -75,7 +75,6 @@ pub fn run() {
             commands::list_dir,
             commands::git_changes,
             commands::open_diff,
-            commands::set_open_peek,
             commands::open_settings,
             commands::set_open,
             commands::open_file,

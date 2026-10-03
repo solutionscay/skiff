@@ -165,6 +165,18 @@ impl ScreenState {
 }
 
 impl Session {
+    /// The program took the terminal: raw input, as editors, pagers and
+    /// pickers set, or the alternate screen.
+    fn takes_terminal(&self) -> bool {
+        if self.screen.lock().unwrap().screen.alt() {
+            return true;
+        }
+        let Some(fd) = self.master.lock().unwrap().as_raw_fd() else { return false };
+        let mut t: libc::termios = unsafe { std::mem::zeroed() };
+        // SAFETY: tcgetattr writes into `t` and only reads the fd, which the master owns.
+        unsafe { libc::tcgetattr(fd, &mut t) == 0 && t.c_lflag & libc::ICANON == 0 }
+    }
+
     pub fn info(&self) -> SessionInfo {
         let mut info = self.info.lock().unwrap().clone();
         info.last_output_at = self.last_output.load(Ordering::Relaxed);
@@ -373,6 +385,7 @@ impl SessionPool {
             unread: false,
             agent_exit: None,
             peek: spec.peek,
+            interactive: false,
         };
 
         let (input, input_rx) = std::sync::mpsc::channel::<Vec<u8>>();
@@ -426,6 +439,9 @@ impl SessionPool {
             session: info.clone(),
         });
         self.dirty.notify_one();
+        if info.peek {
+            self.watch_peek(&id);
+        }
 
         let pool = self.clone();
         let sid = id.clone();
@@ -771,6 +787,31 @@ impl SessionPool {
                     s.flush_output();
                     pool.apply_scan(&s, s.scan_due());
                 }
+            }
+        });
+    }
+
+    /// A peek tool that takes the terminal is a terminal tool: the app shows
+    /// its peek then. One that never does is an app with a window of its own,
+    /// or a command that prints and exits.
+    fn watch_peek(self: &Arc<Self>, id: &str) {
+        let pool = Arc::downgrade(self);
+        let sid = id.to_string();
+        let _ = std::thread::Builder::new().name(format!("peek-{sid}")).spawn(move || loop {
+            std::thread::sleep(Duration::from_millis(40));
+            let Some(pool) = pool.upgrade() else { break };
+            let Some(s) = pool.get(&sid) else { break };
+            if s.info.lock().unwrap().state == SessionState::Done {
+                break;
+            }
+            if s.takes_terminal() {
+                let session = {
+                    let mut info = s.info.lock().unwrap();
+                    info.interactive = true;
+                    info.clone()
+                };
+                let _ = pool.events.send(Event::SessionUpdated { session });
+                break;
             }
         });
     }

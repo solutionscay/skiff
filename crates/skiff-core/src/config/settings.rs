@@ -203,24 +203,6 @@ pub fn set_open(key: &str, command: Option<&str>) -> Result<()> {
     })
 }
 
-/// Runs the `[open]` command for `key` in the peek, or in its own window.
-pub fn set_open_peek(key: &str, peek: bool) -> Result<()> {
-    if !OPEN_KEYS.contains(&key) {
-        anyhow::bail!("unknown [open] key: {key}");
-    }
-    let open = super::load()?.open;
-    let mut keys: Vec<&str> = OPEN_KEYS.iter().copied().filter(|k| if *k == key { peek } else { open.in_peek(k) }).collect();
-    keys.dedup();
-    edit_table("open", |t| {
-        let mut list = toml_edit::Array::new();
-        for k in keys {
-            list.push(k);
-        }
-        t["peek"] = toml_edit::value(list);
-        Ok(())
-    })
-}
-
 fn edit_agents(f: impl FnOnce(&mut toml_edit::Table) -> Result<()>) -> Result<()> {
     edit_table("agents", f)
 }

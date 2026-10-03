@@ -119,6 +119,10 @@ pub struct SessionInfo {
     /// Started for the app's peek. See [`SessionSpec::peek`].
     #[serde(default)]
     pub peek: bool,
+    /// A peek tool took the terminal (raw input or the alternate screen): it
+    /// is a terminal tool, and the app shows it.
+    #[serde(default)]
+    pub interactive: bool,
 }
 
 /// An agent that ran in a session, and the last title it set.

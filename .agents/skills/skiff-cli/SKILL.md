@@ -41,7 +41,7 @@ Do these steps before the first command in a task.
 | Mark seen | `skiff seen S` |
 | Stop | `skiff kill S` |
 | Themes | `skiff theme ls`, `theme session set S ID`, `theme project set NAME ID`, `theme app set ID`, and `clear` in place of `set ID` |
-| Open with | `skiff open-with ls`, `open-with set KEY "CMD" [--peek\|--window]`, `open-with clear KEY`. Keys: `diff`, `text`, `markdown`, `html` |
+| Open with | `skiff open-with ls`, `open-with set KEY "CMD"`, `open-with clear KEY`. Keys: `diff`, `text`, `markdown`, `html` |
 | Groups | `skiff g ls`, `g new [--name N] S1 S2 [--dir row\|col]`, `g add G S [--split right\|down\|left\|up] [--of S]`, `g rm G S`, `g rename G N`, `g delete G` |
 
 `skiff new` prints the new session id on stdout. `--json` prints the full session.

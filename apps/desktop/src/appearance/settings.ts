@@ -33,7 +33,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   let tab: (typeof TABS)[number] = "agents";
   const themeFilters: ThemeFilters = { query: "", family: null };
   type OpenKey = "diff" | "text" | "markdown" | "html";
-  type OpenSettings = Record<OpenKey, string> & { default_diff: string; peek: OpenKey[] };
+  type OpenSettings = Record<OpenKey, string> & { default_diff: string };
   let openSet: OpenSettings | null = null;
   type MenuLayout = { available: boolean; chosen: string | null; auto: string; current: string };
   let menuSet: MenuLayout | null = null;
@@ -375,16 +375,6 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     render();
   }
 
-  async function setOpenPeek(key: OpenKey, peek: boolean) {
-    error = null;
-    try {
-      openSet = await invoke<OpenSettings>("set_open_peek", { key, peek });
-    } catch (e) {
-      error = String(e);
-    }
-    render();
-  }
-
   const OPEN_ROWS: { key: OpenKey; label: string }[] = [
     { key: "diff", label: "Diffs" },
     { key: "text", label: "Text files" },
@@ -398,10 +388,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const intro = h("div", "set-head");
     intro.append(
       h("div", "set-h", "Open with"),
-      h("div", "set-sub", "Peek runs a terminal tool over the panes. Window starts an app with its own window. A file with no command opens in the system's default app."),
+      h("div", "set-sub", "A terminal tool, such as micro or git diff, shows in the peek over the panes. An app with its own window just starts. A file with no command opens in the system's default app."),
     );
     const cols = h("div", "set-row set-open set-cols");
-    cols.append(h("span", "c-name", "SHOWS"), h("span", "c-cmd", "COMMAND"), h("span", "c-where", "RUNS IN"));
+    cols.append(h("span", "c-name", "SHOWS"), h("span", "c-cmd", "COMMAND"));
     main.append(intro, cols);
     const o = openSet;
     if (o) for (const { key, label } of OPEN_ROWS) {
@@ -409,25 +399,6 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       const cmd = h("input", "c-cmd mono");
       cmd.value = o[key];
       cmd.placeholder = key === "diff" ? o.default_diff : "default app";
-      const inPeek = o.peek.includes(key);
-      const where = h("div", "c-where set-seg");
-      where.setAttribute("role", "radiogroup");
-      where.setAttribute("aria-label", `${label}: where the command runs`);
-      // Without a command a file goes to the default app, so only the diff has a choice to make.
-      const free = key === "diff" || !!o[key].trim();
-      for (const [peek, text, tip] of [
-        [true, "Peek", "A terminal tool. It runs in the peek over the panes."],
-        [false, "Window", "An app with its own window. Skiff starts it and lets it go."],
-      ] as const) {
-        const b = h("button", "set-seg-item" + (inPeek === peek ? " on" : ""), text);
-        b.type = "button";
-        b.title = tip;
-        b.disabled = !free;
-        b.setAttribute("role", "radio");
-        b.setAttribute("aria-checked", String(inPeek === peek));
-        b.addEventListener("click", () => void setOpenPeek(key, peek));
-        where.appendChild(b);
-      }
       cmd.spellcheck = false;
       cmd.setAttribute("aria-label", `${label} command`);
       cmd.addEventListener("keydown", (e) => {
@@ -442,7 +413,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       cmd.addEventListener("blur", () => {
         if (cmd.value.trim() !== o[key].trim()) void setOpen(key, cmd.value);
       });
-      row.append(h("span", "c-name", label), cmd, where);
+      row.append(h("span", "c-name", label), cmd);
       main.appendChild(row);
     }
     if (error) {

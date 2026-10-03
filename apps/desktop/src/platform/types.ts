@@ -39,6 +39,8 @@ export interface SessionInfo {
   agent_exit?: number | null;
   /** A tool in the app's peek. Not a session to the user. Absent from older daemons. */
   peek?: boolean;
+  /** A peek command took the terminal: a terminal tool. */
+  interactive?: boolean;
 }
 
 /** An agent that ran in a session, and the last title it set. */

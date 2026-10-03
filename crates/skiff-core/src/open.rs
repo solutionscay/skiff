@@ -1,6 +1,7 @@
 //! Which app opens a file, from `[open]` in the config. Skiff never shows a
-//! file itself: it runs the user's command, in the peek for a terminal tool
-//! or on its own for an app with a window, or hands the file to the OS.
+//! file itself: it runs the user's command, or hands the file to the OS.
+//! The app runs every command in the peek, hidden. A terminal tool shows
+//! there; an app with a window of its own never does.
 
 use crate::shell::shell_quote;
 
@@ -18,10 +19,8 @@ use crate::config::Open;
 /// How a file or a diff opens.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Plan {
-    /// A terminal tool: this shell script runs in the peek.
-    Peek(String),
-    /// An app with its own window: this shell script starts it.
-    Window(String),
+    /// This shell script runs: a terminal tool or an app.
+    Run(String),
     /// No command is set: the OS default app opens the file.
     Default,
 }
@@ -60,15 +59,13 @@ pub fn command_for(file: &Path, open: &Open) -> Option<String> {
 pub fn plan_file(file: &Path, open: &Open) -> Plan {
     let Some(key) = key_for(file) else { return Plan::Default };
     let Some(cmd) = command(open, key) else { return Plan::Default };
-    let script = file_script(&cmd, file);
-    if open.in_peek(key) { Plan::Peek(script) } else { Plan::Window(script) }
+    Plan::Run(file_script(&cmd, file))
 }
 
 /// How the diff opens: the `diff` command, else `git diff`, with `{target}`
 /// for what to compare. See [`crate::git::diff_script`].
 pub fn plan_diff(dir: &Path, file: Option<&str>, open: &Open) -> Plan {
-    let script = crate::git::diff_script(dir, file, open.diff.as_deref());
-    if open.in_peek("diff") { Plan::Peek(script) } else { Plan::Window(script) }
+    Plan::Run(crate::git::diff_script(dir, file, open.diff.as_deref()))
 }
 
 fn file_script(command: &str, file: &Path) -> String {
@@ -155,19 +152,17 @@ mod tests {
             text: Some("code".into()),
             markdown: Some("typora".into()),
             html: Some("  ".into()),
-            peek: Some(vec!["text".into()]),
         };
-        let peek = plan_file(&dir.join("c.rs"), &open);
-        let window = plan_file(&dir.join("a.md"), &open);
+        let text = plan_file(&dir.join("c.rs"), &open);
+        let markdown = plan_file(&dir.join("a.md"), &open);
         let default = plan_file(&dir.join("d.png"), &open);
         let got = ["a.md", "b.HTML", "c.rs", "d.png"].map(|n| command_for(&dir.join(n), &open));
         let ok = launch("true", &dir.join("a.md")).is_ok() && launch("exit 3", &dir.join("a.md")).is_err();
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(got, [Some("typora".into()), None, Some("code".into()), None]);
         assert!(ok);
-        assert!(matches!(peek, Plan::Peek(s) if s.starts_with("code ")));
-        assert!(matches!(window, Plan::Window(s) if s.starts_with("typora ")));
+        assert!(matches!(text, Plan::Run(s) if s.starts_with("code ")));
+        assert!(matches!(markdown, Plan::Run(s) if s.starts_with("typora ")));
         assert_eq!(default, Plan::Default);
-        assert!(Open::default().in_peek("diff") && !Open::default().in_peek("text"));
     }
 }
