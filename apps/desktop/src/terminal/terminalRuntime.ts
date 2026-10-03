@@ -16,7 +16,6 @@ import { FONT_DEFAULT, sessions } from "../app/state";
 import { paneFontSize } from "./terminalFont";
 import { shownIds } from "../app/stateQueries";
 import { opening, type Pane, panes } from "./terminalState";
-import * as waterline from "./waterline";
 
 export const TERM_THEME = {
   background: "#08001a",
@@ -120,19 +119,10 @@ async function createPane(id: string): Promise<Pane> {
 
   term.onData((data) => {
     if (inputOff) return;
-    // Text or a paste: the user reads from here now. Replies the terminal
-    // sends on its own (focus, mouse, cursor reports) start with ESC.
-    if (!data.startsWith("\x1b") || data.startsWith("\x1b[200~")) waterline.clear(id);
     const sent = traceSend(id);
     invoke("pty_write", { session: id, data }).then(sent, console.error);
   });
-  term.onRender(() => {
-    traceRender(id);
-    waterline.update(id);
-  });
-  term.onScroll(() => waterline.update(id));
-  // A key the terminal takes, arrows and Esc too. App keys never get here.
-  term.onKey(() => waterline.clear(id));
+  term.onRender(() => traceRender(id));
 
   const pane: Pane = { el, term, fit, search, parked: false, stream: 0, wrote: 0, unacked: 0, acking: false, sub: Promise.resolve() };
   const drop = () => {
@@ -171,7 +161,6 @@ function streamOutput(id: string, pane: Pane): Promise<void> {
       if (pane.stream !== n) return;
       ackOutput(id, pane, n, bytes.length);
       pane.wrote = n;
-      waterline.ready(id);
     });
     s.last_output_at = Date.now();
   };

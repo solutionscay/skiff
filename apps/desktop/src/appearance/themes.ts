@@ -86,9 +86,6 @@ export function applyThemes() {
     pane.term.options.minimumContrastRatio = isLight(t.background) ? 7 : 1;
     pane.el.style.background = t.background;
     pane.el.style.colorScheme = isLight(t.background) ? "light" : "dark";
-    pane.el.style.setProperty("--wl-bg", t.background);
-    pane.el.style.setProperty("--wl-rule", readable(mix(t.background, t.foreground, 0.22), [t.background], 3));
-    pane.el.style.setProperty("--wl-text", readable(t.foreground, [t.background], 4.5));
   }
 }
 

@@ -64,9 +64,9 @@ keeps existing files with the same name and reports files it cannot read.
 You can copy files there. The list refreshes when you return to Skiff. There is no theme count
 limit. Theme files contain color values, so a large collection needs little space.
 
-Light terminal themes use contrast correction for text. The waterline uses
-each pane's background. Programs can supply their own text and background
-colors, so a program's dark blocks can still appear inside a light terminal.
+Light terminal themes use contrast correction for text. Programs can supply
+their own text and background colors, so a program's dark blocks can still
+appear inside a light terminal.
 
 ## Layout
 

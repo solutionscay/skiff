@@ -21,7 +21,6 @@ import { S } from "../app/state";
 import { keysOffPanes } from "../app/seen";
 import { activeGroupObj, viewLayout } from "../app/stateQueries";
 import { panes } from "./terminalState";
-import { arrive } from "./waterline";
 import { focusPane } from "./paneActions";
 
 export const view = createLayoutView(host, {
@@ -42,8 +41,6 @@ export const view = createLayoutView(host, {
         const grab = S.grab === id;
         if (grab) S.grab = null;
         if (id === S.focused && (canTakeFocus() || (grab && !modalOpen()))) p.term.focus();
-        // A pane on screen shows where the user stopped reading, keys or not.
-        arrive(id);
       })
       .catch(console.error);
   },
@@ -63,13 +60,9 @@ export const view = createLayoutView(host, {
 /** Draws the view and parks every terminal it does not show. */
 export function renderLayout() {
   const layout = viewLayout();
-  const hidden = new Set([...panes].filter(([, p]) => p.parked).map(([id]) => id));
   const changed = view.sync(layout);
   const shown = new Set(sessionsOf(layout));
   for (const [id, p] of panes) if (!shown.has(id) && (!p.parked || p.el.parentElement !== park)) parkPane(id, p);
-  // The waterline is for what the user can see, not only the pane with the keys.
-  // Only a pane that comes back on screen: one that stayed in view was not left.
-  for (const id of shown) if (hidden.has(id)) arrive(id);
   if (changed === "resized") fitShown();
   if (changed === "rebuilt") {
     for (const id of shown) {
