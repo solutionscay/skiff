@@ -17,6 +17,7 @@ mod peek;
 mod print;
 mod resolve;
 mod sessions;
+mod theme;
 mod wait;
 
 #[derive(Parser)]
@@ -126,6 +127,12 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// List and assign terminal color themes.
+    #[command(after_help = "A session theme overrides its project's theme. A project theme overrides the app theme. Clear returns to the next setting.")]
+    Theme {
+        #[command(subcommand)]
+        cmd: ThemeCmd,
+    },
 }
 
 #[derive(Subcommand)]
@@ -171,6 +178,55 @@ enum GroupCmd {
         #[arg(required = true)]
         groups: Vec<String>,
     },
+}
+
+#[derive(Subcommand)]
+enum ThemeCmd {
+    /// List available themes.
+    Ls {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Set or clear the app theme.
+    App {
+        #[command(subcommand)]
+        cmd: AppThemeCmd,
+    },
+    /// Set or clear a project's theme.
+    Project {
+        #[command(subcommand)]
+        cmd: ProjectThemeCmd,
+    },
+    /// Set or clear a session's theme override.
+    #[command(visible_alias = "terminal")]
+    Session {
+        #[command(subcommand)]
+        cmd: SessionThemeCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum AppThemeCmd {
+    /// Set the app theme.
+    Set { theme: String },
+    /// Clear the app theme. The default applies.
+    Clear,
+}
+
+#[derive(Subcommand)]
+enum ProjectThemeCmd {
+    /// Set the project theme.
+    Set { project: String, theme: String },
+    /// Clear the project theme. The app theme applies.
+    Clear { project: String },
+}
+
+#[derive(Subcommand)]
+enum SessionThemeCmd {
+    /// Set the session theme override.
+    Set { session: String, theme: String },
+    /// Clear the session theme override. The project or app theme applies.
+    Clear { session: String },
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -225,6 +281,9 @@ async fn run(cli: Cli) -> Result<i32> {
     match cli.cmd {
         // Read locally: no daemon needed.
         Cmd::Projects { json } => return info::projects(json).map(|_| 0),
+        Cmd::Theme { cmd: ThemeCmd::Ls { json } } => return theme::ls(json).map(|_| 0),
+        Cmd::Theme { cmd: ThemeCmd::App { cmd } } => return theme::app(cmd).map(|_| 0),
+        Cmd::Theme { cmd: ThemeCmd::Project { cmd } } => return theme::project(cmd).map(|_| 0),
         Cmd::Status => return info::status(&socket).await.map(|_| 0),
         _ => {}
     }
@@ -246,7 +305,8 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Peek { session, lines } => peek::peek(&c, &session, lines).await,
         Cmd::Seen { session } => sessions::seen(&c, &session).await,
         Cmd::Agents { json } => info::agents(&c, json).await,
-        Cmd::Status | Cmd::Projects { .. } | Cmd::Wait { .. } => unreachable!(),
+        Cmd::Theme { cmd: ThemeCmd::Session { cmd } } => theme::session(&c, cmd).await,
+        Cmd::Status | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::Wait { .. } => unreachable!(),
     }
     .map(|_| 0)
 }
