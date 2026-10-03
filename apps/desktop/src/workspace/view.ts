@@ -15,16 +15,14 @@ import { clearSelection } from "./selection";
 import { FULL_HINT, MAX_PANES, OTHER, S, selectedWorktree, sessions } from "../app/state";
 import { activeGroupObj, currentLayout, groupOf, inShownGroup, place, shownIds, splitFull, worktreeSessions } from "../app/stateQueries";
 import { panes } from "../terminal/terminalState";
-import { closePeek, peekBusy } from "../terminal/peek";
+import { leavePeek } from "../terminal/peek";
 import { listItems } from "../app/keyboard";
 import * as waterline from "../terminal/waterline";
 import { view } from "../terminal/terminal";
 
 /** Give the keys to a shown pane. */
 export function focusPane(id: string, grab = true) {
-  // Going to a session leaves the peek. A tool that still runs there keeps
-  // it and the keys until it exits or its close button ends it.
-  if (!peekBusy()) closePeek();
+  leavePeek();
   S.justAdded = null;
   S.grab = null;
   if (grab) {

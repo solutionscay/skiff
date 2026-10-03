@@ -83,9 +83,14 @@ export function strayPeek(s: SessionInfo) {
   else released.add(s.id);
 }
 
-/** A tool shows in the peek and has the keys. App keys rest until it ends. */
-export function peekBusy(): boolean {
-  return !!open?.shown && !!open.session && !open.exited;
+/**
+ * Going to a session leaves the peek, once its command is done. A command
+ * still starting stays: nothing shows yet, and an open request often comes
+ * with a key or click that sends the keys back to a session. A tool that
+ * runs keeps the peek and the keys until it exits or its close button ends it.
+ */
+export function leavePeek() {
+  if (open?.shown && open.exited) closePeek();
 }
 
 /** Takes the peek down. Its command ends, unless it is an app that runs on. */
