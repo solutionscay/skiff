@@ -2,6 +2,7 @@ import { DEFAULT_THEME } from "./colors";
 import { escapeButton } from "../ui/dialogParts";
 import { PANE_OPACITY_MIN, paneOpacity, setPaneOpacity } from "./backdrop";
 import { h } from "../ui/dom";
+import { rune } from "../ui/runes";
 import { invoke } from "@tauri-apps/api/core";
 import type { AgentInfo, TerminalTheme } from "../platform/types";
 import { agentNameList, setAgentNameList } from "./agentNames";
@@ -193,9 +194,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
 
       const status = h("span", "c-status");
       status.append(h("span", "sq"), a.installed ? "installed" : "not on PATH");
-      const rm = h("button", "set-rm", "Remove");
+      const rm = h("button", "set-rm set-ico");
       rm.type = "button";
+      rm.title = "Remove";
       rm.setAttribute("aria-label", `Remove ${a.id}`);
+      rm.appendChild(rune("indicators-minus"));
       rm.addEventListener("click", () => void removeAgent(a.id));
       status.appendChild(rm);
       row.append(sw, name, cmd, status);
@@ -225,8 +228,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     cmd.placeholder = "command, for example aider --model sonnet";
     cmd.spellcheck = false;
     cmd.setAttribute("aria-label", "New agent command");
-    const add = h("button", "set-rm", "Add");
+    const add = h("button", "set-rm set-ico");
     add.type = "button";
+    add.title = "Add";
+    add.setAttribute("aria-label", "Add agent");
+    add.appendChild(rune("indicators-plus"));
     const submit = () => {
       const id = name.value.trim();
       const command = cmd.value.trim();

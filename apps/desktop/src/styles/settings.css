@@ -35,6 +35,8 @@
 .set-agent.missing button.c-on { cursor: not-allowed; }
 .set-agent .set-rm { height: calc(26 * var(--u)); margin-left: auto; padding: 0 calc(10 * var(--u)); border: 1px solid var(--rule); border-radius: 0; background: transparent; color: var(--text-3); font: calc(12px * var(--zoom, 1)) var(--font); }
 .set-agent .set-rm:hover { border-color: var(--text-3); color: var(--text); }
+/* Remove and Add: one square size, so the column lines up. */
+.set-agent .set-rm.set-ico { width: calc(26 * var(--u)); padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .set-agent input.c-name { width: 100%; min-width: 0; border: 0; border-left: 1px solid var(--rule); border-radius: 0; outline: 0; background: transparent; color: inherit; font: 500 calc(14px * var(--zoom, 1)) var(--font); }
 .set-agent input.c-name::placeholder { color: var(--text-dim); font-weight: 400; }
 .set-agent input.c-name:focus { box-shadow: inset 0 -2px 0 var(--state-working); }
