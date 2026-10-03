@@ -61,6 +61,8 @@ interface Peek {
 let open: Peek | null = null;
 /** Commands that ended before their start call returned. */
 const early = new Map<string, number | null>();
+/** Commands that took the terminal before their start call returned. Tools such as micro do it within milliseconds. */
+const earlyInteractive = new Set<string>();
 /** Apps let go from the peek. Their session goes when they exit. */
 const released = new Set<string>();
 /** The last request. A slow start that answers after a newer one is dropped. */
@@ -77,7 +79,8 @@ export function peekSession(): string | null {
 export function strayPeek(s: SessionInfo) {
   if (s.id === open?.session) return;
   // An app still running keeps its window. Its session goes when it exits.
-  if (s.state === "done") invoke("kill_session", { session: s.id }).catch(console.error);
+  // A terminal tool out of the peek has no screen left: it ends.
+  if (s.state === "done" || s.interactive) invoke("kill_session", { session: s.id }).catch(console.error);
   else released.add(s.id);
 }
 
@@ -228,6 +231,7 @@ async function run(kind: string, title: string, where: string, script: string, c
   }
   // Closed meanwhile, or a newer request came: the command runs on its own.
   if (mine !== seq || open !== p) {
+    earlyInteractive.delete(info.id);
     released.add(info.id);
     return;
   }
@@ -250,7 +254,7 @@ async function run(kind: string, title: string, where: string, script: string, c
     p.term.write(bytes, () => invoke("ack_output", { session: info.id, stream: n, bytes: bytes.length }).catch(console.error));
   };
   await invoke("subscribe_output", { session: info.id, stream: n, onOutput: channel }).catch(showError);
-  if (info.interactive) peekUpdated(info);
+  if (info.interactive || earlyInteractive.delete(info.id)) peekUpdated({ ...info, interactive: true });
   if (early.has(info.id)) {
     const code = early.get(info.id) ?? null;
     early.delete(info.id);
@@ -260,8 +264,14 @@ async function run(kind: string, title: string, where: string, script: string, c
 
 /** skiffd changed a peek session: the command took the terminal. */
 export function peekUpdated(info: SessionInfo) {
+  if (!info.interactive) return;
+  // A command let go as an app turned out to be a terminal tool: nothing shows it, so it ends.
+  if (released.delete(info.id)) return void invoke("kill_session", { session: info.id }).catch(console.error);
   const p = open;
-  if (!p || p.session !== info.id || !info.interactive || p.interactive) return;
+  if (!p) return;
+  // A start is in flight: the update may be its command's, ahead of the reply.
+  if (!p.session) return void earlyInteractive.add(info.id);
+  if (p.session !== info.id || p.interactive) return;
   p.interactive = true;
   show(p);
 }
