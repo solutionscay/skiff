@@ -65,6 +65,7 @@ pub fn run() {
             config::add_project,
             connection::restart_daemon,
             config::inspect_folder,
+            config::init_repository,
             config::set_project_icon,
             config::set_project_color,
             config::set_project_closed,

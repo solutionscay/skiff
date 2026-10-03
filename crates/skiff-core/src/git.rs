@@ -33,6 +33,14 @@ fn git(dir: &Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// Initializes an existing folder. A folder inside a repository stays as it is.
+pub fn init_repository(dir: &Path) -> Result<()> {
+    if toplevel(dir).is_ok() {
+        return Ok(());
+    }
+    git(dir, &["init"]).map(drop)
+}
+
 pub fn list_worktrees(repo: &Path) -> Result<Vec<Worktree>> {
     Ok(parse_worktrees(&git(
         repo,
@@ -264,6 +272,26 @@ pub fn ignored(dir: &Path, paths: &[String]) -> Result<HashSet<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn init_repository_keeps_files_and_supports_an_unborn_branch() {
+        let root = std::env::temp_dir().join(format!("skiff-init-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("notes.txt"), "keep me\n").unwrap();
+        init_repository(&root).unwrap();
+        assert_eq!(toplevel(&root).unwrap(), root.canonicalize().unwrap());
+        assert_eq!(std::fs::read_to_string(root.join("notes.txt")).unwrap(), "keep me\n");
+        assert_eq!(git(&root, &["status", "--porcelain"]).unwrap().trim(), "?? notes.txt");
+        assert!(git(&root, &["rev-parse", "--verify", "HEAD"]).is_err());
+        let worktrees = list_worktrees(&root).unwrap();
+        assert_eq!(worktrees.len(), 1);
+        assert!(worktrees[0].is_main);
+        assert!(worktrees[0].branch.is_some());
+        init_repository(&root.join("src")).unwrap();
+        assert!(!root.join("src/.git").exists());
+        assert!(init_repository(&root.join("missing")).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn changes_counts_lines_per_file() {

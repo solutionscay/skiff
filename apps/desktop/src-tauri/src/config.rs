@@ -105,6 +105,12 @@ pub(crate) async fn add_project(
     .await
 }
 
+/// Initializes the selected folder without staging files or creating a commit.
+#[tauri::command]
+pub(crate) async fn init_repository(path: PathBuf) -> Result<(), String> {
+    blocking(move || git::init_repository(&path)).await
+}
+
 /// What `add_project` would do for `path`. Writes nothing.
 #[tauri::command]
 pub(crate) async fn inspect_folder(path: PathBuf) -> Result<FolderInfo, String> {

@@ -10,23 +10,42 @@ import type { FolderInfo, Project } from "../platform/types";
  */
 export function createAddProject(onAdded: (p: Project) => void, onClose: () => void) {
   let busy = false;
+  async function add(folder: FolderInfo) {
+    if (!folder.root || folder.error) throw new Error(folder.error ?? "Pick a folder in a git repository.");
+    const p = await invoke<Project>("add_project", {
+      path: folder.root,
+      name: folder.name,
+      short: folder.short || null,
+      color: folder.color,
+      icon: null,
+    });
+    await onAdded(p);
+  }
   return {
     async open() {
       if (busy) return;
       busy = true;
       try {
-        const dir = await openFolder({ directory: true, title: "Pick a folder in a git repository" });
+        const dir = await openFolder({ directory: true, title: "Pick a project folder" });
         if (typeof dir !== "string") return onClose();
         const folder = await invoke<FolderInfo>("inspect_folder", { path: dir });
-        if (!folder.root || folder.error) throw new Error(folder.error ?? "Pick a folder in a git repository.");
-        const p = await invoke<Project>("add_project", {
-          path: folder.root,
-          name: folder.name,
-          short: folder.short || null,
-          color: folder.color,
-          icon: null,
-        });
-        onAdded(p);
+        if (!folder.root) {
+          showError(folder.error ?? `${dir} is not inside a git repository`, {
+            label: "Initialize repository",
+            run: async () => {
+              if (busy) throw new Error("Add project is busy. Try again.");
+              busy = true;
+              try {
+                await invoke("init_repository", { path: dir });
+                await add(await invoke<FolderInfo>("inspect_folder", { path: dir }));
+              } finally {
+                busy = false;
+              }
+            },
+          });
+          return onClose();
+        }
+        await add(folder);
       } catch (e) {
         showError(e);
         onClose();
