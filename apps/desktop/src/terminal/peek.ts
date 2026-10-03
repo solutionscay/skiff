@@ -20,7 +20,6 @@ import { $, button, h } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { showError } from "../ui/alerts";
-import { confirmAction } from "../ui/confirm";
 import { appKey, markCurrent } from "../app/keyboard";
 import { S, sessions } from "../app/state";
 import type { SessionInfo } from "../platform/types";
@@ -121,24 +120,6 @@ export function closePeek() {
   back?.term.focus();
 }
 
-/** True when no tool runs in the peek, or the user agreed to end it. */
-async function mayEnd(): Promise<boolean> {
-  const p = open;
-  if (!p || !peekBusy()) return true;
-  const ok = await confirmAction({
-    title: `End ${p.program}?`,
-    body: `${p.program} still runs in the peek. Closing ends it, and unsaved work in it is lost.`,
-    action: "End",
-  });
-  if (!ok && open === p) p.term.focus();
-  return ok && open === p;
-}
-
-/** The close button. A tool that still runs can hold unsaved work, so it asks. */
-async function askClose() {
-  if (await mayEnd()) closePeek();
-}
-
 function frame(kind: string, title: string, where: string, program: string): Peek {
   closePeek();
   const el = h("div", "peek pending");
@@ -146,7 +127,7 @@ function frame(kind: string, title: string, where: string, program: string): Pee
   el.setAttribute("aria-label", title);
   const head = h("div", "peek-head");
   // The same close button a pane has.
-  const close = button("head-btn", "", () => void askClose());
+  const close = button("head-btn", "", closePeek);
   close.title = "Close";
   close.setAttribute("aria-label", "Close the peek");
   close.appendChild(icon('<path d="M6 6l12 12M18 6L6 18"></path>'));
@@ -328,9 +309,9 @@ export function openFile(path: string) {
     .catch(showError);
 }
 
-async function handle(o: Opened, kind: string, title: string, where: string) {
+function handle(o: Opened, kind: string, title: string, where: string) {
   if (o.kind === "run") {
-    if (await mayEnd()) void run(kind, title, where, o.script, o.cwd);
+    void run(kind, title, where, o.script, o.cwd);
     return;
   }
   if (o.kind === "no_app") {

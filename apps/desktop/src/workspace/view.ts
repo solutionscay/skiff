@@ -23,7 +23,7 @@ import { view } from "../terminal/terminal";
 /** Give the keys to a shown pane. */
 export function focusPane(id: string, grab = true) {
   // Going to a session leaves the peek. A tool that still runs there keeps
-  // it and the keys: it can hold unsaved work. Its close button asks.
+  // it and the keys until it exits or its close button ends it.
   if (!peekBusy()) closePeek();
   S.justAdded = null;
   S.grab = null;
