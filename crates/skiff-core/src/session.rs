@@ -49,6 +49,10 @@ pub struct SessionSpec {
     pub command: Option<String>,
     #[serde(default)]
     pub args: Vec<String>,
+    /// A tool the app runs in its peek: not saved, not restored, not listed
+    /// as a session. Runs the command as is, with no shell after it.
+    #[serde(default)]
+    pub peek: bool,
     #[serde(default = "default_cols")]
     pub cols: u16,
     #[serde(default = "default_rows")]
@@ -112,6 +116,9 @@ pub struct SessionInfo {
     /// client sees the pane or an agent runs there again.
     #[serde(default)]
     pub agent_exit: Option<i32>,
+    /// Started for the app's peek. See [`SessionSpec::peek`].
+    #[serde(default)]
+    pub peek: bool,
 }
 
 /// An agent that ran in a session, and the last title it set.

@@ -10,7 +10,10 @@ impl SessionPool {
         let sessions = self.sessions.read().unwrap();
         let mut saved: Vec<SavedSession> = sessions
             .values()
-            .map(|s| SavedSession::from(&*s.info.lock().unwrap()))
+            .map(|s| s.info.lock().unwrap())
+            // A peek tool lasts as long as the app's peek.
+            .filter(|info| !info.peek)
+            .map(|info| SavedSession::from(&*info))
             .collect();
         saved.sort_by(|a, b| a.id.cmp(&b.id));
         Workspace {

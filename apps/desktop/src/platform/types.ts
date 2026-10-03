@@ -37,6 +37,8 @@ export interface SessionInfo {
   unread?: boolean;
   /** Exit code of the last agent the pane ran, until a pane with the keys shows it. Absent from an older daemon. */
   agent_exit?: number | null;
+  /** A tool in the app's peek. Not a session to the user. Absent from older daemons. */
+  peek?: boolean;
 }
 
 /** An agent that ran in a session, and the last title it set. */

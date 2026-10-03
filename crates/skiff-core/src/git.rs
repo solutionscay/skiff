@@ -187,17 +187,7 @@ pub const DEFAULT_DIFF: &str = "git diff --color=always";
 /// untracked file compares with an empty file. The whole-worktree view leaves
 /// untracked files out.
 pub fn diff_text(dir: &Path, file: Option<&str>, command: Option<&str>, width: u16) -> Result<String> {
-    let target = match file {
-        None => "HEAD".to_string(),
-        Some(f) if git(dir, &["ls-files", "--error-unmatch", "--", f]).is_ok() => format!("HEAD -- {}", shell_quote(f)),
-        Some(f) => format!("--no-index -- /dev/null {}", shell_quote(f)),
-    };
-    let command = command.map(str::trim).filter(|c| !c.is_empty()).unwrap_or(DEFAULT_DIFF);
-    let script = if command.contains("{target}") {
-        command.replace("{target}", &target)
-    } else {
-        format!("{command} {target}")
-    };
+    let script = diff_script(dir, file, command);
     let out = Command::new("sh")
         .args(["-c", &script])
         .current_dir(dir)
@@ -217,6 +207,24 @@ pub fn diff_text(dir: &Path, file: Option<&str>, command: Option<&str>, width: u
         bail!("{script} failed: {}", if err.is_empty() { out.status.to_string() } else { err });
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// The shell script that shows a changed file's diff against HEAD, or the
+/// whole worktree's, with `command`, else `git diff`. `{target}` in the
+/// command becomes what to compare; without it, the target goes at the end.
+/// An untracked file compares with an empty file.
+pub fn diff_script(dir: &Path, file: Option<&str>, command: Option<&str>) -> String {
+    let target = match file {
+        None => "HEAD".to_string(),
+        Some(f) if git(dir, &["ls-files", "--error-unmatch", "--", f]).is_ok() => format!("HEAD -- {}", shell_quote(f)),
+        Some(f) => format!("--no-index -- /dev/null {}", shell_quote(f)),
+    };
+    let command = command.map(str::trim).filter(|c| !c.is_empty()).unwrap_or(DEFAULT_DIFF);
+    if command.contains("{target}") {
+        command.replace("{target}", &target)
+    } else {
+        format!("{command} {target}")
+    }
 }
 
 /// Lines in a new text file. `None` for a binary or large file.

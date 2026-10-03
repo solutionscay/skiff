@@ -1,5 +1,6 @@
 //! Which app opens a file, from `[open]` in the config. Skiff never shows a
-//! file itself: it runs the user's command, or hands the file to the OS.
+//! file itself: it runs the user's command, in the peek for a terminal tool
+//! or on its own for an app with a window, or hands the file to the OS.
 
 use crate::shell::shell_quote;
 
@@ -14,17 +15,75 @@ use anyhow::{bail, Context, Result};
 
 use crate::config::Open;
 
-/// The `[open]` command for `file`, or `None` for the OS default app.
-/// Markdown and HTML go by extension; any other text file uses `text`.
-pub fn command_for(file: &Path, open: &Open) -> Option<String> {
+/// How a file or a diff opens.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Plan {
+    /// A terminal tool: this shell script runs in the peek.
+    Peek(String),
+    /// An app with its own window: this shell script starts it.
+    Window(String),
+    /// No command is set: the OS default app opens the file.
+    Default,
+}
+
+/// The `[open]` row for `file`, if one applies. Markdown and HTML go by
+/// extension; any other text file uses `text`.
+fn key_for(file: &Path) -> Option<&'static str> {
     let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-    let cmd = match ext.as_str() {
-        "md" | "markdown" => open.markdown.as_ref(),
-        "html" | "htm" => open.html.as_ref(),
-        _ if is_text(file) => open.text.as_ref(),
+    match ext.as_str() {
+        "md" | "markdown" => Some("markdown"),
+        "html" | "htm" => Some("html"),
+        _ if is_text(file) => Some("text"),
+        _ => None,
+    }
+}
+
+/// The command set for `key`, trimmed, if any.
+fn command(open: &Open, key: &str) -> Option<String> {
+    let cmd = match key {
+        "diff" => open.diff.as_ref(),
+        "text" => open.text.as_ref(),
+        "markdown" => open.markdown.as_ref(),
+        "html" => open.html.as_ref(),
         _ => None,
     };
     cmd.map(|c| c.trim().to_string()).filter(|c| !c.is_empty())
+}
+
+/// The `[open]` command for `file`, or `None` for the OS default app.
+pub fn command_for(file: &Path, open: &Open) -> Option<String> {
+    command(open, key_for(file)?)
+}
+
+/// How `file` opens. `{path}` in the command becomes the file; without it,
+/// the file goes at the end.
+pub fn plan_file(file: &Path, open: &Open) -> Plan {
+    let Some(key) = key_for(file) else { return Plan::Default };
+    let Some(cmd) = command(open, key) else { return Plan::Default };
+    let script = file_script(&cmd, file);
+    if open.in_peek(key) { Plan::Peek(script) } else { Plan::Window(script) }
+}
+
+/// How the diff opens: the `diff` command, else `git diff`, with `{target}`
+/// for what to compare. See [`crate::git::diff_script`].
+pub fn plan_diff(dir: &Path, file: Option<&str>, open: &Open) -> Plan {
+    let script = crate::git::diff_script(dir, file, open.diff.as_deref());
+    if open.in_peek("diff") { Plan::Peek(script) } else { Plan::Window(script) }
+}
+
+fn file_script(command: &str, file: &Path) -> String {
+    let path = shell_quote(&file.to_string_lossy());
+    if command.contains("{path}") {
+        command.replace("{path}", &path)
+    } else {
+        format!("{command} {path}")
+    }
+}
+
+/// Hands `file` to the OS default app. Fails when the OS has no app for it.
+pub fn open_default(file: &Path) -> Result<()> {
+    let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+    launch(opener, file)
 }
 
 /// No NUL byte in the first 8 KB: the test git uses.
@@ -38,25 +97,24 @@ fn is_text(file: &Path) -> bool {
 }
 
 /// Runs `command` on `file` in the file's folder. `{path}` becomes the file;
-/// without it, the file goes at the end. Does not wait for the app to close,
-/// but reports a command that fails at once, such as a misspelled program.
+/// without it, the file goes at the end.
 pub fn launch(command: &str, file: &Path) -> Result<()> {
-    let path = shell_quote(&file.to_string_lossy());
-    let script = if command.contains("{path}") {
-        command.replace("{path}", &path)
-    } else {
-        format!("{command} {path}")
-    };
+    start(&file_script(command, file), file.parent().unwrap_or(Path::new("/")))
+}
+
+/// Runs a shell script in `dir` and lets it go. Does not wait for the app to
+/// close, but reports a script that fails at once, such as a misspelled program.
+pub fn start(script: &str, dir: &Path) -> Result<()> {
     let mut child = Command::new("sh")
-        .args(["-c", &script])
-        .current_dir(file.parent().unwrap_or(Path::new("/")))
+        .args(["-c", script])
+        .current_dir(dir)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
         .context("run the open command")?;
-    let start = Instant::now();
-    while start.elapsed() < Duration::from_secs(1) {
+    let began = Instant::now();
+    while began.elapsed() < Duration::from_secs(1) {
         if let Some(status) = child.try_wait()? {
             // Many apps hand the file to a running window and exit 0 at once.
             if status.success() {
@@ -97,11 +155,19 @@ mod tests {
             text: Some("code".into()),
             markdown: Some("typora".into()),
             html: Some("  ".into()),
+            peek: Some(vec!["text".into()]),
         };
+        let peek = plan_file(&dir.join("c.rs"), &open);
+        let window = plan_file(&dir.join("a.md"), &open);
+        let default = plan_file(&dir.join("d.png"), &open);
         let got = ["a.md", "b.HTML", "c.rs", "d.png"].map(|n| command_for(&dir.join(n), &open));
         let ok = launch("true", &dir.join("a.md")).is_ok() && launch("exit 3", &dir.join("a.md")).is_err();
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(got, [Some("typora".into()), None, Some("code".into()), None]);
         assert!(ok);
+        assert!(matches!(peek, Plan::Peek(s) if s.starts_with("code ")));
+        assert!(matches!(window, Plan::Window(s) if s.starts_with("typora ")));
+        assert_eq!(default, Plan::Default);
+        assert!(Open::default().in_peek("diff") && !Open::default().in_peek("text"));
     }
 }

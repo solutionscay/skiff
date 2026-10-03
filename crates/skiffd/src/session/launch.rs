@@ -5,6 +5,15 @@ use super::{default_shell, SHELL_HANDOFF_TITLE};
 
 /// The command for the PTY, and whether it is the shell itself.
 pub(super) fn launch_command(spec: &SessionSpec, command: &str, cwd: &Path, id: &str) -> (CommandBuilder, bool) {
+    // A peek tool runs as given and ends with its program: the peek closes then.
+    if spec.peek {
+        let mut cmd = CommandBuilder::new(command);
+        cmd.args(&spec.args);
+        cmd.cwd(cwd);
+        cmd.env("TERM", "xterm-256color");
+        cmd.env("COLORTERM", "truecolor");
+        return (cmd, false);
+    }
     // An alias from the user's rc files stands for a command line.
     let (program, args) = match skiff_core::alias::expand(command) {
         Some(w) => (w[0].clone(), [&w[1..], &spec.args[..]].concat()),

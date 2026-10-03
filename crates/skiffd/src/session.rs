@@ -372,6 +372,7 @@ impl SessionPool {
             resume: None,
             unread: false,
             agent_exit: None,
+            peek: spec.peek,
         };
 
         let (input, input_rx) = std::sync::mpsc::channel::<Vec<u8>>();

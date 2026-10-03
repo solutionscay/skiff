@@ -32,8 +32,8 @@ pub struct Appearance {
 /// Which apps Skiff hands things to.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 pub struct Open {
-    /// The command that prints a changed file's diff for the peek. `{target}`
-    /// becomes what to compare. Absent: `git diff --color=always`.
+    /// Shows a changed file's diff. `{target}` becomes what to compare.
+    /// Absent: `git diff --color=always`, in the peek.
     pub diff: Option<String>,
     /// Opens text files. `{path}` becomes the file. Absent: the OS default app.
     pub text: Option<String>,
@@ -41,6 +41,19 @@ pub struct Open {
     pub markdown: Option<String>,
     /// Opens `.html` files. Absent: the OS default app.
     pub html: Option<String>,
+    /// The keys above whose command is a terminal tool: it runs in the peek.
+    /// The others are apps with their own window. Absent: `["diff"]`.
+    pub peek: Option<Vec<String>>,
+}
+
+impl Open {
+    /// The command for `key` runs in the peek, not in a window of its own.
+    pub fn in_peek(&self, key: &str) -> bool {
+        match &self.peek {
+            Some(keys) => keys.iter().any(|k| k == key),
+            None => key == "diff",
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]

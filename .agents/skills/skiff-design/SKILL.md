@@ -23,7 +23,7 @@ Test every change with three questions:
 
 ## Product rules
 
-- **Panes are for sessions.** Files and viewers open in another app's window (Settings › Open with). Diffs use a read-only peek over the terminals. The Diffs command prints its output into the peek. The peek never adds a session pane.
+- **Panes are for sessions.** Files and diffs open as Settings › Open with says. A terminal tool runs in the peek over the terminals. An app opens its own window. A file with no command goes to the system's default app. The peek never adds a session pane, and its tool is not a session to the user.
 - **Sessions outlive the window.** `skiffd` owns every PTY. Closing a pane, a group or the window does not end a session. End and Kill ask first. Closing or removing a project also ends its sessions. Close asks when sessions run; Remove always asks.
 - **Hands off the agent setup.** Skiff installs no hooks or plugins and writes nothing into an agent's config or data folder. On request, Resume runs the agent's CLI resume command. An integration, if one exists, is a separate package that the user installs.
 - **Restore as shells.** After a daemon restart, each saved session comes back as a shell in its folder. Resume offers the agent's picker, a conversation list, or Continue latest. The user chooses how to resume. Reopening the window reconnects to live sessions.
