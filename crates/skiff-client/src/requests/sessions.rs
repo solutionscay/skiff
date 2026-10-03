@@ -24,6 +24,17 @@ impl Client {
         self.expect_ok(Request::Write {
             session: session.to_string(),
             data,
+            paste: false,
+        })
+        .await
+    }
+
+    /// Writes `data` as a paste. See [`Request::Write`].
+    pub async fn paste(&self, session: &str, data: Vec<u8>) -> Result<()> {
+        self.expect_ok(Request::Write {
+            session: session.to_string(),
+            data,
+            paste: true,
         })
         .await
     }
@@ -35,6 +46,7 @@ impl Client {
         let request = Request::Write {
             session: session.to_string(),
             data,
+            paste: false,
         };
         let mut line = serde_json::to_vec(&Envelope { id, request })?;
         line.push(b'\n');

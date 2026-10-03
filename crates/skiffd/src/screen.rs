@@ -74,6 +74,11 @@ impl Screen {
         self.term.mode().contains(TermMode::ALT_SCREEN)
     }
 
+    /// The program wants pastes marked with ESC [200~ and ESC [201~.
+    pub fn bracketed_paste(&self) -> bool {
+        self.term.mode().contains(TermMode::BRACKETED_PASTE)
+    }
+
     pub fn feed(&mut self, bytes: &[u8]) -> Signals {
         self.parser.advance(&mut self.term, bytes);
         std::mem::take(&mut *self.signals.0.lock().unwrap())

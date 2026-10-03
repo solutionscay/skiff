@@ -121,7 +121,7 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
                 }
                 continue;
             }
-            Request::Write { session, data } => match pool.write(&session, &data) {
+            Request::Write { session, data, paste } => match if paste { pool.paste(&session, &data) } else { pool.write(&session, &data) } {
                 Ok(()) => Response::Ok,
                 Err(e) => error(e),
             },
