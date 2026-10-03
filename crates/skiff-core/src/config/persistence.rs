@@ -17,8 +17,26 @@ pub fn config_path() -> PathBuf {
 /// not drop one another.
 static EDIT: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-pub(super) fn edit_lock() -> std::sync::MutexGuard<'static, ()> {
-    EDIT.lock().unwrap_or_else(|e| e.into_inner())
+/// The edit lock: the mutex for threads in this process, and a lock on
+/// `projects.toml.lock` for other processes, such as the app and the `skiff` CLI.
+pub(super) struct EditLock {
+    _file: Option<std::fs::File>,
+    _guard: std::sync::MutexGuard<'static, ()>,
+}
+
+pub(super) fn edit_lock() -> EditLock {
+    let guard = EDIT.lock().unwrap_or_else(|e| e.into_inner());
+    let mut path = config_path().into_os_string();
+    path.push(".lock");
+    // Without the lock file, edits still exclude each other inside this process.
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .ok()
+        .filter(|f| f.lock().is_ok());
+    EditLock { _file: file, _guard: guard }
 }
 
 /// Writes a temp file beside the target and renames it over, so a reader

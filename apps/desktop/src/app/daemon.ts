@@ -4,7 +4,7 @@ import { filledOf, isSlot, slot } from "../workspace/layoutSlots";
 import { agentCallsign } from "../appearance/agentNames";
 import { removePane, replacePane, sessionsOf } from "../workspace/layout";
 
-import type { AgentInfo, DaemonEvent, DaemonStatus, Project, SessionInfo, SplitDir } from "../platform/types";
+import type { AgentInfo, Appearance, DaemonEvent, DaemonStatus, Project, SessionInfo, SplitDir } from "../platform/types";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { $, h } from "../ui/dom";
@@ -95,13 +95,19 @@ export async function newSession(
 
 let projectsSeq = 0;
 
+/** The app theme from projects.toml. The `skiff` CLI can change it while the app runs. */
+async function loadAppTheme() {
+  const a = await invoke<Appearance>("get_appearance").catch(() => null);
+  if (a) S.appTheme = a.theme;
+}
+
 export async function loadProjects() {
   const seq = ++projectsSeq;
   if (!S.agents.length) S.agents = await invoke<AgentInfo[]>("list_agents").catch(() => []);
   let list: Project[] | null = null;
   let err: string | null = null;
   try {
-    [list] = await Promise.all([invoke<Project[]>("list_projects"), loadFilesSetting(), loadChangesSetting(), loadProjectThemes()]);
+    [list] = await Promise.all([invoke<Project[]>("list_projects"), loadFilesSetting(), loadChangesSetting(), loadProjectThemes(), loadAppTheme()]);
   } catch (e) {
     err = String(e);
   }

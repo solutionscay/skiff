@@ -40,6 +40,7 @@ Do these steps before the first command in a task.
 | Rename | `skiff rename S "name"` |
 | Mark seen | `skiff seen S` |
 | Stop | `skiff kill S` |
+| Themes | `skiff theme ls`, `theme session set S ID`, `theme project set NAME ID`, `theme app set ID`, and `clear` in place of `set ID` |
 | Groups | `skiff g ls`, `g new [--name N] S1 S2 [--dir row\|col]`, `g add G S [--split right\|down\|left\|up] [--of S]`, `g rm G S`, `g rename G N`, `g delete G` |
 
 `skiff new` prints the new session id on stdout. `--json` prints the full session.
@@ -70,6 +71,7 @@ skiff g new --name pair "$a" "$b" --dir row
 - Never run `skiff attach`. It takes over the terminal and needs a person at the keys.
 - Do not `kill` a session, or remove a session from its group, unless the user asked for that session by name or you started it in this task.
 - Do not `send` into a session you did not start unless the user asked you to.
+- Change a project or app theme only when the user asks. Those edit `projects.toml` and apply to every pane.
 - A group holds 4 panes at most. A session is in one group at most. Adding it to a group takes it out of its old one.
 - `idle` means no output for a while. It does not prove the agent is done. Read the screen with `peek` before you report a result.
 - An agent that exits leaves a shell in its pane. `done` means the shell exited too.
