@@ -12,6 +12,9 @@ pub(super) fn launch_command(spec: &SessionSpec, command: &str, cwd: &Path, id: 
         cmd.cwd(cwd);
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
+        // `sh -c` sets no size, and tools such as delta read it to lay out.
+        cmd.env("COLUMNS", spec.cols.to_string());
+        cmd.env("LINES", spec.rows.to_string());
         return (cmd, false);
     }
     // An alias from the user's rc files stands for a command line.
