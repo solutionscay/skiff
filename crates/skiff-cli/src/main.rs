@@ -13,6 +13,7 @@ mod callsign;
 mod groups;
 mod info;
 mod layout;
+mod open_with;
 mod peek;
 mod print;
 mod resolve;
@@ -133,6 +134,15 @@ enum Cmd {
         #[command(subcommand)]
         cmd: ThemeCmd,
     },
+    /// Show and set the command that opens a diff or a file.
+    #[command(
+        name = "open-with",
+        after_help = "Keys: diff, text, markdown, html. `{path}` in a command becomes the file; without it the file goes at the end. `{target}` in the diff command becomes what to compare.\nPeek runs a terminal tool over the panes. Window starts an app with its own window. A file with no command opens in the system's default app.\nChanges apply to the next file or diff the app opens."
+    )]
+    OpenWith {
+        #[command(subcommand)]
+        cmd: OpenWithCmd,
+    },
 }
 
 #[derive(Subcommand)]
@@ -178,6 +188,52 @@ enum GroupCmd {
         #[arg(required = true)]
         groups: Vec<String>,
     },
+}
+
+#[derive(Subcommand)]
+enum OpenWithCmd {
+    /// List each key, its command, and where it runs.
+    Ls {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Set a key's command, where it runs, or both.
+    Set {
+        #[arg(value_enum)]
+        key: OpenKey,
+        /// The command, quoted as one argument.
+        command: Option<String>,
+        /// A terminal tool: run it in the peek.
+        #[arg(long, conflicts_with = "window")]
+        peek: bool,
+        /// An app with its own window: start it and let it go.
+        #[arg(long)]
+        window: bool,
+    },
+    /// Clear a key. The default command and place apply.
+    Clear {
+        #[arg(value_enum)]
+        key: OpenKey,
+    },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum OpenKey {
+    Diff,
+    Text,
+    Markdown,
+    Html,
+}
+
+impl OpenKey {
+    fn name(self) -> &'static str {
+        match self {
+            OpenKey::Diff => "diff",
+            OpenKey::Text => "text",
+            OpenKey::Markdown => "markdown",
+            OpenKey::Html => "html",
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -284,6 +340,7 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Theme { cmd: ThemeCmd::Ls { json } } => return theme::ls(json).map(|_| 0),
         Cmd::Theme { cmd: ThemeCmd::App { cmd } } => return theme::app(cmd).map(|_| 0),
         Cmd::Theme { cmd: ThemeCmd::Project { cmd } } => return theme::project(cmd).map(|_| 0),
+        Cmd::OpenWith { cmd } => return open_with::run(cmd).map(|_| 0),
         Cmd::Status => return info::status(&socket).await.map(|_| 0),
         _ => {}
     }
@@ -306,7 +363,7 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Seen { session } => sessions::seen(&c, &session).await,
         Cmd::Agents { json } => info::agents(&c, json).await,
         Cmd::Theme { cmd: ThemeCmd::Session { cmd } } => theme::session(&c, cmd).await,
-        Cmd::Status | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::Wait { .. } => unreachable!(),
+        Cmd::Status | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::OpenWith { .. } | Cmd::Wait { .. } => unreachable!(),
     }
     .map(|_| 0)
 }
