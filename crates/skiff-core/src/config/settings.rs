@@ -187,6 +187,20 @@ pub fn set_menu_layout(layout: Option<&str>) -> Result<()> {
 /// The keys `[open]` takes.
 pub const OPEN_KEYS: [&str; 4] = ["diff", "text", "markdown", "html"];
 
+/// Sets whether selecting this file kind opens its command in the peek.
+pub fn set_open_peek(key: &str, peek: bool) -> Result<()> {
+    if !OPEN_KEYS.contains(&key) || key == "diff" {
+        anyhow::bail!("unknown file kind: {key}");
+    }
+    edit_table("open", |t| {
+        let mut kinds = t.get("peek").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        kinds.retain(|v| v.as_str() != Some(key));
+        if peek { kinds.push(key); }
+        t["peek"] = toml_edit::value(kinds);
+        Ok(())
+    })
+}
+
 /// Sets one `[open]` command, or removes it for the default.
 pub fn set_open(key: &str, command: Option<&str>) -> Result<()> {
     if !OPEN_KEYS.contains(&key) {

@@ -16,6 +16,7 @@ import { collapsed, S } from "./state";
 
 import { panes } from "../terminal/terminalState";
 import { revealSession, selectProject, showGroup } from "../workspace/view";
+import { focusPeek, leavePeek, peekBlocksAction } from "../terminal/peek";
 
 /** Ctrl+Shift+1..9 selects a project (Command+Shift+1..9 on macOS). Not in the keymap: it is a range, not one key. */
 function projectKey(e: KeyboardEvent): number | null {
@@ -46,13 +47,15 @@ window.addEventListener("keydown", (e) => {
   // An open menu or dialog keeps the keys until it closes. Holding Ctrl+Shift
   // from the shortcut that opened it, then pressing Enter, picks the item
   // instead of running Maximize.
-  if (modalOpen()) return;
+  if (modalOpen(false)) return;
   const key = appKey(e);
   if (key === null) return;
+  if (peekBlocksAction(key) && !(e.target as Element).closest?.("#rail, #sidebar-scroll")) return;
   e.preventDefault();
   e.stopPropagation();
   if (typeof key === "string" && modeKeyBlocked(key)) return;
   if (typeof key === "number") {
+    leavePeek();
     const p = S.projects[key - 1];
     if (p) selectProject(p.name);
   } else {
@@ -120,7 +123,7 @@ function regionOf(el: Element | null): number {
   if (!el) return -1;
   if (el.closest("#rail")) return 0;
   if (el.closest("#sidebar-scroll")) return 1;
-  if (host.contains(el)) return 2;
+  if (host.contains(el) || el.closest(".peek")) return 2;
   return -1;
 }
 
@@ -131,6 +134,7 @@ export function cycleRegion(dir: 1 | -1) {
     () => focusEl(document.querySelector<HTMLElement>("#rail .rail-chip.active") ?? document.querySelector<HTMLElement>("#rail .rail-chip")),
     () => focusEl(roveTarget() ?? null),
     () => {
+      if (focusPeek()) return true;
       const t = S.focused ? panes.get(S.focused)?.term : undefined;
       if (!t) return false;
       t.focus();
@@ -182,6 +186,7 @@ export function stepList(dir: 1 | -1) {
 /** Makes a row the current one. A session opens. A group opens with its row keeping
  *  the keys. A changed file loads its diff. Other rows take focus. */
 function landOn(next: HTMLElement) {
+  leavePeek();
   S.roveKey = itemKey(next);
   if (next.dataset.session) revealSession(next.dataset.session);
   else if (next.dataset.group) {
@@ -204,6 +209,7 @@ const activeChip = () => document.querySelector<HTMLElement>("#rail .rail-chip.a
  * highlighted or selected; the panes stay as they are.
  */
 export function toProject() {
+  leavePeek();
   ctxMenu.close(false);
   launchMenu.close(false);
   clearSelection();

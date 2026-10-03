@@ -17,10 +17,10 @@ import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { $, button, h } from "../ui/dom";
-import { icon } from "../ui/icons";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { showError } from "../ui/alerts";
-import { appKey, markCurrent } from "../app/keyboard";
+import { appKey, currentRow, markCurrent } from "../app/keyboard";
+import type { Action } from "../app/keys";
 import { S, sessions } from "../app/state";
 import type { SessionInfo } from "../platform/types";
 import { toBytes } from "../platform/ipcBytes";
@@ -41,6 +41,8 @@ type Opened =
   | { kind: "no_app"; message: string };
 
 interface Peek {
+  takeFocus: boolean;
+  request: string;
   el: HTMLElement;
   term: Terminal;
   fit: FitAddon;
@@ -58,6 +60,16 @@ interface Peek {
 }
 
 let open: Peek | null = null;
+/** Running file tools kept off screen while another file or session shows. */
+const parked = new Map<string, Peek>();
+let invitation: HTMLElement | null = null;
+let previewPath: string | null = null;
+let selection = 0;
+
+function clearInvitation() {
+  invitation?.remove();
+  invitation = null;
+}
 /** Commands that ended before their start call returned. */
 const early = new Map<string, number | null>();
 /** Commands that took the terminal before their start call returned. Tools such as micro do it within milliseconds. */
@@ -76,7 +88,7 @@ export function peekSession(): string | null {
 
 /** A peek session that is not the open peek's: left behind, or an app let go. */
 export function strayPeek(s: SessionInfo) {
-  if (s.id === open?.session) return;
+  if (s.id === open?.session || [...parked.values()].some((p) => p.session === s.id)) return;
   // An app still running keeps its window. Its session goes when it exits.
   // A terminal tool out of the peek has no screen left: it ends.
   if (s.state === "done" || s.interactive) invoke("kill_session", { session: s.id }).catch(console.error);
@@ -87,15 +99,41 @@ export function strayPeek(s: SessionInfo) {
  * Going to a session leaves the peek, once its command is done. A command
  * still starting stays: nothing shows yet, and an open request often comes
  * with a key or click that sends the keys back to a session. A tool that
- * runs keeps the peek and the keys until it exits or its close button ends it.
+ * runs stays alive when navigation hides the peek. Opening it again restores it.
  */
 export function leavePeek() {
-  if (open?.shown && open.exited) closePeek();
+  selection++;
+  previewPath = null;
+  clearInvitation();
+  if (open && !open.shown && !open.takeFocus) dismiss(false);
+  if (!open?.shown) return;
+  if (open.exited) dismiss(false);
+  else open.el.hidden = true;
+}
+
+/** Navigation can leave a tool. Other app keys stay out of its terminal. */
+export function peekBlocksAction(action: Action | number | null): boolean {
+  if (!open?.shown || open.el.hidden || open.exited) return false;
+  return typeof action !== "number" && action !== "session-next" && action !== "session-prev"
+    && action !== "list-project" && action !== "list-back"
+    && action !== "region-next" && action !== "region-prev";
+}
+
+/** The terminal region gives the keys to a visible peek before a session. */
+export function focusPeek(): boolean {
+  if (invitation) {
+    (invitation.querySelector<HTMLButtonElement>("button") ?? invitation).focus();
+    return true;
+  }
+  if (!open?.shown || open.el.hidden) return false;
+  open.term.focus();
+  return true;
 }
 
 /** Takes the peek down. Its command ends, unless it is an app that runs on. */
 function drop(p: Peek, end: boolean) {
   if (open === p) open = null;
+  if (parked.get(p.request) === p) parked.delete(p.request);
   clearTimeout(p.timer);
   p.resize.disconnect();
   p.term.dispose();
@@ -105,10 +143,25 @@ function drop(p: Peek, end: boolean) {
   else released.add(p.session);
 }
 
-/** Closes the peek and ends its tool. Navigation calls it: leaving the view leaves the tool. */
+/** Keep a live editor when selection moves to another file. */
+function replacePeek() {
+  if (open?.interactive && !open.exited) {
+    open.el.hidden = true;
+    parked.set(open.request, open);
+    open = null;
+  } else dismiss(false);
+}
+
+/** Closes the peek and ends its tool. Navigation hides a running tool instead. */
 export function closePeek() {
+  dismiss(true);
+}
+
+/** A replacement keeps the current row and does not give focus to a pane. */
+function dismiss(restore: boolean) {
   if (!open) return;
   const p = open;
+  const hadKeys = !p.el.hidden && (p.el.contains(document.activeElement) || document.activeElement === document.body);
   seq++;
   // A hidden command is an app being started: it keeps running.
   drop(p, p.shown);
@@ -118,25 +171,21 @@ export function closePeek() {
   for (const pane of panes.values()) {
     if (!pane.parked && pane.el.isConnected) pane.term.refresh(0, pane.term.rows - 1);
   }
-  const back = S.focused ? panes.get(S.focused) : undefined;
-  // The keys go back to the pane, and the highlight to its row.
-  if (S.focused) S.roveKey = S.focused;
   markCurrent();
-  back?.term.focus();
+  if (!restore || !hadKeys) return;
+  // Keep the highlight where the user left it. A sidebar row may have been rebuilt.
+  const row = S.atRail ? document.querySelector<HTMLElement>("#rail .rail-chip.active") : currentRow();
+  if (row) row.focus();
+  else if (S.focused) panes.get(S.focused)?.term.focus();
 }
 
-function frame(kind: string, title: string, where: string, program: string): Peek {
-  closePeek();
+function frame(kind: string, title: string, where: string, program: string, request: string, takeFocus: boolean): Peek {
+  replacePeek();
   const el = h("div", "peek pending");
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-label", title);
   const head = h("div", "peek-head");
-  // The same close button a pane has.
-  const close = button("head-btn", "", closePeek);
-  close.title = "Close";
-  close.setAttribute("aria-label", "Close the peek");
-  close.appendChild(icon('<path d="M6 6l12 12M18 6L6 18"></path>'));
-  head.append(h("span", "peek-kind", kind), h("span", "peek-title mono", title), h("span", "peek-where mono", where), close);
+  head.append(h("span", "peek-kind", kind), h("span", "peek-title mono", title), h("span", "peek-where mono", where));
   const box = h("div", "peek-body");
   el.append(head, box);
   // Laid out but not visible, so the terminal has its real size from the start.
@@ -155,7 +204,7 @@ function frame(kind: string, title: string, where: string, program: string): Pee
   term.loadAddon(fit);
   term.open(box);
   const p: Peek = {
-    el, term, fit, resize: new ResizeObserver(() => resized(p)),
+    takeFocus, request, el, term, fit, resize: new ResizeObserver(() => resized(p)),
     session: null, program, shown: false, exited: false, interactive: false, timer: 0,
   };
   term.attachCustomKeyEventHandler((e) => {
@@ -167,7 +216,7 @@ function frame(kind: string, title: string, where: string, program: string): Pee
       closePeek();
       return false;
     }
-    // App keys rest while the tool runs, but copy and paste work in it.
+    // Navigation runs in the window handler. Copy and paste work in the tool.
     const key = appKey(e);
     if (key === "copy" || key === "paste") {
       e.preventDefault();
@@ -187,12 +236,16 @@ function frame(kind: string, title: string, where: string, program: string): Pee
 }
 
 function show(p: Peek) {
-  if (p.shown || open !== p) return;
+  if (open !== p) return;
+  clearInvitation();
+  if (p.shown && !p.el.hidden) return;
+  p.el.hidden = false;
   p.shown = true;
   clearTimeout(p.timer);
   p.el.classList.remove("pending");
   if (!p.exited) p.el.classList.add("busy");
-  p.term.focus();
+  resized(p);
+  if (p.takeFocus) p.term.focus();
 }
 
 function resized(p: Peek) {
@@ -202,10 +255,24 @@ function resized(p: Peek) {
 }
 
 /** Starts `script`, hidden. What it does decides whether the peek shows. */
-async function run(kind: string, title: string, where: string, script: string, cwd: string) {
+async function run(kind: string, title: string, where: string, script: string, cwd: string, takeFocus = true) {
+  const request = JSON.stringify([kind, title, where, script, cwd]);
+  const saved = parked.get(request);
+  if (saved) {
+    replacePeek();
+    parked.delete(request);
+    open = saved;
+  }
+  if (open?.request === request && !open.exited) {
+    open.takeFocus = takeFocus;
+    if (open.shown) show(open);
+    if (takeFocus && open.shown) open.term.focus();
+    return;
+  }
   const program = script.trim().split(/\s+/)[0] ?? kind;
+  const p = frame(kind, title, where, program, request, takeFocus);
+  // Replacing a pending peek cancels its request. Take this number afterward.
   const mine = ++seq;
-  const p = frame(kind, title, where, program);
   let info: SessionInfo;
   try {
     info = await invoke<SessionInfo>("create_session", {
@@ -218,7 +285,8 @@ async function run(kind: string, title: string, where: string, script: string, c
   // Closed meanwhile, or a newer request came: the command runs on its own.
   if (mine !== seq || open !== p) {
     earlyInteractive.delete(info.id);
-    released.add(info.id);
+    if (info.interactive) invoke("kill_session", { session: info.id }).catch(console.error);
+    else released.add(info.id);
     return;
   }
   // A skiffd from before the peek ran it as a plain session, with a shell after it.
@@ -235,7 +303,7 @@ async function run(kind: string, title: string, where: string, script: string, c
   const n = ++stream;
   const channel = new Channel<unknown>();
   channel.onmessage = (m) => {
-    if (open !== p) return;
+    if (open !== p && parked.get(p.request) !== p) return;
     const bytes = toBytes(m);
     p.term.write(bytes, () => invoke("ack_output", { session: info.id, stream: n, bytes: bytes.length }).catch(console.error));
   };
@@ -275,6 +343,12 @@ export function peekExited(id: string, code: number | null): boolean {
     invoke("kill_session", { session: id }).catch(console.error);
     return true;
   }
+  const saved = [...parked.values()].find((p) => p.session === id);
+  if (saved) {
+    saved.exited = true;
+    drop(saved, true);
+    return true;
+  }
   const p = open;
   if (!p) return false;
   // A start is in flight: the exit may be its command's, ahead of the reply.
@@ -300,18 +374,73 @@ export function peekExited(id: string, code: number | null): boolean {
 
 /** Shows the diff of `file` in worktree `wt`, or of the whole worktree, with Settings › Open with. */
 export function showDiff(wt: string, branch: string, file?: string) {
+  const mine = ++selection;
+  previewPath = null;
+  showInvitation("diff", `${wt}/${file ?? "All changes"}`);
   void invoke<Opened>("open_diff", { path: wt, file: file ?? null })
-    .then((o) => handle(o, "diff", file ?? "All changes", branch))
+    .then((o) => { if (mine === selection) handle(o, "diff", file ?? "All changes", branch); })
     .catch(showError);
 }
 
 /** Opens a file with Settings › Open with, else in the system's default app. */
 export function openFile(path: string) {
+  const mine = ++selection;
+  previewPath = path;
   const name = path.split("/").pop() ?? path;
   const dir = path.slice(0, path.length - name.length - 1);
   void invoke<Opened>("open_file", { path })
-    .then((o) => handle(o, "file", name, dir))
+    .then((o) => { if (mine === selection) handle(o, "file", name, dir); })
     .catch(showError);
+}
+
+type FilePreview = { script: string | null; cwd: string; app: string; peek: boolean };
+
+function showInvitation(kind: string, path: string, label?: string, run?: () => void) {
+  const name = path.split("/").pop() ?? path;
+  const dir = path.slice(0, path.length - name.length - 1);
+  const el = h("div", "peek file-preview");
+  el.tabIndex = -1;
+  el.setAttribute("aria-label", name);
+  const head = h("div", "peek-head");
+  head.append(h("span", "peek-kind", kind), h("span", "peek-title mono", name), h("span", "peek-where mono", dir));
+  const body = h("div", "file-preview-body");
+  if (label && run) body.append(h("div", "file-preview-name", name), button("file-preview-open", label, run));
+  el.append(head, body);
+  clearInvitation();
+  invitation = el;
+  $("main").appendChild(el);
+}
+
+/** Folder selection stays in the preview until the user goes to a session. */
+export function previewFolder(path: string) {
+  if (previewPath === path) return;
+  leavePeek();
+  previewPath = path;
+  showInvitation("folder", path, "Show in file manager", () => {
+    void invoke<Opened>("open_file", { path })
+      .then((o) => handle(o, "folder", path.split("/").pop() ?? path, path))
+      .catch(showError);
+  });
+}
+
+/** Selection starts peek commands only. External apps wait for an explicit open. */
+export function previewFile(path: string) {
+  if (previewPath === path) return;
+  leavePeek();
+  previewPath = path;
+  const mine = ++selection;
+  const name = path.split("/").pop() ?? path;
+  const dir = path.slice(0, path.length - name.length - 1);
+  // Keep the sessions covered without offering an action before the setting is known.
+  showInvitation("file", path);
+  void invoke<FilePreview>("preview_file", { path }).then((p) => {
+    if (mine !== selection) return;
+    if (p.peek && p.script) {
+      void run("file", name, dir, p.script, p.cwd, false);
+      return;
+    }
+    showInvitation("file", path, `Open in ${p.app}`, () => openFile(path));
+  }).catch(showError);
 }
 
 function handle(o: Opened, kind: string, title: string, where: string) {

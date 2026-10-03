@@ -33,7 +33,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   let tab: (typeof TABS)[number] = "agents";
   const themeFilters: ThemeFilters = { query: "", family: null };
   type OpenKey = "diff" | "text" | "markdown" | "html";
-  type OpenSettings = Record<OpenKey, string> & { default_diff: string };
+  type OpenSettings = Record<OpenKey, string> & { default_diff: string; peek: string[] };
   let openSet: OpenSettings | null = null;
   type MenuLayout = { available: boolean; chosen: string | null; auto: string; current: string };
   let menuSet: MenuLayout | null = null;
@@ -375,6 +375,16 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     render();
   }
 
+  async function setOpenPeek(key: OpenKey, peek: boolean) {
+    error = null;
+    try {
+      openSet = await invoke<OpenSettings>("set_open_peek", { key, peek });
+    } catch (e) {
+      error = String(e);
+    }
+    render();
+  }
+
   const OPEN_ROWS: { key: OpenKey; label: string }[] = [
     { key: "diff", label: "Diffs" },
     { key: "text", label: "Text files" },
@@ -388,10 +398,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const intro = h("div", "set-head");
     intro.append(
       h("div", "set-h", "Open with"),
-      h("div", "set-sub", "A terminal tool, such as micro or git diff, shows in the peek over the panes. An app with its own window just starts. A file with no command opens in the system's default app."),
+      h("div", "set-sub", "Peek opens the command when you select a file. External app shows an Open button. Double-click or Enter opens the file. A file with no command uses the default app."),
     );
     const cols = h("div", "set-row set-open set-cols");
-    cols.append(h("span", "c-name", "SHOWS"), h("span", "c-cmd", "COMMAND"));
+    cols.append(h("span", "c-name", "SHOWS"), h("span", "c-cmd", "COMMAND"), h("span", "c-mode", "OPENS IN"));
     main.append(intro, cols);
     const o = openSet;
     if (o) for (const { key, label } of OPEN_ROWS) {
@@ -414,6 +424,19 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         if (cmd.value.trim() !== o[key].trim()) void setOpen(key, cmd.value);
       });
       row.append(h("span", "c-name", label), cmd);
+      if (key === "diff") row.append(h("span", "c-mode", "Peek"));
+      else {
+        const mode = h("select", "c-mode");
+        mode.setAttribute("aria-label", `${label} open mode`);
+        for (const [value, label] of [["app", "External app"], ["peek", "Peek"]]) {
+          const option = h("option", "", label);
+          option.value = value;
+          mode.append(option);
+        }
+        mode.value = o.peek.includes(key) ? "peek" : "app";
+        mode.addEventListener("change", () => void setOpenPeek(key, mode.value === "peek"));
+        row.append(mode);
+      }
       main.appendChild(row);
     }
     if (error) {

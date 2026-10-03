@@ -77,6 +77,8 @@ pub fn run() {
             commands::open_diff,
             commands::open_settings,
             commands::set_open,
+            commands::set_open_peek,
+            commands::preview_file,
             commands::open_file,
             commands::reveal_file,
             commands::files_projects,

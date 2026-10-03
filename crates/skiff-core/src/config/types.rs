@@ -32,6 +32,9 @@ pub struct Appearance {
 /// Which apps Skiff hands things to.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 pub struct Open {
+    /// File kinds that open on selection in the peek.
+    #[serde(default)]
+    pub peek: Vec<String>,
     /// Shows a changed file's diff. `{target}` becomes what to compare.
     /// Absent: `git diff --color=always`.
     pub diff: Option<String>,

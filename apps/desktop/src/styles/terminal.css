@@ -16,6 +16,10 @@
 .peek-title { color: var(--text); font-size: calc(14px * var(--zoom, 1)); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .peek-where { color: var(--text-3); flex-grow: 1; }
 .peek-body { flex-grow: 1; min-height: 0; padding: calc(8 * var(--u)) 0 0 calc(12 * var(--u)); }
+.file-preview-body { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(16 * var(--u)); }
+.file-preview-name { color: var(--text-3); font-size: calc(13px * var(--zoom, 1)); }
+.file-preview-open { height: var(--row); padding: 0 calc(16 * var(--u)); background: var(--bg-panel); color: var(--text); border: 1px solid var(--rule-strong); border-radius: 0; font: inherit; }
+.file-preview-open:hover { background: var(--bg-raised); }
 #main { --pc: var(--project-default); }
 #banner {
   height: var(--row); flex-shrink: 0;

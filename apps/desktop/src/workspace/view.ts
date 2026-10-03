@@ -414,6 +414,7 @@ function noteFocus() {
 }
 
 export function selectWorktree(project: Project, w: Worktree) {
+  leavePeek();
   noteFocus();
   S.selectedProject = project.name;
   selectedWorktree.set(project.name, w.path);
@@ -428,6 +429,7 @@ export function selectWorktree(project: Project, w: Worktree) {
 
 /** No session has the keys: hide every pane and offer to start one here. */
 export function unfocus() {
+  leavePeek();
   if (S.focused) waterline.leave(S.focused);
   S.focused = null;
   S.single = null;

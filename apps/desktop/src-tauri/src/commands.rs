@@ -180,6 +180,7 @@ pub(crate) async fn open_diff(path: PathBuf, file: Option<String>) -> Result<Ope
 /// The `[open]` commands, empty for a default, and the default diff command.
 #[derive(serde::Serialize)]
 pub(crate) struct OpenSettings {
+    peek: Vec<String>,
     diff: String,
     text: String,
     markdown: String,
@@ -190,6 +191,7 @@ pub(crate) struct OpenSettings {
 fn open_settings_now() -> Result<OpenSettings, String> {
     let o = skiff_core::config::load().map_err(err)?.open;
     Ok(OpenSettings {
+        peek: o.peek,
         diff: o.diff.unwrap_or_default(),
         text: o.text.unwrap_or_default(),
         markdown: o.markdown.unwrap_or_default(),
@@ -209,6 +211,39 @@ pub(crate) fn set_open(key: String, command: String) -> Result<OpenSettings, Str
     let c = command.trim();
     skiff_core::config::set_open(&key, (!c.is_empty()).then_some(c)).map_err(err)?;
     open_settings_now()
+}
+
+#[tauri::command]
+pub(crate) fn set_open_peek(key: String, peek: bool) -> Result<OpenSettings, String> {
+    skiff_core::config::set_open_peek(&key, peek).map_err(err)?;
+    open_settings_now()
+}
+
+#[derive(serde::Serialize)]
+pub(crate) struct FilePreview {
+    script: Option<String>,
+    cwd: PathBuf,
+    app: String,
+    peek: bool,
+}
+
+/// Plans a selection preview without starting an external app.
+#[tauri::command]
+pub(crate) async fn preview_file(path: PathBuf) -> Result<FilePreview, String> {
+    tokio::task::spawn_blocking(move || {
+        let open = skiff_core::config::load().map_err(err)?.open;
+        let command = skiff_core::open::command_for(&path, &open);
+        let app = command.as_deref().and_then(|c| c.split_whitespace().next())
+            .and_then(|c| std::path::Path::new(c).file_name()).and_then(|c| c.to_str())
+            .unwrap_or("default app").to_string();
+        let script = match skiff_core::open::plan_file(&path, &open) {
+            skiff_core::open::Plan::Run(script) => Some(script),
+            skiff_core::open::Plan::Default => None,
+        };
+        let peek = skiff_core::open::previews_file(&path, &open);
+        let cwd = path.parent().unwrap_or(std::path::Path::new("/")).to_path_buf();
+        Ok(FilePreview { script, cwd, app, peek })
+    }).await.map_err(|e| e.to_string())?
 }
 
 /// Opens a file with its `[open]` command, else in its default app.

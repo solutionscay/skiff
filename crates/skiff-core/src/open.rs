@@ -28,6 +28,7 @@ pub enum Plan {
 /// The `[open]` row for `file`, if one applies. Markdown and HTML go by
 /// extension; any other text file uses `text`.
 fn key_for(file: &Path) -> Option<&'static str> {
+    if file.is_dir() { return None; }
     let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     match ext.as_str() {
         "md" | "markdown" => Some("markdown"),
@@ -52,6 +53,11 @@ fn command(open: &Open, key: &str) -> Option<String> {
 /// The `[open]` command for `file`, or `None` for the OS default app.
 pub fn command_for(file: &Path, open: &Open) -> Option<String> {
     command(open, key_for(file)?)
+}
+
+/// Selection may start only commands explicitly configured for the peek.
+pub fn previews_file(file: &Path, open: &Open) -> bool {
+    key_for(file).is_some_and(|key| open.peek.iter().any(|k| k == key) && command(open, key).is_some())
 }
 
 /// How `file` opens. `{path}` in the command becomes the file; without it,
@@ -148,6 +154,7 @@ mod tests {
             std::fs::write(dir.join(name), body).unwrap();
         }
         let open = Open {
+            peek: vec!["text".into()],
             diff: None,
             text: Some("code".into()),
             markdown: Some("typora".into()),
@@ -157,9 +164,15 @@ mod tests {
         let markdown = plan_file(&dir.join("a.md"), &open);
         let default = plan_file(&dir.join("d.png"), &open);
         let got = ["a.md", "b.HTML", "c.rs", "d.png"].map(|n| command_for(&dir.join(n), &open));
+        let previews = ["a.md", "b.HTML", "c.rs", "d.png"].map(|n| previews_file(&dir.join(n), &open));
+        let folder = dir.join("folder.md");
+        std::fs::create_dir(&folder).unwrap();
+        assert_eq!(plan_file(&folder, &open), Plan::Default);
+        assert!(!previews_file(&folder, &open));
         let ok = launch("true", &dir.join("a.md")).is_ok() && launch("exit 3", &dir.join("a.md")).is_err();
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(got, [Some("typora".into()), None, Some("code".into()), None]);
+        assert_eq!(previews, [false, false, true, false]);
         assert!(ok);
         assert!(matches!(text, Plan::Run(s) if s.starts_with("code ")));
         assert!(matches!(markdown, Plan::Run(s) if s.starts_with("typora ")));

@@ -2,11 +2,13 @@
 export const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 /**
- * True while a menu, the palette, Settings, a dialog or a tool in the peek is up. It owns the keys
- * until it closes: no terminal takes focus and no app shortcut fires.
+ * True while a menu, the palette, Settings, a dialog or a visible preview is up.
+ * A session terminal must not take its focus. App navigation checks dialogs separately,
+ * so it can leave the peek without sending its key to the tool.
  */
-export function modalOpen(): boolean {
-  return !!document.querySelector("#ctx-menu:not([hidden]), #launch-menu:not([hidden]), #switcher:not([hidden]), #settings:not([hidden]), .confirm-overlay, .peek.busy");
+export function modalOpen(includePeek = true): boolean {
+  const dialogs = "#ctx-menu:not([hidden]), #launch-menu:not([hidden]), #switcher:not([hidden]), #settings:not([hidden]), .confirm-overlay";
+  return !!document.querySelector(includePeek ? `${dialogs}, .peek:not([hidden])` : dialogs);
 }
 
 export function h<K extends keyof HTMLElementTagNameMap>(

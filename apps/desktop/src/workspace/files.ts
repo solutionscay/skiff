@@ -1,9 +1,10 @@
 import { open, reveal, copy } from "../platform/fileActions";
+import { previewFile, previewFolder } from "../terminal/peek";
 import { sectionHeader } from "../ui/sectionHeader";
 /**
  * The Files section under each worktree, for projects with `files = true`.
- * It lists folders and opens files with their Open with command or default app. No edits, no
- * previews, no watching: a folder is read again when it opens, or on Refresh.
+ * Selection previews files with their Open with setting. A folder is read
+ * again when it opens, or on Refresh.
  */
 import { invoke } from "@tauri-apps/api/core";
 import type { Project, Worktree } from "../platform/types";
@@ -83,7 +84,11 @@ export function filesBlock(w: Worktree): HTMLElement {
   const isOpen = shown.has(w.path);
   const block = h("div", "files-block");
   const glyph = icon('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path>');
-  const head = sectionHeader(`files:${w.path}`, "Files", isOpen, glyph, () => toggle(w.path, shown));
+  const head = sectionHeader(`files:${w.path}`, "Files", isOpen, glyph, () => {
+    previewFolder(w.path);
+    toggle(w.path, shown);
+  });
+  head.addEventListener("focus", () => previewFolder(w.path));
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -128,9 +133,14 @@ function row(e: Entry, path: string, depth: number): HTMLElement {
   if (e.dir) r.setAttribute("aria-expanded", String(expanded.has(path)));
   r.addEventListener("click", (m) => {
     // detail counts clicks across the re-render the first click causes.
-    if (e.dir) toggle(path, expanded);
+    if (e.dir) {
+      previewFolder(path);
+      toggle(path, expanded);
+    }
     else if (m.detail >= 2) open(path);
+    else previewFile(path);
   });
+  r.addEventListener("focus", () => e.dir ? previewFolder(path) : previewFile(path));
   r.addEventListener("keydown", (k) => {
     if (k.key !== "Enter" || e.dir) return;
     k.preventDefault();
