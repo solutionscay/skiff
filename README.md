@@ -28,7 +28,7 @@ them to suit the work.
 
 You add a project (a Git repository), make worktrees in it, and start agent or shell sessions in each worktree. Sessions can sit side by side in a group. Each group has a name and a terminal theme, and so does each project.
 
-Skiff does not edit or preview files. Each worktree lists its changed files, and a double-click shows the diff. Files open in the apps you choose under Settings › Open with (see the [wiki](https://github.com/solutionscay/skiff/wiki/Open-with)). There are no plugins, no hooks into agent configs, and no automations. Settings live in one file, `projects.toml`.
+Skiff does not edit or preview files. Each worktree lists its changed files, and a click shows the diff. Files open in the apps you choose under Settings › Open with (see the [wiki](https://github.com/solutionscay/skiff/wiki/Open-with)). There are no plugins, no hooks into agent configs, and no automations. Settings live in one file, `projects.toml`.
 
 Sessions run in `skiffd`, a daemon that owns every PTY. You can close the window and the agents keep running. When the window opens again, each terminal shows its last screen.
 
@@ -43,11 +43,12 @@ Download the latest [release](https://github.com/solutionscay/skiff/releases/lat
 
 ## Themes
 
-Themes apply to the app, a project, or a session. A session theme replaces the
-project theme. A project theme replaces the app theme.
+Themes apply to the app, a project, a group, or a session. A session or group
+theme replaces the project theme. A project theme replaces the app theme.
 
-The 34 built-in themes use the operator's Foot palette. Their
-Skiff TOML files live in `crates/skiff-core/themes`. Ultraviolet is the default.
+Skiff ships 34 dark themes, curated from Foot palettes. There is no built-in
+light theme. Their Skiff TOML files live in `crates/skiff-core/themes`.
+Ultraviolet is the default.
 Each file declares `color_family` and `main_color`. The picker uses these
 values for its color filter and swatch. Themes without a declared color group
 show as Unclassified.
@@ -62,9 +63,10 @@ keeps existing files with the same name and reports files it cannot read.
 You can copy files there. The list refreshes when you return to Skiff. There is no theme count
 limit. Theme files contain color values, so a large collection needs little space.
 
-Light terminal themes use contrast correction for text. The waterline uses
-each pane's background. Programs can supply their own text and background
-colors, so a program's dark blocks can still appear inside a light terminal.
+You can still import a light theme. Skiff corrects its text contrast. The
+waterline uses each pane's background. Programs can supply their own text and
+background colors, so a program's dark blocks can still appear inside a light
+terminal.
 
 ## Layout
 
@@ -73,6 +75,7 @@ crates/skiff-core    session model, wire protocol, projects.toml config
 crates/skiffd        daemon: owns every PTY, serves clients over a Unix socket
 crates/skiff-client  async client for the socket
 apps/desktop         Tauri v2 app, vanilla TypeScript + xterm.js
+  src-tauri          Rust side: projects.toml, git, the skiffd connection, menus
   src/app            state, actions, keyboard, startup connections
   src/ui             DOM builders, dialogs, menus
   src/workspace      rail, session tree, layouts, files, project actions
