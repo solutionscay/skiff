@@ -181,6 +181,10 @@ fn open_fds(pid: u32) -> (Vec<String>, bool) {
     (kinds, cloexec)
 }
 
+async fn info(c: &Client, id: &str) -> skiff_core::session::SessionInfo {
+    c.list_sessions().await.unwrap().into_iter().find(|s| s.id == id).unwrap()
+}
+
 async fn shell(c: &Client, dir: &Path, script: &str) -> skiff_core::session::SessionInfo {
     c.create_session(SessionSpec {
         command: Some("/bin/sh".into()),
@@ -219,6 +223,22 @@ async fn reload_reaps_each_child_once_and_rolls_back_cleanly() {
 
     // Children that exit before, during and after the handover, and one
     // killed that ignores the hang-up: each is reaped once, with its status.
+    // A program that rang the bell waits for input; the reload keeps that.
+    let bell = c
+        .create_session(SessionSpec {
+            command: Some("/usr/bin/env".into()),
+            args: vec!["sh".into(), "-c".into(), "printf '\\a'; sleep 30".into()],
+            cwd: Some(daemon.dir.clone()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let until = Instant::now() + Duration::from_secs(5);
+    while info(&c, &bell.id).await.state != skiff_core::session::SessionState::Waiting {
+        assert!(Instant::now() < until, "the bell set no waiting state");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let bell_before = info(&c, &bell.id).await;
     let orphan = shell(&c, &daemon.dir, "trap '' HUP; sleep 1").await;
     c.kill(&orphan.id).await.unwrap();
     let mut exiting = Vec::new();
@@ -229,6 +249,8 @@ async fn reload_reaps_each_child_once_and_rolls_back_cleanly() {
     c.reload(None).await.unwrap();
     let c = connect(&socket).await;
     assert_eq!(c.daemon_info().await.unwrap().pid, Some(pid));
+    let bell_after = info(&c, &bell.id).await;
+    assert_eq!((bell_after.state, bell_after.unread, bell_after.pid), (bell_before.state, bell_before.unread, bell_before.pid));
     let until = Instant::now() + Duration::from_secs(5);
     loop {
         let sessions = c.list_sessions().await.unwrap();
