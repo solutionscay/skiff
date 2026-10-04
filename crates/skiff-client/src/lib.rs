@@ -177,6 +177,12 @@ impl Client {
     }
 
     pub async fn request(&self, request: Request) -> Result<Response> {
+        self.request_within(request, Some(REPLY_TIMEOUT)).await
+    }
+
+    /// [`Self::request`] with its own reply timeout. `None` waits until the
+    /// daemon answers or closes the connection.
+    pub(crate) async fn request_within(&self, request: Request, timeout: Option<std::time::Duration>) -> Result<Response> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (s, r) = oneshot::channel();
         self.pending.lock().unwrap().insert(id, s);
@@ -192,11 +198,14 @@ impl Client {
             self.pending.lock().unwrap().remove(&id);
             bail!("skiffd connection closed");
         }
-        match tokio::time::timeout(REPLY_TIMEOUT, r).await {
+        let Some(limit) = timeout else {
+            return r.await.map_err(|_| anyhow!("skiffd connection closed"));
+        };
+        match tokio::time::timeout(limit, r).await {
             Ok(reply) => reply.map_err(|_| anyhow!("skiffd connection closed")),
             Err(_) => {
                 self.pending.lock().unwrap().remove(&id);
-                bail!("skiffd did not answer within {}s", REPLY_TIMEOUT.as_secs())
+                bail!("skiffd did not answer within {}s", limit.as_secs())
             }
         }
     }

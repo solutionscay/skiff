@@ -71,7 +71,15 @@ async function boot() {
   let status = await invoke<DaemonStatus>("daemon_status");
   setDaemon(status);
   // An older skiffd that can reload moves onto the app's own first. Its sessions keep running.
-  if (status.reload) status = await reloadDaemon();
+  if (status.reload) {
+    status = await reloadDaemon();
+    // A slow adoption answers late. Keep asking, so the page loads without a restart.
+    while (!status.connected) {
+      await new Promise((r) => setTimeout(r, 2000));
+      status = await invoke<DaemonStatus>("daemon_status").catch(() => status);
+    }
+    setDaemon(status);
+  }
   if (!status.connected) return;
 
   await subscribeEvents();

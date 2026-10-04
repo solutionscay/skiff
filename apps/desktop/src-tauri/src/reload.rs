@@ -23,6 +23,13 @@ use crate::connection::{check_daemon, compare_versions, daemon_binary, restart_w
 const INFO_TIMEOUT: Duration = Duration::from_secs(5);
 /// The new image adopts the sessions and answers within this.
 const RECONNECT: Duration = Duration::from_secs(15);
+/// While the daemon's pid lives, the app waits this long for it to answer.
+/// Many sessions or a loaded machine make the adoption slow, and a restart
+/// would stop the sessions it adopts.
+const ADOPT_LIMIT: Duration = Duration::from_secs(120);
+/// skiffd answers the reload request, or execs, within this. Its own steps
+/// are bounded, but it first waits for changes in flight.
+const RELOAD_WAIT: Duration = Duration::from_secs(120);
 
 /// A reload the app can start: the daemon supports it, and the bundled
 /// skiffd reads its handover.
@@ -38,6 +45,10 @@ pub(crate) struct Plan {
 
 /// A reload onto the bundled skiffd, or why there is none.
 pub(crate) async fn plan(info: &DaemonInfo) -> Result<Plan, String> {
+    // The handover of #69 is proven on Linux only. Elsewhere the restart stays.
+    if !cfg!(target_os = "linux") {
+        return Err("reload is not proven on this platform".into());
+    }
     let (Some(state), Some(pid)) = (info.reload_state, info.pid) else {
         return Err("it predates reload".into());
     };
@@ -142,8 +153,12 @@ fn same(before: &Listed, after: &Listed, id: &str) -> bool {
 async fn run(app: &App, plan: &Plan) -> Outcome {
     // No other call connects, or starts a daemon, until the reload ends.
     let mut guard = app.client.lock().await;
+    // A reload that ends before the request keeps the restart of #27.
+    let keep = |why: &str, live: Option<usize>| restart_warning(&plan.from, plan.protocol, live, Some(why));
     let Some(old) = guard.clone().filter(|c| !c.is_closed()) else {
-        return Outcome { error: Some("skiffd closed the connection before the reload".into()), ..Default::default() };
+        let why = "skiffd closed the connection before the reload";
+        *app.warning.lock().await = Some(keep(why, None));
+        return Outcome { error: Some(why.into()), ..Default::default() };
     };
     // Input from here on waits. Input sent before is on this connection,
     // ahead of the reload request, and skiffd drains it into the PTYs.
@@ -152,12 +167,26 @@ async fn run(app: &App, plan: &Plan) -> Outcome {
         Ok(l) => (listed(&l), naming(&l)),
         Err(e) => {
             let lost = app.input.open_gate(Some(&old), |_| true);
-            return Outcome { error: Some(format!("skiffd did not list its sessions: {e:#}")), lost, ..Default::default() };
+            let why = format!("skiffd did not list its sessions: {e:#}");
+            *app.warning.lock().await = Some(keep(&why, None));
+            return Outcome { error: Some(why), lost, ..Default::default() };
         }
     };
     let live = before.values().filter(|(_, running)| *running).count();
 
-    match old.reload(Some(plan.binary.clone())).await {
+    let Ok(sent) = tokio::time::timeout(RELOAD_WAIT, old.reload(Some(plan.binary.clone()))).await else {
+        // Mid-reload, or stuck. A new connection would reach the old image,
+        // which may still exec and close it. The user decides.
+        let lost = name(app.input.open_gate(None, |_| false));
+        let message = format!("skiffd {} did not finish the reload within {}s", plan.from, RELOAD_WAIT.as_secs());
+        *app.warning.lock().await = Some(Warning {
+            kind: "hung",
+            message: format!("{message}. Restarting stops it and its sessions. Panes come back as shells in their folders."),
+            sessions: Some(live),
+        });
+        return Outcome { error: Some(message), lost, ..Default::default() };
+    };
+    match sent {
         Err(e) if e.downcast_ref::<Refused>().is_some() => {
             // skiffd answered: it did not exec and runs as before. The held
             // input goes to it, for the sessions that still run.
@@ -175,15 +204,19 @@ async fn run(app: &App, plan: &Plan) -> Outcome {
     *app.live.lock().unwrap() = None;
     drop(old);
 
-    let (c, info) = match reconnect(Instant::now() + RECONNECT).await {
+    let (c, info) = match reconnect(plan.pid).await {
         Ok(found) => found,
         Err(why) => {
             let lost = name(app.input.open_gate(None, |_| false));
-            let message = format!("{why}. Its sessions may have ended.");
+            // The page keeps asking: a late answer still brings the sessions.
+            let (message, restart) = match alive(plan.pid) {
+                true => (format!("{why}. It still runs and may answer later."), "Restarting stops it and its sessions."),
+                false => (format!("{why}. Its sessions may have ended."), "Restarting starts a new skiffd."),
+            };
             *app.failed.lock().unwrap() = Some(message.clone());
             *app.warning.lock().await = Some(Warning {
                 kind: "failed",
-                message: format!("{message} Restarting starts a new skiffd. Panes come back as shells in their folders."),
+                message: format!("{message} {restart} Panes come back as shells in their folders."),
                 sessions: None,
             });
             return Outcome { error: Some(message), reconnected: true, lost, ..Default::default() };
@@ -241,8 +274,10 @@ async fn run(app: &App, plan: &Plan) -> Outcome {
 }
 
 /// Connects again and asks the daemon what it is. Never starts a daemon.
-async fn reconnect(until: Instant) -> Result<(Client, DaemonInfo), String> {
+/// Waits up to [`RECONNECT`], and up to [`ADOPT_LIMIT`] while `pid` lives.
+async fn reconnect(pid: u32) -> Result<(Client, DaemonInfo), String> {
     let path = socket_path();
+    let start = Instant::now();
     loop {
         let last = match Client::connect(&path).await {
             Ok(c) => match tokio::time::timeout(HELLO_TIMEOUT, c.daemon_info()).await {
@@ -252,10 +287,22 @@ async fn reconnect(until: Instant) -> Result<(Client, DaemonInfo), String> {
             },
             Err(e) => format!("{e:#}"),
         };
-        if Instant::now() >= until {
+        let waited = start.elapsed();
+        if waited >= ADOPT_LIMIT || (waited >= RECONNECT && !alive(pid)) {
             return Err(format!("skiffd did not come back after the reload ({last})"));
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+/// True while `pid` runs. Reaps it first when this app started it: a zombie
+/// still answers kill(0).
+fn alive(pid: u32) -> bool {
+    let pid = pid as i32;
+    // SAFETY: kill and waitpid take plain integers and touch no memory of ours.
+    unsafe {
+        libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) != pid
+            && (libc::kill(pid, 0) == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM))
     }
 }
 

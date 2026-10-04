@@ -52,9 +52,11 @@ impl Client {
     /// and carries on: it is a [`Refused`]. Any other error leaves the outcome
     /// open. `Ok` means only that the connection closed, as exec closes it.
     /// Confirm on a new connection: the same `pid`, and each session with the
-    /// same id and pid.
+    /// same id and pid. It waits as long as the daemon's reload takes, with
+    /// no reply timeout: a timeout would leave the old daemon mid-reload and
+    /// free to exec later. Bound it at the caller.
     pub async fn reload(&self, binary: Option<PathBuf>) -> Result<()> {
-        match self.request(Request::Reload { binary }).await {
+        match self.request_within(Request::Reload { binary }, None).await {
             Ok(Response::Error { message }) => Err(Refused(message).into()),
             Ok(other) => bail!("unexpected reply: {other:?}"),
             Err(_) if self.is_closed() => Ok(()),
