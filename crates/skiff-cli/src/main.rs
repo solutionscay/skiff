@@ -75,7 +75,7 @@ enum Cmd {
     /// Type text into an idle session. `-` reads the text from stdin. Put
     /// text that starts with `-` after `--`.
     #[command(
-        after_help = "send checks the session before it types any bytes. Exit codes:\n  0  sent\n  1  error\n  3  the session is waiting (approval prompt or bell). A person answers it in the pane. No flag overrides this.\n  4  the session is working. Skiff does not type into a busy session.\n  5  a shell or an unknown program is in front. Use --shell only to type a shell command.\n  6  the session is done\n  7  the session is your own ($SKIFF_SESSION)"
+        after_help = "send checks the session before it types any bytes. Exit codes:\n  0  sent\n  1  error\n  3  the session is waiting (approval prompt or bell). A person answers it in the pane. No flag overrides this.\n  4  the session is working. Skiff does not type into a busy session.\n  5  a shell or an unknown program is in front. Use --shell only to type a shell command.\n  6  the session is done\n  7  the session is your own ($SKIFF_SESSION)\n  8  --enter went to a known agent, but no turn started in 5 seconds. The text can be in its input box. Run `skiff peek` on the session. Do not send it again."
     )]
     Send {
         session: String,

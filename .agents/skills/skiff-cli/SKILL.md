@@ -63,6 +63,14 @@ States: `working`, `waiting`, `idle`, `done`. `waiting` means an approval prompt
 
 `--shell` relaxes only the exit 5 check. No flag overrides a waiting, working, done or own-session refusal. `--raw` and `--shell` do not either.
 
+After the bytes go in, one more check applies:
+
+| Exit | Condition | What to do |
+|---|---|---|
+| 8 | `--enter` went to a known agent (Claude Code, Codex, Gemini, Grok, opencode), but the session stayed `idle` for 5 seconds after Enter | Run `skiff peek S`. If the text is in the input box, tell the user which pane. Do not send it again. |
+
+`send` never presses Enter a second time. It skips this check without `--enter`, with `--raw`, and when the program in front is not a known agent. A turn that starts and ends in under 5 seconds with no output can also give exit 8.
+
 `wait` exit codes:
 
 | Exit | Meaning |
@@ -100,6 +108,7 @@ skiff g new --name pair "$a" "$b" --dir row
 - Never run `skiff attach`. It takes over the terminal and needs a person at the keys.
 - Do not `kill` a session, or remove a session from its group, unless the user asked for that session by name or you started it in this task.
 - Do not `send` into a session you did not start unless the user asked you to.
+- On exit 8 from `send`, run `skiff peek S`. If the text is in the input box, tell the user which pane holds it, with its name and id. Do not send the text again.
 - Only a person answers an approval. On exit 3 from `send` or `wait`, tell the user which pane needs them, with its name and id. End the turn. Do not answer the prompt. Do not retry until the user says to continue.
 - Give each `wait` a `--timeout` shorter than your shell tool's time limit.
 - A child reports to its parent when it ends its turn with the result on screen or in a file. The parent waits, then reads the result with `peek`.

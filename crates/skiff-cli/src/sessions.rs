@@ -232,6 +232,7 @@ pub struct Send<'a> {
 
 /// Exit codes: 0 when sent; 3 waiting, 4 working, 5 a shell or unknown
 /// program in front, 6 done, 7 own session. A refusal types nothing.
+/// 8: Enter went to a known agent, but no turn started.
 pub async fn send(c: &Client, arg: &str, o: Send<'_>) -> Result<i32> {
     let all = c.list_sessions().await?;
     let s = resolve::session(&all, arg)?;
@@ -267,11 +268,75 @@ pub async fn send(c: &Client, arg: &str, o: Send<'_>) -> Result<i32> {
             c.paste(&s.id, data).await?;
         }
     }
-    if enter {
-        tokio::time::sleep(ENTER_DELAY).await;
-        c.write(&s.id, b"\r".to_vec()).await?;
+    if !enter {
+        return Ok(0);
     }
-    Ok(0)
+    tokio::time::sleep(ENTER_DELAY).await;
+    // Only a known agent proves a turn by its state. A shell command can
+    // finish with no output, so idle proves nothing there.
+    let agent = !raw && is_agent(s);
+    // Listen before Enter, so no change falls before the listener.
+    let events = agent.then(|| c.events());
+    c.write(&s.id, b"\r".to_vec()).await?;
+    let Some(events) = events else { return Ok(0) };
+    if turn_started(c, &s.id, events).await? {
+        return Ok(0);
+    }
+    // Never press Enter again: it can submit twice or add a blank line.
+    eprintln!(
+        "skiff: {} ({}): text sent, but no turn started. It can be in the input box. Check its pane.",
+        resolve::display_name(s),
+        print::short_id(&s.id)
+    );
+    Ok(8)
+}
+
+/// How long an agent has to start a turn after Enter.
+const TURN_WAIT: Duration = Duration::from_secs(5);
+
+/// The program in front is an agent Skiff knows. The daemon names a known
+/// agent by its id ("claude", "codex"...), whatever binary runs it.
+fn is_agent(s: &SessionInfo) -> bool {
+    let prog = s.foreground_program.as_deref().map(basename).unwrap_or("");
+    skiff_core::project::KNOWN_AGENTS.iter().any(|(id, _)| *id == prog)
+}
+
+/// True when the session leaves idle within `TURN_WAIT`: the agent took the
+/// message. An exit or a removal also counts, as the program reacted.
+async fn turn_started(
+    c: &Client,
+    id: &str,
+    mut events: tokio::sync::broadcast::Receiver<skiff_core::protocol::Event>,
+) -> Result<bool> {
+    use skiff_core::protocol::Event;
+    use tokio::sync::broadcast::error::RecvError;
+    let deadline = tokio::time::Instant::now() + TURN_WAIT;
+    loop {
+        match tokio::time::timeout_at(deadline, events.recv()).await {
+            Err(_) => break,
+            Ok(Ok(Event::State { session, state })) if session == id && state != SessionState::Idle => {
+                return Ok(true)
+            }
+            Ok(Ok(Event::Exit { session, .. } | Event::SessionRemoved { session })) if session == id => {
+                return Ok(true)
+            }
+            Ok(Ok(_)) => {}
+            // Missed events: read the state again.
+            Ok(Err(RecvError::Lagged(_))) => {
+                if !still_idle(c, id).await? {
+                    return Ok(true);
+                }
+            }
+            Ok(Err(RecvError::Closed)) => bail!("skiffd closed the connection"),
+        }
+    }
+    // The paste can start work before the listener exists. Read the state.
+    Ok(!still_idle(c, id).await?)
+}
+
+async fn still_idle(c: &Client, id: &str) -> Result<bool> {
+    let all = c.list_sessions().await?;
+    Ok(all.iter().any(|s| s.id == id && s.state == SessionState::Idle))
 }
 
 /// Newlines as the Enter key sends them: `\r`.
@@ -383,5 +448,16 @@ mod tests {
         assert_eq!(code(&s("shell", Idle, Some("xonsh")), None, false, Some("")), 0);
         // A shell-role pane with an agent in front.
         assert_eq!(code(&s("shell", Idle, Some("codex")), None, false, Some("/bin/bash")), 0);
+    }
+
+    #[test]
+    fn known_agents_only() {
+        use SessionState::Idle;
+        for fg in ["claude", "codex", "gemini", "grok", "opencode"] {
+            assert!(super::is_agent(&s("shell", Idle, Some(fg))), "{fg}");
+        }
+        for fg in [None, Some("bash"), Some("sh"), Some("vim"), Some("node")] {
+            assert!(!super::is_agent(&s("agent", Idle, fg)), "{fg:?}");
+        }
     }
 }
