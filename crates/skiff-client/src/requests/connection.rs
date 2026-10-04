@@ -3,6 +3,19 @@ use anyhow::{bail, Result};
 use skiff_core::protocol::{Request, Response};
 use std::path::PathBuf;
 
+/// A reload the daemon refused. The old daemon answered, so it did not exec
+/// and carries on as before.
+#[derive(Debug)]
+pub struct Refused(pub String);
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Refused {}
+
 /// What a daemon says about itself in its `pong`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DaemonInfo {
@@ -36,12 +49,13 @@ impl Client {
     /// Asks the daemon to move onto `binary` (default: its own executable)
     /// and keep its sessions. Send it on the connection that carried the
     /// writes it must keep. An error is the old daemon's: it did not reload
-    /// and carries on. `Ok` means only that the connection closed, as exec
-    /// closes it. Confirm on a new connection: the same `pid`, and each
-    /// session with the same id and pid.
+    /// and carries on: it is a [`Refused`]. Any other error leaves the outcome
+    /// open. `Ok` means only that the connection closed, as exec closes it.
+    /// Confirm on a new connection: the same `pid`, and each session with the
+    /// same id and pid.
     pub async fn reload(&self, binary: Option<PathBuf>) -> Result<()> {
         match self.request(Request::Reload { binary }).await {
-            Ok(Response::Error { message }) => bail!(message),
+            Ok(Response::Error { message }) => Err(Refused(message).into()),
             Ok(other) => bail!("unexpected reply: {other:?}"),
             Err(_) if self.is_closed() => Ok(()),
             Err(e) => Err(e),
