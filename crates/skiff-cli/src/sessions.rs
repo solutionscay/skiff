@@ -176,15 +176,78 @@ async fn group_cwd(c: &Client, g: &Group) -> Result<Option<PathBuf>> {
 /// from fast input, and takes an Enter that comes too soon as a newline.
 const ENTER_DELAY: Duration = Duration::from_millis(200);
 
-pub async fn send(c: &Client, arg: &str, text: &[String], enter: bool, raw: bool) -> Result<()> {
+/// Why `send` must not type into `s`, as an exit code and a message.
+/// `here` is `SKIFF_SESSION`; `caller_shell` is the caller's `SHELL`.
+/// Checks run in a fixed order; `--shell` relaxes only the last one.
+pub fn refusal(s: &SessionInfo, here: Option<&str>, shell_ok: bool, caller_shell: Option<&str>) -> Option<(i32, String)> {
+    let who = format!("{} ({})", resolve::display_name(s), print::short_id(&s.id));
+    if here.is_some_and(|h| h == s.id) {
+        return Some((7, format!("{who} is your own session. Send to another session.")));
+    }
+    match s.state {
+        SessionState::Waiting => return Some((3, waiting_msg(&resolve::display_name(s), &s.id))),
+        SessionState::Working => {
+            return Some((4, format!("{who} is busy. Skiff does not type into a working session.")))
+        }
+        SessionState::Done => return Some((6, format!("{who} is done. Its program exited."))),
+        SessionState::Idle => {}
+    }
+    if shell_ok {
+        return None;
+    }
+    let prog = s.foreground_program.as_deref().map(basename).unwrap_or("");
+    if prog.is_empty() {
+        return Some((
+            5,
+            format!("Skiff cannot identify the foreground program of {who}. Use --shell to send anyway."),
+        ));
+    }
+    let caller = caller_shell.map(basename).unwrap_or("");
+    if SHELLS.contains(&prog) || (!caller.is_empty() && prog == caller) {
+        return Some((5, format!("{who} has a shell ({prog}) in front. Use --shell to type a command into it.")));
+    }
+    None
+}
+
+/// The message for a session that needs a person: `send` and `wait` share it.
+pub fn waiting_msg(name: &str, id: &str) -> String {
+    format!("{name} ({}) is waiting (approval prompt or bell). Check its pane in Skiff.", print::short_id(id))
+}
+
+const SHELLS: [&str; 9] = ["bash", "zsh", "fish", "sh", "dash", "ksh", "tcsh", "csh", "nu"];
+
+/// A program's file name. A login shell's leading `-` is dropped.
+fn basename(p: &str) -> &str {
+    let p = p.trim();
+    let name = p.rsplit('/').next().unwrap_or(p);
+    name.strip_prefix('-').unwrap_or(name)
+}
+
+pub struct Send<'a> {
+    pub text: &'a [String],
+    pub enter: bool,
+    pub raw: bool,
+    pub shell: bool,
+}
+
+/// Exit codes: 0 when sent; 3 waiting, 4 working, 5 a shell or unknown
+/// program in front, 6 done, 7 own session. A refusal types nothing.
+pub async fn send(c: &Client, arg: &str, o: Send<'_>) -> Result<i32> {
     let all = c.list_sessions().await?;
     let s = resolve::session(&all, arg)?;
-    let mut data = if text == ["-"] {
+    let here = std::env::var("SKIFF_SESSION").ok().filter(|h| !h.is_empty());
+    let caller_shell = std::env::var("SHELL").ok();
+    if let Some((code, msg)) = refusal(s, here.as_deref(), o.shell, caller_shell.as_deref()) {
+        eprintln!("skiff: {msg}");
+        return Ok(code);
+    }
+    let (enter, raw) = (o.enter, o.raw);
+    let mut data = if o.text == ["-"] {
         let mut buf = Vec::new();
         std::io::stdin().read_to_end(&mut buf).context("read stdin")?;
         buf
     } else {
-        text.join(" ").into_bytes()
+        o.text.join(" ").into_bytes()
     };
     if !raw {
         data = enter_keys(&data);
@@ -208,7 +271,7 @@ pub async fn send(c: &Client, arg: &str, text: &[String], enter: bool, raw: bool
         tokio::time::sleep(ENTER_DELAY).await;
         c.write(&s.id, b"\r".to_vec()).await?;
     }
-    Ok(())
+    Ok(0)
 }
 
 /// Newlines as the Enter key sends them: `\r`.
@@ -268,8 +331,57 @@ pub async fn kill(c: &Client, args: &[String]) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use skiff_core::session::{SessionInfo, SessionState};
+
+    use super::refusal;
+
     #[test]
     fn newlines_become_enter() {
         assert_eq!(super::enter_keys(b"a\nb\r\nc\r"), b"a\rb\rc\r");
+    }
+
+    fn s(role: &str, state: SessionState, fg: Option<&str>) -> SessionInfo {
+        let mut s: SessionInfo = serde_json::from_value(serde_json::json!({
+            "id": "abcdef0123", "label": "x", "role": role, "cwd": "/", "command": "claude",
+            "args": [], "state": "idle", "cols": 80, "rows": 24, "pid": null, "exit_code": null,
+        }))
+        .unwrap();
+        s.state = state;
+        s.foreground_program = fg.map(String::from);
+        s
+    }
+
+    fn code(x: &SessionInfo, here: Option<&str>, shell: bool, caller: Option<&str>) -> i32 {
+        refusal(x, here, shell, caller).map_or(0, |r| r.0)
+    }
+
+    #[test]
+    fn order_and_codes() {
+        use SessionState::*;
+        let idle = s("agent", Idle, Some("claude"));
+        assert_eq!(code(&idle, Some("abcdef0123"), true, None), 7);
+        assert_eq!(code(&s("agent", Waiting, Some("claude")), Some("abcdef0123"), true, None), 7);
+        assert_eq!(code(&s("agent", Waiting, Some("bash")), None, true, None), 3);
+        assert_eq!(code(&s("agent", Working, None), None, true, None), 4);
+        assert_eq!(code(&s("shell", Done, None), None, true, None), 6);
+        assert_eq!(code(&idle, Some("other"), false, None), 0);
+    }
+
+    #[test]
+    fn shell_check() {
+        use SessionState::Idle;
+        // An agent that exited to a shell, and a nested shell, need --shell.
+        assert_eq!(code(&s("agent", Idle, Some("bash")), None, false, None), 5);
+        assert_eq!(code(&s("agent", Idle, Some("/usr/bin/zsh")), None, false, None), 5);
+        assert_eq!(code(&s("agent", Idle, Some("bash")), None, true, None), 0);
+        // Unknown program.
+        assert_eq!(code(&s("shell", Idle, None), None, false, None), 5);
+        assert_eq!(code(&s("shell", Idle, Some("")), None, false, None), 5);
+        assert_eq!(code(&s("shell", Idle, None), None, true, None), 0);
+        // The caller's SHELL counts as a shell.
+        assert_eq!(code(&s("shell", Idle, Some("xonsh")), None, false, Some("/usr/bin/xonsh")), 5);
+        assert_eq!(code(&s("shell", Idle, Some("xonsh")), None, false, Some("")), 0);
+        // A shell-role pane with an agent in front.
+        assert_eq!(code(&s("shell", Idle, Some("codex")), None, false, Some("/bin/bash")), 0);
     }
 }
