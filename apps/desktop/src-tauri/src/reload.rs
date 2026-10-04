@@ -45,10 +45,6 @@ pub(crate) struct Plan {
 
 /// A reload onto the bundled skiffd, or why there is none.
 pub(crate) async fn plan(info: &DaemonInfo) -> Result<Plan, String> {
-    // The handover of #69 is proven on Linux only. Elsewhere the restart stays.
-    if !cfg!(target_os = "linux") {
-        return Err("reload is not proven on this platform".into());
-    }
     let (Some(state), Some(pid)) = (info.reload_state, info.pid) else {
         return Err("it predates reload".into());
     };
@@ -306,7 +302,7 @@ fn alive(pid: u32) -> bool {
     }
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use crate::connection::ensure_client;

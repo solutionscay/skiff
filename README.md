@@ -128,13 +128,13 @@ skiffd has its own version (`crates/skiffd` and `crates/skiff-core`), apart from
 app version. At launch the app compares the running daemon's version and protocol
 (`skiff_core::PROTOCOL`) with the skiffd it ships:
 
-- On Linux, an older daemon that supports reload moves onto the bundled skiffd in place,
+- An older daemon that supports reload moves onto the bundled skiffd in place,
   with no prompt. The status bar shows "Reloading skiffd…". Typed input waits, and goes on only
   after the app sees the same daemon pid, the new version, and each session with the
   same child pid. Sessions keep running. The protocol may differ: the reload request
   and the handover keep their own format.
-- A daemon that predates reload, that the bundled skiffd cannot adopt, or that runs on
-  macOS, keeps the restart flow. With no live session the app replaces it without asking. With live
+- A daemon that predates reload, or that the bundled skiffd cannot adopt, keeps the
+  restart flow. With no live session the app replaces it without asking. With live
   sessions it shows a "Restart skiffd" button instead.
 - A newer daemon stays. The app never downgrades it.
 
