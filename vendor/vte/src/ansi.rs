@@ -282,6 +282,49 @@ pub struct Processor<T: Timeout> {
     parser: crate::Parser,
 }
 
+/// skiff: everything a [`Processor`] holds between two calls to `advance`:
+/// the parser mid-sequence, the last printed character, and an open
+/// synchronized update with its unapplied bytes.
+#[cfg(all(feature = "serde", feature = "std"))]
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ProcessorSave {
+    parser: crate::Parser,
+    preceding_char: Option<char>,
+    sync_buffer: Vec<u8>,
+    /// Milliseconds left on an open synchronized update. `None` when none is open.
+    sync_left_ms: Option<u64>,
+}
+
+#[cfg(all(feature = "serde", feature = "std"))]
+impl Processor<StdSyncHandler> {
+    /// skiff: the state to rebuild this processor with [`Self::restore`].
+    pub fn save(&self) -> ProcessorSave {
+        let now = Instant::now();
+        ProcessorSave {
+            parser: self.parser.clone(),
+            preceding_char: self.state.preceding_char,
+            sync_buffer: self.state.sync_state.buffer.clone(),
+            sync_left_ms: self
+                .state
+                .sync_state
+                .timeout
+                .timeout
+                .map(|t| t.saturating_duration_since(now).as_millis() as u64),
+        }
+    }
+
+    /// skiff: a processor that continues where the saved one stopped.
+    pub fn restore(save: ProcessorSave) -> Self {
+        let mut p = Self::default();
+        p.parser = save.parser;
+        p.state.preceding_char = save.preceding_char;
+        p.state.sync_state.buffer.extend_from_slice(&save.sync_buffer);
+        p.state.sync_state.timeout.timeout =
+            save.sync_left_ms.map(|ms| Instant::now() + Duration::from_millis(ms));
+        p
+    }
+}
+
 impl<T: Timeout> Processor<T> {
     #[inline]
     pub fn new() -> Self {

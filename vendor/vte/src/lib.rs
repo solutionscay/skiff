@@ -51,7 +51,10 @@ const MAX_OSC_RAW: usize = 1024;
 ///
 /// Generic over the value for the size of the raw Operating System Command
 /// buffer. Only used when the `std` feature is not enabled.
-#[derive(Default)]
+// skiff: Clone and serde, so a terminal can be handed to a new process in the
+// middle of an escape sequence.
+#[derive(Default, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Parser<const OSC_RAW_BUF_SIZE: usize = MAX_OSC_RAW> {
     state: State,
     intermediates: [u8; MAX_INTERMEDIATES],
@@ -730,6 +733,7 @@ impl<const OSC_RAW_BUF_SIZE: usize> Parser<OSC_RAW_BUF_SIZE> {
 }
 
 #[derive(PartialEq, Eq, Debug, Default, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 enum State {
     CsiEntry,
     CsiIgnore,

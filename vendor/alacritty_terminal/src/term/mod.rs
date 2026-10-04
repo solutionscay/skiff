@@ -29,6 +29,11 @@ use crate::vte::ansi::{
 pub mod cell;
 pub mod color;
 pub mod search;
+// skiff: full state save and restore.
+#[cfg(feature = "serde")]
+mod save;
+#[cfg(feature = "serde")]
+pub use save::{CursorSave, TermSave, TermSaveOwned};
 
 /// Minimum number of columns.
 ///
