@@ -105,15 +105,21 @@ overrides the socket path, `SKIFF_CONFIG` the config file.
 ### Changes to skiffd
 
 The daemon outlives the app. A rebuild does not replace the daemon that is running,
-so a change to `crates/skiffd` has no effect until you restart it:
+so a change to `crates/skiffd` has no effect until you reload or restart it:
 
 ```
 cargo build -p skiffd      # pnpm tauri dev also does this
-pkill -x skiffd            # ends every open session
+skiff daemon reload        # same pid, every session and its screen kept
 ```
 
-Then reload the window (Ctrl+R) or restart the app. The app starts the new binary
-on its next call.
+`skiff daemon reload` execs the rebuilt binary in place. It refuses, and the old
+daemon carries on, when the new binary cannot adopt the sessions. Then restart:
+`pkill -x skiffd` ends every open session, and the app starts the new binary on its
+next call. Reload the window (Ctrl+R) or restart the app after either one.
+
+A change to what a reload hands over must keep the two binaries compatible: raise
+`HANDOVER` in `crates/skiffd/src/session/reload.rs` when the handover metadata
+changes. The terminal state's encoding is checked on its own (`skiffd --reload-info`).
 
 skiffd has its own version (`crates/skiffd` and `crates/skiff-core`), apart from the
 app version. At launch the app compares the running daemon's version and protocol

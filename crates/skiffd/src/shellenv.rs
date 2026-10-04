@@ -9,6 +9,7 @@
 use std::{
     io::Read,
     process::{Command, Stdio},
+    sync::OnceLock,
     time::{Duration, Instant},
 };
 
@@ -17,6 +18,20 @@ const TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Variables that describe the probe shell itself, not the user's setup.
 const SKIP: &[&str] = &["_", "PWD", "OLDPWD", "SHLVL", "TERM", "COLORTERM", "PS1"];
+
+/// The `alias` output the aliases came from. A reload hands it on: exec keeps
+/// the environment, but not what the probe found besides.
+static ALIASES: OnceLock<String> = OnceLock::new();
+
+pub fn aliases() -> &'static str {
+    ALIASES.get().map_or("", String::as_str)
+}
+
+/// Sets the aliases without a probe, as a reload found them.
+pub fn set_aliases(text: &str) {
+    skiff_core::alias::set(text);
+    let _ = ALIASES.set(text.to_string());
+}
 
 /// Copies the login shell's variables into this process. Call it before any
 /// thread starts: it changes the process environment.
@@ -29,7 +44,7 @@ pub fn import() {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
     match probe(&shell) {
         Some((vars, aliases)) => {
-            skiff_core::alias::set(&aliases);
+            set_aliases(&aliases);
             if from_launcher {
                 for (k, v) in vars {
                     if !SKIP.contains(&k.as_str()) {

@@ -9,8 +9,9 @@ use crate::print;
 
 pub async fn status(socket: &Path) -> Result<()> {
     let c = crate::connect(socket).await?;
-    let (version, protocol) = c.hello().await?;
-    let pid = c.daemon_pid.map_or("?".to_string(), |p| p.to_string());
+    let info = c.daemon_info().await?;
+    let (version, protocol) = (info.version, info.protocol);
+    let pid = info.pid.map(|p| p as i32).or(c.daemon_pid).map_or("?".to_string(), |p| p.to_string());
     println!("skiffd    {version}");
     let note = if protocol == skiff_core::PROTOCOL {
         String::new()
@@ -19,6 +20,7 @@ pub async fn status(socket: &Path) -> Result<()> {
     };
     println!("protocol  {protocol}{note}");
     println!("pid       {pid}");
+    println!("reload    {}", info.reload_state.map_or("no".to_string(), |v| format!("yes (handover {v})")));
     println!("socket    {}", socket.display());
     Ok(())
 }

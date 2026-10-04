@@ -5,14 +5,15 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
-        Arc, Mutex, RwLock,
+        atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, AtomicUsize, Ordering},
+        Arc, Condvar, Mutex, RwLock, RwLockReadGuard,
     },
     time::{Duration, Instant},
 };
 
-use anyhow::{anyhow, Context, Result};
-use portable_pty::{native_pty_system, ChildKiller, MasterPty, PtySize};
+use anyhow::{anyhow, bail, Context, Result};
+use polling::Poller;
+use portable_pty::{native_pty_system, PtySize};
 use skiff_core::{
     group::Group,
     protocol::Event,
@@ -21,6 +22,7 @@ use skiff_core::{
 use tokio::sync::{broadcast, Notify};
 
 use crate::{
+    pty::{self, Pty},
     screen::{title_state, Screen, Signals, TitleState},
     workspace::{SavedSession, Workspace},
 };
@@ -30,6 +32,7 @@ mod foreground;
 mod groups;
 mod persistence;
 mod launch;
+pub mod reload;
 use groups::prune;
 
 pub type Chunk = Arc<Vec<u8>>;
@@ -80,11 +83,16 @@ const SCAN: Duration = Duration::from_millis(100);
 
 pub struct Session {
     info: Mutex<SessionInfo>,
-    master: Mutex<Box<dyn MasterPty + Send>>,
+    pty: Pty,
     /// Input for the writer thread. A program that stops reading its input
     /// blocks that thread, never the daemon's executor or other sessions.
     input: std::sync::mpsc::Sender<Vec<u8>>,
-    killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+    /// Writes accepted and not yet in the PTY. A reload waits for 0.
+    queued: Arc<AtomicUsize>,
+    /// Wakes the reader thread out of its wait, so it sees a pause request.
+    waker: Poller,
+    /// Pauses the reader thread for a reload.
+    park: Park,
     /// Raw PTY output. Subscribers that lag lose chunks, never block the reader.
     pub output: broadcast::Sender<Chunk>,
     /// Unix ms of the last PTY read. Atomic so the reader takes no lock for it.
@@ -113,6 +121,24 @@ pub struct Session {
     /// Emulator plus unsent bytes. One lock, so a snapshot and the live
     /// stream never overlap or leave a gap.
     screen: Mutex<ScreenState>,
+}
+
+/// The handshake that pauses a reader thread. A reader checks it between
+/// reads, never with bytes read and not yet fed to the screen.
+#[derive(Default)]
+struct Park {
+    state: Mutex<ParkState>,
+    changed: Condvar,
+}
+
+#[derive(Default)]
+struct ParkState {
+    /// A reload wants the reader paused.
+    asked: bool,
+    /// The reader is paused.
+    parked: bool,
+    /// The reader has ended: the child is reaped and its exit recorded.
+    done: bool,
 }
 
 struct ScreenState {
@@ -168,13 +194,7 @@ impl Session {
     /// The program took the terminal: raw input, as editors, pagers and
     /// pickers set, or the alternate screen.
     fn takes_terminal(&self) -> bool {
-        if self.screen.lock().unwrap().screen.alt() {
-            return true;
-        }
-        let Some(fd) = self.master.lock().unwrap().as_raw_fd() else { return false };
-        let mut t: libc::termios = unsafe { std::mem::zeroed() };
-        // SAFETY: tcgetattr writes into `t` and only reads the fd, which the master owns.
-        unsafe { libc::tcgetattr(fd, &mut t) == 0 && t.c_lflag & libc::ICANON == 0 }
+        self.screen.lock().unwrap().screen.alt() || self.pty.raw_input()
     }
 
     pub fn info(&self) -> SessionInfo {
@@ -200,14 +220,53 @@ impl Session {
     }
 
     /// The process group in front of the PTY. One ioctl.
-    #[cfg(unix)]
     pub(crate) fn foreground_group(&self) -> Option<u32> {
-        self.master.lock().unwrap().process_group_leader().map(|pid| pid as u32)
+        self.pty.foreground_group()
     }
 
-    #[cfg(not(unix))]
-    pub(crate) fn foreground_group(&self) -> Option<u32> {
-        None
+    /// Called by the reader thread between reads. Waits while a reload has
+    /// it paused.
+    fn park_point(&self) {
+        let mut st = self.park.state.lock().unwrap();
+        if !st.asked {
+            return;
+        }
+        st.parked = true;
+        self.park.changed.notify_all();
+        while st.asked {
+            st = self.park.changed.wait(st).unwrap();
+        }
+        st.parked = false;
+    }
+
+    /// Asks the reader to pause and waits until it has, or has ended.
+    fn pause_reader(&self, until: Instant) -> Result<()> {
+        let mut st = self.park.state.lock().unwrap();
+        st.asked = true;
+        let _ = self.waker.notify();
+        while !st.parked && !st.done {
+            let left = until.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                bail!("the reader of session {} did not pause", self.info.lock().unwrap().id);
+            }
+            st = self.park.changed.wait_timeout(st, left).unwrap().0;
+        }
+        Ok(())
+    }
+
+    fn resume_reader(&self) {
+        self.park.state.lock().unwrap().asked = false;
+        self.park.changed.notify_all();
+    }
+
+    /// The reader ended: the child is reaped, or the session was adopted done.
+    fn reader_done(&self) -> bool {
+        self.park.state.lock().unwrap().done
+    }
+
+    fn set_reader_done(&self) {
+        self.park.state.lock().unwrap().done = true;
+        self.park.changed.notify_all();
     }
 
     /// Feeds the emulator and queues the bytes. Scans the screen when the last
@@ -261,12 +320,24 @@ impl Session {
 
 pub struct SessionPool {
     sessions: RwLock<HashMap<SessionId, Arc<Session>>>,
+    /// Killed sessions whose reader has not reaped the child yet.
+    dying: Mutex<Vec<Arc<Session>>>,
     /// Named layouts, in creation order. Locked before `sessions` when both are.
     groups: Mutex<Vec<Group>>,
     /// State changes, exits, creations, removals. Not output.
     pub events: broadcast::Sender<Event>,
     /// Groups or sessions changed since the last save.
     dirty: Notify,
+    /// Set while a reload hands the sessions over. Changes are refused and
+    /// the watchers skip their turn.
+    reloading: AtomicBool,
+    /// Held shared by each change to sessions or groups and each process
+    /// spawn. A reload takes it alone once, to wait for those in flight.
+    changes: RwLock<()>,
+    /// One reload at a time.
+    reload: Mutex<()>,
+    /// The listening socket's fd, which a reload hands over. -1 when unset.
+    listener: AtomicI32,
 }
 
 impl Default for SessionPool {
@@ -274,9 +345,14 @@ impl Default for SessionPool {
         let (events, _) = broadcast::channel(4096);
         Self {
             sessions: RwLock::new(HashMap::new()),
+            dying: Mutex::new(Vec::new()),
             groups: Mutex::new(Vec::new()),
             events,
             dirty: Notify::new(),
+            reloading: AtomicBool::new(false),
+            changes: RwLock::new(()),
+            reload: Mutex::new(()),
+            listener: AtomicI32::new(-1),
         }
     }
 }
@@ -287,6 +363,27 @@ const SAVE_DELAY: Duration = Duration::from_millis(500);
 impl SessionPool {
     pub fn new() -> Arc<Self> {
         Arc::new(Self::default())
+    }
+
+    /// Permission to change sessions or groups, or to start a process.
+    /// Refused while a reload runs: the change would miss the handover, and
+    /// a new process could inherit fds the reload passes on.
+    pub(crate) fn change(&self) -> Result<RwLockReadGuard<'_, ()>> {
+        let guard = self.changes.read().unwrap();
+        if self.reloading.load(Ordering::Acquire) {
+            bail!("skiffd is reloading; try again");
+        }
+        Ok(guard)
+    }
+
+    /// For the watchers: `None` while a reload runs.
+    fn quiet(&self) -> Option<RwLockReadGuard<'_, ()>> {
+        self.change().ok()
+    }
+
+    /// The listening socket, for a reload to hand over.
+    pub fn set_listener(&self, fd: i32) {
+        self.listener.store(fd, Ordering::Relaxed);
     }
 
     pub fn list(&self) -> Vec<SessionInfo> {
@@ -306,6 +403,7 @@ impl SessionPool {
     }
 
     pub fn create(self: &Arc<Self>, spec: SessionSpec) -> Result<SessionInfo> {
+        let _change = self.change()?;
         self.spawn(spec, None)
     }
 
@@ -345,21 +443,17 @@ impl SessionPool {
         let id: SessionId =
             id.unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string()[..12].to_string());
         let (cmd, is_shell) = launch::launch_command(&spec, &command, &cwd, &id);
-        let mut child = pair
+        let child = pair
             .slave
             .spawn_command(cmd)
             .with_context(|| format!("spawn {command} in {}", cwd.display()))?;
         drop(pair.slave);
-
-        let reader = pair
-            .master
-            .try_clone_reader()
-            .map_err(|e| anyhow!("clone reader: {e}"))?;
-        let writer = pair
-            .master
-            .take_writer()
-            .map_err(|e| anyhow!("take writer: {e}"))?;
-        let killer = child.clone_killer();
+        // From here on the session is its master fd and the child's pid. The
+        // reader reaps the pid; dropping `child` neither waits nor kills.
+        let pid = child.process_id();
+        drop(child);
+        let pty = Pty::from_master(&*pair.master)?;
+        drop(pair.master);
 
         let info = SessionInfo {
             id: id.clone(),
@@ -372,7 +466,7 @@ impl SessionPool {
             state: SessionState::Working,
             cols: spec.cols,
             rows: spec.rows,
-            pid: child.process_id(),
+            pid,
             exit_code: None,
             theme: None,
             name: spec.name.filter(|name| !name.trim().is_empty()),
@@ -388,26 +482,15 @@ impl SessionPool {
             interactive: false,
         };
 
-        let (input, input_rx) = std::sync::mpsc::channel::<Vec<u8>>();
-        std::thread::Builder::new()
-            .name(format!("pty-in-{id}"))
-            .spawn(move || {
-                let mut writer = writer;
-                // Ends when the session is dropped or the PTY is gone.
-                for data in input_rx {
-                    if writer.write_all(&data).and_then(|_| writer.flush()).is_err() {
-                        break;
-                    }
-                }
-            })
-            .context("spawn writer thread")?;
-
+        let (input, queued) = start_writer(&id, &pty)?;
         let (output, _) = broadcast::channel(4096);
         let session = Arc::new(Session {
             info: Mutex::new(info.clone()),
-            master: Mutex::new(pair.master),
+            pty,
             input,
-            killer: Mutex::new(killer),
+            queued,
+            waker: Poller::new().context("poller")?,
+            park: Park::default(),
             output,
             last_output: AtomicU64::new(info.last_output_at),
             last_input: AtomicU64::new(0),
@@ -442,96 +525,145 @@ impl SessionPool {
         if info.peek {
             self.watch_peek(&id);
         }
+        self.start_reader(session)?;
+        Ok(info)
+    }
 
+    /// The thread that reads the PTY until the child is gone, feeds the
+    /// screen, and reaps the child by its pid. A reload can pause it between
+    /// reads; see [`Session::park_point`].
+    fn start_reader(self: &Arc<Self>, session: Arc<Session>) -> Result<()> {
+        let mut reader = session.pty.reader().context("clone reader")?;
+        // SAFETY: the reader thread owns `reader` and deletes it from the
+        // poller before it closes.
+        unsafe { session.waker.add(&reader, polling::Event::readable(0)) }.context("watch PTY")?;
         let pool = self.clone();
-        let sid = id.clone();
+        let sid = session.info.lock().unwrap().id.clone();
         std::thread::Builder::new()
             .name(format!("pty-{sid}"))
             .spawn(move || {
-                let mut reader = reader;
                 let mut buf = vec![0u8; 16 * 1024];
+                let mut events = polling::Events::new();
                 loop {
+                    session.park_point();
+                    events.clear();
+                    match session.waker.wait(&mut events, None) {
+                        Ok(_) => {}
+                        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                        Err(_) => break,
+                    }
+                    // A wake from `pause_reader` only.
+                    if events.is_empty() {
+                        continue;
+                    }
                     let n = match reader.read(&mut buf) {
+                        // EIO: the child closed the terminal.
                         Ok(0) | Err(_) => break,
                         Ok(n) => n,
                     };
-                    let chunk = &buf[..n];
-                    session.last_output.store(now_ms(), Ordering::Relaxed);
-                    let (signals, scan, echo) = session.push_output(chunk);
-                    // A bell that answers a key is no call: the user is at the
-                    // keys. The BEL that ends a title sequence is not a bell.
-                    if signals.bell && !echo {
-                        pool.bell(&session);
-                    }
-                    // A program that starts or ends prints. Read the group in
-                    // front now, so the state does not wait for the watcher.
-                    if scan.scanned {
-                        if let Some(group) = session.foreground_group() {
-                            if group != session.group.load(Ordering::Relaxed) {
-                                pool.classify(&session, &mut None);
-                            }
-                        }
-                    }
-                    pool.apply_scan(&session, scan);
-                    if let Some(title) = signals.title {
-                        let title = title.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
-                        let handoff = title.as_deref().and_then(|t| t.strip_prefix(SHELL_HANDOFF_TITLE));
-                        if let Some(code) = handoff {
-                            // The agent that owned this pane just exited and the
-                            // wrapper is about to exec the fallback shell in its
-                            // place. Forget the agent's label and command so the
-                            // icon falls back to a plain shell instead of the
-                            // agent that is no longer running. Its flags go
-                            // too: a restore must not pass them to the shell.
-                            let shell_name = PathBuf::from(default_shell())
-                                .file_name()
-                                .map(|s| s.to_string_lossy().into_owned())
-                                .unwrap_or_else(default_shell);
-                            session.shell.store(true, Ordering::Relaxed);
-                            let info = {
-                                let mut info = session.info.lock().unwrap();
-                                info.title = None;
-                                info.label = shell_name.clone();
-                                info.command = shell_name;
-                                info.args.clear();
-                                info.agent_exit = code.strip_prefix(':').and_then(|c| c.parse().ok());
-                                info.clone()
-                            };
-                            let _ = pool.events.send(Event::SessionUpdated { session: info });
-                            pool.dirty.notify_one();
-                        } else {
-                            pool.apply_title(&session, title.as_deref());
-                            let changed = {
-                                let mut info = session.info.lock().unwrap();
-                                let changed = info.title != title;
-                                info.title = title.clone();
-                                changed
-                            };
-                            if changed {
-                                let _ = pool.events.send(Event::Title {
-                                    session: sid.clone(),
-                                    title,
-                                });
-                            }
-                        }
+                    pool.on_output(&session, &sid, &buf[..n]);
+                    if session.waker.modify(&reader, polling::Event::readable(0)).is_err() {
+                        break;
                     }
                 }
+                let _ = session.waker.delete(&reader);
+                drop(reader);
                 session.flush_output();
-                let code = child.wait().ok().map(|s| s.exit_code() as i32);
-                {
-                    let mut info = session.info.lock().unwrap();
-                    info.exit_code = code;
-                    info.state = SessionState::Done;
-                }
-                let _ = pool.events.send(Event::State {
-                    session: sid.clone(),
-                    state: SessionState::Done,
-                });
-                let _ = pool.events.send(Event::Exit { session: sid, code });
+                pool.reap(&session, &sid);
             })
             .context("spawn reader thread")?;
+        Ok(())
+    }
 
-        Ok(info)
+    /// One read's worth of output: the screen, the bell, the state, the title.
+    fn on_output(&self, session: &Arc<Session>, sid: &str, chunk: &[u8]) {
+        session.last_output.store(now_ms(), Ordering::Relaxed);
+        let (signals, scan, echo) = session.push_output(chunk);
+        // A bell that answers a key is no call: the user is at the
+        // keys. The BEL that ends a title sequence is not a bell.
+        if signals.bell && !echo {
+            self.bell(session);
+        }
+        // A program that starts or ends prints. Read the group in
+        // front now, so the state does not wait for the watcher.
+        if scan.scanned {
+            if let Some(group) = session.foreground_group() {
+                if group != session.group.load(Ordering::Relaxed) {
+                    self.classify(session, &mut None);
+                }
+            }
+        }
+        self.apply_scan(session, scan);
+        if let Some(title) = signals.title {
+            let title = title.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+            let handoff = title.as_deref().and_then(|t| t.strip_prefix(SHELL_HANDOFF_TITLE));
+            if let Some(code) = handoff {
+                // The agent that owned this pane just exited and the
+                // wrapper is about to exec the fallback shell in its
+                // place. Forget the agent's label and command so the
+                // icon falls back to a plain shell instead of the
+                // agent that is no longer running. Its flags go
+                // too: a restore must not pass them to the shell.
+                let shell_name = PathBuf::from(default_shell())
+                    .file_name()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(default_shell);
+                session.shell.store(true, Ordering::Relaxed);
+                let info = {
+                    let mut info = session.info.lock().unwrap();
+                    info.title = None;
+                    info.label = shell_name.clone();
+                    info.command = shell_name;
+                    info.args.clear();
+                    info.agent_exit = code.strip_prefix(':').and_then(|c| c.parse().ok());
+                    info.clone()
+                };
+                let _ = self.events.send(Event::SessionUpdated { session: info });
+                self.dirty.notify_one();
+            } else {
+                self.apply_title(session, title.as_deref());
+                let changed = {
+                    let mut info = session.info.lock().unwrap();
+                    let changed = info.title != title;
+                    info.title = title.clone();
+                    changed
+                };
+                if changed {
+                    let _ = self.events.send(Event::Title {
+                        session: sid.to_string(),
+                        title,
+                    });
+                }
+            }
+        }
+    }
+
+    /// Waits for the child to exit, then records its exit. Only this pid is
+    /// reaped, never another child of the daemon. A reload can pause the
+    /// wait; the exit is reaped and recorded in one step, before or after.
+    fn reap(&self, session: &Arc<Session>, sid: &str) {
+        let pid = session.info.lock().unwrap().pid;
+        let code = loop {
+            session.park_point();
+            let Some(pid) = pid else { break None };
+            match pty::try_reap(pid) {
+                pty::Reap::Exited(code) => break Some(code),
+                pty::Reap::Gone => break None,
+                pty::Reap::Running => std::thread::sleep(Duration::from_millis(20)),
+            }
+        };
+        {
+            let mut info = session.info.lock().unwrap();
+            info.exit_code = code;
+            info.state = SessionState::Done;
+        }
+        session.set_reader_done();
+        self.dying.lock().unwrap().retain(|s| !Arc::ptr_eq(s, session));
+        let _ = self.events.send(Event::State {
+            session: sid.to_string(),
+            state: SessionState::Done,
+        });
+        let _ = self.events.send(Event::Exit { session: sid.to_string(), code });
     }
 
     /// A bell outside the echo of a key. A shell rings for its own reasons.
@@ -669,6 +801,7 @@ impl SessionPool {
 
     /// A client's pane for the session has the keys: the user has seen it.
     pub fn seen(&self, id: &str) -> Result<()> {
+        let _change = self.change()?;
         let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
         let updated = {
             let mut info = session.info.lock().unwrap();
@@ -686,14 +819,16 @@ impl SessionPool {
     }
 
     pub fn write(&self, id: &str, data: &[u8]) -> Result<()> {
+        let _change = self.change()?;
         let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
         // Stored before the send: the reader can see the echo before this
         // thread runs again, and it must count as an echo, not as work.
         session.last_input.store(now_ms(), Ordering::Relaxed);
-        session
-            .input
-            .send(data.to_vec())
-            .map_err(|_| anyhow!("session {id} no longer takes input"))?;
+        session.queued.fetch_add(1, Ordering::AcqRel);
+        if session.input.send(data.to_vec()).is_err() {
+            session.queued.fetch_sub(1, Ordering::AcqRel);
+            bail!("session {id} no longer takes input");
+        }
         // Input answers a bell. An agent's prompt goes when the screen says so.
         if session.belled.swap(false, Ordering::Relaxed)
             && session.info.lock().unwrap().state == SessionState::Waiting
@@ -714,6 +849,7 @@ impl SessionPool {
     }
 
     pub fn rename(&self, id: &str, name: &str) -> Result<SessionInfo> {
+        let _change = self.change()?;
         let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
         let name = name.trim();
         session.info.lock().unwrap().name = (!name.is_empty()).then(|| name.to_string());
@@ -726,6 +862,7 @@ impl SessionPool {
     }
 
     pub fn set_theme(&self, id: &str, theme: Option<String>) -> Result<SessionInfo> {
+        let _change = self.change()?;
         let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
         session.info.lock().unwrap().theme = theme.filter(|t| !t.is_empty());
         let info = session.info();
@@ -737,18 +874,9 @@ impl SessionPool {
     }
 
     pub fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<()> {
+        let _change = self.change()?;
         let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
-        session
-            .master
-            .lock()
-            .unwrap()
-            .resize(PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|e| anyhow!("resize: {e}"))?;
+        session.pty.resize(cols, rows)?;
         session.screen.lock().unwrap().screen.resize(cols, rows);
         // The program redraws for the new size. That is not work either.
         session.last_input.store(now_ms(), Ordering::Relaxed);
@@ -761,6 +889,7 @@ impl SessionPool {
     /// Terminates the process and forgets the session. Drops it from every
     /// group; a group left with no session keeps an empty slot.
     pub fn kill(&self, id: &str) -> Result<()> {
+        let _change = self.change()?;
         let mut groups = self.groups.lock().unwrap();
         let session = self
             .sessions
@@ -768,8 +897,17 @@ impl SessionPool {
             .unwrap()
             .remove(id)
             .ok_or_else(|| anyhow!("no such session: {id}"))?;
-        let _ = session.killer.lock().unwrap().kill();
-        let cwd = session.info.lock().unwrap().cwd.clone();
+        // A reaped pid can belong to another process by now.
+        let (pid, cwd) = {
+            let info = session.info.lock().unwrap();
+            (info.pid.filter(|_| info.state != SessionState::Done), info.cwd.clone())
+        };
+        if let Some(pid) = pid {
+            pty::hang_up(pid);
+        }
+        if !session.reader_done() {
+            self.dying.lock().unwrap().push(session.clone());
+        }
         let pruned = prune(&mut groups, id, &cwd);
         drop(groups);
         let _ = self.events.send(Event::SessionRemoved {
@@ -791,6 +929,7 @@ impl SessionPool {
             tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 tick.tick().await;
+                let Some(_quiet) = pool.quiet() else { continue };
                 let sessions: Vec<Arc<Session>> =
                     pool.sessions.read().unwrap().values().cloned().collect();
                 for s in sessions {
@@ -834,6 +973,7 @@ impl SessionPool {
             let mut tick = tokio::time::interval(Duration::from_secs(1));
             loop {
                 tick.tick().await;
+                let Some(_quiet) = pool.quiet() else { continue };
                 let sessions: Vec<Arc<Session>> =
                     pool.sessions.read().unwrap().values().cloned().collect();
                 for s in sessions {
@@ -887,6 +1027,31 @@ impl SessionPool {
             let _ = self.events.send(Event::SessionUpdated { session });
         }
     }
+}
+
+/// The thread that writes input to the PTY, and its count of writes queued.
+/// A program that stops reading its input blocks this thread alone. Input
+/// after the PTY is gone is dropped and still counted down, so a reload never
+/// waits on a dead session.
+fn start_writer(id: &str, pty: &Pty) -> Result<(std::sync::mpsc::Sender<Vec<u8>>, Arc<AtomicUsize>)> {
+    let mut writer = pty.writer().context("clone writer")?;
+    let queued = Arc::new(AtomicUsize::new(0));
+    let (input, input_rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    let count = queued.clone();
+    std::thread::Builder::new()
+        .name(format!("pty-in-{id}"))
+        .spawn(move || {
+            let mut open = true;
+            // Ends when the session is dropped.
+            for data in input_rx {
+                if open && writer.write_all(&data).and_then(|_| writer.flush()).is_err() {
+                    open = false;
+                }
+                count.fetch_sub(1, Ordering::AcqRel);
+            }
+        })
+        .context("spawn writer thread")?;
+    Ok((input, queued))
 }
 
 /// True when the bytes put text on the screen. Escape sequences and control

@@ -96,6 +96,19 @@ pub enum Request {
     DeleteGroup {
         group: String,
     },
+    /// Moves skiffd onto another binary in place. The pid, sessions, PTYs and
+    /// terminals stay. `binary` is an absolute path; `None` is the daemon's
+    /// own executable as it is on disk now. A failure answers with an error
+    /// from the old daemon, which carries on. Success ends the connection
+    /// with no reply; only a new connection can confirm it (same `pid` in
+    /// [`Response::Pong`], same session ids and pids).
+    ///
+    /// Keep this request's JSON form, `{"cmd":"reload","binary":"/path"}`,
+    /// across protocol changes: it is how an app moves an older daemon on.
+    Reload {
+        #[serde(default)]
+        binary: Option<PathBuf>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -114,6 +127,13 @@ pub enum Response {
         /// 0 from daemons that predate the field.
         #[serde(default)]
         protocol: u32,
+        /// The handover version the daemon writes on reload. `None`: it
+        /// cannot reload.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reload_state: Option<u32>,
+        /// The daemon's process id, which a reload keeps.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pid: Option<u32>,
     },
     Sessions { sessions: Vec<SessionInfo> },
     Session { session: SessionInfo },
@@ -198,6 +218,8 @@ mod tests {
             response: Response::Pong {
                 version: "0.1.0".into(),
                 protocol: 2,
+                reload_state: None,
+                pid: None,
             },
         });
         let json = serde_json::to_string(&reply).unwrap();

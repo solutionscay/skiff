@@ -27,3 +27,8 @@ portable-pty.workspace = true
 uuid.workspace = true
 dirs.workspace = true
 alacritty_terminal = "0.26"
+postcard = { version = "1", features = ["use-std"] }
+polling = "3"
+
+[dev-dependencies]
+skiff-client.workspace = true

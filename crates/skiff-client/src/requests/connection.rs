@@ -1,6 +1,18 @@
 use crate::Client;
 use anyhow::{bail, Result};
 use skiff_core::protocol::{Request, Response};
+use std::path::PathBuf;
+
+/// What a daemon says about itself in its `pong`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DaemonInfo {
+    pub version: String,
+    pub protocol: u32,
+    /// The handover version it writes on reload. `None`: it cannot reload.
+    pub reload_state: Option<u32>,
+    /// Its process id, which a reload keeps. `None` from older daemons.
+    pub pid: Option<u32>,
+}
 
 impl Client {
     pub async fn ping(&self) -> Result<String> {
@@ -9,9 +21,30 @@ impl Client {
 
     /// Daemon version and protocol number.
     pub async fn hello(&self) -> Result<(String, u32)> {
+        let info = self.daemon_info().await?;
+        Ok((info.version, info.protocol))
+    }
+
+    /// Version, protocol, reload support and pid.
+    pub async fn daemon_info(&self) -> Result<DaemonInfo> {
         match self.request(Request::Ping).await? {
-            Response::Pong { version, protocol } => Ok((version, protocol)),
+            Response::Pong { version, protocol, reload_state, pid } => Ok(DaemonInfo { version, protocol, reload_state, pid }),
             other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
+    /// Asks the daemon to move onto `binary` (default: its own executable)
+    /// and keep its sessions. Send it on the connection that carried the
+    /// writes it must keep. An error is the old daemon's: it did not reload
+    /// and carries on. `Ok` means only that the connection closed, as exec
+    /// closes it. Confirm on a new connection: the same `pid`, and each
+    /// session with the same id and pid.
+    pub async fn reload(&self, binary: Option<PathBuf>) -> Result<()> {
+        match self.request(Request::Reload { binary }).await {
+            Ok(Response::Error { message }) => bail!(message),
+            Ok(other) => bail!("unexpected reply: {other:?}"),
+            Err(_) if self.is_closed() => Ok(()),
+            Err(e) => Err(e),
         }
     }
 }

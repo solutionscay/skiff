@@ -34,6 +34,7 @@ impl SessionPool {
     }
 
     fn scan_away(&self) {
+        let Some(_quiet) = self.quiet() else { return };
         let sessions: Vec<Arc<Session>> = self.sessions.read().unwrap().values().cloned().collect();
         let working = |s: &Session| s.info.lock().unwrap().state == SessionState::Working;
         let busy = sessions.iter().any(|s| working(s));
