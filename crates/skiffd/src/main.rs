@@ -17,8 +17,12 @@ fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let start = match args.next().as_deref() {
         // Before anything else: a reload asks this of a binary it may exec.
+        // With a handover file, it must also read that file.
         Some("--reload-info") => {
             println!("{}", serde_json::to_string(&reload::reload_info())?);
+            if let Some(file) = args.next() {
+                reload::load(file.as_ref())?;
+            }
             return Ok(());
         }
         Some("--adopt") => Start::Adopt(args.next().context("--adopt needs the handover file")?.into()),

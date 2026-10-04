@@ -9,7 +9,8 @@
 //! 2. Quiesce: changes and spawns are refused, the ones in flight finish.
 //! 3. Drain: every write accepted so far reaches its PTY.
 //! 4. Park: each reader thread pauses between reads, or has reaped its child.
-//! 5. Hand over: the workspace is saved, the handover file is written, and
+//! 5. Hand over: the workspace is saved and the handover file is written.
+//!    The target must read that file back (`--reload-info <file>`). Then
 //!    only the PTY masters and the listener lose close-on-exec.
 //! 6. Exec. Each step before it undoes itself on failure, and the old daemon
 //!    carries on as before. After exec there is no way back.
@@ -165,7 +166,7 @@ impl SessionPool {
     pub fn reload(self: &Arc<Self>, binary: Option<PathBuf>) -> Result<Infallible> {
         let _one = self.reload.try_lock().map_err(|_| anyhow!("a reload is already running"))?;
         let binary = target(binary)?;
-        preflight(&binary)?;
+        preflight(&binary, None)?;
         self.reloading.store(true, Ordering::Release);
         // Wait out the changes and spawns that started before the flag.
         drop(self.changes.write().unwrap());
@@ -221,6 +222,12 @@ impl SessionPool {
                 return e.context("write handover");
             }
         };
+        // The metadata holds skiff-core types that change with the protocol,
+        // so the target proves it reads this very file before exec.
+        if let Err(e) = preflight(binary, Some(&path)) {
+            let _ = std::fs::remove_file(&path);
+            return e;
+        }
         let mut inherited = Vec::new();
         let err = (|| {
             for fd in fds.iter().copied().chain((listener >= 0).then_some(listener)) {
@@ -274,11 +281,15 @@ impl SessionPool {
                 printed_work: st.printed_work,
             });
         }
-        let orphans = dying
-            .iter()
-            .filter(|s| !s.reader_done())
-            .filter_map(|s| s.info.lock().unwrap().pid)
-            .collect();
+        // The reaper skips its turn while a reload runs, so no pid listed
+        // here is reaped before exec.
+        let mut orphans: Vec<u32> = self.orphans.lock().unwrap().clone();
+        orphans.extend(
+            dying
+                .iter()
+                .filter(|s| !s.reader_done())
+                .filter_map(|s| s.info.lock().unwrap().pid),
+        );
         let meta = Meta {
             listener,
             aliases: shellenv::aliases().to_string(),
@@ -331,11 +342,37 @@ impl SessionPool {
             }
         }
         *self.groups.lock().unwrap() = groups;
-        reap_orphans(orphans);
+        self.reap_orphans(orphans);
         tracing::info!("adopted {adopted} of {total} sessions");
         if adopted < total {
             self.dirty.notify_one();
         }
+    }
+
+    /// Reaps children of sessions that were killed before the reload, each
+    /// by its pid. A pid stays ours until reaped, so no other child can take
+    /// it. The list lives in the pool, so a second reload hands it on.
+    fn reap_orphans(self: &Arc<Self>, pids: Vec<u32>) {
+        if pids.is_empty() {
+            return;
+        }
+        *self.orphans.lock().unwrap() = pids;
+        let pool = Arc::downgrade(self);
+        let _ = std::thread::Builder::new().name("orphans".into()).spawn(move || loop {
+            let Some(pool) = pool.upgrade() else { return };
+            {
+                let mut pids = pool.orphans.lock().unwrap();
+                // A reload lists these pids for the next image; leave them.
+                if !pool.reloading.load(Ordering::Acquire) {
+                    pids.retain(|&pid| matches!(pty::try_reap(pid), pty::Reap::Running));
+                }
+                if pids.is_empty() {
+                    return;
+                }
+            }
+            drop(pool);
+            std::thread::sleep(Duration::from_millis(100));
+        });
     }
 
     fn adopt_session(self: &Arc<Self>, m: SessionMeta, pty: Pty, screen: &[u8]) -> Result<()> {
@@ -421,20 +458,6 @@ pub fn load(path: &Path) -> Result<Handover> {
     Ok(Handover { meta, bytes, screens })
 }
 
-/// Reaps children of sessions that were killed before the reload, each by
-/// its pid. A pid stays ours until reaped, so no other child can take it.
-fn reap_orphans(mut pids: Vec<u32>) {
-    if pids.is_empty() {
-        return;
-    }
-    let _ = std::thread::Builder::new().name("orphans".into()).spawn(move || {
-        while !pids.is_empty() {
-            pids.retain(|&pid| matches!(pty::try_reap(pid), pty::Reap::Running));
-            std::thread::sleep(Duration::from_millis(100));
-        }
-    });
-}
-
 /// The binary to exec. Without one, this daemon's own executable as it is
 /// on disk now, so a rebuild in place is picked up.
 fn target(binary: Option<PathBuf>) -> Result<PathBuf> {
@@ -457,10 +480,12 @@ fn target(binary: Option<PathBuf>) -> Result<PathBuf> {
 }
 
 /// Asks the target what it can adopt. Never starts a daemon: `--reload-info`
-/// prints and exits before anything else.
-fn preflight(binary: &Path) -> Result<()> {
+/// prints and exits before anything else. With `handover`, the target must
+/// also read that file as `--adopt` would.
+fn preflight(binary: &Path, handover: Option<&Path>) -> Result<()> {
     let mut child = Command::new(binary)
         .arg("--reload-info")
+        .args(handover)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -487,6 +512,7 @@ fn preflight(binary: &Path) -> Result<()> {
     let out = reader.join().unwrap_or_default();
     let info: ReloadInfo = match serde_json::from_slice(&out) {
         Ok(info) if status.success() => info,
+        Ok(info) if handover.is_some() => bail!("skiffd {} cannot read this daemon's handover", info.version),
         _ => bail!("{} cannot adopt sessions: it does not support reload", binary.display()),
     };
     if !info.handover.contains(&HANDOVER) {

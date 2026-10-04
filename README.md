@@ -119,7 +119,10 @@ next call. Reload the window (Ctrl+R) or restart the app after either one.
 
 A change to what a reload hands over must keep the two binaries compatible: raise
 `HANDOVER` in `crates/skiffd/src/session/reload.rs` when the handover metadata
-changes. The terminal state's encoding is checked on its own (`skiffd --reload-info`).
+changes. The terminal state's encoding is checked on its own (`skiffd --reload-info`),
+and before exec the new binary must read the handover file the old one wrote. A
+skiff-core type the new binary cannot read (a new `SessionState`, a required field)
+makes the reload refuse, and the old daemon carries on.
 
 skiffd has its own version (`crates/skiffd` and `crates/skiff-core`), apart from the
 app version. At launch the app compares the running daemon's version and protocol

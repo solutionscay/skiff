@@ -322,6 +322,9 @@ pub struct SessionPool {
     sessions: RwLock<HashMap<SessionId, Arc<Session>>>,
     /// Killed sessions whose reader has not reaped the child yet.
     dying: Mutex<Vec<Arc<Session>>>,
+    /// Children of sessions lost to a reload, not reaped yet. A reload
+    /// hands them on with the dying sessions' children.
+    orphans: Mutex<Vec<u32>>,
     /// Named layouts, in creation order. Locked before `sessions` when both are.
     groups: Mutex<Vec<Group>>,
     /// State changes, exits, creations, removals. Not output.
@@ -346,6 +349,7 @@ impl Default for SessionPool {
         Self {
             sessions: RwLock::new(HashMap::new()),
             dying: Mutex::new(Vec::new()),
+            orphans: Mutex::new(Vec::new()),
             groups: Mutex::new(Vec::new()),
             events,
             dirty: Notify::new(),

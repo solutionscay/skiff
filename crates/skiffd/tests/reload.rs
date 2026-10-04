@@ -210,10 +210,10 @@ async fn reload_reaps_each_child_once_and_rolls_back_cleanly() {
     assert!(err.to_string().contains("did not reach its terminal"), "{err:#}");
     c.kill(&stuck.id).await.unwrap();
 
-    // A target that passes preflight and then cannot exec: every fd closes on
-    // exec again, and the daemon still starts sessions.
+    // A target that passes preflight, reads the handover and then cannot
+    // exec: every fd closes on exec again, and the daemon still starts sessions.
     let target = daemon.dir.join("skiffd-once");
-    std::fs::write(&target, format!("#!/bin/sh\nchmod -x \"$0\"\nexec {} \"$@\"\n", env!("CARGO_BIN_EXE_skiffd"))).unwrap();
+    std::fs::write(&target, format!("#!/bin/sh\n[ -n \"$2\" ] && chmod -x \"$0\"\nexec {} \"$@\"\n", env!("CARGO_BIN_EXE_skiffd"))).unwrap();
     std::fs::set_permissions(&target, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     let live = shell(&c, &daemon.dir, "sleep 30").await;
     let err = c.reload(Some(target)).await.unwrap_err();
@@ -239,7 +239,9 @@ async fn reload_reaps_each_child_once_and_rolls_back_cleanly() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     let bell_before = info(&c, &bell.id).await;
-    let orphan = shell(&c, &daemon.dir, "trap '' HUP; sleep 1").await;
+    let orphan = shell(&c, &daemon.dir, "trap '' HUP; sleep 2").await;
+    // Let the trap take effect before the hang-up.
+    tokio::time::sleep(Duration::from_millis(200)).await;
     c.kill(&orphan.id).await.unwrap();
     let mut exiting = Vec::new();
     for i in 0..8 {
@@ -251,6 +253,10 @@ async fn reload_reaps_each_child_once_and_rolls_back_cleanly() {
     assert_eq!(c.daemon_info().await.unwrap().pid, Some(pid));
     let bell_after = info(&c, &bell.id).await;
     assert_eq!((bell_after.state, bell_after.unread, bell_after.pid), (bell_before.state, bell_before.unread, bell_before.pid));
+    // A second reload while the orphan still runs hands it on again.
+    assert!(Path::new(&format!("/proc/{}", orphan.pid.unwrap())).exists());
+    c.reload(None).await.unwrap();
+    let c = connect(&socket).await;
     let until = Instant::now() + Duration::from_secs(5);
     loop {
         let sessions = c.list_sessions().await.unwrap();
