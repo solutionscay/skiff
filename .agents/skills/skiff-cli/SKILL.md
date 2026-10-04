@@ -57,7 +57,7 @@ States: `working`, `waiting`, `idle`, `done`. `waiting` means an approval prompt
 | 3 | The session is `waiting` | Tell the user which pane needs them. End the turn. |
 | 4 | The session is `working` | Do not wait for it and do not retry. See the rules. |
 | 6 | The session is `done` | Its program exited. Start a new session. |
-| 5 | A shell, or a program Skiff cannot identify, is in front | Add `--shell` only if you mean to type a shell command. |
+| 5 | A shell, or a program Skiff cannot identify, is in front | Add `--shell` only if you mean to type a shell command. A program started with `skiff new -- CMD` or a custom agent shows its launch shell in front, so a send to it needs `--shell`. |
 | 0 | Sent | |
 | 1 | Error, for example no such session | |
 

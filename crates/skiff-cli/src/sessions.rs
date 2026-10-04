@@ -204,6 +204,14 @@ pub fn refusal(s: &SessionInfo, here: Option<&str>, shell_ok: bool, caller_shell
     }
     let caller = caller_shell.map(basename).unwrap_or("");
     if SHELLS.contains(&prog) || (!caller.is_empty() && prog == caller) {
+        // `skiff new -- CMD` and custom agents run under a `sh` launch
+        // wrapper, so their own program does not show.
+        if prog == "sh" && s.role != Role::Shell {
+            return Some((
+                5,
+                format!("Skiff cannot identify the program in front of {who}; it shows the launch shell. Use --shell to send anyway."),
+            ));
+        }
         return Some((5, format!("{who} has a shell ({prog}) in front. Use --shell to type a command into it.")));
     }
     None
