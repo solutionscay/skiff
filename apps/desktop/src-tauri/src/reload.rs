@@ -1,0 +1,362 @@
+//! Moves an older skiffd onto the one this app ships, with its sessions.
+//!
+//! skiffd's own reload keeps its pid, the PTYs and the terminals. This side
+//! holds terminal input meanwhile and proves the result on a new connection
+//! before the held input goes on: the same daemon pid, the bundled version,
+//! and each session with the same id and child pid. Nothing here stops a
+//! session or starts a daemon: a failure is the user's to resolve.
+
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    process::Stdio,
+    sync::{atomic::Ordering, Arc},
+    time::{Duration, Instant},
+};
+use serde::Serialize;
+use skiff_client::{Client, DaemonInfo, Refused};
+use skiff_core::{session::{SessionInfo, SessionState}, socket::socket_path};
+use tauri::State;
+use crate::connection::{check_daemon, compare_versions, daemon_binary, restart_warning, status_now, App, DaemonStatus, Warning, HELLO_TIMEOUT};
+
+/// The bundled skiffd answers `--reload-info` within this.
+const INFO_TIMEOUT: Duration = Duration::from_secs(5);
+/// The new image adopts the sessions and answers within this.
+const RECONNECT: Duration = Duration::from_secs(15);
+
+/// A reload the app can start: the daemon supports it, and the bundled
+/// skiffd reads its handover.
+pub(crate) struct Plan {
+    binary: PathBuf,
+    /// What `binary` reports. The daemon must answer with it after the reload.
+    version: String,
+    /// The running daemon's version and protocol.
+    from: String,
+    protocol: u32,
+    pid: u32,
+}
+
+/// A reload onto the bundled skiffd, or why there is none.
+pub(crate) async fn plan(info: &DaemonInfo) -> Result<Plan, String> {
+    let (Some(state), Some(pid)) = (info.reload_state, info.pid) else {
+        return Err("it predates reload".into());
+    };
+    let binary = resolve(&daemon_binary()).ok_or("the bundled skiffd is missing")?;
+    let mut cmd = tokio::process::Command::new(&binary);
+    cmd.arg("--reload-info").stdin(Stdio::null()).stderr(Stdio::null()).kill_on_drop(true);
+    let out = tokio::time::timeout(INFO_TIMEOUT, cmd.output())
+        .await
+        .map_err(|_| format!("{} did not answer --reload-info", binary.display()))?
+        .map_err(|e| format!("run {}: {e}", binary.display()))?;
+    let target: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .ok()
+        .filter(|_| out.status.success())
+        .ok_or_else(|| format!("{} does not support reload", binary.display()))?;
+    let version = target["version"].as_str().unwrap_or_default().to_string();
+    let reads = target["handover"].as_array().is_some_and(|v| v.iter().any(|h| h.as_u64() == Some(state as u64)));
+    if !reads {
+        return Err(format!("skiffd {version} cannot adopt its sessions (handover {state})"));
+    }
+    if !compare_versions(&version, &info.version).is_gt() {
+        return Err(format!("the bundled skiffd {version} is not newer"));
+    }
+    Ok(Plan { binary, version, from: info.version.clone(), protocol: info.protocol, pid })
+}
+
+/// An absolute path for `p`, from `PATH` for a bare name. A reload needs one.
+fn resolve(p: &Path) -> Option<PathBuf> {
+    if p.is_absolute() {
+        return p.is_file().then(|| p.to_path_buf());
+    }
+    if p.components().count() > 1 {
+        return std::path::absolute(p).ok().filter(|p| p.is_file());
+    }
+    std::env::split_paths(&std::env::var_os("PATH")?).map(|d| d.join(p)).find(|p| p.is_file())
+}
+
+#[derive(Serialize)]
+pub(crate) struct Reloaded {
+    status: DaemonStatus,
+    /// Why the reload failed or is not proven. `None`: it worked.
+    error: Option<String>,
+    /// The app now talks to another connection: the page subscribes again.
+    reconnected: bool,
+    /// Names of live sessions that did not come through with the same child.
+    missing: Vec<String>,
+    /// Names of sessions whose input, typed during the reload, was dropped.
+    lost: Vec<String>,
+}
+
+/// Reloads the daemon `daemon_status` planned for. Without a plan, it only
+/// reports the status.
+#[tauri::command]
+pub(crate) async fn reload_daemon(app: State<'_, App>) -> Result<Reloaded, String> {
+    let plan = app.reload.lock().await.take();
+    let mut out = Outcome::default();
+    if let Some(plan) = plan {
+        app.reload_tried.store(true, Ordering::Relaxed);
+        out = run(&app, &plan).await;
+    }
+    Ok(Reloaded {
+        status: status_now(&app).await,
+        error: out.error,
+        reconnected: out.reconnected,
+        missing: out.missing,
+        lost: out.lost,
+    })
+}
+
+#[derive(Default)]
+struct Outcome {
+    error: Option<String>,
+    reconnected: bool,
+    missing: Vec<String>,
+    lost: Vec<String>,
+}
+
+/// Each session by id: its child pid, and whether it still runs.
+type Listed = HashMap<String, (Option<u32>, bool)>;
+
+fn listed(list: &[SessionInfo]) -> Listed {
+    list.iter().map(|s| (s.id.clone(), (s.pid, s.state != SessionState::Done))).collect()
+}
+
+/// What the user calls each session, for the messages. The id when unknown.
+fn naming(list: &[SessionInfo]) -> impl Fn(Vec<String>) -> Vec<String> {
+    let names: HashMap<String, String> = list
+        .iter()
+        .map(|s| (s.id.clone(), s.name.clone().or(s.title.clone()).unwrap_or(s.label.clone())))
+        .collect();
+    move |ids| ids.into_iter().map(|id| names.get(&id).cloned().unwrap_or(id)).collect()
+}
+
+/// The same live session, with the same child, before and after. A session
+/// id alone does not prove it: a restore reuses the id for a new shell.
+fn same(before: &Listed, after: &Listed, id: &str) -> bool {
+    match (before.get(id), after.get(id)) {
+        (Some((Some(a), true)), Some((Some(b), true))) => a == b,
+        _ => false,
+    }
+}
+
+async fn run(app: &App, plan: &Plan) -> Outcome {
+    // No other call connects, or starts a daemon, until the reload ends.
+    let mut guard = app.client.lock().await;
+    let Some(old) = guard.clone().filter(|c| !c.is_closed()) else {
+        return Outcome { error: Some("skiffd closed the connection before the reload".into()), ..Default::default() };
+    };
+    // Input from here on waits. Input sent before is on this connection,
+    // ahead of the reload request, and skiffd drains it into the PTYs.
+    app.input.close_gate();
+    let (before, name) = match old.list_sessions().await {
+        Ok(l) => (listed(&l), naming(&l)),
+        Err(e) => {
+            let lost = app.input.open_gate(Some(&old), |_| true);
+            return Outcome { error: Some(format!("skiffd did not list its sessions: {e:#}")), lost, ..Default::default() };
+        }
+    };
+    let live = before.values().filter(|(_, running)| *running).count();
+
+    match old.reload(Some(plan.binary.clone())).await {
+        Err(e) if e.downcast_ref::<Refused>().is_some() => {
+            // skiffd answered: it did not exec and runs as before. The held
+            // input goes to it, for the sessions that still run.
+            let why = format!("{e:#}");
+            let now = old.list_sessions().await.map(|l| listed(&l)).unwrap_or_default();
+            let lost = name(app.input.open_gate(Some(&old), |id| same(&before, &now, id)));
+            *app.warning.lock().await = Some(restart_warning(&plan.from, plan.protocol, Some(live), Some(&why)));
+            return Outcome { error: Some(format!("skiffd {} did not reload: {why}", plan.from)), lost, ..Default::default() };
+        }
+        // The connection closed, as exec closes it, or the outcome is open.
+        // Only a new connection tells.
+        _ => {}
+    }
+    *guard = None;
+    *app.live.lock().unwrap() = None;
+    drop(old);
+
+    let (c, info) = match reconnect(Instant::now() + RECONNECT).await {
+        Ok(found) => found,
+        Err(why) => {
+            let lost = name(app.input.open_gate(None, |_| false));
+            let message = format!("{why}. Its sessions may have ended.");
+            *app.failed.lock().unwrap() = Some(message.clone());
+            *app.warning.lock().await = Some(Warning {
+                kind: "failed",
+                message: format!("{message} Restarting starts a new skiffd. Panes come back as shells in their folders."),
+                sessions: None,
+            });
+            return Outcome { error: Some(message), reconnected: true, lost, ..Default::default() };
+        }
+    };
+    let c = Arc::new(c);
+    // Streams of the old connection are gone. The page subscribes again.
+    for (_, task) in app.subs.lock().await.drain() {
+        task.abort();
+    }
+    app.flows.lock().unwrap().clear();
+    if let Some(task) = app.events.lock().await.take() {
+        task.abort();
+    }
+    *guard = Some(c.clone());
+    *app.live.lock().unwrap() = Some(c.clone());
+
+    let mut error = None;
+    let mut proven = true;
+    if info.pid != Some(plan.pid) {
+        proven = false;
+        let now = info.pid.map_or("unknown".into(), |p| p.to_string());
+        error = Some(format!("skiffd restarted instead of reloading (pid {}, now {now}). Its sessions did not survive.", plan.pid));
+    } else if info.version != plan.version {
+        proven = false;
+        error = Some(format!("skiffd answered as {} after the reload, not {}", info.version, plan.version));
+    } else {
+        *app.replaced.lock().await = Some(plan.from.clone());
+    }
+    let after = match tokio::time::timeout(HELLO_TIMEOUT, c.list_sessions()).await {
+        Ok(Ok(l)) => listed(&l),
+        _ => {
+            proven = false;
+            error.get_or_insert_with(|| "skiffd did not list its sessions after the reload".into());
+            Listed::new()
+        }
+    };
+    // Gone, or another child under the same id. One that exited is not missing.
+    let mut missing: Vec<String> = match proven {
+        true => before
+            .iter()
+            .filter(|(id, (pid, running))| *running && after.get(*id).map(|a| a.0) != Some(*pid))
+            .map(|(id, _)| id.clone())
+            .collect(),
+        false => Vec::new(),
+    };
+    missing.sort();
+    let lost = name(app.input.open_gate(Some(&c), |id| proven && same(&before, &after, id)));
+    // Sets the warning for the daemon as it is now. No second reload.
+    check_daemon(app, &c, false).await;
+    if error.is_none() && !missing.is_empty() {
+        error = Some(format!("{} of {live} live sessions did not come through the reload", missing.len()));
+    }
+    Outcome { error, reconnected: true, missing: name(missing), lost }
+}
+
+/// Connects again and asks the daemon what it is. Never starts a daemon.
+async fn reconnect(until: Instant) -> Result<(Client, DaemonInfo), String> {
+    let path = socket_path();
+    loop {
+        let last = match Client::connect(&path).await {
+            Ok(c) => match tokio::time::timeout(HELLO_TIMEOUT, c.daemon_info()).await {
+                Ok(Ok(info)) => return Ok((c, info)),
+                Ok(Err(e)) => format!("{e:#}"),
+                Err(_) => "no answer".into(),
+            },
+            Err(e) => format!("{e:#}"),
+        };
+        if Instant::now() >= until {
+            return Err(format!("skiffd did not come back after the reload ({last})"));
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use crate::connection::ensure_client;
+    use skiff_core::session::SessionSpec;
+
+    /// A private daemon reloads onto its own binary while input arrives.
+    /// Each line reaches the shell once, in order, and the pid stays.
+    #[test]
+    fn held_input_survives_a_reload() {
+        let bin = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../target/debug/skiffd");
+        if !bin.is_file() {
+            eprintln!("skipped: build skiffd first");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("skiff-app-reload-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("SKIFF_SOCKET", dir.join("skiffd.sock"));
+        let mut daemon = std::process::Command::new(&bin)
+            .env("SKIFF_STATE", dir.join("workspace.json"))
+            .env("SKIFF_CONFIG", dir.join("projects.toml"))
+            .env("SKIFF_SHELL_ENV", "0")
+            .env("SHELL", "/bin/sh")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(std::fs::File::create(dir.join("daemon.log")).unwrap())
+            .spawn()
+            .unwrap();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| rt.block_on(async {
+            std::env::set_var("SKIFF_DAEMON", &bin);
+            let app = App::default();
+            let (c, _) = ensure_client(&app).await.unwrap();
+            let pid = c.daemon_info().await.unwrap().pid.unwrap();
+            let s = c
+                .create_session(SessionSpec {
+                    label: "t".into(),
+                    command: Some("/bin/sh".into()),
+                    args: vec![],
+                    cwd: Some(dir.clone()),
+                    cols: 80,
+                    rows: 24,
+                    ..Default::default()
+                })
+                .await
+                .unwrap();
+            let app = Arc::new(app);
+            let typing = |from: usize| {
+                let app = app.clone();
+                let id = s.id.clone();
+                tokio::spawn(async move {
+                    for i in from..from + 20 {
+                        let live = app.live.lock().unwrap().clone();
+                        let _ = app.input.write(live.as_deref(), &id, format!("echo L{i:02} >> out\n").into_bytes());
+                        tokio::time::sleep(Duration::from_millis(5)).await;
+                    }
+                })
+            };
+            // A target that cannot adopt: the old daemon answers and carries on.
+            let refused = Plan { binary: "/bin/false".into(), version: "x".into(), from: "old".into(), protocol: skiff_core::PROTOCOL, pid };
+            let t = typing(0);
+            let out = run(&app, &refused).await;
+            t.await.unwrap();
+            assert!(out.error.is_some_and(|e| e.contains("did not reload")) && !out.reconnected);
+            assert!(out.lost.is_empty(), "lost {:?}", out.lost);
+            // The restart warning of #27 stays, with the reason.
+            assert_eq!(app.warning.lock().await.as_ref().map(|w| w.kind), Some("outdated"));
+
+            let plan = Plan { binary: bin.clone(), version: skiff_core::VERSION.into(), from: "old".into(), protocol: skiff_core::PROTOCOL, pid };
+            let t = typing(20);
+            let out = run(&app, &plan).await;
+            t.await.unwrap();
+            assert_eq!(out.error, None);
+            assert!(out.reconnected);
+            assert!(out.lost.is_empty(), "lost {:?}", out.lost);
+            // Input typed after the reload goes straight on.
+            let c = app.live.lock().unwrap().clone().unwrap();
+            assert_eq!(c.daemon_info().await.unwrap().pid, Some(pid));
+            let _ = app.input.write(Some(&c), &s.id, b"echo DONE >> out\n".to_vec());
+            let file = dir.join("out");
+            let until = Instant::now() + Duration::from_secs(10);
+            let text = loop {
+                let text = std::fs::read_to_string(&file).unwrap_or_default();
+                if text.ends_with("DONE\n") || Instant::now() > until {
+                    break text;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            };
+            let want: String = (0..40).map(|i| format!("L{i:02}\n")).chain(["DONE\n".to_string()]).collect();
+            assert_eq!(text, want);
+        })));
+        let _ = daemon.kill();
+        let _ = daemon.wait();
+        if result.is_err() {
+            eprintln!("{}", std::fs::read_to_string(dir.join("daemon.log")).unwrap_or_default());
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        result.unwrap();
+    }
+}

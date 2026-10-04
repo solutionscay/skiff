@@ -145,10 +145,15 @@ async function createPane(id: string): Promise<Pane> {
   return pane;
 }
 
-/** Subscribes the pane to its session: a snapshot, then live output. */
-function streamOutput(id: string, pane: Pane): Promise<void> {
+/**
+ * Subscribes the pane to its session: a snapshot, then live output.
+ * `fromBottom`: the rows the view sat above the bottom. The snapshot resets
+ * the view; once xterm has parsed what came, the view goes back there.
+ */
+function streamOutput(id: string, pane: Pane, fromBottom = 0): Promise<void> {
   const n = ++pane.stream;
   const channel = new Channel<unknown>();
+  let parsing = 0;
   channel.onmessage = (m) => {
     // A chunk can still arrive after a park, or after session_removed
     // disposed the terminal.
@@ -156,9 +161,15 @@ function streamOutput(id: string, pane: Pane): Promise<void> {
     if (!s || pane.stream !== n) return;
     const bytes = toBytes(m);
     const traced = traceOutput(id, bytes.length);
+    parsing++;
     pane.term.write(bytes, () => {
       traced?.();
       if (pane.stream !== n) return;
+      if (--parsing === 0 && fromBottom > 0) {
+        const b = pane.term.buffer.active;
+        pane.term.scrollToLine(Math.max(0, b.baseY - fromBottom));
+        fromBottom = 0;
+      }
       ackOutput(id, pane, n, bytes.length);
       pane.wrote = n;
     });
@@ -194,6 +205,19 @@ export function parkPane(id: string, pane: Pane) {
   pane.parked = true;
   pane.stream++;
   pane.sub = pane.sub.then(() => invoke<void>("unsubscribe_output", { session: id })).catch(console.error);
+}
+
+/**
+ * After a reload: each shown pane streams again on the new connection, from
+ * a snapshot, and keeps its scroll position. Parked panes stay parked.
+ */
+export function reattachPanes() {
+  for (const [id, pane] of panes) {
+    if (pane.parked) continue;
+    const b = pane.term.buffer.active;
+    const fromBottom = b.baseY - b.viewportY;
+    pane.sub = pane.sub.then(() => streamOutput(id, pane, fromBottom)).catch(console.error);
+  }
 }
 
 export function unparkPane(id: string, pane: Pane) {

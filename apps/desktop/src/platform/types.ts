@@ -125,12 +125,27 @@ export interface DaemonStatus {
   spawned: boolean;
   /** The daemon differs from this app and was not replaced. */
   warning: DaemonWarning | null;
-  /** The version of an older daemon this app replaced at launch. */
+  /** The version of an older daemon this app replaced or reloaded. */
   replaced: string | null;
+  /** The daemon is older and can reload onto the app's skiffd. */
+  reload: boolean;
+}
+
+/** What `reload_daemon` did. */
+export interface Reloaded {
+  status: DaemonStatus;
+  /** Why the reload failed or is not proven. `null`: it worked. */
+  error: string | null;
+  /** The app talks to a new connection: the page subscribes again. */
+  reconnected: boolean;
+  /** Live sessions that did not come through, by name. */
+  missing: string[];
+  /** Sessions whose input, typed during the reload, was dropped. */
+  lost: string[];
 }
 
 export interface DaemonWarning {
-  kind: "outdated" | "protocol" | "newer" | "hung";
+  kind: "outdated" | "protocol" | "newer" | "hung" | "failed";
   message: string;
   /** Live sessions a restart stops. `null` when the daemon did not say. */
   sessions: number | null;

@@ -4,8 +4,8 @@ import { filledOf, isSlot, slot } from "../workspace/layoutSlots";
 import { agentCallsign } from "../appearance/agentNames";
 import { removePane, replacePane, sessionsOf } from "../workspace/layout";
 
-import type { AgentInfo, Appearance, DaemonEvent, DaemonStatus, Project, SessionInfo, SplitDir } from "../platform/types";
-import { invoke } from "@tauri-apps/api/core";
+import type { AgentInfo, Appearance, DaemonEvent, DaemonStatus, Project, Reloaded, SessionInfo, SplitDir } from "../platform/types";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { $, h } from "../ui/dom";
 import { rune } from "../ui/runes";
@@ -17,16 +17,19 @@ import { loadFilesSetting } from "../workspace/files";
 import { deleteGroup, loadGroups, syncTemplateName } from "./groups";
 import { render, scheduleRender } from "./render";
 import { born, gone, OTHER, removeErrors, S, sessions, upsert } from "./state";
-import { hasKeys, markSeen } from "./seen";
+import { hasKeys, markSeen, quietSeen } from "./seen";
 import { peekExited, peekUpdated, previewToken, strayPeek } from "../terminal/peek";
 import { activeGroupObj, place, shownIds } from "./stateQueries";
 import { panes } from "../terminal/terminalState";
+import { reattachPanes } from "../terminal/terminalRuntime";
 import { focusPane, inBackground, paneNear, revealSession, rowNear, showSingle, splitWith, unfocus } from "../workspace/view";
 
 export function setDaemon(status: DaemonStatus) {
   const dot = $("daemon").querySelector(".dot") as HTMLElement;
   dot.className = "dot " + (status.connected ? "connected" : "error");
-  $("daemon-label").textContent = status.connected
+  $("daemon-label").textContent = status.reload
+    ? "Reloading skiffd…"
+    : status.connected
     ? `skiffd ${status.version ?? ""}${status.replaced ? ` (updated from ${status.replaced})` : status.spawned ? " (started)" : ""}`
     : status.warning?.kind === "hung"
       ? "skiffd not responding"
@@ -35,6 +38,51 @@ export function setDaemon(status: DaemonStatus) {
   if (status.pid) socket.replaceChildren(`${status.socket} · pid ${status.pid}`, pidCopy(status.pid));
   else socket.textContent = status.socket;
   daemonBadge(status.warning);
+}
+
+/** Counts event subscriptions. An event from an older one is dropped. */
+let eventStream = 0;
+
+/** Streams daemon events to `onEvent`. Replaces an earlier subscription. */
+export async function subscribeEvents() {
+  const n = ++eventStream;
+  const events = new Channel<DaemonEvent>();
+  events.onmessage = (e) => {
+    if (n === eventStream) onEvent(e);
+  };
+  await invoke("subscribe_events", { onEvent: events });
+}
+
+/**
+ * Moves an older skiffd onto the app's own, with its sessions. Rust holds
+ * terminal input meanwhile and sends it on once the reload is proven. The
+ * page, layout, focus and scroll stay; shown panes redraw from a snapshot.
+ */
+export async function reloadDaemon(): Promise<DaemonStatus> {
+  $("daemon-label").textContent = "Reloading skiffd…";
+  // Nothing the reconnect redraws counts as seen.
+  quietSeen(true);
+  try {
+    const r = await invoke<Reloaded>("reload_daemon");
+    // Before boot subscribed anything, boot does it next.
+    if (r.reconnected && r.status.connected && eventStream) {
+      // Events first, so nothing between the list and the stream is missed.
+      await subscribeEvents().catch(console.error);
+      await refreshSessions().catch(console.error);
+      await loadGroups().catch(console.error);
+      reattachPanes();
+    }
+    setDaemon(r.status);
+    const end = (t: string) => (t.endsWith(".") ? t : `${t}.`);
+    const lines: string[] = [];
+    if (r.error) lines.push(end(r.missing.length ? `${r.error}: ${r.missing.join(", ")}` : r.error));
+    if (r.lost.length) lines.push(`Input typed during the reload did not reach ${r.lost.join(", ")}.`);
+    if (lines.length) showError(lines.join(" "));
+    render();
+    return r.status;
+  } finally {
+    quietSeen(false);
+  }
 }
 
 let copiedTimer: number | undefined;

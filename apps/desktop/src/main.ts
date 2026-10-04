@@ -12,10 +12,10 @@ import "./styles.css";
 
 import { keyLabel, setKeymap } from "./app/keys";
 import { bySessionPriority } from "./workspace/model";
-import type { Appearance, DaemonEvent, DaemonStatus } from "./platform/types";
-import { Channel, invoke } from "@tauri-apps/api/core";
+import type { Appearance, DaemonStatus } from "./platform/types";
+import { invoke } from "@tauri-apps/api/core";
 import { switcher } from "./app/commands";
-import { loadProjects, onEvent, refreshSessions, setDaemon } from "./app/daemon";
+import { loadProjects, refreshSessions, reloadDaemon, setDaemon, subscribeEvents } from "./app/daemon";
 import { $ } from "./ui/dom";
 import { showError } from "./ui/alerts";
 import { loadGroups } from "./app/groups";
@@ -68,13 +68,13 @@ async function boot() {
   void initTrace();
   startMemory();
   watchStatusbar();
-  const status = await invoke<DaemonStatus>("daemon_status");
+  let status = await invoke<DaemonStatus>("daemon_status");
   setDaemon(status);
+  // An older skiffd that can reload moves onto the app's own first. Its sessions keep running.
+  if (status.reload) status = await reloadDaemon();
   if (!status.connected) return;
 
-  const events = new Channel<DaemonEvent>();
-  events.onmessage = onEvent;
-  await invoke("subscribe_events", { onEvent: events });
+  await subscribeEvents();
 
   await refreshSessions();
   await Promise.all([
