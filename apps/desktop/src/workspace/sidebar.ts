@@ -202,7 +202,7 @@ type Caret = [start: number, end: number, dir: "forward" | "backward" | "none"];
 
 /** Where the pointer last was over the list, or null when it left. */
 let pointer: [number, number] | null = null;
-const HOVERABLE = ".session-row, .wt-pick, .wt-count, .group-pick, .file-row";
+const HOVERABLE = ".session-row, .wt-pick, .wt-plus, .wt-count, .group-pick, .file-row";
 {
   const side = $<HTMLElement>("sidebar-scroll");
   side.addEventListener("mousemove", (e) => (pointer = [e.clientX, e.clientY]));
