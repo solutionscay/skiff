@@ -41,7 +41,9 @@ enum Now {
 }
 
 /// Exit codes: 0 when every session got there, 1 on timeout, 2 when a
-/// session went away or exited before it got there.
+/// session went away or exited before it got there, 3 when a session is
+/// waiting. Only a person answers an approval, so unless the target is
+/// `waiting`, a waiting session ends the wait at once.
 pub async fn wait(c: &Client, args: &[String], target: Target, timeout: Option<f64>) -> Result<i32> {
     // Listen before the list, so no change falls between the two.
     let mut events = c.events();
@@ -63,6 +65,16 @@ pub async fn wait(c: &Client, args: &[String], target: Target, timeout: Option<f
     }
     let mut now: HashMap<String, Now> =
         all.iter().filter(|s| ids.contains(&s.id)).map(|s| (s.id.clone(), Now::State(s.state))).collect();
+    let stop_on_waiting = !matches!(target, Target::Waiting);
+    let needs_person = |id: &String| -> i32 {
+        eprintln!("skiff: {}", sessions::waiting_msg(&names[id], id));
+        3
+    };
+    if stop_on_waiting {
+        if let Some(id) = ids.iter().find(|id| now[*id] == Now::State(SessionState::Waiting)) {
+            return Ok(needs_person(id));
+        }
+    }
 
     // A timeout too large to count is no timeout.
     let deadline = timeout
@@ -95,6 +107,12 @@ pub async fn wait(c: &Client, args: &[String], target: Target, timeout: Option<f
             Err(RecvError::Lagged(_)) => {
                 // Missed events: read the states again.
                 let all = c.list_sessions().await?;
+                if stop_on_waiting {
+                    let waiting = |id: &&String| all.iter().any(|s| &s.id == *id && s.state == SessionState::Waiting);
+                    if let Some(id) = ids.iter().find(waiting) {
+                        return Ok(needs_person(id));
+                    }
+                }
                 for id in &ids {
                     let cur = now.get_mut(id).expect("listed");
                     if !settled(cur) {
@@ -105,6 +123,9 @@ pub async fn wait(c: &Client, args: &[String], target: Target, timeout: Option<f
             }
             Err(RecvError::Closed) => bail!("skiffd closed the connection"),
         };
+        if stop_on_waiting && n == Now::State(SessionState::Waiting) && ids.contains(&id) {
+            return Ok(needs_person(&id));
+        }
         // Once settled, a session keeps the state it settled in.
         if let Some(cur) = now.get_mut(&id) {
             if !settled(cur) {

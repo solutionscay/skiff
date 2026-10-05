@@ -76,8 +76,11 @@ enum Cmd {
         #[arg(last = true, value_name = "CMD")]
         command: Vec<String>,
     },
-    /// Type text into a session. `-` reads the text from stdin. Put text
-    /// that starts with `-` after `--`.
+    /// Type text into an idle session. `-` reads the text from stdin. Put
+    /// text that starts with `-` after `--`.
+    #[command(
+        after_help = "send checks the session before it types any bytes. Exit codes:\n  0  sent\n  1  error\n  3  the session is waiting (approval prompt or bell). A person answers it in the pane. No flag overrides this.\n  4  the session is working. Skiff does not type into a busy session.\n  5  a shell or an unknown program is in front. Use --shell only to type a shell command. A program started with `skiff new -- CMD` or a custom agent shows its launch shell, so a send to it needs --shell.\n  6  the session is done\n  7  the session is your own ($SKIFF_SESSION)\n  8  --enter went to a known agent, but no turn started in 5 seconds. The text can be in its input box. Run `skiff peek` on the session. Do not send it again."
+    )]
     Send {
         session: String,
         #[arg(required = true)]
@@ -88,6 +91,10 @@ enum Cmd {
         /// Send the bytes as they are. Default: newlines become Enter.
         #[arg(long)]
         raw: bool,
+        /// Permit an idle session with a shell or an unknown program in
+        /// front. It does not override any other refusal.
+        #[arg(long)]
+        shell: bool,
     },
     /// Rename a session. An empty name clears it.
     Rename { session: String, name: String },
@@ -102,7 +109,10 @@ enum Cmd {
         lines: Option<usize>,
     },
     /// Wait until sessions reach a state. Exit 0 when all do, 1 on timeout,
-    /// 2 when one closes or exits first.
+    /// 2 when one closes or exits first, 3 when one is waiting.
+    #[command(
+        after_help = "Exit codes:\n  0  every session reached the state\n  1  timeout\n  2  a session closed or exited before it reached the state\n  3  a session is waiting (approval prompt or bell). A person answers it in its pane.\nWith --for idle, done or any-not-working, wait stops at once when any session is waiting. --for waiting is not changed.\nGive each wait a --timeout. After exit 0, read the screen with `skiff peek`: idle does not prove that an agent finished."
+    )]
     Wait {
         #[arg(required = true)]
         sessions: Vec<String>,
@@ -341,7 +351,7 @@ fn main() {
     }
 }
 
-/// The exit code. Only `wait` returns other than 0.
+/// The exit code. Only `wait` and `send` return other than 0.
 async fn run(cli: Cli) -> Result<i32> {
     let socket = cli.socket.unwrap_or_else(skiff_core::socket::socket_path);
     match cli.cmd {
@@ -359,6 +369,10 @@ async fn run(cli: Cli) -> Result<i32> {
     if let Cmd::Wait { sessions, target, timeout } = &cli.cmd {
         return wait::wait(&c, sessions, *target, *timeout).await;
     }
+    if let Cmd::Send { session, text, enter, raw, shell } = &cli.cmd {
+        let o = sessions::Send { text, enter: *enter, raw: *raw, shell: *shell };
+        return sessions::send(&c, session, o).await;
+    }
     match cli.cmd {
         Cmd::Ls { json } => sessions::ls(&c, json).await,
         Cmd::New { name, cwd, agent, role, group, split, json, command } => {
@@ -366,7 +380,6 @@ async fn run(cli: Cli) -> Result<i32> {
             sessions::new(&c, opts, group.as_deref(), split, json).await
         }
         Cmd::Group(g) => group(&c, g).await,
-        Cmd::Send { session, text, enter, raw } => sessions::send(&c, &session, &text, enter, raw).await,
         Cmd::Rename { session, name } => sessions::rename(&c, &session, &name).await,
         Cmd::Kill { sessions: ids } => sessions::kill(&c, &ids).await,
         Cmd::Attach { session } => attach::attach(&c, &session).await,
@@ -374,7 +387,9 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Seen { session } => sessions::seen(&c, &session).await,
         Cmd::Agents { json } => info::agents(&c, json).await,
         Cmd::Theme { cmd: ThemeCmd::Session { cmd } } => theme::session(&c, cmd).await,
-        Cmd::Status | Cmd::Daemon(_) | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::OpenWith { .. } | Cmd::Wait { .. } => unreachable!(),
+        Cmd::Status | Cmd::Daemon(_) | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::OpenWith { .. } | Cmd::Wait { .. } | Cmd::Send { .. } => {
+            unreachable!()
+        }
     }
     .map(|_| 0)
 }
