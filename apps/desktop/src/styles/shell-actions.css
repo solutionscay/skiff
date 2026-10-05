@@ -3,11 +3,11 @@
 #topbar .gear { width: var(--row); justify-content: center; padding: 0; border: 0; background: transparent; color: var(--text-2); }
 #topbar .gear:hover { background: var(--bg-raised); color: var(--text); }
 .wt-plus { width: var(--row); height: var(--row); flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--text-2); }
-.wt-plus:hover, .wt-plus[aria-expanded="true"] { background: var(--bg-raised); color: var(--text); }
+.wt-plus:hover, .wt-plus.hover, .wt-plus[aria-expanded="true"] { background: var(--bg-raised); color: var(--text); }
 /* A worktree's + shows on its row's hover, on the current row, or while its menu is open. */
 /* The worktree is current: the whole band lights, its counts and + included, as the project row does. */
 #sidebar-scroll .wt-row:has(> .wt-pick.current) { background: linear-gradient(to right, transparent 0 3px, color-mix(in srgb, var(--pc) 22%, transparent) 3px); box-shadow: inset 2px 0 0 var(--pc); }
 #sidebar-scroll .wt-pick.current, body.kbd #sidebar-scroll .wt-pick.current:focus { background: transparent; box-shadow: none; }
 body.kbd #sidebar-scroll .wt-row:has(> .wt-pick.current:focus) { box-shadow: inset 2px 0 0 var(--pc), inset 0 1px 0 var(--pc), inset 0 -1px 0 var(--pc); }
 .wt-row .wt-plus { visibility: hidden; }
-.wt-row:hover .wt-plus, .wt-row:has(.current) .wt-plus, .wt-row .wt-plus[aria-expanded="true"] { visibility: visible; }
+.wt-row:hover .wt-plus, .wt-row:has(.hover) .wt-plus, .wt-row:has(.current) .wt-plus, .wt-row .wt-plus[aria-expanded="true"] { visibility: visible; }

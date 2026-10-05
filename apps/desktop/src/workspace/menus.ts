@@ -3,6 +3,7 @@ import { ctxMenu } from "../ui/contextMenu";
 import { launchIcon } from "../appearance/agentIcon";
 import { confirmAction, promptAction } from "../ui/confirm";
 import { pickColor } from "../appearance/colorPicker";
+import { pickBackgroundOpacity } from "../appearance/backdropOpacity";
 import { keyLabel } from "../app/keys";
 import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { type MenuEntry } from "../ui/menu";
@@ -76,6 +77,8 @@ function backgroundEntries(p: Project): MenuEntry[] {
         if (typeof file === "string") await setBackground(p, file);
       },
     },
+    // Only an image shows through the panes, so the opacity waits for one.
+    ...(p.background ? [{ icon: "playback-image", label: "Opacity…", run: () => pickBackgroundOpacity(p) }] : []),
     { icon: "indicators-minus", label: "None", disabled: !p.background, run: () => void setBackground(p, null) },
   ];
 }

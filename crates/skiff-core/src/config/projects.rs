@@ -148,6 +148,7 @@ pub fn add_project(
         color: Some(color),
         icon,
         background: None,
+        background_opacity: None,
         editor: None,
         agents,
         layout: Layout::default(),
@@ -167,6 +168,11 @@ pub fn set_project_icon(project: &str, icon: Option<&str>) -> Result<()> {
 /// Sets or removes `background` on the named project.
 pub fn set_project_background(project: &str, background: Option<&str>) -> Result<()> {
     set_project_key(project, "background", background)
+}
+
+/// Sets `background_opacity` in percent on the named project, or removes the key.
+pub fn set_project_background_opacity(project: &str, percent: Option<u8>) -> Result<()> {
+    set_project_key(project, "background_opacity", percent.map(|v| i64::from(v.clamp(40, 100))))
 }
 
 /// Sets `color` on the named project.

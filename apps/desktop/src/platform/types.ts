@@ -79,6 +79,8 @@ export interface Project {
   icon: string | null;
   /** Absolute path of the background image behind the terminals, when set. */
   background: string | null;
+  /** Pane opacity over the background image, in percent. Absent: the default. */
+  background_opacity?: number | null;
   worktrees: Worktree[];
   /** The branch the main checkout normally holds. `null` when unknown or from an older skiffd. */
   default_branch?: string | null;

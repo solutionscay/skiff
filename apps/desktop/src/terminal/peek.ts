@@ -23,6 +23,7 @@ import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { $, button, h } from "../ui/dom";
+import { icon } from "../ui/icons";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { showError } from "../ui/alerts";
 import { appKey, currentRow, itemKey } from "../app/keyboard";
@@ -313,7 +314,19 @@ function showCard(mine: number, kind: string, path: string, label?: string, act?
   const head = h("div", "peek-head");
   head.append(h("span", "peek-kind", kind), h("span", "peek-title mono", name), h("span", "peek-where mono", dir));
   const body = h("div", "file-preview-body");
-  if (label && act) body.append(h("div", "file-preview-name", name), button("file-preview-open", label, act));
+  if (label && act) {
+    // A keycap you can click, with the action under it: the hint and the button in one.
+    const cap = button("file-preview-key", "", act);
+    cap.title = `${label} (Enter)`;
+    cap.setAttribute("aria-label", label);
+    const arrow = icon(`<path d="M19 5v8H6m0 0 4-4m-4 4 4 4"></path>`);
+    arrow.classList.add("file-preview-key-arrow");
+    cap.append(h("span", "", "Enter"), arrow);
+    const space = label.indexOf(" ");
+    const text = h("div", "file-preview-label");
+    text.append(h("b", "", space < 0 ? label : label.slice(0, space)), space < 0 ? "" : label.slice(space));
+    body.append(cap, text);
+  }
   el.append(head, body);
   // Tab does nothing here. Space opens or closes the row, as on the row. Enter runs the button.
   el.addEventListener("keydown", (e) => {

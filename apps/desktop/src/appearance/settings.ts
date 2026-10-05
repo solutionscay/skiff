@@ -1,6 +1,5 @@
 import { DEFAULT_THEME } from "./colors";
 import { escapeButton } from "../ui/dialogParts";
-import { PANE_OPACITY_MIN, paneOpacity, setPaneOpacity } from "./backdrop";
 import { h } from "../ui/dom";
 import { rune } from "../ui/runes";
 import { invoke } from "@tauri-apps/api/core";
@@ -314,21 +313,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         },
       }),
     );
-    // Over a project's background image, panes are this opaque.
-    const op = h("div", "set-row set-opacity");
-    const slider = h("input", "c-cmd");
-    slider.type = "range";
-    slider.min = String(Math.round(PANE_OPACITY_MIN * 100));
-    slider.max = "100";
-    slider.value = String(Math.round(paneOpacity() * 100));
-    slider.setAttribute("aria-label", "Terminal opacity over a background image");
-    const val = h("span", "c-status", `${slider.value}%`);
-    slider.addEventListener("input", () => {
-      setPaneOpacity(Number(slider.value) / 100);
-      val.textContent = `${slider.value}%`;
-    });
-    op.append(h("span", "c-name", "Terminal opacity"), slider, val);
-    main.append(intro, op);
+    main.append(intro);
     if (menuSet?.available) main.appendChild(menuLayout(menuSet));
     main.appendChild(cards);
     return main;

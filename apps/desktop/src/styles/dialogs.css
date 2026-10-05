@@ -1,5 +1,6 @@
 /* Confirm dialog for actions that cannot be undone. */
-.confirm-overlay { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: var(--scrim); }
+/* Its own compositing layer, as the menus have, so no overlay scrollbar paints over it. */
+.confirm-overlay { transform: translateZ(0); isolation: isolate; position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: var(--scrim); }
 .confirm-panel { width: calc(480 * var(--u)); max-width: calc(100vw - calc(32 * var(--u))); display: flex; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--rule-strong); }
 .confirm-title { height: calc(56 * var(--u)); display: flex; align-items: center; padding: 0 calc(20 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(16px * var(--zoom, 1)); font-weight: 700; }
 .confirm-body { padding: calc(16 * var(--u)) calc(20 * var(--u)); font-size: calc(13px * var(--zoom, 1)); line-height: 1.6; color: var(--text-2); border-bottom: 1px solid var(--rule); white-space: pre-line; }
@@ -11,3 +12,9 @@
 .confirm-cancel:hover { background: var(--bg-raised); }
 .confirm-act { background: var(--danger); color: var(--danger-text); font-weight: 600; }
 .confirm-act:hover { background: var(--danger-hover); }
+/* The background opacity dialog: a slider and its value on one row. */
+.opacity-row { height: var(--row); display: flex; align-items: center; gap: calc(16 * var(--u)); padding: 0 calc(20 * var(--u)); border-bottom: 1px solid var(--rule); }
+.opacity-slider { flex-grow: 1; min-width: 0; appearance: none; -webkit-appearance: none; height: 100%; margin: 0; background: transparent; cursor: pointer; }
+.opacity-slider::-webkit-slider-runnable-track { height: calc(3 * var(--u)); background: var(--rule-strong); }
+.opacity-slider::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: calc(14 * var(--u)); height: calc(14 * var(--u)); margin-top: calc(-5.5 * var(--u)); border: 2px solid var(--bg-panel); border-radius: 50%; background: var(--state-working); }
+.opacity-value { width: calc(40 * var(--u)); text-align: right; font-family: var(--mono); font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); font-variant-numeric: tabular-nums; }
