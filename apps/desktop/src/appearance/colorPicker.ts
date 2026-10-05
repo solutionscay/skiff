@@ -1,6 +1,6 @@
 import { rgb } from "./colors";
 import { h } from "../ui/dom";
-import { dialogActions, dialogFrame } from "../ui/dialogParts";
+import { actionDialog } from "../ui/dialogParts";
 
 /** A color picker drawn in the page: the webview's own color input does not open on Linux. */
 
@@ -43,7 +43,6 @@ function drag(el: HTMLElement, on: (x: number, y: number) => void) {
 export function pickColor(o: { title: string; start: string; action: string; submit: (hex: string) => Promise<void>; onClose?: () => void }): void {
   let hsv = toHsv(/^#[0-9a-f]{6}$/i.test(o.start) ? o.start : "#7ee0cb");
 
-  const { overlay, panel } = dialogFrame("confirm-panel", "dialog", o.title);
   const area = h("div", "cp-area");
   const areaDot = h("div", "cp-dot");
   area.append(areaDot);
@@ -57,13 +56,6 @@ export function pickColor(o: { title: string; start: string; action: string; sub
   code.maxLength = 7;
   code.setAttribute("aria-label", "Hex color");
   readout.append(chip, code);
-  const error = h("div", "prompt-error");
-  error.setAttribute("role", "alert");
-  const { foot, cancel, act } = dialogActions(o.action, "confirm-act go");
-  panel.append(h("div", "confirm-title", o.title), area, hue, readout, error, foot);
-  overlay.append(panel);
-  document.body.append(overlay);
-
   const paint = (skipCode = false) => {
     const hex = toHex(hsv);
     area.style.background = `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent), ${toHex([hsv[0], 1, 1])}`;
@@ -83,34 +75,13 @@ export function pickColor(o: { title: string; start: string; action: string; sub
     }
   });
 
-  let busy = false;
-  const close = () => {
-    overlay.remove();
-    o.onClose?.();
-  };
-  const run = async () => {
-    if (busy) return;
-    busy = act.disabled = true;
-    try {
-      await o.submit(toHex(hsv));
-      close();
-    } catch (e) {
-      busy = act.disabled = false;
-      error.textContent = String(e);
-    }
-  };
-  act.addEventListener("click", () => void run());
-  cancel.addEventListener("click", close);
-  overlay.addEventListener("mousedown", (e) => e.target === overlay && close());
-  overlay.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      close();
-    } else if (e.key === "Enter" && document.activeElement !== cancel) {
-      e.preventDefault();
-      void run();
-    }
-  });
   paint();
-  act.focus();
+  actionDialog({
+    title: o.title,
+    content: [area, hue, readout],
+    action: o.action,
+    tone: "go",
+    onClose: o.onClose,
+    submit: () => o.submit(toHex(hsv)),
+  });
 }
