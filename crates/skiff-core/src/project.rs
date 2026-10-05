@@ -32,6 +32,9 @@ pub struct Project {
     /// The background image's absolute path, when the file exists.
     #[serde(default)]
     pub background: Option<String>,
+    /// Pane opacity over the background image, in percent. Absent: the app default.
+    #[serde(default)]
+    pub background_opacity: Option<u8>,
     pub worktrees: Vec<Worktree>,
     /// The branch the main checkout normally holds: origin's HEAD, else `main` or `master`.
     #[serde(default)]
@@ -63,6 +66,7 @@ impl Project {
             agents: p.agents.clone(),
             icon: icon_file(&p.path, p.icon.as_deref()).and_then(|f| data_url(&f)),
             background: background_file(&p.path, p.background.as_deref()),
+            background_opacity: p.background_opacity,
             default_branch: if worktrees.is_empty() { None } else { git::default_branch(&p.path) },
             worktrees,
             error,

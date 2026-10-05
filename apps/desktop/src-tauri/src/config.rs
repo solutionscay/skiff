@@ -132,6 +132,15 @@ pub(crate) async fn set_project_background(
 }
 
 #[tauri::command]
+pub(crate) async fn set_project_background_opacity(
+    handle: AppHandle,
+    project: String,
+    percent: Option<u8>,
+) -> Result<(), String> {
+    project_edit(&handle, move || config::set_project_background_opacity(&project, percent)).await
+}
+
+#[tauri::command]
 pub(crate) async fn set_project_color(handle: AppHandle, project: String, color: String) -> Result<(), String> {
     project_edit(&handle, move || config::set_project_color(&project, &color)).await
 }

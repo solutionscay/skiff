@@ -71,6 +71,7 @@ pub fn run() {
             config::set_project_closed,
             config::remove_project,
             config::set_project_background,
+            config::set_project_background_opacity,
             commands::read_image,
             commands::list_dir,
             commands::git_changes,

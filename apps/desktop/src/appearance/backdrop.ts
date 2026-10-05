@@ -3,32 +3,18 @@ import { invoke } from "@tauri-apps/api/core";
 import { host } from "../terminal/terminalHost";
 import { S, sessions } from "../app/state";
 import { place } from "../app/stateQueries";
+import type { Project } from "../platform/types";
 
-const OPACITY_KEY = "skiff.paneOpacity";
-const OPACITY_MIN = 0.4;
-const OPACITY_DEFAULT = 0.85;
+/** How opaque the panes are over a background image, in percent, when the project sets none. */
+export const OPACITY_DEFAULT = 85;
+export const OPACITY_MIN = 40;
 
-let opacity = (() => {
-  try {
-    const v = Number(localStorage.getItem(OPACITY_KEY));
-    return v >= OPACITY_MIN && v <= 1 ? v : OPACITY_DEFAULT;
-  } catch {
-    return OPACITY_DEFAULT;
-  }
-})();
+/** A value the opacity dialog shows while the slider moves. Null: the project's own. */
+let trial: number | null = null;
 
-/** How opaque the panes are over a background image. The image never shows at 1. */
-export const paneOpacity = () => opacity;
-export const PANE_OPACITY_MIN = OPACITY_MIN;
-
-export function setPaneOpacity(v: number) {
-  opacity = Math.min(1, Math.max(OPACITY_MIN, v));
-  try {
-    localStorage.setItem(OPACITY_KEY, String(opacity));
-  } catch {
-    /* the setting lasts for this run */
-  }
-  host.style.setProperty("--pane-alpha", String(opacity));
+export function previewOpacity(percent: number | null) {
+  trial = percent;
+  apply();
 }
 
 /** Blob URLs by file path. A path that failed to load stays out, so it is tried again. */
@@ -51,17 +37,19 @@ async function load(path: string) {
 }
 
 /** The focused session's project, else the selected one. */
-function wanted(): string | null {
+function shownProject(): Project | undefined {
   const s = S.focused ? sessions.get(S.focused) : undefined;
-  const p = (s && place(s)?.project) ?? S.projects.find((x) => x.name === S.selectedProject);
-  return p?.background ?? null;
+  return (s && place(s)?.project) ?? S.projects.find((x) => x.name === S.selectedProject);
 }
+
+const wanted = () => shownProject()?.background ?? null;
 
 function apply() {
   const path = wanted();
   const url = path ? urls.get(path) ?? null : null;
+  const percent = trial ?? shownProject()?.background_opacity ?? OPACITY_DEFAULT;
   host.classList.toggle("has-bg", !!url);
-  host.style.setProperty("--pane-alpha", url ? String(opacity) : "1");
+  host.style.setProperty("--pane-alpha", url ? String(percent / 100) : "1");
   if (url !== shown) {
     shown = url;
     host.style.setProperty("--bg-image", url ? `url("${url}")` : "none");

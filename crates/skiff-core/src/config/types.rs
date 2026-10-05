@@ -94,6 +94,8 @@ pub struct ProjectConfig {
     pub icon: Option<String>,
     /// Image behind the terminals: a path, relative to the project or absolute.
     pub background: Option<String>,
+    /// How opaque the panes are over the background image, in percent. Absent: 85.
+    pub background_opacity: Option<u8>,
     pub editor: Option<String>,
     #[serde(default)]
     pub agents: Vec<String>,

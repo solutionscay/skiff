@@ -51,9 +51,6 @@
 .set-opacity { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) calc(120 * var(--u)); }
 .set-opacity .c-name { font-size: calc(13px * var(--zoom, 1)); color: var(--text-2); }
 .set-opacity .c-cmd { width: 100%; min-width: 0; box-sizing: border-box; border: 0; border-left: 1px solid var(--rule); border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font: calc(13px * var(--zoom, 1)) var(--font); text-align: left; }
-.set-opacity input[type="range"].c-cmd { appearance: none; -webkit-appearance: none; padding: 0 calc(12 * var(--u)); cursor: pointer; }
-.set-opacity input[type="range"].c-cmd::-webkit-slider-runnable-track { height: calc(3 * var(--u)); background: var(--rule-strong); }
-.set-opacity input[type="range"].c-cmd::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: calc(14 * var(--u)); height: calc(14 * var(--u)); margin-top: calc(-5.5 * var(--u)); border: 2px solid var(--bg-deep); border-radius: 50%; background: var(--state-working); }
 .switch { width: calc(28 * var(--u)); height: calc(14 * var(--u)); position: relative; border: 1px solid var(--rule-strong); background: var(--bg-deep); }
 .switch::after { content: ""; position: absolute; top: calc(2 * var(--u)); left: calc(2 * var(--u)); width: calc(8 * var(--u)); height: calc(8 * var(--u)); background: var(--text-dim); }
 .set-agent.on .switch { border-color: var(--state-working); background: color-mix(in srgb, var(--state-working) 25%, transparent); }
