@@ -4,7 +4,6 @@ import { isUnread } from "./model";
 import type { Project } from "../platform/types";
 
 import { $, button, h } from "../ui/dom";
-import { icon } from "../ui/icons";
 
 import { projectIcon } from "../appearance/projectIcon";
 import { showError } from "../ui/alerts";
@@ -14,12 +13,18 @@ import { addProject } from "../app/panels";
 
 import { render } from "../app/renderRequest";
 
-import { FLAG } from "../appearance/stateIcon";
 import { OTHER, S, sessions } from "../app/state";
 import { accent, place } from "../app/stateQueries";
 
 import { selectProject } from "./view";
 import { worktreeLines } from "./sidebarLines";
+/** A circle around the chip's icon. Working: 12 dashes, and a turn of one dash loops without a seam. */
+function railRing(state: "working" | "waiting" | "unread"): Element {
+  const t = document.createElement("template");
+  t.innerHTML = `<svg class="rail-ring ${state}" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" pathLength="24"></circle></svg>`;
+  return t.content.firstChild as Element;
+}
+
 export function renderRail() {
   const rail = $<HTMLElement>("rail");
   const hasOther = worktreeLines(null).length > 0;
@@ -29,7 +34,8 @@ export function renderRail() {
   // Renders run while agents print. A rebuilt chip loses its hover and hides
   // its icon until trimmed again, so the rail changes only when what it shows does.
   const unreadIn = (p: Project) => [...sessions.values()].filter((s) => isUnread(s) && place(s)?.project === p).length;
-  const sig = JSON.stringify([S.selectedProject, hasOther, S.projects.map((p) => [p.name, p.short, p.icon, accent(p), waitingIn(p), unreadIn(p)])]);
+  const workingIn = (p: Project) => [...sessions.values()].some((s) => s.state === "working" && place(s)?.project === p);
+  const sig = JSON.stringify([S.selectedProject, hasOther, S.projects.map((p) => [p.name, p.short, p.icon, accent(p), waitingIn(p), unreadIn(p), workingIn(p)])]);
   if (rail.dataset.sig === sig) return;
   rail.dataset.sig = sig;
   rail.replaceChildren();
@@ -53,16 +59,12 @@ export function renderRail() {
     b.setAttribute("aria-label", p.name + (waiting ? `, ${waiting} waiting` : unread ? `, ${unread} unread` : ""));
     if (p.name === S.selectedProject) b.setAttribute("aria-current", "true");
     item.appendChild(b);
-    if (waiting) {
-      const bell = h("span", "rail-waiting");
-      bell.appendChild(icon('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>'));
-      item.appendChild(bell);
-    } else if (unread) {
-      // The bell wins: a question outranks a result.
-      const flag = h("span", "rail-unread");
-      flag.appendChild(icon(FLAG));
-      item.appendChild(flag);
-    }
+    // One ring tells the project's state. It turns, dashed and blue, while an agent works.
+    // It stops as a solid circle: amber when an agent waits, green when output is unread.
+    // Waiting wins, then working, then unread.
+    const ring = waiting ? "waiting" : workingIn(p) ? "working" : unread ? "unread" : null;
+    if (ring) item.appendChild(railRing(ring));
+    if (waiting || unread) b.classList.add("attention");
     rail.appendChild(item);
   });
   if (hasOther) {

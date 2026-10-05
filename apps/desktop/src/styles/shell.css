@@ -54,6 +54,14 @@ body.dragging-rail, body.dragging-rail * { cursor: grabbing !important; }
 .rail-chip.active { background: color-mix(in srgb, var(--pc) 15%, transparent); box-shadow: inset 3px 0 0 var(--pc); }
 .rail-add { color: var(--text-3); font-weight: 400; font-size: calc(18px * var(--zoom, 1)); }
 .rail-add:hover { color: var(--text); background: var(--bg-raised); }
-.rail-waiting, .rail-unread { position: absolute; top: calc(2 * var(--u)); right: calc(2 * var(--u)); display: flex; color: var(--state-waiting); pointer-events: none; }
-.rail-unread { color: var(--diff-add); }
-.rail-waiting svg, .rail-unread svg { display: block; width: calc(12 * var(--u)); height: calc(12 * var(--u)); stroke-width: 2.5; /* a hard halo in the rail colour keeps the bell readable over any icon or theme */ filter: drop-shadow(0 0 0 var(--bg-deep)) drop-shadow(1px 0 0 var(--bg-deep)) drop-shadow(-1px 0 0 var(--bg-deep)) drop-shadow(0 1px 0 var(--bg-deep)) drop-shadow(0 -1px 0 var(--bg-deep)); animation: ring 1.6s steps(1) infinite; transform-origin: 50% 10%; }
+/* The project's state as a ring around its icon. Working: blue dashes that turn one dash at a time,
+   like the water under the working skiff. It steps, so the webview does not draw a frame on every refresh.
+   Waiting and unread: a still, solid circle in amber or green. */
+.rail-ring { position: absolute; left: 50%; top: 50%; width: calc(36 * var(--u)); height: calc(36 * var(--u)); margin: calc(-18 * var(--u)) 0 0 calc(-18 * var(--u)); pointer-events: none; }
+.rail-ring circle { fill: none; stroke-width: 1.5; }
+.rail-ring.working { animation: rail-turn 0.6s steps(3) infinite; }
+.rail-ring.working circle { stroke: var(--state-working); stroke-dasharray: 1 1; }
+.rail-ring.waiting circle { stroke: var(--state-waiting); }
+.rail-ring.unread circle { stroke: var(--diff-add); }
+@keyframes rail-turn { to { transform: rotate(30deg); } }
+@media (prefers-reduced-motion: reduce) { .rail-ring.working { animation: none; } }
