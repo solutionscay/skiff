@@ -26,13 +26,13 @@ them to suit the work.
 
 ## How it works
 
-You add a project (a Git repository), make worktrees in it, and start agent or shell sessions in each worktree. Sessions can sit side by side in a group. Each group has a name and a terminal theme, and so does each project.
+You add a project (a Git repository), make worktrees in it, and start agent or shell sessions in each worktree. Sessions can sit side by side in a named group. A project, a group and a session can each have a terminal theme.
 
-Skiff does not edit or preview files. Each worktree lists its changed files, and a double-click shows the diff. Files open in the apps you choose under Settings › Open with (see the [wiki](https://github.com/solutionscay/skiff/wiki/Open-with)). There are no plugins, no hooks into agent configs, and no automations. Settings live in one file, `projects.toml`.
+Skiff does not edit files. Each worktree lists its changed files and its file tree. Select a changed file and its diff shows in the main area. Select a file and its preview shows there. Press Enter to open the file in the app you choose under Settings › Open with (see the [wiki](https://github.com/solutionscay/skiff/wiki/Open-with)), or to show a folder in your file manager. There are no plugins, no hooks into agent configs, and no automations. Settings live in one file, `projects.toml`.
 
 Sessions run in `skiffd`, a daemon that owns every PTY. You can close the window and the agents keep running. When the window opens again, each terminal shows its last screen.
 
-Each session row shows what needs you. A bell means an agent asks for approval. A flag means an agent finished its turn, or a shell command ended, while you were in another pane. `skiffd` reads this from the screen and from the program in front of the terminal, not from hooks. When you come back to a pane, a line marks where you stopped reading.
+Each session row shows what needs you. A bell means an agent asks for approval. A flag means an agent finished its turn, or a shell command ended, while you were in another pane. `skiffd` reads this from the screen and from the program in front of the terminal, not from hooks.
 
 ## Install
 
@@ -45,11 +45,13 @@ The `skiff` command drives sessions and groups from a shell or an agent. It ship
 
 ## Themes
 
-Themes apply to the app, a project, or a session. A session theme replaces the
-project theme. A project theme replaces the app theme.
+Themes apply to the app, a project, a group, or a session. A group theme applies
+to every session in the group. A session theme replaces the project theme. A
+project theme replaces the app theme.
 
-The 34 built-in themes use the operator's Foot palette. Their
-Skiff TOML files live in `crates/skiff-core/themes`. Ultraviolet is the default.
+Skiff ships 34 dark themes, curated from Foot palettes. There is no light
+theme. Their Skiff TOML files live in `crates/skiff-core/themes`. Ultraviolet is
+the default.
 Each file declares `color_family` and `main_color`. The picker uses these
 values for its color filter and swatch. Themes without a declared color group
 show as Unclassified.
@@ -64,18 +66,15 @@ keeps existing files with the same name and reports files it cannot read.
 You can copy files there. The list refreshes when you return to Skiff. There is no theme count
 limit. Theme files contain color values, so a large collection needs little space.
 
-Light terminal themes use contrast correction for text. Programs can supply
-their own text and background colors, so a program's dark blocks can still
-appear inside a light terminal.
-
 ## Layout
 
 ```
-crates/skiff-core    session model, wire protocol, projects.toml config
+crates/skiff-core    session model, wire protocol, projects.toml config, git, themes
 crates/skiffd        daemon: owns every PTY, serves clients over a Unix socket
 crates/skiff-client  async client for the socket
 crates/skiff-cli     the `skiff` command: sessions and groups from the shell
 apps/desktop         Tauri v2 app, vanilla TypeScript + xterm.js
+  src-tauri          Rust side: config, git, open with, the skiffd connection, menus
   src/app            state, actions, keyboard, startup connections
   src/ui             DOM builders, dialogs, menus
   src/workspace      rail, session tree, layouts, files, project actions
