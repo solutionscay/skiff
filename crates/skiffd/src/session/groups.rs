@@ -9,6 +9,7 @@ impl SessionPool {
 
     /// Creates the group when `id` is empty, else replaces it.
     pub fn save_group(&self, mut group: Group) -> Result<Group> {
+        let _change = self.change()?;
         let mut groups = self.groups.lock().unwrap();
         let ids = group.layout.sessions();
         {
@@ -43,6 +44,7 @@ impl SessionPool {
     }
 
     pub fn delete_group(&self, id: &str) -> Result<()> {
+        let _change = self.change()?;
         let mut groups = self.groups.lock().unwrap();
         let before = groups.len();
         groups.retain(|g| g.id != id);

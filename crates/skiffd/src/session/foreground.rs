@@ -20,6 +20,7 @@ impl SessionPool {
     }
 
     fn scan_foreground(&self) {
+        let Some(_quiet) = self.quiet() else { return };
         let sessions: Vec<_> = self.sessions.read().unwrap().values().cloned().collect();
         let mut tree = None;
         for session in sessions {
@@ -123,17 +124,19 @@ fn agent_in_group(group: u32, tree: &HashMap<u32, Vec<u32>>) -> Option<&'static 
     None
 }
 
-fn agent_program(name: &str, argv: &[String]) -> Option<&'static str> {
-    fn known(name: &str) -> Option<&'static str> {
-        match name {
-            "claude" => Some("claude"),
-            "codex" => Some("codex"),
-            "gemini" | "agy" => Some("gemini"),
-            "grok" => Some("grok"),
-            "opencode" => Some("opencode"),
-            _ => None,
-        }
+/// The agent a program name stands for, by the name the rest of the daemon uses.
+pub(crate) fn known(name: &str) -> Option<&'static str> {
+    match name {
+        "claude" => Some("claude"),
+        "codex" => Some("codex"),
+        "gemini" | "agy" => Some("gemini"),
+        "grok" => Some("grok"),
+        "opencode" => Some("opencode"),
+        _ => None,
     }
+}
+
+fn agent_program(name: &str, argv: &[String]) -> Option<&'static str> {
     let base = |s: &str| {
         Path::new(s)
             .file_name()

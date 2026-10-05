@@ -1,10 +1,10 @@
-use std::{collections::HashMap, path::PathBuf, process::Stdio, sync::Arc, time::Duration};
+use std::{collections::HashMap, path::PathBuf, process::Stdio, sync::{atomic::{AtomicBool, Ordering}, Arc}, time::Duration};
 use serde::Serialize;
 use skiff_client::Client;
 use skiff_core::{socket::socket_path, session::SessionState};
 use tauri::{async_runtime::JoinHandle, State};
 use tokio::sync::Mutex;
-use crate::streaming::Flow;
+use crate::{input::Input, reload::{self, Plan}, streaming::Flow};
 
 #[derive(Default)]
 pub(crate) struct App {
@@ -12,21 +12,34 @@ pub(crate) struct App {
     /// The same connection, for keystrokes, which must not wait on a lock.
     pub(crate) live: std::sync::Mutex<Option<Arc<Client>>>,
     pub(crate) subs: Mutex<HashMap<String, JoinHandle<()>>>,
+    /// The task that streams events to the page.
+    pub(crate) events: Mutex<Option<JoinHandle<()>>>,
+    /// Terminal input on its way to the daemon.
+    pub(crate) input: Input,
     /// Per session: how far the page's xterm is behind its stream.
     pub(crate) flows: std::sync::Mutex<HashMap<String, Arc<Flow>>>,
     /// Set when the daemon differs from this app and was not replaced.
     pub(crate) warning: Mutex<Option<Warning>>,
     /// The version of a daemon this app replaced at launch.
     pub(crate) replaced: Mutex<Option<String>>,
+    /// An older daemon that can reload onto the bundled one. The page starts
+    /// the reload with `reload_daemon`.
+    pub(crate) reload: Mutex<Option<Plan>>,
+    /// A reload ran. The app does not start another one on its own.
+    pub(crate) reload_tried: AtomicBool,
+    /// Why the daemon is gone after a reload. No daemon starts on its own
+    /// while it is set: only an explicit restart starts one.
+    pub(crate) failed: std::sync::Mutex<Option<String>>,
 }
 
 #[derive(Serialize, Clone)]
 pub(crate) struct Warning {
-    /// `outdated`, `protocol`, `newer` or `hung`.
+    /// `outdated`, `protocol`, `newer`, `hung`, or `failed` for a reload that
+    /// did not come back.
     pub(crate) kind: &'static str,
     pub(crate) message: String,
     /// Live sessions a restart would stop. `None` when the daemon did not say.
-    sessions: Option<usize>,
+    pub(crate) sessions: Option<usize>,
 }
 
 #[derive(Serialize, Clone)]
@@ -39,9 +52,12 @@ pub(crate) struct DaemonStatus {
     spawned: bool,
     warning: Option<Warning>,
     replaced: Option<String>,
+    /// The daemon is older and can reload onto this app's skiffd. The page
+    /// calls `reload_daemon` next.
+    reload: bool,
 }
 
-fn daemon_binary() -> PathBuf {
+pub(crate) fn daemon_binary() -> PathBuf {
     if let Ok(p) = std::env::var("SKIFF_DAEMON") {
         return PathBuf::from(p);
     }
@@ -76,7 +92,7 @@ fn spawn_daemon() -> anyhow::Result<()> {
 }
 
 /// A daemon that takes longer than this to answer `hello` is hung.
-const HELLO_TIMEOUT: Duration = Duration::from_secs(2);
+pub(crate) const HELLO_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Reuses a live connection, else connects, else starts the daemon and connects.
 /// A live connection costs no round trip: every keystroke comes through here.
@@ -97,6 +113,10 @@ pub(crate) async fn ensure_client(app: &App) -> Result<(Arc<Client>, bool), Stri
             Ok(c) => c,
             Err(e) => {
                 last = format!("{e:#}");
+                // A reload failed: starting a new daemon is the user's call.
+                if let Some(why) = app.failed.lock().unwrap().clone() {
+                    return Err(why);
+                }
                 if !spawned {
                     spawn_daemon().map_err(|e| format!("start skiffd: {e:#}"))?;
                     spawned = true;
@@ -107,6 +127,7 @@ pub(crate) async fn ensure_client(app: &App) -> Result<(Arc<Client>, bool), Stri
         };
         match check_daemon(app, &c, !replaced).await {
             Check::Use => {
+                *app.failed.lock().unwrap() = None;
                 let c = Arc::new(c);
                 *guard = Some(c.clone());
                 *app.live.lock().unwrap() = Some(c.clone());
@@ -122,18 +143,20 @@ pub(crate) async fn ensure_client(app: &App) -> Result<(Arc<Client>, bool), Stri
     Err(format!("cannot reach skiffd at {}: {last}", path.display()))
 }
 
-enum Check {
+pub(crate) enum Check {
     Use,
     /// The old daemon was stopped: connect again, to a fresh one.
     Replaced,
     Hung,
 }
 
-/// Compares the daemon with this app. An older or incompatible daemon with
-/// no live session is replaced without a word. With live sessions, the
-/// restart is the user's call: this records a warning and keeps the daemon.
-async fn check_daemon(app: &App, c: &Client, may_replace: bool) -> Check {
-    let Ok(Ok((version, protocol))) = tokio::time::timeout(HELLO_TIMEOUT, c.hello()).await else {
+/// Compares the daemon with this app. An older daemon that can reload is
+/// planned for a reload onto the bundled skiffd, which keeps its sessions.
+/// Else an older or incompatible daemon with no live session is replaced
+/// without a word. With live sessions, the restart is the user's call: this
+/// records a warning and keeps the daemon.
+pub(crate) async fn check_daemon(app: &App, c: &Client, may_replace: bool) -> Check {
+    let Ok(Ok(info)) = tokio::time::timeout(HELLO_TIMEOUT, c.daemon_info()).await else {
         *app.warning.lock().await = Some(Warning {
             kind: "hung",
             message: format!(
@@ -145,13 +168,24 @@ async fn check_daemon(app: &App, c: &Client, may_replace: bool) -> Check {
         });
         return Check::Hung;
     };
+    let version = info.version.clone();
     // The skiffd this app ships with, not the app version.
-    let ours = skiff_core::VERSION;
-    let order = compare_versions(&version, ours);
-    let same_protocol = protocol == skiff_core::PROTOCOL;
+    let order = compare_versions(&version, skiff_core::VERSION);
+    let same_protocol = info.protocol == skiff_core::PROTOCOL;
     if same_protocol && order.is_eq() {
         *app.warning.lock().await = None;
         return Check::Use;
+    }
+    // Never a downgrade, and one try per app run.
+    if order.is_lt() && !app.reload_tried.load(Ordering::Relaxed) {
+        match reload::plan(&info).await {
+            Ok(plan) => {
+                *app.reload.lock().await = Some(plan);
+                *app.warning.lock().await = None;
+                return Check::Use;
+            }
+            Err(why) => eprintln!("skiffd {version} does not reload: {why}"),
+        }
     }
     let live = tokio::time::timeout(HELLO_TIMEOUT, c.list_sessions())
         .await
@@ -165,17 +199,27 @@ async fn check_daemon(app: &App, c: &Client, may_replace: bool) -> Check {
             return Check::Replaced;
         }
     }
+    *app.warning.lock().await = Some(restart_warning(&version, info.protocol, live, None));
+    Check::Use
+}
+
+/// The warning for a daemon that differs from this app and keeps running.
+/// `why`: the reload that failed, and the daemon carries on as before.
+pub(crate) fn restart_warning(version: &str, protocol: u32, live: Option<usize>, why: Option<&str>) -> Warning {
+    let ours = skiff_core::VERSION;
     let n = live.unwrap_or(0);
     let running = match n {
         1 => "1 session is running".to_string(),
         n => format!("{n} sessions are running"),
     };
     let ends = "Restarting stops them. Panes come back as shells in their folders.";
-    let warning = if !same_protocol {
+    let failed = why.map(|w| format!("It did not reload: {w}. ")).unwrap_or_default();
+    let order = compare_versions(version, ours);
+    if protocol != skiff_core::PROTOCOL {
         Warning {
             kind: "protocol",
             message: format!(
-                "skiffd {version} speaks another protocol than this app ({ours}). \
+                "skiffd {version} speaks another protocol than this app ({ours}). {failed}\
                  Parts of the app fail until it restarts. {running}. {ends}"
             ),
             sessions: live,
@@ -184,7 +228,7 @@ async fn check_daemon(app: &App, c: &Client, may_replace: bool) -> Check {
         Warning {
             kind: "outdated",
             message: format!(
-                "skiffd {version} still runs. Restart it to finish the update to {ours}. \
+                "skiffd {version} still runs. {failed}Restart it to finish the update to {ours}. \
                  {running}. {ends}"
             ),
             sessions: live,
@@ -198,13 +242,11 @@ async fn check_daemon(app: &App, c: &Client, may_replace: bool) -> Check {
             ),
             sessions: live,
         }
-    };
-    *app.warning.lock().await = Some(warning);
-    Check::Use
+    }
 }
 
 /// Orders dotted versions by number. A part that is not a number counts as 0.
-fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
+pub(crate) fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
     let parts = |v: &str| -> Vec<u64> {
         v.split(['.', '-', '+']).take(3).map(|p| p.parse().unwrap_or(0)).collect()
     };
@@ -253,6 +295,8 @@ pub(crate) async fn restart_daemon(app: State<'_, App>) -> Result<DaemonStatus, 
             }
         }
         *app.warning.lock().await = None;
+        *app.failed.lock().unwrap() = None;
+        *app.reload.lock().await = None;
     }
     for (_, task) in app.subs.lock().await.drain() {
         task.abort();
@@ -266,9 +310,13 @@ pub(crate) fn err(e: anyhow::Error) -> String {
 
 #[tauri::command]
 pub(crate) async fn daemon_status(app: State<'_, App>) -> Result<DaemonStatus, String> {
+    Ok(status_now(&app).await)
+}
+
+pub(crate) async fn status_now(app: &App) -> DaemonStatus {
     let socket = socket_path().display().to_string();
-    match ensure_client(&app).await {
-        Ok((c, spawned)) => Ok(DaemonStatus {
+    match ensure_client(app).await {
+        Ok((c, spawned)) => DaemonStatus {
             connected: true,
             version: tokio::time::timeout(HELLO_TIMEOUT, c.ping()).await.ok().and_then(|r| r.ok()),
             socket,
@@ -276,8 +324,9 @@ pub(crate) async fn daemon_status(app: State<'_, App>) -> Result<DaemonStatus, S
             spawned,
             warning: app.warning.lock().await.clone(),
             replaced: app.replaced.lock().await.clone(),
-        }),
-        Err(_) => Ok(DaemonStatus {
+            reload: app.reload.lock().await.is_some(),
+        },
+        Err(_) => DaemonStatus {
             connected: false,
             version: None,
             socket,
@@ -285,7 +334,8 @@ pub(crate) async fn daemon_status(app: State<'_, App>) -> Result<DaemonStatus, S
             spawned: false,
             warning: app.warning.lock().await.clone(),
             replaced: None,
-        }),
+            reload: false,
+        },
     }
 }
 

@@ -15,6 +15,7 @@ const WARNINGS: Record<DaemonWarning["kind"], [string, string]> = {
   protocol: ["skiffd incompatible", "skiffd does not match this app"],
   newer: ["skiffd newer", "skiffd is newer than this app"],
   hung: ["skiffd not responding", "skiffd is not responding"],
+  failed: ["Reload failed", "skiffd did not come back"],
 };
 
 let shown: DaemonWarning | null = null;
@@ -72,8 +73,8 @@ export function daemonBadge(warning: DaemonWarning | null) {
       })
     : button("confirm-act", "Restart skiffd…", () => {
         close();
-        // A hung daemon lists nothing: there is nothing to choose from.
-        if (warning.kind === "hung" || !live().length) void restartNow();
+        // A hung or lost daemon lists nothing: there is nothing to choose from.
+        if (warning.kind === "hung" || warning.kind === "failed" || !live().length) void restartNow();
         else restartDialog();
       });
   const foot = h("div", "confirm-foot");
@@ -107,7 +108,7 @@ export function daemonBadge(warning: DaemonWarning | null) {
     close();
     badge.focus();
   });
-  if (!whenIdle && (warning.kind === "protocol" || warning.kind === "hung")) requestAnimationFrame(open);
+  if (!whenIdle && (warning.kind === "protocol" || warning.kind === "hung" || warning.kind === "failed")) requestAnimationFrame(open);
 }
 
 /** The sessions a restart stops, by project and worktree, with what each one does. */

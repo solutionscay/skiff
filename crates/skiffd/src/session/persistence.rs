@@ -36,8 +36,13 @@ impl SessionPool {
             loop {
                 pool.dirty.notified().await;
                 tokio::time::sleep(SAVE_DELAY).await;
-                let ws = pool.workspace();
-                let saved = tokio::task::spawn_blocking(move || workspace::save(&workspace::path(), &ws)).await;
+                let pool = pool.clone();
+                // A reload saves on its own, and must not exec halfway through a save.
+                let saved = tokio::task::spawn_blocking(move || {
+                    let Some(_quiet) = pool.quiet() else { return Ok(()) };
+                    workspace::save(&workspace::path(), &pool.workspace())
+                })
+                .await;
                 if let Ok(Err(e)) = saved {
                     tracing::warn!("save workspace: {e:#}");
                 }

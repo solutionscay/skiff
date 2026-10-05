@@ -10,6 +10,7 @@ use layout::Side;
 
 mod attach;
 mod callsign;
+mod daemon;
 mod groups;
 mod info;
 mod layout;
@@ -40,6 +41,9 @@ struct Cli {
 enum Cmd {
     /// Show the daemon's version, protocol, pid and socket.
     Status,
+    /// Manage the daemon itself.
+    #[command(subcommand)]
+    Daemon(DaemonCmd),
     /// List sessions.
     Ls {
         #[arg(long)]
@@ -142,6 +146,18 @@ enum Cmd {
     OpenWith {
         #[command(subcommand)]
         cmd: OpenWithCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum DaemonCmd {
+    /// Move skiffd onto a new binary and keep every session, with its
+    /// process, screen and scrollback. Checks afterwards that each one survived.
+    Reload {
+        /// The skiffd to run. Default: the running daemon's executable as it
+        /// is on disk now, for example after a rebuild.
+        #[arg(long, value_name = "PATH")]
+        binary: Option<PathBuf>,
     },
 }
 
@@ -336,6 +352,7 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Theme { cmd: ThemeCmd::Project { cmd } } => return theme::project(cmd).map(|_| 0),
         Cmd::OpenWith { cmd } => return open_with::run(cmd).map(|_| 0),
         Cmd::Status => return info::status(&socket).await.map(|_| 0),
+        Cmd::Daemon(DaemonCmd::Reload { binary }) => return daemon::reload(&socket, binary).await.map(|_| 0),
         _ => {}
     }
     let c = connect(&socket).await?;
@@ -357,7 +374,7 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Seen { session } => sessions::seen(&c, &session).await,
         Cmd::Agents { json } => info::agents(&c, json).await,
         Cmd::Theme { cmd: ThemeCmd::Session { cmd } } => theme::session(&c, cmd).await,
-        Cmd::Status | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::OpenWith { .. } | Cmd::Wait { .. } => unreachable!(),
+        Cmd::Status | Cmd::Daemon(_) | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::OpenWith { .. } | Cmd::Wait { .. } => unreachable!(),
     }
     .map(|_| 0)
 }

@@ -9,15 +9,17 @@ use std::{
 
 use alacritty_terminal::{
     event::{Event as TermEvent, EventListener},
-    grid::Dimensions,
+    grid::{Dimensions, Grid},
     index::{Column, Line},
     term::{
         cell::{Cell, Flags},
         test::TermSize,
-        Config, Term, TermMode,
+        Config, Term, TermMode, TermSave, TermSaveOwned,
     },
-    vte::ansi::{Color, NamedColor, Processor},
+    vte::ansi::{Color, NamedColor, Processor, ProcessorSave},
 };
+use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
 
 /// Lines of history the daemon keeps per session.
 pub const SCROLLBACK: usize = 2000;
@@ -54,19 +56,63 @@ pub struct Screen {
     text: u64,
 }
 
+/// The whole terminal for a reload: both screens and their history, cursors,
+/// modes, keyboard stacks, and the parser in the middle of a sequence.
+#[derive(Serialize)]
+struct SaveRef<'a> {
+    term: TermSave<&'a Grid<Cell>>,
+    parser: ProcessorSave,
+    text: u64,
+}
+
+/// [`SaveRef`] as it reads back. Same fields, same order.
+#[derive(Deserialize)]
+struct SaveOwned {
+    term: TermSaveOwned,
+    parser: ProcessorSave,
+    text: u64,
+}
+
+fn config() -> Config {
+    Config {
+        scrolling_history: SCROLLBACK,
+        // Track the program's kitty keyboard stack, so a snapshot and a
+        // reload carry it. The daemon encodes no keys and answers no queries.
+        kitty_keyboard: true,
+        ..Config::default()
+    }
+}
+
 impl Screen {
     pub fn new(cols: u16, rows: u16) -> Self {
-        let config = Config {
-            scrolling_history: SCROLLBACK,
-            ..Config::default()
-        };
         let signals = Listener::default();
         Self {
-            term: Term::new(config, &size(cols, rows), signals.clone()),
+            term: Term::new(config(), &size(cols, rows), signals.clone()),
             parser: Processor::new(),
             signals,
             text: 0,
         }
+    }
+
+    /// Everything [`Self::restore`] needs to carry on as this screen would.
+    pub fn save(&self) -> Result<Vec<u8>> {
+        let save = SaveRef {
+            term: self.term.save(),
+            parser: self.parser.save(),
+            text: self.text,
+        };
+        Ok(postcard::to_stdvec(&save)?)
+    }
+
+    pub fn restore(bytes: &[u8]) -> Result<Self> {
+        let save: SaveOwned = postcard::from_bytes(bytes)?;
+        let signals = Listener::default();
+        Ok(Self {
+            term: Term::restore(save.term, config(), signals.clone()).map_err(|e| anyhow!("terminal state: {e}"))?,
+            parser: Processor::restore(save.parser),
+            signals,
+            text: save.text,
+        })
     }
 
     /// The program drew on the alternate screen: it is full-screen.
@@ -192,49 +238,19 @@ impl Screen {
     pub fn snapshot(&self) -> Vec<u8> {
         let grid = self.term.grid();
         let mode = *self.term.mode();
-        let cols = grid.columns();
         let mut out = String::with_capacity(64 * 1024);
         // The reset ends any synchronized update, so the new one starts after it.
         out.push_str("\x1bc\x1b[?2026h");
         if mode.contains(TermMode::ALT_SCREEN) {
+            // The primary screen and its history go first, so the client
+            // still has them when the program leaves the alternate screen.
+            let primary = self.term.inactive_grid();
+            draw(&mut out, primary);
+            let cursor = primary.cursor.point;
+            let _ = write!(out, "\x1b[{};{}H", cursor.line.0 + 1, cursor.column.0 + 1);
             out.push_str("\x1b[?1049h\x1b[H");
         }
-
-        let top = grid.topmost_line().0;
-        let bottom = grid.bottommost_line().0;
-        let mut pen = Pen::default();
-        for line in top..=bottom {
-            let row = &grid[Line(line)];
-            let wrapped = row[Column(cols - 1)].flags.contains(Flags::WRAPLINE);
-            // A wrapped row must fill every column so the next row wraps onto it.
-            let end = if wrapped {
-                cols
-            } else {
-                (0..cols)
-                    .rev()
-                    .find(|&c| !is_blank(&row[Column(c)]))
-                    .map_or(0, |c| c + 1)
-            };
-            for c in 0..end {
-                let cell = &row[Column(c)];
-                if cell
-                    .flags
-                    .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
-                {
-                    continue;
-                }
-                pen.set(&mut out, cell);
-                out.push(if cell.flags.contains(Flags::HIDDEN) { ' ' } else { cell.c });
-                if let Some(zw) = cell.zerowidth() {
-                    out.extend(zw);
-                }
-            }
-            if !wrapped && line != bottom {
-                pen.reset(&mut out);
-                out.push_str("\r\n");
-            }
-        }
-        pen.reset(&mut out);
+        draw(&mut out, grid);
 
         let cursor = grid.cursor.point;
         let _ = write!(out, "\x1b[{};{}H", cursor.line.0 + 1, cursor.column.0 + 1);
@@ -253,13 +269,58 @@ impl Screen {
         ] {
             out.push_str(if mode.contains(flag) { set } else { unset });
         }
+        // Kitty keyboard flags, in the protocol's bit order.
+        let kitty = (mode & TermMode::KITTY_KEYBOARD_PROTOCOL).bits() >> TermMode::DISAMBIGUATE_ESC_CODES.bits().trailing_zeros();
+        if kitty != 0 {
+            let _ = write!(out, "\x1b[={kitty};1u");
+        }
         out.push_str("\x1b[?2026l");
         out.into_bytes()
     }
 }
 
+/// Writes the history and screen of `grid`, from the top, with their colors.
+fn draw(out: &mut String, grid: &Grid<Cell>) {
+    let cols = grid.columns();
+    let top = grid.topmost_line().0;
+    let bottom = grid.bottommost_line().0;
+    let mut pen = Pen::default();
+    for line in top..=bottom {
+        let row = &grid[Line(line)];
+        let wrapped = row[Column(cols - 1)].flags.contains(Flags::WRAPLINE);
+        // A wrapped row must fill every column so the next row wraps onto it.
+        let end = if wrapped {
+            cols
+        } else {
+            (0..cols)
+                .rev()
+                .find(|&c| !is_blank(&row[Column(c)]))
+                .map_or(0, |c| c + 1)
+        };
+        for c in 0..end {
+            let cell = &row[Column(c)];
+            if cell
+                .flags
+                .intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
+            {
+                continue;
+            }
+            pen.set(out, cell);
+            out.push(if cell.flags.contains(Flags::HIDDEN) { ' ' } else { cell.c });
+            if let Some(zw) = cell.zerowidth() {
+                out.extend(zw);
+            }
+        }
+        if !wrapped && line != bottom {
+            pen.reset(out);
+            out.push_str("\r\n");
+        }
+    }
+    pen.reset(out);
+}
+
 /// What an agent's window title says about its turn.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TitleState {
     Busy,
     /// The agent waits for the user's answer.
@@ -519,6 +580,24 @@ mod tests {
         assert!(snap.contains("three"));
         assert!(snap.contains("\x1b[3;6H"), "cursor after 'three': {snap:?}");
         assert!(snap.contains("\x1b[?2004h"));
+    }
+
+    #[test]
+    fn restore_carries_on_where_the_save_stopped() {
+        let mut s = Screen::new(20, 4);
+        s.feed(b"p-1\r\np-2\r\np-3\r\np-4\r\np-5\x1b[2;3r\x1b[?2004h\x1b[?1002h\x1b[>1u\x1b[?1049h\x1b[>5uALT\x1b[3");
+        let mut back = Screen::restore(&s.save().unwrap()).unwrap();
+        assert_eq!(back.snapshot(), s.snapshot());
+        // The parser finishes the sequence the save cut in half.
+        back.feed(b"1mRED\x1b[0m");
+        let snap = String::from_utf8(back.snapshot()).unwrap();
+        assert!(snap.contains("ALT\x1b[0;31mRED"), "{snap:?}");
+        assert!(snap.contains("p-1") && snap.contains("\x1b[=5;1u"), "{snap:?}");
+        // The primary screen keeps its history and its own kitty flags.
+        back.feed(b"\x1b[?1049l");
+        let snap = String::from_utf8(back.snapshot()).unwrap();
+        assert!(snap.contains("p-1\r\np-2") && !snap.contains("ALT"), "{snap:?}");
+        assert!(snap.contains("\x1b[=1;1u") && snap.contains("\x1b[?2004h\x1b[?1002h"), "{snap:?}");
     }
 
     #[test]

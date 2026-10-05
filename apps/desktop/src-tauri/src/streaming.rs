@@ -151,7 +151,7 @@ pub(crate) async fn unsubscribe_output(app: State<'_, App>, session: String) -> 
 pub(crate) async fn subscribe_events(app: State<'_, App>, on_event: Channel<Event>) -> Result<(), String> {
     let (c, _) = ensure_client(&app).await?;
     let mut rx = c.events();
-    tauri::async_runtime::spawn(async move {
+    let task = tauri::async_runtime::spawn(async move {
         loop {
             match rx.recv().await {
                 Ok(e) => {
@@ -164,5 +164,8 @@ pub(crate) async fn subscribe_events(app: State<'_, App>, on_event: Channel<Even
             }
         }
     });
+    if let Some(old) = app.events.lock().await.replace(task) {
+        old.abort();
+    }
     Ok(())
 }

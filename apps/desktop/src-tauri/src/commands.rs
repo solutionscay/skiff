@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use skiff_core::{group::Group, project::AgentInfo, session::{SessionInfo, SessionSpec}};
 use tauri::{AppHandle, Manager, State};
-use crate::connection::{App, ensure_client, err};
+use crate::{connection::{App, ensure_client, err}, input::Sent};
 
 #[tauri::command]
 pub(crate) async fn list_sessions(app: State<'_, App>) -> Result<Vec<SessionInfo>, String> {
@@ -17,19 +17,22 @@ pub(crate) async fn create_session(app: State<'_, App>, spec: SessionSpec) -> Re
 
 /// Not async: it runs on the main thread, one call after another, so
 /// keystrokes reach the PTY in order. It waits for no lock and no reply.
+/// While a reload runs, or before a connection is up, the input waits in
+/// the bridge, in order.
 #[tauri::command]
 pub(crate) fn pty_write(handle: AppHandle, app: State<'_, App>, session: String, data: String) -> Result<(), String> {
     let live = app.live.lock().unwrap().clone().filter(|c| !c.is_closed());
-    if let Some(c) = live {
-        return c.write_now(&session, data.into_bytes()).map_err(err);
-    }
-    // No connection yet. Rare: connect, then write.
-    tauri::async_runtime::spawn(async move {
-        let app = handle.state::<App>();
-        if let Ok((c, _)) = ensure_client(&app).await {
-            let _ = c.write(&session, data.into_bytes()).await;
+    match app.input.write(live.as_deref(), &session, data.into_bytes()).map_err(err)? {
+        Sent::Done | Sent::Held => {}
+        // No connection yet. Rare: connect, then send what waits.
+        Sent::Connect => {
+            tauri::async_runtime::spawn(async move {
+                let app = handle.state::<App>();
+                let c = ensure_client(&app).await.ok().map(|(c, _)| c);
+                app.input.connected(c.as_deref());
+            });
         }
-    });
+    }
     Ok(())
 }
 

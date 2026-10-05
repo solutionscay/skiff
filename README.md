@@ -104,20 +104,45 @@ overrides the socket path, `SKIFF_CONFIG` the config file.
 ### Changes to skiffd
 
 The daemon outlives the app. A rebuild does not replace the daemon that is running,
-so a change to `crates/skiffd` has no effect until you restart it:
+so a change to `crates/skiffd` has no effect until you reload or restart it:
 
 ```
 cargo build -p skiffd      # pnpm tauri dev also does this
-pkill -x skiffd            # ends every open session
+skiff daemon reload        # same pid, every session and its screen kept
 ```
 
-Then reload the window (Ctrl+R) or restart the app. The app starts the new binary
-on its next call.
+`skiff daemon reload` execs the rebuilt binary in place. It refuses, and the old
+daemon carries on, when the new binary cannot adopt the sessions. Then restart:
+`pkill -x skiffd` ends every open session, and the app starts the new binary on its
+next call. Reload the window (Ctrl+R) or restart the app after either one.
+
+A change to what a reload hands over must keep the two binaries compatible: raise
+`HANDOVER` in `crates/skiffd/src/session/reload.rs` when the handover metadata
+changes. The terminal state's encoding is checked on its own (`skiffd --reload-info`),
+and before exec the new binary must read the handover file the old one wrote. A
+skiff-core type the new binary cannot read (a new `SessionState`, a required field)
+makes the reload refuse, and the old daemon carries on.
 
 skiffd has its own version (`crates/skiffd` and `crates/skiff-core`), apart from the
 app version. At launch the app compares the running daemon's version and protocol
-(`skiff_core::PROTOCOL`) with the skiffd it ships. It replaces an older or incompatible daemon without asking when no
-session is live. When sessions are live, it shows a "Restart skiffd" button instead.
+(`skiff_core::PROTOCOL`) with the skiffd it ships:
+
+- An older daemon that supports reload moves onto the bundled skiffd in place,
+  with no prompt. The status bar shows "Reloading skiffd…". Typed input waits, and goes on only
+  after the app sees the same daemon pid, the new version, and each session with the
+  same child pid. Sessions keep running. The protocol may differ: the reload request
+  and the handover keep their own format.
+- A daemon that predates reload, or that the bundled skiffd cannot adopt, keeps the
+  restart flow. With no live session the app replaces it without asking. With live
+  sessions it shows a "Restart skiffd" button instead.
+- A newer daemon stays. The app never downgrades it.
+
+A failed reload never stops a session on its own. Before exec, the old daemon carries
+on and the app offers the restart. After exec, the app reports the failure and offers
+the restart.
+
+A dev build has the same version as the daemon it replaces, so the app does not reload
+it. Run `skiff daemon reload` after `cargo build -p skiffd`, as above.
 
 Debug builds use `skiffd-dev.sock` and `workspace-dev.json`, so `pnpm tauri dev` runs
 its own daemon beside the installed app. The daemon writes its log next to the socket

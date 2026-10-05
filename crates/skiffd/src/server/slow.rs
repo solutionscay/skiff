@@ -15,12 +15,23 @@ pub(super) async fn answer_slow(pool: Arc<SessionPool>, request: Request) -> Res
             Ok(session) => Response::Session { session },
             Err(e) => error(e),
         },
-        Request::ListAgents => match blocking(|| Ok(project::agents())).await {
+        // Both start processes, which a reload must not have running.
+        Request::ListAgents => match blocking(move || {
+            let _change = pool.change()?;
+            Ok(project::agents())
+        })
+        .await
+        {
             Ok(agents) => Response::Agents { agents },
             Err(e) => error(e),
         },
         Request::ListAgentSessions { command, cwd } => {
-            match blocking(move || agent_sessions(&command, &cwd)).await {
+            match blocking(move || {
+                let _change = pool.change()?;
+                agent_sessions(&command, &cwd)
+            })
+            .await
+            {
                 Ok(stdout) => Response::Output { stdout },
                 Err(e) => error(e),
             }

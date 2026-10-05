@@ -109,7 +109,26 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
             Request::Ping => Response::Pong {
                 version: skiff_core::VERSION.to_string(),
                 protocol: skiff_core::PROTOCOL,
+                reload_state: Some(crate::session::reload::HANDOVER),
+                pid: Some(std::process::id()),
             },
+            // Writes before this one on the connection are queued already;
+            // the reload drains them. It answers only when it fails: success
+            // execs and closes the connection.
+            Request::Reload { binary } => {
+                let ctl = ctl.clone();
+                let pool = pool.clone();
+                let id = env.id;
+                tokio::spawn(async move {
+                    let message = match tokio::task::spawn_blocking(move || pool.reload(binary)).await {
+                        Ok(Err(e)) => format!("{e:#}"),
+                        Ok(Ok(never)) => match never {},
+                        Err(e) => format!("reload: {e}"),
+                    };
+                    let _ = ctl.send(ServerMessage::Reply(Reply { id, response: Response::Error { message } }));
+                });
+                continue;
+            }
             Request::ListSessions => Response::Sessions {
                 sessions: pool.list(),
             },

@@ -5,6 +5,8 @@ mod connection;
 mod commands;
 mod config;
 mod diagnostics;
+mod input;
+mod reload;
 mod streaming;
 mod native_menu;
 #[cfg(target_os = "linux")]
@@ -64,6 +66,7 @@ pub fn run() {
             config::remove_worktree,
             config::add_project,
             connection::restart_daemon,
+            reload::reload_daemon,
             config::inspect_folder,
             config::init_repository,
             config::set_project_icon,
