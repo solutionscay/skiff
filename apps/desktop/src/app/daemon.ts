@@ -1,8 +1,8 @@
 /** skiffd: sessions, projects, events. */
 import { placeInSlot } from "../workspace/canvas";
-import { filledOf, isSlot, slot } from "../workspace/layoutSlots";
+import { filledOf, isSlot } from "../workspace/layoutSlots";
 import { agentCallsign } from "../appearance/agentNames";
-import { removePane, replacePane, sessionsOf } from "../workspace/layout";
+import { removePane, sessionsOf } from "../workspace/layout";
 
 import type { AgentInfo, Appearance, DaemonEvent, DaemonStatus, Project, Reloaded, SessionInfo, SplitDir } from "../platform/types";
 import { Channel, invoke } from "@tauri-apps/api/core";
@@ -288,11 +288,6 @@ export function onEvent(e: DaemonEvent) {
   scheduleRender();
 }
 
-/** Groups that must survive their last session ending off screen: "Kill all sessions" keeps the group. */
-const kept = new Set<string>();
-export const keepGroup = (id: string) => void kept.add(id);
-export const releaseGroup = (id: string) => void kept.delete(id);
-
 /** The daemon pruned the session from its groups; groups_changed brings them. Here the view drops it at once. */
 function dropSession(id: string) {
   inBackground(() => dropPane(id));
@@ -314,13 +309,9 @@ function dropPane(id: string) {
     if (!sessionsOf(g.layout).includes(id)) continue;
     let next = removePane(g.layout, id);
     if (filledOf(next).length === 0) {
-      // The last session ended. A group on screen stays, with an empty pane in
-      // its place. One off screen has nothing left to show: it goes.
-      if (g.id !== S.activeGroup && !kept.has(g.id)) {
-        deleteGroup(g);
-        continue;
-      }
-      next = replacePane(g.layout, id, slot);
+      // The last session ended: the group has nothing left to show, so it goes.
+      deleteGroup(g);
+      continue;
     }
     if (next) {
       g.layout = next;

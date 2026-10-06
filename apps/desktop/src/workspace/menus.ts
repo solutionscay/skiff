@@ -14,7 +14,7 @@ import type { Group, Project, SessionInfo, SplitDir, Worktree } from "../platfor
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { keepGroup, loadProjects, newSession, releaseGroup } from "../app/daemon";
+import { loadProjects, newSession } from "../app/daemon";
 import { launchMenu } from "../app/panels";
 import { showError } from "../ui/alerts";
 import { hasChanges, reviewChanges, setShowChanges, showsChanges } from "./changes";
@@ -440,22 +440,18 @@ export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: s
       const ok = await confirmAction({
         // Not the group's name: an unnamed group is called "1 over 2", which reads as noise here.
         title: "Kill all sessions in this group?",
-        body: `This stops ${running.length} running ${running.length === 1 ? "process" : "processes"} and deletes ${running.length === 1 ? "its session" : "their sessions"}. Unsaved work in ${running.length === 1 ? "it" : "them"} is lost.\nThe group stays, with empty panes.`,
+        body: `This stops ${running.length} running ${running.length === 1 ? "process" : "processes"} and deletes ${running.length === 1 ? "its session" : "their sessions"}. Unsaved work in ${running.length === 1 ? "it" : "them"} is lost.\nThe group goes when its last session ends.`,
         action: "Kill all sessions",
       });
       if (!ok) return refocusTerminal();
     }
     clearSelection();
-    // Killing keeps the group: it does not go when its last session ends off screen.
-    keepGroup(group.id);
     const results = await Promise.allSettled(ids.filter((id) => sessions.has(id)).map((id) => invoke("kill_session", { session: id })));
     for (const result of results) {
       if (result.status === "rejected") {
         showError(result.reason);
       }
     }
-    // The exits arrive as events, after the kills return.
-    setTimeout(() => releaseGroup(group.id), 3000);
     render();
   };
   const entries: Exclude<MenuEntry, { head: string }>[] = [
