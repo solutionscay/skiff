@@ -5,8 +5,8 @@ import type { FolderInfo, Project } from "../platform/types";
 
 /**
  * Pick a folder, check it with the daemon, and add it with the defaults: the
- * repo's name, letters or its own icon, the next free color. The project's
- * right-click menu changes the icon and color afterwards.
+ * repo's name, letters or its own icon, a random free color and theme. The
+ * project's right-click menu changes them afterwards.
  */
 export function createAddProject(onAdded: (p: Project) => void, onClose: () => void) {
   let busy = false;

@@ -3,18 +3,24 @@ use anyhow::{Context, Result};
 use super::types::{FolderInfo, ProjectConfig, Layout, short_name};
 use super::persistence::{load, config_path, edit_lock, home_relative, expand_home, write_atomic};
 
-/// Accent colors for new projects, in order. Kept clear of the state colors.
+/// Accent colors for new projects. Kept clear of the state colors.
 const PALETTE: [&str; 8] = [
     "#b69cff", "#f28fd0", "#7ee0cb", "#e0c07e", "#9ec1ff", "#ff9e7a", "#c3e88d", "#d0c2ff",
 ];
 
+/// A random item of `all` that `used` rejects, or of all of them when every
+/// one is used. `all` is not empty.
+fn pick_unused<T: AsRef<str>>(all: &[T], used: impl Fn(&str) -> bool) -> String {
+    use std::hash::{BuildHasher, Hasher};
+    let free: Vec<&T> = all.iter().filter(|c| !used(c.as_ref())).collect();
+    let from: Vec<&T> = if free.is_empty() { all.iter().collect() } else { free };
+    let roll = std::collections::hash_map::RandomState::new().build_hasher().finish();
+    from[(roll % from.len() as u64) as usize].as_ref().to_string()
+}
+
 pub fn inspect_folder(dir: &Path) -> FolderInfo {
     let cfg = load().unwrap_or_default();
-    let color = PALETTE
-        .iter()
-        .find(|c| !cfg.projects.iter().any(|p| p.color.as_deref() == Some(**c)))
-        .unwrap_or(&PALETTE[cfg.projects.len() % PALETTE.len()])
-        .to_string();
+    let color = pick_unused(&PALETTE, |c| cfg.projects.iter().any(|p| p.color.as_deref() == Some(c)));
     let mut info = FolderInfo {
         root: None,
         name: String::new(),
@@ -102,6 +108,10 @@ pub fn add_project(
         .map(|s| s.trim().chars().take(3).collect::<String>())
         .filter(|s| !s.is_empty() && *s != short_name(&name));
     let color = color.filter(|c| !c.is_empty()).unwrap_or(info.color);
+    // A theme of its own, so a new project does not look like the app or the others.
+    let theme = pick_unused(&crate::theme::builtin_ids(), |t| {
+        cfg.appearance.theme.as_deref() == Some(t) || cfg.projects.iter().any(|p| p.theme.as_deref() == Some(t))
+    });
 
     let file = config_path();
     let text = if file.exists() {
@@ -119,6 +129,7 @@ pub fn add_project(
     }
     table["path"] = toml_edit::value(home_relative(&path));
     table["color"] = toml_edit::value(color.as_str());
+    table["theme"] = toml_edit::value(theme.as_str());
     // No key: detect. "" : no icon. A path: that file.
     if let Some(i) = &icon {
         table["icon"] = toml_edit::value(i.as_str());
@@ -155,7 +166,7 @@ pub fn add_project(
         server: None,
         files: false,
         changes: None,
-        theme: None,
+        theme: Some(theme),
         closed: false,
     })
 }

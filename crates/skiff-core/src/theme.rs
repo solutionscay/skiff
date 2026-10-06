@@ -79,6 +79,11 @@ const BUILTIN: &[(&str, &str)] = &[
     ("driftwood", include_str!("../themes/driftwood.toml")),
 ];
 
+/// The ids of the bundled themes, such as `builtin:foot`.
+pub fn builtin_ids() -> Vec<String> {
+    BUILTIN.iter().map(|(slug, _)| format!("builtin:{slug}")).collect()
+}
+
 /// The operator Foot themes, bundled as Skiff TOML, then imported theme files.
 pub fn list() -> Vec<TerminalTheme> {
     let mut out: Vec<_> = BUILTIN.iter().map(|(slug, text)| {

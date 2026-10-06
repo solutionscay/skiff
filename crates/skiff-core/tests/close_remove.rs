@@ -19,6 +19,7 @@ fn close_reopen_and_remove_keep_the_rest_of_the_file() {
     std::env::set_var("SKIFF_CONFIG", &file);
 
     let added = config::add_project(&repo, Some("repo".into()), None, Some("#8fd0f2".into()), None, vec![]).unwrap();
+    assert!(added.theme.as_deref().is_some_and(|t| t.starts_with("builtin:")));
     assert!(!added.closed);
 
     // Close: the table and its settings stay, marked closed.
