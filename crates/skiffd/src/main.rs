@@ -4,7 +4,7 @@ use anyhow::{bail, Context, Result};
 use skiff_core::socket::socket_path;
 use skiffd::{pty, server, session::{reload, SessionPool}, shellenv};
 use tokio::net::{UnixListener, UnixStream};
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::filter::LevelFilter;
 
 /// How this process started.
 enum Start {
@@ -40,8 +40,9 @@ async fn run(start: Start) -> Result<()> {
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        // RUST_LOG takes one level, such as `debug`. Anything else means info.
+        .with_max_level(
+            std::env::var("RUST_LOG").ok().and_then(|l| l.parse().ok()).unwrap_or(LevelFilter::INFO),
         )
         .init();
 

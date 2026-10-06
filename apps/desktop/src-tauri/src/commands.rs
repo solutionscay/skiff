@@ -85,15 +85,27 @@ pub(crate) fn config_path() -> String {
     skiff_core::config::config_path().display().to_string()
 }
 
-/// Opens projects.toml in the default editor. From Rust, because the opener's
-/// `**` scope does not match hidden folders such as ~/.config.
+/// Runs a call that may wait on a starting app off the async workers.
+async fn blocking(f: impl FnOnce() -> anyhow::Result<()> + Send + 'static) -> Result<(), String> {
+    tokio::task::spawn_blocking(f).await.map_err(|e| e.to_string())?.map_err(err)
+}
+
+/// Opens projects.toml in the default editor.
 #[tauri::command]
-pub(crate) fn open_config(app: tauri::AppHandle) -> Result<(), String> {
-    use tauri_plugin_opener::OpenerExt;
-    let path = skiff_core::config::config_path();
-    app.opener()
-        .open_path(path.display().to_string(), None::<&str>)
-        .map_err(|e| e.to_string())
+pub(crate) async fn open_config() -> Result<(), String> {
+    blocking(|| skiff_core::open::open_default(&skiff_core::config::config_path())).await
+}
+
+/// Opens a file or folder in the OS default app.
+#[tauri::command]
+pub(crate) async fn open_path(path: PathBuf) -> Result<(), String> {
+    blocking(move || skiff_core::open::open_default(&path)).await
+}
+
+/// Opens a web address in the default browser.
+#[tauri::command]
+pub(crate) async fn open_url(url: String) -> Result<(), String> {
+    blocking(move || skiff_core::open::open_url(&url)).await
 }
 
 #[tauri::command]
@@ -110,11 +122,10 @@ pub(crate) async fn import_themes(paths: Vec<PathBuf>) -> Result<Vec<String>, St
 }
 
 #[tauri::command]
-pub(crate) fn open_theme_folder(app: tauri::AppHandle) -> Result<(), String> {
-    use tauri_plugin_opener::OpenerExt;
+pub(crate) async fn open_theme_folder() -> Result<(), String> {
     let path = skiff_core::theme::theme_dir().ok_or("Cannot find the theme folder")?;
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
-    app.opener().open_path(path.display().to_string(), None::<&str>).map_err(|e| e.to_string())
+    blocking(move || skiff_core::open::open_default(&path)).await
 }
 
 /// A background image's raw bytes. The page turns them into a blob URL.
@@ -299,9 +310,39 @@ pub(crate) fn set_project_files(project: String, on: bool) -> Result<(), String>
 }
 
 #[tauri::command]
-pub(crate) fn reveal_file(app: tauri::AppHandle, path: PathBuf) -> Result<(), String> {
-    use tauri_plugin_opener::OpenerExt;
-    app.opener().reveal_item_in_dir(path).map_err(|e| e.to_string())
+pub(crate) async fn reveal_file(path: PathBuf) -> Result<(), String> {
+    blocking(move || reveal(&std::fs::canonicalize(&path)?)).await
+}
+
+/// Shows the file selected in its folder.
+#[cfg(target_os = "macos")]
+fn reveal(path: &std::path::Path) -> anyhow::Result<()> {
+    skiff_core::open::launch("open -R", path)
+}
+
+/// Asks the file manager to select the file over D-Bus. A file manager
+/// without FileManager1 opens the folder instead.
+#[cfg(target_os = "linux")]
+fn reveal(path: &std::path::Path) -> anyhow::Result<()> {
+    use gtk::{gio::{self, prelude::FileExt}, glib::ToVariant};
+    let shown = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE).and_then(|bus| {
+        let uri = gio::File::for_path(path).uri().to_string();
+        bus.call_sync(
+            Some("org.freedesktop.FileManager1"),
+            "/org/freedesktop/FileManager1",
+            "org.freedesktop.FileManager1",
+            "ShowItems",
+            Some(&(vec![uri], "").to_variant()),
+            None,
+            gio::DBusCallFlags::NONE,
+            5000,
+            gio::Cancellable::NONE,
+        )
+    });
+    match shown {
+        Ok(_) => Ok(()),
+        Err(_) => skiff_core::open::open_default(path.parent().unwrap_or(path)),
+    }
 }
 
 #[tauri::command]

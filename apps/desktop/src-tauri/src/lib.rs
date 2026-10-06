@@ -27,7 +27,6 @@ pub fn run() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(App::default())
@@ -85,6 +84,8 @@ pub fn run() {
             commands::preview_file,
             commands::open_file,
             commands::reveal_file,
+            commands::open_path,
+            commands::open_url,
             commands::files_projects,
             commands::hidden_changes_projects,
             commands::set_project_changes,

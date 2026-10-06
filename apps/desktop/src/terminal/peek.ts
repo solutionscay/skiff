@@ -24,13 +24,13 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { $, button, h } from "../ui/dom";
 import { icon } from "../ui/icons";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { showError } from "../ui/alerts";
 import { appKey, currentRow, itemKey } from "../app/keyboard";
 import type { Action } from "../app/keys";
 import { S, sessions } from "../app/state";
 import type { SessionInfo } from "../platform/types";
 import { toBytes } from "../platform/ipcBytes";
+import { openUrl } from "../platform/os";
 import type { Preview } from "../workspace/rowActs";
 import { rowActs } from "../workspace/rowActs";
 

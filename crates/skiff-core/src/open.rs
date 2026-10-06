@@ -83,10 +83,19 @@ fn file_script(command: &str, file: &Path) -> String {
     }
 }
 
+const OPENER: &str = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+
 /// Hands `file` to the OS default app. Fails when the OS has no app for it.
 pub fn open_default(file: &Path) -> Result<()> {
-    let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
-    launch(opener, file)
+    launch(OPENER, file)
+}
+
+/// Hands a web address to the default browser. Only http and https go.
+pub fn open_url(url: &str) -> Result<()> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        bail!("Not a web address: {url}");
+    }
+    start(&format!("{OPENER} {}", shell_quote(url)), &std::env::temp_dir())
 }
 
 /// No NUL byte in the first 8 KB: the test git uses.

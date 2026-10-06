@@ -13,7 +13,7 @@ import { filledOf, slotsOf } from "./layoutSlots";
 import type { Group, Project, SessionInfo, SplitDir, Worktree } from "../platform/types";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
-import { openPath } from "@tauri-apps/plugin-opener";
+import { openPath } from "../platform/os";
 import { loadProjects, newSession } from "../app/daemon";
 import { launchMenu } from "../app/panels";
 import { showError } from "../ui/alerts";

@@ -8,7 +8,7 @@ import { createSwitcher, type SwitchItem } from "../ui/switcher";
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl } from "../platform/os";
 
 import { showError, showNotice } from "../ui/alerts";
 import { confirmAction } from "../ui/confirm";
