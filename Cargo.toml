@@ -40,10 +40,12 @@ clap = { version = "4", features = ["derive"] }
 alacritty_terminal = { path = "vendor/alacritty_terminal" }
 vte = { path = "vendor/vte" }
 
+# Size first. The emulator runs about 8% slower than at opt-level 3
+# (~100 MB/s of output); keystroke latency is in the webview's frames.
 [profile.release]
 codegen-units = 1
 lto = true
-opt-level = 3
+opt-level = "s"
 panic = "abort"
 strip = true
 
