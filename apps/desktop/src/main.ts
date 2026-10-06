@@ -5,9 +5,7 @@ import { configureCommandUi } from "./app/commandUi";
 import { runAction } from "./app/actions";
 import { focusPane, closePane, dragSessions } from "./workspace/view";
 import "@xterm/xterm/css/xterm.css";
-import "@fontsource/space-grotesk/latin-700.css";
-import "@fontsource/jetbrains-mono/latin-400.css";
-import "@fontsource/jetbrains-mono/latin-700.css";
+import "./styles/fonts.css";
 import "./styles.css";
 
 import { keyLabel, setKeymap } from "./app/keys";
