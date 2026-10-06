@@ -254,14 +254,25 @@ export function pickTheme(title: string, scope: string, themes: TerminalTheme[],
       return;
     }
     const step = KEYS[e.key];
-    if (!(e.target instanceof HTMLElement) || !e.target.closest(".tc-card")) return;
-    if (!step || e.ctrlKey || e.altKey || e.metaKey) return;
-    // Arrows move between cards, not the panel's scroll.
+    if (!step || e.ctrlKey || e.altKey || e.metaKey || !(e.target instanceof HTMLElement)) return;
+    const cards = [...body.querySelectorAll<HTMLButtonElement>(".tc-card")];
+    const search = body.querySelector<HTMLInputElement>(".tc-search");
+    // Down from the search goes into the cards, at the active theme. Left and right stay in the text.
+    if (e.target === search) {
+      if (step !== "down" || !cards.length) return;
+      e.preventDefault();
+      document.body.classList.add("kbd");
+      (cards.find((c) => c.classList.contains("active")) ?? cards[0]).focus();
+      return;
+    }
+    if (!e.target.closest(".tc-card")) return;
+    // Arrows move between cards, not the panel's scroll. Up from the top row goes back to the search.
     e.preventDefault();
     document.body.classList.add("kbd");
-    const cards = [...body.querySelectorAll<HTMLButtonElement>(".tc-card")];
-    const at = cards.indexOf(document.activeElement as HTMLButtonElement);
-    cards[nextCard(cards, at < 0 ? 0 : at, step)]?.focus();
+    const at = Math.max(0, cards.indexOf(document.activeElement as HTMLButtonElement));
+    const next = nextCard(cards, at, step);
+    if (step === "up" && next === at && search) search.focus();
+    else cards[next]?.focus();
   });
   body.querySelector<HTMLInputElement>(".tc-search")?.focus();
 }
