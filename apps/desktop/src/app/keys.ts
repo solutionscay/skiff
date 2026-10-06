@@ -169,7 +169,7 @@ export const DESCRIBE: [string, Action, string][] = [
   ["Edit", "find", "Find in the terminal"],
   ["Edit", "rename", "Rename the session, or the group or session row in the list"],
   ["Edit", "theme", "Session theme, or the theme of the group or session row in the list. On the rail or another row, the project theme"],
-  ["Edit", "end-session", "End the highlighted session, or the focused pane's session. It asks first"],
+  ["Edit", "end-session", "End the highlighted session, or the focused pane's session. On a group row, kill all its sessions. It asks first"],
   ["Project", "project-menu", "Menu for the highlighted row: worktree, group, session, Changes or Files. On the rail, the project menu"],
   ["Project", "project-folder", "Show the project in the file manager. On a file or change row, that file"],
   ["Project", "project-copy-path", "Copy the project path. On a file or change row, that file's path"],

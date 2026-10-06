@@ -7,7 +7,7 @@ import { copy, open, reveal } from "../platform/fileActions";
 import { showError } from "../ui/alerts";
 import { currentRow, cycleRegion, fromProject, listItems, stepList, stepRail, toMainWorktree, toProject } from "./keyboard";
 
-import { endEntry, newWorktree, projectMenu, projectRun, splitMenu, ungroup } from "../workspace/menus";
+import { endEntry, killGroup, newWorktree, projectMenu, projectRun, splitMenu, ungroup } from "../workspace/menus";
 import { ctxMenu } from "../ui/contextMenu";
 import { addProject, launchMenu, settings } from "./panels";
 
@@ -165,6 +165,8 @@ function openTheme() {
 /** End the highlighted session, or the focused pane's session, as its menu item does. */
 function endCurrentSession() {
   const row = S.atRail ? undefined : currentRow();
+  // On a group row the key acts on the group: all its sessions.
+  if (row?.dataset.group) return void killGroup(row.dataset.group);
   const session = sessions.get(row?.dataset.session ?? S.focused ?? "");
   const entry = session && endEntry(session);
   if (entry && "run" in entry) entry.run?.();

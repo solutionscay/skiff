@@ -421,6 +421,32 @@ export function ungroup(g: Group) {
   }
 }
 
+/** Kill all sessions in the group. It asks first when one runs. The group goes with its last session. */
+export async function killGroup(id: string) {
+  // Group reloads replace objects while a menu or confirmation is open.
+  const group = S.groups.find((x) => x.id === id);
+  if (!group) return;
+  const ids = sessionsOf(group.layout).filter((s) => sessions.has(s));
+  const running = ids.filter((s) => sessions.get(s)?.state !== "done");
+  if (running.length) {
+    const ok = await confirmAction({
+      // Not the group's name: an unnamed group is called "1 over 2", which reads as noise here.
+      title: "Kill all sessions in this group?",
+      body: `This stops ${running.length} running ${running.length === 1 ? "process" : "processes"} and deletes ${running.length === 1 ? "its session" : "their sessions"}. Unsaved work in ${running.length === 1 ? "it" : "them"} is lost.\nThe group goes when its last session ends.`,
+      action: "Kill all sessions",
+    });
+    if (!ok) return refocusTerminal();
+  }
+  clearSelection();
+  const results = await Promise.allSettled(ids.filter((id) => sessions.has(id)).map((id) => invoke("kill_session", { session: id })));
+  for (const result of results) {
+    if (result.status === "rejected") {
+      showError(result.reason);
+    }
+  }
+  render();
+}
+
 /** The same group actions serve context menus, the menu bar, and the palette. */
 export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: string }>[] {
   const current = () => S.groups.find((x) => x.id === g?.id);
@@ -431,34 +457,11 @@ export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: s
     const group = current();
     if (group) ungroup(group);
   };
-  const end = async () => {
-    const group = current();
-    if (!group) return;
-    const ids = idsOf(group);
-    const running = ids.filter((id) => sessions.get(id)?.state !== "done");
-    if (running.length) {
-      const ok = await confirmAction({
-        // Not the group's name: an unnamed group is called "1 over 2", which reads as noise here.
-        title: "Kill all sessions in this group?",
-        body: `This stops ${running.length} running ${running.length === 1 ? "process" : "processes"} and deletes ${running.length === 1 ? "its session" : "their sessions"}. Unsaved work in ${running.length === 1 ? "it" : "them"} is lost.\nThe group goes when its last session ends.`,
-        action: "Kill all sessions",
-      });
-      if (!ok) return refocusTerminal();
-    }
-    clearSelection();
-    const results = await Promise.allSettled(ids.filter((id) => sessions.has(id)).map((id) => invoke("kill_session", { session: id })));
-    for (const result of results) {
-      if (result.status === "rejected") {
-        showError(result.reason);
-      }
-    }
-    render();
-  };
   const entries: Exclude<MenuEntry, { head: string }>[] = [
     { icon: "code-ungroup", label: "Ungroup", hint: keyLabel("close-pane"), disabled: !g, run: drop },
   ];
   if (hasSessions) entries.push(
-    { icon: "indicators-square-stop", label: "Kill all sessions…", danger: true, run: () => void end() },
+    { icon: "indicators-square-stop", label: "Kill all sessions…", hint: keyLabel("end-session"), danger: true, run: () => void killGroup(g!.id) },
   );
   return entries;
 }
