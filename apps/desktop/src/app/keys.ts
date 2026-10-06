@@ -15,7 +15,7 @@ export type Action =
   | "app-font-bigger" | "app-font-smaller" | "app-font-reset" | "settings" | "quit"
   | "focus-left" | "focus-right" | "focus-up" | "focus-down"
   | "project-menu" | "project-folder" | "project-copy-path" | "project-color" | "project-changes" | "project-files"
-  | "region-next" | "region-prev" | "session-next" | "session-prev" | "list-project" | "list-back" | "shortcuts"
+  | "region-next" | "region-prev" | "session-next" | "session-prev" | "list-project" | "list-back" | "list-main" | "shortcuts"
   | "focus-mode" | "maximize";
 
 const isMac = navigator.userAgent.includes("Macintosh");
@@ -60,6 +60,7 @@ export const DEFAULTS: Record<Action, string> = {
   "session-prev": "ctrl+shift+up",
   "list-project": "ctrl+shift+left",
   "list-back": "ctrl+shift+right",
+  "list-main": "ctrl+shift+home",
   shortcuts: "f1",
   "focus-mode": "ctrl+shift+e",
   maximize: "ctrl+shift+enter",
@@ -146,7 +147,7 @@ export function keyLabel(action: Action): string {
   return labels[action] ?? "";
 }
 
-const MENU_KEYS: Record<string, string> = { "=": "Equal", "-": "Minus", ",": "Comma", " ": "Space", escape: "Escape", enter: "Enter" };
+const MENU_KEYS: Record<string, string> = { "=": "Equal", "-": "Minus", ",": "Comma", " ": "Space", escape: "Escape", enter: "Enter", home: "Home", end: "End" };
 
 /** The action's key as the menu bar spells it ("Ctrl+Shift+T"), or "" for none. */
 export function menuAccel(action: Action): string {
@@ -181,10 +182,11 @@ export const DESCRIBE: [string, Action, string][] = [
   ["View", "close-pane", "Take the session out of its group: the focused pane, or the session row in the list. It stays selected. On a group row, ungroup. Sessions keep running"],
   ["View", "next-waiting", "Next waiting session"],
   ["View", "back", "Back to the last session"],
-  ["View", "session-next", "Next row in the list: worktree, group, session, Changes or Files. A change, file or folder shows its preview, which takes the keys. On the rail, the next project. In Settings, the next section"],
+  ["View", "session-next", "Next row in the list: worktree, group, session, Changes or Files. A change or file shows its preview, which takes the keys. Changes, Files and folders keep the keys: Space opens or closes them. On the rail, the next project. In Settings, the next section"],
   ["View", "session-prev", "Previous row in the list. On the rail, the previous project. In Settings, the previous section"],
   ["View", "list-project", "To the rail: clears the list's highlight and selection. The panes stay. In Settings, to the section tabs"],
   ["View", "list-back", "Back from the rail into the list. In Settings, into the section"],
+  ["View", "list-main", "To the project's main worktree in the list, from the rail or any row"],
   ["View", "focus-left", "Focus the pane to the left"],
   ["View", "focus-right", "Focus the pane to the right"],
   ["View", "focus-up", "Focus the pane above"],

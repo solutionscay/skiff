@@ -168,9 +168,9 @@ function openRow(el: HTMLElement) {
 
 /**
  * Ctrl+Shift+Down/Up: the next or previous row in the list. A session opens. A group
- * opens with its row keeping the keys. A changed file loads its diff. A file or
- * folder shows its preview, and the preview takes the keys. Worktrees and other
- * headers take focus.
+ * opens with its row keeping the keys. A changed file loads its diff, and a file
+ * its preview; the preview takes the keys. Changes, Files, folders, worktrees and
+ * other headers take focus.
  */
 export function stepList(dir: 1 | -1) {
   const rows = listItems();
@@ -197,9 +197,21 @@ export function select(key: string, keys: boolean, fresh = false) {
   startPreview(key, keys, fresh);
 }
 
+/** Ctrl+Shift+Home: the current project's main worktree becomes the current row. */
+export function toMainWorktree() {
+  const p = S.projects.find((x) => x.name === S.selectedProject);
+  const w = p?.worktrees.find((x) => x.is_main) ?? p?.worktrees[0];
+  if (!w) return;
+  const row = listItems().find((el) => el.dataset.wt === w.path);
+  if (!row) return;
+  ctxMenu.close(false);
+  launchMenu.close(false);
+  landOn(row);
+}
+
 /** Makes a row the current one. A session opens. A group opens with its row keeping
- *  the keys. A file, folder or change shows its preview, which takes the keys.
- *  Other rows take focus. */
+ *  the keys. A file or change shows its preview, which takes the keys. Changes,
+ *  Files and folders show theirs with the row keeping the keys. Other rows take focus. */
 function landOn(next: HTMLElement) {
   const key = itemKey(next);
   document.body.classList.add("kbd");
@@ -209,9 +221,11 @@ function landOn(next: HTMLElement) {
   } else if (next.dataset.group) {
     S.roveKey = key;
     showGroup(next.dataset.group, true);
-  } else if (rowActs(key)?.preview) {
+  } else if (rowActs(key)?.preview && !rowActs(key)?.fold) {
     select(key, true);
   } else {
+    // A row that opens and closes (Changes, Files, a folder) keeps the keys, so
+    // Space and the arrows fold it. Its preview still shows; Enter goes into it.
     select(key, false);
     next.focus();
   }

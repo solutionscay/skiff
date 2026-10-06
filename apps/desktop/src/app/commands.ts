@@ -65,6 +65,7 @@ function commands(): Cmd[] {
     { section: "View", label: "Command palette", key: k("palette"), action: "palette", run: act("palette") },
     { section: "View", label: "Next session", key: k("session-next"), action: "session-next", run: act("session-next") },
     { section: "View", label: "Previous session", key: k("session-prev"), action: "session-prev", run: act("session-prev") },
+    { section: "View", label: "Main worktree", key: k("list-main"), action: "list-main", run: act("list-main") },
     { section: "View", label: "Add pane right…", key: k("split-right"), action: "split-right", run: act("split-right"), off: !shown || splitFull() },
     { section: "View", label: "Add pane below…", key: k("split-down"), action: "split-down", run: act("split-down"), off: !shown || splitFull() },
     { section: "View", label: "Remove from group", key: k("close-pane"), action: "close-pane", run: act("close-pane"), off: !(S.focused && inShownGroup(S.focused)) },

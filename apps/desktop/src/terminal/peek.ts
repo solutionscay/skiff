@@ -69,6 +69,8 @@ interface Peek {
   exited: boolean;
   /** The tool took the terminal: it closes the peek when it exits. */
   interactive: boolean;
+  /** Output came. The terminal may not have parsed it yet. */
+  got: boolean;
   timer: number;
 }
 
@@ -134,7 +136,7 @@ export function strayPeek(s: SessionInfo) {
 export function peekBlocksAction(action: Action | number | null): boolean {
   if (!open?.shown || open.exited || !live(open.gen)) return false;
   return typeof action !== "number" && action !== "session-next" && action !== "session-prev"
-    && action !== "list-project" && action !== "list-back"
+    && action !== "list-project" && action !== "list-back" && action !== "list-main"
     && action !== "region-next" && action !== "region-prev";
 }
 
@@ -156,7 +158,7 @@ export function startPreview(key: string | null, keys: boolean, fresh = false) {
   const t = rowActs(key)?.preview;
   if (!key || !t) return;
   active = { key, gen: ++gen, keys, closed: false };
-  begin(active.gen, t);
+  begin(active.gen, t, fresh);
   if (keys) giveKeys();
 }
 
@@ -166,9 +168,13 @@ export function syncPreview() {
   if (currentKey() !== active.key) endPreview();
 }
 
-function begin(mine: number, t: Preview) {
+function begin(mine: number, t: Preview, fresh = false) {
   if (t.kind === "folder") {
     showCard(mine, "folder", t.path, "Show in file manager", () => openPath(t.path));
+  } else if (t.kind === "diff" && t.wait && !fresh) {
+    // Landing on the row shows the card. Enter, or Review all changes, runs the diff.
+    const key = active!.key;
+    showCard(mine, "diff", `${t.wt}/${t.file ?? "All changes"}`, "Review all changes", () => startPreview(key, true, true));
   } else if (t.kind === "diff") {
     showCard(mine, "diff", `${t.wt}/${t.file ?? "All changes"}`);
     void invoke<Opened>("open_diff", { path: t.wt, file: t.file ?? null })
@@ -271,6 +277,12 @@ export function closePeek() {
   const hadKeys = keysIn(p.el) || !!card?.contains(document.activeElement);
   open = null;
   drop(p, p.shown);
+  // A diff leaves its card when it closes, so its row still owns the main area. Enter shows it again.
+  const t = active && !active.closed ? rowActs(active.key)?.preview : undefined;
+  if (active && t?.kind === "diff" && !card?.querySelector("button")) {
+    const key = active.key;
+    showCard(active.gen, "diff", `${t.wt}/${t.file ?? "All changes"}`, t.file ? "Show diff" : "Review all changes", () => startPreview(key, true, true));
+  }
   // A card with an action stays: the app opened from it runs on.
   if (card?.querySelector("button")) {
     card.hidden = false;
@@ -394,7 +406,7 @@ function frame(mine: number, kind: string, title: string, where: string, program
   term.open(box);
   const p: Peek = {
     gen: mine, kind, request, el, term, fit, resize: new ResizeObserver(() => resized(p)),
-    session: null, program, shown: false, exited: false, interactive: false, timer: 0,
+    session: null, program, shown: false, exited: false, interactive: false, got: false, timer: 0,
   };
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== "keydown") return true;
@@ -495,6 +507,7 @@ async function run(kind: string, title: string, where: string, script: string, c
   channel.onmessage = (m) => {
     if (open !== p && parked.get(p.request) !== p) return;
     const bytes = toBytes(m);
+    if (bytes.length) p.got = true;
     p.term.write(bytes, () => invoke("ack_output", { session: info.id, stream: n, bytes: bytes.length }).catch(console.error));
   };
   await invoke("subscribe_output", { session: info.id, stream: n, onOutput: channel }).catch(showError);
@@ -552,10 +565,12 @@ export function peekExited(id: string, code: number | null): boolean {
   // The last output can still be on its way: it comes on another channel.
   window.setTimeout(() => {
     if (open !== p) return;
-    // A tool that took the terminal is done with it.
-    if (p.interactive && code === 0) return closePeek();
+    // A tool that took the terminal is done with it, and it cleared up after itself.
+    // A pager that quit at once because the text fit (less -F under delta) took the
+    // terminal for a moment but left the text on screen: that text is the preview.
+    if (p.interactive && code === 0 && !printed(p.term)) return closePeek();
     // Nothing printed, no error: an app took the file and runs on its own.
-    if (!p.shown && !code && !printed(p.term)) return closePeek();
+    if (!p.shown && !code && !p.got && !printed(p.term)) return closePeek();
     show(p);
     if (p.shown) p.term.write(`\r\n\x1b[2m${code ? `${p.program} exited with code ${code}. ` : ""}Press any key to close.\x1b[0m`);
   }, 150);

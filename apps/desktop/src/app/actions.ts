@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { $ } from "../ui/dom";
 import { copy, open, reveal } from "../platform/fileActions";
 import { showError } from "../ui/alerts";
-import { currentRow, cycleRegion, fromProject, listItems, stepList, stepRail, toProject } from "./keyboard";
+import { currentRow, cycleRegion, fromProject, listItems, stepList, stepRail, toMainWorktree, toProject } from "./keyboard";
 
 import { endEntry, newWorktree, projectMenu, projectRun, splitMenu, ungroup } from "../workspace/menus";
 import { ctxMenu } from "../ui/contextMenu";
@@ -119,6 +119,7 @@ export function runAction(a: Action) {
     case "session-prev": return S.atRail ? stepRail(-1) : stepList(-1);
     case "list-project": return toProject();
     case "list-back": return fromProject();
+    case "list-main": return toMainWorktree();
     case "shortcuts": return showShortcuts();
     case "focus-mode": return toggleFocusMode();
     case "maximize": return toggleMaximize();

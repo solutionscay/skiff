@@ -5,7 +5,8 @@
 
 /** What the main area shows while the row is current. */
 export type Preview =
-  | { kind: "diff"; wt: string; branch: string; file?: string }
+  /** `wait`: a card first; the diff runs on Enter. All changes of a big branch can be slow to draw. */
+  | { kind: "diff"; wt: string; branch: string; file?: string; wait?: boolean }
   | { kind: "file"; path: string }
   | { kind: "folder"; path: string };
 

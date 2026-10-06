@@ -124,7 +124,7 @@ export function changesBlock(w: Worktree): HTMLElement | null {
   // A click selects the row on mousedown (keyboard.ts), then opens or closes it.
   const head = sectionHeader(key, "Changes", isOpen, glyph, () => toggle(w.path));
   setRowActs(key, {
-    preview: { kind: "diff", wt: w.path, branch: branchName(w) },
+    preview: { kind: "diff", wt: w.path, branch: branchName(w), wait: true },
     fold: (open) => { if (open === undefined || open !== shown.has(w.path)) toggle(w.path); },
   });
   // Open, the rows show how many.

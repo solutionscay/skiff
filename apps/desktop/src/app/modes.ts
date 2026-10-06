@@ -22,7 +22,7 @@ import { fitShown } from "../terminal/terminal";
 import { focusPane } from "../workspace/view";
 
 /** Keys that move in the rail or the tree, which focus mode hides. */
-const TREE_KEYS = new Set<Action>(["session-next", "session-prev", "list-project", "list-back", "region-next", "region-prev", "project-menu"]);
+const TREE_KEYS = new Set<Action>(["session-next", "session-prev", "list-project", "list-back", "list-main", "region-next", "region-prev", "project-menu"]);
 /** Keys that move between panes or add one: maximize shows one pane only. */
 const PANE_KEYS = new Set<Action>(["focus-left", "focus-right", "focus-up", "focus-down", "split-right", "split-down"]);
 /** Keys whose menus open at the rail or a tree row. The chrome comes back first. */
