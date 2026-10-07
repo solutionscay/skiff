@@ -123,6 +123,11 @@ pub(crate) async fn set_project_icon(handle: AppHandle, project: String, icon: O
 }
 
 #[tauri::command]
+pub(crate) async fn set_project_short(handle: AppHandle, project: String, short: String) -> Result<(), String> {
+    project_edit(&handle, move || config::set_project_short(&project, &short)).await
+}
+
+#[tauri::command]
 pub(crate) async fn set_project_background(
     handle: AppHandle,
     project: String,

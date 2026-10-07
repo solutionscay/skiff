@@ -105,6 +105,21 @@ function iconEntries(p: Project): MenuEntry[] {
   ];
 }
 
+/** Ask for the letters on the rail chip. An empty field goes back to the first three letters of the name. */
+function setInitials(p: Project) {
+  promptAction({
+    title: `Initials for ${p.name}`,
+    body: "Up to 3 characters on the rail chip. Leave the field empty to use the first 3 letters of the name. A project icon replaces the letters.",
+    placeholder: "the initials",
+    value: p.short,
+    allowEmpty: true,
+    maxLength: 3,
+    action: "Set initials",
+    submit: (short) => invoke("set_project_short", { project: p.name, short }),
+    onClose: refocusTerminal,
+  });
+}
+
 /** Ask for a branch, then make a worktree for it. Errors stay in the dialog. */
 export function newWorktree(p: Project) {
   S.justAdded = null;
@@ -146,6 +161,7 @@ export function projectMenu(p: Project, x: number, y: number) {
     { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: run["project-folder"] },
     { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
     { icon: "documents-file-image", label: "Icon…", sub: iconEntries(p) },
+    { icon: "tools-pencil", label: "Initials…", run: () => setInitials(p) },
     { icon: "tools-sparkles", label: "Color…", hint: keyLabel("project-color"), run: run["project-color"] },
     { icon: "tools-sparkles", label: "Project theme…", hint: keyLabel("theme"), run: () => void projectThemeMenu(p) },
     { icon: "playback-image", label: "Background…", sub: backgroundEntries(p) },

@@ -176,6 +176,19 @@ pub fn set_project_icon(project: &str, icon: Option<&str>) -> Result<()> {
     set_project_key(project, "icon", icon)
 }
 
+/// Longest rail label, in characters. The rail chip has room for three.
+pub const SHORT_MAX: usize = 3;
+
+/// Sets `short`, the rail label, on the named project. An empty label removes
+/// the key, so the label is the first three letters of the name again.
+pub fn set_project_short(project: &str, short: &str) -> Result<()> {
+    let short = short.trim();
+    if short.chars().count() > SHORT_MAX {
+        anyhow::bail!("the initials take at most {SHORT_MAX} characters");
+    }
+    set_project_key(project, "short", (!short.is_empty()).then_some(short))
+}
+
 /// Sets or removes `background` on the named project.
 pub fn set_project_background(project: &str, background: Option<&str>) -> Result<()> {
     set_project_key(project, "background", background)

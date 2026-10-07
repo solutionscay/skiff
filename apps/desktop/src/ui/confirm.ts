@@ -29,6 +29,11 @@ export function promptAction(o: {
   title: string;
   body: string;
   placeholder: string;
+  /** The field starts with this text. */
+  value?: string;
+  /** An empty field is allowed and goes to `submit` as "". */
+  allowEmpty?: boolean;
+  maxLength?: number;
   action: string;
   submit: (value: string) => Promise<void>;
   onClose?: () => void;
@@ -37,6 +42,8 @@ export function promptAction(o: {
   input.type = "text";
   input.spellcheck = false;
   input.placeholder = o.placeholder;
+  if (o.value) input.value = o.value;
+  if (o.maxLength) input.maxLength = o.maxLength;
   input.setAttribute("aria-label", o.placeholder);
   actionDialog({
     title: o.title,
@@ -48,7 +55,7 @@ export function promptAction(o: {
     onClose: o.onClose,
     submit: async () => {
       const v = input.value.trim();
-      if (!v) {
+      if (!v && !o.allowEmpty) {
         input.focus();
         throw `Type ${o.placeholder}.`;
       }
