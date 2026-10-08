@@ -626,9 +626,18 @@ impl SessionPool {
                 self.dirty.notify_one();
             } else {
                 self.apply_title(session, title.as_deref());
+                // An agent's spinner changes the glyph, not the topic. A
+                // frame of it is no new title. The raw title is kept, so
+                // the state rules above and the restore offer read it as
+                // before.
+                let agent = matches!(session.front(), Front::Agent(_));
                 let changed = {
                     let mut info = session.info.lock().unwrap();
-                    let changed = info.title != title;
+                    let changed = if agent {
+                        info.title.as_deref().map(topic) != title.as_deref().map(topic)
+                    } else {
+                        info.title != title
+                    };
                     info.title = title.clone();
                     changed
                 };
@@ -1111,13 +1120,19 @@ fn bracketed(data: &[u8]) -> Vec<u8> {
     out
 }
 
+/// The title without the status glyph an agent leads it with: Claude's ◐
+/// and ◑, Codex's braille spinner. See `screen::title_state`.
+fn topic(title: &str) -> &str {
+    title.trim_start_matches(|c: char| !c.is_alphanumeric())
+}
+
 fn default_shell() -> String {
     std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{prints, Front, Screen, ScreenState, SCAN};
+    use super::{prints, topic, Front, Screen, ScreenState, SCAN};
     use std::time::Instant;
 
     fn state() -> ScreenState {
@@ -1156,6 +1171,15 @@ mod tests {
         assert!(!st.scan(Front::Program).work);
         print(&mut st, b"", false);
         assert!(!st.scan(Front::Program).work);
+    }
+
+    #[test]
+    fn topic_drops_the_status_glyph() {
+        assert_eq!(topic("◐ Fix the flusher"), "Fix the flusher");
+        assert_eq!(topic("◑ Fix the flusher"), "Fix the flusher");
+        assert_eq!(topic("⠋ Codex"), "Codex");
+        assert_eq!(topic("[ ! ] Action Required"), "Action Required");
+        assert_eq!(topic("plain"), "plain");
     }
 
     #[test]
