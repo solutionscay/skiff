@@ -1,4 +1,4 @@
-use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+use std::{future::Future, pin::Pin, sync::{Arc, atomic::{AtomicUsize, Ordering}}};
 use skiff_core::protocol::Event;
 use tauri::{ipc::{Channel, InvokeResponseBody}, State};
 use tokio::sync::{broadcast, Notify};
@@ -7,32 +7,43 @@ use crate::connection::{App, ensure_client, err};
 /// One write to the page holds at most this much, so xterm can yield to the
 /// page between pieces instead of parsing one long chunk.
 const PIECE: usize = 64 * 1024;
-/// Unparsed bytes past this, and live output is dropped instead of queued.
-/// xterm discards writes itself past 50 MB, and a deep queue is stale anyway.
-const BEHIND_HIGH: usize = 4 * 1024 * 1024;
+/// Unparsed live bytes past this, and live output is dropped instead of
+/// queued. A keystroke echo or Ctrl+C waits behind everything queued, and
+/// xterm parses about 10 MB/s on WebKitGTK, so this is about 25 ms of parse:
+/// under two frames. The last snapshot does not count: it can be larger than
+/// this on its own, and dropping output behind it would only ask for another.
+const BEHIND_HIGH: usize = 256 * 1024;
 /// Unparsed bytes under this, and a pane that dropped output redraws from a
-/// fresh snapshot.
-const BEHIND_LOW: usize = 1024 * 1024;
+/// fresh snapshot. A quarter of the high mark, so the queue is near empty
+/// when the snapshot lands and the redraw itself is not behind.
+const BEHIND_LOW: usize = BEHIND_HIGH / 4;
 
-/// Bytes sent to one page stream that its xterm has not parsed yet.
+/// A subscribe in flight for a fresh snapshot. Boxed, so the select loop can
+/// hold it across turns.
+type Resubscribe = Pin<Box<dyn Future<Output = bool> + Send>>;
+
+/// Bytes one page stream's xterm has parsed, for the stream task to pace by.
 pub(crate) struct Flow {
     /// The page's stream number, so an ack from an older stream is ignored.
     stream: u32,
-    unparsed: AtomicUsize,
-    parsed: Notify,
+    /// Bytes the page's xterm parsed so far.
+    parsed: AtomicUsize,
+    /// Signalled on each ack.
+    acked: Notify,
 }
 
 impl Flow {
-    fn send(&self, on_output: &Channel<InvokeResponseBody>, data: Vec<u8>) -> tauri::Result<()> {
-        if data.len() <= PIECE {
-            self.unparsed.fetch_add(data.len(), Ordering::Relaxed);
-            return on_output.send(InvokeResponseBody::Raw(data));
+    /// Sends `data` to the page in pieces. Returns the bytes sent.
+    fn send(&self, on_output: &Channel<InvokeResponseBody>, data: Vec<u8>) -> tauri::Result<usize> {
+        let len = data.len();
+        if len <= PIECE {
+            on_output.send(InvokeResponseBody::Raw(data))?;
+            return Ok(len);
         }
         for piece in data.chunks(PIECE) {
-            self.unparsed.fetch_add(piece.len(), Ordering::Relaxed);
             on_output.send(InvokeResponseBody::Raw(piece.to_vec()))?;
         }
-        Ok(())
+        Ok(len)
     }
 }
 
@@ -52,8 +63,8 @@ pub(crate) async fn subscribe_output(
     c.subscribe(&session).await.map_err(err)?;
     let flow = Arc::new(Flow {
         stream,
-        unparsed: AtomicUsize::new(0),
-        parsed: Notify::new(),
+        parsed: AtomicUsize::new(0),
+        acked: Notify::new(),
     });
     app.flows.lock().unwrap().insert(session.clone(), flow.clone());
     let sid = session.clone();
@@ -64,38 +75,57 @@ pub(crate) async fn subscribe_output(
         let mut live = false;
         // Output was dropped because the page fell behind.
         let mut behind = false;
+        // Bytes sent to the page, and `sent` as of the last snapshot.
+        let mut sent = 0usize;
+        let mut snapshot_end = 0usize;
+        // The loop keeps draining `rx` while this runs, so the queue cannot
+        // fill behind the round trip and lag again. Starting a new one drops
+        // the old: its snapshot still lands, and the later one is newer.
+        let mut resubscribe: Option<Resubscribe> = None;
+        // Asks the daemon for a fresh snapshot without blocking the loop.
+        let start_resubscribe = || -> Option<Resubscribe> {
+            let c = client.upgrade()?;
+            let sid = sid.clone();
+            Some(Box::pin(async move { c.subscribe(&sid).await.is_ok() }))
+        };
         loop {
             let event = tokio::select! {
                 event = rx.recv() => event,
-                _ = flow.parsed.notified(), if behind => {
-                    if flow.unparsed.load(Ordering::Relaxed) > BEHIND_LOW {
+                ok = async { resubscribe.as_mut().unwrap().await }, if resubscribe.is_some() => {
+                    resubscribe = None;
+                    if !ok {
+                        break;
+                    }
+                    continue;
+                }
+                _ = flow.acked.notified(), if behind => {
+                    if sent.saturating_sub(flow.parsed.load(Ordering::Relaxed)) > BEHIND_LOW {
                         continue;
                     }
                     behind = false;
                     live = false;
                     rx.clear();
-                    let Some(c) = client.upgrade() else { break };
-                    if c.subscribe(&sid).await.is_err() {
-                        break;
-                    }
+                    let Some(r) = start_resubscribe() else { break };
+                    resubscribe = Some(r);
                     continue;
                 }
             };
             match event {
                 Ok(Event::Snapshot { session, data, .. }) if session == sid => {
                     live = true;
-                    if flow.send(&on_output, data).is_err() {
-                        break;
-                    }
+                    let Ok(n) = flow.send(&on_output, data) else { break };
+                    sent += n;
+                    snapshot_end = sent;
                 }
                 Ok(Event::Output { session, data }) if live && !behind && session == sid => {
-                    if flow.unparsed.load(Ordering::Relaxed) >= BEHIND_HIGH {
+                    // Live bytes past the last snapshot that xterm has not parsed.
+                    let parsed = flow.parsed.load(Ordering::Relaxed).max(snapshot_end);
+                    if sent.saturating_sub(parsed) >= BEHIND_HIGH {
                         behind = true;
                         continue;
                     }
-                    if flow.send(&on_output, data).is_err() {
-                        break;
-                    }
+                    let Ok(n) = flow.send(&on_output, data) else { break };
+                    sent += n;
                 }
                 Ok(_) => {}
                 Err(broadcast::error::RecvError::Lagged(_)) => {
@@ -107,10 +137,8 @@ pub(crate) async fn subscribe_output(
                     if behind {
                         continue;
                     }
-                    let Some(c) = client.upgrade() else { break };
-                    if c.subscribe(&sid).await.is_err() {
-                        break;
-                    }
+                    let Some(r) = start_resubscribe() else { break };
+                    resubscribe = Some(r);
                 }
                 Err(broadcast::error::RecvError::Closed) => break,
             }
@@ -129,10 +157,8 @@ pub(crate) fn ack_output(app: State<'_, App>, session: String, stream: u32, byte
     if flow.stream != stream {
         return;
     }
-    let _ = flow
-        .unparsed
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| Some(n.saturating_sub(bytes)));
-    flow.parsed.notify_one();
+    flow.parsed.fetch_add(bytes, Ordering::Relaxed);
+    flow.acked.notify_one();
 }
 
 #[tauri::command]
