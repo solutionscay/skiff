@@ -230,9 +230,10 @@ export function unparkPane(id: string, pane: Pane) {
  * WebGL contexts are few (WebKit drops the oldest past 16) and slow to make.
  * The panes shown most recently keep theirs, so switching back to a group
  * is cheap; older parked panes fall back to the DOM renderer, which draws
- * nothing while hidden.
+ * nothing while hidden. A new context blocks the page for 100 to 200 ms, so
+ * the limit sits just under WebKit's 16: an evicted pane pays that on return.
  */
-const GL_KEEP = 8;
+const GL_KEEP = 14;
 /** Pane ids with a WebGL renderer, least recently shown first. */
 const glOrder: string[] = [];
 
