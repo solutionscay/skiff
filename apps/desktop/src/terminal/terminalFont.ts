@@ -23,7 +23,9 @@ export function setFontSize(n: number, save = true) {
   } catch {
     /* a private window keeps the size for this run only */
   }
-  for (const [id, p] of panes) p.term.options.fontSize = paneFontSize(id);
+  // A parked pane takes the size when it is unparked. A held key steps the
+  // size many times, and each step would rebuild its glyph atlas.
+  for (const [id, p] of panes) if (!p.parked) p.term.options.fontSize = paneFontSize(id);
   applyZoom();
   fitShown();
   if (!save) return;
@@ -61,7 +63,7 @@ export function stepPaneFont(id: string, step: -1 | 0 | 1) {
     /* a private window keeps the size for this run only */
   }
   const p = panes.get(id);
-  if (p) p.term.options.fontSize = size;
+  if (p && !p.parked) p.term.options.fontSize = size;
   fitShown();
   showZoom(p?.el.isConnected ? p.el : host, percent(size));
 }
