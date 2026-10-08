@@ -223,6 +223,9 @@ export function reattachPanes() {
 export function unparkPane(id: string, pane: Pane) {
   if (!pane.parked) return;
   pane.parked = false;
+  // The app or pane font size may have changed while it was parked.
+  const size = paneFontSize(id);
+  if (pane.term.options.fontSize !== size) pane.term.options.fontSize = size;
   pane.sub = pane.sub.then(() => streamOutput(id, pane)).catch(console.error);
 }
 

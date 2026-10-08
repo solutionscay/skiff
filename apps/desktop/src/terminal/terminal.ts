@@ -11,16 +11,17 @@ import { createLayoutView } from "../workspace/layoutView";
 import { invoke } from "@tauri-apps/api/core";
 
 import { modalOpen } from "../ui/dom";
+import type { SessionInfo } from "../platform/types";
 import { host, park } from "./terminalHost";
 
 import { saveGroup } from "../app/groups";
 
 import { paneMenu } from "../workspace/menus";
 
-import { S } from "../app/state";
+import { S, sessions } from "../app/state";
 import { keysOffPanes } from "../app/seen";
 import { activeGroupObj, viewLayout } from "../app/stateQueries";
-import { panes } from "./terminalState";
+import { type Pane, panes } from "./terminalState";
 import { focusPane } from "./paneActions";
 import { previewOnScreen } from "./peek";
 
@@ -53,6 +54,8 @@ export const view = createLayoutView(host, {
   menu: (id, e) => paneMenu(id, e.clientX, e.clientY),
   resized: () => fitSoon(),
   committed: () => {
+    // The drag settled: the next frame fits the final size, with no wait.
+    fitNextFrame();
     const g = activeGroupObj();
     if (g) saveGroup(g);
   },
@@ -92,6 +95,25 @@ function canTakeFocus(): boolean {
 let resizeTimer: number | undefined;
 /** Panes fitted since the last pty_resize. A later fit adds to them: it must not drop an earlier pane's new size. */
 const resizePending = new Set<string>();
+/** The size each session's pty last got from here. Before that, the daemon's size. */
+const sentSize = new Map<string, [number, number]>();
+
+/** True when the terminal has another size than the daemon's pty. */
+function sizeChanged(id: string, p: Pane): boolean {
+  const info = sessions.get(id);
+  const [cols, rows] = sentSize.get(id) ?? [info?.cols, info?.rows];
+  return cols !== p.term.cols || rows !== p.term.rows;
+}
+
+/**
+ * The daemon told the session's size. Another client (`skiff attach`) can
+ * resize the pty too; then the size sent from here no longer holds, and
+ * the next fit sends again, as it did before the sizes were compared.
+ */
+export function ptySized(info: SessionInfo) {
+  const sent = sentSize.get(info.id);
+  if (sent && (sent[0] !== info.cols || sent[1] !== info.rows)) sentSize.delete(info.id);
+}
 
 /**
  * Frames left to wait for a terminal that cannot measure yet. A terminal
@@ -106,6 +128,9 @@ const FIT_TRIES = 10;
 export function fitShown() {
   cancelAnimationFrame(fitFrame);
   fitFrame = 0;
+  clearTimeout(fitTimer);
+  fitTimer = 0;
+  lastFit = performance.now();
   const shown = [...panes].filter(([, p]) => p.el.parentElement !== park && p.el.isConnected);
   let unmeasured = false;
   for (const [id, p] of shown) {
@@ -114,32 +139,75 @@ export function fitShown() {
       continue;
     }
     p.fit.fit();
-    resizePending.add(id);
+    // A drag that moves less than a cell changes nothing: the pty keeps its size.
+    if (sizeChanged(id, p)) resizePending.add(id);
   }
   if (unmeasured && fitTries < FIT_TRIES) {
     fitTries++;
-    fitSoon();
+    fitNextFrame();
   } else {
     fitTries = 0;
   }
+  if (resizePending.size === 0) return;
   clearTimeout(resizeTimer);
   resizeTimer = window.setTimeout(() => {
     for (const id of resizePending) {
       const p = panes.get(id);
-      if (p) invoke("pty_resize", { session: id, cols: p.term.cols, rows: p.term.rows }).catch(console.error);
+      if (!p) {
+        sentSize.delete(id);
+        continue;
+      }
+      // The drag may have come back to the sent size meanwhile.
+      if (!sizeChanged(id, p)) continue;
+      const { cols, rows } = p.term;
+      sentSize.set(id, [cols, rows]);
+      invoke("pty_resize", { session: id, cols, rows }).catch((e) => {
+        console.error(e);
+        // The pty kept its size (skiffd reloads, or the connection dropped):
+        // the next fit sends again. A later size sent meanwhile stays.
+        const sent = sentSize.get(id);
+        if (sent && sent[0] === cols && sent[1] === rows) sentSize.delete(id);
+      });
     }
     resizePending.clear();
   }, 50);
 }
 
 let fitFrame = 0;
-/** fitShown once per frame: a window or divider drag fires many resizes. */
-function fitSoon() {
+let fitTimer = 0;
+/** When fitShown last ran, in performance.now() ms. */
+let lastFit = 0;
+/** The least time between two fits while resizes keep coming. */
+const FIT_MS = 100;
+
+/** fitShown on the next frame, at most once per frame. */
+function fitNextFrame() {
+  clearTimeout(fitTimer);
+  fitTimer = 0;
   if (fitFrame) return;
   fitFrame = requestAnimationFrame(() => {
     fitFrame = 0;
     fitShown();
   });
+}
+
+/**
+ * A window or divider drag fires many resizes. Each fit reflows the
+ * scrollback of every shown pane, so the first resize fits on the next
+ * frame and the rest wait for FIT_MS since the last fit. The wait runs out
+ * after the last resize too, so the panes end at the final size.
+ */
+function fitSoon() {
+  if (fitFrame || fitTimer) return;
+  const wait = FIT_MS - (performance.now() - lastFit);
+  if (wait <= 0) {
+    fitNextFrame();
+    return;
+  }
+  fitTimer = window.setTimeout(() => {
+    fitTimer = 0;
+    fitNextFrame();
+  }, wait);
 }
 
 new ResizeObserver(() => fitSoon()).observe(host);

@@ -21,6 +21,7 @@ import { hasKeys, markSeen, quietSeen } from "./seen";
 import { peekExited, peekUpdated, previewToken, strayPeek } from "../terminal/peek";
 import { activeGroupObj, place, shownIds } from "./stateQueries";
 import { panes } from "../terminal/terminalState";
+import { ptySized } from "../terminal/terminal";
 import { reattachPanes } from "../terminal/terminalRuntime";
 import { focusPane, inBackground, paneNear, revealSession, rowNear, showSingle, splitWith, unfocus } from "../workspace/view";
 
@@ -267,11 +268,14 @@ export function onEvent(e: DaemonEvent) {
       if (gone.has(e.session.id) || e.session.peek) return;
       for (const b of born) b.add(e.session.id);
       upsert(e.session);
+      // A restore brings the id back with the size the daemon saved.
+      ptySized(e.session);
       break;
     case "session_updated": {
       if (e.session.peek) return peekUpdated(e.session);
       if (!sessions.has(e.session.id)) break;
       upsert(e.session);
+      ptySized(e.session);
       // A turn that ends in the pane with the keys leaves nothing to read.
       if (hasKeys(e.session.id)) markSeen(e.session.id);
       break;

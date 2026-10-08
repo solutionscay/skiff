@@ -156,7 +156,7 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
                 session,
                 cols,
                 rows,
-            } => match pool.resize(&session, cols, rows) {
+            } => match pool.resize(&session, cols, rows).await {
                 Ok(()) => Response::Ok,
                 Err(e) => error(e),
             },
