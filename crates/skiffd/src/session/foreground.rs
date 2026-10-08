@@ -1,37 +1,76 @@
 //! Track the current foreground program without shell hooks or agent changes.
-use super::{away::proc, Front, Session, SessionPool};
+use super::{away::{proc, Tree}, Front, Session, SessionPool};
 use skiff_core::{protocol::Event, session::{SessionState, Was}};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::VecDeque,
     path::Path,
-    sync::{atomic::Ordering, Arc},
+    sync::{atomic::Ordering, Arc, Condvar, Mutex},
     time::Duration,
 };
 
+/// The watcher reads the group in front of each session this often.
+const TICK: Duration = Duration::from_secs(1);
+
+/// A front that can change under a group that stays is read again every
+/// this many ticks. See [`settled`].
+const RECHECK_TICKS: u32 = 3;
+
+/// Set by a reader thread that saw a new group in front. The watcher wakes
+/// and reads it, so the state does not wait for the next tick.
+static WAKE: (Mutex<bool>, Condvar) = (Mutex::new(false), Condvar::new());
+
+/// Wakes the foreground watcher before its next tick.
+pub(super) fn wake() {
+    *WAKE.0.lock().unwrap() = true;
+    WAKE.1.notify_one();
+}
+
+/// Sleeps one tick, or less when a reader thread wakes the watcher.
+fn wait_tick() {
+    let (woken, changed) = &WAKE;
+    let mut woken = woken.lock().unwrap();
+    if !*woken {
+        woken = changed.wait_timeout(woken, TICK).unwrap().0;
+    }
+    *woken = false;
+}
+
 impl SessionPool {
+    /// Reads the group in front of each session once a tick, and sooner
+    /// when a reader thread saw it change. Only a changed group reads
+    /// `/proc`, or a recheck every few ticks of a front that can change
+    /// without one.
     pub fn spawn_foreground_watcher(self: &Arc<Self>) {
         let pool = self.clone();
         let _ = std::thread::Builder::new()
             .name("foreground".into())
-            .spawn(move || loop {
-                std::thread::sleep(Duration::from_secs(1));
-                pool.scan_foreground();
+            .spawn(move || {
+                let mut tick: u32 = 0;
+                loop {
+                    wait_tick();
+                    tick = tick.wrapping_add(1);
+                    pool.scan_foreground(tick % RECHECK_TICKS == 0);
+                }
             });
     }
 
-    fn scan_foreground(&self) {
+    /// One pass over the sessions. `recheck` also reads the fronts that are
+    /// not settled under a group the watcher already read.
+    fn scan_foreground(&self, recheck: bool) {
         let Some(_quiet) = self.quiet() else { return };
         let sessions: Vec<_> = self.sessions.read().unwrap().values().cloned().collect();
-        let mut tree = None;
+        let mut tree = Tree::default();
         for session in sessions {
-            self.classify(&session, &mut tree);
+            self.classify(&session, recheck, &mut tree);
         }
     }
 
     /// Reads the program in front of one session: its name for the client,
     /// the agent to offer after a restore, and the rules for its state.
-    /// `tree` is the process tree, read once for a pass over many sessions.
-    pub(crate) fn classify(&self, session: &Session, tree: &mut Option<HashMap<u32, Vec<u32>>>) {
+    /// The group in front is one ioctl. The rest reads `/proc`, so a group
+    /// two reads agreed on is skipped while its front is settled. `tree` is
+    /// kept for a pass over many sessions.
+    fn classify(&self, session: &Session, recheck: bool, tree: &mut Tree) {
         let pid = {
             let info = session.info.lock().unwrap();
             if info.state == SessionState::Done {
@@ -40,26 +79,27 @@ impl SessionPool {
             info.pid
         };
         let Some(group) = session.foreground_group() else { return };
+        if group == session.group.load(Ordering::Relaxed) && (!recheck || settled(session.front())) {
+            return;
+        }
         let Some(name) = proc::name(group) else { return };
         let argv = proc::argv(group);
         let agent = agent_program(&name, &argv).or_else(|| {
             // The launch wrapper shares its group with the initial agent.
             // An interactive shell can also start a pipeline in one group.
-            agent_in_group(group, tree.get_or_insert_with(proc::children))
+            agent_in_group(group, tree)
         });
-        session.group.store(group, Ordering::Relaxed);
-        self.set_front(
-            session,
-            match agent {
-                Some(agent) => Front::Agent(agent),
-                None if !session.shell.load(Ordering::Relaxed) => Front::Program,
-                None if Some(group) == pid => Front::Shell,
-                None => Front::Command,
-            },
-        );
+        let front = match agent {
+            Some(agent) => Front::Agent(agent),
+            None if !session.shell.load(Ordering::Relaxed) => Front::Program,
+            None if Some(group) == pid => Front::Shell,
+            None => Front::Command,
+        };
+        let same_front = session.front() == front;
+        self.set_front(session, front);
         let agent = agent.map(str::to_owned);
         let program = agent.clone().unwrap_or(name);
-        let (changed, was_changed) = {
+        let (changed, was_changed, same_program) = {
             let mut info = session.info.lock().unwrap();
             // Keep the agent in front and its title, so a restore can offer it.
             // Agents lead the title with a status glyph that changes as they work.
@@ -79,13 +119,22 @@ impl SessionPool {
             if was_changed {
                 info.was = was;
             }
-            if info.foreground_program.as_deref() == Some(&program) && !resumed {
-                (None, was_changed)
+            let same_program = info.foreground_program.as_deref() == Some(&program);
+            if same_program && !resumed {
+                (None, was_changed, true)
             } else {
                 info.foreground_program = Some(program);
-                (Some(info.clone()), was_changed)
+                (Some(info.clone()), was_changed, same_program)
             }
         };
+        // A read that changes nothing settles the group, so the next tick
+        // skips it. A read that changes the front or the program clears the
+        // cache instead, so the next pass reads whatever is in front then:
+        // the group can change back before that pass, and a stale cache would
+        // make it look unchanged. One read can also land between a fork and
+        // its exec, when the process still has its parent's name: the second
+        // read corrects it.
+        session.group.store(if same_front && same_program { group } else { 0 }, Ordering::Relaxed);
         if was_changed {
             self.dirty.notify_one();
         }
@@ -104,21 +153,31 @@ pub(crate) fn generic_title(title: &str) -> bool {
     )
 }
 
-fn agent_in_group(group: u32, tree: &HashMap<u32, Vec<u32>>) -> Option<&'static str> {
+/// True when the front cannot change while the group in front stays, so
+/// there is nothing to read. Only a shell at its prompt is that: it runs
+/// each job in a group of its own. Every other front is read again now and
+/// then. A command or an unknown program can start an agent later (`npx`
+/// does). An agent can end while its group stays: the launch wrapper execs
+/// the fallback shell in its place, and a script can run the agent and then
+/// another program. An agent recheck is two reads of its leader, so it costs
+/// little.
+fn settled(front: Front) -> bool {
+    matches!(front, Front::Shell)
+}
+
+fn agent_in_group(group: u32, tree: &mut Tree) -> Option<&'static str> {
     let mut queue = VecDeque::from([group]);
     while let Some(pid) = queue.pop_front() {
-        if let Some(children) = tree.get(&pid) {
-            for &child in children {
-                if proc::group(child) != Some(group) {
-                    continue;
-                }
-                if let Some(name) = proc::name(child) {
-                    if let Some(agent) = agent_program(&name, &proc::argv(child)) {
-                        return Some(agent);
-                    }
-                }
-                queue.push_back(child);
+        for child in tree.children(pid) {
+            if proc::group(child) != Some(group) {
+                continue;
             }
+            if let Some(name) = proc::name(child) {
+                if let Some(agent) = agent_program(&name, &proc::argv(child)) {
+                    return Some(agent);
+                }
+            }
+            queue.push_back(child);
         }
     }
     None
@@ -207,6 +266,16 @@ mod tests {
         );
     }
 
+    #[test]
+    fn only_a_shell_at_its_prompt_skips_the_recheck() {
+        assert!(settled(Front::Shell));
+        // An agent can end while its group stays, under the launch wrapper
+        // or a script. A job or an unknown program can grow an agent.
+        assert!(!settled(Front::Agent("claude")));
+        assert!(!settled(Front::Command));
+        assert!(!settled(Front::Program));
+    }
+
     #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn foreground_follows_agent_restart_and_shell_return() {
@@ -228,7 +297,8 @@ mod tests {
         async fn wait(pool: &SessionPool, id: &str, expected: &str) {
             let until = std::time::Instant::now() + Duration::from_secs(3);
             loop {
-                pool.scan_foreground();
+                // No recheck: each step here changes the group in front.
+                pool.scan_foreground(false);
                 if pool.get(id).unwrap().info().foreground_program.as_deref() == Some(expected) {
                     break;
                 }
@@ -240,6 +310,11 @@ mod tests {
             }
         }
         wait(&pool, &info.id, "bash").await;
+        // Two reads that agree settle the group: the shell at its prompt
+        // is then skipped until the group in front changes.
+        let session = pool.get(&info.id).unwrap();
+        pool.scan_foreground(false);
+        assert_eq!(Some(session.group.load(Ordering::Relaxed)), session.foreground_group());
         for agent in ["claude", "codex"] {
             pool.write(
                 &info.id,
@@ -247,7 +322,16 @@ mod tests {
             )
             .unwrap();
             wait(&pool, &info.id, agent).await;
+            // One read saw the agent. Let the shell take the terminal back
+            // before the next read, so that read must find the shell from
+            // a group the watcher read only once.
+            let job = session.foreground_group();
             pool.write(&info.id, b"\x03").unwrap();
+            let until = std::time::Instant::now() + Duration::from_secs(3);
+            while session.foreground_group() == job {
+                assert!(std::time::Instant::now() < until, "{agent} did not end");
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
             wait(&pool, &info.id, "bash").await;
         }
         assert_eq!(
