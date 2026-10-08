@@ -328,9 +328,11 @@ impl Session {
         (signals, scan, echoing)
     }
 
-    /// Skips a screen that is locked. The reader flushes it at its deadline.
+    /// Sends the output still held when the reader ends. It waits for the
+    /// screen lock: no reader deadline comes after this, so a skipped flush
+    /// would lose the child's last bytes.
     fn flush_output(&self) {
-        let Ok(mut st) = self.screen.try_lock() else { return };
+        let mut st = self.screen.lock().unwrap();
         st.flush(&self.output);
     }
 
