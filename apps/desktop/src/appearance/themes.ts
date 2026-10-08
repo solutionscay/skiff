@@ -59,6 +59,9 @@ export function applyApp() {
   applyAppTheme(S.themes.find((t) => t.id === want) ?? null);
 }
 
+/** The theme id the app colors come from. Icons are inked against it. */
+export const appliedTheme = () => appliedApp;
+
 export function xtermTheme(t: TerminalTheme) {
   const [black, red, green, yellow, blue, magenta, cyan, white, brightBlack, brightRed, brightGreen, brightYellow, brightBlue, brightMagenta, brightCyan, brightWhite] = t.palette;
   return {

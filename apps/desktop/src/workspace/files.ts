@@ -30,9 +30,23 @@ const expanded = storedSet("skiff.foldersOpen");
 /** Folders being read. */
 const reading = new Set<string>();
 
+/** Counts the reads that brought a listing different from the last one, and the folders opened or closed. */
+let version = 0;
+
 const join = (dir: string, name: string) => `${dir}/${name}`;
 
 export const showsFiles = (p: Project) => on.has(p.name);
+
+/** What the Files section draws for `w`, as a string. Equal strings mean an equal section. */
+export const filesSig = (w: Worktree) => (shown.has(w.path) ? `open:${version}` : "closed");
+
+/** Keeps the listing when the read brought the same one, so the sidebar does not rebuild. */
+function store(dir: string, l: Listing) {
+  const known = listings.get(dir);
+  if (known && JSON.stringify(known) === JSON.stringify(l)) return;
+  listings.set(dir, l);
+  version++;
+}
 
 /** Reads which projects show files. Called with every project reload. */
 export async function loadFilesSetting() {
@@ -56,8 +70,8 @@ function load(dir: string) {
   if (reading.has(dir)) return;
   reading.add(dir);
   invoke<Entry[]>("list_dir", { path: dir })
-    .then((entries) => listings.set(dir, entries))
-    .catch((e) => listings.set(dir, { error: String(e) }))
+    .then((entries) => store(dir, entries))
+    .catch((e) => store(dir, { error: String(e) }))
     .finally(() => {
       reading.delete(dir);
       render();
@@ -77,6 +91,7 @@ function toggle(dir: string, set: Set<string>) {
     set.add(dir);
     refresh(dir);
   }
+  version++;
   render();
 }
 
