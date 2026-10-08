@@ -52,22 +52,40 @@ const loading = new Set<string>();
 /** Worktrees whose Changes section is open. Closed by default. */
 const shown = storedSet("skiff.changesOpen");
 
+/** Counts the reads that brought a list different from the last one. */
+let version = 0;
+
+/** What the Changes section and the counts draw for `w`, as a string. Equal strings mean an equal section. */
+export const changesSig = (w: Worktree) => `${shown.has(w.path) ? "open" : "closed"}:${version}`;
+
+/** Keeps the list when the read brought the same one, so the sidebar does not rebuild. */
+function store(wt: string, list: Change[]) {
+  const known = lists.get(wt);
+  if (known && JSON.stringify(known) === JSON.stringify(list)) return;
+  lists.set(wt, list);
+  version++;
+}
+
 function load(wt: string) {
   if (loading.has(wt)) return;
   loading.add(wt);
   invoke<Change[]>("git_changes", { path: wt })
-    .then((list) => lists.set(wt, list))
     // Not a repository, or git is missing: the worktree shows no changes.
-    .catch(() => lists.set(wt, []))
+    .catch((): Change[] => [])
+    .then((list) => store(wt, list))
     .finally(() => {
       loading.delete(wt);
       scheduleRender();
     });
 }
 
-/** Reads every known worktree again. */
-export function reloadChanges() {
-  for (const wt of lists.keys()) load(wt);
+/** Reads the known worktrees in `only` again, or every known worktree without it. */
+export function reloadChanges(only?: Iterable<string>) {
+  if (!only) {
+    for (const wt of lists.keys()) load(wt);
+    return;
+  }
+  for (const wt of only) if (lists.has(wt)) load(wt);
 }
 
 function listFor(w: Worktree): Change[] | undefined {

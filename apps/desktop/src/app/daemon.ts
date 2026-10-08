@@ -19,7 +19,9 @@ import { render, scheduleRender } from "./render";
 import { born, gone, OTHER, removeErrors, S, sessions, upsert } from "./state";
 import { hasKeys, markSeen, quietSeen } from "./seen";
 import { peekExited, peekUpdated, previewToken, strayPeek } from "../terminal/peek";
-import { activeGroupObj, place, shownIds } from "./stateQueries";
+import { activeGroupObj, awayPlaces, currentWorktree, place, shownIds } from "./stateQueries";
+import { agentKind } from "../appearance/agentIcon";
+import { taskTitle } from "../workspace/model";
 import { panes } from "../terminal/terminalState";
 import { reattachPanes } from "../terminal/terminalRuntime";
 import { focusPane, inBackground, paneNear, revealSession, rowNear, showSingle, splitWith, unfocus } from "../workspace/view";
@@ -173,7 +175,9 @@ export async function loadProjects() {
   // A later call started while this one waited: its answer is newer.
   if (seq !== projectsSeq) return;
   if (list) {
-    S.projects = list.filter((p) => !p.closed);
+    const open = list.filter((p) => !p.closed);
+    // The same list keeps its objects: the tree and place() compare worktrees by identity.
+    if (JSON.stringify(open) !== JSON.stringify(S.projects)) S.projects = open;
     S.closedProjects = list.filter((p) => p.closed);
   }
   S.projectsError = err;
@@ -189,26 +193,60 @@ export async function loadProjects() {
 
 let staleTimer: number | undefined;
 
+/** The worktrees to read changed files for when the burst settles. Null: every known one. */
+let stale: Set<string> | null = new Set();
+
 /**
- * Reads worktrees and changed files again, once a burst of calls settles.
- * Both change outside Skiff: an agent's `git worktree add`, an editor's save.
+ * Reads worktrees again, and the changed files of `paths`, once a burst of
+ * calls settles. Both change outside Skiff: an agent's `git worktree add`, an
+ * editor's save. Without `paths`, every known worktree is read.
  */
-export function reposStale() {
+export function reposStale(paths?: Iterable<string>) {
+  if (!paths) stale = null;
+  else if (stale) for (const p of paths) stale.add(p);
   window.clearTimeout(staleTimer);
   staleTimer = window.setTimeout(() => {
+    const only = stale;
+    stale = new Set();
     void loadProjects();
-    reloadChanges();
+    reloadChanges(only ?? undefined);
   }, 400);
 }
 
+/** The worktrees the session works in: its own, and the ones its processes ran in. */
+function worktreesOf(s: SessionInfo): string[] {
+  const at = place(s);
+  return [...(at ? [at.worktree.path] : []), ...awayPlaces(s).map((a) => a.worktree.path)];
+}
+
+/** Worktrees with a session that worked while the window was not in front. */
+const workedAway = new Set<string>();
+let windowAway = !document.hasFocus();
+
 // The app edited projects.toml or a worktree.
 void listen("skiff:projects-changed", () => void loadProjects());
-// Back from a terminal, an editor or a diff tool.
-window.addEventListener("focus", reposStale);
+window.addEventListener("blur", () => {
+  windowAway = true;
+  for (const s of sessions.values()) if (s.state === "working") for (const p of worktreesOf(s)) workedAway.add(p);
+});
+// Back from a terminal, an editor or a diff tool: the worktree in front may have
+// changed, and so may the ones agents worked in meanwhile.
+window.addEventListener("focus", () => {
+  windowAway = false;
+  const at = currentWorktree();
+  if (at) workedAway.add(at.w.path);
+  reposStale(workedAway);
+  workedAway.clear();
+});
 // The focused pane is in front of the user again: its result is seen.
 window.addEventListener("focus", () => {
   if (S.focused) scheduleRender();
 });
+
+/** What the tree and the headers show for the session: its title without a leading status glyph, and its icon. */
+function shownTitle(s: SessionInfo): string {
+  return `${taskTitle(s).replace(/^[^\p{L}\p{N}]+/u, "")}\0${agentKind(s)}`;
+}
 
 /** Pulls `last_output_at` and anything missed, so relative times stay true. Drops what the daemon no longer has. */
 export async function refreshSessions() {
@@ -233,7 +271,11 @@ export function onEvent(e: DaemonEvent) {
   switch (e.event) {
     case "title": {
       const s = sessions.get(e.session);
-      if (s) s.title = e.title;
+      if (!s) return;
+      // A spinner frame changes the title string, not what is shown: no render.
+      const before = shownTitle(s);
+      s.title = e.title;
+      if (shownTitle(s) === before) return;
       break;
     }
     case "away": {
@@ -245,9 +287,12 @@ export function onEvent(e: DaemonEvent) {
       const s = sessions.get(e.session);
       if (s) {
         s.state = e.state;
-        if (e.state === "working") s.last_output_at = Date.now();
-        // An agent that stops working may have written files or added a worktree.
-        else reposStale();
+        if (e.state === "working") {
+          s.last_output_at = Date.now();
+          if (windowAway) for (const p of worktreesOf(s)) workedAway.add(p);
+        }
+        // An agent that stops working may have written files or added a worktree: its worktrees are read again.
+        else reposStale(worktreesOf(s));
       }
       restartIfIdle();
       break;

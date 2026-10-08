@@ -3,14 +3,15 @@ import { groupRenameInput } from "./rename";
 /** The session tree and its focus, caret, and hover restoration. */
 
 import { filledOf } from "./layoutSlots";
-import { agentIcon } from "../appearance/agentIcon";
+import { agentIcon, agentKind } from "../appearance/agentIcon";
 import { ink } from "../appearance/appTheme";
+import { ownTheme, signatureColor } from "../appearance/themes";
 import { glyph } from "./layoutIcon";
 import { agentName, basename, branchName, taskTitle } from "./model";
 import type { Group, Project, SessionInfo, Worktree } from "../platform/types";
 
-import { changeCounts, changesBlock, showsChanges } from "./changes";
-import { filesBlock, showsFiles } from "./files";
+import { changeCounts, changesBlock, changesSig, showsChanges } from "./changes";
+import { filesBlock, filesSig, showsFiles } from "./files";
 import { $, button, h } from "../ui/dom";
 import { branchIcon, chevron, icon, plusIcon } from "../ui/icons";
 
@@ -119,8 +120,51 @@ function errorRow(text: string): HTMLElement {
   return row;
 }
 
+let lastProjects: Project[] | null = null;
+let lastGroups: Group[] | null = null;
+let listGen = 0;
+
+/**
+ * Everything the tree draws, as one string. Renders run while agents work. A
+ * rebuilt tree loses its hover, restarts its icons and forces a layout to put
+ * the focus back, so the tree is rebuilt only when what it shows changes.
+ */
+function sidebarSig(): string {
+  // Rows close over project, worktree and group objects. A new list brings new
+  // objects, and some callers compare them by identity: the rows are rebuilt.
+  if (S.projects !== lastProjects || S.groups !== lastGroups) {
+    lastProjects = S.projects;
+    lastGroups = S.groups;
+    listGen++;
+  }
+  const p = S.selectedProject === OTHER ? null : currentProject();
+  const rows = [...sessions.values()].map((s) => {
+    const t = ownTheme(s);
+    return [
+      s.id, s.state, s.unread, s.exit_code, s.agent_exit, s.started_at,
+      taskTitle(s), agentName(s), agentKind(s), t ? ink(signatureColor(t)) : null,
+      place(s)?.worktree.path ?? null, awayPlaces(s).map((a) => a.worktree.path),
+    ];
+  });
+  const groups = S.groups.map((g) => {
+    const lead = sessions.get(g.focus ?? filledOf(g.layout)[0]);
+    return [g.id, g.name, g.layout, g.cwd, groupColor(g), accent(lead ? place(lead)?.project : null)];
+  });
+  const trees = p?.worktrees.map((w) => [
+    w.path, w.branch, w.is_main, w.locked, w.prunable, collapsed.has(w.path), removing.has(w.path), removeErrors.get(w.path),
+    showsChanges(p) ? changesSig(w) : null, showsFiles(p) ? filesSig(w) : null,
+  ]);
+  return JSON.stringify([
+    listGen, S.selectedProject, S.projects.length, p && [p.name, p.error, p.default_branch, accent(p), selectedWorktree.get(p.name)],
+    S.selection, S.renamingSession, S.renaming?.id ?? null, rows, groups, trees,
+  ]);
+}
+
 export function renderSidebar() {
   const side = $<HTMLElement>("sidebar-scroll");
+  const sig = sidebarSig();
+  if (side.dataset.sig === sig) return;
+  side.dataset.sig = sig;
   // Keep focus and the selected range in an inline control across re-renders,
   // so a render while a rename is open does not undo its select-all.
   const active = document.activeElement as HTMLElement | null;
