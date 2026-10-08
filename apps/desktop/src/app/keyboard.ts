@@ -251,9 +251,13 @@ export function toProject() {
   activeChip()?.focus();
 }
 
-/** Ctrl+Shift+Up/Down on the rail: the next or previous project. The keys stay on the rail. */
+/**
+ * Ctrl+Shift+Up/Down on the rail: the next or previous project. The keys stay
+ * on the rail. Other (sessions outside every project) is not a project: a
+ * click reaches it, the cycle does not.
+ */
 export function stepRail(dir: 1 | -1) {
-  const chips = [...document.querySelectorAll<HTMLElement>("#rail .rail-chip:not(.rail-add)")];
+  const chips = [...document.querySelectorAll<HTMLElement>("#rail .rail-chip:not(.rail-add):not(.rail-other)")];
   if (!chips.length) return;
   const i = chips.findIndex((c) => c.classList.contains("active"));
   chips[(i + dir + chips.length) % chips.length].click();
