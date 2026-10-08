@@ -39,7 +39,7 @@ use serde::{Deserialize, Serialize};
 use skiff_core::{group::Group, session::SessionInfo};
 use tokio::sync::broadcast;
 
-use super::{foreground, groups::prune, start_writer, Front, Park, ScreenState, Session, SessionPool, FRAME, SCAN};
+use super::{foreground, groups::prune, start_writer, Front, Park, ScreenState, Session, SessionPool, SCAN};
 use crate::{
     pty::{self, Pty},
     screen::{Screen, TitleState},
@@ -409,7 +409,8 @@ impl SessionPool {
             screen: Mutex::new(ScreenState {
                 screen,
                 pending: Vec::new(),
-                last_flush: Instant::now() - FRAME,
+                held_since: Instant::now(),
+                last_push: Instant::now(),
                 last_scan: Instant::now() - SCAN,
                 unscanned: m.unscanned,
                 printed: m.printed,
