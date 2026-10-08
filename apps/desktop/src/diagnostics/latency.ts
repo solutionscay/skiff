@@ -17,7 +17,7 @@
  * summarizes the file; Help → Copy latency report summarizes this run.
  */
 import { invoke } from "@tauri-apps/api/core";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { copyText } from "../platform/clipboard";
 import { button, h } from "../ui/dom";
 import { showError } from "../ui/alerts";
 import { scheduleRender } from "../app/render";
@@ -256,5 +256,5 @@ function report(): string {
 }
 
 export async function copyReport() {
-  await writeText(report()).catch(showError);
+  await copyText(report()).catch(showError);
 }

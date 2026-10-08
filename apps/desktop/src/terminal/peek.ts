@@ -19,7 +19,7 @@
  *   app with a window of its own. The peek never shows, and the app runs on.
  */
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { copyText, pasteText } from "../platform/clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { $, button, h } from "../ui/dom";
@@ -421,8 +421,8 @@ function frame(mine: number, kind: string, title: string, where: string, program
     const key = appKey(e);
     if (key === "copy" || key === "paste") {
       e.preventDefault();
-      if (key === "copy") void writeText(term.getSelection()).catch(showError);
-      else void readText().then((t) => t && term.paste(t), showError);
+      if (key === "copy") void copyText(term.getSelection()).catch(showError);
+      else void pasteText().then((t) => t && term.paste(t), showError);
       return false;
     }
     return key === null;

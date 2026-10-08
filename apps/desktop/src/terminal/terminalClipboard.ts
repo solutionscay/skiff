@@ -1,4 +1,4 @@
-import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { copyText, pasteText } from "../platform/clipboard";
 
 import { h } from "../ui/dom";
 
@@ -28,7 +28,7 @@ export async function copySelection() {
   const text = id ? panes.get(id)?.term.getSelection() : "";
   if (!text) return;
   try {
-    await writeText(text);
+    await copyText(text);
     showCopyConfirmation(id!);
   } catch (e) {
     showError(e);
@@ -38,6 +38,6 @@ export async function copySelection() {
 export async function pasteClipboard() {
   const pane = S.focused ? panes.get(S.focused) : undefined;
   if (!pane) return;
-  const text = await readText().catch(() => "");
+  const text = await pasteText().catch(() => "");
   if (text) pane.term.paste(text);
 }
