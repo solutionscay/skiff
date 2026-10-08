@@ -90,9 +90,9 @@ function probeGl() {
   g?.getExtension("WEBGL_lose_context")?.loseContext();
 }
 
-/** A WebGL renderer attached to a pane: the addon's construction, and `loadAddon` (context, shaders, atlas, first draw), in ms. */
-export function traceGl(sid: string, ctor: number, load: number) {
-  if (on) lines.push(JSON.stringify({ at: Date.now(), sid, gl: { ctor, load } }));
+/** A WebGL renderer attached to a pane: the addon's construction, and `loadAddon` (context, shaders, atlas, first draw), in ms. `warm`: in an idle frame, not for a shown pane. */
+export function traceGl(sid: string, ctor: number, load: number, warm: boolean) {
+  if (on) lines.push(JSON.stringify({ at: Date.now(), sid, gl: { ctor, load, warm } }));
 }
 
 export function stopTrace() {

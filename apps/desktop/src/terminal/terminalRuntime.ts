@@ -14,7 +14,9 @@ import { traceGl, traceKey, traceOutput, traceRender, traceSend } from "../diagn
 
 import { FONT_DEFAULT, S, sessions } from "../app/state";
 import { paneFontSize } from "./terminalFont";
-import { shownIds } from "../app/stateQueries";
+import { place, shownIds } from "../app/stateQueries";
+import { bySessionPriority } from "../workspace/model";
+import type { SessionInfo } from "../platform/types";
 import { opening, type Pane, panes } from "./terminalState";
 
 export const TERM_THEME = {
@@ -277,7 +279,7 @@ function drainWebgl() {
 }
 
 /** Gives the pane a WebGL renderer now, and drops the oldest contexts past the limit. */
-function attachWebgl(id: string, pane: Pane) {
+function attachWebgl(id: string, pane: Pane, warm = false) {
   const t0 = performance.now();
   try {
     // WebKitGTK without DMA-BUF shows the WebGL canvas one frame late unless the
@@ -293,7 +295,7 @@ function attachWebgl(id: string, pane: Pane) {
     const t1 = performance.now();
     pane.term.loadAddon(gl);
     pane.webgl = gl;
-    traceGl(id, t1 - t0, performance.now() - t1);
+    traceGl(id, t1 - t0, performance.now() - t1, warm);
   } catch (e) {
     console.warn("WebGL renderer unavailable, using DOM renderer", e);
     return;
@@ -313,4 +315,62 @@ function attachWebgl(id: string, pane: Pane) {
     p?.webgl?.dispose();
     if (p) p.webgl = undefined;
   }
+}
+
+/** The last key or pointer press. Warming waits for a quiet moment, so it never lands under one. */
+let lastInput = 0;
+for (const type of ["keydown", "pointerdown", "wheel"] as const) {
+  window.addEventListener(type, () => (lastInput = performance.now()), { capture: true, passive: true });
+}
+
+/** Sessions warming tried: opened and given a context, or found gone. */
+const warmed = new Set<string>();
+
+/**
+ * Warms the panes the user is likely to open next, after the app starts: a
+ * terminal and then a WebGL context each, one step every few idle frames, so
+ * a first visit costs nothing. Projects in rail order from the selected one,
+ * Other last. It stops at the context limit; the queue takes over from there.
+ */
+export function warmPanes() {
+  let frames = 0;
+  const step = () => {
+    if (++frames < 3 || performance.now() - lastInput < 500) return void requestAnimationFrame(step);
+    frames = 0;
+    if (glOrder.length >= GL_KEEP) return;
+    const id = nextToWarm();
+    if (!id) return;
+    const pane = panes.get(id);
+    if (!pane) {
+      openPane(id)
+        .then((p) => {
+          // Not shown: no stream. The snapshot comes again when it shows.
+          if (!shownIds().includes(id)) parkPane(id, p);
+        })
+        .catch(() => warmed.add(id))
+        .finally(() => requestAnimationFrame(step));
+      return;
+    }
+    if (!pane.webgl && !glWanted.includes(id)) attachWebgl(id, pane, true);
+    warmed.add(id);
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+/** The next session with no warm pane, nearest project first. */
+function nextToWarm(): string | null {
+  const order = S.projects.map((p) => p.name);
+  const at = Math.max(0, order.indexOf(S.selectedProject ?? ""));
+  const rank = (s: SessionInfo) => {
+    const i = order.indexOf(place(s)?.project.name ?? "");
+    return i < 0 ? order.length : (i - at + order.length) % order.length;
+  };
+  const list = [...sessions.values()].sort((a, b) => rank(a) - rank(b) || bySessionPriority(a, b));
+  for (const s of list) {
+    if (warmed.has(s.id)) continue;
+    const p = panes.get(s.id);
+    if (!p || !p.webgl) return s.id;
+  }
+  return null;
 }

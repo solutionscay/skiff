@@ -24,6 +24,7 @@ import { FONT_DEFAULT, S, sessions } from "./app/state";
 import { groupOf } from "./app/stateQueries";
 
 import { setFontSize } from "./terminal/terminalFont";
+import { warmPanes } from "./terminal/terminalRuntime";
 import { loadThemes } from "./appearance/themes";
 import { loadPlace, trackPlace } from "./app/stored";
 import { startMemory } from "./diagnostics/memory";
@@ -104,6 +105,7 @@ async function boot() {
   await loadGroups();
   restorePlace();
   trackPlace();
+  warmPanes();
 
   let refreshing = false;
   setInterval(() => {

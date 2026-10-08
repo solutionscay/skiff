@@ -54,7 +54,8 @@ def main():
         ctor = sorted(g["ctor"] for g in gls)
         load = sorted(g["load"] for g in gls)
         mid = len(gls) // 2
-        print(f"\nWebGL attach ({len(gls)}): addon {ctor[mid]:.1f} ms, loadAddon {load[mid]:.1f} ms median, {load[-1]:.1f} ms max", end="")
+        warm = sum(1 for g in gls if g.get("warm"))
+        print(f"\nWebGL attach ({len(gls)}, {warm} warmed in idle frames): addon {ctor[mid]:.1f} ms, loadAddon {load[mid]:.1f} ms median, {load[-1]:.1f} ms max", end="")
         print(f"; bare context {sorted(probes)[len(probes) // 2]:.1f} ms" if probes else "")
 
 
