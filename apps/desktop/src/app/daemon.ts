@@ -243,9 +243,14 @@ window.addEventListener("focus", () => {
   if (S.focused) scheduleRender();
 });
 
-/** What the tree and the headers show for the session: its title without a leading status glyph, and its icon. */
+/**
+ * What the tree and the headers show for the session: its title and its icon.
+ * An agent's leading status glyph is left out, so a spinner frame is not a
+ * change. A shell shows its raw title, so a shell keeps every change.
+ */
 function shownTitle(s: SessionInfo): string {
-  return `${taskTitle(s).replace(/^[^\p{L}\p{N}]+/u, "")}\0${agentKind(s)}`;
+  const title = taskTitle(s);
+  return `${s.role === "shell" ? title : title.replace(/^[^\p{L}\p{N}]+/u, "")}\0${agentKind(s)}`;
 }
 
 /** Pulls `last_output_at` and anything missed, so relative times stay true. Drops what the daemon no longer has. */

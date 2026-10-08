@@ -5,7 +5,7 @@ import { groupRenameInput } from "./rename";
 import { filledOf } from "./layoutSlots";
 import { agentIcon, agentKind } from "../appearance/agentIcon";
 import { ink } from "../appearance/appTheme";
-import { ownTheme, signatureColor } from "../appearance/themes";
+import { appliedTheme, ownTheme, signatureColor } from "../appearance/themes";
 import { glyph } from "./layoutIcon";
 import { agentName, basename, branchName, taskTitle } from "./model";
 import type { Group, Project, SessionInfo, Worktree } from "../platform/types";
@@ -154,8 +154,9 @@ function sidebarSig(): string {
     w.path, w.branch, w.is_main, w.locked, w.prunable, collapsed.has(w.path), removing.has(w.path), removeErrors.get(w.path),
     showsChanges(p) ? changesSig(w) : null, showsFiles(p) ? filesSig(w) : null,
   ]);
+  // The agent icons are inked against the applied app theme: a new theme re-inks them.
   return JSON.stringify([
-    listGen, S.selectedProject, S.projects.length, p && [p.name, p.error, p.default_branch, accent(p), selectedWorktree.get(p.name)],
+    listGen, appliedTheme(), S.selectedProject, S.projects.length, p && [p.name, p.error, p.default_branch, accent(p), selectedWorktree.get(p.name)],
     S.selection, S.renamingSession, S.renaming?.id ?? null, rows, groups, trees,
   ]);
 }
