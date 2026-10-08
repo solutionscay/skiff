@@ -10,9 +10,9 @@ import { park } from "./terminalHost";
 import { toBytes } from "../platform/ipcBytes";
 
 import { appKey } from "../app/keyboard";
-import { traceKey, traceOutput, traceRender, traceSend } from "../diagnostics/latency";
+import { traceGl, traceKey, traceOutput, traceRender, traceSend } from "../diagnostics/latency";
 
-import { FONT_DEFAULT, sessions } from "../app/state";
+import { FONT_DEFAULT, S, sessions } from "../app/state";
 import { paneFontSize } from "./terminalFont";
 import { shownIds } from "../app/stateQueries";
 import { opening, type Pane, panes } from "./terminalState";
@@ -230,38 +230,77 @@ export function unparkPane(id: string, pane: Pane) {
 }
 
 /**
- * WebGL contexts are few (WebKit drops the oldest past 16) and slow to make.
- * The panes shown most recently keep theirs, so switching back to a group
- * is cheap; older parked panes fall back to the DOM renderer, which draws
- * nothing while hidden. A new context blocks the page for 100 to 200 ms, so
- * the limit sits just under WebKit's 16: an evicted pane pays that on return.
+ * WebGL contexts are few (WebKit drops the oldest past 16) and slow to make:
+ * a new one blocks the page for 100 to 200 ms. So a shown pane asks for one,
+ * and the queue attaches one per frame after the switch has painted, the
+ * focused pane first. Until then the pane draws with the DOM renderer. The
+ * panes shown most recently keep their context, so switching back to a group
+ * is cheap; older parked panes lose theirs and draw nothing while hidden.
+ * The limit sits just under WebKit's 16.
  */
 const GL_KEEP = 14;
 /** Pane ids with a WebGL renderer, least recently shown first. */
 const glOrder: string[] = [];
+/** Pane ids that wait for a context, in the order they asked. */
+const glWanted: string[] = [];
+let glFrame = 0;
 
+/** Asks for a WebGL renderer on a shown pane. It arrives a frame or more later. */
 export function useWebgl(id: string, pane: Pane) {
+  if (pane.webgl) {
+    const i = glOrder.indexOf(id);
+    if (i >= 0) glOrder.splice(i, 1);
+    glOrder.push(id);
+    return;
+  }
+  if (!glWanted.includes(id)) glWanted.push(id);
+  // Two frames out: the switch paints with the DOM renderer first.
+  if (!glFrame) glFrame = requestAnimationFrame(() => (glFrame = requestAnimationFrame(drainWebgl)));
+}
+
+/** Attaches one context per frame. The focused pane goes first: its echo is what the user waits for. */
+function drainWebgl() {
+  glFrame = 0;
+  const shown = shownIds();
+  let k = S.focused ? glWanted.indexOf(S.focused) : -1;
+  if (k < 0) k = 0;
+  while (glWanted.length) {
+    const [id] = glWanted.splice(k, 1);
+    k = 0;
+    const pane = panes.get(id);
+    // Parked or gone since it asked: it asks again when it shows.
+    if (!pane || pane.parked || pane.webgl || !shown.includes(id)) continue;
+    attachWebgl(id, pane);
+    break;
+  }
+  if (glWanted.length) glFrame = requestAnimationFrame(drainWebgl);
+}
+
+/** Gives the pane a WebGL renderer now, and drops the oldest contexts past the limit. */
+function attachWebgl(id: string, pane: Pane) {
+  const t0 = performance.now();
+  try {
+    // WebKitGTK without DMA-BUF shows the WebGL canvas one frame late unless the
+    // drawing buffer is kept. Echo drops from ~600 ms to ~30 ms.
+    const gl = new WebglAddon(true);
+    gl.onContextLoss(() => {
+      gl.dispose();
+      if (pane.webgl !== gl) return;
+      pane.webgl = undefined;
+      // A shown pane gets a new context; a parked one when it shows again.
+      if (panes.get(id) === pane && shownIds().includes(id)) setTimeout(() => useWebgl(id, pane), 100);
+    });
+    const t1 = performance.now();
+    pane.term.loadAddon(gl);
+    pane.webgl = gl;
+    traceGl(id, t1 - t0, performance.now() - t1);
+  } catch (e) {
+    console.warn("WebGL renderer unavailable, using DOM renderer", e);
+    return;
+  }
   const i = glOrder.indexOf(id);
   if (i >= 0) glOrder.splice(i, 1);
   glOrder.push(id);
-  if (!pane.webgl) {
-    try {
-      // WebKitGTK without DMA-BUF shows the WebGL canvas one frame late unless the
-      // drawing buffer is kept. Echo drops from ~600 ms to ~30 ms.
-      const gl = new WebglAddon(true);
-      gl.onContextLoss(() => {
-        gl.dispose();
-        if (pane.webgl !== gl) return;
-        pane.webgl = undefined;
-        // A shown pane gets a new context; a parked one when it shows again.
-        if (panes.get(id) === pane && shownIds().includes(id)) setTimeout(() => useWebgl(id, pane), 100);
-      });
-      pane.term.loadAddon(gl);
-      pane.webgl = gl;
-    } catch (e) {
-      console.warn("WebGL renderer unavailable, using DOM renderer", e);
-    }
-  }
   const shown = shownIds();
   for (let j = 0; glOrder.length > GL_KEEP && j < glOrder.length; ) {
     const old = glOrder[j];

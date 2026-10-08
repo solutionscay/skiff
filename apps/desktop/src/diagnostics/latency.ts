@@ -79,6 +79,20 @@ export function startTrace() {
   ];
   indicator();
   hud();
+  probeGl();
+}
+
+/** One bare context, so the `gl` lines can be read against what a context alone costs. */
+function probeGl() {
+  const t = performance.now();
+  const g = document.createElement("canvas").getContext("webgl2", { preserveDrawingBuffer: true });
+  lines.push(JSON.stringify({ at: Date.now(), glprobe: performance.now() - t, ok: !!g }));
+  g?.getExtension("WEBGL_lose_context")?.loseContext();
+}
+
+/** A WebGL renderer attached to a pane: the addon's construction, and `loadAddon` (context, shaders, atlas, first draw), in ms. */
+export function traceGl(sid: string, ctor: number, load: number) {
+  if (on) lines.push(JSON.stringify({ at: Date.now(), sid, gl: { ctor, load } }));
 }
 
 export function stopTrace() {

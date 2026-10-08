@@ -41,11 +41,21 @@ def main():
         i = args.index("--since-min")
         since = (time.time() - float(args[i + 1]) * 60) * 1000
         del args[i : i + 2]
-    rows = [json.loads(l) for l in open(args[0]) if l.strip()]
+    lines = [json.loads(l) for l in open(args[0]) if l.strip()]
     if since:
-        rows = [r for r in rows if r["at"] >= since]
+        lines = [r for r in lines if r["at"] >= since]
+    rows = [r for r in lines if "busy" in r]
     table([r for r in rows if not r["busy"]], "Quiet session")
     table([r for r in rows if r["busy"]], "Session printing")
+    # A WebGL renderer attached to a pane, against a bare context.
+    gls = [r["gl"] for r in lines if "gl" in r]
+    probes = [r["glprobe"] for r in lines if "glprobe" in r]
+    if gls:
+        ctor = sorted(g["ctor"] for g in gls)
+        load = sorted(g["load"] for g in gls)
+        mid = len(gls) // 2
+        print(f"\nWebGL attach ({len(gls)}): addon {ctor[mid]:.1f} ms, loadAddon {load[mid]:.1f} ms median, {load[-1]:.1f} ms max", end="")
+        print(f"; bare context {sorted(probes)[len(probes) // 2]:.1f} ms" if probes else "")
 
 
 if __name__ == "__main__":
