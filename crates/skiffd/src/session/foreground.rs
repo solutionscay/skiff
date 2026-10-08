@@ -79,11 +79,8 @@ impl SessionPool {
             info.pid
         };
         let Some(group) = session.foreground_group() else { return };
-        if group == session.group.load(Ordering::Relaxed) {
-            let shell = session.shell.load(Ordering::Relaxed);
-            if !recheck || settled(session.front(), shell, Some(group) == pid) {
-                return;
-            }
+        if group == session.group.load(Ordering::Relaxed) && (!recheck || settled(session.front())) {
+            return;
         }
         let Some(name) = proc::name(group) else { return };
         let argv = proc::argv(group);
@@ -131,11 +128,13 @@ impl SessionPool {
             }
         };
         // A read that changes nothing settles the group, so the next tick
-        // skips it. One read can land between a fork and its exec, when the
-        // process still has its parent's name: a second read corrects it.
-        if same_front && same_program {
-            session.group.store(group, Ordering::Relaxed);
-        }
+        // skips it. A read that changes the front or the program clears the
+        // cache instead, so the next pass reads whatever is in front then:
+        // the group can change back before that pass, and a stale cache would
+        // make it look unchanged. One read can also land between a fork and
+        // its exec, when the process still has its parent's name: the second
+        // read corrects it.
+        session.group.store(if same_front && same_program { group } else { 0 }, Ordering::Relaxed);
         if was_changed {
             self.dirty.notify_one();
         }
@@ -155,18 +154,15 @@ pub(crate) fn generic_title(title: &str) -> bool {
 }
 
 /// True when the front cannot change while the group in front stays, so
-/// there is nothing to read. A shell at its prompt runs each job in a group
-/// of its own. An agent that ends gives the terminal back to the shell's
-/// group, unless it shares the group with the launch wrapper, which then
-/// execs the fallback shell in place: `shell` is set by then, and the shell
-/// leads the group. A command or an unknown program can start an agent in
-/// its own group later (`npx` does), so it is read again now and then.
-fn settled(front: Front, shell: bool, leader: bool) -> bool {
-    match front {
-        Front::Shell => true,
-        Front::Agent(_) => !(shell && leader),
-        Front::Command | Front::Program => false,
-    }
+/// there is nothing to read. Only a shell at its prompt is that: it runs
+/// each job in a group of its own. Every other front is read again now and
+/// then. A command or an unknown program can start an agent later (`npx`
+/// does). An agent can end while its group stays: the launch wrapper execs
+/// the fallback shell in its place, and a script can run the agent and then
+/// another program. An agent recheck is two reads of its leader, so it costs
+/// little.
+fn settled(front: Front) -> bool {
+    matches!(front, Front::Shell)
 }
 
 fn agent_in_group(group: u32, tree: &mut Tree) -> Option<&'static str> {
@@ -271,16 +267,13 @@ mod tests {
     }
 
     #[test]
-    fn settled_fronts_skip_the_proc_reads() {
-        // A shell at its prompt, and an agent in a job of its own.
-        assert!(settled(Front::Shell, true, true));
-        assert!(settled(Front::Agent("claude"), true, false));
-        // The wrapper's agent, before and after it execs the fallback shell.
-        assert!(settled(Front::Agent("claude"), false, true));
-        assert!(!settled(Front::Agent("claude"), true, true));
-        // A job or an unknown program can grow an agent in its group.
-        assert!(!settled(Front::Command, true, false));
-        assert!(!settled(Front::Program, false, true));
+    fn only_a_shell_at_its_prompt_skips_the_recheck() {
+        assert!(settled(Front::Shell));
+        // An agent can end while its group stays, under the launch wrapper
+        // or a script. A job or an unknown program can grow an agent.
+        assert!(!settled(Front::Agent("claude")));
+        assert!(!settled(Front::Command));
+        assert!(!settled(Front::Program));
     }
 
     #[cfg(target_os = "linux")]
@@ -329,7 +322,16 @@ mod tests {
             )
             .unwrap();
             wait(&pool, &info.id, agent).await;
+            // One read saw the agent. Let the shell take the terminal back
+            // before the next read, so that read must find the shell from
+            // a group the watcher read only once.
+            let job = session.foreground_group();
             pool.write(&info.id, b"\x03").unwrap();
+            let until = std::time::Instant::now() + Duration::from_secs(3);
+            while session.foreground_group() == job {
+                assert!(std::time::Instant::now() < until, "{agent} did not end");
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
             wait(&pool, &info.id, "bash").await;
         }
         assert_eq!(

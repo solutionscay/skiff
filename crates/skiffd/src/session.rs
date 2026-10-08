@@ -613,6 +613,10 @@ impl SessionPool {
                     .map(|s| s.to_string_lossy().into_owned())
                     .unwrap_or_else(default_shell);
                 session.shell.store(true, Ordering::Relaxed);
+                // The group stays. Forget it, so the watcher reads the
+                // shell in front now instead of at its next recheck.
+                session.group.store(0, Ordering::Relaxed);
+                foreground::wake();
                 let info = {
                     let mut info = session.info.lock().unwrap();
                     info.title = None;
