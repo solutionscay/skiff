@@ -877,24 +877,36 @@ impl SessionPool {
         Ok(info)
     }
 
-    /// A resize is not input: it leaves `last_input` alone, so output after
-    /// it merges as usual. The emulator reflows 2000 lines of scrollback, so
-    /// that runs on a blocking thread and the executor serves other sessions
-    /// meanwhile. The screen lock keeps the reflow and the reader in order.
-    pub async fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<()> {
-        let session = {
-            let _change = self.change()?;
-            let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
-            session.pty.resize(cols, rows)?;
-            session
-        };
-        let reflow = session.clone();
-        tokio::task::spawn_blocking(move || reflow.screen.lock().unwrap().screen.resize(cols, rows))
-            .await
-            .map_err(|e| anyhow!("resize of session {id} failed: {e}"))?;
-        let mut info = session.info.lock().unwrap();
-        info.cols = cols;
-        info.rows = rows;
+    /// The emulator reflows 2000 lines of scrollback, so the whole resize
+    /// runs on a blocking thread and the executor serves other sessions
+    /// meanwhile. The change guard holds a reload until the pty, the screen
+    /// and the info agree. The screen lock covers the ioctl and the reflow,
+    /// so the redraw the program sends for the new size lands on a screen
+    /// of that size. Every client learns the size from the event.
+    pub async fn resize(self: &Arc<Self>, id: &str, cols: u16, rows: u16) -> Result<()> {
+        let pool = self.clone();
+        let id = id.to_string();
+        let info = tokio::task::spawn_blocking(move || {
+            let _change = pool.change()?;
+            let session = pool.get(&id).ok_or_else(|| anyhow!("no such session: {id}"))?;
+            // The program redraws for the new size. That is not work either.
+            // Stored before the ioctl, as a write does.
+            session.last_input.store(now_ms(), Ordering::Relaxed);
+            {
+                let mut st = session.screen.lock().unwrap();
+                session.pty.resize(cols, rows)?;
+                st.screen.resize(cols, rows);
+            }
+            {
+                let mut info = session.info.lock().unwrap();
+                info.cols = cols;
+                info.rows = rows;
+            }
+            Ok::<_, anyhow::Error>(session.info())
+        })
+        .await
+        .map_err(|e| anyhow!("resize failed: {e}"))??;
+        let _ = self.events.send(Event::SessionUpdated { session: info });
         Ok(())
     }
 

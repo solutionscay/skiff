@@ -11,6 +11,7 @@ import { createLayoutView } from "../workspace/layoutView";
 import { invoke } from "@tauri-apps/api/core";
 
 import { modalOpen } from "../ui/dom";
+import type { SessionInfo } from "../platform/types";
 import { host, park } from "./terminalHost";
 
 import { saveGroup } from "../app/groups";
@@ -105,6 +106,16 @@ function sizeChanged(id: string, p: Pane): boolean {
 }
 
 /**
+ * The daemon told the session's size. Another client (`skiff attach`) can
+ * resize the pty too; then the size sent from here no longer holds, and
+ * the next fit sends again, as it did before the sizes were compared.
+ */
+export function ptySized(info: SessionInfo) {
+  const sent = sentSize.get(info.id);
+  if (sent && (sent[0] !== info.cols || sent[1] !== info.rows)) sentSize.delete(info.id);
+}
+
+/**
  * Frames left to wait for a terminal that cannot measure yet. A terminal
  * opens in the hidden park, where xterm measures no cell, and it measures
  * only after a frame on screen. A fit before that does nothing, and the
@@ -150,7 +161,13 @@ export function fitShown() {
       if (!sizeChanged(id, p)) continue;
       const { cols, rows } = p.term;
       sentSize.set(id, [cols, rows]);
-      invoke("pty_resize", { session: id, cols, rows }).catch(console.error);
+      invoke("pty_resize", { session: id, cols, rows }).catch((e) => {
+        console.error(e);
+        // The pty kept its size (skiffd reloads, or the connection dropped):
+        // the next fit sends again. A later size sent meanwhile stays.
+        const sent = sentSize.get(id);
+        if (sent && sent[0] === cols && sent[1] === rows) sentSize.delete(id);
+      });
     }
     resizePending.clear();
   }, 50);
