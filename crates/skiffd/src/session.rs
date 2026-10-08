@@ -74,7 +74,7 @@ pub const FRAME: Duration = Duration::from_millis(16);
 const MAX_CHUNK: usize = 64 * 1024;
 
 /// Output this soon after input or a resize answers it: an echo or a
-/// redraw. It skips coalescing and does not mark the session working.
+/// redraw. It does not mark the session working.
 const ECHO_MS: u64 = 250;
 
 /// The screen text is checked at most this often. Each check walks every cell,
@@ -101,6 +101,9 @@ pub struct Session {
     last_work: AtomicU64,
     /// Unix ms of the last input or resize from a client.
     last_input: AtomicU64,
+    /// A key went in and no output has answered it yet. The first read
+    /// after it goes out at once; the reads after that merge again.
+    key_pending: AtomicBool,
     /// Unix ms when the current stretch of work began.
     work_started: AtomicU64,
     /// No stretch of work has ended yet under the program in front. The first
@@ -288,9 +291,12 @@ impl Session {
             Scan::default()
         };
         st.pending.extend_from_slice(chunk);
-        // A chunk after a quiet frame goes out now, and so does the answer
-        // to a keystroke, even while the program streams output.
-        if self.echoing() || st.last_flush.elapsed() >= FRAME || st.pending.len() >= MAX_CHUNK {
+        // A chunk after a quiet frame goes out now, and so does the first
+        // answer to a keystroke, even while the program streams output. The
+        // reads after that answer merge by frame again, so a redraw does
+        // not go out as a stream of small chunks.
+        let answers_key = self.key_pending.swap(false, Ordering::Relaxed);
+        if answers_key || st.last_flush.elapsed() >= FRAME || st.pending.len() >= MAX_CHUNK {
             st.flush(&self.output);
         }
         (signals, scan, echoing)
@@ -498,6 +504,7 @@ impl SessionPool {
             output,
             last_output: AtomicU64::new(info.last_output_at),
             last_input: AtomicU64::new(0),
+            key_pending: AtomicBool::new(false),
             last_work: AtomicU64::new(info.last_output_at),
             work_started: AtomicU64::new(info.last_output_at),
             fresh: AtomicBool::new(true),
@@ -837,6 +844,7 @@ impl SessionPool {
         // Stored before the send: the reader can see the echo before this
         // thread runs again, and it must count as an echo, not as work.
         session.last_input.store(now_ms(), Ordering::Relaxed);
+        session.key_pending.store(true, Ordering::Relaxed);
         session.queued.fetch_add(1, Ordering::AcqRel);
         if session.input.send(data.to_vec()).is_err() {
             session.queued.fetch_sub(1, Ordering::AcqRel);

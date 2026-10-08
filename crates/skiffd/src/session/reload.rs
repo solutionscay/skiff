@@ -397,6 +397,7 @@ impl SessionPool {
             last_output: AtomicU64::new(m.last_output),
             last_work: AtomicU64::new(m.last_work),
             last_input: AtomicU64::new(m.last_input),
+            key_pending: AtomicBool::new(false),
             work_started: AtomicU64::new(m.work_started),
             fresh: AtomicBool::new(m.fresh),
             busy_seen: AtomicBool::new(m.busy_seen),
