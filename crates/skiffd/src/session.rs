@@ -66,15 +66,20 @@ pub(crate) enum Front {
     Program,
 }
 
-/// Output is coalesced into at most one chunk per frame.
-pub const FRAME: Duration = Duration::from_millis(16);
+/// Output waits this long for more, so a burst of reads goes out as one
+/// chunk. A read with nothing after it goes out when this passes.
+const QUIET: Duration = Duration::from_micros(500);
 
-/// A chunk goes out once it holds this much, before the frame ends. A client
+/// Output waits at most this long from its first byte, however fast the
+/// program streams.
+const HOLD: Duration = Duration::from_millis(8);
+
+/// A chunk goes out once it holds this much, before the hold ends. A client
 /// parses a chunk in one go, so a large one stalls it.
 const MAX_CHUNK: usize = 64 * 1024;
 
 /// Output this soon after input or a resize answers it: an echo or a
-/// redraw. It skips coalescing and does not mark the session working.
+/// redraw. It does not mark the session working.
 const ECHO_MS: u64 = 250;
 
 /// The screen text is checked at most this often. Each check walks every cell,
@@ -101,6 +106,9 @@ pub struct Session {
     last_work: AtomicU64,
     /// Unix ms of the last input or resize from a client.
     last_input: AtomicU64,
+    /// A key went in and no output has answered it yet. The first read
+    /// after it goes out at once; the reads after that merge again.
+    key_pending: AtomicBool,
     /// Unix ms when the current stretch of work began.
     work_started: AtomicU64,
     /// No stretch of work has ended yet under the program in front. The first
@@ -144,7 +152,10 @@ struct ParkState {
 struct ScreenState {
     screen: Screen,
     pending: Vec<u8>,
-    last_flush: Instant,
+    /// When the first byte of `pending` came. Stale while it is empty.
+    held_since: Instant,
+    /// When the last byte of `pending` came. Stale while it is empty.
+    last_push: Instant,
     last_scan: Instant,
     /// Output came since the last scan.
     unscanned: bool,
@@ -169,10 +180,21 @@ struct Scan {
 
 impl ScreenState {
     fn flush(&mut self, output: &broadcast::Sender<Chunk>) {
-        self.last_flush = Instant::now();
         if !self.pending.is_empty() {
             let _ = output.send(Arc::new(std::mem::take(&mut self.pending)));
         }
+    }
+
+    /// When the held output goes out: after a quiet moment, or `HOLD` from
+    /// its first byte. `None` with nothing held.
+    fn flush_due(&self) -> Option<Instant> {
+        (!self.pending.is_empty()).then(|| (self.last_push + QUIET).min(self.held_since + HOLD))
+    }
+
+    /// When output that came after the last scan is scanned. `None` with
+    /// nothing to scan.
+    fn scan_due(&self) -> Option<Instant> {
+        self.unscanned.then(|| self.last_scan + SCAN)
     }
 
     fn scan(&mut self, front: Front) -> Scan {
@@ -270,8 +292,8 @@ impl Session {
     }
 
     /// Feeds the emulator and queues the bytes. Scans the screen when the last
-    /// scan is older than `SCAN`; the flusher scans what is left. The last
-    /// value is true when the chunk answers a key.
+    /// scan is older than `SCAN`; the reader scans what is left at its
+    /// deadline. The last value is true when the chunk answers a key.
     fn push_output(&self, chunk: &[u8]) -> (Signals, Scan, bool) {
         let echoing = self.echoing();
         let front = self.front();
@@ -287,30 +309,55 @@ impl Session {
         } else {
             Scan::default()
         };
+        let now = Instant::now();
+        if st.pending.is_empty() {
+            st.held_since = now;
+        }
+        st.last_push = now;
         st.pending.extend_from_slice(chunk);
-        // A chunk after a quiet frame goes out now, and so does the answer
-        // to a keystroke, even while the program streams output.
-        if self.echoing() || st.last_flush.elapsed() >= FRAME || st.pending.len() >= MAX_CHUNK {
+        // The first answer to a keystroke goes out now, even while the
+        // program streams output. The reads after that answer merge again,
+        // so a redraw does not go out as a stream of small chunks. The rest
+        // waits for the reader's deadline, up to `HOLD` from its first byte;
+        // a program that streams without a pause never lets the reader wait,
+        // so the hold is checked here as well.
+        let answers_key = self.key_pending.swap(false, Ordering::Relaxed);
+        if answers_key || st.pending.len() >= MAX_CHUNK || now >= st.held_since + HOLD {
             st.flush(&self.output);
         }
         (signals, scan, echoing)
     }
 
-    /// Skips a screen that is locked, so one busy session cannot hold up the
-    /// flusher for the rest. The reader flushes it, or the next tick does.
+    /// Sends the output still held when the reader ends. It waits for the
+    /// screen lock: no reader deadline comes after this, so a skipped flush
+    /// would lose the child's last bytes.
     fn flush_output(&self) {
-        let Ok(mut st) = self.screen.try_lock() else { return };
-        if !st.pending.is_empty() {
-            st.flush(&self.output);
+        let mut st = self.screen.lock().unwrap();
+        st.flush(&self.output);
+    }
+
+    /// When the reader must wake with no output: to send the held output,
+    /// or to scan output that came after the last scan, so the end of a
+    /// burst counts. `None` while nothing is due, so an idle session never
+    /// wakes.
+    fn next_due(&self) -> Option<Instant> {
+        let st = self.screen.lock().unwrap();
+        match (st.flush_due(), st.scan_due()) {
+            (Some(flush), Some(scan)) => Some(flush.min(scan)),
+            (flush, scan) => flush.or(scan),
         }
     }
 
-    /// Scans output that came after the last scan, so the end of a burst
-    /// counts. A locked screen waits for the next tick.
-    fn scan_due(&self) -> Scan {
+    /// Does what is due at the reader's deadline: sends the held output, and
+    /// scans the screen. Work not due yet waits for the next deadline.
+    fn on_due(&self) -> Scan {
         let front = self.front();
-        let Ok(mut st) = self.screen.try_lock() else { return Scan::default() };
-        if st.unscanned && st.last_scan.elapsed() >= SCAN {
+        let now = Instant::now();
+        let mut st = self.screen.lock().unwrap();
+        if st.flush_due().is_some_and(|due| due <= now) {
+            st.flush(&self.output);
+        }
+        if st.scan_due().is_some_and(|due| due <= now) {
             st.scan(front)
         } else {
             Scan::default()
@@ -498,6 +545,7 @@ impl SessionPool {
             output,
             last_output: AtomicU64::new(info.last_output_at),
             last_input: AtomicU64::new(0),
+            key_pending: AtomicBool::new(false),
             last_work: AtomicU64::new(info.last_output_at),
             work_started: AtomicU64::new(info.last_output_at),
             fresh: AtomicBool::new(true),
@@ -511,7 +559,8 @@ impl SessionPool {
             screen: Mutex::new(ScreenState {
                 screen: Screen::new(spec.cols, spec.rows),
                 pending: Vec::new(),
-                last_flush: Instant::now() - FRAME,
+                held_since: Instant::now(),
+                last_push: Instant::now(),
                 last_scan: Instant::now() - SCAN,
                 unscanned: false,
                 printed: false,
@@ -534,8 +583,9 @@ impl SessionPool {
     }
 
     /// The thread that reads the PTY until the child is gone, feeds the
-    /// screen, and reaps the child by its pid. A reload can pause it between
-    /// reads; see [`Session::park_point`].
+    /// screen, and reaps the child by its pid. It waits with a deadline only
+    /// while output is held or unscanned, so an idle session never wakes.
+    /// A reload can pause it between reads; see [`Session::park_point`].
     fn start_reader(self: &Arc<Self>, session: Arc<Session>) -> Result<()> {
         let mut reader = session.pty.reader().context("clone reader")?;
         // SAFETY: the reader thread owns `reader` and deletes it from the
@@ -550,14 +600,18 @@ impl SessionPool {
                 let mut events = polling::Events::new();
                 loop {
                     session.park_point();
+                    let timeout = session
+                        .next_due()
+                        .map(|due| due.saturating_duration_since(Instant::now()));
                     events.clear();
-                    match session.waker.wait(&mut events, None) {
+                    match session.waker.wait(&mut events, timeout) {
                         Ok(_) => {}
                         Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
                         Err(_) => break,
                     }
-                    // A wake from `pause_reader` only.
+                    // The deadline, or a wake from `pause_reader` or `set_front`.
                     if events.is_empty() {
+                        pool.apply_scan(&session, session.on_due());
                         continue;
                     }
                     let n = match reader.read(&mut buf) {
@@ -630,9 +684,18 @@ impl SessionPool {
                 self.dirty.notify_one();
             } else {
                 self.apply_title(session, title.as_deref());
+                // An agent's spinner changes the glyph, not the topic. A
+                // frame of it is no new title. The raw title is kept, so
+                // the state rules above and the restore offer read it as
+                // before.
+                let agent = matches!(session.front(), Front::Agent(_));
                 let changed = {
                     let mut info = session.info.lock().unwrap();
-                    let changed = info.title != title;
+                    let changed = if agent {
+                        info.title.as_deref().map(topic) != title.as_deref().map(topic)
+                    } else {
+                        info.title != title
+                    };
                     info.title = title.clone();
                     changed
                 };
@@ -774,9 +837,11 @@ impl SessionPool {
         if agent {
             session.fresh.store(true, Ordering::Relaxed);
             // The screen was last read without this agent's prompt rule.
+            // The reader is woken, so it sets its scan deadline.
             if let Ok(mut st) = session.screen.try_lock() {
                 st.unscanned = true;
             }
+            let _ = session.waker.notify();
         }
         let (state, updated) = {
             let mut info = session.info.lock().unwrap();
@@ -832,6 +897,7 @@ impl SessionPool {
         // Stored before the send: the reader can see the echo before this
         // thread runs again, and it must count as an echo, not as work.
         session.last_input.store(now_ms(), Ordering::Relaxed);
+        session.key_pending.store(true, Ordering::Relaxed);
         session.queued.fetch_add(1, Ordering::AcqRel);
         if session.input.send(data.to_vec()).is_err() {
             session.queued.fetch_sub(1, Ordering::AcqRel);
@@ -926,26 +992,6 @@ impl SessionPool {
         }
         self.dirty.notify_one();
         Ok(())
-    }
-
-    /// Sends output held back by coalescing, and scans held-back screen
-    /// changes, once per frame.
-    pub fn spawn_flusher(self: &Arc<Self>) {
-        let pool = self.clone();
-        tokio::spawn(async move {
-            let mut tick = tokio::time::interval(FRAME);
-            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-            loop {
-                tick.tick().await;
-                let Some(_quiet) = pool.quiet() else { continue };
-                let sessions: Vec<Arc<Session>> =
-                    pool.sessions.read().unwrap().values().cloned().collect();
-                for s in sessions {
-                    s.flush_output();
-                    pool.apply_scan(&s, s.scan_due());
-                }
-            }
-        });
     }
 
     /// A peek tool that takes the terminal is a terminal tool: the app shows
@@ -1115,20 +1161,27 @@ fn bracketed(data: &[u8]) -> Vec<u8> {
     out
 }
 
+/// The title without the status glyph an agent leads it with: Claude's ◐
+/// and ◑, Codex's braille spinner. See `screen::title_state`.
+fn topic(title: &str) -> &str {
+    title.trim_start_matches(|c: char| !c.is_alphanumeric())
+}
+
 fn default_shell() -> String {
     std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{prints, Front, Screen, ScreenState, SCAN};
+    use super::{prints, topic, Front, Screen, ScreenState, HOLD, QUIET, SCAN};
     use std::time::Instant;
 
     fn state() -> ScreenState {
         ScreenState {
             screen: Screen::new(40, 5),
             pending: Vec::new(),
-            last_flush: Instant::now(),
+            held_since: Instant::now(),
+            last_push: Instant::now(),
             last_scan: Instant::now() - SCAN,
             unscanned: false,
             printed: false,
@@ -1160,6 +1213,30 @@ mod tests {
         assert!(!st.scan(Front::Program).work);
         print(&mut st, b"", false);
         assert!(!st.scan(Front::Program).work);
+    }
+
+    #[test]
+    fn held_output_is_due_after_a_quiet_moment_or_the_hold() {
+        let mut st = state();
+        assert!(st.flush_due().is_none());
+        let first = Instant::now();
+        st.held_since = first;
+        st.last_push = first;
+        st.pending.extend_from_slice(b"a");
+        assert_eq!(st.flush_due(), Some(first + QUIET));
+        st.last_push = first + HOLD;
+        assert_eq!(st.flush_due(), Some(first + HOLD));
+        st.unscanned = true;
+        assert_eq!(st.scan_due(), Some(st.last_scan + SCAN));
+    }
+
+    #[test]
+    fn topic_drops_the_status_glyph() {
+        assert_eq!(topic("◐ Fix the flusher"), "Fix the flusher");
+        assert_eq!(topic("◑ Fix the flusher"), "Fix the flusher");
+        assert_eq!(topic("⠋ Codex"), "Codex");
+        assert_eq!(topic("[ ! ] Action Required"), "Action Required");
+        assert_eq!(topic("plain"), "plain");
     }
 
     #[test]

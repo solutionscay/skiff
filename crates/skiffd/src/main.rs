@@ -69,7 +69,6 @@ async fn run(start: Start) -> Result<()> {
     pool.set_listener(listener.as_raw_fd());
     pool.spawn_saver();
     pool.spawn_idle_watcher();
-    pool.spawn_flusher();
     pool.spawn_away_watcher();
     pool.spawn_foreground_watcher();
     tracing::info!("skiffd {} listening on {}", skiff_core::VERSION, path.display());
