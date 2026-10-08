@@ -588,12 +588,12 @@ impl SessionPool {
         if signals.bell && !echo {
             self.bell(session);
         }
-        // A program that starts or ends prints. Read the group in
-        // front now, so the state does not wait for the watcher.
+        // A program that starts or ends prints. A new group in front wakes
+        // the foreground watcher, which reads /proc on its own thread.
         if scan.scanned {
             if let Some(group) = session.foreground_group() {
                 if group != session.group.load(Ordering::Relaxed) {
-                    self.classify(session, &mut None);
+                    foreground::wake();
                 }
             }
         }
