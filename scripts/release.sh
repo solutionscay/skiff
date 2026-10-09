@@ -31,13 +31,25 @@ read -r -p "Release v$old -> v$new? [y/N] " ok
 
 sed -i "0,/^version = \"$old\"$/s//version = \"$new\"/" Cargo.toml
 sed -i "0,/\"version\": \"$old\"/s//\"version\": \"$new\"/" apps/desktop/package.json
+# skiffd has its own version. The app moves a running daemon onto the one it
+# ships only when that version is newer, so a release that changes the daemon
+# must raise it, or users keep the old daemon until they log out.
+last="$(git describe --tags --abbrev=0)"
+dold="$(sed -n 's/^version = "\(.*\)"$/\1/p' crates/skiffd/Cargo.toml | head -n1)"
+dlast="$(git show "$last:crates/skiffd/Cargo.toml" | sed -n 's/^version = "\(.*\)"$/\1/p' | head -n1)"
+if ! git diff --quiet "$last" HEAD -- crates/skiffd crates/skiff-core && [[ "$dold" == "$dlast" ]]; then
+  IFS=. read -r dmaj dmin dpat <<<"$dold"
+  dnew="$dmaj.$dmin.$((dpat + 1))"
+  sed -i "0,/^version = \"$dold\"$/s//version = \"$dnew\"/" crates/skiffd/Cargo.toml crates/skiff-core/Cargo.toml
+  echo "skiffd $dold -> $dnew"
+fi
 # Software stores list the releases from the AppStream metadata.
 metainfo=apps/desktop/src-tauri/linux/com.solutionscay.skiff.metainfo.xml
 sed -i "s|^\(\s*\)<releases>$|&\n\1  <release version=\"$new\" date=\"$(date +%F)\"/>|" "$metainfo"
 # Refresh the workspace entries in Cargo.lock. Dependencies stay as they are.
 cargo metadata --format-version 1 >/dev/null
 
-git add Cargo.toml Cargo.lock apps/desktop/package.json "$metainfo"
+git add Cargo.toml Cargo.lock apps/desktop/package.json crates/skiffd/Cargo.toml crates/skiff-core/Cargo.toml "$metainfo"
 git commit -q -m "Release v$new"
 git tag -a "v$new" -m "v$new"
 git push -q origin main "v$new"
