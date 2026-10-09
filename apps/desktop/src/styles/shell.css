@@ -7,7 +7,7 @@
   border-bottom: 1px solid var(--rule);
 }
 #topbar .tb-cell { display: flex; align-items: center; padding: 0 calc(16 * var(--u)); border-right: 1px solid var(--rule); }
-#topbar .wordmark { width: calc(356 * var(--u)); font-family: "Space Grotesk", var(--font); font-weight: 700; font-size: calc(20px * var(--zoom, 1)); letter-spacing: 0.02em; border-right: 0; }
+#topbar .wordmark { width: calc(356 * var(--u)); font-family: "Lilita One", "Space Grotesk", var(--font); font-weight: 400; font-size: calc(22px * var(--zoom, 1)); letter-spacing: 0.03em; border-right: 0; }
 /* Centered on the window, as in VS Code. A narrow window pushes it right against the wordmark. */
 #topbar .search {
   flex-grow: 1; min-width: 0; max-width: calc(560 * var(--u)); gap: calc(10 * var(--u));
