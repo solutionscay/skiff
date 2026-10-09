@@ -1,6 +1,7 @@
 //! The desktop app is a client of `skiffd`. It owns no PTY.
 
 mod cli_path;
+mod clipboard;
 mod connection;
 mod commands;
 mod config;
@@ -50,6 +51,8 @@ pub fn run() {
             native_menu::menu_layout,
             native_menu::set_menu_layout,
             native_menu::set_window_dark,
+            clipboard::clipboard_write,
+            clipboard::clipboard_read,
             connection::daemon_status,
             cli_path::install_cli,
             commands::list_sessions,
