@@ -71,7 +71,18 @@ function load(dir: string) {
   reading.add(dir);
   invoke<Entry[]>("list_dir", { path: dir })
     .then((entries) => store(dir, entries))
-    .catch((e) => store(dir, { error: String(e) }))
+    .catch((e) => {
+      const msg = String(e);
+      // Deleted since its parent was read: forget it and read the parent
+      // again, so its row goes. No note. (os error 2 and 3: not found.)
+      const parent = dir.slice(0, dir.lastIndexOf("/"));
+      if (/\(os error [23]\)/.test(msg) && listings.has(parent)) {
+        for (const d of [...listings.keys()]) if (d === dir || d.startsWith(dir + "/")) listings.delete(d);
+        for (const d of [...expanded]) if (d === dir || d.startsWith(dir + "/")) expanded.delete(d);
+        version++;
+        load(parent);
+      } else store(dir, { error: msg });
+    })
     .finally(() => {
       reading.delete(dir);
       render();
