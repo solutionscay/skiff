@@ -5,6 +5,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 
+import { handleOsc52 } from "./osc52";
 import { park } from "./terminalHost";
 
 import { toBytes } from "../platform/ipcBytes";
@@ -97,6 +98,7 @@ async function createPane(id: string): Promise<Pane> {
     scrollback: 2000,
     allowProposedApi: true,
   });
+  handleOsc52(term);
   const fit = new FitAddon();
   term.loadAddon(fit);
   const search = new SearchAddon();

@@ -19,6 +19,7 @@
  *   app with a window of its own. The peek never shows, and the app runs on.
  */
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { handleOsc52 } from "./osc52";
 import { copyText, pasteText } from "../platform/clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
@@ -401,6 +402,7 @@ function frame(mine: number, kind: string, title: string, where: string, program
     scrollback: 10000,
     allowProposedApi: true,
   });
+  handleOsc52(term);
   const fit = new FitAddon();
   term.loadAddon(fit);
   term.open(box);
