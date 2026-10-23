@@ -281,13 +281,40 @@ struct HostView {
     state: &'static str,
 }
 
-/// Each Host's last check or connection in this app run, by id: it passed.
-static LAST: std::sync::Mutex<std::collections::BTreeMap<String, bool>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+/// What this app run learned about one Host. Nothing here is stored.
+#[derive(Default)]
+struct Memo {
+    /// The last check or connection passed. None: no check yet, or a step
+    /// since then changed the server or the keys, so the list says so.
+    ok: Option<bool>,
+    /// What the last key install found on the server, for the check that
+    /// follows it (Fix permissions).
+    installed: Option<keys::Installed>,
+    /// The last Turn on (linger) was refused: it needs an admin.
+    linger_refused: bool,
+    /// Why the last update did not finish, for the Skiff row.
+    update_failed: Option<String>,
+    /// What the connect learned about the install, and when it looked. A
+    /// Host that could not be probed is tried again after [`ARRIVAL_RETRY`].
+    arrival: Option<(Option<Arrival>, std::time::Instant)>,
+}
+
+static MEMO: std::sync::Mutex<std::collections::BTreeMap<String, Memo>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// Reads or changes what this app run knows about Host `id`.
+fn memo<T>(id: &str, f: impl FnOnce(&mut Memo) -> T) -> T {
+    f(MEMO.lock().unwrap().entry(id.to_string()).or_default())
+}
 
 /// Notes how the last check or connection of a Host went, for the list and
 /// the menu.
 pub(crate) fn note(id: &str, ok: bool) {
-    LAST.lock().unwrap().insert(id.to_string(), ok);
+    memo(id, |m| m.ok = Some(ok));
+}
+
+/// A step changed the server or the keys: the next list says "Not checked".
+fn forget_check(id: &str) {
+    memo(id, |m| m.ok = None);
 }
 
 /// As [`note`], for the Host a live selection's target logs in to.
@@ -298,7 +325,7 @@ pub(crate) fn note_login(target: &SshTarget, ok: bool) {
 }
 
 fn state(h: &KnownHost) -> &'static str {
-    match LAST.lock().unwrap().get(&h.id) {
+    match memo(&h.id, |m| m.ok) {
         _ if h.socket.is_none() => "attention",
         Some(true) => "ok",
         Some(false) => "attention",
@@ -481,7 +508,7 @@ pub(crate) async fn edit_host(app: State<'_, App>, id: String, form: HostForm) -
             let moved = login || socket != h.socket;
             anyhow::ensure!(!(moved && shown.as_deref() == Some(id.as_str())), "This window shows {}. Pick another Host first, then change its server.", h.name);
             if moved {
-                LAST.lock().unwrap().remove(&id);
+                forget_check(&id);
             }
             h.name = name;
             h.destination = target.destination;
@@ -522,7 +549,7 @@ pub(crate) async fn remove_host(app: State<'_, App>, id: String, uninstall: Opti
     if uninstall == Some(true) {
         let h = host_by_id(&id).await?;
         skiff_client::host::install::uninstall(&h.target(), &SshOptions::default(), &h.name).await?;
-        LAST.lock().unwrap().remove(&id);
+        MEMO.lock().unwrap().remove(&id);
     }
     blocking(move || {
         update(&path(), |hosts| {
@@ -582,10 +609,10 @@ pub(crate) async fn check_host(id: String) -> Result<skiff_client::host::check::
         forward_dir: forward_dir(&h.id),
         home: home().ok(),
         agent: true,
-        installed: INSTALLED.lock().unwrap().get(&id).cloned(),
+        installed: memo(&id, |m| m.installed.clone()),
         version: VERSION.into(),
-        linger_refused: LINGER_REFUSED.lock().unwrap().contains(&id),
-        update_failed: UPDATE_FAILED.lock().unwrap().get(&id).cloned(),
+        linger_refused: memo(&id, |m| m.linger_refused),
+        update_failed: memo(&id, |m| m.update_failed.clone()),
     };
     let report = skiff_client::host::check::check(&input, &SshOptions::default()).await;
     note(&id, report.ok);
@@ -614,10 +641,6 @@ async fn host_by_id(id: &str) -> Result<KnownHost, String> {
 fn home() -> Result<PathBuf, String> {
     std::env::var_os("HOME").map(PathBuf::from).ok_or_else(|| "This computer gives Skiff no home folder.".into())
 }
-
-/// What the last key install found on each server, by Host id, for the
-/// check that follows it (Fix permissions).
-static INSTALLED: std::sync::Mutex<std::collections::BTreeMap<String, keys::Installed>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
 
 /// Host keys learned into a temp file, waiting for the person's confirm, by
 /// token. The page never sends a key: only the token of one Rust scanned.
@@ -662,7 +685,7 @@ pub(crate) async fn host_key_trust(token: String, replace: bool) -> Result<(), S
         return Err("The host key changed. Review it first.".into());
     }
     keys::trust_host_key(&scanned, replace).await?;
-    LAST.lock().unwrap().remove(&id);
+    forget_check(&id);
     Ok(())
 }
 
@@ -677,9 +700,6 @@ async fn ready_key(h: &KnownHost) -> Result<String, String> {
 
 /// The Skiff version this app installs on a server: its own.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// Hosts whose Turn on (linger) was refused in this app run.
-static LINGER_REFUSED: std::sync::Mutex<std::collections::BTreeSet<String>> = std::sync::Mutex::new(std::collections::BTreeSet::new());
 
 /// What Install Skiff… did, for the check list's note.
 #[derive(Serialize)]
@@ -726,10 +746,10 @@ pub(crate) async fn install_skiff(id: String) -> Result<InstallView, String> {
     };
     let bundle = bundle_for(os, arch).await?;
     let outcome = install::install(&h.target(), &SshOptions::default(), &bundle, VERSION, SOCKET_NAME, p.free_kb, &h.name).await?;
-    if outcome.linger == "refused" {
-        LINGER_REFUSED.lock().unwrap().insert(id.clone());
-    }
-    LAST.lock().unwrap().remove(&id);
+    memo(&id, |m| {
+        m.linger_refused = outcome.linger == "refused";
+        m.ok = None;
+    });
     Ok(InstallView { outcome, source: bundle.source, version: VERSION })
 }
 
@@ -748,9 +768,6 @@ async fn bundle_for(os: &str, arch: &str) -> Result<skiff_client::host::install:
         Err(e) => Err(e),
     }
 }
-
-/// Why the last update of each Host in this app run did not finish, by id.
-static UPDATE_FAILED: std::sync::Mutex<std::collections::BTreeMap<String, String>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
 
 /// What an update did, for the check list's note and the red dialog.
 #[derive(Serialize)]
@@ -783,14 +800,15 @@ async fn update_managed(h: &KnownHost, end_sessions: bool) -> Result<UpdateView,
     };
     let bundle = bundle_for(os, arch).await?;
     let result = install::update(&h.target(), &SshOptions::default(), &bundle, VERSION, SOCKET_NAME, p.free_kb, &h.name, end_sessions).await;
-    let mut failed = UPDATE_FAILED.lock().unwrap();
-    match &result {
-        Err(e) => failed.insert(h.id.clone(), e.clone()),
-        Ok(install::Updated::NoHandover { from, sessions }) => failed.insert(h.id.clone(), no_handover(&h.name, from, sessions)),
-        Ok(_) => failed.remove(&h.id),
+    let failed = match &result {
+        Err(e) => Some(e.clone()),
+        Ok(install::Updated::NoHandover { from, sessions }) => Some(no_handover(&h.name, from, sessions)),
+        Ok(_) => None,
     };
-    drop(failed);
-    LAST.lock().unwrap().remove(&h.id);
+    memo(&h.id, |m| {
+        m.update_failed = failed;
+        m.ok = None;
+    });
     Ok(UpdateView { updated: result?, source: bundle.source, version: VERSION })
 }
 
@@ -832,9 +850,7 @@ pub(crate) struct Arrival {
     pub(crate) updated_from: Option<String>,
 }
 
-/// Each Host's arrival in this app run, by id. A Host that could not be
-/// probed is tried again after [`ARRIVAL_RETRY`].
-static ARRIVED: std::sync::Mutex<std::collections::BTreeMap<String, (Option<Arrival>, std::time::Instant)>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+/// How long after a failed probe on connect the next connect probes again.
 const ARRIVAL_RETRY: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// Before the session forward opens: a managed install older than this app
@@ -845,7 +861,7 @@ pub(crate) async fn update_on_connect(target: &SshTarget) -> Option<Arrival> {
     use skiff_client::host::install::Updated;
     let t = target.clone();
     let h = blocking(move || Ok(load(&path())?.find_login(&t).cloned())).await.ok().flatten()?;
-    if let Some((arrival, at)) = ARRIVED.lock().unwrap().get(&h.id).cloned() {
+    if let Some((arrival, at)) = memo(&h.id, |m| m.arrival.clone()) {
         if arrival.is_some() || at.elapsed() < ARRIVAL_RETRY {
             return arrival;
         }
@@ -863,7 +879,7 @@ pub(crate) async fn update_on_connect(target: &SshTarget) -> Option<Arrival> {
         }
         arrival = Some(a);
     }
-    ARRIVED.lock().unwrap().insert(h.id.clone(), (arrival.clone(), std::time::Instant::now()));
+    memo(&h.id, |m| m.arrival = Some((arrival.clone(), std::time::Instant::now())));
     arrival
 }
 
@@ -901,7 +917,7 @@ pub(crate) async fn start_skiff(id: String) -> Result<skiff_client::host::instal
     }
     let out = skiff_client::host::install::start(&h.target(), &SshOptions::default(), SOCKET_NAME).await?;
     if out.linger == "refused" {
-        LINGER_REFUSED.lock().unwrap().insert(id.clone());
+        memo(&id, |m| m.linger_refused = true);
     }
     if !out.running {
         return Err(format!("Skiff's sessions service on {} stops right after it starts.", h.name));
@@ -919,8 +935,7 @@ pub(crate) async fn start_skiff(id: String) -> Result<skiff_client::host::instal
 pub(crate) async fn turn_on_linger(id: String) -> Result<bool, String> {
     let h = host_by_id(&id).await?;
     let on = skiff_client::host::install::linger(&h.target(), &SshOptions::default()).await?;
-    let mut refused = LINGER_REFUSED.lock().unwrap();
-    if on { refused.remove(&id) } else { refused.insert(id) };
+    memo(&id, |m| m.linger_refused = !on);
     Ok(on)
 }
 
@@ -955,7 +970,7 @@ pub(crate) async fn install_key(id: String, password: String) -> Result<keys::In
     let key = ready_key(&h).await?;
     match keys::install_key(&h.target(), &SshOptions::default(), keys::BY_PASSWORD, &key, password).await {
         Ok(done) => {
-            INSTALLED.lock().unwrap().insert(id, done.clone());
+            memo(&id, |m| m.installed = Some(done.clone()));
             Ok(done)
         }
         Err(keys::StepError::Refused) => Err(format!("The password did not work. Nothing changed on {}.", h.name)),
@@ -971,7 +986,7 @@ pub(crate) async fn fix_permissions(id: String, password: String) -> Result<(), 
     let key = ready_key(&h).await?;
     match keys::fix_key_file(&h.target(), &SshOptions::default(), keys::BY_PASSWORD, &key, password).await {
         Ok(()) => {
-            INSTALLED.lock().unwrap().remove(&id);
+            memo(&id, |m| m.installed = None);
             Ok(())
         }
         Err(keys::StepError::Refused) => Err(format!("The password did not work. Nothing changed on {}.", h.name)),
