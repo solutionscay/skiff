@@ -5,7 +5,6 @@ use crate::shell::shell_quote;
 
 use std::{
     collections::HashSet,
-    io::Write,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     time::{Duration, Instant},
@@ -43,10 +42,11 @@ pub fn init_repository(dir: &Path) -> Result<()> {
 }
 
 pub fn list_worktrees(repo: &Path) -> Result<Vec<Worktree>> {
-    Ok(parse_worktrees(&git(
-        repo,
-        &["worktree", "list", "--porcelain", "-z"],
-    )?))
+    // Bounded: the Host lists worktrees on every file and diff request.
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(repo);
+    let (out, _) = git_run(cmd, &["worktree", "list", "--porcelain", "-z"], PREFLIGHT_LIMIT * 4, Deadline::after(GIT_TIMEOUT))?;
+    Ok(parse_worktrees(&String::from_utf8_lossy(&out)))
 }
 
 /// Parses `git worktree list --porcelain -z`: NUL after every field, and an
@@ -203,16 +203,15 @@ pub fn changes(dir: &Path) -> Result<Vec<Change>> {
 /// untracked files are counted under `root` itself.
 pub fn changes_in(root: &Root, dir: &Path) -> Result<Vec<Change>> {
     root.check(dir)?;
+    // Bounded, with no optional lock: a read never holds the index against
+    // the person's own git, and a hung git does not keep a request slot.
+    let deadline = Deadline::after(GIT_TIMEOUT);
     let run = |args: &[&str]| -> Result<String> {
-        let out = git_in(root, dir).args(args).output().context("run git")?;
-        if !out.status.success() {
-            let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-            if stderr.is_empty() {
-                bail!("git {} failed: {}", args.join(" "), out.status);
-            }
-            bail!(stderr);
+        let (out, cut) = git_bounded(root, dir, args, STATUS_LIMIT, deadline)?;
+        if cut {
+            bail!("git {} printed more than Skiff reads", args.join(" "));
         }
-        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+        Ok(String::from_utf8_lossy(&out).into_owned())
     };
     let status = run(&["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"])?;
     // Fails in a repository with no commit yet: every file then shows no count.
@@ -298,10 +297,13 @@ pub fn diff_script(dir: &Path, file: Option<&str>, command: Option<&str>) -> Str
 
 /// The most diff text [`diff_in`] answers with, in bytes.
 pub const DIFF_LIMIT: usize = 512 * 1024;
-/// How long every git run for one [`diff_in`] may take together before it is killed.
-const DIFF_TIMEOUT: Duration = Duration::from_secs(20);
+/// How long every git run for one [`diff_in`] or [`changes_in`] may take
+/// together before it is killed.
+const GIT_TIMEOUT: Duration = Duration::from_secs(20);
 /// The most a git run before the diff itself may print, in bytes.
 const PREFLIGHT_LIMIT: usize = 64 * 1024;
+/// The most `git status` may print for one [`changes_in`], in bytes.
+const STATUS_LIMIT: usize = 4 * 1024 * 1024;
 
 /// A diff as plain text, for a viewer: never colored, never from an
 /// external diff tool or a textconv filter, never over [`DIFF_LIMIT`].
@@ -329,9 +331,9 @@ pub fn is_relative_file(rel: &str) -> bool {
 /// before and after, and an untracked file is read under `root` itself, never
 /// followed if it is a link, never opened if it is not a regular file. The
 /// whole-worktree diff leaves untracked files out, as `git diff` does. Every
-/// git run together takes at most [`DIFF_TIMEOUT`].
+/// git run together takes at most [`GIT_TIMEOUT`].
 pub fn diff_in(root: &Root, dir: &Path, file: Option<&str>) -> Result<Diff> {
-    diff_within(root, dir, file, Deadline::after(DIFF_TIMEOUT))
+    diff_within(root, dir, file, Deadline::after(GIT_TIMEOUT))
 }
 
 fn diff_within(root: &Root, dir: &Path, file: Option<&str>, deadline: Deadline) -> Result<Diff> {
@@ -379,7 +381,7 @@ fn tracked_diff(git: impl Fn(&[&str], usize) -> Result<(Vec<u8>, bool)>, spec: O
         args.extend(["--", spec]);
     }
     let (out, truncated) = git(&args, DIFF_LIMIT)?;
-    let (text, truncated) = cap(out, truncated);
+    let (text, truncated) = cap(out, truncated, DIFF_LIMIT);
     // Content lines start with ` `, `+` or `-`: this line is git's own.
     let binary = spec.is_some() && text.lines().any(|l| l.starts_with("Binary files "));
     Ok(Diff { text, truncated, binary, untracked: false })
@@ -427,18 +429,18 @@ fn untracked_diff(root: &Root, rel: &str) -> Result<Diff> {
             text += "\n\\ No newline at end of file\n";
         }
     }
-    let (text, cut) = cap(text.into_bytes(), truncated);
+    let (text, cut) = cap(text.into_bytes(), truncated, DIFF_LIMIT);
     Ok(Diff { text, truncated: cut, binary: false, untracked: true })
 }
 
-/// At most [`DIFF_LIMIT`] bytes of UTF-8 text, counted after an invalid
-/// byte becomes U+FFFD (three bytes). Cut text ends at its last whole line.
-fn cap(out: Vec<u8>, truncated: bool) -> (String, bool) {
+/// At most `limit` bytes of UTF-8 text, counted after an invalid byte
+/// becomes U+FFFD (three bytes). Cut text ends at its last whole line.
+pub(crate) fn cap(out: Vec<u8>, truncated: bool, limit: usize) -> (String, bool) {
     let mut text = String::from_utf8_lossy(&out).into_owned();
-    let truncated = truncated || text.len() > DIFF_LIMIT;
+    let truncated = truncated || text.len() > limit;
     if truncated {
         // A newline is one byte, so the cut is on a character boundary.
-        let head = &text.as_bytes()[..text.len().min(DIFF_LIMIT)];
+        let head = &text.as_bytes()[..text.len().min(limit)];
         let end = head.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
         text.truncate(end);
     }
@@ -484,8 +486,13 @@ impl Deadline {
 
 /// Runs `git <args>` in `root` with [`bounded`].
 fn git_bounded(root: &Root, dir: &Path, args: &[&str], limit: usize, deadline: Deadline) -> Result<(Vec<u8>, bool)> {
-    let mut cmd = git_in(root, dir);
-    // A read: git takes no optional lock and writes no index.
+    git_run(git_in(root, dir), args, limit, deadline)
+}
+
+/// Runs the git command `cmd` with `args` under [`bounded`], as a read:
+/// git takes no optional lock and writes no index. A failure carries git's
+/// own words.
+fn git_run(mut cmd: Command, args: &[&str], limit: usize, deadline: Deadline) -> Result<(Vec<u8>, bool)> {
     cmd.args(args).env("GIT_OPTIONAL_LOCKS", "0");
     bounded(cmd, limit, deadline).map_err(|e| match e.downcast_ref::<Failed>() {
         Some(Failed(err)) if err.is_empty() => anyhow!("git {} failed", args.join(" ")),
@@ -762,42 +769,6 @@ pub(crate) fn ignored_in(root: &Root, dir: &Path, paths: &[String], deadline: De
         found.extend(String::from_utf8_lossy(&out).lines().filter_map(|s| s.strip_prefix("./")).map(str::to_string));
     }
     found
-}
-
-/// Which of `paths`, relative to `dir`, git ignores. A folder needs a
-/// trailing `/` to match a pattern such as `target/`.
-pub fn ignored(dir: &Path, paths: &[String]) -> Result<HashSet<String>> {
-    if paths.is_empty() {
-        return Ok(HashSet::new());
-    }
-    let mut child = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(["check-ignore", "-z", "--stdin"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("run git")?;
-    let mut input = Vec::new();
-    for p in paths {
-        input.extend_from_slice(p.as_bytes());
-        input.push(0);
-    }
-    // Written from a thread: git may fill its stdout pipe before it reads all of stdin.
-    let mut stdin = child.stdin.take().expect("piped stdin");
-    let writer = std::thread::spawn(move || stdin.write_all(&input));
-    let out = child.wait_with_output().context("run git")?;
-    let _ = writer.join();
-    // 1 means nothing is ignored. 128 is a real error, such as no repository.
-    if !out.status.success() && out.status.code() != Some(1) {
-        bail!(String::from_utf8_lossy(&out.stderr).trim().to_string());
-    }
-    Ok(String::from_utf8_lossy(&out.stdout)
-        .split('\0')
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .collect())
 }
 
 #[cfg(test)]
@@ -1215,7 +1186,7 @@ mod tests {
             assert!(d.text.is_empty() || d.text.ends_with('\n'));
         }
         // Under the limit, valid text is untouched.
-        assert_eq!(cap("é\n".into(), false), ("é\n".to_string(), false));
+        assert_eq!(cap("é\n".into(), false, DIFF_LIMIT), ("é\n".to_string(), false));
     }
 
     #[test]

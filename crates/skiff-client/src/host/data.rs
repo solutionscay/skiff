@@ -23,14 +23,15 @@ use tokio::net::UnixStream;
 
 use super::{
     local::HostSelection,
-    ssh::{SshForward, SshOptions, SshTarget},
+    ssh::{self, SshForward, SshOptions, SshTarget},
     HostConnection,
 };
 
-/// How long the data-plane service may take to answer Hello.
-const HELLO_TIMEOUT: Duration = Duration::from_secs(15);
-/// The longest wait between two tries to open a remote data forward.
-const RETRY_MAX: Duration = Duration::from_secs(30);
+/// How long the data-plane service may take to answer Hello, and every
+/// request after it: longer than the Host's longest own deadline, a diff's
+/// or a status read's 20 s, so a slow read is the Host's answer, not a
+/// timeout here.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(super) enum DataRoute {
     Local(PathBuf),
@@ -101,8 +102,7 @@ impl HostSelection {
             }
             Err(_) if !self.is_local() => {
                 state.failures += 1;
-                let wait = Duration::from_secs(1 << (state.failures - 1).min(5)).min(RETRY_MAX);
-                state.next = Some(Instant::now() + wait);
+                state.next = Some(Instant::now() + ssh::backoff(state.failures));
             }
             Err(_) => {}
         }
@@ -120,7 +120,7 @@ impl HostSelection {
                 (stream, Some(forward))
             }
         };
-        let connection = match HostConnection::connect_with_timeout(stream, previous, HELLO_TIMEOUT).await {
+        let connection = match HostConnection::connect_with_timeout(stream, previous, REQUEST_TIMEOUT).await {
             Ok(c) => c,
             // A forward whose remote socket is missing closes the channel at once.
             Err(Error::TransportLost) => return Err(DataError::NotRunning.into()),

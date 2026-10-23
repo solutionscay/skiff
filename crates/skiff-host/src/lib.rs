@@ -267,10 +267,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             Ok(Response::Projects { projects: rows.into_iter().map(host_project).collect(), revision: Some(revision) })
         }
         Request::ProjectGet { name } => {
-            let config = config()?;
-            let p = config.into_iter().find(|p| p.name == name).ok_or_else(|| Error::NotFound {
-                message: format!("no such project: {name}"),
-            })?;
+            let p = project::find(&name).map_err(refused)?;
             Ok(Response::Project { project: Box::new(host_project(project::Project::from_config(&p))) })
         }
         Request::GitChanges { worktree } => {
@@ -315,10 +312,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             Ok(Response::File { file: Box::new(host_file(read)) })
         }
         Request::ProjectBackground { project } => {
-            let config = config()?;
-            let p = config.iter().find(|p| p.name == project).ok_or_else(|| Error::NotFound {
-                message: format!("no such project: {project}"),
-            })?;
+            let p = project::find(&project).map_err(refused)?;
             let configured = p.background.as_deref().filter(|b| !b.trim().is_empty())
                 .ok_or_else(|| Error::NotFound { message: format!("{project} has no background image on this Host") })?;
             // Opened again here, never through a link: not the path the row named.

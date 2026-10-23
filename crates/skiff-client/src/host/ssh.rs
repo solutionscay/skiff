@@ -245,6 +245,15 @@ pub async fn run_batch(target: &SshTarget, options: &SshOptions, command: String
     Ok(BatchRun::Done(String::from_utf8_lossy(&out.stdout).into_owned()))
 }
 
+/// The longest wait between two tries to open a forward.
+const RETRY_MAX: Duration = Duration::from_secs(30);
+
+/// How long to wait before the next try to open a forward, after
+/// `failures` in a row: 1, 2, 4 … up to [`RETRY_MAX`].
+pub fn backoff(failures: u32) -> Duration {
+    Duration::from_secs(1 << failures.saturating_sub(1).min(5)).min(RETRY_MAX)
+}
+
 /// A new private folder of this app run in the temp dir, for one step.
 /// The caller removes it.
 pub fn temp_dir(what: &str) -> std::io::Result<PathBuf> {

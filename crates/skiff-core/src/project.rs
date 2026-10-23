@@ -312,6 +312,10 @@ impl std::error::Error for Keep {}
 /// Refuses uncommitted changes unless `force`, which deletes them.
 pub fn remove_worktree(name: &str, path: &Path, force: bool, sessions: &[crate::session::SessionInfo]) -> Result<()> {
     let p = find(name)?;
+    // As for add: a closed project's worktrees are not listed, so none goes.
+    if p.closed {
+        return Err(crate::config::Refused::NoProject(name.into()).into());
+    }
     let wt = git::list_worktrees(&p.path)?
         .into_iter()
         .find(|w| same_path(&w.path, path))

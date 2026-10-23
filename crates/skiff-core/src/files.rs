@@ -320,26 +320,13 @@ fn read_file(file: std::fs::File, size: u64, rel: &str, purpose: Purpose) -> Res
         (Purpose::Preview, Content::Image) => read.truncated = true,
         (Purpose::Preview, Content::Text) => {
             let (bytes, over) = rest(&mut file, head, TEXT_LIMIT as u64)?;
-            let (text, cut) = cap(bytes, over);
+            let (text, cut) = crate::git::cap(bytes, over, TEXT_LIMIT);
             read.text = Some(text);
             read.truncated = cut;
         }
         (Purpose::Preview, _) => {}
     }
     Ok(read)
-}
-
-/// At most [`TEXT_LIMIT`] bytes of UTF-8 text, counted after an invalid byte
-/// becomes U+FFFD. Cut text ends at its last whole line.
-fn cap(bytes: Vec<u8>, over: bool) -> (String, bool) {
-    let mut text = String::from_utf8_lossy(&bytes).into_owned();
-    let cut = over || text.len() > TEXT_LIMIT;
-    if cut {
-        let head = &text.as_bytes()[..text.len().min(TEXT_LIMIT)];
-        let end = head.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
-        text.truncate(end);
-    }
-    (text, cut)
 }
 
 /// The image types a client may draw, by their first bytes. SVG is text:

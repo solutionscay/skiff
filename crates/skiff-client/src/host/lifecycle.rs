@@ -30,15 +30,7 @@ pub(super) fn project_spec(value: core::SessionSpec) -> Result<api::SessionSpec,
         label,
         name,
         role: project_role(role),
-        cwd: cwd
-            .map(|p| {
-                p.into_os_string()
-                    .into_string()
-                    .map_err(|_| Error::MalformedContract {
-                        message: "non-UTF-8 path in session spec".into(),
-                    })
-            })
-            .transpose()?,
+        cwd: cwd.map(super::inventory::opaque_path).transpose()?,
         command,
         args,
         peek,

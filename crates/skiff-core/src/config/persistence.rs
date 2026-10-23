@@ -176,8 +176,14 @@ pub fn write_atomic(file: &Path, text: &str) -> Result<()> {
     let file = target(file)?;
     let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let tmp = file.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
-    std::fs::write(&tmp, text).with_context(|| format!("write {}", tmp.display()))?;
-    std::fs::rename(&tmp, &file).with_context(|| format!("write {}", file.display()))
+    let done = std::fs::write(&tmp, text)
+        .with_context(|| format!("write {}", tmp.display()))
+        .and_then(|_| std::fs::rename(&tmp, &file).with_context(|| format!("write {}", file.display())));
+    if done.is_err() {
+        // A half-written temp file never stays beside the config.
+        let _ = std::fs::remove_file(&tmp);
+    }
+    done
 }
 
 /// A missing file is an empty config, not an error.

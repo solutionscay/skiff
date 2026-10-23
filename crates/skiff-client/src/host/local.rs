@@ -16,7 +16,7 @@ use skiff_host_api::{
 };
 use uuid::Uuid;
 
-use super::ssh::{SshError, SshForward, SshOptions, SshTarget};
+use super::ssh::{self, SshError, SshForward, SshOptions, SshTarget};
 use super::{
     AgentSource, GroupSource, HostConnection, InventorySource, LifecycleSource, LocalSources, OutputGap,
     OutputStream, ScreenSource, SessionUpdates, StatusSource, TerminalOutput, TerminalSource,
@@ -55,8 +55,6 @@ struct Remote {
 /// Input that waits to cross an SSH link: more is refused (host_busy), and
 /// nothing is kept to send later.
 pub const REMOTE_INPUT_LIMIT: usize = 1024 * 1024;
-/// The longest wait between two tries to open a forward.
-const RETRY_MAX: Duration = Duration::from_secs(30);
 
 /// The one endpoint this app runtime reaches: this Mac's socket, or a remote
 /// Host over SSH. It never starts, reloads or kills a daemon: only a local
@@ -179,8 +177,7 @@ impl HostSelection {
                 Err(e) => {
                     let mut retry = remote.retry.lock().unwrap();
                     retry.0 += 1;
-                    let wait = Duration::from_secs(1 << (retry.0 - 1).min(5)).min(RETRY_MAX);
-                    retry.1 = Some(Instant::now() + wait);
+                    retry.1 = Some(Instant::now() + ssh::backoff(retry.0));
                     return Err(e.into());
                 }
             }

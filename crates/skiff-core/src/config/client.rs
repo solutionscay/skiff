@@ -97,10 +97,12 @@ pub fn migrate(projects: &Path, client: &Path) -> Result<Migration> {
         // another writer put there meanwhile.
         let name = client.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let tmp = client.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
-        std::fs::write(&tmp, text).with_context(|| format!("write {}", tmp.display()))?;
-        let linked = std::fs::hard_link(&tmp, client);
+        let linked = std::fs::write(&tmp, text)
+            .with_context(|| format!("write {}", tmp.display()))
+            .and_then(|_| std::fs::hard_link(&tmp, client).with_context(|| format!("create {}", client.display())));
+        // Gone on every path: a half-written temp file never stays.
         let _ = std::fs::remove_file(&tmp);
-        linked.with_context(|| format!("create {}", client.display()))?;
+        linked?;
     }
     Ok(step)
 }
