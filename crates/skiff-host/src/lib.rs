@@ -127,7 +127,13 @@ impl BoundSocket {
     pub fn release(self) {
         use std::os::unix::fs::{FileTypeExt, MetadataExt};
         if let Ok(m) = std::fs::symlink_metadata(&self.path) {
-            if m.file_type().is_socket() && (m.dev(), m.ino()) == self.id {
+            // The inode alone is not proof: ext4 gives a newer socket at this
+            // path the freed number. This service no longer listens, so a
+            // listener that answers is another one's.
+            if m.file_type().is_socket()
+                && (m.dev(), m.ino()) == self.id
+                && std::os::unix::net::UnixStream::connect(&self.path).is_err()
+            {
                 let _ = std::fs::remove_file(&self.path);
             }
         }
