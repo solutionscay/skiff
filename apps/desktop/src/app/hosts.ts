@@ -19,6 +19,8 @@ export interface KnownHost {
   /** Found by the last check, or set by the person. `null`: not found yet. */
   socket: string | null;
   socket_override: boolean;
+  /** Update Skiff on this server automatically. */
+  auto_update: boolean;
   /** The last check or connection in this app run. */
   state: "ok" | "attention" | "unknown";
 }
@@ -62,6 +64,11 @@ export const shownHost = () => list.selected;
  *  check list, or the list. */
 export type HostsPage = { add: true } | { check: string } | Record<string, never>;
 let manage: (page: HostsPage) => void = () => {};
+
+/** Opens the shown Host's check list in Settings › Hosts. */
+export const checkShownHost = () => {
+  if (list.selected) manage({ check: list.selected });
+};
 
 /** Settings registers how it opens on the Hosts tab. */
 export function onManageHosts(open: (page: HostsPage) => void) {

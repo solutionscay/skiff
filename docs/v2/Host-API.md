@@ -906,7 +906,7 @@ OpenSSH stream-local forward to the remote skiffd socket.
   - **Install Skiff…** downloads the bundle for the server's arch from the
     release `v<app version>`, checks its signature with the app's key, and
     uploads it with one batch ssh run to
-    `~/.local/share/skiff/server/.incoming.tar.gz`. A second run checks its
+    `~/.local/share/skiff/server/.incoming-<sha256>.tar.gz`. A second run checks its
     SHA-256, unpacks it beside the old version, then moves the `current`
     link: a half-unpacked version never becomes current. It keeps the
     version before for a rollback, removes older ones, marks the install as
@@ -928,8 +928,32 @@ OpenSSH stream-local forward to the remote skiffd socket.
     never does.
   - No sudo, nothing outside the account's home and runtime folder, and no
     install on macOS servers yet: the row says so.
+- **Update with handover** (#166 slice 6, `install::update`, `server.sh
+  update`). Up only: the app never moves a newer server down, and the
+  script checks again under the lock. One install or update at a time: a
+  `.lock` folder in the managed folder; a second one waits, then finds its
+  version there. Steps: unpack beside the old version, move `current`, then
+  `skiff daemon reload --binary <new>/skiffd` with the old version's CLI.
+  skiffd execs the new binary with its handover, so the daemon pid, the
+  session pids and the screens stay. A reload that fails before exec (the
+  new skiffd cannot adopt the sessions) moves `current` back and names the
+  live sessions; only the person's yes in the red dialog restarts skiffd,
+  which ends them. With no live session it restarts without asking. A
+  reload that did not come back moves `current` back and starts the old
+  version. The version before stays as the rollback folder.
+  - **On connect:** before the session forward opens, the app probes a Host
+    once per app run. A managed install older than the app is updated with
+    no prompt, but only with the handover; the status bar then says
+    "updated from". The Host setting "Update Skiff on this server
+    automatically" (`auto_update` in `hosts.toml`, on by default) turns it
+    off. A Skiff that Skiff did not install is never updated.
+  - **Update Skiff…** in the check list does the same after a confirm.
+  - **Banners:** a newer server says to update this computer; a managed
+    older one says "Update available" and opens its check list; a Skiff
+    from its own install with an older protocol says that only the person
+    there can update it.
 - **Remote commands:** the probe, the key install, the key-file fix, the
-  upload and the server steps (install, start, linger). All are fixed
+  upload and the server steps (install, update, start, linger). All are fixed
   scripts in the app; their values (a version, a hash, a socket name, a key
   line) are checked against strict patterns and single-quoted.
 - **The check list** (Settings › Hosts › Check, and Connect): reach the

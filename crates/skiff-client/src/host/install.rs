@@ -207,17 +207,13 @@ fn started(out: &str) -> Outcome {
     }
 }
 
-/// Uploads `b` to the server, unpacks it as `version` in the managed
-/// folder, and starts its skiffd. The same version again changes nothing
-/// and starts nothing that runs. `free_kb`: the probe's free space.
-pub async fn install(target: &SshTarget, options: &SshOptions, b: &Bundle, version: &str, socket_name: &str, free_kb: u64, name: &str) -> Result<Outcome, String> {
-    if !plain_version(version) || !plain_version(socket_name) {
-        return Err("This version has a form Skiff does not send.".into());
-    }
+/// Checks the room on the server and uploads `b` beside the managed folder,
+/// named by its SHA-256, which it answers. Two uploads at once never meet.
+async fn upload(target: &SshTarget, options: &SshOptions, b: &Bundle, free_kb: u64, name: &str) -> Result<String, String> {
     // The bundle, its unpacked copy, and the one before.
     let need = (b.bytes.len() as u64 * 4) / 1024;
     if free_kb > 0 && free_kb < need {
-        return Err(format!("{name} has no room for Skiff. It needs {} MB in your home folder.", need.div_ceil(1024)));
+        return Err(no_room(name, b));
     }
     let dir = private_dir("upload")?;
     let file = dir.join(&b.name);
@@ -225,17 +221,99 @@ pub async fn install(target: &SshTarget, options: &SshOptions, b: &Bundle, versi
     let hash = sha256(&file).await;
     let _ = std::fs::remove_dir_all(&dir);
     let hash = hash?;
-    let upload = r#"sh -c 'umask 077; d="$HOME/.local/share/skiff/server"; mkdir -p "$d" && cat > "$d/.incoming.tar.gz"'"#;
-    run(target, options, upload.into(), &b.bytes).await?;
+    let upload = format!(r#"sh -c 'umask 077; d="$HOME/.local/share/skiff/server"; mkdir -p "$d" && cat > "$d/.incoming-{hash}.tar.gz"'"#);
+    run(target, options, upload, &b.bytes).await?;
+    Ok(hash)
+}
+
+fn no_room(name: &str, b: &Bundle) -> String {
+    format!("{name} has no room for Skiff. It needs {} MB in your home folder.", ((b.bytes.len() as u64 * 4) / 1024).div_ceil(1024))
+}
+
+/// The server's words for a failed unpack, as plain lines.
+fn unpack_error(out: &str, name: &str, version: &str, b: &Bundle) -> String {
+    match value(out, "skiff-install") {
+        "bad-hash" | "no-upload" => format!("The upload to {name} did not arrive whole. Nothing changed. Try again."),
+        "no-room" => no_room(name, b),
+        "bad-bundle" => format!("The bundle for {name} is not Skiff {version}. Nothing changed."),
+        _ => format!("The install on {name} did not finish. Check again."),
+    }
+}
+
+/// Uploads `b` to the server, unpacks it as `version` in the managed
+/// folder, and starts its skiffd. The same version again changes nothing
+/// and starts nothing that runs. `free_kb`: the probe's free space.
+pub async fn install(target: &SshTarget, options: &SshOptions, b: &Bundle, version: &str, socket_name: &str, free_kb: u64, name: &str) -> Result<Outcome, String> {
+    if !plain_version(version) || !plain_version(socket_name) {
+        return Err("This version has a form Skiff does not send.".into());
+    }
+    let hash = upload(target, options, b, free_kb, name).await?;
     let command = format!("sh -s -- install {} {} {}", quote(version), quote(&hash), quote(socket_name));
     let out = run(target, options, command, SERVER.as_bytes()).await?;
     match value(&out, "skiff-install") {
         "done" => Ok(started(&out)),
-        "bad-hash" | "no-upload" => Err(format!("The upload to {name} did not arrive whole. Nothing changed. Try again.")),
-        "no-room" => Err(format!("{name} has no room for Skiff. It needs {} MB in your home folder.", need.div_ceil(1024))),
-        "bad-bundle" => Err(format!("The bundle for {name} is not Skiff {version}. Nothing changed.")),
-        _ => Err(format!("The install on {name} did not finish. Check again.")),
+        "busy" => Err(busy(name)),
+        _ => Err(unpack_error(&out, name, version, b)),
     }
+}
+
+fn busy(name: &str) -> String {
+    format!("Another computer is installing Skiff on {name}. Check again in a minute.")
+}
+
+/// What an update did on the server.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(tag = "result", rename_all = "snake_case")]
+pub enum Updated {
+    /// The new version runs. `restarted`: skiffd started again and its
+    /// sessions ended, as the person agreed. Else they kept running.
+    Done { from: String, restarted: bool },
+    /// That version runs already: another computer updated it first.
+    Same,
+    /// The server has a newer version. Nothing changed: never down.
+    Newer { version: String },
+    /// skiffd cannot hand its sessions to the new version. Nothing changed.
+    /// The live sessions an update would end, by name.
+    NoHandover { from: String, sessions: Vec<String> },
+}
+
+/// Moves the managed install up to `version`, never down. skiffd reloads
+/// onto the new binary and keeps its sessions. When it cannot, nothing
+/// changes, unless `end_sessions`: then skiffd restarts on the new version.
+/// A failed update leaves the old version running.
+#[allow(clippy::too_many_arguments)]
+pub async fn update(target: &SshTarget, options: &SshOptions, b: &Bundle, version: &str, socket_name: &str, free_kb: u64, name: &str, end_sessions: bool) -> Result<Updated, String> {
+    if !plain_version(version) || !plain_version(socket_name) {
+        return Err("This version has a form Skiff does not send.".into());
+    }
+    let hash = upload(target, options, b, free_kb, name).await?;
+    let agreed = if end_sessions { "yes" } else { "no" };
+    let command = format!("sh -s -- update {} {} {} {agreed}", quote(version), quote(&hash), quote(socket_name));
+    let out = run(target, options, command, SERVER.as_bytes()).await?;
+    updated(&out, name, version, b)
+}
+
+fn updated(out: &str, name: &str, version: &str, b: &Bundle) -> Result<Updated, String> {
+    let from = value(out, "from").to_string();
+    match value(out, "skiff-update") {
+        "done" => Ok(Updated::Done { from, restarted: value(out, "reload") == "restarted" }),
+        "same" => Ok(Updated::Same),
+        "newer" => Ok(Updated::Newer { version: from }),
+        "no-handover" => Ok(Updated::NoHandover { from, sessions: live_sessions(value(out, "sessions")) }),
+        "busy" => Err(busy(name)),
+        "lost" => Err(format!("skiffd on {name} started again on Skiff {version} instead of reloading. Its sessions ended.")),
+        "failed" if value(out, "skiff-install") != "done" => Err(unpack_error(out, name, version, b)),
+        _ => Err(format!("The update on {name} did not finish. Skiff {from} still runs there. Try again.")),
+    }
+}
+
+/// The names of the live sessions in `skiff ls --json`.
+fn live_sessions(json: &str) -> Vec<String> {
+    let list: Vec<serde_json::Value> = serde_json::from_str(json).unwrap_or_default();
+    list.iter()
+        .filter(|s| s["state"].as_str() != Some("done"))
+        .map(|s| s["name"].as_str().or(s["label"].as_str()).unwrap_or("a session").to_string())
+        .collect()
 }
 
 /// Starts the managed skiffd on the server if it does not run.
@@ -268,6 +346,22 @@ mod tests {
         for bad in ["", "1.0;rm", "1 0", "$(x)", "a'b", "a/b"] {
             assert!(!plain_version(bad), "{bad}");
         }
+    }
+
+    #[test]
+    fn the_update_lines_read_as_one_result() {
+        let b = Bundle { name: "b".into(), bytes: vec![0; 4096], source: "release" };
+        let read = |out: &str| updated(out, "devbox", "2.1.0", &b);
+        assert_eq!(read("from=2.0.0\nchanged=yes\nreload=kept\nskiff-update=done\n"), Ok(Updated::Done { from: "2.0.0".into(), restarted: false }));
+        assert_eq!(read("from=2.0.0\nreload=restarted\nskiff-update=done\n"), Ok(Updated::Done { from: "2.0.0".into(), restarted: true }));
+        assert_eq!(read("from=2.2.0\nskiff-update=newer\n"), Ok(Updated::Newer { version: "2.2.0".into() }));
+        let live = r#"[{"label":"zsh","name":"build","state":"working"},{"label":"api","name":null,"state":"idle"},{"label":"old","name":null,"state":"done"}]"#;
+        assert_eq!(
+            read(&format!("from=2.0.0\nsessions={live}\nskiff-update=no-handover\n")),
+            Ok(Updated::NoHandover { from: "2.0.0".into(), sessions: vec!["build".into(), "api".into()] })
+        );
+        assert!(read("from=2.0.0\nskiff-install=done\nskiff-update=failed\n").unwrap_err().contains("Skiff 2.0.0 still runs"));
+        assert!(read("from=2.0.0\nskiff-install=bad-hash\nskiff-update=failed\n").unwrap_err().contains("did not arrive whole"));
     }
 
     #[test]

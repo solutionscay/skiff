@@ -75,7 +75,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "c053e69492ce6073aac564b41e1b6176136d5c5b9fc6e8242ad9a6f1ca6942db"
+    "sha256": "4a6e532a01ae4478c2918f583cba1c3c5d0096d9273e575127d97eadf1160be7"
   },
   "apps/desktop/src-tauri/src/copies.rs": {
     "ownership": "client-owned (M5 reviewed): local copies of bytes the Host sent, for this computer's Open with; never reads or opens a Host path",
@@ -125,7 +125,7 @@
       "skiff_agent",
       "skiff_core"
     ],
-    "sha256": "10ed8c5d644eb43e5734c79efe0358d9a600542994b7aa01df32794bdc07c92b"
+    "sha256": "8ff88d020761e79356a896b80266f2a424189560d5bf9fd0e17be1e4cd799d92"
   },
   "apps/desktop/src-tauri/src/ledger.rs": {
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",
@@ -145,7 +145,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "a9be044eb89275496b76146ad8b52c77e684210dade4bb0acb5bab96f1a5d04d"
+    "sha256": "58bef4b05352d1987afa825090f896facb214d9cff8e77d596c8b59035a67998"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -246,7 +246,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "d7e6fbf0c8fa25f3b4841a5fd34e2c4babbc9a57c757eb0bc22017971bbfa856"
+    "sha256": "ac20d0a0226ced549a028013ec1b8e671e9d2422e27d07288e0ec783901b6f61"
   },
   "apps/desktop/src/app/dataPlane.ts": {
     "ownership": "legacy local adapter/caller: migrate behind Host API in M1\u2013M6",
@@ -282,7 +282,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "a9fac6da370bed78058a899e7da62ce1b5900ef1a182a72a9a05e1690a6f10ed"
+    "sha256": "dbb43b15c4727e298ad50126f9a6a214c50373422c0831ec8801a37fbc8833d3"
   },
   "apps/desktop/src/app/keyboard.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -422,7 +422,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "22aa59652899f871f115b7c7d9be08ed0d5ea4a2b8b2bcc5ebb227cef7a55c45"
+    "sha256": "400e8ced3a663929e5e194571307a7564fd68e57ff01cb80099330abeb9dd8e6"
   },
   "apps/desktop/src/appearance/settings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6",
