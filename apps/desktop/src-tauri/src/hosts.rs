@@ -1,7 +1,9 @@
 //! Known Hosts and which one this window shows: client-owned `hosts.toml`
 //! beside `projects.toml`. "This Mac" is the local Host and needs no entry.
-//! A remote Host is an SSH destination (an alias from ssh config) and the
-//! skiffd socket on it. Each remote Host keeps the Skiff identity it first
+//! A remote Host has a local id that never changes, a shown name, an SSH
+//! destination (an alias from ssh config, a hostname or an address), an
+//! optional user and port, and the skiffd socket on it. No two Hosts have
+//! the same destination, user and port. Each remote Host keeps the Skiff identity it first
 //! reported (`host_id`): a different one is refused on every later
 //! connection, after a new selection or app start too, until the person
 //! accepts it. Each remote Host has its own clipboard opt-in for OSC 52
@@ -25,9 +27,19 @@ use crate::connection::{err, App};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct KnownHost {
+    /// Local only. Rename and edit keep it; `selected` names it.
+    pub(crate) id: String,
+    /// Shown in the Host menu, Settings and the window title.
+    pub(crate) name: String,
     /// What `ssh` takes: an alias from ssh config, `host` or `user@host`.
     pub(crate) destination: String,
-    /// skiffd's socket on that Host, as `skiff info` prints it there.
+    /// Sent as `-l` only when the person set it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) user: Option<String>,
+    /// Sent as `-p` only when the person set it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) port: Option<u16>,
+    /// skiffd's socket on that Host, as `skiff status` prints it there.
     pub(crate) socket: String,
     /// The Host id skiffd reported on the first accepted connection. Only
     /// the person changes it, by accepting a new identity.
@@ -40,8 +52,18 @@ pub(crate) struct KnownHost {
 }
 
 impl KnownHost {
+    #[cfg(test)]
     fn new(destination: String, socket: String) -> Self {
-        Self { destination, socket, host_id: None, clipboard_host: None }
+        Self { id: format!("h_{destination}"), name: destination.clone(), destination, user: None, port: None, socket, host_id: None, clipboard_host: None }
+    }
+
+    pub(crate) fn target(&self) -> SshTarget {
+        SshTarget { destination: self.destination.clone(), user: self.user.clone(), port: self.port, socket: self.socket.clone() }
+    }
+
+    /// The same login: destination, user and port.
+    fn logs_in_as(&self, t: &SshTarget) -> bool {
+        self.destination == t.destination && self.user == t.user && self.port == t.port
     }
 
     /// Clipboard writes from a connection that answers as `live` are
@@ -54,7 +76,7 @@ impl KnownHost {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Hosts {
-    /// The destination this window shows. None: this Mac.
+    /// The id of the Host this window shows. None: this Mac.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) selected: Option<String>,
     #[serde(default, rename = "host")]
@@ -107,8 +129,13 @@ fn save(path: &Path, hosts: &Hosts) -> anyhow::Result<()> {
 }
 
 impl Hosts {
-    pub(crate) fn find(&self, destination: &str) -> Option<&KnownHost> {
-        self.hosts.iter().find(|h| h.destination == destination)
+    pub(crate) fn find(&self, id: &str) -> Option<&KnownHost> {
+        self.hosts.iter().find(|h| h.id == id)
+    }
+
+    /// The Host a selection's target logs in to.
+    pub(crate) fn find_login(&self, t: &SshTarget) -> Option<&KnownHost> {
+        self.hosts.iter().find(|h| h.logs_in_as(t))
     }
 
     /// The selection the file names. A selected Host that is not in the list
@@ -121,31 +148,50 @@ impl Hosts {
     }
 }
 
-/// The private directory for this destination's forwards. Each forward makes
-/// its own directory inside it. Short, as a socket path must be.
-fn forward_dir(destination: &str) -> PathBuf {
-    let hash = destination.bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3));
+/// The private directory for this Host's forwards. Each forward makes its
+/// own directory inside it. Short, as a socket path must be.
+fn forward_dir(id: &str) -> PathBuf {
+    let hash = id.bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3));
     // SAFETY: geteuid takes no arguments and cannot fail.
     std::env::temp_dir().join(format!("skiff-{}-{:08x}", unsafe { libc::geteuid() }, hash as u32))
 }
 
 pub(crate) fn remote(h: &KnownHost) -> Result<HostSelection, String> {
-    let target = SshTarget { destination: h.destination.clone(), socket: h.socket.clone() };
     let pin = h.host_id.clone().map(HostId::try_from).transpose()?;
-    HostSelection::ssh(target, SshOptions::default(), forward_dir(&h.destination), pin)
+    HostSelection::ssh(h.target(), SshOptions::default(), forward_dir(&h.id), pin)
 }
 
-fn known<'a>(hosts: &'a mut Hosts, destination: &str) -> anyhow::Result<&'a mut KnownHost> {
-    hosts.hosts.iter_mut().find(|h| h.destination == destination).ok_or_else(|| anyhow::anyhow!("{destination} is not a known Host"))
+fn known<'a>(hosts: &'a mut Hosts, id: &str) -> anyhow::Result<&'a mut KnownHost> {
+    hosts.hosts.iter_mut().find(|h| h.id == id).ok_or_else(|| anyhow::anyhow!("That Host is not in the list any more."))
+}
+
+/// The Host a selection's target logs in to, for a change made from a
+/// live connection.
+fn known_login<'a>(hosts: &'a mut Hosts, t: &SshTarget) -> anyhow::Result<&'a mut KnownHost> {
+    hosts.hosts.iter_mut().find(|h| h.logs_in_as(t)).ok_or_else(|| anyhow::anyhow!("{} is not a known Host", t.destination))
+}
+
+/// A new local id: `h_` and 8 hex digits, not in the list yet.
+fn new_id(hosts: &Hosts) -> anyhow::Result<String> {
+    use std::io::Read;
+    let mut f = std::fs::File::open("/dev/urandom")?;
+    loop {
+        let mut b = [0u8; 4];
+        f.read_exact(&mut b)?;
+        let id = format!("h_{:08x}", u32::from_be_bytes(b));
+        if hosts.find(&id).is_none() {
+            return Ok(id);
+        }
+    }
 }
 
 /// Stores the identity a Host reported on its first accepted connection: a
 /// compare-and-set under [`update`]'s lock. The file decides: when another
 /// window or run stored a different one first, this one is refused as a
 /// changed identity. Ok only once the pin is on disk.
-pub(crate) fn pin_first(file: &Path, destination: &str, host_id: &HostId) -> anyhow::Result<()> {
+pub(crate) fn pin_first(file: &Path, target: &SshTarget, host_id: &HostId) -> anyhow::Result<()> {
     update(file, |hosts| {
-        let h = known(hosts, destination)?;
+        let h = known_login(hosts, target)?;
         match &h.host_id {
             Some(pin) if pin == host_id.as_str() => Ok(()),
             Some(pin) => Err(skiff_host_api::Error::IdentityChanged {
@@ -162,11 +208,11 @@ pub(crate) fn pin_first(file: &Path, destination: &str, host_id: &HostId) -> any
     })
 }
 
-/// Makes `host_id` the identity `destination` must report, as the person
+/// Makes `host_id` the identity Host `id` must report, as the person
 /// accepted it. The clipboard permission of the old identity goes.
-pub(crate) fn accept_identity(file: &Path, destination: &str, host_id: &HostId) -> anyhow::Result<Hosts> {
+pub(crate) fn accept_identity(file: &Path, id: &str, host_id: &HostId) -> anyhow::Result<Hosts> {
     update(file, |hosts| {
-        let h = known(hosts, destination)?;
+        let h = known(hosts, id)?;
         h.host_id = Some(host_id.as_str().to_string());
         h.clipboard_host = None;
         Ok(hosts.clone())
@@ -177,9 +223,10 @@ pub(crate) fn accept_identity(file: &Path, destination: &str, host_id: &HostId) 
 /// the asking window's connection accepted. Allowing needs that identity to
 /// be the one the file pins now: a window still connected to an identity
 /// another window replaced cannot grant the new one, nor its own.
-fn set_clipboard(file: &Path, destination: &str, live: Option<&HostId>, allow: bool) -> anyhow::Result<()> {
+fn set_clipboard(file: &Path, id: &str, live: Option<&HostId>, allow: bool) -> anyhow::Result<()> {
     update(file, |hosts| {
-        let h = known(hosts, destination)?;
+        let h = known(hosts, id)?;
+        let destination = h.name.clone();
         h.clipboard_host = match live {
             _ if !allow => None,
             Some(id) if h.host_id.as_deref() == Some(id.as_str()) => Some(id.as_str().to_string()),
@@ -192,14 +239,18 @@ fn set_clipboard(file: &Path, destination: &str, live: Option<&HostId>, allow: b
 
 /// Clipboard writes from the shown Host are allowed for a connection that
 /// answers as `live`, as the file says now.
-fn clipboard_allowed(file: &Path, destination: &str, live: &HostId) -> anyhow::Result<bool> {
-    Ok(load(file)?.find(destination).is_some_and(|h| h.clipboard_for(live)))
+fn clipboard_allowed(file: &Path, target: &SshTarget, live: &HostId) -> anyhow::Result<bool> {
+    Ok(load(file)?.find_login(target).is_some_and(|h| h.clipboard_for(live)))
 }
 
 /// A known Host as the page sees it.
 #[derive(Serialize)]
 struct HostView {
+    id: String,
+    name: String,
     destination: String,
+    user: Option<String>,
+    port: Option<u16>,
     socket: String,
 }
 
@@ -207,7 +258,7 @@ struct HostView {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HostList {
-    /// None: this Mac.
+    /// The shown Host's id. None: this Mac.
     selected: Option<String>,
     /// This computer's hostname, for the local Host's label. Empty if the
     /// system gives none.
@@ -224,7 +275,11 @@ fn host_list(hosts: Hosts, selected: Option<String>, identity: Option<&HostId>) 
         (Some(d), Some(id)) => hosts.find(d).is_some_and(|h| h.clipboard_for(id)),
         _ => false,
     };
-    let hosts = hosts.hosts.into_iter().map(|h| HostView { destination: h.destination, socket: h.socket }).collect();
+    let hosts = hosts
+        .hosts
+        .into_iter()
+        .map(|h| HostView { id: h.id, name: h.name, destination: h.destination, user: h.user, port: h.port, socket: h.socket })
+        .collect();
     HostList { selected, local_name: local_hostname(), hosts, clipboard }
 }
 
@@ -245,7 +300,14 @@ pub(crate) async fn list_hosts(app: State<'_, App>) -> Result<HostList, String> 
     let hosts = blocking(|| load(&path())).await?;
     let selection = app.selection();
     let identity = app.live_identity().or_else(|| selection.pinned());
-    Ok(host_list(hosts, selection.ssh_target().map(|t| t.destination.clone()), identity.as_ref()))
+    let selected = selection.ssh_target().and_then(|t| hosts.find_login(t)).map(|h| h.id.clone());
+    Ok(host_list(hosts, selected, identity.as_ref()))
+}
+
+/// The shown Host's id, as the file names it now. None: this Mac.
+fn shown_id(app: &App) -> Option<String> {
+    let t = app.selection().ssh_target()?.clone();
+    load(&path()).ok()?.find_login(&t).map(|h| h.id.clone())
 }
 
 /// An OSC 52 write from the shown Host may reach this Mac's clipboard now:
@@ -253,25 +315,127 @@ pub(crate) async fn list_hosts(app: State<'_, App>) -> Result<HostList, String> 
 /// accepted and the file as it is now. This Mac: always.
 #[tauri::command]
 pub(crate) async fn host_clipboard(app: State<'_, App>) -> Result<bool, String> {
-    let Some(destination) = app.selection().ssh_target().map(|t| t.destination.clone()) else {
+    let Some(target) = app.selection().ssh_target().cloned() else {
         return Ok(true);
     };
     let Some(live) = app.live_identity() else { return Ok(false) };
-    blocking(move || clipboard_allowed(&path(), &destination, &live)).await
+    blocking(move || clipboard_allowed(&path(), &target, &live)).await
 }
 
-/// Adds or updates a remote Host. It does not connect.
+/// What the Add and Edit form sends. Empty name, user or port: the name
+/// comes from the destination, user and port from ssh config.
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct HostForm {
+    #[serde(default)]
+    name: String,
+    destination: String,
+    #[serde(default)]
+    user: String,
+    #[serde(default)]
+    port: String,
+    #[serde(default)]
+    socket: String,
+}
+
+impl HostForm {
+    /// The checked values: name, target. Copy follows Settings › Hosts.
+    fn parse(&self) -> anyhow::Result<(String, SshTarget)> {
+        let destination = self.destination.trim().to_string();
+        anyhow::ensure!(!destination.is_empty(), "Pick a server or type its address.");
+        let user = Some(self.user.trim().to_string()).filter(|u| !u.is_empty());
+        let port = match self.port.trim() {
+            "" => None,
+            p => Some(p.parse::<u16>().ok().filter(|&p| p > 0).ok_or_else(|| anyhow::anyhow!("Type a port from 1 to 65535."))?),
+        };
+        let socket = self.socket.trim().to_string();
+        let target = SshTarget { destination, user, port, socket };
+        target.validate_login().map_err(anyhow::Error::msg)?;
+        if !target.socket.starts_with('/') || target.socket.contains(':') || target.socket.chars().any(|c| c.is_control()) {
+            anyhow::bail!("Type a full path on the server, such as /run/user/1000/skiff/skiffd.sock.");
+        }
+        let name = match self.name.trim() {
+            "" => default_name(&target.destination),
+            n => n.to_string(),
+        };
+        anyhow::ensure!(!name.chars().any(|c| c.is_control()), "Type a name on one line.");
+        Ok((name, target))
+    }
+}
+
+/// The alias, or the host part of `user@host`.
+fn default_name(destination: &str) -> String {
+    destination.rsplit('@').next().unwrap_or(destination).to_string()
+}
+
+/// Refuses a name or a login that another Host has. `except`: the Host
+/// being edited.
+fn check_unique(hosts: &Hosts, name: &str, target: &SshTarget, except: Option<&str>) -> anyhow::Result<()> {
+    let others = || hosts.hosts.iter().filter(|h| Some(h.id.as_str()) != except);
+    if let Some(h) = others().find(|h| h.logs_in_as(target)) {
+        anyhow::bail!("{} is in the list already.", h.name);
+    }
+    anyhow::ensure!(!others().any(|h| h.name.eq_ignore_ascii_case(name)), "Another Host has this name.");
+    Ok(())
+}
+
+/// Adds a remote Host and answers its id. It does not connect.
 #[tauri::command]
-pub(crate) async fn add_host(destination: String, socket: String) -> Result<(), String> {
-    let destination = destination.trim().to_string();
-    let socket = socket.trim().to_string();
-    SshTarget { destination: destination.clone(), socket: socket.clone() }.validate()?;
+pub(crate) async fn add_host(form: HostForm) -> Result<String, String> {
+    blocking(move || {
+        let (name, target) = form.parse()?;
+        update(&path(), |hosts| {
+            check_unique(hosts, &name, &target, None)?;
+            let id = new_id(hosts)?;
+            hosts.hosts.push(KnownHost {
+                id: id.clone(),
+                name,
+                destination: target.destination,
+                user: target.user,
+                port: target.port,
+                socket: target.socket,
+                host_id: None,
+                clipboard_host: None,
+            });
+            Ok(id)
+        })
+    })
+    .await
+}
+
+/// Changes a Host's name, server, user, port or socket. Its id and its
+/// pin stay: if another machine answers there now, the pin catches it. The
+/// shown Host keeps its connection, so only its name can change.
+#[tauri::command]
+pub(crate) async fn edit_host(app: State<'_, App>, id: String, form: HostForm) -> Result<(), String> {
+    let shown = shown_id(&app);
+    blocking(move || {
+        let (name, target) = form.parse()?;
+        update(&path(), |hosts| {
+            check_unique(hosts, &name, &target, Some(&id))?;
+            let h = known(hosts, &id)?;
+            let moved = !h.logs_in_as(&target) || h.socket != target.socket;
+            anyhow::ensure!(!(moved && shown.as_deref() == Some(id.as_str())), "This window shows {}. Pick another Host first, then change its server.", h.name);
+            h.name = name;
+            h.destination = target.destination;
+            h.user = target.user;
+            h.port = target.port;
+            h.socket = target.socket;
+            Ok(())
+        })
+    })
+    .await
+}
+
+/// Changes only the shown name.
+#[tauri::command]
+pub(crate) async fn rename_host(id: String, name: String) -> Result<(), String> {
     blocking(move || {
         update(&path(), |hosts| {
-            match hosts.hosts.iter_mut().find(|h| h.destination == destination) {
-                Some(h) => h.socket = socket,
-                None => hosts.hosts.push(KnownHost::new(destination, socket)),
-            }
+            let name = name.trim().to_string();
+            anyhow::ensure!(!name.is_empty() && !name.chars().any(|c| c.is_control()), "Type a name on one line.");
+            let me = known(hosts, &id)?.target();
+            check_unique(hosts, &name, &me, Some(&id))?;
+            known(hosts, &id)?.name = name;
             Ok(())
         })
     })
@@ -280,15 +444,36 @@ pub(crate) async fn add_host(destination: String, socket: String) -> Result<(), 
 
 /// Forgets a remote Host. The shown Host cannot go: pick another first.
 #[tauri::command]
-pub(crate) async fn remove_host(app: State<'_, App>, destination: String) -> Result<(), String> {
-    if app.selection().ssh_target().is_some_and(|t| t.destination == destination) {
+pub(crate) async fn remove_host(app: State<'_, App>, id: String) -> Result<(), String> {
+    if shown_id(&app).as_deref() == Some(id.as_str()) {
         return Err("This window shows that Host. Pick another Host first.".into());
     }
     blocking(move || {
         update(&path(), |hosts| {
-            hosts.hosts.retain(|h| h.destination != destination);
+            hosts.hosts.retain(|h| h.id != id);
             Ok(())
         })
+    })
+    .await
+}
+
+/// The aliases in this computer's ssh config, for the Server field.
+#[tauri::command]
+pub(crate) async fn ssh_aliases() -> Result<Vec<skiff_client::host::ssh_config::Alias>, String> {
+    blocking(|| {
+        let home = std::env::var_os("HOME").map(PathBuf::from).ok_or_else(|| anyhow::anyhow!("no home folder"))?;
+        Ok(skiff_client::host::ssh_config::aliases(&home))
+    })
+    .await
+}
+
+/// What `ssh -G` makes of the form's server, user and port. Local only.
+#[tauri::command]
+pub(crate) async fn resolve_ssh(destination: String, user: String, port: String) -> Result<skiff_client::host::ssh_config::Resolved, String> {
+    blocking(move || {
+        let form = HostForm { name: String::new(), destination, user, port, socket: "/x".into() };
+        let (_, target) = form.parse()?;
+        skiff_client::host::ssh_config::resolve(&target, &SshOptions::default()).map_err(anyhow::Error::msg)
     })
     .await
 }
@@ -297,13 +482,13 @@ pub(crate) async fn remove_host(app: State<'_, App>, destination: String) -> Res
 /// any held input go first, so nothing typed for one Host reaches another.
 /// The page reloads after it. `None`: this Mac.
 #[tauri::command]
-pub(crate) async fn select_host(handle: tauri::AppHandle, app: State<'_, App>, destination: Option<String>) -> Result<(), String> {
+pub(crate) async fn select_host(handle: tauri::AppHandle, app: State<'_, App>, id: Option<String>) -> Result<(), String> {
     let selection = blocking(move || {
         update(&path(), |hosts| {
-            if let Some(d) = &destination {
-                anyhow::ensure!(hosts.find(d).is_some(), "{d} is not a known Host");
+            if let Some(id) = &id {
+                anyhow::ensure!(hosts.find(id).is_some(), "That Host is not in the list any more.");
             }
-            hosts.selected = destination;
+            hosts.selected = id;
             Ok(hosts.selection(crate::connection::local_selection))
         })
     })
@@ -322,26 +507,26 @@ pub(crate) async fn select_host(handle: tauri::AppHandle, app: State<'_, App>, d
 /// must be the one the Host must report, so a Host that answers with another
 /// identity later has no permission.
 #[tauri::command]
-pub(crate) async fn set_host_clipboard(app: State<'_, App>, destination: String, allow: bool) -> Result<(), String> {
-    let shown = app.selection().ssh_target().is_some_and(|t| t.destination == destination);
+pub(crate) async fn set_host_clipboard(app: State<'_, App>, id: String, allow: bool) -> Result<(), String> {
+    let shown = shown_id(&app).as_deref() == Some(id.as_str());
     let live = app.live_identity().filter(|_| shown);
-    blocking(move || set_clipboard(&path(), &destination, live.as_ref(), allow)).await
+    blocking(move || set_clipboard(&path(), &id, live.as_ref(), allow)).await
 }
 
 /// The person accepts the new identity the shown Host reported. Only the one
 /// Rust saw and refused can be accepted, not one the page names. The page
 /// reloads after it.
 #[tauri::command]
-pub(crate) async fn accept_host_identity(app: State<'_, App>, destination: String) -> Result<(), String> {
+pub(crate) async fn accept_host_identity(app: State<'_, App>, id: String) -> Result<(), String> {
     let changed = app.changed.lock().unwrap().clone();
-    let Some((seen, received)) = changed.filter(|(d, _)| *d == destination) else {
-        return Err(format!("{destination} reported no new identity to accept."));
-    };
-    if app.selection().ssh_target().is_none_or(|t| t.destination != seen) {
+    if shown_id(&app).as_deref() != Some(id.as_str()) {
         return Err("This window shows another Host now.".into());
     }
+    let Some((_, received)) = changed.filter(|(d, _)| app.selection().ssh_target().is_some_and(|t| t.destination == *d)) else {
+        return Err("This Host reported no new identity to accept.".into());
+    };
     let selection = blocking(move || {
-        let hosts = accept_identity(&path(), &seen, &received)?;
+        let hosts = accept_identity(&path(), &id, &received)?;
         Ok(hosts.selection(crate::connection::local_selection))
     })
     .await?;
@@ -357,6 +542,10 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Sen
 mod tests {
     use super::*;
 
+    fn dev() -> SshTarget {
+        SshTarget::new("devbox", "/s.sock")
+    }
+
     #[test]
     fn hosts_round_trip_and_an_unknown_selection_is_this_mac() {
         let dir = std::env::temp_dir().join(format!("skiff-hosts-{}", std::process::id()));
@@ -364,12 +553,12 @@ mod tests {
         let file = dir.join("hosts.toml");
         assert_eq!(load(&file).unwrap(), Hosts::default());
         let hosts = Hosts {
-            selected: Some("devbox".into()),
+            selected: Some("h_devbox".into()),
             hosts: vec![KnownHost::new("devbox".into(), "/run/user/1000/skiff/skiffd.sock".into())],
         };
         save(&file, &hosts).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
-        assert!(text.contains("selected = \"devbox\"") && text.contains("[[host]]"), "{text}");
+        assert!(text.contains("selected = \"h_devbox\"") && text.contains("[[host]]"), "{text}");
         assert_eq!(load(&file).unwrap(), hosts);
         let local = || HostSelection::new("/l.sock".into(), "/id".into());
         let picked = hosts.selection(local);
@@ -378,11 +567,45 @@ mod tests {
         // Room under the forwards' directory for `<pid>-<n>/skiffd.sock`.
         assert!(picked.socket().as_os_str().len() + 32 < 104, "{}", picked.socket().display());
         assert_eq!(picked.pinned(), None);
-        let gone = Hosts { selected: Some("gone".into()), ..hosts.clone() };
+        let gone = Hosts { selected: Some("h_gone".into()), ..hosts.clone() };
         assert!(gone.selection(local).is_local());
-        let bad = Hosts { hosts: vec![KnownHost { destination: "-oProxyCommand=x".into(), ..hosts.hosts[0].clone() }], selected: Some("-oProxyCommand=x".into()) };
+        let bad = Hosts { hosts: vec![KnownHost { destination: "-oProxyCommand=x".into(), ..hosts.hosts[0].clone() }], selected: Some("h_devbox".into()) };
         assert!(bad.selection(local).is_local(), "an invalid entry never becomes an endpoint");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_form_keeps_id_name_user_and_port_and_refuses_duplicates() {
+        let form = |name: &str, d: &str, user: &str, port: &str| HostForm { name: name.into(), destination: d.into(), user: user.into(), port: port.into(), socket: "/run/user/1000/skiff/skiffd.sock".into() };
+        let (name, t) = form("", "jose@devbox.lan", "", "").parse().unwrap();
+        assert_eq!((name.as_str(), t.user, t.port), ("devbox.lan", None, None));
+        let (name, t) = form(" Dev ", "devbox", "me", "2222").parse().unwrap();
+        assert_eq!((name.as_str(), t.user.as_deref(), t.port), ("Dev", Some("me"), Some(2222)));
+        for (f, want) in [
+            (form("", "", "", ""), "Pick a server"),
+            (form("", "-oProxyCommand=x", "", ""), "Type one name"),
+            (form("", "dev box", "", ""), "Type one name"),
+            (form("", "devbox", "", "0"), "Type a port"),
+            (form("", "devbox", "", "70000"), "Type a port"),
+            (form("", "devbox", "-l", ""), "Type one user"),
+        ] {
+            let e = f.parse().unwrap_err().to_string();
+            assert!(e.starts_with(want), "{e}");
+        }
+        let mut h = KnownHost::new("devbox".into(), "/s.sock".into());
+        h.user = Some("me".into());
+        h.port = Some(2222);
+        let hosts = Hosts { selected: Some(h.id.clone()), hosts: vec![h.clone()] };
+        let text = toml::to_string(&hosts).unwrap();
+        assert!(text.contains("id = \"h_devbox\"") && text.contains("user = \"me\"") && text.contains("port = 2222"), "{text}");
+        assert_eq!(toml::from_str::<Hosts>(&text).unwrap(), hosts);
+        // The same login is one Host, whatever its name. Another user is another Host.
+        assert!(check_unique(&hosts, "x", &h.target(), None).unwrap_err().to_string().contains("in the list already"));
+        assert!(check_unique(&hosts, "x", &h.target(), Some("h_devbox")).is_ok());
+        assert!(check_unique(&hosts, "DEVBOX", &SshTarget::new("devbox", "/s.sock"), None).unwrap_err().to_string().contains("this name"));
+        assert!(check_unique(&hosts, "other", &SshTarget::new("devbox", "/s.sock"), None).is_ok());
+        // A file without an id is not a shape any release wrote: it does not load.
+        assert!(toml::from_str::<Hosts>("[[host]]\ndestination = \"d\"\nsocket = \"/s\"\n").is_err());
     }
 
     /// Review P1: accept A, then B at the same endpoint. A new selection from
@@ -394,10 +617,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let file = dir.join("hosts.toml");
         let id = |s: &str| HostId::try_from(s.to_string()).unwrap();
-        save(&file, &Hosts { selected: Some("devbox".into()), hosts: vec![KnownHost::new("devbox".into(), "/s.sock".into())] }).unwrap();
-        pin_first(&file, "devbox", &id("A")).unwrap();
-        pin_first(&file, "devbox", &id("A")).unwrap();
-        let changed = pin_first(&file, "devbox", &id("B")).unwrap_err();
+        save(&file, &Hosts { selected: Some("h_devbox".into()), hosts: vec![KnownHost::new("devbox".into(), "/s.sock".into())] }).unwrap();
+        pin_first(&file, &dev(), &id("A")).unwrap();
+        pin_first(&file, &dev(), &id("A")).unwrap();
+        let changed = pin_first(&file, &dev(), &id("B")).unwrap_err();
         assert!(matches!(changed.downcast_ref(), Some(skiff_host_api::Error::IdentityChanged { .. })), "{changed:#}");
         let hosts = load(&file).unwrap();
         assert_eq!(hosts.hosts[0].host_id.as_deref(), Some("A"));
@@ -405,10 +628,10 @@ mod tests {
         assert_eq!(hosts.selection(local).pinned(), Some(id("A")));
 
         // Clipboard needs a live identity, and is given to that one only.
-        assert!(set_clipboard(&file, "devbox", None, true).is_err());
-        set_clipboard(&file, "devbox", Some(&id("A")), true).unwrap();
+        assert!(set_clipboard(&file, "h_devbox", None, true).is_err());
+        set_clipboard(&file, "h_devbox", Some(&id("A")), true).unwrap();
         assert!(load(&file).unwrap().hosts[0].clipboard_for(&id("A")));
-        let accepted = accept_identity(&file, "devbox", &id("B")).unwrap();
+        let accepted = accept_identity(&file, "h_devbox", &id("B")).unwrap();
         assert_eq!(accepted.hosts[0].host_id.as_deref(), Some("B"));
         assert!(!accepted.hosts[0].clipboard_for(&id("B")), "the old identity's permission is gone");
         assert_eq!(load(&file).unwrap().selection(local).pinned(), Some(id("B")));
@@ -416,7 +639,7 @@ mod tests {
         let foreign = KnownHost { host_id: Some("B".into()), clipboard_host: Some("A".into()), ..KnownHost::new("x".into(), "/s".into()) };
         assert!(!foreign.clipboard_for(&id("A")) && !foreign.clipboard_for(&id("B")));
         // The old bool key from before pinning is ignored, not trusted.
-        std::fs::write(&file, "[[host]]\ndestination = \"devbox\"\nsocket = \"/s.sock\"\nclipboard = true\n").unwrap();
+        std::fs::write(&file, "[[host]]\nid = \"h_devbox\"\nname = \"devbox\"\ndestination = \"devbox\"\nsocket = \"/s.sock\"\nclipboard = true\n").unwrap();
         assert!(!load(&file).unwrap().hosts[0].clipboard_for(&id("A")));
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -432,30 +655,30 @@ mod tests {
         let file = dir.join("hosts.toml");
         let id = |s: &str| HostId::try_from(s.to_string()).unwrap();
         update(&file, |h| {
-            h.selected = Some("devbox".into());
+            h.selected = Some("h_devbox".into());
             h.hosts.push(KnownHost::new("devbox".into(), "/s.sock".into()));
             Ok(())
         })
         .unwrap();
-        pin_first(&file, "devbox", &id("B")).unwrap();
+        pin_first(&file, &dev(), &id("B")).unwrap();
         let live_b = id("B");
         // Window 2.
-        accept_identity(&file, "devbox", &id("C")).unwrap();
-        set_clipboard(&file, "devbox", Some(&id("C")), true).unwrap();
+        accept_identity(&file, "h_devbox", &id("C")).unwrap();
+        set_clipboard(&file, "h_devbox", Some(&id("C")), true).unwrap();
         // Window 1 after its page reloads: its live identity is still B.
-        let list = host_list(load(&file).unwrap(), Some("devbox".into()), Some(&live_b));
+        let list = host_list(load(&file).unwrap(), Some("h_devbox".into()), Some(&live_b));
         assert!(!list.clipboard, "C's grant allowed B's writes in the list");
-        assert!(!clipboard_allowed(&file, "devbox", &live_b).unwrap(), "C's grant allowed a write from B");
-        assert!(set_clipboard(&file, "devbox", Some(&live_b), true).is_err(), "window 1 granted while connected to B");
+        assert!(!clipboard_allowed(&file, &dev(), &live_b).unwrap(), "C's grant allowed a write from B");
+        assert!(set_clipboard(&file, "h_devbox", Some(&live_b), true).is_err(), "window 1 granted while connected to B");
         assert_eq!(load(&file).unwrap().hosts[0].clipboard_host.as_deref(), Some("C"), "window 1 changed C's grant");
         // Window 2, live on C, may write.
-        assert!(host_list(load(&file).unwrap(), Some("devbox".into()), Some(&id("C"))).clipboard);
-        assert!(clipboard_allowed(&file, "devbox", &id("C")).unwrap());
+        assert!(host_list(load(&file).unwrap(), Some("h_devbox".into()), Some(&id("C"))).clipboard);
+        assert!(clipboard_allowed(&file, &dev(), &id("C")).unwrap());
         // The page's list carries no per-Host permission to fall back on.
-        let json = serde_json::to_value(host_list(load(&file).unwrap(), Some("devbox".into()), Some(&live_b))).unwrap();
+        let json = serde_json::to_value(host_list(load(&file).unwrap(), Some("h_devbox".into()), Some(&live_b))).unwrap();
         assert!(json["hosts"][0].get("clipboard").is_none(), "{json}");
         // No identity yet: nothing allowed.
-        assert!(!host_list(load(&file).unwrap(), Some("devbox".into()), None).clipboard);
+        assert!(!host_list(load(&file).unwrap(), Some("h_devbox".into()), None).clipboard);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -474,8 +697,8 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_micros(200));
         }
         let result = match role.split_once(':').unwrap() {
-            ("pin", h) => pin_first(file, "devbox", &id(h)).map(drop),
-            ("accept", h) => accept_identity(file, "devbox", &id(h)).map(drop),
+            ("pin", h) => pin_first(file, &dev(), &id(h)).map(drop),
+            ("accept", h) => accept_identity(file, "h_devbox", &id(h)).map(drop),
             ("add", d) => update(file, |hosts| {
                 hosts.hosts.push(KnownHost::new(d.into(), "/s.sock".into()));
                 Ok(())
@@ -550,10 +773,10 @@ mod tests {
         for trial in 0..8 {
             let (dir, outs) = race("accept", trial, &["pin:A", "accept:C", "add:x", "add:y"]);
             let hosts = load(&dir.join("hosts.toml")).unwrap();
-            assert_eq!(hosts.find("devbox").unwrap().host_id.as_deref(), Some("C"), "trial {trial}: {outs:?}");
+            assert_eq!(hosts.find("h_devbox").unwrap().host_id.as_deref(), Some("C"), "trial {trial}: {outs:?}");
             assert!(outs[0] == "ok" || outs[0] == "changed", "trial {trial}: {outs:?}");
             assert!(outs[1..].iter().all(|o| o == "ok"), "trial {trial}: {outs:?}");
-            assert!(hosts.find("x").is_some() && hosts.find("y").is_some(), "trial {trial}: an added Host was lost");
+            assert!(hosts.find("h_x").is_some() && hosts.find("h_y").is_some(), "trial {trial}: an added Host was lost");
             std::fs::remove_dir_all(&dir).unwrap();
         }
     }

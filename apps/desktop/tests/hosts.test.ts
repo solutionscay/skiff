@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { flush, moduleFromSource } from "./workspaceHarness.ts";
 
 /** The real hosts module over a fake `invoke`, `listen` and document. */
-type Answer = { selected: string | null; localName?: string; hosts: { destination: string; socket: string }[]; clipboard: boolean };
+type Host = { id: string; name: string; destination: string; user: string | null; port: number | null; socket: string };
+type Answer = { selected: string | null; localName?: string; hosts: Host[]; clipboard: boolean };
 
 /** `live`: what Rust's `host_clipboard` answers now, for the identity the
  *  window's live connection accepted and the file as it is now. */
@@ -24,7 +25,6 @@ function hosts(answer: Answer, live = { clipboard: answer.clipboard }) {
       "@tauri-apps/api/event": { listen: async (name: string, run: () => void) => void listeners.set(name, run) },
       "../ui/contextMenu": { ctxMenu: { open() {} } },
       "../ui/confirm": { confirmAction: async () => true },
-      "../ui/dialogParts": { actionDialog() {} },
       "../ui/dom": { h: () => ({}) },
       "../ui/alerts": { showError(e: unknown) { throw e; } },
     },
@@ -34,7 +34,7 @@ function hosts(answer: Answer, live = { clipboard: answer.clipboard }) {
   return { mod, calls, listeners, document, reloads: () => reloads };
 }
 
-const devbox = { destination: "devbox", socket: "/run/user/1000/skiff/skiffd.sock" };
+const devbox: Host = { id: "h_dev", name: "devbox", destination: "jose@devbox.lan", user: null, port: null, socket: "/run/user/1000/skiff/skiffd.sock" };
 
 /** The real osc52 module over the given hosts module; returns the texts it
  *  put on the clipboard and a way to feed it an OSC 52 sequence. */
@@ -64,7 +64,7 @@ test("this Mac writes the clipboard; a remote Host only after it is allowed", as
   assert.equal(local.document.title, "Skiff — This computer (thr0w-deb)");
   assert.equal(local.calls.filter(([c]) => c === "host_clipboard").length, 0);
 
-  const remote = hosts({ selected: "devbox", hosts: [devbox, { ...devbox, destination: "other" }], clipboard: false });
+  const remote = hosts({ selected: "h_dev", hosts: [devbox, { ...devbox, id: "h_other", name: "other", destination: "other" }], clipboard: false });
   await remote.mod.loadHosts();
   assert.equal(remote.mod.isRemote(), true);
   assert.equal(remote.mod.hostName(), "devbox");
@@ -72,7 +72,7 @@ test("this Mac writes the clipboard; a remote Host only after it is allowed", as
   assert.equal(await remote.mod.clipboardWrites(), false);
   assert.equal(remote.mod.clipboardAllowed(), false);
 
-  const allowed = hosts({ selected: "devbox", hosts: [devbox], clipboard: true });
+  const allowed = hosts({ selected: "h_dev", hosts: [devbox], clipboard: true });
   await allowed.mod.loadHosts();
   assert.equal(await allowed.mod.clipboardWrites(), true);
   assert.equal(allowed.mod.clipboardAllowed(), true);
@@ -84,7 +84,7 @@ test("this Mac writes the clipboard; a remote Host only after it is allowed", as
  *  answer at the time of each write counts, never a value the page loaded. */
 test("OSC 52 follows the live identity Rust checks on each write, not the loaded list", async () => {
   // Window 1 after the reload: live B has no permission.
-  const w1 = hosts({ selected: "devbox", hosts: [devbox], clipboard: false });
+  const w1 = hosts({ selected: "h_dev", hosts: [devbox], clipboard: false });
   await w1.mod.loadHosts();
   const t1 = osc52(w1.mod);
   t1.send("from B");
@@ -95,7 +95,7 @@ test("OSC 52 follows the live identity Rust checks on each write, not the loaded
   // A page that loaded a permission it no longer has: another window
   // accepted another identity since. The write asks again and is refused.
   const live = { clipboard: true };
-  const stale = hosts({ selected: "devbox", hosts: [devbox], clipboard: true }, live);
+  const stale = hosts({ selected: "h_dev", hosts: [devbox], clipboard: true }, live);
   await stale.mod.loadHosts();
   const t2 = osc52(stale.mod);
   t2.send("allowed");
@@ -113,7 +113,7 @@ test("OSC 52 follows the live identity Rust checks on each write, not the loaded
     {
       "@tauri-apps/api/core": {
         invoke: async (c: string) => {
-          if (c === "list_hosts") return { selected: "devbox", hosts: [devbox], clipboard: true };
+          if (c === "list_hosts") return { selected: "h_dev", hosts: [devbox], clipboard: true };
           throw Error("no answer");
         },
       },
@@ -135,14 +135,14 @@ test("picking a Host saves it, then reloads the page; the shown Host does nothin
   h.mod.__pick(null);
   await flush();
   assert.equal(h.calls.filter(([c]) => c === "select_host").length, 0);
-  h.mod.__pick("devbox");
+  h.mod.__pick("h_dev");
   await flush();
-  assert.equal(JSON.stringify(h.calls.at(-1)), JSON.stringify(["select_host", { destination: "devbox" }]));
+  assert.equal(JSON.stringify(h.calls.at(-1)), JSON.stringify(["select_host", { id: "h_dev" }]));
   assert.equal(h.reloads(), 1);
 });
 
 test("a lost link turns input off once and starts one recovery", async () => {
-  const h = hosts({ selected: "devbox", hosts: [devbox] });
+  const h = hosts({ selected: "h_dev", hosts: [devbox] });
   await h.mod.loadHosts();
   let reconnects = 0;
   let onlines = 0;

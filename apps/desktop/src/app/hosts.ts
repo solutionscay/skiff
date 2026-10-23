@@ -1,22 +1,26 @@
 /** The Host this window shows, and the picker. "This Mac" is the local Host.
- *  A remote Host is an SSH destination from ssh config and its skiffd socket.
- *  Picking another Host reloads the page: no view mixes two Hosts. */
+ *  A remote Host has a local id, a shown name, an SSH destination, and its
+ *  skiffd socket. Settings › Hosts adds, edits and removes them. Picking
+ *  another Host reloads the page: no view mixes two Hosts. */
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { ctxMenu } from "../ui/contextMenu";
 import type { MenuEntry } from "../ui/menu";
 import { confirmAction } from "../ui/confirm";
-import { actionDialog } from "../ui/dialogParts";
 import { h } from "../ui/dom";
 import { showError } from "../ui/alerts";
 
 export interface KnownHost {
+  id: string;
+  name: string;
   destination: string;
+  user: string | null;
+  port: number | null;
   socket: string;
 }
 
 interface HostList {
-  /** `null`: this Mac. */
+  /** The shown Host's id. `null`: this Mac. */
   selected: string | null;
   /** This computer's hostname; empty if the system gives none. */
   localName: string;
@@ -42,7 +46,22 @@ export const isRemote = () => list.selected !== null;
 /** The local Host's label, on every OS: "This computer (thr0w-deb)". */
 export const localHostName = () => (list.localName ? `This computer (${list.localName})` : "This computer");
 
-export const hostName = () => list.selected ?? localHostName();
+export const hostName = () => list.hosts.find((x) => x.id === list.selected)?.name ?? list.selected ?? localHostName();
+
+/** The known remote Hosts, as last loaded. */
+export const knownHosts = (): readonly KnownHost[] => list.hosts;
+
+/** The shown Host's id. `null`: this Mac. */
+export const shownHost = () => list.selected;
+
+/** What a Host menu link opens in Settings › Hosts. */
+export type HostsPage = { add: true } | { add?: false };
+let manage: (page: HostsPage) => void = () => {};
+
+/** Settings registers how it opens on the Hosts tab. */
+export function onManageHosts(open: (page: HostsPage) => void) {
+  manage = open;
+}
 
 /** The menu's view: clipboard writes are allowed from the shown Host. */
 export const clipboardAllowed = () => !isRemote() || list.clipboard;
@@ -88,30 +107,23 @@ function renderHostLabel() {
   cell.setAttribute("aria-label", cell.title);
 }
 
-function pick(destination: string | null) {
-  if (destination === list.selected) return;
-  invoke("select_host", { destination })
+/** Shows another Host in this window. Settings › Hosts picks with it too. */
+export function pick(id: string | null) {
+  if (id === list.selected) return;
+  invoke("select_host", { id })
     .then(() => location.reload())
     .catch(showError);
 }
 
-/** The Host menu: pick a Host, add one, or forget one. */
+/** The Host menu: pick a Host, add one, or manage them in Settings. */
 export function openHostMenu(anchor: HTMLElement) {
   const r = anchor.getBoundingClientRect();
   const mark = (on: boolean) => (on ? "indicators-check" : undefined);
   const entries: MenuEntry[] = [
     { icon: mark(!isRemote()), label: localHostName(), run: () => pick(null) },
-    ...list.hosts.map((x) => ({ icon: mark(x.destination === list.selected), label: x.destination, run: () => pick(x.destination) })),
-    { icon: "indicators-plus", label: "Add SSH Host…", run: addHostDialog },
+    ...list.hosts.map((x) => ({ icon: mark(x.id === list.selected), label: x.name, run: () => pick(x.id) })),
+    { icon: "indicators-plus", label: "Add SSH Host…", run: () => manage({ add: true }) },
   ];
-  const others = list.hosts.filter((x) => x.destination !== list.selected);
-  if (others.length) {
-    entries.push({
-      icon: "tools-trash-2",
-      label: "Forget Host…",
-      sub: others.map((x) => ({ label: x.destination, danger: true, run: () => void forget(x) })),
-    });
-  }
   if (isRemote()) {
     entries.push({
       icon: "code-copy",
@@ -119,18 +131,8 @@ export function openHostMenu(anchor: HTMLElement) {
       run: () => void toggleClipboard(),
     });
   }
+  entries.push({ icon: "tools-pencil", label: "Manage Hosts…", run: () => manage({}) });
   ctxMenu.open(r.left, r.bottom, "Host", entries);
-}
-
-async function forget(x: KnownHost) {
-  const ok = await confirmAction({
-    title: `Forget ${x.destination}?`,
-    body: "Skiff removes it from the Host list. Its sessions keep running on that Host.",
-    action: "Forget Host",
-  });
-  if (!ok) return;
-  await invoke("remove_host", { destination: x.destination }).catch(showError);
-  await loadHosts().catch(showError);
 }
 
 async function toggleClipboard() {
@@ -143,42 +145,8 @@ async function toggleClipboard() {
     });
     if (!ok) return;
   }
-  await invoke("set_host_clipboard", { destination: list.selected, allow }).catch(showError);
+  await invoke("set_host_clipboard", { id: list.selected, allow }).catch(showError);
   await loadHosts().catch(showError);
-}
-
-/** Two fields: what `ssh` takes, and the skiffd socket on that Host. */
-function addHostDialog() {
-  const field = (placeholder: string, label: string) => {
-    const input = h("input", "prompt-input") as HTMLInputElement;
-    input.type = "text";
-    input.spellcheck = false;
-    input.placeholder = placeholder;
-    input.setAttribute("aria-label", label);
-    return input;
-  };
-  const destination = field("devbox", "SSH destination");
-  const socket = field("/run/user/1000/skiff/skiffd.sock", "skiffd socket on that Host");
-  actionDialog({
-    title: "Add SSH Host",
-    body: "Type the Host as you type it after ssh, such as an alias from ssh config. Its host key must be in known_hosts. On that Host, `skiff info` prints the socket.",
-    content: [destination, socket],
-    action: "Add Host",
-    tone: "go",
-    focus: destination,
-    submit: async () => {
-      if (!destination.value.trim()) {
-        destination.focus();
-        throw "Type the SSH destination.";
-      }
-      if (!socket.value.trim()) {
-        socket.focus();
-        throw "Type the socket path.";
-      }
-      await invoke("add_host", { destination: destination.value, socket: socket.value });
-      await loadHosts();
-    },
-  });
 }
 
 let recovering = false;
@@ -230,7 +198,7 @@ export async function acceptHostIdentity() {
     action: "Accept identity",
   });
   if (!ok) return;
-  await invoke("accept_host_identity", { destination: list.selected })
+  await invoke("accept_host_identity", { id: list.selected })
     .then(() => location.reload())
     .catch(showError);
 }

@@ -107,7 +107,7 @@ async fn files_and_backgrounds_come_from_the_host_bounded_and_inside_its_worktre
     let remote = match fake_ssh(&dir) {
         Some(ssh) => Some(
             HostSelection::ssh(
-                SshTarget { destination: "devbox".into(), socket: socket.to_string_lossy().into_owned() },
+                SshTarget::new("devbox", socket.to_string_lossy().into_owned()),
                 SshOptions { program: ssh, config: None },
                 dir.join("fwd"),
                 Some(host.clone()),

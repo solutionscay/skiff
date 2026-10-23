@@ -113,7 +113,7 @@ async fn skiff_host_is_the_writer_of_the_hosts_projects_and_worktrees() {
     let remote = match fake_ssh(&dir) {
         Some(ssh) => Some(
             HostSelection::ssh(
-                SshTarget { destination: "devbox".into(), socket: socket.to_string_lossy().into_owned() },
+                SshTarget::new("devbox", socket.to_string_lossy().into_owned()),
                 SshOptions { program: ssh, config: None },
                 dir.join("fwd"),
                 Some(host.clone()),

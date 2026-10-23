@@ -26,6 +26,7 @@ mod inventory;
 mod lifecycle;
 pub mod local;
 pub mod ssh;
+pub mod ssh_config;
 mod terminal;
 mod updates;
 

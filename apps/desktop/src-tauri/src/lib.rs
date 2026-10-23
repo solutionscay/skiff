@@ -110,7 +110,11 @@ pub fn run() {
             connection::host_capabilities,
             hosts::list_hosts,
             hosts::add_host,
+            hosts::edit_host,
+            hosts::rename_host,
             hosts::remove_host,
+            hosts::ssh_aliases,
+            hosts::resolve_ssh,
             hosts::select_host,
             hosts::set_host_clipboard,
             hosts::host_clipboard,
@@ -274,7 +278,7 @@ mod tests {
         }
         // A command added later must be placed on one side or the other.
         let allowed = ["set_menu", "quit_app", "guard_quit", "menu_layout", "set_menu_layout", "set_window_dark", "clipboard_write", "clipboard_read",
-            "daemon_status", "host_capabilities", "list_hosts", "add_host", "remove_host", "select_host", "set_host_clipboard", "host_clipboard", "accept_host_identity",
+            "daemon_status", "host_capabilities", "list_hosts", "add_host", "edit_host", "rename_host", "remove_host", "ssh_aliases", "resolve_ssh", "select_host", "set_host_clipboard", "host_clipboard", "accept_host_identity",
             "list_sessions", "create_session", "pty_write", "pty_resize", "session_seen", "kill_session", "rename_session", "set_session_theme", "list_agents", "list_projects", "get_project", "git_changes", "git_diff", "data_plane_status", "list_files", "read_file", "open_file_copy", "project_background",
             "ledger_rows", "ledger_result", "get_skiff_agent", "add_worktree", "remove_worktree", "add_project", "inspect_folder", "set_project_short", "set_project_fleet", "set_project_color", "set_project_closed", "remove_project", "set_project_background_opacity", "set_project_changes", "set_project_files", "set_project_theme", "reorder_projects",
             "open_settings", "set_open", "set_open_peek", "open_url", "list_themes", "import_themes", "open_theme_folder", "get_appearance",

@@ -75,7 +75,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "24ac65d4c31a448e40639bbb5b095fa91abd683c5145e00b9d8cff55381b1b6f"
+    "sha256": "b2fbdb5436300f2054e91a0f63d7795ed300d7ef00adffef7ee14cf21ccf6cda"
   },
   "apps/desktop/src-tauri/src/copies.rs": {
     "ownership": "client-owned (M5 reviewed): local copies of bytes the Host sent, for this computer's Open with; never reads or opens a Host path",
@@ -113,7 +113,7 @@
     "sha256": "a5dc5bcca7f832f3301cbc42e01411dde6a2e7d1fef2aeda7f88046c32ed5378"
   },
   "apps/desktop/src-tauri/src/hosts.rs": {
-    "ownership": "client policy: hosts.toml (known Hosts, the selected Host, per-Host clipboard opt-in) and building the selected SSH endpoint",
+    "ownership": "client policy: hosts.toml (known Hosts by local id, the selected Host, per-Host clipboard opt-in), this computer's ssh config for Settings \u203a Hosts, and building the selected SSH endpoint",
     "reasons": [
       "config",
       "env",
@@ -125,7 +125,7 @@
       "skiff_agent",
       "skiff_core"
     ],
-    "sha256": "455e3fda31f75267529df866fed3ae110f6f69f1e7358e505ecca0ee2a8c0984"
+    "sha256": "09985b507fbcf1a6205193e772f3a3be559e5768486e6760a80eb135c6ea75bc"
   },
   "apps/desktop/src-tauri/src/ledger.rs": {
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",
@@ -145,7 +145,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "333a139bb1dca6167085cd3c61d785422fe40169ba597999a685efb0ad4f3a8f"
+    "sha256": "9ebb7b7b2a6e400a4f9ed7e2e9d4806c5c0a0816229f4f45a54f6e7da5ef67e8"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -195,7 +195,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "d473e491a85cc71010b0a7e916d089b1c398e6fd8365aa1ba70783d24e01513d"
+    "sha256": "7a60f71ded8f27a112ed59d88ca0df7440803f3f5654a00ea1c12ba011ec1d3c"
   },
   "apps/desktop/src-tauri/src/streaming.rs": {
     "ownership": "M1e terminal output via selected Host session_terminal@1; M1d page session events via selected Host; core Event only for the page channel type",
@@ -276,13 +276,13 @@
     "sha256": "dce36671a23d0085c7c358548d5d7919c5bea6125db48c64834c4f890af0b654"
   },
   "apps/desktop/src/app/hosts.ts": {
-    "ownership": "client policy: Host picker and label (list/select/add/forget Hosts, clipboard opt-in) and the remote link-lost signal",
+    "ownership": "client policy: Host picker and label (list/select Hosts, links to Settings \u203a Hosts, clipboard opt-in) and the remote link-lost signal",
     "reasons": [
       "@tauri-apps/api/core",
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "3df26987a7910962a38218ed5c1c00165af1c05260d703508547a53350576abd"
+    "sha256": "fe3bb309ebf5b1cd2ac2d816eb6ee7d211b4758f48e36d2e6c5e8eff9b8682fb"
   },
   "apps/desktop/src/app/keyboard.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -325,7 +325,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "600ca43aec88d032fec5c481cb5a55c1077999a9bd4ec4281a3950b0365c9e39"
+    "sha256": "44a420df73415b9990244ca3d0731c90d0e7c3568fc9a4a89184ae9da75fbbc4"
   },
   "apps/desktop/src/app/render.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -416,13 +416,21 @@
     ],
     "sha256": "dd16187f3f3a5c2c10665788c23b5e6eb8cc3da151573633370f00e6db0b7075"
   },
+  "apps/desktop/src/appearance/hostSettings.ts": {
+    "ownership": "client policy: Settings \u203a Hosts (add, edit, rename, remove known Hosts in hosts.toml; this computer's ssh config aliases and ssh -G)",
+    "reasons": [
+      "@tauri-apps/api/core",
+      "invoke"
+    ],
+    "sha256": "c5710ca6278e857909de0fc5ac32be7f0ff14b3cbecb7b88467a8e6b55983bae"
+  },
   "apps/desktop/src/appearance/settings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6",
     "reasons": [
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "835be0d473ab2fc4516f3e853ef39d0247a0ec18ffc90b65fdd2bed493fba1e4"
+    "sha256": "fce295e853964166a214385e9b26f06a108de2eede868f8775af2ba469d3ba00"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6",

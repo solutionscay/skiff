@@ -174,9 +174,9 @@ async fn try_remote(app: &App, selection: &HostSelection, destination: &str, fil
         // succeeds the selection stays unpinned, so every try stores again
         // and none connects on an identity only this window holds.
         let id = host.connection().hello().host.host_id.clone();
-        let d = destination.to_string();
+        let target = selection.ssh_target().cloned().ok_or_else(|| anyhow::anyhow!("{destination} is not a remote Host"))?;
         let pinned = id.clone();
-        let stored = tauri::async_runtime::spawn_blocking(move || crate::hosts::pin_first(&file, &d, &id)).await?;
+        let stored = tauri::async_runtime::spawn_blocking(move || crate::hosts::pin_first(&file, &target, &id)).await?;
         match stored {
             Ok(()) => selection.repin(pinned),
             Err(e) => {
@@ -225,11 +225,11 @@ pub(crate) fn remote_failure(e: &anyhow::Error, destination: &str) -> (Option<Wa
         Some(skiff_host_api::Error::MalformedContract { message }) => warn("remote", message.clone()),
         _ if e.downcast_ref::<RemoteSilent>().is_some() => warn(
             "remote",
-            format!("skiffd on {destination} did not answer within {}s. Run `skiff info` on that Host to check it.", REMOTE_HELLO_TIMEOUT.as_secs()),
+            format!("skiffd on {destination} did not answer within {}s. Run `skiff status` on that Host to check it.", REMOTE_HELLO_TIMEOUT.as_secs()),
         ),
         _ => warn(
             "remote",
-            format!("Cannot reach skiffd on {destination} over ssh. Run `skiff info` on that Host to check that skiffd runs and which socket it uses."),
+            format!("Cannot reach skiffd on {destination} over ssh. Run `skiff status` on that Host to check that skiffd runs and which socket it uses."),
         ),
     }
 }
@@ -1120,7 +1120,7 @@ mod tests {
         let old_data = std::env::var_os("SKIFF_HOST_BIN");
         std::env::set_var("SKIFF_HOST_BIN", mark("skiff-host"));
         let app = App::default();
-        let target = skiff_client::host::ssh::SshTarget { destination: "devbox".into(), socket: "/run/user/1/skiff/skiffd.sock".into() };
+        let target = skiff_client::host::ssh::SshTarget::new("devbox", "/run/user/1/skiff/skiffd.sock");
         // Review P2: an unknown host key from a fresh state reaches the status.
         let ssh = mark("ssh");
         let text = std::fs::read_to_string(&ssh).unwrap().replace("exit 255", "echo 'Host key verification failed.' >&2\nexit 255");
@@ -1190,7 +1190,7 @@ mod tests {
         // An unknown failure names no path or ssh line: one line, what to check.
         let (w, _) = cause(anyhow::anyhow!("connect /var/folders/x/T/skiff-501-1/9-0/skiffd.sock: No such file"));
         let w = w.unwrap();
-        assert!(w.message.contains("skiff info") && !w.message.contains("/var/folders"), "{}", w.message);
+        assert!(w.message.contains("skiff status") && !w.message.contains("/var/folders"), "{}", w.message);
     }
 
     fn local_control() -> ProcessControl {
@@ -1389,8 +1389,8 @@ mod tests {
         std::fs::set_permissions(&ssh, std::fs::Permissions::from_mode(0o755)).unwrap();
         std::fs::write(&id_file, "A").unwrap();
         let file = dir.join("hosts.toml");
-        std::fs::write(&file, "selected = \"fixture\"\n[[host]]\ndestination = \"fixture\"\nsocket = \"/fixture.sock\"\n").unwrap();
-        let target = skiff_client::host::ssh::SshTarget { destination: "fixture".into(), socket: "/fixture.sock".into() };
+        std::fs::write(&file, "selected = \"h_fixture\"\n[[host]]\nid = \"h_fixture\"\nname = \"fixture\"\ndestination = \"fixture\"\nsocket = \"/fixture.sock\"\n").unwrap();
+        let target = skiff_client::host::ssh::SshTarget::new("fixture", "/fixture.sock");
         let options = skiff_client::host::ssh::SshOptions { program: ssh, config: None };
         let selection = |pin: Option<&str>| {
             let pin = pin.map(|p| skiff_host_api::HostId::try_from(p.to_string()).unwrap());

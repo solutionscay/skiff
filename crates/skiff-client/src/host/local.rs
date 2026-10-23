@@ -132,8 +132,8 @@ impl HostSelection {
             },
             Some(r) => Endpoint::Ssh {
                 hostname: r.target.destination.clone(),
-                account: String::new(),
-                port: 0,
+                account: r.target.user.clone().unwrap_or_default(),
+                port: r.target.port.unwrap_or(0),
                 socket: r.target.socket.clone(),
             },
         }
@@ -206,10 +206,10 @@ impl HostSelection {
             None => DataRoute::Local(skiff_core::socket::data_socket(self.socket())),
             Some(r) => DataRoute::Ssh {
                 target: SshTarget {
-                    destination: r.target.destination.clone(),
                     socket: skiff_core::socket::data_socket(Path::new(&r.target.socket))
                         .to_string_lossy()
                         .into_owned(),
+                    ..r.target.clone()
                 },
                 options: r.options.clone(),
                 dir: r.dir.clone(),

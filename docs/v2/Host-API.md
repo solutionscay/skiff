@@ -817,9 +817,10 @@ OpenSSH stream-local forward to the remote skiffd socket.
 
 - **The system ssh:** `/usr/bin/ssh` (else `ssh` on PATH), so `~/.ssh/config`,
   ProxyJump, agents, hardware keys and known_hosts behave as in a terminal.
-- **The forward:** `-N -L <private>/<pid>-<n>/skiffd.sock:<remote socket> -- <destination>`.
-  Each forward makes its own `0700` directory, exclusively, inside a
-  per-account, per-destination `0700` parent in the temp dir. Two windows or
+- **The forward:** `-N [-l <user>] [-p <port>] -L <private>/<pid>-<n>/skiffd.sock:<remote socket> -- <destination>`.
+  `-l` and `-p` go only when the person set them; ssh config decides
+  otherwise. Each forward makes its own `0700` directory, exclusively, inside a
+  per-account, per-Host `0700` parent in the temp dir. Two windows or
   app runs on one destination never share, unlink or remove each other's
   socket. The path is short enough for `sun_path`.
 - **Options forced on the command line**, so they win over ssh config:
@@ -935,14 +936,21 @@ OpenSSH stream-local forward to the remote skiffd socket.
 ### Picker and label
 
 - **The Host cell in the top bar** shows a state dot and the name ("This Mac"
-  or the destination). The status bar's skiffd label and the window title
+  or the Host's shown name). The status bar's skiffd label and the window title
   (`Skiff — <Host>`) name it too.
-- **Its menu** picks a Host, adds an SSH Host (destination and socket), forgets
-  one, and toggles the clipboard opt-in.
+- **Its menu** picks a Host, opens Settings › Hosts at its Add form (Add SSH
+  Host…) or its list (Manage Hosts…), and toggles the clipboard opt-in.
+- **Settings › Hosts** lists the known Hosts and adds, edits, renames and
+  removes them. The Server field lists the aliases in `~/.ssh/config`. The line
+  under it shows what `ssh -G` resolves (user, hostname, port, jump host),
+  with no network.
 - **Picking a Host** tears down the old connection, streams and held input,
   then reloads the page: no view mixes two Hosts.
 - **`hosts.toml`** (client-owned, beside `projects.toml`) stores the known
-  Hosts, `selected`, each Host's `host_id` pin and `clipboard_host`. An older
+  Hosts, each with a local `id` that never changes, a shown `name`, the
+  `destination`, an optional `user` and `port`, the socket, the `host_id` pin
+  and `clipboard_host`. `selected` names an `id`. No two Hosts share a
+  destination, user and port. An older
   `clipboard = true` is ignored. An unknown or invalid selected entry falls
   back to This Mac.
 
@@ -954,14 +962,14 @@ local-only.
 ### Demo
 
 1. **On the remote Host:** install a Skiff whose skiffd reports identity (M1f
-   or later). Run `skiff info` and copy the `socket` line. Its sshd must allow
+   or later). Run `skiff status` and copy the `socket` line. Its sshd must allow
    stream-local forwarding; OpenSSH allows it by default.
 2. **On this Mac:** `ssh <alias>` must work without a prompt (key in the agent
    or ssh config), and the host key must already be in known_hosts.
 3. **Start this V2 build.** Use a private local state, so it does not touch a
    v1 daemon.
-4. Click the Host cell, then Add SSH Host… Enter the alias and the socket, then
-   pick it.
+4. Click the Host cell, then Add SSH Host… Pick the alias, type the socket, and
+   save. Then pick it in the Host menu.
 5. Remote sessions list under Other. Open one, type, paste and resize. On the
    remote Host, start more with `skiff new --agent <id>`.
 6. **Drop the link** (Wi-Fi off or laptop sleep). The cell turns red, input is
@@ -1349,7 +1357,7 @@ Tracking: [M4 #160](https://github.com/solutionscay/skiff/issues/160), [epic #15
   second slice. `files_projects` and `project_themes` still come from this
   Mac's config, and are not loaded for a remote Host.
 - **Supervision.** On a remote Host, the person starts `skiff-host`.
-  Nothing restarts it. `skiff info` does not show it. A release-skill and
+  Nothing restarts it. `skiff status` does not show it. A release-skill and
   upgrade story for two-process Hosts belongs to M7.
 - **Change watching.** The page still reads again on session events. The
   Host has no data-plane event stream yet.

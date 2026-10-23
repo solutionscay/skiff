@@ -277,7 +277,7 @@ mod tests {
         let old = std::env::var_os("SKIFF_CONFIG");
         std::env::set_var("SKIFF_CONFIG", dir.join("projects.toml"));
         let app = crate::connection::App::default();
-        let target = skiff_client::host::ssh::SshTarget { destination: "devbox".into(), socket: "/s.sock".into() };
+        let target = skiff_client::host::ssh::SshTarget::new("devbox", "/s.sock");
         let options = skiff_client::host::ssh::SshOptions { program: "/nonexistent/ssh".into(), config: None };
         app.set_selection(skiff_client::host::local::HostSelection::ssh(target, options, dir.join("fwd"), None).unwrap());
         assert!(!super::sync(&app));

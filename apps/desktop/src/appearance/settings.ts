@@ -11,11 +11,12 @@ import { DEFAULT_NAME, type SkiffAgentSettings } from "../app/skiffAgent";
 import { type SkiffAgentEdit, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
 import { changeSkiffFolder } from "./skiffFolderDialog";
 import { rowTable, tableState } from "./rowTable";
-import { hostName, isRemote } from "../app/hosts";
+import { type HostsPage, hostName, isRemote } from "../app/hosts";
+import { createHostsTab } from "./hostSettings";
 import { hostInvoke } from "../app/hostCaps";
 
 /**
- * Settings over the sidebar and terminal: agents, appearance, and Open with.
+ * Settings over the sidebar and terminal: agents, appearance, Open with and Hosts.
  */
 export interface AppearanceHooks {
   themes: () => TerminalTheme[];
@@ -34,7 +35,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   document.getElementById("body")!.appendChild(root);
 
   let agents: AgentInfo[] = [];
-  const TABS = ["agents", "skiff-agent", "appearance", "open"] as const;
+  const TABS = ["agents", "skiff-agent", "appearance", "open", "hosts"] as const;
   let tab: (typeof TABS)[number] = "agents";
   const themeFilters: ThemeFilters = { query: "", family: null };
   type OpenKey = "diff" | "text" | "markdown" | "html";
@@ -48,6 +49,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   // The draft rows and their error lines survive every redraw.
   const agentsTable = tableState();
   const tasksTable = tableState();
+  const hostsTab = createHostsTab(() => render());
 
   async function toggle(id: string) {
     if (saving) return;
@@ -114,7 +116,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const nav = h("div", "set-nav");
     const head = h("div", "set-nav-head");
     head.append(h("div", "set-title", "Settings"), h("div", "set-path mono", "~/.config/skiff/projects.toml"));
-    const names = { agents: "Agents", "skiff-agent": "Skiff agent", appearance: "Appearance", open: "Open with" };
+    const names = { agents: "Agents", "skiff-agent": "Skiff agent", appearance: "Appearance", open: "Open with", hosts: "Hosts" };
     const tabs = TABS.map((t) => {
       const b = h("button", "set-tab" + (tab === t ? " active" : ""), names[t]);
       b.type = "button";
@@ -136,6 +138,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     }
     if (tab === "skiff-agent") {
       root.replaceChildren(nav, skiffAgent(), closeButton());
+      return;
+    }
+    if (tab === "hosts") {
+      root.replaceChildren(nav, hostsTab.draw(), closeButton());
       return;
     }
 
@@ -592,7 +598,12 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   });
 
   return {
-    async open() {
+    /** `hosts`: open on Settings › Hosts, at its list or its Add form. */
+    async open(hosts?: HostsPage) {
+      if (hosts) {
+        tab = "hosts";
+        hostsTab.open(hosts);
+      }
       root.hidden = false;
       onShowChange();
       await look.load();
@@ -603,7 +614,9 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         error = String(e);
         return [];
       });
+      await hostsTab.load();
       render();
+      if (tab === "hosts") hostsTab.focusServer();
       if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
       else root.querySelector<HTMLButtonElement>(".set-agent .c-on:not(:disabled)")?.focus();
     },

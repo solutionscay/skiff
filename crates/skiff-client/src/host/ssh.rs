@@ -36,27 +36,65 @@ pub const OPEN_TIMEOUT: Duration = Duration::from_secs(20);
 const STDERR_KEEP: usize = 16 * 1024;
 
 /// One remote Host as `ssh` reaches it. `destination` is what the user types
-/// after `ssh`: an alias from ssh config, `host`, or `user@host`. Port, user,
-/// keys and jumps come from ssh config.
+/// after `ssh`: an alias from ssh config, `host`, or `user@host`. Keys and
+/// jumps come from ssh config, and so do user and port unless set here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SshTarget {
     pub destination: String,
-    /// The remote skiffd socket, as `skiff info` prints it there.
+    /// Sent as `-l` only when the person set it.
+    pub user: Option<String>,
+    /// Sent as `-p` only when the person set it.
+    pub port: Option<u16>,
+    /// The remote skiffd socket, as `skiff status` prints it there.
     pub socket: String,
 }
 
 impl SshTarget {
+    /// A target with the user and port from ssh config.
+    pub fn new(destination: impl Into<String>, socket: impl Into<String>) -> Self {
+        Self {
+            destination: destination.into(),
+            user: None,
+            port: None,
+            socket: socket.into(),
+        }
+    }
+
+    /// `-l user -p port`, only for what the person set. Before `--`.
+    pub fn login_args(&self) -> Vec<OsString> {
+        let mut args: Vec<OsString> = Vec::new();
+        if let Some(u) = &self.user {
+            args.push("-l".into());
+            args.push(u.into());
+        }
+        if let Some(p) = self.port {
+            args.push("-p".into());
+            args.push(p.to_string().into());
+        }
+        args
+    }
+
+    /// Refuses a destination, user or port that `ssh` could misread. The
+    /// socket is not checked: [`Self::validate`] does that for a forward.
+    pub fn validate_login(&self) -> Result<(), String> {
+        let word = |s: &str| {
+            !s.is_empty() && !s.starts_with('-') && !s.chars().any(|c| c.is_whitespace() || c.is_control())
+        };
+        if !word(&self.destination) {
+            return Err("Type one name, such as devbox or 10.0.0.5.".into());
+        }
+        if self.user.as_deref().is_some_and(|u| !word(u) || u.contains('@')) {
+            return Err("Type one user name, such as jose.".into());
+        }
+        if self.port == Some(0) {
+            return Err("Type a port from 1 to 65535.".into());
+        }
+        Ok(())
+    }
+
     /// Refuses what `ssh` could read as an option, and paths `-L` cannot carry.
     pub fn validate(&self) -> Result<(), String> {
-        let d = &self.destination;
-        if d.is_empty()
-            || d.starts_with('-')
-            || d.chars().any(|c| c.is_whitespace() || c.is_control())
-        {
-            return Err(
-                "The SSH destination must be one word, such as an alias from ssh config.".into(),
-            );
-        }
+        self.validate_login()?;
         let s = &self.socket;
         if !s.starts_with('/') || s.contains(':') || s.chars().any(|c| c.is_control()) {
             return Err("The remote socket must be an absolute path with no colon.".into());
@@ -118,6 +156,7 @@ pub fn forward_args(target: &SshTarget, local: &Path, options: &SshOptions) -> V
         args.push(flag.into());
         args.push(value.into());
     }
+    args.extend(target.login_args());
     args.push("-N".into());
     let mut spec = OsString::from(local);
     spec.push(":");
@@ -163,7 +202,7 @@ impl fmt::Display for SshError {
             Self::HostKeyChanged(d) => write!(f, "The host key of {d} changed. Skiff does not connect. Check the new key before you change known_hosts."),
             Self::AuthFailed(d) => write!(f, "ssh cannot log in to {d} without a prompt. Load your key into the SSH agent or name it in ssh config, then try again."),
             Self::ForwardingRefused(d) => write!(f, "{d} does not allow socket forwarding. Set AllowStreamLocalForwarding yes in its sshd_config."),
-            Self::ChannelRefused { destination, socket } => write!(f, "{destination} refused the connection to {socket}. Either no skiffd listens there (run `skiff info` on that Host to see its socket), or its sshd does not allow socket forwarding (AllowStreamLocalForwarding)."),
+            Self::ChannelRefused { destination, socket } => write!(f, "{destination} refused the connection to {socket}. Either no skiffd listens there (run `skiff status` on that Host to see its socket), or its sshd does not allow socket forwarding (AllowStreamLocalForwarding)."),
             Self::Unreachable(d) => write!(f, "Cannot reach {d}. Check the network and the name in ssh config."),
             Self::Exited { destination, code } => match code {
                 Some(c) => write!(f, "ssh to {destination} stopped (exit {c}). Run `ssh {destination}` in a terminal to see why."),
@@ -372,10 +411,7 @@ mod tests {
     use super::*;
 
     fn target() -> SshTarget {
-        SshTarget {
-            destination: "devbox".into(),
-            socket: "/run/user/501/skiff/skiffd.sock".into(),
-        }
+        SshTarget::new("devbox", "/run/user/501/skiff/skiffd.sock")
     }
 
     #[test]
@@ -431,6 +467,20 @@ mod tests {
             with[..2],
             [OsString::from("-F"), OsString::from("/fixture/ssh_config")]
         );
+        // User and port go before `--`, and only when set.
+        let set = SshTarget {
+            user: Some("jose".into()),
+            port: Some(2222),
+            ..target()
+        };
+        let args: Vec<String> = forward_args(&set, Path::new("/x"), &SshOptions::default())
+            .into_iter()
+            .map(|a| a.into_string().unwrap())
+            .collect();
+        let n = args.len();
+        assert_eq!(&args[n - 9..n - 5], ["-l", "jose", "-p", "2222"]);
+        assert!(SshTarget { user: Some("-oX".into()), ..target() }.validate().is_err());
+        assert!(SshTarget { port: Some(0), ..target() }.validate().is_err());
     }
 
     #[test]

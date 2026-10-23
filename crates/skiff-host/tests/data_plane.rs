@@ -205,7 +205,7 @@ async fn remote(dir: &Path, host: &HostId, hello: &Hello) {
     let remote_session = far.join("skiffd.sock");
     let forwards = dir.join("fwd");
     let selection = HostSelection::ssh(
-        SshTarget { destination: "devbox".into(), socket: remote_session.to_string_lossy().into_owned() },
+        SshTarget::new("devbox", remote_session.to_string_lossy().into_owned()),
         SshOptions { program: ssh.clone(), config: None },
         forwards.clone(),
         Some(host.clone()),
@@ -223,7 +223,7 @@ async fn remote(dir: &Path, host: &HostId, hello: &Hello) {
     let remote_data = skiff_core::socket::data_socket(&remote_session);
     let service = start(&remote_data, hello.clone());
     let selection = HostSelection::ssh(
-        SshTarget { destination: "devbox".into(), socket: remote_session.to_string_lossy().into_owned() },
+        SshTarget::new("devbox", remote_session.to_string_lossy().into_owned()),
         SshOptions { program: ssh, config: None },
         forwards,
         Some(host.clone()),

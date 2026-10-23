@@ -109,10 +109,7 @@ while True:
     }
 
     fn target(&self) -> SshTarget {
-        SshTarget {
-            destination: "fixture".into(),
-            socket: "/fixture.sock".into(),
-        }
+        SshTarget::new("fixture", "/fixture.sock")
     }
 
     fn selection(&self, pin: Option<&str>) -> HostSelection {

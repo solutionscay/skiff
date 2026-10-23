@@ -119,7 +119,7 @@ impl Fixture {
     }
 
     fn selection(&self, config: &str, socket: &Path, forward: &str) -> HostSelection {
-        let target = SshTarget { destination: "fixture".into(), socket: socket.to_string_lossy().into_owned() };
+        let target = SshTarget::new("fixture", socket.to_string_lossy().into_owned());
         HostSelection::ssh(target, self.options(config), self.dir.join(forward), None).unwrap()
     }
 }

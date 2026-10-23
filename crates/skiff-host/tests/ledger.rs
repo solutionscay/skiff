@@ -65,7 +65,7 @@ async fn host_ledger(dir: PathBuf) {
     let local = selection.connect_data(&host).await.unwrap();
     let l = local.connection();
     let ssh = HostSelection::ssh(
-        SshTarget { destination: "devbox".into(), socket: socket.to_string_lossy().into_owned() },
+        SshTarget::new("devbox", socket.to_string_lossy().into_owned()),
         SshOptions { program: fake_ssh(&dir).unwrap_or_else(|| "/nonexistent/ssh".into()), config: None },
         dir.join("fwd"),
         Some(host.clone()),
