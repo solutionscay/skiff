@@ -1,8 +1,9 @@
-//! Install and start Skiff on a Linux server, in the account's home only:
-//! `~/.local/share/skiff/server/<version>`, a `current` link, a systemd
-//! user unit for skiffd (or, without a user manager, a plain background
-//! start), linger, and `~/.local/bin/skiff` where that name is free. No
-//! sudo, and no system folder. Each step runs only after the person
+//! Install and start Skiff on a Linux or macOS server, in the account's
+//! home only: `~/.local/share/skiff/server/<version>`, a `current` link, a
+//! systemd user unit for skiffd (or, without a user manager, a plain
+//! background start), linger, and `~/.local/bin/skiff` where that name is
+//! free. On macOS a LaunchAgent in `~/Library/LaunchAgents` keeps skiffd
+//! running instead. No sudo, and no system folder. Each step runs only after the person
 //! confirms it in Settings › Hosts.
 //!
 //! The bundle is the signed release bundle for the server's OS and arch,
@@ -118,8 +119,8 @@ async fn fetch(url: &str, to: &Path) -> Option<Vec<u8>> {
 }
 
 /// A debug build's own server: skiffd, skiff-host and skiff beside this
-/// app's executable, packed as a bundle. Only for a Linux server with this
-/// computer's arch, and never in a release build.
+/// app's executable, packed as a bundle. Only for a server with this
+/// computer's OS and arch, and never in a release build.
 pub async fn dev_bundle(version: &str, arch: &str, beside: &Path) -> Result<Bundle, String> {
     if !cfg!(debug_assertions) {
         return Err("Only a dev build of Skiff installs its own binaries.".into());
@@ -129,19 +130,20 @@ pub async fn dev_bundle(version: &str, arch: &str, beside: &Path) -> Result<Bund
         "aarch64" => "aarch64",
         other => other,
     };
-    if !cfg!(target_os = "linux") || here != arch {
-        return Err(format!("This dev build has no Skiff {version} for Linux {arch}: it runs on another system, and no release has that version."));
+    let os = std::env::consts::OS;
+    if !matches!(os, "linux" | "macos") || here != arch {
+        return Err(format!("This dev build has no Skiff {version} for {arch}: it runs on another system, and no release has that version."));
     }
-    let name = format!("skiff-server-{version}-linux-{arch}");
+    let name = format!("skiff-server-{version}-{os}-{arch}");
     let stage = private_dir("bundle")?;
     let dir = stage.join(&name);
     let build = async {
-        std::fs::create_dir_all(dir.join("systemd")).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let mut manifest = bundle::Manifest {
             name: "skiff-server".into(),
             version: version.into(),
             protocol: skiff_core::PROTOCOL,
-            os: "linux".into(),
+            os: os.into(),
             arch: arch.into(),
             target: "this build".into(),
             commit: "dev".into(),
@@ -152,7 +154,10 @@ pub async fn dev_bundle(version: &str, arch: &str, beside: &Path) -> Result<Bund
             std::fs::copy(&from, dir.join(b)).map_err(|_| format!("This dev build has no {b} beside it. Build the workspace first."))?;
             manifest.files.insert(b.into(), sha256(&dir.join(b)).await?);
         }
-        for (f, text) in [("systemd/skiffd.service", UNIT_SKIFFD), ("systemd/skiff-host.service", UNIT_HOST)] {
+        // The systemd units go in a Linux bundle only, as in build.sh.
+        let units: &[(&str, &str)] = if os == "linux" { &[("systemd/skiffd.service", UNIT_SKIFFD), ("systemd/skiff-host.service", UNIT_HOST)] } else { &[] };
+        for &(f, text) in units {
+            std::fs::create_dir_all(dir.join("systemd")).map_err(|e| e.to_string())?;
             std::fs::write(dir.join(f), text).map_err(|e| e.to_string())?;
             manifest.files.insert(f.into(), sha256(&dir.join(f)).await?);
         }
@@ -275,5 +280,82 @@ mod tests {
         let o = started("changed=yes\ncli=linked\nhow=systemd\nlinger=refused\nskiff-start=running\nskiff-install=done\n");
         assert_eq!(o, Outcome { changed: true, how: "systemd".into(), linger: "refused".into(), running: true, cli_linked: true });
         assert!(!started("changed=no\nskiff-start=stopped\n").running);
+    }
+
+    /// server.sh and the probe as a Mac sees them: stand-ins for `uname`
+    /// and `launchctl` (which logs its arguments, and answers `print` from
+    /// a file), a temp home, and a live socket so the start does not wait.
+    #[test]
+    fn a_mac_gets_a_launch_agent_once_and_a_loaded_one_is_only_kickstarted() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("skiff-mac-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // A home with an `&`, to see the plist escape it.
+        let home = dir.join("a&b");
+        let (bin, run) = (dir.join("bin"), dir.join("run"));
+        for d in [&bin, &run.join("skiff"), &home.join(".local/share/skiff/server/1.0.0")] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::os::unix::fs::symlink("1.0.0", home.join(".local/share/skiff/server/current")).unwrap();
+        std::fs::write(home.join(".local/share/skiff/server/1.0.0/skiffd"), "").unwrap();
+        std::fs::write(home.join(".local/share/skiff/server/installed-by"), "app\n").unwrap();
+        std::fs::write(home.join(".local/share/skiff/server/1.0.0/manifest.json"), r#"{"version": "1.0.0", "protocol": 27}"#).unwrap();
+        let log = dir.join("launchctl.log");
+        let stubs = [
+            ("uname", "#!/bin/sh\n[ \"$1\" = -m ] && echo arm64 || echo Darwin\n".to_string()),
+            ("launchctl", format!("#!/bin/sh\necho \"$*\" >> '{0}'\n[ \"$1\" = print ] && grep -qx \"$2\" '{0}.loaded' 2>/dev/null\nexit $?\n", log.display())),
+        ];
+        for (name, text) in stubs {
+            std::fs::write(bin.join(name), text).unwrap();
+            std::fs::set_permissions(bin.join(name), std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        std::fs::set_permissions(home.join(".local/share/skiff/server/1.0.0/skiffd"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        let _sock = std::os::unix::net::UnixListener::bind(run.join("skiff/skiffd.sock")).unwrap();
+        let sh = |script: &str, args: &[&str]| {
+            let mut child = std::process::Command::new("sh")
+                .args(["-s", "--"])
+                .args(args)
+                .env("HOME", &home)
+                .env("XDG_RUNTIME_DIR", &run)
+                .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap();
+            std::io::Write::write_all(&mut child.stdin.take().unwrap(), script.as_bytes()).unwrap();
+            String::from_utf8(child.wait_with_output().unwrap().stdout).unwrap()
+        };
+        let uid = sh("id -u", &[]).trim().to_string();
+        let plist = home.join("Library/LaunchAgents/com.solutionscay.skiff.skiffd.plist");
+
+        // Not loaded: one bootstrap. /dev/console is not this account's
+        // here, so it goes to the user domain, which ssh reaches.
+        let out = sh(SERVER, &["start", "skiffd.sock"]);
+        let o = started(&out);
+        assert_eq!((o.how.as_str(), o.running, value(&out, "domain")), ("launchd", true, "user"), "{out}");
+        let text = std::fs::read_to_string(&plist).unwrap();
+        let want = format!("<string>{}/.local/share/skiff/server/current/skiffd</string>", dir.join("a&amp;b").display());
+        assert!(text.contains(&want), "{text}");
+        for key in ["<key>RunAtLoad</key>\n  <true/>", "<key>Crashed</key>\n    <true/>", "<string>com.solutionscay.skiff.skiffd</string>"] {
+            assert!(text.contains(key), "{key}");
+        }
+        let calls = std::fs::read_to_string(&log).unwrap();
+        assert!(calls.contains(&format!("bootstrap user/{uid} {}", plist.display())), "{calls}");
+        assert!(!calls.contains("kickstart") && !calls.contains("bootout"), "{calls}");
+
+        // The probe sees the file; launchd has not loaded it in this stand-in.
+        let p: super::super::check::Probe = serde_json::from_str(&sh(super::super::check::PROBE, &["skiffd.sock"])).unwrap();
+        assert_eq!((p.os.as_str(), p.systemd, p.unit_enabled, p.unit_active), ("Darwin", false, true, false));
+
+        // Loaded in the GUI domain: only a kickstart, never a second load.
+        std::fs::write(format!("{}.loaded", log.display()), format!("gui/{uid}/com.solutionscay.skiff.skiffd\n")).unwrap();
+        std::fs::remove_file(&log).unwrap();
+        let out = sh(SERVER, &["start", "skiffd.sock"]);
+        assert_eq!(value(&out, "domain"), "gui", "{out}");
+        let calls = std::fs::read_to_string(&log).unwrap();
+        assert!(calls.contains(&format!("kickstart gui/{uid}/com.solutionscay.skiff.skiffd")) && !calls.contains("bootstrap"), "{calls}");
+        let p: super::super::check::Probe = serde_json::from_str(&sh(super::super::check::PROBE, &["skiffd.sock"])).unwrap();
+        assert!(p.unit_active);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

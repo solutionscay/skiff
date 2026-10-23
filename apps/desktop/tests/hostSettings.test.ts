@@ -32,7 +32,7 @@ class El {
 
 function tab(report?: unknown) {
   const calls: [string, unknown][] = [];
-  const dialogs: { title: string; content?: El[]; submit: () => Promise<void>; onClose?: () => void }[] = [];
+  const dialogs: { title: string; body?: string; content?: El[]; submit: () => Promise<void>; onClose?: () => void }[] = [];
   let prompt: { value?: string; submit: (v: string) => Promise<void> } | null = null;
   const hosts = [{ id: "h_dev", name: "devbox", destination: "devbox", user: "me", port: 2222, socket: "/run/user/1000/skiff/skiffd.sock", socket_override: false, state: "attention" }];
   const invoke = async (c: string, a?: unknown) => {
@@ -176,4 +176,21 @@ test("Install Skiff asks once, names the folder, installs, then checks again", a
   for (let i = 0; i < 4; i++) await flush();
   assert.equal(JSON.stringify(x.calls.filter(([c]) => c === "install_skiff")), JSON.stringify([["install_skiff", { id: "h_dev" }]]));
   assert.equal(x.calls.filter(([c]) => c === "check_host").length, checks + 1);
+});
+
+test("Install Skiff on a Mac names the LaunchAgent and when it starts again", async () => {
+  const x = tab({
+    ok: false,
+    platform: ["macos", "aarch64"],
+    version: "2.0.0",
+    rows: [{ row: "skiff", title: "Skiff on the server", state: "failed", text: "Skiff is not installed on devbox.", fix: "install_skiff" }],
+  });
+  await x.t.load();
+  x.t.open({ check: "h_dev" });
+  for (let i = 0; i < 4; i++) await flush();
+  x.redraw();
+  x.page().find("Install Skiff…")!.click();
+  const body = x.dialogs.at(-1)!.body ?? "";
+  assert.ok(body.startsWith("Skiff 2.0.0 for macOS aarch64."), body);
+  assert.ok(body.includes("~/Library/LaunchAgents") && body.includes("starts when you log in there"), body);
 });

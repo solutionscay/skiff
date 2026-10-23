@@ -671,7 +671,7 @@ async fn probe_now(h: &KnownHost) -> Result<skiff_client::host::check::Probe, St
     }
 }
 
-/// Installs Skiff on a Linux server in the account's home, and starts its
+/// Installs Skiff on a Linux or macOS server in the account's home, and starts its
 /// skiffd. Only where no skiffd runs that Skiff did not install. The bundle
 /// is the signed release bundle for this app's version; a dev build with no
 /// such release sends its own binaries.
@@ -683,12 +683,12 @@ pub(crate) async fn install_skiff(id: String) -> Result<InstallView, String> {
     if p.socket_live && p.managed.is_none() {
         return Err(format!("{} runs a Skiff that Skiff did not install. Skiff uses it as it is, and does not replace it.", h.name));
     }
-    let (Some("linux"), Some(arch)) = (p.bundle_os(), p.bundle_arch()) else {
-        return Err(format!("Skiff installs itself on Linux servers on x86_64 and ARM64 only. {} runs {} on {}.", h.name, p.os, p.arch));
+    let (Some(os), Some(arch)) = (p.bundle_os(), p.bundle_arch()) else {
+        return Err(format!("Skiff installs itself on Linux and macOS servers on x86_64 and ARM64 only. {} runs {} on {}.", h.name, p.os, p.arch));
     };
-    let bundle = match install::download(VERSION, "linux", arch).await {
+    let bundle = match install::download(VERSION, os, arch).await {
         Ok(b) => b,
-        Err(e) if cfg!(debug_assertions) => {
+        Err(e) if cfg!(debug_assertions) && os == std::env::consts::OS => {
             let exe = std::env::current_exe().map_err(|e| e.to_string())?;
             let beside = exe.parent().ok_or("This build has no folder.")?.to_path_buf();
             install::dev_bundle(VERSION, arch, &beside).await.map_err(|dev| format!("{e} {dev}"))?

@@ -803,3 +803,105 @@ async fn skiff_installs_once_into_the_home_and_its_skiffd_answers() {
     assert_eq!(std::fs::read_to_string(&pidfile).unwrap(), pid);
     assert_eq!(linger(), linger_before, "this account's linger did not change");
 }
+
+/// The macOS path over a real ssh run, on Linux: stand-ins for `uname`
+/// (Darwin) and `launchctl` (it starts the plist's program with setsid and
+/// keeps its pid), and the real skiffd. Real launchd is not tested here.
+#[tokio::test]
+async fn a_mac_server_gets_skiff_and_a_launch_agent_once() {
+    use skiff_client::host::{check, install};
+    use std::os::unix::fs::PermissionsExt;
+    let Some(mut f) = fixture("o") else { return };
+    let d = f.dir.clone();
+    for sub in ["home", "run", "beside", "bin"] {
+        std::fs::create_dir_all(d.join(sub)).unwrap();
+    }
+    std::fs::set_permissions(d.join("run"), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let pidfile = d.join("agent.pid");
+    let stubs = [
+        ("uname", "#!/bin/sh\n[ \"$1\" = -m ] && exec /bin/uname -m\necho Darwin\n".to_string()),
+        (
+            "launchctl",
+            format!(
+                "#!/bin/sh\npid={0}\ncase $1 in\n  print) [ \"$2\" = \"user/$(id -u)/com.solutionscay.skiff.skiffd\" ] && kill -0 \"$(cat $pid 2>/dev/null)\" 2>/dev/null ;;\n  bootstrap) p=$(sed -n 's|.*<string>\\(/.*skiffd\\)</string>.*|\\1|p' \"$3\"); setsid nohup \"$p\" </dev/null >/dev/null 2>&1 & echo $! > $pid ;;\n  *) echo \"$*\" >> {0}.other ;;\nesac\n",
+                pidfile.display()
+            ),
+        ),
+    ];
+    for (name, text) in stubs {
+        std::fs::write(d.join("bin").join(name), text).unwrap();
+        std::fs::set_permissions(d.join("bin").join(name), std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let text = std::fs::read_to_string(d.join("sshd_config")).unwrap();
+    f.write("sshd_mac", &format!("{text}SetEnv HOME={0}/home XDG_RUNTIME_DIR={0}/run PATH={0}/bin:/usr/bin:/bin\n", d.display()));
+    assert!(f.start_sshd("sshd_mac"));
+    // Stops only the skiffd the stand-in started, by its pid file.
+    struct Stop(PathBuf);
+    impl Drop for Stop {
+        fn drop(&mut self) {
+            if let Ok(pid) = std::fs::read_to_string(&self.0).map(|p| p.trim().parse::<i32>().unwrap_or(0)) {
+                if pid > 0 {
+                    // SAFETY: a signal to the one process this test started.
+                    unsafe { libc::kill(pid, libc::SIGTERM) };
+                }
+            }
+        }
+    }
+    let _stop = Stop(pidfile.clone());
+
+    std::fs::copy(env!("CARGO_BIN_EXE_skiffd"), d.join("beside/skiffd")).unwrap();
+    for b in ["skiff-host", "skiff"] {
+        std::fs::write(d.join("beside").join(b), "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(d.join("beside").join(b), std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let version = "9.9.9-mac";
+    let b = install::dev_bundle(version, std::env::consts::ARCH, &d.join("beside")).await.unwrap();
+    let target = SshTarget::new("fixture", "");
+    let options = f.options("ssh_config");
+    let name = "skiffd-dev.sock";
+    let probe = || {
+        let (t, o) = (target.clone(), options.clone());
+        async move {
+            match check::run_probe(&t, &o, name, None).await.unwrap() {
+                check::ProbeRun::Probed(p, _) => p,
+                _ => panic!("the probe did not run"),
+            }
+        }
+    };
+    let before = probe().await;
+    assert_eq!((before.os.as_str(), before.bundle_os(), before.managed.as_ref(), before.unit_enabled), ("Darwin", Some("macos"), None, false), "{before:?}");
+
+    let first = install::install(&target, &options, &b, version, name, before.free_kb, "fixture").await.unwrap();
+    assert_eq!((first.changed, first.how.as_str(), first.running, first.linger.as_str()), (true, "launchd", true, ""), "{first:?}");
+    let pid = std::fs::read_to_string(&pidfile).unwrap();
+    assert!(d.join("home/Library/LaunchAgents/com.solutionscay.skiff.skiffd.plist").exists());
+    assert!(d.join("run/skiff").join(name).exists(), "skiffd listens in the fixture's runtime folder");
+    let after = probe().await;
+    assert!(after.socket_live && after.unit_enabled && after.unit_active && !after.systemd, "{after:?}");
+
+    // A second install and a Start change nothing: no second load, same pid.
+    let second = install::install(&target, &options, &b, version, name, after.free_kb, "fixture").await.unwrap();
+    assert_eq!((second.changed, second.running), (false, true), "{second:?}");
+    assert!(install::start(&target, &options, name).await.unwrap().running);
+    assert_eq!(std::fs::read_to_string(&pidfile).unwrap(), pid);
+    assert!(!d.join("agent.pid.other").exists() || !std::fs::read_to_string(d.join("agent.pid.other")).unwrap().contains("bootout"));
+
+    // The whole check list passes, and Keeps running passes on a Mac.
+    let input = check::CheckInput {
+        target: target.clone(),
+        name: "fixture".into(),
+        socket_override: None,
+        socket_name: name.into(),
+        pin: None,
+        forward_dir: d.join("chk"),
+        home: None,
+        agent: false,
+        installed: None,
+        version: version.into(),
+        linger_refused: false,
+    };
+    let report = check::check(&input, &options).await;
+    assert!(report.ok, "{:#?}", report.rows);
+    assert_eq!(report.platform.as_ref().map(|p| p.0.as_str()), Some("macos"));
+    assert_eq!(report.rows.last().unwrap().state, check::State::Passed, "{:#?}", report.rows);
+}

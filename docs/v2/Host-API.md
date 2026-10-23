@@ -924,10 +924,23 @@ OpenSSH stream-local forward to the remote skiffd socket.
     Skiff did not install is used as it is, never replaced, stopped or started.
   - **Dev builds:** with no release for their version, a debug build sends
     its own `skiffd`, `skiff-host` and `skiff` (beside its executable), for a
-    Linux server with this computer's arch only, unsigned. A release build
+    server with this computer's OS and arch only, unsigned. A release build
     never does.
-  - No sudo, nothing outside the account's home and runtime folder, and no
-    install on macOS servers yet: the row says so.
+  - No sudo, and nothing outside the account's home and runtime folder.
+- **Install and start on macOS** (#166 slice 9): the same folder, upload and
+  `server.sh` steps, with the macOS bundle. **Start** writes the LaunchAgent
+  `~/Library/LaunchAgents/com.solutionscay.skiff.skiffd.plist` (`RunAtLoad`,
+  restart after a crash only) and loads it with `launchctl bootstrap`: into
+  `gui/<uid>` when this account owns the console, else into `user/<uid>`,
+  which an ssh login reaches and which keeps running after logout (the rule
+  `brew services` uses). An agent that is loaded already gets only a
+  `launchctl kickstart`; a changed file waits for the next load, because a
+  reload ends every session. No linger on macOS.
+  - **A Mac with no login (headless):** a LaunchAgent does not start at boot
+    before a login, and a LaunchDaemon needs admin, which Skiff does not use.
+    So Skiff accepts "starts at login": after a restart, the Mac's own login
+    starts it, and a Mac that nobody logs in to shows **Start** in the check
+    list, which loads the agent again over ssh. Row 10 says so and passes.
 - **Remote commands:** the probe, the key install, the key-file fix, the
   upload and the server steps (install, start, linger). All are fixed
   scripts in the app; their values (a version, a hash, a socket name, a key
