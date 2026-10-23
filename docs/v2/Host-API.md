@@ -985,8 +985,31 @@ OpenSSH stream-local forward to the remote skiffd socket.
     older one says "Update available" and opens its check list; a Skiff
     from its own install with an older protocol says that only the person
     there can update it.
+- **Headless install** (#166 slice 6b): one command on a server with only a
+  shell, `curl -fsSL https://github.com/solutionscay/skiff/releases/latest/download/install.sh | sh`,
+  run as the account that owns the sessions, with no sudo. `install.sh` is
+  `server.sh` itself: with no mode it runs the headless steps, and the app
+  sends the same file with a mode. The release job
+  (`scripts/server-bundle/install-sh.sh`) writes in the version, the
+  SHA-256 of each bundle from `SHA256SUMS` and the public key. The script
+  downloads the bundle for `uname -s -m`, refuses one whose hash differs,
+  checks the minisign signature and its `file:<name>` comment when
+  `minisign` is on the server (else it says it checked the hash only), then
+  runs the same update and start steps as the app (`installed-by` is
+  `install.sh`): skiffd and skiff-host, as systemd user units, the fallback,
+  or LaunchAgents on macOS. Running it again updates with the handover; the same
+  version changes nothing; it never moves down. When the handover is not
+  possible, it names the sessions and goes on only with `--yes`. It ends by
+  naming `user@hostname` (and one address from `hostname -I`) to add in
+  Settings › Hosts. Each bundle carries `install.sh`, so
+  `~/.local/share/skiff/server/current/install.sh --uninstall` runs the same
+  uninstall as Remove… in the app: it stops what Skiff started (its units,
+  LaunchAgents or pid files), removes the managed folder, the unit or agent
+  files and our `skiff` link, and keeps `local-host-id`. With live sessions
+  it asks on the terminal first, or needs `--yes`. It refuses a server
+  where a Skiff from its own install holds the socket.
 - **Remote commands:** the probe, the key install, the key-file fix, the
-  upload and the server steps (install, update, start, linger, sessions, uninstall). All are fixed
+  upload and the server steps (install, update, start, linger, sessions, uninstall), and the same script run as install.sh on the server. All are fixed
   scripts in the app; their values (a version, a hash, a socket name, a key
   line) are checked against strict patterns and single-quoted.
 - **The check list** (Settings › Hosts › Check, and Connect): reach the

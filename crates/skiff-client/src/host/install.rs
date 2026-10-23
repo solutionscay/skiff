@@ -157,10 +157,13 @@ pub async fn dev_bundle(version: &str, arch: &str, beside: &Path) -> Result<Bund
             std::fs::copy(&from, dir.join(b)).map_err(|_| format!("This dev build has no {b} beside it. Build the workspace first."))?;
             manifest.files.insert(b.into(), sha256(&dir.join(b)).await?);
         }
-        // The systemd units go in a Linux bundle only, as in build.sh.
+        // The systemd units go in a Linux bundle only, and install.sh in
+        // every bundle, as in build.sh.
         let units: &[(&str, &str)] = if os == "linux" { &[("systemd/skiffd.service", UNIT_SKIFFD), ("systemd/skiff-host.service", UNIT_HOST)] } else { &[] };
-        for &(f, text) in units {
-            std::fs::create_dir_all(dir.join("systemd")).map_err(|e| e.to_string())?;
+        for &(f, text) in units.iter().chain(&[("install.sh", SERVER)]) {
+            if let Some(parent) = dir.join(f).parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
             std::fs::write(dir.join(f), text).map_err(|e| e.to_string())?;
             manifest.files.insert(f.into(), sha256(&dir.join(f)).await?);
         }
