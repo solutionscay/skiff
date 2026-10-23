@@ -14,7 +14,7 @@ import type { Appearance, DaemonStatus } from "./platform/types";
 import { invoke } from "@tauri-apps/api/core";
 import { switcher } from "./app/commands";
 import { followDataPlane, hostOnline, loadProjects, reconnectRemote, refreshSessions, reloadDaemon, setDaemon, subscribeEvents, untilConnected } from "./app/daemon";
-import { isRemote, loadHosts, setHostConnected, watchHostLink } from "./app/hosts";
+import { isRemote, loadHosts, onManageHosts, setHostConnected, watchHostLink } from "./app/hosts";
 import { muteInput } from "./terminal/terminalRuntime";
 import { loadHostCaps } from "./app/hostCaps";
 import { $ } from "./ui/dom";
@@ -43,6 +43,10 @@ configureRender(render);
 configurePaneActions({ focusPane, closePane, dragSessions });
 configureActionDispatch(runAction);
 configureCommandUi(switcher);
+// The Host menu's Add SSH Host… and Manage Hosts… open Settings › Hosts. Here, not in
+// panels.ts: hosts.ts imports panels.ts through the context menu, so a call there
+// runs before hosts.ts has its `manage`.
+onManageHosts((page) => void settings.open(page));
 
 // Skiff owns right-click. The webview's own menu (Back, Reload, Inspect)
 // never shows; text fields keep theirs for cut, copy and paste.

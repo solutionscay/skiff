@@ -17,7 +17,6 @@ import { launchChoices } from "./stateQueries";
 import { loadThemes } from "../appearance/themes";
 import { refocusTerminal, selectProject } from "../workspace/view";
 import { includeAdded } from "../workspace/profile";
-import { onManageHosts } from "./hosts";
 
 export const settings = createSettings(
   (a) => {
@@ -38,9 +37,6 @@ export const settings = createSettings(
   // Edit › Copy and Paste work in its text fields while it shows.
   scheduleRender,
 );
-
-// The Host menu's Add SSH Host… and Manage Hosts… open Settings › Hosts.
-onManageHosts((page) => void settings.open(page));
 
 export const launchMenu = createLaunchMenu({
   choices: launchChoices,
