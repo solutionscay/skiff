@@ -76,6 +76,15 @@ while True:
         std::fs::write(&ssh, script).unwrap();
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&ssh, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // Another test's fork can hold the new file open for a moment, and
+        // exec then fails with ETXTBSY. Once one run of it starts, no fork
+        // holds it any more: this one, with no `-L`, stops at once.
+        for _ in 0..200 {
+            match std::process::Command::new(&ssh).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status() {
+                Err(e) if e.raw_os_error() == Some(libc::ETXTBSY) => std::thread::sleep(std::time::Duration::from_millis(10)),
+                _ => break,
+            }
+        }
         Some(Self { dir })
     }
 
