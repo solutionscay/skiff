@@ -4,7 +4,9 @@
 # ~/.local/share/skiff/server/.incoming.tar.gz, $4 the skiffd socket name.
 # start: $2 the socket name. Each step prints key=value lines and ends with
 # skiff-<mode>=<outcome>. It never stops or replaces a skiffd it did not
-# start: Skiff only runs it after the check found no other one.
+# start: Skiff only runs it after the check found no other one. skiff-host
+# (projects) runs beside the managed skiffd, and restarts after an install
+# that changed the version.
 set -u
 mode=$1
 d=$HOME/.local/share/skiff/server
@@ -39,6 +41,7 @@ start() {
     systemctl --user -q is-active skiffd || systemctl --user start skiffd
     echo how=systemd
     linger
+    host_unit "$1"
   else
     # Without a user manager: it runs until the server restarts.
     pid=$(cat "$d/skiffd.pid" 2>/dev/null)
@@ -54,7 +57,51 @@ start() {
   fi
   n=0
   while [ ! -S "$sock" ] && [ $n -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+  has_systemd || host_fallback "$sock"
+  hs=$rt/skiff/${1%.sock}-host.sock
+  n=0
+  while [ ! -S "$hs" ] && [ $n -lt 50 ] && host_alive; do sleep 0.1; n=$((n + 1)); done
+  if [ -S "$hs" ] && host_alive; then echo host=running; else echo host=stopped; fi
   if [ -S "$sock" ]; then echo "skiff-start=running"; else echo "skiff-start=stopped"; fi
+}
+
+# skiff-host's user unit, for the skiffd socket named $1: enabled, started,
+# restarted by systemd when it stops, and after an install that changed the
+# version ($restart_host).
+host_unit() {
+  u=$HOME/.config/systemd/user
+  sed "s#/skiffd\.sock#/$1#" "$d/current/systemd/skiff-host.service" > "$u/.skiff-host.service.new"
+  if cmp -s "$u/.skiff-host.service.new" "$u/skiff-host.service"; then rm -f "$u/.skiff-host.service.new"
+  else mv "$u/.skiff-host.service.new" "$u/skiff-host.service"; systemctl --user daemon-reload; fi
+  systemctl --user enable -q skiff-host 2>/dev/null
+  if [ "${restart_host:-}" = yes ]; then systemctl --user restart skiff-host
+  else systemctl --user -q is-active skiff-host || systemctl --user start skiff-host; fi
+}
+
+# The pid file's skiff-host runs. Never another process that took its pid.
+host_pid() {
+  p=$(cat "$d/skiff-host.pid" 2>/dev/null)
+  [ -n "$p" ] && kill -0 "$p" 2>/dev/null && tr '\000' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -q skiff-host && echo "$p"
+}
+host_alive() { has_systemd && systemctl --user -q is-active skiff-host || [ -n "$(host_pid)" ]; }
+
+# Without a user manager: skiff-host for the skiffd at $1, until the server
+# restarts. After an install that changed the version, the old one stops first.
+host_fallback() {
+  p=$(host_pid)
+  if [ -n "$p" ] && [ "${restart_host:-}" = yes ]; then
+    kill "$p" 2>/dev/null
+    n=0
+    while kill -0 "$p" 2>/dev/null && [ $n -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+    p=
+  fi
+  [ -n "$p" ] && return
+  if command -v setsid >/dev/null 2>&1; then
+    setsid nohup "$d/current/skiff-host" --session-socket "$1" </dev/null >/dev/null 2>&1 &
+  else
+    nohup "$d/current/skiff-host" --session-socket "$1" </dev/null >/dev/null 2>&1 &
+  fi
+  echo $! > "$d/skiff-host.pid"
 }
 
 install() {
@@ -86,6 +133,7 @@ install() {
       [ "$n" = "$v" ] || [ "$n" = "$prev" ] || rm -rf "$x"
     done
     echo changed=yes
+    restart_host=yes
   fi
   rm -f "$in"
   # The skiff CLI for agents on the server, only where the name is free or ours.

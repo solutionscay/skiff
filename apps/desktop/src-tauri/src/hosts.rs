@@ -703,7 +703,8 @@ pub(crate) async fn install_skiff(id: String) -> Result<InstallView, String> {
     Ok(InstallView { outcome, source: bundle.source, version: VERSION })
 }
 
-/// Starts the managed skiffd on a server. Never one Skiff did not install.
+/// Starts the managed skiffd and skiff-host on a server, each if it does
+/// not run. Never one Skiff did not install.
 #[tauri::command]
 pub(crate) async fn start_skiff(id: String) -> Result<skiff_client::host::install::Outcome, String> {
     let h = host_by_id(&id).await?;
@@ -717,6 +718,9 @@ pub(crate) async fn start_skiff(id: String) -> Result<skiff_client::host::instal
     }
     if !out.running {
         return Err(format!("Skiff's sessions service on {} stops right after it starts.", h.name));
+    }
+    if !out.host_running {
+        return Err(format!("Skiff's projects service on {} stops right after it starts. Sessions work.", h.name));
     }
     Ok(out)
 }

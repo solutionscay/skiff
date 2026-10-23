@@ -1,7 +1,7 @@
 //! Install and start Skiff on a Linux server, in the account's home only:
 //! `~/.local/share/skiff/server/<version>`, a `current` link, a systemd
-//! user unit for skiffd (or, without a user manager, a plain background
-//! start), linger, and `~/.local/bin/skiff` where that name is free. No
+//! user unit each for skiffd and skiff-host (or, without a user manager, a
+//! plain background start), linger, and `~/.local/bin/skiff` where that name is free. No
 //! sudo, and no system folder. Each step runs only after the person
 //! confirms it in Settings › Hosts.
 //!
@@ -59,6 +59,8 @@ pub struct Outcome {
     pub linger: String,
     /// skiffd's socket is there after the step.
     pub running: bool,
+    /// skiff-host (projects) listens beside it after the step.
+    pub host_running: bool,
     /// `~/.local/bin/skiff` is ours. False: another file has that name.
     pub cli_linked: bool,
 }
@@ -203,6 +205,7 @@ fn started(out: &str) -> Outcome {
         how: value(out, "how").into(),
         linger: value(out, "linger").into(),
         running: value(out, "skiff-start") == "running",
+        host_running: value(out, "host") == "running",
         cli_linked: value(out, "cli") == "linked",
     }
 }
@@ -238,7 +241,8 @@ pub async fn install(target: &SshTarget, options: &SshOptions, b: &Bundle, versi
     }
 }
 
-/// Starts the managed skiffd on the server if it does not run.
+/// Starts the managed skiffd and its skiff-host on the server, each if it
+/// does not run.
 pub async fn start(target: &SshTarget, options: &SshOptions, socket_name: &str) -> Result<Outcome, String> {
     if !plain_version(socket_name) {
         return Err("This socket name has a form Skiff does not send.".into());
@@ -272,8 +276,8 @@ mod tests {
 
     #[test]
     fn the_step_lines_read_as_an_outcome() {
-        let o = started("changed=yes\ncli=linked\nhow=systemd\nlinger=refused\nskiff-start=running\nskiff-install=done\n");
-        assert_eq!(o, Outcome { changed: true, how: "systemd".into(), linger: "refused".into(), running: true, cli_linked: true });
+        let o = started("changed=yes\ncli=linked\nhow=systemd\nlinger=refused\nhost=running\nskiff-start=running\nskiff-install=done\n");
+        assert_eq!(o, Outcome { changed: true, how: "systemd".into(), linger: "refused".into(), running: true, host_running: true, cli_linked: true });
         assert!(!started("changed=no\nskiff-start=stopped\n").running);
     }
 }

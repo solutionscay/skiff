@@ -917,6 +917,11 @@ OpenSSH stream-local forward to the remote skiffd socket.
     turned on (`loginctl enable-linger`, the account's own right on most
     systems). Without one, `setsid nohup` starts skiffd and a pid file
     tracks it: it runs until the server restarts.
+  - **skiff-host** (#166 slice 7) runs beside the managed skiffd: the
+    bundle's `skiff-host.service` (`Restart=always`, no start limit), with
+    the socket name of this build, enabled and started with skiffd; without
+    a user manager, `setsid nohup` and `skiff-host.pid`. Start brings back
+    whichever is down. An install that changed the version restarts it.
   - **Turn on…** asks for lingering later. When the server refuses it, the
     row says so in plain words; the Host works while the person is logged in.
   - **Never take over:** Install runs only where no skiffd answers and no
@@ -937,8 +942,10 @@ OpenSSH stream-local forward to the remote skiffd socket.
   macOS, x86_64 or ARM64), Skiff on the server (managed, from its own
   install, or not installed), sessions service (skiffd), socket forwarding
   (a real `-L` forward), identity and version (a ping over it, compared with
-  the pin, which it never stores), and keeps running after logout (a
-  warning: the Host can be used without it). A failed row skips the rows
+  the pin, which it never stores), projects service (a Hello to
+  `skiff-host` that must name the same Host id; a warning, with Start for a
+  managed install) and keeps running after logout (both units enabled and
+  linger; a warning: the Host can be used without it). A failed row skips the rows
   under it. It stores only the socket the probe found, unless the person set
   one.
 - **Backoff:** after a failed open, the next waits 1, 2, 4 … up to 30 s.
@@ -1373,8 +1380,8 @@ Tracking: [M4 #160](https://github.com/solutionscay/skiff/issues/160), [epic #15
     (`sidecar.sh`, `externalBin`).
   - If it does not start, the projects list shows why. No local read stands
     in.
-- **A remote Host.** The app never starts, installs or upgrades anything
-  there. Without a service, the page shows that Host's sessions only, as in
+- **A remote Host.** The app starts `skiff-host` there only for a managed
+  install, from Settings › Hosts (#166 slice 7). Without a service, the page shows that Host's sessions only, as in
   M2/M3. With a service, the sidebar shows that Host's projects, fleets,
   worktrees and change counts. They are read-only:
   - Project, worktree and fleet menus offer New session and Copy path only.
@@ -1393,7 +1400,8 @@ Tracking: [M4 #160](https://github.com/solutionscay/skiff/issues/160), [epic #15
    skiffd.
    - Stop that `skiff-host`. Terminals keep working. The next project read
      starts it again.
-2. **An SSH Host.** On that Host, start `skiff-host` next to its skiffd. Use
+2. **An SSH Host.** Install Skiff… in Settings › Hosts starts `skiff-host`
+   next to its skiffd. On a Host with its own install, start it there with
    the same `SKIFF_*` environment as that skiffd, or none for the default.
    - Pick the Host in the app. Its projects, fleets, worktrees and changed
      files show in the sidebar, under that Host's paths.
@@ -1458,9 +1466,12 @@ Tracking: [M4 #160](https://github.com/solutionscay/skiff/issues/160), [epic #15
 - **Per-project display settings.** `changes` comes from the Host since the
   second slice. `files_projects` and `project_themes` still come from this
   Mac's config, and are not loaded for a remote Host.
-- **Supervision.** On a remote Host, the person starts `skiff-host`.
-  Nothing restarts it. `skiff status` does not show it. A release-skill and
-  upgrade story for two-process Hosts belongs to M7.
+- **Supervision.** Closed by #166 slice 7 for a managed install on Linux:
+  Install Skiff… starts `skiff-host` beside skiffd as a systemd user unit
+  (`Restart=always`), or without a user manager in the background until the
+  server restarts. The check list's projects row offers Start when it is
+  down, and an install of a new version restarts it. A Skiff the person
+  installed is still theirs to run. `skiff status` does not show it.
 - **Change watching.** The page still reads again on session events. The
   Host has no data-plane event stream yet.
 - **Stale capabilities.** Fixed in the second slice: the page follows the
