@@ -28,6 +28,7 @@ class El {
   all(): El[] { return [this, ...this.children.flatMap((c) => c.all())]; }
   find(text: string) { return this.all().find((e) => e.textContent === text); }
   click() { for (const f of this.listeners.click ?? []) f({}); }
+  replaceWith(e: El) { this.textContent = ""; this.children = [e]; }
 }
 
 function tab(report?: unknown) {
@@ -40,6 +41,7 @@ function tab(report?: unknown) {
     if (c === "resolve_ssh") return { hostname: "devbox.lan", user: "me", port: 2222, jump: "" };
     if (c === "ssh_aliases") return [{ name: "devbox", goes_to: "me@devbox.lan" }];
     if (c === "check_host" && report) return report;
+    if (c === "uninstall_preview") return { managed: true, sessions: ["build", "shell"] };
     if (c === "install_skiff") return { source: "release", version: "2.0.0", cli_linked: true, changed: true, how: "systemd", linger: "yes", running: true };
     if (c === "check_host") return { ok: true, rows: [{ row: "reach", title: "Reach the server", state: "passed", text: "devbox.lan answers. 12 ms." }] };
   };
@@ -176,4 +178,24 @@ test("Install Skiff asks once, names the folder, installs, then checks again", a
   for (let i = 0; i < 4; i++) await flush();
   assert.equal(JSON.stringify(x.calls.filter(([c]) => c === "install_skiff")), JSON.stringify([["install_skiff", { id: "h_dev" }]]));
   assert.equal(x.calls.filter(([c]) => c === "check_host").length, checks + 1);
+});
+
+test("Remove asks first; the uninstall box shows for a managed install and names the sessions that end", async () => {
+  const x = tab();
+  await x.t.load();
+  x.redraw();
+  x.page().find("Remove…")!.click();
+  const d = x.dialogs.at(-1)!;
+  assert.equal(d.title, "Remove devbox?");
+  for (let i = 0; i < 4; i++) await flush();
+  const all = d.content!.flatMap((c) => c.all());
+  const box = all.find((e) => e.tag === "input") as unknown as { checked: boolean; listeners: Record<string, (() => void)[]> };
+  assert.ok(box, "the box shows once the server says Skiff installed it");
+  assert.ok(all.some((e) => e.textContent.includes("This ends its 2 sessions: build, shell.")));
+  assert.equal(x.calls.filter(([c]) => c === "remove_host").length, 0, "nothing changes before the confirm");
+  box.checked = true;
+  for (const f of box.listeners.change) f();
+  assert.match(d.content![0].textContent, /Your projects and all other files on devbox stay/);
+  await d.submit();
+  assert.equal(JSON.stringify(x.calls.filter(([c]) => c === "remove_host")), JSON.stringify([["remove_host", { id: "h_dev", uninstall: true }]]));
 });

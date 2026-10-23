@@ -66,7 +66,7 @@ pub struct Outcome {
 }
 
 /// A version Skiff sends as a value: digits, letters, dots, `+` and `-`.
-fn plain_version(v: &str) -> bool {
+pub(super) fn plain_version(v: &str) -> bool {
     !v.is_empty() && v.len() <= 64 && v.bytes().all(|b| b.is_ascii_alphanumeric() || b".+-".contains(&b))
 }
 
@@ -173,7 +173,7 @@ pub async fn dev_bundle(version: &str, arch: &str, beside: &Path) -> Result<Bund
 }
 
 /// One strict, batch ssh run of `command`, with `stdin`. Its stdout.
-async fn run(target: &SshTarget, options: &SshOptions, command: String, stdin: &[u8]) -> Result<String, String> {
+pub(super) async fn run(target: &SshTarget, options: &SshOptions, command: String, stdin: &[u8]) -> Result<String, String> {
     let mut child = Command::new(&options.program)
         .args(batch_args(target, options, command))
         .stdin(Stdio::piped())
@@ -195,7 +195,7 @@ async fn run(target: &SshTarget, options: &SshOptions, command: String, stdin: &
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-fn value<'a>(out: &'a str, key: &str) -> &'a str {
+pub(super) fn value<'a>(out: &'a str, key: &str) -> &'a str {
     out.lines().find_map(|l| l.trim().strip_prefix(key)?.strip_prefix('=')).unwrap_or("")
 }
 

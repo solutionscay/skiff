@@ -498,10 +498,17 @@ pub(crate) async fn rename_host(id: String, name: String) -> Result<(), String> 
 }
 
 /// Forgets a remote Host. The shown Host cannot go: pick another first.
+/// `uninstall`: first stop Skiff's services on the server and delete the
+/// managed install. If that fails, the Host stays in the list.
 #[tauri::command]
-pub(crate) async fn remove_host(app: State<'_, App>, id: String) -> Result<(), String> {
+pub(crate) async fn remove_host(app: State<'_, App>, id: String, uninstall: Option<bool>) -> Result<(), String> {
     if shown_id(&app).as_deref() == Some(id.as_str()) {
         return Err("This window shows that Host. Pick another Host first.".into());
+    }
+    if uninstall == Some(true) {
+        let h = host_by_id(&id).await?;
+        skiff_client::host::uninstall::uninstall(&h.target(), &SshOptions::default(), &h.name).await?;
+        LAST.lock().unwrap().remove(&id);
     }
     blocking(move || {
         update(&path(), |hosts| {
@@ -510,6 +517,14 @@ pub(crate) async fn remove_host(app: State<'_, App>, id: String) -> Result<(), S
         })
     })
     .await
+}
+
+/// For the Remove confirm: whether Skiff installed Skiff on the Host, and
+/// which sessions an uninstall ends. Read only.
+#[tauri::command]
+pub(crate) async fn uninstall_preview(id: String) -> Result<skiff_client::host::uninstall::Preview, String> {
+    let h = host_by_id(&id).await?;
+    skiff_client::host::uninstall::preview(&h.target(), &SshOptions::default(), SOCKET_NAME).await
 }
 
 /// The aliases in this computer's ssh config, for the Server field.
