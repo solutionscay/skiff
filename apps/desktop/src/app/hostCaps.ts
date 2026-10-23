@@ -4,7 +4,7 @@
  *  connection checks each request again; nothing falls back to local data. */
 import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
 
-export type HostCap =
+type HostCap =
   | "session_inventory"
   | "session_screen"
   | "session_updates"

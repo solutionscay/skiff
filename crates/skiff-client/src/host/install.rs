@@ -116,13 +116,8 @@ pub async fn dev_bundle(version: &str, arch: &str, beside: &Path) -> Result<Bund
     if !cfg!(debug_assertions) {
         return Err("Only a dev build of Skiff installs its own binaries.".into());
     }
-    let here = match std::env::consts::ARCH {
-        "x86_64" => "x86_64",
-        "aarch64" => "aarch64",
-        other => other,
-    };
     let os = std::env::consts::OS;
-    if !matches!(os, "linux" | "macos") || here != arch {
+    if !matches!(os, "linux" | "macos") || std::env::consts::ARCH != arch {
         return Err(format!("This dev build has no Skiff {version} for {arch}: it runs on another system, and no release has that version."));
     }
     let name = format!("skiff-server-{version}-{os}-{arch}");

@@ -254,7 +254,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "c07a9772f4c731f8552d2f5f5afcf44e94d41cea3372e1e36e9d4e2aed01acb8"
+    "sha256": "ed39a5ed97e464e41910684374513c2523ebf12ddcab233dd8629df804e7be05"
   },
   "apps/desktop/src/app/groups.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -273,7 +273,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "dce36671a23d0085c7c358548d5d7919c5bea6125db48c64834c4f890af0b654"
+    "sha256": "e1ec4e8ccd5faa85c0b8c93aa665bf61ad75e5eb96f0b140e9b733f32ca8c312"
   },
   "apps/desktop/src/app/hosts.ts": {
     "ownership": "client policy: Host picker and label (list/select Hosts, links to Settings \u203a Hosts, clipboard opt-in) and the remote link-lost signal",
@@ -282,7 +282,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "dbb43b15c4727e298ad50126f9a6a214c50373422c0831ec8801a37fbc8833d3"
+    "sha256": "7265fd54bf93fec8a600fe91773e396c21831be1f6c95dd4de5194be68624674"
   },
   "apps/desktop/src/app/keyboard.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

@@ -128,7 +128,7 @@ export function pick(id: string | null) {
 }
 
 /** The Host menu: pick a Host, add one, or manage them in Settings. */
-export function openHostMenu(anchor: HTMLElement) {
+function openHostMenu(anchor: HTMLElement) {
   const r = anchor.getBoundingClientRect();
   const mark = (on: boolean) => (on ? "indicators-check" : undefined);
   const entries: MenuEntry[] = [

@@ -243,6 +243,7 @@ fn probe_command(socket_name: &str, socket_override: Option<&str>) -> String {
 }
 
 /// What the probe's ssh run gave.
+#[allow(clippy::large_enum_variant, reason = "one per probe run, never in a collection")]
 pub enum ProbeRun {
     Probed(Probe, Duration),
     /// ssh stopped before the probe printed: its stderr, kept for the cause.

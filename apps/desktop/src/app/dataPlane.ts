@@ -23,7 +23,7 @@ export interface DataStatus {
 }
 
 /** The checks: often while it is out of reach, then less often. */
-export const READY_EVERY_MS = 5000;
+const READY_EVERY_MS = 5000;
 const RETRY_FIRST_MS = 1000;
 const RETRY_MAX_MS = 30_000;
 
@@ -39,7 +39,7 @@ export function dataChange(prev: DataStatus | null, next: DataStatus): "reload" 
   return !prev || prev.ready || prev.message !== next.message ? "down" : null;
 }
 
-export interface DataHooks {
+interface DataHooks {
   /** A new data connection: capabilities, projects and Git again. False:
    *  a read failed, so the next ready check reads again. */
   reload(): Promise<boolean>;

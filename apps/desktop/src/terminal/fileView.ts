@@ -15,7 +15,7 @@ const IMAGE_MIB = 5;
 const IMAGES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "image/x-icon"]);
 
 /** A size for a note. */
-export function sizeLabel(bytes: number): string {
+function sizeLabel(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
   return `${Math.ceil(bytes / 1024)} KiB`;
 }

@@ -952,7 +952,7 @@ OpenSSH stream-local forward to the remote skiffd socket.
     So Skiff accepts "starts at login": after a restart, the Mac's own login
     starts it, and a Mac that nobody logs in to shows **Start** in the check
     list, which loads the agent again over ssh. Row 10 says so and passes.
-- **Remove and uninstall** (#166 slice 8, `skiff-client::host::uninstall`,
+- **Remove and uninstall** (#166 slice 8, `install::uninstall`,
   `server.sh`): **Remove…** forgets the Host on this computer, and its
   sessions keep running. When the install there is Skiff's, the confirm
   has a box: also stop and uninstall Skiff, which names the sessions that

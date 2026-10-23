@@ -10,7 +10,7 @@ import type { HostDiff } from "../platform/types";
 /** The Host's limit on diff text, for the cut note. */
 const LIMIT_KIB = 512;
 
-export type DiffLine = { cls: string; text: string };
+type DiffLine = { cls: string; text: string };
 
 /** Each line of `text` and how it shows. Text only: never parsed as HTML. */
 export function diffLines(text: string): DiffLine[] {
