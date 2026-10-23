@@ -38,11 +38,11 @@ type Form = { id: string | null; draft: Draft; more: boolean; error: string | nu
 interface CheckLine {
   row: string;
   title: string;
-  state: "passed" | "failed" | "skipped";
+  state: "passed" | "failed" | "skipped" | "warning";
   text: string;
   fix: Fix | null;
 }
-type Fix = "trust_key" | "review_key" | "make_key" | "unlock_key" | "install_key" | "copy_public_key" | "fix_permissions";
+type Fix = "trust_key" | "review_key" | "make_key" | "unlock_key" | "install_key" | "copy_public_key" | "fix_permissions" | "install_skiff" | "start_skiff" | "turn_on_linger";
 const FIX_LABEL: Record<Fix, string> = {
   trust_key: "Trust this key…",
   review_key: "Review…",
@@ -51,6 +51,9 @@ const FIX_LABEL: Record<Fix, string> = {
   install_key: "Install key…",
   copy_public_key: "Copy public key",
   fix_permissions: "Fix permissions…",
+  install_skiff: "Install Skiff…",
+  start_skiff: "Start",
+  turn_on_linger: "Turn on…",
 };
 interface Fingerprint {
   kind: string;
@@ -65,9 +68,23 @@ interface HostKey {
 interface Report {
   rows: CheckLine[];
   ok: boolean;
+  /** The server's OS and arch as bundle names write them. */
+  platform: [string, string] | null;
+  /** The Skiff version this app installs. */
+  version: string;
 }
 /** The rows, in order, before an answer. */
-const CHECK_ROWS = ["Reach the server", "Host key", "Log in without a prompt", "Sessions service (skiffd)", "Socket forwarding", "Skiff identity and version"];
+const CHECK_ROWS = [
+  "Reach the server",
+  "Host key",
+  "Log in without a prompt",
+  "Server supported",
+  "Skiff on the server",
+  "Sessions service (skiffd)",
+  "Socket forwarding",
+  "Skiff identity and version",
+  "Keeps running after logout",
+];
 
 type Check = { id: string; report: Report | null; error: string | null; note?: string };
 
@@ -233,7 +250,7 @@ export function createHostsTab(redraw: () => void) {
       else mark.append(h("span", "sq"));
       mark.setAttribute("aria-label", c.report ? r.state : "waiting");
       const text = h("span", "c-text", r.text);
-      if (c.report && r.state === "failed" && r.fix && x) {
+      if (c.report && (r.state === "failed" || r.state === "warning") && r.fix && x) {
         const fix = r.fix;
         text.append(button("set-rm set-fix", FIX_LABEL[fix], () => void runFix(c, x, fix)));
       }
@@ -264,6 +281,14 @@ export function createHostsTab(redraw: () => void) {
       if (fix === "unlock_key") return secretDialog(x, "unlock", again);
       if (fix === "install_key") return secretDialog(x, "install", again);
       if (fix === "fix_permissions") return secretDialog(x, "fix", again);
+      if (fix === "install_skiff") return installSkiff(c, x);
+      if (fix === "start_skiff") {
+        c.note = `Starting Skiff on ${x.name}…`;
+        redraw();
+        await invoke("start_skiff", { id: x.id });
+        return again();
+      }
+      if (fix === "turn_on_linger") return turnOnLinger(x, again);
       if (fix === "copy_public_key") {
         await copyText(await invoke<string>("public_key", { id: x.id }));
         c.note = `Public key copied. A public key is safe to send. It does not let anyone log in as you. When the admin of ${x.name} adds it, check again.`;
@@ -273,6 +298,48 @@ export function createHostsTab(redraw: () => void) {
       c.error = String(e);
       redraw();
     }
+  }
+
+  /** One confirm covers the install, the start and keeping it running. */
+  function installSkiff(c: Check, x: KnownHost) {
+    const [os, arch] = c.report?.platform ?? ["linux", ""];
+    const v = c.report?.version ?? "";
+    actionDialog({
+      title: `Install Skiff on ${x.name}?`,
+      body: `Skiff ${v} for ${os === "linux" ? "Linux" : os} ${arch}. Files go in ~/.local/share/skiff/server on ${x.name}. A user service starts skiffd (sessions) and keeps it running after you log out and after a restart. Nothing outside your home folder changes.`,
+      action: "Install Skiff",
+      tone: "go",
+      submit: async () => {
+        c.note = `Installing Skiff ${v} on ${x.name}…`;
+        c.error = null;
+        redraw();
+        try {
+          const r = await invoke<{ source: string; version: string; cli_linked: boolean }>("install_skiff", { id: x.id });
+          const from = r.source === "release" ? "" : ` This dev build sent its own binaries, as no release has Skiff ${r.version}.`;
+          const cli = r.cli_linked ? "" : ` ~/.local/bin/skiff on ${x.name} is another file, so Skiff left it.`;
+          await runCheck(x.id);
+          if (check) check.note = `Skiff ${r.version} is installed on ${x.name}.${from}${cli}`;
+          redraw();
+        } catch (e) {
+          c.note = undefined;
+          c.error = String(e);
+          redraw();
+        }
+      },
+    });
+  }
+
+  function turnOnLinger(x: KnownHost, done: () => void) {
+    actionDialog({
+      title: `Keep Skiff running on ${x.name} after you log out?`,
+      body: `Skiff turns on lingering for your account on ${x.name}. Its user services then start when the server starts, and keep running after you log out. Nothing else changes.`,
+      action: "Turn on",
+      tone: "go",
+      submit: async () => {
+        await invoke<boolean>("turn_on_linger", { id: x.id });
+        done();
+      },
+    });
   }
 
   /** Trust a new host key, or replace a changed one: the fingerprint first. */

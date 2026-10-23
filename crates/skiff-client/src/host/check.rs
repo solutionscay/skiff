@@ -49,6 +49,50 @@ pub struct Probe {
     pub cli: String,
     /// `skiff status --json` there, when a CLI and a socket were found.
     pub status: Option<Status>,
+    /// The install Skiff manages (`~/.local/share/skiff/server/current`).
+    #[serde(default)]
+    pub managed: Option<Managed>,
+    /// A systemd user manager answers.
+    #[serde(default)]
+    pub systemd: bool,
+    #[serde(default)]
+    pub unit_enabled: bool,
+    #[serde(default)]
+    pub unit_active: bool,
+    /// `loginctl … -p Linger`: `yes`, `no`, or empty without systemd.
+    #[serde(default)]
+    pub linger: String,
+    /// The fallback start's skiffd runs (its pid file).
+    #[serde(default)]
+    pub fallback: bool,
+    /// Free space in the account's home, in KiB.
+    #[serde(default)]
+    pub free_kb: u64,
+}
+
+impl Probe {
+    /// `linux` or `macos`, as bundle names write it. None: not supported.
+    pub fn bundle_os(&self) -> Option<&'static str> {
+        match self.os.as_str() {
+            "Linux" => Some("linux"),
+            "Darwin" => Some("macos"),
+            _ => None,
+        }
+    }
+    /// `x86_64` or `aarch64`. None: not supported.
+    pub fn bundle_arch(&self) -> Option<&'static str> {
+        match self.arch.as_str() {
+            "x86_64" | "amd64" => Some("x86_64"),
+            "aarch64" | "arm64" => Some("aarch64"),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct Managed {
+    pub version: String,
+    pub protocol: u32,
 }
 
 /// `skiff status --json`, as much as the check reads.
@@ -71,22 +115,28 @@ pub enum Row {
     Reach,
     HostKey,
     Login,
+    Supported,
+    Skiff,
     Sessions,
     Forwarding,
     Identity,
+    KeepRunning,
 }
 
 impl Row {
-    pub const ALL: [Row; 6] = [Row::Reach, Row::HostKey, Row::Login, Row::Sessions, Row::Forwarding, Row::Identity];
+    pub const ALL: [Row; 9] = [Row::Reach, Row::HostKey, Row::Login, Row::Supported, Row::Skiff, Row::Sessions, Row::Forwarding, Row::Identity, Row::KeepRunning];
 
     pub fn title(self) -> &'static str {
         match self {
             Row::Reach => "Reach the server",
             Row::HostKey => "Host key",
             Row::Login => "Log in without a prompt",
+            Row::Supported => "Server supported",
+            Row::Skiff => "Skiff on the server",
             Row::Sessions => "Sessions service (skiffd)",
             Row::Forwarding => "Socket forwarding",
             Row::Identity => "Skiff identity and version",
+            Row::KeepRunning => "Keeps running after logout",
         }
     }
 }
@@ -97,6 +147,8 @@ pub enum State {
     Passed,
     Failed,
     Skipped,
+    /// A Host can be used with it: the row says what is missing.
+    Warning,
 }
 
 /// The one button a failed row offers.
@@ -110,6 +162,9 @@ pub enum Fix {
     InstallKey,
     CopyPublicKey,
     FixPermissions,
+    InstallSkiff,
+    StartSkiff,
+    TurnOnLinger,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq, Eq)]
@@ -129,6 +184,10 @@ pub struct Report {
     pub socket: Option<String>,
     /// The Host id skiffd reported, when it answered.
     pub host_id: Option<String>,
+    /// The server's OS and arch as bundle names write them, once probed.
+    pub platform: Option<(String, String)>,
+    /// The Skiff version this app installs.
+    pub version: String,
 }
 
 /// What a check needs to know about the Host.
@@ -152,12 +211,26 @@ pub struct CheckInput {
     pub agent: bool,
     /// What the last key install in this app run found on the server.
     pub installed: Option<Installed>,
+    /// The Skiff version this app installs.
+    pub version: String,
+    /// The last Turn on in this app run was refused: linger needs an admin.
+    pub linger_refused: bool,
 }
 
 /// The arguments of the probe's ssh run: strict, batch, no shared master,
 /// no extra channels. The remote command is fixed; only the socket name
 /// (from this app) and a checked override go to it, single-quoted.
 pub fn probe_args(target: &SshTarget, options: &SshOptions, socket_name: &str, socket_override: Option<&str>) -> Vec<OsString> {
+    let mut command = format!("sh -s -- {}", quote(socket_name));
+    if let Some(s) = socket_override {
+        command.push(' ');
+        command.push_str(&quote(s));
+    }
+    batch_args(target, options, command)
+}
+
+/// One strict, batch ssh run of a fixed remote `command`.
+pub fn batch_args(target: &SshTarget, options: &SshOptions, command: String) -> Vec<OsString> {
     let mut args: Vec<OsString> = Vec::new();
     if let Some(config) = &options.config {
         args.push("-F".into());
@@ -183,17 +256,12 @@ pub fn probe_args(target: &SshTarget, options: &SshOptions, socket_name: &str, s
     args.extend(target.login_args());
     args.push("--".into());
     args.push(target.destination.clone().into());
-    let mut command = format!("sh -s -- {}", quote(socket_name));
-    if let Some(s) = socket_override {
-        command.push(' ');
-        command.push_str(&quote(s));
-    }
     args.push(command.into());
     args
 }
 
 /// One shell word in single quotes, for sh, bash, zsh and fish alike.
-fn quote(s: &str) -> String {
+pub(crate) fn quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 
@@ -243,7 +311,7 @@ pub fn valid_socket(s: &str) -> bool {
 
 /// Runs the check list. Rows after the first failure are skipped.
 pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
-    let mut list = List::default();
+    let mut list = List { version: input.version.clone(), ..Default::default() };
     let name = input.name.as_str();
     let server = input.target.destination.rsplit('@').next().unwrap_or(&input.target.destination).to_string();
     let over = input.socket_override.as_deref().filter(|s| valid_socket(s));
@@ -280,15 +348,11 @@ pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
     };
     let socket = probe.socket.clone();
     let found = (over.is_none() && probe.socket_live).then(|| socket.clone());
-    let daemon = probe.status.as_ref().map(|s| s.skiffd.as_ref());
-    match (probe.socket_live, daemon) {
-        (false, _) | (true, Some(None)) => {
-            list.fail(Row::Sessions, format!("Skiff's sessions service is not running on {name}."));
-            return list.finish(found, None);
-        }
-        (true, Some(Some(d))) => list.pass(Row::Sessions, format!("skiffd {} answers.", d.version)),
-        (true, None) => list.pass(Row::Sessions, "Its socket is there.".into()),
+    if !server_rows(&mut list, &probe, name, &input.version) {
+        return list.finish(found, None);
     }
+    let user = input.target.user.clone().or_else(|| input.target.destination.split_once('@').map(|(u, _)| u.to_string()));
+    let keep = keep_running(&probe, name, user.as_deref().unwrap_or("your account"), input.linger_refused);
 
     // The real forward and a ping over it, with no pin: this check stores nothing.
     let target = SshTarget { socket: socket.clone(), ..input.target.clone() };
@@ -337,10 +401,77 @@ pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
         p if p > here => list.fail(Row::Identity, format!("Skiff on {name} speaks a newer version than this computer. Update Skiff on this computer.")),
         _ => {
             let same = if input.pin.is_some() { " Same Skiff install as before." } else { "" };
-            list.pass(Row::Identity, format!("skiffd {}, protocol {}.{same}", info.version, info.protocol))
+            list.pass(Row::Identity, format!("skiffd {}, protocol {}.{same}", info.version, info.protocol));
+            list.rows.push(keep);
         }
     }
     list.finish(found, Some(host_id))
+}
+
+/// Rows 4 to 6 from the probe: the server's OS and arch, the install, and
+/// whether its skiffd runs. False: a row failed, and the rest are skipped.
+/// A skiffd that Skiff did not install is used as it is, never replaced.
+fn server_rows(list: &mut List, p: &Probe, name: &str, version: &str) -> bool {
+    let (Some(os), Some(arch)) = (p.bundle_os(), p.bundle_arch()) else {
+        list.fail(Row::Supported, format!("{name} runs {} on {}. Skiff runs on Linux and macOS, on x86_64 and ARM64.", p.os, p.arch));
+        return false;
+    };
+    list.platform = Some((os.into(), arch.into()));
+    list.pass(Row::Supported, format!("{} on {}.", p.os, p.arch));
+    let running = p.status.as_ref().and_then(|s| s.skiffd.as_ref());
+    match (&p.managed, p.socket_live) {
+        (Some(m), _) if m.version == version => list.pass(Row::Skiff, format!("Skiff {version} is installed. Skiff manages it.")),
+        (Some(m), _) => list.warn(Row::Skiff, format!("{name} runs Skiff {}. This computer runs {version}.", m.version), None),
+        (None, true) => {
+            let v = running.map(|d| format!(" {}", d.version)).unwrap_or_default();
+            list.pass(Row::Skiff, format!("{name} runs Skiff{v} from its own install. Skiff uses it as it is."));
+        }
+        (None, false) if os == "linux" => {
+            list.fix(Row::Skiff, format!("Skiff is not installed on {name}."), Fix::InstallSkiff);
+            return false;
+        }
+        (None, false) => {
+            list.fail(Row::Skiff, format!("Skiff is not installed on {name}. Skiff installs itself on Linux servers only, for now. Install the Skiff app on {name}, then check again."));
+            return false;
+        }
+    }
+    match (p.socket_live, p.status.as_ref().map(|s| s.skiffd.as_ref())) {
+        (true, Some(Some(d))) => list.pass(Row::Sessions, format!("skiffd {} answers.", d.version)),
+        (true, None) => list.pass(Row::Sessions, "Its socket is there.".into()),
+        // Only the install Skiff made gets a Start button.
+        _ if p.managed.is_some() => {
+            list.fix(Row::Sessions, format!("Skiff's sessions service is not running on {name}."), Fix::StartSkiff);
+            return false;
+        }
+        _ => {
+            list.fail(Row::Sessions, format!("Skiff's sessions service is not running on {name}."));
+            return false;
+        }
+    }
+    true
+}
+
+/// Row 10. A warning, never a failure: the Host works while you are logged in.
+fn keep_running(p: &Probe, name: &str, user: &str, refused: bool) -> Line {
+    let line = |state, text: String, fix| Line { row: Row::KeepRunning, title: Row::KeepRunning.title(), state, text, fix };
+    if p.managed.is_none() {
+        return line(State::Passed, "Its own install decides this.".into(), None);
+    }
+    match (p.systemd, p.unit_enabled, p.linger.as_str()) {
+        (true, true, "yes") => line(State::Passed, "Running. It starts again after a restart.".into(), None),
+        (true, false, _) => line(State::Warning, format!("Skiff on {name} does not start again after a restart."), Some(Fix::StartSkiff)),
+        (true, true, _) if refused => line(
+            State::Warning,
+            format!("{name} does not let your account keep services running after logout. Ask its admin to turn on lingering for {user}. You can use {name} now."),
+            None,
+        ),
+        (true, true, _) => line(State::Warning, format!("Skiff on {name} stops when you log out of every session there."), Some(Fix::TurnOnLinger)),
+        (false, ..) => line(
+            State::Warning,
+            format!("Skiff on {name} runs until the server restarts. After a restart, Start here brings it back."),
+            None,
+        ),
+    }
 }
 
 fn forwarding_off(name: &str) -> String {
@@ -407,6 +538,8 @@ fn login_failure(list: &mut List, stderr: &str, name: &str, server: &str, local:
 #[derive(Default)]
 struct List {
     rows: Vec<Line>,
+    version: String,
+    platform: Option<(String, String)>,
 }
 
 impl List {
@@ -419,12 +552,15 @@ impl List {
     fn fix(&mut self, row: Row, text: String, fix: Fix) {
         self.rows.push(Line { row, title: row.title(), state: State::Failed, text, fix: Some(fix) });
     }
+    fn warn(&mut self, row: Row, text: String, fix: Option<Fix>) {
+        self.rows.push(Line { row, title: row.title(), state: State::Warning, text, fix });
+    }
     fn finish(mut self, socket: Option<String>, host_id: Option<String>) -> Report {
-        let ok = self.rows.len() == Row::ALL.len() && self.rows.iter().all(|r| r.state == State::Passed);
+        let ok = self.rows.len() == Row::ALL.len() && self.rows.iter().all(|r| matches!(r.state, State::Passed | State::Warning));
         for row in Row::ALL.into_iter().skip(self.rows.len()) {
             self.rows.push(Line { row, title: row.title(), state: State::Skipped, text: "Skipped until the row above passes.".into(), fix: None });
         }
-        Report { rows: self.rows, ok, socket, host_id }
+        Report { rows: self.rows, ok, socket, host_id, platform: self.platform, version: self.version }
     }
 }
 
@@ -445,6 +581,77 @@ mod tests {
     fn fix(stderr: &str, local: Option<&LocalKey>, installed: Option<&Installed>) -> (String, Option<Fix>) {
         let f = with(stderr, local, installed).into_iter().find(|l| l.state == State::Failed).unwrap();
         (f.text, f.fix)
+    }
+
+    fn probe() -> Probe {
+        Probe {
+            os: "Linux".into(),
+            arch: "x86_64".into(),
+            runtime_dir: "/run/user/1000".into(),
+            socket: "/run/user/1000/skiff/skiffd.sock".into(),
+            socket_live: false,
+            cli: String::new(),
+            status: None,
+            managed: None,
+            systemd: true,
+            unit_enabled: false,
+            unit_active: false,
+            linger: "no".into(),
+            fallback: false,
+            free_kb: 1 << 20,
+        }
+    }
+
+    fn server(p: &Probe) -> (bool, Vec<(Row, State, Option<Fix>, String)>) {
+        let mut list = List::default();
+        let go = server_rows(&mut list, p, "devbox", "2.0.0");
+        (go, list.rows.into_iter().map(|l| (l.row, l.state, l.fix, l.text)).collect())
+    }
+
+    #[test]
+    fn the_server_rows_install_start_or_leave_alone() {
+        // Nothing there: Install.
+        let (go, rows) = server(&probe());
+        assert!(!go);
+        assert_eq!((rows[1].0, rows[1].2), (Row::Skiff, Some(Fix::InstallSkiff)));
+        // Another Skiff runs there: used as it is, never an Install.
+        let other = Probe { socket_live: true, status: Some(Status { skiff: "1.6.6".into(), skiffd: Some(StatusDaemon { version: "0.6.24".into(), protocol: 27 }) }), ..probe() };
+        let (go, rows) = server(&other);
+        assert!(go && rows.iter().all(|r| r.2.is_none()), "{rows:?}");
+        assert!(rows[1].3.contains("from its own install"));
+        // Ours, stopped: Start. Ours, older: a warning, no button.
+        let ours = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27 }), ..probe() };
+        let (go, rows) = server(&ours);
+        assert!(!go);
+        assert_eq!((rows[2].0, rows[2].2), (Row::Sessions, Some(Fix::StartSkiff)));
+        let older = Probe { managed: Some(Managed { version: "1.9.0".into(), protocol: 27 }), socket_live: true, ..probe() };
+        let (go, rows) = server(&older);
+        assert!(go);
+        assert_eq!((rows[1].1, rows[1].2), (State::Warning, None));
+        // Not a Skiff platform: the row says what it found.
+        let (go, rows) = server(&Probe { os: "FreeBSD".into(), arch: "amd64".into(), ..probe() });
+        assert!(!go && rows[0].3.contains("FreeBSD on amd64"));
+        // A Mac server is supported, and is not installed by Skiff yet.
+        let (_, rows) = server(&Probe { os: "Darwin".into(), arch: "arm64".into(), ..probe() });
+        assert_eq!((rows[1].1, rows[1].2), (State::Failed, None));
+    }
+
+    #[test]
+    fn keeping_it_running_is_a_warning_with_one_fix() {
+        let ours = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27 }), unit_enabled: true, ..probe() };
+        let k = |p: &Probe, refused| { let l = keep_running(p, "devbox", "jose", refused); (l.state, l.fix) };
+        assert_eq!(k(&ours, false), (State::Warning, Some(Fix::TurnOnLinger)));
+        assert_eq!(k(&ours, true), (State::Warning, None), "refused: plain words only");
+        assert_eq!(k(&Probe { linger: "yes".into(), ..ours.clone() }, false), (State::Passed, None));
+        assert_eq!(k(&Probe { systemd: false, ..ours.clone() }, false), (State::Warning, None));
+        assert_eq!(k(&probe(), false), (State::Passed, None), "not ours: not our business");
+        // A warning still lets the Host be used.
+        let mut list = List::default();
+        for row in Row::ALL.into_iter().take(8) {
+            list.pass(row, String::new());
+        }
+        list.rows.push(keep_running(&ours, "devbox", "jose", false));
+        assert!(list.finish(None, None).ok);
     }
 
     #[test]

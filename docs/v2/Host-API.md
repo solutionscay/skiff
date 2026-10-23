@@ -901,14 +901,46 @@ OpenSSH stream-local forward to the remote skiffd socket.
   the app carries. The app carries the public half
   (`skiff-client/src/host/server-bundle.pub`, key id 4B7D9FC893B9C075) and
   refuses a bundle whose signature fails or names another file.
-- **Remote commands:** the probe, the key install and the key-file fix.
-  All are fixed scripts in the app.
+- **Install and start on Linux** (#166 slice 5, `skiff-client::host::install`,
+  `server.sh`), each after a confirm in Settings › Hosts:
+  - **Install Skiff…** downloads the bundle for the server's arch from the
+    release `v<app version>`, checks its signature with the app's key, and
+    uploads it with one batch ssh run to
+    `~/.local/share/skiff/server/.incoming.tar.gz`. A second run checks its
+    SHA-256, unpacks it beside the old version, then moves the `current`
+    link: a half-unpacked version never becomes current. It keeps the
+    version before for a rollback, removes older ones, marks the install as
+    Skiff's (`installed-by`), and links `~/.local/bin/skiff` only where that
+    name is free or already ours. The same version again changes nothing.
+  - **Start:** with a systemd user manager, the bundle's `skiffd.service`
+    goes to `~/.config/systemd/user`, enabled and started, and lingering is
+    turned on (`loginctl enable-linger`, the account's own right on most
+    systems). Without one, `setsid nohup` starts skiffd and a pid file
+    tracks it: it runs until the server restarts.
+  - **Turn on…** asks for lingering later. When the server refuses it, the
+    row says so in plain words; the Host works while the person is logged in.
+  - **Never take over:** Install runs only where no skiffd answers and no
+    managed install is there; Start runs only the managed one. A skiffd that
+    Skiff did not install is used as it is, never replaced, stopped or started.
+  - **Dev builds:** with no release for their version, a debug build sends
+    its own `skiffd`, `skiff-host` and `skiff` (beside its executable), for a
+    Linux server with this computer's arch only, unsigned. A release build
+    never does.
+  - No sudo, nothing outside the account's home and runtime folder, and no
+    install on macOS servers yet: the row says so.
+- **Remote commands:** the probe, the key install, the key-file fix, the
+  upload and the server steps (install, start, linger). All are fixed
+  scripts in the app; their values (a version, a hash, a socket name, a key
+  line) are checked against strict patterns and single-quoted.
 - **The check list** (Settings › Hosts › Check, and Connect): reach the
-  server, host key, log in without a prompt, sessions service (skiffd),
-  socket forwarding (a real `-L` forward), and identity and version (a ping
-  over it, compared with the pin, which it never stores). A failed row skips
-  the rows under it. It stores only the socket the probe found, unless the
-  person set one.
+  server, host key, log in without a prompt, server supported (Linux or
+  macOS, x86_64 or ARM64), Skiff on the server (managed, from its own
+  install, or not installed), sessions service (skiffd), socket forwarding
+  (a real `-L` forward), identity and version (a ping over it, compared with
+  the pin, which it never stores), and keeps running after logout (a
+  warning: the Host can be used without it). A failed row skips the rows
+  under it. It stores only the socket the probe found, unless the person set
+  one.
 - **Backoff:** after a failed open, the next waits 1, 2, 4 … up to 30 s.
 
 ### Identity (required remotely)
@@ -1031,8 +1063,8 @@ local-only.
 
 ### Demo
 
-1. **On the remote Host:** install a Skiff whose skiffd reports identity (M1f
-   or later), and start skiffd. Its sshd must allow stream-local forwarding;
+1. **On the remote Host:** nothing, on Linux: Install Skiff… in the check list
+   installs and starts it. Its sshd must allow stream-local forwarding;
    OpenSSH allows it by default.
 2. **On this Mac:** `ssh <alias>` must work without a prompt (key in the agent
    or ssh config), and the host key must already be in known_hosts.

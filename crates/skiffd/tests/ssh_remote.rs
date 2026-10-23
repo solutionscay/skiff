@@ -698,3 +698,108 @@ async fn a_host_key_is_trusted_once_and_a_key_is_installed_once() {
     assert_eq!(aside, 1);
     assert!(probed(check::run_probe(&target, &with_new, "skiffd.sock", None).await.unwrap()));
 }
+
+/// #166 slice 5, over the loopback sshd. The server's home and runtime
+/// folder are temp folders (sshd SetEnv), so the skiffd it starts listens
+/// in the fixture, never on this account's own socket. With no systemd
+/// user manager in that session, the install takes the fallback start. A
+/// second install changes nothing. Linger is never touched here.
+#[tokio::test]
+async fn skiff_installs_once_into_the_home_and_its_skiffd_answers() {
+    use skiff_client::host::{check, install};
+    let Some(mut f) = fixture("n") else { return };
+    let d = f.dir.clone();
+    for sub in ["home", "run", "beside"] {
+        std::fs::create_dir_all(d.join(sub)).unwrap();
+    }
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(d.join("run"), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let text = std::fs::read_to_string(d.join("sshd_config")).unwrap();
+    f.write("sshd_install", &format!("{text}SetEnv HOME={0}/home XDG_RUNTIME_DIR={0}/run\n", d.display()));
+    assert!(f.start_sshd("sshd_install"));
+    let linger = || Command::new("loginctl").args(["show-user", &std::env::var("USER").unwrap_or_default(), "-p", "Linger", "--value"]).output().map(|o| o.stdout).unwrap_or_default();
+    let linger_before = linger();
+
+    // This test's own build: the real skiffd, and stand-ins for the others.
+    let skiffd = Path::new(env!("CARGO_BIN_EXE_skiffd"));
+    std::fs::copy(skiffd, d.join("beside/skiffd")).unwrap();
+    for b in ["skiff-host", "skiff"] {
+        std::fs::write(d.join("beside").join(b), "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(d.join("beside").join(b), std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let version = "9.9.9-test";
+    let arch = std::env::consts::ARCH;
+    let b = install::dev_bundle(version, arch, &d.join("beside")).await.unwrap();
+    let target = SshTarget::new("fixture", "");
+    let options = f.options("ssh_config");
+    let name = "skiffd-dev.sock";
+    let probe = |o: &SshOptions| {
+        let (t, o) = (target.clone(), o.clone());
+        async move {
+            match check::run_probe(&t, &o, name, None).await.unwrap() {
+                check::ProbeRun::Probed(p, _) => p,
+                _ => panic!("the probe did not run"),
+            }
+        }
+    };
+    let before = probe(&options).await;
+    assert_eq!((before.managed.as_ref(), before.socket_live, before.systemd), (None, false, false), "{before:?}");
+    assert_eq!(before.runtime_dir, d.join("run").to_string_lossy());
+
+    let first = install::install(&target, &options, &b, version, name, before.free_kb, "fixture").await.unwrap();
+    let pidfile = d.join("home/.local/share/skiff/server/skiffd.pid");
+    // Stops only the skiffd this test started, by its pid file.
+    struct Stop(PathBuf);
+    impl Drop for Stop {
+        fn drop(&mut self) {
+            if let Ok(pid) = std::fs::read_to_string(&self.0).map(|p| p.trim().parse::<i32>().unwrap_or(0)) {
+                if pid > 0 {
+                    // SAFETY: a signal to the one process this test started.
+                    unsafe { libc::kill(pid, libc::SIGTERM) };
+                }
+            }
+        }
+    }
+    let _stop = Stop(pidfile.clone());
+    assert_eq!((first.changed, first.how.as_str(), first.running, first.cli_linked), (true, "fallback", true, true), "{first:?}");
+    let pid = std::fs::read_to_string(&pidfile).unwrap();
+    let after = probe(&options).await;
+    assert_eq!(after.managed.as_ref().map(|m| m.version.as_str()), Some(version));
+    assert!(after.socket_live && after.fallback, "{after:?}");
+    assert!(d.join("run/skiff").join(name).exists(), "skiffd listens in the fixture's runtime folder");
+    let server = d.join("home/.local/share/skiff/server");
+    assert_eq!(std::fs::read_link(server.join("current")).unwrap(), Path::new(version));
+    let mtime = std::fs::metadata(server.join(version).join("skiffd")).unwrap().modified().unwrap();
+
+    // A second install changes nothing, and the same skiffd keeps running.
+    let second = install::install(&target, &options, &b, version, name, after.free_kb, "fixture").await.unwrap();
+    assert_eq!((second.changed, second.running), (false, true), "{second:?}");
+    assert_eq!(std::fs::read_to_string(&pidfile).unwrap(), pid);
+    assert_eq!(std::fs::metadata(server.join(version).join("skiffd")).unwrap().modified().unwrap(), mtime);
+    assert!(!server.join(".incoming.tar.gz").exists());
+
+    // The whole check list passes over the real forward; keep-running is
+    // a warning (no systemd user manager here).
+    let input = check::CheckInput {
+        target: target.clone(),
+        name: "fixture".into(),
+        socket_override: None,
+        socket_name: name.into(),
+        pin: None,
+        forward_dir: d.join("chk"),
+        home: None,
+        agent: false,
+        installed: None,
+        version: version.into(),
+        linger_refused: false,
+    };
+    let report = check::check(&input, &options).await;
+    assert!(report.ok, "{:#?}", report.rows);
+    let keep = report.rows.last().unwrap();
+    assert_eq!(keep.state, check::State::Warning);
+    // Start on a running one changes nothing either.
+    let again = install::start(&target, &options, name).await.unwrap();
+    assert!(again.running);
+    assert_eq!(std::fs::read_to_string(&pidfile).unwrap(), pid);
+    assert_eq!(linger(), linger_before, "this account's linger did not change");
+}

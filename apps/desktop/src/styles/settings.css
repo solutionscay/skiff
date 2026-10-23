@@ -166,3 +166,5 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-prints { display: flex; flex-direction: column; gap: calc(4 * var(--u)); }
 .set-prints-h { font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
 .set-prints.old .mono { text-decoration: line-through; color: var(--text-3); }
+.set-check.warning .c-name, .set-check.warning .c-text { color: var(--state-waiting-text); }
+.set-check.warning .sq { background: var(--state-waiting); }

@@ -37,5 +37,28 @@ if [ -n "$cli" ] && [ "$live" = true ]; then
     "{"*"}") status=$out ;;
   esac
 fi
-printf '{"os":"%s","arch":"%s","runtime_dir":"%s","socket":"%s","socket_live":%s,"cli":"%s","status":%s}\n' \
-  "$(esc "$os")" "$(esc "$arch")" "$(esc "$rt")" "$(esc "$sock")" "$live" "$(esc "$cli")" "$status"
+# The install Skiff manages, if any: its manifest names the version.
+srv=$HOME/.local/share/skiff/server
+managed=null
+if [ -f "$srv/current/manifest.json" ] && [ -f "$srv/installed-by" ]; then
+  mv_=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$srv/current/manifest.json" | head -n 1)
+  mp_=$(sed -n 's/.*"protocol": *\([0-9]*\).*/\1/p' "$srv/current/manifest.json" | head -n 1)
+  managed=$(printf '{"version":"%s","protocol":%s}' "$(esc "$mv_")" "${mp_:-0}")
+fi
+# How it keeps running: a systemd user manager and its unit, linger, or the
+# fallback start's pid file.
+systemd=false
+unit_enabled=false
+unit_active=false
+linger=
+if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+  systemd=true
+  systemctl --user -q is-enabled skiffd 2>/dev/null && unit_enabled=true
+  systemctl --user -q is-active skiffd 2>/dev/null && unit_active=true
+  linger=$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)
+fi
+fallback=false
+if [ -f "$srv/skiffd.pid" ] && kill -0 "$(cat "$srv/skiffd.pid" 2>/dev/null)" 2>/dev/null; then fallback=true; fi
+free_kb=$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2 {print $4}')
+printf '{"os":"%s","arch":"%s","runtime_dir":"%s","socket":"%s","socket_live":%s,"cli":"%s","status":%s,"managed":%s,"systemd":%s,"unit_enabled":%s,"unit_active":%s,"linger":"%s","fallback":%s,"free_kb":%s}\n' \
+  "$(esc "$os")" "$(esc "$arch")" "$(esc "$rt")" "$(esc "$sock")" "$live" "$(esc "$cli")" "$status" "$managed" "$systemd" "$unit_enabled" "$unit_active" "$(esc "$linger")" "$fallback" "${free_kb:-0}"

@@ -554,6 +554,8 @@ pub(crate) async fn check_host(id: String) -> Result<skiff_client::host::check::
         home: home().ok(),
         agent: true,
         installed: INSTALLED.lock().unwrap().get(&id).cloned(),
+        version: VERSION.into(),
+        linger_refused: LINGER_REFUSED.lock().unwrap().contains(&id),
     };
     let report = skiff_client::host::check::check(&input, &SshOptions::default()).await;
     note(&id, report.ok);
@@ -641,6 +643,94 @@ async fn ready_key(h: &KnownHost) -> Result<String, String> {
         keys::LocalKey::Locked(_) => Err("Your SSH key is locked. Unlock it first.".into()),
         keys::LocalKey::None => Err("This computer has no SSH key. Make one first.".into()),
     }
+}
+
+/// The Skiff version this app installs on a server: its own.
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Hosts whose Turn on (linger) was refused in this app run.
+static LINGER_REFUSED: std::sync::Mutex<std::collections::BTreeSet<String>> = std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// What Install Skiff… did, for the check list's note.
+#[derive(Serialize)]
+pub(crate) struct InstallView {
+    #[serde(flatten)]
+    outcome: skiff_client::host::install::Outcome,
+    /// `release`, or `this build` (a dev build with no matching release).
+    source: &'static str,
+    version: &'static str,
+}
+
+/// The probe, for a step that changes the server: it must see the state now.
+async fn probe_now(h: &KnownHost) -> Result<skiff_client::host::check::Probe, String> {
+    use skiff_client::host::check;
+    let over = h.socket.clone().filter(|_| h.socket_override);
+    match check::run_probe(&h.target(), &SshOptions::default(), SOCKET_NAME, over.as_deref()).await? {
+        check::ProbeRun::Probed(p, _) => Ok(p),
+        _ => Err(format!("Skiff cannot read the state of {}. Check again.", h.name)),
+    }
+}
+
+/// Installs Skiff on a Linux server in the account's home, and starts its
+/// skiffd. Only where no skiffd runs that Skiff did not install. The bundle
+/// is the signed release bundle for this app's version; a dev build with no
+/// such release sends its own binaries.
+#[tauri::command]
+pub(crate) async fn install_skiff(id: String) -> Result<InstallView, String> {
+    use skiff_client::host::install;
+    let h = host_by_id(&id).await?;
+    let p = probe_now(&h).await?;
+    if p.socket_live && p.managed.is_none() {
+        return Err(format!("{} runs a Skiff that Skiff did not install. Skiff uses it as it is, and does not replace it.", h.name));
+    }
+    let (Some("linux"), Some(arch)) = (p.bundle_os(), p.bundle_arch()) else {
+        return Err(format!("Skiff installs itself on Linux servers on x86_64 and ARM64 only. {} runs {} on {}.", h.name, p.os, p.arch));
+    };
+    let bundle = match install::download(VERSION, "linux", arch).await {
+        Ok(b) => b,
+        Err(e) if cfg!(debug_assertions) => {
+            let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+            let beside = exe.parent().ok_or("This build has no folder.")?.to_path_buf();
+            install::dev_bundle(VERSION, arch, &beside).await.map_err(|dev| format!("{e} {dev}"))?
+        }
+        Err(e) => return Err(e),
+    };
+    let outcome = install::install(&h.target(), &SshOptions::default(), &bundle, VERSION, SOCKET_NAME, p.free_kb, &h.name).await?;
+    if outcome.linger == "refused" {
+        LINGER_REFUSED.lock().unwrap().insert(id.clone());
+    }
+    LAST.lock().unwrap().remove(&id);
+    Ok(InstallView { outcome, source: bundle.source, version: VERSION })
+}
+
+/// Starts the managed skiffd on a server. Never one Skiff did not install.
+#[tauri::command]
+pub(crate) async fn start_skiff(id: String) -> Result<skiff_client::host::install::Outcome, String> {
+    let h = host_by_id(&id).await?;
+    let p = probe_now(&h).await?;
+    if p.managed.is_none() {
+        return Err(format!("Skiff did not install the Skiff on {}, so it does not start it.", h.name));
+    }
+    let out = skiff_client::host::install::start(&h.target(), &SshOptions::default(), SOCKET_NAME).await?;
+    if out.linger == "refused" {
+        LINGER_REFUSED.lock().unwrap().insert(id.clone());
+    }
+    if !out.running {
+        return Err(format!("Skiff's sessions service on {} stops right after it starts.", h.name));
+    }
+    Ok(out)
+}
+
+/// Turns on lingering for the account on a server, so its user services
+/// start at boot and stay after logout. False: the server refused it, and
+/// the check list says so in plain words.
+#[tauri::command]
+pub(crate) async fn turn_on_linger(id: String) -> Result<bool, String> {
+    let h = host_by_id(&id).await?;
+    let on = skiff_client::host::install::linger(&h.target(), &SshOptions::default()).await?;
+    let mut refused = LINGER_REFUSED.lock().unwrap();
+    if on { refused.remove(&id) } else { refused.insert(id) };
+    Ok(on)
 }
 
 /// Makes `~/.ssh/id_ed25519` with no passphrase, when it is not there.

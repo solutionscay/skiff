@@ -40,6 +40,7 @@ function tab(report?: unknown) {
     if (c === "resolve_ssh") return { hostname: "devbox.lan", user: "me", port: 2222, jump: "" };
     if (c === "ssh_aliases") return [{ name: "devbox", goes_to: "me@devbox.lan" }];
     if (c === "check_host" && report) return report;
+    if (c === "install_skiff") return { source: "release", version: "2.0.0", cli_linked: true, changed: true, how: "systemd", linger: "yes", running: true };
     if (c === "check_host") return { ok: true, rows: [{ row: "reach", title: "Reach the server", state: "passed", text: "devbox.lan answers. 12 ms." }] };
   };
   const h = (tag: string, cls?: string, text?: string) => new El(tag, cls, text);
@@ -153,4 +154,26 @@ test("Copy public key copies the line Rust gives and says it is safe to send", a
   assert.ok(x.calls.some(([c]) => c === "public_key"));
   x.redraw();
   assert.ok(x.page().all().some((e) => e.textContent.startsWith("Public key copied.")));
+});
+
+test("Install Skiff asks once, names the folder, installs, then checks again", async () => {
+  const x = tab({
+    ok: false,
+    platform: ["linux", "x86_64"],
+    version: "2.0.0",
+    rows: [{ row: "skiff", title: "Skiff on the server", state: "failed", text: "Skiff is not installed on devbox.", fix: "install_skiff" }],
+  });
+  await x.t.load();
+  x.t.open({ check: "h_dev" });
+  for (let i = 0; i < 4; i++) await flush();
+  x.redraw();
+  x.page().find("Install Skiff…")!.click();
+  const d = x.dialogs.at(-1)!;
+  assert.equal(d.title, "Install Skiff on devbox?");
+  assert.equal(x.calls.filter(([c]) => c === "install_skiff").length, 0, "nothing runs before the confirm");
+  const checks = x.calls.filter(([c]) => c === "check_host").length;
+  await d.submit();
+  for (let i = 0; i < 4; i++) await flush();
+  assert.equal(JSON.stringify(x.calls.filter(([c]) => c === "install_skiff")), JSON.stringify([["install_skiff", { id: "h_dev" }]]));
+  assert.equal(x.calls.filter(([c]) => c === "check_host").length, checks + 1);
 });

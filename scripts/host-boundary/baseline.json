@@ -113,7 +113,7 @@
     "sha256": "a5dc5bcca7f832f3301cbc42e01411dde6a2e7d1fef2aeda7f88046c32ed5378"
   },
   "apps/desktop/src-tauri/src/hosts.rs": {
-    "ownership": "client policy: hosts.toml (known Hosts by local id, the selected Host, the socket a check found or the person set, per-Host clipboard opt-in), this computer's ssh config, the read-only Host check (probe over ssh, via skiff-client), and the confirmed key steps (host key trust into this computer's known_hosts; make, unlock and install this computer's SSH key via skiff-client keys), and building the selected SSH endpoint",
+    "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
     "reasons": [
       "config",
       "env",
@@ -125,7 +125,7 @@
       "skiff_agent",
       "skiff_core"
     ],
-    "sha256": "380e3caa35700241e3be468cb7eea719a964eacc511092e4f535782370204d72"
+    "sha256": "10ed8c5d644eb43e5734c79efe0358d9a600542994b7aa01df32794bdc07c92b"
   },
   "apps/desktop/src-tauri/src/ledger.rs": {
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",
@@ -145,7 +145,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "240157c364349e83c534bdb233b9ae1670628dbf56b4da2b1f3eb711be30bb0c"
+    "sha256": "a9be044eb89275496b76146ad8b52c77e684210dade4bb0acb5bab96f1a5d04d"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -417,12 +417,12 @@
     "sha256": "dd16187f3f3a5c2c10665788c23b5e6eb8cc3da151573633370f00e6db0b7075"
   },
   "apps/desktop/src/appearance/hostSettings.ts": {
-    "ownership": "client policy: Settings \u203a Hosts (add, edit, rename, remove known Hosts in hosts.toml; this computer's ssh config aliases and ssh -G; a Host's check list and its confirmed fixes: trust a host key, make, unlock, install and copy this computer's SSH key, fix the key file)",
+    "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
     "reasons": [
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "242e06bb5ca11db1275287435005e5529f34412be13408413199a8b3124f3c13"
+    "sha256": "22aa59652899f871f115b7c7d9be08ed0d5ea4a2b8b2bcc5ebb227cef7a55c45"
   },
   "apps/desktop/src/appearance/settings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6",
