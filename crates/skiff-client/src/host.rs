@@ -23,6 +23,7 @@ use crate::transport::Transport;
 
 pub mod check;
 pub mod data;
+pub mod keys;
 mod inventory;
 mod lifecycle;
 pub mod local;

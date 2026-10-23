@@ -155,6 +155,68 @@ pub fn resolve(target: &SshTarget, options: &SshOptions) -> Result<Resolved, Str
     Ok(parse_g(&String::from_utf8_lossy(&out.stdout)))
 }
 
+/// The lines of `ssh -G` the key steps need.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Full {
+    pub hostname: String,
+    pub port: u16,
+    pub host_key_alias: String,
+    /// `UserKnownHostsFile`, in order, `~` not expanded.
+    pub known_hosts: Vec<String>,
+    /// `IdentityFile`, in order, `~` not expanded.
+    pub identity_files: Vec<String>,
+}
+
+impl Full {
+    /// The host's name in known_hosts: the alias, `host`, or `[host]:port`.
+    pub fn key_name(&self) -> String {
+        if !self.host_key_alias.is_empty() {
+            self.host_key_alias.clone()
+        } else if self.port == 22 {
+            self.hostname.clone()
+        } else {
+            format!("[{}]:{}", self.hostname, self.port)
+        }
+    }
+}
+
+/// `ssh -G` for the key steps. Local only.
+pub fn resolve_full(target: &SshTarget, options: &SshOptions) -> Result<Full, String> {
+    target.validate_login()?;
+    let mut cmd = std::process::Command::new(&options.program);
+    if let Some(config) = &options.config {
+        cmd.arg("-F").arg(config);
+    }
+    let out = cmd
+        .arg("-G")
+        .args(target.login_args())
+        .arg("--")
+        .arg(&target.destination)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .map_err(|e| format!("Skiff cannot run ssh: {e}"))?;
+    if !out.status.success() {
+        return Err("ssh cannot read its config for this server.".into());
+    }
+    Ok(parse_full(&String::from_utf8_lossy(&out.stdout)))
+}
+
+pub fn parse_full(text: &str) -> Full {
+    let mut f = Full { port: 22, ..Default::default() };
+    for line in text.lines() {
+        let Some((key, value)) = line.split_once(' ') else { continue };
+        match key {
+            "hostname" => f.hostname = value.to_string(),
+            "port" => f.port = value.parse().unwrap_or(22),
+            "hostkeyalias" => f.host_key_alias = value.to_string(),
+            "userknownhostsfile" => f.known_hosts = value.split_whitespace().map(String::from).collect(),
+            "identityfile" => f.identity_files.push(value.to_string()),
+            _ => {}
+        }
+    }
+    f
+}
+
 /// The lines of `ssh -G` that Settings shows.
 pub fn parse_g(text: &str) -> Resolved {
     let mut r = Resolved { hostname: String::new(), user: String::new(), port: 22, jump: String::new() };
@@ -204,5 +266,10 @@ mod tests {
         let r = parse_g("user jose\nhostname 10.0.0.5\nport 2222\nproxyjump me@bastion:22,other\n");
         assert_eq!(r, Resolved { hostname: "10.0.0.5".into(), user: "jose".into(), port: 2222, jump: "bastion".into() });
         assert_eq!(parse_g("hostname x\nproxyjump none\n").jump, "");
+        let f = parse_full("hostname 10.0.0.5\nport 2222\nuserknownhostsfile ~/.ssh/known_hosts ~/.ssh/known_hosts2\nidentityfile ~/.ssh/id_rsa\nidentityfile ~/.ssh/id_ed25519\n");
+        assert_eq!(f.key_name(), "[10.0.0.5]:2222");
+        assert_eq!(f.known_hosts, ["~/.ssh/known_hosts", "~/.ssh/known_hosts2"]);
+        assert_eq!(f.identity_files, ["~/.ssh/id_rsa", "~/.ssh/id_ed25519"]);
+        assert_eq!(parse_full("hostname h\nport 22\nhostkeyalias box\n").key_name(), "box");
     }
 }

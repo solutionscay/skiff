@@ -831,8 +831,10 @@ OpenSSH stream-local forward to the remote skiffd socket.
   - `ControlMaster=no`, `ControlPath=none`, `ForwardAgent=no`, `ForwardX11=no`,
     `PermitLocalCommand=no`, `RequestTTY=no`, `LogLevel=INFO` (so a refused
     channel can be explained)
-- **Trust:** an unknown or changed host key fails. Nothing is learned or
-  written: Skiff has no TOFU prompt, no auth of its own, no TCP listener.
+- **Trust:** on the session link, an unknown or changed host key fails and
+  nothing is learned or written. Skiff has no auth of its own and no TCP
+  listener. The person trusts a key in Settings › Hosts, after a confirm
+  (below), never on the link itself.
 - **Destination validation:** one word, never starting with `-`. The socket
   must be an absolute path with no colon.
 - **Failures** become plain causes (`SshError`): unknown key, changed key, no
@@ -850,7 +852,45 @@ OpenSSH stream-local forward to the remote skiffd socket.
   runtime folder, the socket and whether it is live, and `skiff status
   --json` from the managed install, PATH or `~/.cargo/bin` when one answers.
   The socket name (from this build) and a socket the person set are its only
-  arguments, single-quoted. This is the one remote command Skiff runs.
+  arguments, single-quoted.
+- **Host key trust** (the check list's Trust this key… and Review…): a
+  short batch ssh run with `StrictHostKeyChecking=accept-new` into a private
+  temp known_hosts only (`GlobalKnownHostsFile=/dev/null`,
+  `PreferredAuthentications=none`) learns the key line, with ssh's own host
+  name, port, alias and hashing. `ssh-keygen -l` gives its fingerprint, and
+  the dialog shows it. Only on the person's confirm does the exact line go
+  into the first `UserKnownHostsFile` that `ssh -G` names, once. A changed
+  key shows both fingerprints and asks twice; the old lines go with
+  `ssh-keygen -R`. The page never sends a key, only the token of one Rust
+  scanned.
+- **Key setup** (the Login row): `ssh -G` (identity files), `ssh-add -L`
+  and `ssh-keygen -y -P ''` tell no key, a locked key and a usable one apart.
+  - **Make key…** runs `ssh-keygen -t ed25519` for `~/.ssh/id_ed25519`, with
+    no passphrase, only when the file is not there. Skiff never edits
+    `~/.ssh/config`.
+  - **Unlock key…** runs `ssh-add` with the passphrase (macOS:
+    `--apple-use-keychain`).
+  - **Install key…** runs one ssh with `BatchMode=no`,
+    `StrictHostKeyChecking=yes`, `PreferredAuthentications=keyboard-interactive,password`,
+    `NumberOfPasswordPrompts=1`, no agent, no master, no TTY (`setsid`). The
+    fixed script `install_key.sh` on stdin adds the public line only when
+    that exact line is not there, and reports who owns `~/.ssh` and
+    `authorized_keys`.
+  - **Fix permissions…** (the key is in a file another account owns) runs
+    `fix_keys.sh` the same way: it renames `authorized_keys` to
+    `authorized_keys.skiff-<time>` and writes a new one with this computer's
+    key. Without ownership of `~/.ssh` there is no fix, only the cause.
+  - **Copy public key** is the one copy action: for a server that allows
+    keys only, the admin needs it.
+  - **Secrets:** a password or passphrase goes from the dialog to Rust, then
+    to ssh or ssh-add through an askpass helper (`SSH_ASKPASS_REQUIRE=force`,
+    OpenSSH 8.4+) that reads it once from a FIFO in a private `0700` temp
+    folder. It is never in a file, an argument, the environment or a log. A
+    second prompt gets an empty answer, so ssh stops.
+  - The public key line is the scripts' only value. It is checked against a
+    strict pattern (known type, base64, plain comment) and single-quoted.
+- **Remote commands:** the probe, the key install and the key-file fix.
+  All are fixed scripts in the app.
 - **The check list** (Settings › Hosts › Check, and Connect): reach the
   server, host key, log in without a prompt, sessions service (skiffd),
   socket forwarding (a real `-L` forward), and identity and version (a ping

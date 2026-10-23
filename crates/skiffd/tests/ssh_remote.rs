@@ -614,3 +614,87 @@ async fn remote_projects_and_git_status_come_from_the_hosts_data_plane_over_a_re
     assert!(!sessions.is_closed());
     legacy_kill(&sessions, &s.id).await.unwrap();
 }
+
+/// #166 slice 3, over the loopback sshd. Unknown key: a scan learns it into
+/// a temp file only, a trust adds one known_hosts line, a second trust adds
+/// none. Changed key: replace leaves only the new one. Install: one secret
+/// through askpass adds the key once; a second install adds nothing, and a
+/// wrong secret changes nothing. The server's home is a temp folder
+/// (sshd SetEnv HOME), and every known_hosts is the fixture's: nothing
+/// touches this account's ~/.ssh.
+#[tokio::test]
+async fn a_host_key_is_trusted_once_and_a_key_is_installed_once() {
+    use skiff_client::host::{check, keys};
+    let Some(mut f) = fixture("k") else { return };
+    let d = f.dir.clone();
+    let target = SshTarget::new("fixture", "");
+    let lines = |name: &str| std::fs::read_to_string(d.join(name)).unwrap().lines().filter(|l| !l.is_empty()).count();
+    let probed = |r: check::ProbeRun| matches!(r, check::ProbeRun::Probed(..));
+
+    // Unknown key.
+    let unknown = f.options("unknown_config");
+    assert!(!probed(check::run_probe(&target, &unknown, "skiffd.sock", None).await.unwrap()));
+    let scan = keys::scan_host_key(&target, &unknown, &d).await.unwrap();
+    assert_eq!(scan.file, d.join("empty_hosts"));
+    assert_eq!((scan.lines.len(), scan.fingerprints.len(), scan.known.len()), (1, 1, 0), "{scan:?}");
+    assert_eq!(lines("empty_hosts"), 0, "the scan wrote nothing the person owns");
+    keys::trust_host_key(&scan, false).await.unwrap();
+    keys::trust_host_key(&scan, false).await.unwrap();
+    assert_eq!(lines("empty_hosts"), 1);
+    assert!(probed(check::run_probe(&target, &unknown, "skiffd.sock", None).await.unwrap()), "strict checking now passes");
+
+    // Changed key: the old one shows, and replace keeps only the new one.
+    let changed = f.options("changed_config");
+    let scan = keys::scan_host_key(&target, &changed, &d).await.unwrap();
+    assert_eq!(scan.known.len(), 1);
+    assert_ne!(scan.known[0], scan.fingerprints[0]);
+    keys::trust_host_key(&scan, true).await.unwrap();
+    assert_eq!(lines("changed_hosts"), 1);
+    assert!(probed(check::run_probe(&target, &changed, "skiffd.sock", None).await.unwrap()));
+
+    // Install. A locked key stands in for the password, which an
+    // unprivileged sshd cannot check: the same askpass path carries it.
+    std::fs::create_dir_all(d.join("home")).unwrap();
+    for (name, pass) in [("locked_key", "pass one"), ("new_key", "")] {
+        assert!(Command::new("ssh-keygen").args(["-q", "-t", "ed25519", "-N", pass, "-f"]).arg(d.join(name)).status().unwrap().success());
+    }
+    let mut authorized = std::fs::read_to_string(d.join("authorized_keys")).unwrap();
+    authorized.push_str(&std::fs::read_to_string(d.join("locked_key.pub")).unwrap());
+    f.write("authorized_keys", &authorized);
+    let conf = f.dir.join("sshd_config");
+    let text = std::fs::read_to_string(&conf).unwrap().replace(
+        &format!("AuthorizedKeysFile {}/authorized_keys", d.display()),
+        &format!("AuthorizedKeysFile {0}/authorized_keys {0}/home/.ssh/authorized_keys\nSetEnv HOME={0}/home", d.display()),
+    );
+    f.write("sshd_home", &text);
+    assert!(f.start_sshd("sshd_home"));
+    for (config, key) in [("locked_config", "locked_key"), ("new_config", "new_key")] {
+        f.write(config, &format!(
+            "Host fixture\n  HostName 127.0.0.1\n  Port {}\n  IdentityFile {}/{key}\n  IdentitiesOnly yes\n  UserKnownHostsFile {}/known_hosts\n  GlobalKnownHostsFile /dev/null\n",
+            f.port, d.display(), d.display()
+        ));
+    }
+    let new_key = std::fs::read_to_string(d.join("new_key.pub")).unwrap();
+    let with_new = f.options("new_config");
+    assert!(!probed(check::run_probe(&target, &with_new, "skiffd.sock", None).await.unwrap()), "the new key is not there yet");
+    let locked = f.options("locked_config");
+    let wrong = keys::install_key(&target, &locked, "publickey", &new_key, "wrong".into()).await;
+    assert_eq!(wrong, Err(keys::StepError::Refused));
+    assert!(!d.join("home/.ssh/authorized_keys").exists(), "a refused secret changed nothing");
+    let first = keys::install_key(&target, &locked, "publickey", &new_key, "pass one".into()).await.unwrap();
+    assert_eq!(first, keys::Installed { added: true, ssh_dir_own: true, file_own: true });
+    let second = keys::install_key(&target, &locked, "publickey", &new_key, "pass one".into()).await.unwrap();
+    assert!(!second.added);
+    let installed = std::fs::read_to_string(d.join("home/.ssh/authorized_keys")).unwrap();
+    assert_eq!(installed.lines().filter(|l| l.trim() == new_key.trim()).count(), 1, "{installed}");
+    assert!(probed(check::run_probe(&target, &with_new, "skiffd.sock", None).await.unwrap()), "the new key logs in with no prompt");
+    use std::os::unix::fs::PermissionsExt;
+    assert_eq!(std::fs::metadata(d.join("home/.ssh/authorized_keys")).unwrap().permissions().mode() & 0o777, 0o600);
+
+    // Fix permissions: the file is put aside and a new one holds the key.
+    let fixed = keys::fix_key_file(&target, &locked, "publickey", &new_key, "pass one".into()).await;
+    assert_eq!(fixed, Ok(()));
+    let aside = std::fs::read_dir(d.join("home/.ssh")).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().starts_with("authorized_keys.skiff-")).count();
+    assert_eq!(aside, 1);
+    assert!(probed(check::run_probe(&target, &with_new, "skiffd.sock", None).await.unwrap()));
+}

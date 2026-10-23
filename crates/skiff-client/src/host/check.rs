@@ -7,7 +7,8 @@
 //! socket the probe found.
 //!
 //! The lines follow the design rules: plain causes, the Host's name, never
-//! ssh's own output and never a command to run.
+//! ssh's own output and never a command to run. A failed row names at most
+//! one fix ([`Fix`]); `keys` does the work after the person confirms.
 
 use std::{
     ffi::OsString,
@@ -21,6 +22,7 @@ use skiff_host_api::HostId;
 use tokio::{io::AsyncWriteExt, process::Command};
 
 use super::{
+    keys::{self, Installed, LocalKey},
     local::HostSelection,
     ssh::{SshError, SshOptions, SshTarget},
 };
@@ -97,12 +99,26 @@ pub enum State {
     Skipped,
 }
 
+/// The one button a failed row offers.
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Fix {
+    TrustKey,
+    ReviewKey,
+    MakeKey,
+    UnlockKey,
+    InstallKey,
+    CopyPublicKey,
+    FixPermissions,
+}
+
 #[derive(Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct Line {
     pub row: Row,
     pub title: &'static str,
     pub state: State,
     pub text: String,
+    pub fix: Option<Fix>,
 }
 
 /// The whole list. `socket`: the socket the probe found, to store.
@@ -129,6 +145,13 @@ pub struct CheckInput {
     pub pin: Option<HostId>,
     /// A private folder for the check's own forward.
     pub forward_dir: PathBuf,
+    /// This computer's home, to tell a missing or locked key apart. None:
+    /// no key diagnosis.
+    pub home: Option<PathBuf>,
+    /// Ask the SSH agent for its keys.
+    pub agent: bool,
+    /// What the last key install in this app run found on the server.
+    pub installed: Option<Installed>,
 }
 
 /// The arguments of the probe's ssh run: strict, batch, no shared master,
@@ -234,7 +257,11 @@ pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
             return list.finish(None, None);
         }
         Ok(ProbeRun::Ssh(stderr)) => {
-            login_failure(&mut list, &stderr, name, &server);
+            let local = match &input.home {
+                Some(home) if denied(&stderr) => keys::local_key(&input.target, options, home, input.agent).await.ok(),
+                _ => None,
+            };
+            login_failure(&mut list, &stderr, name, &server, local.as_ref(), input.installed.as_ref());
             return list.finish(None, None);
         }
         Ok(ProbeRun::Garbled) => {
@@ -320,8 +347,13 @@ fn forwarding_off(name: &str) -> String {
     format!("{name} does not allow Skiff's connection to its sessions service. Its admin must allow socket forwarding for ssh (AllowStreamLocalForwarding).")
 }
 
-/// The first rows, from what ssh said when it stopped.
-fn login_failure(list: &mut List, stderr: &str, name: &str, server: &str) {
+fn denied(stderr: &str) -> bool {
+    stderr.contains("Permission denied") || stderr.contains("Too many authentication failures")
+}
+
+/// The first rows, from what ssh said when it stopped, this computer's key
+/// (`local`), and what a key install found on the server.
+fn login_failure(list: &mut List, stderr: &str, name: &str, server: &str, local: Option<&LocalKey>, installed: Option<&Installed>) {
     let has = |m: &str| stderr.contains(m);
     if has("Could not resolve hostname") || has("nodename nor servname") || has("Name or service not known") {
         return list.fail(Row::Reach, format!("This computer cannot find {server}. Check the name, or pick an alias from ssh config."));
@@ -336,23 +368,38 @@ fn login_failure(list: &mut List, stderr: &str, name: &str, server: &str) {
     let target = SshTarget::new(name, "/");
     match super::ssh::classify(stderr, &target) {
         Some(SshError::HostKeyChanged(_)) => {
-            return list.fail(Row::HostKey, format!("The host key of {name} changed since the last connection. Skiff does not connect."));
+            return list.fix(Row::HostKey, format!("The host key of {name} changed since the last connection. Skiff does not connect."), Fix::ReviewKey);
         }
         Some(SshError::HostKeyUnknown(_)) => {
-            return list.fail(Row::HostKey, format!("This computer does not know the host key of {name} yet."));
+            return list.fix(Row::HostKey, format!("This computer does not know the host key of {name} yet."), Fix::TrustKey);
         }
         _ => {}
     }
     list.pass(Row::HostKey, "Trusted.".into());
-    if has("Permission denied") || has("Too many authentication failures") {
+    if denied(stderr) {
         // `Permission denied (publickey).`: the server allows keys only.
         let methods = stderr.split("Permission denied (").nth(1).and_then(|r| r.split(')').next()).unwrap_or_default();
-        let text = if methods.split(',').all(|m| m.trim() == "publickey") && !methods.is_empty() {
-            format!("{name} accepts only keys it already knows, and allows no password. Ask its admin to add this computer's key.")
-        } else {
-            format!("{name} does not accept a key from this computer yet.")
+        let keys_only = methods.split(',').all(|m| m.trim() == "publickey") && !methods.is_empty();
+        return match (local, installed) {
+            (Some(LocalKey::None), _) => list.fix(Row::Login, "This computer has no SSH key.".into(), Fix::MakeKey),
+            (Some(LocalKey::Locked(_)), _) => list.fix(Row::Login, "Your SSH key is locked. Skiff cannot unlock it without you.".into(), Fix::UnlockKey),
+            // The key is in the file, and the server still refuses it.
+            (_, Some(i)) if !i.file_own && i.ssh_dir_own => list.fix(
+                Row::Login,
+                format!("{name} has your key but cannot read it. The file that holds it belongs to another account."),
+                Fix::FixPermissions,
+            ),
+            (_, Some(i)) if !i.ssh_dir_own => list.fail(
+                Row::Login,
+                format!("{name} cannot read your keys, and you do not own your ~/.ssh folder there. Ask its admin to give it back to you."),
+            ),
+            _ if keys_only => list.fix(
+                Row::Login,
+                format!("{name} accepts only keys it already knows, and allows no password. Ask its admin to add this computer's key."),
+                Fix::CopyPublicKey,
+            ),
+            _ => list.fix(Row::Login, format!("{name} does not accept a key from this computer yet."), Fix::InstallKey),
         };
-        return list.fail(Row::Login, text);
     }
     list.fail(Row::Login, format!("ssh to {name} stopped for an unknown reason."));
 }
@@ -364,15 +411,18 @@ struct List {
 
 impl List {
     fn pass(&mut self, row: Row, text: String) {
-        self.rows.push(Line { row, title: row.title(), state: State::Passed, text });
+        self.rows.push(Line { row, title: row.title(), state: State::Passed, text, fix: None });
     }
     fn fail(&mut self, row: Row, text: String) {
-        self.rows.push(Line { row, title: row.title(), state: State::Failed, text });
+        self.rows.push(Line { row, title: row.title(), state: State::Failed, text, fix: None });
+    }
+    fn fix(&mut self, row: Row, text: String, fix: Fix) {
+        self.rows.push(Line { row, title: row.title(), state: State::Failed, text, fix: Some(fix) });
     }
     fn finish(mut self, socket: Option<String>, host_id: Option<String>) -> Report {
         let ok = self.rows.len() == Row::ALL.len() && self.rows.iter().all(|r| r.state == State::Passed);
         for row in Row::ALL.into_iter().skip(self.rows.len()) {
-            self.rows.push(Line { row, title: row.title(), state: State::Skipped, text: "Skipped until the row above passes.".into() });
+            self.rows.push(Line { row, title: row.title(), state: State::Skipped, text: "Skipped until the row above passes.".into(), fix: None });
         }
         Report { rows: self.rows, ok, socket, host_id }
     }
@@ -383,9 +433,41 @@ mod tests {
     use super::*;
 
     fn lines(stderr: &str) -> Vec<(Row, State, String)> {
+        with(stderr, None, None).into_iter().map(|l| (l.row, l.state, l.text)).collect()
+    }
+
+    fn with(stderr: &str, local: Option<&LocalKey>, installed: Option<&Installed>) -> Vec<Line> {
         let mut list = List::default();
-        login_failure(&mut list, stderr, "devbox", "devbox.lan");
-        list.finish(None, None).rows.into_iter().map(|l| (l.row, l.state, l.text)).collect()
+        login_failure(&mut list, stderr, "devbox", "devbox.lan", local, installed);
+        list.finish(None, None).rows
+    }
+
+    fn fix(stderr: &str, local: Option<&LocalKey>, installed: Option<&Installed>) -> (String, Option<Fix>) {
+        let f = with(stderr, local, installed).into_iter().find(|l| l.state == State::Failed).unwrap();
+        (f.text, f.fix)
+    }
+
+    #[test]
+    fn a_refused_login_names_the_key_case_and_its_one_fix() {
+        let pw = "me@devbox.lan: Permission denied (publickey,password).\n";
+        let keys = "me@devbox.lan: Permission denied (publickey).\n";
+        let ready = LocalKey::Ready("ssh-ed25519 AAAA".into());
+        assert_eq!(fix(pw, Some(&LocalKey::None), None), ("This computer has no SSH key.".into(), Some(Fix::MakeKey)));
+        assert_eq!(fix(pw, Some(&LocalKey::Locked("/k".into())), None).1, Some(Fix::UnlockKey));
+        assert_eq!(fix(pw, Some(&ready), None).1, Some(Fix::InstallKey));
+        assert_eq!(fix(keys, Some(&ready), None).1, Some(Fix::CopyPublicKey));
+        let foreign = Installed { added: true, ssh_dir_own: true, file_own: false };
+        let (text, f) = fix(pw, Some(&ready), Some(&foreign));
+        assert_eq!(f, Some(Fix::FixPermissions));
+        assert!(text.contains("cannot read it"), "{text}");
+        let lost = Installed { added: false, ssh_dir_own: false, file_own: false };
+        assert_eq!(fix(pw, Some(&ready), Some(&lost)).1, None, "no fix when ~/.ssh is not the account's");
+        // A good install says nothing: the next refusal is plain again.
+        let good = Installed { added: true, ssh_dir_own: true, file_own: true };
+        assert_eq!(fix(pw, Some(&ready), Some(&good)).1, Some(Fix::InstallKey));
+        let unknown = "No ED25519 host key is known for devbox.lan and you have requested strict checking.\nHost key verification failed.\n";
+        assert_eq!(fix(unknown, None, None).1, Some(Fix::TrustKey));
+        assert_eq!(fix("@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @\n", None, None).1, Some(Fix::ReviewKey));
     }
 
     fn failed(stderr: &str) -> (Row, String) {

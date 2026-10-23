@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use skiff_client::host::{
+    keys,
     local::HostSelection,
     ssh::{SshOptions, SshTarget},
 };
@@ -542,11 +543,7 @@ const SOCKET_NAME: &str = if cfg!(debug_assertions) { "skiffd-dev.sock" } else {
 #[tauri::command]
 pub(crate) async fn check_host(id: String) -> Result<skiff_client::host::check::Report, String> {
     let file = path();
-    let h = blocking({
-        let (file, id) = (file.clone(), id.clone());
-        move || load(&file)?.find(&id).cloned().ok_or_else(|| anyhow::anyhow!("That Host is not in the list any more."))
-    })
-    .await?;
+    let h = host_by_id(&id).await?;
     let input = skiff_client::host::check::CheckInput {
         target: h.target(),
         name: h.name.clone(),
@@ -554,6 +551,9 @@ pub(crate) async fn check_host(id: String) -> Result<skiff_client::host::check::
         socket_name: SOCKET_NAME.into(),
         pin: h.host_id.clone().and_then(|p| HostId::try_from(p).ok()),
         forward_dir: forward_dir(&h.id),
+        home: home().ok(),
+        agent: true,
+        installed: INSTALLED.lock().unwrap().get(&id).cloned(),
     };
     let report = skiff_client::host::check::check(&input, &SshOptions::default()).await;
     note(&id, report.ok);
@@ -571,6 +571,131 @@ pub(crate) async fn check_host(id: String) -> Result<skiff_client::host::check::
         .await?;
     }
     Ok(report)
+}
+
+async fn host_by_id(id: &str) -> Result<KnownHost, String> {
+    let id = id.to_string();
+    blocking(move || load(&path())?.find(&id).cloned().ok_or_else(|| anyhow::anyhow!("That Host is not in the list any more."))).await
+}
+
+/// This computer's home folder.
+fn home() -> Result<PathBuf, String> {
+    std::env::var_os("HOME").map(PathBuf::from).ok_or_else(|| "This computer gives Skiff no home folder.".into())
+}
+
+/// What the last key install found on each server, by Host id, for the
+/// check that follows it (Fix permissions).
+static INSTALLED: std::sync::Mutex<std::collections::BTreeMap<String, keys::Installed>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// Host keys learned into a temp file, waiting for the person's confirm, by
+/// token. The page never sends a key: only the token of one Rust scanned.
+static SCANNED: std::sync::Mutex<std::collections::BTreeMap<String, (String, keys::Scanned)>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// The host key that answers for a Host now, for the trust dialog.
+#[derive(Serialize)]
+pub(crate) struct HostKeyView {
+    token: String,
+    fingerprints: Vec<keys::Fingerprint>,
+    /// What known_hosts holds for that host now. Not empty: the key changed.
+    known: Vec<keys::Fingerprint>,
+    /// The known_hosts file a trust writes, with `~` for home.
+    file: String,
+}
+
+/// Learns the host key that answers for a Host into a temp file. Nothing
+/// the person owns changes until they confirm with [`host_key_trust`].
+#[tauri::command]
+pub(crate) async fn host_key_scan(id: String) -> Result<HostKeyView, String> {
+    let h = host_by_id(&id).await?;
+    let home = home()?;
+    let scanned = keys::scan_host_key(&h.target(), &SshOptions::default(), &home).await?;
+    let token = new_id(&Hosts::default()).map_err(err)?;
+    let file = match scanned.file.strip_prefix(&home) {
+        Ok(rest) => format!("~/{}", rest.display()),
+        Err(_) => scanned.file.display().to_string(),
+    };
+    let view = HostKeyView { token: token.clone(), fingerprints: scanned.fingerprints.clone(), known: scanned.known.clone(), file };
+    SCANNED.lock().unwrap().insert(token, (id, scanned));
+    Ok(view)
+}
+
+/// The person confirmed the fingerprint: its line goes into known_hosts.
+/// `replace`: the old keys of that host go first, as they confirmed twice.
+#[tauri::command]
+pub(crate) async fn host_key_trust(token: String, replace: bool) -> Result<(), String> {
+    let Some((id, scanned)) = SCANNED.lock().unwrap().remove(&token) else {
+        return Err("Skiff no longer holds that key. Check again.".into());
+    };
+    if !scanned.known.is_empty() && !replace {
+        return Err("The host key changed. Review it first.".into());
+    }
+    keys::trust_host_key(&scanned, replace).await?;
+    LAST.lock().unwrap().remove(&id);
+    Ok(())
+}
+
+/// The key to install, or why there is none to install yet.
+async fn ready_key(h: &KnownHost) -> Result<String, String> {
+    match keys::local_key(&h.target(), &SshOptions::default(), &home()?, true).await? {
+        keys::LocalKey::Ready(line) => Ok(line),
+        keys::LocalKey::Locked(_) => Err("Your SSH key is locked. Unlock it first.".into()),
+        keys::LocalKey::None => Err("This computer has no SSH key. Make one first.".into()),
+    }
+}
+
+/// Makes `~/.ssh/id_ed25519` with no passphrase, when it is not there.
+#[tauri::command]
+pub(crate) async fn make_key() -> Result<(), String> {
+    let user = std::env::var("USER").unwrap_or_default();
+    keys::make_key(&home()?, &format!("{user}@{} (Skiff)", local_hostname())).await.map(drop)
+}
+
+/// Gives the locked key ssh would use for this Host to the agent.
+#[tauri::command]
+pub(crate) async fn unlock_key(id: String, passphrase: String) -> Result<(), String> {
+    let h = host_by_id(&id).await?;
+    match keys::local_key(&h.target(), &SshOptions::default(), &home()?, true).await? {
+        keys::LocalKey::Locked(key) => keys::unlock_key(&key, passphrase).await,
+        _ => Ok(()),
+    }
+}
+
+/// This computer's public key for this Host, for Copy public key.
+#[tauri::command]
+pub(crate) async fn public_key(id: String) -> Result<String, String> {
+    ready_key(&host_by_id(&id).await?).await
+}
+
+/// Adds this computer's key to the Host's `authorized_keys`, once, after one
+/// password entry. The password goes to ssh through askpass only.
+#[tauri::command]
+pub(crate) async fn install_key(id: String, password: String) -> Result<keys::Installed, String> {
+    let h = host_by_id(&id).await?;
+    let key = ready_key(&h).await?;
+    match keys::install_key(&h.target(), &SshOptions::default(), keys::BY_PASSWORD, &key, password).await {
+        Ok(done) => {
+            INSTALLED.lock().unwrap().insert(id, done.clone());
+            Ok(done)
+        }
+        Err(keys::StepError::Refused) => Err(format!("The password did not work. Nothing changed on {}.", h.name)),
+        Err(keys::StepError::Other(e)) => Err(e),
+    }
+}
+
+/// Puts the Host's foreign-owned `authorized_keys` aside and writes a new
+/// one with this computer's key, after one password entry.
+#[tauri::command]
+pub(crate) async fn fix_permissions(id: String, password: String) -> Result<(), String> {
+    let h = host_by_id(&id).await?;
+    let key = ready_key(&h).await?;
+    match keys::fix_key_file(&h.target(), &SshOptions::default(), keys::BY_PASSWORD, &key, password).await {
+        Ok(()) => {
+            INSTALLED.lock().unwrap().remove(&id);
+            Ok(())
+        }
+        Err(keys::StepError::Refused) => Err(format!("The password did not work. Nothing changed on {}.", h.name)),
+        Err(keys::StepError::Other(e)) => Err(e),
+    }
 }
 
 /// Shows another Host in this window: the old connection, its streams and

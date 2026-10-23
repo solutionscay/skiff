@@ -30,14 +30,16 @@ class El {
   click() { for (const f of this.listeners.click ?? []) f({}); }
 }
 
-function tab() {
+function tab(report?: unknown) {
   const calls: [string, unknown][] = [];
+  const dialogs: { title: string; content?: El[]; submit: () => Promise<void>; onClose?: () => void }[] = [];
   let prompt: { value?: string; submit: (v: string) => Promise<void> } | null = null;
   const hosts = [{ id: "h_dev", name: "devbox", destination: "devbox", user: "me", port: 2222, socket: "/run/user/1000/skiff/skiffd.sock", socket_override: false, state: "attention" }];
   const invoke = async (c: string, a?: unknown) => {
     calls.push([c, a]);
     if (c === "resolve_ssh") return { hostname: "devbox.lan", user: "me", port: 2222, jump: "" };
     if (c === "ssh_aliases") return [{ name: "devbox", goes_to: "me@devbox.lan" }];
+    if (c === "check_host" && report) return report;
     if (c === "check_host") return { ok: true, rows: [{ row: "reach", title: "Reach the server", state: "passed", text: "devbox.lan answers. 12 ms." }] };
   };
   const h = (tag: string, cls?: string, text?: string) => new El(tag, cls, text);
@@ -48,6 +50,8 @@ function tab() {
       "../ui/dom": { h, button: (cls: string, text: string, run: () => void) => { const b = h("button", cls, text); b.addEventListener("click", run); return b; } },
       "../ui/runes": { rune: () => new El("svg") },
       "../ui/confirm": { confirmAction: async () => true, promptAction: (o: typeof prompt) => void (prompt = o) },
+      "../ui/dialogParts": { actionDialog: (o: (typeof dialogs)[number]) => void dialogs.push(o) },
+      "../platform/clipboard": { copyText: async (t: string) => void calls.push(["copy", t]) },
       "../app/hosts": { knownHosts: () => hosts, loadHosts: async () => {}, localHostName: () => "This computer", shownHost: () => null, pick: (id: string) => void calls.push(["pick", id]) },
     },
     { document: { getElementById: () => null, querySelector: () => null }, setTimeout, clearTimeout, Promise, Map },
@@ -55,7 +59,7 @@ function tab() {
   );
   let page: El = new El("div");
   const t = mod.createHostsTab(() => (page = t.draw()));
-  return { t, calls, page: () => page, prompt: () => prompt!, redraw: () => (page = t.draw()) };
+  return { t, calls, dialogs, page: () => page, prompt: () => prompt!, redraw: () => (page = t.draw()) };
 }
 
 test("Rename sends only the new name, for the Host's id", async () => {
@@ -108,4 +112,45 @@ test("a Host that needs attention opens its check list from the menu link", asyn
   x.redraw();
   assert.ok(x.page().find("Reach the server"));
   assert.equal(x.page().find("Needs attention"), undefined);
+});
+
+test("Install key sends the password once, clears the field, then checks again", async () => {
+  const failed = {
+    ok: false,
+    rows: [
+      { row: "reach", title: "Reach the server", state: "passed", text: "devbox.lan answers.", fix: null },
+      { row: "login", title: "Log in without a prompt", state: "failed", text: "devbox does not accept a key from this computer yet.", fix: "install_key" },
+    ],
+  };
+  const x = tab(failed);
+  await x.t.load();
+  x.t.open({ check: "h_dev" });
+  for (let i = 0; i < 4; i++) await flush();
+  x.redraw();
+  x.page().find("Install key…")!.click();
+  const d = x.dialogs.at(-1)!;
+  assert.equal(d.title, "Log in to devbox once");
+  const field = d.content![0];
+  assert.equal((field as unknown as { type: string }).type, "password");
+  field.value = "hunter2";
+  const checks = x.calls.filter(([c]) => c === "check_host").length;
+  await d.submit();
+  for (let i = 0; i < 4; i++) await flush();
+  const installs = x.calls.filter(([c]) => c === "install_key");
+  assert.equal(JSON.stringify(installs), JSON.stringify([["install_key", { id: "h_dev", password: "hunter2" }]]));
+  assert.equal(field.value, "", "the page keeps no password");
+  assert.equal(x.calls.filter(([c]) => c === "check_host").length, checks + 1, "the check runs again");
+});
+
+test("Copy public key copies the line Rust gives and says it is safe to send", async () => {
+  const x = tab({ ok: false, rows: [{ row: "login", title: "Log in without a prompt", state: "failed", text: "keys only", fix: "copy_public_key" }] });
+  await x.t.load();
+  x.t.open({ check: "h_dev" });
+  for (let i = 0; i < 4; i++) await flush();
+  x.redraw();
+  x.page().find("Copy public key")!.click();
+  for (let i = 0; i < 4; i++) await flush();
+  assert.ok(x.calls.some(([c]) => c === "public_key"));
+  x.redraw();
+  assert.ok(x.page().all().some((e) => e.textContent.startsWith("Public key copied.")));
 });

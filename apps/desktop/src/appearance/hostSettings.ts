@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { h, button } from "../ui/dom";
 import { rune } from "../ui/runes";
 import { confirmAction, promptAction } from "../ui/confirm";
+import { actionDialog } from "../ui/dialogParts";
+import { copyText } from "../platform/clipboard";
 import { type HostsPage, type KnownHost, knownHosts, loadHosts, localHostName, pick, shownHost } from "../app/hosts";
 
 /**
@@ -11,6 +13,9 @@ import { type HostsPage, type KnownHost, knownHosts, loadHosts, localHostName, p
  * Server. Name, user, port and socket sit under More: ssh config gives the
  * first three, the line under Server says what `ssh -G` makes of them, with
  * no network, and the check finds the socket. Connect saves, then checks.
+ * A failed row has at most one fix. Each fix asks first, names what it
+ * changes, and then checks again. A password or passphrase goes to Rust,
+ * which gives it to ssh through askpass only; the page keeps none.
  */
 
 interface Resolved {
@@ -35,6 +40,27 @@ interface CheckLine {
   title: string;
   state: "passed" | "failed" | "skipped";
   text: string;
+  fix: Fix | null;
+}
+type Fix = "trust_key" | "review_key" | "make_key" | "unlock_key" | "install_key" | "copy_public_key" | "fix_permissions";
+const FIX_LABEL: Record<Fix, string> = {
+  trust_key: "Trust this key…",
+  review_key: "Review…",
+  make_key: "Make key…",
+  unlock_key: "Unlock key…",
+  install_key: "Install key…",
+  copy_public_key: "Copy public key",
+  fix_permissions: "Fix permissions…",
+};
+interface Fingerprint {
+  kind: string;
+  sha256: string;
+}
+interface HostKey {
+  token: string;
+  fingerprints: Fingerprint[];
+  known: Fingerprint[];
+  file: string;
 }
 interface Report {
   rows: CheckLine[];
@@ -43,7 +69,7 @@ interface Report {
 /** The rows, in order, before an answer. */
 const CHECK_ROWS = ["Reach the server", "Host key", "Log in without a prompt", "Sessions service (skiffd)", "Socket forwarding", "Skiff identity and version"];
 
-type Check = { id: string; report: Report | null; error: string | null };
+type Check = { id: string; report: Report | null; error: string | null; note?: string };
 
 export function createHostsTab(redraw: () => void) {
   let form: Form | null = null;
@@ -198,7 +224,7 @@ export function createHostsTab(redraw: () => void) {
     const table = h("div", "set-table g-check");
     table.setAttribute("role", "table");
     table.setAttribute("aria-label", `Check ${name}`);
-    const rows: CheckLine[] = c.report?.rows ?? CHECK_ROWS.map((title, i) => ({ row: String(i), title, state: "skipped", text: i === 0 ? "Checking…" : "Waiting" }));
+    const rows: CheckLine[] = c.report?.rows ?? CHECK_ROWS.map((title, i) => ({ row: String(i), title, state: "skipped", text: i === 0 ? "Checking…" : "Waiting", fix: null }));
     for (const r of rows) {
       const row = h("div", `set-row set-check ${c.report ? r.state : "waiting"}`);
       row.setAttribute("role", "row");
@@ -206,11 +232,17 @@ export function createHostsTab(redraw: () => void) {
       if (c.report && r.state === "passed") mark.append(rune("indicators-check"));
       else mark.append(h("span", "sq"));
       mark.setAttribute("aria-label", c.report ? r.state : "waiting");
-      row.append(mark, h("span", "c-name", r.title), h("span", "c-text", r.text));
+      const text = h("span", "c-text", r.text);
+      if (c.report && r.state === "failed" && r.fix && x) {
+        const fix = r.fix;
+        text.append(button("set-rm set-fix", FIX_LABEL[fix], () => void runFix(c, x, fix)));
+      }
+      row.append(mark, h("span", "c-name", r.title), text);
       table.append(row);
     }
     main.append(table);
     if (c.error) main.append(alert(c.error));
+    if (c.note) main.append(h("div", "set-note", c.note));
     const acts = h("div", "set-form-acts");
     const running = !c.report && !c.error;
     const again = button("set-rm", running ? "Checking…" : "Check again", () => void runCheck(c.id));
@@ -220,6 +252,149 @@ export function createHostsTab(redraw: () => void) {
     acts.append(button("set-rm", "Done", () => ((check = null), redraw())));
     main.append(acts);
     return main;
+  }
+
+  /** One fix, after its confirm, then the check again. */
+  async function runFix(c: Check, x: KnownHost, fix: Fix) {
+    const again = () => void runCheck(x.id);
+    c.note = undefined;
+    try {
+      if (fix === "trust_key" || fix === "review_key") return await trustKey(x, again);
+      if (fix === "make_key") return makeKey(x, again);
+      if (fix === "unlock_key") return secretDialog(x, "unlock", again);
+      if (fix === "install_key") return secretDialog(x, "install", again);
+      if (fix === "fix_permissions") return secretDialog(x, "fix", again);
+      if (fix === "copy_public_key") {
+        await copyText(await invoke<string>("public_key", { id: x.id }));
+        c.note = `Public key copied. A public key is safe to send. It does not let anyone log in as you. When the admin of ${x.name} adds it, check again.`;
+        redraw();
+      }
+    } catch (e) {
+      c.error = String(e);
+      redraw();
+    }
+  }
+
+  /** Trust a new host key, or replace a changed one: the fingerprint first. */
+  async function trustKey(x: KnownHost, done: () => void) {
+    const key = await invoke<HostKey>("host_key_scan", { id: x.id });
+    const prints = (title: string, fs: Fingerprint[], old = false) => {
+      const box = h("div", "confirm-body set-prints" + (old ? " old" : ""));
+      box.append(h("div", "set-prints-h", title), ...fs.map((f) => h("div", "mono", `${f.kind}  ${f.sha256}`)));
+      return box;
+    };
+    if (!key.known.length) {
+      return actionDialog({
+        title: `Trust the host key of ${x.name}?`,
+        body: `This is the first connection from this computer to ${x.name}. Compare the fingerprint with the one your server provider or admin gives you, if you have one. Skiff adds the key to ${key.file}. ssh in a terminal then trusts it too.`,
+        content: [prints("Fingerprint", key.fingerprints)],
+        action: "Trust this key",
+        tone: "go",
+        submit: async () => {
+          await invoke("host_key_trust", { token: key.token, replace: false });
+          done();
+        },
+      });
+    }
+    actionDialog({
+      title: `The host key of ${x.name} changed`,
+      body: `This is normal after a reinstall of the server. It can also mean that another machine answers at this address. Skiff does not connect until you decide.`,
+      content: [prints("Key that Skiff knows", key.known, true), prints("Key that answers now", key.fingerprints)],
+      action: "Replace the key…",
+      tone: "danger",
+      submit: async () => {
+        // Asked a second time, as a changed key can be an attack.
+        setTimeout(async () => {
+          const ok = await confirmAction({
+            title: `Replace the key of ${x.name}?`,
+            body: `Skiff removes the old key from ${key.file} and trusts the new one. Do this only if you know why it changed, such as a reinstall of ${x.name}. If you are not sure, ask the admin of ${x.name} first.`,
+            action: "Replace the key",
+          });
+          if (!ok) return;
+          await invoke("host_key_trust", { token: key.token, replace: true }).catch((e) => alertCheck(e));
+          done();
+        });
+      },
+    });
+  }
+
+  function alertCheck(e: unknown) {
+    if (check) check.error = String(e);
+    redraw();
+  }
+
+  function makeKey(x: KnownHost, done: () => void) {
+    actionDialog({
+      title: "Make an SSH key on this computer?",
+      body: `This computer has no SSH key. Skiff makes one at ~/.ssh/id_ed25519, with no passphrase, and then installs it on ${x.name}. ssh and other apps on this computer use it too.`,
+      action: "Make key",
+      tone: "go",
+      submit: async () => {
+        await invoke("make_key");
+        // The new key goes to the server next, with one password.
+        setTimeout(() => secretDialog(x, "install", done));
+      },
+    });
+  }
+
+  /** A dialog with one secret field. The field is cleared when it closes. */
+  function secretDialog(x: KnownHost, what: "install" | "unlock" | "fix", done: () => void) {
+    const input = h("input", "prompt-input");
+    input.type = "password";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    const user = x.user ?? (x.destination.includes("@") ? x.destination.split("@")[0] : "");
+    const who = user ? `${user} on ${x.name}` : `your account on ${x.name}`;
+    const copy = {
+      install: {
+        title: `Log in to ${x.name} once`,
+        body: `Type the password of ${who}. Skiff uses it one time to add this computer's key to ${x.name}. Skiff does not store it.`,
+        label: "Password",
+        action: "Install key",
+        cmd: "install_key",
+      },
+      unlock: {
+        title: "Unlock your SSH key",
+        body: "Your key has a passphrase and is not in the SSH agent. Type the passphrase. Skiff gives the key to the agent until you log out. Skiff does not store the passphrase.",
+        label: "Passphrase",
+        action: "Unlock",
+        cmd: "unlock_key",
+      },
+      fix: {
+        title: `Replace the key file on ${x.name}?`,
+        body: `On ${x.name}, the file that holds your keys belongs to another account, so the SSH server ignores it. Skiff renames it and writes a new one that you own, with this computer's key in it. The other keys in the old file then stop working on ${x.name}. Type the password of ${who}. Skiff does not store it.`,
+        label: "Password",
+        action: "Replace the key file",
+        cmd: "fix_permissions",
+      },
+    }[what];
+    input.placeholder = copy.label;
+    input.setAttribute("aria-label", copy.label);
+    actionDialog({
+      title: copy.title,
+      body: copy.body,
+      content: [input],
+      action: copy.action,
+      tone: what === "fix" ? "danger" : "go",
+      focus: input,
+      onClose: () => (input.value = ""),
+      submit: async () => {
+        if (!input.value) {
+          input.focus();
+          throw `Type the ${copy.label.toLowerCase()}.`;
+        }
+        const secret = input.value;
+        input.value = "";
+        const args = what === "unlock" ? { id: x.id, passphrase: secret } : { id: x.id, password: secret };
+        try {
+          await invoke(copy.cmd, args);
+        } catch (e) {
+          input.focus();
+          throw String(e);
+        }
+        done();
+      },
+    });
   }
 
   function rename(x: KnownHost) {

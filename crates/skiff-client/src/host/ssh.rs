@@ -6,8 +6,9 @@
 //!
 //! Trust is the user's own: `StrictHostKeyChecking=yes`, so an unknown or
 //! changed host key fails and nothing is learned or written (`UpdateHostKeys=no`).
-//! `BatchMode=yes`: there is no prompt. Skiff adds no TOFU, no auth of its own,
-//! no TCP listener. The `ssh` process is this app's transport, not the Host's:
+//! `BatchMode=yes`: there is no prompt. The link adds no TOFU, no auth of its
+//! own, no TCP listener: the person trusts a key in Settings › Hosts, after a
+//! confirm, through `keys`, never here. The `ssh` process is this app's transport, not the Host's:
 //! stopping it ends only the forward, and the remote sessions run on.
 //! Identity comes from skiffd's `pong`, never from the forwarded socket's peer
 //! credentials, which name `ssh`.
