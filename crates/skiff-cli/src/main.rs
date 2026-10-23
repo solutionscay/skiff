@@ -332,8 +332,9 @@ pub enum LedgerCmd {
     },
     /// List the work that is not closed: working first, then open, oldest
     /// first, each plan's tasks under it. WORK names the group. LIVE says if
-    /// the pane still exists.
-    #[command(after_help = "--state filters inside the list. --json adds bucket (working, open or finished) and closed_at to each row.")]
+    /// the pane still exists. An open task whose pane is gone is set done
+    /// first, and shows `gone`.
+    #[command(after_help = "--state filters inside the list. --json adds bucket (working, open or finished), closed_at and gone_at to each row.")]
     Ls {
         /// sent, pending, blocked, done, interrupted or gone.
         #[arg(long)]
