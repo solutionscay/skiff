@@ -145,7 +145,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "930ed953edca450c6cad8fad706921d141737bd3dbd6119cd26f568c9530fba4"
+    "sha256": "38fc3f2db63aab2da6ba8b7018e712715c066db2e381717829e67cb8e90b003e"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
