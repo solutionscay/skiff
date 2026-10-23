@@ -2,7 +2,8 @@
 # Builds one server bundle, skiff-server-<version>-<os>-<arch>.tar.gz, in
 # <out>: skiffd, skiff-host, skiff, manifest.json (version, protocol,
 # target, commit and the SHA-256 of each file), and on Linux the systemd
-# user units. It does not sign: sign.sh does, once for every bundle.
+# user units, and install.sh (the server script, for --uninstall there). It
+# does not sign: sign.sh does, once for every bundle.
 #
 #   build.sh <rust target> <os> <arch> <out>
 #
@@ -28,7 +29,9 @@ for b in skiffd skiff-host skiff; do
   cp "$root/target/$target/release/$b" "$dir/$b"
   chmod 755 "$dir/$b"
 done
-files="skiffd skiff-host skiff"
+cp "$root/crates/skiff-client/src/host/server.sh" "$dir/install.sh"
+chmod 755 "$dir/install.sh"
+files="skiffd skiff-host skiff install.sh"
 if [ "$os" = linux ]; then
   mkdir -p "$dir/systemd"
   cp "$root/scripts/server-bundle/systemd/skiffd.service" "$root/scripts/server-bundle/systemd/skiff-host.service" "$dir/systemd/"

@@ -106,6 +106,8 @@ jobs:
           SKIFF_SERVER_SIGNING_KEY: ${{ secrets.SKIFF_SERVER_SIGNING_KEY }}
           MINISIGN: ${{ runner.temp }}/minisign/minisign
         run: sh scripts/server-bundle/sign.sh dist
+      - name: install.sh
+        run: sh scripts/server-bundle/install-sh.sh dist
       - uses: actions/upload-artifact@v4
         with:
           name: skiff-server
