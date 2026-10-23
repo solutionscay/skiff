@@ -93,6 +93,13 @@ impl Probe {
             _ => None,
         }
     }
+    /// The version the managed install runs: the skiffd that answers, else
+    /// the `current` link. After an update that stopped before its reload
+    /// the two differ, and what runs is what the next update moves from.
+    pub fn managed_version(&self) -> Option<&str> {
+        let m = self.managed.as_ref()?;
+        Some(self.status.as_ref().and_then(|s| s.skiffd.as_ref()).map_or(m.version.as_str(), |d| d.version.as_str()))
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
@@ -435,14 +442,14 @@ fn server_rows(list: &mut List, p: &Probe, name: &str, version: &str, update_fai
     list.platform = Some((os.into(), arch.into()));
     list.pass(Row::Supported, format!("{} on {}.", p.os, p.arch));
     let running = p.status.as_ref().and_then(|s| s.skiffd.as_ref());
-    match (&p.managed, p.socket_live) {
-        (Some(m), _) if m.version == version => list.pass(Row::Skiff, format!("Skiff {version} is installed. Skiff manages it.")),
+    match (p.managed_version(), p.socket_live) {
+        (Some(have), _) if have == version => list.pass(Row::Skiff, format!("Skiff {version} is installed. Skiff manages it.")),
         // Never down: a newer server waits for this computer.
-        (Some(m), _) if newer(&m.version, version) => {
-            list.warn(Row::Skiff, format!("{name} runs Skiff {}, newer than this computer's {version}. Update Skiff on this computer.", m.version), None)
+        (Some(have), _) if newer(have, version) => {
+            list.warn(Row::Skiff, format!("{name} runs Skiff {have}, newer than this computer's {version}. Update Skiff on this computer."), None)
         }
         (Some(_), _) if update_failed.is_some() => list.warn(Row::Skiff, update_failed.unwrap_or_default().to_string(), Some(Fix::UpdateSkiff)),
-        (Some(m), _) => list.warn(Row::Skiff, format!("Update available. {name} runs Skiff {}. This computer runs {version}.", m.version), Some(Fix::UpdateSkiff)),
+        (Some(have), _) => list.warn(Row::Skiff, format!("Update available. {name} runs Skiff {have}. This computer runs {version}."), Some(Fix::UpdateSkiff)),
         (None, true) => {
             let v = running.map(|d| format!(" {}", d.version)).unwrap_or_default();
             list.pass(Row::Skiff, format!("{name} runs Skiff{v} from its own install. Skiff uses it as it is."));
@@ -687,6 +694,12 @@ mod tests {
         let (_, rows) = server(&newer_one);
         assert_eq!((rows[1].1, rows[1].2), (State::Warning, None));
         assert!(rows[1].3.contains("Update Skiff on this computer"));
+        // An update that stopped after it moved `current`: the skiffd that
+        // answers is still the old one, and the row goes by it.
+        let stopped = Probe { status: Some(Status { skiff: "2.0.0".into(), skiffd: Some(StatusDaemon { version: "1.9.0".into(), protocol: 27 }) }), ..ours.clone() };
+        assert_eq!(stopped.managed_version(), Some("1.9.0"));
+        let (_, rows) = server(&Probe { socket_live: true, ..stopped });
+        assert_eq!((rows[1].1, rows[1].2), (State::Warning, Some(Fix::UpdateSkiff)), "{rows:?}");
         // Not a Skiff platform: the row says what it found.
         let (go, rows) = server(&Probe { os: "FreeBSD".into(), arch: "amd64".into(), ..probe() });
         assert!(!go && rows[0].3.contains("FreeBSD on amd64"));

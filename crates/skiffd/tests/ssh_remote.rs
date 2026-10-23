@@ -289,13 +289,35 @@ async fn an_update_keeps_the_session_pid_and_screen_and_never_goes_down() {
 
     // Never down: an older bundle changes nothing.
     let down = install::update(&target, &options, &bundle("9.9.7-test", "beside").await, "9.9.7-test", name, 0, "fixture", false).await.unwrap();
-    assert_eq!(down, Updated::Newer { version: "9.9.9-test".into() });
+    assert_eq!(down, Updated::Newer { from: "9.9.9-test".into() });
     assert_eq!(std::fs::read_link(server.join("current")).unwrap(), Path::new("9.9.9-test"));
 
+    // An update that stopped after it moved `current` (here: an install
+    // over the running version, which does no reload) is finished by the
+    // next update: the skiffd that runs is the old one, and it reloads.
+    let moved = install::install(&target, &options, &bundle("9.9.11-test", "beside").await, "9.9.11-test", name, 0, "fixture").await.unwrap();
+    assert!(moved.changed, "{moved:?}");
+    assert_eq!(std::fs::read_link(server.join("current")).unwrap(), Path::new("9.9.11-test"));
+    let exe = || std::fs::read_link(format!("/proc/{}/exe", daemon_pid.unwrap())).unwrap();
+    assert!(exe().ends_with("9.9.9-test/skiffd"), "{:?}", exe());
+    let finished = install::update(&target, &options, &bundle("9.9.11-test", "beside").await, "9.9.11-test", name, 0, "fixture", false).await.unwrap();
+    assert!(matches!(finished, Updated::Done { restarted: false, .. }), "{finished:?}");
+    assert!(exe().ends_with("9.9.11-test/skiffd"), "{:?}", exe());
+    // The reload closed the old connection, as every reload does.
+    let c = local_client(&socket).await;
+    assert_eq!(c.daemon_info().await.unwrap().pid, daemon_pid, "skiffd kept its pid");
+    let mut out = c.output(&s.id);
+    c.subscribe(&s.id).await.unwrap();
+    c.write(&s.id, b"echo again-$((40+5))\r".to_vec()).await.unwrap();
+    seen_local(&mut out, "again-45").await;
+    // The same version again, with the skiffd that runs it: nothing changes.
+    let same = install::update(&target, &options, &bundle("9.9.11-test", "beside").await, "9.9.11-test", name, 0, "fixture", false).await.unwrap();
+    assert_eq!(same, Updated::Same);
+
     // No handover: nothing changes, and the update names the session.
-    let stuck = install::update(&target, &options, &bundle("9.9.10-test", "broken").await, "9.9.10-test", name, 0, "fixture", false).await.unwrap();
-    assert_eq!(stuck, Updated::NoHandover { from: "9.9.9-test".into(), sessions: vec!["build".into()] });
-    assert_eq!(std::fs::read_link(server.join("current")).unwrap(), Path::new("9.9.9-test"), "current went back");
+    let stuck = install::update(&target, &options, &bundle("9.9.12-test", "broken").await, "9.9.12-test", name, 0, "fixture", false).await.unwrap();
+    assert_eq!(stuck, Updated::NoHandover { from: "9.9.11-test".into(), sessions: vec!["build".into()] });
+    assert_eq!(std::fs::read_link(server.join("current")).unwrap(), Path::new("9.9.11-test"), "current went back");
     assert_eq!(c.daemon_info().await.unwrap().pid, daemon_pid);
     c.write(&s.id, b"echo still-$((40+4))\r".to_vec()).await.unwrap();
     seen_local(&mut out, "still-44").await;

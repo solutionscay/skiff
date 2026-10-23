@@ -282,8 +282,8 @@ pub enum Updated {
     Done { from: String, restarted: bool },
     /// That version runs already: another computer updated it first.
     Same,
-    /// The server has a newer version. Nothing changed: never down.
-    Newer { version: String },
+    /// The server runs a newer version, `from`. Nothing changed: never down.
+    Newer { from: String },
     /// skiffd cannot hand its sessions to the new version. Nothing changed.
     /// The live sessions an update would end, by name.
     NoHandover { from: String, sessions: Vec<String> },
@@ -310,7 +310,7 @@ fn updated(out: &str, name: &str, version: &str, b: &Bundle) -> Result<Updated, 
     match value(out, "skiff-update") {
         "done" => Ok(Updated::Done { from, restarted: value(out, "reload") == "restarted" }),
         "same" => Ok(Updated::Same),
-        "newer" => Ok(Updated::Newer { version: from }),
+        "newer" => Ok(Updated::Newer { from }),
         "no-handover" => Ok(Updated::NoHandover { from, sessions: live_sessions(value(out, "sessions")) }),
         "busy" => Err(busy(name)),
         "lost" => Err(format!("skiffd on {name} started again on Skiff {version} instead of reloading. Its sessions ended.")),
@@ -367,7 +367,7 @@ mod tests {
         let read = |out: &str| updated(out, "devbox", "2.1.0", &b);
         assert_eq!(read("from=2.0.0\nchanged=yes\nreload=kept\nskiff-update=done\n"), Ok(Updated::Done { from: "2.0.0".into(), restarted: false }));
         assert_eq!(read("from=2.0.0\nreload=restarted\nskiff-update=done\n"), Ok(Updated::Done { from: "2.0.0".into(), restarted: true }));
-        assert_eq!(read("from=2.2.0\nskiff-update=newer\n"), Ok(Updated::Newer { version: "2.2.0".into() }));
+        assert_eq!(read("from=2.2.0\nskiff-update=newer\n"), Ok(Updated::Newer { from: "2.2.0".into() }));
         let live = r#"[{"label":"zsh","name":"build","state":"working"},{"label":"api","name":null,"state":"idle"},{"label":"old","name":null,"state":"done"}]"#;
         assert_eq!(
             read(&format!("from=2.0.0\nsessions={live}\nskiff-update=no-handover\n")),

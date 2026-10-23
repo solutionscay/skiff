@@ -125,7 +125,7 @@
       "skiff_agent",
       "skiff_core"
     ],
-    "sha256": "edd99f809772a672f98909035d43ef6814b5ba4000c1c36fa2e4d705a9d9da29"
+    "sha256": "26719c8b254dd1bfd575cfaa2b170e4df1086dab41ec0ee08e4825f6ec5b3777"
   },
   "apps/desktop/src-tauri/src/ledger.rs": {
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",
@@ -422,7 +422,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "b373fc59013244c705663eee8be9f732199ea3c5c615026f021b87645940252a"
+    "sha256": "79c3d2eac513aa1f483f72de64c5b06137634d65909bf01f25161cfcd4ebae60"
   },
   "apps/desktop/src/appearance/settings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6",

@@ -214,7 +214,7 @@ install() {
     fi
     chmod 755 "$src" "$src/skiffd" "$src/skiff-host" "$src/skiff"
     [ -f "$src/install.sh" ] && chmod 755 "$src/install.sh"
-    rm -rf "${d:?}/$v"
+    rm -rf "${d:?}/${v:?}"
     mv "$src" "$d/$v"
     rm -rf "$tmp"
     # A half-unpacked version never becomes current: the link moves last.
@@ -319,56 +319,80 @@ newer() {
     for (i = 1; i <= 3; i++) { if (x[i] + 0 > y[i] + 0) exit 0; if (x[i] + 0 < y[i] + 0) exit 1 } exit 1 }'
 }
 
-# The running skiffd's pid, from `skiff status --json`.
-daemon() { "$1" --socket "$sock" status --json 2>/dev/null | sed -n 's/.*"skiffd":{[^}]*"pid":\([0-9]*\).*/\1/p'; }
+# `skiff status --json` from the skiffd at $sock, by the first CLI in $@
+# that is there and answers with one. Empty: none answers.
+status_of() {
+  for c in "$@"; do
+    [ -n "$c" ] && [ -x "$c" ] || continue
+    if command -v timeout >/dev/null 2>&1; then s=$(timeout 5 "$c" --socket "$sock" status --json 2>/dev/null)
+    else s=$("$c" --socket "$sock" status --json 2>/dev/null); fi
+    case $s in "{"*"}") printf '%s' "$s"; return ;; esac
+  done
+}
+# Field $2 (pid, version) of the skiffd object in status $1. Empty: no skiffd.
+daemon_field() { printf '%s' "$1" | sed -n "s/.*\"skiffd\":{[^}]*\"$2\":\"\{0,1\}\([^\",}]*\).*/\1/p"; }
+
+# The skiffd at $pid runs version $v: by its binary's folder (Linux), or
+# by the version it reports. $have: what it reports.
+runs() {
+  [ "$have" = "$v" ] && return 0
+  case $(readlink "/proc/$pid/exe" 2>/dev/null) in "$d/$v/"*) return 0 ;; *) return 1 ;; esac
+}
 
 # Moves the managed install up to $1, never down. skiffd reloads onto the
 # new binary with its sessions (same pid, same screens). If it cannot hand
 # them over, nothing changes and the live sessions are listed, unless $4 is
 # yes: then skiffd restarts on the new version. A failed reload switches
-# `current` back and keeps the old skiffd running.
+# `current` back and keeps the old skiffd running. A run that stopped after
+# it moved `current` but before the reload is finished by the next one: the
+# skiffd that runs decides, not the link.
 update() {
   v=$1 want=$2 sock=$rt/skiff/$3 agreed=$4
   old=$(readlink "$d/current" 2>/dev/null)
-  echo "from=$old"
-  if [ -n "$old" ] && newer "$old" "$v"; then rm -f "$d/.incoming-$want.tar.gz"; echo "skiff-update=newer"; return; fi
+  if [ -n "$old" ] && newer "$old" "$v"; then rm -f "$d/.incoming-$want.tar.gz"; echo "from=$old"; echo "skiff-update=newer"; return; fi
   out=$(install "$v" "$want")
   echo "$out"
   case $out in *skiff-install=done*) ;; *) echo "skiff-update=failed"; return ;; esac
-  # That version is there already: another computer updated it first.
-  case $out in *changed=no*) echo "skiff-update=same"; return ;; esac
-  [ -n "$old" ] || old=$v
-  # The version moved: the start after this step restarts skiff-host on it,
-  # with the restart an install uses (systemd, the fallback, or launchd).
-  # A path below that moves `current` back clears it.
+  s=$(status_of "$d/$old/skiff" "$d/$v/skiff")
+  pid=$(daemon_field "$s" pid)
+  have=$(daemon_field "$s" version)
+  from=$old
+  if [ "$old" = "$v" ] && [ -n "$pid" ] && ! runs; then from=$have; fi
+  echo "from=$from"
+  # That version runs, or waits for the start after this step: another
+  # computer updated it first.
+  if [ "$old" = "$v" ] && { [ -z "$pid" ] || runs; }; then echo "skiff-update=same"; return; fi
+  # The version moves: the start after this step restarts skiff-host on
+  # it, with the restart an install uses (systemd, the fallback, or
+  # launchd). A path below that moves `current` back clears it.
   restart_host=yes
-  cli=$d/$old/skiff
+  # skiffd does not run: the next start runs the new version.
+  if [ -z "$pid" ]; then echo "skiff-update=done"; return; fi
+  cli=$d/$from/skiff
   [ -x "$cli" ] || cli=$d/$v/skiff
-  pid=$(daemon "$cli")
-  if [ -z "$pid" ]; then
-    # skiffd does not run: the next start runs the new version.
-    echo "skiff-update=done"; return
-  fi
   if "$cli" --socket "$sock" daemon reload --binary "$d/$v/skiffd" >/dev/null 2>&1; then
     echo "reload=kept"; echo "skiff-update=done"; return
   fi
-  now=$(daemon "$d/$v/skiff")
+  now=$(daemon_field "$(status_of "$d/$v/skiff" "$cli")" pid)
   if [ -n "$now" ] && [ "$now" != "$pid" ]; then echo "skiff-update=lost"; return; fi
+  # Where `current` goes back to: the version that runs, while its folder is there.
+  back=$from
+  [ -x "$d/$back/skiffd" ] || back=$old
   if [ -z "$now" ]; then
     # It did not come back: the old version starts again.
-    ln -sfn "$old" "$d/current"; restart_host=; start "$3" >/dev/null; echo "skiff-update=failed"; return
+    ln -sfn "$back" "$d/current"; restart_host=; start "$3" >/dev/null; echo "skiff-update=failed"; return
   fi
   # The old skiffd runs on, untouched: it cannot hand its sessions over.
   live=$("$cli" --socket "$sock" ls --json 2>/dev/null | tr -d '\n')
   if [ "$agreed" != yes ] && ! printf '%s' "$live" | grep -Eq '"state": *"(working|idle|waiting)"'; then agreed=yes; fi
   if [ "$agreed" != yes ]; then
-    ln -sfn "$old" "$d/current"
+    ln -sfn "$back" "$d/current"
     restart_host=
     echo "sessions=$live"; echo "skiff-update=no-handover"; return
   fi
   "$cli" --socket "$sock" daemon stop >/dev/null 2>&1
   if has_systemd; then systemctl --user restart skiffd
-  elif [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then kill "$pid"; sleep 1; fi
+  elif kill -0 "$pid" 2>/dev/null; then kill "$pid"; sleep 1; fi
   echo "reload=restarted"; echo "skiff-update=done"
 }
 

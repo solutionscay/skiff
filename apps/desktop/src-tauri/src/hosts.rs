@@ -713,6 +713,11 @@ pub(crate) async fn install_skiff(id: String) -> Result<InstallView, String> {
     if p.socket_live && p.managed.is_none() {
         return Err(format!("{} runs a Skiff that Skiff did not install. Skiff uses it as it is, and does not replace it.", h.name));
     }
+    // An install over a managed one would move the version without the
+    // reload handover: that is an update.
+    if p.managed.is_some() {
+        return Err(format!("Skiff is installed on {} already. Check again.", h.name));
+    }
     let (Some(os), Some(arch)) = (p.bundle_os(), p.bundle_arch()) else {
         return Err(format!("Skiff installs itself on Linux and macOS servers on x86_64 and ARM64 only. {} runs {} on {}.", h.name, p.os, p.arch));
     };
@@ -761,11 +766,14 @@ pub(crate) struct UpdateView {
 async fn update_managed(h: &KnownHost, end_sessions: bool) -> Result<UpdateView, String> {
     use skiff_client::host::{check, install};
     let p = probe_now(h).await?;
-    let Some(m) = &p.managed else {
+    let Some(have) = p.managed_version() else {
         return Err(format!("Skiff did not install the Skiff on {}, so it does not update it.", h.name));
     };
-    if !check::newer(VERSION, &m.version) {
-        return Ok(UpdateView { updated: install::Updated::Newer { version: m.version.clone() }, source: "", version: VERSION });
+    if have == VERSION {
+        return Ok(UpdateView { updated: install::Updated::Same, source: "", version: VERSION });
+    }
+    if check::newer(have, VERSION) {
+        return Ok(UpdateView { updated: install::Updated::Newer { from: have.to_string() }, source: "", version: VERSION });
     }
     let (Some(os), Some(arch)) = (p.bundle_os(), p.bundle_arch()) else {
         return Err(format!("Skiff updates itself on Linux and macOS servers on x86_64 and ARM64 only. {} runs {} on {}.", h.name, p.os, p.arch));
@@ -842,7 +850,7 @@ pub(crate) async fn update_on_connect(target: &SshTarget) -> Option<Arrival> {
     let mut arrival = None;
     if let Ok(p) = probe_now(&h).await {
         let mut a = Arrival { name: h.name.clone(), managed: p.managed.is_some(), updated_from: None };
-        let older = p.managed.as_ref().is_some_and(|m| skiff_client::host::check::newer(VERSION, &m.version));
+        let older = p.managed_version().is_some_and(|have| skiff_client::host::check::newer(VERSION, have));
         if older && h.auto_update {
             match update_managed(&h, false).await {
                 Ok(UpdateView { updated: Updated::Done { from, .. }, .. }) => a.updated_from = Some(from),

@@ -60,7 +60,7 @@ const FIX_LABEL: Record<Fix, string> = {
 type Updated = { version: string; source: string } & (
   | { result: "done"; from: string; restarted: boolean }
   | { result: "same" }
-  | { result: "newer"; version: string }
+  | { result: "newer"; from: string }
   | { result: "no_handover"; from: string; sessions: string[] }
 );
 interface Fingerprint {
@@ -389,7 +389,7 @@ export function createHostsTab(redraw: () => void) {
         r.result === "done"
           ? `Updated Skiff on ${x.name} from ${r.from} to ${r.version}.${r.restarted ? " skiffd started again." : " Its sessions kept running."}${dev}`
           : r.result === "newer"
-            ? `${x.name} runs Skiff ${r.version}, newer than this computer. Skiff does not change it.`
+            ? `${x.name} runs Skiff ${r.from}, newer than this computer. Skiff does not change it.`
             : `${x.name} runs Skiff ${r.version} already.`;
       if (check) check.note = note;
       redraw();
