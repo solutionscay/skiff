@@ -95,13 +95,15 @@ the commands:
   URL or a ticket key. Skiff does not read it. Nothing here needs a tracker,
   git or a network.
 - `ls` shows `interrupted` when the pane restarted after the send, and `gone`
-  when the pane no longer exists. See First steps. A `[watch]` line that says
+  when the pane no longer exists. Skiff sets a `gone` task `done`, and it stays
+  not reported. See First steps. A `[watch]` line that says
   a task is interrupted means the same.
 - A task whose LIVE shows `elsewhere` went out on another daemon. Its SOCKET
   column names it. It is not gone. Do not reassign or close it.
-- A `[watch]` line that says a pane is gone names its open tasks. A gone pane
-  cannot be marked seen. Tell the user, then reassign each task with
-  `skiff ledger update UID --pane S --state pending`, or set it to `done`.
+- A `[watch]` line that says a pane is gone names the tasks skiff set `done`
+  with it. A gone pane cannot be marked seen. Tell the user, then run
+  `skiff ledger report UID...`. To run a task again, reassign it with
+  `skiff ledger update UID --pane S --state pending`.
 
 ## Task types
 

@@ -447,6 +447,7 @@ fn ledger_rows() -> Result<Vec<HostLedgerRow>, Error> {
                 reference: r.reference,
                 reported_at: r.reported_at,
                 closed_at: r.closed_at,
+                gone_at: r.gone_at,
                 elsewhere,
                 result_exists,
             }

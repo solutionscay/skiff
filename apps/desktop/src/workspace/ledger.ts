@@ -71,6 +71,8 @@ interface Entry {
   updated_at: string;
   /** When the person closed the work. Only a plan, or a task with no plan, has it. */
   closed_at: string | null;
+  /** When skiff set the task done because its pane was gone. */
+  gone_at: string | null;
   /** The pane is on another daemon. */
   elsewhere?: boolean;
   /** The Host can show the result. */
@@ -177,7 +179,8 @@ function look(r: Entry): Look {
   const s = r.pane_id ? sessions.get(r.pane_id) ?? null : null;
   const base = { r, pane: s, where: s ? taskTitle(s) : r.pane_id?.slice(0, 8) ?? "" };
   if (r.elsewhere) return { ...base, st: r.state === "done" || r.state === "pending" ? r.state : "sent", pane: null, where: "elsewhere" };
-  if (r.state === "done") return { ...base, st: "done" };
+  // Done because the pane went: it has no result to show for it.
+  if (r.state === "done") return { ...base, st: r.gone_at ? "gone" : "done" };
   if (!s) return { ...base, st: "gone" };
   const restarted = r.state !== "pending" && r.pane_gen !== null && !!s.started_at && s.started_at !== r.pane_gen;
   if (restarted) return { ...base, st: "interrupted" };

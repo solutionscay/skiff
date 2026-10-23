@@ -43,6 +43,9 @@ pub struct HostLedgerRow {
     /// When the person closed the work. Only a work head has it.
     #[serde(default)]
     pub closed_at: Option<String>,
+    /// When skiff set the task done because its pane was gone.
+    #[serde(default)]
+    pub gone_at: Option<String>,
     /// The pane is on another skiffd than the Host's: it was not checked.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub elsewhere: bool,

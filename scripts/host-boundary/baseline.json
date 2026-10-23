@@ -691,7 +691,7 @@
     "reasons": [
       "@tauri-apps/api/event"
     ],
-    "sha256": "8273a7e8f257ba41459be5a051cc94daccdb1fbbd618d04fbc38fbe1595e99ee"
+    "sha256": "988e68e417c60e6a9ed4a6217f05ad1d54214058a895e117741ea4158f23dbb5"
   },
   "apps/desktop/src/workspace/menus.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

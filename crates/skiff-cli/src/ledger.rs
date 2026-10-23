@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   socket      TEXT,
   reported_at TEXT,
   title       TEXT,
-  closed_at   TEXT
+  closed_at   TEXT,
+  gone_at     TEXT
 );
 ";
 
@@ -102,6 +103,8 @@ fn open_at(file: &Path) -> Result<Connection> {
 ///   task text.
 /// - 6 to 7: `closed_at`. All work stays open: only the person can say that
 ///   work is over.
+/// - 7 to 8: `gone_at`. No row has it: the next read with the session list
+///   closes the tasks whose panes are gone.
 fn migrate(db: &mut Connection) -> Result<()> {
     add_column(db, "socket", |tx| {
         tx.execute("UPDATE tasks SET socket = ?1 WHERE kind = 'task'", [state::live_socket().display().to_string()])?;
@@ -109,7 +112,8 @@ fn migrate(db: &mut Connection) -> Result<()> {
     })?;
     add_column(db, "reported_at", |_| Ok(()))?;
     add_column(db, "title", |_| Ok(()))?;
-    add_column(db, "closed_at", |_| Ok(()))
+    add_column(db, "closed_at", |_| Ok(()))?;
+    add_column(db, "gone_at", |_| Ok(()))
 }
 
 /// Adds the column `name TEXT` to `tasks` and runs `fill`, unless it is
@@ -241,6 +245,59 @@ fn unreported_at(file: &Path) -> Result<usize> {
     Ok(usize::try_from(n).unwrap_or(0))
 }
 
+/// Sets `done` each open task on `here` whose pane no session in `all` has,
+/// and stamps `gone_at`. A task on another socket is left alone: its pane
+/// cannot be checked from here. A restarted pane still exists, so an
+/// interrupted task stays. The report stamp stays empty: the person is told
+/// once. `all` must be a full list from `here`'s daemon. Returns the tasks it
+/// closed.
+pub fn close_gone(here: &Path, all: &[SessionInfo]) -> Result<Vec<Row>> {
+    let file = path()?;
+    if !file.exists() {
+        return Ok(Vec::new());
+    }
+    close_gone_in(&mut open_at(&file)?, here, all)
+}
+
+fn close_gone_in(db: &mut Connection, here: &Path, all: &[SessionInfo]) -> Result<Vec<Row>> {
+    let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let open = rows(&tx, "WHERE kind = 'task' AND state IN ('sent', 'pending', 'blocked') AND pane_id IS NOT NULL", None)?;
+    // A stored id may be a prefix: any session it could name keeps the task.
+    let gone: Vec<Row> = open
+        .into_iter()
+        .filter(|r| r.socket_other_than(here).is_none() && r.pane_id.as_deref().is_some_and(|p| !all.iter().any(|s| s.id.starts_with(p))))
+        .collect();
+    let mut out = Vec::new();
+    for r in gone {
+        let n = tx.execute(&format!("UPDATE tasks SET state = 'done', gone_at = {NOW}, updated_at = {NOW} WHERE id = ?1 AND state = ?2"), params![r.id, r.state])?;
+        if n == 1 {
+            out.push(one(&tx, &r.uid)?);
+        }
+    }
+    tx.commit()?;
+    Ok(out)
+}
+
+/// Runs [`close_gone_in`] when the daemon answered, and says which tasks it
+/// closed. With no answer, nothing is gone.
+fn sweep(db: &mut Connection, here: &Path, all: Option<&[SessionInfo]>) -> Result<()> {
+    let Some(all) = all else { return Ok(()) };
+    for r in close_gone_in(db, here, all)? {
+        eprintln!("skiff: task {} is done: its pane {} is gone", r.uid, print::short_id(r.pane_id.as_deref().unwrap_or("")));
+    }
+    Ok(())
+}
+
+/// The tasks skiff set done because their panes were gone, not yet reported.
+/// No `ledger.db` yet gives none, and makes no file.
+pub fn gone_unreported() -> Result<Vec<Row>> {
+    let file = path()?;
+    if !file.exists() {
+        return Ok(Vec::new());
+    }
+    rows(&open_at(&file)?, "WHERE kind = 'task' AND state = 'done' AND gone_at IS NOT NULL AND reported_at IS NULL", None)
+}
+
 fn state(s: &str) -> Result<&str> {
     match STATES.iter().find(|x| **x == s) {
         Some(x) => Ok(x),
@@ -320,18 +377,18 @@ fn join(db: &Connection, file: &Path, arg: &str) -> Result<Row> {
     one(db, &uid)
 }
 
-/// Fills in `live`, `interrupted` and `agent_on` from the sessions, when the
-/// daemon answers, then each row's bucket. A task of another socket is
-/// marked `elsewhere` and not checked. A sent task that cannot be checked
-/// counts as worked on.
-async fn mark_live(socket: &Path, rows: &mut [Row]) {
+/// Fills in `live`, `interrupted` and `agent_on` from the sessions `all`,
+/// when the daemon answered, then each row's bucket. A task of another
+/// socket is marked `elsewhere` and not checked. A sent task that cannot be
+/// checked counts as worked on.
+fn mark_live(socket: &Path, all: Option<&[SessionInfo]>, rows: &mut [Row]) {
     for r in rows.iter_mut() {
         r.elsewhere = r.socket_other_than(socket).is_some();
         r.agent_on = !r.is_plan() && r.state == "sent";
     }
-    if let Some(all) = live(socket).await {
+    if let Some(all) = all {
         for r in rows.iter_mut().filter(|r| !r.is_plan() && !r.elsewhere) {
-            let s = r.pane_id.as_deref().and_then(|p| resolve::session(&all, p).ok());
+            let s = r.pane_id.as_deref().and_then(|p| resolve::session(all, p).ok());
             r.live = Some(s.is_some());
             r.interrupted = Some(r.interrupted_in(s));
             r.agent_on = r.agent_on_in(s);
@@ -954,7 +1011,8 @@ pub async fn run(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
                     "UPDATE tasks SET state = coalesce(?2, state), result_path = coalesce(?3, result_path), task = coalesce(?4, task),
                      pane_id = coalesce(?5, pane_id), project = coalesce(?6, project), parent = coalesce(?7, parent), ref = coalesce(?8, ref),
                      pane_gen = CASE WHEN ?9 THEN ?10 ELSE pane_gen END, type = coalesce(?11, type), socket = coalesce(?12, socket), title = coalesce(?13, title),
-                     closed_at = CASE WHEN ?7 IS NULL THEN closed_at END, updated_at = {NOW} WHERE id = ?1"
+                     closed_at = CASE WHEN ?7 IS NULL THEN closed_at END, gone_at = CASE WHEN ?2 IS NULL AND ?5 IS NULL THEN gone_at END,
+                     updated_at = {NOW} WHERE id = ?1"
                 ),
                 params![row.id, st, result, task, pane_id, project, parent, reference, gen.is_some(), gen.flatten(), task_type, here, title],
             )?;
@@ -974,9 +1032,11 @@ pub async fn run(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
             } else {
                 View::Open
             };
-            let db = open()?;
+            let mut db = open()?;
+            let all = live(socket).await;
+            sweep(&mut db, socket, all.as_deref())?;
             let mut list = rows(&db, "", None)?;
-            mark_live(socket, &mut list).await;
+            mark_live(socket, all.as_deref(), &mut list);
             roll_up(&mut list);
             keep(&mut list, view);
             if let Some(s) = &st {
@@ -1019,7 +1079,7 @@ pub async fn run(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
                 return Ok(0);
             }
             let n = gone.len();
-            mark_live(socket, &mut gone).await;
+            mark_live(socket, live(socket).await.as_deref(), &mut gone);
             print_rows(&tree(gone), true);
             if yes {
                 println!("removed {n} {}. The result files stay", rows_word(n));
@@ -1028,11 +1088,13 @@ pub async fn run(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
             }
         }
         LedgerCmd::Show { id, json } => {
-            let db = open()?;
+            let mut db = open()?;
+            let all = live(socket).await;
+            sweep(&mut db, socket, all.as_deref())?;
             let r = one(&db, &id)?;
             // The whole work: a plan's state and the bucket come from its tasks.
             let mut work = rows(&db, "WHERE uid = ?1 OR parent = ?1", Some(&r.work().to_string()))?;
-            mark_live(socket, &mut work).await;
+            mark_live(socket, all.as_deref(), &mut work);
             roll_up(&mut work);
             let closed = work.iter().find(|w| w.uid == r.work()).and_then(|w| w.closed_at.clone());
             let r = work.into_iter().find(|w| w.uid == r.uid).context("the row left the ledger")?;
@@ -1116,7 +1178,7 @@ mod tests {
         let dir = scratch("v3");
         let file = dir.join("ledger.db");
         {
-            let v3 = TASKS.replace("type        TEXT,\n  socket      TEXT,\n  reported_at TEXT,\n  title       TEXT,\n  closed_at   TEXT", "type        TEXT");
+            let v3 = TASKS.replace("type        TEXT,\n  socket      TEXT,\n  reported_at TEXT,\n  title       TEXT,\n  closed_at   TEXT,\n  gone_at     TEXT", "type        TEXT");
             assert!(!v3.contains("socket"));
             let db = Connection::open(&file).unwrap();
             db.execute_batch(&v3).unwrap();
@@ -1153,7 +1215,7 @@ mod tests {
         let dir = scratch("v4");
         let file = dir.join("ledger.db");
         {
-            let v4 = TASKS.replace(",\n  reported_at TEXT,\n  title       TEXT,\n  closed_at   TEXT", "");
+            let v4 = TASKS.replace(",\n  reported_at TEXT,\n  title       TEXT,\n  closed_at   TEXT,\n  gone_at     TEXT", "");
             assert!(!v4.contains("reported_at") && !v4.contains("title"));
             let db = Connection::open(&file).unwrap();
             db.execute_batch(&v4).unwrap();
@@ -1326,7 +1388,7 @@ mod tests {
         let dir = scratch("v6");
         let file = dir.join("ledger.db");
         {
-            let v6 = TASKS.replace(",\n  closed_at   TEXT", "");
+            let v6 = TASKS.replace(",\n  closed_at   TEXT,\n  gone_at     TEXT", "");
             assert!(!v6.contains("closed_at"));
             let db = Connection::open(&file).unwrap();
             db.execute_batch(&v6).unwrap();
@@ -1441,7 +1503,7 @@ mod tests {
         let here = Path::new("/tmp/here.sock");
         let mut list = rows(&db, "", None).unwrap();
         // No daemon answers here, as for a pane on another socket.
-        mark_live(here, &mut list).await;
+        mark_live(here, None, &mut list);
         let r = |uid: &str| list.iter().find(|r| r.uid == uid).unwrap().clone();
         assert!(!r(&mine).elsewhere);
         assert!(r(&theirs).elsewhere);
@@ -1453,6 +1515,47 @@ mod tests {
         let err = send_row(here, &db, &r(&theirs), SendOpts { text: vec![], enter: true, shell: false }).await.unwrap_err().to_string();
         assert!(err.contains("/tmp/other.sock") && !err.contains("gone"), "{err}");
         assert_eq!(one(&db, &theirs).unwrap().state, "pending");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_task_whose_pane_is_gone_closes_done_and_stays_unreported() {
+        let dir = scratch("sweep");
+        let file = dir.join("ledger.db");
+        let mut db = open_at(&file).unwrap();
+        let here = Path::new("/tmp/here.sock");
+        let (_, gone, result, _) = insert(&mut db, &file, task("lost")).unwrap();
+        let (_, waits, _, _) = insert(&mut db, &file, New { state: "pending".into(), pane_id: Some("dead00000000".into()), ..task("queued") }).unwrap();
+        let (_, kept, _, _) = insert(&mut db, &file, New { pane_id: Some("feed00000000".into()), ..task("live pane") }).unwrap();
+        let (_, prefix, _, _) = insert(&mut db, &file, New { pane_id: Some("feed".into()), ..task("imported prefix") }).unwrap();
+        let (_, theirs, _, _) = insert(&mut db, &file, New { socket: Some("/tmp/other.sock".into()), ..task("elsewhere") }).unwrap();
+        let (_, done, _, _) = insert(&mut db, &file, New { state: "done".into(), ..task("finished") }).unwrap();
+        let (_, plan, _, _) = insert(&mut db, &file, New { plan: true, pane_id: None, ..task("p") }).unwrap();
+        let (_, child, _, _) = insert(&mut db, &file, New { parent: Some(plan.clone()), ..task("in plan") }).unwrap();
+        // A restarted pane still exists: its task is interrupted, not gone.
+        let all = [pane("feed00000000", "agent", false)];
+        let closed = close_gone_in(&mut db, here, &all).unwrap();
+        let mut uids: Vec<&str> = closed.iter().map(|r| r.uid.as_str()).collect();
+        uids.sort_unstable();
+        let mut want = [gone.as_str(), waits.as_str(), child.as_str()];
+        want.sort_unstable();
+        assert_eq!(uids, want);
+        let r = one(&db, &gone).unwrap();
+        assert_eq!((r.state.as_str(), r.shown_state(), r.reported_at.as_deref()), ("done", "gone", None));
+        assert!(r.gone_at.is_some());
+        assert_eq!(r.result_path.as_deref(), Some(result.as_str()));
+        for uid in [&kept, &prefix, &theirs] {
+            assert_ne!(one(&db, uid).unwrap().state, "done", "{uid}");
+        }
+        assert!(one(&db, &done).unwrap().gone_at.is_none());
+        // The plan rolls up to done; only the person closes it.
+        let mut list = rows(&db, "", None).unwrap();
+        roll_up(&mut list);
+        let p = list.iter().find(|r| r.uid == plan).unwrap();
+        assert_eq!((p.state.as_str(), p.closed_at.as_deref()), ("done", None));
+        assert_eq!(unreported_at(&file).unwrap(), 4);
+        // A second sweep finds nothing.
+        assert!(close_gone_in(&mut db, here, &all).unwrap().is_empty());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
