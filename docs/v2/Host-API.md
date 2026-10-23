@@ -846,13 +846,18 @@ OpenSSH stream-local forward to the remote skiffd socket.
     makes it `ForwardingRefused`.
   - ssh's own output is never shown, because it can name key paths. No
     message names a command to run.
-- **The probe** (`skiff-client::host::check`): one fixed POSIX `sh` script
-  (`probe.sh`), sent on stdin over a strict, batch ssh run with the same
-  trust options. It changes nothing and prints one JSON object: OS, arch,
-  runtime folder, the socket and whether it is live, and `skiff status
-  --json` from the managed install, PATH or `~/.cargo/bin` when one answers.
-  The socket name (from this build) and a socket the person set are its only
-  arguments, single-quoted.
+- **The server script** (`skiff-client/src/host/server.sh`): the one POSIX
+  `sh` script Skiff runs on a server, sent on stdin with a mode. Its values
+  (a socket name, a key line, a version, a hash) are checked against strict
+  patterns and single-quoted.
+- **The probe** (`skiff-client::host::check`): the script's read-only
+  `probe` mode, over a strict, batch ssh run with the same trust options.
+  It changes nothing and prints one JSON object: OS, arch, runtime folder,
+  the socket and whether it is live, `skiff status --json` from the managed
+  install, PATH or `~/.cargo/bin` when one answers, the managed install,
+  the Skiff app's own skiffd (`/usr/bin/skiffd` from a .deb, or Skiff.app)
+  if there is one, and how it keeps running. The socket name (from this
+  build) and a socket the person set are its only arguments.
 - **Host key trust** (the check list's Trust this key… and Review…): a
   short batch ssh run with `StrictHostKeyChecking=accept-new` into a private
   temp known_hosts only (`GlobalKnownHostsFile=/dev/null`,
@@ -873,11 +878,10 @@ OpenSSH stream-local forward to the remote skiffd socket.
   - **Install key…** runs one ssh with `BatchMode=no`,
     `StrictHostKeyChecking=yes`, `PreferredAuthentications=keyboard-interactive,password`,
     `NumberOfPasswordPrompts=1`, no agent, no master, no TTY (`setsid`). The
-    fixed script `install_key.sh` on stdin adds the public line only when
-    that exact line is not there, and reports who owns `~/.ssh` and
-    `authorized_keys`.
+    script's `install-key` mode adds the public line only when that exact
+    line is not there, and reports who owns `~/.ssh` and `authorized_keys`.
   - **Fix permissions…** (the key is in a file another account owns) runs
-    `fix_keys.sh` the same way: it renames `authorized_keys` to
+    the `fix-key` mode the same way: it renames `authorized_keys` to
     `authorized_keys.skiff-<time>` and writes a new one with this computer's
     key. Without ownership of `~/.ssh` there is no fix, only the cause.
   - **Copy public key** is the one copy action: for a server that allows
@@ -887,8 +891,8 @@ OpenSSH stream-local forward to the remote skiffd socket.
     OpenSSH 8.4+) that reads it once from a FIFO in a private `0700` temp
     folder. It is never in a file, an argument, the environment or a log. A
     second prompt gets an empty answer, so ssh stops.
-  - The public key line is the scripts' only value. It is checked against a
-    strict pattern (known type, base64, plain comment) and single-quoted.
+  - The public key line is the key modes' only value. It is checked against
+    a strict pattern (known type, base64, plain comment) and single-quoted.
 - **Server bundles** (#166 slice 4, for the install in slice 5): the release
   job builds `skiff-server-<version>-<os>-<arch>.tar.gz` for Linux x86_64 and
   aarch64 (static musl) and macOS aarch64 and x86_64
@@ -1008,14 +1012,17 @@ OpenSSH stream-local forward to the remote skiffd socket.
   files and our `skiff` link, and keeps `local-host-id`. With live sessions
   it asks on the terminal first, or needs `--yes`. It refuses a server
   where a Skiff from its own install holds the socket.
-- **Remote commands:** the probe, the key install, the key-file fix, the
-  upload and the server steps (install, update, start, linger, sessions, uninstall), and the same script run as install.sh on the server. All are fixed
-  scripts in the app; their values (a version, a hash, a socket name, a key
-  line) are checked against strict patterns and single-quoted.
+- **Remote commands:** the upload (one `sh -c` with the hash in its file
+  name) and the server script's modes: probe, install-key, fix-key,
+  install, update, start, linger, sessions and uninstall, and the same
+  script run as install.sh on the server. The script is fixed in the app;
+  its values (a version, a hash, a socket name, a key line) are checked
+  against strict patterns and single-quoted.
 - **The check list** (Settings › Hosts › Check, and Connect): reach the
   server, host key, log in without a prompt, server supported (Linux or
   macOS, x86_64 or ARM64), Skiff on the server (managed, from its own
-  install, or not installed), sessions service (skiffd), socket forwarding
+  install, the Skiff app there while closed, or not installed), sessions
+  service (skiffd), socket forwarding
   (a real `-L` forward), identity and version (a ping over it, compared with
   the pin, which it never stores), projects service (a Hello to
   `skiff-host` that must name the same Host id; a warning, with Start for a

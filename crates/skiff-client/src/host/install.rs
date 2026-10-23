@@ -32,7 +32,8 @@ use super::{
     ssh::{SshOptions, SshTarget},
 };
 
-/// The managed install's steps on the server: install, start, linger.
+/// The one script Skiff runs on a server, sent on stdin with a mode: the
+/// read-only probe, the key steps, and the managed install's steps.
 pub const SERVER: &str = include_str!("server.sh");
 /// The repository whose releases carry the server bundles.
 pub const RELEASES: &str = "https://github.com/solutionscay/skiff/releases/download";
@@ -450,7 +451,7 @@ mod tests {
         assert!(host.contains(&format!("<string>{}</string>", run.join("skiff/skiffd.sock").display())), "{host}");
 
         // The probe sees the file; launchd has not loaded it in this stand-in.
-        let p: super::super::check::Probe = serde_json::from_str(&sh(super::super::check::PROBE, &["skiffd.sock"])).unwrap();
+        let p: super::super::check::Probe = serde_json::from_str(&sh(SERVER, &["probe", "skiffd.sock"])).unwrap();
         assert_eq!((p.os.as_str(), p.systemd, p.unit_enabled, p.unit_active), ("Darwin", false, true, false));
 
         // Loaded in the GUI domain: only a kickstart, never a second load.
@@ -461,7 +462,7 @@ mod tests {
         let calls = std::fs::read_to_string(&log).unwrap();
         assert!(calls.contains(&format!("kickstart gui/{uid}/com.solutionscay.skiff.skiffd")) && !calls.contains("bootstrap"), "{calls}");
         assert!(calls.contains(&format!("kickstart gui/{uid}/com.solutionscay.skiff.skiff-host")) && !calls.contains("kickstart -k"), "{calls}");
-        let p: super::super::check::Probe = serde_json::from_str(&sh(super::super::check::PROBE, &["skiffd.sock"])).unwrap();
+        let p: super::super::check::Probe = serde_json::from_str(&sh(SERVER, &["probe", "skiffd.sock"])).unwrap();
         assert!(p.unit_active && p.host_unit_enabled);
 
         // Uninstall: both agents leave launchd, and their files go.

@@ -1,14 +1,17 @@
-# Skiff's managed install on a Linux or macOS server, in the account's home
-# only. No sudo, no system folder. $1: install, update, start, linger,
-# sessions or uninstall. install: $2 the version, $3 the SHA-256 of the
-# bundle Skiff uploaded to ~/.local/share/skiff/server/.incoming-<sha256>.tar.gz,
-# $4 the skiffd socket name. update: the same, and $5 yes when the person
-# agreed that sessions end if skiffd cannot hand them over. start: $2 the
-# socket name. Each step prints key=value lines and ends with
-# skiff-<mode>=<outcome>. It never stops or replaces a skiffd it did not
-# start: Skiff only runs it after the check found no other one. skiff-host
-# (projects) runs beside the managed skiffd, and restarts after an install
-# that changed the version.
+# Everything Skiff runs on a server, as the account that owns the sessions:
+# no sudo, no system folder. The app sends this file on stdin, with a mode:
+#   probe [socket name] [socket path]  read only: one JSON line for the check list
+#   install-key <key>, fix-key <key>   this computer's public key into authorized_keys
+#   install <version> <sha256> <socket name>, update <version> <sha256> <socket name> <yes|no>,
+#   start <socket name>, linger, sessions <socket name>, uninstall
+# The managed install is ~/.local/share/skiff/server. install: $3 is the
+# SHA-256 of the bundle Skiff uploaded to .incoming-<sha256>.tar.gz there;
+# update: the same, and $5 yes when the person agreed that sessions end if
+# skiffd cannot hand them over. Each step prints key=value lines and ends
+# with skiff-<mode>=<outcome>. It never stops or replaces a skiffd it did
+# not start: Skiff only runs it after the check found no other one.
+# skiff-host (projects) runs beside the managed skiffd, and restarts after
+# an install that changed the version.
 #
 # The same script is install.sh, for a server with only a shell. With no
 # mode it installs or updates the release written in below, and prints in
@@ -195,6 +198,92 @@ host_fallback() {
     nohup "$d/current/skiff-host" --session-socket "$1" </dev/null >/dev/null 2>&1 &
   fi
   echo $! > "$d/skiff-host.pid"
+}
+
+# Read only, for the check list: one JSON object on one line. $1: the
+# skiffd socket name to look for in the runtime folder. $2, when set: a
+# full socket path the person chose instead.
+esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\000-\037'; }
+probe() {
+  sock=${2:-$rt/skiff/${1:-skiffd.sock}}
+  arch=$(uname -m)
+  live=false
+  [ -S "$sock" ] && live=true
+  # `skiff status --json` from the skiffd there: the managed CLI first,
+  # then PATH, then cargo's.
+  status=null
+  if [ $live = true ]; then
+    s=$(status_of "$d/current/skiff" "$(command -v skiff 2>/dev/null)" "$HOME/.cargo/bin/skiff")
+    [ -n "$s" ] && status=$s
+  fi
+  # The install Skiff manages, if any: its manifest names the version.
+  managed=null
+  if [ -f "$d/current/manifest.json" ] && [ -f "$d/installed-by" ]; then
+    mv_=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$d/current/manifest.json" | head -n 1)
+    mp_=$(sed -n 's/.*"protocol": *\([0-9]*\).*/\1/p' "$d/current/manifest.json" | head -n 1)
+    managed=$(printf '{"version":"%s","protocol":%s}' "$(esc "$mv_")" "${mp_:-0}")
+  fi
+  # The Skiff app's own skiffd (a .deb, or Skiff.app): it runs while the
+  # app runs there, and Skiff never installs a second one beside it.
+  app=
+  for a in /usr/bin/skiffd /Applications/Skiff.app/Contents/MacOS/skiffd "$HOME/Applications/Skiff.app/Contents/MacOS/skiffd"; do
+    if [ -x "$a" ]; then app=$a; break; fi
+  done
+  # How it keeps running: a systemd user manager, its units and linger;
+  # the LaunchAgents; or the fallback start's pid file.
+  systemd=false unit_enabled=false unit_active=false host_unit_enabled=false linger=
+  if has_systemd; then
+    systemd=true
+    systemctl --user -q is-enabled skiffd 2>/dev/null && unit_enabled=true
+    systemctl --user -q is-active skiffd 2>/dev/null && unit_active=true
+    systemctl --user -q is-enabled skiff-host 2>/dev/null && host_unit_enabled=true
+    linger=$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)
+  elif [ "$os" = Darwin ]; then
+    [ -f "$agents/$label.plist" ] && unit_enabled=true
+    [ -f "$agents/$hlabel.plist" ] && host_unit_enabled=true
+    [ -n "$(loaded "$label")" ] && unit_active=true
+  fi
+  fallback=false
+  if [ -f "$d/skiffd.pid" ] && kill -0 "$(cat "$d/skiffd.pid" 2>/dev/null)" 2>/dev/null; then fallback=true; fi
+  free_kb=$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2 {print $4}')
+  printf '{"os":"%s","arch":"%s","runtime_dir":"%s","socket":"%s","socket_live":%s,"status":%s,"managed":%s,"app":"%s","systemd":%s,"unit_enabled":%s,"unit_active":%s,"host_unit_enabled":%s,"linger":"%s","fallback":%s,"free_kb":%s}\n' \
+    "$(esc "$os")" "$(esc "$arch")" "$(esc "$rt")" "$(esc "$sock")" "$live" "$status" "$managed" "$(esc "$app")" "$systemd" "$unit_enabled" "$unit_active" "$host_unit_enabled" "$(esc "$linger")" "$fallback" "${free_kb:-0}"
+}
+
+# This computer's public key line $1, checked by Skiff against a strict
+# pattern, into ~/.ssh/authorized_keys once: only when that exact line is
+# not there. Nothing else changes, except the folder and file modes of
+# what the account owns.
+owner() { ls -nd "$1" 2>/dev/null | awk '{print $3}'; }
+install_key() {
+  key=$1
+  [ -d "$HOME/.ssh" ] || mkdir -p "$HOME/.ssh"
+  ak=$HOME/.ssh/authorized_keys
+  added=no
+  if [ -f "$ak" ] && grep -qxF -- "$key" "$ak" 2>/dev/null; then
+    :
+  elif [ ! -e "$ak" ] || [ -w "$ak" ]; then
+    # A last line with no newline gets one first.
+    if [ -s "$ak" ] && [ -n "$(tail -c 1 "$ak")" ]; then printf '\n' >> "$ak"; fi
+    printf '%s\n' "$key" >> "$ak" && added=yes
+  fi
+  [ "$(owner "$HOME/.ssh")" = "$uid" ] && chmod 700 "$HOME/.ssh" && dir=yes || dir=no
+  [ "$(owner "$ak")" = "$uid" ] && chmod 600 "$ak" && file=yes || file=no
+  echo "added=$added"
+  echo "ssh_dir_own=$dir"
+  echo "file_own=$file"
+  echo "skiff-install-key=done"
+}
+
+# ~/.ssh/authorized_keys belongs to another account, so sshd ignores it.
+# The account owns ~/.ssh, so it can rename the file aside and write a new
+# one with key $1. The old file stays, renamed.
+fix_key() {
+  key=$1
+  [ "$(owner "$HOME/.ssh")" = "$uid" ] || { echo "skiff-fix-key=not-own"; return; }
+  ak=$HOME/.ssh/authorized_keys
+  if [ -e "$ak" ]; then mv -- "$ak" "$ak.skiff-$(date +%Y%m%d%H%M%S)" || return; fi
+  printf '%s\n' "$key" > "$ak" && chmod 600 "$ak" && chmod 700 "$HOME/.ssh" && echo "skiff-fix-key=done"
 }
 
 install() {
@@ -520,6 +609,9 @@ headless() {
 
 case $mode in
   "" | --*) mode=headless; headless "$@" ;;
+  probe) probe "${2:-}" "${3:-}" ;;
+  install-key) install_key "${2:?}" ;;
+  fix-key) fix_key "${2:?}" ;;
   install) mkdir -p "$d"; lock; install "$2" "$3"; start "$4" ;;
   update) mkdir -p "$d"; lock; update "$2" "$3" "$4" "${5:-no}"; start "$4" ;;
   start) start "$2" ;;

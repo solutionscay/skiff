@@ -713,6 +713,9 @@ pub(crate) async fn install_skiff(id: String) -> Result<InstallView, String> {
     if p.socket_live && p.managed.is_none() {
         return Err(format!("{} runs a Skiff that Skiff did not install. Skiff uses it as it is, and does not replace it.", h.name));
     }
+    if p.managed.is_none() && !p.app.is_empty() {
+        return Err(format!("{} has the Skiff app. Its sessions service runs while the app is open there, and Skiff installs no second one.", h.name));
+    }
     // An install over a managed one would move the version without the
     // reload handover: that is an update.
     if p.managed.is_some() {

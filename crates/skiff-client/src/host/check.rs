@@ -1,8 +1,9 @@
 //! The check list of one remote Host, read only. One strict, batch ssh run
-//! sends the probe script ([`PROBE`]) and answers the first rows: can this
-//! computer reach the server, does it know the host key, can it log in
-//! without a prompt. The probe then says where skiffd's socket is and
-//! whether skiffd answers there. A real `-L` forward and a `ping` over it
+//! sends the server script in its read-only `probe` mode
+//! ([`install::SERVER`]) and answers the first rows: can this computer
+//! reach the server, does it know the host key, can it log in without a
+//! prompt. The probe then says where skiffd's socket is and whether skiffd
+//! answers there. A real `-L` forward and a `ping` over it
 //! answer the next rows, and a Hello to skiff-host beside it the projects
 //! row. Nothing here writes anywhere: the caller stores the
 //! socket the probe found.
@@ -23,13 +24,11 @@ use skiff_host_api::HostId;
 use tokio::{io::AsyncWriteExt, process::Command};
 
 use super::{
+    install::SERVER,
     keys::{self, Installed, LocalKey},
     local::HostSelection,
     ssh::{SshError, SshOptions, SshTarget},
 };
-
-/// The probe: a fixed POSIX `sh` script, sent on stdin. It changes nothing.
-pub const PROBE: &str = include_str!("probe.sh");
 
 /// How long the probe's ssh run may take, login included.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
@@ -46,13 +45,15 @@ pub struct Probe {
     pub socket: String,
     /// A socket is there.
     pub socket_live: bool,
-    /// The skiff CLI it asked, or empty.
-    pub cli: String,
     /// `skiff status --json` there, when a CLI and a socket were found.
     pub status: Option<Status>,
     /// The install Skiff manages (`~/.local/share/skiff/server/current`).
     #[serde(default)]
     pub managed: Option<Managed>,
+    /// The Skiff app's own skiffd there (a .deb, or Skiff.app), or empty.
+    /// It runs while the app runs: Skiff installs no second one beside it.
+    #[serde(default)]
+    pub app: String,
     /// A systemd user manager answers.
     #[serde(default)]
     pub systemd: bool,
@@ -239,7 +240,7 @@ pub struct CheckInput {
 /// no extra channels. The remote command is fixed; only the socket name
 /// (from this app) and a checked override go to it, single-quoted.
 pub fn probe_args(target: &SshTarget, options: &SshOptions, socket_name: &str, socket_override: Option<&str>) -> Vec<OsString> {
-    let mut command = format!("sh -s -- {}", quote(socket_name));
+    let mut command = format!("sh -s -- probe {}", quote(socket_name));
     if let Some(s) = socket_override {
         command.push(' ');
         command.push_str(&quote(s));
@@ -306,7 +307,7 @@ pub async fn run_probe(target: &SshTarget, options: &SshOptions, socket_name: &s
         .map_err(|e| format!("Skiff cannot run ssh: {e}"))?;
     if let Some(mut stdin) = child.stdin.take() {
         // A failed write shows as ssh's own failure below.
-        let _ = stdin.write_all(PROBE.as_bytes()).await;
+        let _ = stdin.write_all(SERVER.as_bytes()).await;
     }
     let out = match tokio::time::timeout(PROBE_TIMEOUT, child.wait_with_output()).await {
         Ok(out) => out.map_err(|e| format!("Skiff cannot run ssh: {e}"))?,
@@ -453,6 +454,12 @@ fn server_rows(list: &mut List, p: &Probe, name: &str, version: &str, update_fai
         (None, true) => {
             let v = running.map(|d| format!(" {}", d.version)).unwrap_or_default();
             list.pass(Row::Skiff, format!("{name} runs Skiff{v} from its own install. Skiff uses it as it is."));
+        }
+        // The Skiff app there, closed: its skiffd runs with the app, and a
+        // second install would fight it for the socket.
+        (None, false) if !p.app.is_empty() => {
+            list.fail(Row::Skiff, format!("{name} has the Skiff app, whose sessions service runs while the app is open there. Open Skiff on {name}, then check again."));
+            return false;
         }
         (None, false) => {
             list.fix(Row::Skiff, format!("Skiff is not installed on {name}."), Fix::InstallSkiff);
@@ -650,9 +657,9 @@ mod tests {
             runtime_dir: "/run/user/1000".into(),
             socket: "/run/user/1000/skiff/skiffd.sock".into(),
             socket_live: false,
-            cli: String::new(),
             status: None,
             managed: None,
+            app: String::new(),
             systemd: true,
             unit_enabled: false,
             unit_active: false,
@@ -706,6 +713,9 @@ mod tests {
         // A Mac server: Install, the same as Linux.
         let (_, rows) = server(&Probe { os: "Darwin".into(), arch: "arm64".into(), systemd: false, ..probe() });
         assert_eq!((rows[1].1, rows[1].2), (State::Failed, Some(Fix::InstallSkiff)));
+        // The Skiff app there, closed: no Install, only where to go.
+        let (go, rows) = server(&Probe { app: "/Applications/Skiff.app/Contents/MacOS/skiffd".into(), ..probe() });
+        assert!(!go && rows[1].1 == State::Failed && rows[1].2.is_none() && rows[1].3.contains("Open Skiff on devbox"), "{rows:?}");
     }
 
     #[test]
@@ -817,7 +827,7 @@ mod tests {
         }
         assert!(!args.iter().any(|a| a.contains("accept-new") || a.contains("StrictHostKeyChecking=no")));
         let n = args.len();
-        assert_eq!(&args[n - 7..], ["-l", "me", "-p", "2222", "--", "devbox", r"sh -s -- 'skiffd.sock' '/run/a b/it'\''s.sock'"]);
+        assert_eq!(&args[n - 7..], ["-l", "me", "-p", "2222", "--", "devbox", r"sh -s -- probe 'skiffd.sock' '/run/a b/it'\''s.sock'"]);
     }
 
     /// The probe as the server runs it: here, with `sh`, no ssh.
@@ -839,18 +849,20 @@ mod tests {
                 .stdout(Stdio::piped())
                 .spawn()
                 .unwrap();
-            std::io::Write::write_all(&mut child.stdin.take().unwrap(), PROBE.as_bytes()).unwrap();
+            std::io::Write::write_all(&mut child.stdin.take().unwrap(), SERVER.as_bytes()).unwrap();
             let out = child.wait_with_output().unwrap();
             serde_json::from_slice::<Probe>(&out.stdout).unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&out.stdout)))
         };
-        let p = run(&["skiffd-x.sock"]);
+        let p = run(&["probe", "skiffd-x.sock"]);
         assert_eq!(p.runtime_dir, dir.to_string_lossy());
         assert_eq!(p.socket, sock.to_string_lossy());
         assert!(p.socket_live && p.status.is_none(), "{p:?}");
+        // The Skiff app's skiffd, when this machine has one (a .deb here).
+        assert!(p.app.is_empty() || std::path::Path::new(&p.app).is_file(), "{p:?}");
         assert!(!p.os.is_empty() && !p.arch.is_empty());
-        let none = run(&["skiffd.sock"]);
+        let none = run(&["probe", "skiffd.sock"]);
         assert!(!none.socket_live);
-        let chosen = run(&["skiffd.sock", &sock.to_string_lossy()]);
+        let chosen = run(&["probe", "skiffd.sock", &sock.to_string_lossy()]);
         assert!(chosen.socket_live && chosen.socket == sock.to_string_lossy());
         std::fs::remove_dir_all(&dir).unwrap();
     }

@@ -10,9 +10,10 @@
 //! - A password or passphrase reaches ssh or ssh-add through [`Askpass`]
 //!   only: a one-shot FIFO in a private folder. It is never written to a
 //!   file, an argument, the environment or a log.
-//! - The scripts that run on the server are fixed ([`INSTALL`], [`FIX`]).
-//!   The one value they take, the public key line, is checked against a
-//!   strict pattern first and single-quoted.
+//! - What runs on the server is the fixed server script
+//!   ([`install::SERVER`], modes `install-key` and `fix-key`). The one
+//!   value it takes, the public key line, is checked against a strict
+//!   pattern first and single-quoted.
 
 use std::{
     ffi::OsString,
@@ -27,14 +28,11 @@ use serde::Serialize;
 use tokio::{io::AsyncWriteExt, process::Command};
 
 use super::{
+    check::quote,
+    install::SERVER,
     ssh::{SshOptions, SshTarget},
     ssh_config,
 };
-
-/// Adds this computer's key to `~/.ssh/authorized_keys` once.
-pub const INSTALL: &str = include_str!("install_key.sh");
-/// Puts a foreign-owned `authorized_keys` aside and writes a new one.
-pub const FIX: &str = include_str!("fix_keys.sh");
 
 /// How long an interactive step may take, login included.
 const STEP_TIMEOUT: Duration = Duration::from_secs(30);
@@ -380,9 +378,9 @@ impl std::fmt::Display for StepError {
 /// the loopback test, which cannot check passwords, a locked key.
 pub const BY_PASSWORD: &str = "keyboard-interactive,password";
 
-/// The args of one interactive run: the host key must be known already,
-/// one prompt, no agent, no shared master, no TTY.
-fn interactive_args(target: &SshTarget, prefer: &str, key: &str) -> Vec<OsString> {
+/// The args of one interactive run of the server script's `mode`: the host
+/// key must be known already, one prompt, no agent, no shared master, no TTY.
+fn interactive_args(target: &SshTarget, prefer: &str, mode: &str, key: &str) -> Vec<OsString> {
     let mut args: Vec<OsString> = Vec::new();
     for value in [
         "BatchMode=no",
@@ -405,16 +403,16 @@ fn interactive_args(target: &SshTarget, prefer: &str, key: &str) -> Vec<OsString
     args.extend(target.login_args());
     args.push("--".into());
     args.push(target.destination.clone().into());
-    args.push(format!("sh -s -- '{key}'").into());
+    args.push(format!("sh -s -- {mode} {}", quote(key)).into());
     args
 }
 
-/// Runs a fixed script on the server with one secret, through askpass.
-async fn run_interactive(target: &SshTarget, options: &SshOptions, prefer: &str, script: &str, key: &str, secret: String) -> Result<String, StepError> {
+/// Runs the server script's `mode` with one secret, through askpass.
+async fn run_interactive(target: &SshTarget, options: &SshOptions, prefer: &str, mode: &str, key: &str, secret: String) -> Result<String, StepError> {
     let key = public_line(key).ok_or_else(|| StepError::Other("This computer's public key has a form Skiff does not send.".into()))?;
     let askpass = Askpass::new(secret).map_err(|e| StepError::Other(e.to_string()))?;
     let mut cmd = ssh_cmd(options);
-    cmd.args(interactive_args(target, prefer, &key)).stdin(Stdio::piped());
+    cmd.args(interactive_args(target, prefer, mode, &key)).stdin(Stdio::piped());
     askpass.apply(&mut cmd);
     // No terminal: ssh must ask the helper.
     // SAFETY: setsid in the child before exec only detaches it from our TTY.
@@ -426,7 +424,7 @@ async fn run_interactive(target: &SshTarget, options: &SshOptions, prefer: &str,
     }
     let mut child = cmd.spawn().map_err(|e| StepError::Other(format!("Skiff cannot run ssh: {e}")))?;
     if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(script.as_bytes()).await;
+        let _ = stdin.write_all(SERVER.as_bytes()).await;
     }
     let out = tokio::time::timeout(STEP_TIMEOUT, child.wait_with_output()).await.map_err(|_| StepError::Other("The server did not answer in time. Nothing changed.".into()))?.map_err(|e| StepError::Other(e.to_string()))?;
     let stderr = String::from_utf8_lossy(&out.stderr);
@@ -442,9 +440,9 @@ async fn run_interactive(target: &SshTarget, options: &SshOptions, prefer: &str,
 /// Adds `key` to the server's `~/.ssh/authorized_keys`, once, after one
 /// password entry. `prefer`: [`BY_PASSWORD`] outside tests.
 pub async fn install_key(target: &SshTarget, options: &SshOptions, prefer: &str, key: &str, secret: String) -> Result<Installed, StepError> {
-    let out = run_interactive(target, options, prefer, INSTALL, key, secret).await?;
+    let out = run_interactive(target, options, prefer, "install-key", key, secret).await?;
     let has = |k: &str| out.lines().any(|l| l.trim() == k);
-    if !has("skiff-install=done") {
+    if !has("skiff-install-key=done") {
         return Err(StepError::Other("The server did not finish the key install. Check again.".into()));
     }
     Ok(Installed { added: has("added=yes"), ssh_dir_own: has("ssh_dir_own=yes"), file_own: has("file_own=yes") })
@@ -453,10 +451,10 @@ pub async fn install_key(target: &SshTarget, options: &SshOptions, prefer: &str,
 /// Puts a foreign-owned `authorized_keys` aside, as `authorized_keys.skiff-<time>`,
 /// and writes a new one with `key`. The other keys in it stop working there.
 pub async fn fix_key_file(target: &SshTarget, options: &SshOptions, prefer: &str, key: &str, secret: String) -> Result<(), StepError> {
-    let out = run_interactive(target, options, prefer, FIX, key, secret).await?;
-    if out.lines().any(|l| l.trim() == "skiff-fix=done") {
+    let out = run_interactive(target, options, prefer, "fix-key", key, secret).await?;
+    if out.lines().any(|l| l.trim() == "skiff-fix-key=done") {
         Ok(())
-    } else if out.lines().any(|l| l.trim() == "skiff-fix=not-own") {
+    } else if out.lines().any(|l| l.trim() == "skiff-fix-key=not-own") {
         Err(StepError::Other("You do not own your ~/.ssh folder there. Skiff did not change it.".into()))
     } else {
         Err(StepError::Other("The server did not finish. Check again.".into()))
