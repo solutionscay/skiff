@@ -18,13 +18,15 @@ export interface KnownHost {
 interface HostList {
   /** `null`: this Mac. */
   selected: string | null;
+  /** This computer's hostname; empty if the system gives none. */
+  localName: string;
   hosts: KnownHost[];
   /** The shown remote Host's clipboard permission, for the menu: given to
    *  the identity this window accepted. Each write asks Rust again. */
   clipboard: boolean;
 }
 
-let list: HostList = { selected: null, hosts: [], clipboard: false };
+let list: HostList = { selected: null, localName: "", hosts: [], clipboard: false };
 let connected = true;
 
 /** Reads the known Hosts and the selected one. Call it before anything loads. */
@@ -37,7 +39,10 @@ export async function loadHosts(): Promise<void> {
  *  Skipper are not its data, and are not shown. */
 export const isRemote = () => list.selected !== null;
 
-export const hostName = () => list.selected ?? "This Mac";
+/** The local Host's label, on every OS: "This computer (thr0w-deb)". */
+export const localHostName = () => (list.localName ? `This computer (${list.localName})` : "This computer");
+
+export const hostName = () => list.selected ?? localHostName();
 
 /** The menu's view: clipboard writes are allowed from the shown Host. */
 export const clipboardAllowed = () => !isRemote() || list.clipboard;
@@ -62,7 +67,7 @@ export const hostConnected = () => connected;
 
 function renderHostLabel() {
   const name = hostName();
-  document.title = isRemote() ? `Skiff — ${name}` : "Skiff";
+  document.title = `Skiff — ${name}`;
   let cell = document.getElementById("host-cell");
   const settings = document.getElementById("open-settings");
   if (!cell && settings) {
@@ -95,8 +100,7 @@ export function openHostMenu(anchor: HTMLElement) {
   const r = anchor.getBoundingClientRect();
   const mark = (on: boolean) => (on ? "indicators-check" : undefined);
   const entries: MenuEntry[] = [
-    { head: "HOST" },
-    { icon: mark(!isRemote()), label: "This Mac", run: () => pick(null) },
+    { icon: mark(!isRemote()), label: localHostName(), run: () => pick(null) },
     ...list.hosts.map((x) => ({ icon: mark(x.destination === list.selected), label: x.destination, run: () => pick(x.destination) })),
     { icon: "indicators-plus", label: "Add SSH Host…", run: addHostDialog },
   ];
@@ -134,7 +138,7 @@ async function toggleClipboard() {
   if (allow) {
     const ok = await confirmAction({
       title: `Allow clipboard writes from ${hostName()}?`,
-      body: "A program in a terminal on this Host can then replace this Mac's clipboard with OSC 52. It cannot read the clipboard.",
+      body: "A program in a terminal on this Host can then replace this computer's clipboard with OSC 52. It cannot read the clipboard.",
       action: "Allow writes",
     });
     if (!ok) return;

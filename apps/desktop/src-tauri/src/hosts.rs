@@ -205,9 +205,13 @@ struct HostView {
 
 /// What the page shows and offers: the selected Host, and the known ones.
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct HostList {
     /// None: this Mac.
     selected: Option<String>,
+    /// This computer's hostname, for the local Host's label. Empty if the
+    /// system gives none.
+    local_name: String,
     hosts: Vec<HostView>,
     /// The shown remote Host's clipboard permission, for the menu: given to
     /// the identity this window accepted. Each write asks `host_clipboard`.
@@ -221,7 +225,19 @@ fn host_list(hosts: Hosts, selected: Option<String>, identity: Option<&HostId>) 
         _ => false,
     };
     let hosts = hosts.hosts.into_iter().map(|h| HostView { destination: h.destination, socket: h.socket }).collect();
-    HostList { selected, hosts, clipboard }
+    HostList { selected, local_name: local_hostname(), hosts, clipboard }
+}
+
+/// The short hostname (`thr0w-deb`, not `thr0w-deb.local`), or empty.
+fn local_hostname() -> String {
+    let mut buf = [0u8; 256];
+    // SAFETY: the buffer and its length are valid; gethostname writes at most that.
+    if unsafe { libc::gethostname(buf.as_mut_ptr().cast(), buf.len()) } != 0 {
+        return String::new();
+    }
+    let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+    let name = String::from_utf8_lossy(&buf[..end]);
+    name.split('.').next().unwrap_or_default().trim().to_string()
 }
 
 #[tauri::command]

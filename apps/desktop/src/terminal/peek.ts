@@ -489,7 +489,7 @@ function showHostRead(mine: number, title: string, read: () => Promise<HostFile>
   const el = cardFrame("file", title, "peek diff-view file-view");
   if (copy) {
     const open = button("peek-open", "", copy);
-    open.title = "Open a copy in this Mac's default app (Enter)";
+    open.title = "Open a copy in this computer's default app (Enter)";
     open.setAttribute("aria-label", "Open a copy");
     open.append(h("span", "peek-open-key", "Enter"), " Open a copy");
     el.querySelector(".peek-esc")?.before(open);

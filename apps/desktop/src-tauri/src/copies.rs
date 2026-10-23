@@ -74,7 +74,7 @@ pub(crate) fn copy_name(host_file: &str) -> Result<String> {
     }
     let ext = Path::new(&name).extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
     if REFUSED.contains(&ext.as_str()) {
-        bail!("Skiff does not open a copy of a .{ext} file: opening it could run or install something on this Mac.");
+        bail!("Skiff does not open a copy of a .{ext} file: opening it could run or install something on this computer.");
     }
     if name.len() > 120 {
         let tail = if ext.is_empty() || ext.len() > 16 { String::new() } else { format!(".{ext}") };

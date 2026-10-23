@@ -218,7 +218,7 @@ export function watchText(state: WatchState, s: SessionInfo, name: string, error
     case "runs":
       return `skiff watch runs for ${name} since ${clock(s.watch!.since)}.`;
     case "missing":
-      if (isRemote()) return `No watcher runs for ${name} on ${hostName()}. ${name} does not hear when its panes finish. Skiff starts watchers only on This Mac: start skiff watch on that Host.`;
+      if (isRemote()) return `No watcher runs for ${name} on ${hostName()}. ${name} does not hear when its panes finish. Skiff starts watchers only on this computer: start skiff watch on that Host.`;
       return `No watcher runs for ${name}. ${name} does not hear when its panes finish. Skiff tries to start it every 30 seconds.` +
         (error ? ` Last start failed: ${error}.` : "");
     case "failed":

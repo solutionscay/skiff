@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { flush, moduleFromSource } from "./workspaceHarness.ts";
 
 /** The real hosts module over a fake `invoke`, `listen` and document. */
-type Answer = { selected: string | null; hosts: { destination: string; socket: string }[]; clipboard: boolean };
+type Answer = { selected: string | null; localName?: string; hosts: { destination: string; socket: string }[]; clipboard: boolean };
 
 /** `live`: what Rust's `host_clipboard` answers now, for the identity the
  *  window's live connection accepted and the file as it is now. */
@@ -56,12 +56,12 @@ function osc52(hostsMod: unknown) {
 }
 
 test("this Mac writes the clipboard; a remote Host only after it is allowed", async () => {
-  const local = hosts({ selected: null, hosts: [devbox], clipboard: false });
+  const local = hosts({ selected: null, localName: "thr0w-deb", hosts: [devbox], clipboard: false });
   await local.mod.loadHosts();
   assert.equal(local.mod.isRemote(), false);
   assert.equal(await local.mod.clipboardWrites(), true);
   assert.equal(local.mod.clipboardAllowed(), true);
-  assert.equal(local.document.title, "Skiff");
+  assert.equal(local.document.title, "Skiff — This computer (thr0w-deb)");
   assert.equal(local.calls.filter(([c]) => c === "host_clipboard").length, 0);
 
   const remote = hosts({ selected: "devbox", hosts: [devbox, { ...devbox, destination: "other" }], clipboard: false });

@@ -75,7 +75,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "43c58289c9e2561db2a8f05457f78f395720a1c26272d2aaed89f766b6d131ba"
+    "sha256": "24ac65d4c31a448e40639bbb5b095fa91abd683c5145e00b9d8cff55381b1b6f"
   },
   "apps/desktop/src-tauri/src/copies.rs": {
     "ownership": "client-owned (M5 reviewed): local copies of bytes the Host sent, for this computer's Open with; never reads or opens a Host path",
@@ -89,7 +89,7 @@
       "process",
       "read_dir"
     ],
-    "sha256": "170661dc4c0a8b6519ee8bcd8311bace9d932442a81ed8c4ddbfbca54af01ed6"
+    "sha256": "8683eac26e4babc4abd34bf1694e95ca881a07ef8fdfda1833c245ed048d2bf7"
   },
   "apps/desktop/src-tauri/src/diagnostics.rs": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -125,7 +125,7 @@
       "skiff_agent",
       "skiff_core"
     ],
-    "sha256": "3eca42993cc410531beea9331a6daae4f4fb6ffa248a9f34419a5fd844a360cf"
+    "sha256": "455e3fda31f75267529df866fed3ae110f6f69f1e7358e505ecca0ee2a8c0984"
   },
   "apps/desktop/src-tauri/src/ledger.rs": {
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",
@@ -145,7 +145,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "2d43ca465f3bf7f9e2b2350e997d84fe8360984a2078ef020152af170c51cb53"
+    "sha256": "333a139bb1dca6167085cd3c61d785422fe40169ba597999a685efb0ad4f3a8f"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -282,7 +282,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "b40694bfd588e119c72c2b8a4446caebd39b2b6cc80ac1cf089a3a22782b1053"
+    "sha256": "3df26987a7910962a38218ed5c1c00165af1c05260d703508547a53350576abd"
   },
   "apps/desktop/src/app/keyboard.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -364,7 +364,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "88d37cb8efc3032e68ce94920974e00187c24cf88c90ed482e01564c5ffee411"
+    "sha256": "e9c147c56a271469b29cbe6f99b3c92231517e0aa15c0e45107c73c3fd1f618e"
   },
   "apps/desktop/src/app/state.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -542,7 +542,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "728f5f40929f8e0236b0605b6dc706fce6462076a89efc0e03e7111c14423451"
+    "sha256": "b35b2dbc873e137ed84a0da9a1487b6c48ed441836b456e5abcf65ce35898337"
   },
   "apps/desktop/src/terminal/resume.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

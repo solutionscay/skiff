@@ -68,7 +68,7 @@ impl App {
             crate::hosts::load(&crate::hosts::path())
                 .map(|hosts| hosts.selection(local_selection))
                 .unwrap_or_else(|e| {
-                    eprintln!("hosts.toml: {e:#}; showing this Mac");
+                    eprintln!("hosts.toml: {e:#}; showing this computer");
                     local_selection()
                 })
         });
@@ -532,7 +532,7 @@ pub(crate) fn data_failure(e: &anyhow::Error, selection: &HostSelection) -> Stri
         (Some(DataError::NotRunning), _) if host.is_some() => format!(
             "skiff-host does not run{on}, so its projects and Git are not shown. Start `skiff-host` on that Host: this app never starts it there."
         ),
-        (Some(DataError::NotRunning), _) => "skiff-host did not start on this Mac. Projects and Git need it.".into(),
+        (Some(DataError::NotRunning), _) => "skiff-host did not start on this computer. Projects and Git need it.".into(),
         (Some(e @ DataError::Waiting { .. }), _) => e.to_string(),
         (_, Some(skiff_host_api::Error::IdentityChanged { .. })) => format!(
             "skiff-host{on} answers as another Skiff Host than its skiffd. Skiff sends it nothing."

@@ -913,7 +913,7 @@ impl LifecycleSource for LegacySessions {
                 // never starts on a remote Host.
                 Request::SessionCreate { spec } if self.remote && spec.peek => {
                     Err(Error::Permission {
-                        message: "A peek tool runs on this Mac only, not on a remote Host.".into(),
+                        message: "A peek tool runs on this computer only, not on a remote Host.".into(),
                     })
                 }
                 Request::SessionCreate { spec } => {

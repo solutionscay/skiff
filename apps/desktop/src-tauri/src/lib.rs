@@ -61,7 +61,7 @@ const LOCAL_ONLY: &[&str] = &[
 
 /// Why a [`LOCAL_ONLY`] command was refused.
 pub(crate) const LOCAL_ONLY_REFUSED: &str =
-    "Not available on a remote Host yet. It reads projects, files, the ledger or Skipper on this Mac.";
+    "Not available on a remote Host yet. It reads projects, files, the ledger or Skipper on this computer.";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
