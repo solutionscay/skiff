@@ -1,7 +1,8 @@
 //! Remove and uninstall: stop and disable Skiff's services on a server and
 //! delete the managed install, after the person confirms it in Settings ›
 //! Hosts. Only what Skiff put there goes: the managed folder, Skiff's unit
-//! files and the `~/.local/bin/skiff` link when it is Skiff's. Projects,
+//! files (on macOS its LaunchAgents, after `launchctl bootout`) and the
+//! `~/.local/bin/skiff` link when it is Skiff's. Projects,
 //! skiffd's session data and `local-host-id` stay. A skiffd that Skiff did
 //! not install is never stopped: `server.sh` stops a unit or a pid only
 //! when it runs from the managed folder.

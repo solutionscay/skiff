@@ -56,8 +56,10 @@ pub struct Probe {
     /// A systemd user manager answers.
     #[serde(default)]
     pub systemd: bool,
+    /// The skiffd unit is enabled; on macOS, its LaunchAgent file is there.
     #[serde(default)]
     pub unit_enabled: bool,
+    /// The unit is active; on macOS, launchd has the agent loaded.
     #[serde(default)]
     pub unit_active: bool,
     /// skiff-host's user unit is enabled.
@@ -437,12 +439,8 @@ fn server_rows(list: &mut List, p: &Probe, name: &str, version: &str) -> bool {
             let v = running.map(|d| format!(" {}", d.version)).unwrap_or_default();
             list.pass(Row::Skiff, format!("{name} runs Skiff{v} from its own install. Skiff uses it as it is."));
         }
-        (None, false) if os == "linux" => {
-            list.fix(Row::Skiff, format!("Skiff is not installed on {name}."), Fix::InstallSkiff);
-            return false;
-        }
         (None, false) => {
-            list.fail(Row::Skiff, format!("Skiff is not installed on {name}. Skiff installs itself on Linux servers only, for now. Install the Skiff app on {name}, then check again."));
+            list.fix(Row::Skiff, format!("Skiff is not installed on {name}."), Fix::InstallSkiff);
             return false;
         }
     }
@@ -487,6 +485,14 @@ fn keep_running(p: &Probe, name: &str, user: &str, refused: bool) -> Line {
     let line = |state, text: String, fix| Line { row: Row::KeepRunning, title: Row::KeepRunning.title(), state, text, fix };
     if p.managed.is_none() {
         return line(State::Passed, "Its own install decides this.".into(), None);
+    }
+    if p.bundle_os() == Some("macos") {
+        // LaunchAgents for skiffd and skiff-host: they start at login. A Mac
+        // that nobody logs in to after a restart gets Start on the next check.
+        return match p.unit_enabled && p.host_unit_enabled {
+            true => line(State::Passed, format!("Running. After {name} restarts, it starts when you log in there, or when you press Start here."), None),
+            false => line(State::Warning, format!("Skiff on {name} does not start again after a restart."), Some(Fix::StartSkiff)),
+        };
     }
     match (p.systemd, p.unit_enabled && p.host_unit_enabled, p.linger.as_str()) {
         (true, true, "yes") => line(State::Passed, "Running. It starts again after a restart.".into(), None),
@@ -663,9 +669,9 @@ mod tests {
         // Not a Skiff platform: the row says what it found.
         let (go, rows) = server(&Probe { os: "FreeBSD".into(), arch: "amd64".into(), ..probe() });
         assert!(!go && rows[0].3.contains("FreeBSD on amd64"));
-        // A Mac server is supported, and is not installed by Skiff yet.
-        let (_, rows) = server(&Probe { os: "Darwin".into(), arch: "arm64".into(), ..probe() });
-        assert_eq!((rows[1].1, rows[1].2), (State::Failed, None));
+        // A Mac server: Install, the same as Linux.
+        let (_, rows) = server(&Probe { os: "Darwin".into(), arch: "arm64".into(), systemd: false, ..probe() });
+        assert_eq!((rows[1].1, rows[1].2), (State::Failed, Some(Fix::InstallSkiff)));
     }
 
     #[test]
@@ -679,6 +685,11 @@ mod tests {
         assert_eq!(k(&probe(), false), (State::Passed, None), "not ours: not our business");
         // An install from before skiff-host had its unit: Start adds it.
         assert_eq!(k(&Probe { host_unit_enabled: false, ..ours.clone() }, false), (State::Warning, Some(Fix::StartSkiff)));
+        // macOS: the LaunchAgent files decide; linger means nothing there.
+        let mac = Probe { os: "Darwin".into(), arch: "arm64".into(), systemd: false, linger: String::new(), ..ours.clone() };
+        assert_eq!(k(&mac, false), (State::Passed, None));
+        assert_eq!(k(&Probe { unit_enabled: false, ..mac.clone() }, false), (State::Warning, Some(Fix::StartSkiff)));
+        assert_eq!(k(&Probe { host_unit_enabled: false, ..mac }, false), (State::Warning, Some(Fix::StartSkiff)));
         // A warning still lets the Host be used.
         let mut list = List::default();
         for row in Row::ALL.into_iter().take(9) {

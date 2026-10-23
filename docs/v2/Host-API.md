@@ -929,15 +929,31 @@ OpenSSH stream-local forward to the remote skiffd socket.
     Skiff did not install is used as it is, never replaced, stopped or started.
   - **Dev builds:** with no release for their version, a debug build sends
     its own `skiffd`, `skiff-host` and `skiff` (beside its executable), for a
-    Linux server with this computer's arch only, unsigned. A release build
+    server with this computer's OS and arch only, unsigned. A release build
     never does.
-  - No sudo, nothing outside the account's home and runtime folder, and no
-    install on macOS servers yet: the row says so.
+  - No sudo, and nothing outside the account's home and runtime folder.
+- **Install and start on macOS** (#166 slice 9): the same folder, upload and
+  `server.sh` steps, with the macOS bundle. **Start** writes the LaunchAgent
+  `~/Library/LaunchAgents/com.solutionscay.skiff.skiffd.plist` (`RunAtLoad`,
+  restart after a crash only), and `…skiff-host.plist` for skiff-host (restart
+  whenever it stops; an install of a new version restarts it with
+  `kickstart -k`), and loads it with `launchctl bootstrap`: into
+  `gui/<uid>` when this account owns the console, else into `user/<uid>`,
+  which an ssh login reaches and which keeps running after logout (the rule
+  `brew services` uses). An agent that is loaded already gets only a
+  `launchctl kickstart`; a changed file waits for the next load, because a
+  reload ends every session. No linger on macOS.
+  - **A Mac with no login (headless):** a LaunchAgent does not start at boot
+    before a login, and a LaunchDaemon needs admin, which Skiff does not use.
+    So Skiff accepts "starts at login": after a restart, the Mac's own login
+    starts it, and a Mac that nobody logs in to shows **Start** in the check
+    list, which loads the agent again over ssh. Row 10 says so and passes.
 - **Remove and uninstall** (#166 slice 8, `skiff-client::host::uninstall`,
   `server.sh`): **Remove…** forgets the Host on this computer, and its
   sessions keep running. When the install there is Skiff's, the confirm
   has a box: also stop and uninstall Skiff, which names the sessions that
-  end. Checked, Skiff stops and disables its user services, deletes
+  end. Checked, Skiff stops and disables its user services (on macOS: `launchctl
+  bootout` of its LaunchAgents, and their plist files go), deletes
   `~/.local/share/skiff/server`, its unit files and the `~/.local/bin/skiff`
   link if it is Skiff's, then forgets the Host. A unit or a pid counts as
   Skiff's only when it runs from the managed folder. Projects, skiffd's

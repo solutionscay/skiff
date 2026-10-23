@@ -58,6 +58,13 @@ if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/d
   systemctl --user -q is-active skiffd 2>/dev/null && unit_active=true
   systemctl --user -q is-enabled skiff-host 2>/dev/null && host_unit_enabled=true
   linger=$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)
+elif [ "$os" = Darwin ]; then
+  # The LaunchAgents: their files, and whether launchd has skiffd loaded.
+  [ -f "$HOME/Library/LaunchAgents/com.solutionscay.skiff.skiffd.plist" ] && unit_enabled=true
+  [ -f "$HOME/Library/LaunchAgents/com.solutionscay.skiff.skiff-host.plist" ] && host_unit_enabled=true
+  for x in "gui/$uid" "user/$uid"; do
+    launchctl print "$x/com.solutionscay.skiff.skiffd" >/dev/null 2>&1 && unit_active=true
+  done
 fi
 fallback=false
 if [ -f "$srv/skiffd.pid" ] && kill -0 "$(cat "$srv/skiffd.pid" 2>/dev/null)" 2>/dev/null; then fallback=true; fi

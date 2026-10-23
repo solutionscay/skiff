@@ -307,7 +307,10 @@ export function createHostsTab(redraw: () => void) {
     const v = c.report?.version ?? "";
     actionDialog({
       title: `Install Skiff on ${x.name}?`,
-      body: `Skiff ${v} for ${os === "linux" ? "Linux" : os} ${arch}. Files go in ~/.local/share/skiff/server on ${x.name}. Two user services start skiffd (sessions) and skiff-host (projects), and keep them running after you log out and after a restart. Nothing outside your home folder changes.`,
+      body:
+        os === "macos"
+          ? `Skiff ${v} for macOS ${arch}. Files go in ~/.local/share/skiff/server on ${x.name}. Two LaunchAgents in ~/Library/LaunchAgents start skiffd (sessions) and skiff-host (projects), and keep them running after you log out. After a restart they start when you log in there. Nothing outside your home folder changes.`
+          : `Skiff ${v} for Linux ${arch}. Files go in ~/.local/share/skiff/server on ${x.name}. Two user services start skiffd (sessions) and skiff-host (projects), and keep them running after you log out and after a restart. Nothing outside your home folder changes.`,
       action: "Install Skiff",
       tone: "go",
       submit: async () => {

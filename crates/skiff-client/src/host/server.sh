@@ -1,5 +1,5 @@
-# Skiff's managed install on a Linux server, in the account's home only. No
-# sudo, no system folder. $1: install, start, linger, sessions or
+# Skiff's managed install on a Linux or macOS server, in the account's home
+# only. No sudo, no system folder. $1: install, start, linger, sessions or
 # uninstall. install: $2 the version, $3 the SHA-256 of the bundle Skiff uploaded to
 # ~/.local/share/skiff/server/.incoming.tar.gz, $4 the skiffd socket name.
 # start: $2 the socket name. Each step prints key=value lines and ends with
@@ -12,8 +12,10 @@ mode=$1
 d=$HOME/.local/share/skiff/server
 umask 077
 uid=$(id -u)
+os=$(uname -s)
 if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ]; then rt=$XDG_RUNTIME_DIR
 elif [ -d "/run/user/$uid" ]; then rt=/run/user/$uid
+elif [ "$os" = Darwin ] && g=$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null) && [ -n "$g" ]; then rt=$g
 else rt=${TMPDIR:-/tmp}; fi
 rt=${rt%/}
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d ' ' -f 1; else shasum -a 256 "$1" | cut -d ' ' -f 1; fi; }
@@ -26,11 +28,80 @@ linger() {
   else echo linger=refused; fi
 }
 
+# macOS: LaunchAgents. launchd starts skiffd at login and after a crash; a
+# second skiffd on a live socket exits with an error, so it stays down.
+# skiff-host holds no sessions: launchd starts it again whenever it stops,
+# as Restart=always does on Linux.
+label=com.solutionscay.skiff.skiffd
+hlabel=com.solutionscay.skiff.skiff-host
+agents=$HOME/Library/LaunchAgents
+xml() { printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
+# $1 the label, $2 the KeepAlive value, then the program and its arguments.
+plist() {
+  l=$1 keep=$2
+  shift 2
+  cat <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$l</string>
+  <key>ProgramArguments</key>
+  <array>
+EOF
+  for x in "$@"; do printf '    <string>%s</string>\n' "$(xml "$x")"; done
+  cat <<EOF
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  $keep
+  <key>ProcessType</key>
+  <string>Interactive</string>
+</dict>
+</plist>
+EOF
+}
+# The launchd domain that has agent $1 loaded, if any.
+loaded() {
+  for x in "gui/$uid" "user/$uid"; do
+    if launchctl print "$x/$1" >/dev/null 2>&1; then echo "$x"; return; fi
+  done
+}
+# Writes and loads agent $1 (KeepAlive $2, program and arguments after).
+# $kick: -k restarts one that runs, for skiff-host after a new version.
+agent() {
+  l=$1
+  mkdir -p "$agents"
+  # A changed file waits for the next load: a reload ends every session.
+  plist "$@" > "$agents/.$l.plist" && mv "$agents/.$l.plist" "$agents/$l.plist"
+  on=$(loaded "$l")
+  if [ -n "$on" ]; then
+    # Starts it only if it does not run, or restarts it with -k.
+    launchctl kickstart ${kick:-} "$on/$l" >/dev/null 2>&1
+  else
+    # Homebrew's rule: the GUI domain when this account owns the screen,
+    # else the user domain, which an ssh login reaches and which keeps
+    # running after logout.
+    on=user/$uid
+    [ "$(ls -ln /dev/console 2>/dev/null | awk '{print $3}')" = "$uid" ] && on=gui/$uid
+    launchctl bootstrap "$on" "$agents/$l.plist" >/dev/null 2>&1
+  fi
+}
+
 # Starts the managed skiffd if it does not run, and waits for its socket.
 start() {
   sock=$rt/skiff/$1
   [ -x "$d/current/skiffd" ] || { echo "skiff-start=missing"; return; }
-  if has_systemd; then
+  if [ "$os" = Darwin ]; then
+    agent "$label" '<dict>
+    <key>Crashed</key>
+    <true/>
+  </dict>' "$d/current/skiffd"
+    echo how=launchd
+    echo "domain=${on%%/*}"
+  elif has_systemd; then
     u=$HOME/.config/systemd/user
     mkdir -p "$u"
     if ! cmp -s "$d/current/systemd/skiffd.service" "$u/skiffd.service"; then
@@ -57,7 +128,11 @@ start() {
   fi
   n=0
   while [ ! -S "$sock" ] && [ $n -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
-  has_systemd || host_fallback "$sock"
+  if [ "$os" = Darwin ]; then
+    kick=${restart_host:+-k} agent "$hlabel" '<true/>' "$d/current/skiff-host" --session-socket "$sock"
+  elif ! has_systemd; then
+    host_fallback "$sock"
+  fi
   hs=$rt/skiff/${1%.sock}-host.sock
   n=0
   while [ ! -S "$hs" ] && [ $n -lt 50 ] && host_alive; do sleep 0.1; n=$((n + 1)); done
@@ -83,7 +158,14 @@ host_pid() {
   p=$(cat "$d/skiff-host.pid" 2>/dev/null)
   [ -n "$p" ] && kill -0 "$p" 2>/dev/null && tr '\000' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -q skiff-host && echo "$p"
 }
-host_alive() { has_systemd && systemctl --user -q is-active skiff-host || [ -n "$(host_pid)" ]; }
+host_alive() {
+  if [ "$os" = Darwin ]; then
+    on=$(loaded "$hlabel")
+    [ -n "$on" ] && launchctl print "$on/$hlabel" 2>/dev/null | grep -q 'state = running'
+  else
+    has_systemd && systemctl --user -q is-active skiff-host || [ -n "$(host_pid)" ]
+  fi
+}
 
 # Without a user manager: skiff-host for the skiffd at $1, until the server
 # restarts. After an install that changed the version, the old one stops first.
@@ -148,6 +230,7 @@ install() {
 # Remove and uninstall. A unit or a pid is Skiff's only when it runs from
 # the managed folder; anything else is left as it is.
 ours_unit() { [ -f "$1" ] && grep -q '^ExecStart=%h/.local/share/skiff/server/current/' "$1"; }
+ours_agent() { [ -f "$agents/$1.plist" ] && grep -qF "<string>$(xml "$d/current/")" "$agents/$1.plist"; }
 ours_pid() { [ -n "$1" ] && kill -0 "$1" 2>/dev/null && case "$(ps -o args= -p "$1" 2>/dev/null)" in "$d"/*) true ;; *) false ;; esac; }
 
 # The managed skiffd's sessions, as `skiff ls --json` on one line. $1: the
@@ -156,7 +239,8 @@ sessions() {
   [ -f "$d/installed-by" ] || { echo managed=no; echo "skiff-sessions=done"; return; }
   echo managed=yes
   up=no
-  if has_systemd && ours_unit "$HOME/.config/systemd/user/skiffd.service" && systemctl --user -q is-active skiffd; then up=yes
+  if [ "$os" = Darwin ] && ours_agent "$label" && [ -n "$(loaded "$label")" ]; then up=yes
+  elif has_systemd && ours_unit "$HOME/.config/systemd/user/skiffd.service" && systemctl --user -q is-active skiffd; then up=yes
   elif ours_pid "$(cat "$d/skiffd.pid" 2>/dev/null)"; then up=yes; fi
   if [ $up = yes ] && [ -x "$d/current/skiff" ]; then
     printf 'sessions='; "$d/current/skiff" --socket "$rt/skiff/$1" ls --json 2>/dev/null | tr -d '\n'; echo
@@ -170,7 +254,14 @@ sessions() {
 uninstall() {
   [ -f "$d/installed-by" ] || { echo "skiff-uninstall=unmanaged"; return; }
   u=$HOME/.config/systemd/user
-  if has_systemd; then
+  if [ "$os" = Darwin ]; then
+    for l in "$hlabel" "$label"; do
+      ours_agent "$l" || continue
+      on=$(loaded "$l")
+      [ -n "$on" ] && launchctl bootout "$on/$l" >/dev/null 2>&1
+      rm -f "${agents:?}/${l:?}.plist"
+    done
+  elif has_systemd; then
     for s in skiff-host skiffd; do
       if ours_unit "$u/$s.service"; then
         systemctl --user disable --now -q "$s" 2>/dev/null
