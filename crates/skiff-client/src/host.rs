@@ -21,6 +21,7 @@ use tokio::{
 
 use crate::transport::Transport;
 
+pub mod check;
 pub mod data;
 mod inventory;
 mod lifecycle;

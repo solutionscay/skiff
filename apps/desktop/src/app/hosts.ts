@@ -16,7 +16,11 @@ export interface KnownHost {
   destination: string;
   user: string | null;
   port: number | null;
-  socket: string;
+  /** Found by the last check, or set by the person. `null`: not found yet. */
+  socket: string | null;
+  socket_override: boolean;
+  /** The last check or connection in this app run. */
+  state: "ok" | "attention" | "unknown";
 }
 
 interface HostList {
@@ -54,8 +58,9 @@ export const knownHosts = (): readonly KnownHost[] => list.hosts;
 /** The shown Host's id. `null`: this Mac. */
 export const shownHost = () => list.selected;
 
-/** What a Host menu link opens in Settings › Hosts. */
-export type HostsPage = { add: true } | { add?: false };
+/** What a Host menu link opens in Settings › Hosts: its Add form, a Host's
+ *  check list, or the list. */
+export type HostsPage = { add: true } | { check: string } | Record<string, never>;
 let manage: (page: HostsPage) => void = () => {};
 
 /** Settings registers how it opens on the Hosts tab. */
@@ -121,9 +126,17 @@ export function openHostMenu(anchor: HTMLElement) {
   const mark = (on: boolean) => (on ? "indicators-check" : undefined);
   const entries: MenuEntry[] = [
     { icon: mark(!isRemote()), label: localHostName(), run: () => pick(null) },
-    ...list.hosts.map((x) => ({ icon: mark(x.id === list.selected), label: x.name, run: () => pick(x.id) })),
+    // A Host that needs attention opens its check list, not a page that cannot load.
+    ...list.hosts.map((x) => ({
+      icon: mark(x.id === list.selected),
+      label: x.name,
+      hint: x.state === "attention" ? "Needs attention" : undefined,
+      run: () => (x.state === "attention" ? manage({ check: x.id }) : pick(x.id)),
+    })),
     { icon: "indicators-plus", label: "Add SSH Host…", run: () => manage({ add: true }) },
   ];
+  const shown = list.selected;
+  if (shown && !connected) entries.push({ icon: "indicators-check", label: `Check ${hostName()}…`, run: () => manage({ check: shown }) });
   if (isRemote()) {
     entries.push({
       icon: "code-copy",

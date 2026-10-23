@@ -175,10 +175,13 @@ pub enum SshError {
     HostKeyUnknown(String),
     HostKeyChanged(String),
     AuthFailed(String),
+    /// The Host's sshd does not allow socket forwarding.
     ForwardingRefused(String),
-    /// The Host refused the channel to the socket. OpenSSH reports a missing
-    /// socket and disabled socket forwarding alike, so this names both.
-    ChannelRefused {
+    /// The Host refused the channel to the socket, and as far as Skiff knows
+    /// no skiffd listens there. OpenSSH reports a missing socket and
+    /// disabled forwarding with the same line: a probe that sees a live
+    /// socket makes this [`Self::ForwardingRefused`] (see [`Self::refine`]).
+    NoSkiffd {
         destination: String,
         socket: String,
     },
@@ -198,16 +201,13 @@ pub enum SshError {
 impl fmt::Display for SshError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::HostKeyUnknown(d) => write!(f, "ssh does not know the host key of {d}. Connect once with `ssh {d}` in a terminal, then try again."),
-            Self::HostKeyChanged(d) => write!(f, "The host key of {d} changed. Skiff does not connect. Check the new key before you change known_hosts."),
-            Self::AuthFailed(d) => write!(f, "ssh cannot log in to {d} without a prompt. Load your key into the SSH agent or name it in ssh config, then try again."),
-            Self::ForwardingRefused(d) => write!(f, "{d} does not allow socket forwarding. Set AllowStreamLocalForwarding yes in its sshd_config."),
-            Self::ChannelRefused { destination, socket } => write!(f, "{destination} refused the connection to {socket}. Either no skiffd listens there (run `skiff status` on that Host to see its socket), or its sshd does not allow socket forwarding (AllowStreamLocalForwarding)."),
-            Self::Unreachable(d) => write!(f, "Cannot reach {d}. Check the network and the name in ssh config."),
-            Self::Exited { destination, code } => match code {
-                Some(c) => write!(f, "ssh to {destination} stopped (exit {c}). Run `ssh {destination}` in a terminal to see why."),
-                None => write!(f, "ssh to {destination} stopped. Run `ssh {destination}` in a terminal to see why."),
-            },
+            Self::HostKeyUnknown(d) => write!(f, "This computer does not know the host key of {d} yet. Skiff does not connect. Settings › Hosts checks {d}."),
+            Self::HostKeyChanged(d) => write!(f, "The host key of {d} changed since the last connection. Skiff does not connect."),
+            Self::AuthFailed(d) => write!(f, "{d} does not accept a key from this computer without a prompt. Settings › Hosts checks {d}."),
+            Self::ForwardingRefused(d) => write!(f, "{d} does not allow Skiff's connection to its sessions service. Its admin must allow socket forwarding for ssh (AllowStreamLocalForwarding)."),
+            Self::NoSkiffd { destination, .. } => write!(f, "Skiff's sessions service is not running on {destination}."),
+            Self::Unreachable(d) => write!(f, "Cannot reach {d}. Check that this computer is online and that the server is on."),
+            Self::Exited { destination, .. } => write!(f, "ssh to {destination} stopped for an unknown reason. Settings › Hosts checks {destination} and finds the cause."),
             Self::TimedOut(d) => write!(f, "ssh to {d} did not connect within {}s.", OPEN_TIMEOUT.as_secs()),
             Self::Waiting { destination, seconds } => write!(f, "Not connected to {destination}. Skiff tries again in {seconds}s."),
             Self::Setup(why) => write!(f, "Cannot prepare the SSH forward: {why}"),
@@ -215,6 +215,17 @@ impl fmt::Display for SshError {
     }
 }
 impl std::error::Error for SshError {}
+
+impl SshError {
+    /// A refused channel, with what a probe saw: a live socket there means
+    /// the sshd blocks the forward, not that skiffd is missing.
+    pub fn refine(self, socket_live: bool) -> Self {
+        match self {
+            Self::NoSkiffd { destination, .. } if socket_live => Self::ForwardingRefused(destination),
+            e => e,
+        }
+    }
+}
 
 /// What ssh's stderr says, as one of the known causes. `None`: no known cause.
 pub fn classify(stderr: &str, target: &SshTarget) -> Option<SshError> {
@@ -235,7 +246,7 @@ pub fn classify(stderr: &str, target: &SshTarget) -> Option<SshError> {
     } else if stderr.contains("administratively prohibited") {
         Some(SshError::ForwardingRefused(d))
     } else if stderr.contains("open failed: connect failed") {
-        Some(SshError::ChannelRefused {
+        Some(SshError::NoSkiffd {
             destination: d,
             socket: target.socket.clone(),
         })
@@ -532,7 +543,7 @@ mod tests {
             ("me@devbox: Permission denied (publickey).\n", SshError::AuthFailed("devbox".into())),
             ("channel 2: open failed: administratively prohibited: open failed\n", SshError::ForwardingRefused("devbox".into())),
             // OpenSSH 9.7 prints this for a missing socket and for disabled forwarding alike.
-            ("channel 1: open failed: connect failed: open failed\n", SshError::ChannelRefused { destination: "devbox".into(), socket: t.socket.clone() }),
+            ("channel 1: open failed: connect failed: open failed\n", SshError::NoSkiffd { destination: "devbox".into(), socket: t.socket.clone() }),
             ("ssh: Could not resolve hostname devbox: nodename nor servname provided\n", SshError::Unreachable("devbox".into())),
         ];
         for (stderr, want) in cases {
@@ -542,6 +553,10 @@ mod tests {
             classify("Load key \"/Users/me/.ssh/id\": bad permissions\n", &t),
             None
         );
+        // The probe splits the one line in two.
+        let refused = SshError::NoSkiffd { destination: "devbox".into(), socket: t.socket.clone() };
+        assert_eq!(refused.clone().refine(false), refused);
+        assert_eq!(refused.refine(true), SshError::ForwardingRefused("devbox".into()));
         // The messages name the destination and never ssh's own lines.
         let text = SshError::AuthFailed("devbox".into()).to_string();
         assert!(text.contains("devbox") && !text.contains(".ssh"));

@@ -836,13 +836,27 @@ OpenSSH stream-local forward to the remote skiffd socket.
 - **Destination validation:** one word, never starting with `-`. The socket
   must be an absolute path with no colon.
 - **Failures** become plain causes (`SshError`): unknown key, changed key, no
-  login without a prompt, unreachable, timed out, ssh exited, and a refused
-  channel.
+  login without a prompt, unreachable, timed out, ssh exited, no skiffd at
+  the socket, and forwarding refused.
   - OpenSSH 9.7 reports a missing remote socket and disabled
-    `AllowStreamLocalForwarding` with the same line, so the refused-channel
-    message names both causes. Telling them apart would take a remote command,
-    which Skiff does not run.
-  - ssh's own output is never shown, because it can name key paths.
+    `AllowStreamLocalForwarding` with the same line. Skiff reads it as "no
+    skiffd" (`NoSkiffd`), then runs the probe (below): a live socket there
+    makes it `ForwardingRefused`.
+  - ssh's own output is never shown, because it can name key paths. No
+    message names a command to run.
+- **The probe** (`skiff-client::host::check`): one fixed POSIX `sh` script
+  (`probe.sh`), sent on stdin over a strict, batch ssh run with the same
+  trust options. It changes nothing and prints one JSON object: OS, arch,
+  runtime folder, the socket and whether it is live, and `skiff status
+  --json` from the managed install, PATH or `~/.cargo/bin` when one answers.
+  The socket name (from this build) and a socket the person set are its only
+  arguments, single-quoted. This is the one remote command Skiff runs.
+- **The check list** (Settings › Hosts › Check, and Connect): reach the
+  server, host key, log in without a prompt, sessions service (skiffd),
+  socket forwarding (a real `-L` forward), and identity and version (a ping
+  over it, compared with the pin, which it never stores). A failed row skips
+  the rows under it. It stores only the socket the probe found, unless the
+  person set one.
 - **Backoff:** after a failed open, the next waits 1, 2, 4 … up to 30 s.
 
 ### Identity (required remotely)
@@ -944,12 +958,16 @@ OpenSSH stream-local forward to the remote skiffd socket.
   removes them. The Server field lists the aliases in `~/.ssh/config`. The line
   under it shows what `ssh -G` resolves (user, hostname, port, jump host),
   with no network.
+- **A Host that needs attention** (its last check or connection in this app
+  run failed, or no socket is found yet) shows "Needs attention" in the menu.
+  Picking it opens its check list instead.
 - **Picking a Host** tears down the old connection, streams and held input,
   then reloads the page: no view mixes two Hosts.
 - **`hosts.toml`** (client-owned, beside `projects.toml`) stores the known
   Hosts, each with a local `id` that never changes, a shown `name`, the
-  `destination`, an optional `user` and `port`, the socket, the `host_id` pin
-  and `clipboard_host`. `selected` names an `id`. No two Hosts share a
+  `destination`, an optional `user` and `port`, the `socket` (found by the
+  check, or set by the person with `socket_override = true`), the `host_id`
+  pin and `clipboard_host`. `selected` names an `id`. No two Hosts share a
   destination, user and port. An older
   `clipboard = true` is ignored. An unknown or invalid selected entry falls
   back to This Mac.
@@ -962,14 +980,14 @@ local-only.
 ### Demo
 
 1. **On the remote Host:** install a Skiff whose skiffd reports identity (M1f
-   or later). Run `skiff status` and copy the `socket` line. Its sshd must allow
-   stream-local forwarding; OpenSSH allows it by default.
+   or later), and start skiffd. Its sshd must allow stream-local forwarding;
+   OpenSSH allows it by default.
 2. **On this Mac:** `ssh <alias>` must work without a prompt (key in the agent
    or ssh config), and the host key must already be in known_hosts.
 3. **Start this V2 build.** Use a private local state, so it does not touch a
    v1 daemon.
-4. Click the Host cell, then Add SSH Host… Pick the alias, type the socket, and
-   save. Then pick it in the Host menu.
+4. Click the Host cell, then Add SSH Host… Pick the alias, then Connect. The
+   check list runs and finds the socket. Switch to the Host from there.
 5. Remote sessions list under Other. Open one, type, paste and resize. On the
    remote Host, start more with `skiff new --agent <id>`.
 6. **Drop the link** (Wi-Fi off or laptop sleep). The cell turns red, input is

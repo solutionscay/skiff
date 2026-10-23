@@ -59,7 +59,7 @@
     "sha256": "bf3b8e737190fc705e503a4f0868da2afbe841ddcce36ced927f5f0b1c9dcc8c"
   },
   "apps/desktop/src-tauri/src/connection.rs": {
-    "ownership": "M1a\u2013M1e selected-local Host owner; M4 data-plane owner (skiff-host paired by host_id); endpoint-local process control for skiffd and skiff-host spawn/stop; existing local lifecycle/legacy client adapter",
+    "ownership": "M1a\u2013M1e selected-local Host owner; M4 data-plane owner (skiff-host paired by host_id); endpoint-local process control for skiffd and skiff-host spawn/stop; existing local lifecycle/legacy client adapter; remote refused-channel probe (read-only, skiff-client check) to name its cause",
     "reasons": [
       "config",
       "env",
@@ -75,7 +75,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "b2fbdb5436300f2054e91a0f63d7795ed300d7ef00adffef7ee14cf21ccf6cda"
+    "sha256": "c053e69492ce6073aac564b41e1b6176136d5c5b9fc6e8242ad9a6f1ca6942db"
   },
   "apps/desktop/src-tauri/src/copies.rs": {
     "ownership": "client-owned (M5 reviewed): local copies of bytes the Host sent, for this computer's Open with; never reads or opens a Host path",
@@ -113,7 +113,7 @@
     "sha256": "a5dc5bcca7f832f3301cbc42e01411dde6a2e7d1fef2aeda7f88046c32ed5378"
   },
   "apps/desktop/src-tauri/src/hosts.rs": {
-    "ownership": "client policy: hosts.toml (known Hosts by local id, the selected Host, per-Host clipboard opt-in), this computer's ssh config for Settings \u203a Hosts, and building the selected SSH endpoint",
+    "ownership": "client policy: hosts.toml (known Hosts by local id, the selected Host, the socket a check found or the person set, per-Host clipboard opt-in), this computer's ssh config, the read-only Host check (probe over ssh, via skiff-client), and building the selected SSH endpoint",
     "reasons": [
       "config",
       "env",
@@ -125,7 +125,7 @@
       "skiff_agent",
       "skiff_core"
     ],
-    "sha256": "09985b507fbcf1a6205193e772f3a3be559e5768486e6760a80eb135c6ea75bc"
+    "sha256": "a9168df89ebec10ab7dd11b3e0640ae2ba23ff733519b49e0f2b5e42508c4e32"
   },
   "apps/desktop/src-tauri/src/ledger.rs": {
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",
@@ -145,7 +145,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "9ebb7b7b2a6e400a4f9ed7e2e9d4806c5c0a0816229f4f45a54f6e7da5ef67e8"
+    "sha256": "d439f5d316d3aff4f0e038994964386f272dcbf64e1d4143167e3d7582465663"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -282,7 +282,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "fe3bb309ebf5b1cd2ac2d816eb6ee7d211b4758f48e36d2e6c5e8eff9b8682fb"
+    "sha256": "a9fac6da370bed78058a899e7da62ce1b5900ef1a182a72a9a05e1690a6f10ed"
   },
   "apps/desktop/src/app/keyboard.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -417,12 +417,12 @@
     "sha256": "dd16187f3f3a5c2c10665788c23b5e6eb8cc3da151573633370f00e6db0b7075"
   },
   "apps/desktop/src/appearance/hostSettings.ts": {
-    "ownership": "client policy: Settings \u203a Hosts (add, edit, rename, remove known Hosts in hosts.toml; this computer's ssh config aliases and ssh -G)",
+    "ownership": "client policy: Settings \u203a Hosts (add, edit, rename, remove known Hosts in hosts.toml; this computer's ssh config aliases and ssh -G; a Host's read-only check list)",
     "reasons": [
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "c5710ca6278e857909de0fc5ac32be7f0ff14b3cbecb7b88467a8e6b55983bae"
+    "sha256": "3b447b5252e17c92b7992212fb3a2dd545c5ba8ca9e6eae475b47a7c0d3e50b9"
   },
   "apps/desktop/src/appearance/settings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6",

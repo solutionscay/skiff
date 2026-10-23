@@ -450,13 +450,25 @@ async fn unknown_or_changed_keys_closed_forwarding_and_a_wrong_socket_are_explai
     assert_eq!(std::fs::read_to_string(f.dir.join("empty_hosts")).unwrap(), "");
 
     let missing = select(&f.selection("ssh_config", Path::new("/nonexistent/skiffd.sock"), "m")).await.err().unwrap();
-    assert!(matches!(ssh_error(&missing), Some(SshError::ChannelRefused { .. })), "{missing:#}");
+    assert!(matches!(ssh_error(&missing), Some(SshError::NoSkiffd { .. })), "{missing:#}");
 
     assert!(f.start_sshd("sshd_noforward"));
     let refused = select(&f.selection("ssh_config", &f.socket(), "r")).await.err().unwrap();
-    // This sshd says no more than for a missing socket; the text names both.
-    assert!(matches!(ssh_error(&refused), Some(SshError::ChannelRefused { .. } | SshError::ForwardingRefused(_))), "{refused:#}");
-    assert!(refused.to_string().contains("AllowStreamLocalForwarding"), "{refused:#}");
+    // This sshd says no more than for a missing socket. The probe, over the
+    // same sshd, sees the live socket: the cause is the blocked forward.
+    let Some(SshError::NoSkiffd { .. }) = ssh_error(&refused).cloned() else {
+        return assert!(matches!(ssh_error(&refused), Some(SshError::ForwardingRefused(_))), "{refused:#}");
+    };
+    let target = SshTarget::new("fixture", f.socket().to_string_lossy().into_owned());
+    let run = skiff_client::host::check::run_probe(&target, &f.options("ssh_config"), "skiffd.sock", Some(&target.socket)).await.unwrap();
+    let skiff_client::host::check::ProbeRun::Probed(probe, _) = run else { panic!("the probe did not run") };
+    assert!(probe.socket_live, "{probe:?}");
+    let refined = ssh_error(&refused).cloned().unwrap().refine(probe.socket_live);
+    assert!(matches!(refined, SshError::ForwardingRefused(_)), "{refined}");
+    assert!(refined.to_string().contains("AllowStreamLocalForwarding"), "{refined}");
+    // A missing socket stays a missing skiffd.
+    let missing = ssh_error(&missing).cloned().unwrap().refine(false);
+    assert!(matches!(missing, SshError::NoSkiffd { .. }), "{missing}");
 }
 
 #[tokio::test]

@@ -46,7 +46,11 @@ enum Cmd {
     /// Show this skiff's version and path, and the daemon's version,
     /// protocol, pid and socket. Warns when another skiff comes first on
     /// PATH, or skiffd's version is not the one this skiff was built for.
-    Status,
+    #[command(after_help = "--json prints one object and no warnings:\n  {\"skiff\":VERSION,\"protocol\":N,\"socket\":PATH,\"skiffd\":{\"version\":V,\"protocol\":N,\"pid\":PID,\"host_id\":ID}}\nskiffd is null when no skiffd answers on the socket; the exit code is then 1.")]
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
     /// Manage the daemon itself.
     #[command(subcommand)]
     Daemon(DaemonCmd),
@@ -611,7 +615,8 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Theme { cmd: ThemeCmd::Project { cmd } } => return theme::project(cmd).map(|_| 0),
         Cmd::OpenWith { cmd } => return open_with::run(cmd).map(|_| 0),
         Cmd::Ledger { person, cmd } => return ledger::run(&socket, cmd, person).await,
-        Cmd::Status => return info::status(&socket).await.map(|_| 0),
+        Cmd::Status { json: true } => return Ok(info::status_json(&socket).await),
+        Cmd::Status { json: false } => return info::status(&socket).await.map(|_| 0),
         Cmd::Daemon(DaemonCmd::Reload { binary }) => return daemon::reload(&socket, binary).await.map(|_| 0),
         Cmd::Daemon(DaemonCmd::Stop) => return daemon::stop(&socket).await.map(|_| 0),
         // Starts skiffd when it does not run.
@@ -652,7 +657,7 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Seen { session } => sessions::seen(&c, &session).await,
         Cmd::Agents { json } => info::agents(&c, json).await,
         Cmd::Theme { cmd: ThemeCmd::Session { cmd } } => theme::session(&c, cmd).await,
-        Cmd::Status | Cmd::Daemon(_) | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::OpenWith { .. } | Cmd::Ledger { .. } | Cmd::Wait { .. } | Cmd::Events { .. } | Cmd::Watch { .. } | Cmd::Send { .. } | Cmd::Skipper { .. } => {
+        Cmd::Status { .. } | Cmd::Daemon(_) | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::OpenWith { .. } | Cmd::Ledger { .. } | Cmd::Wait { .. } | Cmd::Events { .. } | Cmd::Watch { .. } | Cmd::Send { .. } | Cmd::Skipper { .. } => {
             unreachable!()
         }
     }

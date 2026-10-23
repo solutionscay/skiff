@@ -33,11 +33,12 @@ class El {
 function tab() {
   const calls: [string, unknown][] = [];
   let prompt: { value?: string; submit: (v: string) => Promise<void> } | null = null;
-  const hosts = [{ id: "h_dev", name: "devbox", destination: "devbox", user: "me", port: 2222, socket: "/run/user/1000/skiff/skiffd.sock" }];
+  const hosts = [{ id: "h_dev", name: "devbox", destination: "devbox", user: "me", port: 2222, socket: "/run/user/1000/skiff/skiffd.sock", socket_override: false, state: "attention" }];
   const invoke = async (c: string, a?: unknown) => {
     calls.push([c, a]);
     if (c === "resolve_ssh") return { hostname: "devbox.lan", user: "me", port: 2222, jump: "" };
     if (c === "ssh_aliases") return [{ name: "devbox", goes_to: "me@devbox.lan" }];
+    if (c === "check_host") return { ok: true, rows: [{ row: "reach", title: "Reach the server", state: "passed", text: "devbox.lan answers. 12 ms." }] };
   };
   const h = (tag: string, cls?: string, text?: string) => new El(tag, cls, text);
   const mod = moduleFromSource(
@@ -47,7 +48,7 @@ function tab() {
       "../ui/dom": { h, button: (cls: string, text: string, run: () => void) => { const b = h("button", cls, text); b.addEventListener("click", run); return b; } },
       "../ui/runes": { rune: () => new El("svg") },
       "../ui/confirm": { confirmAction: async () => true, promptAction: (o: typeof prompt) => void (prompt = o) },
-      "../app/hosts": { knownHosts: () => hosts, loadHosts: async () => {}, localHostName: () => "This computer", shownHost: () => null },
+      "../app/hosts": { knownHosts: () => hosts, loadHosts: async () => {}, localHostName: () => "This computer", shownHost: () => null, pick: (id: string) => void calls.push(["pick", id]) },
     },
     { document: { getElementById: () => null, querySelector: () => null }, setTimeout, clearTimeout, Promise, Map },
     "",
@@ -79,10 +80,32 @@ test("Edit opens the form with the Host's values and saves them under its id", a
   assert.equal(port.value, "2222");
   port.value = "2200";
   for (const f of port.listeners.input) f({});
-  x.page().find("Save")!.click();
-  await flush();
-  await flush();
+  x.redraw();
+  // The socket was found, not set: its field is empty and says what was found.
+  const socket = x.page().all().find((e) => e.attrs["aria-label"] === "Socket on the server")!;
+  assert.equal(socket.value, "");
+  assert.equal(socket.placeholder, "Found: /run/user/1000/skiff/skiffd.sock");
+  assert.equal(x.page().find("Save"), undefined, "a changed port needs Connect");
+  x.page().find("Connect")!.click();
+  for (let i = 0; i < 6; i++) await flush();
   const edit = x.calls.find(([c]) => c === "edit_host")!;
-  assert.equal(JSON.stringify(edit), JSON.stringify(["edit_host", { id: "h_dev", form: { destination: "devbox", name: "devbox", user: "me", port: "2200", socket: "/run/user/1000/skiff/skiffd.sock" } }]));
-  assert.ok(x.page().find("Hosts"), "back on the list after a save");
+  assert.equal(JSON.stringify(edit), JSON.stringify(["edit_host", { id: "h_dev", form: { destination: "devbox", name: "devbox", user: "me", port: "2200", socket: "" } }]));
+  // Connect checks the Host at once, and a passed check offers the switch.
+  assert.ok(x.calls.some(([c, a]) => c === "check_host" && JSON.stringify(a) === '{"id":"h_dev"}'));
+  assert.ok(x.page().find("devbox.lan answers. 12 ms."));
+  x.page().find("Switch to devbox")!.click();
+  assert.ok(x.calls.some(([c, a]) => c === "pick" && a === "h_dev"));
+});
+
+test("a Host that needs attention opens its check list from the menu link", async () => {
+  const x = tab();
+  await x.t.load();
+  x.t.open({ check: "h_dev" });
+  x.redraw();
+  assert.ok(x.page().find("Check devbox"));
+  assert.ok(x.page().find("Checking…"), "the first row runs while the rest wait");
+  for (let i = 0; i < 4; i++) await flush();
+  x.redraw();
+  assert.ok(x.page().find("Reach the server"));
+  assert.equal(x.page().find("Needs attention"), undefined);
 });

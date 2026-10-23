@@ -132,13 +132,20 @@ async fn connect_remote(app: &App, selection: &HostSelection, guard: &mut Option
     let destination = selection.ssh_target().map(|t| t.destination.clone()).unwrap_or_default();
     match try_remote(app, selection, &destination, crate::hosts::path()).await {
         Ok(host) => {
+            if let Some(t) = selection.ssh_target().cloned() {
+                tauri::async_runtime::spawn_blocking(move || crate::hosts::note_login(&t, true));
+            }
             *app.changed.lock().unwrap() = None;
             *app.live.lock().unwrap() = Some(host.connection());
             *guard = Some(host.clone());
             Ok((host, false))
         }
         Err(e) => {
+            let e = refine_refused(e, selection).await;
             let (warning, message) = remote_failure(&e, &destination);
+            if let (Some(_), Some(t)) = (&warning, selection.ssh_target().cloned()) {
+                tauri::async_runtime::spawn_blocking(move || crate::hosts::note_login(&t, false));
+            }
             if let Some(skiff_host_api::Error::IdentityChanged { received, .. }) = e.downcast_ref() {
                 *app.changed.lock().unwrap() = Some((destination.clone(), received.clone()));
             }
@@ -192,6 +199,21 @@ async fn try_remote(app: &App, selection: &HostSelection, destination: &str, fil
     Ok(host)
 }
 
+/// A refused channel names two causes. The probe looks at the socket: when
+/// one is there, the sshd blocks the forward. Any other error stays.
+async fn refine_refused(e: anyhow::Error, selection: &HostSelection) -> anyhow::Error {
+    use skiff_client::host::{check, ssh::SshError};
+    let (Some(SshError::NoSkiffd { .. }), Some(t)) = (e.downcast_ref::<SshError>(), selection.ssh_target()) else { return e };
+    let options = skiff_client::host::ssh::SshOptions::default();
+    match check::run_probe(t, &options, "skiffd.sock", Some(&t.socket)).await {
+        Ok(check::ProbeRun::Probed(p, _)) => match e.downcast::<SshError>() {
+            Ok(ssh) => ssh.refine(p.socket_live).into(),
+            Err(e) => e,
+        },
+        _ => e,
+    }
+}
+
 /// The remote skiffd did not answer the first Ping in time.
 #[derive(Debug)]
 struct RemoteSilent;
@@ -225,11 +247,11 @@ pub(crate) fn remote_failure(e: &anyhow::Error, destination: &str) -> (Option<Wa
         Some(skiff_host_api::Error::MalformedContract { message }) => warn("remote", message.clone()),
         _ if e.downcast_ref::<RemoteSilent>().is_some() => warn(
             "remote",
-            format!("skiffd on {destination} did not answer within {}s. Run `skiff status` on that Host to check it.", REMOTE_HELLO_TIMEOUT.as_secs()),
+            format!("skiffd on {destination} did not answer within {} s. Settings › Hosts checks {destination}.", REMOTE_HELLO_TIMEOUT.as_secs()),
         ),
         _ => warn(
             "remote",
-            format!("Cannot reach skiffd on {destination} over ssh. Run `skiff status` on that Host to check that skiffd runs and which socket it uses."),
+            format!("Cannot reach skiffd on {destination} over ssh. Settings › Hosts checks {destination} and finds the cause."),
         ),
     }
 }
@@ -1174,7 +1196,7 @@ mod tests {
             SshError::HostKeyUnknown(d.into()),
             SshError::HostKeyChanged(d.into()),
             SshError::AuthFailed(d.into()),
-            SshError::ChannelRefused { destination: d.into(), socket: "/s.sock".into() },
+            SshError::NoSkiffd { destination: d.into(), socket: "/s.sock".into() },
             SshError::ForwardingRefused(d.into()),
         ] {
             let text = e.to_string();
@@ -1190,7 +1212,7 @@ mod tests {
         // An unknown failure names no path or ssh line: one line, what to check.
         let (w, _) = cause(anyhow::anyhow!("connect /var/folders/x/T/skiff-501-1/9-0/skiffd.sock: No such file"));
         let w = w.unwrap();
-        assert!(w.message.contains("skiff status") && !w.message.contains("/var/folders"), "{}", w.message);
+        assert!(w.message.contains("Settings › Hosts") && !w.message.contains("/var/folders"), "{}", w.message);
     }
 
     fn local_control() -> ProcessControl {

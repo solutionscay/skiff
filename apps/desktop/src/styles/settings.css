@@ -125,7 +125,23 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-folder-meta { height: calc(20 * var(--u)); flex-shrink: 0; display: flex; align-items: center; gap: calc(8 * var(--u)); padding-left: calc(212 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(11px * var(--zoom, 1)); color: var(--error-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Settings › Hosts: the list, and the Add and Edit form. */
 .set-head-words { display: flex; flex-direction: column; gap: calc(4 * var(--u)); min-width: 0; }
-.set-table.g-hosts .set-row { grid-template-columns: calc(40 * var(--u)) minmax(calc(160 * var(--u)), 1fr) minmax(0, 1.4fr) auto; }
+.set-table.g-hosts .set-row { grid-template-columns: calc(40 * var(--u)) minmax(calc(160 * var(--u)), 1fr) minmax(0, 1.4fr) calc(150 * var(--u)) auto; }
+.set-host .c-state, .set-check .c-lead { gap: calc(8 * var(--u)); font-size: calc(12px * var(--zoom, 1)); }
+.set-host .c-state .sq, .set-check .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; }
+.set-host .c-state.ok .sq { background: var(--ok); }
+.set-host .c-state.bad { color: var(--error-text); }
+.set-host .c-state.bad .sq { background: var(--error); }
+.set-host .c-state.none { color: var(--text-3); }
+.set-host .c-state.none .sq { border: 1px solid var(--text-dim); }
+/* The check list: mark, step, the plain line. */
+.set-table.g-check .set-row { grid-template-columns: calc(40 * var(--u)) calc(240 * var(--u)) minmax(0, 1fr); }
+.set-check .c-lead { justify-content: center; padding: 0; }
+.set-check .c-text { font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); white-space: normal; line-height: 1.35; }
+.set-check.passed .c-lead { color: var(--ok); }
+.set-check.failed .c-name, .set-check.failed .c-text { color: var(--error-text); }
+.set-check.failed .sq { background: var(--error); }
+.set-check:is(.skipped, .waiting) { color: var(--text-3); }
+.set-check:is(.skipped, .waiting) .sq { border: 1px solid var(--text-dim); }
 .set-host > * { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .set-host .c-name { font-size: calc(14px * var(--zoom, 1)); font-weight: 500; }
 .set-host .c-server { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
