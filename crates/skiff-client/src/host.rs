@@ -21,6 +21,7 @@ use tokio::{
 
 use crate::transport::Transport;
 
+pub mod bundle;
 pub mod check;
 pub mod data;
 pub mod keys;

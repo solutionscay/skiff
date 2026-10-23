@@ -889,6 +889,18 @@ OpenSSH stream-local forward to the remote skiffd socket.
     second prompt gets an empty answer, so ssh stops.
   - The public key line is the scripts' only value. It is checked against a
     strict pattern (known type, base64, plain comment) and single-quoted.
+- **Server bundles** (#166 slice 4, for the install in slice 5): the release
+  job builds `skiff-server-<version>-<os>-<arch>.tar.gz` for Linux x86_64 and
+  aarch64 (static musl) and macOS aarch64 and x86_64
+  (`scripts/server-bundle/build.sh`). Each holds `skiffd`, `skiff-host`,
+  `skiff`, `manifest.json` (version, protocol, target, commit, the SHA-256 of
+  each file) and, on Linux, the systemd user units. One job writes
+  `SHA256SUMS` and signs each bundle and `SHA256SUMS` with minisign, with the
+  file name as the trusted comment; it reads the key from the
+  `SKIFF_SERVER_SIGNING_KEY` secret. The app builds carry the public half
+  (`SKIFF_SERVER_PUBLIC_KEY`, `skiff-client::host::bundle`), which refuses a
+  bundle whose signature fails, names another file, or that a build without
+  the key checks.
 - **Remote commands:** the probe, the key install and the key-file fix.
   All are fixed scripts in the app.
 - **The check list** (Settings › Hosts › Check, and Connect): reach the

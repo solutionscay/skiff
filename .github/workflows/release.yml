@@ -1,8 +1,15 @@
 name: Release
 
-# A tag like v0.2.0 builds the Linux packages and the macOS .dmg and attaches
-# them to a draft release. Run it by hand to get the packages as workflow
-# artifacts only.
+# A tag like v0.2.0 builds the Linux packages, the macOS .dmg and the server
+# bundles, and attaches them to a draft release. Run it by hand to get them
+# as workflow artifacts only.
+#
+# Server bundles (skiff-server-<version>-<os>-<arch>.tar.gz) are signed with
+# minisign. The job reads the secret key from the SKIFF_SERVER_SIGNING_KEY
+# secret: the contents of a key file made with no password (minisign -G -W).
+# The app builds carry its public half (SKIFF_SERVER_PUBLIC_KEY) and use only
+# bundles it signed. Without the secret, the bundles build but are not
+# signed, the app builds carry no key, and the app uses no bundle.
 on:
   push:
     tags: ["v*"]
@@ -12,8 +19,105 @@ permissions:
   contents: write
 
 jobs:
+  # The public half of the server-bundle key, for the app builds below.
+  server-key:
+    runs-on: ubuntu-22.04
+    outputs:
+      public: ${{ steps.key.outputs.public }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: minisign
+        run: sh scripts/server-bundle/install-minisign.sh "$RUNNER_TEMP/minisign"
+      - id: key
+        env:
+          SKIFF_SERVER_SIGNING_KEY: ${{ secrets.SKIFF_SERVER_SIGNING_KEY }}
+          MINISIGN: ${{ runner.temp }}/minisign/minisign
+        run: |
+          public=$(sh scripts/server-bundle/public-key.sh)
+          [ -n "$public" ] || echo "::warning::SKIFF_SERVER_SIGNING_KEY is not set. The app builds carry no key for server bundles."
+          echo "public=$public" >> "$GITHUB_OUTPUT"
+
+  # Static (musl) Linux server bundles, cross-built with zig.
+  server-linux:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.arch }}-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: server-${{ matrix.arch }}
+      - name: zig and cargo-zigbuild
+        run: |
+          pip install ziglang==0.17.0
+          cargo install --locked cargo-zigbuild@0.24.0
+      - name: Build
+        env:
+          CARGO: cargo zigbuild
+        run: sh scripts/server-bundle/build.sh ${{ matrix.arch }}-unknown-linux-musl linux ${{ matrix.arch }} dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skiff-server-linux-${{ matrix.arch }}
+          path: dist/*.tar.gz
+
+  server-macos:
+    runs-on: macos-14
+    strategy:
+      matrix:
+        arch: [aarch64, x86_64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.arch }}-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: server-${{ matrix.arch }}
+      - name: Build
+        run: sh scripts/server-bundle/build.sh ${{ matrix.arch }}-apple-darwin macos ${{ matrix.arch }} dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skiff-server-macos-${{ matrix.arch }}
+          path: dist/*.tar.gz
+
+  # One job holds the secret key: SHA256SUMS, then a signature for each
+  # bundle and for SHA256SUMS.
+  server-sign:
+    runs-on: ubuntu-22.04
+    needs: [server-linux, server-macos]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: skiff-server-*
+          path: dist
+          merge-multiple: true
+      - name: minisign
+        run: sh scripts/server-bundle/install-minisign.sh "$RUNNER_TEMP/minisign"
+      - name: Sign
+        env:
+          SKIFF_SERVER_SIGNING_KEY: ${{ secrets.SKIFF_SERVER_SIGNING_KEY }}
+          MINISIGN: ${{ runner.temp }}/minisign/minisign
+        run: sh scripts/server-bundle/sign.sh dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skiff-server
+          path: dist/*
+      - name: Draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft --generate-notes
+          gh release upload "$GITHUB_REF_NAME" --clobber dist/*
+
   linux:
     runs-on: ubuntu-22.04
+    needs: server-key
     steps:
       - uses: actions/checkout@v4
 
@@ -36,6 +140,8 @@ jobs:
 
       - name: Build
         working-directory: apps/desktop
+        env:
+          SKIFF_SERVER_PUBLIC_KEY: ${{ needs.server-key.outputs.public }}
         run: |
           pnpm install --frozen-lockfile
           pnpm bundle
@@ -65,6 +171,7 @@ jobs:
 
   macos:
     runs-on: macos-14
+    needs: server-key
     env:
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
     steps:
@@ -98,6 +205,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SKIFF_SERVER_PUBLIC_KEY: ${{ needs.server-key.outputs.public }}
         run: |
           pnpm install --frozen-lockfile
           pnpm bundle

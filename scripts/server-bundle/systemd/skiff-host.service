@@ -1,0 +1,10 @@
+[Unit]
+Description=Skiff projects service (skiff-host)
+After=skiffd.service
+
+[Service]
+ExecStart=%h/.local/share/skiff/server/current/skiff-host --session-socket %t/skiff/skiffd.sock
+Restart=always
+
+[Install]
+WantedBy=default.target
