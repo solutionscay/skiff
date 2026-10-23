@@ -216,23 +216,46 @@ export function projectMenu(p: Project, x: number, y: number) {
   // settings and worktrees change on that Host, when it takes the change.
   const local = !isRemote();
   const edits = hostCan("project_config");
-  const entries: (MenuEntry | false)[] = [
-    start,
-    hostCan("worktrees") && { icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
-    local && { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: run["project-folder"] },
-    { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
-    local && { icon: "documents-file-image", label: "Icon…", sub: iconEntries(p) },
-    edits && { icon: "tools-pencil", label: "Initials…", run: () => setInitials(p) },
-    edits && { icon: "code-group", label: "Fleet…", run: () => setFleet(p) },
+  // How the project looks. Icon and Background are sections: a flyout goes one level deep.
+  const appearance = tidy([
     edits && { icon: "tools-sparkles", label: "Color…", hint: keyLabel("project-color"), run: run["project-color"] },
     edits && { icon: "tools-sparkles", label: "Project theme…", hint: keyLabel("theme"), run: () => void projectThemeMenu(p) },
-    local && { icon: "playback-image", label: "Background…", sub: backgroundEntries(p) },
-    edits && { icon: "code-git-branch", label: showsChanges(p) ? "Hide changes" : "Show changes", hint: keyLabel("project-changes"), run: run["project-changes"] },
-    edits && hostCan("files") && { icon: "documents-folder-open", label: showsFiles(p) ? "Hide files" : "Show files", hint: keyLabel("project-files"), run: run["project-files"] },
+    edits && { icon: "tools-pencil", label: "Initials…", run: () => setInitials(p) },
+    ...(local ? [{ head: "ICON" }, ...iconEntries(p), { head: "BACKGROUND" }, ...backgroundEntries(p)] : []),
+  ]);
+  // What the project's row shows in the sidebar. A check marks what shows.
+  const sidebar = tidy([
+    edits && { icon: showsChanges(p) ? "indicators-check" : "", label: "Changes", hint: keyLabel("project-changes"), run: run["project-changes"] },
+    edits && hostCan("files") && { icon: showsFiles(p) ? "indicators-check" : "", label: "Files", hint: keyLabel("project-files"), run: run["project-files"] },
+    { sep: true },
+    edits && { icon: "code-group", label: "Fleet…", run: () => setFleet(p) },
+  ]);
+  ctxMenu.open(x, y, p.path, tidy([
+    start,
+    hostCan("worktrees") && { icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
+    { sep: true },
+    local && { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: run["project-folder"] },
+    { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
+    { sep: true },
+    appearance.length > 0 && { icon: "tools-sparkles", label: "Appearance", sub: appearance },
+    sidebar.length > 0 && { icon: "layouts-panel-left", label: "Sidebar", sub: sidebar },
+    { sep: true },
     ...(local ? projectWorkspaceEntries(p) : []),
     ...(edits ? closeEntries(p) : []),
-  ];
-  ctxMenu.open(x, y, p.path, entries.filter((e): e is MenuEntry => !!e));
+  ]));
+}
+
+/** Drops the entries a Host gate left out, and any rule that no longer sits
+ *  between two items: none first, last or twice in a row. */
+function tidy(entries: (MenuEntry | false)[]): MenuEntry[] {
+  const out: MenuEntry[] = [];
+  for (const e of entries) {
+    if (!e) continue;
+    if ("sep" in e && (!out.length || "sep" in out[out.length - 1])) continue;
+    out.push(e);
+  }
+  while (out.length && "sep" in out[out.length - 1]) out.pop();
+  return out;
 }
 
 /** A right-click on a worktree's branch row. */
@@ -562,7 +585,7 @@ export async function killGroup(id: string) {
 }
 
 /** The same group actions serve context menus, the menu bar, and the palette. */
-export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: string }>[] {
+export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: string } | { sep: true }>[] {
   const current = () => S.groups.find((x) => x.id === g?.id);
   const idsOf = (group: Group) => sessionsOf(group.layout).filter((id) => sessions.has(id));
   const hasSessions = !!g && idsOf(g).length > 0;
@@ -571,7 +594,7 @@ export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: s
     const group = current();
     if (group) ungroup(group);
   };
-  const entries: Exclude<MenuEntry, { head: string }>[] = [
+  const entries: Exclude<MenuEntry, { head: string } | { sep: true }>[] = [
     { icon: "code-ungroup", label: "Ungroup", hint: keyLabel("close-pane"), disabled: !g || !hostCan("session_groups"), run: drop },
   ];
   if (hasSessions) entries.push(

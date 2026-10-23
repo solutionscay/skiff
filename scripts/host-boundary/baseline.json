@@ -701,7 +701,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "275e7680edb877a0967584543159b068f689e26f4a974a1ad3ea42071311d79e"
+    "sha256": "4b76c72322bb20371b1bc80205f313b40e938b095e8d0079d6994e785ec80d01"
   },
   "apps/desktop/src/workspace/missionControl.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -730,7 +730,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "e9e48af89084bca095bf810cee588ed69e3b08318991905abd1ac3e9060c092a"
+    "sha256": "0ddbdf43e2b845ce63621efb10b9f52ee2bd6506f45912108a9cec7809ff50ab"
   },
   "apps/desktop/src/workspace/projectClose.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -745,7 +745,7 @@
       "local provider: apps/desktop/src/workspace/selection.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "3760e4faa6e51a482f306353bb7209c68f604cf50a26989c687755d2b04e6e36"
+    "sha256": "40aa636cb4f1a05cdd390470dbf1cb6815a730470ea9f79d0b74052bee61d3f2"
   },
   "apps/desktop/src/workspace/remoteLaunch.ts": {
     "ownership": "Host caller (M3): remote start menu over Host-reported sessions, groups and agents; no local data",
