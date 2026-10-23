@@ -704,10 +704,14 @@ pub fn outliving(program: &Path, unit: &str) -> std::process::Command {
     std::process::Command::new(program)
 }
 
-/// `unit-<socket name>`, in the characters a unit name takes.
+/// `unit-<socket name>-<8 hex digits of the socket path>`, in the
+/// characters a unit name takes. The hash keeps two sockets with one file
+/// name apart, such as a test's or a dev checkout's beside the live one:
+/// a second `systemd-run` with a unit name in use fails to start.
 pub fn unit_for(unit: &str, socket: &Path) -> String {
     let stem = socket.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-    format!("{unit}-{stem}")
+    let hash = socket.as_os_str().as_encoded_bytes().iter().fold(0xcbf29ce484222325u64, |h, &b| (h ^ b as u64).wrapping_mul(0x100000001b3));
+    format!("{unit}-{stem}-{:08x}", hash as u32)
 }
 
 #[cfg(target_os = "linux")]
