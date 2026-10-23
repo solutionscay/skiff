@@ -133,34 +133,21 @@ fn glob(pattern: &str, name: &str) -> bool {
     at(&pattern.chars().collect::<Vec<_>>(), &name.chars().collect::<Vec<_>>())
 }
 
-/// What `ssh -G` resolves for `target`: local only, no network. The error
-/// is plain words, never ssh's own output.
+/// What `ssh -G` resolves for `target`, as Settings shows it: local only,
+/// no network. The error is plain words, never ssh's own output.
 pub fn resolve(target: &SshTarget, options: &SshOptions) -> Result<Resolved, String> {
-    target.validate_login()?;
-    let mut cmd = std::process::Command::new(&options.program);
-    if let Some(config) = &options.config {
-        cmd.arg("-F").arg(config);
-    }
-    let out = cmd
-        .arg("-G")
-        .args(target.login_args())
-        .arg("--")
-        .arg(&target.destination)
-        .stdin(std::process::Stdio::null())
-        .output()
-        .map_err(|e| format!("Skiff cannot run ssh: {e}"))?;
-    if !out.status.success() {
-        return Err("ssh cannot read its config for this server.".into());
-    }
-    Ok(parse_g(&String::from_utf8_lossy(&out.stdout)))
+    resolve_full(target, options).map(|f| f.shown())
 }
 
-/// The lines of `ssh -G` the key steps need.
+/// The lines of `ssh -G` that Settings and the key steps need.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Full {
     pub hostname: String,
+    pub user: String,
     pub port: u16,
     pub host_key_alias: String,
+    /// `ProxyJump` as written, or empty (`none` reads as empty).
+    pub proxy_jump: String,
     /// `UserKnownHostsFile`, in order, `~` not expanded.
     pub known_hosts: Vec<String>,
     /// `IdentityFile`, in order, `~` not expanded.
@@ -178,9 +165,18 @@ impl Full {
             format!("[{}]:{}", self.hostname, self.port)
         }
     }
+
+    /// The lines Settings shows, with the first jump host's name alone.
+    pub fn shown(&self) -> Resolved {
+        let first = self.proxy_jump.split(',').next().unwrap_or_default();
+        let host = first.rsplit('@').next().unwrap_or(first);
+        let jump = host.split(':').next().unwrap_or(host).to_string();
+        Resolved { hostname: self.hostname.clone(), user: self.user.clone(), port: self.port, jump }
+    }
 }
 
-/// `ssh -G` for the key steps. Local only.
+/// `ssh -G` for `target`: local only, no network. The error is plain
+/// words, never ssh's own output.
 pub fn resolve_full(target: &SshTarget, options: &SshOptions) -> Result<Full, String> {
     target.validate_login()?;
     let mut cmd = std::process::Command::new(&options.program);
@@ -207,34 +203,16 @@ pub fn parse_full(text: &str) -> Full {
         let Some((key, value)) = line.split_once(' ') else { continue };
         match key {
             "hostname" => f.hostname = value.to_string(),
+            "user" => f.user = value.to_string(),
             "port" => f.port = value.parse().unwrap_or(22),
             "hostkeyalias" => f.host_key_alias = value.to_string(),
+            "proxyjump" if value != "none" => f.proxy_jump = value.to_string(),
             "userknownhostsfile" => f.known_hosts = value.split_whitespace().map(String::from).collect(),
             "identityfile" => f.identity_files.push(value.to_string()),
             _ => {}
         }
     }
     f
-}
-
-/// The lines of `ssh -G` that Settings shows.
-pub fn parse_g(text: &str) -> Resolved {
-    let mut r = Resolved { hostname: String::new(), user: String::new(), port: 22, jump: String::new() };
-    for line in text.lines() {
-        let Some((key, value)) = line.split_once(' ') else { continue };
-        match key {
-            "hostname" => r.hostname = value.to_string(),
-            "user" => r.user = value.to_string(),
-            "port" => r.port = value.parse().unwrap_or(22),
-            "proxyjump" if value != "none" => {
-                let first = value.split(',').next().unwrap_or_default();
-                let host = first.rsplit('@').next().unwrap_or(first);
-                r.jump = host.split(':').next().unwrap_or(host).to_string();
-            }
-            _ => {}
-        }
-    }
-    r
 }
 
 #[cfg(test)]
@@ -263,9 +241,9 @@ mod tests {
 
     #[test]
     fn ssh_g_gives_the_resolve_line() {
-        let r = parse_g("user jose\nhostname 10.0.0.5\nport 2222\nproxyjump me@bastion:22,other\n");
+        let r = parse_full("user jose\nhostname 10.0.0.5\nport 2222\nproxyjump me@bastion:22,other\n").shown();
         assert_eq!(r, Resolved { hostname: "10.0.0.5".into(), user: "jose".into(), port: 2222, jump: "bastion".into() });
-        assert_eq!(parse_g("hostname x\nproxyjump none\n").jump, "");
+        assert_eq!(parse_full("hostname x\nproxyjump none\n").shown().jump, "");
         let f = parse_full("hostname 10.0.0.5\nport 2222\nuserknownhostsfile ~/.ssh/known_hosts ~/.ssh/known_hosts2\nidentityfile ~/.ssh/id_rsa\nidentityfile ~/.ssh/id_ed25519\n");
         assert_eq!(f.key_name(), "[10.0.0.5]:2222");
         assert_eq!(f.known_hosts, ["~/.ssh/known_hosts", "~/.ssh/known_hosts2"]);

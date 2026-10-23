@@ -521,7 +521,7 @@ pub(crate) async fn remove_host(app: State<'_, App>, id: String, uninstall: Opti
     }
     if uninstall == Some(true) {
         let h = host_by_id(&id).await?;
-        skiff_client::host::uninstall::uninstall(&h.target(), &SshOptions::default(), &h.name).await?;
+        skiff_client::host::install::uninstall(&h.target(), &SshOptions::default(), &h.name).await?;
         LAST.lock().unwrap().remove(&id);
     }
     blocking(move || {
@@ -536,9 +536,9 @@ pub(crate) async fn remove_host(app: State<'_, App>, id: String, uninstall: Opti
 /// For the Remove confirm: whether Skiff installed Skiff on the Host, and
 /// which sessions an uninstall ends. Read only.
 #[tauri::command]
-pub(crate) async fn uninstall_preview(id: String) -> Result<skiff_client::host::uninstall::Preview, String> {
+pub(crate) async fn uninstall_preview(id: String) -> Result<skiff_client::host::install::Preview, String> {
     let h = host_by_id(&id).await?;
-    skiff_client::host::uninstall::preview(&h.target(), &SshOptions::default(), SOCKET_NAME).await
+    skiff_client::host::install::preview(&h.target(), &SshOptions::default(), SOCKET_NAME).await
 }
 
 /// The aliases in this computer's ssh config, for the Server field.

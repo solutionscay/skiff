@@ -13,27 +13,22 @@
 //! one fix ([`Fix`]); `keys` does the work after the person confirms.
 
 use std::{
-    ffi::OsString,
     path::PathBuf,
-    process::Stdio,
     time::{Duration, Instant},
 };
 
 use serde::{Deserialize, Serialize};
 use skiff_host_api::HostId;
-use tokio::{io::AsyncWriteExt, process::Command};
 
 use super::{
     install::SERVER,
     keys::{self, Installed, LocalKey},
     local::HostSelection,
-    ssh::{SshError, SshOptions, SshTarget},
+    ssh::{self, quote, BatchRun, SshError, SshOptions, SshTarget, CONNECT_TIMEOUT},
 };
 
 /// How long the probe's ssh run may take, login included.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
-/// ssh's own connect timeout, inside [`PROBE_TIMEOUT`].
-const CONNECT_TIMEOUT: u64 = 15;
 
 /// What the probe printed.
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
@@ -236,52 +231,15 @@ pub struct CheckInput {
     pub update_failed: Option<String>,
 }
 
-/// The arguments of the probe's ssh run: strict, batch, no shared master,
-/// no extra channels. The remote command is fixed; only the socket name
-/// (from this app) and a checked override go to it, single-quoted.
-pub fn probe_args(target: &SshTarget, options: &SshOptions, socket_name: &str, socket_override: Option<&str>) -> Vec<OsString> {
+/// The probe's remote command. It is fixed; only the socket name (from
+/// this app) and a checked override go to it, single-quoted.
+fn probe_command(socket_name: &str, socket_override: Option<&str>) -> String {
     let mut command = format!("sh -s -- probe {}", quote(socket_name));
     if let Some(s) = socket_override {
         command.push(' ');
         command.push_str(&quote(s));
     }
-    batch_args(target, options, command)
-}
-
-/// One strict, batch ssh run of a fixed remote `command`.
-pub fn batch_args(target: &SshTarget, options: &SshOptions, command: String) -> Vec<OsString> {
-    let mut args: Vec<OsString> = Vec::new();
-    if let Some(config) = &options.config {
-        args.push("-F".into());
-        args.push(config.into());
-    }
-    for value in [
-        "BatchMode=yes",
-        "StrictHostKeyChecking=yes",
-        "UpdateHostKeys=no",
-        &format!("ConnectTimeout={CONNECT_TIMEOUT}"),
-        "ControlMaster=no",
-        "ControlPath=none",
-        "ForwardAgent=no",
-        "ForwardX11=no",
-        "PermitLocalCommand=no",
-        "RequestTTY=no",
-        "LogLevel=INFO",
-    ] {
-        args.push("-o".into());
-        args.push(value.into());
-    }
-    args.push("-T".into());
-    args.extend(target.login_args());
-    args.push("--".into());
-    args.push(target.destination.clone().into());
-    args.push(command.into());
-    args
-}
-
-/// One shell word in single quotes, for sh, bash, zsh and fish alike.
-pub(crate) fn quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
+    command
 }
 
 /// What the probe's ssh run gave.
@@ -297,29 +255,14 @@ pub enum ProbeRun {
 /// Runs the probe over one strict, batch ssh run.
 pub async fn run_probe(target: &SshTarget, options: &SshOptions, socket_name: &str, socket_override: Option<&str>) -> Result<ProbeRun, String> {
     let started = Instant::now();
-    let mut child = Command::new(&options.program)
-        .args(probe_args(target, options, socket_name, socket_override))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| format!("Skiff cannot run ssh: {e}"))?;
-    if let Some(mut stdin) = child.stdin.take() {
-        // A failed write shows as ssh's own failure below.
-        let _ = stdin.write_all(SERVER.as_bytes()).await;
-    }
-    let out = match tokio::time::timeout(PROBE_TIMEOUT, child.wait_with_output()).await {
-        Ok(out) => out.map_err(|e| format!("Skiff cannot run ssh: {e}"))?,
-        Err(_) => return Ok(ProbeRun::TimedOut),
-    };
-    if out.status.code() == Some(255) {
-        return Ok(ProbeRun::Ssh(String::from_utf8_lossy(&out.stderr).into_owned()));
-    }
-    let text = String::from_utf8_lossy(&out.stdout);
-    Ok(match text.lines().rev().find_map(|l| serde_json::from_str::<Probe>(l.trim()).ok()) {
-        Some(p) => ProbeRun::Probed(p, started.elapsed()),
-        None => ProbeRun::Garbled,
+    let command = probe_command(socket_name, socket_override);
+    Ok(match ssh::run_batch(target, options, command, SERVER.as_bytes(), PROBE_TIMEOUT).await? {
+        BatchRun::Ssh(stderr) => ProbeRun::Ssh(stderr),
+        BatchRun::TimedOut => ProbeRun::TimedOut,
+        BatchRun::Done(text) => match text.lines().rev().find_map(|l| serde_json::from_str::<Probe>(l.trim()).ok()) {
+            Some(p) => ProbeRun::Probed(p, started.elapsed()),
+            None => ProbeRun::Garbled,
+        },
     })
 }
 
@@ -818,7 +761,8 @@ mod tests {
     #[test]
     fn the_probe_command_is_fixed_and_quotes_its_values() {
         let t = SshTarget { user: Some("me".into()), port: Some(2222), ..SshTarget::new("devbox", "") };
-        let args: Vec<String> = probe_args(&t, &SshOptions { program: "ssh".into(), config: None }, "skiffd.sock", Some("/run/a b/it's.sock"))
+        let command = probe_command("skiffd.sock", Some("/run/a b/it's.sock"));
+        let args: Vec<String> = ssh::batch_args(&t, &SshOptions { program: "ssh".into(), config: None }, command)
             .into_iter()
             .map(|a| a.into_string().unwrap())
             .collect();
@@ -845,8 +789,8 @@ mod tests {
                 .env("XDG_RUNTIME_DIR", &dir)
                 .env("HOME", &dir)
                 .env("PATH", "/usr/bin:/bin")
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
                 .spawn()
                 .unwrap();
             std::io::Write::write_all(&mut child.stdin.take().unwrap(), SERVER.as_bytes()).unwrap();

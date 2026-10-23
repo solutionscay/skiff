@@ -1072,7 +1072,7 @@ async fn skiff_host_runs_beside_the_installed_skiffd_and_comes_back() {
 /// process Skiff did not start stay.
 #[tokio::test]
 async fn remove_and_uninstall_deletes_only_the_managed_install() {
-    use skiff_client::host::{install, uninstall};
+    use skiff_client::host::install;
     let Some(mut f) = fixture("u") else { return };
     let d = f.dir.clone();
     for sub in ["home/projects", "home/.local/share/skiff", "run", "beside"] {
@@ -1113,9 +1113,9 @@ async fn remove_and_uninstall_deletes_only_the_managed_install() {
     let mut other = Command::new("sleep").arg("30").spawn().unwrap();
     std::fs::write(server.join("skiff-host.pid"), other.id().to_string()).unwrap();
 
-    let p = uninstall::preview(&target, &options, name).await.unwrap();
-    assert_eq!(p, uninstall::Preview { managed: true, sessions: vec!["build".into()] });
-    uninstall::uninstall(&target, &options, "fixture").await.unwrap();
+    let p = install::preview(&target, &options, name).await.unwrap();
+    assert_eq!(p, install::Preview { managed: true, sessions: vec!["build".into()] });
+    install::uninstall(&target, &options, "fixture").await.unwrap();
 
     let alive = |p: i32| unsafe { libc::kill(p, 0) } == 0;
     for _ in 0..50 {
@@ -1132,8 +1132,8 @@ async fn remove_and_uninstall_deletes_only_the_managed_install() {
     let _ = other.kill();
 
     // Nothing is Skiff's any more: no box, and an uninstall refuses.
-    assert!(!uninstall::preview(&target, &options, name).await.unwrap().managed);
-    let e = uninstall::uninstall(&target, &options, "fixture").await.unwrap_err();
+    assert!(!install::preview(&target, &options, name).await.unwrap().managed);
+    let e = install::uninstall(&target, &options, "fixture").await.unwrap_err();
     assert!(e.contains("did not install"), "{e}");
 }
 
@@ -1261,7 +1261,7 @@ async fn a_mac_server_gets_skiff_and_a_launch_agent_once() {
     assert_eq!(std::fs::read_to_string(&pidfile).unwrap(), pid, "skiffd kept its pid");
 
     // Uninstall on a Mac: both agents leave launchd and their files go.
-    skiff_client::host::uninstall::uninstall(&target, &options, "fixture").await.unwrap();
+    install::uninstall(&target, &options, "fixture").await.unwrap();
     for l in ["skiffd", "skiff-host"] {
         assert!(!d.join(format!("home/Library/LaunchAgents/com.solutionscay.skiff.{l}.plist")).exists(), "{l}");
         assert!(!pid_of(l).exists(), "{l} still runs");

@@ -18,7 +18,7 @@
 use std::{
     ffi::OsString,
     io::Write,
-    os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt},
+    os::unix::fs::{DirBuilderExt, OpenOptionsExt},
     path::{Path, PathBuf},
     process::Stdio,
     time::Duration,
@@ -28,9 +28,8 @@ use serde::Serialize;
 use tokio::{io::AsyncWriteExt, process::Command};
 
 use super::{
-    check::quote,
     install::SERVER,
-    ssh::{SshOptions, SshTarget},
+    ssh::{quote, temp_dir, SshOptions, SshTarget},
     ssh_config,
 };
 
@@ -48,10 +47,7 @@ pub struct Askpass {
 
 impl Askpass {
     pub fn new(secret: String) -> std::io::Result<Self> {
-        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("skiff-askpass-{}-{n}", std::process::id()));
-        std::fs::DirBuilder::new().mode(0o700).create(&dir)?;
+        let dir = temp_dir("askpass")?;
         let fifo = dir.join("secret");
         let c = std::ffi::CString::new(fifo.as_os_str().as_encoded_bytes()).map_err(std::io::Error::other)?;
         // SAFETY: a valid C path; mkfifo makes one node in our private folder.
@@ -149,7 +145,7 @@ fn expand(path: &str, home: &Path) -> PathBuf {
 /// writes nothing the person owns.
 pub async fn scan_host_key(target: &SshTarget, options: &SshOptions, home: &Path) -> Result<Scanned, String> {
     let g = ssh_config::resolve_full(target, options)?;
-    let tmp = tempfile_dir("scan")?;
+    let tmp = temp_dir("scan").map_err(|e| e.to_string())?;
     let file = tmp.join("known_hosts");
     let mut cmd = ssh_cmd(options);
     cmd.args(["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "UpdateHostKeys=no", "-o", "GlobalKnownHostsFile=/dev/null"])
@@ -461,17 +457,6 @@ pub async fn fix_key_file(target: &SshTarget, options: &SshOptions, prefer: &str
     }
 }
 
-/// A new private folder in the temp dir.
-fn tempfile_dir(what: &str) -> Result<PathBuf, String> {
-    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("skiff-{what}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::DirBuilder::new().mode(0o700).create(&dir).map_err(|e| e.to_string())?;
-    let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
-    Ok(dir)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -526,7 +511,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_local_key_is_none_locked_or_ready() {
-        let home = tempfile_dir("keys-test").unwrap();
+        let home = temp_dir("keys-test").unwrap();
         let ssh = home.join(".ssh");
         std::fs::create_dir_all(&ssh).unwrap();
         let config = home.join("config");

@@ -15,21 +15,20 @@
 //!
 //! A skiffd that Skiff did not install is never replaced, stopped or
 //! started: the caller installs only when the probe found no live socket
-//! and no managed install, and starts only the managed one.
+//! and no managed install, and starts only the managed one. Remove and
+//! uninstall ([`uninstall`]) take only what Skiff put there: the managed
+//! folder, Skiff's unit files (on macOS its LaunchAgents, after
+//! `launchctl bootout`) and the `~/.local/bin/skiff` link when it is
+//! Skiff's. Projects, skiffd's session data and `local-host-id` stay.
 
-use std::{
-    path::{Path, PathBuf},
-    process::Stdio,
-    time::Duration,
-};
+use std::{path::Path, process::Stdio, time::Duration};
 
 use serde::Serialize;
-use tokio::{io::AsyncWriteExt, process::Command};
+use tokio::process::Command;
 
 use super::{
     bundle,
-    check::{batch_args, quote},
-    ssh::{SshOptions, SshTarget},
+    ssh::{self, quote, temp_dir, BatchRun, SshOptions, SshTarget},
 };
 
 /// The one script Skiff runs on a server, sent on stdin with a mode: the
@@ -69,34 +68,22 @@ pub struct Outcome {
 }
 
 /// A version Skiff sends as a value: digits, letters, dots, `+` and `-`.
-pub(super) fn plain_version(v: &str) -> bool {
+fn plain_version(v: &str) -> bool {
     !v.is_empty() && v.len() <= 64 && v.bytes().all(|b| b.is_ascii_alphanumeric() || b".+-".contains(&b))
 }
 
-/// The SHA-256 of a file, by the system tool.
-async fn sha256(path: &Path) -> Result<String, String> {
-    let out = match Command::new("sha256sum").arg(path).output().await {
-        Ok(o) if o.status.success() => o,
-        _ => Command::new("shasum").args(["-a", "256"]).arg(path).output().await.map_err(|e| e.to_string())?,
-    };
-    String::from_utf8_lossy(&out.stdout).split_whitespace().next().filter(|h| h.len() == 64).map(String::from).ok_or_else(|| "Skiff cannot hash the bundle.".into())
-}
-
-fn private_dir(what: &str) -> Result<PathBuf, String> {
-    use std::os::unix::fs::DirBuilderExt;
-    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("skiff-{what}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::DirBuilder::new().mode(0o700).create(&dir).map_err(|e| e.to_string())?;
-    Ok(dir)
+/// The SHA-256 of `bytes`, as hex: the name of an upload, and what the
+/// server checks it against.
+fn sha256(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    format!("{:x}", sha2::Sha256::digest(bytes))
 }
 
 /// Downloads the signed bundle for `os`/`arch` from the release `v<version>`
 /// and checks it with the app's key. Nothing unchecked comes back.
 pub async fn download(version: &str, os: &str, arch: &str) -> Result<Bundle, String> {
     let name = bundle::bundle_name(version, os, arch);
-    let dir = private_dir("download")?;
+    let dir = temp_dir("download").map_err(|e| e.to_string())?;
     let bytes = fetch(&format!("{RELEASES}/v{version}/{name}"), &dir.join("b")).await;
     let sig = fetch(&format!("{RELEASES}/v{version}/{name}.minisig"), &dir.join("s")).await;
     let _ = std::fs::remove_dir_all(&dir);
@@ -139,7 +126,7 @@ pub async fn dev_bundle(version: &str, arch: &str, beside: &Path) -> Result<Bund
         return Err(format!("This dev build has no Skiff {version} for {arch}: it runs on another system, and no release has that version."));
     }
     let name = format!("skiff-server-{version}-{os}-{arch}");
-    let stage = private_dir("bundle")?;
+    let stage = temp_dir("bundle").map_err(|e| e.to_string())?;
     let dir = stage.join(&name);
     let build = async {
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -156,7 +143,7 @@ pub async fn dev_bundle(version: &str, arch: &str, beside: &Path) -> Result<Bund
         for b in ["skiffd", "skiff-host", "skiff"] {
             let from = beside.join(b);
             std::fs::copy(&from, dir.join(b)).map_err(|_| format!("This dev build has no {b} beside it. Build the workspace first."))?;
-            manifest.files.insert(b.into(), sha256(&dir.join(b)).await?);
+            manifest.files.insert(b.into(), sha256(&std::fs::read(dir.join(b)).map_err(|e| e.to_string())?));
         }
         // The systemd units go in a Linux bundle only, and install.sh in
         // every bundle, as in build.sh.
@@ -166,7 +153,7 @@ pub async fn dev_bundle(version: &str, arch: &str, beside: &Path) -> Result<Bund
                 std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }
             std::fs::write(dir.join(f), text).map_err(|e| e.to_string())?;
-            manifest.files.insert(f.into(), sha256(&dir.join(f)).await?);
+            manifest.files.insert(f.into(), sha256(text.as_bytes()));
         }
         let json = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
         std::fs::write(dir.join("manifest.json"), json).map_err(|e| e.to_string())?;
@@ -183,29 +170,15 @@ pub async fn dev_bundle(version: &str, arch: &str, beside: &Path) -> Result<Bund
 }
 
 /// One strict, batch ssh run of `command`, with `stdin`. Its stdout.
-pub(super) async fn run(target: &SshTarget, options: &SshOptions, command: String, stdin: &[u8]) -> Result<String, String> {
-    let mut child = Command::new(&options.program)
-        .args(batch_args(target, options, command))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| format!("Skiff cannot run ssh: {e}"))?;
-    let mut input = child.stdin.take().expect("piped");
-    let data = stdin.to_vec();
-    let writer = tokio::spawn(async move {
-        let _ = input.write_all(&data).await;
-    });
-    let out = tokio::time::timeout(STEP_TIMEOUT, child.wait_with_output()).await.map_err(|_| "The server did not finish in time.".to_string())?.map_err(|e| e.to_string())?;
-    let _ = writer.await;
-    if out.status.code() == Some(255) {
-        return Err("ssh stopped before the step ran. Check again.".into());
+async fn run(target: &SshTarget, options: &SshOptions, command: String, stdin: &[u8]) -> Result<String, String> {
+    match ssh::run_batch(target, options, command, stdin, STEP_TIMEOUT).await? {
+        BatchRun::Done(out) => Ok(out),
+        BatchRun::Ssh(_) => Err("ssh stopped before the step ran. Check again.".into()),
+        BatchRun::TimedOut => Err("The server did not finish in time.".into()),
     }
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-pub(super) fn value<'a>(out: &'a str, key: &str) -> &'a str {
+fn value<'a>(out: &'a str, key: &str) -> &'a str {
     out.lines().find_map(|l| l.trim().strip_prefix(key)?.strip_prefix('=')).unwrap_or("")
 }
 
@@ -228,12 +201,7 @@ async fn upload(target: &SshTarget, options: &SshOptions, b: &Bundle, free_kb: u
     if free_kb > 0 && free_kb < need {
         return Err(no_room(name, b));
     }
-    let dir = private_dir("upload")?;
-    let file = dir.join(&b.name);
-    std::fs::write(&file, &b.bytes).map_err(|e| e.to_string())?;
-    let hash = sha256(&file).await;
-    let _ = std::fs::remove_dir_all(&dir);
-    let hash = hash?;
+    let hash = sha256(&b.bytes);
     let upload = format!(r#"sh -c 'umask 077; d="$HOME/.local/share/skiff/server"; mkdir -p "$d" && cat > "$d/.incoming-{hash}.tar.gz"'"#);
     run(target, options, upload, &b.bytes).await?;
     Ok(hash)
@@ -320,12 +288,14 @@ fn updated(out: &str, name: &str, version: &str, b: &Bundle) -> Result<Updated, 
     }
 }
 
-/// The names of the live sessions in `skiff ls --json`.
+/// The shown name of each live session in `skiff ls --json`: its name,
+/// title, label or id, as the CLI shows it. A done session is not one an
+/// update or an uninstall ends.
 fn live_sessions(json: &str) -> Vec<String> {
     let list: Vec<serde_json::Value> = serde_json::from_str(json).unwrap_or_default();
     list.iter()
         .filter(|s| s["state"].as_str() != Some("done"))
-        .map(|s| s["name"].as_str().or(s["label"].as_str()).unwrap_or("a session").to_string())
+        .map(|s| ["name", "title", "label", "id"].iter().filter_map(|k| s[*k].as_str()).find(|n| !n.is_empty()).unwrap_or("a session").to_string())
         .collect()
 }
 
@@ -346,6 +316,39 @@ pub async fn start(target: &SshTarget, options: &SshOptions, socket_name: &str) 
 pub async fn linger(target: &SshTarget, options: &SshOptions) -> Result<bool, String> {
     let out = run(target, options, "sh -s -- linger".into(), SERVER.as_bytes()).await?;
     Ok(value(&out, "linger") == "yes")
+}
+
+/// What an uninstall would end, for the Remove confirm.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq, Default)]
+pub struct Preview {
+    /// Skiff installed Skiff there. False: there is nothing to uninstall.
+    pub managed: bool,
+    /// The shown names of the managed skiffd's live sessions. They end.
+    pub sessions: Vec<String>,
+}
+
+/// Reads whether the install is Skiff's and which sessions it runs.
+pub async fn preview(target: &SshTarget, options: &SshOptions, socket_name: &str) -> Result<Preview, String> {
+    if !plain_version(socket_name) {
+        return Err("This socket name has a form Skiff does not send.".into());
+    }
+    let out = run(target, options, format!("sh -s -- sessions {}", quote(socket_name)), SERVER.as_bytes()).await?;
+    if value(&out, "skiff-sessions") != "done" {
+        return Err("Skiff cannot read the state of the server. Check again.".into());
+    }
+    Ok(Preview { managed: value(&out, "managed") == "yes", sessions: live_sessions(value(&out, "sessions")) })
+}
+
+/// Stops and disables Skiff's services on the server and deletes the
+/// managed files. `server.sh` stops a unit or a pid only when it runs from
+/// the managed folder. `name`: the Host's shown name, for the error copy.
+pub async fn uninstall(target: &SshTarget, options: &SshOptions, name: &str) -> Result<(), String> {
+    let out = run(target, options, "sh -s -- uninstall".into(), SERVER.as_bytes()).await?;
+    match value(&out, "skiff-uninstall") {
+        "done" => Ok(()),
+        "unmanaged" => Err(format!("Skiff did not install the Skiff on {name}, so it does not uninstall it.")),
+        _ => Err(format!("The uninstall on {name} did not finish. Try again.")),
+    }
 }
 
 #[cfg(test)]
@@ -376,6 +379,14 @@ mod tests {
         );
         assert!(read("from=2.0.0\nskiff-install=done\nskiff-update=failed\n").unwrap_err().contains("Skiff 2.0.0 still runs"));
         assert!(read("from=2.0.0\nskiff-install=bad-hash\nskiff-update=failed\n").unwrap_err().contains("did not arrive whole"));
+    }
+
+    #[test]
+    fn session_names_read_as_the_cli_shows_them() {
+        let json = r#"[{"id":"a1","label":"shell","name":"build"},{"id":"b2","label":"claude","title":"fix tests"},{"id":"c3","label":"shell"},{"id":"d4","label":"old","state":"done"}]"#;
+        assert_eq!(live_sessions(json), ["build", "fix tests", "shell"]);
+        assert!(live_sessions("").is_empty());
+        assert!(live_sessions("not json").is_empty());
     }
 
     #[test]

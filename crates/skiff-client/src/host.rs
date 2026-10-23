@@ -25,7 +25,6 @@ pub mod bundle;
 pub mod check;
 pub mod data;
 pub mod install;
-pub mod uninstall;
 pub mod keys;
 mod inventory;
 mod lifecycle;

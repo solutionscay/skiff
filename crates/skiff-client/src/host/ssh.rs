@@ -27,12 +27,14 @@ use std::{
 };
 
 use tokio::{
-    io::{AsyncBufReadExt, BufReader},
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{Child, Command},
 };
 
 /// How long `ssh` may take to log in and listen.
 pub const OPEN_TIMEOUT: Duration = Duration::from_secs(20);
+/// ssh's own connect timeout, in seconds, on every run.
+pub const CONNECT_TIMEOUT: u64 = 15;
 /// The most stderr kept for diagnosis.
 const STDERR_KEEP: usize = 16 * 1024;
 
@@ -141,7 +143,7 @@ pub fn forward_args(target: &SshTarget, local: &Path, options: &SshOptions) -> V
         ("-o", "ExitOnForwardFailure=yes"),
         ("-o", "ServerAliveInterval=15"),
         ("-o", "ServerAliveCountMax=3"),
-        ("-o", "ConnectTimeout=15"),
+        ("-o", "ConnectTimeout=15"), // CONNECT_TIMEOUT
         ("-o", "StreamLocalBindMask=0177"),
         ("-o", "StreamLocalBindUnlink=yes"),
         // Our own connection: not a shared master, and no extra channels.
@@ -167,6 +169,90 @@ pub fn forward_args(target: &SshTarget, local: &Path, options: &SshOptions) -> V
     args.push("--".into());
     args.push(target.destination.clone().into());
     args
+}
+
+/// One strict, batch ssh run of a fixed remote `command`: no prompt, no
+/// shared master, no extra channels. Each `-o` wins over ssh config.
+pub fn batch_args(target: &SshTarget, options: &SshOptions, command: String) -> Vec<OsString> {
+    let mut args: Vec<OsString> = Vec::new();
+    if let Some(config) = &options.config {
+        args.push("-F".into());
+        args.push(config.into());
+    }
+    for value in [
+        "BatchMode=yes",
+        "StrictHostKeyChecking=yes",
+        "UpdateHostKeys=no",
+        &format!("ConnectTimeout={CONNECT_TIMEOUT}"),
+        "ControlMaster=no",
+        "ControlPath=none",
+        "ForwardAgent=no",
+        "ForwardX11=no",
+        "PermitLocalCommand=no",
+        "RequestTTY=no",
+        "LogLevel=INFO",
+    ] {
+        args.push("-o".into());
+        args.push(value.into());
+    }
+    args.push("-T".into());
+    args.extend(target.login_args());
+    args.push("--".into());
+    args.push(target.destination.clone().into());
+    args.push(command.into());
+    args
+}
+
+/// One shell word in single quotes, for sh, bash, zsh and fish alike.
+pub fn quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
+/// What one batch run gave.
+pub enum BatchRun {
+    /// The command ran: its stdout.
+    Done(String),
+    /// ssh stopped before the command ran (exit 255): its stderr, for the cause.
+    Ssh(String),
+    TimedOut,
+}
+
+/// Runs `command` over one strict, batch ssh run, with `stdin`, within
+/// `timeout`. Err: ssh itself could not be run.
+pub async fn run_batch(target: &SshTarget, options: &SshOptions, command: String, stdin: &[u8], timeout: Duration) -> Result<BatchRun, String> {
+    let mut child = Command::new(&options.program)
+        .args(batch_args(target, options, command))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("Skiff cannot run ssh: {e}"))?;
+    let mut input = child.stdin.take().expect("piped");
+    let data = stdin.to_vec();
+    // A failed write shows as ssh's own failure below.
+    let writer = tokio::spawn(async move {
+        let _ = input.write_all(&data).await;
+    });
+    let out = match tokio::time::timeout(timeout, child.wait_with_output()).await {
+        Ok(out) => out.map_err(|e| format!("Skiff cannot run ssh: {e}"))?,
+        Err(_) => return Ok(BatchRun::TimedOut),
+    };
+    let _ = writer.await;
+    if out.status.code() == Some(255) {
+        return Ok(BatchRun::Ssh(String::from_utf8_lossy(&out.stderr).into_owned()));
+    }
+    Ok(BatchRun::Done(String::from_utf8_lossy(&out.stdout).into_owned()))
+}
+
+/// A new private folder of this app run in the temp dir, for one step.
+/// The caller removes it.
+pub fn temp_dir(what: &str) -> std::io::Result<PathBuf> {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let dir = std::env::temp_dir().join(format!("skiff-{what}-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::DirBuilder::new().mode(0o700).create(&dir)?;
+    Ok(dir)
 }
 
 /// Why a forward could not reach the remote skiffd. The text follows the
