@@ -3,7 +3,7 @@ use skiff_client::host::{local::{legacy_attach, legacy_detach, legacy_output}, O
 use skiff_core::protocol::Event;
 use tauri::{ipc::{Channel, InvokeResponseBody}, AppHandle, Emitter, State};
 use tokio::sync::Notify;
-use crate::connection::{App, err, host_now, updates_now};
+use crate::connection::{App, ensure_host, err, host_now};
 
 /// One write to the page holds at most this much, so xterm can yield to the
 /// page between pieces instead of parsing one long chunk.
@@ -187,9 +187,13 @@ pub(crate) const HOST_LOST: &str = "skiff:host-lost";
 #[tauri::command]
 pub(crate) async fn subscribe_events(handle: AppHandle, app: State<'_, App>, on_event: Channel<Event>) -> Result<(), String> {
     // Through the selected Host; a lag is skipped there, as it was here.
-    let mut updates = updates_now(&app).await?;
-    let connection = host_now(&app).await?;
+    // Both from the one connection, so a Host switch between the two
+    // cannot pair one Host's updates with another's link.
+    let (host, _) = ensure_host(&app).await?;
+    let connection = host.connection();
+    let mut updates = skiff_client::host::local::legacy_updates(&connection).map_err(err)?;
     let remote = app.remote();
+    let link = connection.clone();
     let task = tauri::async_runtime::spawn(async move {
         // The stream does not end when the link drops: look each second.
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
@@ -199,7 +203,7 @@ pub(crate) async fn subscribe_events(handle: AppHandle, app: State<'_, App>, on_
                     Some(e) => if on_event.send(e).is_err() { return },
                     None => break,
                 },
-                _ = tick.tick() => if connection.is_closed() { break },
+                _ = tick.tick() => if link.is_closed() { break },
             }
         }
         // A remote Host's page reconnects on this: handshake, identity,
@@ -208,6 +212,13 @@ pub(crate) async fn subscribe_events(handle: AppHandle, app: State<'_, App>, on_
             let _ = handle.emit(HOST_LOST, ());
         }
     });
+    // A switch while this ran replaced the selection: this task would keep
+    // the old Host's link open, so it goes, and the reloaded page subscribes.
+    let same = app.live.lock().unwrap().as_ref().is_some_and(|live| Arc::ptr_eq(live, &connection));
+    if !same {
+        task.abort();
+        return Err("The Host changed. The page subscribes again.".into());
+    }
     if let Some(old) = app.events.lock().await.replace(task) {
         old.abort();
     }

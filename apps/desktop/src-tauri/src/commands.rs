@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use skiff_core::{group::Group, project::AgentInfo, session::{SessionInfo, SessionSpec}};
 use tauri::{AppHandle, Manager, State};
 use skiff_client::host::local::{legacy_agents, legacy_create, legacy_delete_group, legacy_groups, legacy_kill, legacy_rename, legacy_save_group, legacy_seen, legacy_set_theme};
-use crate::{connection::{App, ensure_client, err}, input::Sent};
+use crate::{connection::{blocking, App, ensure_client, err}, input::Sent};
 
 #[tauri::command]
 pub(crate) async fn list_sessions(app: State<'_, App>) -> Result<Vec<SessionInfo>, String> {
@@ -109,11 +109,6 @@ pub(crate) async fn kill_session(app: State<'_, App>, session: String) -> Result
 #[tauri::command]
 pub(crate) fn config_path() -> String {
     skiff_core::config::config_path().display().to_string()
-}
-
-/// Runs a call that may wait on a starting app off the async workers.
-async fn blocking(f: impl FnOnce() -> anyhow::Result<()> + Send + 'static) -> Result<(), String> {
-    tokio::task::spawn_blocking(f).await.map_err(|e| e.to_string())?.map_err(err)
 }
 
 /// Opens projects.toml in the default editor.

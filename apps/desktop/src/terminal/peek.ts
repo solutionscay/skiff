@@ -441,9 +441,26 @@ type HostDiffPreview = Extract<Preview, { kind: "host-diff" }>;
  * from an older data connection, shows nothing; the latter is asked again.
  */
 function showHostDiff(mine: number, t: HostDiffPreview) {
-  if (!live(mine)) return;
   const el = cardFrame("diff", `${t.wt}/${t.file ?? "All changes"}`, "peek diff-view");
-  el.append(diffState(`Loading the diff from ${hostName()}…`));
+  showHostView(
+    mine,
+    el,
+    `Loading the diff from ${hostName()}…`,
+    () => hostInvoke<HostDiff>("git_diff", "git_diff", { path: t.wt, file: t.file ?? null }),
+    (d) => diffBody(d, t.file),
+    "No diff",
+  );
+}
+
+/**
+ * A Host's read in the card `el`: it shows at once, says it loads, then
+ * shows `render` of what `read` gave, or why there is none. A reply for a
+ * row the user left shows nothing; one from an older data connection is
+ * asked again.
+ */
+function showHostView<T>(mine: number, el: HTMLElement, loading: string, read: () => Promise<T>, render: (t: T) => HTMLElement, none: string) {
+  if (!live(mine)) return;
+  el.append(diffState(loading));
   mountCard(el);
   const at = dataEpoch();
   const shows = () => live(mine) && card === el;
@@ -452,16 +469,17 @@ function showHostDiff(mine: number, t: HostDiffPreview) {
     el.querySelector(".diff-view-body")?.replaceWith(body);
     if (hadKeys || active?.keys) body.focus();
   };
-  hostInvoke<HostDiff>("git_diff", "git_diff", { path: t.wt, file: t.file ?? null })
-    .then((d) => {
+  const again = () => showHostView(mine, el, loading, read, render, none);
+  read()
+    .then((t) => {
       if (!shows()) return;
-      if (at !== dataEpoch()) return showHostDiff(mine, t);
-      fill(diffBody(d, t.file));
+      if (at !== dataEpoch()) return again();
+      fill(render(t));
     })
     .catch((e) => {
       if (!shows()) return console.error(e);
-      if (at !== dataEpoch()) return showHostDiff(mine, t);
-      fill(diffState(`No diff: ${String(e)}`, true));
+      if (at !== dataEpoch()) return again();
+      fill(diffState(`${none}: ${String(e)}`, true));
     });
 }
 
@@ -485,7 +503,6 @@ function showHostFile(mine: number, t: HostFilePreview) {
 
 /** The Host's bounded read `read` in the page's viewer, under `title`. `copy`: the Open a copy button. */
 function showHostRead(mine: number, title: string, read: () => Promise<HostFile>, copy: (() => void) | null) {
-  if (!live(mine)) return;
   const el = cardFrame("file", title, "peek diff-view file-view");
   if (copy) {
     const open = button("peek-open", "", copy);
@@ -494,26 +511,7 @@ function showHostRead(mine: number, title: string, read: () => Promise<HostFile>
     open.append(h("span", "peek-open-key", "Enter"), " Open a copy");
     el.querySelector(".peek-esc")?.before(open);
   }
-  el.append(diffState(`Loading the file from ${hostName()}…`));
-  mountCard(el);
-  const at = dataEpoch();
-  const shows = () => live(mine) && card === el;
-  const fill = (body: HTMLElement) => {
-    const hadKeys = el.contains(document.activeElement);
-    el.querySelector(".diff-view-body")?.replaceWith(body);
-    if (hadKeys || active?.keys) body.focus();
-  };
-  read()
-    .then((f) => {
-      if (!shows()) return;
-      if (at !== dataEpoch()) return showHostRead(mine, title, read, copy);
-      fill(fileBody(f, (b) => (cardUrl = URL.createObjectURL(b))));
-    })
-    .catch((e) => {
-      if (!shows()) return console.error(e);
-      if (at !== dataEpoch()) return showHostRead(mine, title, read, copy);
-      fill(diffState(`No preview: ${String(e)}`, true));
-    });
+  showHostView(mine, el, `Loading the file from ${hostName()}…`, read, (f) => fileBody(f, (b) => (cardUrl = URL.createObjectURL(b))), "No preview");
 }
 
 /**

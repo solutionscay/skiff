@@ -35,7 +35,7 @@
       "fs",
       "skiff_core"
     ],
-    "sha256": "7d42ab253cc3bc9d3c1e84a12a6fdbca55a1b8fcf960417185316589bd40c1f5"
+    "sha256": "aa794a1f2d4daf017ad6ead03cbb712bc99520726cb8d66ef2817e62eeb55d38"
   },
   "apps/desktop/src-tauri/src/config.rs": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -43,7 +43,7 @@
       "config",
       "skiff_core"
     ],
-    "sha256": "5d7f9377995b8525024dcebf2a1e566061fa18e2e3b41068671fc38a46b398e4"
+    "sha256": "d10b8df09c4071cfadcb288c97ca34babbaf9300f3fec71193ae950ba1f20859"
   },
   "apps/desktop/src-tauri/src/config_tests.rs": {
     "ownership": "test only: an in-process skiff-host on private state, never the live config",
@@ -75,7 +75,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "4a6e532a01ae4478c2918f583cba1c3c5d0096d9273e575127d97eadf1160be7"
+    "sha256": "4ac31fdfdb581d39e649da13f29cbc0db80c6989a0ff56d96f4c4a26ca8542e7"
   },
   "apps/desktop/src-tauri/src/copies.rs": {
     "ownership": "client-owned (M5 reviewed): local copies of bytes the Host sent, for this computer's Open with; never reads or opens a Host path",
@@ -125,7 +125,7 @@
       "skiff_agent",
       "skiff_core"
     ],
-    "sha256": "544d4165f86e4ddbcb5fa8517a1a8daff1b6c6df5bfa4afab7cdba95c31eb6a0"
+    "sha256": "0f29fd127844fcdb415c5a233d8ed1e657a21c0ba4a398d0b28d1be3b802dc31"
   },
   "apps/desktop/src-tauri/src/ledger.rs": {
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",
@@ -133,7 +133,7 @@
       "local provider: apps/desktop/src-tauri/src/connection.rs",
       "local provider: apps/desktop/src-tauri/src/lib.rs"
     ],
-    "sha256": "36d81629925f2dc691ee9a528742d5a4b8138ffe8bae256522adca2b8e708a27"
+    "sha256": "92fd8b4f030b200e667213d538bb2cf9605d91fbf4119f3bf0a7e8ef379953cc"
   },
   "apps/desktop/src-tauri/src/lib.rs": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -189,20 +189,19 @@
       "env",
       "exists",
       "fs",
-      "is_file",
       "process",
       "skiff_client",
       "skiff_core",
       "skipper"
     ],
-    "sha256": "7a60f71ded8f27a112ed59d88ca0df7440803f3f5654a00ea1c12ba011ec1d3c"
+    "sha256": "67281332b83bb826cfa8d63bf4b6c59f963151b60ce1472a52c788ecdc83413a"
   },
   "apps/desktop/src-tauri/src/streaming.rs": {
     "ownership": "M1e terminal output via selected Host session_terminal@1; M1d page session events via selected Host; core Event only for the page channel type",
     "reasons": [
       "skiff_core"
     ],
-    "sha256": "dc760fd4cf4b76a145502bd7cf9d3660b13e934cced2cab2ccf8f7ab38c20e31"
+    "sha256": "2614769292edfdfab4d5d8ba8b943d9f3dd4087d3a43f9675848ffa27a20a8ee"
   },
   "apps/desktop/src-tauri/src/workspace_file.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -550,7 +549,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "b35b2dbc873e137ed84a0da9a1487b6c48ed441836b456e5abcf65ce35898337"
+    "sha256": "d8ae5a47316eab75d179be7a013cdc6618c3dd162c048cb61c20dbac7e10eca8"
   },
   "apps/desktop/src/terminal/resume.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

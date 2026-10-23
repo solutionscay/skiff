@@ -18,7 +18,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::{
     config::PROJECTS_CHANGED,
-    connection::{ensure_client, err, App},
+    connection::{blocking, bundled, ensure_client, err, App},
 };
 use skiff_client::host::local::ProcessControl;
 
@@ -45,11 +45,7 @@ fn ensure() -> anyhow::Result<PathBuf> {
 
 /// The `skiff` CLI beside the app binary, else the one on `PATH`.
 fn cli() -> PathBuf {
-    std::env::current_exe()
-        .ok()
-        .map(|e| e.with_file_name("skiff"))
-        .filter(|p| p.is_file())
-        .unwrap_or_else(|| PathBuf::from("skiff"))
+    bundled("skiff", None)
 }
 
 /// Starts `skiff watch` for the agent's session, unless one runs for this
@@ -154,13 +150,6 @@ pub struct TaskEdit {
     name: String,
     agent: String,
     model: Option<String>,
-}
-
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> Result<T, String> {
-    tauri::async_runtime::spawn_blocking(f)
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| format!("{e:#}"))
 }
 
 /// `[skiff_agent]` and its task types, from the selected Host (`skipper@1`):

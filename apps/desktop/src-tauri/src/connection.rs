@@ -12,6 +12,9 @@ pub(crate) struct App {
     /// M4: the selected Host's data-plane service (`skiff-host`), checked
     /// against the session plane's Host id on every connection.
     pub(crate) data: Mutex<Option<DataPlane>>,
+    /// When this app run last started `skiff-host`: one that stops right
+    /// after it starts is not started again every read.
+    pub(crate) data_started: std::sync::Mutex<Option<std::time::Instant>>,
     /// Counts the data-plane connections made: a new one may bring other
     /// data than the page shows (`data_plane_status`).
     pub(crate) data_gen: std::sync::atomic::AtomicU64,
@@ -60,6 +63,11 @@ pub(crate) struct App {
 }
 
 impl App {
+    /// The selected Host's session connection, while it is open.
+    pub(crate) async fn live_session(&self) -> Option<Arc<HostConnection>> {
+        self.host.lock().await.as_ref().map(|h| h.connection()).filter(|c| !c.is_closed())
+    }
+
     /// The selected endpoint, from `hosts.toml` on first use. A file that
     /// cannot be read selects this Mac.
     pub(crate) fn selection(&self) -> HostSelection {
@@ -288,42 +296,51 @@ pub(crate) struct DaemonStatus {
     reload: bool,
 }
 
-pub(crate) fn daemon_binary() -> PathBuf {
-    if let Ok(p) = std::env::var("SKIFF_DAEMON") {
+/// A program this app ships: `env` names it when set, else the one beside
+/// this app's executable, else `name` on PATH.
+pub(crate) fn bundled(name: &str, env: Option<&str>) -> PathBuf {
+    if let Some(p) = env.and_then(std::env::var_os) {
         return PathBuf::from(p);
     }
     if let Ok(exe) = std::env::current_exe() {
-        let beside = exe.with_file_name("skiffd");
+        let beside = exe.with_file_name(name);
         if beside.exists() {
             return beside;
         }
     }
-    PathBuf::from("skiffd")
+    PathBuf::from(name)
 }
 
-/// Only for a local endpoint: `_local` proves it.
-fn spawn_daemon(_local: &ProcessControl) -> anyhow::Result<()> {
-    let log = socket_path().with_extension("log");
+pub(crate) fn daemon_binary() -> PathBuf {
+    bundled("skiffd", Some("SKIFF_DAEMON"))
+}
+
+/// Starts `cmd` apart from this app: its own process group, no stdin, and
+/// its errors in `log`. The log before it is kept as `.1`: it saw what the
+/// new one restores, or why the last one stopped.
+fn spawn_detached(mut cmd: std::process::Command, log: PathBuf) -> anyhow::Result<std::process::Child> {
     if let Some(dir) = log.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    // Keep the last daemon's log: it saw what the new one restores.
     let _ = std::fs::rename(&log, log.with_extension("log.1"));
     let log = std::fs::File::create(&log)?;
-    let mut cmd = std::process::Command::new(daemon_binary());
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::from(log));
-    // The daemon passes its environment to every session it starts.
-    if crate::SET_WEBKIT_DMABUF.load(std::sync::atomic::Ordering::Relaxed) {
-        cmd.env_remove(crate::WEBKIT_DMABUF_VAR);
-    }
+    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::from(log));
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
     }
-    cmd.spawn()?;
+    Ok(cmd.spawn()?)
+}
+
+/// Only for a local endpoint: `_local` proves it.
+fn spawn_daemon(_local: &ProcessControl) -> anyhow::Result<()> {
+    let mut cmd = std::process::Command::new(daemon_binary());
+    // The daemon passes its environment to every session it starts.
+    if crate::SET_WEBKIT_DMABUF.load(std::sync::atomic::Ordering::Relaxed) {
+        cmd.env_remove(crate::WEBKIT_DMABUF_VAR);
+    }
+    spawn_detached(cmd, socket_path().with_extension("log"))?;
     Ok(())
 }
 
@@ -396,6 +413,19 @@ pub(crate) async fn data_now(app: &App) -> Result<Arc<HostConnection>, String> {
         Ok(plane) => plane,
         Err(e) if not_running(&e) && selection.process_control().is_some() => {
             let control = selection.process_control().expect("checked");
+            // One that stops right after it starts is tried again later,
+            // not on every read: its log stays readable meanwhile.
+            let too_soon = {
+                let mut started = app.data_started.lock().unwrap();
+                let soon = started.is_some_and(|at| at.elapsed() < DATA_START_WAIT);
+                if !soon {
+                    *started = Some(std::time::Instant::now());
+                }
+                soon
+            };
+            if too_soon {
+                return Err(data_failure(&e, &selection));
+            }
             spawn_data_service(&control, selection.socket()).map_err(|e| format!("start skiff-host: {e:#}"))?;
             let mut last = e;
             let mut plane = None;
@@ -521,7 +551,7 @@ pub(crate) async fn data_plane_status(app: State<'_, App>) -> Result<DataPlaneSt
 }
 
 pub(crate) async fn data_status(app: &App) -> DataPlaneStatus {
-    let live = app.host.lock().await.as_ref().map(|h| h.connection()).filter(|c| !c.is_closed());
+    let live = app.live_session().await;
     let mut status = DataPlaneStatus {
         ready: false,
         waiting: live.is_none(),
@@ -582,35 +612,19 @@ pub(crate) fn data_err(e: skiff_host_api::Error) -> String {
 }
 
 pub(crate) fn data_binary() -> PathBuf {
-    if let Ok(p) = std::env::var("SKIFF_HOST_BIN") {
-        return PathBuf::from(p);
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        let beside = exe.with_file_name("skiff-host");
-        if beside.exists() {
-            return beside;
-        }
-    }
-    PathBuf::from("skiff-host")
+    bundled("skiff-host", Some("SKIFF_HOST_BIN"))
 }
+
+/// How long after one start of `skiff-host` the next may come.
+const DATA_START_WAIT: Duration = Duration::from_secs(10);
 
 /// Only for a local endpoint: `_local` proves it. Starts this Mac's
 /// data-plane service for the skiffd at `session`, on that socket's state.
 /// A second start finds the first one listening and exits.
 fn spawn_data_service(_local: &ProcessControl, session: &std::path::Path) -> anyhow::Result<()> {
-    let log = skiff_core::socket::data_socket(session).with_extension("log");
-    if let Some(dir) = log.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let log = std::fs::File::create(&log)?;
     let mut cmd = std::process::Command::new(data_binary());
-    cmd.arg("--session-socket").arg(session).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::from(log));
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        cmd.process_group(0);
-    }
-    reap(cmd.spawn()?);
+    cmd.arg("--session-socket").arg(session);
+    reap(spawn_detached(cmd, skiff_core::socket::data_socket(session).with_extension("log"))?);
     Ok(())
 }
 
@@ -628,14 +642,8 @@ fn capability_names(c: &HostConnection) -> Vec<String> {
     c.hello().capabilities.iter().map(|c| format!("{}@{}", c.name, c.version)).collect()
 }
 
-/// The one M1d event path: page events from the same selected owner. The
-/// receiver starts now, before the caller's next inventory read, as before.
-pub(crate) async fn updates_now(app: &App) -> Result<skiff_client::host::local::LegacyUpdates, String> {
-    let (host, _) = ensure_host(app).await?;
-    skiff_client::host::local::legacy_updates(&host.connection()).map_err(err)
-}
 
-async fn ensure_host(app: &App) -> Result<(Arc<SelectedHost>, bool), String> {
+pub(crate) async fn ensure_host(app: &App) -> Result<(Arc<SelectedHost>, bool), String> {
     let mut guard = app.host.lock().await;
     if let Some(host) = guard.as_ref() {
         if !host.connection().is_closed() {
@@ -889,6 +897,11 @@ pub(crate) fn err(e: anyhow::Error) -> String {
     format!("{e:#}")
 }
 
+/// Runs a call that may wait, such as a file lock, off the async workers.
+pub(crate) async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?.map_err(err)
+}
+
 #[tauri::command]
 pub(crate) async fn daemon_status(app: State<'_, App>) -> Result<DaemonStatus, String> {
     Ok(status_now(&app).await)
@@ -1061,7 +1074,7 @@ mod tests {
         assert_eq!(first.socket, socket.display().to_string());
         assert!(first.warning.is_none() && !first.reload);
         let owner = app.host.lock().await.as_ref().unwrap().clone();
-        let mut updates = updates_now(&app).await.unwrap();
+        let mut updates = skiff_client::host::local::legacy_updates(&owner.connection()).unwrap();
         let (client, spawned) = ensure_client(&app).await.unwrap();
         assert!(!spawned && Arc::ptr_eq(&owner.client(), &client));
         let live = app.live.lock().unwrap().clone().unwrap();

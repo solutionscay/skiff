@@ -56,8 +56,7 @@ pub fn watch(app: AppHandle) {
 
 /// One tick. True when the ledger may have changed since the last tick.
 async fn look(app: &App, last: &mut Seen) -> bool {
-    let live = app.host.lock().await.as_ref().map(|h| h.connection()).filter(|c| !c.is_closed());
-    if live.is_none() {
+    if app.live_session().await.is_none() {
         return false;
     }
     let stamp = data_read(app, |c| async move { skiff_client::host::data::ledger_stamp(&c).await }).await;

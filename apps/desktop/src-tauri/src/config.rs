@@ -16,14 +16,10 @@ use tauri::{AppHandle, Emitter, State};
 use skiff_client::host::data;
 use skiff_host_api::{HostFolder, HostProject, HostWorktree, ProjectEdit, ProjectFleet};
 
-use crate::connection::{data_read, data_write, keep_revision, project_write, App, ensure_client, err};
+use crate::connection::{blocking, data_read, data_write, keep_revision, project_write, App, ensure_client, err};
 
 /// The page reloads projects on this event.
 pub(crate) const PROJECTS_CHANGED: &str = "skiff:projects-changed";
-
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> Result<T, String> {
-    tokio::task::spawn_blocking(f).await.map_err(|e| e.to_string())?.map_err(err)
-}
 
 /// Tells the page after a change was tried: done, refused or unknown, it
 /// reads the projects again.

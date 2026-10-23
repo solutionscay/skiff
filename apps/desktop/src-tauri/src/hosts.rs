@@ -25,7 +25,7 @@ use skiff_client::host::{
 use skiff_host_api::HostId;
 use tauri::{Manager, State};
 
-use crate::connection::{err, App};
+use crate::connection::{blocking, err, App};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct KnownHost {
@@ -1049,10 +1049,6 @@ pub(crate) async fn accept_host_identity(app: State<'_, App>, id: String) -> Res
     .await?;
     crate::connection::replace_selection(&app, selection).await;
     Ok(())
-}
-
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> Result<T, String> {
-    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?.map_err(err)
 }
 
 #[cfg(test)]
