@@ -14,17 +14,18 @@ use skiff_core::{
 /// Shown in place of `sent` or `blocked` when the pane restarted since the
 /// send. Never stored: the pane generation tells it.
 pub const INTERRUPTED: &str = "interrupted";
-/// Shown in place of an open state when the pane no longer exists. Never
-/// stored: the session list tells it.
+/// Shown in place of an open state when the pane no longer exists, and in
+/// place of `done` on a task that skiff set done for that reason (it has
+/// `gone_at`).
 pub const GONE: &str = "gone";
 
 /// The schema version, in `user_version`. 4 added `tasks.socket` and
 /// `owner`, 5 added `tasks.reported_at`, 6 added `tasks.title`, 7 added
-/// `tasks.closed_at`; an older file from version 3 on takes each in place,
-/// with its rows.
-pub const VERSION: i64 = 7;
+/// `tasks.closed_at`, 8 added `tasks.gone_at`; an older file from version 3
+/// on takes each in place, with its rows.
+pub const VERSION: i64 = 8;
 
-pub const COLUMNS: &str = "id, uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, reported_at, title, closed_at";
+pub const COLUMNS: &str = "id, uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, reported_at, title, closed_at, gone_at";
 
 /// Where work stands. Never stored: the close stamp, the task states and the
 /// panes tell it. An agent is on working work now; open work waits for the
@@ -69,6 +70,9 @@ pub struct Row {
     /// task with no plan. A task in a plan is closed with its plan. `None`:
     /// the work is open.
     pub closed_at: Option<String>,
+    /// When skiff set the task done because its pane was gone: no session
+    /// with its id on its daemon. `None`: the task did not close that way.
+    pub gone_at: Option<String>,
     /// [`WORKING`], [`OPEN`] or [`FINISHED`], for the whole work. Set by
     /// [`buckets`].
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -127,7 +131,7 @@ impl Row {
     pub fn shown_state(&self) -> &str {
         if self.interrupted == Some(true) {
             INTERRUPTED
-        } else if self.live == Some(false) && self.state != "done" {
+        } else if (self.gone_at.is_some() && self.state == "done") || (self.live == Some(false) && self.state != "done") {
             GONE
         } else {
             &self.state
@@ -151,7 +155,7 @@ pub fn gen(s: &SessionInfo) -> Option<i64> {
 }
 
 /// Opens the ledger read-only, for a reader that must not change it: no
-/// migration, no new file. A file without `tasks.closed_at` (older than
+/// migration, no new file. A file without `tasks.gone_at` (older than
 /// [`VERSION`]) is refused: any `skiff ledger` command brings it up to date.
 /// The columns decide, not `user_version`: an older skiff stamps its own
 /// lower version on a file that has every column.
@@ -159,7 +163,7 @@ pub fn open_read(file: &Path) -> Result<Connection> {
     let db = Connection::open_with_flags(file, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
         .with_context(|| format!("open {}", file.display()))?;
     db.busy_timeout(std::time::Duration::from_secs(2))?;
-    let n: i64 = db.query_row("SELECT count(*) FROM pragma_table_info('tasks') WHERE name = 'closed_at'", [], |r| r.get(0))?;
+    let n: i64 = db.query_row("SELECT count(*) FROM pragma_table_info('tasks') WHERE name = 'gone_at'", [], |r| r.get(0))?;
     if n == 0 {
         bail!("the ledger is older than version {VERSION}. Run any `skiff ledger` command to update it");
     }
@@ -189,6 +193,7 @@ pub fn rows(db: &Connection, where_: &str, arg: Option<&dyn rusqlite::ToSql>) ->
             reported_at: r.get(15)?,
             title: r.get(16)?,
             closed_at: r.get(17)?,
+            gone_at: r.get(18)?,
             bucket: None,
             agent_on: false,
             elsewhere: false,
@@ -250,9 +255,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("ledger.db");
-        // Version 6: no closed_at. Refused.
+        // Version 7: no gone_at. Refused.
         let db = Connection::open(&file).unwrap();
-        db.execute_batch("CREATE TABLE tasks (id INTEGER PRIMARY KEY, uid TEXT, socket TEXT, reported_at TEXT, title TEXT); PRAGMA user_version = 6;").unwrap();
+        db.execute_batch("CREATE TABLE tasks (id INTEGER PRIMARY KEY, uid TEXT, socket TEXT, reported_at TEXT, title TEXT, closed_at TEXT); PRAGMA user_version = 7;").unwrap();
         assert!(open_read(&file).unwrap_err().to_string().contains("skiff ledger"));
         drop(db);
         std::fs::remove_file(&file).unwrap();
@@ -260,7 +265,7 @@ mod tests {
         let db = Connection::open(&file).unwrap();
         db.execute_batch(&format!(
             "CREATE TABLE tasks (id INTEGER PRIMARY KEY, uid TEXT, kind TEXT, parent TEXT, pane_id TEXT, pane_gen INTEGER, project TEXT,
-               task TEXT, sent_at TEXT, state TEXT, result_path TEXT, ref TEXT, updated_at TEXT, type TEXT, socket TEXT, reported_at TEXT, title TEXT, closed_at TEXT);
+               task TEXT, sent_at TEXT, state TEXT, result_path TEXT, ref TEXT, updated_at TEXT, type TEXT, socket TEXT, reported_at TEXT, title TEXT, closed_at TEXT, gone_at TEXT);
              INSERT INTO tasks (uid, kind, project, task, sent_at, state, updated_at) VALUES ('a1b2c3d4', 'plan', '', 'p', 'x', 'sent', 'x');
              INSERT INTO tasks (uid, kind, parent, project, task, sent_at, state, updated_at) VALUES ('e5f6a7b8', 'task', 'a1b2c3d4', '', 't', 'x', 'done', 'x');
              PRAGMA user_version = {};",

@@ -170,7 +170,7 @@ The ledger is `ledger.db` in that folder. Use only `skiff ledger` to read or cha
 Task states are `pending`, `sent`, `blocked` and `done`. `ls` and `show` also print:
 
 - `interrupted`: the pane restarted after the send. A restore runs a new shell under the old id, so the task does not run.
-- `gone`: the pane no longer exists.
+- `gone`: the pane no longer exists. Skiff sets the task `done` on the next `ledger ls`, `ledger show` or watcher step. It stays not reported. `--json` shows `state` `done` and a `gone_at` stamp.
 - `elsewhere` in LIVE: the task went out on another daemon. Its socket shows. It is not gone. Leave it to that daemon's Skiff agent.
 
 A plan shows `done` when every task in it is done, else `sent`.
@@ -218,7 +218,7 @@ Result paths, in `results/` in the agent folder:
 
 1. Read each pane that a `[watch]` line names with `skiff peek`.
 2. Then run `skiff seen S`. An unread pane is named again on the next run.
-3. A gone pane cannot be marked seen. Reassign each open task with `skiff ledger update UID --pane S --state pending`, or set it to `done`.
+3. A gone pane cannot be marked seen. The `[watch]` line names the tasks that skiff set `done` with it. Tell the person, then run `skiff ledger report UID...`. To run a task again, reassign it with `skiff ledger update UID --pane S --state pending`.
 4. On `[watch] N done tasks not reported`, run `skiff ledger ls --unreported` and report them.
 
 ### The Ledger panel

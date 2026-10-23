@@ -10,7 +10,10 @@
 //! restarted since the send (a restore runs a new shell under the old id)
 //! wakes the agent once as interrupted. Plans have no pane and are not
 //! followed. At its start, a run counts the done tasks not yet reported and,
-//! if there are any, tells the agent once, in a line of its own.
+//! if there are any, tells the agent once, in a line of its own. Each step
+//! sets done the open tasks whose panes are gone (see
+//! [`ledger::close_gone`]), and a task closed that way after the start wakes
+//! the agent once, whichever command closed it.
 //!
 //! It keeps no state of its own. The ledger, the session list and each pane's
 //! unread flag are the input, so a new run rebuilds the same view. One lock
@@ -101,6 +104,8 @@ pub enum Fact {
     Exit,
     Gone,
     Interrupted,
+    /// Gone, and skiff set its open tasks done.
+    Closed,
 }
 
 impl Fact {
@@ -109,7 +114,7 @@ impl Fact {
             Fact::Waiting => "is waiting",
             Fact::Idle | Fact::Pending => "is idle",
             Fact::Exit => "exited",
-            Fact::Gone => "is gone",
+            Fact::Gone | Fact::Closed => "is gone",
             Fact::Interrupted => "restarted",
         }
     }
@@ -178,7 +183,7 @@ pub struct Wake {
     pub name: String,
     pub id: String,
     /// The task's uid, for an interrupted or a pending task. For a gone
-    /// pane, its open uids, joined with ", ".
+    /// pane, its open uids, or the uids skiff closed, joined with ", ".
     pub task: Option<String>,
 }
 
@@ -188,6 +193,8 @@ impl Wake {
             (Some(t), Fact::Pending) => format!(": task {t} is pending: skiff ledger send {t} --enter"),
             (Some(t), Fact::Gone) if t.contains(", ") => format!(": tasks {t} are open"),
             (Some(t), Fact::Gone) => format!(": task {t} is open"),
+            (Some(t), Fact::Closed) if t.contains(", ") => format!(": tasks {t} are done with it"),
+            (Some(t), Fact::Closed) => format!(": task {t} is done with it"),
             (Some(t), _) => format!(": task {t} is interrupted"),
             (None, _) => String::new(),
         }
@@ -198,13 +205,22 @@ impl Wake {
 pub fn wake_line(wakes: &[Wake]) -> String {
     let parts: Vec<String> = wakes
         .iter()
+        .filter(|w| w.fact != Fact::Closed)
+        .chain(wakes.iter().filter(|w| w.fact == Fact::Closed))
         .map(|w| {
             let who = if w.name.is_empty() { String::new() } else { format!("{} ", w.name) };
             format!("pane {who}{} {}{}", print::short_id(&w.id), w.fact.phrase(), w.tail())
         })
         .collect();
+    // A task skiff closed is told to the person, then reported.
+    let closed: Vec<&str> = wakes.iter().filter(|w| w.fact == Fact::Closed).filter_map(|w| w.task.as_deref()).collect();
+    let told = (!closed.is_empty()).then(|| format!("Tell the person, then run skiff ledger report {}.", closed.join(" ").replace(',', "")));
+    let wakes: Vec<&Wake> = wakes.iter().filter(|w| w.fact != Fact::Closed).collect();
+    if wakes.is_empty() {
+        return format!("[watch] {}. {}", parts.join("; "), told.unwrap_or_default());
+    }
     // A gone pane cannot be marked seen. Its tasks are reassigned or marked done.
-    let gone = |w: &&Wake| w.fact == Fact::Gone && w.task.is_some();
+    let gone = |w: &&&Wake| w.fact == Fact::Gone && w.task.is_some();
     let lost = wakes.iter().filter(gone).count();
     let tail = if lost == 0 {
         if wakes.len() == 1 { "Read it, then mark it seen." } else { "Read them, then mark each seen." }
@@ -215,7 +231,10 @@ pub fn wake_line(wakes: &[Wake]) -> String {
     } else {
         "Reassign each task or mark it done."
     };
-    format!("[watch] {}. {tail}", parts.join("; "))
+    match told {
+        Some(t) => format!("[watch] {}. {tail} {t}", parts.join("; ")),
+        None => format!("[watch] {}. {tail}", parts.join("; ")),
+    }
 }
 
 #[derive(Default)]
@@ -247,6 +266,9 @@ struct Watcher {
     counted: bool,
     /// The line that names them, until the agent takes it.
     unreported: Option<String>,
+    /// The tasks closed for a gone pane and not reported, as last read.
+    /// `None` before the first read: those are in the count.
+    gone: Option<HashSet<String>>,
 }
 
 /// The open tasks whose panes are on `here`, and a log line for the others.
@@ -460,9 +482,38 @@ impl Watcher {
         self.prompted.clear();
         self.busy.clear();
         self.panes.retain(|k, _| open.contains(k));
-        // A row the agent closed needs no line.
-        self.held.retain(|h| open.contains(&h.pane));
+        // A row the agent closed needs no line. One skiff closed does.
+        self.held.retain(|h| h.fact == Fact::Closed || open.contains(&h.pane));
         self.drop_stale(groups);
+        wakes
+    }
+
+    /// Takes the tasks skiff closed because their panes are gone, not yet
+    /// reported. Each one new since the last read holds one line per pane.
+    /// The first read only notes them: the unreported count names them.
+    fn closed(&mut self, rows: &[ledger::Row]) -> Vec<Wake> {
+        let now: HashSet<String> = rows.iter().map(|r| r.uid.clone()).collect();
+        // Reported, or reassigned, since: the held line is old news.
+        self.held.retain(|h| h.fact != Fact::Closed || h.task.as_deref().is_some_and(|t| t.split(", ").all(|u| now.contains(u))));
+        let Some(known) = self.gone.replace(now) else { return Vec::new() };
+        let mut wakes: Vec<Wake> = Vec::new();
+        for r in rows.iter().filter(|r| !known.contains(&r.uid)) {
+            let pane = r.pane_id.clone().unwrap_or_default();
+            match wakes.iter_mut().find(|w| w.id == pane) {
+                Some(w) => w.task = w.task.take().map(|t| format!("{t}, {}", r.uid)),
+                None => wakes.push(Wake {
+                    fact: Fact::Closed,
+                    pane: format!("gone:{pane}"),
+                    name: self.panes.get(&pane).map(|p| p.name.clone()).unwrap_or_default(),
+                    id: pane,
+                    task: Some(r.uid.clone()),
+                }),
+            }
+        }
+        for w in &wakes {
+            self.held.retain(|h| h.pane != w.pane && h.pane != w.id);
+            self.held.push(w.clone());
+        }
         wakes
     }
 
@@ -687,6 +738,14 @@ async fn step(c: &Client, o: &Options, w: &mut Watcher) -> Result<Option<i32>> {
     // A read that fails (the file busy past its timeout) skips this step: the
     // next tick reads again. An empty list would forget the open panes.
     let here = skiff_core::state::socket();
+    match ledger::close_gone(&here, &all) {
+        Ok(closed) => {
+            for r in closed {
+                log(format!("task {} is done: its pane {} is gone", r.uid, print::short_id(r.pane_id.as_deref().unwrap_or(""))));
+            }
+        }
+        Err(e) => log(format!("cannot close the tasks of gone panes: {e:#}")),
+    }
     let tasks = match ledger::open_tasks() {
         Ok(t) => {
             let (mine, line) = on_socket(t, &here);
@@ -712,11 +771,18 @@ async fn step(c: &Client, o: &Options, w: &mut Watcher) -> Result<Option<i32>> {
             Err(e) => log(format!("cannot count the done tasks not reported: {e:#}")),
         }
     }
+    let closed = match ledger::gone_unreported() {
+        Ok(rows) => w.closed(&on_socket(rows, &here).0),
+        Err(e) => {
+            log(format!("cannot read the tasks of gone panes: {e:#}"));
+            Vec::new()
+        }
+    };
     let (groups, interrupted) = group(&tasks, &all, &skipper.id);
     w.follows = Some(follows(&groups));
     w.register(c, &skipper.id).await?;
 
-    for wake in w.take(&groups, &interrupted) {
+    for wake in closed.into_iter().chain(w.take(&groups, &interrupted)) {
         log(format!("{} {} {}{}", wake.fact.phrase(), print::short_id(&wake.id), wake.name, wake.tail()));
         if wake.fact == Fact::Waiting && o.notify {
             let title = format!("{} ({}) is waiting", wake.name, print::short_id(&wake.id));
@@ -1073,6 +1139,32 @@ mod tests {
         assert!(w.held.is_empty());
     }
 
+    #[test]
+    fn a_task_skiff_closed_for_a_gone_pane_is_told_once_after_the_start() {
+        let mut w = Watcher::default();
+        let done = |uid: &str, pane: &str| row(1, uid, pane, "done", None);
+        // The first read only notes them: the unreported count names them.
+        assert!(w.closed(&[done("aaaa1111", "4ac9e7a1")]).is_empty());
+        let wakes = w.closed(&[done("aaaa1111", "4ac9e7a1"), done("d0e7b2f4", "5b1c9e2a"), done("e5f6a7b8", "5b1c9e2a")]);
+        assert_eq!(wakes.len(), 1);
+        assert_eq!(wake_line(&w.held), "[watch] pane 5b1c9e2a is gone: tasks d0e7b2f4, e5f6a7b8 are done with it. Tell the person, then run skiff ledger report d0e7b2f4 e5f6a7b8.");
+        // Told once.
+        assert!(w.closed(&[done("d0e7b2f4", "5b1c9e2a"), done("e5f6a7b8", "5b1c9e2a")]).is_empty());
+        // The line survives a step with no open task left on that pane.
+        w.take(&[], &[]);
+        assert_eq!(w.held.len(), 1);
+        // Reported before the line went: it is dropped.
+        w.closed(&[done("d0e7b2f4", "5b1c9e2a")]);
+        assert!(w.held.is_empty());
+        // With other lines, the others come first.
+        let idle = Wake { fact: Fact::Idle, pane: "abc12345".into(), name: "api".into(), id: "abc12345".into(), task: None };
+        let closed = Wake { fact: Fact::Closed, pane: "gone:4ac9e7a1".into(), name: String::new(), id: "4ac9e7a1".into(), task: Some("d0e7b2f4".into()) };
+        assert_eq!(
+            wake_line(&[closed, idle]),
+            "[watch] pane api abc12345 is idle; pane 4ac9e7a1 is gone: task d0e7b2f4 is done with it. Read it, then mark it seen. Tell the person, then run skiff ledger report d0e7b2f4."
+        );
+    }
+
     fn row(id: i64, uid: &str, pane: &str, state: &str, gen: Option<i64>) -> ledger::Row {
         ledger::Row {
             id,
@@ -1093,6 +1185,7 @@ mod tests {
             reported_at: None,
             title: None,
             closed_at: None,
+            gone_at: None,
             bucket: None,
             agent_on: false,
             elsewhere: false,
