@@ -56,12 +56,24 @@ pub(crate) struct KnownHost {
     /// only while it is `host_id`: a new identity has no permission.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) clipboard_host: Option<String>,
+    /// Update Skiff on this server automatically when this app is newer.
+    /// On by default; only an install Skiff made is updated.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub(crate) auto_update: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn is_yes(b: &bool) -> bool {
+    *b
 }
 
 impl KnownHost {
     #[cfg(test)]
     fn new(destination: String, socket: String) -> Self {
-        Self { id: format!("h_{destination}"), name: destination.clone(), destination, user: None, port: None, socket: Some(socket), socket_override: false, host_id: None, clipboard_host: None }
+        Self { id: format!("h_{destination}"), name: destination.clone(), destination, user: None, port: None, socket: Some(socket), socket_override: false, host_id: None, clipboard_host: None, auto_update: true }
     }
 
     pub(crate) fn target(&self) -> SshTarget {
@@ -263,6 +275,7 @@ struct HostView {
     port: Option<u16>,
     socket: Option<String>,
     socket_override: bool,
+    auto_update: bool,
     /// From the last check or connection in this app run: `ok`,
     /// `attention`, or `unknown` before any.
     state: &'static str,
@@ -317,7 +330,7 @@ fn host_list(hosts: Hosts, selected: Option<String>, identity: Option<&HostId>) 
     let hosts = hosts
         .hosts
         .into_iter()
-        .map(|h| HostView { state: state(&h), id: h.id, name: h.name, destination: h.destination, user: h.user, port: h.port, socket: h.socket, socket_override: h.socket_override })
+        .map(|h| HostView { state: state(&h), id: h.id, name: h.name, destination: h.destination, user: h.user, port: h.port, socket: h.socket, socket_override: h.socket_override, auto_update: h.auto_update })
         .collect();
     HostList { selected, local_name: local_hostname(), hosts, clipboard }
 }
@@ -438,6 +451,7 @@ pub(crate) async fn add_host(form: HostForm) -> Result<String, String> {
                 socket_override: set,
                 host_id: None,
                 clipboard_host: None,
+                auto_update: true,
             });
             Ok(id)
         })
@@ -571,6 +585,7 @@ pub(crate) async fn check_host(id: String) -> Result<skiff_client::host::check::
         installed: INSTALLED.lock().unwrap().get(&id).cloned(),
         version: VERSION.into(),
         linger_refused: LINGER_REFUSED.lock().unwrap().contains(&id),
+        update_failed: UPDATE_FAILED.lock().unwrap().get(&id).cloned(),
     };
     let report = skiff_client::host::check::check(&input, &SshOptions::default()).await;
     note(&id, report.ok);
@@ -701,21 +716,167 @@ pub(crate) async fn install_skiff(id: String) -> Result<InstallView, String> {
     let (Some(os), Some(arch)) = (p.bundle_os(), p.bundle_arch()) else {
         return Err(format!("Skiff installs itself on Linux and macOS servers on x86_64 and ARM64 only. {} runs {} on {}.", h.name, p.os, p.arch));
     };
-    let bundle = match install::download(VERSION, os, arch).await {
-        Ok(b) => b,
-        Err(e) if cfg!(debug_assertions) && os == std::env::consts::OS => {
-            let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-            let beside = exe.parent().ok_or("This build has no folder.")?.to_path_buf();
-            install::dev_bundle(VERSION, arch, &beside).await.map_err(|dev| format!("{e} {dev}"))?
-        }
-        Err(e) => return Err(e),
-    };
+    let bundle = bundle_for(os, arch).await?;
     let outcome = install::install(&h.target(), &SshOptions::default(), &bundle, VERSION, SOCKET_NAME, p.free_kb, &h.name).await?;
     if outcome.linger == "refused" {
         LINGER_REFUSED.lock().unwrap().insert(id.clone());
     }
     LAST.lock().unwrap().remove(&id);
     Ok(InstallView { outcome, source: bundle.source, version: VERSION })
+}
+
+/// The signed release bundle of this app's version for a server's `os` and
+/// `arch`. A dev build with no such release sends its own binaries, to a
+/// server with this computer's OS.
+async fn bundle_for(os: &str, arch: &str) -> Result<skiff_client::host::install::Bundle, String> {
+    use skiff_client::host::install;
+    match install::download(VERSION, os, arch).await {
+        Ok(b) => Ok(b),
+        Err(e) if cfg!(debug_assertions) && os == std::env::consts::OS => {
+            let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+            let beside = exe.parent().ok_or("This build has no folder.")?.to_path_buf();
+            install::dev_bundle(VERSION, arch, &beside).await.map_err(|dev| format!("{e} {dev}"))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Why the last update of each Host in this app run did not finish, by id.
+static UPDATE_FAILED: std::sync::Mutex<std::collections::BTreeMap<String, String>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// What an update did, for the check list's note and the red dialog.
+#[derive(Serialize)]
+pub(crate) struct UpdateView {
+    #[serde(flatten)]
+    updated: skiff_client::host::install::Updated,
+    source: &'static str,
+    version: &'static str,
+}
+
+/// Moves the managed install on a server up to this app's version.
+/// skiffd reloads onto it and keeps its sessions. When it cannot, nothing
+/// changes and the answer names the sessions an update would end, unless
+/// `end_sessions`: the person saw them in the red dialog and agreed. Never
+/// a Skiff that Skiff did not install, and never down.
+async fn update_managed(h: &KnownHost, end_sessions: bool) -> Result<UpdateView, String> {
+    use skiff_client::host::{check, install};
+    let p = probe_now(h).await?;
+    let Some(m) = &p.managed else {
+        return Err(format!("Skiff did not install the Skiff on {}, so it does not update it.", h.name));
+    };
+    if !check::newer(VERSION, &m.version) {
+        return Ok(UpdateView { updated: install::Updated::Newer { version: m.version.clone() }, source: "", version: VERSION });
+    }
+    let (Some(os), Some(arch)) = (p.bundle_os(), p.bundle_arch()) else {
+        return Err(format!("Skiff updates itself on Linux and macOS servers on x86_64 and ARM64 only. {} runs {} on {}.", h.name, p.os, p.arch));
+    };
+    let bundle = bundle_for(os, arch).await?;
+    let result = install::update(&h.target(), &SshOptions::default(), &bundle, VERSION, SOCKET_NAME, p.free_kb, &h.name, end_sessions).await;
+    let mut failed = UPDATE_FAILED.lock().unwrap();
+    match &result {
+        Err(e) => failed.insert(h.id.clone(), e.clone()),
+        Ok(install::Updated::NoHandover { from, sessions }) => failed.insert(h.id.clone(), no_handover(&h.name, from, sessions)),
+        Ok(_) => failed.remove(&h.id),
+    };
+    drop(failed);
+    LAST.lock().unwrap().remove(&h.id);
+    Ok(UpdateView { updated: result?, source: bundle.source, version: VERSION })
+}
+
+/// The Skiff row's words when skiffd cannot hand its sessions over.
+fn no_handover(name: &str, from: &str, sessions: &[String]) -> String {
+    format!(
+        "Update available. Skiff {from} on {name} cannot hand its {} to Skiff {VERSION}, so an update ends {}.",
+        if sessions.len() == 1 { "session" } else { "sessions" },
+        if sessions.len() == 1 { "it" } else { "them" }
+    )
+}
+
+/// Update Skiff… in the check list, after the person confirms it.
+#[tauri::command]
+pub(crate) async fn update_skiff(id: String, end_sessions: bool) -> Result<UpdateView, String> {
+    let h = host_by_id(&id).await?;
+    update_managed(&h, end_sessions).await
+}
+
+/// Turns the automatic update of one Host on or off.
+#[tauri::command]
+pub(crate) async fn set_host_auto_update(id: String, on: bool) -> Result<(), String> {
+    blocking(move || {
+        update(&path(), |hosts| {
+            known(hosts, &id)?.auto_update = on;
+            Ok(())
+        })
+    })
+    .await
+}
+
+/// What the app learned about a Host's install as it connected.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Arrival {
+    pub(crate) name: String,
+    /// Skiff installed the Skiff there.
+    pub(crate) managed: bool,
+    /// The version this connect updated from.
+    pub(crate) updated_from: Option<String>,
+}
+
+/// Each Host's arrival in this app run, by id. A Host that could not be
+/// probed is tried again after [`ARRIVAL_RETRY`].
+static ARRIVED: std::sync::Mutex<std::collections::BTreeMap<String, (Option<Arrival>, std::time::Instant)>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+const ARRIVAL_RETRY: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Before the session forward opens: a managed install older than this app
+/// is updated, once per app run, if the Host allows it and its sessions
+/// survive. No prompt: a reload keeps every session. An update that would
+/// end sessions is left to the person, in the check list.
+pub(crate) async fn update_on_connect(target: &SshTarget) -> Option<Arrival> {
+    use skiff_client::host::install::Updated;
+    let t = target.clone();
+    let h = blocking(move || Ok(load(&path())?.find_login(&t).cloned())).await.ok().flatten()?;
+    if let Some((arrival, at)) = ARRIVED.lock().unwrap().get(&h.id).cloned() {
+        if arrival.is_some() || at.elapsed() < ARRIVAL_RETRY {
+            return arrival;
+        }
+    }
+    let mut arrival = None;
+    if let Ok(p) = probe_now(&h).await {
+        let mut a = Arrival { name: h.name.clone(), managed: p.managed.is_some(), updated_from: None };
+        let older = p.managed.as_ref().is_some_and(|m| skiff_client::host::check::newer(VERSION, &m.version));
+        if older && h.auto_update {
+            match update_managed(&h, false).await {
+                Ok(UpdateView { updated: Updated::Done { from, .. }, .. }) => a.updated_from = Some(from),
+                Ok(_) => {}
+                Err(e) => eprintln!("update on connect to {}: {e}", h.name),
+            }
+        }
+        arrival = Some(a);
+    }
+    ARRIVED.lock().unwrap().insert(h.id.clone(), (arrival.clone(), std::time::Instant::now()));
+    arrival
+}
+
+/// The banner for a Host whose Skiff differs from this app's. None: they
+/// work together as they are. `managed`: Skiff installed it, so Settings ›
+/// Hosts can update it; a Skiff from its own install is never changed.
+pub(crate) fn version_warning(name: &str, version: &str, protocol: u32, managed: bool) -> Option<(&'static str, String)> {
+    use skiff_client::host::check::newer;
+    let here = skiff_core::PROTOCOL;
+    if newer(version, VERSION) {
+        return Some(("remote", format!("{name} runs Skiff {version}. This computer runs {VERSION}. Update Skiff on this computer.")));
+    }
+    let older = newer(VERSION, version);
+    match (managed, older, protocol == here) {
+        (true, true, false) => Some(("update", format!(
+            "{name} runs Skiff {version}, older than this computer's {VERSION}. You can see and type in its sessions. Update Skiff on {name} to start and end sessions here."
+        ))),
+        (true, true, true) => Some(("update", format!("Update available. {name} runs Skiff {version}. This computer runs {VERSION}."))),
+        (false, _, false) if protocol < here => Some(("remote", format!(
+            "{name} runs an older Skiff from its own install. You can see and type in its sessions. Update Skiff on {name} to start and end sessions here."
+        ))),
+        (_, _, false) => Some(("remote", format!("Skiff {version} on {name} speaks protocol {protocol}, and this app speaks {here}. Parts of the app fail."))),
+        _ => None,
+    }
 }
 
 /// Starts the managed skiffd and skiff-host on a server, each if it does
@@ -902,6 +1063,33 @@ mod tests {
         let bad = Hosts { hosts: vec![KnownHost { destination: "-oProxyCommand=x".into(), ..hosts.hosts[0].clone() }], selected: Some("h_devbox".into()) };
         assert!(bad.selection(local).is_local(), "an invalid entry never becomes an endpoint");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn auto_update_is_on_unless_the_person_turned_it_off() {
+        let hosts: Hosts = toml::from_str("[[host]]\nid = \"h_a\"\nname = \"a\"\ndestination = \"a\"\n").unwrap();
+        assert!(hosts.hosts[0].auto_update);
+        assert!(!toml::to_string(&hosts).unwrap().contains("auto_update"), "the default is not written");
+        let mut off = hosts.clone();
+        off.hosts[0].auto_update = false;
+        let back: Hosts = toml::from_str(&toml::to_string(&off).unwrap()).unwrap();
+        assert!(!back.hosts[0].auto_update);
+    }
+
+    #[test]
+    fn version_banners_name_who_updates_what() {
+        let p = skiff_core::PROTOCOL;
+        assert_eq!(version_warning("devbox", VERSION, p, true), None);
+        let (kind, text) = version_warning("devbox", "99.0.0", p, true).unwrap();
+        assert_eq!(kind, "remote");
+        assert!(text.ends_with("Update Skiff on this computer."), "never down: {text}");
+        let (kind, text) = version_warning("devbox", "0.0.1", p, true).unwrap();
+        assert!(kind == "update" && text.starts_with("Update available."), "{text}");
+        let (kind, text) = version_warning("devbox", "0.0.1", p - 1, true).unwrap();
+        assert!(kind == "update" && text.contains("You can see and type in its sessions"), "{text}");
+        let (kind, text) = version_warning("devbox", "0.0.1", p - 1, false).unwrap();
+        assert!(kind == "remote" && text.contains("from its own install"), "{text}");
+        assert_eq!(version_warning("devbox", "0.0.1", p, false), None, "its own install, same protocol: it works as it is");
     }
 
     #[test]

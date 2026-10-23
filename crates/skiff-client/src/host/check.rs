@@ -173,6 +173,7 @@ pub enum Fix {
     InstallSkiff,
     StartSkiff,
     TurnOnLinger,
+    UpdateSkiff,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq, Eq)]
@@ -223,6 +224,8 @@ pub struct CheckInput {
     pub version: String,
     /// The last Turn on in this app run was refused: linger needs an admin.
     pub linger_refused: bool,
+    /// Why the last update in this app run did not finish, for the Skiff row.
+    pub update_failed: Option<String>,
 }
 
 /// The arguments of the probe's ssh run: strict, batch, no shared master,
@@ -356,7 +359,7 @@ pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
     };
     let socket = probe.socket.clone();
     let found = (over.is_none() && probe.socket_live).then(|| socket.clone());
-    if !server_rows(&mut list, &probe, name, &input.version) {
+    if !server_rows(&mut list, &probe, name, &input.version, input.update_failed.as_deref()) {
         return list.finish(found, None);
     }
     let user = input.target.user.clone().or_else(|| input.target.destination.split_once('@').map(|(u, _)| u.to_string()));
@@ -424,7 +427,7 @@ pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
 /// Rows 4 to 6 from the probe: the server's OS and arch, the install, and
 /// whether its skiffd runs. False: a row failed, and the rest are skipped.
 /// A skiffd that Skiff did not install is used as it is, never replaced.
-fn server_rows(list: &mut List, p: &Probe, name: &str, version: &str) -> bool {
+fn server_rows(list: &mut List, p: &Probe, name: &str, version: &str, update_failed: Option<&str>) -> bool {
     let (Some(os), Some(arch)) = (p.bundle_os(), p.bundle_arch()) else {
         list.fail(Row::Supported, format!("{name} runs {} on {}. Skiff runs on Linux and macOS, on x86_64 and ARM64.", p.os, p.arch));
         return false;
@@ -434,7 +437,12 @@ fn server_rows(list: &mut List, p: &Probe, name: &str, version: &str) -> bool {
     let running = p.status.as_ref().and_then(|s| s.skiffd.as_ref());
     match (&p.managed, p.socket_live) {
         (Some(m), _) if m.version == version => list.pass(Row::Skiff, format!("Skiff {version} is installed. Skiff manages it.")),
-        (Some(m), _) => list.warn(Row::Skiff, format!("{name} runs Skiff {}. This computer runs {version}.", m.version), None),
+        // Never down: a newer server waits for this computer.
+        (Some(m), _) if newer(&m.version, version) => {
+            list.warn(Row::Skiff, format!("{name} runs Skiff {}, newer than this computer's {version}. Update Skiff on this computer.", m.version), None)
+        }
+        (Some(_), _) if update_failed.is_some() => list.warn(Row::Skiff, update_failed.unwrap_or_default().to_string(), Some(Fix::UpdateSkiff)),
+        (Some(m), _) => list.warn(Row::Skiff, format!("Update available. {name} runs Skiff {}. This computer runs {version}.", m.version), Some(Fix::UpdateSkiff)),
         (None, true) => {
             let v = running.map(|d| format!(" {}", d.version)).unwrap_or_default();
             list.pass(Row::Skiff, format!("{name} runs Skiff{v} from its own install. Skiff uses it as it is."));
@@ -478,6 +486,14 @@ fn projects(answer: anyhow::Result<String>, managed: bool, name: &str) -> Line {
             managed.then_some(Fix::StartSkiff),
         ),
     }
+}
+
+/// Version `a` is newer than `b`, by major.minor.patch. A part that is not
+/// a number counts as 0.
+pub fn newer(a: &str, b: &str) -> bool {
+    let parts = |v: &str| -> Vec<u64> { v.split(['.', '+', '-']).take(3).map(|p| p.parse().unwrap_or(0)).collect() };
+    let (a, b) = (parts(a), parts(b));
+    (0..3).map(|i| (a.get(i).copied().unwrap_or(0), b.get(i).copied().unwrap_or(0))).find(|(x, y)| x != y).is_some_and(|(x, y)| x > y)
 }
 
 /// Row 10. A warning, never a failure: the Host works while you are logged in.
@@ -642,7 +658,7 @@ mod tests {
 
     fn server(p: &Probe) -> (bool, Vec<(Row, State, Option<Fix>, String)>) {
         let mut list = List::default();
-        let go = server_rows(&mut list, p, "devbox", "2.0.0");
+        let go = server_rows(&mut list, p, "devbox", "2.0.0", None);
         (go, list.rows.into_iter().map(|l| (l.row, l.state, l.fix, l.text)).collect())
     }
 
@@ -657,7 +673,7 @@ mod tests {
         let (go, rows) = server(&other);
         assert!(go && rows.iter().all(|r| r.2.is_none()), "{rows:?}");
         assert!(rows[1].3.contains("from its own install"));
-        // Ours, stopped: Start. Ours, older: a warning, no button.
+        // Ours, stopped: Start. Ours, older: Update. Ours, newer: never down.
         let ours = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27 }), ..probe() };
         let (go, rows) = server(&ours);
         assert!(!go);
@@ -665,13 +681,24 @@ mod tests {
         let older = Probe { managed: Some(Managed { version: "1.9.0".into(), protocol: 27 }), socket_live: true, ..probe() };
         let (go, rows) = server(&older);
         assert!(go);
+        assert_eq!((rows[1].1, rows[1].2), (State::Warning, Some(Fix::UpdateSkiff)));
+        assert!(rows[1].3.starts_with("Update available."));
+        let newer_one = Probe { managed: Some(Managed { version: "2.10.0".into(), protocol: 27 }), socket_live: true, ..probe() };
+        let (_, rows) = server(&newer_one);
         assert_eq!((rows[1].1, rows[1].2), (State::Warning, None));
+        assert!(rows[1].3.contains("Update Skiff on this computer"));
         // Not a Skiff platform: the row says what it found.
         let (go, rows) = server(&Probe { os: "FreeBSD".into(), arch: "amd64".into(), ..probe() });
         assert!(!go && rows[0].3.contains("FreeBSD on amd64"));
         // A Mac server: Install, the same as Linux.
         let (_, rows) = server(&Probe { os: "Darwin".into(), arch: "arm64".into(), systemd: false, ..probe() });
         assert_eq!((rows[1].1, rows[1].2), (State::Failed, Some(Fix::InstallSkiff)));
+    }
+
+    #[test]
+    fn versions_compare_by_number() {
+        assert!(newer("2.10.0", "2.9.9") && newer("2.0.1", "2.0.0") && newer("3", "2.9"));
+        assert!(!newer("2.0.0", "2.0.0") && !newer("2.0.0-rc.1", "2.0.0") && !newer("1.6.6", "2.0.0"));
     }
 
     #[test]

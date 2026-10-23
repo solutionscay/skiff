@@ -33,7 +33,7 @@ class El {
 
 function tab(report?: unknown) {
   const calls: [string, unknown][] = [];
-  const dialogs: { title: string; body?: string; content?: El[]; submit: () => Promise<void>; onClose?: () => void }[] = [];
+  const dialogs: { title: string; body?: string; tone?: string; content?: El[]; submit: () => Promise<void>; onClose?: () => void }[] = [];
   let prompt: { value?: string; submit: (v: string) => Promise<void> } | null = null;
   const hosts = [{ id: "h_dev", name: "devbox", destination: "devbox", user: "me", port: 2222, socket: "/run/user/1000/skiff/skiffd.sock", socket_override: false, state: "attention" }];
   const invoke = async (c: string, a?: unknown) => {
@@ -42,6 +42,10 @@ function tab(report?: unknown) {
     if (c === "ssh_aliases") return [{ name: "devbox", goes_to: "me@devbox.lan" }];
     if (c === "check_host" && report) return report;
     if (c === "uninstall_preview") return { managed: true, sessions: ["build", "shell"] };
+    if (c === "update_skiff")
+      return (a as { endSessions: boolean }).endSessions
+        ? { result: "done", from: "1.9.0", restarted: true, version: "2.0.0", source: "release" }
+        : { result: "no_handover", from: "1.9.0", sessions: ["build", "api"], version: "2.0.0", source: "release" };
     if (c === "install_skiff") return { source: "release", version: "2.0.0", cli_linked: true, changed: true, how: "systemd", linger: "yes", running: true };
     if (c === "check_host") return { ok: true, rows: [{ row: "reach", title: "Reach the server", state: "passed", text: "devbox.lan answers. 12 ms." }] };
   };
@@ -215,4 +219,31 @@ test("Install Skiff on a Mac names the LaunchAgent and when it starts again", as
   const body = x.dialogs.at(-1)!.body ?? "";
   assert.ok(body.startsWith("Skiff 2.0.0 for macOS aarch64."), body);
   assert.ok(body.includes("~/Library/LaunchAgents") && body.includes("start when you log in there") && body.includes("skiff-host (projects)"), body);
+});
+
+test("Update Skiff asks once; when sessions would end, a red dialog names them first", async () => {
+  const x = tab({
+    ok: true,
+    platform: ["linux", "x86_64"],
+    version: "2.0.0",
+    rows: [{ row: "skiff", title: "Skiff on the server", state: "warning", text: "Update available. devbox runs Skiff 1.9.0. This computer runs 2.0.0.", fix: "update_skiff" }],
+  });
+  await x.t.load();
+  x.t.open({ check: "h_dev" });
+  for (let i = 0; i < 4; i++) await flush();
+  x.redraw();
+  x.page().find("Update Skiff…")!.click();
+  assert.equal(x.dialogs.at(-1)!.title, "Update Skiff on devbox?");
+  assert.equal(x.calls.filter(([c]) => c === "update_skiff").length, 0, "nothing runs before the confirm");
+  await x.dialogs.at(-1)!.submit();
+  for (let i = 0; i < 4; i++) await flush();
+  const red = x.dialogs.at(-1)!;
+  assert.equal(red.tone, "danger");
+  assert.ok(red.body!.includes("ends the 2 sessions on devbox: build, api"), red.body);
+  await red.submit();
+  for (let i = 0; i < 4; i++) await flush();
+  assert.equal(
+    JSON.stringify(x.calls.filter(([c]) => c === "update_skiff")),
+    JSON.stringify([["update_skiff", { id: "h_dev", endSessions: false }], ["update_skiff", { id: "h_dev", endSessions: true }]]),
+  );
 });

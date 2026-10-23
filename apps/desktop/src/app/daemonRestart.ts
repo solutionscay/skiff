@@ -6,7 +6,7 @@ import { showError } from "../ui/alerts";
 import { dialogFrame } from "../ui/dialogParts";
 import { $, button, h } from "../ui/dom";
 import { opensAtOnce } from "./daemonNotice";
-import { acceptHostIdentity } from "./hosts";
+import { acceptHostIdentity, checkShownHost } from "./hosts";
 import { branchName, taskTitle } from "../workspace/model";
 import { sessions } from "./state";
 import { place } from "./stateQueries";
@@ -20,6 +20,7 @@ const WARNINGS: Record<DaemonWarning["kind"], [string, string]> = {
   failed: ["Reload failed", "skiffd did not come back"],
   remote: ["Host problem", "The remote Host needs attention"],
   identity: ["Host identity changed", "Another Skiff Host answers"],
+  update: ["Update available", "Skiff on the Host is older"],
 };
 
 let shown: DaemonWarning | null = null;
@@ -63,7 +64,7 @@ export function daemonBadge(warning: DaemonWarning | null, requested = false) {
   const badge = button("tb-cell daemon-badge", "", () => (pop.isConnected ? close() : open()));
   badge.id = "daemon-badge";
   const [label, title] = WARNINGS[warning.kind];
-  badge.append(h("span", "dot " + (warning.kind === "newer" ? "idle" : "waiting")), whenIdle ? "Restarts when idle" : label);
+  badge.append(h("span", "dot " + (warning.kind === "newer" || warning.kind === "update" ? "idle" : "waiting")), whenIdle ? "Restarts when idle" : label);
   badge.setAttribute("aria-haspopup", "dialog");
   $("open-settings").before(badge);
 
@@ -86,6 +87,14 @@ export function daemonBadge(warning: DaemonWarning | null, requested = false) {
   const foot = h("div", "confirm-foot");
   // This app never restarts or updates skiffd on a remote Host.
   if (warning.kind === "remote") foot.append(later);
+  else if (warning.kind === "update")
+    foot.append(
+      later,
+      button("confirm-act", "Update Skiff…", () => {
+        close();
+        checkShownHost();
+      }),
+    );
   else if (warning.kind === "identity")
     foot.append(
       later,

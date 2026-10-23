@@ -42,7 +42,7 @@ interface CheckLine {
   text: string;
   fix: Fix | null;
 }
-type Fix = "trust_key" | "review_key" | "make_key" | "unlock_key" | "install_key" | "copy_public_key" | "fix_permissions" | "install_skiff" | "start_skiff" | "turn_on_linger";
+type Fix = "trust_key" | "review_key" | "make_key" | "unlock_key" | "install_key" | "copy_public_key" | "fix_permissions" | "install_skiff" | "start_skiff" | "turn_on_linger" | "update_skiff";
 const FIX_LABEL: Record<Fix, string> = {
   trust_key: "Trust this key…",
   review_key: "Review…",
@@ -54,7 +54,15 @@ const FIX_LABEL: Record<Fix, string> = {
   install_skiff: "Install Skiff…",
   start_skiff: "Start",
   turn_on_linger: "Turn on…",
+  update_skiff: "Update Skiff…",
 };
+/** What `update_skiff` did. */
+type Updated = { version: string; source: string } & (
+  | { result: "done"; from: string; restarted: boolean }
+  | { result: "same" }
+  | { result: "newer"; version: string }
+  | { result: "no_handover"; from: string; sessions: string[] }
+);
 interface Fingerprint {
   kind: string;
   sha256: string;
@@ -259,6 +267,7 @@ export function createHostsTab(redraw: () => void) {
       table.append(row);
     }
     main.append(table);
+    if (x) main.append(autoUpdate(x));
     if (c.error) main.append(alert(c.error));
     if (c.note) main.append(h("div", "set-note", c.note));
     const acts = h("div", "set-form-acts");
@@ -290,6 +299,7 @@ export function createHostsTab(redraw: () => void) {
         return again();
       }
       if (fix === "turn_on_linger") return turnOnLinger(x, again);
+      if (fix === "update_skiff") return updateSkiff(c, x);
       if (fix === "copy_public_key") {
         await copyText(await invoke<string>("public_key", { id: x.id }));
         c.note = `Public key copied. A public key is safe to send. It does not let anyone log in as you. When the admin of ${x.name} adds it, check again.`;
@@ -330,6 +340,77 @@ export function createHostsTab(redraw: () => void) {
           redraw();
         }
       },
+    });
+  }
+
+  /** The Host's own setting: on, an older install Skiff made is updated as
+   *  the app connects, when every session survives. */
+  function autoUpdate(x: KnownHost): HTMLElement {
+    const row = h("label", "set-row set-open set-host-field set-auto-update");
+    const box = h("input");
+    box.type = "checkbox";
+    box.checked = x.auto_update;
+    box.addEventListener("change", async () => {
+      try {
+        await invoke("set_host_auto_update", { id: x.id, on: box.checked });
+        await loadHosts();
+      } catch (e) {
+        box.checked = !box.checked;
+        alertCheck(e);
+      }
+    });
+    row.append(box, h("span", "c-text", `Update Skiff on this server automatically. Only a Skiff that Skiff installed, and only when its sessions keep running.`));
+    return row;
+  }
+
+  /** Update Skiff…: one confirm. When skiffd cannot keep its sessions, the
+   *  update stops, and a red dialog names the sessions it would end. */
+  function updateSkiff(c: Check, x: KnownHost) {
+    const v = c.report?.version ?? "";
+    actionDialog({
+      title: `Update Skiff on ${x.name}?`,
+      body: `Skiff ${v} goes in ~/.local/share/skiff/server on ${x.name}, beside the version there now, which Skiff keeps for a rollback. skiffd moves to the new version and keeps its sessions running. If the update fails, the old version keeps running.`,
+      action: "Update Skiff",
+      tone: "go",
+      submit: () => void runUpdate(c, x, false),
+    });
+  }
+
+  async function runUpdate(c: Check, x: KnownHost, endSessions: boolean) {
+    c.note = `Updating Skiff on ${x.name}…`;
+    c.error = null;
+    redraw();
+    try {
+      const r = await invoke<Updated>("update_skiff", { id: x.id, endSessions });
+      if (r.result === "no_handover") return endsSessions(c, x, r.from, r.sessions);
+      await runCheck(x.id);
+      const dev = r.source === "this build" ? ` This dev build sent its own binaries, as no release has Skiff ${r.version}.` : "";
+      const note =
+        r.result === "done"
+          ? `Updated Skiff on ${x.name} from ${r.from} to ${r.version}.${r.restarted ? " skiffd started again." : " Its sessions kept running."}${dev}`
+          : r.result === "newer"
+            ? `${x.name} runs Skiff ${r.version}, newer than this computer. Skiff does not change it.`
+            : `${x.name} runs Skiff ${r.version} already.`;
+      if (check) check.note = note;
+      redraw();
+    } catch (e) {
+      c.note = undefined;
+      c.error = String(e);
+      redraw();
+    }
+  }
+
+  /** The red dialog: this update ends the sessions it names. */
+  function endsSessions(c: Check, x: KnownHost, from: string, sessions: string[]) {
+    c.note = undefined;
+    redraw();
+    const n = sessions.length;
+    actionDialog({
+      title: `Update Skiff on ${x.name} and end ${n === 1 ? "1 session" : `${n} sessions`}?`,
+      body: `Skiff ${from} on ${x.name} cannot hand its sessions to the new version. This update ends the ${n === 1 ? "session" : `${n} sessions`} on ${x.name}: ${sessions.join(", ")}. Save their work first. Nothing changed yet.`,
+      action: n === 1 ? "Update and end 1 session" : `Update and end ${n} sessions`,
+      tone: "danger",
+      submit: () => void runUpdate(c, x, true),
     });
   }
 

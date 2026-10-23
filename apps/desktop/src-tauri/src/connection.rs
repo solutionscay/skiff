@@ -130,8 +130,16 @@ const REMOTE_HELLO_TIMEOUT: Duration = Duration::from_secs(15);
 /// repeat ssh's own output.
 async fn connect_remote(app: &App, selection: &HostSelection, guard: &mut Option<Arc<SelectedHost>>) -> Result<(Arc<SelectedHost>, bool), String> {
     let destination = selection.ssh_target().map(|t| t.destination.clone()).unwrap_or_default();
-    match try_remote(app, selection, &destination, crate::hosts::path()).await {
+    let arrival = match selection.ssh_target() {
+        Some(t) => crate::hosts::update_on_connect(t).await,
+        None => None,
+    };
+    match try_remote(app, selection, &destination, arrival.as_ref(), crate::hosts::path()).await {
         Ok(host) => {
+            // The passive note: "skiffd 2.1 (updated from 2.0)".
+            if let Some(from) = arrival.and_then(|a| a.updated_from) {
+                *app.replaced.lock().await = Some(from);
+            }
             if let Some(t) = selection.ssh_target().cloned() {
                 tauri::async_runtime::spawn_blocking(move || crate::hosts::note_login(&t, true));
             }
@@ -158,21 +166,16 @@ async fn connect_remote(app: &App, selection: &HostSelection, guard: &mut Option
     }
 }
 
-async fn try_remote(app: &App, selection: &HostSelection, destination: &str, file: PathBuf) -> anyhow::Result<Arc<SelectedHost>> {
+async fn try_remote(app: &App, selection: &HostSelection, destination: &str, arrival: Option<&crate::hosts::Arrival>, file: PathBuf) -> anyhow::Result<Arc<SelectedHost>> {
     let mut c = selection.connect().await?;
     let info = match tokio::time::timeout(REMOTE_HELLO_TIMEOUT, c.daemon_info()).await {
         Ok(info) => info?,
         Err(_) => anyhow::bail!(RemoteSilent),
     };
-    *app.warning.lock().await = (info.protocol != skiff_core::PROTOCOL).then(|| Warning {
-        kind: "remote",
-        message: format!(
-            "skiffd {} on {destination} speaks protocol {}, and this app speaks {}. Parts of the app fail. \
-             Update Skiff on {destination}: this app does not change it.",
-            info.version, info.protocol, skiff_core::PROTOCOL
-        ),
-        sessions: None,
-    });
+    let name = arrival.map_or(destination, |a| a.name.as_str());
+    let managed = arrival.is_some_and(|a| a.managed);
+    *app.warning.lock().await =
+        crate::hosts::version_warning(name, &info.version, info.protocol, managed).map(|(kind, message)| Warning { kind, message, sessions: None });
     let first = selection.pinned().is_none();
     let host = Arc::new(c.activate().await?);
     if first {
@@ -259,8 +262,9 @@ pub(crate) fn remote_failure(e: &anyhow::Error, destination: &str) -> (Option<Wa
 #[derive(Serialize, Clone)]
 pub(crate) struct Warning {
     /// `outdated`, `protocol`, `newer`, `hung`, `failed` for a reload that
-    /// did not come back, `remote` for a remote Host's problem, or
-    /// `identity` for a remote Host that reported another identity.
+    /// did not come back, `remote` for a remote Host's problem,
+    /// `identity` for a remote Host that reported another identity, or
+    /// `update` for a Skiff that Skiff installed there and can update.
     pub(crate) kind: &'static str,
     pub(crate) message: String,
     /// Live sessions a restart would stop. `None` when the daemon did not say.
@@ -1427,23 +1431,23 @@ mod tests {
             let obstruction = file.with_extension(format!("toml.{}.tmp", std::process::id()));
             std::fs::create_dir(&obstruction).unwrap();
             for attempt in 0..2 {
-                let r = try_remote(&app, &first, "fixture", file.clone()).await;
+                let r = try_remote(&app, &first, "fixture", None, file.clone()).await;
                 assert!(r.is_err(), "attempt {attempt} connected with no stored pin");
                 assert_eq!(first.pinned(), None, "attempt {attempt} pinned an unstored identity");
                 assert_eq!(disk_pin(), None);
             }
             std::fs::remove_dir(&obstruction).unwrap();
-            let retry = try_remote(&app, &first, "fixture", file.clone()).await;
+            let retry = try_remote(&app, &first, "fixture", None, file.clone()).await;
             assert!(retry.is_ok(), "{:?}", retry.err());
             assert_eq!(disk_pin().as_deref(), Some("A"), "the retry connected without storing its pin");
             assert_eq!(first.pinned().map(|p| p.as_str().to_string()).as_deref(), Some("A"));
             drop(retry);
             // Another Host answers there now.
             std::fs::write(&id_file, "B").unwrap();
-            assert!(changed(&try_remote(&app, &first, "fixture", file.clone()).await), "the same selection accepted B");
+            assert!(changed(&try_remote(&app, &first, "fixture", None, file.clone()).await), "the same selection accepted B");
             drop(first);
             let rebuilt = selection(disk_pin().as_deref());
-            assert!(changed(&try_remote(&app, &rebuilt, "fixture", file.clone()).await), "a rebuilt selection accepted B");
+            assert!(changed(&try_remote(&app, &rebuilt, "fixture", None, file.clone()).await), "a rebuilt selection accepted B");
             assert_eq!(disk_pin().as_deref(), Some("A"));
         });
         let _ = std::fs::remove_dir_all(&dir);
