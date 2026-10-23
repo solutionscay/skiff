@@ -928,8 +928,17 @@ OpenSSH stream-local forward to the remote skiffd socket.
     never does.
   - No sudo, nothing outside the account's home and runtime folder, and no
     install on macOS servers yet: the row says so.
+- **Remove and uninstall** (#166 slice 8, `skiff-client::host::uninstall`,
+  `server.sh`): **Remove…** forgets the Host on this computer, and its
+  sessions keep running. When the install there is Skiff's, the confirm
+  has a box: also stop and uninstall Skiff, which names the sessions that
+  end. Checked, Skiff stops and disables its user services, deletes
+  `~/.local/share/skiff/server`, its unit files and the `~/.local/bin/skiff`
+  link if it is Skiff's, then forgets the Host. A unit or a pid counts as
+  Skiff's only when it runs from the managed folder. Projects, skiffd's
+  session data and `local-host-id` stay. A failed uninstall keeps the Host.
 - **Remote commands:** the probe, the key install, the key-file fix, the
-  upload and the server steps (install, start, linger). All are fixed
+  upload and the server steps (install, start, linger, sessions, uninstall). All are fixed
   scripts in the app; their values (a version, a hash, a socket name, a key
   line) are checked against strict patterns and single-quoted.
 - **The check list** (Settings › Hosts › Check, and Connect): reach the

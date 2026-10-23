@@ -479,17 +479,50 @@ export function createHostsTab(redraw: () => void) {
     });
   }
 
-  async function remove(x: KnownHost) {
-    const ok = await confirmAction({
-      title: `Remove ${x.name}?`,
-      body: `Skiff removes it from this computer's Host list. Its sessions keep running on ${x.name}.`,
-      action: "Remove Host",
+  /**
+   * Remove forgets the Host here. When Skiff installed Skiff there, a box
+   * also stops and uninstalls it. The box shows only after the server says
+   * so, and the copy names the sessions that end and what stays.
+   */
+  function remove(x: KnownHost) {
+    const kept = `Skiff removes it from this computer's Host list. Its sessions keep running on ${x.name}.`;
+    const body = h("div", "confirm-body", kept);
+    const extra = h("div", "set-remove-box");
+    const status = h("div", "set-sub", `Skiff checks what it installed on ${x.name}…`);
+    extra.append(status);
+    const box = h("input") as HTMLInputElement;
+    box.type = "checkbox";
+    box.id = "set-uninstall";
+    let ends = "";
+    box.addEventListener("change", () => {
+      body.textContent = box.checked
+        ? `Skiff stops and disables its services on ${x.name} and deletes the files it installed there. ${ends} Your projects and all other files on ${x.name} stay. Then Skiff removes ${x.name} from this computer's Host list.`
+        : kept;
     });
-    if (!ok) return;
-    error = null;
-    await invoke("remove_host", { id: x.id }).catch((e) => (error = String(e)));
-    await loadHosts().catch(() => {});
-    redraw();
+    actionDialog({
+      title: `Remove ${x.name}?`,
+      content: [body, extra],
+      action: "Remove Host",
+      tone: "danger",
+      submit: async () => {
+        error = null;
+        await invoke("remove_host", { id: x.id, uninstall: box.checked });
+        await loadHosts().catch(() => {});
+        redraw();
+      },
+    });
+    invoke<{ managed: boolean; sessions: string[] }>("uninstall_preview", { id: x.id }).then(
+      (p) => {
+        if (!p.managed) return void (status.textContent = `Skiff did not install Skiff on ${x.name}, so it leaves Skiff there as it is.`);
+        const n = p.sessions.length;
+        ends = n === 0 ? "No sessions run there." : `This ends its ${n === 1 ? "session" : `${n} sessions`}: ${p.sessions.join(", ")}.`;
+        const label = h("label", "set-check-label");
+        label.setAttribute("for", "set-uninstall");
+        label.append(box, h("span", "", `Also stop and uninstall Skiff on ${x.name}. ${ends}`));
+        status.replaceWith(label);
+      },
+      () => void (status.textContent = `Skiff cannot reach ${x.name} now, so it can only remove it from this computer.`),
+    );
   }
 
   function drawForm(f: Form): HTMLElement {

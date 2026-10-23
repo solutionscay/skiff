@@ -168,3 +168,7 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-prints.old .mono { text-decoration: line-through; color: var(--text-3); }
 .set-check.warning .c-name, .set-check.warning .c-text { color: var(--state-waiting-text); }
 .set-check.warning .sq { background: var(--state-waiting); }
+.set-remove-box { padding: calc(12 * var(--u)) calc(20 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(13px * var(--zoom, 1)); line-height: 1.6; color: var(--text-2); }
+.set-remove-box .set-sub { font-size: calc(12px * var(--zoom, 1)); }
+.set-check-label { display: flex; gap: calc(8 * var(--u)); align-items: baseline; cursor: pointer; }
+.set-check-label input { flex-shrink: 0; margin: 0; accent-color: var(--danger); }

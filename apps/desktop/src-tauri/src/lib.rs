@@ -113,6 +113,7 @@ pub fn run() {
             hosts::edit_host,
             hosts::rename_host,
             hosts::remove_host,
+            hosts::uninstall_preview,
             hosts::ssh_aliases,
             hosts::resolve_ssh,
             hosts::check_host,

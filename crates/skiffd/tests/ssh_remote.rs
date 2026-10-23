@@ -803,3 +803,74 @@ async fn skiff_installs_once_into_the_home_and_its_skiffd_answers() {
     assert_eq!(std::fs::read_to_string(&pidfile).unwrap(), pid);
     assert_eq!(linger(), linger_before, "this account's linger did not change");
 }
+
+/// #166 slice 8, over the loopback sshd with a temp home and runtime
+/// folder, as above. Uninstall stops the managed skiffd and deletes the
+/// managed folder and Skiff's link. Projects, other Skiff data and a
+/// process Skiff did not start stay.
+#[tokio::test]
+async fn remove_and_uninstall_deletes_only_the_managed_install() {
+    use skiff_client::host::{install, uninstall};
+    let Some(mut f) = fixture("u") else { return };
+    let d = f.dir.clone();
+    for sub in ["home/projects", "home/.local/share/skiff", "run", "beside"] {
+        std::fs::create_dir_all(d.join(sub)).unwrap();
+    }
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(d.join("run"), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let text = std::fs::read_to_string(d.join("sshd_config")).unwrap();
+    f.write("sshd_uninstall", &format!("{text}SetEnv HOME={0}/home XDG_RUNTIME_DIR={0}/run\n", d.display()));
+    assert!(f.start_sshd("sshd_uninstall"));
+    std::fs::copy(Path::new(env!("CARGO_BIN_EXE_skiffd")), d.join("beside/skiffd")).unwrap();
+    // A stand-in skiff that lists one session, as `skiff ls --json` does.
+    for (b, body) in [("skiff-host", "exit 0"), ("skiff", r#"echo '[{"id":"a1","label":"shell","name":"build"}]'"#)] {
+        std::fs::write(d.join("beside").join(b), format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(d.join("beside").join(b), std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let version = "9.9.9-test";
+    let b = install::dev_bundle(version, std::env::consts::ARCH, &d.join("beside")).await.unwrap();
+    let target = SshTarget::new("fixture", "");
+    let options = f.options("ssh_config");
+    let name = "skiffd-dev.sock";
+    let done = install::install(&target, &options, &b, version, name, 0, "fixture").await.unwrap();
+    assert!(done.running && done.cli_linked, "{done:?}");
+    let server = d.join("home/.local/share/skiff/server");
+    let pid: i32 = std::fs::read_to_string(server.join("skiffd.pid")).unwrap().trim().parse().unwrap();
+    struct Stop(i32);
+    impl Drop for Stop {
+        fn drop(&mut self) {
+            // SAFETY: a signal to the one process this test started.
+            unsafe { libc::kill(self.0, libc::SIGTERM) };
+        }
+    }
+    let _stop = Stop(pid);
+    // Files that are not Skiff's install, and a process that is not Skiff's
+    // behind a pid file in the managed folder: all of them stay.
+    std::fs::write(d.join("home/projects/keep.txt"), "mine").unwrap();
+    std::fs::write(d.join("home/.local/share/skiff/keep"), "data").unwrap();
+    let mut other = Command::new("sleep").arg("30").spawn().unwrap();
+    std::fs::write(server.join("skiff-host.pid"), other.id().to_string()).unwrap();
+
+    let p = uninstall::preview(&target, &options, name).await.unwrap();
+    assert_eq!(p, uninstall::Preview { managed: true, sessions: vec!["build".into()] });
+    uninstall::uninstall(&target, &options, "fixture").await.unwrap();
+
+    let alive = |p: i32| unsafe { libc::kill(p, 0) } == 0;
+    for _ in 0..50 {
+        if !alive(pid) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert!(!alive(pid), "the managed skiffd stopped");
+    assert!(!server.exists(), "the managed folder is gone");
+    assert!(std::fs::symlink_metadata(d.join("home/.local/bin/skiff")).is_err(), "Skiff's link is gone");
+    assert!(d.join("home/projects/keep.txt").exists() && d.join("home/.local/share/skiff/keep").exists());
+    assert!(other.try_wait().unwrap().is_none(), "a process Skiff did not start keeps running");
+    let _ = other.kill();
+
+    // Nothing is Skiff's any more: no box, and an uninstall refuses.
+    assert!(!uninstall::preview(&target, &options, name).await.unwrap().managed);
+    let e = uninstall::uninstall(&target, &options, "fixture").await.unwrap_err();
+    assert!(e.contains("did not install"), "{e}");
+}

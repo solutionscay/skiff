@@ -1,6 +1,6 @@
 # Skiff's managed install on a Linux server, in the account's home only. No
-# sudo, no system folder. $1: install, start or linger. install: $2 the
-# version, $3 the SHA-256 of the bundle Skiff uploaded to
+# sudo, no system folder. $1: install, start, linger, sessions or
+# uninstall. install: $2 the version, $3 the SHA-256 of the bundle Skiff uploaded to
 # ~/.local/share/skiff/server/.incoming.tar.gz, $4 the skiffd socket name.
 # start: $2 the socket name. Each step prints key=value lines and ends with
 # skiff-<mode>=<outcome>. It never stops or replaces a skiffd it did not
@@ -97,9 +97,59 @@ install() {
   echo "skiff-install=done"
 }
 
+# Remove and uninstall. A unit or a pid is Skiff's only when it runs from
+# the managed folder; anything else is left as it is.
+ours_unit() { [ -f "$1" ] && grep -q '^ExecStart=%h/.local/share/skiff/server/current/' "$1"; }
+ours_pid() { [ -n "$1" ] && kill -0 "$1" 2>/dev/null && case "$(ps -o args= -p "$1" 2>/dev/null)" in "$d"/*) true ;; *) false ;; esac; }
+
+# The managed skiffd's sessions, as `skiff ls --json` on one line. $1: the
+# socket name. managed=no: Skiff did not install Skiff here.
+sessions() {
+  [ -f "$d/installed-by" ] || { echo managed=no; echo "skiff-sessions=done"; return; }
+  echo managed=yes
+  up=no
+  if has_systemd && ours_unit "$HOME/.config/systemd/user/skiffd.service" && systemctl --user -q is-active skiffd; then up=yes
+  elif ours_pid "$(cat "$d/skiffd.pid" 2>/dev/null)"; then up=yes; fi
+  if [ $up = yes ] && [ -x "$d/current/skiff" ]; then
+    printf 'sessions='; "$d/current/skiff" --socket "$rt/skiff/$1" ls --json 2>/dev/null | tr -d '\n'; echo
+  fi
+  echo "skiff-sessions=done"
+}
+
+# Stops and disables Skiff's services, then deletes the managed folder,
+# Skiff's unit files and the skiff link if it is Skiff's. Projects, session
+# data and local-host-id stay.
+uninstall() {
+  [ -f "$d/installed-by" ] || { echo "skiff-uninstall=unmanaged"; return; }
+  u=$HOME/.config/systemd/user
+  if has_systemd; then
+    for s in skiff-host skiffd; do
+      if ours_unit "$u/$s.service"; then
+        systemctl --user disable --now -q "$s" 2>/dev/null
+        rm -f "$u/$s.service"
+      fi
+    done
+    systemctl --user daemon-reload 2>/dev/null
+  fi
+  for s in skiff-host skiffd; do
+    pid=$(cat "$d/$s.pid" 2>/dev/null)
+    ours_pid "$pid" || continue
+    kill "$pid" 2>/dev/null
+    n=0
+    while kill -0 "$pid" 2>/dev/null && [ $n -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+  done
+  l=$HOME/.local/bin/skiff
+  [ -L "$l" ] && [ "$(readlink "$l")" = "$d/current/skiff" ] && rm -f "$l"
+  rm -rf "${d:?}"
+  echo "skiff-uninstall=done"
+}
+
 case $mode in
   install) mkdir -p "$d"; install "$2" "$3"; start "$4" ;;
   start) start "$2" ;;
   linger) linger; echo "skiff-linger=done" ;;
+  sessions) sessions "$2" ;;
+  uninstall) uninstall ;;
   *) echo "skiff-$mode=unknown" ;;
 esac
