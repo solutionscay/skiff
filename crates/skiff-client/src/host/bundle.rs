@@ -9,10 +9,10 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The release key's public half, set by the release job at build time
-/// (`SKIFF_SERVER_PUBLIC_KEY`, the base64 line of a minisign public key).
-/// `None` in a build without it: no bundle passes.
-pub const PUBLIC_KEY: Option<&str> = option_env!("SKIFF_SERVER_PUBLIC_KEY");
+/// The public half of the release key that signs server bundles (minisign,
+/// key id 4B7D9FC893B9C075). Its secret half is the release job's
+/// `SKIFF_SERVER_SIGNING_KEY`, and the job checks that the two match.
+pub const PUBLIC_KEY: &str = include_str!("server-bundle.pub");
 
 /// `manifest.json` in a bundle.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -35,10 +35,7 @@ pub fn bundle_name(version: &str, os: &str, arch: &str) -> String {
 
 /// Checks `bytes` against its `.minisig` with this build's key.
 pub fn verify(name: &str, bytes: &[u8], minisig: &str) -> Result<(), String> {
-    let Some(key) = PUBLIC_KEY.filter(|k| !k.trim().is_empty()) else {
-        return Err("This build of Skiff has no key to check server bundles. Skiff did not use the bundle.".into());
-    };
-    verify_with(key, name, bytes, minisig)
+    verify_with(PUBLIC_KEY, name, bytes, minisig)
 }
 
 /// Checks `bytes`, named `name`, against `minisig` and the minisign public
@@ -91,11 +88,19 @@ mNE7KC4NXZ3+jDHRVzwnNFPVzEL8fHMG754TiG5vCdXtT98GpoPcMuF221TKeqvTRx5ahcm/NQmYrNFU
         assert!(verify_with("", NAME, BYTES, SIG).is_err());
     }
 
+    /// The committed key is the release key: a message it signed when it
+    /// was made passes, and the test key's bundle does not.
     #[test]
-    fn a_build_without_the_release_key_uses_no_bundle() {
-        if PUBLIC_KEY.is_none() {
-            assert!(verify(NAME, BYTES, SIG).unwrap_err().contains("no key"));
-        }
+    fn the_app_key_is_the_release_key() {
+        let name = "skiff-server-0.0.0-check.tar.gz";
+        let sig = "untrusted comment: signature from minisign secret key\n\
+RUR1wLmTyJ99S+ltS844PgTk6/K+AoSZkOyKhCna7yj7Xdjl/xQ8Mue1X3CdJe8ZEngb2nu+6yIM8NamJ46ejyYma04kigEIHQg=\n\
+trusted comment: file:skiff-server-0.0.0-check.tar.gz\n\
+6HJYwzn1k9R6cXPTR4cK0CX4R4u0gx8/k0Dl8IyryUaAKg6ezIE/sfwIEEqfgSuONouHO3+b4DMXCxG6HS1mAw==\n";
+        assert!(PUBLIC_KEY.contains("4B7D9FC893B9C075"));
+        assert_eq!(verify(name, b"skiff-server release key check\n", sig), Ok(()));
+        assert!(verify(name, b"skiff-server release key check?\n", sig).is_err());
+        assert!(verify(NAME, BYTES, SIG).is_err(), "the test key is not the release key");
     }
 
     #[test]

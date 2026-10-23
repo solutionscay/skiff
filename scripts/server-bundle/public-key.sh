@@ -1,6 +1,7 @@
 #!/bin/sh
-# Prints the base64 line of the public key of SKIFF_SERVER_SIGNING_KEY, for
-# the app build (SKIFF_SERVER_PUBLIC_KEY). Prints nothing without the key.
+# Prints the base64 line of the public key of SKIFF_SERVER_SIGNING_KEY, so
+# the release job can check it against the key the app carries. Prints
+# nothing without the key.
 # MINISIGN: the minisign program. Default: minisign on PATH.
 set -eu
 [ -n "${SKIFF_SERVER_SIGNING_KEY:-}" ] || exit 0

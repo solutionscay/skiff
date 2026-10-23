@@ -7,9 +7,10 @@ name: Release
 # Server bundles (skiff-server-<version>-<os>-<arch>.tar.gz) are signed with
 # minisign. The job reads the secret key from the SKIFF_SERVER_SIGNING_KEY
 # secret: the contents of a key file made with no password (minisign -G -W).
-# The app builds carry its public half (SKIFF_SERVER_PUBLIC_KEY) and use only
-# bundles it signed. Without the secret, the bundles build but are not
-# signed, the app builds carry no key, and the app uses no bundle.
+# The app carries its public half in the repository
+# (crates/skiff-client/src/host/server-bundle.pub) and uses only bundles it
+# signed. Without the secret, the bundles build but are not signed, and the
+# app uses none of them.
 on:
   push:
     tags: ["v*"]
@@ -19,23 +20,25 @@ permissions:
   contents: write
 
 jobs:
-  # The public half of the server-bundle key, for the app builds below.
+  # The secret must be the key whose public half the app carries.
   server-key:
     runs-on: ubuntu-22.04
-    outputs:
-      public: ${{ steps.key.outputs.public }}
     steps:
       - uses: actions/checkout@v4
       - name: minisign
         run: sh scripts/server-bundle/install-minisign.sh "$RUNNER_TEMP/minisign"
-      - id: key
+      - name: Check the key
         env:
           SKIFF_SERVER_SIGNING_KEY: ${{ secrets.SKIFF_SERVER_SIGNING_KEY }}
           MINISIGN: ${{ runner.temp }}/minisign/minisign
         run: |
           public=$(sh scripts/server-bundle/public-key.sh)
-          [ -n "$public" ] || echo "::warning::SKIFF_SERVER_SIGNING_KEY is not set. The app builds carry no key for server bundles."
-          echo "public=$public" >> "$GITHUB_OUTPUT"
+          if [ -z "$public" ]; then
+            echo "::warning::SKIFF_SERVER_SIGNING_KEY is not set. The server bundles are not signed."
+          elif [ "$public" != "$(sed -n 2p crates/skiff-client/src/host/server-bundle.pub)" ]; then
+            echo "::error::SKIFF_SERVER_SIGNING_KEY is not the key in crates/skiff-client/src/host/server-bundle.pub."
+            exit 1
+          fi
 
   # Static (musl) Linux server bundles, cross-built with zig.
   server-linux:
@@ -88,7 +91,7 @@ jobs:
   # bundle and for SHA256SUMS.
   server-sign:
     runs-on: ubuntu-22.04
-    needs: [server-linux, server-macos]
+    needs: [server-key, server-linux, server-macos]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -117,7 +120,6 @@ jobs:
 
   linux:
     runs-on: ubuntu-22.04
-    needs: server-key
     steps:
       - uses: actions/checkout@v4
 
@@ -140,8 +142,6 @@ jobs:
 
       - name: Build
         working-directory: apps/desktop
-        env:
-          SKIFF_SERVER_PUBLIC_KEY: ${{ needs.server-key.outputs.public }}
         run: |
           pnpm install --frozen-lockfile
           pnpm bundle
@@ -171,7 +171,6 @@ jobs:
 
   macos:
     runs-on: macos-14
-    needs: server-key
     env:
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
     steps:
@@ -205,7 +204,6 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          SKIFF_SERVER_PUBLIC_KEY: ${{ needs.server-key.outputs.public }}
         run: |
           pnpm install --frozen-lockfile
           pnpm bundle

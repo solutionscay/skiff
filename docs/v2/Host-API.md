@@ -897,10 +897,10 @@ OpenSSH stream-local forward to the remote skiffd socket.
   each file) and, on Linux, the systemd user units. One job writes
   `SHA256SUMS` and signs each bundle and `SHA256SUMS` with minisign, with the
   file name as the trusted comment; it reads the key from the
-  `SKIFF_SERVER_SIGNING_KEY` secret. The app builds carry the public half
-  (`SKIFF_SERVER_PUBLIC_KEY`, `skiff-client::host::bundle`), which refuses a
-  bundle whose signature fails, names another file, or that a build without
-  the key checks.
+  `SKIFF_SERVER_SIGNING_KEY` secret, and fails when that key is not the one
+  the app carries. The app carries the public half
+  (`skiff-client/src/host/server-bundle.pub`, key id 4B7D9FC893B9C075) and
+  refuses a bundle whose signature fails or names another file.
 - **Remote commands:** the probe, the key install and the key-file fix.
   All are fixed scripts in the app.
 - **The check list** (Settings › Hosts › Check, and Connect): reach the
