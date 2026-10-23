@@ -50,15 +50,17 @@ fi
 systemd=false
 unit_enabled=false
 unit_active=false
+host_unit_enabled=false
 linger=
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
   systemd=true
   systemctl --user -q is-enabled skiffd 2>/dev/null && unit_enabled=true
   systemctl --user -q is-active skiffd 2>/dev/null && unit_active=true
+  systemctl --user -q is-enabled skiff-host 2>/dev/null && host_unit_enabled=true
   linger=$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)
 fi
 fallback=false
 if [ -f "$srv/skiffd.pid" ] && kill -0 "$(cat "$srv/skiffd.pid" 2>/dev/null)" 2>/dev/null; then fallback=true; fi
 free_kb=$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2 {print $4}')
-printf '{"os":"%s","arch":"%s","runtime_dir":"%s","socket":"%s","socket_live":%s,"cli":"%s","status":%s,"managed":%s,"systemd":%s,"unit_enabled":%s,"unit_active":%s,"linger":"%s","fallback":%s,"free_kb":%s}\n' \
-  "$(esc "$os")" "$(esc "$arch")" "$(esc "$rt")" "$(esc "$sock")" "$live" "$(esc "$cli")" "$status" "$managed" "$systemd" "$unit_enabled" "$unit_active" "$(esc "$linger")" "$fallback" "${free_kb:-0}"
+printf '{"os":"%s","arch":"%s","runtime_dir":"%s","socket":"%s","socket_live":%s,"cli":"%s","status":%s,"managed":%s,"systemd":%s,"unit_enabled":%s,"unit_active":%s,"host_unit_enabled":%s,"linger":"%s","fallback":%s,"free_kb":%s}\n' \
+  "$(esc "$os")" "$(esc "$arch")" "$(esc "$rt")" "$(esc "$sock")" "$live" "$(esc "$cli")" "$status" "$managed" "$systemd" "$unit_enabled" "$unit_active" "$host_unit_enabled" "$(esc "$linger")" "$fallback" "${free_kb:-0}"

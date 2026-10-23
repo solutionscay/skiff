@@ -83,6 +83,7 @@ const CHECK_ROWS = [
   "Sessions service (skiffd)",
   "Socket forwarding",
   "Skiff identity and version",
+  "Projects service (skiff-host)",
   "Keeps running after logout",
 ];
 
@@ -306,7 +307,7 @@ export function createHostsTab(redraw: () => void) {
     const v = c.report?.version ?? "";
     actionDialog({
       title: `Install Skiff on ${x.name}?`,
-      body: `Skiff ${v} for ${os === "linux" ? "Linux" : os} ${arch}. Files go in ~/.local/share/skiff/server on ${x.name}. A user service starts skiffd (sessions) and keeps it running after you log out and after a restart. Nothing outside your home folder changes.`,
+      body: `Skiff ${v} for ${os === "linux" ? "Linux" : os} ${arch}. Files go in ~/.local/share/skiff/server on ${x.name}. Two user services start skiffd (sessions) and skiff-host (projects), and keep them running after you log out and after a restart. Nothing outside your home folder changes.`,
       action: "Install Skiff",
       tone: "go",
       submit: async () => {

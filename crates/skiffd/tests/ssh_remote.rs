@@ -803,3 +803,109 @@ async fn skiff_installs_once_into_the_home_and_its_skiffd_answers() {
     assert_eq!(std::fs::read_to_string(&pidfile).unwrap(), pid);
     assert_eq!(linger(), linger_before, "this account's linger did not change");
 }
+
+/// #166 slice 7, over the loopback sshd with a temp home and runtime
+/// folder: the install starts the real skiff-host beside skiffd, and the
+/// projects row passes. Stopped, the row is a warning with Start, and the
+/// Host stays usable; Start brings it back. An install of a new version
+/// restarts skiff-host and leaves skiffd's pid alone; the same version
+/// again restarts nothing. No systemd user manager here: the fallback.
+#[tokio::test]
+async fn skiff_host_runs_beside_the_installed_skiffd_and_comes_back() {
+    use skiff_client::host::{check, install};
+    let Some(mut f) = fixture("h") else { return };
+    let d = f.dir.clone();
+    for sub in ["home", "run", "beside"] {
+        std::fs::create_dir_all(d.join(sub)).unwrap();
+    }
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(d.join("run"), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let text = std::fs::read_to_string(d.join("sshd_config")).unwrap();
+    f.write("sshd_install", &format!("{text}SetEnv HOME={0}/home XDG_RUNTIME_DIR={0}/run\n", d.display()));
+    assert!(f.start_sshd("sshd_install"));
+
+    let skiffd = Path::new(env!("CARGO_BIN_EXE_skiffd"));
+    let host = std::env::var_os("SKIFF_HOST_BIN").map(PathBuf::from).unwrap_or_else(|| skiffd.with_file_name("skiff-host"));
+    assert!(host.is_file(), "build skiff-host first: cargo build -p skiff-host (or set SKIFF_HOST_BIN)");
+    std::fs::copy(skiffd, d.join("beside/skiffd")).unwrap();
+    std::fs::copy(&host, d.join("beside/skiff-host")).unwrap();
+    std::fs::write(d.join("beside/skiff"), "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(d.join("beside/skiff"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let arch = std::env::consts::ARCH;
+    let target = SshTarget::new("fixture", "");
+    let options = f.options("ssh_config");
+    let name = "skiffd-dev.sock";
+    let server = d.join("home/.local/share/skiff/server");
+    // Stops only the skiffd and skiff-host this test started, by their pid files.
+    struct Stop(PathBuf);
+    impl Drop for Stop {
+        fn drop(&mut self) {
+            for file in ["skiff-host.pid", "skiffd.pid"] {
+                if let Ok(pid) = std::fs::read_to_string(self.0.join(file)).map(|p| p.trim().parse::<i32>().unwrap_or(0)) {
+                    if pid > 0 {
+                        // SAFETY: a signal to one process this test started.
+                        unsafe { libc::kill(pid, libc::SIGTERM) };
+                    }
+                }
+            }
+        }
+    }
+    let _stop = Stop(server.clone());
+    let pid = |file: &str| std::fs::read_to_string(server.join(file)).unwrap().trim().to_string();
+    let input = check::CheckInput {
+        target: target.clone(),
+        name: "fixture".into(),
+        socket_override: None,
+        socket_name: name.into(),
+        pin: None,
+        forward_dir: d.join("chk"),
+        home: None,
+        agent: false,
+        installed: None,
+        version: "9.9.9-a".into(),
+        linger_refused: false,
+    };
+    let projects = |r: &check::Report| r.rows.iter().find(|l| l.row == check::Row::Projects).cloned().unwrap();
+
+    let a = install::dev_bundle("9.9.9-a", arch, &d.join("beside")).await.unwrap();
+    let first = install::install(&target, &options, &a, "9.9.9-a", name, 1 << 30, "fixture").await.unwrap();
+    assert_eq!((first.changed, first.how.as_str(), first.running, first.host_running), (true, "fallback", true, true), "{first:?}");
+    assert!(d.join("run/skiff/skiffd-dev-host.sock").exists(), "skiff-host listens beside skiffd in the fixture");
+    let report = check::check(&input, &options).await;
+    assert!(report.ok, "{:#?}", report.rows);
+    let row = projects(&report);
+    assert_eq!(row.state, check::State::Passed, "{row:?}");
+
+    // Stopped: a warning with Start; the Host is still usable.
+    let host_pid = pid("skiff-host.pid");
+    // SAFETY: the skiff-host this test started.
+    unsafe { libc::kill(host_pid.parse().unwrap(), libc::SIGTERM) };
+    let until = Instant::now() + Duration::from_secs(5);
+    while d.join("run/skiff/skiffd-dev-host.sock").exists() && Instant::now() < until {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let report = check::check(&input, &options).await;
+    let row = projects(&report);
+    assert_eq!((row.state, row.fix), (check::State::Warning, Some(check::Fix::StartSkiff)), "{row:?}");
+    assert!(report.ok, "sessions still work: {:#?}", report.rows);
+    let started = install::start(&target, &options, name).await.unwrap();
+    assert!(started.running && started.host_running, "{started:?}");
+    assert_ne!(pid("skiff-host.pid"), host_pid);
+    assert_eq!(projects(&check::check(&input, &options).await).state, check::State::Passed);
+
+    // A new version restarts skiff-host; skiffd keeps its pid (its update is slice 6).
+    let (daemon_pid, host_pid) = (pid("skiffd.pid"), pid("skiff-host.pid"));
+    let b = install::dev_bundle("9.9.9-b", arch, &d.join("beside")).await.unwrap();
+    let next = install::install(&target, &options, &b, "9.9.9-b", name, 1 << 30, "fixture").await.unwrap();
+    assert_eq!((next.changed, next.running, next.host_running), (true, true, true), "{next:?}");
+    assert_eq!(pid("skiffd.pid"), daemon_pid);
+    let restarted = pid("skiff-host.pid");
+    assert_ne!(restarted, host_pid, "the new version's skiff-host runs");
+    let exe = std::fs::read_link(format!("/proc/{restarted}/exe")).unwrap();
+    assert!(exe.ends_with("9.9.9-b/skiff-host"), "{exe:?}");
+    assert!(std::fs::read_link(format!("/proc/{host_pid}/exe")).is_err(), "the old one stopped");
+    // The same version again restarts nothing.
+    let same = install::install(&target, &options, &b, "9.9.9-b", name, 1 << 30, "fixture").await.unwrap();
+    assert_eq!((same.changed, same.host_running), (false, true), "{same:?}");
+    assert_eq!(pid("skiff-host.pid"), restarted);
+}

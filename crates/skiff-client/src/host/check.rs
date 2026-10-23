@@ -3,7 +3,8 @@
 //! computer reach the server, does it know the host key, can it log in
 //! without a prompt. The probe then says where skiffd's socket is and
 //! whether skiffd answers there. A real `-L` forward and a `ping` over it
-//! answer the last rows. Nothing here writes anywhere: the caller stores the
+//! answer the next rows, and a Hello to skiff-host beside it the projects
+//! row. Nothing here writes anywhere: the caller stores the
 //! socket the probe found.
 //!
 //! The lines follow the design rules: plain causes, the Host's name, never
@@ -59,6 +60,9 @@ pub struct Probe {
     pub unit_enabled: bool,
     #[serde(default)]
     pub unit_active: bool,
+    /// skiff-host's user unit is enabled.
+    #[serde(default)]
+    pub host_unit_enabled: bool,
     /// `loginctl … -p Linger`: `yes`, `no`, or empty without systemd.
     #[serde(default)]
     pub linger: String,
@@ -120,11 +124,12 @@ pub enum Row {
     Sessions,
     Forwarding,
     Identity,
+    Projects,
     KeepRunning,
 }
 
 impl Row {
-    pub const ALL: [Row; 9] = [Row::Reach, Row::HostKey, Row::Login, Row::Supported, Row::Skiff, Row::Sessions, Row::Forwarding, Row::Identity, Row::KeepRunning];
+    pub const ALL: [Row; 10] = [Row::Reach, Row::HostKey, Row::Login, Row::Supported, Row::Skiff, Row::Sessions, Row::Forwarding, Row::Identity, Row::Projects, Row::KeepRunning];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -136,6 +141,7 @@ impl Row {
             Row::Sessions => "Sessions service (skiffd)",
             Row::Forwarding => "Socket forwarding",
             Row::Identity => "Skiff identity and version",
+            Row::Projects => "Projects service (skiff-host)",
             Row::KeepRunning => "Keeps running after logout",
         }
     }
@@ -402,6 +408,11 @@ pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
         _ => {
             let same = if input.pin.is_some() { " Same Skiff install as before." } else { "" };
             list.pass(Row::Identity, format!("skiffd {}, protocol {}.{same}", info.version, info.protocol));
+            let answer = match skiff_host_api::HostId::try_from(host_id.clone()) {
+                Ok(id) => selection.connect_data(&id).await.map(|plane| plane.connection().hello().service_versions.get("skiff-host").map(|v| format!(" {v}")).unwrap_or_default()),
+                Err(e) => Err(anyhow::anyhow!(e)),
+            };
+            list.rows.push(projects(answer, probe.managed.is_some(), name));
             list.rows.push(keep);
         }
     }
@@ -451,13 +462,33 @@ fn server_rows(list: &mut List, p: &Probe, name: &str, version: &str) -> bool {
     true
 }
 
+/// Row 9, from skiff-host's Hello beside skiffd: ` <version>`, or why not.
+/// A warning, never a failure: sessions work without it. Only the install
+/// Skiff made gets a Start button.
+fn projects(answer: anyhow::Result<String>, managed: bool, name: &str) -> Line {
+    let line = |state, text: String, fix| Line { row: Row::Projects, title: Row::Projects.title(), state, text, fix };
+    match answer {
+        Ok(v) => line(State::Passed, format!("skiff-host{v} answers."), None),
+        Err(e) if matches!(e.downcast_ref::<skiff_host_api::Error>(), Some(skiff_host_api::Error::IdentityChanged { .. })) => line(
+            State::Warning,
+            format!("Skiff's projects service on {name} answers as another Skiff install than its sessions service. Projects, files and Git do not show."),
+            None,
+        ),
+        Err(_) => line(
+            State::Warning,
+            format!("Skiff's projects service is not running on {name}. Sessions work. Projects, files and Git do not show."),
+            managed.then_some(Fix::StartSkiff),
+        ),
+    }
+}
+
 /// Row 10. A warning, never a failure: the Host works while you are logged in.
 fn keep_running(p: &Probe, name: &str, user: &str, refused: bool) -> Line {
     let line = |state, text: String, fix| Line { row: Row::KeepRunning, title: Row::KeepRunning.title(), state, text, fix };
     if p.managed.is_none() {
         return line(State::Passed, "Its own install decides this.".into(), None);
     }
-    match (p.systemd, p.unit_enabled, p.linger.as_str()) {
+    match (p.systemd, p.unit_enabled && p.host_unit_enabled, p.linger.as_str()) {
         (true, true, "yes") => line(State::Passed, "Running. It starts again after a restart.".into(), None),
         (true, false, _) => line(State::Warning, format!("Skiff on {name} does not start again after a restart."), Some(Fix::StartSkiff)),
         (true, true, _) if refused => line(
@@ -596,6 +627,7 @@ mod tests {
             systemd: true,
             unit_enabled: false,
             unit_active: false,
+            host_unit_enabled: false,
             linger: "no".into(),
             fallback: false,
             free_kb: 1 << 20,
@@ -638,20 +670,35 @@ mod tests {
 
     #[test]
     fn keeping_it_running_is_a_warning_with_one_fix() {
-        let ours = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27 }), unit_enabled: true, ..probe() };
+        let ours = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27 }), unit_enabled: true, host_unit_enabled: true, ..probe() };
         let k = |p: &Probe, refused| { let l = keep_running(p, "devbox", "jose", refused); (l.state, l.fix) };
         assert_eq!(k(&ours, false), (State::Warning, Some(Fix::TurnOnLinger)));
         assert_eq!(k(&ours, true), (State::Warning, None), "refused: plain words only");
         assert_eq!(k(&Probe { linger: "yes".into(), ..ours.clone() }, false), (State::Passed, None));
         assert_eq!(k(&Probe { systemd: false, ..ours.clone() }, false), (State::Warning, None));
         assert_eq!(k(&probe(), false), (State::Passed, None), "not ours: not our business");
+        // An install from before skiff-host had its unit: Start adds it.
+        assert_eq!(k(&Probe { host_unit_enabled: false, ..ours.clone() }, false), (State::Warning, Some(Fix::StartSkiff)));
         // A warning still lets the Host be used.
         let mut list = List::default();
-        for row in Row::ALL.into_iter().take(8) {
+        for row in Row::ALL.into_iter().take(9) {
             list.pass(row, String::new());
         }
         list.rows.push(keep_running(&ours, "devbox", "jose", false));
         assert!(list.finish(None, None).ok);
+    }
+
+    #[test]
+    fn the_projects_row_is_a_warning_with_start_for_our_install_only() {
+        let p = |answer, managed| { let l = projects(answer, managed, "devbox"); (l.state, l.fix, l.text) };
+        assert_eq!(p(Ok(" 2.0.0".into()), true), (State::Passed, None, "skiff-host 2.0.0 answers.".into()));
+        let down = || Err(anyhow::anyhow!(super::super::data::DataError::NotRunning));
+        let (state, fix, text) = p(down(), true);
+        assert_eq!((state, fix), (State::Warning, Some(Fix::StartSkiff)));
+        assert!(text.contains("Sessions work."), "{text}");
+        assert_eq!(p(down(), false).1, None, "not ours: no Start");
+        let other = skiff_host_api::Error::IdentityChanged { expected: "a".to_string().try_into().unwrap(), received: "b".to_string().try_into().unwrap() };
+        assert_eq!(p(Err(other.into()), true).1, None, "another install: no Start");
     }
 
     #[test]
