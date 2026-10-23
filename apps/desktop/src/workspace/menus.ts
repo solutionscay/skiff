@@ -209,16 +209,28 @@ export function projectMenu(p: Project, x: number, y: number) {
   ctxMenu.open(x, y, p.path, [
     { icon: "indicators-plus", label: "New session…", hint: keyLabel("new-session"), disabled: !w, run: () => w && launchMenu.open(plus ?? { x, y }, p, w) },
     { icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
+    { sep: true },
     { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: run["project-folder"] },
     { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
-    { icon: "documents-file-image", label: "Icon…", sub: iconEntries(p) },
-    { icon: "tools-pencil", label: "Initials…", run: () => setInitials(p) },
-    { icon: "code-group", label: "Fleet…", run: () => setFleet(p) },
-    { icon: "tools-sparkles", label: "Color…", hint: keyLabel("project-color"), run: run["project-color"] },
-    { icon: "tools-sparkles", label: "Project theme…", hint: keyLabel("theme"), run: () => void projectThemeMenu(p) },
-    { icon: "playback-image", label: "Background…", sub: backgroundEntries(p) },
-    { icon: "code-git-branch", label: showsChanges(p) ? "Hide changes" : "Show changes", hint: keyLabel("project-changes"), run: run["project-changes"] },
-    { icon: "documents-folder-open", label: showsFiles(p) ? "Hide files" : "Show files", hint: keyLabel("project-files"), run: run["project-files"] },
+    { sep: true },
+    // How the project looks. Icon and Background are sections: a flyout goes one level deep.
+    { icon: "tools-sparkles", label: "Appearance", sub: [
+      { icon: "tools-sparkles", label: "Color…", hint: keyLabel("project-color"), run: run["project-color"] },
+      { icon: "tools-sparkles", label: "Project theme…", hint: keyLabel("theme"), run: () => void projectThemeMenu(p) },
+      { icon: "tools-pencil", label: "Initials…", run: () => setInitials(p) },
+      { head: "ICON" },
+      ...iconEntries(p),
+      { head: "BACKGROUND" },
+      ...backgroundEntries(p),
+    ] },
+    // What the project's row shows in the sidebar. A check marks what shows.
+    { icon: "layouts-panel-left", label: "Sidebar", sub: [
+      { icon: showsChanges(p) ? "indicators-check" : "", label: "Changes", hint: keyLabel("project-changes"), run: run["project-changes"] },
+      { icon: showsFiles(p) ? "indicators-check" : "", label: "Files", hint: keyLabel("project-files"), run: run["project-files"] },
+      { sep: true },
+      { icon: "code-group", label: "Fleet…", run: () => setFleet(p) },
+    ] },
+    { sep: true },
     ...projectWorkspaceEntries(p),
     ...closeEntries(p),
   ]);
@@ -545,7 +557,7 @@ export async function killGroup(id: string) {
 }
 
 /** The same group actions serve context menus, the menu bar, and the palette. */
-export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: string }>[] {
+export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: string } | { sep: true }>[] {
   const current = () => S.groups.find((x) => x.id === g?.id);
   const idsOf = (group: Group) => sessionsOf(group.layout).filter((id) => sessions.has(id));
   const hasSessions = !!g && idsOf(g).length > 0;
@@ -554,7 +566,7 @@ export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: s
     const group = current();
     if (group) ungroup(group);
   };
-  const entries: Exclude<MenuEntry, { head: string }>[] = [
+  const entries: Exclude<MenuEntry, { head: string } | { sep: true }>[] = [
     { icon: "code-ungroup", label: "Ungroup", hint: keyLabel("close-pane"), disabled: !g, run: drop },
   ];
   if (hasSessions) entries.push(

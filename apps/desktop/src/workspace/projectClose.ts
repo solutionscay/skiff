@@ -128,6 +128,7 @@ export async function openClosedProject(p: Project) {
 export function closeEntries(p: Project): MenuEntry[] {
   return [
     { icon: "indicators-minus", label: "Close project", run: () => void closeProject(p) },
+    { sep: true },
     { icon: "tools-trash-2", label: "Remove project…", danger: true, run: () => void removeProject(p) },
   ];
 }

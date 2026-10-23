@@ -914,7 +914,7 @@ function workspaceMenu(at: HTMLElement) {
   // The keys come back to the item: on Esc, and before a pick runs, so its dialog returns them here.
   const back = () => (at.isConnected && !at.hidden ? at : home())?.focus();
   const wrap = (es: MenuEntry[]): MenuEntry[] =>
-    es.map((e) => ("head" in e ? e : { ...e, run: e.run && (() => (back(), e.run!())), sub: e.sub && wrap(e.sub) }));
+    es.map((e) => ("head" in e || "sep" in e ? e : { ...e, run: e.run && (() => (back(), e.run!())), sub: e.sub && wrap(e.sub) }));
   ctxMenu.open(r.left, r.top, doc?.path ?? workspaceName(), wrap(menuEntries()), () => requestAnimationFrame(back));
 }
 

@@ -4,6 +4,8 @@ import { eventLabel } from "../app/keys";
 
 export type MenuEntry =
   | { head: string }
+  /** A 1px rule between groups of items. */
+  | { sep: true }
   | {
       icon?: string;
       glyph?: HTMLElement;
@@ -55,6 +57,8 @@ export function createMenu(onClose: () => void) {
   fly.hidden = true;
   document.body.appendChild(fly);
   let flyOwner: HTMLButtonElement | null = null;
+  /** The open menu's entries, so a hint key can reach an item in a submenu. */
+  let shown: MenuEntry[] = [];
   let hoverTimer = 0;
 
   /** Called once when the menu closes without a pick (Esc, click outside, another menu). */
@@ -90,6 +94,12 @@ export function createMenu(onClose: () => void) {
         hd.className = "lm-head";
         hd.textContent = e.head;
         return hd;
+      }
+      if ("sep" in e) {
+        const sep = document.createElement("div");
+        sep.className = "lm-sep";
+        sep.setAttribute("role", "separator");
+        return sep;
       }
       const { row: b, key: k, name: n, trailing: hint } = menuRow(e.label, e.sub ? "›" : e.hint ?? "", "lm-item" + (e.danger ? " danger" : ""));
       b.disabled = !!e.disabled;
@@ -148,6 +158,7 @@ export function createMenu(onClose: () => void) {
     const t = document.createElement("div");
     t.className = "lm-title";
     t.textContent = title;
+    shown = entries;
     menu.replaceChildren(t, ...rowsFor(entries, false));
     menu.setAttribute("aria-label", title);
     menu.hidden = false;
@@ -177,8 +188,16 @@ export function createMenu(onClose: () => void) {
     if ((!digit && !e.ctrlKey && !e.metaKey && !e.altKey) || e.key === "Enter" || e.key === " ") return false;
     const want = digit ? e.key : eventLabel(e);
     const b = [...root.querySelectorAll<HTMLButtonElement>(".lm-item[data-hint]:not(:disabled)")].find((x) => x.dataset.hint === want);
-    b?.click();
-    return !!b;
+    if (b) {
+      b.click();
+      return true;
+    }
+    // An item in a submenu shows its key there; the key works from the top menu too.
+    if (digit || root !== menu) return false;
+    const inSub = shown.flatMap((x) => ("sub" in x && !x.disabled && x.sub) || []).find((x) => "hint" in x && x.hint === want && !x.sub && !x.disabled);
+    if (!inSub || !("run" in inSub)) return false;
+    pick(() => inSub.run?.());
+    return true;
   };
 
   menu.addEventListener("keydown", (e) => {
