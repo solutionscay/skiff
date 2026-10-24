@@ -58,6 +58,8 @@ const CONTINUE: Record<string, (cmd: string) => string> = {
   opencode: (cmd) => `${cmd} --continue`,
   grok: (cmd) => `${cmd} --continue`,
   gemini: (cmd) => `${cmd} --continue`,
+  // hermes: `--continue` takes the newest session anywhere; `--in` keeps it to this folder.
+  hermes: (cmd) => `${cmd} --resume latest --in .`,
 };
 
 /** The agent's continue line for `cmd`, its command line from Settings. Null: it has none. */
@@ -98,6 +100,8 @@ const ADAPTERS: Record<string, Adapter> = {
   },
   // gemini (agy 1.2): no list and no picker. Only the newest conversation, on request.
   gemini: { latest: CONTINUE.gemini },
+  // hermes: its picker is inside the TUI, and the `sessions list` format is not documented.
+  hermes: { latest: CONTINUE.hermes },
 };
 
 /** How many sessions the list shows first, and after Show more. */
@@ -105,7 +109,7 @@ const FIRST = 8;
 const MORE = 50;
 
 /** An agent's own name, which it shows before a conversation has a topic. skiffd drops these too. */
-const GENERIC = new Set(["claude", "claude code", "codex", "openai codex", "opencode", "gemini", "gemini cli", "antigravity", "agy", "grok", "grok build"]);
+const GENERIC = new Set(["claude", "claude code", "codex", "openai codex", "opencode", "gemini", "gemini cli", "antigravity", "agy", "grok", "grok build", "hermes", "hermes agent"]);
 
 /** The agent a restored pane offers to resume, if Skiff can help with it. */
 export function resumeOffer(s: SessionInfo): Was | null {

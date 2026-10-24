@@ -236,12 +236,13 @@ pub fn add_worktree(name: &str, branch: &str, base: Option<&str>) -> Result<Work
 }
 
 /// The agents Skiff offers, in menu order, with their default command.
-pub const KNOWN_AGENTS: [(&str, &str); 5] = [
+pub const KNOWN_AGENTS: [(&str, &str); 6] = [
     ("claude", "claude"),
     ("codex", "codex"),
     ("gemini", "agy"),
     ("grok", "grok"),
     ("opencode", "opencode"),
+    ("hermes", "hermes"),
 ];
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]

@@ -115,7 +115,7 @@ Skiff has no message queue. A refused send types nothing. Do not wait and retry.
 
 | Exit | Condition | What to do |
 |---|---|---|
-| 8 | `--enter` went to a known agent (Claude Code, Codex, Gemini, Grok, opencode), but no turn started in 5 seconds | Run `skiff peek S`. If the text is in the input box, tell the user which pane, with its name and id. |
+| 8 | `--enter` went to a known agent (Claude Code, Codex, Gemini, Grok, opencode, Hermes), but no turn started in 5 seconds | Run `skiff peek S`. If the text is in the input box, tell the user which pane, with its name and id. |
 
 - `send` never presses Enter a second time. A second send while the text is in the box gets exit 9.
 - There is no exit 8 without `--enter`, with `--raw`, or when the program in front is not a known agent.
