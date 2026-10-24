@@ -11,6 +11,19 @@ export function modalOpen(includePeek = true): boolean {
   return !!document.querySelector(includePeek ? `${dialogs}, .peek:not([hidden])` : dialogs);
 }
 
+/**
+ * Sets `hidden` and text only when they change. Renders run many times a
+ * second, and the engine restyles on every write, even of the same value:
+ * a `hidden` write also wakes the `body:has(... :not([hidden]))` rules.
+ */
+export function setHidden(el: HTMLElement, hidden: boolean) {
+  if (el.hidden !== hidden) el.hidden = hidden;
+}
+
+export function setText(el: HTMLElement, text: string) {
+  if (el.textContent !== text) el.textContent = text;
+}
+
 export function h<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   cls?: string,

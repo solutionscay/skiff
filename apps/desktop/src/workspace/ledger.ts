@@ -44,7 +44,7 @@ import { openPath, previewToken } from "../terminal/peek";
 import { holdFits, releaseFits } from "../terminal/terminal";
 import { panes } from "../terminal/terminalState";
 import type { Action } from "../app/keys";
-import { h } from "../ui/dom";
+import { h, setHidden } from "../ui/dom";
 import { isSlot } from "./layoutSlots";
 import { taskTitle } from "./model";
 import { keepRow } from "./selection";
@@ -541,7 +541,7 @@ export function renderLedger() {
   const panel = document.getElementById("ledger");
   if (!panel) return;
   const show = wanted();
-  panel.hidden = !show;
+  setHidden(panel, !show);
   if (!show) {
     drawn = false;
     setKeys(false);
