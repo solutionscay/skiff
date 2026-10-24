@@ -1,6 +1,8 @@
 #sidebar {
   width: calc(284 * var(--u)); flex-shrink: 0;
   display: flex; flex-direction: column;
+  /* Fixed width, stretched height: a row added here lays out no other column, and theirs none here. */
+  contain: size layout;
   background: var(--bg-panel);
   border-right: 1px solid var(--rule);
   overflow: hidden;
