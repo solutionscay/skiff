@@ -164,9 +164,14 @@ pub async fn dev_bundle(version: &str, arch: &str, beside: &Path) -> Result<Bund
     Ok(Bundle { name: format!("{name}.tar.gz"), bytes: bytes?, source: "this build" })
 }
 
-/// One strict, batch ssh run of `command`, with `stdin`. Its stdout.
-async fn run(target: &SshTarget, options: &SshOptions, command: String, stdin: &[u8]) -> Result<String, String> {
-    match ssh::run_batch(target, options, command, stdin, STEP_TIMEOUT).await? {
+/// Takes each step line of an install or update as it happens, for a
+/// person who waits.
+pub type Steps<'a> = &'a (dyn Fn(&str) + Send + Sync);
+
+/// One strict, batch ssh run of `command`, with `stdin`. Its stdout. The
+/// server's step lines go to `step` as they come.
+async fn run(target: &SshTarget, options: &SshOptions, command: String, stdin: &[u8], step: Steps<'_>) -> Result<String, String> {
+    match ssh::run_batch_steps(target, options, command, stdin, STEP_TIMEOUT, step).await? {
         BatchRun::Done(out) => Ok(out),
         BatchRun::Ssh(_) => Err("ssh stopped before the step ran. Check again.".into()),
         BatchRun::TimedOut => Err("The server did not finish in time.".into()),
@@ -190,7 +195,7 @@ fn started(out: &str) -> Outcome {
 
 /// Checks the room on the server and uploads `b` beside the managed folder,
 /// named by its SHA-256, which it answers. Two uploads at once never meet.
-async fn upload(target: &SshTarget, options: &SshOptions, b: &Bundle, free_kb: u64, name: &str) -> Result<String, String> {
+async fn upload(target: &SshTarget, options: &SshOptions, b: &Bundle, free_kb: u64, name: &str, step: Steps<'_>) -> Result<String, String> {
     // The bundle, its unpacked copy, and the one before.
     let need = (b.bytes.len() as u64 * 4) / 1024;
     if free_kb > 0 && free_kb < need {
@@ -198,7 +203,9 @@ async fn upload(target: &SshTarget, options: &SshOptions, b: &Bundle, free_kb: u
     }
     let hash = sha256(&b.bytes);
     let upload = format!(r#"sh -c 'umask 077; d="$HOME/.local/share/skiff/server"; mkdir -p "$d" && cat > "$d/.incoming-{hash}.tar.gz"'"#);
-    run(target, options, upload, &b.bytes).await?;
+    step(&format!("Uploading {} MB to {name}", b.bytes.len().div_ceil(1024 * 1024)));
+    run(target, options, upload, &b.bytes, step).await?;
+    step("Upload done");
     Ok(hash)
 }
 
@@ -219,13 +226,14 @@ fn unpack_error(out: &str, name: &str, version: &str, b: &Bundle) -> String {
 /// Uploads `b` to the server, unpacks it as `version` in the managed
 /// folder, and starts its skiffd. The same version again changes nothing
 /// and starts nothing that runs. `free_kb`: the probe's free space.
-pub async fn install(target: &SshTarget, options: &SshOptions, b: &Bundle, version: &str, socket_name: &str, free_kb: u64, name: &str) -> Result<Outcome, String> {
+#[allow(clippy::too_many_arguments)]
+pub async fn install(target: &SshTarget, options: &SshOptions, b: &Bundle, version: &str, socket_name: &str, free_kb: u64, name: &str, step: Steps<'_>) -> Result<Outcome, String> {
     if !plain_version(version) || !plain_version(socket_name) {
         return Err("This version has a form Skiff does not send.".into());
     }
-    let hash = upload(target, options, b, free_kb, name).await?;
+    let hash = upload(target, options, b, free_kb, name, step).await?;
     let command = format!("sh -s -- install {} {} {}", quote(version), quote(&hash), quote(socket_name));
-    let out = run(target, options, command, SERVER.as_bytes()).await?;
+    let out = run(target, options, command, SERVER.as_bytes(), step).await?;
     match value(&out, "skiff-install") {
         "done" => Ok(started(&out)),
         "busy" => Err(busy(name)),
@@ -258,14 +266,14 @@ pub enum Updated {
 /// changes, unless `end_sessions`: then skiffd restarts on the new version.
 /// A failed update leaves the old version running.
 #[allow(clippy::too_many_arguments)]
-pub async fn update(target: &SshTarget, options: &SshOptions, b: &Bundle, version: &str, socket_name: &str, free_kb: u64, name: &str, end_sessions: bool) -> Result<Updated, String> {
+pub async fn update(target: &SshTarget, options: &SshOptions, b: &Bundle, version: &str, socket_name: &str, free_kb: u64, name: &str, end_sessions: bool, step: Steps<'_>) -> Result<Updated, String> {
     if !plain_version(version) || !plain_version(socket_name) {
         return Err("This version has a form Skiff does not send.".into());
     }
-    let hash = upload(target, options, b, free_kb, name).await?;
+    let hash = upload(target, options, b, free_kb, name, step).await?;
     let agreed = if end_sessions { "yes" } else { "no" };
     let command = format!("sh -s -- update {} {} {} {agreed}", quote(version), quote(&hash), quote(socket_name));
-    let out = run(target, options, command, SERVER.as_bytes()).await?;
+    let out = run(target, options, command, SERVER.as_bytes(), step).await?;
     updated(&out, name, version, b)
 }
 
@@ -300,7 +308,7 @@ pub async fn start(target: &SshTarget, options: &SshOptions, socket_name: &str) 
     if !plain_version(socket_name) {
         return Err("This socket name has a form Skiff does not send.".into());
     }
-    let out = run(target, options, format!("sh -s -- start {}", quote(socket_name)), SERVER.as_bytes()).await?;
+    let out = run(target, options, format!("sh -s -- start {}", quote(socket_name)), SERVER.as_bytes(), &|_| {}).await?;
     match value(&out, "skiff-start") {
         "missing" => Err("Skiff is not installed there any more. Check again.".into()),
         _ => Ok(started(&out)),
@@ -309,7 +317,7 @@ pub async fn start(target: &SshTarget, options: &SshOptions, socket_name: &str) 
 
 /// Turns on lingering for the account. False: the server refused it.
 pub async fn linger(target: &SshTarget, options: &SshOptions) -> Result<bool, String> {
-    let out = run(target, options, "sh -s -- linger".into(), SERVER.as_bytes()).await?;
+    let out = run(target, options, "sh -s -- linger".into(), SERVER.as_bytes(), &|_| {}).await?;
     Ok(value(&out, "linger") == "yes")
 }
 
@@ -327,7 +335,7 @@ pub async fn preview(target: &SshTarget, options: &SshOptions, socket_name: &str
     if !plain_version(socket_name) {
         return Err("This socket name has a form Skiff does not send.".into());
     }
-    let out = run(target, options, format!("sh -s -- sessions {}", quote(socket_name)), SERVER.as_bytes()).await?;
+    let out = run(target, options, format!("sh -s -- sessions {}", quote(socket_name)), SERVER.as_bytes(), &|_| {}).await?;
     if value(&out, "skiff-sessions") != "done" {
         return Err("Skiff cannot read the state of the server. Check again.".into());
     }
@@ -338,7 +346,7 @@ pub async fn preview(target: &SshTarget, options: &SshOptions, socket_name: &str
 /// managed files. `server.sh` stops a unit or a pid only when it runs from
 /// the managed folder. `name`: the Host's shown name, for the error copy.
 pub async fn uninstall(target: &SshTarget, options: &SshOptions, name: &str) -> Result<(), String> {
-    let out = run(target, options, "sh -s -- uninstall".into(), SERVER.as_bytes()).await?;
+    let out = run(target, options, "sh -s -- uninstall".into(), SERVER.as_bytes(), &|_| {}).await?;
     match value(&out, "skiff-uninstall") {
         "done" => Ok(()),
         "unmanaged" => Err(format!("Skiff did not install the Skiff on {name}, so it does not uninstall it.")),

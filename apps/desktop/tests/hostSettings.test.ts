@@ -29,11 +29,13 @@ class El {
   all(): El[] { return [this, ...this.children.flatMap((c) => c.all())]; }
   find(text: string) { return this.all().find((e) => e.textContent === text); }
   click() { for (const f of this.listeners.click ?? []) f({}); }
+  replaceChildren(...c: El[]) { this.children = c; }
   replaceWith(e: El) { this.textContent = ""; this.children = [e]; }
 }
 
 function tab(report?: unknown) {
   const calls: [string, unknown][] = [];
+  const steps: ((e: unknown) => void)[] = [];
   const dialogs: { title: string; body?: string; tone?: string; content?: El[]; submit: () => Promise<void>; onClose?: () => void }[] = [];
   let prompt: { value?: string; submit: (v: string) => Promise<void> } | null = null;
   const hosts = [{ id: "h_dev", name: "devbox", destination: "devbox", user: "me", port: 2222, socket: "/run/user/1000/skiff/skiffd.sock", state: "attention" }];
@@ -55,6 +57,7 @@ function tab(report?: unknown) {
     "../src/appearance/hostSettings.ts",
     {
       "@tauri-apps/api/core": { invoke },
+      "@tauri-apps/api/event": { listen: async (_e: string, f: (e: unknown) => void) => (steps.push(f), () => {}) },
       "../ui/dom": { h, button: (cls: string, text: string, run: () => void) => { const b = h("button", cls, text); b.addEventListener("click", run); return b; } },
       "../ui/runes": { rune: () => new El("svg") },
       "../ui/confirm": { confirmAction: async () => true, promptAction: (o: typeof prompt) => void (prompt = o) },
@@ -67,7 +70,7 @@ function tab(report?: unknown) {
   );
   let page: El = new El("div");
   const t = mod.createHostsTab(() => (page = t.draw()));
-  return { t, calls, dialogs, page: () => page, prompt: () => prompt!, redraw: () => (page = t.draw()) };
+  return { t, calls, steps, dialogs, page: () => page, prompt: () => prompt!, redraw: () => (page = t.draw()) };
 }
 
 test("Rename sends only the new name, for the Host's id", async () => {
@@ -204,7 +207,15 @@ test("Install Skiff asks once, names the folder, installs, then checks again", a
   assert.equal(d.title, "Install Skiff on devbox?");
   assert.equal(x.calls.filter(([c]) => c === "install_skiff").length, 0, "nothing runs before the confirm");
   const checks = x.calls.filter(([c]) => c === "check_host").length;
-  await d.submit();
+  assert.equal(d.body, "Installs Skiff 2.0.0 in your home folder on devbox. It keeps running after a restart.");
+  const run = d.submit();
+  await flush();
+  // The server's steps show in the dialog while it runs; another Host's do not.
+  for (const f of x.steps) f({ payload: { id: "h_dev", line: "Unpacking Skiff 2.0.0" } });
+  for (const f of x.steps) f({ payload: { id: "h_other", line: "not this one" } });
+  const log = d.content![0];
+  assert.deepEqual(log.all().map((e) => e.textContent).filter((t) => t), ["Unpacking Skiff 2.0.0"]);
+  await run;
   for (let i = 0; i < 4; i++) await flush();
   assert.equal(JSON.stringify(x.calls.filter(([c]) => c === "install_skiff")), JSON.stringify([["install_skiff", { id: "h_dev" }]]));
   assert.equal(x.calls.filter(([c]) => c === "check_host").length, checks + 1);
@@ -221,11 +232,11 @@ test("Remove asks first; the uninstall box shows for a managed install and names
   const all = d.content!.flatMap((c) => c.all());
   const box = all.find((e) => e.tag === "input") as unknown as { checked: boolean; listeners: Record<string, (() => void)[]> };
   assert.ok(box, "the box shows once the server says Skiff installed it");
-  assert.ok(all.some((e) => e.textContent.includes("This ends its 2 sessions: build, shell.")));
+  assert.ok(all.some((e) => e.textContent.includes("This ends: build, shell.")));
   assert.equal(x.calls.filter(([c]) => c === "remove_host").length, 0, "nothing changes before the confirm");
   box.checked = true;
   for (const f of box.listeners.change) f();
-  assert.match(d.content![0].textContent, /Your projects and all other files on devbox stay/);
+  assert.match(d.content![0].textContent, /Your other files stay/);
   await d.submit();
   assert.equal(JSON.stringify(x.calls.filter(([c]) => c === "remove_host")), JSON.stringify([["remove_host", { id: "h_dev", uninstall: true }]]));
 });
@@ -243,8 +254,7 @@ test("Install Skiff on a Mac names the LaunchAgent and when it starts again", as
   x.redraw();
   x.page().find("Install Skiff…")!.click();
   const body = x.dialogs.at(-1)!.body ?? "";
-  assert.ok(body.startsWith("Skiff 2.0.0 for macOS aarch64."), body);
-  assert.ok(body.includes("~/Library/LaunchAgents") && body.includes("start when you log in there") && body.includes("skiff-host (projects)"), body);
+  assert.equal(body, "Installs Skiff 2.0.0 in your home folder on devbox. It starts when you log in there.");
 });
 
 test("Update Skiff asks once; when sessions would end, a red dialog names them first", async () => {
@@ -261,11 +271,13 @@ test("Update Skiff asks once; when sessions would end, a red dialog names them f
   x.page().find("Update Skiff…")!.click();
   assert.equal(x.dialogs.at(-1)!.title, "Update Skiff on devbox?");
   assert.equal(x.calls.filter(([c]) => c === "update_skiff").length, 0, "nothing runs before the confirm");
-  await x.dialogs.at(-1)!.submit();
+  const first = x.dialogs.at(-1)!;
+  await first.submit();
+  first.onClose!();
   for (let i = 0; i < 4; i++) await flush();
   const red = x.dialogs.at(-1)!;
   assert.equal(red.tone, "danger");
-  assert.ok(red.body!.includes("ends the 2 sessions on devbox: build, api"), red.body);
+  assert.ok(red.body!.includes("This ends: build, api."), red.body);
   await red.submit();
   for (let i = 0; i < 4; i++) await flush();
   assert.equal(

@@ -6,3 +6,6 @@
 .confirm-act.go { background: var(--state-working); color: var(--on-working); }
 .confirm-act.go:hover { background: color-mix(in srgb, var(--state-working) 85%, var(--text)); }
 .confirm-act:disabled { cursor: progress; }
+/* An install's or update's live steps: the server's lines, newest at the bottom. */
+.step-log { max-height: calc(140 * var(--u)); overflow-y: auto; padding: calc(8 * var(--u)) calc(20 * var(--u)); border-bottom: 1px solid var(--rule); background: var(--bg-deep); font: calc(11px * var(--zoom, 1)) / 1.6 var(--mono); color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.step-log[hidden] { display: none; }

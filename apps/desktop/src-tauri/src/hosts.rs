@@ -730,15 +730,17 @@ async fn probe_now(h: &KnownHost) -> Result<skiff_client::host::check::Probe, St
 /// is the signed release bundle for this app's version; a dev build with no
 /// such release sends its own binaries.
 #[tauri::command]
-pub(crate) async fn install_skiff(id: String) -> Result<InstallView, String> {
+pub(crate) async fn install_skiff(handle: tauri::AppHandle, id: String) -> Result<InstallView, String> {
     use skiff_client::host::install;
+    let step = steps(handle, &id);
     let h = host_by_id(&id).await?;
+    step(&format!("Checking {}", h.name));
     let p = probe_now(&h).await?;
     if p.socket_live && p.managed.is_none() {
-        return Err(format!("{} runs a Skiff that Skiff did not install. Skiff uses it as it is, and does not replace it.", h.name));
+        return Err(format!("{} runs its own Skiff. Skiff does not replace it.", h.name));
     }
     if p.managed.is_none() && !p.app.is_empty() {
-        return Err(format!("{} has the Skiff app. Its sessions service runs while the app is open there, and Skiff installs no second one.", h.name));
+        return Err(format!("The Skiff app is on {}. Skiff installs no second one.", h.name));
     }
     // An install over a managed one would move the version without the
     // reload handover: that is an update.
@@ -746,15 +748,29 @@ pub(crate) async fn install_skiff(id: String) -> Result<InstallView, String> {
         return Err(format!("Skiff is installed on {} already. Check again.", h.name));
     }
     let (Some(os), Some(arch)) = (p.bundle_os(), p.bundle_arch()) else {
-        return Err(format!("Skiff installs itself on Linux and macOS servers on x86_64 and ARM64 only. {} runs {} on {}.", h.name, p.os, p.arch));
+        return Err(format!("Skiff runs on Linux and macOS, on x86_64 and ARM64. {} runs {} on {}.", h.name, p.os, p.arch));
     };
+    step(&format!("Getting Skiff {VERSION} for {os} {arch}"));
     let bundle = bundle_for(os, arch).await?;
-    let outcome = install::install(&h.target(), &SshOptions::default(), &bundle, VERSION, SOCKET_NAME, p.free_kb, &h.name).await?;
+    let outcome = install::install(&h.target(), &SshOptions::default(), &bundle, VERSION, SOCKET_NAME, p.free_kb, &h.name, &step).await?;
     memo(&id, |m| {
         m.linger_refused = outcome.linger == "refused";
         m.ok = None;
     });
     Ok(InstallView { outcome, source: bundle.source, version: VERSION })
+}
+
+/// The page shows each step of an install or update on this event, as
+/// `{ id, line }`, while the dialog waits.
+pub(crate) const HOST_STEP: &str = "skiff:host-step";
+
+/// Sends each step line of the Host `id` to the page.
+fn steps(handle: tauri::AppHandle, id: &str) -> impl Fn(&str) + Send + Sync {
+    use tauri::Emitter;
+    let id = id.to_string();
+    move |line: &str| {
+        let _ = handle.emit(HOST_STEP, serde_json::json!({ "id": id, "line": line }));
+    }
 }
 
 /// The signed release bundle of this app's version for a server's `os` and
@@ -787,11 +803,12 @@ pub(crate) struct UpdateView {
 /// changes and the answer names the sessions an update would end, unless
 /// `end_sessions`: the person saw them in the red dialog and agreed. Never
 /// a Skiff that Skiff did not install, and never down.
-async fn update_managed(h: &KnownHost, end_sessions: bool) -> Result<UpdateView, String> {
+async fn update_managed(h: &KnownHost, end_sessions: bool, step: skiff_client::host::install::Steps<'_>) -> Result<UpdateView, String> {
     use skiff_client::host::{check, install};
+    step(&format!("Checking {}", h.name));
     let p = probe_now(h).await?;
     let Some(have) = p.managed_version() else {
-        return Err(format!("Skiff did not install the Skiff on {}, so it does not update it.", h.name));
+        return Err(format!("Skiff did not install Skiff on {}, so it does not update it.", h.name));
     };
     if have == VERSION {
         return Ok(UpdateView { updated: install::Updated::Same, source: "", version: VERSION });
@@ -800,10 +817,11 @@ async fn update_managed(h: &KnownHost, end_sessions: bool) -> Result<UpdateView,
         return Ok(UpdateView { updated: install::Updated::Newer { from: have.to_string() }, source: "", version: VERSION });
     }
     let (Some(os), Some(arch)) = (p.bundle_os(), p.bundle_arch()) else {
-        return Err(format!("Skiff updates itself on Linux and macOS servers on x86_64 and ARM64 only. {} runs {} on {}.", h.name, p.os, p.arch));
+        return Err(format!("Skiff runs on Linux and macOS, on x86_64 and ARM64. {} runs {} on {}.", h.name, p.os, p.arch));
     };
+    step(&format!("Getting Skiff {VERSION} for {os} {arch}"));
     let bundle = bundle_for(os, arch).await?;
-    let result = install::update(&h.target(), &SshOptions::default(), &bundle, VERSION, SOCKET_NAME, p.free_kb, &h.name, end_sessions).await;
+    let result = install::update(&h.target(), &SshOptions::default(), &bundle, VERSION, SOCKET_NAME, p.free_kb, &h.name, end_sessions, step).await;
     let failed = match &result {
         Err(e) => Some(e.clone()),
         Ok(install::Updated::NoHandover { from, sessions }) => Some(no_handover(&h.name, from, sessions)),
@@ -817,19 +835,17 @@ async fn update_managed(h: &KnownHost, end_sessions: bool) -> Result<UpdateView,
 }
 
 /// The Skiff row's words when skiffd cannot hand its sessions over.
-fn no_handover(name: &str, from: &str, sessions: &[String]) -> String {
-    format!(
-        "Update available. Skiff {from} on {name} cannot hand its {} to Skiff {VERSION}, so an update ends {}.",
-        if sessions.len() == 1 { "session" } else { "sessions" },
-        if sessions.len() == 1 { "it" } else { "them" }
-    )
+fn no_handover(_name: &str, from: &str, sessions: &[String]) -> String {
+    let n = sessions.len();
+    format!("Update available: Skiff {from} to {VERSION}. It ends {n} {}.", if n == 1 { "session" } else { "sessions" })
 }
 
 /// Update Skiff… in the check list, after the person confirms it.
 #[tauri::command]
-pub(crate) async fn update_skiff(id: String, end_sessions: bool) -> Result<UpdateView, String> {
+pub(crate) async fn update_skiff(handle: tauri::AppHandle, id: String, end_sessions: bool) -> Result<UpdateView, String> {
+    let step = steps(handle, &id);
     let h = host_by_id(&id).await?;
-    update_managed(&h, end_sessions).await
+    update_managed(&h, end_sessions, &step).await
 }
 
 /// Turns the automatic update of one Host on or off.
@@ -875,7 +891,7 @@ pub(crate) async fn update_on_connect(target: &SshTarget) -> Option<Arrival> {
         let mut a = Arrival { name: h.name.clone(), managed: p.managed.is_some(), updated_from: None };
         let older = p.managed_version().is_some_and(|have| skiff_client::host::check::newer(VERSION, have));
         if older && h.auto_update {
-            match update_managed(&h, false).await {
+            match update_managed(&h, false, &|_| {}).await {
                 Ok(UpdateView { updated: Updated::Done { from, .. }, .. }) => a.updated_from = Some(from),
                 Ok(_) => {}
                 Err(e) => eprintln!("update on connect to {}: {e}", h.name),
@@ -917,17 +933,17 @@ pub(crate) async fn start_skiff(id: String) -> Result<skiff_client::host::instal
     let h = host_by_id(&id).await?;
     let p = probe_now(&h).await?;
     if p.managed.is_none() {
-        return Err(format!("Skiff did not install the Skiff on {}, so it does not start it.", h.name));
+        return Err(format!("Skiff did not install Skiff on {}, so it does not start it.", h.name));
     }
     let out = skiff_client::host::install::start(&h.target(), &SshOptions::default(), SOCKET_NAME).await?;
     if out.linger == "refused" {
         memo(&id, |m| m.linger_refused = true);
     }
     if !out.running {
-        return Err(format!("Skiff's sessions service on {} stops right after it starts.", h.name));
+        return Err(format!("skiffd on {} stops right after it starts.", h.name));
     }
     if !out.host_running {
-        return Err(format!("Skiff's projects service on {} stops right after it starts. Sessions work.", h.name));
+        return Err(format!("skiff-host on {} stops right after it starts. Sessions work.", h.name));
     }
     Ok(out)
 }
