@@ -32,11 +32,11 @@ import { dragGroup, dragSessions, groupHome, revealSession, selectWorktree, show
 import { addProject } from "../app/panels";
 import { animateFold, growOpened } from "../ui/fold";
 import { dragTree } from "./treeDrag";
-import { bareWorktree, fleetKey, folded, isOpen, openToFocused, projectBadge, projectKey, rollup, toggleRow, treeDrag, treeSections, type Section } from "./tree";
+import { bareWorktree, fleetKey, folded, isOpen, openToFocused, projectBadge, projectKey, rollCounts, rollup, toggleRow, treeDrag, treeSections, type Section } from "./tree";
 import { render } from "../app/renderRequest";
 import { projectsPlus, renderWorkspaceStatus, shows, workspaceOpen } from "./profile";
-import { ledgerNeeds } from "./ledger";
-import { openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, syncSkiffAgent } from "../app/skiffAgent";
+import { ledgerCounts, ledgerNeeds, ledgerPanes, ledgerWorkTitle } from "./ledger";
+import { projectSkipperOf, openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, syncSkiffAgent } from "../app/skiffAgent";
 
 /** 20px lines, flush against whatever follows. */
 function sessionBlock(lines: Line[], color: string): HTMLElement {
@@ -214,7 +214,7 @@ function sidebarSig(): { all: string; parts: Map<string, string> } {
   parts.set(OTHER_BLOCK, JSON.stringify([base, under.get(OTHER_BLOCK) ?? null]));
   S.projects.forEach((p, i) => {
     const k = projectBlockKey(p.name);
-    parts.set(k, JSON.stringify([base, projects[i], isOpen(projectKey(p.name)), p.name === S.selectedProject, under.get(k) ?? null]));
+    parts.set(k, JSON.stringify([base, projects[i], isOpen(projectKey(p.name)), p.name === S.selectedProject, under.get(k) ?? null, skipperSig(p)]));
   });
   const all = JSON.stringify([
     listGen, appliedTheme(), S.selectedProject, folded.keys(), S.projects.map(shows),
@@ -408,6 +408,52 @@ function skiffAgentRow(): HTMLElement {
   return row;
 }
 
+/** What a project's Skipper row shows, for the block's signature. */
+function skipperSig(p: Project) {
+  const s = projectSkipperOf(p.name);
+  if (!s) return null;
+  return [s.id, s.state, S.selection.includes(s.id), ledgerCounts(p.name), ledgerWorkTitle(p.name), skipperWatched(p.name), s.title ?? null, s.unread ?? false];
+}
+
+/** The watcher follows a pane of one of the project Skipper's open tasks. The grand Skipper's registration names them all. */
+function skipperWatched(project: string): boolean {
+  const follows = skiffAgentSession()?.watch?.follows ?? [];
+  return ledgerPanes(project).some((id) => follows.includes(id));
+}
+
+/**
+ * A project Skipper: the first row of its project block, on the worktree
+ * line. Its agent icon, "Skipper", the title of its work, and the amber and
+ * blue counts of the tasks it owns. Its session is left out of the tree below.
+ */
+function projectSkipperRow(p: Project, s: SessionInfo): HTMLElement {
+  const name = skiffAgentName();
+  const row = h("button", "session-row project-skipper-row" + ` st-${s.state}` + (S.selection.includes(s.id) ? " selected" : ""));
+  row.type = "button";
+  row.dataset.session = s.id;
+  if (skipperWatched(p.name)) row.classList.add("watch-on");
+  const title = ledgerWorkTitle(p.name) ?? s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? "";
+  const { need, working } = ledgerCounts(p.name);
+  row.setAttribute("aria-label", `${p.name} ${name}, ${title || s.state}`);
+  row.append(h("span", "chev-space"), agentIcon(s), h("span", "skiff-agent-name", name), h("span", "title", title));
+  const roll = rollCounts(need, working);
+  if (roll) row.append(roll);
+  row.append(unreadMark(row, s));
+  row.addEventListener("mousedown", (e) => {
+    if (e.button === 0) row.focus();
+  });
+  row.addEventListener("click", () => {
+    clearSelection();
+    revealSession(s.id);
+    requestAnimationFrame(() => keepRow(s.id));
+  });
+  row.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    rowMenu(s, e.clientX, e.clientY);
+  });
+  return row;
+}
+
 /** A section head: "Projects" with its +, or a fleet that folds and opens. */
 function sectionHead(sec: Section): HTMLElement {
   if (!sec.fleet) {
@@ -454,7 +500,8 @@ function projectBlock(p: Project): HTMLElement {
   // Nothing under the project: no chevron, no fold, no hover.
   // changesBlock reads the worktree's changes the first time, so a project folded since the start still learns of them.
   const changes = bare && showsChanges(p) ? changesBlock(bare) : null;
-  const empty = !!bare && !p.error && !worktreeLines(bare).length && !changes && !showsFiles(p);
+  const skipper = projectSkipperOf(p.name);
+  const empty = !!bare && !p.error && !worktreeLines(bare).length && !changes && !showsFiles(p) && !skipper;
   const block = h("div", "tree-project" + (p.name === S.selectedProject ? " selected" : ""));
   block.style.setProperty("--pc", color);
 
@@ -501,6 +548,7 @@ function projectBlock(p: Project): HTMLElement {
   const kids = h("div", "tree-kids");
   kids.dataset.kids = key;
   block.appendChild(kids);
+  if (skipper) kids.appendChild(projectSkipperRow(p, skipper));
   if (p.error) kids.appendChild(errorRow(p.error));
   else if (p.worktrees.length === 0) kids.appendChild(h("div", "note-row", "No worktrees"));
   else if (bare) {

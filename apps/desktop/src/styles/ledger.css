@@ -118,3 +118,24 @@ body.ledger-keys .cell.focused .cell-head { background: var(--bg-panel); }
   content: ""; display: inline-block; width: calc(6 * var(--u)); height: calc(6 * var(--u)); margin-right: calc(5 * var(--u));
   border-radius: 50%; background: var(--state-waiting); vertical-align: 1px;
 }
+
+/* Project Skippers. A task under a hand-off under a plan: one step more. */
+.lg-row.kid2 { padding-left: calc(46 * var(--u)); }
+/* A hand-off, or a project Skipper's own row: the project's letters in place of the dot. */
+.lg-tag {
+  width: calc(14 * var(--u)); height: calc(14 * var(--u)); flex-shrink: 0; margin: 0 calc(-3 * var(--u)) 0 calc(-4 * var(--u));
+  display: flex; align-items: center; justify-content: center;
+  font: 700 calc(8px * var(--zoom, 1)) var(--mono); color: var(--pc);
+  background: color-mix(in srgb, var(--pc) 14%, transparent);
+}
+.lg-row.fin .lg-tag { opacity: 0.8; }
+/* The head's filter: All projects, or one project. A quiet text button with a chevron. */
+.lg-filter {
+  display: flex; align-items: center; gap: calc(4 * var(--u)); min-width: 0; max-width: calc(140 * var(--u));
+  padding: 0; border: 0; background: none; cursor: pointer;
+  font-family: var(--font); font-size: calc(12px * var(--zoom, 1)); font-weight: 400; color: var(--text-3);
+}
+.lg-filter:hover { color: var(--text); }
+.lg-filter-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lg-filter-chev { display: grid; place-items: center; }
+.lg-filter-chev svg { width: calc(9 * var(--u)); height: calc(9 * var(--u)); }

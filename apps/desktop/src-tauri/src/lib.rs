@@ -83,6 +83,7 @@ pub fn run() {
             skiff_agent::get_skiff_agent,
             skiff_agent::set_skiff_agent,
             skiff_agent::start_skiff_watch,
+            skiff_agent::start_project_skipper,
             skiff_agent::skiff_watch_log,
             skiff_agent::open_skiff_agent,
             skiff_agent::preview_skiff_folder,
