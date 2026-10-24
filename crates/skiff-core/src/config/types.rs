@@ -66,6 +66,13 @@ pub struct SkiffAgent {
     /// A restored pane continues the last conversation in the folder.
     #[serde(default)]
     pub continue_on_restore: bool,
+    /// The project menu offers Start project Skipper: one Skipper per
+    /// project, in the project's folder.
+    #[serde(default)]
+    pub project_skippers: bool,
+    /// The agent id a project Skipper starts. Absent: the Skipper's agent.
+    /// A project's `skipper_agent` wins over it.
+    pub project_agent: Option<String>,
     /// `[skiff_agent.tasks]`: the agent and model each task type starts.
     #[serde(default, skip_serializing_if = "TaskTypes::is_empty")]
     pub tasks: TaskTypes,
@@ -170,6 +177,9 @@ pub struct ProjectConfig {
     pub closed: bool,
     /// The fleet this project sits in on the rail. Absent: on the rail by itself.
     pub fleet: Option<String>,
+    /// The agent id this project's Skipper starts, in place of
+    /// `[skiff_agent] project_agent`. Only by hand: Settings has no row for it.
+    pub skipper_agent: Option<String>,
 }
 
 impl ProjectConfig {
