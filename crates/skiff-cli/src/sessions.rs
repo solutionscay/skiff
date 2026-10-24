@@ -552,7 +552,7 @@ mod tests {
     #[test]
     fn known_agents_only() {
         use SessionState::Idle;
-        for fg in ["claude", "codex", "gemini", "grok", "opencode"] {
+        for fg in ["claude", "codex", "gemini", "grok", "opencode", "hermes"] {
             assert!(super::is_agent(&s("shell", Idle, Some(fg))), "{fg}");
         }
         for fg in [None, Some("bash"), Some("sh"), Some("vim"), Some("node")] {
