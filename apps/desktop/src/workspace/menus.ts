@@ -9,7 +9,7 @@ import { keyLabel } from "../app/keys";
 import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { type MenuEntry } from "../ui/menu";
 import { isRemote } from "../app/hosts";
-import { agentName, basename, branchName, locate, taskTitle } from "./model";
+import { agentName, basename, branchName, locate, taskTitle, isProjectSkipper } from "./model";
 import { cwdOf } from "./canvas";
 import { filledOf, slotsOf } from "./layoutSlots";
 import type { Group, Project, SessionInfo, SplitDir, Worktree } from "../platform/types";
@@ -288,7 +288,8 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
     ...(groupOf(s.id)
       ? [{ icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), disabled: !hostCan("session_groups"), run: () => removeFromGroup(s.id) }]
       : []),
-    { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), disabled: !hostCan("session_lifecycle"), run: () => startSessionRename(s.id) },
+    // A project Skipper's name is derived from the Skiff agent's name and its project: nothing to type.
+    ...(isProjectSkipper(s) ? [] : [{ icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), disabled: !hostCan("session_lifecycle"), run: () => startSessionRename(s.id) }]),
     themeEntry(s),
     endEntry(s),
   ]);
@@ -466,7 +467,7 @@ export function paneMenu(id: string, x: number, y: number) {
   const entries: MenuEntry[] = [
     { icon: "layouts-panel-left:flip", label: "Add pane right…", hint: keyLabel("split-right"), disabled: full || !hostCan("session_lifecycle"), run: () => splitMenu(id, "row", x, y) },
     { icon: "layouts-panel-bottom", label: "Add pane below…", hint: keyLabel("split-down"), disabled: full || !hostCan("session_lifecycle"), run: () => splitMenu(id, "col", x, y) },
-    { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), disabled: !hostCan("session_lifecycle"), run: () => startSessionRename(id) },
+    ...(isProjectSkipper(s) ? [] : [{ icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), disabled: !hostCan("session_lifecycle"), run: () => startSessionRename(id) }]),
   ];
   const offer = resumeOffer(s);
   if (offer) entries.unshift({ icon: "schedule-refresh-cw", label: `Resume ${offer.agent}`, run: () => resumePane(id, { x, y }) });
