@@ -320,6 +320,10 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
                 Ok(()) => Response::Ok,
                 Err(e) => error(e),
             },
+            Request::OrderGroups { groups } => match pool.order_groups(&groups) {
+                Ok(()) => Response::Ok,
+                Err(e) => error(e),
+            },
         };
 
         if let Some(ms) = slow_ms(since) {

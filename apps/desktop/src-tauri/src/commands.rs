@@ -393,3 +393,9 @@ mod tests {
         assert_eq!(super::remote_input(None, "s", b"ls\n".to_vec()), Err(super::INPUT_OFF.to_string()));
     }
 }
+
+#[tauri::command]
+pub(crate) async fn order_groups(app: State<'_, App>, groups: Vec<String>) -> Result<(), String> {
+    let (c, _) = ensure_client(&app).await?;
+    c.order_groups(groups).await.map_err(err)
+}

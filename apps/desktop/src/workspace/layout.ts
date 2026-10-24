@@ -17,6 +17,12 @@ export function replacePane(l: Layout, session: string, f: (p: Layout) => Layout
   return { ...l, a: replacePane(l.a, session, f), b: replacePane(l.b, session, f) };
 }
 
+/** Two panes trade places; the shape stays. */
+export function swapPanes(l: Layout, a: string, b: string): Layout {
+  if (l.type === "pane") return l.session === a ? leaf(b) : l.session === b ? leaf(a) : l;
+  return { ...l, a: swapPanes(l.a, a, b), b: swapPanes(l.b, a, b) };
+}
+
 /** Drops a pane. A split that loses one side becomes the other side. */
 export function removePane(l: Layout | null, session: string): Layout | null {
   if (!l) return null;

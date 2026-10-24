@@ -78,6 +78,16 @@ export function saveGroup(g: Group) {
   });
 }
 
+/** Move `g` next to `anchor` in the list. skiffd keeps the order. */
+export function moveGroup(g: Group, anchor: Group, side: "before" | "after") {
+  const list = S.groups.filter((x) => x !== g);
+  list.splice(list.indexOf(anchor) + (side === "after" ? 1 : 0), 0, g);
+  S.groups = list;
+  render();
+  // Read at run time: a new group has its saved id by then.
+  persist(() => invoke("order_groups", { groups: S.groups.map((x) => x.id).filter((id) => !id.startsWith("tmp-")) }));
+}
+
 export function deleteGroup(g: Group) {
   S.groups = S.groups.filter((x) => x !== g);
   if (S.activeGroup === g.id) S.activeGroup = null;

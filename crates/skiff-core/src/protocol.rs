@@ -120,6 +120,11 @@ pub enum Request {
     DeleteGroup {
         group: String,
     },
+    /// Puts the groups in this order of ids. Groups left out keep their
+    /// order after the named ones; unknown ids are skipped.
+    OrderGroups {
+        groups: Vec<String>,
+    },
     /// Moves skiffd onto another binary in place. The pid, sessions, PTYs and
     /// terminals stay. `binary` is an absolute path; `None` is the daemon's
     /// own executable as it is on disk now. A failure answers with an error
@@ -326,6 +331,7 @@ impl Request {
             Request::ListGroups => "list_groups",
             Request::SaveGroup { .. } => "save_group",
             Request::DeleteGroup { .. } => "delete_group",
+            Request::OrderGroups { .. } => "order_groups",
             Request::Reload { .. } => "reload",
             Request::Shutdown => "shutdown",
             Request::Coordinator { .. } => "coordinator",

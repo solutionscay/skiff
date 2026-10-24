@@ -233,6 +233,7 @@ pub fn run() {
             commands::session_screen,
             commands::save_group,
             commands::delete_group,
+            commands::order_groups,
             streaming::subscribe_output,
             streaming::ack_output,
             streaming::unsubscribe_output,

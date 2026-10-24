@@ -28,7 +28,7 @@ import { stateIcon } from "../appearance/stateIcon";
 import { collapsed, DEFAULT_ACCENT, removeErrors, removing, S, selectedWorktree, sessions } from "../app/state";
 import { accent, awayPlaces, currentWorktree, place } from "../app/stateQueries";
 
-import { dragSessions, groupHome, revealSession, selectWorktree, showGroup } from "./view";
+import { dragGroup, dragSessions, groupHome, revealSession, selectWorktree, showGroup } from "./view";
 import { addProject } from "../app/panels";
 import { animateFold, growOpened } from "../ui/fold";
 import { dragTree } from "./treeDrag";
@@ -607,6 +607,11 @@ function groupRow(g: Group, hasPrevious = false, hasNext = false): HTMLElement {
   const pick = h("button", "group-pick");
   pick.dataset.group = g.id;
   pick.type = "button";
+  pick.addEventListener("mousedown", (e) => {
+    // The drag stops the default focus; the row still takes the keys.
+    if (e.button === 0) pick.focus();
+    dragGroup(e, g);
+  });
   pick.append(glyph(g.layout), h("span", "group-name", g.name));
   pick.addEventListener("click", (e) => {
     if (e.ctrlKey || e.metaKey) return toggleSelectGroup(g);
