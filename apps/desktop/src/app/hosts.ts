@@ -18,7 +18,6 @@ export interface KnownHost {
   port: number | null;
   /** Found by the last check, or set by the person. `null`: not found yet. */
   socket: string | null;
-  socket_override: boolean;
   /** Update Skiff on this server automatically. */
   auto_update: boolean;
   /** The last check or connection in this app run. */

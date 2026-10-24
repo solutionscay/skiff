@@ -1,4 +1,4 @@
-//! M0 Host contract. No I/O, service implementation, application state or core types.
+//! The Host contract. No I/O, service implementation, application state or core types.
 //! This contract is not sent by the existing desktop/CLI connection.
 use std::{collections::BTreeMap, fmt};
 
@@ -26,7 +26,6 @@ pub use terminal::{EchoTimes, TerminalFrame};
 pub use updates::SessionUpdate;
 
 pub const API_MAJOR: u32 = 1;
-pub const SESSIONS: &str = "sessions";
 pub const CONNECTION_STATUS: &str = "connection_status";
 pub const SESSION_SCREEN: &str = "session_screen";
 pub const SESSION_INVENTORY: &str = "session_inventory";
@@ -264,12 +263,6 @@ impl Capability {
             version: 1,
         }
     }
-    pub fn sessions() -> Self {
-        Self {
-            name: SESSIONS.into(),
-            version: 1,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -361,7 +354,6 @@ pub enum Error {
     },
     HostBusy,
     TransportLost,
-    Cancelled,
     TimedOut,
     IdentityChanged {
         expected: HostId,
@@ -375,16 +367,6 @@ impl fmt::Display for Error {
 }
 impl std::error::Error for Error {}
 
-/// M0 session projection only. No config, filesystem, ledger or core re-exports.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Session {
-    pub id: String,
-    pub cwd: String,
-    pub label: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub generation: Option<u64>,
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Request {
@@ -394,25 +376,6 @@ pub enum Request {
     SessionScreen {
         session: String,
         rows: u16,
-    },
-    ListSessions,
-    Write {
-        session: String,
-        #[serde(with = "bytes")]
-        data: Vec<u8>,
-        #[serde(default)]
-        paste: bool,
-    },
-    Resize {
-        session: String,
-        cols: u16,
-        rows: u16,
-    },
-    Subscribe {
-        session: String,
-    },
-    Unsubscribe {
-        session: String,
     },
     /// (Re)subscribe: a `terminal_snapshot` precedes later output and can
     /// arrive before this reply. Take the output receiver first.
@@ -657,18 +620,12 @@ impl Request {
             Self::WorktreeAdd { .. } | Self::WorktreeRemove { .. } => {
                 Some(Capability::worktrees())
             }
-            Self::ListSessions
-            | Self::Write { .. }
-            | Self::Resize { .. }
-            | Self::Subscribe { .. }
-            | Self::Unsubscribe { .. } => Some(Capability::sessions()),
         }
     }
     pub fn accepts(&self, reply: &Response) -> bool {
         matches!(
             (self, reply),
             (Self::Hello, Response::Hello { .. })
-                | (Self::ListSessions, Response::Sessions { .. })
                 | (Self::ConnectionStatus, Response::ConnectionStatus { .. })
                 | (Self::SessionScreen { .. }, Response::SessionScreen { .. })
                 | (Self::SessionInventory, Response::SessionInventory { .. })
@@ -707,7 +664,6 @@ impl Request {
         ) || (!matches!(
             self,
             Self::Hello
-                | Self::ListSessions
                 | Self::ConnectionStatus
                 | Self::SessionScreen { .. }
                 | Self::SessionInventory
@@ -792,27 +748,11 @@ pub enum Response {
     SessionScreen { lines: Vec<String> },
     ConnectionStatus { version: String, protocol: u32 },
     Hello { hello: Hello },
-    Sessions { sessions: Vec<Session> },
     Ok,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum Event {
-    Snapshot {
-        session: String,
-        #[serde(with = "bytes")]
-        data: Vec<u8>,
-        cols: u16,
-        rows: u16,
-    },
-    Output {
-        session: String,
-        #[serde(with = "bytes")]
-        data: Vec<u8>,
-    },
-    SessionChanged {
-        session: Session,
-    },
     /// Boxed: an inventory row would otherwise size every event. Same JSON.
     SessionUpdate {
         update: Box<SessionUpdate>,
@@ -847,10 +787,7 @@ impl Event {
                 data,
                 echo,
             } => Some((session, TerminalFrame::Output { data, echo })),
-            Self::Snapshot { .. }
-            | Self::Output { .. }
-            | Self::SessionChanged { .. }
-            | Self::SessionUpdate { .. } => None,
+            Self::SessionUpdate { .. } => None,
         }
     }
     /// The capability whose negotiation makes this event family meaningful.
@@ -859,9 +796,6 @@ impl Event {
             Self::SessionUpdate { .. } => Capability::session_updates(),
             Self::TerminalSnapshot { .. } | Self::TerminalOutput { .. } => {
                 Capability::session_terminal()
-            }
-            Self::Snapshot { .. } | Self::Output { .. } | Self::SessionChanged { .. } => {
-                Capability::sessions()
             }
         }
     }

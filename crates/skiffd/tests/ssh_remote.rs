@@ -1010,6 +1010,37 @@ async fn skiff_installs_once_into_the_home_and_its_skiffd_answers() {
     assert_eq!(after.managed.as_ref().map(|m| m.version.as_str()), Some(version));
     assert!(after.socket_live && after.fallback, "{after:?}");
     assert!(d.join("run/skiff").join(name).exists(), "skiffd listens in the fixture's runtime folder");
+    // A release socket beside it: the probe finds both, keeps this app's,
+    // and lists the two with the version each reports. The managed CLI is
+    // a stand-in that prints nothing, so a cargo one answers `status`.
+    let rel = d.join("run/skiff/skiffd.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&rel).unwrap();
+    let cargo = d.join("home/.cargo/bin");
+    std::fs::create_dir_all(&cargo).unwrap();
+    let status = r#"#!/bin/sh
+case $2 in
+  *skiffd.sock) v=2.0.0 ;;
+  *) v=9.9.9-test ;;
+esac
+printf '{"skiff":"%s","skiffd":{"version":"%s","protocol":27}}\n' "$v" "$v"
+"#;
+    std::fs::write(cargo.join("skiff"), status).unwrap();
+    std::fs::set_permissions(cargo.join("skiff"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let both = probe(&options).await;
+    let found: Vec<_> = both.sockets.iter().map(|s| (s.name.as_str(), s.version.as_str())).collect();
+    assert_eq!(found, [("skiffd.sock", "2.0.0"), ("skiffd-dev.sock", version)], "{both:?}");
+    assert!(both.socket.ends_with(name) && both.socket_live, "{both:?}");
+    // The stored one wins while it is there.
+    let stored = rel.to_string_lossy().into_owned();
+    let p = match check::run_probe(&target, &options, name, Some(&stored)).await.unwrap() {
+        check::ProbeRun::Probed(p, _) => p,
+        _ => panic!("the probe did not run"),
+    };
+    assert_eq!(p.socket, stored);
+    assert_eq!(p.status.and_then(|s| s.skiffd).map(|d| d.version).as_deref(), Some("2.0.0"));
+    drop(listener);
+    std::fs::remove_file(&rel).unwrap();
+    std::fs::remove_dir_all(d.join("home/.cargo")).unwrap();
     let server = d.join("home/.local/share/skiff/server");
     assert_eq!(std::fs::read_link(server.join("current")).unwrap(), Path::new(version));
     let mtime = std::fs::metadata(server.join(version).join("skiffd")).unwrap().modified().unwrap();
@@ -1026,7 +1057,7 @@ async fn skiff_installs_once_into_the_home_and_its_skiffd_answers() {
     let input = check::CheckInput {
         target: target.clone(),
         name: "fixture".into(),
-        socket_override: None,
+        stored: None,
         socket_name: name.into(),
         pin: None,
         forward_dir: d.join("chk"),
@@ -1099,7 +1130,7 @@ async fn skiff_host_runs_beside_the_installed_skiffd_and_comes_back() {
     let input = check::CheckInput {
         target: target.clone(),
         name: "fixture".into(),
-        socket_override: None,
+        stored: None,
         socket_name: name.into(),
         pin: None,
         forward_dir: d.join("chk"),
@@ -1337,7 +1368,7 @@ async fn a_mac_server_gets_skiff_and_a_launch_agent_once() {
     let input = check::CheckInput {
         target: target.clone(),
         name: "fixture".into(),
-        socket_override: None,
+        stored: None,
         socket_name: name.into(),
         pin: None,
         forward_dir: d.join("chk"),

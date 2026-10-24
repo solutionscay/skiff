@@ -10,9 +10,10 @@ import { type HostsPage, type KnownHost, knownHosts, loadHosts, localHostName, p
  * Settings › Hosts: the known Hosts, the form that adds or edits one, and
  * a Host's check list. The list is this computer's own (`hosts.toml`), so
  * the tab works the same while any Host is shown. The form needs one field,
- * Server. Name, user, port and socket sit under More: ssh config gives the
- * first three, the line under Server says what `ssh -G` makes of them, with
- * no network, and the check finds the socket. Connect saves, then checks.
+ * Server. Name, user and port sit under More: ssh config gives them, the
+ * line under Server says what `ssh -G` makes of them, with no network, and
+ * the check finds the socket. When a release and a dev build both run on
+ * the server, the check list offers both. Connect saves, then checks.
  * A failed row has at most one fix. Each fix asks first, names what it
  * changes, and then checks again. A password or passphrase goes to Rust,
  * which gives it to ssh through askpass only; the page keeps none.
@@ -30,7 +31,7 @@ interface Alias {
   goes_to: string;
 }
 
-type Draft = { destination: string; name: string; user: string; port: string; socket: string };
+type Draft = { destination: string; name: string; user: string; port: string };
 
 type Form = { id: string | null; draft: Draft; more: boolean; error: string | null; busy: boolean };
 
@@ -73,9 +74,19 @@ interface HostKey {
   known: Fingerprint[];
   file: string;
 }
+/** A Skiff socket the person can pick, when two run on the server. */
+interface Choice {
+  socket: string;
+  label: string;
+  version: string;
+}
 interface Report {
   rows: CheckLine[];
   ok: boolean;
+  /** The socket in use. */
+  socket: string | null;
+  /** Both sockets, when a release and a dev build run there. */
+  choices: Choice[];
   /** The server's OS and arch as bundle names write them. */
   platform: [string, string] | null;
   /** The Skiff version this app installs. */
@@ -150,10 +161,10 @@ export function createHostsTab(redraw: () => void) {
 
   function newForm(x: KnownHost | null): Form {
     const draft: Draft = x
-      ? { destination: x.destination, name: x.name, user: x.user ?? "", port: x.port ? String(x.port) : "", socket: x.socket_override ? x.socket ?? "" : "" }
-      : { destination: "", name: "", user: "", port: "", socket: "" };
+      ? { destination: x.destination, name: x.name, user: x.user ?? "", port: x.port ? String(x.port) : "",  }
+      : { destination: "", name: "", user: "", port: "" };
     line = { for: "", text: "", bad: false };
-    const more = !!x && (!!x.user || !!x.port || x.socket_override || x.name !== defaultName(x.destination));
+    const more = !!x && (!!x.user || !!x.port || x.name !== defaultName(x.destination));
     return { id: x?.id ?? null, draft, more, error: null, busy: false };
   }
 
@@ -265,6 +276,7 @@ export function createHostsTab(redraw: () => void) {
       }
       row.append(mark, h("span", "c-name", r.title), text);
       table.append(row);
+      if (r.row === "sessions" && c.report?.choices?.length && x) table.append(pickRow(c, x, c.report));
     }
     main.append(table);
     if (x) main.append(autoUpdate(x));
@@ -279,6 +291,35 @@ export function createHostsTab(redraw: () => void) {
     acts.append(button("set-rm", "Done", () => ((check = null), redraw())));
     main.append(acts);
     return main;
+  }
+
+  /** Two Skiffs run on the server: the one in use, and the other to pick. */
+  function pickRow(c: Check, x: KnownHost, report: Report): HTMLElement {
+    const row = h("div", "set-row set-check passed");
+    row.setAttribute("role", "row");
+    const mark = h("span", "c-lead");
+    mark.append(h("span", "sq"));
+    const text = h("span", "c-text", `Two Skiffs run on ${x.name}. Pick the one whose sessions this Host shows.`);
+    for (const o of report.choices) {
+      const on = o.socket === report.socket;
+      const b = button(on ? "set-rm set-fix on" : "set-rm set-fix", `${o.label}${o.version ? ` ${o.version}` : ""}`, () => void pickSocket(c, x, o));
+      b.setAttribute("aria-pressed", String(on));
+      b.disabled = on;
+      if (on) b.prepend(rune("indicators-check"));
+      text.append(b);
+    }
+    row.append(mark, h("span", "c-name", "Which Skiff"), text);
+    return row;
+  }
+
+  async function pickSocket(c: Check, x: KnownHost, o: Choice) {
+    try {
+      await invoke("pick_socket", { id: x.id, socket: o.socket });
+      await runCheck(x.id);
+    } catch (e) {
+      c.error = String(e);
+      redraw();
+    }
   }
 
   /** One fix, after its confirm, then the check again. */
@@ -654,10 +695,7 @@ export function createHostsTab(redraw: () => void) {
       port.inputMode = "numeric";
       user.addEventListener("input", () => lookup(f));
       port.addEventListener("input", () => lookup(f));
-      // The check finds the socket. A value here replaces what it finds.
-      const found = editing?.socket && !editing.socket_override ? `Found: ${editing.socket}` : "Found by Skiff";
-      const socket = field(f, "socket", "Socket on the server", found);
-      main.append(fieldRow("Name", name), fieldRow("User", user), fieldRow("Port", port), fieldRow("Socket on the server", socket));
+      main.append(fieldRow("Name", name), fieldRow("User", user), fieldRow("Port", port));
     }
 
     const acts = h("div", "set-form-acts");
@@ -709,7 +747,7 @@ export function createHostsTab(redraw: () => void) {
 
   const onlyName = (f: Form, x: KnownHost) => {
     const d = f.draft;
-    return d.destination.trim() === x.destination && d.user.trim() === (x.user ?? "") && d.port.trim() === (x.port ? String(x.port) : "") && d.socket.trim() === (x.socket_override ? x.socket ?? "" : "");
+    return d.destination.trim() === x.destination && d.user.trim() === (x.user ?? "") && d.port.trim() === (x.port ? String(x.port) : "");
   };
 
   /** Saves the form. Connect then runs the check list: it finds the socket. */

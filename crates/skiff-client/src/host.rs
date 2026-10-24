@@ -129,13 +129,7 @@ impl SessionUpdates {
                 match rx.recv().await {
                     Ok(Event::SessionUpdate { update }) => return Ok(*update),
                     // Other families have their own receivers.
-                    Ok(
-                        Event::Snapshot { .. }
-                        | Event::Output { .. }
-                        | Event::SessionChanged { .. }
-                        | Event::TerminalSnapshot { .. }
-                        | Event::TerminalOutput { .. },
-                    ) => {}
+                    Ok(Event::TerminalSnapshot { .. } | Event::TerminalOutput { .. }) => {}
                     Err(broadcast::error::RecvError::Lagged(n)) => {
                         return Err(UpdateGap::Lagged(n))
                     }
@@ -829,8 +823,9 @@ impl HostConnection {
         }
     }
 
-    /// Listen before requesting Subscribe: a snapshot may precede its reply.
-    /// Lagged means discard queued output and request a new subscription/snapshot.
+    /// Every event on the wire. Listen before requesting TerminalAttach: a
+    /// snapshot may precede its reply. Lagged means discard queued output
+    /// and attach again. A local backend has no wire.
     pub fn events(&self) -> Result<broadcast::Receiver<Event>, Error> {
         match &self.backend {
             Backend::Wire(engine) => {
@@ -841,7 +836,7 @@ impl HostConnection {
                     .ok_or_else(|| s.failure.clone().unwrap_or(Error::TransportLost))
             }
             Backend::Local { .. } => Err(Error::UnsupportedCapability {
-                capability: skiff_host_api::Capability::sessions(),
+                capability: skiff_host_api::Capability::session_terminal(),
             }),
         }
     }

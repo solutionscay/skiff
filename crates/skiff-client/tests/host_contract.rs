@@ -38,7 +38,7 @@ fn hello() -> Hello {
     serde_json::from_value(serde_json::json!({
         "host_id":"host-a","instance_id":"instance-a","os":"linux","account":"me",
         "service_versions":{"skiff-host":"2.0.0"},"api_major":1,
-        "capabilities":[{"name":"sessions","version":1}],
+        "capabilities":[{"name":"session_agents","version":1},{"name":"session_terminal","version":1}],
         "limits":{"max_frame_bytes":8388608,"max_in_flight":64}
     }))
     .unwrap()
@@ -76,7 +76,7 @@ async fn unknown_api_or_missing_capability_never_dispatches_an_operation() {
     for caps in [
         vec![],
         vec![Capability {
-            name: "sessions".into(),
+            name: "session_agents".into(),
             version: 2,
         }],
     ] {
@@ -85,7 +85,7 @@ async fn unknown_api_or_missing_capability_never_dispatches_an_operation() {
         let (connection, mut peer) = connect(h, None).await;
         let connection = connection.unwrap();
         assert!(matches!(
-            connection.request(Request::ListSessions).await,
+            connection.request(Request::AgentList).await,
             Err(Error::UnsupportedCapability { .. })
         ));
         assert!(
@@ -101,8 +101,8 @@ async fn replies_are_correlated_out_of_order_and_duplicate_reply_cannot_complete
     let (connection, mut peer) = connect(hello(), None).await;
     let connection = connection.unwrap();
     let (a, b, ()) = tokio::join!(
-        connection.request(Request::ListSessions),
-        connection.request(Request::Resize {
+        connection.request(Request::AgentList),
+        connection.request(Request::TerminalResize {
             session: "s".into(),
             cols: 80,
             rows: 24
@@ -118,11 +118,11 @@ async fn replies_are_correlated_out_of_order_and_duplicate_reply_cannot_complete
                 }),
             )
             .await;
-            peer.reply(a.id, Ok(Response::Sessions { sessions: vec![] }))
+            peer.reply(a.id, Ok(Response::Agents { agents: vec![] }))
                 .await;
         }
     );
-    assert_eq!(a, Ok(Response::Sessions { sessions: vec![] }));
+    assert_eq!(a, Ok(Response::Agents { agents: vec![] }));
     assert_eq!(b, Ok(Response::Ok));
 }
 
@@ -133,13 +133,13 @@ async fn snapshot_can_precede_subscribe_reply_and_bytes_and_writes_stay_ordered(
     let mut events = connection.events().unwrap();
     let data = vec![0, 255, 13, 10];
     let (result, ()) = tokio::join!(
-        connection.request(Request::Subscribe {
+        connection.request(Request::TerminalAttach {
             session: "s".into()
         }),
         async {
             let ask = peer.request().await;
             peer.send(Message::Event {
-                event: Event::Snapshot {
+                event: Event::TerminalSnapshot {
                     session: "s".into(),
                     data: data.clone(),
                     cols: 80,
@@ -148,9 +148,10 @@ async fn snapshot_can_precede_subscribe_reply_and_bytes_and_writes_stay_ordered(
             })
             .await;
             peer.send(Message::Event {
-                event: Event::Output {
+                event: Event::TerminalOutput {
                     session: "s".into(),
                     data: vec![27, 91],
+                    echo: None,
                 },
             })
             .await;
@@ -160,7 +161,7 @@ async fn snapshot_can_precede_subscribe_reply_and_bytes_and_writes_stay_ordered(
     assert_eq!(result, Ok(Response::Ok));
     assert_eq!(
         events.recv().await.unwrap(),
-        Event::Snapshot {
+        Event::TerminalSnapshot {
             session: "s".into(),
             data: data.clone(),
             cols: 80,
@@ -169,13 +170,14 @@ async fn snapshot_can_precede_subscribe_reply_and_bytes_and_writes_stay_ordered(
     );
     assert_eq!(
         events.recv().await.unwrap(),
-        Event::Output {
+        Event::TerminalOutput {
             session: "s".into(),
-            data: vec![27, 91]
+            data: vec![27, 91],
+            echo: None,
         }
     );
     for data in [data, vec![1, 2]] {
-        let request = Request::Write {
+        let request = Request::TerminalInput {
             session: "s".into(),
             data,
             paste: false,
@@ -196,27 +198,27 @@ async fn cancellation_stall_and_timeout_remove_pending_slots() {
     let (connection, mut peer) = connect(h, None).await;
     let connection = Arc::new(connection.unwrap());
     let c = connection.clone();
-    let task = tokio::spawn(async move { c.request(Request::ListSessions).await });
+    let task = tokio::spawn(async move { c.request(Request::AgentList).await });
     let cancelled = peer.request().await;
     assert_eq!(
-        connection.request(Request::ListSessions).await,
+        connection.request(Request::AgentList).await,
         Err(Error::HostBusy)
     );
     task.abort();
     let _ = task.await;
     // A late reply to the cancelled waiter is harmless, and its slot is reusable.
-    peer.reply(cancelled.id, Ok(Response::Sessions { sessions: vec![] }))
+    peer.reply(cancelled.id, Ok(Response::Agents { agents: vec![] }))
         .await;
     let c = connection.clone();
-    let stalled = tokio::spawn(async move { c.request(Request::ListSessions).await });
+    let stalled = tokio::spawn(async move { c.request(Request::AgentList).await });
     let timed_out = peer.request().await;
     tokio::time::advance(Duration::from_secs(2)).await;
     assert_eq!(stalled.await.unwrap(), Err(Error::TimedOut));
-    peer.reply(timed_out.id, Ok(Response::Sessions { sessions: vec![] }))
+    peer.reply(timed_out.id, Ok(Response::Agents { agents: vec![] }))
         .await;
-    let (result, ()) = tokio::join!(connection.request(Request::ListSessions), async {
+    let (result, ()) = tokio::join!(connection.request(Request::AgentList), async {
         let ask = peer.request().await;
-        peer.reply(ask.id, Ok(Response::Sessions { sessions: vec![] }))
+        peer.reply(ask.id, Ok(Response::Agents { agents: vec![] }))
             .await;
     });
     assert!(result.is_ok());
@@ -228,7 +230,7 @@ async fn disconnect_and_peer_drop_complete_waiters_and_close_events() {
         let (connection, mut peer) = connect(hello(), None).await;
         let connection = connection.unwrap();
         let mut events = connection.events().unwrap();
-        let (result, ()) = tokio::join!(connection.request(Request::ListSessions), async {
+        let (result, ()) = tokio::join!(connection.request(Request::AgentList), async {
             peer.request().await;
             if drop_peer {
                 drop(peer);
@@ -240,7 +242,7 @@ async fn disconnect_and_peer_drop_complete_waiters_and_close_events() {
         assert_eq!(result, Err(Error::TransportLost));
         assert!(events.recv().await.is_err());
         assert_eq!(
-            connection.request(Request::ListSessions).await,
+            connection.request(Request::AgentList).await,
             Err(Error::TransportLost)
         );
     }
@@ -279,7 +281,7 @@ async fn malformed_or_mismatched_replies_fail_explicitly() {
     for malformed in [true, false] {
         let (connection, mut peer) = connect(hello(), None).await;
         let connection = connection.unwrap();
-        let (result, ()) = tokio::join!(connection.request(Request::ListSessions), async {
+        let (result, ()) = tokio::join!(connection.request(Request::AgentList), async {
             let ask = peer.request().await;
             if malformed {
                 peer.wr.write_all(b"not json\n").await.unwrap();
@@ -296,18 +298,19 @@ async fn bounded_events_report_lag_without_starving_control_replies() {
     let (connection, mut peer) = connect(hello(), None).await;
     let connection = connection.unwrap();
     let mut events = connection.events().unwrap();
-    let (reply, ()) = tokio::join!(connection.request(Request::ListSessions), async {
+    let (reply, ()) = tokio::join!(connection.request(Request::AgentList), async {
         let ask = peer.request().await;
         for _ in 0..300 {
             peer.send(Message::Event {
-                event: Event::Output {
+                event: Event::TerminalOutput {
                     session: "s".into(),
                     data: vec![1],
+                    echo: None,
                 },
             })
             .await;
         }
-        peer.reply(ask.id, Ok(Response::Sessions { sessions: vec![] }))
+        peer.reply(ask.id, Ok(Response::Agents { agents: vec![] }))
             .await;
     });
     assert!(reply.is_ok());
@@ -345,7 +348,7 @@ async fn oversized_requests_are_rejected_before_dispatch_and_transport_stalls_ar
     let connection = connection.unwrap();
     assert!(matches!(
         connection
-            .request(Request::Write {
+            .request(Request::TerminalInput {
                 session: "s".into(),
                 data: vec![0; 256],
                 paste: false
@@ -382,9 +385,9 @@ async fn service_errors_are_typed_without_fallback_or_connection_replacement() {
         },
         Error::HostBusy,
     ] {
-        let (result, ()) = tokio::join!(connection.request(Request::ListSessions), async {
+        let (result, ()) = tokio::join!(connection.request(Request::AgentList), async {
             let ask = peer.request().await;
-            assert_eq!(ask.request, Request::ListSessions);
+            assert_eq!(ask.request, Request::AgentList);
             peer.reply(ask.id, Err(error.clone())).await;
         });
         assert_eq!(result, Err(error));
@@ -418,7 +421,7 @@ async fn m1a_connection_status_also_works_over_the_negotiated_transport() {
         })
     );
     assert!(matches!(
-        connection.request(Request::ListSessions).await,
+        connection.request(Request::AgentList).await,
         Err(Error::UnsupportedCapability { .. })
     ));
 }
@@ -451,7 +454,7 @@ async fn m1b_screen_works_over_transport_without_granting_sessions() {
         })
     );
     assert!(matches!(
-        connection.request(Request::ListSessions).await,
+        connection.request(Request::AgentList).await,
         Err(Error::UnsupportedCapability { .. })
     ));
 }
@@ -472,7 +475,7 @@ async fn m1c_inventory_is_typed_and_gated_on_the_negotiated_transport() {
     });
     assert_eq!(reply, Ok(response));
     assert!(matches!(
-        connection.request(Request::ListSessions).await,
+        connection.request(Request::AgentList).await,
         Err(Error::UnsupportedCapability { .. })
     ));
 }
@@ -494,9 +497,10 @@ async fn m1d_updates_are_gated_ordered_and_closed_on_the_negotiated_transport() 
     let messages: Vec<Message> = serde_json::from_value(fixture["messages"].clone()).unwrap();
     // Output belongs to another receiver and is not a session update.
     peer.send(Message::Event {
-        event: Event::Output {
+        event: Event::TerminalOutput {
             session: "a".into(),
             data: vec![0xff],
+            echo: None,
         },
     })
     .await;
@@ -527,8 +531,10 @@ async fn m1d_updates_are_gated_ordered_and_closed_on_the_negotiated_transport() 
 #[tokio::test]
 async fn m1e_terminal_is_gated_ordered_and_lag_reporting_on_the_negotiated_transport() {
     use skiff_client::host::{OutputGap, TerminalFrame};
-    // sessions@1 alone does not grant the terminal family; nothing is sent.
-    let (connection, mut peer) = connect(hello(), None).await;
+    // Another family alone does not grant the terminal family; nothing is sent.
+    let mut h = hello();
+    h.capabilities = vec![Capability::session_agents()];
+    let (connection, mut peer) = connect(h, None).await;
     let connection = connection.unwrap();
     assert!(matches!(
         connection.terminal_output("s1"),
@@ -570,7 +576,7 @@ async fn m1e_terminal_is_gated_ordered_and_lag_reporting_on_the_negotiated_trans
                     session: "s1".into()
                 }
             );
-            // Snapshot before the reply; other sessions and families are skipped.
+            // Snapshot before the reply; other sessions are skipped.
             for event in [
                 Event::TerminalSnapshot {
                     session: "s1".into(),
@@ -582,10 +588,6 @@ async fn m1e_terminal_is_gated_ordered_and_lag_reporting_on_the_negotiated_trans
                     session: "s2".into(),
                     data: b"other".to_vec(),
                     echo: None,
-                },
-                Event::Output {
-                    session: "s1".into(),
-                    data: b"m0".to_vec(),
                 },
                 Event::TerminalOutput {
                     session: "s1".into(),

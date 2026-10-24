@@ -492,7 +492,7 @@ where
     let c = data_now(app).await?;
     match write(c).await {
         Ok(out) => Ok(out),
-        Err(E::TransportLost | E::TimedOut | E::Cancelled) => Err(DATA_UNCERTAIN.into()),
+        Err(E::TransportLost | E::TimedOut) => Err(DATA_UNCERTAIN.into()),
         Err(e) => Err(data_err(e)),
     }
 }

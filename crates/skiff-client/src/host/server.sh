@@ -1,6 +1,6 @@
 # Everything Skiff runs on a server, as the account that owns the sessions:
 # no sudo, no system folder. The app sends this file on stdin, with a mode:
-#   probe [socket name] [socket path]  read only: one JSON line for the check list
+#   probe [socket name] [stored socket]  read only: one JSON line for the check list
 #   install-key <key>, fix-key <key>   this computer's public key into authorized_keys
 #   install <version> <sha256> <socket name>, update <version> <sha256> <socket name> <yes|no>,
 #   start <socket name>, linger, sessions <socket name>, uninstall
@@ -205,15 +205,33 @@ host_fallback() {
 # full socket path the person chose instead.
 esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\000-\037'; }
 probe() {
-  sock=${2:-$rt/skiff/${1:-skiffd.sock}}
   arch=$(uname -m)
+  # Each Skiff socket in the runtime folder, the release's and a dev
+  # build's, with `skiff status --json` from the skiffd there: the managed
+  # CLI first, then PATH, then cargo's.
+  sockets= n=0 one= seen_rel= seen_dev=
+  for name in skiffd.sock skiffd-dev.sock; do
+    sock=$rt/skiff/$name
+    [ -S "$sock" ] || continue
+    s=$(status_of "$d/current/skiff" "$(command -v skiff 2>/dev/null)" "$HOME/.cargo/bin/skiff")
+    sockets="$sockets${sockets:+,}$(printf '{"name":"%s","socket":"%s","version":"%s"}' "$name" "$(esc "$sock")" "$(esc "$(daemon_field "$s" version)")")"
+    n=$((n + 1)) one=$sock
+    case $name in skiffd.sock) seen_rel=$s ;; *) seen_dev=$s ;; esac
+  done
+  # The one in use: the stored one ($2) while it is there, else the only
+  # one, else the one with this app's name ($1).
+  if [ -n "${2:-}" ] && [ -S "$2" ]; then sock=$2
+  elif [ $n = 1 ]; then sock=$one
+  else sock=$rt/skiff/${1:-skiffd.sock}; fi
   live=false
   [ -S "$sock" ] && live=true
-  # `skiff status --json` from the skiffd there: the managed CLI first,
-  # then PATH, then cargo's.
   status=null
   if [ $live = true ]; then
-    s=$(status_of "$d/current/skiff" "$(command -v skiff 2>/dev/null)" "$HOME/.cargo/bin/skiff")
+    case $sock in
+      "$rt/skiff/skiffd.sock") s=$seen_rel ;;
+      "$rt/skiff/skiffd-dev.sock") s=$seen_dev ;;
+      *) s=$(status_of "$d/current/skiff" "$(command -v skiff 2>/dev/null)" "$HOME/.cargo/bin/skiff") ;;
+    esac
     [ -n "$s" ] && status=$s
   fi
   # The install Skiff manages, if any: its manifest names the version.
@@ -246,8 +264,8 @@ probe() {
   fallback=false
   if [ -f "$d/skiffd.pid" ] && kill -0 "$(cat "$d/skiffd.pid" 2>/dev/null)" 2>/dev/null; then fallback=true; fi
   free_kb=$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2 {print $4}')
-  printf '{"os":"%s","arch":"%s","runtime_dir":"%s","socket":"%s","socket_live":%s,"status":%s,"managed":%s,"app":"%s","systemd":%s,"unit_enabled":%s,"unit_active":%s,"host_unit_enabled":%s,"linger":"%s","fallback":%s,"free_kb":%s}\n' \
-    "$(esc "$os")" "$(esc "$arch")" "$(esc "$rt")" "$(esc "$sock")" "$live" "$status" "$managed" "$(esc "$app")" "$systemd" "$unit_enabled" "$unit_active" "$host_unit_enabled" "$(esc "$linger")" "$fallback" "${free_kb:-0}"
+  printf '{"os":"%s","arch":"%s","runtime_dir":"%s","socket":"%s","socket_live":%s,"status":%s,"managed":%s,"app":"%s","systemd":%s,"unit_enabled":%s,"unit_active":%s,"host_unit_enabled":%s,"linger":"%s","fallback":%s,"free_kb":%s,"sockets":[%s]}\n' \
+    "$(esc "$os")" "$(esc "$arch")" "$(esc "$rt")" "$(esc "$sock")" "$live" "$status" "$managed" "$(esc "$app")" "$systemd" "$unit_enabled" "$unit_active" "$host_unit_enabled" "$(esc "$linger")" "$fallback" "${free_kb:-0}" "$sockets"
 }
 
 # This computer's public key line $1, checked by Skiff against a strict
