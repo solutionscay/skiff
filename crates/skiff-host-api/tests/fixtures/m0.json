@@ -32,7 +32,7 @@
       "api_major": 1,
       "capabilities": [
         {
-          "name": "sessions",
+          "name": "connection_status",
           "version": 1
         }
       ],
@@ -44,7 +44,7 @@
   ],
   "capabilities": [
     {
-      "name": "sessions",
+      "name": "connection_status",
       "version": 1
     }
   ],
@@ -54,39 +54,12 @@
       "max_in_flight": 64
     }
   ],
-  "sessions": [
-    {
-      "id": "s1",
-      "cwd": "/remote/project",
-      "label": "Review"
-    }
-  ],
   "requests": [
     {
       "cmd": "hello"
     },
     {
-      "cmd": "list_sessions"
-    },
-    {
-      "cmd": "write",
-      "session": "s1",
-      "data": "AP8KDQ==",
-      "paste": false
-    },
-    {
-      "cmd": "resize",
-      "session": "s1",
-      "cols": 80,
-      "rows": 24
-    },
-    {
-      "cmd": "subscribe",
-      "session": "s1"
-    },
-    {
-      "cmd": "unsubscribe",
-      "session": "s1"
+      "cmd": "connection_status"
     }
   ],
   "envelopes": [
@@ -99,39 +72,7 @@
     {
       "id": 2,
       "request": {
-        "cmd": "list_sessions"
-      }
-    },
-    {
-      "id": 3,
-      "request": {
-        "cmd": "write",
-        "session": "s1",
-        "data": "AP8KDQ==",
-        "paste": false
-      }
-    },
-    {
-      "id": 4,
-      "request": {
-        "cmd": "resize",
-        "session": "s1",
-        "cols": 80,
-        "rows": 24
-      }
-    },
-    {
-      "id": 5,
-      "request": {
-        "cmd": "subscribe",
-        "session": "s1"
-      }
-    },
-    {
-      "id": 6,
-      "request": {
-        "cmd": "unsubscribe",
-        "session": "s1"
+        "cmd": "connection_status"
       }
     }
   ],
@@ -150,7 +91,7 @@
         "api_major": 1,
         "capabilities": [
           {
-            "name": "sessions",
+            "name": "connection_status",
             "version": 1
           }
         ],
@@ -161,46 +102,14 @@
       }
     },
     {
-      "kind": "sessions",
-      "sessions": [
-        {
-          "id": "s1",
-          "cwd": "/remote/project",
-          "label": "Review"
-        }
-      ]
-    },
-    {
       "kind": "ok"
-    }
-  ],
-  "events": [
-    {
-      "event": "snapshot",
-      "session": "s1",
-      "data": "AP8KDQ==",
-      "cols": 80,
-      "rows": 24
-    },
-    {
-      "event": "output",
-      "session": "s1",
-      "data": "AP8KDQ=="
-    },
-    {
-      "event": "session_changed",
-      "session": {
-        "id": "s1",
-        "cwd": "/remote/project",
-        "label": "Review"
-      }
     }
   ],
   "errors": [
     {
       "code": "unsupported_capability",
       "capability": {
-        "name": "sessions",
+        "name": "connection_status",
         "version": 1
       }
     },
@@ -232,9 +141,6 @@
       "code": "transport_lost"
     },
     {
-      "code": "cancelled"
-    },
-    {
       "code": "timed_out"
     },
     {
@@ -262,7 +168,7 @@
             "api_major": 1,
             "capabilities": [
               {
-                "name": "sessions",
+                "name": "connection_status",
                 "version": 1
               }
             ],
@@ -271,22 +177,6 @@
               "max_in_flight": 64
             }
           }
-        }
-      }
-    },
-    {
-      "type": "reply",
-      "id": 2,
-      "result": {
-        "Ok": {
-          "kind": "sessions",
-          "sessions": [
-            {
-              "id": "s1",
-              "cwd": "/remote/project",
-              "label": "Review"
-            }
-          ]
         }
       }
     },
@@ -306,38 +196,9 @@
         "Err": {
           "code": "unsupported_capability",
           "capability": {
-            "name": "sessions",
+            "name": "connection_status",
             "version": 1
           }
-        }
-      }
-    },
-    {
-      "type": "event",
-      "event": {
-        "event": "snapshot",
-        "session": "s1",
-        "data": "AP8KDQ==",
-        "cols": 80,
-        "rows": 24
-      }
-    },
-    {
-      "type": "event",
-      "event": {
-        "event": "output",
-        "session": "s1",
-        "data": "AP8KDQ=="
-      }
-    },
-    {
-      "type": "event",
-      "event": {
-        "event": "session_changed",
-        "session": {
-          "id": "s1",
-          "cwd": "/remote/project",
-          "label": "Review"
         }
       }
     }

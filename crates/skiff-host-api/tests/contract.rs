@@ -19,27 +19,27 @@ fn every_m0_shape_matches_golden_json() {
     golden::<Hello>("hellos");
     golden::<Capability>("capabilities");
     golden::<Limits>("limits");
-    golden::<Session>("sessions");
     golden::<Request>("requests");
     golden::<Envelope>("envelopes");
     golden::<Response>("responses");
-    golden::<Event>("events");
     golden::<Error>("errors");
     golden::<Message>("messages");
 }
 
 #[test]
 fn binary_bytes_are_base64_not_utf8_and_order_survives() {
-    let r: Request = serde_json::from_value(fixture()["requests"][2].clone()).unwrap();
+    let r: Request =
+        serde_json::from_value(json!({"cmd":"terminal_input","session":"s1","data":"AP8KDQ=="}))
+            .unwrap();
     assert_eq!(
         r,
-        Request::Write {
+        Request::TerminalInput {
             session: "s1".into(),
             data: vec![0, 255, 10, 13],
             paste: false
         }
     );
-    for key in ["snapshot", "output"] {
+    for key in ["terminal_snapshot", "terminal_output"] {
         let e = json!({"event":key,"session":"s1","data":"not base64!","cols":80,"rows":24});
         assert!(serde_json::from_value::<Event>(e).is_err());
     }
@@ -55,7 +55,7 @@ fn additive_metadata_and_future_capabilities_do_not_break_old_readers() {
         .push(json!({"name":"future.feature","version":3}));
     let hello: Hello = serde_json::from_value(value).unwrap();
     hello.validate().unwrap();
-    hello.require(&Capability::sessions()).unwrap();
+    hello.require(&Capability::connection_status()).unwrap();
     assert!(matches!(
         hello.require(&Capability {
             name: "files.read".into(),
@@ -63,9 +63,6 @@ fn additive_metadata_and_future_capabilities_do_not_break_old_readers() {
         }),
         Err(Error::UnsupportedCapability { .. })
     ));
-    let session: Session =
-        serde_json::from_value(json!({"id":"s","cwd":"/x","label":"x","new":42})).unwrap();
-    assert_eq!(session.generation, None);
 }
 
 #[test]
@@ -99,7 +96,7 @@ fn capability_majors_are_exact_and_service_versions_do_not_replace_negotiation()
         .insert("skiff-host".into(), "900.0.0".into());
     hello.validate().unwrap();
     assert!(matches!(
-        hello.require(&Capability::sessions()),
+        hello.require(&Capability::connection_status()),
         Err(Error::UnsupportedCapability { .. })
     ));
 }
@@ -115,7 +112,7 @@ fn m1a_status_is_additive_and_gated_by_its_own_capability() {
     assert_eq!(request.capability(), Some(capability));
     assert!(request.accepts(&response));
     assert!(!request.accepts(&Response::Ok));
-    assert!(!Request::ListSessions.accepts(&response));
+    assert!(!Request::SessionInventory.accepts(&response));
 }
 
 #[test]
@@ -133,7 +130,7 @@ fn m1b_screen_has_an_independent_read_only_capability_and_lossless_golden_shape(
     );
     assert!(request.accepts(&reply));
     assert!(!request.accepts(&Response::Ok));
-    assert!(!Request::ListSessions.accepts(&reply));
+    assert!(!Request::SessionInventory.accepts(&reply));
     let envelope = Envelope { id: 9, request };
     assert_eq!(
         serde_json::from_value::<Envelope>(serde_json::to_value(&envelope).unwrap()).unwrap(),
@@ -154,7 +151,7 @@ fn m1c_inventory_golden_schema_preserves_defaults_nulls_omissions_and_metadata()
     );
     assert!(request.accepts(&response));
     assert!(!request.accepts(&Response::Ok));
-    assert!(!Request::ListSessions.accepts(&response));
+    assert!(!Request::ConnectionStatus.accepts(&response));
     let minimal: InventorySession =
         serde_json::from_value(fixture["legacy_minimal"].clone()).unwrap();
     assert_eq!(
@@ -184,10 +181,7 @@ fn m1d_session_updates_have_an_explicit_capability_envelope_and_golden_shape() {
         };
         assert_eq!(event.capability(), Capability::session_updates());
     }
-    // M0 event families keep their capability; unknown kinds and states fail.
-    let m0: Event =
-        serde_json::from_value(json!({"event":"output","session":"s","data":""})).unwrap();
-    assert_eq!(m0.capability(), Capability::sessions());
+    // Unknown kinds and states fail.
     for update in [
         json!({"kind":"future_update","session":"a"}),
         json!({"kind":"state","session":"a","state":"future"}),
@@ -218,7 +212,7 @@ fn m1e_session_terminal_has_its_own_capability_and_lossless_golden_shape() {
     assert!(
         matches!(input, Request::TerminalInput { data, paste: false, .. } if data == [0, 255, 10, 13, 27])
     );
-    // `paste` defaults to false, as M0 Write does.
+    // `paste` defaults to false.
     let typed: Request =
         serde_json::from_value(json!({"cmd":"terminal_input","session":"s","data":"eA=="}))
             .unwrap();
@@ -245,13 +239,9 @@ fn m1e_session_terminal_has_its_own_capability_and_lossless_golden_shape() {
             }
         ))
     );
-    // M0 families keep sessions@1 and are not terminal frames; bad bytes fail.
-    let m0: Event =
-        serde_json::from_value(json!({"event":"output","session":"s","data":""})).unwrap();
-    assert_eq!(m0.capability(), Capability::sessions());
-    assert!(m0.into_terminal().is_none());
-    let m0: Request = serde_json::from_value(json!({"cmd":"subscribe","session":"s"})).unwrap();
-    assert_eq!(m0.capability(), Some(Capability::sessions()));
+    // The removed M0 families do not decode; bad bytes fail.
+    assert!(serde_json::from_value::<Event>(json!({"event":"output","session":"s","data":""})).is_err());
+    assert!(serde_json::from_value::<Request>(json!({"cmd":"subscribe","session":"s"})).is_err());
     for bad in [
         json!({"event":"terminal_output","session":"s","data":"not base64!"}),
         json!({"event":"terminal_snapshot","session":"s","data":"","cols":-1,"rows":0}),
@@ -363,9 +353,6 @@ fn m1g_lifecycle_and_groups_have_their_own_capabilities_and_lossless_golden_shap
             "{bad}"
         );
     }
-    // Older contract families keep their own capabilities.
-    let m0: Request = serde_json::from_value(json!({"cmd":"list_sessions"})).unwrap();
-    assert_eq!(m0.capability(), Some(Capability::sessions()));
 }
 
 #[test]

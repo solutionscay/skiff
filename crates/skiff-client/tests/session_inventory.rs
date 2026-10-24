@@ -93,21 +93,21 @@ async fn inventory_has_no_broad_sessions_permission_or_fallback_on_capability_ve
     }
     let host = connect(&source, hello()).unwrap();
     for request in [
-        Request::ListSessions,
-        Request::Write {
+        Request::AgentList,
+        Request::TerminalInput {
             session: "s".into(),
             data: vec![],
             paste: false,
         },
-        Request::Resize {
+        Request::TerminalResize {
             session: "s".into(),
             cols: 1,
             rows: 1,
         },
-        Request::Subscribe {
+        Request::TerminalAttach {
             session: "s".into(),
         },
-        Request::Unsubscribe {
+        Request::TerminalDetach {
             session: "s".into(),
         },
     ] {

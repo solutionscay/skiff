@@ -98,7 +98,7 @@ async fn version_capability_and_identity_errors_never_call_a_fallback_source() {
     ));
     let host = HostConnection::local_status(source.clone(), hello(), None).unwrap();
     assert!(matches!(
-        host.request(Request::ListSessions).await,
+        host.request(Request::AgentList).await,
         Err(Error::UnsupportedCapability { .. })
     ));
     let mut previous = hello();

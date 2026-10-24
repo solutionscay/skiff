@@ -98,11 +98,11 @@ async fn updates_require_their_capability_and_a_source_without_fallback() {
     for caps in [
         vec![Capability::session_inventory()],
         vec![Capability { name: SESSION_UPDATES.into(), version: 2 }],
-        vec![Capability::sessions()],
+        vec![Capability { name: "sessions".into(), version: 1 }],
     ] {
         let Ok(connection) = connect(&source, hello(caps.clone())) else {
-            // Broad sessions@1 is never claimable by the local adapter.
-            assert_eq!(caps, vec![Capability::sessions()]);
+            // A family the local adapter does not know is never claimable.
+            assert_eq!(caps[0].name, "sessions");
             continue;
         };
         assert!(matches!(

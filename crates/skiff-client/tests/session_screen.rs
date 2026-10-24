@@ -91,21 +91,21 @@ async fn screen_capability_is_independent_and_failures_never_dispatch_or_fall_ba
     }
     let connection = connect(&source, hello()).unwrap();
     for request in [
-        Request::ListSessions,
-        Request::Write {
+        Request::AgentList,
+        Request::TerminalInput {
             session: "s".into(),
             data: vec![],
             paste: false,
         },
-        Request::Resize {
+        Request::TerminalResize {
             session: "s".into(),
             cols: 1,
             rows: 1,
         },
-        Request::Subscribe {
+        Request::TerminalAttach {
             session: "s".into(),
         },
-        Request::Unsubscribe {
+        Request::TerminalDetach {
             session: "s".into(),
         },
     ] {

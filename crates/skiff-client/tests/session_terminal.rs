@@ -144,19 +144,17 @@ async fn the_terminal_requires_its_capability_and_a_source_without_fallback() {
         assert!(legacy_input(&connection, "s", b"x".to_vec()).is_err());
     }
     assert!(source.calls.lock().unwrap().is_empty());
-    // An adapter without a terminal source cannot advertise it, and the
-    // terminal never implies broad sessions@1.
-    for caps in [
-        vec![Capability::session_terminal()],
-        vec![Capability::sessions()],
-    ] {
+    // An adapter without a terminal source cannot advertise it, and no
+    // adapter claims a family it does not know.
+    let unknown = || Capability { name: "sessions".into(), version: 1 };
+    for caps in [vec![Capability::session_terminal()], vec![unknown()]] {
         assert!(matches!(
             connect(&source, hello(caps), false),
             Err(Error::MalformedContract { .. })
         ));
     }
     assert!(matches!(
-        connect(&source, hello(vec![Capability::sessions()]), true),
+        connect(&source, hello(vec![unknown()]), true),
         Err(Error::MalformedContract { .. })
     ));
 }
@@ -315,10 +313,6 @@ async fn selected_terminal_sends_exactly_the_legacy_frames_on_one_client() {
         .hello()
         .capabilities
         .contains(&Capability::session_terminal()));
-    assert!(!connection
-        .hello()
-        .capabilities
-        .contains(&Capability::sessions()));
     let (rd, mut wr) = peer.unwrap().0.into_split();
     let mut rd = BufReader::new(rd);
     let legacy = fixture()["legacy"].clone();
