@@ -229,7 +229,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "8f32fde5d950c3a8a3a2fadfda4a92e0956d185e03a3e232ca634f7730009a23"
+    "sha256": "3bd51cdf8adc4c9dd72e3df698acec31836489c55371dc43641990eb55434251"
   },
   "apps/desktop/src/app/connectPanel.ts": {
     "ownership": "client policy (#166): the connecting panel; listens only to this client's own SSH connect lines (skiff:connect-line), before any Host answers; no Host data",
@@ -556,7 +556,7 @@
       "local provider: apps/desktop/src/terminal/resume.ts",
       "local provider: apps/desktop/src/workspace/canvas.ts"
     ],
-    "sha256": "1b5f78427b7e6003c060e88b7617c026d17a20404d0d812e3c0294816b01a726"
+    "sha256": "c94a798b05ea89589e7a95bace6d2f0203f31b11397577a2b5f4ff8676376cb3"
   },
   "apps/desktop/src/terminal/peek.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -733,7 +733,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "32cfebe010f8e79e1df3d7cf9cb0bda2048844beacb08a55856ac38ec5b04779"
+    "sha256": "a9409ea411155aeb8659d0bea13cf3777c1c13048e9731f7020ad65f8e315a36"
   },
   "apps/desktop/src/workspace/missionControl.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -805,7 +805,7 @@
       "local provider: apps/desktop/src/appearance/agentIcon.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "a02aa191efda5e4740e624b3f5fbc1d49398b3891e56537164be2ad0416a1976"
+    "sha256": "bd795851825f683bbf3a949cb50b75c53f29ba4a95c57289e93da588ca46b7d4"
   },
   "apps/desktop/src/workspace/selection.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
