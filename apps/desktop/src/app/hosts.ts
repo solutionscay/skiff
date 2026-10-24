@@ -8,7 +8,7 @@ import { ctxMenu } from "../ui/contextMenu";
 import type { MenuEntry } from "../ui/menu";
 import { confirmAction } from "../ui/confirm";
 import { h } from "../ui/dom";
-import { showError } from "../ui/alerts";
+import { showError, showNotice } from "../ui/alerts";
 
 export interface KnownHost {
   id: string;
@@ -37,15 +37,51 @@ interface HostList {
   /** The shown remote Host's clipboard permission, for the menu: given to
    *  the identity this window accepted. Each write asks Rust again. */
   clipboard: boolean;
+  /** This window shows a remote Host that is not in the list any more:
+   *  its destination. */
+  removed: string | null;
 }
 
-let list: HostList = { selected: null, localName: "", hosts: [], clipboard: false };
+let list: HostList = { selected: null, localName: "", hosts: [], clipboard: false, removed: null };
 let connected = true;
+const changed = new Set<() => void>();
+/** The note a switch to this computer leaves for the page after the reload. */
+const REMOVED_NOTE = "skiff.hostRemoved";
 
-/** Reads the known Hosts and the selected one. Call it before anything loads. */
+/** Reads the known Hosts and the selected one. Call it before anything loads.
+ *  A shown Host that left the list (Remove in another window, or an edit of
+ *  hosts.toml by hand) gives way to this computer, with a note that names it. */
 export async function loadHosts(): Promise<void> {
+  const before = list;
   list = await invoke<HostList>("list_hosts");
+  if (list.removed) {
+    const name = before.hosts.find((x) => x.id === before.selected)?.name ?? list.removed;
+    await invoke("select_host", { id: null });
+    try {
+      sessionStorage.setItem(REMOVED_NOTE, `${name} was removed. Showing ${localHostName()}.`);
+    } catch {}
+    location.reload();
+    return;
+  }
   renderHostLabel();
+  for (const run of changed) run();
+}
+
+/** Runs after each read of the Host list, such as one hosts.toml changed. */
+export function onHostsChanged(run: () => void) {
+  changed.add(run);
+}
+
+/** Follows hosts.toml as it changes, and shows the note a removed shown
+ *  Host left before the reload. */
+export function watchHosts() {
+  void listen("skiff:hosts-changed", () => void loadHosts().catch(showError));
+  let note: string | null = null;
+  try {
+    note = sessionStorage.getItem(REMOVED_NOTE);
+    sessionStorage.removeItem(REMOVED_NOTE);
+  } catch {}
+  if (note) showNotice(note);
 }
 
 /** The window shows a remote Host: this Mac's projects, files, ledger and

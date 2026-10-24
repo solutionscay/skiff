@@ -84,6 +84,7 @@ pub fn run() {
             std::thread::spawn(move || skiff_agent::sync(&handle.state::<App>()));
             let handle = app.handle().clone();
             ledger::watch(handle);
+            hosts::watch(app.handle().clone());
             // A remote connect's live lines, for the connecting panel.
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

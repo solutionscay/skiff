@@ -354,6 +354,9 @@ pub(crate) struct HostList {
     /// The shown remote Host's clipboard permission, for the menu: given to
     /// the identity this window accepted. Each write asks `host_clipboard`.
     clipboard: bool,
+    /// This window shows a remote Host that is not in the list any more:
+    /// its destination. The page then picks this computer.
+    removed: Option<String>,
 }
 
 /// `identity`: the one this window accepted, live or pinned.
@@ -371,7 +374,7 @@ fn host_list(hosts: Hosts, selected: Option<String>, identity: Option<&HostId>) 
             HostView { state: state(&h), id: h.id, name: h.name, destination: h.destination, user: h.user, port: h.port, socket: h.socket, auto_update: h.auto_update, skiff, update }
         })
         .collect();
-    HostList { selected, local_name: local_hostname(), hosts, clipboard }
+    HostList { selected, local_name: local_hostname(), hosts, clipboard, removed: None }
 }
 
 /// The short hostname (`thr0w-deb`, not `thr0w-deb.local`), or empty.
@@ -388,11 +391,48 @@ fn local_hostname() -> String {
 
 #[tauri::command]
 pub(crate) async fn list_hosts(app: State<'_, App>) -> Result<HostList, String> {
-    let hosts = blocking(|| load(&path())).await?;
+    let hosts = blocking(|| forget_removed(&path())).await?;
     let selection = app.selection();
     let identity = app.live_identity().or_else(|| selection.pinned());
     let selected = selection.ssh_target().and_then(|t| hosts.find_login(t)).map(|h| h.id.clone());
-    Ok(host_list(hosts, selected, identity.as_ref()))
+    let removed = selection.ssh_target().filter(|t| hosts.find_login(t).is_none()).map(|t| t.destination.clone());
+    Ok(HostList { removed, ..host_list(hosts, selected, identity.as_ref()) })
+}
+
+/// The file, with a selection that names a Host no longer in the list
+/// cleared: an edit by hand that removed it does not leave the next app
+/// run pointing at it.
+fn forget_removed(path: &Path) -> anyhow::Result<Hosts> {
+    let hosts = load(path)?;
+    if hosts.selected.as_deref().is_none_or(|d| hosts.find(d).is_some()) {
+        return Ok(hosts);
+    }
+    update(path, |hosts| {
+        if hosts.selected.as_deref().is_some_and(|d| hosts.find(d).is_none()) {
+            hosts.selected = None;
+        }
+        Ok(hosts.clone())
+    })
+}
+
+/// Tells the page when `hosts.toml` changes, by this app or by hand, so
+/// the Host menu and Settings › Hosts follow it, and a shown Host that was
+/// removed gives way to this computer.
+pub(crate) fn watch(app: tauri::AppHandle) {
+    use tauri::Emitter;
+    std::thread::spawn(move || {
+        // The file is small: its text is the stamp.
+        let stamp = || std::fs::read_to_string(path()).ok();
+        let mut last = stamp();
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            let now = stamp();
+            if now != last {
+                last = now;
+                let _ = app.emit("skiff:hosts-changed", ());
+            }
+        }
+    });
 }
 
 /// The shown Host's id, as the file names it now. None: this Mac.
@@ -550,6 +590,9 @@ pub(crate) async fn remove_host(app: State<'_, App>, id: String, uninstall: Opti
     blocking(move || {
         update(&path(), |hosts| {
             hosts.hosts.retain(|h| h.id != id);
+            if hosts.selected.as_deref() == Some(id.as_str()) {
+                hosts.selected = None;
+            }
             Ok(())
         })
     })
@@ -1211,6 +1254,11 @@ mod tests {
         assert!(gone.selection(local).is_local());
         let bad = Hosts { hosts: vec![KnownHost { destination: "-oProxyCommand=x".into(), ..hosts.hosts[0].clone() }], selected: Some("h_devbox".into()) };
         assert!(bad.selection(local).is_local(), "an invalid entry never becomes an endpoint");
+        // A selection whose Host was removed by hand is cleared on the next read.
+        assert_eq!(forget_removed(&file).unwrap(), hosts);
+        save(&file, &gone).unwrap();
+        assert_eq!(forget_removed(&file).unwrap(), Hosts { selected: None, ..hosts.clone() });
+        assert_eq!(load(&file).unwrap().selected, None);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

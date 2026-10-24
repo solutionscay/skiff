@@ -125,7 +125,7 @@
       "skiff_agent",
       "skiff_core"
     ],
-    "sha256": "c1e8b9ced4716fc647cbd24d2417996ebe6127ea308bd26e05189eaf87550f20"
+    "sha256": "2848cc9f5b14cf65b4d189e1d47d09ad1077a9e5e1ac905876a1893d72a36eda"
   },
   "apps/desktop/src-tauri/src/ledger.rs": {
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",
@@ -145,7 +145,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "78e9d5b397ed00462344350d4e421df389452a463cd3d2d2355b4dde939eb76f"
+    "sha256": "28a28b33f6ba966752f9aaec808967ff9e45046c653107c242fd9b5f3d257659"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -288,7 +288,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "020d6a337b63d173810a60f0459fa85a7478662357f24c161c7249139eea40ce"
+    "sha256": "9dcb752ca1bc8fd02545afb1904379d7d650d79a9accdac34ae3edc07469d2db"
   },
   "apps/desktop/src/app/keyboard.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -438,7 +438,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "18ee2a88436a45d5ada92f8ae6786e165d01cdcd3dbf78e38dd20cbe172b058a"
+    "sha256": "7e77ba226cf630c639a487089b47616bd4c8f4e37fe09cbddaa9b86598c39777"
   },
   "apps/desktop/src/appearance/settings.ts": {
     "ownership": "mixed: agent changes (agent_config@1) and Skipper settings (skipper_config@1) through hostInvoke (#166 R7, R8); Open with and the menu layout are this client's own settings",
@@ -446,7 +446,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "29d8f11968135caac71a39ca5f83311c3951347a095d596ea3c14854e86520c0"
+    "sha256": "83f5a2bc1f6c1e871dc297df38fe98605547110928fb5b616777c9718b9ea848"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6; Show in file manager only on This Mac (#166)",
@@ -502,7 +502,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "a3311829ad9f74f8e2bac9bc054ac06c72aed804b507f0d5b26a1240db7cb675"
+    "sha256": "af2b1e2d91ac652ac2a99de4f7af96d23ea52822bc25f3e4683c8091c9a47b22"
   },
   "apps/desktop/src/platform/clipboard.ts": {
     "ownership": "client policy: exact existing adapter only",
