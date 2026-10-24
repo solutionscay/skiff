@@ -381,3 +381,9 @@ pub(crate) async fn delete_group(app: State<'_, App>, group: String) -> Result<(
     let (c, _) = ensure_client(&app).await?;
     c.delete_group(&group).await.map_err(err)
 }
+
+#[tauri::command]
+pub(crate) async fn order_groups(app: State<'_, App>, groups: Vec<String>) -> Result<(), String> {
+    let (c, _) = ensure_client(&app).await?;
+    c.order_groups(groups).await.map_err(err)
+}

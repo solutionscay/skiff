@@ -17,3 +17,5 @@ body.dragging-session.drop-refused, body.dragging-session.drop-refused * { curso
 .drag-ghost.refused { border-color: var(--error); color: var(--error); }
 .cell-head { cursor: grab; }
 .cell-head button { cursor: pointer; }
+/* A group moving in the sidebar: a line where it lands. */
+.drop-preview.line { background: var(--state-working); border: 0; }
