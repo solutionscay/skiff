@@ -163,7 +163,8 @@ The Skiff agent (default name Skipper) is the normal coordinator. It is one agen
 
 The ledger is `ledger.db` in that folder. Use only `skiff ledger` to read or change it. Never open or edit the file.
 
-- Only the session that owns the ledger changes rows: `add`, `send`, `update`, `report`, `close`, `reopen`, `prune`, `rm`. `skiff skipper` records the owner. Another agent pane gets a refusal that names the owner. A shell outside Skiff is refused too, unless a person passes `--person`.
+- Each row has an owner: the Skipper (`grand`), or a project Skipper (its project's name). `ls` shows an OWNER column when a project Skipper owns a row.
+- A coordinator changes only its own rows: `add`, `send`, `update`, `report`, `close`, `reopen`, `prune`, `rm`. The CLI knows the caller from its session. `skiff skipper` records the Skipper's session. A project Skipper may also report the hand-off it was given: `ledger update UID --state done --result PATH`, and no other change. Another agent pane gets a refusal. A shell pane is a person and may change any row. A shell outside Skiff is refused, unless a person passes `--person`.
 - `ls` and `show` work from anywhere.
 - Each row has an id and an 8-character uid. Neither is used again. Every ID argument takes both. Use the uid when you name a task.
 
@@ -177,12 +178,23 @@ A plan shows `done` when every task in it is done, else `sent`.
 
 Work is a plan with its tasks, or a task with no plan. It is `working` while an agent is on one of its tasks (the task is `sent`, and its pane works or ended its turn), `open` otherwise, and `finished` once closed. Only `ledger close` closes work. Done is not closed.
 
+### Project Skippers
+
+With Settings › Skiff agent › Project Skippers on, a project can have its own Skipper: one agent session in the project's folder, at most one per project. Its instructions are `SKIPPER.md` in `~/skiff-agent/projects/<project>/`, and its results go to `results/` there. Skiff writes nothing into the project. A restore brings its pane back as a plain shell.
+
+- `skiff skipper --project P` finds or starts it, and attaches. `--no-attach` prints its id. A new one gets one first message: read `SKIPPER.md`.
+- The Skipper hands work to it with `skiff ledger handoff P "TASK" --title "..." [--parent UID]`. This adds a hand-off row that the Skipper owns, with the project Skipper as its pane. It starts the project Skipper if none runs, and sends it the task. It exits with `send`'s code. A busy project Skipper keeps the row `pending`.
+- The project Skipper adds its tasks with `--parent UID` of the hand-off. Those rows are its own. When they are done, it reports the hand-off: `skiff ledger update UID --state done --result PATH`.
+- The Skipper can cancel a hand-off: it is the Skipper's row. It cannot change the project Skipper's tasks, or add tasks under a hand-off.
+- `ledger close` on the Skipper's plan also needs the hand-off's tasks done.
+
 ### Ledger commands
 
 | Command | Use |
 |---|---|
 | `ledger add --pane S --task "..." --title "..." --send --enter [--parent UID] [--type T] [--ref TEXT]` | Add a task and send it. |
 | `ledger add --plan --task "..." --title "..." [--ref TEXT]` | Add a plan for work with more than one task. |
+| `ledger handoff P "TASK" --title "..." [--parent UID]` | Hand a task to project P's Skipper. Skipper only. |
 | `ledger send UID --enter` | Send a `pending` or `interrupted` task. |
 | `ledger update UID [--state S] [--pane S] [--title T] [--result PATH] [--parent UID] ...` | Change only the given fields. |
 | `ledger ls [--state S] [--all \| --closed \| --unreported] [--json]` | Show the work that is not closed: working, then open. |
@@ -206,7 +218,7 @@ Work is a plan with its tasks, or a task with no plan. It is `working` while an 
 - `ledger close` takes a plan, or a task with no plan. It refuses work with a task that is not done, and a task in a plan. It reports the done tasks of the work.
 - `prune` removes only closed work, with its tasks. `rm` and `prune` keep the result files.
 
-Result paths, in `results/` in the agent folder:
+Result paths, in `results/` in the agent folder, or in `projects/<project>/results/` for a project Skipper's rows and a hand-off:
 
 - A task with no plan: `results/<date>-<uid>-<slug>.md`.
 - A plan: the folder `results/<date>-<uid>-<slug>/`, with its notes in `plan.md`.
@@ -214,16 +226,17 @@ Result paths, in `results/` in the agent folder:
 
 ### The watcher
 
-`skiff watch` runs with the Skiff agent's session. It types one `[watch]` line into the agent when a ledger pane ends a turn, exits, restarts or is gone, or is idle with a pending task. It types only while the agent is idle and its input box is empty. A `waiting` pane gives the person a desktop notification and gives the agent nothing.
+`skiff watch` runs while a Skipper runs: the Skiff agent, or a project Skipper. Each `[watch]` line goes to the coordinator that owns the task. A project Skipper hears of its own tasks; the Skipper hears of its own, and once of each hand-off a project Skipper reports. It types one `[watch]` line into the coordinator when a ledger pane ends a turn, exits, restarts or is gone, or is idle with a pending task. It types only while the agent is idle and its input box is empty. A `waiting` pane gives the person a desktop notification and gives the agent nothing.
 
 1. Read each pane that a `[watch]` line names with `skiff peek`.
 2. Then run `skiff seen S`. An unread pane is named again on the next run.
 3. A gone pane cannot be marked seen. The `[watch]` line names the tasks that skiff set `done` with it. Tell the person, then run `skiff ledger report UID...`. To run a task again, reassign it with `skiff ledger update UID --pane S --state pending`.
 4. On `[watch] N done tasks not reported`, run `skiff ledger ls --unreported` and report them.
+5. On `[watch] the P Skipper reported hand-off UID`, read the hand-off's result, tell the person, then run `skiff ledger report UID`.
 
 ### The Ledger panel
 
-The app shows the ledger in a panel at the right of the Skiff agent's pane. The panel is read-only. It shows three sections: Working, Open and Finished. Open lists the rows that need the person first, then done tasks, then the rest. Finished shows the last 20 closed work items. A row that needs the person is amber. `ledger close` moves work to Finished. The panel shows `--title`.
+The app shows the ledger in a panel at the right of the Skiff agent's pane, and of each project Skipper's pane. The panel is read-only. Its filter shows all projects, or one: the Skipper's panel opens on all, a project Skipper's on its project. A hand-off shows its project's letters and nests under its plan, with its tasks one step under it. It shows three sections: Working, Open and Finished. Open lists the rows that need the person first, then done tasks, then the rest. Finished shows the last 20 closed work items. A row that needs the person is amber. `ledger close` moves work to Finished. The panel shows `--title`.
 
 ## Recipe
 
