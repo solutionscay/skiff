@@ -355,9 +355,13 @@ fn reveal(path: &std::path::Path) -> anyhow::Result<()> {
 }
 
 /// The selected Host's agents, from its own account: its PATH and settings,
-/// never this Mac's for a remote Host (`session_agents@1`).
+/// never this Mac's for a remote Host (`session_agents@1`). This Mac's are
+/// read from the config this app writes.
 #[tauri::command]
 pub(crate) async fn list_agents(app: State<'_, App>) -> Result<Vec<AgentInfo>, String> {
+    if !app.remote() {
+        return crate::config::local_agents(&app).await;
+    }
     let c = crate::connection::host_now(&app).await?;
     legacy_agents(&c).await.map_err(err)
 }

@@ -367,9 +367,16 @@ pub struct AgentInfo {
 
 /// Every known agent with its installed and enabled state.
 pub fn agents() -> Vec<AgentInfo> {
+    let cfg = crate::config::load().map(|c| c.agents).unwrap_or_default();
+    agents_in(&cfg, |_, _| None)
+}
+
+/// [`agents`] from `cfg`. `installed` answers for an agent id and its command
+/// line when the caller knows better than this process's PATH (as the app
+/// does for This Mac, from skiffd); `None` checks this PATH.
+pub fn agents_in(cfg: &crate::config::Agents, installed: impl Fn(&str, &str) -> Option<bool>) -> Vec<AgentInfo> {
     let path = std::env::var_os("PATH").unwrap_or_default();
     let dirs: Vec<PathBuf> = std::env::split_paths(&path).collect();
-    let cfg = crate::config::load().map(|c| c.agents).unwrap_or_default();
     // Known agents first, then the user's own, in the order the file sorts them.
     let custom: Vec<(&str, &str)> = cfg
         .commands
@@ -392,11 +399,13 @@ pub fn agents() -> Vec<AgentInfo> {
             // Installed means the program, the first word, is on PATH.
             let first = command.split_whitespace().next().unwrap_or(default);
             let program = crate::alias::expand(first).map_or(first, |w| w[0].as_str());
-            let installed = if program.contains('/') {
-                is_executable(Path::new(program))
-            } else {
-                dirs.iter().any(|d| is_executable(&d.join(program)))
-            };
+            let installed = installed(id, &command).unwrap_or_else(|| {
+                if program.contains('/') {
+                    is_executable(Path::new(program))
+                } else {
+                    dirs.iter().any(|d| is_executable(&d.join(program)))
+                }
+            });
             let on = cfg.enabled.as_ref().is_none_or(|e| e.iter().any(|x| x == id));
             AgentInfo {
                 id: id.to_string(),

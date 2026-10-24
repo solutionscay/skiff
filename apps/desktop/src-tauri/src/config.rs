@@ -16,7 +16,7 @@ use tauri::{AppHandle, Emitter, State};
 use skiff_client::host::data;
 use skiff_host_api::{AgentEdit, HostFolder, HostProject, HostWorktree, ProjectEdit, ProjectFleet};
 
-use crate::connection::{blocking, data_read, data_write, keep_revision, project_write, App, ensure_client, err};
+use crate::connection::{blocking, data_read, data_write, keep_revision, project_write, App};
 
 /// The page reloads projects on this event.
 pub(crate) const PROJECTS_CHANGED: &str = "skiff:projects-changed";
@@ -294,9 +294,27 @@ pub(crate) async fn set_mission_filter(running: bool) -> Result<(), String> {
     blocking(move || config::set_mission_filter(running)).await
 }
 
-/// Runs an agent config edit, then answers with the agent list. The list
-/// comes from skiffd: whether an agent is installed depends on the sessions'
-/// PATH and aliases, which the app does not have. A remote Host makes the
+/// This Mac's agent list, from the projects.toml this app writes, so a change
+/// reads back whatever skiffd build runs. Whether an agent is installed
+/// depends on the sessions' PATH and aliases, which the app does not have:
+/// skiffd answers that for each agent whose command it read the same. An
+/// agent it does not know, or no skiffd, falls back to the app's PATH.
+pub(crate) async fn local_agents(app: &App) -> Result<Vec<AgentInfo>, String> {
+    let daemon = match crate::connection::host_now(app).await {
+        Ok(c) => skiff_client::host::local::legacy_agents(&c).await.unwrap_or_default(),
+        Err(_) => Vec::new(),
+    };
+    blocking(move || {
+        let cfg = config::load()?.agents;
+        Ok(skiff_core::project::agents_in(&cfg, |id, command| {
+            daemon.iter().find(|a| a.id == id && a.command == command).map(|a| a.installed)
+        }))
+    })
+    .await
+}
+
+/// Runs an agent config edit, then answers with the agent list, read back
+/// from the config just written ([`local_agents`]). A remote Host makes the
 /// change itself (`agent_config@1`), from the revision of its last agent read.
 async fn agents_after(
     app: &State<'_, App>,
@@ -307,20 +325,18 @@ async fn agents_after(
         return agent_write(app, edit).await;
     }
     blocking(f).await?;
-    let (c, _) = ensure_client(app).await?;
-    c.list_agents().await.map_err(err)
+    local_agents(app).await
 }
 
 /// Why an agent change was not sent: no agent read of this Host to make it from.
 const AGENTS_UNREAD: &str = "Skiff has not read this Host's agents yet. It reads them again: try again.";
 
 /// The agent list for Settings, with the revision of a remote Host's
-/// `[agents]` kept for the next change. This Mac's comes from skiffd.
+/// `[agents]` kept for the next change. This Mac's comes from its config.
 #[tauri::command]
 pub(crate) async fn agent_config(app: State<'_, App>) -> Result<Vec<AgentInfo>, String> {
     if !app.remote() {
-        let (c, _) = ensure_client(&app).await?;
-        return c.list_agents().await.map_err(err);
+        return local_agents(&app).await;
     }
     let app = &*app;
     data_read(app, |c| async move {

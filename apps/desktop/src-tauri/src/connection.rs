@@ -403,8 +403,9 @@ pub(crate) async fn host_capabilities(app: State<'_, App>) -> Result<Vec<String>
     Ok(names)
 }
 
-/// The capabilities this app serves itself for This Mac.
-const LOCAL_ADAPTER: [&str; 2] = ["agent_config@1", "skipper_config@1"];
+/// The capabilities this app serves itself for This Mac: the settings it
+/// writes, and their reads, so a change reads back from the same config.
+const LOCAL_ADAPTER: [&str; 4] = ["agent_config@1", "skipper_config@1", "skipper@1", "session_agents@1"];
 
 fn add_local_adapter(names: &mut Vec<String>) {
     for cap in LOCAL_ADAPTER {
@@ -980,10 +981,10 @@ mod tests {
     fn this_mac_offers_its_own_settings_writes() {
         let mut none = vec!["session_inventory@1".to_string()];
         super::add_local_adapter(&mut none);
-        assert_eq!(none, ["session_inventory@1", "agent_config@1", "skipper_config@1"]);
-        let mut current = vec!["skipper_config@1".to_string(), "agent_config@1".to_string()];
+        assert_eq!(none, ["session_inventory@1", "agent_config@1", "skipper_config@1", "skipper@1", "session_agents@1"]);
+        let mut current = vec!["skipper_config@1".to_string(), "agent_config@1".to_string(), "skipper@1".to_string(), "session_agents@1".to_string()];
         super::add_local_adapter(&mut current);
-        assert_eq!(current.len(), 2);
+        assert_eq!(current.len(), 4);
     }
 
     #[tokio::test]
