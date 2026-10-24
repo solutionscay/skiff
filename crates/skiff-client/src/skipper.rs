@@ -574,10 +574,44 @@ pub struct WatchHolder {
     /// Its executable, with links resolved. `None` from an older watcher.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exe: Option<String>,
+    /// The build of its executable when it started ([`build_of`]). `None`
+    /// from an older watcher: that counts as another build.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<String>,
 }
 
 /// The CLI version this crate builds with: the app's and the CLI's.
 pub const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// The build id of the `skiff` file at `path`: 16 hex digits of a 64-bit
+/// FNV-1a hash over its bytes. Two builds of one version differ by it, as
+/// a dev build and the next one do. Read again only when the file's size
+/// or time changes. `None` when the file cannot be read.
+pub fn build_of(path: &Path) -> Option<String> {
+    use std::io::Read;
+    type Seen = (PathBuf, u64, Option<std::time::SystemTime>, String);
+    static LAST: std::sync::Mutex<Option<Seen>> = std::sync::Mutex::new(None);
+    let m = std::fs::metadata(path).ok()?;
+    let (len, time) = (m.len(), m.modified().ok());
+    if let Some((p, l, t, id)) = LAST.lock().unwrap().as_ref() {
+        if p == path && *l == len && *t == time {
+            return Some(id.clone());
+        }
+    }
+    let mut f = std::fs::File::open(path).ok()?;
+    let mut buf = vec![0u8; 1 << 20];
+    let mut h = 0xcbf29ce484222325u64;
+    loop {
+        let n = f.read(&mut buf).ok()?;
+        if n == 0 {
+            break;
+        }
+        h = buf[..n].iter().fold(h, |h, &b| (h ^ b as u64).wrapping_mul(0x100000001b3));
+    }
+    let id = format!("{h:016x}");
+    *LAST.lock().unwrap() = Some((path.to_path_buf(), len, time, id.clone()));
+    Some(id)
+}
 
 /// The watch lock beside the socket, as [`watch_status`] reads it.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -598,13 +632,14 @@ pub fn watch_lock(socket: &Path) -> PathBuf {
 /// stale-watcher check and Restart. The lock stays on the file.
 pub fn write_holder(f: &mut std::fs::File, socket: &Path) -> Result<()> {
     use std::io::{Seek, Write};
-    let exe = std::env::current_exe().ok().map(|e| e.canonicalize().unwrap_or(e).display().to_string());
+    let exe = std::env::current_exe().ok().map(|e| e.canonicalize().unwrap_or(e));
     let me = WatchHolder {
         pid: std::process::id(),
         socket: socket.display().to_string(),
         started_at: skiff_core::session::now_ms(),
         version: Some(CLI_VERSION.to_string()),
-        exe,
+        build: exe.as_deref().and_then(build_of),
+        exe: exe.map(|e| e.display().to_string()),
     };
     f.set_len(0)?;
     f.seek(std::io::SeekFrom::Start(0))?;
@@ -700,23 +735,30 @@ pub fn restart_watch(socket: &Path, cli: &Path, session: &str) -> Result<bool> {
 /// What [`ensure_watch`] did.
 #[derive(Debug, Clone, PartialEq)]
 pub enum WatchOutcome {
-    /// A watcher of this CLI, or of a newer one, holds the lock.
+    /// A watcher of this build, or of a newer version, holds the lock.
     Current,
     /// None ran. It started one.
     Started,
-    /// It stopped an older watcher with SIGTERM and started one.
+    /// It stopped an older or other-build watcher with SIGTERM and started one.
     Replaced { pid: u32 },
     /// An older watcher holds the lock and keeps running: it is not proven to
     /// be a `skiff watch` for this socket, or it did not stop. Why, for logs.
     Kept(String),
 }
 
-/// The watcher in `h` is older than `cli` at `version`: an older version,
-/// or a record from before the version. One computer runs one watcher per
-/// socket, and the newer build replaces it: the same version stays,
-/// whatever executable runs it, and a newer watcher is never replaced.
-pub fn stale_holder(h: &WatchHolder, _cli: &Path, version: &str) -> bool {
-    h.version.as_deref().is_none_or(|v| skiff_core::compare_versions(v, version).is_lt())
+/// The watcher in `h` is not the build of `cli` at `version`: an older
+/// version, a record from before the version, or the same version from
+/// another build ([`build_of`]), a record from before the build included.
+/// One computer runs one watcher per socket, and the app's build replaces
+/// it. A newer version is never replaced. A `cli` that cannot be read
+/// replaces nothing of its own version.
+pub fn stale_holder(h: &WatchHolder, cli: &Path, version: &str) -> bool {
+    let Some(v) = h.version.as_deref() else { return true };
+    match skiff_core::compare_versions(v, version) {
+        std::cmp::Ordering::Less => true,
+        std::cmp::Ordering::Greater => false,
+        std::cmp::Ordering::Equal => build_of(cli).is_some_and(|mine| h.build.as_deref() != Some(mine.as_str())),
+    }
 }
 
 /// Makes one current watcher run for `session`, without the user. `cli` is
@@ -945,7 +987,7 @@ mod tests {
         let err = restart_watch(&socket, &cli, "abc").unwrap_err().to_string();
         assert!(err.contains("is not skiff watch"), "{err}");
         // Another socket's record is refused before any process check.
-        let other = WatchHolder { pid: std::process::id(), socket: "/elsewhere.sock".into(), started_at: 0, version: None, exe: None };
+        let other = WatchHolder { pid: std::process::id(), socket: "/elsewhere.sock".into(), started_at: 0, version: None, exe: None, build: None };
         assert!(not_stoppable(&other, &socket).unwrap().contains("another socket"));
         assert!(watch_status(&socket).unwrap().held);
         drop(f);
@@ -1004,27 +1046,96 @@ os.execv("/bin/cat", ["skiff", "watch"])
     }
 
     /// Which holder is stale: no version (a watcher from before the field),
-    /// an older one, or the same version from another executable. A newer
-    /// watcher, or this CLI's own, is current. Old records still read.
+    /// an older one, or the same version from another build, or with no
+    /// build. A newer version, or this build, is current, whatever
+    /// executable path runs it. Old records still read.
     #[test]
     fn tells_a_stale_watcher_by_its_record() {
-        let cli = Path::new("/Applications/Skiff.app/Contents/MacOS/skiff");
-        let h = |version: Option<&str>, exe: Option<&str>| WatchHolder {
+        let dir = std::env::temp_dir().join(format!("skiff-watch-build-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cli = dir.join("skiff");
+        std::fs::write(&cli, "this build").unwrap();
+        let mine = build_of(&cli).unwrap();
+        let h = |version: Option<&str>, build: Option<&str>| WatchHolder {
             pid: 1,
             socket: "/s.sock".into(),
             started_at: 0,
             version: version.map(Into::into),
-            exe: exe.map(Into::into),
+            exe: Some("/src/skiff/target/debug/skiff".into()),
+            build: build.map(Into::into),
         };
-        assert!(stale_holder(&h(None, None), cli, "1.6.5"));
-        assert!(stale_holder(&h(Some("1.6.4"), Some(cli.to_str().unwrap())), cli, "1.6.5"));
-        // The same version from another executable stays: a dev build and
-        // the installed app share one watcher.
-        assert!(!stale_holder(&h(Some("1.6.5"), Some("/src/skiff/target/debug/skiff")), cli, "1.6.5"));
-        assert!(!stale_holder(&h(Some("1.6.5"), Some(cli.to_str().unwrap())), cli, "1.6.5"));
-        assert!(!stale_holder(&h(Some("1.7.0"), Some("/elsewhere/skiff")), cli, "1.6.5"));
+        assert!(stale_holder(&h(None, None), &cli, "1.6.5"));
+        assert!(stale_holder(&h(Some("1.6.4"), Some(&mine)), &cli, "1.6.5"));
+        assert!(stale_holder(&h(Some("1.6.5"), Some("0123456789abcdef")), &cli, "1.6.5"));
+        assert!(stale_holder(&h(Some("1.6.5"), None), &cli, "1.6.5"));
+        assert!(!stale_holder(&h(Some("1.6.5"), Some(&mine)), &cli, "1.6.5"));
+        assert!(!stale_holder(&h(Some("1.7.0"), Some("0123456789abcdef")), &cli, "1.6.5"));
+        assert!(!stale_holder(&h(Some("1.6.5"), None), &dir.join("missing"), "1.6.5"));
+        // A new build at the path is another build.
+        std::fs::write(&cli, "the next build").unwrap();
+        assert!(stale_holder(&h(Some("1.6.5"), Some(&mine)), &cli, "1.6.5"));
         let legacy: WatchHolder = serde_json::from_str(r#"{"pid":7,"socket":"/s.sock","started_at":3}"#).unwrap();
-        assert_eq!((legacy.version, legacy.exe), (None, None));
+        assert_eq!((legacy.version, legacy.exe, legacy.build), (None, None, None));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A live `skiff watch` of this version from another build is stopped
+    /// and replaced. One of this build is kept. Skipped without python3,
+    /// which takes the lock.
+    #[test]
+    #[cfg(unix)]
+    fn replaces_a_watcher_of_another_build_and_keeps_this_one() {
+        let _one = LOCKS.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("skiff-watch-other-build-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let dir = dir.canonicalize().unwrap();
+        let socket = dir.join("s.sock");
+        // `skiff watch` to ps: a shell named skiff that reads the script `watch`.
+        std::os::unix::fs::symlink("/bin/sh", dir.join("skiff")).unwrap();
+        std::fs::write(dir.join("watch"), "while :; do sleep 0.1; done\n").unwrap();
+        // `true` stands in for the app's skiff that starts the new watcher.
+        let cli = Path::new("/usr/bin/true");
+        let script = r#"
+import fcntl, json, os, sys, time
+lock, sock, exe, version, build = sys.argv[1:6]
+fd = os.open(lock, os.O_WRONLY | os.O_CREAT)
+fcntl.flock(fd, fcntl.LOCK_EX)
+os.ftruncate(fd, 0)
+os.write(fd, json.dumps({"pid": os.getpid(), "socket": sock, "started_at": int(time.time() * 1000), "version": version, "build": build}).encode())
+os.set_inheritable(fd, True)
+os.execv(exe, ["skiff", "watch"])
+"#;
+        let stand_in = |build: &str| {
+            let child = std::process::Command::new("python3")
+                .args(["-c", script])
+                .arg(watch_lock(&socket))
+                .arg(&socket)
+                .arg(dir.join("skiff"))
+                .args([CLI_VERSION, build])
+                .current_dir(&dir)
+                .spawn()
+                .ok()?;
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while !watch_status(&socket).unwrap().held || !command_of(child.id()).is_some_and(|c| is_watch_command(&c)) {
+                assert!(std::time::Instant::now() < until, "the stand-in watcher did not start");
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Some(child)
+        };
+        // This build: kept, and nothing is signalled.
+        let Some(mut same) = stand_in(&build_of(cli).unwrap()) else { return };
+        assert_eq!(ensure_watch(&socket, cli, CLI_VERSION, "abc", &[], Some(&AtomicBool::new(false))).unwrap(), WatchOutcome::Current);
+        assert!(same.try_wait().unwrap().is_none());
+        unsafe { libc::kill(same.id() as libc::pid_t, libc::SIGKILL) };
+        let _ = same.wait();
+        // Another build of the same version: stopped and replaced.
+        let mut old = stand_in("0123456789abcdef").unwrap();
+        let out = ensure_watch(&socket, cli, CLI_VERSION, "abc", &[], Some(&AtomicBool::new(false))).unwrap();
+        assert_eq!(out, WatchOutcome::Replaced { pid: old.id() });
+        let code = old.wait().unwrap();
+        assert_eq!(std::os::unix::process::ExitStatusExt::signal(&code), Some(libc::SIGTERM));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A held lock with no record, and no registered `skiff watch` to name
