@@ -33,6 +33,9 @@ elif [ "$os" = Darwin ] && g=$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null) && [ -n
 else rt=${TMPDIR:-/tmp}; fi
 rt=${rt%/}
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d ' ' -f 1; else shasum -a 256 "$1" | cut -d ' ' -f 1; fi; }
+# One line for the person who waits in the app, on stderr, so a step
+# whose stdout is read in $(...) still shows. Not in install.sh's own run.
+step() { [ "$mode" = headless ] || printf 'skiff-step: %s\n' "$*" >&2; }
 has_systemd() { command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; }
 
 linger() {
@@ -108,6 +111,7 @@ agent() {
 start() {
   sock=$rt/skiff/$1
   [ -x "$d/current/skiffd" ] || { echo "skiff-start=missing"; return; }
+  step "Starting skiffd"
   if [ "$os" = Darwin ]; then
     agent "$label" '<dict>
     <key>Crashed</key>
@@ -142,6 +146,8 @@ start() {
   fi
   n=0
   while [ ! -S "$sock" ] && [ $n -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+  if [ -S "$sock" ]; then step "skiffd runs"; else step "skiffd did not start"; fi
+  step "Starting skiff-host"
   if [ "$os" = Darwin ]; then
     kick=${restart_host:+-k} agent "$hlabel" '<true/>' "$d/current/skiff-host" --session-socket "$sock"
   elif ! has_systemd; then
@@ -150,7 +156,7 @@ start() {
   hs=$rt/skiff/${1%.sock}-host.sock
   n=0
   while [ ! -S "$hs" ] && [ $n -lt 50 ] && host_alive; do sleep 0.1; n=$((n + 1)); done
-  if [ -S "$hs" ] && host_alive; then echo host=running; else echo host=stopped; fi
+  if [ -S "$hs" ] && host_alive; then step "skiff-host runs"; echo host=running; else step "skiff-host did not start"; echo host=stopped; fi
   if [ -S "$sock" ]; then echo "skiff-start=running"; else echo "skiff-start=stopped"; fi
 }
 
@@ -239,7 +245,11 @@ probe() {
   if [ -f "$d/current/manifest.json" ] && [ -f "$d/installed-by" ]; then
     mv_=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$d/current/manifest.json" | head -n 1)
     mp_=$(sed -n 's/.*"protocol": *\([0-9]*\).*/\1/p' "$d/current/manifest.json" | head -n 1)
-    managed=$(printf '{"version":"%s","protocol":%s}' "$(esc "$mv_")" "${mp_:-0}")
+    # The bundle the managed skiffd runs from, by its binary's folder
+    # (Linux). It differs from `current` after an update that stopped
+    # before its reload. Empty: not known here.
+    run_=$(bundle_of "$(daemon_field "${s:-}" pid)")
+    managed=$(printf '{"version":"%s","protocol":%s,"running":"%s"}' "$(esc "$mv_")" "${mp_:-0}" "$(esc "$run_")")
   fi
   # The Skiff app's own skiffd (a .deb, or Skiff.app): it runs while the
   # app runs there, and Skiff never installs a second one beside it.
@@ -307,12 +317,15 @@ fix_key() {
 install() {
   v=$1 want=$2
   in=$d/.incoming-$want.tar.gz
-  [ -f "$in" ] || { echo "skiff-install=no-upload"; return; }
-  if [ "$(sha "$in")" != "$want" ]; then rm -f "$in"; echo "skiff-install=bad-hash"; return; fi
+  step "Checking the upload"
+  [ -f "$in" ] || { step "The upload is missing"; echo "skiff-install=no-upload"; return; }
+  if [ "$(sha "$in")" != "$want" ]; then rm -f "$in"; step "The upload is not whole"; echo "skiff-install=bad-hash"; return; fi
   prev=$(readlink "$d/current" 2>/dev/null)
   if [ "$prev" = "$v" ] && [ -x "$d/$v/skiffd" ]; then
+    step "Skiff $v is there already"
     echo changed=no
   else
+    step "Unpacking Skiff $v"
     tmp=$(mktemp -d "$d/.unpack.XXXXXX") || { echo "skiff-install=no-room"; return; }
     if ! tar -xzf "$in" -C "$tmp" 2>/dev/null; then rm -rf "$tmp" "$in"; echo "skiff-install=no-room"; return; fi
     src=$(find "$tmp" -mindepth 1 -maxdepth 1 -type d -name "skiff-server-$v-*" | head -n 1)
@@ -333,6 +346,7 @@ install() {
       [ -d "$x" ] && [ ! -L "$x" ] || continue
       [ "$n" = "$v" ] || [ "$n" = "$prev" ] || rm -rf "$x"
     done
+    step "Skiff $v is in place"
     echo changed=yes
     restart_host=yes
   fi
@@ -408,6 +422,7 @@ uninstall() {
 lock() {
   n=0
   until mkdir "$d/.lock" 2>/dev/null; do
+    [ $n = 0 ] && step "Waiting for another install to finish"
     p=$(cat "$d/.lock/pid" 2>/dev/null)
     if [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null; then rm -rf "$d/.lock"; continue; fi
     if [ $n -ge 1500 ]; then
@@ -439,6 +454,13 @@ status_of() {
 # Field $2 (pid, version) of the skiffd object in status $1. Empty: no skiffd.
 daemon_field() { printf '%s' "$1" | sed -n "s/.*\"skiffd\":{[^}]*\"$2\":\"\{0,1\}\([^\",}]*\).*/\1/p"; }
 
+# The managed bundle the skiffd with pid $1 runs from, by its binary's
+# folder (Linux). Empty: not a managed binary, or not known here.
+bundle_of() {
+  e=$(readlink "/proc/${1:-0}/exe" 2>/dev/null)
+  case $e in "$d/"*/skiffd) e=${e#"$d/"}; printf '%s' "${e%/skiffd}" ;; esac
+}
+
 # The skiffd at $pid runs version $v: by its binary's folder (Linux), or
 # by the version it reports. $have: what it reports.
 runs() {
@@ -464,7 +486,7 @@ update() {
   pid=$(daemon_field "$s" pid)
   have=$(daemon_field "$s" version)
   from=$old
-  if [ "$old" = "$v" ] && [ -n "$pid" ] && ! runs; then from=$have; fi
+  if [ "$old" = "$v" ] && [ -n "$pid" ] && ! runs; then from=$(bundle_of "$pid"); from=${from:-$have}; fi
   echo "from=$from"
   # That version runs, or waits for the start after this step: another
   # computer updated it first.
@@ -477,7 +499,9 @@ update() {
   if [ -z "$pid" ]; then echo "skiff-update=done"; return; fi
   cli=$d/$from/skiff
   [ -x "$cli" ] || cli=$d/$v/skiff
+  step "Moving skiffd to Skiff $v"
   if "$cli" --socket "$sock" daemon reload --binary "$d/$v/skiffd" >/dev/null 2>&1; then
+    step "skiffd kept its sessions"
     echo "reload=kept"; echo "skiff-update=done"; return
   fi
   now=$(daemon_field "$(status_of "$d/$v/skiff" "$cli")" pid)
@@ -487,6 +511,7 @@ update() {
   [ -x "$d/$back/skiffd" ] || back=$old
   if [ -z "$now" ]; then
     # It did not come back: the old version starts again.
+    step "skiffd did not come back. Starting Skiff $back again"
     ln -sfn "$back" "$d/current"; restart_host=; start "$3" >/dev/null; echo "skiff-update=failed"; return
   fi
   # The old skiffd runs on, untouched: it cannot hand its sessions over.
@@ -495,8 +520,10 @@ update() {
   if [ "$agreed" != yes ]; then
     ln -sfn "$back" "$d/current"
     restart_host=
+    step "skiffd cannot hand its sessions over. Nothing changed"
     echo "sessions=$live"; echo "skiff-update=no-handover"; return
   fi
+  step "Restarting skiffd. Its sessions end"
   "$cli" --socket "$sock" daemon stop >/dev/null 2>&1
   if has_systemd; then systemctl --user restart skiffd
   elif kill -0 "$pid" 2>/dev/null; then kill "$pid"; sleep 1; fi

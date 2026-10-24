@@ -253,9 +253,22 @@ async fn an_update_keeps_the_session_pid_and_screen_and_never_goes_down() {
             }
         }
     }
-    let first = install::install(&target, &options, &bundle("9.9.8-test", "beside").await, "9.9.8-test", name, 0, "fixture").await.unwrap();
+    // Each step shows as it happens, in order.
+    let lines = std::sync::Mutex::new(Vec::<String>::new());
+    let step = |l: &str| lines.lock().unwrap().push(l.to_string());
+    let first = install::install(&target, &options, &bundle("9.9.8-test", "beside").await, "9.9.8-test", name, 0, "fixture", &step).await.unwrap();
     let _stop = Stop(pidfile.clone());
     assert!(first.running, "{first:?}");
+    let seen = lines.lock().unwrap().clone();
+    let at = |w: &str| seen.iter().position(|l| l.starts_with(w)).unwrap_or_else(|| panic!("{w} in {seen:?}"));
+    assert!(at("Uploading") < at("Upload done") && at("Upload done") < at("Unpacking Skiff 9.9.8-test") && at("Unpacking") < at("skiffd runs"), "{seen:?}");
+    // The managed version is the bundle's, never skiffd's crate version.
+    let probed = |run| match run {
+        skiff_client::host::check::ProbeRun::Probed(p, _) => p,
+        _ => panic!("the probe did not run"),
+    };
+    let p = probed(skiff_client::host::check::run_probe(&target, &options, name, None).await.unwrap());
+    assert_eq!(p.managed_version(), Some("9.9.8-test"), "{p:?}");
 
     // A session with text on its screen, straight on the fixture's socket.
     let socket = d.join("run/skiff").join(name);
@@ -273,7 +286,7 @@ async fn an_update_keeps_the_session_pid_and_screen_and_never_goes_down() {
     drop(c);
 
     // Up: the reload keeps the daemon, the session and its screen.
-    let up = install::update(&target, &options, &bundle("9.9.9-test", "beside").await, "9.9.9-test", name, 0, "fixture", false).await.unwrap();
+    let up = install::update(&target, &options, &bundle("9.9.9-test", "beside").await, "9.9.9-test", name, 0, "fixture", false, &|_| {}).await.unwrap();
     assert_eq!(up, Updated::Done { from: "9.9.8-test".into(), restarted: false });
     assert_eq!(std::fs::read_link(server.join("current")).unwrap(), Path::new("9.9.9-test"));
     assert!(server.join("9.9.8-test/skiffd").exists(), "the version before stays, for a rollback");
@@ -288,20 +301,22 @@ async fn an_update_keeps_the_session_pid_and_screen_and_never_goes_down() {
     seen_local(&mut out, "after-43").await;
 
     // Never down: an older bundle changes nothing.
-    let down = install::update(&target, &options, &bundle("9.9.7-test", "beside").await, "9.9.7-test", name, 0, "fixture", false).await.unwrap();
+    let down = install::update(&target, &options, &bundle("9.9.7-test", "beside").await, "9.9.7-test", name, 0, "fixture", false, &|_| {}).await.unwrap();
     assert_eq!(down, Updated::Newer { from: "9.9.9-test".into() });
     assert_eq!(std::fs::read_link(server.join("current")).unwrap(), Path::new("9.9.9-test"));
 
     // An update that stopped after it moved `current` (here: an install
     // over the running version, which does no reload) is finished by the
     // next update: the skiffd that runs is the old one, and it reloads.
-    let moved = install::install(&target, &options, &bundle("9.9.11-test", "beside").await, "9.9.11-test", name, 0, "fixture").await.unwrap();
+    let moved = install::install(&target, &options, &bundle("9.9.11-test", "beside").await, "9.9.11-test", name, 0, "fixture", &|_| {}).await.unwrap();
     assert!(moved.changed, "{moved:?}");
     assert_eq!(std::fs::read_link(server.join("current")).unwrap(), Path::new("9.9.11-test"));
     let exe = || std::fs::read_link(format!("/proc/{}/exe", daemon_pid.unwrap())).unwrap();
     assert!(exe().ends_with("9.9.9-test/skiffd"), "{:?}", exe());
-    let finished = install::update(&target, &options, &bundle("9.9.11-test", "beside").await, "9.9.11-test", name, 0, "fixture", false).await.unwrap();
-    assert!(matches!(finished, Updated::Done { restarted: false, .. }), "{finished:?}");
+    let p = probed(skiff_client::host::check::run_probe(&target, &options, name, None).await.unwrap());
+    assert_eq!(p.managed_version(), Some("9.9.9-test"), "the bundle that runs, not `current`: {p:?}");
+    let finished = install::update(&target, &options, &bundle("9.9.11-test", "beside").await, "9.9.11-test", name, 0, "fixture", false, &|_| {}).await.unwrap();
+    assert_eq!(finished, Updated::Done { from: "9.9.9-test".into(), restarted: false });
     assert!(exe().ends_with("9.9.11-test/skiffd"), "{:?}", exe());
     // The reload closed the old connection, as every reload does.
     let c = local_client(&socket).await;
@@ -311,11 +326,11 @@ async fn an_update_keeps_the_session_pid_and_screen_and_never_goes_down() {
     c.write(&s.id, b"echo again-$((40+5))\r".to_vec()).await.unwrap();
     seen_local(&mut out, "again-45").await;
     // The same version again, with the skiffd that runs it: nothing changes.
-    let same = install::update(&target, &options, &bundle("9.9.11-test", "beside").await, "9.9.11-test", name, 0, "fixture", false).await.unwrap();
+    let same = install::update(&target, &options, &bundle("9.9.11-test", "beside").await, "9.9.11-test", name, 0, "fixture", false, &|_| {}).await.unwrap();
     assert_eq!(same, Updated::Same);
 
     // No handover: nothing changes, and the update names the session.
-    let stuck = install::update(&target, &options, &bundle("9.9.12-test", "broken").await, "9.9.12-test", name, 0, "fixture", false).await.unwrap();
+    let stuck = install::update(&target, &options, &bundle("9.9.12-test", "broken").await, "9.9.12-test", name, 0, "fixture", false, &|_| {}).await.unwrap();
     assert_eq!(stuck, Updated::NoHandover { from: "9.9.11-test".into(), sessions: vec!["build".into()] });
     assert_eq!(std::fs::read_link(server.join("current")).unwrap(), Path::new("9.9.11-test"), "current went back");
     assert_eq!(c.daemon_info().await.unwrap().pid, daemon_pid);
@@ -989,7 +1004,7 @@ async fn skiff_installs_once_into_the_home_and_its_skiffd_answers() {
     assert_eq!((before.managed.as_ref(), before.socket_live, before.systemd), (None, false, false), "{before:?}");
     assert_eq!(before.runtime_dir, d.join("run").to_string_lossy());
 
-    let first = install::install(&target, &options, &b, version, name, before.free_kb, "fixture").await.unwrap();
+    let first = install::install(&target, &options, &b, version, name, before.free_kb, "fixture", &|_| {}).await.unwrap();
     let pidfile = d.join("home/.local/share/skiff/server/skiffd.pid");
     // Stops only the skiffd this test started, by its pid file.
     struct Stop(PathBuf);
@@ -1046,7 +1061,7 @@ printf '{"skiff":"%s","skiffd":{"version":"%s","protocol":27}}\n' "$v" "$v"
     let mtime = std::fs::metadata(server.join(version).join("skiffd")).unwrap().modified().unwrap();
 
     // A second install changes nothing, and the same skiffd keeps running.
-    let second = install::install(&target, &options, &b, version, name, after.free_kb, "fixture").await.unwrap();
+    let second = install::install(&target, &options, &b, version, name, after.free_kb, "fixture", &|_| {}).await.unwrap();
     assert_eq!((second.changed, second.running), (false, true), "{second:?}");
     assert_eq!(std::fs::read_to_string(&pidfile).unwrap(), pid);
     assert_eq!(std::fs::metadata(server.join(version).join("skiffd")).unwrap().modified().unwrap(), mtime);
@@ -1144,7 +1159,7 @@ async fn skiff_host_runs_beside_the_installed_skiffd_and_comes_back() {
     let projects = |r: &check::Report| r.rows.iter().find(|l| l.row == check::Row::Projects).cloned().unwrap();
 
     let a = install::dev_bundle("9.9.9-a", arch, &d.join("beside")).await.unwrap();
-    let first = install::install(&target, &options, &a, "9.9.9-a", name, 1 << 30, "fixture").await.unwrap();
+    let first = install::install(&target, &options, &a, "9.9.9-a", name, 1 << 30, "fixture", &|_| {}).await.unwrap();
     assert_eq!((first.changed, first.how.as_str(), first.running, first.host_running), (true, "fallback", true, true), "{first:?}");
     assert!(d.join("run/skiff/skiffd-dev-host.sock").exists(), "skiff-host listens beside skiffd in the fixture");
     let report = check::check(&input, &options).await;
@@ -1172,7 +1187,7 @@ async fn skiff_host_runs_beside_the_installed_skiffd_and_comes_back() {
     // A new version restarts skiff-host; skiffd keeps its pid (its update is slice 6).
     let (daemon_pid, host_pid) = (pid("skiffd.pid"), pid("skiff-host.pid"));
     let b = install::dev_bundle("9.9.9-b", arch, &d.join("beside")).await.unwrap();
-    let next = install::install(&target, &options, &b, "9.9.9-b", name, 1 << 30, "fixture").await.unwrap();
+    let next = install::install(&target, &options, &b, "9.9.9-b", name, 1 << 30, "fixture", &|_| {}).await.unwrap();
     assert_eq!((next.changed, next.running, next.host_running), (true, true, true), "{next:?}");
     assert_eq!(pid("skiffd.pid"), daemon_pid);
     let restarted = pid("skiff-host.pid");
@@ -1181,13 +1196,13 @@ async fn skiff_host_runs_beside_the_installed_skiffd_and_comes_back() {
     assert!(exe.ends_with("9.9.9-b/skiff-host"), "{exe:?}");
     assert!(std::fs::read_link(format!("/proc/{host_pid}/exe")).is_err(), "the old one stopped");
     // The same version again restarts nothing.
-    let same = install::install(&target, &options, &b, "9.9.9-b", name, 1 << 30, "fixture").await.unwrap();
+    let same = install::install(&target, &options, &b, "9.9.9-b", name, 1 << 30, "fixture", &|_| {}).await.unwrap();
     assert_eq!((same.changed, same.host_running), (false, true), "{same:?}");
     assert_eq!(pid("skiff-host.pid"), restarted);
     // An update restarts skiff-host on the new version too (slice 6 with
     // slice 7's restart); skiffd keeps its pid.
     let c = install::dev_bundle("9.9.9-c", arch, &d.join("beside")).await.unwrap();
-    let up = install::update(&target, &options, &c, "9.9.9-c", name, 1 << 30, "fixture", false).await.unwrap();
+    let up = install::update(&target, &options, &c, "9.9.9-c", name, 1 << 30, "fixture", false, &|_| {}).await.unwrap();
     assert!(matches!(up, install::Updated::Done { .. }), "{up:?}");
     assert_eq!(pid("skiffd.pid"), daemon_pid);
     let updated = pid("skiff-host.pid");
@@ -1195,7 +1210,7 @@ async fn skiff_host_runs_beside_the_installed_skiffd_and_comes_back() {
     let exe = std::fs::read_link(format!("/proc/{updated}/exe")).unwrap();
     assert!(exe.ends_with("9.9.9-c/skiff-host"), "{exe:?}");
     // The same version again: Same, and skiff-host keeps its pid.
-    let again = install::update(&target, &options, &c, "9.9.9-c", name, 1 << 30, "fixture", false).await.unwrap();
+    let again = install::update(&target, &options, &c, "9.9.9-c", name, 1 << 30, "fixture", false, &|_| {}).await.unwrap();
     assert_eq!(again, install::Updated::Same);
     assert_eq!(pid("skiff-host.pid"), updated);
 }
@@ -1228,7 +1243,7 @@ async fn remove_and_uninstall_deletes_only_the_managed_install() {
     let target = SshTarget::new("fixture", "");
     let options = f.options("ssh_config");
     let name = "skiffd-dev.sock";
-    let done = install::install(&target, &options, &b, version, name, 0, "fixture").await.unwrap();
+    let done = install::install(&target, &options, &b, version, name, 0, "fixture", &|_| {}).await.unwrap();
     assert!(done.running && done.cli_linked, "{done:?}");
     let server = d.join("home/.local/share/skiff/server");
     let pid: i32 = std::fs::read_to_string(server.join("skiffd.pid")).unwrap().trim().parse().unwrap();
@@ -1345,7 +1360,7 @@ async fn a_mac_server_gets_skiff_and_a_launch_agent_once() {
     let before = probe().await;
     assert_eq!((before.os.as_str(), before.bundle_os(), before.managed.as_ref(), before.unit_enabled), ("Darwin", Some("macos"), None, false), "{before:?}");
 
-    let first = install::install(&target, &options, &b, version, name, before.free_kb, "fixture").await.unwrap();
+    let first = install::install(&target, &options, &b, version, name, before.free_kb, "fixture", &|_| {}).await.unwrap();
     assert_eq!((first.changed, first.how.as_str(), first.running, first.linger.as_str()), (true, "launchd", true, ""), "{first:?}");
     let pid = std::fs::read_to_string(&pidfile).unwrap();
     assert!(d.join("home/Library/LaunchAgents/com.solutionscay.skiff.skiffd.plist").exists());
@@ -1357,7 +1372,7 @@ async fn a_mac_server_gets_skiff_and_a_launch_agent_once() {
     assert!(after.socket_live && after.unit_enabled && after.unit_active && after.host_unit_enabled && !after.systemd, "{after:?}");
 
     // A second install and a Start change nothing: no second load, same pid.
-    let second = install::install(&target, &options, &b, version, name, after.free_kb, "fixture").await.unwrap();
+    let second = install::install(&target, &options, &b, version, name, after.free_kb, "fixture", &|_| {}).await.unwrap();
     assert_eq!((second.changed, second.running), (false, true), "{second:?}");
     assert!(install::start(&target, &options, name).await.unwrap().running);
     assert_eq!(std::fs::read_to_string(&pidfile).unwrap(), pid);
@@ -1387,7 +1402,7 @@ async fn a_mac_server_gets_skiff_and_a_launch_agent_once() {
     // An update on a Mac restarts skiff-host with kickstart -k (its agent
     // keeps the label), and never restarts skiffd's agent.
     let b2 = install::dev_bundle("9.9.9-mac2", std::env::consts::ARCH, &d.join("beside")).await.unwrap();
-    let up = install::update(&target, &options, &b2, "9.9.9-mac2", name, after.free_kb, "fixture", false).await.unwrap();
+    let up = install::update(&target, &options, &b2, "9.9.9-mac2", name, after.free_kb, "fixture", false, &|_| {}).await.unwrap();
     assert!(matches!(up, install::Updated::Done { .. }), "{up:?}");
     let calls = std::fs::read_to_string(d.join("other")).unwrap_or_default();
     assert!(calls.contains("kickstart -k user/") && calls.contains("com.solutionscay.skiff.skiff-host"), "{calls}");

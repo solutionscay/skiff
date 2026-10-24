@@ -131,19 +131,25 @@ impl Probe {
             _ => None,
         }
     }
-    /// The version the managed install runs: the skiffd that answers, else
-    /// the `current` link. After an update that stopped before its reload
-    /// the two differ, and what runs is what the next update moves from.
+    /// The Skiff version the managed install runs, as this app counts
+    /// versions: the bundle its skiffd runs from, else the `current` link.
+    /// After an update that stopped before its reload the two differ, and
+    /// what runs is what the next update moves from. Never skiffd's own
+    /// crate version: that one counts apart.
     pub fn managed_version(&self) -> Option<&str> {
         let m = self.managed.as_ref()?;
-        Some(self.status.as_ref().and_then(|s| s.skiffd.as_ref()).map_or(m.version.as_str(), |d| d.version.as_str()))
+        Some(if m.running.is_empty() { &m.version } else { &m.running })
     }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct Managed {
+    /// The Skiff bundle `current` names. Compared with this app's version.
     pub version: String,
     pub protocol: u32,
+    /// The bundle the managed skiffd runs from, when the server can tell.
+    #[serde(default)]
+    pub running: String,
 }
 
 /// `skiff status --json`, as much as the check reads.
@@ -329,7 +335,7 @@ pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
             return list.finish(None, None);
         }
         Ok(ProbeRun::TimedOut) => {
-            list.fail(Row::Reach, format!("{server} did not answer within {CONNECT_TIMEOUT} s. Check again, or check the network."));
+            list.fail(Row::Reach, format!("{server} did not answer in {CONNECT_TIMEOUT} s. Check the network."));
             return list.finish(None, None);
         }
         Ok(ProbeRun::Ssh(stderr)) => {
@@ -341,16 +347,16 @@ pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
             return list.finish(None, None);
         }
         Ok(ProbeRun::Garbled) => {
-            list.pass(Row::Reach, format!("{server} answers."));
+            list.pass(Row::Reach, "Answers.".into());
             list.pass(Row::HostKey, "Trusted.".into());
-            list.pass(Row::Login, "Logged in with your key.".into());
-            list.fail(Row::Sessions, format!("Skiff cannot read the state of {name}. Its login shell printed something Skiff does not know."));
+            list.pass(Row::Login, "With your key.".into());
+            list.fail(Row::Sessions, format!("Skiff cannot read {name}. Its login shell prints extra text."));
             return list.finish(None, None);
         }
         Ok(ProbeRun::Probed(p, took)) => {
-            list.pass(Row::Reach, format!("{server} answers. {} ms.", took.as_millis()));
+            list.pass(Row::Reach, format!("Answers in {} ms.", took.as_millis()));
             list.pass(Row::HostKey, "Trusted.".into());
-            list.pass(Row::Login, "Logged in with your key. No password needed.".into());
+            list.pass(Row::Login, "With your key.".into());
             p
         }
     };
@@ -382,15 +388,15 @@ pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
             // The probe saw a live socket, so a refused channel is forwarding.
             let text = match e.downcast_ref::<SshError>() {
                 Some(SshError::NoSkiffd { .. } | SshError::ForwardingRefused(_)) => forwarding_off(name),
-                _ => format!("Skiff's sessions service on {name} did not answer through ssh."),
+                _ => "skiffd did not answer through ssh.".into(),
             };
             list.fail(Row::Forwarding, text);
             return list.finish(found, None);
         }
     };
-    list.pass(Row::Forwarding, "Skiff reaches the socket through ssh.".into());
+    list.pass(Row::Forwarding, "Works.".into());
     let Some(identity) = info.identity else {
-        list.fail(Row::Identity, format!("Skiff on {name} is too old to say who it is."));
+        list.fail(Row::Identity, format!("Too old. Update Skiff on {name}."));
         return list.finish(found, None);
     };
     let host_id = identity.host_id.clone();
@@ -405,17 +411,17 @@ pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
     match info.protocol {
         p if p < here => list.fail(
             Row::Identity,
-            format!("Skiff on {name} speaks an older version. You can see and type in its sessions. To start and end sessions here, update it."),
+            format!("Older protocol. Update Skiff on {name} to start and end sessions."),
         ),
-        p if p > here => list.fail(Row::Identity, format!("Skiff on {name} speaks a newer version than this computer. Update Skiff on this computer.")),
+        p if p > here => list.fail(Row::Identity, "Newer protocol. Update Skiff on this computer.".into()),
         _ => {
-            let same = if input.pin.is_some() { " Same Skiff install as before." } else { "" };
-            list.pass(Row::Identity, format!("skiffd {}, protocol {}.{same}", info.version, info.protocol));
+            let same = if input.pin.is_some() { " Same install as before." } else { "" };
+            list.pass(Row::Identity, format!("Protocol {}.{same}", info.protocol));
             let answer = match skiff_host_api::HostId::try_from(host_id.clone()) {
                 Ok(id) => selection.connect_data(&id).await.map(|plane| plane.connection().hello().service_versions.get("skiff-host").map(|v| format!(" {v}")).unwrap_or_default()),
                 Err(e) => Err(anyhow::anyhow!(e)),
             };
-            list.rows.push(projects(answer, probe.managed.is_some(), name));
+            list.rows.push(projects(answer, probe.managed.is_some()));
             list.rows.push(keep);
         }
     }
@@ -432,40 +438,36 @@ fn server_rows(list: &mut List, p: &Probe, name: &str, version: &str, update_fai
     };
     list.platform = Some((os.into(), arch.into()));
     list.pass(Row::Supported, format!("{} on {}.", p.os, p.arch));
-    let running = p.status.as_ref().and_then(|s| s.skiffd.as_ref());
     match (p.managed_version(), p.socket_live) {
-        (Some(have), _) if have == version => list.pass(Row::Skiff, format!("Skiff {version} is installed. Skiff manages it.")),
+        (Some(have), _) if have == version => list.pass(Row::Skiff, format!("Skiff {version}.")),
         // Never down: a newer server waits for this computer.
         (Some(have), _) if newer(have, version) => {
-            list.warn(Row::Skiff, format!("{name} runs Skiff {have}, newer than this computer's {version}. Update Skiff on this computer."), None)
+            list.warn(Row::Skiff, format!("Skiff {have} is newer than this computer's {version}. Update Skiff here."), None)
         }
         (Some(_), _) if update_failed.is_some() => list.warn(Row::Skiff, update_failed.unwrap_or_default().to_string(), Some(Fix::UpdateSkiff)),
-        (Some(have), _) => list.warn(Row::Skiff, format!("Update available. {name} runs Skiff {have}. This computer runs {version}."), Some(Fix::UpdateSkiff)),
-        (None, true) => {
-            let v = running.map(|d| format!(" {}", d.version)).unwrap_or_default();
-            list.pass(Row::Skiff, format!("{name} runs Skiff{v} from its own install. Skiff uses it as it is."));
-        }
+        (Some(have), _) => list.warn(Row::Skiff, format!("Update available: Skiff {have} to {version}."), Some(Fix::UpdateSkiff)),
+        (None, true) => list.pass(Row::Skiff, "Its own install. Skiff uses it as it is.".into()),
         // The Skiff app there, closed: its skiffd runs with the app, and a
         // second install would fight it for the socket.
         (None, false) if !p.app.is_empty() => {
-            list.fail(Row::Skiff, format!("{name} has the Skiff app, whose sessions service runs while the app is open there. Open Skiff on {name}, then check again."));
+            list.fail(Row::Skiff, format!("The Skiff app is on {name}. Open it there, then check again."));
             return false;
         }
         (None, false) => {
-            list.fix(Row::Skiff, format!("Skiff is not installed on {name}."), Fix::InstallSkiff);
+            list.fix(Row::Skiff, "Not installed.".into(), Fix::InstallSkiff);
             return false;
         }
     }
     match (p.socket_live, p.status.as_ref().map(|s| s.skiffd.as_ref())) {
         (true, Some(Some(d))) => list.pass(Row::Sessions, format!("skiffd {} answers.", d.version)),
-        (true, None) => list.pass(Row::Sessions, "Its socket is there.".into()),
+        (true, None) => list.pass(Row::Sessions, "Running.".into()),
         // Only the install Skiff made gets a Start button.
         _ if p.managed.is_some() => {
-            list.fix(Row::Sessions, format!("Skiff's sessions service is not running on {name}."), Fix::StartSkiff);
+            list.fix(Row::Sessions, "Not running.".into(), Fix::StartSkiff);
             return false;
         }
         _ => {
-            list.fail(Row::Sessions, format!("Skiff's sessions service is not running on {name}."));
+            list.fail(Row::Sessions, "Not running.".into());
             return false;
         }
     }
@@ -475,18 +477,18 @@ fn server_rows(list: &mut List, p: &Probe, name: &str, version: &str, update_fai
 /// Row 9, from skiff-host's Hello beside skiffd: ` <version>`, or why not.
 /// A warning, never a failure: sessions work without it. Only the install
 /// Skiff made gets a Start button.
-fn projects(answer: anyhow::Result<String>, managed: bool, name: &str) -> Line {
+fn projects(answer: anyhow::Result<String>, managed: bool) -> Line {
     let line = |state, text: String, fix| Line { row: Row::Projects, title: Row::Projects.title(), state, text, fix };
     match answer {
         Ok(v) => line(State::Passed, format!("skiff-host{v} answers."), None),
         Err(e) if matches!(e.downcast_ref::<skiff_host_api::Error>(), Some(skiff_host_api::Error::IdentityChanged { .. })) => line(
             State::Warning,
-            format!("Skiff's projects service on {name} answers as another Skiff install than its sessions service. Projects, files and Git do not show."),
+            "Answers as another install than skiffd. Projects do not show.".into(),
             None,
         ),
         Err(_) => line(
             State::Warning,
-            format!("Skiff's projects service is not running on {name}. Sessions work. Projects, files and Git do not show."),
+            "Not running. Sessions work. Projects do not show.".into(),
             managed.then_some(Fix::StartSkiff),
         ),
     }
@@ -504,35 +506,31 @@ pub fn newer(a: &str, b: &str) -> bool {
 fn keep_running(p: &Probe, name: &str, user: &str, refused: bool) -> Line {
     let line = |state, text: String, fix| Line { row: Row::KeepRunning, title: Row::KeepRunning.title(), state, text, fix };
     if p.managed.is_none() {
-        return line(State::Passed, "Its own install decides this.".into(), None);
+        return line(State::Passed, "Its own install decides.".into(), None);
     }
     if p.bundle_os() == Some("macos") {
         // LaunchAgents for skiffd and skiff-host: they start at login. A Mac
         // that nobody logs in to after a restart gets Start on the next check.
         return match p.unit_enabled && p.host_unit_enabled {
-            true => line(State::Passed, format!("Running. After {name} restarts, it starts when you log in there, or when you press Start here."), None),
-            false => line(State::Warning, format!("Skiff on {name} does not start again after a restart."), Some(Fix::StartSkiff)),
+            true => line(State::Passed, "After a restart, it starts when you log in there.".into(), None),
+            false => line(State::Warning, "Does not start again after a restart.".into(), Some(Fix::StartSkiff)),
         };
     }
     match (p.systemd, p.unit_enabled && p.host_unit_enabled, p.linger.as_str()) {
-        (true, true, "yes") => line(State::Passed, "Running. It starts again after a restart.".into(), None),
-        (true, false, _) => line(State::Warning, format!("Skiff on {name} does not start again after a restart."), Some(Fix::StartSkiff)),
+        (true, true, "yes") => line(State::Passed, "Starts again after a restart.".into(), None),
+        (true, false, _) => line(State::Warning, "Does not start again after a restart.".into(), Some(Fix::StartSkiff)),
         (true, true, _) if refused => line(
             State::Warning,
-            format!("{name} does not let your account keep services running after logout. Ask its admin to turn on lingering for {user}. You can use {name} now."),
+            format!("{name} does not allow lingering. Ask its admin to turn it on for {user}."),
             None,
         ),
-        (true, true, _) => line(State::Warning, format!("Skiff on {name} stops when you log out of every session there."), Some(Fix::TurnOnLinger)),
-        (false, ..) => line(
-            State::Warning,
-            format!("Skiff on {name} runs until the server restarts. After a restart, Start here brings it back."),
-            None,
-        ),
+        (true, true, _) => line(State::Warning, "Stops when you log out.".into(), Some(Fix::TurnOnLinger)),
+        (false, ..) => line(State::Warning, "Runs until the server restarts.".into(), None),
     }
 }
 
 fn forwarding_off(name: &str) -> String {
-    format!("{name} does not allow Skiff's connection to its sessions service. Its admin must allow socket forwarding for ssh (AllowStreamLocalForwarding).")
+    format!("{name} blocks socket forwarding. Its admin must allow AllowStreamLocalForwarding in sshd.")
 }
 
 fn denied(stderr: &str) -> bool {
@@ -544,22 +542,22 @@ fn denied(stderr: &str) -> bool {
 fn login_failure(list: &mut List, stderr: &str, name: &str, server: &str, local: Option<&LocalKey>, installed: Option<&Installed>) {
     let has = |m: &str| stderr.contains(m);
     if has("Could not resolve hostname") || has("nodename nor servname") || has("Name or service not known") {
-        return list.fail(Row::Reach, format!("This computer cannot find {server}. Check the name, or pick an alias from ssh config."));
+        return list.fail(Row::Reach, format!("This computer cannot find {server}. Check the name."));
     }
     if has("Connection timed out") || has("Operation timed out") {
         return list.fail(Row::Reach, format!("{server} did not answer within {CONNECT_TIMEOUT} s. Check again, or check the network."));
     }
     if ["Connection refused", "No route to host", "Network is unreachable", "Connection closed by", "Connection reset"].iter().any(|m| has(m)) && !has("Permission denied") {
-        return list.fail(Row::Reach, format!("{server} does not answer. Check that this computer is online and that the server is on."));
+        return list.fail(Row::Reach, format!("{server} does not answer. Check that it is on."));
     }
-    list.pass(Row::Reach, format!("{server} answers."));
+    list.pass(Row::Reach, "Answers.".into());
     let target = SshTarget::new(name, "/");
     match super::ssh::classify(stderr, &target) {
         Some(SshError::HostKeyChanged(_)) => {
-            return list.fix(Row::HostKey, format!("The host key of {name} changed since the last connection. Skiff does not connect."), Fix::ReviewKey);
+            return list.fix(Row::HostKey, "The host key changed. Skiff does not connect.".into(), Fix::ReviewKey);
         }
         Some(SshError::HostKeyUnknown(_)) => {
-            return list.fix(Row::HostKey, format!("This computer does not know the host key of {name} yet."), Fix::TrustKey);
+            return list.fix(Row::HostKey, "Not known yet.".into(), Fix::TrustKey);
         }
         _ => {}
     }
@@ -570,26 +568,26 @@ fn login_failure(list: &mut List, stderr: &str, name: &str, server: &str, local:
         let keys_only = methods.split(',').all(|m| m.trim() == "publickey") && !methods.is_empty();
         return match (local, installed) {
             (Some(LocalKey::None), _) => list.fix(Row::Login, "This computer has no SSH key.".into(), Fix::MakeKey),
-            (Some(LocalKey::Locked(_)), _) => list.fix(Row::Login, "Your SSH key is locked. Skiff cannot unlock it without you.".into(), Fix::UnlockKey),
+            (Some(LocalKey::Locked(_)), _) => list.fix(Row::Login, "Your SSH key is locked.".into(), Fix::UnlockKey),
             // The key is in the file, and the server still refuses it.
             (_, Some(i)) if !i.file_own && i.ssh_dir_own => list.fix(
                 Row::Login,
-                format!("{name} has your key but cannot read it. The file that holds it belongs to another account."),
+                format!("{name} cannot read your key file. Another account owns it."),
                 Fix::FixPermissions,
             ),
             (_, Some(i)) if !i.ssh_dir_own => list.fail(
                 Row::Login,
-                format!("{name} cannot read your keys, and you do not own your ~/.ssh folder there. Ask its admin to give it back to you."),
+                format!("You do not own ~/.ssh on {name}. Ask its admin to fix it."),
             ),
             _ if keys_only => list.fix(
                 Row::Login,
-                format!("{name} accepts only keys it already knows, and allows no password. Ask its admin to add this computer's key."),
+                format!("{name} takes known keys only. Ask its admin to add this computer's key."),
                 Fix::CopyPublicKey,
             ),
-            _ => list.fix(Row::Login, format!("{name} does not accept a key from this computer yet."), Fix::InstallKey),
+            _ => list.fix(Row::Login, "This computer's key is not on the server yet.".into(), Fix::InstallKey),
         };
     }
-    list.fail(Row::Login, format!("ssh to {name} stopped for an unknown reason."));
+    list.fail(Row::Login, "ssh stopped for an unknown reason.".into());
 }
 
 #[derive(Default)]
@@ -616,7 +614,7 @@ impl List {
     fn finish(mut self, socket: Option<String>, host_id: Option<String>) -> Report {
         let ok = self.rows.len() == Row::ALL.len() && self.rows.iter().all(|r| matches!(r.state, State::Passed | State::Warning));
         for row in Row::ALL.into_iter().skip(self.rows.len()) {
-            self.rows.push(Line { row, title: row.title(), state: State::Skipped, text: "Skipped until the row above passes.".into(), fix: None });
+            self.rows.push(Line { row, title: row.title(), state: State::Skipped, text: "Waits for the row above.".into(), fix: None });
         }
         Report { rows: self.rows, ok, socket, choices: self.choices, host_id, platform: self.platform, version: self.version }
     }
@@ -678,24 +676,24 @@ mod tests {
         let other = Probe { socket_live: true, status: Some(Status { skiff: "1.6.6".into(), skiffd: Some(StatusDaemon { version: "0.6.24".into(), protocol: 27 }) }), ..probe() };
         let (go, rows) = server(&other);
         assert!(go && rows.iter().all(|r| r.2.is_none()), "{rows:?}");
-        assert!(rows[1].3.contains("from its own install"));
+        assert!(rows[1].3.contains("own install"));
         // Ours, stopped: Start. Ours, older: Update. Ours, newer: never down.
-        let ours = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27 }), ..probe() };
+        let ours = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27, running: String::new() }), ..probe() };
         let (go, rows) = server(&ours);
         assert!(!go);
         assert_eq!((rows[2].0, rows[2].2), (Row::Sessions, Some(Fix::StartSkiff)));
-        let older = Probe { managed: Some(Managed { version: "1.9.0".into(), protocol: 27 }), socket_live: true, ..probe() };
+        let older = Probe { managed: Some(Managed { version: "1.9.0".into(), protocol: 27, running: String::new() }), socket_live: true, ..probe() };
         let (go, rows) = server(&older);
         assert!(go);
         assert_eq!((rows[1].1, rows[1].2), (State::Warning, Some(Fix::UpdateSkiff)));
-        assert!(rows[1].3.starts_with("Update available."));
-        let newer_one = Probe { managed: Some(Managed { version: "2.10.0".into(), protocol: 27 }), socket_live: true, ..probe() };
+        assert!(rows[1].3.starts_with("Update available:"));
+        let newer_one = Probe { managed: Some(Managed { version: "2.10.0".into(), protocol: 27, running: String::new() }), socket_live: true, ..probe() };
         let (_, rows) = server(&newer_one);
         assert_eq!((rows[1].1, rows[1].2), (State::Warning, None));
-        assert!(rows[1].3.contains("Update Skiff on this computer"));
+        assert!(rows[1].3.contains("Update Skiff here"));
         // An update that stopped after it moved `current`: the skiffd that
-        // answers is still the old one, and the row goes by it.
-        let stopped = Probe { status: Some(Status { skiff: "2.0.0".into(), skiffd: Some(StatusDaemon { version: "1.9.0".into(), protocol: 27 }) }), ..ours.clone() };
+        // runs is still the old bundle's, and the row goes by it.
+        let stopped = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27, running: "1.9.0".into() }), ..ours.clone() };
         assert_eq!(stopped.managed_version(), Some("1.9.0"));
         let (_, rows) = server(&Probe { socket_live: true, ..stopped });
         assert_eq!((rows[1].1, rows[1].2), (State::Warning, Some(Fix::UpdateSkiff)), "{rows:?}");
@@ -707,7 +705,7 @@ mod tests {
         assert_eq!((rows[1].1, rows[1].2), (State::Failed, Some(Fix::InstallSkiff)));
         // The Skiff app there, closed: no Install, only where to go.
         let (go, rows) = server(&Probe { app: "/Applications/Skiff.app/Contents/MacOS/skiffd".into(), ..probe() });
-        assert!(!go && rows[1].1 == State::Failed && rows[1].2.is_none() && rows[1].3.contains("Open Skiff on devbox"), "{rows:?}");
+        assert!(!go && rows[1].1 == State::Failed && rows[1].2.is_none() && rows[1].3.contains("Open it there"), "{rows:?}");
     }
 
     #[test]
@@ -718,7 +716,7 @@ mod tests {
 
     #[test]
     fn keeping_it_running_is_a_warning_with_one_fix() {
-        let ours = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27 }), unit_enabled: true, host_unit_enabled: true, ..probe() };
+        let ours = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27, running: String::new() }), unit_enabled: true, host_unit_enabled: true, ..probe() };
         let k = |p: &Probe, refused| { let l = keep_running(p, "devbox", "jose", refused); (l.state, l.fix) };
         assert_eq!(k(&ours, false), (State::Warning, Some(Fix::TurnOnLinger)));
         assert_eq!(k(&ours, true), (State::Warning, None), "refused: plain words only");
@@ -743,7 +741,7 @@ mod tests {
 
     #[test]
     fn the_projects_row_is_a_warning_with_start_for_our_install_only() {
-        let p = |answer, managed| { let l = projects(answer, managed, "devbox"); (l.state, l.fix, l.text) };
+        let p = |answer, managed| { let l = projects(answer, managed); (l.state, l.fix, l.text) };
         assert_eq!(p(Ok(" 2.0.0".into()), true), (State::Passed, None, "skiff-host 2.0.0 answers.".into()));
         let down = || Err(anyhow::anyhow!(super::super::data::DataError::NotRunning));
         let (state, fix, text) = p(down(), true);
@@ -766,7 +764,7 @@ mod tests {
         let foreign = Installed { added: true, ssh_dir_own: true, file_own: false };
         let (text, f) = fix(pw, Some(&ready), Some(&foreign));
         assert_eq!(f, Some(Fix::FixPermissions));
-        assert!(text.contains("cannot read it"), "{text}");
+        assert!(text.contains("cannot read your key file"), "{text}");
         let lost = Installed { added: false, ssh_dir_own: false, file_own: false };
         assert_eq!(fix(pw, Some(&ready), Some(&lost)).1, None, "no fix when ~/.ssh is not the account's");
         // A good install says nothing: the next refusal is plain again.
@@ -791,12 +789,12 @@ mod tests {
     fn each_ssh_failure_names_one_row_and_one_plain_cause() {
         let cases = [
             ("ssh: Could not resolve hostname devbox.lann: Name or service not known\n", Row::Reach, "cannot find devbox.lan"),
-            ("ssh: connect to host 10.0.4.21 port 22: Connection timed out\n", Row::Reach, "within 15 s"),
+            ("ssh: connect to host 10.0.4.21 port 22: Connection timed out\n", Row::Reach, "in 15 s"),
             ("ssh: connect to host 10.0.4.21 port 22: No route to host\n", Row::Reach, "does not answer"),
-            ("@@@\n@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @\nHost key verification failed.\n", Row::HostKey, "changed since"),
-            ("No ED25519 host key is known for devbox.lan and you have requested strict checking.\nHost key verification failed.\n", Row::HostKey, "does not know the host key"),
-            ("me@devbox.lan: Permission denied (publickey).\n", Row::Login, "accepts only keys"),
-            ("me@devbox.lan: Permission denied (publickey,password).\n", Row::Login, "does not accept a key"),
+            ("@@@\n@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @\nHost key verification failed.\n", Row::HostKey, "host key changed"),
+            ("No ED25519 host key is known for devbox.lan and you have requested strict checking.\nHost key verification failed.\n", Row::HostKey, "Not known yet"),
+            ("me@devbox.lan: Permission denied (publickey).\n", Row::Login, "known keys only"),
+            ("me@devbox.lan: Permission denied (publickey,password).\n", Row::Login, "key is not on the server"),
             ("kex_exchange_identification: read: Connection reset by peer\n", Row::Reach, "does not answer"),
             ("something new\n", Row::Login, "unknown reason"),
         ];

@@ -220,6 +220,24 @@ pub enum BatchRun {
 /// Runs `command` over one strict, batch ssh run, with `stdin`, within
 /// `timeout`. Err: ssh itself could not be run.
 pub async fn run_batch(target: &SshTarget, options: &SshOptions, command: String, stdin: &[u8], timeout: Duration) -> Result<BatchRun, String> {
+    run_batch_steps(target, options, command, stdin, timeout, &|_| {}).await
+}
+
+/// What a server step prints on stderr, one line per step, for a person
+/// who waits: `skiff-step: <words>`.
+const STEP: &str = "skiff-step: ";
+
+/// [`run_batch`], and each step line the server prints goes to `step` as
+/// it arrives.
+pub async fn run_batch_steps(
+    target: &SshTarget,
+    options: &SshOptions,
+    command: String,
+    stdin: &[u8],
+    timeout: Duration,
+    step: &(dyn Fn(&str) + Send + Sync),
+) -> Result<BatchRun, String> {
+    use tokio::io::AsyncReadExt;
     let mut child = Command::new(&options.program)
         .args(batch_args(target, options, command))
         .stdin(Stdio::piped())
@@ -229,20 +247,41 @@ pub async fn run_batch(target: &SshTarget, options: &SshOptions, command: String
         .spawn()
         .map_err(|e| format!("Skiff cannot run ssh: {e}"))?;
     let mut input = child.stdin.take().expect("piped");
+    let (mut stdout, stderr) = (child.stdout.take().expect("piped"), child.stderr.take().expect("piped"));
     let data = stdin.to_vec();
     // A failed write shows as ssh's own failure below.
     let writer = tokio::spawn(async move {
         let _ = input.write_all(&data).await;
     });
-    let out = match tokio::time::timeout(timeout, child.wait_with_output()).await {
-        Ok(out) => out.map_err(|e| format!("Skiff cannot run ssh: {e}"))?,
+    let run = async {
+        let mut out = Vec::new();
+        let read_out = stdout.read_to_end(&mut out);
+        let read_err = async {
+            let (mut lines, mut rest) = (BufReader::new(stderr).lines(), String::new());
+            while let Ok(Some(line)) = lines.next_line().await {
+                match line.strip_prefix(STEP) {
+                    Some(words) => step(words.trim()),
+                    None => {
+                        rest.push_str(&line);
+                        rest.push('\n');
+                    }
+                }
+            }
+            rest
+        };
+        let (_, err) = tokio::join!(read_out, read_err);
+        (child.wait().await, out, err)
+    };
+    let (status, out, err) = match tokio::time::timeout(timeout, run).await {
+        Ok(done) => done,
         Err(_) => return Ok(BatchRun::TimedOut),
     };
+    let status = status.map_err(|e| format!("Skiff cannot run ssh: {e}"))?;
     let _ = writer.await;
-    if out.status.code() == Some(255) {
-        return Ok(BatchRun::Ssh(String::from_utf8_lossy(&out.stderr).into_owned()));
+    if status.code() == Some(255) {
+        return Ok(BatchRun::Ssh(err));
     }
-    Ok(BatchRun::Done(String::from_utf8_lossy(&out.stdout).into_owned()))
+    Ok(BatchRun::Done(String::from_utf8_lossy(&out).into_owned()))
 }
 
 /// The longest wait between two tries to open a forward.

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { h, button } from "../ui/dom";
 import { rune } from "../ui/runes";
 import { confirmAction, promptAction } from "../ui/confirm";
@@ -180,7 +181,7 @@ export function createHostsTab(redraw: () => void) {
     const words = h("div", "set-head-words");
     const title = h("div", "set-h", "Hosts");
     title.id = "set-h-hosts";
-    words.append(title, h("div", "set-sub", "Computers whose sessions Skiff can show. Pick one from the Host menu in the top bar."));
+    words.append(title);
     const add = button("set-add ready", "Add SSH Host…", () => {
       form = newForm(null);
       redraw();
@@ -196,7 +197,7 @@ export function createHostsTab(redraw: () => void) {
     table.append(cols, hostRow(null));
     for (const x of knownHosts()) table.append(hostRow(x));
     main.append(table);
-    if (!knownHosts().length) main.append(h("div", "set-note", "Add a server to see and run its sessions here. Pick it from your SSH config, or type its name or address."));
+    if (!knownHosts().length) main.append(h("div", "set-note", "No servers yet. Add one from your SSH config."));
     if (error) main.append(alert(error));
     return main;
   }
@@ -255,7 +256,6 @@ export function createHostsTab(redraw: () => void) {
     head.append(
       button("set-back", "‹ Hosts", () => ((check = null), redraw())),
       h("div", "set-h", `Check ${name}`),
-      h("div", "set-sub", `Skiff checks each step over ssh, top to bottom. It changes nothing on ${name}.`),
     );
     main.append(head);
     const table = h("div", "set-table g-check");
@@ -299,7 +299,7 @@ export function createHostsTab(redraw: () => void) {
     row.setAttribute("role", "row");
     const mark = h("span", "c-lead");
     mark.append(h("span", "sq"));
-    const text = h("span", "c-text", `Two Skiffs run on ${x.name}. Pick the one whose sessions this Host shows.`);
+    const text = h("span", "c-text", `Two Skiffs run on ${x.name}. Pick one.`);
     for (const o of report.choices) {
       const on = o.socket === report.socket;
       const b = button(on ? "set-rm set-fix on" : "set-rm set-fix", `${o.label}${o.version ? ` ${o.version}` : ""}`, () => void pickSocket(c, x, o));
@@ -343,7 +343,7 @@ export function createHostsTab(redraw: () => void) {
       if (fix === "update_skiff") return updateSkiff(c, x);
       if (fix === "copy_public_key") {
         await copyText(await invoke<string>("public_key", { id: x.id }));
-        c.note = `Public key copied. A public key is safe to send. It does not let anyone log in as you. When the admin of ${x.name} adds it, check again.`;
+        c.note = `Public key copied. Send it to the admin of ${x.name}, then check again.`;
         redraw();
       }
     } catch (e) {
@@ -352,36 +352,65 @@ export function createHostsTab(redraw: () => void) {
     }
   }
 
-  /** One confirm covers the install, the start and keeping it running. */
+  /** One confirm covers the install, the start and keeping it running.
+   *  The dialog stays open while it runs and shows each step. */
   function installSkiff(c: Check, x: KnownHost) {
-    const [os, arch] = c.report?.platform ?? ["linux", ""];
+    const [os] = c.report?.platform ?? ["linux", ""];
     const v = c.report?.version ?? "";
+    const log = stepLog(x.id);
     actionDialog({
       title: `Install Skiff on ${x.name}?`,
       body:
         os === "macos"
-          ? `Skiff ${v} for macOS ${arch}. Files go in ~/.local/share/skiff/server on ${x.name}. Two LaunchAgents in ~/Library/LaunchAgents start skiffd (sessions) and skiff-host (projects), and keep them running after you log out. After a restart they start when you log in there. Nothing outside your home folder changes.`
-          : `Skiff ${v} for Linux ${arch}. Files go in ~/.local/share/skiff/server on ${x.name}. Two user services start skiffd (sessions) and skiff-host (projects), and keep them running after you log out and after a restart. Nothing outside your home folder changes.`,
+          ? `Installs Skiff ${v} in your home folder on ${x.name}. It starts when you log in there.`
+          : `Installs Skiff ${v} in your home folder on ${x.name}. It keeps running after a restart.`,
+      content: [log.el],
       action: "Install Skiff",
       tone: "go",
+      onClose: log.stop,
       submit: async () => {
-        c.note = `Installing Skiff ${v} on ${x.name}…`;
         c.error = null;
+        const r = await log.run(() => invoke<{ version: string; cli_linked: boolean }>("install_skiff", { id: x.id }));
+        await runCheck(x.id);
+        if (check) check.note = `Skiff ${r.version} is installed.${r.cli_linked ? "" : " ~/.local/bin/skiff is taken, so Skiff left it."}`;
         redraw();
-        try {
-          const r = await invoke<{ source: string; version: string; cli_linked: boolean }>("install_skiff", { id: x.id });
-          const from = r.source === "release" ? "" : ` This dev build sent its own binaries, as no release has Skiff ${r.version}.`;
-          const cli = r.cli_linked ? "" : ` ~/.local/bin/skiff on ${x.name} is another file, so Skiff left it.`;
-          await runCheck(x.id);
-          if (check) check.note = `Skiff ${r.version} is installed on ${x.name}.${from}${cli}`;
-          redraw();
-        } catch (e) {
-          c.note = undefined;
-          c.error = String(e);
-          redraw();
-        }
       },
     });
+  }
+
+  /** The live steps of an install or update, newest at the bottom. A
+   *  failed run keeps them, with the error under them. */
+  function stepLog(id: string) {
+    const el = h("div", "step-log");
+    el.hidden = true;
+    el.setAttribute("aria-live", "polite");
+    let off: (() => void) | null = null;
+    const stop = () => {
+      off?.();
+      off = null;
+    };
+    const add = (line: string) => {
+      el.hidden = false;
+      el.append(h("div", "", line));
+      el.scrollTop = el.scrollHeight;
+    };
+    return {
+      el,
+      stop,
+      async run<T>(call: () => Promise<T>): Promise<T> {
+        el.replaceChildren();
+        el.hidden = true;
+        stop();
+        off = await listen<{ id: string; line: string }>("skiff:host-step", (e) => {
+          if (e.payload.id === id) add(e.payload.line);
+        });
+        try {
+          return await call();
+        } finally {
+          stop();
+        }
+      },
+    };
   }
 
   /** The Host's own setting: on, an older install Skiff made is updated as
@@ -400,65 +429,69 @@ export function createHostsTab(redraw: () => void) {
         alertCheck(e);
       }
     });
-    row.append(box, h("span", "c-text", `Update Skiff on this server automatically. Only a Skiff that Skiff installed, and only when its sessions keep running.`));
+    row.append(box, h("span", "c-text", "Update Skiff here automatically"));
     return row;
   }
 
-  /** Update Skiff…: one confirm. When skiffd cannot keep its sessions, the
-   *  update stops, and a red dialog names the sessions it would end. */
+  /** Update Skiff…: one confirm, open while it runs with each step. When
+   *  skiffd cannot keep its sessions, the update stops, and a red dialog
+   *  names the sessions it would end. */
   function updateSkiff(c: Check, x: KnownHost) {
-    const v = c.report?.version ?? "";
-    actionDialog({
+    updateDialog(c, x, {
       title: `Update Skiff on ${x.name}?`,
-      body: `Skiff ${v} goes in ~/.local/share/skiff/server on ${x.name}, beside the version there now, which Skiff keeps for a rollback. skiffd moves to the new version and keeps its sessions running. If the update fails, the old version keeps running.`,
+      body: `Updates Skiff on ${x.name} to ${c.report?.version ?? ""}. Its sessions keep running.`,
       action: "Update Skiff",
       tone: "go",
-      submit: () => void runUpdate(c, x, false),
+      endSessions: false,
     });
   }
 
-  async function runUpdate(c: Check, x: KnownHost, endSessions: boolean) {
-    c.note = `Updating Skiff on ${x.name}…`;
-    c.error = null;
-    redraw();
-    try {
-      const r = await invoke<Updated>("update_skiff", { id: x.id, endSessions });
-      if (r.result === "no_handover") return endsSessions(c, x, r.from, r.sessions);
-      await runCheck(x.id);
-      const dev = r.source === "this build" ? ` This dev build sent its own binaries, as no release has Skiff ${r.version}.` : "";
-      const note =
-        r.result === "done"
-          ? `Updated Skiff on ${x.name} from ${r.from} to ${r.version}.${r.restarted ? " skiffd started again." : " Its sessions kept running."}${dev}`
-          : r.result === "newer"
-            ? `${x.name} runs Skiff ${r.from}, newer than this computer. Skiff does not change it.`
-            : `${x.name} runs Skiff ${r.version} already.`;
-      if (check) check.note = note;
-      redraw();
-    } catch (e) {
-      c.note = undefined;
-      c.error = String(e);
-      redraw();
-    }
+  function updateDialog(c: Check, x: KnownHost, o: { title: string; body: string; action: string; tone: "go" | "danger"; endSessions: boolean }) {
+    const log = stepLog(x.id);
+    let handover: { from: string; sessions: string[] } | null = null;
+    actionDialog({
+      title: o.title,
+      body: o.body,
+      content: [log.el],
+      action: o.action,
+      tone: o.tone,
+      onClose: () => {
+        log.stop();
+        if (handover) endsSessions(c, x, handover.from, handover.sessions);
+      },
+      submit: async () => {
+        c.error = null;
+        const r = await log.run(() => invoke<Updated>("update_skiff", { id: x.id, endSessions: o.endSessions }));
+        if (r.result === "no_handover") return void (handover = { from: r.from, sessions: r.sessions });
+        await runCheck(x.id);
+        const note =
+          r.result === "done"
+            ? `Updated to Skiff ${r.version}.${r.restarted ? " skiffd restarted." : ""}`
+            : r.result === "newer"
+              ? `${x.name} runs a newer Skiff, ${r.from}.`
+              : `Skiff ${r.version} runs already.`;
+        if (check) check.note = note;
+        redraw();
+      },
+    });
   }
 
   /** The red dialog: this update ends the sessions it names. */
   function endsSessions(c: Check, x: KnownHost, from: string, sessions: string[]) {
-    c.note = undefined;
-    redraw();
     const n = sessions.length;
-    actionDialog({
+    updateDialog(c, x, {
       title: `Update Skiff on ${x.name} and end ${n === 1 ? "1 session" : `${n} sessions`}?`,
-      body: `Skiff ${from} on ${x.name} cannot hand its sessions to the new version. This update ends the ${n === 1 ? "session" : `${n} sessions`} on ${x.name}: ${sessions.join(", ")}. Save their work first. Nothing changed yet.`,
+      body: `Skiff ${from} cannot hand its sessions over. This ends: ${sessions.join(", ")}. Save their work first.`,
       action: n === 1 ? "Update and end 1 session" : `Update and end ${n} sessions`,
       tone: "danger",
-      submit: () => void runUpdate(c, x, true),
+      endSessions: true,
     });
   }
 
   function turnOnLinger(x: KnownHost, done: () => void) {
     actionDialog({
       title: `Keep Skiff running on ${x.name} after you log out?`,
-      body: `Skiff turns on lingering for your account on ${x.name}. Its user services then start when the server starts, and keep running after you log out. Nothing else changes.`,
+      body: `Turns on lingering for your account. Skiff then keeps running after you log out.`,
       action: "Turn on",
       tone: "go",
       submit: async () => {
@@ -479,7 +512,7 @@ export function createHostsTab(redraw: () => void) {
     if (!key.known.length) {
       return actionDialog({
         title: `Trust the host key of ${x.name}?`,
-        body: `This is the first connection from this computer to ${x.name}. Compare the fingerprint with the one your server provider or admin gives you, if you have one. Skiff adds the key to ${key.file}. ssh in a terminal then trusts it too.`,
+        body: `First connection to ${x.name}. Compare the fingerprint with the one from your provider, if you have it.`,
         content: [prints("Fingerprint", key.fingerprints)],
         action: "Trust this key",
         tone: "go",
@@ -491,7 +524,7 @@ export function createHostsTab(redraw: () => void) {
     }
     actionDialog({
       title: `The host key of ${x.name} changed`,
-      body: `This is normal after a reinstall of the server. It can also mean that another machine answers at this address. Skiff does not connect until you decide.`,
+      body: `Normal after a server reinstall. It can also mean another machine answers here.`,
       content: [prints("Key that Skiff knows", key.known, true), prints("Key that answers now", key.fingerprints)],
       action: "Replace the key…",
       tone: "danger",
@@ -500,7 +533,7 @@ export function createHostsTab(redraw: () => void) {
         setTimeout(async () => {
           const ok = await confirmAction({
             title: `Replace the key of ${x.name}?`,
-            body: `Skiff removes the old key from ${key.file} and trusts the new one. Do this only if you know why it changed, such as a reinstall of ${x.name}. If you are not sure, ask the admin of ${x.name} first.`,
+            body: `Skiff replaces the old key in ${key.file}. Do this only if you know why it changed.`,
             action: "Replace the key",
           });
           if (!ok) return;
@@ -519,7 +552,7 @@ export function createHostsTab(redraw: () => void) {
   function makeKey(x: KnownHost, done: () => void) {
     actionDialog({
       title: "Make an SSH key on this computer?",
-      body: `This computer has no SSH key. Skiff makes one at ~/.ssh/id_ed25519, with no passphrase, and then installs it on ${x.name}. ssh and other apps on this computer use it too.`,
+      body: `Makes ~/.ssh/id_ed25519 with no passphrase, then installs it on ${x.name}.`,
       action: "Make key",
       tone: "go",
       submit: async () => {
@@ -541,21 +574,21 @@ export function createHostsTab(redraw: () => void) {
     const copy = {
       install: {
         title: `Log in to ${x.name} once`,
-        body: `Type the password of ${who}. Skiff uses it one time to add this computer's key to ${x.name}. Skiff does not store it.`,
+        body: `Type the password of ${who}. Skiff uses it once and does not store it.`,
         label: "Password",
         action: "Install key",
         cmd: "install_key",
       },
       unlock: {
         title: "Unlock your SSH key",
-        body: "Your key has a passphrase and is not in the SSH agent. Type the passphrase. Skiff gives the key to the agent until you log out. Skiff does not store the passphrase.",
+        body: "Type the passphrase of your SSH key. Skiff does not store it.",
         label: "Passphrase",
         action: "Unlock",
         cmd: "unlock_key",
       },
       fix: {
         title: `Replace the key file on ${x.name}?`,
-        body: `On ${x.name}, the file that holds your keys belongs to another account, so the SSH server ignores it. Skiff renames it and writes a new one that you own, with this computer's key in it. The other keys in the old file then stop working on ${x.name}. Type the password of ${who}. Skiff does not store it.`,
+        body: `Another account owns your key file on ${x.name}. Skiff writes a new one with only this computer's key. The other keys stop working. Type the password of ${who}.`,
         label: "Password",
         action: "Replace the key file",
         cmd: "fix_permissions",
@@ -593,7 +626,7 @@ export function createHostsTab(redraw: () => void) {
   function rename(x: KnownHost) {
     promptAction({
       title: `Rename ${x.name}`,
-      body: "The name shows in the Host menu, in Settings and in the window title. The server stays the same.",
+      body: "The server stays the same.",
       placeholder: "a name",
       value: x.name,
       action: "Rename",
@@ -611,10 +644,10 @@ export function createHostsTab(redraw: () => void) {
    * so, and the copy names the sessions that end and what stays.
    */
   function remove(x: KnownHost) {
-    const kept = `Skiff removes it from this computer's Host list. Its sessions keep running on ${x.name}.`;
+    const kept = `Its sessions keep running on ${x.name}.`;
     const body = h("div", "confirm-body", kept);
     const extra = h("div", "set-remove-box");
-    const status = h("div", "set-sub", `Skiff checks what it installed on ${x.name}…`);
+    const status = h("div", "set-sub", `Checking ${x.name}…`);
     extra.append(status);
     const box = h("input") as HTMLInputElement;
     box.type = "checkbox";
@@ -622,7 +655,7 @@ export function createHostsTab(redraw: () => void) {
     let ends = "";
     box.addEventListener("change", () => {
       body.textContent = box.checked
-        ? `Skiff stops and disables its services on ${x.name} and deletes the files it installed there. ${ends} Your projects and all other files on ${x.name} stay. Then Skiff removes ${x.name} from this computer's Host list.`
+        ? `Skiff uninstalls itself from ${x.name}. ${ends}Your other files stay.`
         : kept;
     });
     actionDialog({
@@ -639,15 +672,15 @@ export function createHostsTab(redraw: () => void) {
     });
     invoke<{ managed: boolean; sessions: string[] }>("uninstall_preview", { id: x.id }).then(
       (p) => {
-        if (!p.managed) return void (status.textContent = `Skiff did not install Skiff on ${x.name}, so it leaves Skiff there as it is.`);
+        if (!p.managed) return void (status.textContent = `Skiff on ${x.name} is its own install. It stays.`);
         const n = p.sessions.length;
-        ends = n === 0 ? "No sessions run there." : `This ends its ${n === 1 ? "session" : `${n} sessions`}: ${p.sessions.join(", ")}.`;
+        ends = n === 0 ? "" : `This ends: ${p.sessions.join(", ")}. `;
         const label = h("label", "set-check-label");
         label.setAttribute("for", "set-uninstall");
-        label.append(box, h("span", "", `Also stop and uninstall Skiff on ${x.name}. ${ends}`));
+        label.append(box, h("span", "", `Also uninstall Skiff on ${x.name}. ${ends}`.trim()));
         status.replaceWith(label);
       },
-      () => void (status.textContent = `Skiff cannot reach ${x.name} now, so it can only remove it from this computer.`),
+      () => void (status.textContent = `${x.name} does not answer. Skiff removes it here only.`),
     );
   }
 
@@ -662,7 +695,6 @@ export function createHostsTab(redraw: () => void) {
     head.append(
       back,
       h("div", "set-h", editing ? `Edit ${editing.name}` : "Add SSH Host"),
-      h("div", "set-sub", "Pick a server from your SSH config, or type its name or address."),
     );
     main.append(head);
 
@@ -678,7 +710,7 @@ export function createHostsTab(redraw: () => void) {
     dest.setAttribute("list", list.id);
     dest.addEventListener("input", () => lookup(f));
     main.append(fieldRow("Server", dest, list));
-    const said = h("div", "set-note set-resolve" + (line.bad ? " bad" : ""), line.text || "Skiff reads the user and port from your SSH config.");
+    const said = h("div", "set-note set-resolve" + (line.bad ? " bad" : ""), line.text || "User and port come from your SSH config.");
     said.id = "set-resolve";
     main.append(said);
 
@@ -728,7 +760,7 @@ export function createHostsTab(redraw: () => void) {
         if (k !== key(f)) return;
         lastResolved = r;
         const jump = r.jump ? `, through ${r.jump}` : "";
-        line = { for: k, text: `Skiff connects as ${r.user} to ${r.hostname}, port ${r.port}${jump}.`, bad: false };
+        line = { for: k, text: `${r.user}@${r.hostname}, port ${r.port}${jump}.`, bad: false };
       } catch (e) {
         if (k !== key(f)) return;
         line = { for: k, text: String(e), bad: true };
@@ -741,7 +773,7 @@ export function createHostsTab(redraw: () => void) {
   function paint() {
     const el = document.getElementById("set-resolve");
     if (!el) return;
-    el.textContent = line.text || "Skiff reads the user and port from your SSH config.";
+    el.textContent = line.text || "User and port come from your SSH config.";
     el.classList.toggle("bad", line.bad);
   }
 
