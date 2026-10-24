@@ -7,19 +7,18 @@ import { flush, moduleFromSource } from "./workspaceHarness.ts";
 function launch(o: { sessions?: { id: string; cwd: string }[]; groups?: { cwd?: string | null }[]; agents?: { id: string; command: string }[] } = {}) {
   const started: unknown[][] = [];
   const menus: { title: string; entries: any[] }[] = [];
-  const dialogs: any[] = [];
+  const pickers: any[] = [];
   let refocused = 0;
   const choices = [null, ...(o.agents ?? [])];
   const mod = moduleFromSource(
     "../src/workspace/remoteLaunch.ts",
     {
       "../ui/contextMenu": { ctxMenu: { open: (_x: number, _y: number, title: string, entries: any[]) => menus.push({ title, entries }) } },
-      "../ui/dialogParts": { actionDialog: (d: any) => dialogs.push(d) },
-      "../ui/dom": { h: () => ({ setAttribute() {}, value: "" }) },
+      "./folderPicker": { openFolderPicker: (p: any) => pickers.push(p) },
       "../ui/alerts": { showError(e: unknown) { throw e; } },
       "../app/daemon": { newSession: async (...args: unknown[]) => void started.push(args) },
       "../app/hosts": { hostName: () => "devbox", hostConnected: () => true },
-      "../app/state": { S: { groups: o.groups ?? [] }, sessions: new Map((o.sessions ?? []).map((s) => [s.id, s])) },
+      "../app/state": { S: { groups: o.groups ?? [], projects: [] }, sessions: new Map((o.sessions ?? []).map((s) => [s.id, s])) },
       "../app/stateQueries": { launchChoices: () => choices, launchDigit: (i: number) => String(i + 1) },
       "../appearance/agentIcon": { launchIcon: () => ({}) },
       "./model": { basename: (p: string) => p.split("/").pop() },
@@ -28,7 +27,7 @@ function launch(o: { sessions?: { id: string; cwd: string }[]; groups?: { cwd?: 
     { Set, Map, Promise },
     "",
   );
-  return { mod, started, menus, dialogs, refocused: () => refocused };
+  return { mod, started, menus, pickers, refocused: () => refocused };
 }
 
 test("the folders are the ones the Host reported, once each, the asked one first", () => {
@@ -38,12 +37,11 @@ test("the folders are the ones the Host reported, once each, the asked one first
   assert.deepEqual([...mod.hostFolders(list, [], "/srv/b")], ["/srv/b", "/srv/a"]);
 });
 
-test("a typed folder is an absolute path on the Host, or empty for its home", () => {
+test("worktrees and Recent are listed once each, under the folder asked first", () => {
   const { mod } = launch();
-  assert.equal(mod.typedFolder("  /home/me/λ repo ", "devbox"), "/home/me/λ repo");
-  assert.equal(mod.typedFolder("   ", "devbox"), null);
-  // `~` and relative paths would be read on the Host as typed: refused here.
-  for (const bad of ["~/repo", "repo", "./x"]) assert.throws(() => mod.typedFolder(bad, "devbox"), /absolute path on devbox/);
+  const projects = [{ name: "web", worktrees: [{ path: "/srv/web", branch: "main", is_main: true }, { path: "/srv/web-worktrees/fix", branch: "fix", is_main: false }] }];
+  assert.deepEqual([...mod.hostWorktrees(projects).map((w: any) => w.label)], ["web", "web › fix"]);
+  assert.deepEqual([...mod.recentFolders(["/srv/a", "/srv/web"], ["/srv/a", "/srv/b"], new Set(["/srv/web"]))], ["/srv/a", "/srv/b"]);
 });
 
 test("New session on a remote Host starts the Host's agent in a Host folder", async () => {
@@ -56,12 +54,12 @@ test("New session on a remote Host starts the Host's agent in a Host folder", as
   const menu = h.menus[0];
   assert.equal(menu.title, "New session");
   assert.equal(menu.entries[0].head, "FOLDER ON DEVBOX");
-  assert.deepEqual([...menu.entries.slice(1).map((e: any) => e.label)], ["/srv/web", "/srv/api", "/srv/ops", "Home folder", "Type a folder…"]);
+  assert.deepEqual([...menu.entries.slice(1).map((e: any) => e.head ?? e.label ?? "—")], ["/srv/web", "RECENT", "/srv/api", "/srv/ops", "—", "Home folder", "Choose a folder…"]);
   // Shell, then the Host's agents, under each folder.
   const web = menu.entries[1].sub;
   assert.deepEqual([...web.map((e: any) => [e.label, e.hint])], [["Shell", "1"], ["claude", "2"]]);
   web[1].run();
-  menu.entries[4].sub[0].run();
+  menu.entries[6].sub[0].run();
   await flush();
   assert.deepEqual(h.started, [
     ["/srv/web", "claude --host-side", "claude", "agent"],
@@ -69,17 +67,14 @@ test("New session on a remote Host starts the Host's agent in a Host folder", as
   ]);
 });
 
-test("a typed folder opens the start menu; Cancel starts nothing and gives the keys back", async () => {
+test("Choose a folder… opens the picker, then the start menu; Cancel starts nothing and gives the keys back", async () => {
   const h = launch({ agents: [{ id: "codex", command: "codex" }] });
   h.mod.openRemoteNewSession(0, 0);
   h.menus[0].entries.at(-1).run();
-  const d = h.dialogs[0];
-  assert.equal(d.title, "New session on devbox");
-  d.content[0].value = "relative";
-  assert.throws(() => d.submit(), /absolute path/);
-  d.content[0].value = "/srv/λ";
-  d.submit();
-  d.onClose();
+  const p = h.pickers[0];
+  assert.equal(p.action, "Start here");
+  await p.pick("/srv/λ");
+  p.onClose(true);
   assert.equal(h.menus[1].entries[0].head, "NEW IN Λ");
   h.menus[1].entries[2].run();
   await flush();
@@ -88,7 +83,7 @@ test("a typed folder opens the start menu; Cancel starts nothing and gives the k
   const c = launch();
   c.mod.openRemoteNewSession(0, 0);
   c.menus[0].entries.at(-1).run();
-  c.dialogs[0].onClose();
+  c.pickers[0].onClose(false);
   assert.equal(c.menus.length, 1);
   assert.equal(c.refocused(), 1);
   assert.deepEqual(c.started, []);

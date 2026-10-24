@@ -1,21 +1,23 @@
 /**
- * New session on a remote Host. Its projects are not reachable yet (M4), so
- * the folder is one the Host reported (a folder of its sessions or groups),
- * its home folder, or one the person types. The choices are the Host's own
- * agents. A folder here is a path on that Host: it goes only into the
- * session spec, never to an opener on this Mac.
+ * New session on a remote Host. The folder is one the Host knows: a
+ * worktree of its projects, a folder it saw in use (Recent), its home
+ * folder, or one picked from its disk in the folder picker. Nothing is
+ * typed. The choices are the Host's own agents. A folder here is a path on
+ * that Host: it goes only into the session spec, never to an opener on
+ * this Mac.
  */
-import type { Group, SessionInfo } from "../platform/types";
+import { invoke } from "@tauri-apps/api/core";
+import type { FolderPlaces, Group, Project, SessionInfo } from "../platform/types";
 import type { MenuEntry } from "../ui/menu";
 import { ctxMenu } from "../ui/contextMenu";
-import { actionDialog } from "../ui/dialogParts";
-import { h } from "../ui/dom";
 import { showError } from "../ui/alerts";
 import { newSession } from "../app/daemon";
+import { hostCan } from "../app/hostCaps";
 import { hostConnected, hostName } from "../app/hosts";
 import { S, sessions } from "../app/state";
 import { launchChoices, launchDigit } from "../app/stateQueries";
 import { launchIcon } from "../appearance/agentIcon";
+import { openFolderPicker } from "./folderPicker";
 import { basename } from "./model";
 import { refocusTerminal } from "./view";
 
@@ -28,12 +30,33 @@ export function hostFolders(list: Iterable<SessionInfo>, groups: Group[], first?
   return first ? [first, ...rest] : rest;
 }
 
-/** A typed folder: an absolute path on the Host, or `null` (empty) for its home folder. */
-export function typedFolder(typed: string, host: string): string | null {
-  const t = typed.trim();
-  if (!t) return null;
-  if (!t.startsWith("/")) throw `Type an absolute path on ${host}, such as /home/me/repo. Leave it empty for the home folder.`;
-  return t;
+/** The Host's project worktrees, as menu labels: the project, then the branch for a linked one. */
+export function hostWorktrees(projects: Project[]): { label: string; path: string }[] {
+  return projects.flatMap((p) =>
+    p.worktrees.map((w) => ({ label: w.is_main ? p.name : `${p.name} › ${w.branch ?? basename(w.path)}`, path: w.path })),
+  );
+}
+
+/** Recent: the Host's own list first, then its sessions' and groups'
+ *  folders, once each, without the folders listed above them. */
+export function recentFolders(hostRecent: string[], reported: string[], skip: Set<string>): string[] {
+  const out: string[] = [];
+  for (const f of [...hostRecent, ...reported]) if (!skip.has(f) && !out.includes(f)) out.push(f);
+  return out.slice(0, 20);
+}
+
+/** The Host's Recent list from its last answer. The menu opens at once
+ *  with it, and asks the Host again for the next time. */
+let recent: { host: string; list: string[] } = { host: "", list: [] };
+function refreshRecent(host: string) {
+  try {
+    if (!hostCan("folders")) return;
+    void invoke<FolderPlaces>("folder_places")
+      .then((p) => void (recent = { host, list: p.recent }))
+      .catch(() => {});
+  } catch {
+    // No Host call here: Recent stays as it was.
+  }
 }
 
 /** Shell, then the Host's agents, as the other start menus list them. */
@@ -60,37 +83,33 @@ function start(cwd: string | null, id: string | null) {
 /** The folder menu. `near`: the highlighted or focused session's folder, listed first. */
 export function openRemoteNewSession(x: number, y: number, near?: string | null) {
   const host = hostName();
+  const folder = (label: string, path: string | null): MenuEntry => ({ icon: "documents-folder-open", label, sub: startEntries(path) });
+  const worktrees = hostWorktrees(S.projects ?? []).filter((w) => w.path !== near);
+  const skip = new Set([...(near ? [near] : []), ...worktrees.map((w) => w.path)]);
+  const hostRecent = recent.host === host ? recent.list : [];
+  const others = recentFolders(hostRecent, hostFolders(sessions.values(), S.groups), skip);
   const entries: MenuEntry[] = [
     { head: `FOLDER ON ${host.toUpperCase()}` },
-    ...hostFolders(sessions.values(), S.groups, near).map((f) => ({ icon: "documents-folder-open", label: f, sub: startEntries(f) })),
-    { icon: "documents-folder-open", label: "Home folder", sub: startEntries(null) },
-    { icon: "tools-pencil", label: "Type a folder…", run: () => typeFolder(x, y) },
+    ...(near ? [folder(near, near)] : []),
+    ...(worktrees.length ? [{ head: "WORKTREES" }, ...worktrees.map((w) => folder(w.label, w.path))] : []),
+    ...(others.length ? [{ head: "RECENT" }, ...others.map((f) => folder(f, f))] : []),
+    { sep: true },
+    folder("Home folder", null),
+    { icon: "documents-folder-open", label: "Choose a folder…", run: () => chooseFolder(x, y) },
   ];
   ctxMenu.open(x, y, "New session", entries);
+  refreshRecent(host);
 }
 
-function typeFolder(x: number, y: number) {
-  const host = hostName();
-  const input = h("input", "prompt-input") as HTMLInputElement;
-  input.type = "text";
-  input.spellcheck = false;
-  input.placeholder = "/home/me/repo";
-  input.setAttribute("aria-label", `Folder on ${host}`);
-  let picked: string | null | undefined;
-  actionDialog({
-    title: `New session on ${host}`,
-    body: `Type a folder on ${host}. Leave it empty for its home folder.`,
-    content: [input],
-    action: "Next",
-    tone: "go",
-    focus: input,
-    submit: () => {
-      picked = typedFolder(input.value, host);
-    },
+/** The folder picker, then the start menu for the picked folder. */
+function chooseFolder(x: number, y: number) {
+  let picked: string | null = null;
+  openFolderPicker({
+    action: "Start here",
+    pick: async (path) => void (picked = path),
     onClose: () => {
-      if (picked === undefined) return refocusTerminal();
-      const where = picked ? basename(picked) : "home";
-      ctxMenu.open(x, y, "New session", [{ head: `NEW IN ${where.toUpperCase()}` }, ...startEntries(picked)]);
+      if (picked === null) return refocusTerminal();
+      ctxMenu.open(x, y, "New session", [{ head: `NEW IN ${basename(picked).toUpperCase()}` }, ...startEntries(picked)]);
     },
   });
 }

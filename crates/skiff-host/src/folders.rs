@@ -299,7 +299,7 @@ pub mod recent {
                 None => list.push(Seen { path, at }),
             }
         }
-        list.sort_by(|a, b| b.at.cmp(&a.at));
+        list.sort_by_key(|s| std::cmp::Reverse(s.at));
         list.truncate(MAX_RECENT);
         let Ok(bytes) = serde_json::to_vec(&list) else { return };
         if bytes == before {

@@ -841,6 +841,21 @@ async fn remote_add_project_is_picked_from_the_hosts_folders_over_a_real_forward
     }
     let made = data::folder_create(&c, &code.real, "scratch").await.unwrap();
     assert!(Path::new(&made).is_dir());
+
+    // #166 R4: New session › Choose a folder…: a session starts in the
+    // picked folder, and the Host's Recent lists it after.
+    let sessions = host.connection();
+    let picked = open(&data::folder_list(&c, &code.real, false, None).await.unwrap(), "scratch");
+    let spec = SessionSpec { cwd: Some(PathBuf::from(&picked)), cols: 80, rows: 24, ..Default::default() };
+    let s = legacy_create(&sessions, spec).await.unwrap();
+    let mut output = legacy_output(&sessions, &s.id).unwrap();
+    legacy_attach(&sessions, &s.id).await.unwrap();
+    skiff_client::host::local::legacy_input(&sessions, &s.id, b"echo AT-$(pwd)\n".to_vec()).unwrap();
+    until_seen(&mut output, &format!("AT-{picked}")).await;
+    let places = data::folder_places(&c).await.unwrap();
+    assert!(places.recent.contains(&picked), "{places:?}");
+    assert!(places.recent.contains(&api.canonicalize().unwrap().display().to_string()), "the added project: {places:?}");
+    legacy_kill(&sessions, &s.id).await.unwrap();
 }
 
 /// #166 slice 3, over the loopback sshd. Unknown key: a scan learns it into
