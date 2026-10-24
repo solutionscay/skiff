@@ -78,13 +78,13 @@ function renderAll() {
   step("render.sidebar", renderSidebar);
   renderSelectBar();
   step("render.layout", renderLayout);
-  renderLedger();
+  step("render.ledger", renderLedger);
   renderModes();
   step("render.themes", applyThemes);
   step("render.backdrop", applyBackdrop);
   step("render.header", renderHeader);
   renderCounts();
-  applyTabOrder();
+  step("render.tabs", applyTabOrder);
   // The current row may have changed: a preview whose row it no longer is ends.
   syncPreview();
   step("render.menu", syncMenu);

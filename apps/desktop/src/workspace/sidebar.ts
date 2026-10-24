@@ -37,6 +37,7 @@ import { render } from "../app/renderRequest";
 import { projectsPlus, renderWorkspaceStatus, shows, workspaceOpen } from "./profile";
 import { ledgerCounts, ledgerNeeds, ledgerWorkTitle } from "./ledger";
 import { fleetScope, fleetSkipperOf, projectSkipperOf, projectWatch, openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, syncSkiffAgent } from "../app/skiffAgent";
+import { step } from "../diagnostics/stalls";
 
 /** 20px lines, flush against whatever follows. */
 function sessionBlock(lines: Line[], color: string): HTMLElement {
@@ -251,7 +252,7 @@ export function renderSidebar() {
   renderWorkspaceStatus();
   syncSkiffAgent();
   openToFocused();
-  const sig = sidebarSig();
+  const sig = step("render.sidebar.sig", sidebarSig);
   if (lastSig === sig.all) return;
   lastSig = sig.all;
   // Keep focus and the selected range in an inline control across re-renders,
