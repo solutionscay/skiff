@@ -3,8 +3,8 @@
 //! status, diff text, worktree files (M5), project backgrounds, and
 //! Skipper's ledger, results and settings (M6) from the Host's own config,
 //! disk and git, the account's folders for the picker (`folders@1`), and is
-//! the writer of the Host's `[[project]]` tables, `[skiff_agent]` and
-//! project worktrees, the starter of Skipper's session there and the
+//! the writer of the Host's `[[project]]` tables, `[agents]`, `[skiff_agent]`
+//! and project worktrees, the starter of Skipper's session there and the
 //! keeper of its watcher ([`skipper`]), through
 //! the same `skiff-core` code the app ran before. It holds no PTY and no session:
 //! restarting it never touches skiffd or a terminal (#62, M1f topology).
@@ -59,6 +59,7 @@ pub fn capabilities() -> Vec<Capability> {
         Capability::skipper_settings(),
         Capability::skipper_config(),
         Capability::skipper_run(),
+        Capability::agent_config(),
     ]
 }
 
@@ -281,6 +282,8 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             | Request::SkipperFolderChange { .. }
             | Request::SkipperOpen { .. }
             | Request::SkipperWatch { .. }
+            | Request::AgentConfig
+            | Request::AgentEdit { .. }
     ) {
         return skipper::answer(request).await;
     }

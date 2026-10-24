@@ -130,7 +130,7 @@ fn restore_layout(value: api_group::Layout) -> core_group::Layout {
 }
 
 /// M3: one agent of the Host account's list, as skiffd reports it.
-pub(super) fn project_agent(value: AgentInfo) -> HostAgent {
+pub fn project_agent(value: AgentInfo) -> HostAgent {
     let AgentInfo {
         id,
         command,
@@ -149,7 +149,7 @@ pub(super) fn project_agent(value: AgentInfo) -> HostAgent {
     }
 }
 
-pub(super) fn restore_agent(value: HostAgent) -> AgentInfo {
+pub fn restore_agent(value: HostAgent) -> AgentInfo {
     let HostAgent {
         id,
         command,

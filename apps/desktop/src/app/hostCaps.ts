@@ -23,7 +23,8 @@ type HostCap =
   | "ledger"
   | "skipper"
   | "skipper_config"
-  | "skipper_run";
+  | "skipper_run"
+  | "agent_config";
 
 /** The major of each capability that this page speaks. */
 const MAJOR: Record<HostCap, number> = {
@@ -46,6 +47,7 @@ const MAJOR: Record<HostCap, number> = {
   skipper: 1,
   skipper_config: 1,
   skipper_run: 1,
+  agent_config: 1,
 };
 
 /** What each capability offers, for the refusal. */
@@ -69,6 +71,7 @@ const OFFERS: Record<HostCap, string> = {
   skipper: "Skiff agent settings",
   skipper_config: "changes to its Skiff agent",
   skipper_run: "a Skiff agent it starts",
+  agent_config: "changes to its agents",
 };
 
 /** `name@major` of the selected Host. `null` until the first answer. */

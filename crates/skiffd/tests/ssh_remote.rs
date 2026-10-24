@@ -1478,14 +1478,14 @@ async fn a_mac_server_gets_skiff_and_a_launch_agent_once() {
     assert!(!d.join("run/skiff").join(name).exists() || std::os::unix::net::UnixStream::connect(d.join("run/skiff").join(name)).is_err(), "skiffd stopped");
 }
 
-/// #166 R7 over a real forward: a Skipper setting written from the client
-/// lands in the Host's config; Start Skipper
+/// #166 R7 and R8 over a real forward: a Skipper setting and an agent
+/// setting written from the client land in the Host's config; Start Skipper
 /// starts Skipper on the Host, and the Host's skiff-host starts its watcher.
 /// A managed install's Skipper folder defaults to the account's home.
 #[tokio::test]
-async fn skipper_is_changed_and_started_on_the_host_over_a_real_forward() {
+async fn skipper_and_agents_are_changed_and_started_on_the_host_over_a_real_forward() {
     use skiff_client::host::data;
-    use skiff_host_api::SkipperEdit;
+    use skiff_host_api::{AgentEdit, Error as E, SkipperEdit};
     let Some(f) = fixture("k") else { return };
     let local = local_client(&f.socket()).await;
     // A custom agent that every machine has: `sh`.
@@ -1526,7 +1526,17 @@ async fn skipper_is_changed_and_started_on_the_host_over_a_real_forward() {
     let c = plane.connection();
     let config = || std::fs::read_to_string(f.dir.join("config/projects.toml")).unwrap();
 
-    // Skipper's settings change on the Host; its folder is read there.
+    // R8: an agent change names its revision; a stale one is refused.
+    let (agents, revision) = data::agent_config(&c).await.unwrap();
+    assert!(agents.iter().any(|a| a.id == "sk" && a.installed), "{agents:?}");
+    let (agents, next) = data::agent_edit(&c, &revision, AgentEdit::Command { agent: "sk".into(), command: "sh -i".into() }).await.unwrap();
+    assert!(agents.iter().any(|a| a.id == "sk" && a.command == "sh -i"), "{agents:?}");
+    assert!(config().contains("sk = \"sh -i\""), "{}", config());
+    let stale = data::agent_edit(&c, &revision, AgentEdit::Remove { agent: "sk".into() }).await;
+    assert!(matches!(stale, Err(E::Conflict { .. })), "{stale:?}");
+    data::agent_edit(&c, &next, AgentEdit::Command { agent: "sk".into(), command: "sh".into() }).await.unwrap();
+
+    // R7: Skipper's settings change on the Host; its folder is read there.
     data::skipper_edit(&c, SkipperEdit::Agent(Some("sk".into()))).await.unwrap();
     let on = data::skipper_edit(&c, SkipperEdit::Enabled(true)).await.unwrap();
     assert!(on.enabled && on.folder_status == "ready", "{on:?}");

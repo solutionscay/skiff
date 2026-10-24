@@ -14,7 +14,7 @@ use skiff_core::{
 use tauri::{AppHandle, Emitter, State};
 
 use skiff_client::host::data;
-use skiff_host_api::{HostFolder, HostProject, HostWorktree, ProjectEdit, ProjectFleet};
+use skiff_host_api::{AgentEdit, HostFolder, HostProject, HostWorktree, ProjectEdit, ProjectFleet};
 
 use crate::connection::{blocking, data_read, data_write, keep_revision, project_write, App, ensure_client, err};
 
@@ -296,42 +296,97 @@ pub(crate) async fn set_mission_filter(running: bool) -> Result<(), String> {
 
 /// Runs an agent config edit, then answers with the agent list. The list
 /// comes from skiffd: whether an agent is installed depends on the sessions'
-/// PATH and aliases, which the app does not have.
+/// PATH and aliases, which the app does not have. A remote Host makes the
+/// change itself (`agent_config@1`), from the revision of its last agent read.
 async fn agents_after(
     app: &State<'_, App>,
+    edit: AgentEdit,
     f: impl FnOnce() -> anyhow::Result<()> + Send + 'static,
 ) -> Result<Vec<AgentInfo>, String> {
+    if app.remote() {
+        return agent_write(app, edit).await;
+    }
     blocking(f).await?;
     let (c, _) = ensure_client(app).await?;
     c.list_agents().await.map_err(err)
 }
 
+/// Why an agent change was not sent: no agent read of this Host to make it from.
+const AGENTS_UNREAD: &str = "Skiff has not read this Host's agents yet. It reads them again: try again.";
+
+/// The agent list for Settings, with the revision of a remote Host's
+/// `[agents]` kept for the next change. This Mac's comes from skiffd.
+#[tauri::command]
+pub(crate) async fn agent_config(app: State<'_, App>) -> Result<Vec<AgentInfo>, String> {
+    if !app.remote() {
+        let (c, _) = ensure_client(&app).await?;
+        return c.list_agents().await.map_err(err);
+    }
+    let app = &*app;
+    data_read(app, |c| async move {
+        let (agents, revision) = data::agent_config(&c).await?;
+        *app.agent_revision.lock().unwrap() = Some((c.hello().host.host_id.clone(), revision));
+        Ok(agents.into_iter().map(skiff_client::host::restore_agent).collect())
+    })
+    .await
+}
+
+/// One `[agents]` change on a remote Host, sent once, as a project change
+/// is. A conflict forgets the revision, so the next change waits for the page
+/// to read the agents again.
+async fn agent_write(app: &App, edit: AgentEdit) -> Result<Vec<AgentInfo>, String> {
+    use skiff_host_api::Error as E;
+    data_write(app, |c| async move {
+        let host = c.hello().host.host_id.clone();
+        let revision = app.agent_revision.lock().unwrap().clone().filter(|(h, _)| *h == host).map(|(_, r)| r);
+        let Some(revision) = revision else {
+            return Err(E::Invalid { message: AGENTS_UNREAD.into() });
+        };
+        match data::agent_edit(&c, &revision, edit).await {
+            Ok((agents, revision)) => {
+                *app.agent_revision.lock().unwrap() = Some((host, revision));
+                Ok(agents.into_iter().map(skiff_client::host::restore_agent).collect())
+            }
+            Err(E::Conflict { message }) => {
+                *app.agent_revision.lock().unwrap() = None;
+                Err(E::Conflict { message: format!("{message} Skiff reads them again: try again if it is still needed.") })
+            }
+            Err(e) => Err(e),
+        }
+    })
+    .await
+}
+
 /// Saves which agents the + menu offers.
 #[tauri::command]
 pub(crate) async fn set_agents(app: State<'_, App>, enabled: Vec<String>) -> Result<Vec<AgentInfo>, String> {
-    agents_after(&app, move || config::set_enabled_agents(&enabled)).await
+    let edit = AgentEdit::Enabled { agents: enabled.clone() };
+    agents_after(&app, edit, move || config::set_enabled_agents(&enabled)).await
 }
 
 /// Replaces an agent's command line. Empty restores the default.
 #[tauri::command]
 pub(crate) async fn set_agent_command(app: State<'_, App>, agent: String, command: String) -> Result<Vec<AgentInfo>, String> {
-    agents_after(&app, move || config::set_agent_command(&agent, &command)).await
+    let edit = AgentEdit::Command { agent: agent.clone(), command: command.clone() };
+    agents_after(&app, edit, move || config::set_agent_command(&agent, &command)).await
 }
 
 #[tauri::command]
 pub(crate) async fn rename_agent(app: State<'_, App>, agent: String, name: String) -> Result<Vec<AgentInfo>, String> {
-    agents_after(&app, move || config::rename_agent(&agent, &name)).await
+    let edit = AgentEdit::Rename { agent: agent.clone(), name: name.clone() };
+    agents_after(&app, edit, move || config::rename_agent(&agent, &name)).await
 }
 
 #[tauri::command]
 pub(crate) async fn remove_agent(app: State<'_, App>, agent: String) -> Result<Vec<AgentInfo>, String> {
-    agents_after(&app, move || config::remove_agent(&agent)).await
+    let edit = AgentEdit::Remove { agent: agent.clone() };
+    agents_after(&app, edit, move || config::remove_agent(&agent)).await
 }
 
 /// Brings back the default agents the user removed.
 #[tauri::command]
 pub(crate) async fn restore_agents(app: State<'_, App>) -> Result<Vec<AgentInfo>, String> {
-    agents_after(&app, config::restore_agents).await
+    agents_after(&app, AgentEdit::Restore, config::restore_agents).await
 }
 
 #[cfg(test)]

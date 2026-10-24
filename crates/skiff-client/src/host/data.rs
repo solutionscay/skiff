@@ -16,7 +16,7 @@ use std::{
 };
 
 use skiff_host_api::{
-    Error, FolderListing, FolderPlaces, Hello, HostChange, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
+    AgentEdit, Error, FolderListing, FolderPlaces, Hello, HostAgent, HostChange, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
     HostListing, HostProject, HostSkipper, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response, SkipperEdit, SkipperFolderDone,
     SkipperFolderMode, SkipperFolderPreview, SkipperOpened,
 };
@@ -243,6 +243,18 @@ pub async fn skipper_folder_preview(c: &HostConnection, path: &str) -> Result<Sk
     }
 }
 
+/// The Host's agents and the `[agents]` revision they were read at (`agent_config@1`).
+pub async fn agent_config(c: &HostConnection) -> Result<(Vec<HostAgent>, String), Error> {
+    agents_of(c.request(Request::AgentConfig).await?)
+}
+
+fn agents_of(reply: Response) -> Result<(Vec<HostAgent>, String), Error> {
+    match reply {
+        Response::AgentConfig { agents, revision } => Ok((agents, revision)),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
 // Changes. Each is sent once: a lost or late reply is reported, never
 // retried, since the Host may have made the change. A project change names
 // the revision it was made from, so a stale or repeated one is refused.
@@ -390,4 +402,10 @@ pub async fn skipper_watch(c: &HostConnection, session: &str) -> Result<bool, Er
         Response::Watch { started } => Ok(started),
         _ => unreachable!("checked by Request::accepts"),
     }
+}
+
+/// One change to the Host's `[agents]`, from `revision`. Answers the agents
+/// and the new revision.
+pub async fn agent_edit(c: &HostConnection, revision: &str, edit: AgentEdit) -> Result<(Vec<HostAgent>, String), Error> {
+    agents_of(c.request(Request::AgentEdit { revision: revision.into(), edit }).await?)
 }

@@ -14,7 +14,7 @@ pub mod lifecycle;
 pub mod projects;
 pub mod terminal;
 pub mod updates;
-pub use agents::HostAgent;
+pub use agents::{AgentEdit, HostAgent};
 pub use files::{EntryKind, FileContent, HostEntry, HostFile, HostImage, HostListing, ReadPurpose};
 pub use folders::{FolderEntry, FolderKind, FolderListing, FolderPlaces, FolderRepo, PlaceRepo};
 pub use groups::Group;
@@ -49,6 +49,7 @@ pub const LEDGER: &str = "ledger";
 pub const SKIPPER: &str = "skipper";
 pub const SKIPPER_CONFIG: &str = "skipper_config";
 pub const SKIPPER_RUN: &str = "skipper_run";
+pub const AGENT_CONFIG: &str = "agent_config";
 
 macro_rules! identity {
     ($name:ident) => {
@@ -249,6 +250,16 @@ impl Capability {
     pub fn skipper_run() -> Self {
         Self {
             name: SKIPPER_RUN.into(),
+            version: 1,
+        }
+    }
+    /// Read and change the Host's `[agents]` table: which agents are on,
+    /// their commands, custom agents. Each change names the revision it was
+    /// made from, and a changed revision refuses it (`conflict`). Data
+    /// plane; grants no session and no other setting.
+    pub fn agent_config() -> Self {
+        Self {
+            name: AGENT_CONFIG.into(),
             version: 1,
         }
     }
@@ -640,6 +651,15 @@ pub enum Request {
     SkipperWatch {
         session: String,
     },
+    /// Answers `agent_config`: the agent list and the `[agents]` revision.
+    AgentConfig,
+    /// Changes the `[agents]` table, only while it is still at `revision`.
+    /// Answers `agent_config` after it. Refused (`conflict`) when the table
+    /// changed: then the client reads again. Never retried by the client.
+    AgentEdit {
+        revision: String,
+        edit: AgentEdit,
+    },
 }
 impl Request {
     pub fn capability(&self) -> Option<Capability> {
@@ -673,6 +693,7 @@ impl Request {
                 Some(Capability::skipper_config())
             }
             Self::SkipperOpen { .. } | Self::SkipperWatch { .. } => Some(Capability::skipper_run()),
+            Self::AgentConfig | Self::AgentEdit { .. } => Some(Capability::agent_config()),
             Self::ProjectInspect { .. }
             | Self::ProjectInit { .. }
             | Self::ProjectAdd { .. }
@@ -727,6 +748,7 @@ impl Request {
                 | (Self::SkipperFolderChange { .. }, Response::SkipperFolderDone { .. })
                 | (Self::SkipperOpen { .. }, Response::SkipperOpened { .. })
                 | (Self::SkipperWatch { .. }, Response::Watch { .. })
+                | (Self::AgentConfig | Self::AgentEdit { .. }, Response::AgentConfig { .. })
         ) || (!matches!(
             self,
             Self::Hello
@@ -765,6 +787,8 @@ impl Request {
                 | Self::SkipperFolderPreview { .. }
                 | Self::SkipperFolderChange { .. }
                 | Self::SkipperWatch { .. }
+                | Self::AgentConfig
+                | Self::AgentEdit { .. }
         ) && matches!(reply, Response::Ok))
     }
 }
@@ -821,6 +845,8 @@ pub enum Response {
     SkipperOpened { opened: Box<SkipperOpened> },
     /// `started`: this request started a watcher. False: one ran already.
     Watch { started: bool },
+    /// The Host's agents, and the `[agents]` revision they were read at.
+    AgentConfig { agents: Vec<HostAgent>, revision: String },
     SessionInventory { sessions: Vec<InventorySession> },
     SessionScreen { lines: Vec<String> },
     ConnectionStatus { version: String, protocol: u32 },

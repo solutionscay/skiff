@@ -1,6 +1,7 @@
-//! Skipper on this Host, through the data plane (M6, #166 R7): settings
-//! changes and the folder change (`skipper_config@1`), and Skipper's session
-//! and its watcher (`skipper_run@1`). The same `skiff-client` code the app runs on
+//! Skipper and the agents on this Host, through the data plane (M6, #166 R7
+//! and R8): settings changes and the folder change (`skipper_config@1`),
+//! Skipper's session and its watcher (`skipper_run@1`), and the `[agents]`
+//! table (`agent_config@1`). The same `skiff-client` code the app runs on
 //! its own desktop does the work, against this Host's config and skiffd.
 //!
 //! The watcher is this service's to keep: [`supervise`] checks on Skipper's
@@ -8,19 +9,19 @@
 //! stops or replaces a watcher; the lock beside the socket keeps it to one.
 use std::{path::PathBuf, time::Duration};
 
-use skiff_client::{agent_folder, skipper, Client};
+use skiff_client::{agent_folder, host::project_agent, skipper, Client};
 use skiff_core::{
     config,
     session::{SessionInfo, SessionState},
 };
-use skiff_host_api::{Error, Request, Response, SkipperOpened};
+use skiff_host_api::{AgentEdit, Error, Request, Response, SkipperOpened};
 
 use crate::{failed, refused, SESSIONS_TIMEOUT};
 
 /// How often [`supervise`] looks for Skipper's session without a watcher.
 const WATCH_EVERY: Duration = Duration::from_secs(15);
 
-/// One request of the two families. The caller checked the capability.
+/// One request of the three families. The caller checked the capability.
 pub async fn answer(request: Request) -> Result<Response, Error> {
     match request {
         Request::SkipperEdit { edit } => {
@@ -80,7 +81,25 @@ pub async fn answer(request: Request) -> Result<Response, Error> {
             let started = ensure_watch(session).await.map_err(|message| Error::OperationFailed { message })?;
             Ok(Response::Watch { started })
         }
-        _ => Err(Error::OperationFailed { message: "not a Skipper request".into() }),
+        Request::AgentConfig => {
+            let revision = blocking(|| Ok(config::agents_revision(&config::load().map_err(failed)?.agents))).await?;
+            Ok(Response::AgentConfig { agents: agents().await?, revision })
+        }
+        Request::AgentEdit { revision, edit } => {
+            let ((), revision) = blocking(move || {
+                config::edit_agents_at(&revision, || match &edit {
+                    AgentEdit::Enabled { agents } => config::set_enabled_agents(agents),
+                    AgentEdit::Command { agent, command } => config::set_agent_command(agent, command),
+                    AgentEdit::Rename { agent, name } => config::rename_agent(agent, name),
+                    AgentEdit::Remove { agent } => config::remove_agent(agent),
+                    AgentEdit::Restore => config::restore_agents(),
+                })
+                .map_err(refused)
+            })
+            .await?;
+            Ok(Response::AgentConfig { agents: agents().await?, revision })
+        }
+        _ => Err(Error::OperationFailed { message: "not a Skipper or agent request".into() }),
     }
 }
 
@@ -140,6 +159,13 @@ async fn live() -> (agent_folder::Panes, Option<SessionInfo>) {
         Ok(Ok(found)) => found,
         _ => Default::default(),
     }
+}
+
+/// The agents as this Host's skiffd lists them: installed from its PATH.
+async fn agents() -> Result<Vec<skiff_host_api::HostAgent>, Error> {
+    let c = connect().await?;
+    let list = tokio::time::timeout(SESSIONS_TIMEOUT, c.list_agents()).await.map_err(|_| Error::TimedOut)?.map_err(failed)?;
+    Ok(list.into_iter().map(project_agent).collect())
 }
 
 /// The skiffd this service is paired with.
