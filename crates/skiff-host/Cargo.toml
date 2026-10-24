@@ -16,7 +16,9 @@ skiff-host-api.workspace = true
 # Reads the paired skiffd's sessions before a worktree is removed, and the
 # ledger and Skipper settings with the CLI's read code (M6).
 skiff-client.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+dirs.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
 uuid.workspace = true

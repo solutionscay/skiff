@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod agents;
 pub mod files;
+pub mod folders;
 pub mod groups;
 pub mod inventory;
 pub mod coordinator;
@@ -15,6 +16,7 @@ pub mod terminal;
 pub mod updates;
 pub use agents::HostAgent;
 pub use files::{EntryKind, FileContent, HostEntry, HostFile, HostImage, HostListing, ReadPurpose};
+pub use folders::{FolderEntry, FolderKind, FolderListing, FolderPlaces, FolderRepo, PlaceRepo};
 pub use groups::Group;
 pub use inventory::InventorySession;
 pub use coordinator::{HostLedgerRow, HostSkipper, HostTaskType};
@@ -39,6 +41,7 @@ pub const GIT_DIFF: &str = "git_diff";
 pub const PROJECT_CONFIG: &str = "project_config";
 pub const WORKTREES: &str = "worktrees";
 pub const FILES: &str = "files";
+pub const FOLDERS: &str = "folders";
 pub const PROJECT_ASSETS: &str = "project_assets";
 pub const LEDGER: &str = "ledger";
 pub const SKIPPER: &str = "skipper";
@@ -187,6 +190,16 @@ impl Capability {
     pub fn files() -> Self {
         Self {
             name: FILES.into(),
+            version: 1,
+        }
+    }
+    /// List the Host account's folders from its home, and make one new
+    /// folder in a folder it lists. Folders and links to folders only:
+    /// grants no file name, no read, no other write and no path the client
+    /// may open.
+    pub fn folders() -> Self {
+        Self {
+            name: FOLDERS.into(),
             version: 1,
         }
     }
@@ -556,6 +569,23 @@ pub enum Request {
         #[serde(default)]
         purpose: ReadPurpose,
     },
+    /// Answers `path`: the Host account's home folder, links resolved.
+    FolderHome,
+    /// Answers `folders`: the folders in `path`, a full Host path. Hidden
+    /// folders only with `hidden`. A path that is not a folder is
+    /// `not_found`; one the account cannot open is `permission`.
+    FolderList {
+        path: String,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        hidden: bool,
+    },
+    /// Makes the folder `name` (one name, no `/`) in `parent`. Answers
+    /// `path`, the new folder's real path. A bad name is `invalid`; a name
+    /// that is taken is `conflict`.
+    FolderCreate {
+        parent: String,
+        name: String,
+    },
     /// Answers `image`: the project's configured background, read on the
     /// Host. No background is `not_found`; a file that is not an image, or
     /// is over 5 MiB, is `invalid`.
@@ -601,6 +631,7 @@ impl Request {
             Self::GitDiff { .. } => Some(Capability::git_diff()),
             Self::FileList { .. } | Self::FileRead { .. } => Some(Capability::files()),
             Self::ProjectBackground { .. } => Some(Capability::project_assets()),
+            Self::FolderHome | Self::FolderList { .. } | Self::FolderCreate { .. } => Some(Capability::folders()),
             Self::LedgerRows | Self::LedgerStamp | Self::LedgerResult { .. } => Some(Capability::ledger_read()),
             Self::SkipperSettings => Some(Capability::skipper_settings()),
             Self::ProjectInspect { .. }
@@ -651,6 +682,8 @@ impl Request {
                 | (Self::FileList { .. }, Response::Files { .. })
                 | (Self::FileRead { .. }, Response::File { .. })
                 | (Self::ProjectBackground { .. }, Response::Image { .. })
+                | (Self::FolderHome | Self::FolderCreate { .. }, Response::Path { .. })
+                | (Self::FolderList { .. }, Response::Folders { .. })
                 | (Self::LedgerRows, Response::Ledger { .. })
                 | (Self::LedgerStamp, Response::LedgerStamp { .. })
                 | (Self::LedgerResult { .. }, Response::File { .. })
@@ -681,6 +714,9 @@ impl Request {
                 | Self::FileList { .. }
                 | Self::FileRead { .. }
                 | Self::ProjectBackground { .. }
+                | Self::FolderHome
+                | Self::FolderList { .. }
+                | Self::FolderCreate { .. }
                 | Self::LedgerRows
                 | Self::LedgerStamp
                 | Self::LedgerResult { .. }
@@ -723,6 +759,9 @@ pub enum Response {
     /// Boxed, as `Project`. Same JSON.
     File { file: Box<HostFile> },
     Image { image: HostImage },
+    /// A folder on the Host.
+    Path { path: String },
+    Folders { listing: FolderListing },
     Ledger { rows: Vec<HostLedgerRow> },
     LedgerStamp { stamp: String },
     /// Boxed, as `Project`. Same JSON.
