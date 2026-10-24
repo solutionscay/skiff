@@ -1,7 +1,8 @@
 //! Where this daemon listens and where it saves its workspace. Both are
 //! fixed once per process. A reload keeps the paths of the image it
-//! replaced: a debug build that adopts a release daemon still serves the
-//! release socket and saves the release workspace file.
+//! replaced: the new image serves the socket the old one bound and saves
+//! the workspace file it saved, whatever it would compute on its own
+//! (a `SKIFF_SOCKET` or `SKIFF_STATE` the old image had).
 
 use std::path::PathBuf;
 use std::sync::OnceLock;

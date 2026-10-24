@@ -1,15 +1,23 @@
 use std::path::PathBuf;
 
-/// Where `skiffd` listens. `SKIFF_SOCKET` overrides. Otherwise
-/// `<runtime dir>/skiff/skiffd.sock` (see [`runtime_dir`]). Debug builds use
-/// `skiffd-dev.sock`, so a daemon from a checkout never serves the installed
-/// app.
+/// The one socket name. Every build, debug or release, of the app, the CLI
+/// and skiffd uses it: one computer runs one skiffd, and the newer build
+/// updates it in place.
+pub const SOCKET_NAME: &str = "skiffd.sock";
+
+/// Where `skiffd` listens. `SKIFF_SOCKET` overrides, for tests and for an
+/// agent's throwaway daemon. Otherwise `<runtime dir>/skiff/skiffd.sock`
+/// (see [`runtime_dir`]), the same in every build.
 pub fn socket_path() -> PathBuf {
-    if let Ok(p) = std::env::var("SKIFF_SOCKET") {
-        return PathBuf::from(p);
+    socket_path_from(std::env::var_os("SKIFF_SOCKET").as_deref(), &runtime_dir())
+}
+
+/// [`socket_path`] for a given `SKIFF_SOCKET` value and runtime folder.
+pub fn socket_path_from(env: Option<&std::ffi::OsStr>, runtime: &std::path::Path) -> PathBuf {
+    match env.filter(|p| !p.is_empty()) {
+        Some(p) => PathBuf::from(p),
+        None => runtime.join("skiff").join(SOCKET_NAME),
     }
-    let name = if cfg!(debug_assertions) { "skiffd-dev.sock" } else { "skiffd.sock" };
-    runtime_dir().join("skiff").join(name)
 }
 
 /// The user's runtime folder, the same from the desktop and from an SSH
@@ -49,4 +57,22 @@ fn darwin_user_temp() -> Option<PathBuf> {
     }
     buf.truncate(n - 1);
     String::from_utf8(buf).ok().map(PathBuf::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    /// A debug build resolves the same socket as a release build: there is
+    /// one skiffd per computer. Only `SKIFF_SOCKET` names another one.
+    #[test]
+    fn every_build_resolves_skiffd_sock() {
+        let run = Path::new("/run/user/1000");
+        assert_eq!(socket_path_from(None, run), Path::new("/run/user/1000/skiff/skiffd.sock"));
+        assert_eq!(socket_path_from(Some(std::ffi::OsStr::new("")), run), Path::new("/run/user/1000/skiff/skiffd.sock"));
+        assert_eq!(socket_path_from(Some(std::ffi::OsStr::new("/tmp/t/x.sock")), run), Path::new("/tmp/t/x.sock"));
+        assert!(socket_path().file_name().is_some_and(|n| n == SOCKET_NAME) || std::env::var_os("SKIFF_SOCKET").is_some());
+        assert!(crate::state::is_live(&socket_path_from(None, &runtime_dir())));
+    }
 }
