@@ -57,11 +57,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     return hostInvoke<AgentInfo[]>("session_agents", "list_agents");
   }
 
-  /** One agent change: This Mac's config, or a remote Host's through its skiff-host. */
-  function agentCall(cmd: string, args: Record<string, unknown> = {}): Promise<AgentInfo[]> {
-    if (isRemote()) return hostInvoke<AgentInfo[]>("agent_config", cmd, args);
-    return invoke<AgentInfo[]>(cmd, args);
-  }
+  /** One agent change on the selected Host: This Mac's config, or a remote Host's through its skiff-host. */
+  const agentCall = (cmd: string, args: Record<string, unknown> = {}) => hostInvoke<AgentInfo[]>("agent_config", cmd, args);
 
   async function toggle(id: string) {
     if (saving) return;
@@ -382,11 +379,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     { key: "html", label: "HTML" },
   ];
 
-  /** One Skiff agent setting, on This Mac or through a remote Host's skiff-host. */
-  function skiffAgentEdit(edit: SkiffAgentEdit): Promise<SkiffAgentSettings> {
-    if (isRemote()) return hostInvoke<SkiffAgentSettings>("skipper_config", "set_skiff_agent", { edit });
-    return invoke<SkiffAgentSettings>("set_skiff_agent", { edit });
-  }
+  /** One Skiff agent setting on the selected Host: This Mac, or a remote Host through its skiff-host. */
+  const skiffAgentEdit = (edit: SkiffAgentEdit) => hostInvoke<SkiffAgentSettings>("skipper_config", "set_skiff_agent", { edit });
 
   /** A task type edit. Answers with the error to show; the table redraws. */
   async function saveTask(edit: SkiffAgentEdit): Promise<string | null> {

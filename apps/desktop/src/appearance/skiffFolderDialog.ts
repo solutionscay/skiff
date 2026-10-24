@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import { open as openFolder } from "@tauri-apps/plugin-dialog";
 import { isMac } from "../app/keys";
 import { hostInvoke } from "../app/hostCaps";
@@ -129,8 +128,8 @@ function details(p: Preview): string[] {
 export function changeSkiffFolder(o: { current: string; changed: () => void }) {
   const back = document.activeElement as HTMLElement | null;
   const remote = isRemote();
-  // This Mac runs these itself; a remote Host's skiff-host runs them there.
-  const call = <T>(cmd: string, args: Record<string, unknown>) => (remote ? hostInvoke<T>("skipper_config", cmd, args) : invoke<T>(cmd, args));
+  // The selected Host reads and changes the folder: This Mac itself, a remote Host through its skiff-host.
+  const call = <T>(cmd: string, args: Record<string, unknown>) => hostInvoke<T>("skipper_config", cmd, args);
   const { overlay, panel } = dialogFrame("confirm-panel folder-panel", "dialog", "Change the Skiff agent folder");
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
