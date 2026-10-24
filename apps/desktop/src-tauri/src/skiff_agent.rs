@@ -89,19 +89,36 @@ pub fn skiff_watch_log() -> String {
     skiff_core::socket::socket_path().with_extension("watch.log").display().to_string()
 }
 
+/// What Start project Skipper did.
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProjectStart {
+    /// The project Skipper runs: its session id.
+    Started { id: String },
+    /// This Mac's skiffd is too old to mark a project Skipper. Nothing
+    /// started. The page offers Update skiffd (`update_daemon`).
+    DaemonOlder { version: String },
+}
+
 /// Project menu › Start project Skipper: finds or starts the project's
 /// Skipper, sends a new one SKIPPER.md as its first message, and starts the
-/// watcher. Returns its session id. This Mac runs the bundled `skiff`
-/// (local process control); a remote Host does it there, through its
-/// `skiff-host` (`skipper_run@1`).
+/// watcher. This Mac runs the bundled `skiff` (local process control), and
+/// refuses first when its skiffd is too old to mark one; a remote Host does
+/// it there, through its `skiff-host` (`skipper_run@1`).
 #[tauri::command]
-pub async fn start_project_skipper(app: State<'_, App>, project: String) -> Result<String, String> {
+pub async fn start_project_skipper(app: State<'_, App>, project: String) -> Result<ProjectStart, String> {
     if app.selection().process_control().is_none() {
         let s = data_write(&app, |c| async move { data::skipper_project(&c, &project).await }).await?;
-        return Ok(s.id);
+        return Ok(ProjectStart::Started { id: s.id });
+    }
+    let (c, _) = ensure_client(&app).await?;
+    let daemon = c.daemon_info().await.map_err(err)?;
+    if skipper::too_old_for_project(&daemon.version) {
+        return Ok(ProjectStart::DaemonOlder { version: daemon.version });
     }
     let socket = app.selection().socket().to_path_buf();
-    blocking(move || skipper::start_project(&socket, &cli(), &project)).await
+    let id = blocking(move || skipper::start_project(&socket, &cli(), &project)).await?;
+    Ok(ProjectStart::Started { id })
 }
 
 /// The Skiff agent's session, and what the open did to it.

@@ -468,9 +468,19 @@ pub struct ProjectSkipper {
     pub dir: PathBuf,
 }
 
+/// The first skiffd that marks a project Skipper (`SessionSpec::skipper`).
+/// An older one starts a plain agent instead, so nothing is started on it.
+pub const PROJECT_SKIPPER_SINCE: &str = "0.6.25";
+
+/// skiffd `version` cannot mark a project Skipper.
+pub fn too_old_for_project(version: &str) -> bool {
+    skiff_core::compare_versions(version, PROJECT_SKIPPER_SINCE).is_lt()
+}
+
 /// Finds the live project Skipper of `project`, or starts one in the
 /// project's folder. The setup lock keeps two starts apart, so a project
-/// has at most one. Refuses when the Skiff agent or Project Skippers is off.
+/// has at most one. Refuses when the Skiff agent or Project Skippers is off,
+/// and before anything starts when skiffd is too old to mark one.
 pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipper> {
     let cfg = config::load()?;
     if !cfg.skiff_agent.enabled {
@@ -478,6 +488,10 @@ pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipp
     }
     if !cfg.skiff_agent.project_skippers {
         bail!("Project Skippers are off. Turn them on in Settings › Skiff agent › Project Skippers");
+    }
+    let daemon = c.daemon_info().await?;
+    if too_old_for_project(&daemon.version) {
+        bail!("skiffd {} is older than this Skiff and cannot start a project Skipper. Update skiffd first", daemon.version);
     }
     let p = project(&cfg, project_name)?;
     let _lock = lock()?;
@@ -493,7 +507,10 @@ pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipp
     s.rows = 40;
     let info = c.create_session(s).await?;
     if info.skipper.as_deref() != Some(p.name.as_str()) {
-        bail!("skiffd is too old to mark a project Skipper. Run `skiff daemon reload`. Session {} runs as a plain agent", info.id);
+        // Checked above by version; a daemon that still drops the mark
+        // leaves nothing behind.
+        let _ = c.kill(&info.id).await;
+        bail!("skiffd did not mark the project Skipper. Nothing started. Update skiffd first");
     }
     Ok(ProjectSkipper { session: info, created: true, dir })
 }
@@ -1139,6 +1156,17 @@ os.execv("/bin/cat", ["skiff", "watch"])
         // A free lock gets a watcher.
         assert_eq!(ensure_watch(&socket, cli, CLI_VERSION, "abc", &[], Some(&AtomicBool::new(false))).unwrap(), WatchOutcome::Started);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A project Skipper needs a skiffd that marks it. The check is by
+    /// version, before anything starts.
+    #[test]
+    fn an_older_skiffd_cannot_start_a_project_skipper() {
+        assert!(too_old_for_project("0.6.24"));
+        assert!(too_old_for_project("0.6.21"));
+        assert!(!too_old_for_project(PROJECT_SKIPPER_SINCE));
+        assert!(!too_old_for_project(skiff_core::VERSION), "this skiffd marks project Skippers");
+        assert!(!too_old_for_project("0.7.0"));
     }
 
     /// Each socket gets a scope of its own, so a test daemon named

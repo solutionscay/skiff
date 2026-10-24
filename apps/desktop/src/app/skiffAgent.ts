@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { showError } from "../ui/alerts";
+import { updateDaemon } from "./daemon";
 import type { AgentInfo, DaemonStatus, SessionInfo } from "../platform/types";
 import { setSkiffAgentName } from "./keys";
 import { render } from "./renderRequest";
@@ -105,15 +106,32 @@ export function coordinatorOf(id: string | null | undefined): string | null {
   return projectSkippers().find((s) => s.id === id)?.skipper ?? null;
 }
 
-/** Project menu › Start project Skipper. `skiff skipper --project` starts it in the project's folder and sends SKIPPER.md as its first message. */
+/** What `start_project_skipper` answers on this computer. */
+type ProjectStart = { kind: "started"; id: string } | { kind: "daemon_older"; version: string };
+
+/** Project menu › Start project Skipper. `skiff skipper --project` starts it in the project's folder and sends SKIPPER.md as its first message.
+ *  This computer's skiffd must be new enough to mark one: an older one starts nothing, and the bar offers Update skiffd, which moves
+ *  it onto this Skiff's with its sessions, then starts the project Skipper. */
 export function startProjectSkipper(project: string) {
   const s = projectSkipperOf(project);
   if (s) return show(s.id);
   // A remote Host starts it there, through its skiff-host (skipper_run@1).
-  const start = isRemote() ? hostInvoke<string>("skipper_run", "start_project_skipper", { project }) : invoke<string>("start_project_skipper", { project });
+  const start: Promise<ProjectStart> = isRemote()
+    ? hostInvoke<string>("skipper_run", "start_project_skipper", { project }).then((id) => ({ kind: "started", id }))
+    : invoke<ProjectStart>("start_project_skipper", { project });
   start
-    .then((id) => {
-      if (id) show(id);
+    .then((r) => {
+      if (r.kind === "daemon_older") {
+        showError(`skiffd ${r.version} is older than this Skiff, so it cannot start a project Skipper. Its sessions keep running through the update.`, {
+          label: "Update skiffd",
+          run: async () => {
+            await updateDaemon();
+            startProjectSkipper(project);
+          },
+        });
+        return;
+      }
+      if (r.id) show(r.id);
     })
     .catch(showError);
 }

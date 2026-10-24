@@ -145,7 +145,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "d83b8d69f028c2eb297dbb88f41e54c4efd3a62f9c68dded0c2ccce21d835d49"
+    "sha256": "d9e57cda8126bf8752b092290adc3fef31474fda914a8990e31c79497d2aa277"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -179,7 +179,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "486c30020ac2c9fc8a321c8238e0f975290d3caacea21045ca4dad7740e78c25"
+    "sha256": "542c8e5e37ce9e445c74eeae225564a508aec28beb3e264f9f7a32ff88002209"
   },
   "apps/desktop/src-tauri/src/skiff_agent.rs": {
     "ownership": "Skipper (#166 R7): a remote Host's settings, folder, launch and watcher through HostConnection (skipper_config@1, skipper_run@1); This Mac's stay the local adapter (settings read from the config it writes) and its own process control; the watch log is LOCAL_ONLY",
@@ -195,7 +195,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "1f3df62fcb67f06549fc43359d42401f53ae80347e8b87ea9ed912e71bb6f95f"
+    "sha256": "9850337e0237bd10001a981af332c19e1f057f262c3ff83c8487431203080677"
   },
   "apps/desktop/src-tauri/src/streaming.rs": {
     "ownership": "M1e terminal output via selected Host session_terminal@1; M1d page session events via selected Host; core Event only for the page channel type",
@@ -245,7 +245,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "c9218b7bea907f7bd3703e59528d32b8fd38bac009e22e7726f0e9a57f276746"
+    "sha256": "16257e8b2a1a8afcb1284dac21701e18e34059b50c46226635718484067e476c"
   },
   "apps/desktop/src/app/daemonRestart.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -371,7 +371,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "178758c5864cafbf7853af28fbb6c4d806432e1b8af541808303cc21af8e984a"
+    "sha256": "74df14b4b7865c2682e60111a60ed9f59f6bfa863c92727d84699b46a71ba580"
   },
   "apps/desktop/src/app/state.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

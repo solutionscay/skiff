@@ -124,6 +124,32 @@ pub(crate) async fn reload_daemon(app: State<'_, App>) -> Result<Reloaded, Strin
     Ok(reload_planned(&app).await)
 }
 
+/// Update skiffd, from the page: moves this Mac's older skiffd onto the
+/// bundled one now, sessions kept, whatever the launch did. The daemon must
+/// be older than this app's skiffd and able to hand over, else nothing
+/// changes and the answer says why.
+#[tauri::command]
+pub(crate) async fn update_daemon(app: State<'_, App>) -> Result<Reloaded, String> {
+    let Some(control) = app.selection().process_control() else {
+        return Err("Skiff updates only this computer's skiffd. Update a Host in Settings › Hosts.".into());
+    };
+    let (c, _) = crate::connection::ensure_client(&app).await?;
+    let info = tokio::time::timeout(HELLO_TIMEOUT, c.daemon_info()).await.map_err(|_| "skiffd did not answer.".to_string())?.map_err(crate::connection::err)?;
+    if !compare_versions(&info.version, skiff_core::VERSION).is_lt() {
+        return Err(format!("skiffd {} is not older than this Skiff. Nothing to update.", info.version));
+    }
+    match plan(&control, &info).await {
+        Ok(p) => *app.reload.lock().await = Some(p),
+        Err(NoPlan::Stale(bundled)) => return Err(format!("The skiffd this Skiff ships ({bundled}) is not newer than the one that runs ({}). Nothing changed.", info.version)),
+        Err(NoPlan::Other(why)) => return Err(format!("skiffd {} cannot move onto this Skiff's with its sessions: {why}. Nothing changed.", info.version)),
+    }
+    let out = reload_planned(&app).await;
+    match &out.error {
+        Some(e) => Err(format!("The update did not finish: {e}")),
+        None => Ok(out),
+    }
+}
+
 async fn reload_planned(app: &App) -> Reloaded {
     let plan = app.reload.lock().await.take();
     let mut out = Outcome::default();
