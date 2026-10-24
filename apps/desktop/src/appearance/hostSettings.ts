@@ -95,6 +95,8 @@ interface Report {
   platform: [string, string] | null;
   /** The Skiff version this app installs. */
   version: string;
+  /** The server has this version in another build. */
+  other_build: boolean;
 }
 /** The rows, in order, before an answer. */
 const CHECK_ROWS = [
@@ -140,7 +142,7 @@ export function createHostsTab(redraw: () => void) {
     error = null;
     form = "add" in page ? newForm(null) : null;
     check = null;
-    if ("check" in page) void runCheck(page.check);
+    if ("check" in page) void (page.reinstall ? checkThenUpdate(page.check, true) : runCheck(page.check));
   }
 
   /** Runs the read-only check list of a Host and shows it. */
@@ -253,7 +255,7 @@ export function createHostsTab(redraw: () => void) {
   function hostMenu(x: KnownHost, left: number, top: number, back: HTMLElement) {
     const entries: MenuEntry[] = [
       { icon: "indicators-check", label: "Check", run: () => void runCheck(x.id) },
-      ...(x.update ? [{ icon: "schedule-refresh-cw", label: "Update Skiff…", run: () => void checkThenUpdate(x) }] : []),
+      ...(x.update ? [{ icon: "schedule-refresh-cw", label: "Update Skiff…", run: () => void checkThenUpdate(x.id) }] : []),
       {
         icon: "tools-pencil",
         label: "Edit…",
@@ -271,10 +273,12 @@ export function createHostsTab(redraw: () => void) {
   }
 
   /** Update Skiff… from the list: the check list first, for the version
-   *  and platform the dialog names, then the dialog. */
-  async function checkThenUpdate(x: KnownHost) {
-    await runCheck(x.id);
-    if (check?.id === x.id && check.report) updateSkiff(check, x);
+   *  and platform the dialog names, then the dialog. `reinstall`: this
+   *  app's build goes in even when the server has it. */
+  async function checkThenUpdate(id: string, reinstall = false) {
+    await runCheck(id);
+    const x = knownHosts().find((k) => k.id === id);
+    if (x && check?.id === id && check.report) updateSkiff(check, x, reinstall);
   }
 
   /** Dot and word, from the last check or connection in this app run. */
@@ -462,17 +466,22 @@ export function createHostsTab(redraw: () => void) {
   /** Update Skiff…: one confirm, open while it runs with each step. When
    *  skiffd cannot keep its sessions, the update stops, and a red dialog
    *  names the sessions it would end. */
-  function updateSkiff(c: Check, x: KnownHost) {
+  function updateSkiff(c: Check, x: KnownHost, reinstall = false) {
     updateDialog(c, x, {
       title: `Update Skiff on ${x.name}?`,
-      body: `Updates Skiff on ${x.name} to ${c.report?.version ?? ""}. Its sessions keep running.`,
+      body: `Updates Skiff on ${x.name} to ${c.report?.version ?? ""}${reinstall || c.report?.other_build ? ", this app's build" : ""}. Its sessions keep running.`,
       action: "Update Skiff",
       tone: "go",
       endSessions: false,
+      reinstall,
     });
   }
 
-  function updateDialog(c: Check, x: KnownHost, o: { title: string; body: string; action: string; tone: "go" | "danger"; endSessions: boolean }) {
+  function updateDialog(
+    c: Check,
+    x: KnownHost,
+    o: { title: string; body: string; action: string; tone: "go" | "danger"; endSessions: boolean; reinstall: boolean },
+  ) {
     const v = c.report?.version ?? "";
     runDialog<Updated>({
       id: x.id,
@@ -481,9 +490,9 @@ export function createHostsTab(redraw: () => void) {
       working: "Updating",
       failTitle: `Update failed on ${x.name}`,
       steps: runSteps(x, v, "Start skiff-host"),
-      run: () => invoke<Updated>("update_skiff", { id: x.id, endSessions: o.endSessions }),
+      run: () => invoke<Updated>("update_skiff", { id: x.id, endSessions: o.endSessions, reinstall: o.reinstall }),
       done: (r, secs, output) => {
-        if (r.result === "no_handover") return endsSessions(c, x, r.from, r.sessions);
+        if (r.result === "no_handover") return endsSessions(c, x, r.from, r.sessions, o.reinstall);
         const text =
           r.result === "done"
             ? `Updated to Skiff ${r.version}.${r.restarted ? " skiffd restarted." : ""}`
@@ -497,7 +506,7 @@ export function createHostsTab(redraw: () => void) {
   }
 
   /** The red dialog: this update ends the sessions it names. */
-  function endsSessions(c: Check, x: KnownHost, from: string, sessions: string[]) {
+  function endsSessions(c: Check, x: KnownHost, from: string, sessions: string[], reinstall: boolean) {
     const n = sessions.length;
     updateDialog(c, x, {
       title: `Update Skiff on ${x.name} and end ${n === 1 ? "1 session" : `${n} sessions`}?`,
@@ -505,6 +514,7 @@ export function createHostsTab(redraw: () => void) {
       action: n === 1 ? "Update and end 1 session" : `Update and end ${n} sessions`,
       tone: "danger",
       endSessions: true,
+      reinstall,
     });
   }
 

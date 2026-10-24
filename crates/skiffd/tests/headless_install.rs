@@ -204,7 +204,8 @@ async fn install_sh_installs_updates_with_handover_and_uninstalls() {
     assert!(ok && text.contains("Skiff 9.9.9-test is installed already. Nothing changed."), "{text}");
     let (ok, text) = s.pipe(&s.install_sh("9.9.8-test"), &[]);
     assert!(!ok && text.contains("newer than Skiff 9.9.8-test. Skiff never moves down."), "{text}");
-    assert_eq!(std::fs::read_link(server.join("current")).unwrap(), Path::new("9.9.9-test"));
+    let current = std::fs::read_link(server.join("current")).unwrap();
+    assert!(current.to_string_lossy().starts_with("9.9.9-test+dev-"), "{current:?}");
 
     // A bundle that fails the signature check never goes in.
     s.tool("minisign", "exit 1");

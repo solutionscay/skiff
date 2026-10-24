@@ -140,9 +140,15 @@ impl Probe {
         let m = self.managed.as_ref()?;
         Some(if m.running.is_empty() { &m.version } else { &m.running })
     }
+    /// The build id of the bundle [`Self::managed_version`] names. Empty:
+    /// a dev bundle from before build ids, or not known.
+    pub fn managed_build(&self) -> Option<&str> {
+        let m = self.managed.as_ref()?;
+        Some(if m.running.is_empty() { &m.build } else { &m.running_build })
+    }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct Managed {
     /// The Skiff bundle `current` names. Compared with this app's version.
     pub version: String,
@@ -150,6 +156,12 @@ pub struct Managed {
     /// The bundle the managed skiffd runs from, when the server can tell.
     #[serde(default)]
     pub running: String,
+    /// The build id of the bundle `current` names ([`super::bundle::Manifest::build`]).
+    #[serde(default)]
+    pub build: String,
+    /// The build id of the bundle skiffd runs from, with `running`.
+    #[serde(default)]
+    pub running_build: String,
 }
 
 /// `skiff status --json`, as much as the check reads.
@@ -255,6 +267,10 @@ pub struct Report {
     /// compares it. None: not managed, or not probed.
     #[serde(default)]
     pub installed: Option<String>,
+    /// The managed install is this version in another build: Update
+    /// Skiff… installs this app's build.
+    #[serde(default)]
+    pub other_build: bool,
 }
 
 /// What a check needs to know about the Host.
@@ -281,6 +297,9 @@ pub struct CheckInput {
     pub installed: Option<Installed>,
     /// The Skiff version this app installs.
     pub version: String,
+    /// The build this app installs: a dev build's id, or None for the
+    /// release bundle ([`super::install::same_build`]).
+    pub build: Option<String>,
     /// The last Turn on in this app run was refused: linger needs an admin.
     pub linger_refused: bool,
     /// Why the last update in this app run did not finish, for the Skiff row.
@@ -367,7 +386,7 @@ pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
     let socket = probe.socket.clone();
     let found = probe.socket_live.then(|| socket.clone());
     list.choices = Choice::all(&probe);
-    if !server_rows(&mut list, &probe, name, &input.version, input.update_failed.as_deref()) {
+    if !server_rows(&mut list, &probe, name, &input.version, input.build.as_deref(), input.update_failed.as_deref()) {
         return list.finish(found, None);
     }
     let user = input.target.user.clone().or_else(|| input.target.destination.split_once('@').map(|(u, _)| u.to_string()));
@@ -435,21 +454,24 @@ pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
 /// Rows 4 to 6 from the probe: the server's OS and arch, the install, and
 /// whether its skiffd runs. False: a row failed, and the rest are skipped.
 /// A skiffd that Skiff did not install is used as it is, never replaced.
-fn server_rows(list: &mut List, p: &Probe, name: &str, version: &str, update_failed: Option<&str>) -> bool {
+fn server_rows(list: &mut List, p: &Probe, name: &str, version: &str, build: Option<&str>, update_failed: Option<&str>) -> bool {
     let (Some(os), Some(arch)) = (p.bundle_os(), p.bundle_arch()) else {
         list.fail(Row::Supported, format!("{name} runs {} on {}. Skiff runs on Linux and macOS, on x86_64 and ARM64.", p.os, p.arch));
         return false;
     };
     list.platform = Some((os.into(), arch.into()));
     list.installed = p.managed_version().map(str::to_string);
+    let same = p.managed_build().is_some_and(|b| super::install::same_build(build, b));
+    list.other_build = p.managed_version() == Some(version) && !same;
     list.pass(Row::Supported, format!("{} on {}.", p.os, p.arch));
     match (p.managed_version(), p.socket_live) {
-        (Some(have), _) if have == version => list.pass(Row::Skiff, format!("Skiff {version}.")),
+        (Some(have), _) if have == version && same => list.pass(Row::Skiff, format!("Skiff {version}.")),
         // Never down: a newer server waits for this computer.
         (Some(have), _) if newer(have, version) => {
             list.warn(Row::Skiff, format!("Skiff {have} is newer than this computer's {version}. Update Skiff here."), None)
         }
         (Some(_), _) if update_failed.is_some() => list.warn(Row::Skiff, update_failed.unwrap_or_default().to_string(), Some(Fix::UpdateSkiff)),
+        (Some(have), _) if have == version => list.warn(Row::Skiff, format!("Skiff {have}, another build. Update to this app's build."), Some(Fix::UpdateSkiff)),
         (Some(have), _) => list.warn(Row::Skiff, format!("Update available: Skiff {have} to {version}."), Some(Fix::UpdateSkiff)),
         (None, true) => list.pass(Row::Skiff, "Its own install. Skiff uses it as it is.".into()),
         // The Skiff app there, closed: its skiffd runs with the app, and a
@@ -602,6 +624,7 @@ struct List {
     platform: Option<(String, String)>,
     choices: Vec<Choice>,
     installed: Option<String>,
+    other_build: bool,
 }
 
 impl List {
@@ -622,7 +645,7 @@ impl List {
         for row in Row::ALL.into_iter().skip(self.rows.len()) {
             self.rows.push(Line { row, title: row.title(), state: State::Skipped, text: "Waits for the row above.".into(), fix: None });
         }
-        Report { rows: self.rows, ok, socket, choices: self.choices, host_id, platform: self.platform, version: self.version, installed: self.installed }
+        Report { rows: self.rows, ok, socket, choices: self.choices, host_id, platform: self.platform, version: self.version, installed: self.installed, other_build: self.other_build }
     }
 }
 
@@ -668,7 +691,7 @@ mod tests {
 
     fn server(p: &Probe) -> (bool, Vec<(Row, State, Option<Fix>, String)>) {
         let mut list = List::default();
-        let go = server_rows(&mut list, p, "devbox", "2.0.0", None);
+        let go = server_rows(&mut list, p, "devbox", "2.0.0", None, None);
         (go, list.rows.into_iter().map(|l| (l.row, l.state, l.fix, l.text)).collect())
     }
 
@@ -684,22 +707,30 @@ mod tests {
         assert!(go && rows.iter().all(|r| r.2.is_none()), "{rows:?}");
         assert!(rows[1].3.contains("own install"));
         // Ours, stopped: Start. Ours, older: Update. Ours, newer: never down.
-        let ours = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27, running: String::new() }), ..probe() };
+        let ours = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27, running: String::new(), build: "e8368d7".into(), running_build: "e8368d7".into() }), ..probe() };
         let (go, rows) = server(&ours);
         assert!(!go);
         assert_eq!((rows[2].0, rows[2].2), (Row::Sessions, Some(Fix::StartSkiff)));
-        let older = Probe { managed: Some(Managed { version: "1.9.0".into(), protocol: 27, running: String::new() }), socket_live: true, ..probe() };
+        // The same version from an earlier dev build: Update, to this
+        // app's build. A dev app's own build differs from a release.
+        let dev = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27, build: "dev".into(), ..Default::default() }), socket_live: true, ..probe() };
+        let (_, rows) = server(&dev);
+        assert_eq!((rows[1].1, rows[1].2), (State::Warning, Some(Fix::UpdateSkiff)), "{rows:?}");
+        assert!(rows[1].3.contains("another build"));
+        assert!(super::super::install::same_build(Some("dev-1"), "dev-1") && !super::super::install::same_build(Some("dev-1"), "dev-2") && !super::super::install::same_build(Some("dev-1"), "e8368d7"));
+        assert!(super::super::install::same_build(None, "e8368d7") && !super::super::install::same_build(None, "dev") && !super::super::install::same_build(None, "dev-1") && !super::super::install::same_build(None, ""));
+        let older = Probe { managed: Some(Managed { version: "1.9.0".into(), protocol: 27, running: String::new(), build: "e8368d7".into(), running_build: "e8368d7".into() }), socket_live: true, ..probe() };
         let (go, rows) = server(&older);
         assert!(go);
         assert_eq!((rows[1].1, rows[1].2), (State::Warning, Some(Fix::UpdateSkiff)));
         assert!(rows[1].3.starts_with("Update available:"));
-        let newer_one = Probe { managed: Some(Managed { version: "2.10.0".into(), protocol: 27, running: String::new() }), socket_live: true, ..probe() };
+        let newer_one = Probe { managed: Some(Managed { version: "2.10.0".into(), protocol: 27, running: String::new(), build: "e8368d7".into(), running_build: "e8368d7".into() }), socket_live: true, ..probe() };
         let (_, rows) = server(&newer_one);
         assert_eq!((rows[1].1, rows[1].2), (State::Warning, None));
         assert!(rows[1].3.contains("Update Skiff here"));
         // An update that stopped after it moved `current`: the skiffd that
         // runs is still the old bundle's, and the row goes by it.
-        let stopped = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27, running: "1.9.0".into() }), ..ours.clone() };
+        let stopped = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27, running: "1.9.0".into(), build: "e8368d7".into(), running_build: "e8368d7".into() }), ..ours.clone() };
         assert_eq!(stopped.managed_version(), Some("1.9.0"));
         let (_, rows) = server(&Probe { socket_live: true, ..stopped });
         assert_eq!((rows[1].1, rows[1].2), (State::Warning, Some(Fix::UpdateSkiff)), "{rows:?}");
@@ -722,7 +753,7 @@ mod tests {
 
     #[test]
     fn keeping_it_running_is_a_warning_with_one_fix() {
-        let ours = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27, running: String::new() }), unit_enabled: true, host_unit_enabled: true, ..probe() };
+        let ours = Probe { managed: Some(Managed { version: "2.0.0".into(), protocol: 27, running: String::new(), build: "e8368d7".into(), running_build: "e8368d7".into() }), unit_enabled: true, host_unit_enabled: true, ..probe() };
         let k = |p: &Probe, refused| { let l = keep_running(p, "devbox", "jose", refused); (l.state, l.fix) };
         assert_eq!(k(&ours, false), (State::Warning, Some(Fix::TurnOnLinger)));
         assert_eq!(k(&ours, true), (State::Warning, None), "refused: plain words only");

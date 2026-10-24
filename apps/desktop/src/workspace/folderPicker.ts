@@ -10,7 +10,7 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { hostCan } from "../app/hostCaps";
-import { checkShownHost, hostName } from "../app/hosts";
+import { checkShownHost, hostName, reinstallShownHost } from "../app/hosts";
 import type { FolderListing, FolderPlaces, HostError } from "../platform/types";
 import { actionDialog, dialogActions, dialogFrame } from "../ui/dialogParts";
 import { button, h } from "../ui/dom";
@@ -67,7 +67,7 @@ export function pickerUnavailable(): boolean {
   if (!hostCan("folders")) {
     showError(`${host} cannot show its folders. Its Skiff is too old.`, {
       label: "Update Skiff…",
-      run: async () => checkShownHost(),
+      run: async () => reinstallShownHost(),
     });
     return true;
   }

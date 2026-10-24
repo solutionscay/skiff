@@ -2,12 +2,15 @@
 # no sudo, no system folder. The app sends this file on stdin, with a mode:
 #   probe [socket name] [stored socket]  read only: one JSON line for the check list
 #   install-key <key>, fix-key <key>   this computer's public key into authorized_keys
-#   install <version> <sha256> <socket name>, update <version> <sha256> <socket name> <yes|no>,
+#   install <version> <sha256> <socket name>, update <version> <sha256> <socket name> <yes|no> [force],
 #   start <socket name>, linger, sessions <socket name>, uninstall
 # The managed install is ~/.local/share/skiff/server. install: $3 is the
 # SHA-256 of the bundle Skiff uploaded to .incoming-<sha256>.tar.gz there;
 # update: the same, and $5 yes when the person agreed that sessions end if
-# skiffd cannot hand them over. Each step prints key=value lines and ends
+# skiffd cannot hand them over; $6 force installs and reloads that bundle
+# even when its build is there already. Each bundle unpacks to
+# <version>+<build>: the build id in its manifest (`build`, else `commit`),
+# so two builds of one version are two folders. Each step prints key=value lines and ends
 # with skiff-<mode>=<outcome>. It never stops or replaces a skiffd it did
 # not start: Skiff only runs it after the check found no other one.
 # skiff-host (projects) runs beside the managed skiffd, and restarts after
@@ -249,7 +252,9 @@ probe() {
     # (Linux). It differs from `current` after an update that stopped
     # before its reload. Empty: not known here.
     run_=$(bundle_of "$(daemon_field "${s:-}" pid)")
-    managed=$(printf '{"version":"%s","protocol":%s,"running":"%s"}' "$(esc "$mv_")" "${mp_:-0}" "$(esc "$run_")")
+    rb_=
+    [ -n "$run_" ] && rb_=$(build_of "$d/$run_")
+    managed=$(printf '{"version":"%s","protocol":%s,"running":"%s","build":"%s","running_build":"%s"}' "$(esc "$mv_")" "${mp_:-0}" "$(esc "${run_%%+*}")" "$(esc "$(build_of "$d/current")")" "$(esc "$rb_")")
   fi
   # The Skiff app's own skiffd (a .deb, or Skiff.app): it runs while the
   # app runs there, and Skiff never installs a second one beside it.
@@ -314,42 +319,58 @@ fix_key() {
   printf '%s\n' "$key" > "$ak" && chmod 600 "$ak" && chmod 700 "$HOME/.ssh" && echo "skiff-fix-key=done"
 }
 
+# The build id in the manifest of bundle folder $1: `build`, else the
+# `commit` an older bundle names. Only the characters a folder name keeps.
+build_of() {
+  m=$1/manifest.json
+  b=$(sed -n 's/.*"build": *"\([^"]*\)".*/\1/p' "$m" 2>/dev/null | head -n 1)
+  [ -n "$b" ] || b=$(sed -n 's/.*"commit": *"\([^"]*\)".*/\1/p' "$m" 2>/dev/null | head -n 1)
+  printf '%s' "$b" | tr -cd 'A-Za-z0-9.-' | cut -c 1-64
+}
+
+# Unpacks the upload of version $1 with SHA-256 $2 into <version>+<build>
+# ($k) and makes it current. That build there already changes nothing,
+# unless $3 is force. Prints key=<folder>.
 install() {
-  v=$1 want=$2
+  v=$1 want=$2 force=${3:-}
   in=$d/.incoming-$want.tar.gz
   step "Checking the upload"
   [ -f "$in" ] || { step "The upload is missing"; echo "skiff-install=no-upload"; return; }
   if [ "$(sha "$in")" != "$want" ]; then rm -f "$in"; step "The upload is not whole"; echo "skiff-install=bad-hash"; return; fi
   prev=$(readlink "$d/current" 2>/dev/null)
-  if [ "$prev" = "$v" ] && [ -x "$d/$v/skiffd" ]; then
-    step "#4 Skiff $v is there already"
+  step "#4 Unpacking Skiff $v"
+  tmp=$(mktemp -d "$d/.unpack.XXXXXX") || { echo "skiff-install=no-room"; return; }
+  if ! terr=$(tar -xzf "$in" -C "$tmp" 2>&1 >/dev/null); then
+    printf '%s\n' "$terr" | head -n 5 | while IFS= read -r l; do step "$l"; done
+    rm -rf "$tmp" "$in"; step "Removed the unpacked files"; echo "skiff-install=no-room"; return
+  fi
+  src=$(find "$tmp" -mindepth 1 -maxdepth 1 -type d -name "skiff-server-$v-*" | head -n 1)
+  if [ -z "$src" ] || ! grep -q "\"version\": *\"$v\"" "$src/manifest.json" 2>/dev/null; then
+    rm -rf "$tmp" "$in"; echo "skiff-install=bad-bundle"; return
+  fi
+  b=$(build_of "$src")
+  k=$v${b:++$b}
+  echo "key=$k"
+  if [ "$prev" = "$k" ] && [ -x "$d/$k/skiffd" ] && [ "$force" != force ]; then
+    rm -rf "$tmp"
+    step "Skiff $v ($b) is there already"
     step "#5 Skiff $v is current"
     echo changed=no
   else
-    step "#4 Unpacking Skiff $v"
-    tmp=$(mktemp -d "$d/.unpack.XXXXXX") || { echo "skiff-install=no-room"; return; }
-    if ! terr=$(tar -xzf "$in" -C "$tmp" 2>&1 >/dev/null); then
-      printf '%s\n' "$terr" | head -n 5 | while IFS= read -r l; do step "$l"; done
-      rm -rf "$tmp" "$in"; step "Removed the unpacked files"; echo "skiff-install=no-room"; return
-    fi
-    src=$(find "$tmp" -mindepth 1 -maxdepth 1 -type d -name "skiff-server-$v-*" | head -n 1)
-    if [ -z "$src" ] || ! grep -q "\"version\": *\"$v\"" "$src/manifest.json" 2>/dev/null; then
-      rm -rf "$tmp" "$in"; echo "skiff-install=bad-bundle"; return
-    fi
     chmod 755 "$src" "$src/skiffd" "$src/skiff-host" "$src/skiff"
     [ -f "$src/install.sh" ] && chmod 755 "$src/install.sh"
-    rm -rf "${d:?}/${v:?}"
-    mv "$src" "$d/$v"
+    rm -rf "${d:?}/${k:?}"
+    mv "$src" "$d/$k"
     rm -rf "$tmp"
     # A half-unpacked version never becomes current: the link moves last.
-    step "#5 Switching to Skiff $v"
-    ln -sfn "$v" "$d/current"
+    step "#5 Switching to Skiff $v${b:+ ($b)}"
+    ln -sfn "$k" "$d/current"
     echo "${by:-app}" > "$d/installed-by"
     # Keep the one before, for a rollback.
     for x in "$d"/*; do
       n=${x##*/}
       [ -d "$x" ] && [ ! -L "$x" ] || continue
-      [ "$n" = "$v" ] || [ "$n" = "$prev" ] || rm -rf "$x"
+      [ "$n" = "$k" ] || [ "$n" = "$prev" ] || rm -rf "$x"
     done
     step "Skiff $v is in place"
     echo changed=yes
@@ -460,17 +481,21 @@ status_of() {
 daemon_field() { printf '%s' "$1" | sed -n "s/.*\"skiffd\":{[^}]*\"$2\":\"\{0,1\}\([^\",}]*\).*/\1/p"; }
 
 # The managed bundle the skiffd with pid $1 runs from, by its binary's
-# folder (Linux). Empty: not a managed binary, or not known here.
+# folder (Linux). Empty: not a managed binary, or not known here. A
+# binary that a forced reinstall replaced still names its folder.
 bundle_of() {
   e=$(readlink "/proc/${1:-0}/exe" 2>/dev/null)
+  e=${e% (deleted)}
   case $e in "$d/"*/skiffd) e=${e#"$d/"}; printf '%s' "${e%/skiffd}" ;; esac
 }
 
-# The skiffd at $pid runs version $v: by its binary's folder (Linux), or
-# by the version it reports. $have: what it reports.
+# The skiffd at $pid runs the bundle $k: by its binary's folder (Linux),
+# else by the version it reports ($have) while `current` was $k already.
+# A binary replaced by a forced reinstall reads as `(deleted)`: not $k.
 runs() {
-  [ "$have" = "$v" ] && return 0
-  case $(readlink "/proc/$pid/exe" 2>/dev/null) in "$d/$v/"*) return 0 ;; *) return 1 ;; esac
+  e=$(readlink "/proc/$pid/exe" 2>/dev/null)
+  if [ -n "$e" ]; then case $e in "$d/$k/skiffd") return 0 ;; *) return 1 ;; esac; fi
+  [ "$old" = "$k" ] && [ "$have" = "$v" ]
 }
 
 # Moves the managed install up to $1, never down. skiffd reloads onto the
@@ -481,21 +506,22 @@ runs() {
 # it moved `current` but before the reload is finished by the next one: the
 # skiffd that runs decides, not the link.
 update() {
-  v=$1 want=$2 sock=$rt/skiff/$3 agreed=$4
+  v=$1 want=$2 sock=$rt/skiff/$3 agreed=$4 force=${5:-}
   old=$(readlink "$d/current" 2>/dev/null)
-  if [ -n "$old" ] && newer "$old" "$v"; then rm -f "$d/.incoming-$want.tar.gz"; echo "from=$old"; echo "skiff-update=newer"; return; fi
-  out=$(install "$v" "$want")
+  if [ -n "$old" ] && newer "${old%%+*}" "$v"; then rm -f "$d/.incoming-$want.tar.gz"; echo "from=${old%%+*}"; echo "skiff-update=newer"; return; fi
+  out=$(install "$v" "$want" "$force")
   echo "$out"
   case $out in *skiff-install=done*) ;; *) echo "skiff-update=failed"; return ;; esac
-  s=$(status_of "$d/$old/skiff" "$d/$v/skiff")
+  k=$(val "$out" key)
+  s=$(status_of "$d/$old/skiff" "$d/$k/skiff")
   pid=$(daemon_field "$s" pid)
   have=$(daemon_field "$s" version)
   from=$old
-  if [ "$old" = "$v" ] && [ -n "$pid" ] && ! runs; then from=$(bundle_of "$pid"); from=${from:-$have}; fi
-  echo "from=$from"
-  # That version runs, or waits for the start after this step: another
-  # computer updated it first.
-  if [ "$old" = "$v" ] && { [ -z "$pid" ] || runs; }; then echo "skiff-update=same"; return; fi
+  if [ "$old" = "$k" ] && [ -n "$pid" ] && ! runs; then from=$(bundle_of "$pid"); from=${from:-$have}; fi
+  echo "from=${from%%+*}"
+  # That build runs, or waits for the start after this step: another
+  # computer updated it first. A forced reinstall reloads it all the same.
+  if [ "$old" = "$k" ] && [ "$force" != force ] && { [ -z "$pid" ] || runs; }; then echo "skiff-update=same"; return; fi
   # The version moves: the start after this step restarts skiff-host on
   # it, with the restart an install uses (systemd, the fallback, or
   # launchd). A path below that moves `current` back clears it.
@@ -503,20 +529,20 @@ update() {
   # skiffd does not run: the next start runs the new version.
   if [ -z "$pid" ]; then echo "skiff-update=done"; return; fi
   cli=$d/$from/skiff
-  [ -x "$cli" ] || cli=$d/$v/skiff
+  [ -x "$cli" ] || cli=$d/$k/skiff
   step "Moving skiffd to Skiff $v"
-  if "$cli" --socket "$sock" daemon reload --binary "$d/$v/skiffd" >/dev/null 2>&1; then
+  if "$cli" --socket "$sock" daemon reload --binary "$d/$k/skiffd" >/dev/null 2>&1; then
     step "skiffd kept its sessions"
     echo "reload=kept"; echo "skiff-update=done"; return
   fi
-  now=$(daemon_field "$(status_of "$d/$v/skiff" "$cli")" pid)
+  now=$(daemon_field "$(status_of "$d/$k/skiff" "$cli")" pid)
   if [ -n "$now" ] && [ "$now" != "$pid" ]; then echo "skiff-update=lost"; return; fi
   # Where `current` goes back to: the version that runs, while its folder is there.
   back=$from
   [ -x "$d/$back/skiffd" ] || back=$old
   if [ -z "$now" ]; then
     # It did not come back: the old version starts again.
-    step "skiffd did not come back. Starting Skiff $back again"
+    step "skiffd did not come back. Starting Skiff ${back%%+*} again"
     ln -sfn "$back" "$d/current"; restart_host=; start "$3" >/dev/null; echo "skiff-update=failed"; return
   fi
   # The old skiffd runs on, untouched: it cannot hand its sessions over.
@@ -663,7 +689,7 @@ case $mode in
   install-key) install_key "${2:?}" ;;
   fix-key) fix_key "${2:?}" ;;
   install) mkdir -p "$d"; lock; install "$2" "$3"; start "$4" ;;
-  update) mkdir -p "$d"; lock; update "$2" "$3" "$4" "${5:-no}"; start "$4" ;;
+  update) mkdir -p "$d"; lock; update "$2" "$3" "$4" "${5:-no}" "${6:-}"; start "$4" ;;
   start) start "$2" ;;
   linger) linger; echo "skiff-linger=done" ;;
   sessions) sessions "$2" ;;

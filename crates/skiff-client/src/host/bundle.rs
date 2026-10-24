@@ -24,6 +24,12 @@ pub struct Manifest {
     pub arch: String,
     pub target: String,
     pub commit: String,
+    /// The build id: the commit, with `-dirty` for a tree with changes, or
+    /// `dev-<hash of the binaries>` for a dev build's own bundle. One
+    /// version can have two builds; the server keeps each in its own
+    /// folder. Empty in a bundle from before it: its `commit` counts.
+    #[serde(default)]
+    pub build: String,
     /// SHA-256 of each file in the bundle, by its path in the bundle.
     pub files: std::collections::BTreeMap<String, String>,
 }

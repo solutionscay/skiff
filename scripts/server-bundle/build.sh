@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds one server bundle, skiff-server-<version>-<os>-<arch>.tar.gz, in
 # <out>: skiffd, skiff-host, skiff, manifest.json (version, protocol,
-# target, commit and the SHA-256 of each file), and on Linux the systemd
+# target, commit, build id and the SHA-256 of each file), and on Linux the systemd
 # user units, and install.sh (the server script, for --uninstall there). It
 # does not sign: sign.sh does, once for every bundle.
 #
@@ -14,6 +14,10 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$root/Cargo.toml" | head -n 1)
 protocol=$(sed -n 's/^pub const PROTOCOL: u32 = \([0-9]*\);/\1/p' "$root/crates/skiff-core/src/lib.rs")
 commit=$(git -C "$root" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
+# The build id: the commit, and -dirty when the tree has changes. The
+# server keeps each build of a version in its own folder.
+build=$commit
+[ -z "$(git -C "$root" status --porcelain 2>/dev/null)" ] || build=$commit-dirty
 [ -n "$version" ] && [ -n "$protocol" ] || { echo "build.sh: no version or protocol found" >&2; exit 1; }
 
 (cd "$root" && ${CARGO:-cargo build} --release --locked --target "$target" -p skiffd -p skiff-host -p skiff-cli)
@@ -40,7 +44,7 @@ fi
 
 {
   printf '{\n  "name": "skiff-server",\n  "version": "%s",\n  "protocol": %s,\n' "$version" "$protocol"
-  printf '  "os": "%s",\n  "arch": "%s",\n  "target": "%s",\n  "commit": "%s",\n  "files": {\n' "$os" "$arch" "$target" "$commit"
+  printf '  "os": "%s",\n  "arch": "%s",\n  "target": "%s",\n  "commit": "%s",\n  "build": "%s",\n  "files": {\n' "$os" "$arch" "$target" "$commit" "$build"
   sep=
   for f in $files; do
     printf '%s    "%s": "%s"' "$sep" "$f" "$(sha "$dir/$f")"

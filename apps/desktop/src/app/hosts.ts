@@ -65,12 +65,18 @@ export const shownHost = () => list.selected;
 
 /** What a Host menu link opens in Settings › Hosts: its Add form, a Host's
  *  check list, or the list. */
-export type HostsPage = { add: true } | { check: string } | Record<string, never>;
+export type HostsPage = { add: true } | { check: string; reinstall?: true } | Record<string, never>;
 let manage: (page: HostsPage) => void = () => {};
 
 /** Opens the shown Host's check list in Settings › Hosts. */
 export const checkShownHost = () => {
   if (list.selected) manage({ check: list.selected });
+};
+
+/** Opens the shown Host's check list, then Update Skiff…, which installs
+ *  this app's build there even when the server has that build already. */
+export const reinstallShownHost = () => {
+  if (list.selected) manage({ check: list.selected, reinstall: true });
 };
 
 /** Settings registers how it opens on the Hosts tab. */
