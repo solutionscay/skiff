@@ -438,7 +438,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "4d4495d837197e18ea6867863bc6dc4f35bb3f1f95353cfcf24ac7c424e98299"
+    "sha256": "18ee2a88436a45d5ada92f8ae6786e165d01cdcd3dbf78e38dd20cbe172b058a"
   },
   "apps/desktop/src/appearance/settings.ts": {
     "ownership": "mixed: agent changes (agent_config@1) and Skipper settings (skipper_config@1) through hostInvoke (#166 R7, R8); Open with and the menu layout are this client's own settings",

@@ -246,12 +246,12 @@ test("Remove asks first; the uninstall box shows for a managed install and names
   assert.equal(d.title, "Remove devbox?");
   for (let i = 0; i < 4; i++) await flush();
   const all = d.content!.flatMap((c) => c.all());
-  const box = all.find((e) => e.tag === "input") as unknown as { checked: boolean; listeners: Record<string, (() => void)[]> };
-  assert.ok(box, "the box shows once the server says Skiff installed it");
+  const box = all.find((e) => e.attrs.role === "switch")!;
+  assert.ok(box, "the switch shows once the server says Skiff installed it");
   assert.ok(all.some((e) => e.textContent.includes("This ends: build, shell.")));
   assert.equal(x.calls.filter(([c]) => c === "remove_host").length, 0, "nothing changes before the confirm");
-  box.checked = true;
-  for (const f of box.listeners.change) f();
+  box.click();
+  assert.equal(box.attrs["aria-checked"], "true");
   assert.match(d.content![0].textContent, /Your other files stay/);
   await d.submit();
   assert.equal(JSON.stringify(x.calls.filter(([c]) => c === "remove_host")), JSON.stringify([["remove_host", { id: "h_dev", uninstall: true }]]));
