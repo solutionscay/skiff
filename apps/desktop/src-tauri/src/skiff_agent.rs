@@ -139,9 +139,6 @@ pub struct SkiffAgent {
     project_skippers: bool,
     /// The agent project Skippers start. Absent: the Skipper's.
     project_agent: Option<String>,
-    /// Where project Skippers keep `SKIPPER.md` and their results. Absent
-    /// when the folder is refused.
-    projects_folder: Option<String>,
     /// `[skiff_agent.tasks]` in file order, with the command each row starts.
     tasks: Vec<TaskType>,
 }
@@ -160,7 +157,6 @@ fn read() -> anyhow::Result<SkiffAgent> {
         _ => "other",
     };
     let configured = configured.display().to_string();
-    let projects_folder = folder.as_ref().map(|f| PathBuf::from(f).join("projects").display().to_string());
     let a = cfg.skiff_agent;
     // The command lines come from projects.toml, so the local list builds the same ones skiffd would.
     let tasks = tasks::resolve(&a.tasks, &skiff_core::project::agents());
@@ -175,7 +171,6 @@ fn read() -> anyhow::Result<SkiffAgent> {
         continue_on_restore: a.continue_on_restore,
         project_skippers: a.project_skippers,
         project_agent: a.project_agent,
-        projects_folder,
         tasks,
     })
 }

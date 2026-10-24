@@ -398,8 +398,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       err.setAttribute("role", "alert");
       main.appendChild(err);
     }
-    if (agentSet) main.append(...taskTypesSection(agentSet, agents, tasksTable, saveTask, render));
     if (agentSet) main.append(...projectSkippersSection(agentSet, agents, (e) => void setSkiffAgent(e)));
+    if (agentSet) main.append(...taskTypesSection(agentSet, agents, tasksTable, saveTask, render));
     return main;
   }
 

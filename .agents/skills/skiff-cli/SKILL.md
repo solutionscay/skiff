@@ -180,7 +180,7 @@ Work is a plan with its tasks, or a task with no plan. It is `working` while an 
 
 ### Project Skippers
 
-With Settings › Skiff agent › Project Skippers on, a project can have its own Skipper: one agent session in the project's folder, at most one per project. Its instructions are `SKIPPER.md` in `~/skiff-agent/projects/<project>/`, and its results go to `results/` there. Skiff writes nothing into the project. A restore brings its pane back as a plain shell.
+With Settings › Skiff agent › Project Skippers on, a project can have its own Skipper: one agent session in the project's folder, at most one per project. Its folder is always `projects/<project>/` in the Skipper folder (`~/skiff-agent/projects/<project>/` by default): its instructions are `SKIPPER.md` there, and its results go to `results/` there. Skiff writes nothing into the project. A restore brings its pane back as a plain shell.
 
 - `skiff skipper --project P` finds or starts it, and attaches. `--no-attach` prints its id. A new one gets one first message: read `SKIPPER.md`.
 - The Skipper hands work to it with `skiff ledger handoff P "TASK" --title "..." [--parent UID]`. This adds a hand-off row that the Skipper owns, with the project Skipper as its pane. It starts the project Skipper if none runs, and sends it the task. It exits with `send`'s code. A busy project Skipper keeps the row `pending`.
