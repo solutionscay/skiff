@@ -183,7 +183,7 @@ async fn try_remote(app: &App, selection: &HostSelection, destination: &str, arr
     let name = arrival.map_or(destination, |a| a.name.as_str());
     let managed = arrival.is_some_and(|a| a.managed);
     *app.warning.lock().await =
-        crate::hosts::version_warning(name, &info.version, info.protocol, managed).map(|(kind, message)| Warning { kind, message, sessions: None });
+        crate::hosts::version_warning(name, arrival.and_then(|a| a.version.as_deref()), info.protocol, managed).map(|(kind, message)| Warning { kind, message, sessions: None });
     let first = selection.pinned().is_none();
     let host = Arc::new(c.activate().await?);
     if first {

@@ -756,6 +756,8 @@ pub(crate) async fn install_skiff(handle: tauri::AppHandle, id: String) -> Resul
     memo(&id, |m| {
         m.linger_refused = outcome.linger == "refused";
         m.ok = None;
+        // The next connect reads the version again, for the badge.
+        m.arrival = None;
     });
     Ok(InstallView { outcome, source: bundle.source, version: VERSION })
 }
@@ -830,6 +832,7 @@ async fn update_managed(h: &KnownHost, end_sessions: bool, step: skiff_client::h
     memo(&h.id, |m| {
         m.update_failed = failed;
         m.ok = None;
+        m.arrival = None;
     });
     Ok(UpdateView { updated: result?, source: bundle.source, version: VERSION })
 }
@@ -868,6 +871,10 @@ pub(crate) struct Arrival {
     pub(crate) managed: bool,
     /// The version this connect updated from.
     pub(crate) updated_from: Option<String>,
+    /// The Skiff version of the managed install, as this app counts
+    /// versions: what the check list's Skiff row compares. Never skiffd's
+    /// own crate version. None: not managed, or not known.
+    pub(crate) version: Option<String>,
 }
 
 /// How long after a failed probe on connect the next connect probes again.
@@ -888,11 +895,14 @@ pub(crate) async fn update_on_connect(target: &SshTarget) -> Option<Arrival> {
     }
     let mut arrival = None;
     if let Ok(p) = probe_now(&h).await {
-        let mut a = Arrival { name: h.name.clone(), managed: p.managed.is_some(), updated_from: None };
+        let mut a = Arrival { name: h.name.clone(), managed: p.managed.is_some(), updated_from: None, version: p.managed_version().map(str::to_string) };
         let older = p.managed_version().is_some_and(|have| skiff_client::host::check::newer(VERSION, have));
         if older && h.auto_update {
             match update_managed(&h, false, &|_| {}).await {
-                Ok(UpdateView { updated: Updated::Done { from, .. }, .. }) => a.updated_from = Some(from),
+                Ok(UpdateView { updated: Updated::Done { from, .. }, .. }) => {
+                    a.updated_from = Some(from);
+                    a.version = Some(VERSION.to_string());
+                }
                 Ok(_) => {}
                 Err(e) => eprintln!("update on connect to {}: {e}", h.name),
             }
@@ -904,24 +914,27 @@ pub(crate) async fn update_on_connect(target: &SshTarget) -> Option<Arrival> {
 }
 
 /// The banner for a Host whose Skiff differs from this app's. None: they
-/// work together as they are. `managed`: Skiff installed it, so Settings ›
-/// Hosts can update it; a Skiff from its own install is never changed.
-pub(crate) fn version_warning(name: &str, version: &str, protocol: u32, managed: bool) -> Option<(&'static str, String)> {
+/// work together as they are. `version`: the managed install's Skiff
+/// version, compared as the check list's Skiff row compares it; None for
+/// its own install, which is judged by protocol only. `managed`: Skiff
+/// installed it, so Settings › Hosts can update it; a Skiff from its own
+/// install is never changed.
+pub(crate) fn version_warning(name: &str, version: Option<&str>, protocol: u32, managed: bool) -> Option<(&'static str, String)> {
     use skiff_client::host::check::newer;
     let here = skiff_core::PROTOCOL;
-    if newer(version, VERSION) {
-        return Some(("remote", format!("{name} runs Skiff {version}. This computer runs {VERSION}. Update Skiff on this computer.")));
+    if let Some(v) = version.filter(|v| newer(v, VERSION)) {
+        return Some(("remote", format!("{name} runs Skiff {v}. This computer runs {VERSION}. Update Skiff on this computer.")));
     }
-    let older = newer(VERSION, version);
+    let older = version.filter(|v| newer(VERSION, v));
     match (managed, older, protocol == here) {
-        (true, true, false) => Some(("update", format!(
-            "{name} runs Skiff {version}, older than this computer's {VERSION}. You can see and type in its sessions. Update Skiff on {name} to start and end sessions here."
+        (true, Some(v), false) => Some(("update", format!(
+            "{name} runs Skiff {v}, older than this computer's {VERSION}. You can see and type in its sessions. Update Skiff on {name} to start and end sessions here."
         ))),
-        (true, true, true) => Some(("update", format!("Update available. {name} runs Skiff {version}. This computer runs {VERSION}."))),
+        (true, Some(v), true) => Some(("update", format!("Update available: Skiff {v} to {VERSION}."))),
         (false, _, false) if protocol < here => Some(("remote", format!(
             "{name} runs an older Skiff from its own install. You can see and type in its sessions. Update Skiff on {name} to start and end sessions here."
         ))),
-        (_, _, false) => Some(("remote", format!("Skiff {version} on {name} speaks protocol {protocol}, and this app speaks {here}. Parts of the app fail."))),
+        (_, _, false) => Some(("remote", format!("Skiff on {name} speaks protocol {protocol}, and this app speaks {here}. Parts of the app fail."))),
         _ => None,
     }
 }
@@ -1121,17 +1134,21 @@ mod tests {
     #[test]
     fn version_banners_name_who_updates_what() {
         let p = skiff_core::PROTOCOL;
-        assert_eq!(version_warning("devbox", VERSION, p, true), None);
-        let (kind, text) = version_warning("devbox", "99.0.0", p, true).unwrap();
+        assert_eq!(version_warning("devbox", Some(VERSION), p, true), None);
+        let (kind, text) = version_warning("devbox", Some("99.0.0"), p, true).unwrap();
         assert_eq!(kind, "remote");
         assert!(text.ends_with("Update Skiff on this computer."), "never down: {text}");
-        let (kind, text) = version_warning("devbox", "0.0.1", p, true).unwrap();
-        assert!(kind == "update" && text.starts_with("Update available."), "{text}");
-        let (kind, text) = version_warning("devbox", "0.0.1", p - 1, true).unwrap();
+        let (kind, text) = version_warning("devbox", Some("0.0.1"), p, true).unwrap();
+        assert!(kind == "update" && text.starts_with("Update available:"), "{text}");
+        let (kind, text) = version_warning("devbox", Some("0.0.1"), p - 1, true).unwrap();
         assert!(kind == "update" && text.contains("You can see and type in its sessions"), "{text}");
-        let (kind, text) = version_warning("devbox", "0.0.1", p - 1, false).unwrap();
+        let (kind, text) = version_warning("devbox", None, p - 1, false).unwrap();
         assert!(kind == "remote" && text.contains("from its own install"), "{text}");
-        assert_eq!(version_warning("devbox", "0.0.1", p, false), None, "its own install, same protocol: it works as it is");
+        assert_eq!(version_warning("devbox", None, p, false), None, "its own install, same protocol: it works as it is");
+        // A fresh install of this app's version: no badge, whatever skiffd's
+        // own crate version is. The badge never sees that one.
+        assert_eq!(version_warning("p0p-deb", Some(VERSION), p, true), None);
+        assert_eq!(version_warning("p0p-deb", None, p, true), None, "managed, version unknown: no guess");
     }
 
     #[test]
