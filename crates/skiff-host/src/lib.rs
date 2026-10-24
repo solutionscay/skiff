@@ -324,7 +324,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             Ok(Response::Image { image: HostImage { mime, bytes } })
         }
         Request::FolderHome => Ok(Response::Path { path: folders::home()? }),
-        Request::FolderList { path, hidden } => Ok(Response::Folders { listing: folders::list(&path, hidden)? }),
+        Request::FolderList { path, hidden, filter } => Ok(Response::Folders { listing: folders::list(&path, hidden, filter.as_deref())? }),
         Request::FolderCreate { parent, name } => Ok(Response::Path { path: folders::create(&parent, &name)? }),
         Request::LedgerRows => Ok(Response::Ledger { rows: ledger_rows()? }),
         Request::LedgerStamp => {
@@ -337,6 +337,14 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             Ok(Response::Skipper { settings: Box::new(skiff_client::skipper::settings(&cfg).map_err(failed)?) })
         }
         Request::ProjectInspect { path } => Ok(Response::Folder { folder: host_folder(config::inspect_folder(&host_folder_path(&path)?)) }),
+        Request::ProjectInit { path } => {
+            let path = host_folder_path(&path)?;
+            if !path.is_dir() {
+                return Err(Error::NotFound { message: "This folder is no longer on this Host.".into() });
+            }
+            git::init_repository(&path).map_err(failed)?;
+            Ok(Response::Folder { folder: host_folder(config::inspect_folder(&path)) })
+        }
         Request::ProjectAdd { path, revision, name, short, color } => {
             let path = host_folder_path(&path)?;
             let (added, revision) =

@@ -6,6 +6,7 @@
     { "cmd": "folder_home" },
     { "cmd": "folder_list", "path": "/home/jose" },
     { "cmd": "folder_list", "path": "/home/jose/code", "hidden": true },
+    { "cmd": "folder_list", "path": "/home/jose/code", "filter": "sk" },
     { "cmd": "folder_create", "parent": "/home/jose/code", "name": "nuevo λ" }
   ],
   "replies": [

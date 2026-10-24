@@ -29,7 +29,8 @@ pub fn home() -> Result<String, Error> {
 }
 
 /// The folders in `path`, by name. See [`FolderListing`].
-pub fn list(path: &str, hidden: bool) -> Result<FolderListing, Error> {
+pub fn list(path: &str, hidden: bool, filter: Option<&str>) -> Result<FolderListing, Error> {
+    let filter = filter.map(str::to_lowercase).filter(|f| !f.is_empty());
     let real = real_dir(&full_path(path)?)?;
     let dir = fs::read_dir(&real).map_err(|e| io_error(e, &real))?;
     let (mut entries, mut truncated) = (Vec::new(), false);
@@ -41,7 +42,7 @@ pub fn list(path: &str, hidden: bool) -> Result<FolderListing, Error> {
         let Ok(entry) = entry else { continue };
         // A name that is not UTF-8 cannot travel as text without changing.
         let Ok(name) = entry.file_name().into_string() else { continue };
-        if !hidden && name.starts_with('.') {
+        if (!hidden && name.starts_with('.')) || filter.as_ref().is_some_and(|f| !name.to_lowercase().contains(f)) {
             continue;
         }
         let kind = match entry.file_type() {

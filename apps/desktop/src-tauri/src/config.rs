@@ -122,6 +122,50 @@ pub(crate) async fn inspect_folder(app: State<'_, App>, path: String) -> Result<
     data_read(&app, |c| async move { data::project_inspect(&c, &path).await }).await
 }
 
+/// Runs `git init` in `path`, a folder on the Host, through the Host
+/// (`project_config@1`). Answers what `add_project` would do there now.
+#[tauri::command]
+pub(crate) async fn init_host_repository(app: State<'_, App>, path: String) -> Result<HostFolder, String> {
+    data_write(&app, |c| async move { data::project_init(&c, &path).await }).await
+}
+
+/// A `folders@1` call with the Host's typed error, so the page words each
+/// cause itself. A connection failure is `operation_failed`.
+async fn folder_call<T, F, Fut>(app: &App, call: F) -> Result<T, skiff_host_api::Error>
+where
+    F: FnOnce(std::sync::Arc<skiff_client::host::HostConnection>) -> Fut,
+    Fut: std::future::Future<Output = Result<T, skiff_host_api::Error>>,
+{
+    match data_read(app, |c| async move { Ok(call(c).await) }).await {
+        Ok(out) => out,
+        Err(message) => Err(skiff_host_api::Error::OperationFailed { message }),
+    }
+}
+
+/// The Host account's home folder, for the folder picker.
+#[tauri::command]
+pub(crate) async fn folder_home(app: State<'_, App>) -> Result<String, skiff_host_api::Error> {
+    folder_call(&app, |c| async move { data::folder_home(&c).await }).await
+}
+
+/// The folders in `path` on the Host, for the folder picker. Host paths
+/// only: nothing here reads or opens them on this Mac.
+#[tauri::command]
+pub(crate) async fn folder_list(
+    app: State<'_, App>,
+    path: String,
+    hidden: bool,
+    filter: Option<String>,
+) -> Result<skiff_host_api::FolderListing, skiff_host_api::Error> {
+    folder_call(&app, |c| async move { data::folder_list(&c, &path, hidden, filter).await }).await
+}
+
+/// Makes the folder `name` in `parent` on the Host.
+#[tauri::command]
+pub(crate) async fn folder_create(app: State<'_, App>, parent: String, name: String) -> Result<String, skiff_host_api::Error> {
+    folder_call(&app, |c| async move { data::folder_create(&c, &parent, &name).await }).await
+}
+
 /// This Mac only: an image is a path here, and no Host takes image bytes yet.
 #[tauri::command]
 pub(crate) async fn set_project_icon(handle: AppHandle, project: String, icon: Option<String>) -> Result<(), String> {

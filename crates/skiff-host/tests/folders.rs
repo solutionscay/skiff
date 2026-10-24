@@ -24,17 +24,18 @@ fn folders_lists_folders_only_and_create_takes_one_name() {
     std::os::unix::fs::symlink(dir.join("api"), dir.join("link")).unwrap();
     std::os::unix::fs::symlink(dir.join("file.txt"), dir.join("filelink")).unwrap();
 
-    let l = folders::list(&top, false).unwrap();
+    let l = folders::list(&top, false, None).unwrap();
     let names: Vec<_> = l.entries.iter().map(|e| (e.name.as_str(), e.kind, e.repo.is_some())).collect();
     assert_eq!(names, [("api", FolderKind::Dir, true), ("link", FolderKind::Link, true), ("notes", FolderKind::Dir, false)]);
     assert!(l.entries[0].repo.as_ref().unwrap().branch.is_some());
-    assert_eq!(folders::list(&top, true).unwrap().entries.len(), 4, "hidden folders on request");
+    assert_eq!(folders::list(&top, true, None).unwrap().entries.len(), 4, "hidden folders on request");
+    assert_eq!(folders::list(&top, false, Some("NOT")).unwrap().entries.len(), 1, "filter ignores case");
     // A link opens at its real path.
-    let via = folders::list(&format!("{top}/link"), false).unwrap();
-    assert_eq!(via.real, folders::list(&format!("{top}/api"), false).unwrap().real);
-    assert!(matches!(folders::list("relative", false), Err(Error::Invalid { .. })));
-    assert!(matches!(folders::list(&format!("{top}/gone"), false), Err(Error::NotFound { .. })));
-    assert!(matches!(folders::list(&format!("{top}/file.txt"), false), Err(Error::NotFound { .. })));
+    let via = folders::list(&format!("{top}/link"), false, None).unwrap();
+    assert_eq!(via.real, folders::list(&format!("{top}/api"), false, None).unwrap().real);
+    assert!(matches!(folders::list("relative", false, None), Err(Error::Invalid { .. })));
+    assert!(matches!(folders::list(&format!("{top}/gone"), false, None), Err(Error::NotFound { .. })));
+    assert!(matches!(folders::list(&format!("{top}/file.txt"), false, None), Err(Error::NotFound { .. })));
 
     for bad in ["..", ".", "a/b", "", "a\0b", &"x".repeat(256)] {
         assert!(matches!(folders::create(&top, bad), Err(Error::Invalid { .. })), "{bad:?}");

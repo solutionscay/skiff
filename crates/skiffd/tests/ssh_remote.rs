@@ -755,6 +755,94 @@ async fn remote_projects_and_git_status_come_from_the_hosts_data_plane_over_a_re
     legacy_kill(&sessions, &s.id).await.unwrap();
 }
 
+/// #166 R2: Add project on a remote Host, picked from the Host's folders
+/// over a real forward. Every path comes from a listing; nothing is typed.
+/// A plain folder becomes a repository through the Host, then a project.
+#[tokio::test]
+async fn remote_add_project_is_picked_from_the_hosts_folders_over_a_real_forward() {
+    use skiff_client::host::data;
+    let Some(f) = fixture("p") else { return };
+    let _ = local_client(&f.socket()).await;
+    let home = f.dir.join("home");
+    let api = home.join("code/api");
+    std::fs::create_dir_all(&api).unwrap();
+    std::fs::create_dir_all(home.join("code/notes")).unwrap();
+    let ok = Command::new("git").args(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]).arg("-C").arg(&api)
+        .args(["init", "-q", "-b", "main"]).status().unwrap();
+    assert!(ok.success());
+    std::fs::create_dir_all(f.dir.join("config")).unwrap();
+    f.write("config/projects.toml", "");
+    let binary = std::env::var_os("SKIFF_HOST_BIN").map(PathBuf::from).unwrap_or_else(|| Path::new(env!("CARGO_BIN_EXE_skiffd")).with_file_name("skiff-host"));
+    assert!(binary.is_file(), "build skiff-host first: cargo build -p skiff-host (or set SKIFF_HOST_BIN)");
+    struct Service(Child);
+    impl Drop for Service {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let _service = Service(
+        Command::new(&binary)
+            .arg("--session-socket")
+            .arg(f.socket())
+            .env("SKIFF_CONFIG", f.dir.join("config/projects.toml"))
+            .env("HOME", &home)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(std::fs::File::options().create(true).append(true).open(f.dir.join("skiff-host.log")).unwrap())
+            .spawn()
+            .unwrap(),
+    );
+    let data_socket = skiff_core::socket::data_socket(&f.socket());
+    let until = Instant::now() + Duration::from_secs(10);
+    while std::os::unix::net::UnixStream::connect(&data_socket).is_err() {
+        assert!(Instant::now() < until, "skiff-host did not listen");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let selection = f.selection("ssh_config", &f.socket(), "fwd");
+    let host = select(&selection).await.unwrap();
+    let plane = selection.connect_data(&host.connection().hello().host.host_id).await.unwrap();
+    let c = plane.connection();
+    assert!(c.hello().capabilities.contains(&Capability::folders()));
+
+    // Home, then a click on each row: the next path is the listing's own.
+    let start = data::folder_home(&c).await.unwrap();
+    assert_eq!(Path::new(&start), home.canonicalize().unwrap());
+    let open = |l: &skiff_host_api::FolderListing, name: &str| {
+        assert!(l.entries.iter().any(|e| e.name == name), "{name} in {l:?}");
+        format!("{}/{name}", l.real)
+    };
+    let top = data::folder_list(&c, &start, false, None).await.unwrap();
+    let code = data::folder_list(&c, &open(&top, "code"), false, None).await.unwrap();
+    let rows: Vec<_> = code.entries.iter().map(|e| (e.name.as_str(), e.repo.as_ref().and_then(|r| r.branch.as_deref()))).collect();
+    assert_eq!(rows, [("api", Some("main")), ("notes", None)]);
+
+    // Add project: the picked repository.
+    let picked = open(&code, "api");
+    let folder = data::project_inspect(&c, &picked).await.unwrap();
+    assert!(folder.root.is_some(), "{folder:?}");
+    let (_, revision) = data::project_rows(&c).await.unwrap();
+    let (added, _) = data::project_add(&c, &revision.unwrap(), folder.root.as_deref().unwrap(), None, None, None).await.unwrap();
+    assert_eq!(added.name, "api");
+
+    // Not a repository: Initialize repository through the Host, then add it.
+    let notes = open(&code, "notes");
+    assert!(data::project_inspect(&c, &notes).await.unwrap().root.is_none());
+    let init = data::project_init(&c, &notes).await.unwrap();
+    assert!(init.root.is_some() && home.join("code/notes/.git").is_dir(), "{init:?}");
+    let (_, revision) = data::project_rows(&c).await.unwrap();
+    data::project_add(&c, &revision.unwrap(), init.root.as_deref().unwrap(), None, None, None).await.unwrap();
+    let names: Vec<_> = data::project_list(&c).await.unwrap().into_iter().map(|p| p.name).collect();
+    assert_eq!(names, ["api", "notes"]);
+
+    // New folder… takes one name only.
+    for bad in ["..", "a/b"] {
+        assert!(matches!(data::folder_create(&c, &code.real, bad).await, Err(skiff_host_api::Error::Invalid { .. })), "{bad}");
+    }
+    let made = data::folder_create(&c, &code.real, "scratch").await.unwrap();
+    assert!(Path::new(&made).is_dir());
+}
+
 /// #166 slice 3, over the loopback sshd. Unknown key: a scan learns it into
 /// a temp file only, a trust adds one known_hosts line, a second trust adds
 /// none. Changed key: replace leaves only the new one. Install: one secret

@@ -500,6 +500,12 @@ pub enum Request {
     ProjectInspect {
         path: String,
     },
+    /// Runs `git init` in `path`, a Host folder, unless it is in a
+    /// repository already. Stages nothing and commits nothing. Answers
+    /// `folder`, as `project_inspect` does after it.
+    ProjectInit {
+        path: String,
+    },
     /// Adds the repository that holds `path` (a Host folder) as a project, or
     /// opens it again when it is a closed one. Answers `project_added`.
     /// `revision` as for `project_edit`.
@@ -574,10 +580,13 @@ pub enum Request {
     /// Answers `folders`: the folders in `path`, a full Host path. Hidden
     /// folders only with `hidden`. A path that is not a folder is
     /// `not_found`; one the account cannot open is `permission`.
+    /// `filter`: only names that hold it, ignoring case, before the bound.
     FolderList {
         path: String,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         hidden: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filter: Option<String>,
     },
     /// Makes the folder `name` (one name, no `/`) in `parent`. Answers
     /// `path`, the new folder's real path. A bad name is `invalid`; a name
@@ -635,6 +644,7 @@ impl Request {
             Self::LedgerRows | Self::LedgerStamp | Self::LedgerResult { .. } => Some(Capability::ledger_read()),
             Self::SkipperSettings => Some(Capability::skipper_settings()),
             Self::ProjectInspect { .. }
+            | Self::ProjectInit { .. }
             | Self::ProjectAdd { .. }
             | Self::ProjectEdit { .. }
             | Self::ProjectArrange { .. }
@@ -670,7 +680,7 @@ impl Request {
                 | (Self::ProjectGet { .. }, Response::Project { .. })
                 | (Self::GitChanges { .. }, Response::Changes { .. })
                 | (Self::GitDiff { .. }, Response::Diff { .. })
-                | (Self::ProjectInspect { .. }, Response::Folder { .. })
+                | (Self::ProjectInspect { .. } | Self::ProjectInit { .. }, Response::Folder { .. })
                 | (Self::ProjectAdd { .. }, Response::ProjectAdded { .. })
                 | (
                     Self::ProjectEdit { .. }
@@ -706,6 +716,7 @@ impl Request {
                 | Self::GitChanges { .. }
                 | Self::GitDiff { .. }
                 | Self::ProjectInspect { .. }
+                | Self::ProjectInit { .. }
                 | Self::ProjectAdd { .. }
                 | Self::ProjectEdit { .. }
                 | Self::ProjectArrange { .. }

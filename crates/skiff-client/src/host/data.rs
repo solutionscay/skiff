@@ -16,7 +16,7 @@ use std::{
 };
 
 use skiff_host_api::{
-    Error, Hello, HostChange, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow, HostListing, HostProject,
+    Error, FolderListing, Hello, HostChange, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow, HostListing, HostProject,
     HostSkipper, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response,
 };
 use tokio::net::UnixStream;
@@ -238,6 +238,38 @@ pub async fn skipper_settings(c: &HostConnection) -> Result<HostSkipper, Error> 
 pub async fn project_inspect(c: &HostConnection, path: &str) -> Result<HostFolder, Error> {
     match c.request(Request::ProjectInspect { path: path.into() }).await? {
         Response::Folder { folder } => Ok(folder),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// Runs `git init` in `path` on the Host, and inspects it again.
+pub async fn project_init(c: &HostConnection, path: &str) -> Result<HostFolder, Error> {
+    match c.request(Request::ProjectInit { path: path.into() }).await? {
+        Response::Folder { folder } => Ok(folder),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// The Host account's home folder (`folders@1`).
+pub async fn folder_home(c: &HostConnection) -> Result<String, Error> {
+    match c.request(Request::FolderHome).await? {
+        Response::Path { path } => Ok(path),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// The folders in `path` on the Host (`folders@1`).
+pub async fn folder_list(c: &HostConnection, path: &str, hidden: bool, filter: Option<String>) -> Result<FolderListing, Error> {
+    match c.request(Request::FolderList { path: path.into(), hidden, filter }).await? {
+        Response::Folders { listing } => Ok(listing),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// Makes the folder `name` in `parent` on the Host. Answers its path.
+pub async fn folder_create(c: &HostConnection, parent: &str, name: &str) -> Result<String, Error> {
+    match c.request(Request::FolderCreate { parent: parent.into(), name: name.into() }).await? {
+        Response::Path { path } => Ok(path),
         _ => unreachable!("checked by Request::accepts"),
     }
 }

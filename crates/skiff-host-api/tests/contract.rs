@@ -652,7 +652,12 @@ fn m5_folders_is_a_family_of_its_own_that_lists_folders_only() {
     }
     // Without `hidden`, hidden folders stay out.
     let plain: Request = serde_json::from_value(json!({"cmd":"folder_list","path":"/h"})).unwrap();
-    assert_eq!(plain, Request::FolderList { path: "/h".into(), hidden: false });
+    assert_eq!(plain, Request::FolderList { path: "/h".into(), hidden: false, filter: None });
+    // Initialize repository is a project_config change, never a folders one.
+    let init: Request = serde_json::from_value(json!({"cmd":"project_init","path":"/h/notes"})).unwrap();
+    assert_eq!(init.capability(), Some(Capability::project_config()));
+    assert!(init.accepts(&serde_json::from_value(json!({"kind":"folder","folder":{"root":"/h/notes","name":"notes","short":"N","color":"#123456","branch":null,"worktrees":1,"error":null}})).unwrap()));
+    assert!(!init.accepts(&Response::Ok));
     for bad in [
         json!({"cmd":"folder_list"}),
         json!({"cmd":"folder_create","parent":"/h"}),
