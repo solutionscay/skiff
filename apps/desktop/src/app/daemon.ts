@@ -80,11 +80,22 @@ export async function subscribeEvents() {
  * in the badge and the status bar, with no dialog.
  */
 export async function reloadDaemon(): Promise<DaemonStatus> {
+  return runReload("reload_daemon");
+}
+
+/** Update skiffd, from an error bar: the same move, asked for by the
+ *  person now, whatever the launch did. Rust refuses when the daemon is
+ *  not older or cannot hand over; the refusal is the error shown. */
+export async function updateDaemon(): Promise<DaemonStatus> {
+  return runReload("update_daemon");
+}
+
+async function runReload(command: "reload_daemon" | "update_daemon"): Promise<DaemonStatus> {
   $("daemon-label").textContent = "Reloading skiffd…";
   // Nothing the reconnect redraws counts as seen.
   quietSeen(true);
   try {
-    const r = await invoke<Reloaded>("reload_daemon");
+    const r = await invoke<Reloaded>(command);
     // Before boot subscribed anything, boot does it next.
     if (r.reconnected && r.status.connected && eventStream) {
       // The reloaded Host answers for itself. Events first, so nothing
