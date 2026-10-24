@@ -2,7 +2,7 @@
 import { build, sessionsOf } from "./layout";
 
 import type { Group } from "../platform/types";
-import { $, button, h } from "../ui/dom";
+import { $, button, h, setHidden } from "../ui/dom";
 import { itemKey, listItems } from "../app/keyboard";
 import { render } from "../app/render";
 import { MAX_PANES, S, sessions } from "../app/state";
@@ -133,7 +133,7 @@ export function renderSelectBar() {
   const bar = $<HTMLElement>("select-bar");
   const n = S.selection.length;
   const plan = selectionPlan();
-  bar.hidden = n === 0 || !plan;
+  setHidden(bar, n === 0 || !plan);
   if (!n || !plan) {
     delete bar.dataset.sig;
     return;
