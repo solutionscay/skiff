@@ -19,7 +19,10 @@ pub use files::{EntryKind, FileContent, HostEntry, HostFile, HostImage, HostList
 pub use folders::{FolderEntry, FolderKind, FolderListing, FolderPlaces, FolderRepo, PlaceRepo};
 pub use groups::Group;
 pub use inventory::InventorySession;
-pub use coordinator::{HostLedgerRow, HostSkipper, HostTaskType};
+pub use coordinator::{
+    HostLedgerRow, HostSkipper, HostTaskType, SkipperEdit, SkipperFolderCounts, SkipperFolderDone, SkipperFolderMode, SkipperFolderPreview,
+    SkipperOpened, SkipperRunningTask, TaskEdit,
+};
 pub use lifecycle::SessionSpec;
 pub use projects::{ChangeStatus, HostChange, HostDiff, HostFolder, HostProject, HostWorktree, ProjectEdit, ProjectFleet};
 pub use terminal::{EchoTimes, TerminalFrame};
@@ -44,6 +47,8 @@ pub const FOLDERS: &str = "folders";
 pub const PROJECT_ASSETS: &str = "project_assets";
 pub const LEDGER: &str = "ledger";
 pub const SKIPPER: &str = "skipper";
+pub const SKIPPER_CONFIG: &str = "skipper_config";
+pub const SKIPPER_RUN: &str = "skipper_run";
 
 macro_rules! identity {
     ($name:ident) => {
@@ -225,6 +230,25 @@ impl Capability {
     pub fn skipper_settings() -> Self {
         Self {
             name: SKIPPER.into(),
+            version: 1,
+        }
+    }
+    /// Change the Host's `[skiff_agent]` settings and task types, preview a
+    /// new Skipper folder and change to it (copy, start empty or switch), as
+    /// Settings does on the Host's own desktop. Data plane; grants no
+    /// Skipper launch, no watcher control and no ledger write.
+    pub fn skipper_config() -> Self {
+        Self {
+            name: SKIPPER_CONFIG.into(),
+            version: 1,
+        }
+    }
+    /// Find or start Skipper's session on the Host, and its watcher, which
+    /// `skiff-host` then keeps running. Data plane; grants no other session
+    /// and no settings change.
+    pub fn skipper_run() -> Self {
+        Self {
+            name: SKIPPER_RUN.into(),
             version: 1,
         }
     }
@@ -582,6 +606,40 @@ pub enum Request {
     },
     /// Answers `skipper`.
     SkipperSettings,
+    /// Changes one setting, then answers `skipper`, read again.
+    SkipperEdit {
+        edit: SkipperEdit,
+    },
+    /// Answers `skipper_folder`: what a change to `path` would do. A full
+    /// Host path, or one under home as `~/`. Writes nothing.
+    SkipperFolderPreview {
+        path: String,
+    },
+    /// Changes Skipper's folder to `path`, the preview's `to`. A running
+    /// Skipper session is ended first when `end_skipper`, else it refuses
+    /// the change (`conflict`). `anyway` runs it while tasks still run.
+    /// Answers `skipper_folder_done`. Not retried: files may have moved.
+    SkipperFolderChange {
+        path: String,
+        mode: SkipperFolderMode,
+        #[serde(default)]
+        end_skipper: bool,
+        #[serde(default)]
+        anyway: bool,
+    },
+    /// Finds Skipper's session or starts it, and its watcher. With
+    /// `restore`, the `input_gen` the client read: only continue a restored
+    /// shell, never start one; then `ok` when there is none. Answers
+    /// `skipper_opened`. Not retried: the session may have started.
+    SkipperOpen {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        restore: Option<u64>,
+    },
+    /// Starts the watcher for Skipper's session `session` unless one runs.
+    /// Answers `watch`.
+    SkipperWatch {
+        session: String,
+    },
 }
 impl Request {
     pub fn capability(&self) -> Option<Capability> {
@@ -611,6 +669,10 @@ impl Request {
             Self::FolderHome | Self::FolderList { .. } | Self::FolderPlaces | Self::FolderCreate { .. } => Some(Capability::folders()),
             Self::LedgerRows | Self::LedgerStamp | Self::LedgerResult { .. } => Some(Capability::ledger_read()),
             Self::SkipperSettings => Some(Capability::skipper_settings()),
+            Self::SkipperEdit { .. } | Self::SkipperFolderPreview { .. } | Self::SkipperFolderChange { .. } => {
+                Some(Capability::skipper_config())
+            }
+            Self::SkipperOpen { .. } | Self::SkipperWatch { .. } => Some(Capability::skipper_run()),
             Self::ProjectInspect { .. }
             | Self::ProjectInit { .. }
             | Self::ProjectAdd { .. }
@@ -660,7 +722,11 @@ impl Request {
                 | (Self::LedgerRows, Response::Ledger { .. })
                 | (Self::LedgerStamp, Response::LedgerStamp { .. })
                 | (Self::LedgerResult { .. }, Response::File { .. })
-                | (Self::SkipperSettings, Response::Skipper { .. })
+                | (Self::SkipperSettings | Self::SkipperEdit { .. }, Response::Skipper { .. })
+                | (Self::SkipperFolderPreview { .. }, Response::SkipperFolder { .. })
+                | (Self::SkipperFolderChange { .. }, Response::SkipperFolderDone { .. })
+                | (Self::SkipperOpen { .. }, Response::SkipperOpened { .. })
+                | (Self::SkipperWatch { .. }, Response::Watch { .. })
         ) || (!matches!(
             self,
             Self::Hello
@@ -695,6 +761,10 @@ impl Request {
                 | Self::LedgerStamp
                 | Self::LedgerResult { .. }
                 | Self::SkipperSettings
+                | Self::SkipperEdit { .. }
+                | Self::SkipperFolderPreview { .. }
+                | Self::SkipperFolderChange { .. }
+                | Self::SkipperWatch { .. }
         ) && matches!(reply, Response::Ok))
     }
 }
@@ -744,6 +814,13 @@ pub enum Response {
         #[serde(rename = "skipper")]
         settings: Box<HostSkipper>,
     },
+    /// Boxed, as `Project`. Same JSON.
+    SkipperFolder { preview: Box<SkipperFolderPreview> },
+    SkipperFolderDone { done: SkipperFolderDone },
+    /// Boxed, as `Session`. Same JSON.
+    SkipperOpened { opened: Box<SkipperOpened> },
+    /// `started`: this request started a watcher. False: one ran already.
+    Watch { started: bool },
     SessionInventory { sessions: Vec<InventorySession> },
     SessionScreen { lines: Vec<String> },
     ConnectionStatus { version: String, protocol: u32 },

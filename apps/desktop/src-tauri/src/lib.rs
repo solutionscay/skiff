@@ -46,13 +46,12 @@ fn disable_dmabuf_where_broken() {
 }
 
 /// Commands that read or change this Mac's host-owned data or processes:
-/// projects, worktrees, Git, files and local openers, the ledger, Skipper,
-/// agent settings and the resume list, and daemon lifecycle. While a remote Host is selected they are
-/// refused here, in one place, so a page bug cannot show this Mac's data
-/// under a remote Host's name. M4–M6 move them behind Host APIs.
+/// local icon and background paths, `git init`, local openers, the watch
+/// log, agent settings and the resume list, and daemon lifecycle. While a remote Host is
+/// selected they are refused here, in one place, so a page bug cannot show
+/// this Mac's data under a remote Host's name. M4–M6 move them behind Host APIs.
 const LOCAL_ONLY: &[&str] = &[
-    "set_skiff_agent", "start_skiff_watch", "skiff_watch_log", "open_skiff_agent",
-    "preview_skiff_folder", "change_skiff_folder",
+    "skiff_watch_log",
     "init_repository", "set_project_icon", "set_project_background",
     "open_diff", "preview_file", "open_file", "reveal_file", "open_path",
     "list_agent_sessions", "set_agents", "set_agent_command", "rename_agent", "remove_agent",
@@ -298,16 +297,18 @@ mod tests {
         // Session and terminal commands go through the selected Host, and are
         // gated by its capabilities instead.
         for host in ["list_sessions", "subscribe_events", "subscribe_output", "pty_write", "pty_resize", "session_screen", "create_session", "kill_session", "rename_session", "list_groups", "save_group", "delete_group", "list_agents", "daemon_status", "host_capabilities", "list_hosts", "select_host", "list_projects", "get_project", "git_changes", "git_diff", "data_plane_status", "list_files", "read_file", "open_file_copy", "project_background",
-            "ledger_rows", "ledger_result", "get_skiff_agent", "add_worktree", "remove_worktree", "add_project", "inspect_folder", "init_host_repository", "folder_home", "folder_list", "folder_create", "folder_places", "set_project_short", "set_project_fleet", "set_project_color", "set_project_closed", "remove_project", "set_project_background_opacity", "set_project_changes", "set_project_files", "set_project_theme", "reorder_projects"] {
+            "ledger_rows", "ledger_result", "get_skiff_agent", "add_worktree", "remove_worktree", "add_project", "inspect_folder", "init_host_repository", "folder_home", "folder_list", "folder_create", "folder_places", "set_project_short", "set_project_fleet", "set_project_color", "set_project_closed", "remove_project", "set_project_background_opacity", "set_project_changes", "set_project_files", "set_project_theme", "reorder_projects",
+            "set_skiff_agent", "preview_skiff_folder", "change_skiff_folder", "open_skiff_agent", "start_skiff_watch"] {
             assert!(!super::LOCAL_ONLY.contains(&host), "{host}");
         }
         // M4: project reads and changes and Git status go to the selected
         // Host's data plane (`skiff-host`), never to this Mac's config or git.
         // M5: files and backgrounds come from the Host's data plane too.
-        // M6: the ledger, results and Skipper's settings come from it too;
-        // Skipper's settings writes, launch, watcher and watch log stay here.
+        // M6: the ledger, results and Skipper's settings come from it too,
+        // and Skipper's settings writes, launch and watcher (#166 R7) go to
+        // it. The watch log and agent settings stay here.
         // Icon and background paths, `git init` and every opener of this Mac stay listed.
-        for local in ["open_path", "open_file", "reveal_file", "open_diff", "preview_file", "set_project_icon", "set_project_background", "init_repository", "set_skiff_agent", "skiff_watch_log", "change_skiff_folder", "open_skiff_agent", "start_skiff_watch", "restart_daemon", "reload_daemon", "install_cli", "list_agent_sessions", "set_agents", "set_agent_command"] {
+        for local in ["open_path", "open_file", "reveal_file", "open_diff", "preview_file", "set_project_icon", "set_project_background", "init_repository", "skiff_watch_log", "restart_daemon", "reload_daemon", "install_cli", "list_agent_sessions", "set_agents", "set_agent_command"] {
             assert!(super::LOCAL_ONLY.contains(&local), "{local}");
         }
         // A command added later must be placed on one side or the other.
@@ -315,6 +316,7 @@ mod tests {
             "daemon_status", "host_capabilities", "list_hosts", "add_host", "edit_host", "rename_host", "remove_host", "uninstall_preview", "ssh_aliases", "resolve_ssh", "check_host", "pick_socket", "host_key_scan", "host_key_trust", "make_key", "unlock_key", "public_key", "install_key", "fix_permissions", "install_skiff", "cancel_install", "start_skiff", "turn_on_linger", "update_skiff", "set_host_auto_update", "select_host", "set_host_clipboard", "host_clipboard", "accept_host_identity",
             "list_sessions", "create_session", "pty_write", "pty_resize", "session_seen", "kill_session", "rename_session", "set_session_theme", "list_agents", "list_projects", "get_project", "git_changes", "git_diff", "data_plane_status", "list_files", "read_file", "open_file_copy", "project_background",
             "ledger_rows", "ledger_result", "get_skiff_agent", "add_worktree", "remove_worktree", "add_project", "inspect_folder", "init_host_repository", "folder_home", "folder_list", "folder_create", "folder_places", "set_project_short", "set_project_fleet", "set_project_color", "set_project_closed", "remove_project", "set_project_background_opacity", "set_project_changes", "set_project_files", "set_project_theme", "reorder_projects",
+            "set_skiff_agent", "preview_skiff_folder", "change_skiff_folder", "open_skiff_agent", "start_skiff_watch",
             "open_settings", "set_open", "set_open_peek", "open_url", "list_themes", "import_themes", "open_theme_folder", "get_appearance",
             "memory_usage", "get_keys", "trace_info", "trace_write", "trace_set", "system_load", "set_appearance", "set_font_size", "set_mission_filter",
             "list_groups", "session_screen", "save_group", "delete_group", "subscribe_output", "ack_output", "unsubscribe_output", "subscribe_events",

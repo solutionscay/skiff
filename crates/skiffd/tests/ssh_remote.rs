@@ -1477,3 +1477,123 @@ async fn a_mac_server_gets_skiff_and_a_launch_agent_once() {
     assert!(!d.join("home/.local/share/skiff/server").exists());
     assert!(!d.join("run/skiff").join(name).exists() || std::os::unix::net::UnixStream::connect(d.join("run/skiff").join(name)).is_err(), "skiffd stopped");
 }
+
+/// #166 R7 over a real forward: a Skipper setting written from the client
+/// lands in the Host's config; Start Skipper
+/// starts Skipper on the Host, and the Host's skiff-host starts its watcher.
+/// A managed install's Skipper folder defaults to the account's home.
+#[tokio::test]
+async fn skipper_is_changed_and_started_on_the_host_over_a_real_forward() {
+    use skiff_client::host::data;
+    use skiff_host_api::SkipperEdit;
+    let Some(f) = fixture("k") else { return };
+    let local = local_client(&f.socket()).await;
+    // A custom agent that every machine has: `sh`.
+    std::fs::create_dir_all(f.dir.join("config")).unwrap();
+    f.write("config/projects.toml", "[agents.commands]\nsk = \"sh\"\n");
+    let bin = Path::new(env!("CARGO_BIN_EXE_skiffd")).to_path_buf();
+    let host_bin = std::env::var_os("SKIFF_HOST_BIN").map(PathBuf::from).unwrap_or_else(|| bin.with_file_name("skiff-host"));
+    assert!(host_bin.is_file(), "build skiff-host first: cargo build -p skiff-host");
+    assert!(bin.with_file_name("skiff").is_file(), "build the CLI first: cargo build -p skiff-cli");
+    struct Service(Child);
+    impl Drop for Service {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let service = Service(
+        Command::new(&host_bin)
+            .arg("--session-socket")
+            .arg(f.socket())
+            .env("SKIFF_CONFIG", f.dir.join("config/projects.toml"))
+            .env("SKIFF_LEDGER", f.dir.join("ledger.db"))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(std::fs::File::create(f.dir.join("skiff-host.log")).unwrap())
+            .spawn()
+            .unwrap(),
+    );
+    let data_socket = skiff_core::socket::data_socket(&f.socket());
+    let until = Instant::now() + Duration::from_secs(10);
+    while std::os::unix::net::UnixStream::connect(&data_socket).is_err() {
+        assert!(Instant::now() < until, "skiff-host did not listen");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let selection = f.selection("ssh_config", &f.socket(), "fwd");
+    let host = select(&selection).await.unwrap();
+    let plane = selection.connect_data(&host.connection().hello().host.host_id).await.unwrap();
+    let c = plane.connection();
+    let config = || std::fs::read_to_string(f.dir.join("config/projects.toml")).unwrap();
+
+    // Skipper's settings change on the Host; its folder is read there.
+    data::skipper_edit(&c, SkipperEdit::Agent(Some("sk".into()))).await.unwrap();
+    let on = data::skipper_edit(&c, SkipperEdit::Enabled(true)).await.unwrap();
+    assert!(on.enabled && on.folder_status == "ready", "{on:?}");
+    assert!(config().contains("agent = \"sk\""), "{}", config());
+    let preview = data::skipper_folder_preview(&c, &f.dir.join("other").to_string_lossy()).await.unwrap();
+    assert_eq!((preview.kind.as_str(), preview.skipper_runs), ("new", false), "{preview:?}");
+
+    // Start Skipper: the Host starts the session, and a watcher for it.
+    let opened = data::skipper_open(&c, None).await.unwrap().expect("a session");
+    assert!(opened.created && opened.session.coordinator, "{opened:?}");
+    assert_eq!(opened.watch_error, None);
+    let id = opened.session.id.clone();
+    let until = Instant::now() + Duration::from_secs(15);
+    loop {
+        let s = local.list_sessions().await.unwrap().into_iter().find(|s| s.id == id).unwrap();
+        if s.watch.is_some() {
+            break;
+        }
+        assert!(Instant::now() < until, "no watcher registered for Skipper");
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    // One already runs: the Host starts no second.
+    assert!(!data::skipper_watch(&c, &id).await.unwrap());
+    // Its session ends, and with it the watcher.
+    local.kill(&id).await.unwrap();
+    drop(plane);
+    drop(service);
+
+    // A managed install keeps its Skipper folder in home, never in the
+    // runtime folder a restart empties.
+    let home = f.dir.join("mhome");
+    let run = f.dir.join("mrun");
+    let managed = home.join(".local/share/skiff/server/9.9.9");
+    std::fs::create_dir_all(&managed).unwrap();
+    std::fs::create_dir_all(run.join("skiff")).unwrap();
+    std::fs::copy(&host_bin, managed.join("skiff-host")).unwrap();
+    let sock = run.join("skiff").join(skiff_core::socket::build_socket_name());
+    let service = Service(
+        Command::new(managed.join("skiff-host"))
+            .arg("--session-socket")
+            .arg(&sock)
+            .env("HOME", &home)
+            .env("XDG_RUNTIME_DIR", &run)
+            .env_remove("XDG_CONFIG_HOME")
+            .env_remove("SKIFF_CONFIG")
+            .env_remove("SKIFF_STATE")
+            .env_remove("SKIFF_LEDGER")
+            .env_remove("SKIFF_SOCKET")
+            .env_remove("SKIFF_REAL_STATE")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(std::fs::File::create(f.dir.join("managed-host.log")).unwrap())
+            .spawn()
+            .unwrap(),
+    );
+    let data_socket = skiff_core::socket::data_socket(&sock);
+    let until = Instant::now() + Duration::from_secs(10);
+    let stream = loop {
+        if let Ok(s) = tokio::net::UnixStream::connect(&data_socket).await {
+            break s;
+        }
+        assert!(Instant::now() < until, "the managed skiff-host did not listen");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    let c = skiff_client::host::HostConnection::connect_with_timeout(stream, None, Duration::from_secs(5)).await.unwrap();
+    let settings = data::skipper_settings(&c).await.unwrap();
+    assert_eq!(Path::new(&settings.configured), home.join("skiff-agent"));
+    assert!(home.join(".config/skiff/local-host-id").is_file(), "the managed install's state is the account's");
+    drop(service);
+}

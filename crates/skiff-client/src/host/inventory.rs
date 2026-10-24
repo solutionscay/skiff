@@ -12,7 +12,7 @@ pub(super) fn opaque_path(value: std::path::PathBuf) -> Result<String, Error> {
         })
 }
 
-pub(super) fn project_session(value: core::SessionInfo) -> Result<api::InventorySession, Error> {
+pub fn project_session(value: core::SessionInfo) -> Result<api::InventorySession, Error> {
     let core::SessionInfo {
         id,
         label,
@@ -128,7 +128,7 @@ pub(super) fn project_away(value: core::Away) -> Result<api::Away, Error> {
     })
 }
 
-pub(super) fn restore_session(value: api::InventorySession) -> core::SessionInfo {
+pub fn restore_session(value: api::InventorySession) -> core::SessionInfo {
     let api::InventorySession {
         id,
         label,

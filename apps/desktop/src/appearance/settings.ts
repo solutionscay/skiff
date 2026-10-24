@@ -13,7 +13,7 @@ import { changeSkiffFolder } from "./skiffFolderDialog";
 import { rowTable, tableState } from "./rowTable";
 import { type HostsPage, hostName, isRemote } from "../app/hosts";
 import { createHostsTab } from "./hostSettings";
-import { hostInvoke } from "../app/hostCaps";
+import { hostCan, hostInvoke } from "../app/hostCaps";
 
 /**
  * Settings over the sidebar and terminal: agents, appearance, Open with and Hosts.
@@ -367,10 +367,16 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     { key: "html", label: "HTML" },
   ];
 
+  /** One Skiff agent setting, on This Mac or through a remote Host's skiff-host. */
+  function skiffAgentEdit(edit: SkiffAgentEdit): Promise<SkiffAgentSettings> {
+    if (isRemote()) return hostInvoke<SkiffAgentSettings>("skipper_config", "set_skiff_agent", { edit });
+    return invoke<SkiffAgentSettings>("set_skiff_agent", { edit });
+  }
+
   /** A task type edit. Answers with the error to show; the table redraws. */
   async function saveTask(edit: SkiffAgentEdit): Promise<string | null> {
     try {
-      agentSet = await invoke<SkiffAgentSettings>("set_skiff_agent", { edit });
+      agentSet = await skiffAgentEdit(edit);
       return null;
     } catch (e) {
       return String(e);
@@ -380,7 +386,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   async function setSkiffAgent(edit: SkiffAgentEdit) {
     error = null;
     try {
-      agentSet = await invoke<SkiffAgentSettings>("set_skiff_agent", { edit });
+      agentSet = await skiffAgentEdit(edit);
     } catch (e) {
       error = String(e);
     }
@@ -408,10 +414,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       h("div", "set-sub", "One agent for all projects."),
     );
     main.append(intro);
-    // A remote Host's Skiff agent is its own: shown here, changed on that Host.
-    if (isRemote()) {
+    // A Host whose Skiff is too old to take changes: its Skiff agent, read-only.
+    if (isRemote() && !hostCan("skipper_config")) {
       main.append(h("div", "set-note", agentSet
-        ? `The Skiff agent on ${hostName()}, from its projects.toml. Change it on that Host.`
+        ? `The Skiff agent on ${hostName()}, from its projects.toml. Its Skiff is too old to change it from here: update Skiff on ${hostName()}.`
         : `${hostName()} does not offer Skiff agent settings.`));
       if (agentSet) {
         const a = agentSet;

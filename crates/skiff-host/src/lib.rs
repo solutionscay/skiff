@@ -1,10 +1,11 @@
 //! `skiff-host`: the Host's data-plane service (M4). It speaks the Host
 //! envelope on its own socket beside skiffd's and answers projects, Git
 //! status, diff text, worktree files (M5), project backgrounds, and
-//! Skipper's ledger, results and settings (M6, read-only) from the Host's
-//! own config, disk and git, the account's folders for the picker
-//! (`folders@1`), and is the
-//! writer of the Host's `[[project]]` tables and project worktrees, through
+//! Skipper's ledger, results and settings (M6) from the Host's own config,
+//! disk and git, the account's folders for the picker (`folders@1`), and is
+//! the writer of the Host's `[[project]]` tables, `[skiff_agent]` and
+//! project worktrees, the starter of Skipper's session there and the
+//! keeper of its watcher ([`skipper`]), through
 //! the same `skiff-core` code the app ran before. It holds no PTY and no session:
 //! restarting it never touches skiffd or a terminal (#62, M1f topology).
 //!
@@ -12,6 +13,7 @@
 //! selected `projects.toml`, so both endpoints of one Host agree. Its
 //! `instance_id` is its own and changes on every start.
 pub mod folders;
+pub mod skipper;
 
 use anyhow::{bail, Context};
 use std::{
@@ -55,6 +57,8 @@ pub fn capabilities() -> Vec<Capability> {
         Capability::folders(),
         Capability::ledger_read(),
         Capability::skipper_settings(),
+        Capability::skipper_config(),
+        Capability::skipper_run(),
     ]
 }
 
@@ -148,6 +152,8 @@ impl BoundSocket {
 /// own; dropping this future closes them all, as a stopped service does.
 pub async fn serve(listener: UnixListener, hello: Arc<Hello>) -> std::io::Result<()> {
     let mut connections = tokio::task::JoinSet::new();
+    // Skipper's watcher is this service's to keep, as long as it runs.
+    connections.spawn(skipper::supervise());
     loop {
         tokio::select! {
             accepted = listener.accept() => {
@@ -267,6 +273,16 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
     };
     if matches!(request, Request::FolderPlaces) {
         note_in_use().await;
+    }
+    if matches!(
+        request,
+        Request::SkipperEdit { .. }
+            | Request::SkipperFolderPreview { .. }
+            | Request::SkipperFolderChange { .. }
+            | Request::SkipperOpen { .. }
+            | Request::SkipperWatch { .. }
+    ) {
+        return skipper::answer(request).await;
     }
     blocking(move || match request {
         Request::ProjectList => {
@@ -400,14 +416,14 @@ async fn blocking(f: impl FnOnce() -> Result<Response, Error> + Send + 'static) 
     tokio::task::spawn_blocking(f).await.unwrap_or_else(|e| Err(failed(e)))
 }
 
-fn failed(e: impl std::fmt::Display) -> Error {
+pub(crate) fn failed(e: impl std::fmt::Display) -> Error {
     Error::OperationFailed { message: format!("{e:#}") }
 }
 
 /// A refused edit as its typed error: a stale revision or a name or folder
 /// already taken is `conflict`, a bad value `invalid`, an unknown project
 /// `not_found`. Anything else failed while it ran.
-fn refused(e: anyhow::Error) -> Error {
+pub(crate) fn refused(e: anyhow::Error) -> Error {
     let message = format!("{e:#}");
     if e.downcast_ref::<config::Stale>().is_some() {
         return Error::Conflict { message };
@@ -516,7 +532,7 @@ fn host_folder_path(path: &str) -> Result<std::path::PathBuf, Error> {
 }
 
 /// How long the paired skiffd has to list its sessions.
-const SESSIONS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+pub(crate) const SESSIONS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// The sessions of the skiffd this service is paired with, on this Host.
 /// Without them nothing is removed: a worktree a session runs in must stay.

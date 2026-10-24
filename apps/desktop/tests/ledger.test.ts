@@ -4,8 +4,8 @@ import { flush, moduleFromSource } from "./workspaceHarness.ts";
 
 /** M6: the real Ledger panel and Skipper row logic for one Host. Rows and
  *  results come from the Host's `ledger` capability, settings from its
- *  `skipper` capability; nothing names or opens a path here, and a remote
- *  Host's watcher and Skipper are never started from this app. */
+ *  `skipper` capability; nothing names or opens a path here. A remote Host
+ *  starts its own Skipper and watcher, only through `skipper_run` (#166 R7). */
 
 function ledger(caps: string[], reply?: () => Promise<unknown>, epoch = () => 0) {
   const calls: string[] = [];
@@ -72,7 +72,7 @@ test("a result opens in the page's viewer by its row's uid; no path reaches an o
   assert.ok(!t.shown.some((s) => s.startsWith("path ")));
 });
 
-function skipper(remote: boolean, clock = { now: 0 }) {
+function skipper(remote: boolean, clock = { now: 0 }, caps = ["skipper", "skipper_run"]) {
   const calls: string[] = [];
   const errors: string[] = [];
   const S: any = { skiffAgent: { enabled: true, folder: "/home/me/skiff-agent", name: null, continue_on_restore: true }, agents: [] };
@@ -83,9 +83,10 @@ function skipper(remote: boolean, clock = { now: 0 }) {
     {
       "@tauri-apps/api/core": { invoke: (cmd: string) => (calls.push(`invoke ${cmd}`), Promise.resolve(null)) },
       "./hostCaps": {
-        hostInvoke: (cap: string, cmd: string) => (calls.push(`${cap} ${cmd}`), Promise.resolve({ ...S.skiffAgent, tasks: [] })),
+        hostCan: (cap: string) => caps.includes(cap),
+        hostInvoke: (cap: string, cmd: string) => (calls.push(`${cap} ${cmd}`), Promise.resolve(cmd === "get_skiff_agent" ? { ...S.skiffAgent, tasks: [] } : null)),
       },
-      "./hosts": { isRemote: () => remote, hostName: () => "devbox" },
+      "./hosts": { isRemote: () => remote, hostName: () => "devbox", checkShownHost() {} },
       "./state": { S, sessions, upsert() {} },
       "./keys": { setSkiffAgentName() {} },
       "./renderRequest": { render() {} },
@@ -109,21 +110,36 @@ test("Skipper's settings come from the Host on This Mac and on a remote Host", a
   }
 });
 
-test("a remote Host's watcher, Skipper launch and restore are never started from here", async () => {
+test("a remote Host starts its own Skipper, restore and watcher, only through skipper_run", async () => {
   const t = skipper(true);
+  t.S.agents = [{ id: "claude", installed: true, enabled: true }];
   t.mod.syncSkiffAgent();
+  await flush();
+  // The restored shell continues there; the watcher is the Host's to keep.
+  assert.deepEqual(t.calls, ["skipper_run open_skiff_agent"]);
   t.mod.startSkiffWatch();
   t.mod.openSkiffAgent();
   await flush();
-  assert.deepEqual(t.calls.filter((c) => c.startsWith("invoke")), [], "no start_skiff_watch or open_skiff_agent");
-  // No session there: the row says where Skipper starts, and starts nothing.
+  assert.deepEqual(t.calls.slice(1), ["skipper_run start_skiff_watch", "skipper_run open_skiff_agent"]);
+  assert.deepEqual(t.calls.filter((c) => c.startsWith("invoke")), [], "nothing of This Mac's");
+  // No session there: the row says so, and its Start Skipper starts it.
   t.sessions.clear();
   t.mod.openSkiffAgent();
-  assert.match(t.errors.at(-1) ?? "", /does not run on devbox.*skiff skipper/);
-  // The status says who starts the watcher, never that this app tries.
+  assert.equal(t.errors.at(-1), "Skipper does not run on devbox.");
+  // The status names the Host, never that this app tries.
   const text = t.mod.watchText("missing", t.coordinator, "Skipper", null);
-  assert.match(text, /on devbox/);
-  assert.doesNotMatch(text, /tries to start/);
+  assert.equal(text, "No watcher runs for Skipper on devbox. Skipper does not hear when its panes finish.");
+});
+
+test("a remote Host without skipper_run is asked for nothing, and the row says to update it", async () => {
+  const t = skipper(true, { now: 0 }, ["skipper"]);
+  t.S.agents = [{ id: "claude", installed: true, enabled: true }];
+  t.sessions.clear();
+  t.mod.syncSkiffAgent();
+  t.mod.openSkiffAgent();
+  await flush();
+  assert.deepEqual(t.calls, []);
+  assert.match(t.errors.at(-1) ?? "", /devbox cannot start Skipper\. Its Skiff is too old\./);
 });
 
 test("This Mac keeps starting its own watcher and restoring Skipper", async () => {
@@ -176,7 +192,7 @@ test("review M6 P2: a ledger reply from an older data connection does not show",
   assert.equal(fresh.mod.rowsNow().length, 1);
 });
 
-test("review M6 P2: a remote Host's missing watcher shows as missing once the grace ends, and nothing starts", async () => {
+test("review M6 P2: a remote Host's missing watcher shows as missing once the grace ends, and this app starts none", async () => {
   const clock = { now: 0 };
   const t = skipper(true, clock);
   t.coordinator.watch = undefined;
@@ -188,10 +204,10 @@ test("review M6 P2: a remote Host's missing watcher shows as missing once the gr
     t.mod.syncSkiffAgent();
     const w = t.mod.skiffWatch(t.coordinator);
     assert.equal(w.state, "missing", `${at / 1000} s`);
-    assert.match(w.text, /on devbox.*start skiff watch on that Host/);
+    assert.match(w.text, /^No watcher runs for Skipper on devbox\./);
   }
   await flush();
-  assert.deepEqual(t.calls.filter((c) => c.startsWith("invoke")), [], "no start_skiff_watch or open_skiff_agent");
+  assert.deepEqual(t.calls.filter((c) => c.startsWith("invoke") || c.endsWith("start_skiff_watch")), [], "no start_skiff_watch, here or there");
   // A reconnect starts a new grace.
   t.mod.noteDaemon({ connected: true, protocol: 40 });
   assert.equal(t.mod.skiffWatch(t.coordinator).state, "starting");

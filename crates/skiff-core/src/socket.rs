@@ -8,8 +8,12 @@ pub fn socket_path() -> PathBuf {
     if let Ok(p) = std::env::var("SKIFF_SOCKET") {
         return PathBuf::from(p);
     }
-    let name = if cfg!(debug_assertions) { "skiffd-dev.sock" } else { "skiffd.sock" };
-    runtime_dir().join("skiff").join(name)
+    runtime_dir().join("skiff").join(build_socket_name())
+}
+
+/// The socket file name this build uses with no `SKIFF_SOCKET`.
+pub fn build_socket_name() -> &'static str {
+    if cfg!(debug_assertions) { "skiffd-dev.sock" } else { "skiffd.sock" }
 }
 
 /// Where a Host's data-plane service (`skiff-host`) listens, beside the

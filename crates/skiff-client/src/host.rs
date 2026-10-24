@@ -35,6 +35,9 @@ mod terminal;
 mod updates;
 
 pub use skiff_host_api::TerminalFrame;
+/// Core rows in the Host contract's shapes and back, for a service that
+/// answers with them (`skiff-host`) and the app that reads them.
+pub use inventory::{project_session, restore_session};
 use terminal::OutputInner;
 pub use terminal::{OutputGap, OutputStream, TerminalOutput, TerminalSource};
 

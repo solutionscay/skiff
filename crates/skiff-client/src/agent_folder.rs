@@ -138,6 +138,85 @@ pub struct Done {
     pub warning: Option<String>,
 }
 
+impl Counts {
+    pub fn to_host(&self) -> skiff_host_api::SkipperFolderCounts {
+        skiff_host_api::SkipperFolderCounts {
+            tasks: self.tasks,
+            open: self.open,
+            done: self.done,
+            results: self.results,
+            bytes: self.bytes,
+            agents_edited: self.agents_edited,
+            other: self.other.clone(),
+        }
+    }
+}
+
+impl Preview {
+    /// The preview as a Host answers it. `skipper_runs`: its session runs.
+    pub fn to_host(&self, skipper_runs: bool) -> skiff_host_api::SkipperFolderPreview {
+        let kind = match self.kind {
+            Kind::Current => "current",
+            Kind::New => "new",
+            Kind::Empty => "empty",
+            Kind::Skiff => "skiff",
+            Kind::Refused => "refused",
+        };
+        skiff_host_api::SkipperFolderPreview {
+            from: self.from.display().to_string(),
+            to: self.to.display().to_string(),
+            kind: kind.into(),
+            refused: self.refused.clone(),
+            can_copy: self.can_copy,
+            copy_refused: self.copy_refused.clone(),
+            from_counts: self.from_counts.as_ref().map(Counts::to_host),
+            to_counts: self.to_counts.as_ref().map(Counts::to_host),
+            moved: self.moved.clone(),
+            running: self
+                .running
+                .iter()
+                .map(|r| skiff_host_api::SkipperRunningTask { uid: r.uid.clone(), task: r.task.clone(), pane_id: r.pane_id.clone() })
+                .collect(),
+            ledger_env: self.ledger_env.clone(),
+            skipper_runs,
+        }
+    }
+}
+
+impl Done {
+    pub fn to_host(&self) -> skiff_host_api::SkipperFolderDone {
+        skiff_host_api::SkipperFolderDone {
+            from: self.from.display().to_string(),
+            to: self.to.display().to_string(),
+            mode: self.mode.into(),
+            copied: self.copied.as_ref().map(Counts::to_host),
+            moved_note: self.moved_note.as_ref().map(|p| p.display().to_string()),
+            warning: self.warning.clone(),
+        }
+    }
+}
+
+impl From<Mode> for skiff_host_api::SkipperFolderMode {
+    fn from(m: Mode) -> Self {
+        match m {
+            Mode::Copy => Self::Copy,
+            Mode::Empty => Self::Empty,
+            Mode::Switch => Self::Switch,
+        }
+    }
+}
+
+impl From<skiff_host_api::SkipperFolderMode> for Mode {
+    fn from(m: skiff_host_api::SkipperFolderMode) -> Self {
+        use skiff_host_api::SkipperFolderMode as M;
+        match m {
+            M::Copy => Self::Copy,
+            M::Empty => Self::Empty,
+            M::Switch => Self::Switch,
+        }
+    }
+}
+
 /// The live panes: id to generation. A task runs while its pane is there and
 /// has the generation the send saw.
 pub type Panes = HashMap<String, Option<i64>>;

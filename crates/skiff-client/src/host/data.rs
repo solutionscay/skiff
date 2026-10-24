@@ -16,8 +16,9 @@ use std::{
 };
 
 use skiff_host_api::{
-    Error, FolderListing, FolderPlaces, Hello, HostChange, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow, HostListing, HostProject,
-    HostSkipper, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response,
+    Error, FolderListing, FolderPlaces, Hello, HostChange, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
+    HostListing, HostProject, HostSkipper, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response, SkipperEdit, SkipperFolderDone,
+    SkipperFolderMode, SkipperFolderPreview, SkipperOpened,
 };
 use tokio::net::UnixStream;
 
@@ -234,6 +235,14 @@ pub async fn skipper_settings(c: &HostConnection) -> Result<HostSkipper, Error> 
     }
 }
 
+/// What a change of Skipper's folder to `path` would do on the Host.
+pub async fn skipper_folder_preview(c: &HostConnection, path: &str) -> Result<SkipperFolderPreview, Error> {
+    match c.request(Request::SkipperFolderPreview { path: path.into() }).await? {
+        Response::SkipperFolder { preview } => Ok(*preview),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
 // Changes. Each is sent once: a lost or late reply is reported, never
 // retried, since the Host may have made the change. A project change names
 // the revision it was made from, so a stale or repeated one is refused.
@@ -341,4 +350,44 @@ pub async fn worktree_add(c: &HostConnection, project: &str, branch: &str, base:
 /// Removes a linked worktree, `path` on the Host, as its Host allows.
 pub async fn worktree_remove(c: &HostConnection, project: &str, path: &str, force: bool) -> Result<(), Error> {
     c.request(Request::WorktreeRemove { project: project.into(), path: path.into(), force }).await.map(drop)
+}
+
+/// One Skipper setting on the Host. Answers the settings, read again.
+pub async fn skipper_edit(c: &HostConnection, edit: SkipperEdit) -> Result<HostSkipper, Error> {
+    match c.request(Request::SkipperEdit { edit }).await? {
+        Response::Skipper { settings } => Ok(*settings),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// Changes Skipper's folder on the Host to `path`, a preview's `to`.
+pub async fn skipper_folder_change(
+    c: &HostConnection,
+    path: &str,
+    mode: SkipperFolderMode,
+    end_skipper: bool,
+    anyway: bool,
+) -> Result<SkipperFolderDone, Error> {
+    match c.request(Request::SkipperFolderChange { path: path.into(), mode, end_skipper, anyway }).await? {
+        Response::SkipperFolderDone { done } => Ok(done),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// Finds or starts Skipper's session on the Host, and its watcher. `None`:
+/// a restore found no session to continue.
+pub async fn skipper_open(c: &HostConnection, restore: Option<u64>) -> Result<Option<SkipperOpened>, Error> {
+    match c.request(Request::SkipperOpen { restore }).await? {
+        Response::SkipperOpened { opened } => Ok(Some(*opened)),
+        Response::Ok => Ok(None),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// Starts the Host's watcher for Skipper's session `session`. True when this started one.
+pub async fn skipper_watch(c: &HostConnection, session: &str) -> Result<bool, Error> {
+    match c.request(Request::SkipperWatch { session: session.into() }).await? {
+        Response::Watch { started } => Ok(started),
+        _ => unreachable!("checked by Request::accepts"),
+    }
 }

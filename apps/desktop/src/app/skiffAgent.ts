@@ -8,8 +8,8 @@ import { agentKind } from "../appearance/agentIcon";
 import { keepRow } from "../workspace/selection";
 import { revealSession } from "../workspace/view";
 import { openPath } from "../terminal/peek";
-import { hostInvoke } from "./hostCaps";
-import { hostName, isRemote } from "./hosts";
+import { hostCan, hostInvoke } from "./hostCaps";
+import { checkShownHost, hostName, isRemote } from "./hosts";
 
 /** The name until Settings has one. skiffd's setup keeps the same default. */
 export const DEFAULT_NAME = "Skipper";
@@ -95,22 +95,40 @@ interface Opened {
 }
 
 /**
+ * `open_skiff_agent`: This Mac's skiffd, or a remote Host's `skiff-host`,
+ * which starts Skipper and its watcher there (`skipper_run@1`).
+ */
+function openCall(restore: number | null): Promise<Opened | null> {
+  if (isRemote()) return hostInvoke<Opened | null>("skipper_run", "open_skiff_agent", { restore });
+  return invoke<Opened | null>("open_skiff_agent", { restore });
+}
+
+/**
  * The row and the key: show the Skiff agent's pane, or start it. skiffd finds
  * or starts it in one guarded step, so two quick opens start one. A pane that
- * is a bare shell gets its agent again. On a remote Host the row only shows
- * the pane: Skipper starts there, with `skiff skipper`.
+ * is a bare shell gets its agent again. On a remote Host the row says first
+ * that Skipper does not run there, and Start Skipper starts it on that Host.
  */
 export function openSkiffAgent() {
   if (!skiffAgentFolder()) return;
   const s = skiffAgentSession();
   if (s) show(s.id);
-  if (isRemote()) {
-    if (!s) showError(`${skiffAgentName()} does not run on ${hostName()}. Start it there with skiff skipper.`);
-    return;
-  }
   if (s && agentKind(s) !== "shell") return;
   if (!s && !skiffAgentChoice()) return showError("No agent is on. Turn one on in Settings › Agents.");
-  invoke<Opened | null>("open_skiff_agent", { restore: null })
+  if (isRemote() && !hostCan("skipper_run")) {
+    if (!s) showError(`${hostName()} cannot start ${skiffAgentName()}. Its Skiff is too old.`, { label: "Update Skiff…", run: async () => checkShownHost() });
+    return;
+  }
+  if (isRemote() && !s) {
+    showError(`${skiffAgentName()} does not run on ${hostName()}.`, { label: "Start Skipper", run: async () => start(null) });
+    return;
+  }
+  start(s);
+}
+
+/** Starts the Skiff agent, or gives its bare shell the agent again, and shows its pane. */
+function start(s: SessionInfo | null) {
+  openCall(null)
     .then((o) => {
       if (!o) return;
       noteAsk(o.session.id, o.watch_error);
@@ -163,11 +181,12 @@ function noteAsk(id: string, error: string | null) {
  * so this asks again now and then. `now` skips the 30 s wait and shows a failure.
  */
 function watch(id: string, now = false) {
-  // A remote Host's watcher is that Host's: this app never starts one there.
-  if (isRemote()) return;
+  // A remote Host's skiff-host keeps its own watcher: this app asks there only for Start watcher.
+  if (isRemote() && !now) return;
   if (!now && watchAsked.id === id && Date.now() - watchAsked.at < 30_000) return;
   noteAsk(id, startError);
-  invoke<boolean>("start_skiff_watch", { session: id })
+  const ask = isRemote() ? hostInvoke<boolean>("skipper_run", "start_skiff_watch", { session: id }) : invoke<boolean>("start_skiff_watch", { session: id });
+  ask
     .then(() => {
       if (startError === null) return;
       startError = null;
@@ -218,7 +237,7 @@ export function watchText(state: WatchState, s: SessionInfo, name: string, error
     case "runs":
       return `skiff watch runs for ${name} since ${clock(s.watch!.since)}.`;
     case "missing":
-      if (isRemote()) return `No watcher runs for ${name} on ${hostName()}. ${name} does not hear when its panes finish. Skiff starts watchers only on this computer: start skiff watch on that Host.`;
+      if (isRemote()) return `No watcher runs for ${name} on ${hostName()}. ${name} does not hear when its panes finish.` + (error ? ` Last start failed: ${error}.` : "");
       return `No watcher runs for ${name}. ${name} does not hear when its panes finish. Skiff tries to start it every 30 seconds.` +
         (error ? ` Last start failed: ${error}.` : "");
     case "failed":
@@ -272,11 +291,11 @@ export function syncSkiffAgent() {
   shownName = name;
   if (!s) return;
   watch(s.id);
-  if (isRemote() || !S.skiffAgent.continue_on_restore || !s.resume || continued.has(s.id) || agentKind(s) !== "shell") return;
+  if ((isRemote() && !hostCan("skipper_run")) || !S.skiffAgent.continue_on_restore || !s.resume || continued.has(s.id) || agentKind(s) !== "shell") return;
   continued.add(s.id);
   // skiffd types the continue line, the same as for `skiff skipper`. Refused
   // when the person typed in the pane first: their line stays theirs.
-  invoke("open_skiff_agent", { restore: s.input_gen ?? 0 }).catch(showError);
+  openCall(s.input_gen ?? 0).catch(showError);
 }
 
 /** The name the last render saw, so a change from Settings shows. */
