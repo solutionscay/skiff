@@ -49,6 +49,70 @@ pub async fn run(socket: &Path, no_attach: bool) -> Result<()> {
     attach::attach(&c, &s.id).await
 }
 
+/// `skiff skipper --project`: finds or starts the project Skipper of
+/// `project`, then attaches unless `no_attach`.
+pub async fn run_project(socket: &Path, project: &str, no_attach: bool) -> Result<()> {
+    let c = connect_or_start(socket).await?;
+    let ps = start_project(socket, &c, project).await?;
+    let s = ps.session;
+    if ps.created {
+        match greet(&c, &s.id, &skipper::first_message(&ps.dir)).await? {
+            0 => {}
+            code => bail!("the {project} Skipper started, but its first message did not go in (exit {code}). Tell it to read {}", ps.dir.join(skipper::SKIPPER_FILE).display()),
+        }
+    }
+    if no_attach {
+        println!("{}", s.id);
+        return Ok(());
+    }
+    if ps.created {
+        eprintln!("skiff: started the {project} Skipper");
+    }
+    attach::attach(&c, &s.id).await
+}
+
+/// Finds or starts the project Skipper of `project`, and the watcher, which
+/// follows project Skippers too. A new one has no message yet: see [`greet`].
+pub async fn start_project(socket: &Path, c: &Client, project: &str) -> Result<skipper::ProjectSkipper> {
+    let ps = skipper::open_project(c, project).await?;
+    let exe = std::env::current_exe().context("find this skiff binary")?;
+    if let Err(e) = skipper::start_watch(socket, &exe, &ps.session.id) {
+        eprintln!("skiff: the {project} Skipper runs, but the watcher did not start: {e:#}");
+    }
+    Ok(ps)
+}
+
+/// How long a new agent has to show its input box.
+const READY: Duration = Duration::from_secs(90);
+
+/// Waits until the new agent in `id` shows an empty input box, then sends
+/// `text` with Enter. Returns `send`'s exit code.
+pub async fn greet(c: &Client, id: &str, text: &str) -> Result<i32> {
+    let s = ready(c, id).await?;
+    crate::sessions::send_to(c, &s, crate::sessions::Send { text: &[text.to_string()], enter: true, raw: false, shell: false }).await
+}
+
+/// The session `id` once a known agent is in front, idle, with an empty
+/// input box. Fails when it ends, or after [`READY`].
+pub async fn ready(c: &Client, id: &str) -> Result<skiff_core::session::SessionInfo> {
+    use skiff_core::session::SessionState;
+    let since = Instant::now();
+    loop {
+        let all = c.list_sessions().await?;
+        let Some(s) = all.into_iter().find(|s| s.id == id) else { bail!("session {id} is gone") };
+        if s.state == SessionState::Done {
+            bail!("session {id} exited before its agent was ready");
+        }
+        if s.state == SessionState::Idle && crate::sessions::is_agent(&s) && crate::watch::read_front(c, &s).await.ok() == Some(crate::watch::Front::Ready) {
+            return Ok(s);
+        }
+        if since.elapsed() > READY {
+            bail!("the agent in session {id} did not show its input box within {}s", READY.as_secs());
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
 /// Connects. With no daemon at the socket, starts one, as the app does.
 async fn connect_or_start(socket: &Path) -> Result<Client> {
     if let Ok(c) = Client::connect(socket).await {

@@ -37,9 +37,11 @@ pub async fn ledger_rows() -> Result<Vec<Entry>, String> {
 const KEEP: i64 = 100;
 
 /// The rows the panel shows: all work not closed, and the last [`KEEP`]
-/// closed work heads with their tasks. Older closed work stays in the file.
-const PANEL: &str = "WHERE coalesce(parent, uid) NOT IN (SELECT uid FROM tasks WHERE closed_at IS NOT NULL) \
-     OR coalesce(parent, uid) IN (SELECT uid FROM tasks WHERE closed_at IS NOT NULL ORDER BY closed_at DESC, id DESC LIMIT ?1)";
+/// closed work heads with their tasks, a hand-off's tasks included. Older
+/// closed work stays in the file. The head of a hand-off's task is two
+/// steps up.
+const PANEL: &str = "WHERE coalesce((SELECT h.parent FROM tasks h WHERE h.uid = tasks.parent), parent, uid) NOT IN (SELECT uid FROM tasks WHERE closed_at IS NOT NULL) \
+     OR coalesce((SELECT h.parent FROM tasks h WHERE h.uid = tasks.parent), parent, uid) IN (SELECT uid FROM tasks WHERE closed_at IS NOT NULL ORDER BY closed_at DESC, id DESC LIMIT ?1)";
 
 fn read() -> anyhow::Result<Vec<Entry>> {
     let file = ledger::path()?;
