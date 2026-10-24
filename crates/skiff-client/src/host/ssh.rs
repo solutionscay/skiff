@@ -153,8 +153,9 @@ pub fn forward_args(target: &SshTarget, local: &Path, options: &SshOptions) -> V
         ("-o", "ForwardX11=no"),
         ("-o", "PermitLocalCommand=no"),
         ("-o", "RequestTTY=no"),
-        // A failed channel is logged at INFO: keep it for diagnosis.
-        ("-o", "LogLevel=INFO"),
+        // A failed channel is logged at INFO, which DEBUG1 keeps, for the
+        // cause. DEBUG1 adds the lines a connect shows (`shown_line`).
+        ("-o", "LogLevel=DEBUG1"),
     ] {
         args.push(flag.into());
         args.push(value.into());
@@ -220,26 +221,46 @@ pub enum BatchRun {
 /// Runs `command` over one strict, batch ssh run, with `stdin`, within
 /// `timeout`. Err: ssh itself could not be run.
 pub async fn run_batch(target: &SshTarget, options: &SshOptions, command: String, stdin: &[u8], timeout: Duration) -> Result<BatchRun, String> {
-    run_batch_steps(target, options, command, stdin, timeout, &|_| {}).await
+    run_batch_steps(target, options, command, stdin, timeout, None).await
 }
 
 /// What a server step prints on stderr, one line per step, for a person
 /// who waits: `skiff-step: <words>`.
 const STEP: &str = "skiff-step: ";
 
-/// [`run_batch`], and each step line the server prints goes to `step` as
-/// it arrives.
+/// What a batch run shows while it runs.
+pub enum BatchEvent<'a> {
+    /// A line the server printed as `skiff-step: <words>`.
+    Step(&'a str),
+    /// One of ssh's own lines that [`shown_line`] lets through.
+    Ssh(String),
+    /// Bytes of stdin sent so far, and the whole.
+    Sent(u64, u64),
+}
+
+/// How much stdin goes per write, so the bytes sent can be shown.
+const CHUNK: usize = 64 * 1024;
+
+/// [`run_batch`]. With `show`, ssh logs at DEBUG1, and the server's step
+/// lines, ssh's allowlisted lines and the bytes sent go to `show` as they
+/// happen. The rest of stderr stays for the cause, as without it.
 pub async fn run_batch_steps(
     target: &SshTarget,
     options: &SshOptions,
     command: String,
     stdin: &[u8],
     timeout: Duration,
-    step: &(dyn Fn(&str) + Send + Sync),
+    show: Option<&(dyn Fn(BatchEvent) + Send + Sync)>,
 ) -> Result<BatchRun, String> {
     use tokio::io::AsyncReadExt;
+    let mut args = batch_args(target, options, command);
+    if show.is_some() {
+        for a in args.iter_mut().filter(|a| *a == "LogLevel=INFO") {
+            *a = "LogLevel=DEBUG1".into();
+        }
+    }
     let mut child = Command::new(&options.program)
-        .args(batch_args(target, options, command))
+        .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -248,28 +269,48 @@ pub async fn run_batch_steps(
         .map_err(|e| format!("Skiff cannot run ssh: {e}"))?;
     let mut input = child.stdin.take().expect("piped");
     let (mut stdout, stderr) = (child.stdout.take().expect("piped"), child.stderr.take().expect("piped"));
-    let data = stdin.to_vec();
-    // A failed write shows as ssh's own failure below.
-    let writer = tokio::spawn(async move {
-        let _ = input.write_all(&data).await;
-    });
+    let emit = |e: BatchEvent| {
+        if let Some(f) = show {
+            f(e)
+        }
+    };
     let run = async {
+        // A failed write shows as ssh's own failure below.
+        let write = async {
+            let total = stdin.len() as u64;
+            let mut last = 0u64;
+            for chunk in stdin.chunks(CHUNK) {
+                if input.write_all(chunk).await.is_err() {
+                    break;
+                }
+                last += chunk.len() as u64;
+                if total > 4 * CHUNK as u64 && (last.is_multiple_of(4 * CHUNK as u64) || last == total) {
+                    emit(BatchEvent::Sent(last, total));
+                }
+            }
+            drop(input);
+        };
         let mut out = Vec::new();
         let read_out = stdout.read_to_end(&mut out);
         let read_err = async {
             let (mut lines, mut rest) = (BufReader::new(stderr).lines(), String::new());
             while let Ok(Some(line)) = lines.next_line().await {
                 match line.strip_prefix(STEP) {
-                    Some(words) => step(words.trim()),
+                    Some(words) => emit(BatchEvent::Step(words.trim())),
                     None => {
-                        rest.push_str(&line);
-                        rest.push('\n');
+                        if let Some(shown) = shown_line(&line) {
+                            emit(BatchEvent::Ssh(shown));
+                        }
+                        if !line.starts_with("debug") {
+                            rest.push_str(&line);
+                            rest.push('\n');
+                        }
                     }
                 }
             }
             rest
         };
-        let (_, err) = tokio::join!(read_out, read_err);
+        let (_, _, err) = tokio::join!(write, read_out, read_err);
         (child.wait().await, out, err)
     };
     let (status, out, err) = match tokio::time::timeout(timeout, run).await {
@@ -277,11 +318,60 @@ pub async fn run_batch_steps(
         Err(_) => return Ok(BatchRun::TimedOut),
     };
     let status = status.map_err(|e| format!("Skiff cannot run ssh: {e}"))?;
-    let _ = writer.await;
     if status.code() == Some(255) {
         return Ok(BatchRun::Ssh(err));
     }
     Ok(BatchRun::Done(String::from_utf8_lossy(&out).into_owned()))
+}
+
+/// One of ssh's own stderr lines as a person may see it, or `None`. Only a
+/// short allowlist passes: connecting, the connection, a known host key,
+/// authenticated, and forwarding, without the `debug1: ` prefix, and ssh's
+/// connect failures. Never a key path, a key, an agent or a password line.
+pub fn shown_line(line: &str) -> Option<String> {
+    let l = line.trim();
+    let debug = l.strip_prefix("debug1: ");
+    let keep = match debug {
+        Some(d) => {
+            (d.starts_with("Connecting to ") && d.contains(" port "))
+                || d.starts_with("Connection established")
+                || (d.starts_with("Host '") && d.contains("is known and matches"))
+                || d.starts_with("Authenticated to ")
+                || d.starts_with("Local connections to ")
+                || d.starts_with("Local forwarding listening on ")
+        }
+        None => {
+            // VERBOSE lines, which DEBUG1 also prints, come without a prefix.
+            l.starts_with("Authenticated to ")
+                || l.starts_with("ssh: connect to host ")
+                || l.starts_with("ssh: Could not resolve hostname ")
+                || l.starts_with("Host key verification failed")
+                || (l.contains("Permission denied (") && !l.contains('/'))
+                || l.starts_with("Connection closed by ")
+                || l.starts_with("Connection timed out")
+        }
+    };
+    let text = debug.unwrap_or(l);
+    // A key or identity file never shows, whatever the line.
+    (keep && !text.contains("/.ssh/") && !text.contains("identity")).then(|| text.to_string())
+}
+
+/// Lines a connect shows as it goes: ssh's allowlisted lines from each
+/// forward, and the replies the app notes. One stream for this app run.
+static CONNECT_LOG: std::sync::OnceLock<tokio::sync::broadcast::Sender<String>> = std::sync::OnceLock::new();
+
+fn connect_log_tx() -> &'static tokio::sync::broadcast::Sender<String> {
+    CONNECT_LOG.get_or_init(|| tokio::sync::broadcast::channel(64).0)
+}
+
+/// Every connect line from now on.
+pub fn connect_log() -> tokio::sync::broadcast::Receiver<String> {
+    connect_log_tx().subscribe()
+}
+
+/// Adds one line to the connect log, such as a skiffd reply.
+pub fn connect_note(line: impl Into<String>) {
+    let _ = connect_log_tx().send(line.into());
 }
 
 /// The longest wait between two tries to open a forward.
@@ -425,6 +515,7 @@ impl SshForward {
         let dir =
             own_dir(parent).map_err(|e| SshError::Setup(format!("{}: {e}", parent.display())))?;
         let socket = dir.join("skiffd.sock");
+        connect_note(format!("ssh -v {}", target.destination));
         let child = Command::new(&options.program)
             .args(forward_args(target, &socket, options))
             .stdin(Stdio::null())
@@ -448,6 +539,9 @@ impl SshForward {
             tokio::spawn(async move {
                 let mut lines = BufReader::new(err).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
+                    if let Some(shown) = shown_line(&line) {
+                        connect_note(shown);
+                    }
                     let mut kept = keep.lock().unwrap();
                     kept.push_str(&line);
                     kept.push('\n');
@@ -627,6 +721,27 @@ mod tests {
         assert_eq!(&args[n - 9..n - 5], ["-l", "jose", "-p", "2222"]);
         assert!(SshTarget { user: Some("-oX".into()), ..target() }.validate().is_err());
         assert!(SshTarget { port: Some(0), ..target() }.validate().is_err());
+    }
+
+    #[test]
+    fn only_allowlisted_ssh_lines_show_and_never_a_key_path() {
+        let shown = |l: &str| shown_line(l);
+        assert_eq!(shown("debug1: Connecting to p0p [192.168.1.40] port 22.").as_deref(), Some("Connecting to p0p [192.168.1.40] port 22."));
+        assert_eq!(shown("debug1: Connection established.").as_deref(), Some("Connection established."));
+        assert!(shown("debug1: Host 'p0p' is known and matches the ED25519 host key.").is_some());
+        assert!(shown("debug1: Authenticated to p0p ([192.168.1.40]:22) using \"publickey\".").is_some());
+        assert!(shown("ssh: connect to host p0p port 22: Connection timed out").is_some());
+        for hidden in [
+            "debug1: Will attempt key: /home/me/.ssh/id_ed25519 ED25519 SHA256:abc",
+            "debug1: Offering public key: /home/me/.ssh/id_ed25519",
+            "debug1: identity file /home/me/.ssh/id_rsa type -1",
+            "debug1: Reading configuration data /home/me/.ssh/config",
+            "debug1: client_input_global_request: rtype keepalive",
+            "Load key \"/home/me/.ssh/id\": bad permissions",
+            "debug1: Server host key: ssh-ed25519 SHA256:abc",
+        ] {
+            assert_eq!(shown(hidden), None, "{hidden}");
+        }
     }
 
     #[test]

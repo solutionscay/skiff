@@ -1,9 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
 import { h, button } from "../ui/dom";
 import { rune } from "../ui/runes";
+import { ctxMenu } from "../ui/contextMenu";
+import type { MenuEntry } from "../ui/menu";
 import { confirmAction, promptAction } from "../ui/confirm";
 import { actionDialog } from "../ui/dialogParts";
+import { runDialog } from "./hostProgress";
 import { copyText } from "../platform/clipboard";
 import { type HostsPage, type KnownHost, knownHosts, loadHosts, localHostName, pick, shownHost } from "../app/hosts";
 
@@ -107,34 +110,30 @@ const CHECK_ROWS = [
   "Keeps running after logout",
 ];
 
-type Check = { id: string; report: Report | null; error: string | null; note?: string };
+/** A run's outcome on its check list row: the text, the time it took or
+ *  the failure with its fix, and the output to copy. */
+type RowResult = { row: string; text: string; secs?: number; failed?: boolean; fix?: Fix; output?: string };
+type Check = { id: string; report: Report | null; error: string | null; note?: string; result?: RowResult };
 
 export function createHostsTab(redraw: () => void) {
   let form: Form | null = null;
   let check: Check | null = null;
   let error: string | null = null;
   let aliases: Alias[] = [];
-  /** `ssh -G` per Host id, for the Server column. */
-  const resolved = new Map<string, Resolved>();
+  /** This app's version, for this computer's Skiff cell. */
+  let version = "";
   /** The form's resolve line, and the input it answers. */
   let line: { for: string; text: string; bad: boolean } = { for: "", text: "", bad: false };
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const server = (r: Resolved) => `${r.user ? `${r.user}@` : ""}${r.hostname}${r.port !== 22 ? `:${r.port}` : ""}`;
   const typed = (x: KnownHost) => `${x.user ? `${x.user}@` : ""}${x.destination}${x.port ? `:${x.port}` : ""}`;
   const resolve = (destination: string, user: string, port: string) =>
     invoke<Resolved>("resolve_ssh", { destination, user: user ?? "", port: port ?? "" });
 
   /** Reads ssh config and resolves each Host. Local only. */
   async function load() {
+    version = await getVersion().catch(() => "");
     aliases = await invoke<Alias[]>("ssh_aliases").catch(() => []);
-    await Promise.all(
-      knownHosts().map(async (x) => {
-        const r = await resolve(x.destination, x.user ?? "", x.port ? String(x.port) : "").catch(() => null);
-        if (r) resolved.set(x.id, r);
-        else resolved.delete(x.id);
-      }),
-    );
   }
 
   function open(page: HostsPage) {
@@ -145,9 +144,10 @@ export function createHostsTab(redraw: () => void) {
   }
 
   /** Runs the read-only check list of a Host and shows it. */
-  async function runCheck(id: string) {
+  /** `result`: what a run just did, kept on its row through this check. */
+  async function runCheck(id: string, result?: RowResult) {
     form = null;
-    const c: Check = { id, report: null, error: null };
+    const c: Check = { id, report: null, error: null, result };
     check = c;
     redraw();
     try {
@@ -181,7 +181,7 @@ export function createHostsTab(redraw: () => void) {
     const words = h("div", "set-head-words");
     const title = h("div", "set-h", "Hosts");
     title.id = "set-h-hosts";
-    words.append(title);
+    words.append(title, h("div", "set-sub", "Pick the shown Host in the top bar."));
     const add = button("set-add ready", "Add SSH Host…", () => {
       form = newForm(null);
       redraw();
@@ -193,7 +193,7 @@ export function createHostsTab(redraw: () => void) {
     table.setAttribute("role", "table");
     table.setAttribute("aria-labelledby", "set-h-hosts");
     const cols = h("div", "set-row set-cols");
-    cols.append(h("span", "c-lead"), h("span", "", "NAME"), h("span", "", "SERVER"), h("span", "", "STATE"), h("span", ""));
+    cols.append(h("span", "c-lead"), h("span", "", "NAME"), h("span", "", "SERVER"), h("span", "", "SKIFF"), h("span", "", "STATE"), h("span", ""));
     table.append(cols, hostRow(null));
     for (const x of knownHosts()) table.append(hostRow(x));
     main.append(table);
@@ -202,36 +202,79 @@ export function createHostsTab(redraw: () => void) {
     return main;
   }
 
-  /** One Host. `null`: this computer, which has nothing to set. */
+  /** One Host. `null`: this computer, which has nothing to set: no menu,
+   *  no click, no hover. A Host row opens its check list on a click or
+   *  Enter; its other actions are in the row menu (⋯, right-click, the
+   *  menu key). */
   function hostRow(x: KnownHost | null): HTMLElement {
-    const row = h("div", "set-row set-host");
+    const row = h("div", x ? "set-row set-host act" : "set-row set-host");
     row.setAttribute("role", "row");
     const shown = x ? shownHost() === x.id : shownHost() === null;
     const lead = h("span", "c-lead");
     if (shown) lead.append(rune("indicators-check"));
     lead.setAttribute("aria-label", shown ? "Shown in this window" : "");
-    const r = x && resolved.get(x.id);
-    const acts = h("span", "c-end");
-    if (x) {
-      acts.append(
-        button("set-rm", "Check", () => void runCheck(x.id)),
-        button("set-rm", "Edit…", () => {
+    const skiff = h("span", "c-skiff mono" + (x?.update ? " update" : ""), x ? (x.skiff ?? "—") : version || "—");
+    const more = h("span", "c-more");
+    row.append(lead, h("span", "c-name", x ? x.name : localHostName()), h("span", "c-server mono", x ? typed(x) : localHostName()), skiff, stateCell(x), more);
+    if (!x) return row;
+    row.tabIndex = 0;
+    row.setAttribute("aria-label", `${x.name}: open its check list`);
+    const menu = button("c-menu", "⋯", () => {});
+    menu.tabIndex = -1;
+    menu.title = "More";
+    menu.setAttribute("aria-label", `More for ${x.name}`);
+    const openMenu = (at: { x: number; y: number }) => hostMenu(x, at.x, at.y, row);
+    menu.addEventListener("click", (e: MouseEvent) => {
+      e.stopPropagation();
+      const b = menu.getBoundingClientRect();
+      openMenu({ x: b.left, y: b.bottom });
+    });
+    more.append(menu);
+    row.addEventListener("click", () => void runCheck(x.id));
+    row.addEventListener("contextmenu", (e: MouseEvent) => {
+      e.preventDefault();
+      openMenu({ x: e.clientX, y: e.clientY });
+    });
+    row.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter") void runCheck(x.id);
+      else if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+        const b = menu.getBoundingClientRect();
+        openMenu({ x: b.left, y: b.bottom });
+      } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        const rows = [...(row.parentElement?.querySelectorAll<HTMLElement>(".set-host.act") ?? [])];
+        rows[rows.indexOf(row) + (e.key === "ArrowDown" ? 1 : -1)]?.focus();
+      } else return;
+      e.preventDefault();
+    });
+    return row;
+  }
+
+  /** The row menu: Check, Update Skiff… when offered, Edit…, Rename…, Remove…. */
+  function hostMenu(x: KnownHost, left: number, top: number, back: HTMLElement) {
+    const entries: MenuEntry[] = [
+      { icon: "indicators-check", label: "Check", run: () => void runCheck(x.id) },
+      ...(x.update ? [{ icon: "schedule-refresh-cw", label: "Update Skiff…", run: () => void checkThenUpdate(x) }] : []),
+      {
+        icon: "tools-pencil",
+        label: "Edit…",
+        run: () => {
           form = newForm(x);
           redraw();
           focusServer();
-        }),
-        button("set-rm", "Rename…", () => rename(x)),
-        button("set-rm c-remove", "Remove…", () => void remove(x)),
-      );
-    }
-    row.append(
-      lead,
-      h("span", "c-name", x ? x.name : localHostName()),
-      h("span", "c-server mono", x ? (r ? server(r) : typed(x)) : "On this computer"),
-      stateCell(x),
-      acts,
-    );
-    return row;
+        },
+      },
+      { label: "Rename…", run: () => rename(x) },
+      { sep: true },
+      { icon: "indicators-x", label: "Remove…", danger: true, run: () => void remove(x) },
+    ];
+    ctxMenu.open(left, top, x.name, entries, () => back.focus());
+  }
+
+  /** Update Skiff… from the list: the check list first, for the version
+   *  and platform the dialog names, then the dialog. */
+  async function checkThenUpdate(x: KnownHost) {
+    await runCheck(x.id);
+    if (check?.id === x.id && check.report) updateSkiff(check, x);
   }
 
   /** Dot and word, from the last check or connection in this app run. */
@@ -263,16 +306,22 @@ export function createHostsTab(redraw: () => void) {
     table.setAttribute("aria-label", `Check ${name}`);
     const rows: CheckLine[] = c.report?.rows ?? CHECK_ROWS.map((title, i) => ({ row: String(i), title, state: "skipped", text: i === 0 ? "Checking…" : "Waiting", fix: null }));
     for (const r of rows) {
-      const row = h("div", `set-row set-check ${c.report ? r.state : "waiting"}`);
+      // The row a run just changed shows what the run did, until the next check.
+      const res = c.result && r.title === CHECK_ROWS[4] ? c.result : null;
+      const state = res ? (res.failed ? "failed" : "passed") : c.report ? r.state : "waiting";
+      const row = h("div", `set-row set-check ${state}`);
       row.setAttribute("role", "row");
       const mark = h("span", "c-lead");
-      if (c.report && r.state === "passed") mark.append(rune("indicators-check"));
+      if (state === "passed") mark.append(rune("indicators-check"));
       else mark.append(h("span", "sq"));
-      mark.setAttribute("aria-label", c.report ? r.state : "waiting");
-      const text = h("span", "c-text", r.text);
-      if (c.report && (r.state === "failed" || r.state === "warning") && r.fix && x) {
-        const fix = r.fix;
-        text.append(button("set-rm set-fix", FIX_LABEL[fix], () => void runFix(c, x, fix)));
+      mark.setAttribute("aria-label", state);
+      const text = h("span", "c-text", res ? res.text : r.text);
+      if (res?.secs !== undefined && !res.failed) text.append(h("span", "c-secs", `${res.secs} s`));
+      const fix = res ? res.fix : c.report && (r.state === "failed" || r.state === "warning") ? r.fix : null;
+      if (fix && x) text.append(button("set-rm set-fix", res?.failed ? "Try again" : FIX_LABEL[fix], () => void runFix(c, x, fix)));
+      if (res?.output) {
+        const out = res.output;
+        text.append(button("set-rm set-fix", "Copy output", () => void copyText(out)));
       }
       row.append(mark, h("span", "c-name", r.title), text);
       table.append(row);
@@ -357,60 +406,37 @@ export function createHostsTab(redraw: () => void) {
   function installSkiff(c: Check, x: KnownHost) {
     const [os] = c.report?.platform ?? ["linux", ""];
     const v = c.report?.version ?? "";
-    const log = stepLog(x.id);
-    actionDialog({
+    runDialog<{ version: string; cli_linked: boolean }>({
+      id: x.id,
       title: `Install Skiff on ${x.name}?`,
       body:
         os === "macos"
           ? `Installs Skiff ${v} in your home folder on ${x.name}. It starts when you log in there.`
           : `Installs Skiff ${v} in your home folder on ${x.name}. It keeps running after a restart.`,
-      content: [log.el],
       action: "Install Skiff",
+      runningTitle: `Installing Skiff on ${x.name}`,
+      working: "Installing",
+      failTitle: `Install failed on ${x.name}`,
+      steps: runSteps(x, v, "Start skiffd and skiff-host"),
       tone: "go",
-      onClose: log.stop,
-      submit: async () => {
-        c.error = null;
-        const r = await log.run(() => invoke<{ version: string; cli_linked: boolean }>("install_skiff", { id: x.id }));
-        await runCheck(x.id);
-        if (check) check.note = `Skiff ${r.version} is installed.${r.cli_linked ? "" : " ~/.local/bin/skiff is taken, so Skiff left it."}`;
-        redraw();
+      run: () => invoke("install_skiff", { id: x.id }),
+      done: (r, secs, output) => {
+        const cli = r.cli_linked ? "" : " ~/.local/bin/skiff is taken, so Skiff left it.";
+        void runCheck(x.id, { row: "skiff", text: `Installed Skiff ${r.version}.${cli}`, secs, output });
       },
+      failed: (cause, output) => rowFailed(c, "install_skiff", cause, output),
     });
   }
 
-  /** The live steps of an install or update, newest at the bottom. A
-   *  failed run keeps them, with the error under them. */
-  function stepLog(id: string) {
-    const el = h("div", "step-log");
-    el.hidden = true;
-    el.setAttribute("aria-live", "polite");
-    let off: (() => void) | null = null;
-    const stop = () => {
-      off?.();
-      off = null;
-    };
-    const add = (line: string) => {
-      el.hidden = false;
-      el.append(h("div", "", line));
-      el.scrollTop = el.scrollHeight;
-    };
-    return {
-      el,
-      stop,
-      async run<T>(call: () => Promise<T>): Promise<T> {
-        el.replaceChildren();
-        el.hidden = true;
-        stop();
-        off = await listen<{ id: string; line: string }>("skiff:host-step", (e) => {
-          if (e.payload.id === id) add(e.payload.line);
-        });
-        try {
-          return await call();
-        } finally {
-          stop();
-        }
-      },
-    };
+  /** The six steps an install or update counts, before each runs. */
+  const runSteps = (x: KnownHost, v: string, last: string) => [`Check ${x.name}`, `Get Skiff ${v}`, "Upload", "Unpack", `Switch to Skiff ${v}`, last];
+
+  /** Close on a failed run: the check list row keeps the cause, with Try
+   *  again and Copy output. */
+  function rowFailed(c: Check, fix: Fix, cause: string, output: string) {
+    if (check !== c) return;
+    c.result = { row: "skiff", text: cause, failed: true, fix, output };
+    redraw();
   }
 
   /** The Host's own setting: on, an older install Skiff made is updated as
@@ -447,32 +473,26 @@ export function createHostsTab(redraw: () => void) {
   }
 
   function updateDialog(c: Check, x: KnownHost, o: { title: string; body: string; action: string; tone: "go" | "danger"; endSessions: boolean }) {
-    const log = stepLog(x.id);
-    let handover: { from: string; sessions: string[] } | null = null;
-    actionDialog({
-      title: o.title,
-      body: o.body,
-      content: [log.el],
-      action: o.action,
-      tone: o.tone,
-      onClose: () => {
-        log.stop();
-        if (handover) endsSessions(c, x, handover.from, handover.sessions);
-      },
-      submit: async () => {
-        c.error = null;
-        const r = await log.run(() => invoke<Updated>("update_skiff", { id: x.id, endSessions: o.endSessions }));
-        if (r.result === "no_handover") return void (handover = { from: r.from, sessions: r.sessions });
-        await runCheck(x.id);
-        const note =
+    const v = c.report?.version ?? "";
+    runDialog<Updated>({
+      id: x.id,
+      ...o,
+      runningTitle: `Updating Skiff on ${x.name}`,
+      working: "Updating",
+      failTitle: `Update failed on ${x.name}`,
+      steps: runSteps(x, v, "Start skiff-host"),
+      run: () => invoke<Updated>("update_skiff", { id: x.id, endSessions: o.endSessions }),
+      done: (r, secs, output) => {
+        if (r.result === "no_handover") return endsSessions(c, x, r.from, r.sessions);
+        const text =
           r.result === "done"
             ? `Updated to Skiff ${r.version}.${r.restarted ? " skiffd restarted." : ""}`
             : r.result === "newer"
               ? `${x.name} runs a newer Skiff, ${r.from}.`
               : `Skiff ${r.version} runs already.`;
-        if (check) check.note = note;
-        redraw();
+        void runCheck(x.id, { row: "skiff", text, secs, output });
       },
+      failed: (cause, output) => rowFailed(c, "update_skiff", cause, output),
     });
   }
 

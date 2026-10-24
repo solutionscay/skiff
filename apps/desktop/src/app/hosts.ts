@@ -22,6 +22,10 @@ export interface KnownHost {
   auto_update: boolean;
   /** The last check or connection in this app run. */
   state: "ok" | "attention" | "unknown";
+  /** The managed install's Skiff version from the last probe. `null`: not known. */
+  skiff: string | null;
+  /** That version is older than this app's: Update Skiff… is offered. */
+  update: boolean;
 }
 
 interface HostList {

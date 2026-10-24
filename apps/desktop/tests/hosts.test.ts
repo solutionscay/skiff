@@ -193,6 +193,7 @@ test("a second loss during recovery runs the whole recovery again before input i
   const daemon = moduleFromSource(
     "../src/app/daemon.ts",
     {
+      "./connectPanel": { connectAttempt() {}, connectDone() {}, connectFailed() {}, connectWait: async () => {} },
       "@tauri-apps/api/core": { invoke: async () => ({ connected: true }), Channel: class {} },
       "@tauri-apps/api/event": { listen: async () => {} },
       "../ui/dom": { $: () => elem },

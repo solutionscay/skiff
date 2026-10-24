@@ -111,7 +111,7 @@ agent() {
 start() {
   sock=$rt/skiff/$1
   [ -x "$d/current/skiffd" ] || { echo "skiff-start=missing"; return; }
-  step "Starting skiffd"
+  step "#6 Starting skiffd"
   if [ "$os" = Darwin ]; then
     agent "$label" '<dict>
     <key>Crashed</key>
@@ -322,12 +322,16 @@ install() {
   if [ "$(sha "$in")" != "$want" ]; then rm -f "$in"; step "The upload is not whole"; echo "skiff-install=bad-hash"; return; fi
   prev=$(readlink "$d/current" 2>/dev/null)
   if [ "$prev" = "$v" ] && [ -x "$d/$v/skiffd" ]; then
-    step "Skiff $v is there already"
+    step "#4 Skiff $v is there already"
+    step "#5 Skiff $v is current"
     echo changed=no
   else
-    step "Unpacking Skiff $v"
+    step "#4 Unpacking Skiff $v"
     tmp=$(mktemp -d "$d/.unpack.XXXXXX") || { echo "skiff-install=no-room"; return; }
-    if ! tar -xzf "$in" -C "$tmp" 2>/dev/null; then rm -rf "$tmp" "$in"; echo "skiff-install=no-room"; return; fi
+    if ! terr=$(tar -xzf "$in" -C "$tmp" 2>&1 >/dev/null); then
+      printf '%s\n' "$terr" | head -n 5 | while IFS= read -r l; do step "$l"; done
+      rm -rf "$tmp" "$in"; step "Removed the unpacked files"; echo "skiff-install=no-room"; return
+    fi
     src=$(find "$tmp" -mindepth 1 -maxdepth 1 -type d -name "skiff-server-$v-*" | head -n 1)
     if [ -z "$src" ] || ! grep -q "\"version\": *\"$v\"" "$src/manifest.json" 2>/dev/null; then
       rm -rf "$tmp" "$in"; echo "skiff-install=bad-bundle"; return
@@ -338,6 +342,7 @@ install() {
     mv "$src" "$d/$v"
     rm -rf "$tmp"
     # A half-unpacked version never becomes current: the link moves last.
+    step "#5 Switching to Skiff $v"
     ln -sfn "$v" "$d/current"
     echo "${by:-app}" > "$d/installed-by"
     # Keep the one before, for a rollback.

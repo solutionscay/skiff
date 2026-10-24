@@ -28,17 +28,27 @@ class El {
   focus() {}
   all(): El[] { return [this, ...this.children.flatMap((c) => c.all())]; }
   find(text: string) { return this.all().find((e) => e.textContent === text); }
-  click() { for (const f of this.listeners.click ?? []) f({}); }
+  click() { for (const f of this.listeners.click ?? []) f({ stopPropagation() {} }); }
+  getBoundingClientRect() { return { left: 0, bottom: 0 }; }
   replaceChildren(...c: El[]) { this.children = c; }
   replaceWith(e: El) { this.textContent = ""; this.children = [e]; }
+}
+
+/** The row menu (⋯) of the Host row, then one of its items. */
+function pickFromMenu(x: ReturnType<typeof tab>, label: string) {
+  const more = x.page().all().find((e) => e.className === "c-menu")!;
+  more.click();
+  x.menus.at(-1)!.entries.find((e: any) => e.label === label)!.run();
 }
 
 function tab(report?: unknown) {
   const calls: [string, unknown][] = [];
   const steps: ((e: unknown) => void)[] = [];
+  const runs: any[] = [];
+  const menus: { title: string; entries: any[] }[] = [];
   const dialogs: { title: string; body?: string; tone?: string; content?: El[]; submit: () => Promise<void>; onClose?: () => void }[] = [];
   let prompt: { value?: string; submit: (v: string) => Promise<void> } | null = null;
-  const hosts = [{ id: "h_dev", name: "devbox", destination: "devbox", user: "me", port: 2222, socket: "/run/user/1000/skiff/skiffd.sock", state: "attention" }];
+  const hosts = [{ id: "h_dev", name: "devbox", destination: "devbox", user: "me", port: 2222, socket: "/run/user/1000/skiff/skiffd.sock", state: "attention", skiff: "1.9.0", update: true }];
   const invoke = async (c: string, a?: unknown) => {
     calls.push([c, a]);
     if (c === "resolve_ssh") return { hostname: "devbox.lan", user: "me", port: 2222, jump: "" };
@@ -62,6 +72,9 @@ function tab(report?: unknown) {
       "../ui/runes": { rune: () => new El("svg") },
       "../ui/confirm": { confirmAction: async () => true, promptAction: (o: typeof prompt) => void (prompt = o) },
       "../ui/dialogParts": { actionDialog: (o: (typeof dialogs)[number]) => void dialogs.push(o) },
+      "./hostProgress": { runDialog: (o: any) => void runs.push(o) },
+      "../ui/contextMenu": { ctxMenu: { open: (_x: number, _y: number, title: string, entries: any[]) => void menus.push({ title, entries }) } },
+      "@tauri-apps/api/app": { getVersion: async () => "2.0.0" },
       "../platform/clipboard": { copyText: async (t: string) => void calls.push(["copy", t]) },
       "../app/hosts": { knownHosts: () => hosts, loadHosts: async () => {}, localHostName: () => "This computer", shownHost: () => null, pick: (id: string) => void calls.push(["pick", id]) },
     },
@@ -70,15 +83,15 @@ function tab(report?: unknown) {
   );
   let page: El = new El("div");
   const t = mod.createHostsTab(() => (page = t.draw()));
-  return { t, calls, steps, dialogs, page: () => page, prompt: () => prompt!, redraw: () => (page = t.draw()) };
+  return { t, calls, steps, runs, menus, dialogs, page: () => page, prompt: () => prompt!, redraw: () => (page = t.draw()) };
 }
 
 test("Rename sends only the new name, for the Host's id", async () => {
   const x = tab();
   await x.t.load();
   x.redraw();
-  assert.equal(x.page().find("me@devbox.lan:2222")?.className, "c-server mono", "the Server column shows what ssh -G resolves");
-  x.page().find("Rename…")!.click();
+  assert.equal(x.page().find("me@devbox:2222")?.className, "c-server mono", "the Server column shows the destination");
+  pickFromMenu(x, "Rename…");
   assert.equal(x.prompt().value, "devbox");
   await x.prompt().submit("Dev box");
   assert.equal(JSON.stringify(x.calls.find(([c]) => c === "rename_host")), JSON.stringify(["rename_host", { id: "h_dev", name: "Dev box" }]));
@@ -88,7 +101,7 @@ test("Edit opens the form with the Host's values and saves them under its id", a
   const x = tab();
   await x.t.load();
   x.redraw();
-  x.page().find("Edit…")!.click();
+  pickFromMenu(x, "Edit…");
   assert.ok(x.page().find("Edit devbox"));
   // User and port were set, so More is open and shows them.
   const port = x.page().all().find((e) => e.attrs["aria-label"] === "Port")!;
@@ -203,29 +216,32 @@ test("Install Skiff asks once, names the folder, installs, then checks again", a
   for (let i = 0; i < 4; i++) await flush();
   x.redraw();
   x.page().find("Install Skiff…")!.click();
-  const d = x.dialogs.at(-1)!;
+  const d = x.runs.at(-1)!;
   assert.equal(d.title, "Install Skiff on devbox?");
+  assert.equal(d.runningTitle, "Installing Skiff on devbox");
+  assert.equal(d.steps.length, 6);
   assert.equal(x.calls.filter(([c]) => c === "install_skiff").length, 0, "nothing runs before the confirm");
   const checks = x.calls.filter(([c]) => c === "check_host").length;
   assert.equal(d.body, "Installs Skiff 2.0.0 in your home folder on devbox. It keeps running after a restart.");
-  const run = d.submit();
-  await flush();
-  // The server's steps show in the dialog while it runs; another Host's do not.
-  for (const f of x.steps) f({ payload: { id: "h_dev", line: "Unpacking Skiff 2.0.0" } });
-  for (const f of x.steps) f({ payload: { id: "h_other", line: "not this one" } });
-  const log = d.content![0];
-  assert.deepEqual(log.all().map((e) => e.textContent).filter((t) => t), ["Unpacking Skiff 2.0.0"]);
-  await run;
+  const r = await d.run();
+  d.done(r, 14, "0.0  Check devbox");
   for (let i = 0; i < 4; i++) await flush();
   assert.equal(JSON.stringify(x.calls.filter(([c]) => c === "install_skiff")), JSON.stringify([["install_skiff", { id: "h_dev" }]]));
   assert.equal(x.calls.filter(([c]) => c === "check_host").length, checks + 1);
+  // The check list row shows what the install did, its time, and the output.
+  x.redraw();
+  const all = x.page().all();
+  assert.ok(all.some((e) => e.textContent === "Installed Skiff 2.0.0."), "the row says it");
+  assert.ok(all.some((e) => e.textContent === "14 s"));
+  all.find((e) => e.textContent === "Copy output")!.click();
+  assert.ok(x.calls.some(([c, t]) => c === "copy" && t === "0.0  Check devbox"));
 });
 
 test("Remove asks first; the uninstall box shows for a managed install and names the sessions that end", async () => {
   const x = tab();
   await x.t.load();
   x.redraw();
-  x.page().find("Remove…")!.click();
+  pickFromMenu(x, "Remove…");
   const d = x.dialogs.at(-1)!;
   assert.equal(d.title, "Remove devbox?");
   for (let i = 0; i < 4; i++) await flush();
@@ -253,7 +269,7 @@ test("Install Skiff on a Mac names the LaunchAgent and when it starts again", as
   for (let i = 0; i < 4; i++) await flush();
   x.redraw();
   x.page().find("Install Skiff…")!.click();
-  const body = x.dialogs.at(-1)!.body ?? "";
+  const body = x.runs.at(-1)!.body ?? "";
   assert.equal(body, "Installs Skiff 2.0.0 in your home folder on devbox. It starts when you log in there.");
 });
 
@@ -269,19 +285,42 @@ test("Update Skiff asks once; when sessions would end, a red dialog names them f
   for (let i = 0; i < 4; i++) await flush();
   x.redraw();
   x.page().find("Update Skiff…")!.click();
-  assert.equal(x.dialogs.at(-1)!.title, "Update Skiff on devbox?");
+  assert.equal(x.runs.at(-1)!.title, "Update Skiff on devbox?");
   assert.equal(x.calls.filter(([c]) => c === "update_skiff").length, 0, "nothing runs before the confirm");
-  const first = x.dialogs.at(-1)!;
-  await first.submit();
-  first.onClose!();
+  const first = x.runs.at(-1)!;
+  first.done(await first.run(), 3, "");
   for (let i = 0; i < 4; i++) await flush();
-  const red = x.dialogs.at(-1)!;
+  const red = x.runs.at(-1)!;
   assert.equal(red.tone, "danger");
   assert.ok(red.body!.includes("This ends: build, api."), red.body);
-  await red.submit();
+  red.done(await red.run(), 5, "");
   for (let i = 0; i < 4; i++) await flush();
   assert.equal(
     JSON.stringify(x.calls.filter(([c]) => c === "update_skiff")),
     JSON.stringify([["update_skiff", { id: "h_dev", endSessions: false }], ["update_skiff", { id: "h_dev", endSessions: true }]]),
   );
+});
+
+test("the Hosts list: one row per Host on the six-column grid, a click checks, the row menu holds the rest", async () => {
+  const x = tab();
+  await x.t.load();
+  x.redraw();
+  const all = x.page().all();
+  const cols = all.find((e) => e.className.includes("set-cols"))!;
+  assert.deepEqual(cols.children.map((c) => c.textContent), ["", "NAME", "SERVER", "SKIFF", "STATE", ""]);
+  const rows = all.filter((e) => e.className.startsWith("set-row set-host"));
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every((r) => r.children.length === 6), "every row fills the six columns");
+  // This computer: no menu, no click.
+  assert.equal(rows[0].className, "set-row set-host");
+  assert.ok(!rows[0].all().some((e) => e.className === "c-menu"));
+  // devbox: its Skiff version, amber for an update; the server as typed.
+  assert.ok(rows[1].all().some((e) => e.className === "c-skiff mono update" && e.textContent === "1.9.0"));
+  assert.ok(rows[1].all().some((e) => e.textContent === "me@devbox:2222"));
+  pickFromMenu(x, "Rename…");
+  assert.equal(JSON.stringify(x.menus.at(-1)!.entries.map((e: any) => e.label ?? "—")), JSON.stringify(["Check", "Update Skiff…", "Edit…", "Rename…", "—", "Remove…"]));
+  assert.ok(x.menus.at(-1)!.entries.at(-1).danger);
+  rows[1].click();
+  for (let i = 0; i < 4; i++) await flush();
+  assert.ok(x.calls.some(([c]) => c === "check_host"), "a click on the row checks it");
 });

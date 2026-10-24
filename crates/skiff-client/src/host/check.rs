@@ -251,6 +251,10 @@ pub struct Report {
     pub platform: Option<(String, String)>,
     /// The Skiff version this app installs.
     pub version: String,
+    /// The Skiff version the managed install runs, as the Skiff row
+    /// compares it. None: not managed, or not probed.
+    #[serde(default)]
+    pub installed: Option<String>,
 }
 
 /// What a check needs to know about the Host.
@@ -437,6 +441,7 @@ fn server_rows(list: &mut List, p: &Probe, name: &str, version: &str, update_fai
         return false;
     };
     list.platform = Some((os.into(), arch.into()));
+    list.installed = p.managed_version().map(str::to_string);
     list.pass(Row::Supported, format!("{} on {}.", p.os, p.arch));
     match (p.managed_version(), p.socket_live) {
         (Some(have), _) if have == version => list.pass(Row::Skiff, format!("Skiff {version}.")),
@@ -596,6 +601,7 @@ struct List {
     version: String,
     platform: Option<(String, String)>,
     choices: Vec<Choice>,
+    installed: Option<String>,
 }
 
 impl List {
@@ -616,7 +622,7 @@ impl List {
         for row in Row::ALL.into_iter().skip(self.rows.len()) {
             self.rows.push(Line { row, title: row.title(), state: State::Skipped, text: "Waits for the row above.".into(), fix: None });
         }
-        Report { rows: self.rows, ok, socket, choices: self.choices, host_id, platform: self.platform, version: self.version }
+        Report { rows: self.rows, ok, socket, choices: self.choices, host_id, platform: self.platform, version: self.version, installed: self.installed }
     }
 }
 

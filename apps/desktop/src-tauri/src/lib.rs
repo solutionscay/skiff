@@ -86,6 +86,19 @@ pub fn run() {
             std::thread::spawn(move || skiff_agent::sync(&handle.state::<App>()));
             let handle = app.handle().clone();
             ledger::watch(handle);
+            // A remote connect's live lines, for the connecting panel.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                use tauri::Emitter;
+                let mut lines = skiff_client::host::ssh::connect_log();
+                loop {
+                    match lines.recv().await {
+                        Ok(line) => drop(handle.emit("skiff:connect-line", line)),
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(_) => break,
+                    }
+                }
+            });
             let Some(window) = app.get_webview_window("main") else { return Ok(()) };
             #[cfg(target_os = "linux")]
             if header_bar::wanted() {
@@ -129,6 +142,7 @@ pub fn run() {
             hosts::start_skiff,
             hosts::turn_on_linger,
             hosts::update_skiff,
+            hosts::cancel_install,
             hosts::set_host_auto_update,
             hosts::select_host,
             hosts::set_host_clipboard,
@@ -298,7 +312,7 @@ mod tests {
         }
         // A command added later must be placed on one side or the other.
         let allowed = ["set_menu", "quit_app", "guard_quit", "menu_layout", "set_menu_layout", "set_window_dark", "clipboard_write", "clipboard_read",
-            "daemon_status", "host_capabilities", "list_hosts", "add_host", "edit_host", "rename_host", "remove_host", "uninstall_preview", "ssh_aliases", "resolve_ssh", "check_host", "pick_socket", "host_key_scan", "host_key_trust", "make_key", "unlock_key", "public_key", "install_key", "fix_permissions", "install_skiff", "start_skiff", "turn_on_linger", "update_skiff", "set_host_auto_update", "select_host", "set_host_clipboard", "host_clipboard", "accept_host_identity",
+            "daemon_status", "host_capabilities", "list_hosts", "add_host", "edit_host", "rename_host", "remove_host", "uninstall_preview", "ssh_aliases", "resolve_ssh", "check_host", "pick_socket", "host_key_scan", "host_key_trust", "make_key", "unlock_key", "public_key", "install_key", "fix_permissions", "install_skiff", "cancel_install", "start_skiff", "turn_on_linger", "update_skiff", "set_host_auto_update", "select_host", "set_host_clipboard", "host_clipboard", "accept_host_identity",
             "list_sessions", "create_session", "pty_write", "pty_resize", "session_seen", "kill_session", "rename_session", "set_session_theme", "list_agents", "list_projects", "get_project", "git_changes", "git_diff", "data_plane_status", "list_files", "read_file", "open_file_copy", "project_background",
             "ledger_rows", "ledger_result", "get_skiff_agent", "add_worktree", "remove_worktree", "add_project", "inspect_folder", "init_host_repository", "folder_home", "folder_list", "folder_create", "folder_places", "set_project_short", "set_project_fleet", "set_project_color", "set_project_closed", "remove_project", "set_project_background_opacity", "set_project_changes", "set_project_files", "set_project_theme", "reorder_projects",
             "open_settings", "set_open", "set_open_peek", "open_url", "list_themes", "import_themes", "open_theme_folder", "get_appearance",

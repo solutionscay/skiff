@@ -277,6 +277,11 @@ struct HostView {
     /// From the last check or connection in this app run: `ok`,
     /// `attention`, or `unknown` before any.
     state: &'static str,
+    /// The Skiff version the managed install runs, from the last probe in
+    /// this app run, as the Skiff row compares it. None: not known.
+    skiff: Option<String>,
+    /// That version is older than this app's: Update Skiff… is offered.
+    update: bool,
 }
 
 /// What this app run learned about one Host. Nothing here is stored.
@@ -295,6 +300,8 @@ struct Memo {
     /// What the connect learned about the install, and when it looked. A
     /// Host that could not be probed is tried again after [`ARRIVAL_RETRY`].
     arrival: Option<(Option<Arrival>, std::time::Instant)>,
+    /// The managed install's Skiff version from the last probe.
+    skiff: Option<String>,
 }
 
 static MEMO: std::sync::Mutex<std::collections::BTreeMap<String, Memo>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
@@ -355,7 +362,11 @@ fn host_list(hosts: Hosts, selected: Option<String>, identity: Option<&HostId>) 
     let hosts = hosts
         .hosts
         .into_iter()
-        .map(|h| HostView { state: state(&h), id: h.id, name: h.name, destination: h.destination, user: h.user, port: h.port, socket: h.socket, auto_update: h.auto_update })
+        .map(|h| {
+            let skiff = memo(&h.id, |m| m.skiff.clone());
+            let update = skiff.as_deref().is_some_and(|v| skiff_client::host::check::newer(VERSION, v));
+            HostView { state: state(&h), id: h.id, name: h.name, destination: h.destination, user: h.user, port: h.port, socket: h.socket, auto_update: h.auto_update, skiff, update }
+        })
         .collect();
     HostList { selected, local_name: local_hostname(), hosts, clipboard }
 }
@@ -597,6 +608,9 @@ pub(crate) async fn check_host(id: String) -> Result<skiff_client::host::check::
     };
     let report = skiff_client::host::check::check(&input, &SshOptions::default()).await;
     note(&id, report.ok);
+    if report.platform.is_some() {
+        memo(&id, |m| m.skiff = report.installed.clone());
+    }
     if let Some(found) = report.socket.clone() {
         let target = h.target();
         blocking(move || {
@@ -720,7 +734,10 @@ pub(crate) struct InstallView {
 async fn probe_now(h: &KnownHost) -> Result<skiff_client::host::check::Probe, String> {
     use skiff_client::host::check;
     match check::run_probe(&h.target(), &SshOptions::default(), SOCKET_NAME, h.socket.as_deref()).await? {
-        check::ProbeRun::Probed(p, _) => Ok(p),
+        check::ProbeRun::Probed(p, _) => {
+            memo(&h.id, |m| m.skiff = p.managed_version().map(str::to_string));
+            Ok(p)
+        }
         _ => Err(format!("Skiff cannot read the state of {}. Check again.", h.name)),
     }
 }
@@ -731,10 +748,15 @@ async fn probe_now(h: &KnownHost) -> Result<skiff_client::host::check::Probe, St
 /// such release sends its own binaries.
 #[tauri::command]
 pub(crate) async fn install_skiff(handle: tauri::AppHandle, id: String) -> Result<InstallView, String> {
-    use skiff_client::host::install;
     let step = steps(handle, &id);
+    cancellable(&id, install_run(&id, &step)).await
+}
+
+async fn install_run(id: &str, step: skiff_client::host::install::Steps<'_>) -> Result<InstallView, String> {
+    use skiff_client::host::install::{self, Progress};
+    let id = id.to_string();
     let h = host_by_id(&id).await?;
-    step(&format!("Checking {}", h.name));
+    step(Progress::Step { n: 1, text: format!("Check {}", h.name) });
     let p = probe_now(&h).await?;
     if p.socket_live && p.managed.is_none() {
         return Err(format!("{} runs its own Skiff. Skiff does not replace it.", h.name));
@@ -750,9 +772,10 @@ pub(crate) async fn install_skiff(handle: tauri::AppHandle, id: String) -> Resul
     let (Some(os), Some(arch)) = (p.bundle_os(), p.bundle_arch()) else {
         return Err(format!("Skiff runs on Linux and macOS, on x86_64 and ARM64. {} runs {} on {}.", h.name, p.os, p.arch));
     };
-    step(&format!("Getting Skiff {VERSION} for {os} {arch}"));
+    step(Progress::Line { text: format!("{} on {}, {} MB free in your home folder", p.os, p.arch, p.free_kb / 1024) });
+    step(Progress::Step { n: 2, text: format!("Get Skiff {VERSION} for {os} {arch}") });
     let bundle = bundle_for(os, arch).await?;
-    let outcome = install::install(&h.target(), &SshOptions::default(), &bundle, VERSION, SOCKET_NAME, p.free_kb, &h.name, &step).await?;
+    let outcome = install::install(&h.target(), &SshOptions::default(), &bundle, VERSION, SOCKET_NAME, p.free_kb, &h.name, step).await?;
     memo(&id, |m| {
         m.linger_refused = outcome.linger == "refused";
         m.ok = None;
@@ -763,15 +786,45 @@ pub(crate) async fn install_skiff(handle: tauri::AppHandle, id: String) -> Resul
 }
 
 /// The page shows each step of an install or update on this event, as
-/// `{ id, line }`, while the dialog waits.
+/// `{ id, kind, ... }` ([`skiff_client::host::install::Progress`]), while
+/// the dialog waits.
 pub(crate) const HOST_STEP: &str = "skiff:host-step";
 
-/// Sends each step line of the Host `id` to the page.
-fn steps(handle: tauri::AppHandle, id: &str) -> impl Fn(&str) + Send + Sync {
+/// Sends each step of the Host `id` to the page.
+fn steps(handle: tauri::AppHandle, id: &str) -> impl Fn(skiff_client::host::install::Progress) + Send + Sync {
     use tauri::Emitter;
     let id = id.to_string();
-    move |line: &str| {
-        let _ = handle.emit(HOST_STEP, serde_json::json!({ "id": id, "line": line }));
+    move |p| {
+        let mut v = serde_json::to_value(&p).unwrap_or_default();
+        v["id"] = id.clone().into();
+        let _ = handle.emit(HOST_STEP, v);
+    }
+}
+
+/// The install or update that runs per Host id, so Cancel can stop it.
+static RUNNING: std::sync::Mutex<std::collections::BTreeMap<String, std::sync::Arc<tokio::sync::Notify>>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// Runs `work` until it ends or Cancel stops it. Stopping drops it, which
+/// ends its ssh. The page offers Cancel only until the switch to the new
+/// version (step 5): before it, nothing on the server has changed but an
+/// upload that the next run replaces.
+async fn cancellable<T>(id: &str, work: impl std::future::Future<Output = Result<T, String>>) -> Result<T, String> {
+    let stop = std::sync::Arc::new(tokio::sync::Notify::new());
+    RUNNING.lock().unwrap().insert(id.to_string(), stop.clone());
+    let out = tokio::select! {
+        out = work => out,
+        _ = stop.notified() => Err("Cancelled. Skiff on the server did not change.".into()),
+    };
+    RUNNING.lock().unwrap().remove(id);
+    out
+}
+
+/// Cancel in the Install or Update dialog.
+#[tauri::command]
+pub(crate) fn cancel_install(id: String) {
+    if let Some(stop) = RUNNING.lock().unwrap().get(&id) {
+        stop.notify_one();
     }
 }
 
@@ -807,7 +860,8 @@ pub(crate) struct UpdateView {
 /// a Skiff that Skiff did not install, and never down.
 async fn update_managed(h: &KnownHost, end_sessions: bool, step: skiff_client::host::install::Steps<'_>) -> Result<UpdateView, String> {
     use skiff_client::host::{check, install};
-    step(&format!("Checking {}", h.name));
+    use install::Progress;
+    step(Progress::Step { n: 1, text: format!("Check {}", h.name) });
     let p = probe_now(h).await?;
     let Some(have) = p.managed_version() else {
         return Err(format!("Skiff did not install Skiff on {}, so it does not update it.", h.name));
@@ -821,7 +875,7 @@ async fn update_managed(h: &KnownHost, end_sessions: bool, step: skiff_client::h
     let (Some(os), Some(arch)) = (p.bundle_os(), p.bundle_arch()) else {
         return Err(format!("Skiff runs on Linux and macOS, on x86_64 and ARM64. {} runs {} on {}.", h.name, p.os, p.arch));
     };
-    step(&format!("Getting Skiff {VERSION} for {os} {arch}"));
+    step(Progress::Step { n: 2, text: format!("Get Skiff {VERSION} for {os} {arch}") });
     let bundle = bundle_for(os, arch).await?;
     let result = install::update(&h.target(), &SshOptions::default(), &bundle, VERSION, SOCKET_NAME, p.free_kb, &h.name, end_sessions, step).await;
     let failed = match &result {
@@ -848,7 +902,7 @@ fn no_handover(_name: &str, from: &str, sessions: &[String]) -> String {
 pub(crate) async fn update_skiff(handle: tauri::AppHandle, id: String, end_sessions: bool) -> Result<UpdateView, String> {
     let step = steps(handle, &id);
     let h = host_by_id(&id).await?;
-    update_managed(&h, end_sessions, &step).await
+    cancellable(&id, update_managed(&h, end_sessions, &step)).await
 }
 
 /// Turns the automatic update of one Host on or off.
