@@ -85,7 +85,7 @@ export function moveGroup(g: Group, anchor: Group, side: "before" | "after") {
   S.groups = list;
   render();
   // Read at run time: a new group has its saved id by then.
-  persist(() => invoke("order_groups", { groups: S.groups.map((x) => x.id).filter((id) => !id.startsWith("tmp-")) }));
+  persist(() => hostInvoke("session_groups", "order_groups", { groups: S.groups.map((x) => x.id).filter((id) => !id.startsWith("tmp-")) }));
 }
 
 export function deleteGroup(g: Group) {

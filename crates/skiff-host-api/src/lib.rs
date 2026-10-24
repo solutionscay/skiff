@@ -470,6 +470,11 @@ pub enum Request {
     GroupDelete {
         group: String,
     },
+    /// Puts the groups in this order of ids; the rest follow in theirs.
+    /// Answers `ok`.
+    GroupOrder {
+        groups: Vec<String>,
+    },
     /// Answers `agents` with the Host account's agent list.
     AgentList,
     /// Answers `projects` with every project in the Host's config, open and
@@ -677,7 +682,7 @@ impl Request {
             | Self::SessionRename { .. }
             | Self::SessionSetTheme { .. }
             | Self::SessionSeen { .. } => Some(Capability::session_lifecycle()),
-            Self::GroupList | Self::GroupSave { .. } | Self::GroupDelete { .. } => {
+            Self::GroupList | Self::GroupSave { .. } | Self::GroupDelete { .. } | Self::GroupOrder { .. } => {
                 Some(Capability::session_groups())
             }
             Self::AgentList => Some(Capability::session_agents()),

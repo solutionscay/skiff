@@ -321,6 +321,7 @@ fn m1g_lifecycle_and_groups_have_their_own_capabilities_and_lossless_golden_shap
                     Request::SessionKill { .. }
                         | Request::SessionSeen { .. }
                         | Request::GroupDelete { .. }
+                        | Request::GroupOrder { .. }
                 )
             );
         }

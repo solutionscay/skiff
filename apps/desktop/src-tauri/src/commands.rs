@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use skiff_core::{group::Group, project::AgentInfo, session::{SessionInfo, SessionSpec}};
 use tauri::{AppHandle, Manager, State};
-use skiff_client::host::local::{legacy_agents, legacy_create, legacy_delete_group, legacy_groups, legacy_kill, legacy_rename, legacy_save_group, legacy_seen, legacy_set_theme};
+use skiff_client::host::local::{legacy_agents, legacy_create, legacy_delete_group, legacy_groups, legacy_order_groups, legacy_kill, legacy_rename, legacy_save_group, legacy_seen, legacy_set_theme};
 use crate::{connection::{blocking, App, ensure_client, err}, input::Sent};
 
 #[tauri::command]
@@ -396,6 +396,6 @@ mod tests {
 
 #[tauri::command]
 pub(crate) async fn order_groups(app: State<'_, App>, groups: Vec<String>) -> Result<(), String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.order_groups(groups).await.map_err(err)
+    let c = crate::connection::host_now(&app).await?;
+    legacy_order_groups(&c, groups).await.map_err(err)
 }

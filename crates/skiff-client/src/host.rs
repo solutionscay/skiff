@@ -777,7 +777,8 @@ impl HostConnection {
                     }
                     Request::GroupList
                     | Request::GroupSave { .. }
-                    | Request::GroupDelete { .. } => {
+                    | Request::GroupDelete { .. }
+                    | Request::GroupOrder { .. } => {
                         let groups =
                             groups
                                 .as_ref()

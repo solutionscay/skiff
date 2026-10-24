@@ -297,7 +297,7 @@ mod tests {
         }
         // Session and terminal commands go through the selected Host, and are
         // gated by its capabilities instead.
-        for host in ["list_sessions", "subscribe_events", "subscribe_output", "pty_write", "pty_resize", "session_screen", "create_session", "kill_session", "rename_session", "list_groups", "save_group", "delete_group", "list_agents", "daemon_status", "host_capabilities", "list_hosts", "select_host", "list_projects", "get_project", "git_changes", "git_diff", "data_plane_status", "list_files", "read_file", "open_file_copy", "project_background",
+        for host in ["list_sessions", "subscribe_events", "subscribe_output", "pty_write", "pty_resize", "session_screen", "create_session", "kill_session", "rename_session", "list_groups", "save_group", "delete_group", "order_groups", "list_agents", "daemon_status", "host_capabilities", "list_hosts", "select_host", "list_projects", "get_project", "git_changes", "git_diff", "data_plane_status", "list_files", "read_file", "open_file_copy", "project_background",
             "ledger_rows", "ledger_result", "get_skiff_agent", "add_worktree", "remove_worktree", "add_project", "inspect_folder", "init_host_repository", "folder_home", "folder_list", "folder_create", "folder_places", "set_project_short", "set_project_fleet", "set_project_color", "set_project_closed", "remove_project", "set_project_background_opacity", "set_project_changes", "set_project_files", "set_project_theme", "reorder_projects",
             "set_skiff_agent", "preview_skiff_folder", "change_skiff_folder", "open_skiff_agent", "start_skiff_watch",
             "agent_config", "set_agents", "set_agent_command", "rename_agent", "remove_agent", "restore_agents"] {
@@ -322,7 +322,7 @@ mod tests {
             "agent_config", "set_agents", "set_agent_command", "rename_agent", "remove_agent", "restore_agents",
             "open_settings", "set_open", "set_open_peek", "open_url", "list_themes", "import_themes", "open_theme_folder", "get_appearance",
             "memory_usage", "get_keys", "trace_info", "trace_write", "trace_set", "system_load", "set_appearance", "set_font_size", "set_mission_filter",
-            "list_groups", "session_screen", "save_group", "delete_group", "subscribe_output", "ack_output", "unsubscribe_output", "subscribe_events",
+            "list_groups", "session_screen", "save_group", "delete_group", "order_groups", "subscribe_output", "ack_output", "unsubscribe_output", "subscribe_events",
             "workspace_read", "workspace_revision", "workspace_write", "workspace_launch_file", "workspace_took"];
         for c in &all {
             assert!(super::LOCAL_ONLY.contains(&c.as_str()) || allowed.contains(&c.as_str()), "{c}: decide whether a remote Host may run it");

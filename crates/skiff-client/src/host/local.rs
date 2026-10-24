@@ -961,6 +961,7 @@ impl GroupSource for LegacySessions {
                     other => Err(unexpected(other)),
                 },
                 Request::GroupDelete { group } => self.ok(Legacy::DeleteGroup { group }).await,
+                Request::GroupOrder { groups } => self.ok(Legacy::OrderGroups { groups }).await,
                 _ => Err(Error::MalformedContract {
                     message: "not a session group request".into(),
                 }),
@@ -1105,6 +1106,10 @@ pub async fn legacy_delete_group(connection: &HostConnection, group: &str) -> an
     )
     .await
     .map(drop)
+}
+
+pub async fn legacy_order_groups(connection: &HostConnection, groups: Vec<String>) -> anyhow::Result<()> {
+    legacy_request(connection, Request::GroupOrder { groups }).await.map(drop)
 }
 
 /// M3: the Host account's agent list, in the existing Tauri result.

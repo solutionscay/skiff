@@ -35,7 +35,7 @@
       "fs",
       "skiff_core"
     ],
-    "sha256": "aa794a1f2d4daf017ad6ead03cbb712bc99520726cb8d66ef2817e62eeb55d38"
+    "sha256": "06614b63e28bd3bdbd9dbf4ce37422a43cdc1e7caf4d4fa49957b1e30cb2bd4a"
   },
   "apps/desktop/src-tauri/src/config.rs": {
     "ownership": "agent settings (#166 R8): a remote Host's through HostConnection (agent_config@1); This Mac's [agents] stays the legacy local adapter: migrate in M1\u2013M6",
@@ -145,7 +145,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "ec48a8a298d0c97de22cef491e49034c3307dee8c9819be731bc12e7e7988d14"
+    "sha256": "7d9ac43ac97a2fcb5fffbcac25add90a8670912799c35151c1f143ba3f6cac6c"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -271,7 +271,7 @@
       "local provider: apps/desktop/src/app/stateQueries.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "827c2f7c601a4f4aab24b75209e5239826c3a7154ba7dc23dcad13cd9a23abc2"
+    "sha256": "4fbf1905fe50ab4ed7aea4d307d5e283350319c69f3a3713ef26042b37f47f64"
   },
   "apps/desktop/src/app/hostCaps.ts": {
     "ownership": "Host capability gate: the page's only invoke for session/terminal commands, each refused unless the selected Host advertises its capability; Rust routes them through HostConnection",
@@ -842,7 +842,7 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "d999a1836b9d995cb69d8cf028bb96ecaebe1f6555526618136afb05ed1ccb43"
+    "sha256": "df51490d6b938cc182a61abdd4b6303ff5939ab135cf967988e0fba831435097"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -896,7 +896,7 @@
       "local provider: apps/desktop/src/workspace/selection.ts",
       "local provider: apps/desktop/src/workspace/tree.ts"
     ],
-    "sha256": "d93b3b73adcf26aee853bee30569ce2b86017342c848e9765631d3b44a938384"
+    "sha256": "dce84b47690ea5ecc12eb8929f57e210677e80a14cbccf6353b2e39c7c9dcd7e"
   },
   "apps/desktop/src/workspace/welcome.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
