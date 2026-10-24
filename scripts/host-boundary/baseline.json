@@ -4,7 +4,7 @@
     "reasons": [
       "dependency surface"
     ],
-    "sha256": "dd91ec028338b05d1c09fadc6a4761b942aebd7e6de2b682400cb6ad05f04463"
+    "sha256": "1e9c908c8e27668b7719d6e3621136eb8a71fd3338c9280ac8ff27d814e2ff26"
   },
   "apps/desktop/src-tauri/Cargo.toml": {
     "ownership": "dependency surface: review new I/O providers and package aliases",
@@ -179,7 +179,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "542c8e5e37ce9e445c74eeae225564a508aec28beb3e264f9f7a32ff88002209"
+    "sha256": "3cf4a760a0efd7329e32de66f4b0710cebd229179ec1ebae145598968b02f965"
   },
   "apps/desktop/src-tauri/src/skiff_agent.rs": {
     "ownership": "Skipper (#166 R7): a remote Host's settings, folder, launch and watcher through HostConnection (skipper_config@1, skipper_run@1); This Mac's stay the local adapter (settings read from the config it writes) and its own process control; the watch log is LOCAL_ONLY",

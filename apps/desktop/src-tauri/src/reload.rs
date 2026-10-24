@@ -761,6 +761,7 @@ os.execv("/bin/cat", ["skiff", "watch"])
             };
             assert_eq!(holder.version.as_deref(), Some(skipper::CLI_VERSION));
             assert_eq!(holder.exe.as_deref().map(PathBuf::from), Some(skiff.clone()));
+            assert_eq!(holder.build, skipper::build_of(&skiff));
 
             // The `skiff` a shell finds is this CLI, on the same daemon and ledger.
             assert!(shell(&["ls", "--json"]).contains(&agent.id));
