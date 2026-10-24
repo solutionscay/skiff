@@ -11,7 +11,7 @@ import { DEFAULT_NAME, type SkiffAgentSettings } from "../app/skiffAgent";
 import { type SkiffAgentEdit, projectSkippersSection, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
 import { changeSkiffFolder } from "./skiffFolderDialog";
 import { rowTable, tableState } from "./rowTable";
-import { type HostsPage, hostName, isRemote, onHostsChanged } from "../app/hosts";
+import { type HostsPage, hostName, isRemote } from "../app/hosts";
 import { createHostsTab } from "./hostSettings";
 import { hostCan, hostInvoke } from "../app/hostCaps";
 
@@ -50,9 +50,6 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   const agentsTable = tableState();
   const tasksTable = tableState();
   const hostsTab = createHostsTab(() => render());
-  onHostsChanged(() => {
-    if (!root.hidden && tab === "hosts") render();
-  });
 
   /** The agents, from the selected Host. A remote Host's come with the revision its next change is made from. */
   function loadAgents(): Promise<AgentInfo[]> {
@@ -617,6 +614,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   });
 
   return {
+    /** A new read of the Host list redraws an open Hosts tab. main.ts wires it to
+     *  onHostsChanged: panels.ts makes Settings while hosts.ts is still loading. */
+    hostsChanged() {
+      if (!root.hidden && tab === "hosts") render();
+    },
     /** `hosts`: open on Settings › Hosts, at its list or its Add form. */
     async open(hosts?: HostsPage) {
       if (hosts) {

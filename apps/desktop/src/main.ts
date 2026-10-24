@@ -15,7 +15,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { switcher } from "./app/commands";
 import { failureLine, followDataPlane, hostOnline, loadProjects, reconnectRemote, refreshSessions, reloadDaemon, setDaemon, subscribeEvents, untilConnected } from "./app/daemon";
 import { connectAttempt, connectDone, connectFailed } from "./app/connectPanel";
-import { isRemote, loadHosts, onManageHosts, setHostConnected, watchHostLink, watchHosts } from "./app/hosts";
+import { isRemote, loadHosts, onHostsChanged, onManageHosts, setHostConnected, watchHostLink, watchHosts } from "./app/hosts";
 import { muteInput } from "./terminal/terminalRuntime";
 import { loadHostCaps } from "./app/hostCaps";
 import { $ } from "./ui/dom";
@@ -45,9 +45,10 @@ configurePaneActions({ focusPane, closePane, dragSessions });
 configureActionDispatch(runAction);
 configureCommandUi(switcher);
 // The Host menu's Add SSH Host… and Manage Hosts… open Settings › Hosts. Here, not in
-// panels.ts: hosts.ts imports panels.ts through the context menu, so a call there
-// runs before hosts.ts has its `manage`.
+// panels.ts or settings.ts: hosts.ts imports panels.ts through the context menu, so a
+// call there runs before hosts.ts has its `manage` and `changed`.
 onManageHosts((page) => void settings.open(page));
+onHostsChanged(() => settings.hostsChanged());
 
 // Skiff owns right-click. The webview's own menu (Back, Reload, Inspect)
 // never shows; text fields keep theirs for cut, copy and paste.
