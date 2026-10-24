@@ -478,7 +478,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "8c9f1991d8ce0a758571368981f1b16a02c4228b3fcb21285c31e8ed15fa4540"
+    "sha256": "4a40bf02ed7c0192b6531023f7cf7b896712cd9e39307ad8dc7e58feb831c392"
   },
   "apps/desktop/src/diagnostics/latency.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -842,7 +842,7 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "6538624c373ec5df4e7a0b5842a135b7a3c41ef5c118e09d1699c9a32b9275d2"
+    "sha256": "d999a1836b9d995cb69d8cf028bb96ecaebe1f6555526618136afb05ed1ccb43"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
