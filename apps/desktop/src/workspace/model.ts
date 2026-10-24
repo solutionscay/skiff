@@ -44,8 +44,30 @@ export function agentName(s: SessionInfo): string {
   return s.command ? basename(s.command) : s.role;
 }
 
-/** A user or Skiff name wins. An agent label wins over its terminal title. */
+/** A project Skipper: its session carries its project, and it is not the grand Skipper. */
+export function isProjectSkipper(s: SessionInfo): boolean {
+  return !!s.skipper && !s.coordinator;
+}
+
+/** The Skiff agent's name as a project Skipper's session carries it: its
+ *  session is named "<project> <name>" ("gesher Skipper"), so the name is
+ *  what follows the project. A session from before that naming keeps its
+ *  name whole. */
+export function skipperBase(s: SessionInfo): string {
+  const name = s.name || s.label || "Skipper";
+  return s.skipper && name.startsWith(`${s.skipper} `) ? name.slice(s.skipper.length + 1) : name;
+}
+
+/** What a project Skipper shows outside its project block: "Skipper · gesher".
+ *  Derived, never typed: the row inside its project block shows the name alone. */
+export function skipperTitle(s: SessionInfo): string {
+  return `${skipperBase(s)} · ${s.skipper}`;
+}
+
+/** A user or Skiff name wins. An agent label wins over its terminal title.
+ *  A project Skipper shows its name and its project. */
 export function taskTitle(s: SessionInfo): string {
+  if (isProjectSkipper(s)) return skipperTitle(s);
   return s.name || (s.role === "agent" ? s.label || s.title : s.title || s.label) || agentName(s);
 }
 
