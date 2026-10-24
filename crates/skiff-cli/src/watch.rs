@@ -534,7 +534,7 @@ impl Watcher {
     /// Takes the hand-offs project Skippers set done, not yet reported. Each
     /// one new since the last read holds one line. The first read only notes
     /// them: the unreported count names them.
-    fn handed(&mut self, rows: &[ledger::Row]) -> Vec<Wake> {
+    fn handed(&mut self, rows: &[ledger::Row], all: &[SessionInfo]) -> Vec<Wake> {
         let now: HashSet<String> = rows.iter().map(|r| r.uid.clone()).collect();
         self.held.retain(|h| h.fact != Fact::Reported || h.task.as_deref().is_some_and(|t| now.contains(t)));
         let Some(known) = self.handed.replace(now) else { return Vec::new() };
@@ -544,7 +544,12 @@ impl Watcher {
             .map(|r| Wake {
                 fact: Fact::Reported,
                 pane: format!("handoff:{}", r.uid),
-                name: format!("{} Skipper", r.project),
+                // The project Skipper's session name ("gesher Skipper"), as the sidebar shows it.
+                name: all
+                    .iter()
+                    .find(|s| s.skipper.as_deref() == Some(r.project.as_str()) && s.state != SessionState::Done)
+                    .map(|s| resolve::display_name(s).into_owned())
+                    .unwrap_or_else(|| format!("{} Skipper", r.project)),
                 id: r.pane_id.clone().unwrap_or_default(),
                 task: Some(r.uid.clone()),
             })
@@ -787,9 +792,10 @@ async fn step(c: &Client, o: &Options, ws: &mut Watchers) -> Result<Option<i32>>
     for (owner, s) in &targets {
         ws.entry(owner.clone()).or_default().skipper = Some(s.id.clone());
     }
-    let grand = targets.iter().find(|(o, _)| o == ledger::GRAND).map(|(_, s)| *s);
-    if let Some(g) = grand {
-        ws.get_mut(ledger::GRAND).expect("added above").register(c, &g.id).await?;
+    // Each coordinator's own watcher registers on its own session, so the
+    // app shows each Skipper's row from its own registration.
+    for (owner, s) in &targets {
+        ws.get_mut(owner).expect("added above").register(c, &s.id).await?;
     }
     // A read that fails (the file busy past its timeout) skips this step: the
     // next tick reads again. An empty list would forget the open panes.
@@ -819,8 +825,8 @@ async fn step(c: &Client, o: &Options, ws: &mut Watchers) -> Result<Option<i32>>
             for w in ws.values_mut() {
                 w.after_ledger(Err(&format!("{e:#}")));
             }
-            if let Some(g) = grand {
-                ws.get_mut(ledger::GRAND).expect("added above").register(c, &g.id).await?;
+            for (owner, s) in &targets {
+                ws.get_mut(owner).expect("added above").register(c, &s.id).await?;
             }
             return Ok(None);
         }
@@ -846,7 +852,7 @@ async fn step(c: &Client, o: &Options, ws: &mut Watchers) -> Result<Option<i32>>
             Err(e) => log(format!("cannot count the done tasks not reported: {e:#}")),
         }
     }
-    let (told, mut followed) = route(ws, &targets, &tasks, &gone, &handed, &all);
+    let told = route(ws, &targets, &tasks, &gone, &handed, &all);
     for (owner, wake) in told {
         let to = if owner == ledger::GRAND { String::new() } else { format!(" (to the {owner} Skipper)") };
         log(format!("{} {} {}{}{to}", wake.fact.phrase(), print::short_id(&wake.id), wake.name, wake.tail()));
@@ -855,28 +861,20 @@ async fn step(c: &Client, o: &Options, ws: &mut Watchers) -> Result<Option<i32>>
             desktop_notify(&title, "It needs you. Answer it in its pane.");
         }
     }
-    // The app reads what the watcher follows from the grand Skipper's
-    // registration: every coordinator's panes.
-    if let Some(g) = grand {
-        followed.sort_unstable();
-        followed.dedup();
-        let w = ws.get_mut(ledger::GRAND).expect("added above");
-        w.follows = Some(followed);
-        w.register(c, &g.id).await?;
-    }
+    // Each watcher reports what it follows, its own coordinator's panes,
+    // on its own coordinator's registration.
     for (owner, s) in &targets {
         let w = ws.get_mut(owner).expect("added above");
+        w.register(c, &s.id).await?;
         deliver(c, w, owner, s, &all, &coordinators, &here).await?;
-        if owner == ledger::GRAND {
-            w.register(c, &s.id).await?;
-        }
+        w.register(c, &s.id).await?;
     }
     Ok(None)
 }
 
-/// Gives each coordinator's watcher the rows it owns, and returns what each
-/// one tells, by owner, and every pane the watchers follow. The grand
-/// Skipper alone hears of a hand-off a project Skipper reported.
+/// Gives each coordinator's watcher the rows it owns and the panes it
+/// follows, and returns what each one tells, by owner. The grand Skipper
+/// alone hears of a hand-off a project Skipper reported.
 fn route(
     ws: &mut Watchers,
     targets: &[(String, &SessionInfo)],
@@ -884,26 +882,24 @@ fn route(
     gone: &[ledger::Row],
     handed: &[ledger::Row],
     all: &[SessionInfo],
-) -> (Vec<(String, Wake)>, Vec<String>) {
+) -> Vec<(String, Wake)> {
     let coordinators: Vec<&str> = targets.iter().map(|(_, s)| s.id.as_str()).collect();
     let owned = |rows: &[ledger::Row], owner: &str| rows.iter().filter(|r| r.owner == owner).cloned().collect::<Vec<_>>();
-    let (mut told, mut followed) = (Vec::new(), Vec::new());
+    let mut told = Vec::new();
     for (owner, _) in targets {
         let w = ws.entry(owner.clone()).or_default();
         w.after_ledger(Ok(()));
         let mut wakes = w.closed(&owned(gone, owner));
         if owner == ledger::GRAND {
-            wakes.extend(w.handed(handed));
+            wakes.extend(w.handed(handed, all));
         }
         let mine = owned(tasks, owner);
         let (groups, interrupted) = group(&mine, all, &coordinators);
-        let f = follows(&groups);
-        followed.extend(f.iter().cloned());
-        w.follows = Some(f);
+        w.follows = Some(follows(&groups));
         wakes.extend(w.take(&groups, &interrupted));
         told.extend(wakes.into_iter().map(|wk| (owner.clone(), wk)));
     }
-    (told, followed)
+    told
 }
 
 /// Types the held lines of `owner`'s watcher into its coordinator `skipper`
@@ -1196,6 +1192,7 @@ mod tests {
         grand.coordinator = true;
         let mut gesher = info("bbbb2222", "working", false);
         gesher.skipper = Some("gesher".into());
+        gesher.name = Some("gesher Skipper".into());
         let all = [grand, gesher, info("cccc3333", "idle", true), info("dddd4444", "idle", true)];
         let targets = targets(&all);
         assert_eq!(targets.iter().map(|(o, s)| (o.as_str(), s.id.as_str())).collect::<Vec<_>>(), [("grand", "aaaa1111"), ("gesher", "bbbb2222")]);
@@ -1205,24 +1202,26 @@ mod tests {
         let sub = ledger::Row { owner: "gesher".into(), ..row(2, "u2", "dddd4444", "sent", None) };
         let hand = ledger::Row { kind: "handoff".into(), project: "gesher".into(), ..row(3, "u3", "bbbb2222", "sent", None) };
         let mut ws = Watchers::default();
-        let (told, followed) = route(&mut ws, &targets, &[mine, sub, hand.clone()], &[], &[], &all);
+        let told = route(&mut ws, &targets, &[mine, sub, hand.clone()], &[], &[], &all);
         let told: Vec<(&str, &str)> = told.iter().map(|(o, w)| (o.as_str(), w.id.as_str())).collect();
         assert_eq!(told, [("grand", "cccc3333"), ("gesher", "dddd4444")]);
-        // The Skipper's pane is no task pane.
-        assert_eq!(followed, ["cccc3333", "dddd4444"]);
+        // Each watcher follows its own coordinator's task panes, and registers
+        // them on its own coordinator. The Skipper's pane is no task pane.
+        assert_eq!(ws["grand"].follows.as_deref(), Some(&["cccc3333".to_string()][..]));
+        assert_eq!(ws["gesher"].follows.as_deref(), Some(&["dddd4444".to_string()][..]));
         assert_eq!(wake_line(&ws["gesher"].held), "[watch] pane dddd4444 dddd4444 is idle. Read it, then mark it seen.");
 
         // gesher reports the hand-off: the grand Skipper alone hears it, once.
         let done = ledger::Row { state: "done".into(), ..hand };
-        assert!(ws.get_mut("grand").unwrap().handed(&[]).is_empty());
-        let (told, _) = route(&mut ws, &targets, &[], &[], std::slice::from_ref(&done), &all);
+        assert!(ws.get_mut("grand").unwrap().handed(&[], &[]).is_empty());
+        let told = route(&mut ws, &targets, &[], &[], std::slice::from_ref(&done), &all);
         assert_eq!(told.iter().map(|(o, w)| (o.as_str(), w.fact)).collect::<Vec<_>>(), [("grand", Fact::Reported)]);
         let grand_held: Vec<Wake> = ws["grand"].held.iter().filter(|h| h.fact == Fact::Reported).cloned().collect();
         assert_eq!(
             wake_line(&grand_held),
             "[watch] the gesher Skipper reported hand-off u3. Read its result. Tell the person, then run skiff ledger report u3."
         );
-        assert!(route(&mut ws, &targets, &[], &[], std::slice::from_ref(&done), &all).0.is_empty());
+        assert!(route(&mut ws, &targets, &[], &[], std::slice::from_ref(&done), &all).is_empty());
     }
 
     #[test]

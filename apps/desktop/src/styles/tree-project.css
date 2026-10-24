@@ -158,6 +158,15 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 .tree-project .session-row.project-skipper-row { padding-left: calc(10 * var(--u)); }
 .project-skipper-row .skiff-agent-name { flex-shrink: 0; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
 .project-skipper-row .title { color: var(--text-3); }
-/* Teal while the watcher follows one of its tasks, as on the Skipper's row. */
+/* Its own watcher, with the Skiff agent row's states: teal while it runs,
+   turning while idle with a followed pane, red when a line failed. */
+.project-skipper-row .agent-icon { position: relative; }
 .project-skipper-row.watch-on .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--watch); }
 .project-skipper-row.watch-on .agent-icon svg [fill]:not([fill="none"]) { fill: var(--watch); }
+.project-skipper-row.watch-error .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--error); }
+.project-skipper-row.watch-error .agent-icon svg [fill]:not([fill="none"]) { fill: var(--error); }
+.project-skipper-row.watch-turn .agent-icon {
+  transform-origin: center; transform-box: fill-box;
+  animation: sk-turn 8s linear var(--turn-delay, 0ms) infinite;
+}
+@media (prefers-reduced-motion: reduce) { .project-skipper-row.watch-turn .agent-icon { animation: none; } }

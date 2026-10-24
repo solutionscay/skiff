@@ -107,6 +107,7 @@ test("a clean native quit needs no prompt", async () => {
 
 test("mixed-scope plans keep qualifying headings without excluded children", () => {
   const ledger = moduleFromSource("../src/workspace/ledger.ts", {
+    "../app/skiffAgent": { skiffAgentName: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
     "./profile": { ledgerScope: () => ({ names: new Set(["A"]) }) },
     "../app/state": { S: {}, sessions: new Map() },
     "../app/stateQueries": { shownIds: () => [], accent: () => "" },
@@ -133,6 +134,7 @@ test("mixed-scope plans keep qualifying headings without excluded children", () 
 
 test("a hand-off nests under its plan with its tasks, and the filter keeps one project", () => {
   const ledger = moduleFromSource("../src/workspace/ledger.ts", {
+    "../app/skiffAgent": { skiffAgentName: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
     "./profile": { ledgerScope: () => null },
     "../app/state": { S: { projects: [] }, sessions: new Map() },
     "../app/stateQueries": { shownIds: () => [], accent: () => "" },
