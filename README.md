@@ -168,8 +168,8 @@ app version. At launch the app compares the running daemon's version and protoco
   after the app sees the same daemon pid, the new version, and each session with the
   same child pid. Sessions keep running. The protocol may differ: the reload request
   and the handover keep their own format.
-- A checkout's daemon of the same version on a release app's socket counts as another
-  build, and reloads the same way.
+- A daemon of the same version stays, whatever its build: a dev build and the
+  installed app share one daemon, and neither replaces the other's.
 - A daemon that predates reload, or that the bundled skiffd cannot adopt, keeps
   running. With no live session the app stops it with SIGTERM, never SIGKILL, and
   starts the bundled one. Otherwise the badge says the update is not finished; a
@@ -186,8 +186,11 @@ A failed reload never stops a session on its own. Before exec, the old daemon ca
 on. After exec, the app reports the failure. Either way the badge and the status bar
 show the outcome, and no dialog opens: the restart stays your choice.
 
-A dev build has the same version as the daemon it replaces, so the app does not reload
-it. Run `skiff daemon reload` after `cargo build -p skiffd`, as above.
+A dev build with the same skiffd version as the daemon that runs does not reload it:
+the same version stays, whatever its build. Run `skiff daemon reload` after
+`cargo build -p skiffd`, as above. Raise the skiffd version in `crates/skiffd/Cargo.toml`
+and `crates/skiff-core/Cargo.toml` when the daemon changes, and the dev app moves the
+installed daemon onto its build at launch, sessions kept.
 
 `pnpm tauri dev` builds `skiffd` once, when it starts. When the app rebuilds after that,
 `target/debug/skiffd` stays as it was. If that skiffd is no newer than the daemon that
@@ -195,9 +198,12 @@ runs, the app keeps the daemon and offers no restart: a restart would start the 
 build. It logs a line that names the binary and says to rebuild it with
 `cargo build -p skiffd`. A protocol mismatch still shows the warning.
 
-Debug builds use `skiffd-dev.sock`, so `pnpm tauri dev` runs its own daemon beside the
-installed app, with private state in `skiffd-dev.state/` next to the socket. The daemon writes its log next to the socket
-(`skiffd.log` or `skiffd-dev.log`), which is `$XDG_RUNTIME_DIR/skiff/` on Linux.
+One computer runs one skiffd. Every build, debug or release, of the app, the CLI and
+skiffd uses `$XDG_RUNTIME_DIR/skiff/skiffd.sock` (`$TMPDIR/skiff/skiffd.sock` on macOS)
+and the same state files, so `pnpm tauri dev` talks to the daemon the installed app
+started, and the newer of the two updates it. The daemon writes its log next to the
+socket (`skiffd.log`). For a daemon of your own, as in tests, set `SKIFF_SOCKET` to
+another path: its state then sits beside that socket.
 
 ## Packages
 
