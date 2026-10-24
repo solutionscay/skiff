@@ -1,16 +1,11 @@
 //! Whose state a process uses: the person's, or a private copy for its
-//! socket. Only the release daemon's default socket serves the person's
-//! `projects.toml`, workspace, Skiff agent folder and ledger. Any other
-//! socket, a debug build's default included, gets a folder of its own next
-//! to the socket, so a test daemon never reads or writes live state.
+//! socket. Only the default socket, `<runtime dir>/skiff/skiffd.sock` in
+//! every build, serves the person's `projects.toml`, workspace, Skiff agent
+//! folder and ledger. Any other socket (a `SKIFF_SOCKET` override) gets a
+//! folder of its own next to the socket, so a test daemon never reads or
+//! writes live state.
 //! `SKIFF_REAL_STATE=1` opts a process on another socket in. `SKIFF_CONFIG`,
 //! `SKIFF_STATE` and `SKIFF_LEDGER` still name a file each.
-//!
-//! A managed server install (the binaries the app installed under
-//! `~/.local/share/skiff/server`) is the one Skiff of its account: its
-//! build's own socket is the live one there, a dev build's `skiffd-dev.sock`
-//! included. Else its config, workspace and Skipper folder would sit in the
-//! runtime folder, which a restart empties.
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -31,27 +26,10 @@ pub fn socket() -> PathBuf {
     SOCKET.get().cloned().unwrap_or_else(crate::socket::socket_path)
 }
 
-/// The socket the installed app and its daemon use: a release build's
-/// default, with no `SKIFF_SOCKET`. From a managed server install, its own
-/// build's default.
+/// The socket the app and its daemon use: the default of every build, with
+/// no `SKIFF_SOCKET`.
 pub fn live_socket() -> PathBuf {
-    let name = if managed() { crate::socket::build_socket_name() } else { "skiffd.sock" };
-    crate::socket::runtime_dir().join("skiff").join(name)
-}
-
-/// This process runs from a managed server install: its binary, links
-/// resolved, is under `~/.local/share/skiff/server/`.
-pub fn managed() -> bool {
-    static MANAGED: OnceLock<bool> = OnceLock::new();
-    *MANAGED.get_or_init(|| {
-        let (Ok(exe), Some(home)) = (std::env::current_exe(), std::env::var_os("HOME")) else { return false };
-        in_managed_folder(&exe, Path::new(&home))
-    })
-}
-
-fn in_managed_folder(exe: &Path, home: &Path) -> bool {
-    let real = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
-    real(exe).starts_with(real(&home.join(".local/share/skiff/server")))
+    crate::socket::runtime_dir().join("skiff").join(crate::socket::SOCKET_NAME)
 }
 
 /// `socket` is the live socket.
@@ -111,14 +89,5 @@ mod tests {
         assert!(!same_socket(Path::new("/tmp/x.sock"), Path::new("/tmp/y.sock")));
         assert!(!is_live(Path::new("/tmp/x.sock")));
         assert!(is_live(&live_socket()));
-    }
-
-    #[test]
-    fn only_a_binary_in_the_managed_folder_is_a_managed_install() {
-        let home = Path::new("/home/me");
-        assert!(in_managed_folder(Path::new("/home/me/.local/share/skiff/server/2.0.0/skiffd"), home));
-        assert!(!in_managed_folder(Path::new("/home/me/code/skiff/target/debug/skiffd"), home));
-        assert!(!in_managed_folder(Path::new("/home/me/.local/share/skiff/serverx/skiffd"), home));
-        assert!(!managed(), "a test binary is no managed install");
     }
 }

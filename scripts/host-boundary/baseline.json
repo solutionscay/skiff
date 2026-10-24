@@ -75,7 +75,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "67aec6e6cd96b3d3f392d18301c41b0000cad1724cbd6a3f9c46cdaa03244b90"
+    "sha256": "91550f78a279151c6dc151e8070176be773634fc4209b2ecf6102d47b7d9ad54"
   },
   "apps/desktop/src-tauri/src/copies.rs": {
     "ownership": "client-owned (M5 reviewed): local copies of bytes the Host sent, for this computer's Open with; never reads or opens a Host path",
@@ -125,7 +125,7 @@
       "skiff_agent",
       "skiff_core"
     ],
-    "sha256": "2848cc9f5b14cf65b4d189e1d47d09ad1077a9e5e1ac905876a1893d72a36eda"
+    "sha256": "db3f371e48e7f6485d3728d6ac636cf71240d3dcbc91a970bc33e756bc7be227"
   },
   "apps/desktop/src-tauri/src/ledger.rs": {
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",
@@ -145,7 +145,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "28a28b33f6ba966752f9aaec808967ff9e45046c653107c242fd9b5f3d257659"
+    "sha256": "d83b8d69f028c2eb297dbb88f41e54c4efd3a62f9c68dded0c2ccce21d835d49"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -179,7 +179,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "a6e2d58bdc00fc7335d7e064351161975b0c551fe0d7fbd05ec301c91bf7af0c"
+    "sha256": "486c30020ac2c9fc8a321c8238e0f975290d3caacea21045ca4dad7740e78c25"
   },
   "apps/desktop/src-tauri/src/skiff_agent.rs": {
     "ownership": "Skipper (#166 R7): a remote Host's settings, folder, launch and watcher through HostConnection (skipper_config@1, skipper_run@1); This Mac's stay the local adapter (settings read from the config it writes) and its own process control; the watch log is LOCAL_ONLY",
@@ -289,7 +289,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "9dcb752ca1bc8fd02545afb1904379d7d650d79a9accdac34ae3edc07469d2db"
+    "sha256": "bd3fa326900989e634f3cf89d1d7f356ff5943866033afab2831bb733e1d36ab"
   },
   "apps/desktop/src/app/keyboard.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -439,7 +439,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "7e77ba226cf630c639a487089b47616bd4c8f4e37fe09cbddaa9b86598c39777"
+    "sha256": "3717c54f05df93116a92d77ebef0e1c588a8623c20d9dd96d9762afe992fadec"
   },
   "apps/desktop/src/appearance/settings.ts": {
     "ownership": "mixed: agent changes (agent_config@1) and Skipper settings (skipper_config@1) through hostInvoke (#166 R7, R8); Open with and the menu layout are this client's own settings",

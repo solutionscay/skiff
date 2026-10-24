@@ -72,15 +72,8 @@ impl From<&SessionInfo> for SavedSession {
 
 /// `SKIFF_STATE` overrides. A socket with private state (see
 /// [`skiff_core::state`]) keeps it there. Otherwise
-/// `<state dir>/skiff/workspace.json`, or `workspace-dev.json` for a debug
-/// build with real state.
+/// `<state dir>/skiff/workspace.json`, the same in every build.
 pub fn path() -> PathBuf {
-    path_for(cfg!(debug_assertions))
-}
-
-/// The path a debug (`dev`) or release build computes. `SKIFF_STATE` still
-/// overrides.
-pub fn path_for(dev: bool) -> PathBuf {
     if let Ok(p) = std::env::var("SKIFF_STATE") {
         return PathBuf::from(p);
     }
@@ -91,7 +84,7 @@ pub fn path_for(dev: bool) -> PathBuf {
         .or_else(dirs::data_local_dir)
         .unwrap_or_else(|| PathBuf::from("."))
         .join("skiff")
-        .join(if dev { "workspace-dev.json" } else { "workspace.json" })
+        .join("workspace.json")
 }
 
 /// A missing file is an empty workspace, not an error.

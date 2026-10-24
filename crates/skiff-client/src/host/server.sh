@@ -1,14 +1,15 @@
 # Everything Skiff runs on a server, as the account that owns the sessions:
 # no sudo, no system folder. The app sends this file on stdin, with a mode:
-#   probe [socket name] [stored socket]  read only: one JSON line for the check list
+#   probe                              read only: one JSON line for the check list
 #   install-key <key>, fix-key <key>   this computer's public key into authorized_keys
-#   install <version> <sha256> <socket name>, update <version> <sha256> <socket name> <yes|no> [force],
-#   start <socket name>, linger, sessions <socket name>, uninstall
-# The managed install is ~/.local/share/skiff/server. install: $3 is the
-# SHA-256 of the bundle Skiff uploaded to .incoming-<sha256>.tar.gz there;
-# update: the same, and $5 yes when the person agreed that sessions end if
-# skiffd cannot hand them over; $6 force installs and reloads that bundle
-# even when its build is there already. Each bundle unpacks to
+#   install <version> <sha256>, update <version> <sha256> <yes|no> [force],
+#   start, linger, sessions, uninstall
+# The managed install is ~/.local/share/skiff/server, and its skiffd is the
+# one skiffd of the account, on <runtime dir>/skiff/skiffd.sock. install: $3
+# is the SHA-256 of the bundle Skiff uploaded to .incoming-<sha256>.tar.gz
+# there; update: the same, and $4 yes when the person agreed that sessions
+# end if skiffd cannot hand them over; $5 force installs and reloads that
+# bundle even when its build is there already. Each bundle unpacks to
 # <version>+<build>: the build id in its manifest (`build`, else `commit`),
 # so two builds of one version are two folders. Each step prints key=value lines and ends
 # with skiff-<mode>=<outcome>. It never stops or replaces a skiffd it did
@@ -112,7 +113,7 @@ agent() {
 
 # Starts the managed skiffd if it does not run, and waits for its socket.
 start() {
-  sock=$rt/skiff/$1
+  sock=$rt/skiff/skiffd.sock
   [ -x "$d/current/skiffd" ] || { echo "skiff-start=missing"; return; }
   step "#6 Starting skiffd"
   if [ "$os" = Darwin ]; then
@@ -133,7 +134,7 @@ start() {
     systemctl --user -q is-active skiffd || systemctl --user start skiffd
     echo how=systemd
     linger
-    host_unit "$1"
+    host_unit
   else
     # Without a user manager: it runs until the server restarts.
     pid=$(cat "$d/skiffd.pid" 2>/dev/null)
@@ -156,21 +157,21 @@ start() {
   elif ! has_systemd; then
     host_fallback "$sock"
   fi
-  hs=$rt/skiff/${1%.sock}-host.sock
+  hs=$rt/skiff/skiffd-host.sock
   n=0
   while [ ! -S "$hs" ] && [ $n -lt 50 ] && host_alive; do sleep 0.1; n=$((n + 1)); done
   if [ -S "$hs" ] && host_alive; then step "skiff-host runs"; echo host=running; else step "skiff-host did not start"; echo host=stopped; fi
   if [ -S "$sock" ]; then echo "skiff-start=running"; else echo "skiff-start=stopped"; fi
 }
 
-# skiff-host's user unit, for the skiffd socket named $1: enabled, started,
-# restarted by systemd when it stops, and after an install that changed the
-# version ($restart_host).
+# skiff-host's user unit: enabled, started, restarted by systemd when it
+# stops, and after an install that changed the version ($restart_host).
 host_unit() {
   u=$HOME/.config/systemd/user
-  sed "s#/skiffd\.sock#/$1#" "$d/current/systemd/skiff-host.service" > "$u/.skiff-host.service.new"
-  if cmp -s "$u/.skiff-host.service.new" "$u/skiff-host.service"; then rm -f "$u/.skiff-host.service.new"
-  else mv "$u/.skiff-host.service.new" "$u/skiff-host.service"; systemctl --user daemon-reload; fi
+  if ! cmp -s "$d/current/systemd/skiff-host.service" "$u/skiff-host.service"; then
+    cp "$d/current/systemd/skiff-host.service" "$u/skiff-host.service"
+    systemctl --user daemon-reload
+  fi
   systemctl --user enable -q skiff-host 2>/dev/null
   if [ "${restart_host:-}" = yes ]; then systemctl --user restart skiff-host
   else systemctl --user -q is-active skiff-host || systemctl --user start skiff-host; fi
@@ -209,38 +210,18 @@ host_fallback() {
   echo $! > "$d/skiff-host.pid"
 }
 
-# Read only, for the check list: one JSON object on one line. $1: the
-# skiffd socket name to look for in the runtime folder. $2, when set: a
-# full socket path the person chose instead.
+# Read only, for the check list: one JSON object on one line.
 esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\000-\037'; }
 probe() {
   arch=$(uname -m)
-  # Each Skiff socket in the runtime folder, the release's and a dev
-  # build's, with `skiff status --json` from the skiffd there: the managed
-  # CLI first, then PATH, then cargo's.
-  sockets= n=0 one= seen_rel= seen_dev=
-  for name in skiffd.sock skiffd-dev.sock; do
-    sock=$rt/skiff/$name
-    [ -S "$sock" ] || continue
-    s=$(status_of "$d/current/skiff" "$(command -v skiff 2>/dev/null)" "$HOME/.cargo/bin/skiff")
-    sockets="$sockets${sockets:+,}$(printf '{"name":"%s","socket":"%s","version":"%s"}' "$name" "$(esc "$sock")" "$(esc "$(daemon_field "$s" version)")")"
-    n=$((n + 1)) one=$sock
-    case $name in skiffd.sock) seen_rel=$s ;; *) seen_dev=$s ;; esac
-  done
-  # The one in use: the stored one ($2) while it is there, else the only
-  # one, else the one with this app's name ($1).
-  if [ -n "${2:-}" ] && [ -S "$2" ]; then sock=$2
-  elif [ $n = 1 ]; then sock=$one
-  else sock=$rt/skiff/${1:-skiffd.sock}; fi
+  # The one skiffd socket of this account, and `skiff status --json` from
+  # the skiffd there: the managed CLI first, then PATH, then cargo's.
+  sock=$rt/skiff/skiffd.sock
   live=false
   [ -S "$sock" ] && live=true
-  status=null
+  status=null s=
   if [ $live = true ]; then
-    case $sock in
-      "$rt/skiff/skiffd.sock") s=$seen_rel ;;
-      "$rt/skiff/skiffd-dev.sock") s=$seen_dev ;;
-      *) s=$(status_of "$d/current/skiff" "$(command -v skiff 2>/dev/null)" "$HOME/.cargo/bin/skiff") ;;
-    esac
+    s=$(status_of "$d/current/skiff" "$(command -v skiff 2>/dev/null)" "$HOME/.cargo/bin/skiff")
     [ -n "$s" ] && status=$s
   fi
   # The install Skiff manages, if any: its manifest names the version.
@@ -279,8 +260,8 @@ probe() {
   fallback=false
   if [ -f "$d/skiffd.pid" ] && kill -0 "$(cat "$d/skiffd.pid" 2>/dev/null)" 2>/dev/null; then fallback=true; fi
   free_kb=$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2 {print $4}')
-  printf '{"os":"%s","arch":"%s","runtime_dir":"%s","socket":"%s","socket_live":%s,"status":%s,"managed":%s,"app":"%s","systemd":%s,"unit_enabled":%s,"unit_active":%s,"host_unit_enabled":%s,"linger":"%s","fallback":%s,"free_kb":%s,"sockets":[%s]}\n' \
-    "$(esc "$os")" "$(esc "$arch")" "$(esc "$rt")" "$(esc "$sock")" "$live" "$status" "$managed" "$(esc "$app")" "$systemd" "$unit_enabled" "$unit_active" "$host_unit_enabled" "$(esc "$linger")" "$fallback" "${free_kb:-0}" "$sockets"
+  printf '{"os":"%s","arch":"%s","runtime_dir":"%s","socket":"%s","socket_live":%s,"status":%s,"managed":%s,"app":"%s","systemd":%s,"unit_enabled":%s,"unit_active":%s,"host_unit_enabled":%s,"linger":"%s","fallback":%s,"free_kb":%s}\n' \
+    "$(esc "$os")" "$(esc "$arch")" "$(esc "$rt")" "$(esc "$sock")" "$live" "$status" "$managed" "$(esc "$app")" "$systemd" "$unit_enabled" "$unit_active" "$host_unit_enabled" "$(esc "$linger")" "$fallback" "${free_kb:-0}"
 }
 
 # This computer's public key line $1, checked by Skiff against a strict
@@ -392,8 +373,8 @@ ours_unit() { [ -f "$1" ] && grep -q '^ExecStart=%h/.local/share/skiff/server/cu
 ours_agent() { [ -f "$agents/$1.plist" ] && grep -qF "<string>$(xml "$d/current/")" "$agents/$1.plist"; }
 ours_pid() { [ -n "$1" ] && kill -0 "$1" 2>/dev/null && case "$(ps -o args= -p "$1" 2>/dev/null)" in "$d"/*) true ;; *) false ;; esac; }
 
-# The managed skiffd's sessions, as `skiff ls --json` on one line. $1: the
-# socket name. managed=no: Skiff did not install Skiff here.
+# The managed skiffd's sessions, as `skiff ls --json` on one line.
+# managed=no: Skiff did not install Skiff here.
 sessions() {
   [ -f "$d/installed-by" ] || { echo managed=no; echo "skiff-sessions=done"; return; }
   echo managed=yes
@@ -402,7 +383,7 @@ sessions() {
   elif has_systemd && ours_unit "$HOME/.config/systemd/user/skiffd.service" && systemctl --user -q is-active skiffd; then up=yes
   elif ours_pid "$(cat "$d/skiffd.pid" 2>/dev/null)"; then up=yes; fi
   if [ $up = yes ] && [ -x "$d/current/skiff" ]; then
-    printf 'sessions='; "$d/current/skiff" --socket "$rt/skiff/$1" ls --json 2>/dev/null | tr -d '\n'; echo
+    printf 'sessions='; "$d/current/skiff" --socket "$rt/skiff/skiffd.sock" ls --json 2>/dev/null | tr -d '\n'; echo
   fi
   echo "skiff-sessions=done"
 }
@@ -506,7 +487,7 @@ runs() {
 # it moved `current` but before the reload is finished by the next one: the
 # skiffd that runs decides, not the link.
 update() {
-  v=$1 want=$2 sock=$rt/skiff/$3 agreed=$4 force=${5:-}
+  v=$1 want=$2 sock=$rt/skiff/skiffd.sock agreed=$3 force=${4:-}
   old=$(readlink "$d/current" 2>/dev/null)
   if [ -n "$old" ] && newer "${old%%+*}" "$v"; then rm -f "$d/.incoming-$want.tar.gz"; echo "from=${old%%+*}"; echo "skiff-update=newer"; return; fi
   out=$(install "$v" "$want" "$force")
@@ -543,7 +524,7 @@ update() {
   if [ -z "$now" ]; then
     # It did not come back: the old version starts again.
     step "skiffd did not come back. Starting Skiff ${back%%+*} again"
-    ln -sfn "$back" "$d/current"; restart_host=; start "$3" >/dev/null; echo "skiff-update=failed"; return
+    ln -sfn "$back" "$d/current"; restart_host=; start >/dev/null; echo "skiff-update=failed"; return
   fi
   # The old skiffd runs on, untouched: it cannot hand its sessions over.
   live=$("$cli" --socket "$sock" ls --json 2>/dev/null | tr -d '\n')
@@ -649,7 +630,7 @@ headless() {
     checked="its SHA-256 and its signature"
   fi
   lock
-  out=$(by=install.sh; agreed=$yes; { update "$release" "$want" skiffd.sock "$agreed"; start skiffd.sock; } </dev/null)
+  out=$(by=install.sh; agreed=$yes; { update "$release" "$want" "$agreed"; start; } </dev/null)
   from=$(val "$out" from)
   case $(val "$out" skiff-update) in
     newer) stop "This server runs Skiff $from, newer than Skiff $release. Skiff never moves down. Nothing changed." ;;
@@ -685,14 +666,14 @@ headless() {
 
 case $mode in
   "" | --*) mode=headless; headless "$@" ;;
-  probe) probe "${2:-}" "${3:-}" ;;
+  probe) probe ;;
   install-key) install_key "${2:?}" ;;
   fix-key) fix_key "${2:?}" ;;
-  install) mkdir -p "$d"; lock; install "$2" "$3"; start "$4" ;;
-  update) mkdir -p "$d"; lock; update "$2" "$3" "$4" "${5:-no}" "${6:-}"; start "$4" ;;
-  start) start "$2" ;;
+  install) mkdir -p "$d"; lock; install "$2" "$3"; start ;;
+  update) mkdir -p "$d"; lock; update "$2" "$3" "${4:-no}" "${5:-}"; start ;;
+  start) start ;;
   linger) linger; echo "skiff-linger=done" ;;
-  sessions) sessions "$2" ;;
+  sessions) sessions ;;
   uninstall) uninstall ;;
   *) echo "skiff-$mode=unknown" ;;
 esac

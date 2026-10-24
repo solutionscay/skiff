@@ -2,13 +2,11 @@
 //! sends the server script in its read-only `probe` mode
 //! ([`install::SERVER`]) and answers the first rows: can this computer
 //! reach the server, does it know the host key, can it log in without a
-//! prompt. The probe then says where skiffd's socket is and whether skiffd
-//! answers there: the stored one while it is there, else the only Skiff
-//! socket, and when a release and a dev build both run, the report lists
-//! both for the person to pick. A real `-L` forward and a `ping` over it
-//! answer the next rows, and a Hello to skiff-host beside it the projects
-//! row. Nothing here writes anywhere: the caller stores the
-//! socket the probe found.
+//! prompt. The probe then says where skiffd's socket is, the one socket of
+//! that account (`<runtime dir>/skiff/skiffd.sock`), and whether skiffd
+//! answers there. A real `-L` forward and a `ping` over it answer the next
+//! rows, and a Hello to skiff-host beside it the projects row. Nothing here
+//! writes anywhere: the caller keeps the socket the probe found for the run.
 //!
 //! The lines follow the design rules: plain causes, the Host's name, never
 //! ssh's own output and never a command to run. A failed row names at most
@@ -26,7 +24,7 @@ use super::{
     install::SERVER,
     keys::{self, Installed, LocalKey},
     local::HostSelection,
-    ssh::{self, quote, BatchRun, SshError, SshOptions, SshTarget, CONNECT_TIMEOUT},
+    ssh::{self, BatchRun, SshError, SshOptions, SshTarget, CONNECT_TIMEOUT},
 };
 
 /// How long the probe's ssh run may take, login included.
@@ -38,8 +36,7 @@ pub struct Probe {
     pub os: String,
     pub arch: String,
     pub runtime_dir: String,
-    /// The socket in use: the stored one while it is there, else the only
-    /// Skiff socket, else `<runtime>/skiff/<name>`.
+    /// The one socket of that account: `<runtime dir>/skiff/skiffd.sock`.
     pub socket: String,
     /// A socket is there.
     pub socket_live: bool,
@@ -73,45 +70,6 @@ pub struct Probe {
     /// Free space in the account's home, in KiB.
     #[serde(default)]
     pub free_kb: u64,
-    /// Each Skiff socket in the runtime folder: `skiffd.sock` and
-    /// `skiffd-dev.sock`, when there.
-    #[serde(default)]
-    pub sockets: Vec<Found>,
-}
-
-/// One Skiff socket the probe found.
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
-pub struct Found {
-    /// `skiffd.sock` or `skiffd-dev.sock`.
-    pub name: String,
-    pub socket: String,
-    /// What its skiffd reports, or empty.
-    pub version: String,
-}
-
-/// One socket the person can pick, when two Skiffs run on the server.
-#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
-pub struct Choice {
-    pub socket: String,
-    /// "Skiff" or "Skiff dev build".
-    pub label: &'static str,
-    pub version: String,
-}
-
-impl Choice {
-    /// The choices in `p`: none unless it found both sockets.
-    fn all(p: &Probe) -> Vec<Choice> {
-        if p.sockets.len() < 2 {
-            return Vec::new();
-        }
-        let label = |name: &str| if name == "skiffd-dev.sock" { "Skiff dev build" } else { "Skiff" };
-        p.sockets.iter().map(|f| Choice { socket: f.socket.clone(), label: label(&f.name), version: f.version.clone() }).collect()
-    }
-}
-
-/// A socket the person may pick: one of the two names Skiff uses.
-pub fn pickable(socket: &str) -> bool {
-    valid_socket(socket) && (socket.ends_with("/skiffd.sock") || socket.ends_with("/skiffd-dev.sock"))
 }
 
 impl Probe {
@@ -248,15 +206,12 @@ pub struct Line {
     pub fix: Option<Fix>,
 }
 
-/// The whole list. `socket`: the socket the probe found, to store.
+/// The whole list. `socket`: the live socket the probe found, for this run.
 #[derive(Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct Report {
     pub rows: Vec<Line>,
     pub ok: bool,
     pub socket: Option<String>,
-    /// Both sockets, when a release and a dev build run there. Empty: no
-    /// choice to make.
-    pub choices: Vec<Choice>,
     /// The Host id skiffd reported, when it answered.
     pub host_id: Option<String>,
     /// The server's OS and arch as bundle names write them, once probed.
@@ -275,15 +230,10 @@ pub struct Report {
 
 /// What a check needs to know about the Host.
 pub struct CheckInput {
-    /// The login. Its `socket` is ignored: see `stored`.
+    /// The login. Its `socket` is ignored: the probe finds it.
     pub target: SshTarget,
     /// The Host's shown name, for the lines.
     pub name: String,
-    /// The socket stored for this Host: the last one found or picked. The
-    /// probe keeps it while it is there.
-    pub stored: Option<String>,
-    /// The socket name the probe looks for in the runtime folder.
-    pub socket_name: String,
     /// The identity this Host must report, once pinned.
     pub pin: Option<HostId>,
     /// A private folder for the check's own forward.
@@ -306,15 +256,9 @@ pub struct CheckInput {
     pub update_failed: Option<String>,
 }
 
-/// The probe's remote command. It is fixed; only the socket name (from
-/// this app) and a checked stored socket go to it, single-quoted.
-fn probe_command(socket_name: &str, stored: Option<&str>) -> String {
-    let mut command = format!("sh -s -- probe {}", quote(socket_name));
-    if let Some(s) = stored {
-        command.push(' ');
-        command.push_str(&quote(s));
-    }
-    command
+/// The probe's remote command. It is fixed: nothing from this app goes to it.
+fn probe_command() -> String {
+    "sh -s -- probe".to_string()
 }
 
 /// What the probe's ssh run gave.
@@ -329,9 +273,9 @@ pub enum ProbeRun {
 }
 
 /// Runs the probe over one strict, batch ssh run.
-pub async fn run_probe(target: &SshTarget, options: &SshOptions, socket_name: &str, stored: Option<&str>) -> Result<ProbeRun, String> {
+pub async fn run_probe(target: &SshTarget, options: &SshOptions) -> Result<ProbeRun, String> {
     let started = Instant::now();
-    let command = probe_command(socket_name, stored.filter(|s| valid_socket(s)));
+    let command = probe_command();
     Ok(match ssh::run_batch(target, options, command, SERVER.as_bytes(), PROBE_TIMEOUT).await? {
         BatchRun::Ssh(stderr) => ProbeRun::Ssh(stderr),
         BatchRun::TimedOut => ProbeRun::TimedOut,
@@ -352,7 +296,7 @@ pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
     let mut list = List { version: input.version.clone(), ..Default::default() };
     let name = input.name.as_str();
     let server = input.target.destination.rsplit('@').next().unwrap_or(&input.target.destination).to_string();
-    let probe = match run_probe(&input.target, options, &input.socket_name, input.stored.as_deref()).await {
+    let probe = match run_probe(&input.target, options).await {
         Err(e) => {
             list.fail(Row::Reach, e);
             return list.finish(None, None);
@@ -385,7 +329,6 @@ pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
     };
     let socket = probe.socket.clone();
     let found = probe.socket_live.then(|| socket.clone());
-    list.choices = Choice::all(&probe);
     if !server_rows(&mut list, &probe, name, &input.version, input.build.as_deref(), input.update_failed.as_deref()) {
         return list.finish(found, None);
     }
@@ -622,7 +565,6 @@ struct List {
     rows: Vec<Line>,
     version: String,
     platform: Option<(String, String)>,
-    choices: Vec<Choice>,
     installed: Option<String>,
     other_build: bool,
 }
@@ -645,7 +587,7 @@ impl List {
         for row in Row::ALL.into_iter().skip(self.rows.len()) {
             self.rows.push(Line { row, title: row.title(), state: State::Skipped, text: "Waits for the row above.".into(), fix: None });
         }
-        Report { rows: self.rows, ok, socket, choices: self.choices, host_id, platform: self.platform, version: self.version, installed: self.installed, other_build: self.other_build }
+        Report { rows: self.rows, ok, socket, host_id, platform: self.platform, version: self.version, installed: self.installed, other_build: self.other_build }
     }
 }
 
@@ -685,7 +627,6 @@ mod tests {
             linger: "no".into(),
             fallback: false,
             free_kb: 1 << 20,
-            sockets: Vec::new(),
         }
     }
 
@@ -845,7 +786,7 @@ mod tests {
     #[test]
     fn the_probe_command_is_fixed_and_quotes_its_values() {
         let t = SshTarget { user: Some("me".into()), port: Some(2222), ..SshTarget::new("devbox", "") };
-        let command = probe_command("skiffd.sock", Some("/run/a b/it's.sock"));
+        let command = probe_command();
         let args: Vec<String> = ssh::batch_args(&t, &SshOptions { program: "ssh".into(), config: None }, command)
             .into_iter()
             .map(|a| a.into_string().unwrap())
@@ -855,21 +796,20 @@ mod tests {
         }
         assert!(!args.iter().any(|a| a.contains("accept-new") || a.contains("StrictHostKeyChecking=no")));
         let n = args.len();
-        assert_eq!(&args[n - 7..], ["-l", "me", "-p", "2222", "--", "devbox", r"sh -s -- probe 'skiffd.sock' '/run/a b/it'\''s.sock'"]);
+        assert_eq!(&args[n - 7..], ["-l", "me", "-p", "2222", "--", "devbox", "sh -s -- probe"]);
     }
 
-    /// The probe as the server runs it: here, with `sh`, no ssh.
+    /// The probe as the server runs it: here, with `sh`, no ssh. It looks
+    /// at the one socket, `<runtime dir>/skiff/skiffd.sock`, whatever runs
+    /// on this machine.
     #[test]
     fn the_probe_prints_one_object_and_finds_the_socket() {
         let dir = std::env::temp_dir().join(format!("skiff-probe-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("skiff")).unwrap();
-        let sock = dir.join("skiff/skiffd-x.sock");
-        let _listener = std::os::unix::net::UnixListener::bind(&sock).unwrap();
-        let run = |args: &[&str]| {
+        let run = || {
             let mut child = std::process::Command::new("sh")
-                .args(["-s", "--"])
-                .args(args)
+                .args(["-s", "--", "probe"])
                 .env("XDG_RUNTIME_DIR", &dir)
                 .env("HOME", &dir)
                 .env("PATH", "/usr/bin:/bin")
@@ -881,32 +821,19 @@ mod tests {
             let out = child.wait_with_output().unwrap();
             serde_json::from_slice::<Probe>(&out.stdout).unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&out.stdout)))
         };
-        let p = run(&["probe", "skiffd-x.sock"]);
-        assert_eq!(p.runtime_dir, dir.to_string_lossy());
+        let sock = dir.join("skiff/skiffd.sock");
+        let none = run();
+        assert_eq!((none.runtime_dir.as_str(), none.socket.as_str(), none.socket_live), (&*dir.to_string_lossy(), &*sock.to_string_lossy(), false), "{none:?}");
+        // Another name in the folder is not Skiff's socket.
+        let _other = std::os::unix::net::UnixListener::bind(dir.join("skiff/skiffd-x.sock")).unwrap();
+        assert!(!run().socket_live);
+        let _listener = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        let p = run();
         assert_eq!(p.socket, sock.to_string_lossy());
         assert!(p.socket_live && p.status.is_none(), "{p:?}");
         // The Skiff app's skiffd, when this machine has one (a .deb here).
         assert!(p.app.is_empty() || std::path::Path::new(&p.app).is_file(), "{p:?}");
         assert!(!p.os.is_empty() && !p.arch.is_empty());
-        let none = run(&["probe", "skiffd.sock"]);
-        assert!(!none.socket_live);
-        let chosen = run(&["probe", "skiffd.sock", &sock.to_string_lossy()]);
-        assert!(chosen.socket_live && chosen.socket == sock.to_string_lossy());
-        // One Skiff socket: used with no question, whatever this app's name.
-        let rel = dir.join("skiff/skiffd.sock");
-        let _rel = std::os::unix::net::UnixListener::bind(&rel).unwrap();
-        let one = run(&["probe", "skiffd-dev.sock"]);
-        assert!(one.socket_live && one.socket == rel.to_string_lossy(), "{one:?}");
-        assert!(Choice::all(&one).is_empty());
-        // Both: this app's name, or the stored one, and a choice of two.
-        let dev = dir.join("skiff/skiffd-dev.sock");
-        let _dev = std::os::unix::net::UnixListener::bind(&dev).unwrap();
-        let both = run(&["probe", "skiffd-dev.sock"]);
-        assert_eq!(both.socket, dev.to_string_lossy());
-        let choices = Choice::all(&both);
-        assert_eq!(choices.iter().map(|c| (c.label, c.socket.as_str())).collect::<Vec<_>>(), [("Skiff", &*rel.to_string_lossy()), ("Skiff dev build", &*dev.to_string_lossy())]);
-        assert_eq!(run(&["probe", "skiffd-dev.sock", &rel.to_string_lossy()]).socket, rel.to_string_lossy());
-        assert!(pickable(&rel.to_string_lossy()) && !pickable(&sock.to_string_lossy()));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

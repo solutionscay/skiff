@@ -16,8 +16,8 @@ import { type HostsPage, type KnownHost, knownHosts, loadHosts, localHostName, p
  * the tab works the same while any Host is shown. The form needs one field,
  * Server. Name, user and port sit under More: ssh config gives them, the
  * line under Server says what `ssh -G` makes of them, with no network, and
- * the check finds the socket. When a release and a dev build both run on
- * the server, the check list offers both. Connect saves, then checks.
+ * the check finds the socket: each server has one skiffd, on
+ * `<runtime dir>/skiff/skiffd.sock`. Connect saves, then checks.
  * A failed row has at most one fix. Each fix asks first, names what it
  * changes, and then checks again. A password or passphrase goes to Rust,
  * which gives it to ssh through askpass only; the page keeps none.
@@ -78,19 +78,11 @@ interface HostKey {
   known: Fingerprint[];
   file: string;
 }
-/** A Skiff socket the person can pick, when two run on the server. */
-interface Choice {
-  socket: string;
-  label: string;
-  version: string;
-}
 interface Report {
   rows: CheckLine[];
   ok: boolean;
   /** The socket in use. */
   socket: string | null;
-  /** Both sockets, when a release and a dev build run there. */
-  choices: Choice[];
   /** The server's OS and arch as bundle names write them. */
   platform: [string, string] | null;
   /** The Skiff version this app installs. */
@@ -333,7 +325,6 @@ export function createHostsTab(redraw: () => void) {
       }
       row.append(mark, h("span", "c-name", r.title), text);
       table.append(row);
-      if (r.row === "sessions" && c.report?.choices?.length && x) table.append(pickRow(c, x, c.report));
     }
     main.append(table);
     if (x) main.append(autoUpdate(x));
@@ -348,35 +339,6 @@ export function createHostsTab(redraw: () => void) {
     acts.append(button("set-rm", "Done", () => ((check = null), redraw())));
     main.append(acts);
     return main;
-  }
-
-  /** Two Skiffs run on the server: the one in use, and the other to pick. */
-  function pickRow(c: Check, x: KnownHost, report: Report): HTMLElement {
-    const row = h("div", "set-row set-check passed");
-    row.setAttribute("role", "row");
-    const mark = h("span", "c-lead");
-    mark.append(h("span", "sq"));
-    const text = h("span", "c-text", `Two Skiffs run on ${x.name}. Pick one.`);
-    for (const o of report.choices) {
-      const on = o.socket === report.socket;
-      const b = button(on ? "set-rm set-fix on" : "set-rm set-fix", `${o.label}${o.version ? ` ${o.version}` : ""}`, () => void pickSocket(c, x, o));
-      b.setAttribute("aria-pressed", String(on));
-      b.disabled = on;
-      if (on) b.prepend(rune("indicators-check"));
-      text.append(b);
-    }
-    row.append(mark, h("span", "c-name", "Which Skiff"), text);
-    return row;
-  }
-
-  async function pickSocket(c: Check, x: KnownHost, o: Choice) {
-    try {
-      await invoke("pick_socket", { id: x.id, socket: o.socket });
-      await runCheck(x.id);
-    } catch (e) {
-      c.error = String(e);
-      redraw();
-    }
   }
 
   /** One fix, after its confirm, then the check again. */

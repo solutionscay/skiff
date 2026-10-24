@@ -1,6 +1,7 @@
 /** The Host this window shows, and the picker. "This Mac" is the local Host.
- *  A remote Host has a local id, a shown name, an SSH destination, and its
- *  skiffd socket. Settings › Hosts adds, edits and removes them. Picking
+ *  A remote Host has a local id, a shown name and an SSH destination; its
+ *  one skiffd socket is found on connect. Settings › Hosts adds, edits and
+ *  removes them. Picking
  *  another Host reloads the page: no view mixes two Hosts. */
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -16,8 +17,6 @@ export interface KnownHost {
   destination: string;
   user: string | null;
   port: number | null;
-  /** Found by the last check, or set by the person. `null`: not found yet. */
-  socket: string | null;
   /** Update Skiff on this server automatically. */
   auto_update: boolean;
   /** The last check or connection in this app run. */

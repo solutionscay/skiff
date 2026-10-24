@@ -299,12 +299,12 @@ fn unpack_error(out: &str, name: &str, version: &str, b: &Bundle) -> String {
 /// folder, and starts its skiffd. The same version again changes nothing
 /// and starts nothing that runs. `free_kb`: the probe's free space.
 #[allow(clippy::too_many_arguments)]
-pub async fn install(target: &SshTarget, options: &SshOptions, b: &Bundle, version: &str, socket_name: &str, free_kb: u64, name: &str, step: Steps<'_>) -> Result<Outcome, String> {
-    if !plain_version(version) || !plain_version(socket_name) {
+pub async fn install(target: &SshTarget, options: &SshOptions, b: &Bundle, version: &str, free_kb: u64, name: &str, step: Steps<'_>) -> Result<Outcome, String> {
+    if !plain_version(version) {
         return Err("This version has a form Skiff does not send.".into());
     }
     let hash = upload(target, options, b, free_kb, name, step).await?;
-    let command = format!("sh -s -- install {} {} {}", quote(version), quote(&hash), quote(socket_name));
+    let command = format!("sh -s -- install {} {}", quote(version), quote(&hash));
     let out = run(target, options, command, SERVER.as_bytes(), step).await?;
     match value(&out, "skiff-install") {
         "done" => Ok(started(&out)),
@@ -340,14 +340,14 @@ pub enum Updated {
 /// when its build is there already. A failed update leaves the old
 /// version running.
 #[allow(clippy::too_many_arguments)]
-pub async fn update(target: &SshTarget, options: &SshOptions, b: &Bundle, version: &str, socket_name: &str, free_kb: u64, name: &str, end_sessions: bool, reinstall: bool, step: Steps<'_>) -> Result<Updated, String> {
-    if !plain_version(version) || !plain_version(socket_name) {
+pub async fn update(target: &SshTarget, options: &SshOptions, b: &Bundle, version: &str, free_kb: u64, name: &str, end_sessions: bool, reinstall: bool, step: Steps<'_>) -> Result<Updated, String> {
+    if !plain_version(version) {
         return Err("This version has a form Skiff does not send.".into());
     }
     let hash = upload(target, options, b, free_kb, name, step).await?;
     let agreed = if end_sessions { "yes" } else { "no" };
     let force = if reinstall { " force" } else { "" };
-    let command = format!("sh -s -- update {} {} {} {agreed}{force}", quote(version), quote(&hash), quote(socket_name));
+    let command = format!("sh -s -- update {} {} {agreed}{force}", quote(version), quote(&hash));
     let out = run(target, options, command, SERVER.as_bytes(), step).await?;
     updated(&out, name, version, b)
 }
@@ -379,11 +379,8 @@ fn live_sessions(json: &str) -> Vec<String> {
 
 /// Starts the managed skiffd and its skiff-host on the server, each if it
 /// does not run.
-pub async fn start(target: &SshTarget, options: &SshOptions, socket_name: &str) -> Result<Outcome, String> {
-    if !plain_version(socket_name) {
-        return Err("This socket name has a form Skiff does not send.".into());
-    }
-    let out = run(target, options, format!("sh -s -- start {}", quote(socket_name)), SERVER.as_bytes(), &|_| {}).await?;
+pub async fn start(target: &SshTarget, options: &SshOptions) -> Result<Outcome, String> {
+    let out = run(target, options, "sh -s -- start".to_string(), SERVER.as_bytes(), &|_| {}).await?;
     match value(&out, "skiff-start") {
         "missing" => Err("Skiff is not installed there any more. Check again.".into()),
         _ => Ok(started(&out)),
@@ -406,11 +403,8 @@ pub struct Preview {
 }
 
 /// Reads whether the install is Skiff's and which sessions it runs.
-pub async fn preview(target: &SshTarget, options: &SshOptions, socket_name: &str) -> Result<Preview, String> {
-    if !plain_version(socket_name) {
-        return Err("This socket name has a form Skiff does not send.".into());
-    }
-    let out = run(target, options, format!("sh -s -- sessions {}", quote(socket_name)), SERVER.as_bytes(), &|_| {}).await?;
+pub async fn preview(target: &SshTarget, options: &SshOptions) -> Result<Preview, String> {
+    let out = run(target, options, "sh -s -- sessions".to_string(), SERVER.as_bytes(), &|_| {}).await?;
     if value(&out, "skiff-sessions") != "done" {
         return Err("Skiff cannot read the state of the server. Check again.".into());
     }
@@ -435,7 +429,7 @@ mod tests {
 
     #[test]
     fn only_plain_versions_go_to_the_server() {
-        for ok in ["1.6.6", "2.0.0-rc.1", "skiffd.sock", "skiffd-dev.sock"] {
+        for ok in ["1.6.6", "2.0.0-rc.1", "9.9.9-test"] {
             assert!(plain_version(ok), "{ok}");
         }
         for bad in ["", "1.0;rm", "1 0", "$(x)", "a'b", "a/b"] {

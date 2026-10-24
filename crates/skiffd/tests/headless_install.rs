@@ -61,7 +61,7 @@ impl Server {
             .env("XDG_RUNTIME_DIR", self.path("run"))
             .env("PATH", format!("{}:/usr/bin:/bin", self.path("bin").display()))
             .env("USER", std::env::var("USER").unwrap_or_default())
-            // A debug skiffd would pick skiffd-dev.sock; a release one picks this.
+            // Every build picks this in the fixture's runtime folder; said for clarity.
             .env("SKIFF_SOCKET", self.path("run/skiff/skiffd.sock"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
