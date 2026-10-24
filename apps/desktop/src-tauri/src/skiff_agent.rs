@@ -146,15 +146,20 @@ pub async fn open_skiff_agent(app: State<'_, App>, restore: Option<u64>) -> Resu
     Ok(Some(Opened { session: found.session, created: found.created, typed: found.typed, watch_error }))
 }
 
-/// `[skiff_agent]` and its task types, from the selected Host (`skipper@1`):
-/// This Mac's and an SSH Host's alike. Nothing is read from a config here.
+/// `[skiff_agent]` and its task types, from the selected Host (`skipper@1`).
+/// This Mac's come from the config this app writes ([`set_skiff_agent`]),
+/// with the same function skiff-host uses, so a change always reads back:
+/// an older local skiff-host does not know every setting.
 #[tauri::command]
 pub async fn get_skiff_agent(app: State<'_, App>) -> Result<HostSkipper, String> {
-    read(&app).await
+    if app.remote() {
+        return crate::connection::data_read(&app, |c| async move { data::skipper_settings(&c).await }).await;
+    }
+    blocking(local).await
 }
 
-async fn read(app: &App) -> Result<HostSkipper, String> {
-    crate::connection::data_read(app, |c| async move { skiff_client::host::data::skipper_settings(&c).await }).await
+fn local() -> anyhow::Result<HostSkipper> {
+    skipper::settings(&config::load()?)
 }
 
 /// Saves one setting on the selected Host: This Mac's config here, a remote
@@ -171,7 +176,7 @@ pub async fn set_skiff_agent(app: State<'_, App>, handle: AppHandle, edit: Skipp
     }
     let settings = blocking(move || {
         skipper::apply(&edit)?;
-        skipper::settings(&config::load()?)
+        local()
     })
     .await?;
     let _ = handle.emit(PROJECTS_CHANGED, ());
@@ -256,6 +261,29 @@ mod tests {
         app.set_selection(skiff_client::host::local::HostSelection::ssh(target, options, dir.join("fwd"), None).unwrap());
         assert!(!super::sync(&app));
         assert!(!dir.join("skills").exists(), "a remote launch wrote this Mac's skill");
+        match old {
+            Some(v) => std::env::set_var("SKIFF_CONFIG", v),
+            None => std::env::remove_var("SKIFF_CONFIG"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// This Mac's Project Skippers switch reads back what it just wrote, from
+    /// projects.toml, with no skiff-host asked (the old one did not know it).
+    #[test]
+    fn this_mac_reads_back_project_skippers() {
+        let _env = crate::reload::tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("skiff-read-back-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let old = std::env::var_os("SKIFF_CONFIG");
+        std::env::set_var("SKIFF_CONFIG", dir.join("projects.toml"));
+        assert!(!super::local().unwrap().project_skippers);
+        super::skipper::apply(&Edit::ProjectSkippers(true)).unwrap();
+        assert!(std::fs::read_to_string(dir.join("projects.toml")).unwrap().contains("project_skippers = true"));
+        assert!(super::local().unwrap().project_skippers);
+        super::skipper::apply(&Edit::ProjectSkippers(false)).unwrap();
+        assert!(!super::local().unwrap().project_skippers);
         match old {
             Some(v) => std::env::set_var("SKIFF_CONFIG", v),
             None => std::env::remove_var("SKIFF_CONFIG"),
