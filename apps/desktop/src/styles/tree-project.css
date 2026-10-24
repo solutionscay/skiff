@@ -91,7 +91,8 @@ body.kbd #sidebar-scroll .project-row:has(> .project-pick.current:focus) { outli
   border-top: 1px solid var(--rule-strong);
 }
 #sidebar-scroll > .tree-head:first-child { margin-top: 0; border-top: 0; height: calc(28 * var(--u)); }
-#sidebar-scroll > .tree-head .tree-head-add { height: calc(26 * var(--u)); align-self: flex-end; margin-bottom: calc(-6 * var(--u)); }
+/* The + fills its cell: from the rule to the row under it, against the right edge. */
+#sidebar-scroll > .tree-head .tree-head-add { height: auto; align-self: stretch; margin-bottom: calc(-6 * var(--u)); }
 .tree-kids > .tree-project { border-top: 1px solid var(--rule); }
 .tree-kids > .tree-project:first-child { border-top: 0; }
 .tree-project .wt-row { height: calc(20 * var(--u)); background: transparent; }

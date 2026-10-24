@@ -25,7 +25,9 @@ body.ledger-keys .cell.focused .cell-head { background: var(--bg-panel); }
 .lg-need:hover { text-decoration: underline; }
 /* The fold chevron: at the right edge of the header, and on top of the rail. */
 .lg-fold { width: calc(16 * var(--u)); height: calc(20 * var(--u)); flex-shrink: 0; margin-right: calc(-4 * var(--u)); padding: 0; border: 0; background: none; display: grid; place-items: center; color: var(--text-dim); cursor: pointer; }
-.lg-fold:hover { color: var(--text); }
+.lg-fold:hover { color: var(--text); background: var(--bg-raised); }
+/* In the header the chevron fills a rail-wide cell, flush with the right edge: it does not move when the panel folds. */
+.lg-head .lg-fold { width: calc(28 * var(--u)); height: auto; align-self: stretch; margin-right: calc(-16 * var(--u)); }
 .lg-fold svg { width: calc(9 * var(--u)); height: calc(9 * var(--u)); }
 /* Folded: a rail with the chevron on a header-high cell, and the amber count under it. */
 #ledger.folded { width: calc(28 * var(--u)); }
