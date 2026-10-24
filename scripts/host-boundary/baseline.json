@@ -59,7 +59,7 @@
     "sha256": "bf3b8e737190fc705e503a4f0868da2afbe841ddcce36ced927f5f0b1c9dcc8c"
   },
   "apps/desktop/src-tauri/src/connection.rs": {
-    "ownership": "M1a\u2013M1e selected-local Host owner; M4 data-plane owner (skiff-host paired by host_id); endpoint-local process control for skiffd and skiff-host spawn/stop; existing local lifecycle/legacy client adapter; remote refused-channel probe (read-only, skiff-client check) to name its cause",
+    "ownership": "M1a\u2013M1e selected-local Host owner; M4 data-plane owner (skiff-host paired by host_id); endpoint-local process control for skiffd and skiff-host spawn/stop; existing local lifecycle/legacy client adapter; remote refused-channel probe (read-only, skiff-client check) to name its cause; This Mac's capability list adds agent_config@1 and skipper_config@1, which this app's local adapter serves",
     "reasons": [
       "config",
       "env",
@@ -75,7 +75,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "fd8e5d666953130d11181361eae00b271fc80740aae4805a55f16eb3bb0a2037"
+    "sha256": "b0d92cb564840f7932f97adc7c11899a79e79a6a777d305fae1385cbc68636b4"
   },
   "apps/desktop/src-tauri/src/copies.rs": {
     "ownership": "client-owned (M5 reviewed): local copies of bytes the Host sent, for this computer's Open with; never reads or opens a Host path",
@@ -194,7 +194,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "24801a5c603d28f3d4e94f1cadbd119399fa2aef0b0fd912cfd1bfa0891bd348"
+    "sha256": "daf07e19711a127a5f8d322230194d70f162ae3ada1a96daa4aa0273d5cabc92"
   },
   "apps/desktop/src-tauri/src/streaming.rs": {
     "ownership": "M1e terminal output via selected Host session_terminal@1; M1d page session events via selected Host; core Event only for the page channel type",
@@ -279,7 +279,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "9bdfe7ad6f987f448bba5e3b908cdb2bc96c2d9a7cddad791f4afa794579a577"
+    "sha256": "7a8fa94c31d248a6cc323e37986b0a68aad62ddaf6c8b3237a6294953e057ce8"
   },
   "apps/desktop/src/app/hosts.ts": {
     "ownership": "client policy: Host picker and label (list/select Hosts, links to Settings \u203a Hosts, clipboard opt-in) and the remote link-lost signal",
@@ -446,7 +446,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "d7a3b94eb5857a60609131c983839b6aea4f8247fc26b6d1e6ec6910dbd681a3"
+    "sha256": "eae79a3f4eab7a5b470916ece4b6badecf88b4ddc208323ee81e491a79ef0da7"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6; Show in file manager only on This Mac (#166)",

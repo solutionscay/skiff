@@ -427,7 +427,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     if (isRemote() && !hostCan("skipper_config")) {
       main.append(h("div", "set-note", agentSet
         ? `The Skiff agent on ${hostName()}, from its projects.toml. Its Skiff is too old to change it from here: update Skiff on ${hostName()}.`
-        : `${hostName()} does not offer Skiff agent settings.`));
+        : `${hostName()} does not offer Skiff agent settings. Its Skiff is too old, or its skiff-host does not run: use Update Skiff… on its row in Settings › Hosts.`));
       if (agentSet) {
         const a = agentSet;
         main.append(

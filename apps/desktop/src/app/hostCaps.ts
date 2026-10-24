@@ -99,6 +99,6 @@ export function hostCan(cap: HostCap): boolean {
  *  capabilities are known it calls at once, so keystrokes keep their order. */
 export async function hostInvoke<T = void>(cap: HostCap, cmd: string, args?: InvokeArgs): Promise<T> {
   if (!caps) await (loading ?? loadHostCaps());
-  if (!hostCan(cap)) throw new Error(`This Host does not offer ${OFFERS[cap]}.`);
+  if (!hostCan(cap)) throw new Error(`This Host does not offer ${OFFERS[cap]}. Its Skiff is older than this app, or its skiff-host does not run: use Update Skiff… on that Host in Settings › Hosts.`);
   return invoke<T>(cmd, args);
 }
