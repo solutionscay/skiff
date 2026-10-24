@@ -7,6 +7,7 @@
     { "cmd": "folder_list", "path": "/home/jose" },
     { "cmd": "folder_list", "path": "/home/jose/code", "hidden": true },
     { "cmd": "folder_list", "path": "/home/jose/code", "filter": "sk" },
+    { "cmd": "folder_places" },
     { "cmd": "folder_create", "parent": "/home/jose/code", "name": "nuevo λ" }
   ],
   "replies": [
@@ -21,6 +22,10 @@
       ],
       "truncated": false } } } },
     { "type": "reply", "id": 3, "result": { "Ok": { "kind": "folders", "listing": { "path": "/", "real": "/", "parent": null, "entries": [], "truncated": true } } } },
+    { "type": "reply", "id": 8, "result": { "Ok": { "kind": "places", "places": {
+      "recent": ["/srv/code/api", "/home/jose"],
+      "repos": [{ "path": "/srv/code/api", "branch": "main", "last_commit": 1792700000 }, { "path": "/home/jose/x", "branch": null, "last_commit": null }],
+      "scanning": true } } } },
     { "type": "reply", "id": 4, "result": { "Ok": { "kind": "path", "path": "/srv/code/nuevo λ" } } },
     { "type": "reply", "id": 5, "result": { "Err": { "code": "invalid", "message": "Type one folder name, with no /." } } },
     { "type": "reply", "id": 6, "result": { "Err": { "code": "conflict", "message": "code has a folder with this name already." } } },

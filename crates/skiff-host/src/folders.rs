@@ -13,7 +13,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use skiff_host_api::{Error, FolderEntry, FolderKind, FolderListing, FolderRepo};
+use skiff_host_api::{Error, FolderEntry, FolderKind, FolderListing, FolderPlaces, FolderRepo, PlaceRepo};
 
 /// Entries one listing sends.
 pub const MAX_ENTRIES: usize = 2000;
@@ -177,6 +177,82 @@ fn modified(path: &Path) -> Option<u64> {
 /// Unix ms now.
 pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
+}
+
+/// How far one repository scan goes.
+#[derive(Debug, Clone, Copy)]
+pub struct ScanBounds {
+    /// Folder levels below the root: its own folders are level 1.
+    pub depth: usize,
+    pub time: std::time::Duration,
+    pub repos: usize,
+}
+impl ScanBounds {
+    /// What `folder_places` scans home with.
+    pub const PLACES: Self = Self { depth: 4, time: std::time::Duration::from_secs(5), repos: 200 };
+}
+
+/// Folders a scan never enters: built or fetched files, not projects.
+const SKIP: [&str; 4] = ["node_modules", "target", "vendor", ".cache"];
+
+/// The git repositories under `root`, by path, within `bounds`. It enters
+/// no hidden folder, no folder in [`SKIP`], no link and no repository.
+/// Answers `false` with what it found when a bound stopped it.
+pub fn scan(root: &Path, bounds: ScanBounds) -> (Vec<PlaceRepo>, bool) {
+    let until = std::time::Instant::now() + bounds.time;
+    let (mut found, mut level, mut complete) = (Vec::new(), vec![root.to_path_buf()], true);
+    'levels: for depth in 1..=bounds.depth {
+        let mut next = Vec::new();
+        for dir in level {
+            let Ok(read) = fs::read_dir(&dir) else { continue };
+            for entry in read.flatten() {
+                if std::time::Instant::now() >= until || found.len() >= bounds.repos {
+                    complete = false;
+                    break 'levels;
+                }
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if name.starts_with('.') || SKIP.contains(&name.as_ref()) || !entry.file_type().is_ok_and(|t| t.is_dir()) {
+                    continue;
+                }
+                let path = entry.path();
+                match repo_state(&path) {
+                    Some(r) => found.push(PlaceRepo { path: text(&path), branch: r.branch, last_commit: r.last_commit }),
+                    None if depth < bounds.depth => next.push(path),
+                    None => {}
+                }
+            }
+        }
+        level = next;
+    }
+    found.sort_by(|a, b| a.path.cmp(&b.path));
+    (found, complete)
+}
+
+/// The last scan of home, kept for the next `folder_places`.
+struct Scans {
+    repos: Vec<PlaceRepo>,
+    running: bool,
+    done: Option<std::time::Instant>,
+}
+static SCANS: std::sync::Mutex<Scans> = std::sync::Mutex::new(Scans { repos: Vec::new(), running: false, done: None });
+/// A scan this recent is not run again: the picker asks while one runs.
+const FRESH: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Recent, and the last scan's repositories. Starts a scan of home in the
+/// background unless one runs or one just finished.
+pub fn places() -> Result<FolderPlaces, Error> {
+    let home = PathBuf::from(home()?);
+    let mut scans = SCANS.lock().unwrap_or_else(|e| e.into_inner());
+    if !scans.running && scans.done.is_none_or(|d| d.elapsed() > FRESH) {
+        scans.running = true;
+        std::thread::spawn(move || {
+            let (repos, _) = scan(&home, ScanBounds::PLACES);
+            let mut scans = SCANS.lock().unwrap_or_else(|e| e.into_inner());
+            *scans = Scans { repos, running: false, done: Some(std::time::Instant::now()) };
+        });
+    }
+    Ok(FolderPlaces { recent: recent::read(), repos: scans.repos.clone(), scanning: scans.running })
 }
 
 /// The Recent list: folders and when each was last seen in use.

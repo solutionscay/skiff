@@ -46,3 +46,40 @@ fn folders_lists_folders_only_and_create_takes_one_name() {
     assert!(matches!(folders::create(&top, "new one"), Err(Error::Conflict { .. })));
     assert!(folders::home().unwrap().starts_with('/'));
 }
+
+#[test]
+fn the_repo_scan_stops_at_its_bounds() {
+    use folders::ScanBounds;
+    use std::time::{Duration, Instant};
+    let dir = PathBuf::from("/tmp").join(format!("shsc-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let _guard = Guard(dir.clone());
+    // Level 4 is found, level 5 is past the depth.
+    std::fs::create_dir_all(dir.join("a/b/c/deep4/.git")).unwrap();
+    std::fs::write(dir.join("a/b/c/deep4/.git/HEAD"), "ref: refs/heads/main\n").unwrap();
+    std::fs::create_dir_all(dir.join("a/b/c/d/deep5/.git")).unwrap();
+    std::fs::write(dir.join("a/b/c/d/deep5/.git/HEAD"), "ref: refs/heads/main\n").unwrap();
+    // Never entered: hidden folders, built files, and a repo's own folders.
+    for skip in [".config/nvim", "node_modules/x", "target/x", "vendor/x", "w/.cache/x", "a/b/c/deep4/inner"] {
+        std::fs::create_dir_all(dir.join(skip).join(".git")).unwrap();
+        std::fs::write(dir.join(skip).join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+    }
+    // 250 repositories at level 2.
+    for i in 0..250 {
+        let r = dir.join(format!("many/r{i:03}/.git"));
+        std::fs::create_dir_all(&r).unwrap();
+        std::fs::write(r.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+    }
+    let (all, complete) = folders::scan(&dir, ScanBounds { depth: 4, time: Duration::from_secs(5), repos: 1000 });
+    assert!(complete);
+    let names: Vec<_> = all.iter().map(|r| r.path.strip_prefix(dir.to_str().unwrap()).unwrap()).filter(|p| !p.starts_with("/many")).collect();
+    assert_eq!(names, ["/a/b/c/deep4"], "depth 4 only, nothing skipped is entered");
+    assert_eq!(all.len(), 251);
+    assert_eq!(all[0].branch.as_deref(), Some("main"));
+
+    let (capped, complete) = folders::scan(&dir, ScanBounds::PLACES);
+    assert_eq!((capped.len(), complete), (200, false), "at most 200 repositories");
+    let started = Instant::now();
+    let (_, complete) = folders::scan(&dir, ScanBounds { depth: 4, time: Duration::ZERO, repos: 200 });
+    assert!(!complete && started.elapsed() < Duration::from_millis(500), "stops at its time bound");
+}

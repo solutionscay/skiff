@@ -16,7 +16,7 @@ use std::{
 };
 
 use skiff_host_api::{
-    Error, FolderListing, Hello, HostChange, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow, HostListing, HostProject,
+    Error, FolderListing, FolderPlaces, Hello, HostChange, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow, HostListing, HostProject,
     HostSkipper, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response,
 };
 use tokio::net::UnixStream;
@@ -262,6 +262,14 @@ pub async fn folder_home(c: &HostConnection) -> Result<String, Error> {
 pub async fn folder_list(c: &HostConnection, path: &str, hidden: bool, filter: Option<String>) -> Result<FolderListing, Error> {
     match c.request(Request::FolderList { path: path.into(), hidden, filter }).await? {
         Response::Folders { listing } => Ok(listing),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// Recent and the Host's git repositories under home (`folders@1`).
+pub async fn folder_places(c: &HostConnection) -> Result<FolderPlaces, Error> {
+    match c.request(Request::FolderPlaces).await? {
+        Response::Places { places } => Ok(places),
         _ => unreachable!("checked by Request::accepts"),
     }
 }

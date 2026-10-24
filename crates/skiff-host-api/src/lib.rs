@@ -588,6 +588,11 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         filter: Option<String>,
     },
+    /// Answers `places`: the Recent list, and the git repositories a
+    /// bounded scan of home found (depth 4, 5 s, 200 repositories, no
+    /// hidden folder, `node_modules`, `target`, `vendor` or `.cache`). The
+    /// scan runs in the background: while `scanning`, ask again.
+    FolderPlaces,
     /// Makes the folder `name` (one name, no `/`) in `parent`. Answers
     /// `path`, the new folder's real path. A bad name is `invalid`; a name
     /// that is taken is `conflict`.
@@ -640,7 +645,7 @@ impl Request {
             Self::GitDiff { .. } => Some(Capability::git_diff()),
             Self::FileList { .. } | Self::FileRead { .. } => Some(Capability::files()),
             Self::ProjectBackground { .. } => Some(Capability::project_assets()),
-            Self::FolderHome | Self::FolderList { .. } | Self::FolderCreate { .. } => Some(Capability::folders()),
+            Self::FolderHome | Self::FolderList { .. } | Self::FolderPlaces | Self::FolderCreate { .. } => Some(Capability::folders()),
             Self::LedgerRows | Self::LedgerStamp | Self::LedgerResult { .. } => Some(Capability::ledger_read()),
             Self::SkipperSettings => Some(Capability::skipper_settings()),
             Self::ProjectInspect { .. }
@@ -694,6 +699,7 @@ impl Request {
                 | (Self::ProjectBackground { .. }, Response::Image { .. })
                 | (Self::FolderHome | Self::FolderCreate { .. }, Response::Path { .. })
                 | (Self::FolderList { .. }, Response::Folders { .. })
+                | (Self::FolderPlaces, Response::Places { .. })
                 | (Self::LedgerRows, Response::Ledger { .. })
                 | (Self::LedgerStamp, Response::LedgerStamp { .. })
                 | (Self::LedgerResult { .. }, Response::File { .. })
@@ -727,6 +733,7 @@ impl Request {
                 | Self::ProjectBackground { .. }
                 | Self::FolderHome
                 | Self::FolderList { .. }
+                | Self::FolderPlaces
                 | Self::FolderCreate { .. }
                 | Self::LedgerRows
                 | Self::LedgerStamp
@@ -773,6 +780,7 @@ pub enum Response {
     /// A folder on the Host.
     Path { path: String },
     Folders { listing: FolderListing },
+    Places { places: FolderPlaces },
     Ledger { rows: Vec<HostLedgerRow> },
     LedgerStamp { stamp: String },
     /// Boxed, as `Project`. Same JSON.

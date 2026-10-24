@@ -160,6 +160,12 @@ pub(crate) async fn folder_list(
     folder_call(&app, |c| async move { data::folder_list(&c, &path, hidden, filter).await }).await
 }
 
+/// The picker's Recent and Git repos, from the Host.
+#[tauri::command]
+pub(crate) async fn folder_places(app: State<'_, App>) -> Result<skiff_host_api::FolderPlaces, skiff_host_api::Error> {
+    folder_call(&app, |c| async move { data::folder_places(&c).await }).await
+}
+
 /// Makes the folder `name` in `parent` on the Host.
 #[tauri::command]
 pub(crate) async fn folder_create(app: State<'_, App>, parent: String, name: String) -> Result<String, skiff_host_api::Error> {

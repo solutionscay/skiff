@@ -11,7 +11,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { hostCan } from "../app/hostCaps";
 import { checkShownHost, hostName } from "../app/hosts";
-import type { FolderListing, HostError } from "../platform/types";
+import type { FolderListing, FolderPlaces, HostError } from "../platform/types";
 import { actionDialog, dialogActions, dialogFrame } from "../ui/dialogParts";
 import { button, h } from "../ui/dom";
 import { rune } from "../ui/runes";
@@ -36,6 +36,8 @@ export interface PickerUse {
   check?: (path: string, name: string) => Promise<PickVerdict | null>;
   /** The plain pick. A throw shows in the picker and keeps it open. */
   pick: (path: string) => Promise<void>;
+  /** Opens on Git repos when the Host found any. Default: Home. */
+  start?: "home" | "repos";
   /** Runs after the picker closes, picked or not. Default: the keys go back. */
   onClose?: (picked: boolean) => void;
 }
@@ -130,6 +132,8 @@ export function openFolderPicker(use: PickerUse): void {
   let seq = 0;
   /** The listing shown came filtered by the Host. */
   let hostFiltered = false;
+  let known: FolderPlaces | null = null;
+  let polls = 0;
 
   const close = () => {
     if (!open) return;
@@ -194,7 +198,7 @@ export function openFolderPicker(use: PickerUse): void {
       row.addEventListener("dblclick", () => void enter(r));
       list.append(row);
     });
-    if (!rows.length) list.append(h("div", "fp-empty", view.kind === "dir" && !filter.value ? "No folders here." : "No folders match."));
+    if (!rows.length && !(view.kind === "place" && view.label === "Git repos" && !filter.value)) list.append(h("div", "fp-empty", view.kind === "dir" && !filter.value ? "No folders here." : "No folders match."));
     list.querySelector(".fp-row.lit")?.scrollIntoView({ block: "nearest" });
     make.disabled = view.kind !== "dir";
     refreshTarget();
@@ -218,7 +222,7 @@ export function openFolderPicker(use: PickerUse): void {
     act.disabled = !t;
     clearTimeout(checkTimer);
     act.textContent = use.action;
-    if (!busy) note.textContent = truncatedNote();
+    if (!busy) note.textContent = baseNote();
     verdict = null;
     if (!t || !use.check) return;
     const check = use.check;
@@ -228,11 +232,12 @@ export function openFolderPicker(use: PickerUse): void {
       void mine.v.then((v) => {
         if (verdict !== mine || !open || busy) return;
         act.textContent = v?.label ?? use.action;
-        note.textContent = v?.note ?? truncatedNote();
+        note.textContent = v?.note ?? baseNote();
       });
     }, 120);
   }
 
+  const baseNote = () => (view.kind === "dir" ? truncatedNote() : placeNote(view.label));
   const truncatedNote = () =>
     view.kind === "dir" && view.listing.truncated ? `${host} shows the first 2000 folders here. Type in Filter to find others.` : "";
 
@@ -277,9 +282,54 @@ export function openFolderPicker(use: PickerUse): void {
     await go(view.listing.parent, { light: view.listing.real });
   }
 
-  /** Places: Home. R3 adds Recent and Git repos. */
+  /** Places: Home, Recent and Git repos. Recent and Git repos come from the Host. */
   function places(): { label: string; open: () => Promise<void> }[] {
-    return [{ label: "Home", open: async () => void (home && (await go(home))) }];
+    return [
+      { label: "Home", open: async () => void (home && (await go(home))) },
+      { label: "Recent", open: async () => showPlace("Recent") },
+      { label: "Git repos", open: async () => showPlace("Git repos") },
+    ];
+  }
+
+  function placeRows(label: string): PickRow[] {
+    const repos = known?.repos ?? [];
+    const row = (path: string): PickRow => {
+      const r = repos.find((x) => x.path === path);
+      return { name: folderName(path), path, repo: r ? { branch: r.branch, last_commit: r.last_commit } : null, link: false, sub: parentPath(path) ?? "" };
+    };
+    return label === "Recent" ? (known?.recent ?? []).map(row) : repos.map((r) => row(r.path));
+  }
+
+  /** The note a place shows when it has no rows, or while the scan runs. */
+  function placeNote(label: string): string {
+    if (label !== "Git repos") return "";
+    if (known?.scanning) return `Looking for git repositories on ${host}…`;
+    return known && !known.repos.length ? `No git repositories in your home folder on ${host}.` : "";
+  }
+
+  function showPlace(label: string) {
+    ++seq;
+    const was = view.kind === "place" && view.label === label ? rows[lit]?.path : undefined;
+    view = { kind: "place", label, rows: placeRows(label) };
+    hostFiltered = false;
+    filter.value = was ? filter.value : "";
+    lit = Math.max(0, filterRows(view.rows, filter.value).findIndex((r) => r.path === was));
+    renderCrumbs();
+    renderPlaces();
+    renderRows();
+    note.textContent = placeNote(label);
+  }
+
+  /** Asks the Host for Places, and again while its scan runs. */
+  async function loadPlaces() {
+    try {
+      known = await invoke<FolderPlaces>("folder_places");
+    } catch {
+      return;
+    }
+    if (!open) return;
+    if (view.kind === "place") showPlace(view.label);
+    if (known.scanning && polls++ < 12) window.setTimeout(() => void loadPlaces(), 600);
   }
 
   async function primary() {
@@ -400,9 +450,14 @@ export function openFolderPicker(use: PickerUse): void {
   renderPlaces();
   renderRows();
   filter.focus();
+  const places0 = loadPlaces();
   invoke<string>("folder_home")
-    .then((path) => {
+    .then(async (path) => {
       home = path;
+      if (use.start === "repos") {
+        await places0;
+        if (known?.repos.length) return showPlace("Git repos");
+      }
       return go(path);
     })
     .catch((e) => {

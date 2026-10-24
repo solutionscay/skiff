@@ -258,6 +258,15 @@ export interface FolderListing {
   truncated: boolean;
 }
 
+/** The picker's Places from the Host: Recent, and repositories under home. */
+export interface FolderPlaces {
+  /** Newest first. */
+  recent: string[];
+  repos: { path: string; branch: string | null; last_commit: number | null }[];
+  /** A scan runs: ask again. */
+  scanning: boolean;
+}
+
 /** A Host error as the Host typed it. */
 export interface HostError {
   code: string;

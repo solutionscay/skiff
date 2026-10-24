@@ -633,13 +633,15 @@ fn m5_folders_is_a_family_of_its_own_that_lists_folders_only() {
     let listing = Response::Folders {
         listing: FolderListing { path: "/".into(), real: "/".into(), parent: None, entries: vec![], truncated: false },
     };
+    let places = Response::Places { places: FolderPlaces { recent: vec![], repos: vec![], scanning: false } };
     for value in fixture["folder_requests"].as_array().unwrap() {
         let request: Request = serde_json::from_value(value.clone()).unwrap();
         assert_eq!(serde_json::to_value(&request).unwrap(), *value);
         assert_eq!(request.capability().as_ref(), Some(&folders));
         // Exactly one reply kind each, never Ok.
         assert!(!request.accepts(&Response::Ok));
-        assert_eq!(request.accepts(&path), !matches!(request, Request::FolderList { .. }), "{value}");
+        assert_eq!(request.accepts(&path), matches!(request, Request::FolderHome | Request::FolderCreate { .. }), "{value}");
+        assert_eq!(request.accepts(&places), matches!(request, Request::FolderPlaces), "{value}");
         assert_eq!(request.accepts(&listing), matches!(request, Request::FolderList { .. }), "{value}");
     }
     for value in fixture["replies"].as_array().unwrap() {

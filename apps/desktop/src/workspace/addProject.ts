@@ -37,6 +37,7 @@ export function createAddProject(onAdded: (p: Project, fleet: string | null) => 
     const inspect = (path: string) => hostInvoke<FolderInfo>("project_config", "inspect_folder", { path });
     openFolderPicker({
       action: "Add project",
+      start: "repos",
       check: async (path, name) => {
         const folder = await inspect(path);
         if (!folder.root) {

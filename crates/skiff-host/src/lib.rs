@@ -265,6 +265,9 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         Request::WorktreeRemove { .. } => live_sessions().await?,
         _ => Vec::new(),
     };
+    if matches!(request, Request::FolderPlaces) {
+        note_in_use().await;
+    }
     blocking(move || match request {
         Request::ProjectList => {
             let (rows, revision) = project::list_with_revision().map_err(failed)?;
@@ -325,6 +328,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         }
         Request::FolderHome => Ok(Response::Path { path: folders::home()? }),
         Request::FolderList { path, hidden, filter } => Ok(Response::Folders { listing: folders::list(&path, hidden, filter.as_deref())? }),
+        Request::FolderPlaces => Ok(Response::Places { places: folders::places()? }),
         Request::FolderCreate { parent, name } => Ok(Response::Path { path: folders::create(&parent, &name)? }),
         Request::LedgerRows => Ok(Response::Ledger { rows: ledger_rows()? }),
         Request::LedgerStamp => {
@@ -528,6 +532,24 @@ pub async fn live_sessions() -> Result<Vec<SessionInfo>, Error> {
             message: "Skiff cannot read this Host's sessions, so the worktree stays.".into(),
         }),
     }
+}
+
+/// Adds to Recent the folders this Host's sessions, groups and open
+/// projects use. Best effort: without skiffd, Recent stays as it was.
+async fn note_in_use() {
+    let socket = skiff_core::state::socket();
+    let read = async {
+        let client = skiff_client::Client::connect(&socket).await?;
+        anyhow::Ok((client.list_sessions().await?, client.list_groups().await?))
+    };
+    let mut seen: Vec<(String, u64)> = Vec::new();
+    if let Ok(Ok((sessions, groups))) = tokio::time::timeout(SESSIONS_TIMEOUT, read).await {
+        seen.extend(sessions.into_iter().map(|s| (s.cwd.to_string_lossy().into_owned(), s.started_at)));
+        seen.extend(groups.into_iter().filter_map(|g| g.cwd).map(|c| (c, 0)));
+    }
+    let projects = tokio::task::spawn_blocking(config).await.ok().and_then(Result::ok).unwrap_or_default();
+    seen.extend(projects.into_iter().filter(|p| !p.closed).map(|p| (p.path.to_string_lossy().into_owned(), 0)));
+    let _ = tokio::task::spawn_blocking(move || folders::recent::note(seen)).await;
 }
 
 fn config() -> Result<Vec<ProjectConfig>, Error> {
