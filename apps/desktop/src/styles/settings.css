@@ -125,7 +125,19 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-folder-meta { height: calc(20 * var(--u)); flex-shrink: 0; display: flex; align-items: center; gap: calc(8 * var(--u)); padding-left: calc(212 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(11px * var(--zoom, 1)); color: var(--error-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Settings › Hosts: the list, and the Add and Edit form. */
 .set-head-words { display: flex; flex-direction: column; gap: calc(4 * var(--u)); min-width: 0; }
-.set-table.g-hosts .set-row { grid-template-columns: calc(40 * var(--u)) minmax(calc(160 * var(--u)), 1fr) minmax(0, 1.4fr) calc(150 * var(--u)) auto; }
+/* One grid for the header and every row: mark, Name, Server, Skiff, State, menu. */
+.set-table.g-hosts .set-row { grid-template-columns: calc(40 * var(--u)) minmax(calc(160 * var(--u)), 1fr) minmax(0, 1.4fr) calc(128 * var(--u)) calc(148 * var(--u)) calc(40 * var(--u)); }
+.set-table.g-hosts .set-row.set-cols { height: calc(20 * var(--u)); }
+.set-table.g-hosts .set-row > .c-more { padding: 0; justify-content: center; }
+.set-host.act { cursor: default; }
+.set-host.act:hover { background: var(--bg-raised); }
+/* The lit row: the current-row tint and bar. */
+.set-host.act:focus, .set-host.act:focus-within { outline: 0; background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); }
+.set-host .c-menu { width: 100%; height: 100%; border: 0; background: transparent; color: var(--text-3); font-size: calc(16px * var(--zoom, 1)); visibility: hidden; }
+.set-host.act:is(:hover, :focus, :focus-within) .c-menu { visibility: visible; }
+.set-host .c-menu:hover { color: var(--text); background: var(--bg-raised); }
+.set-host .c-skiff { font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); }
+.set-host .c-skiff.update { color: var(--state-waiting); }
 .set-host .c-state, .set-check .c-lead { gap: calc(8 * var(--u)); font-size: calc(12px * var(--zoom, 1)); }
 .set-host .c-state .sq, .set-check .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; }
 .set-host .c-state.ok .sq { background: var(--ok); }
@@ -176,3 +188,4 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-remove-box .set-sub { font-size: calc(12px * var(--zoom, 1)); }
 .set-check-label { display: flex; gap: calc(8 * var(--u)); align-items: baseline; cursor: pointer; }
 .set-check-label input { flex-shrink: 0; margin: 0; accent-color: var(--danger); }
+.set-check .c-secs { margin-left: calc(8 * var(--u)); font-family: var(--mono); color: var(--text-3); }

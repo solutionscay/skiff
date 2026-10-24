@@ -13,7 +13,8 @@ import { bySessionPriority } from "./workspace/model";
 import type { Appearance, DaemonStatus } from "./platform/types";
 import { invoke } from "@tauri-apps/api/core";
 import { switcher } from "./app/commands";
-import { followDataPlane, hostOnline, loadProjects, reconnectRemote, refreshSessions, reloadDaemon, setDaemon, subscribeEvents, untilConnected } from "./app/daemon";
+import { failureLine, followDataPlane, hostOnline, loadProjects, reconnectRemote, refreshSessions, reloadDaemon, setDaemon, subscribeEvents, untilConnected } from "./app/daemon";
+import { connectAttempt, connectDone, connectFailed } from "./app/connectPanel";
 import { isRemote, loadHosts, onManageHosts, setHostConnected, watchHostLink } from "./app/hosts";
 import { muteInput } from "./terminal/terminalRuntime";
 import { loadHostCaps } from "./app/hostCaps";
@@ -85,8 +86,10 @@ async function boot() {
   void initTrace();
   startMemory();
   watchStatusbar();
+  if (isRemote()) connectAttempt();
   let status = await invoke<DaemonStatus>("daemon_status");
   setDaemon(status);
+  if (isRemote() && status.connected) connectDone();
   // An older skiffd that can reload moves onto the app's own first. Its sessions keep running.
   if (status.reload) {
     status = await reloadDaemon();
@@ -102,7 +105,8 @@ async function boot() {
     // A remote Host that is down at launch: wait for it, input off.
     setHostConnected(false);
     muteInput(true);
-    status = await untilConnected();
+    connectFailed(failureLine(status), 1000);
+    status = await untilConnected(1000);
     muteInput(false);
     setHostConnected(true);
   }

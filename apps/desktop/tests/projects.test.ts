@@ -15,6 +15,7 @@ function page(o: { remote: boolean; caps: string[]; fail?: string; capsFail?: st
   const mod = moduleFromSource(
     "../src/app/daemon.ts",
     {
+      "./connectPanel": { connectAttempt() {}, connectDone() {}, connectFailed() {}, connectWait: async () => {} },
       "@tauri-apps/api/core": {
         invoke: async (cmd: string) => {
           calls.push(cmd);

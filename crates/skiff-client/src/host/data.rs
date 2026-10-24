@@ -130,6 +130,10 @@ impl HostSelection {
         if received != host {
             return Err(Error::IdentityChanged { expected: host.clone(), received: received.clone() }.into());
         }
+        if forward.is_some() {
+            let v = connection.hello().service_versions.get("skiff-host").cloned().unwrap_or_default();
+            ssh::connect_note(format!("skiff-host {v} answers"));
+        }
         Ok(DataPlane { connection: Arc::new(connection), _forward: forward })
     }
 }

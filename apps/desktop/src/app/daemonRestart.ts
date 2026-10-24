@@ -90,7 +90,7 @@ export function daemonBadge(warning: DaemonWarning | null, requested = false) {
   else if (warning.kind === "update")
     foot.append(
       later,
-      button("confirm-act", "Update Skiff…", () => {
+      button("confirm-act go", "Update Skiff…", () => {
         close();
         checkShownHost();
       }),

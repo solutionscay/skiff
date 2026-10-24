@@ -180,6 +180,7 @@ async fn try_remote(app: &App, selection: &HostSelection, destination: &str, arr
         Ok(info) => info?,
         Err(_) => anyhow::bail!(RemoteSilent),
     };
+    skiff_client::host::ssh::connect_note(format!("skiffd {}, protocol {}", info.version, info.protocol));
     let name = arrival.map_or(destination, |a| a.name.as_str());
     let managed = arrival.is_some_and(|a| a.managed);
     *app.warning.lock().await =

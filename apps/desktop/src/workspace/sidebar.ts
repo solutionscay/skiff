@@ -37,7 +37,7 @@ import { render } from "../app/renderRequest";
 import { projectsPlus, renderWorkspaceStatus, shows, workspaceOpen } from "./profile";
 import { ledgerNeeds } from "./ledger";
 import { openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, syncSkiffAgent } from "../app/skiffAgent";
-import { hostName, isRemote } from "../app/hosts";
+import { hostConnected, hostName, isRemote } from "../app/hosts";
 
 /** 20px lines, flush against whatever follows. */
 function sessionBlock(lines: Line[], color: string): HTMLElement {
@@ -131,7 +131,11 @@ function pointerRow(s: SessionInfo): HTMLElement {
 export function projectsNote(): HTMLElement | null {
   const remote = isRemote();
   const on = remote ? ` on ${hostName()}` : "";
-  if (S.dataState === "loading") return S.projects.length ? null : h("div", "note-row", `Loading projects${on}…`);
+  // A remote Host says what it waits for: the connect, then its projects.
+  if (S.dataState === "loading" || (remote && !hostConnected())) {
+    if (S.projects.length) return null;
+    return h("div", "note-row", remote ? `Waiting for ${hostName()}` : "Loading projects…");
+  }
   if (S.dataState === "unavailable") {
     const why = S.dataNote ?? `Projects${on} need skiff-host there.`;
     const last = S.projects.length ? " The list shows the last read." : "";

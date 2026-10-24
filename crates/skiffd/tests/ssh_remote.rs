@@ -254,14 +254,30 @@ async fn an_update_keeps_the_session_pid_and_screen_and_never_goes_down() {
         }
     }
     // Each step shows as it happens, in order.
-    let lines = std::sync::Mutex::new(Vec::<String>::new());
-    let step = |l: &str| lines.lock().unwrap().push(l.to_string());
+    use install::Progress;
+    let lines = std::sync::Mutex::new(Vec::<Progress>::new());
+    let step = |p: Progress| lines.lock().unwrap().push(p);
     let first = install::install(&target, &options, &bundle("9.9.8-test", "beside").await, "9.9.8-test", name, 0, "fixture", &step).await.unwrap();
     let _stop = Stop(pidfile.clone());
     assert!(first.running, "{first:?}");
     let seen = lines.lock().unwrap().clone();
-    let at = |w: &str| seen.iter().position(|l| l.starts_with(w)).unwrap_or_else(|| panic!("{w} in {seen:?}"));
-    assert!(at("Uploading") < at("Upload done") && at("Upload done") < at("Unpacking Skiff 9.9.8-test") && at("Unpacking") < at("skiffd runs"), "{seen:?}");
+    let text = |p: &Progress| match p {
+        Progress::Step { n, text } => format!("#{n} {text}"),
+        Progress::Line { text } => text.clone(),
+        Progress::Sent { sent, total } => format!("sent {sent}/{total}"),
+    };
+    let all: Vec<String> = seen.iter().map(text).collect();
+    let at = |w: &str| all.iter().position(|l| l.starts_with(w)).unwrap_or_else(|| panic!("{w} in {all:?}"));
+    assert!(at("#3 Upload") < at("#4 Unpacking Skiff 9.9.8-test") && at("#4") < at("#5 Switching") && at("#5") < at("#6 Starting skiffd") && at("#6") < at("skiffd runs"), "{all:?}");
+    // The upload counts its bytes up to the whole; ssh's own lines pass the
+    // allowlist only, and never name a key file.
+    let total = match seen.iter().rev().find(|p| matches!(p, Progress::Sent { .. })) {
+        Some(Progress::Sent { sent, total }) => (*sent == *total).then_some(*total),
+        _ => None,
+    };
+    assert!(total.is_some_and(|t| t > 0), "{all:?}");
+    assert!(all.iter().any(|l| l.starts_with("Authenticated to ")), "{all:?}");
+    assert!(!all.iter().any(|l| l.contains("/.ssh/") || l.starts_with("debug")), "{all:?}");
     // The managed version is the bundle's, never skiffd's crate version.
     let probed = |run| match run {
         skiff_client::host::check::ProbeRun::Probed(p, _) => p,

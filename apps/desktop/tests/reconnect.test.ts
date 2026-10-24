@@ -26,6 +26,7 @@ function recovery() {
   const mod = moduleFromSource(
     "../src/app/daemon.ts",
     {
+      "./connectPanel": { connectAttempt() {}, connectDone() {}, connectFailed() {}, connectWait: async () => {} },
       "@tauri-apps/api/core": {
         invoke: async () => {
           agentsDuringConnect = [...S.agents.map((a: any) => a.command)];

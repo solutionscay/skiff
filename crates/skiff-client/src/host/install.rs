@@ -164,14 +164,46 @@ pub async fn dev_bundle(version: &str, arch: &str, beside: &Path) -> Result<Bund
     Ok(Bundle { name: format!("{name}.tar.gz"), bytes: bytes?, source: "this build" })
 }
 
-/// Takes each step line of an install or update as it happens, for a
-/// person who waits.
-pub type Steps<'a> = &'a (dyn Fn(&str) + Send + Sync);
+/// What an install or update shows as it happens, for a person who waits.
+/// Six steps, numbered: 1 check, 2 bundle, 3 upload, 4 unpack, 5 switch
+/// to the new version (no Cancel after it), 6 start.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Progress {
+    /// Step `n` of [`STEPS`] starts.
+    Step { n: u8, text: String },
+    /// One line under the step that runs.
+    Line { text: String },
+    /// The upload: bytes sent so far, of `total`.
+    Sent { sent: u64, total: u64 },
+}
 
-/// One strict, batch ssh run of `command`, with `stdin`. Its stdout. The
-/// server's step lines go to `step` as they come.
+/// The steps an install or update counts.
+pub const STEPS: u8 = 6;
+
+impl Progress {
+    /// A step line as the server prints it: `#N words` starts step N.
+    fn from_server(words: &str) -> Progress {
+        let numbered = words.strip_prefix('#').and_then(|r| r.split_once(' ')).and_then(|(n, t)| Some((n.parse().ok()?, t)));
+        match numbered {
+            Some((n, text)) if (1..=STEPS).contains(&n) => Progress::Step { n, text: text.to_string() },
+            _ => Progress::Line { text: words.to_string() },
+        }
+    }
+}
+
+/// Takes each [`Progress`] of an install or update as it happens.
+pub type Steps<'a> = &'a (dyn Fn(Progress) + Send + Sync);
+
+/// One strict, batch ssh run of `command`, with `stdin`. Its stdout. What
+/// it shows goes to `step` as it comes.
 async fn run(target: &SshTarget, options: &SshOptions, command: String, stdin: &[u8], step: Steps<'_>) -> Result<String, String> {
-    match ssh::run_batch_steps(target, options, command, stdin, STEP_TIMEOUT, step).await? {
+    let show = |e: ssh::BatchEvent| match e {
+        ssh::BatchEvent::Step(words) => step(Progress::from_server(words)),
+        ssh::BatchEvent::Ssh(text) => step(Progress::Line { text }),
+        ssh::BatchEvent::Sent(sent, total) => step(Progress::Sent { sent, total }),
+    };
+    match ssh::run_batch_steps(target, options, command, stdin, STEP_TIMEOUT, Some(&show)).await? {
         BatchRun::Done(out) => Ok(out),
         BatchRun::Ssh(_) => Err("ssh stopped before the step ran. Check again.".into()),
         BatchRun::TimedOut => Err("The server did not finish in time.".into()),
@@ -203,9 +235,9 @@ async fn upload(target: &SshTarget, options: &SshOptions, b: &Bundle, free_kb: u
     }
     let hash = sha256(&b.bytes);
     let upload = format!(r#"sh -c 'umask 077; d="$HOME/.local/share/skiff/server"; mkdir -p "$d" && cat > "$d/.incoming-{hash}.tar.gz"'"#);
-    step(&format!("Uploading {} MB to {name}", b.bytes.len().div_ceil(1024 * 1024)));
+    step(Progress::Step { n: 3, text: format!("Upload {}", b.name) });
+    step(Progress::Sent { sent: 0, total: b.bytes.len() as u64 });
     run(target, options, upload, &b.bytes, step).await?;
-    step("Upload done");
     Ok(hash)
 }
 
@@ -489,5 +521,17 @@ mod tests {
         }
         assert!(!home.join(".local/share/skiff/server").exists());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod progress_tests {
+    use super::Progress;
+
+    #[test]
+    fn a_numbered_server_line_starts_a_step_and_the_rest_are_lines() {
+        assert_eq!(Progress::from_server("#4 Unpacking Skiff 1.6.6"), Progress::Step { n: 4, text: "Unpacking Skiff 1.6.6".into() });
+        assert_eq!(Progress::from_server("#9 nine"), Progress::Line { text: "#9 nine".into() });
+        assert_eq!(Progress::from_server("tar: Exiting"), Progress::Line { text: "tar: Exiting".into() });
     }
 }

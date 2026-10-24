@@ -37,6 +37,7 @@ import { reloadFiles } from "../workspace/files";
 import { reloadBackdrops } from "../appearance/backdrop";
 import { loadLedger } from "../workspace/ledger";
 import { muteInput } from "../terminal/terminalRuntime";
+import { connectAttempt, connectDone, connectFailed, connectWait } from "./connectPanel";
 
 export function setDaemon(status: DaemonStatus) {
   const dot = $("daemon").querySelector(".dot") as HTMLElement;
@@ -107,15 +108,28 @@ export async function reloadDaemon(): Promise<DaemonStatus> {
 
 /** Asks for the selected Host until it answers: 1 s, then twice as long
  *  each time, up to 30 s. Each try runs SSH and the handshake again. */
-export async function untilConnected(): Promise<DaemonStatus> {
+export async function untilConnected(first = 0): Promise<DaemonStatus> {
   let wait = 1000;
+  if (first) await connectWait(first);
   for (;;) {
+    const remote = isRemote();
+    if (remote) connectAttempt();
     const status = await invoke<DaemonStatus>("daemon_status").catch(() => null);
     if (status) setDaemon(status);
-    if (status?.connected) return status;
-    await new Promise((r) => setTimeout(r, wait));
+    if (status?.connected) {
+      connectDone();
+      return status;
+    }
+    if (remote) connectFailed(failureLine(status), wait);
+    // Try again in the connecting panel cuts the wait short.
+    await connectWait(wait);
     wait = Math.min(wait * 2, 30_000);
   }
+}
+
+/** The one plain line a failed connect shows: the cause Rust named. */
+export function failureLine(status: DaemonStatus | null): string {
+  return status?.warning?.message ?? `${hostName()} does not answer. Settings › Hosts checks it.`;
 }
 
 /**
