@@ -57,10 +57,17 @@ pub(super) struct DataState {
 pub struct DataPlane {
     connection: Arc<HostConnection>,
     _forward: Option<SshForward>,
+    /// This Mac's service, by the socket's peer credentials. Never set for
+    /// a remote Host: the forward's peer is `ssh`.
+    pid: Option<u32>,
 }
 impl DataPlane {
     pub fn connection(&self) -> Arc<HostConnection> {
         self.connection.clone()
+    }
+    /// The local service's pid, for the one build that may replace it.
+    pub fn pid(&self) -> Option<u32> {
+        self.pid
     }
 }
 
@@ -111,14 +118,16 @@ impl HostSelection {
     }
 
     async fn try_data(&self, host: &HostId, previous: Option<&Hello>) -> anyhow::Result<DataPlane> {
-        let (stream, forward) = match self.data_route() {
+        let (stream, forward, pid) = match self.data_route().ok_or(DataError::NotRunning)? {
             DataRoute::Local(path) => {
-                (UnixStream::connect(&path).await.map_err(|_| DataError::NotRunning)?, None)
+                let stream = UnixStream::connect(&path).await.map_err(|_| DataError::NotRunning)?;
+                let pid = stream.peer_cred().ok().and_then(|c| c.pid()).and_then(|p| u32::try_from(p).ok());
+                (stream, None, pid)
             }
             DataRoute::Ssh { target, options, dir } => {
                 let forward = SshForward::open(&target, &options, &dir).await?;
                 let stream = UnixStream::connect(forward.socket()).await.map_err(|_| DataError::NotRunning)?;
-                (stream, Some(forward))
+                (stream, Some(forward), None)
             }
         };
         let connection = match HostConnection::connect_with_timeout(stream, previous, REQUEST_TIMEOUT).await {
@@ -135,7 +144,7 @@ impl HostSelection {
             let v = connection.hello().service_versions.get("skiff-host").cloned().unwrap_or_default();
             ssh::connect_note(format!("skiff-host {v} answers"));
         }
-        Ok(DataPlane { connection: Arc::new(connection), _forward: forward })
+        Ok(DataPlane { connection: Arc::new(connection), _forward: forward, pid })
     }
 }
 

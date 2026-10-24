@@ -12,6 +12,8 @@ pub(crate) struct App {
     /// M4: the selected Host's data-plane service (`skiff-host`), checked
     /// against the session plane's Host id on every connection.
     pub(crate) data: Mutex<Option<DataPlane>>,
+    /// This run replaced an older local `skiff-host` already: once per run.
+    pub(crate) data_replaced: AtomicBool,
     /// When this app run last started `skiff-host`: one that stops right
     /// after it starts is not started again every read.
     pub(crate) data_started: std::sync::Mutex<Option<std::time::Instant>>,
@@ -142,7 +144,15 @@ const REMOTE_HELLO_TIMEOUT: Duration = Duration::from_secs(15);
 async fn connect_remote(app: &App, selection: &HostSelection, guard: &mut Option<Arc<SelectedHost>>) -> Result<(Arc<SelectedHost>, bool), String> {
     let destination = selection.ssh_target().map(|t| t.destination.clone()).unwrap_or_default();
     let arrival = match selection.ssh_target() {
-        Some(t) => crate::hosts::update_on_connect(t).await,
+        Some(t) => {
+            let arrival = crate::hosts::update_on_connect(t).await;
+            // The probe that ran for it found the Host's one socket: the
+            // forward goes there. Without it, the connect probes itself.
+            if let Some(socket) = crate::hosts::found_socket(t) {
+                selection.set_remote_socket(socket);
+            }
+            arrival
+        }
         None => None,
     };
     match try_remote(app, selection, &destination, arrival.as_ref(), crate::hosts::path()).await {
@@ -220,7 +230,7 @@ async fn refine_refused(e: anyhow::Error, selection: &HostSelection) -> anyhow::
     use skiff_client::host::{check, ssh::SshError};
     let (Some(SshError::NoSkiffd { .. }), Some(t)) = (e.downcast_ref::<SshError>(), selection.ssh_target()) else { return e };
     let options = skiff_client::host::ssh::SshOptions::default();
-    match check::run_probe(t, &options, "skiffd.sock", Some(&t.socket)).await {
+    match check::run_probe(t, &options).await {
         Ok(check::ProbeRun::Probed(p, _)) => match e.downcast::<SshError>() {
             Ok(ssh) => ssh.refine(p.socket_live).into(),
             Err(e) => e,
@@ -468,10 +478,45 @@ pub(crate) async fn data_now(app: &App) -> Result<Arc<HostConnection>, String> {
         }
         Err(e) => return Err(data_failure(&e, &selection)),
     };
+    let plane = match selection.process_control() {
+        Some(control) => replace_older_data_service(app, &control, &selection, &host, plane).await?,
+        None => plane,
+    };
     let c = plane.connection();
     *guard = Some(plane);
     app.data_gen.fetch_add(1, Ordering::SeqCst);
     Ok(c)
+}
+
+/// One skiff-host per computer, from the newer build: a local service older
+/// than this app's is stopped with SIGTERM and the bundled one started, once
+/// per app run. It holds no session, so nothing is lost. The same version or
+/// a newer one stays. One that does not stop is used as it is. One that does
+/// not come back within 5 s is an error for this read: the next read starts
+/// it as for any missing service. Only for a local endpoint (`_local` proves it).
+async fn replace_older_data_service(app: &App, _local: &ProcessControl, selection: &HostSelection, host: &skiff_host_api::HostId, plane: DataPlane) -> Result<DataPlane, String> {
+    let theirs = plane.connection().hello().service_versions.get("skiff-host").cloned().unwrap_or_default();
+    let (Some(pid), true) = (plane.pid(), compare_versions(&theirs, skiff_core::VERSION).is_lt()) else { return Ok(plane) };
+    if app.data_replaced.swap(true, Ordering::SeqCst) {
+        return Ok(plane);
+    }
+    eprintln!("skiff-host {theirs} is older than this app's {}: replacing it", skiff_core::VERSION);
+    drop(plane);
+    if !stop_daemon(_local, pid as i32, false).await {
+        eprintln!("skiff-host (pid {pid}) did not stop; it keeps running");
+        return selection.connect_data(host).await.map_err(|e| data_failure(&e, selection));
+    }
+    spawn_data_service(_local, selection.socket()).map_err(|e| format!("start skiff-host: {e:#}"))?;
+    *app.data_started.lock().unwrap() = Some(std::time::Instant::now());
+    let mut last = None;
+    for _ in 0..50 {
+        match selection.connect_data(host).await {
+            Ok(p) => return Ok(p),
+            Err(e) => last = Some(e),
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    Err(last.map(|e| data_failure(&e, selection)).unwrap_or_else(|| "skiff-host did not answer after the update.".into()))
 }
 
 /// Why a data reply is not shown: the connection it came on was replaced.
@@ -936,7 +981,7 @@ pub(crate) async fn status_now(app: &App) -> DaemonStatus {
     // A remote Host shows as its destination and socket. Its forward's peer
     // pid is this Mac's `ssh`, never the daemon: it is not shown.
     let socket = match selection.ssh_target() {
-        Some(t) => format!("{}:{}", t.destination, t.socket),
+        Some(t) => format!("{}:{}", t.destination, selection.remote_socket().unwrap_or_default()),
         None => selection.socket().display().to_string(),
     };
     let local = selection.is_local();

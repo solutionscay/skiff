@@ -48,7 +48,7 @@ function tab(report?: unknown) {
   const menus: { title: string; entries: any[] }[] = [];
   const dialogs: { title: string; body?: string; tone?: string; content?: El[]; submit: () => Promise<void>; onClose?: () => void }[] = [];
   let prompt: { value?: string; submit: (v: string) => Promise<void> } | null = null;
-  const hosts = [{ id: "h_dev", name: "devbox", destination: "devbox", user: "me", port: 2222, socket: "/run/user/1000/skiff/skiffd.sock", state: "attention", skiff: "1.9.0", update: true }];
+  const hosts = [{ id: "h_dev", name: "devbox", destination: "devbox", user: "me", port: 2222, state: "attention", skiff: "1.9.0", update: true }];
   const invoke = async (c: string, a?: unknown) => {
     calls.push([c, a]);
     if (c === "resolve_ssh") return { hostname: "devbox.lan", user: "me", port: 2222, jump: "" };
@@ -123,31 +123,19 @@ test("Edit opens the form with the Host's values and saves them under its id", a
   assert.ok(x.calls.some(([c, a]) => c === "pick" && a === "h_dev"));
 });
 
-test("two Skiffs on the server: the check list offers both by name and stores the pick", async () => {
-  const rel = "/run/user/1000/skiff/skiffd.sock";
-  const dev = "/run/user/1000/skiff/skiffd-dev.sock";
+test("one Skiff per server: the check list shows the one skiffd and offers no pick", async () => {
   const x = tab({
     ok: true,
-    socket: dev,
-    choices: [
-      { socket: rel, label: "Skiff", version: "2.0.0" },
-      { socket: dev, label: "Skiff dev build", version: "2.1.0" },
-    ],
+    socket: "/run/user/1000/skiff/skiffd.sock",
     rows: [{ row: "sessions", title: "Sessions service (skiffd)", state: "passed", text: "skiffd 2.1.0 answers.", fix: null }],
   });
   await x.t.load();
   x.t.open({ check: "h_dev" });
   for (let i = 0; i < 4; i++) await flush();
   x.redraw();
-  assert.ok(x.page().find("Which Skiff"));
-  const inUse = x.page().find("Skiff dev build 2.1.0")!;
-  assert.equal(inUse.attrs["aria-pressed"], "true");
-  assert.ok(inUse.disabled, "the one in use is not a button to press");
-  const checks = x.calls.filter(([c]) => c === "check_host").length;
-  x.page().find("Skiff 2.0.0")!.click();
-  for (let i = 0; i < 4; i++) await flush();
-  assert.equal(JSON.stringify(x.calls.find(([c]) => c === "pick_socket")), JSON.stringify(["pick_socket", { id: "h_dev", socket: rel }]));
-  assert.equal(x.calls.filter(([c]) => c === "check_host").length, checks + 1, "the check runs again");
+  assert.ok(x.page().find("skiffd 2.1.0 answers."));
+  assert.equal(x.page().find("Which Skiff"), undefined);
+  assert.equal(x.calls.find(([c]) => c === "pick_socket"), undefined);
 });
 
 test("a Host that needs attention opens its check list from the menu link", async () => {

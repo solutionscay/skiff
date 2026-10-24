@@ -1138,10 +1138,11 @@ OpenSSH stream-local forward to the remote skiffd socket.
   then reloads the page: no view mixes two Hosts.
 - **`hosts.toml`** (client-owned, beside `projects.toml`) stores the known
   Hosts, each with a local `id` that never changes, a shown `name`, the
-  `destination`, an optional `user` and `port`, the `socket` (found by the
-  check, or set by the person with `socket_override = true`), the `host_id`
-  pin and `clipboard_host`. `selected` names an `id`. No two Hosts share a
-  destination, user and port. An older
+  `destination`, an optional `user` and `port`, the `host_id` pin and
+  `clipboard_host`. `selected` names an `id`. No socket is stored: each Host
+  runs one skiffd, on `<runtime dir>/skiff/skiffd.sock` there, and the probe
+  that runs on each connect (and in the check list) finds it; the app keeps
+  it for the run. No two Hosts share a destination, user and port. An older
   `clipboard = true` is ignored. An unknown or invalid selected entry falls
   back to This Mac.
 
@@ -1380,8 +1381,9 @@ Tracking: [M4 #160](https://github.com/solutionscay/skiff/issues/160), [epic #15
     - on exit it removes its socket only if the path still names the inode
       it bound, never a newer service's socket
   - `--session-socket <skiffd socket>` names the skiffd it pairs with. Its
-    state follows that socket exactly as skiffd's does: a private test or
-    debug socket gets its own `projects.toml` and Host id.
+    state follows that socket exactly as skiffd's does: a private test
+    socket (`SKIFF_SOCKET`) gets its own `projects.toml` and Host id. Every
+    build, debug or release, pairs with the one `skiffd.sock` otherwise.
   - It holds no PTY, no session and no client of skiffd. Stopping or
     restarting it never touches a terminal.
 - **Direct topology.** The app reaches it directly, never through skiffd and
@@ -1478,8 +1480,8 @@ Tracking: [M4 #160](https://github.com/solutionscay/skiff/issues/160), [epic #15
 ### Demo
 
 1. **This Mac.** Run the dev app. The projects list loads as before. In the
-   process list, `skiff-host --session-socket …skiffd-dev.sock` runs beside
-   skiffd.
+   process list, `skiff-host --session-socket …/skiff/skiffd.sock` runs beside
+   skiffd, one per computer; an older one is replaced by the newer app's.
    - Stop that `skiff-host`. Terminals keep working. The next project read
      starts it again.
 2. **An SSH Host.** Install Skiff… in Settings › Hosts starts `skiff-host`

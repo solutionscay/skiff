@@ -42,9 +42,16 @@ struct Selection {
     data: tokio::sync::Mutex<super::data::DataState>,
 }
 
-/// An SSH endpoint: the target, and the forward this selection reuses.
+/// An SSH endpoint: the login, the socket the probe found there, and the
+/// forward this selection reuses.
 struct Remote {
+    /// The login. Its `socket` is the one given at construction, which may
+    /// be empty: `socket` below is the one in use.
     target: SshTarget,
+    /// The remote skiffd socket, `<runtime dir>/skiff/skiffd.sock` on that
+    /// Host, from the probe. None until a probe found it; the first connect
+    /// runs one.
+    socket: Mutex<Option<String>>,
     options: SshOptions,
     dir: PathBuf,
     forward: tokio::sync::Mutex<Option<SshForward>>,
@@ -76,14 +83,19 @@ impl HostSelection {
 
     /// A remote Host through `ssh`. Each forward gets its own private
     /// directory under `dir`. `pin`: the Host id stored for this endpoint;
-    /// `None` only before its first accepted connection.
+    /// `None` only before its first accepted connection. `target.socket`
+    /// may be empty: the first connect probes the Host for its one socket.
     pub fn ssh(
         target: SshTarget,
         options: SshOptions,
         dir: PathBuf,
         pin: Option<HostId>,
     ) -> Result<Self, String> {
-        target.validate()?;
+        target.validate_login()?;
+        if !target.socket.is_empty() {
+            target.validate()?;
+        }
+        let socket = Mutex::new(Some(target.socket.clone()).filter(|s| !s.is_empty()));
         Ok(Self(Arc::new(Selection {
             socket: dir.clone(),
             identity_file: PathBuf::new(),
@@ -91,6 +103,7 @@ impl HostSelection {
             pin: Mutex::new(pin),
             remote: Some(Remote {
                 target,
+                socket,
                 options,
                 dir,
                 forward: tokio::sync::Mutex::new(None),
@@ -110,6 +123,25 @@ impl HostSelection {
     }
     pub fn ssh_target(&self) -> Option<&SshTarget> {
         self.0.remote.as_ref().map(|r| &r.target)
+    }
+    /// The remote skiffd socket in use, once a probe found it.
+    pub fn remote_socket(&self) -> Option<String> {
+        self.0.remote.as_ref().and_then(|r| r.socket.lock().unwrap().clone())
+    }
+    /// The socket a probe of this Host found: the forward goes there from
+    /// now on. Only an absolute path with no colon, as `-L` takes it.
+    pub fn set_remote_socket(&self, socket: String) {
+        if let Some(r) = &self.0.remote {
+            if (SshTarget { socket: socket.clone(), ..r.target.clone() }).validate().is_ok() {
+                *r.socket.lock().unwrap() = Some(socket);
+            }
+        }
+    }
+    /// The login with the socket in use. None before a probe found one.
+    fn remote_target(&self) -> Option<SshTarget> {
+        let r = self.0.remote.as_ref()?;
+        let socket = r.socket.lock().unwrap().clone()?;
+        Some(SshTarget { socket, ..r.target.clone() })
     }
     /// The Host id this endpoint must report, once known.
     pub fn pinned(&self) -> Option<HostId> {
@@ -132,7 +164,7 @@ impl HostSelection {
                 hostname: r.target.destination.clone(),
                 account: r.target.user.clone().unwrap_or_default(),
                 port: r.target.port.unwrap_or(0),
-                socket: r.target.socket.clone(),
+                socket: r.socket.lock().unwrap().clone().unwrap_or_default(),
             },
         }
     }
@@ -169,7 +201,20 @@ impl HostSelection {
                     .into());
                 }
             }
-            match SshForward::open(&remote.target, &remote.options, &remote.dir).await {
+            // The socket, from the probe this connect or an earlier one ran.
+            let target = match self.remote_target() {
+                Some(t) => t,
+                None => match self.probe_socket(remote).await {
+                    Ok(t) => t,
+                    Err(e) => {
+                        let mut retry = remote.retry.lock().unwrap();
+                        retry.0 += 1;
+                        retry.1 = Some(Instant::now() + ssh::backoff(retry.0));
+                        return Err(e);
+                    }
+                },
+            };
+            match SshForward::open(&target, &remote.options, &remote.dir).await {
                 Ok(f) => {
                     *remote.retry.lock().unwrap() = (0, None);
                     *forward = Some(f);
@@ -195,23 +240,46 @@ impl HostSelection {
         })
     }
 
+    /// Asks the Host where its skiffd listens, over one strict ssh run, and
+    /// keeps the answer. No skiffd there is [`SshError::NoSkiffd`].
+    async fn probe_socket(&self, remote: &Remote) -> anyhow::Result<SshTarget> {
+        use super::check::{run_probe, ProbeRun};
+        let probe = run_probe(&remote.target, &remote.options).await.map_err(anyhow::Error::msg)?;
+        let p = match probe {
+            ProbeRun::Probed(p, _) => p,
+            ProbeRun::Ssh(stderr) => anyhow::bail!("ssh to {} stopped before Skiff could look for skiffd: {}", remote.target.destination, stderr.lines().last().unwrap_or_default()),
+            ProbeRun::TimedOut => anyhow::bail!("{} did not answer in time", remote.target.destination),
+            ProbeRun::Garbled => anyhow::bail!("Skiff cannot read {}: its login shell prints extra text", remote.target.destination),
+        };
+        let target = SshTarget { socket: p.socket.clone(), ..remote.target.clone() };
+        target.validate().map_err(anyhow::Error::msg)?;
+        if !p.socket_live {
+            return Err(SshError::NoSkiffd { destination: remote.target.destination.clone(), socket: p.socket }.into());
+        }
+        *remote.socket.lock().unwrap() = Some(p.socket);
+        Ok(target)
+    }
+
     /// M4: where this Host's data-plane service listens, beside its skiffd
     /// socket. For SSH, the remote path, named by path arithmetic only.
-    pub(super) fn data_route(&self) -> super::data::DataRoute {
+    /// None for a remote Host whose socket no probe has found yet: the
+    /// session plane connects first, and its probe finds it.
+    pub(super) fn data_route(&self) -> Option<super::data::DataRoute> {
         use super::data::DataRoute;
-        match &self.0.remote {
+        Some(match &self.0.remote {
             None => DataRoute::Local(skiff_core::socket::data_socket(self.socket())),
-            Some(r) => DataRoute::Ssh {
-                target: SshTarget {
-                    socket: skiff_core::socket::data_socket(Path::new(&r.target.socket))
-                        .to_string_lossy()
-                        .into_owned(),
-                    ..r.target.clone()
-                },
-                options: r.options.clone(),
-                dir: r.dir.clone(),
-            },
-        }
+            Some(r) => {
+                let t = self.remote_target()?;
+                DataRoute::Ssh {
+                    target: SshTarget {
+                        socket: skiff_core::socket::data_socket(Path::new(&t.socket)).to_string_lossy().into_owned(),
+                        ..t
+                    },
+                    options: r.options.clone(),
+                    dir: r.dir.clone(),
+                }
+            }
+        })
     }
     pub(super) fn data_state(&self) -> &tokio::sync::Mutex<super::data::DataState> {
         &self.0.data

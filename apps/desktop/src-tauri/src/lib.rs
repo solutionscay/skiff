@@ -129,7 +129,6 @@ pub fn run() {
             hosts::ssh_aliases,
             hosts::resolve_ssh,
             hosts::check_host,
-            hosts::pick_socket,
             hosts::host_key_scan,
             hosts::host_key_trust,
             hosts::make_key,
@@ -317,7 +316,7 @@ mod tests {
         }
         // A command added later must be placed on one side or the other.
         let allowed = ["set_menu", "quit_app", "guard_quit", "menu_layout", "set_menu_layout", "set_window_dark", "clipboard_write", "clipboard_read",
-            "daemon_status", "host_capabilities", "list_hosts", "add_host", "edit_host", "rename_host", "remove_host", "uninstall_preview", "ssh_aliases", "resolve_ssh", "check_host", "pick_socket", "host_key_scan", "host_key_trust", "make_key", "unlock_key", "public_key", "install_key", "fix_permissions", "install_skiff", "cancel_install", "start_skiff", "turn_on_linger", "update_skiff", "set_host_auto_update", "select_host", "set_host_clipboard", "host_clipboard", "accept_host_identity",
+            "daemon_status", "host_capabilities", "list_hosts", "add_host", "edit_host", "rename_host", "remove_host", "uninstall_preview", "ssh_aliases", "resolve_ssh", "check_host", "host_key_scan", "host_key_trust", "make_key", "unlock_key", "public_key", "install_key", "fix_permissions", "install_skiff", "cancel_install", "start_skiff", "turn_on_linger", "update_skiff", "set_host_auto_update", "select_host", "set_host_clipboard", "host_clipboard", "accept_host_identity",
             "list_sessions", "create_session", "pty_write", "pty_resize", "session_seen", "kill_session", "rename_session", "set_session_theme", "list_agents", "list_projects", "get_project", "git_changes", "git_diff", "data_plane_status", "list_files", "read_file", "open_file_copy", "project_background",
             "ledger_rows", "ledger_result", "get_skiff_agent", "add_worktree", "remove_worktree", "add_project", "inspect_folder", "init_host_repository", "folder_home", "folder_list", "folder_create", "folder_places", "set_project_short", "set_project_fleet", "set_project_color", "set_project_closed", "remove_project", "set_project_background_opacity", "set_project_changes", "set_project_files", "set_project_theme", "reorder_projects",
             "set_skiff_agent", "preview_skiff_folder", "change_skiff_folder", "open_skiff_agent", "start_skiff_watch", "start_project_skipper",

@@ -1,10 +1,11 @@
 //! `skiff-host [--session-socket <skiffd socket>]`
 //!
 //! Serves the Host's data plane at `<skiffd socket stem>-host.sock`, beside
-//! the skiffd it pairs with, and uses that socket's state: a private test or
-//! debug socket gets its own `projects.toml` and Host id, exactly as skiffd
-//! does. It starts nothing and stops nothing else; SIGTERM or SIGINT end
-//! only this process.
+//! the skiffd it pairs with, and uses that socket's state: a private test
+//! socket gets its own `projects.toml` and Host id, exactly as skiffd does.
+//! One skiff-host runs per computer, beside the one skiffd; the newer app
+//! replaces an older one. It starts nothing and stops nothing else; SIGTERM
+//! or SIGINT end only this process.
 use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{bail, Context, Result};

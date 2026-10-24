@@ -1,10 +1,10 @@
 //! Known Hosts and which one this window shows: client-owned `hosts.toml`
 //! beside `projects.toml`. "This Mac" is the local Host and needs no entry.
 //! A remote Host has a local id that never changes, a shown name, an SSH
-//! destination (an alias from ssh config, a hostname or an address), an
-//! optional user and port, and the skiffd socket on it: the one the probe
-//! found (Settings › Hosts › Check), or the one the person picked when a
-//! release and a dev build both run there. No two Hosts
+//! destination (an alias from ssh config, a hostname or an address), and an
+//! optional user and port. The skiffd socket on it is not stored: each Host
+//! has one, `<runtime dir>/skiff/skiffd.sock` there, and the probe finds it
+//! on each connect (and in Settings › Hosts › Check). No two Hosts
 //! have the same destination, user and port. Each remote Host keeps the Skiff identity it first
 //! reported (`host_id`): a different one is refused on every later
 //! connection, after a new selection or app start too, until the person
@@ -42,11 +42,6 @@ pub(crate) struct KnownHost {
     /// Sent as `-p` only when the person set it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) port: Option<u16>,
-    /// skiffd's socket on that Host: the one the last check found, or the
-    /// one the person picked. A check keeps it while it is there. None
-    /// until a check finds it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) socket: Option<String>,
     /// The Host id skiffd reported on the first accepted connection. Only
     /// the person changes it, by accepting a new identity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -71,12 +66,14 @@ fn is_yes(b: &bool) -> bool {
 
 impl KnownHost {
     #[cfg(test)]
-    fn new(destination: String, socket: String) -> Self {
-        Self { id: format!("h_{destination}"), name: destination.clone(), destination, user: None, port: None, socket: Some(socket), host_id: None, clipboard_host: None, auto_update: true }
+    fn new(destination: String) -> Self {
+        Self { id: format!("h_{destination}"), name: destination.clone(), destination, user: None, port: None, host_id: None, clipboard_host: None, auto_update: true }
     }
 
+    /// The login, with the socket the last probe of this app run found
+    /// there, or empty before one: the first connect probes.
     pub(crate) fn target(&self) -> SshTarget {
-        SshTarget { destination: self.destination.clone(), user: self.user.clone(), port: self.port, socket: self.socket.clone().unwrap_or_default() }
+        SshTarget { destination: self.destination.clone(), user: self.user.clone(), port: self.port, socket: memo(&self.id, |m| m.socket.clone()).unwrap_or_default() }
     }
 
     /// The same login: destination, user and port.
@@ -175,9 +172,6 @@ fn forward_dir(id: &str) -> PathBuf {
 }
 
 pub(crate) fn remote(h: &KnownHost) -> Result<HostSelection, String> {
-    if h.socket.is_none() {
-        return Err(format!("Skiff has not found the socket on {} yet. Check it in Settings › Hosts.", h.name));
-    }
     let pin = h.host_id.clone().map(HostId::try_from).transpose()?;
     HostSelection::ssh(h.target(), SshOptions::default(), forward_dir(&h.id), pin)
 }
@@ -272,7 +266,6 @@ struct HostView {
     destination: String,
     user: Option<String>,
     port: Option<u16>,
-    socket: Option<String>,
     auto_update: bool,
     /// From the last check or connection in this app run: `ok`,
     /// `attention`, or `unknown` before any.
@@ -305,6 +298,9 @@ struct Memo {
     arrival: Option<(Option<Arrival>, std::time::Instant)>,
     /// The managed install's Skiff version from the last probe.
     skiff: Option<String>,
+    /// skiffd's socket there, from the last probe: `<runtime dir>/skiff/skiffd.sock`
+    /// on that Host. The forward goes there. Never stored in `hosts.toml`.
+    socket: Option<String>,
 }
 
 static MEMO: std::sync::Mutex<std::collections::BTreeMap<String, Memo>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
@@ -334,7 +330,6 @@ pub(crate) fn note_login(target: &SshTarget, ok: bool) {
 
 fn state(h: &KnownHost) -> &'static str {
     match memo(&h.id, |m| m.ok) {
-        _ if h.socket.is_none() => "attention",
         Some(true) => "ok",
         Some(false) => "attention",
         None => "unknown",
@@ -371,7 +366,7 @@ fn host_list(hosts: Hosts, selected: Option<String>, identity: Option<&HostId>) 
         .map(|h| {
             let skiff = memo(&h.id, |m| m.skiff.clone());
             let update = skiff.as_deref().is_some_and(|v| skiff_client::host::check::newer(VERSION, v)) || memo(&h.id, |m| m.other_build);
-            HostView { state: state(&h), id: h.id, name: h.name, destination: h.destination, user: h.user, port: h.port, socket: h.socket, auto_update: h.auto_update, skiff, update }
+            HostView { state: state(&h), id: h.id, name: h.name, destination: h.destination, user: h.user, port: h.port, auto_update: h.auto_update, skiff, update }
         })
         .collect();
     HostList { selected, local_name: local_hostname(), hosts, clipboard, removed: None }
@@ -519,7 +514,6 @@ pub(crate) async fn add_host(form: HostForm) -> Result<String, String> {
                 destination: target.destination,
                 user: target.user,
                 port: target.port,
-                socket: None,
                 host_id: None,
                 clipboard_host: None,
                 auto_update: true,
@@ -541,12 +535,12 @@ pub(crate) async fn edit_host(app: State<'_, App>, id: String, form: HostForm) -
         update(&path(), |hosts| {
             check_unique(hosts, &name, &target, Some(&id))?;
             let h = known(hosts, &id)?;
-            // Another login: the next check finds its socket.
+            // Another login: the next connect or check finds its socket.
             let moved = !h.logs_in_as(&target);
             anyhow::ensure!(!(moved && shown.as_deref() == Some(id.as_str())), "This window shows {}. Pick another Host first, then change its server.", h.name);
             if moved {
                 forget_check(&id);
-                h.socket = None;
+                memo(&id, |m| m.socket = None);
             }
             h.name = name;
             h.destination = target.destination;
@@ -604,7 +598,7 @@ pub(crate) async fn remove_host(app: State<'_, App>, id: String, uninstall: Opti
 #[tauri::command]
 pub(crate) async fn uninstall_preview(id: String) -> Result<skiff_client::host::install::Preview, String> {
     let h = host_by_id(&id).await?;
-    skiff_client::host::install::preview(&h.target(), &SshOptions::default(), SOCKET_NAME).await
+    skiff_client::host::install::preview(&h.target(), &SshOptions::default()).await
 }
 
 /// The aliases in this computer's ssh config, for the Server field.
@@ -628,21 +622,14 @@ pub(crate) async fn resolve_ssh(destination: String, user: String, port: String)
     .await
 }
 
-/// The socket name a check looks for in the Host's runtime folder: the one
-/// this build's own skiffd uses (`skiff_core::socket::socket_path`).
-const SOCKET_NAME: &str = if cfg!(debug_assertions) { "skiffd-dev.sock" } else { "skiffd.sock" };
-
 /// The check list of one Host, read only on the Host. Its outcome is noted
-/// for the list and the menu, and the socket it found is stored.
+/// for the list and the menu, and the socket it found is kept for the run.
 #[tauri::command]
 pub(crate) async fn check_host(id: String) -> Result<skiff_client::host::check::Report, String> {
-    let file = path();
     let h = host_by_id(&id).await?;
     let input = skiff_client::host::check::CheckInput {
         target: h.target(),
         name: h.name.clone(),
-        stored: h.socket.clone(),
-        socket_name: SOCKET_NAME.into(),
         pin: h.host_id.clone().and_then(|p| HostId::try_from(p).ok()),
         forward_dir: forward_dir(&h.id),
         home: home().ok(),
@@ -662,43 +649,9 @@ pub(crate) async fn check_host(id: String) -> Result<skiff_client::host::check::
         });
     }
     if let Some(found) = report.socket.clone() {
-        let target = h.target();
-        blocking(move || {
-            update(&file, |hosts| {
-                // Only while the Host is the one this check ran on.
-                if let Some(k) = hosts.hosts.iter_mut().find(|k| k.id == id && k.logs_in_as(&target)) {
-                    k.socket = Some(found);
-                }
-                Ok(())
-            })
-        })
-        .await?;
+        memo(&id, |m| m.socket = Some(found));
     }
     Ok(report)
-}
-
-/// The person picked one of the two Skiffs a check found on the Host: the
-/// release's socket or a dev build's. The shown Host keeps its connection,
-/// so it cannot move.
-#[tauri::command]
-pub(crate) async fn pick_socket(app: State<'_, App>, id: String, socket: String) -> Result<(), String> {
-    if !skiff_client::host::check::pickable(&socket) {
-        return Err("Skiff does not know that socket. Check again.".into());
-    }
-    let shown = shown_id(&app);
-    blocking(move || {
-        update(&path(), |hosts| {
-            let h = known(hosts, &id)?;
-            if h.socket.as_deref() == Some(socket.as_str()) {
-                return Ok(());
-            }
-            anyhow::ensure!(shown.as_deref() != Some(id.as_str()), "This window shows {}. Pick another Host first, then pick its Skiff.", h.name);
-            h.socket = Some(socket);
-            forget_check(&id);
-            Ok(())
-        })
-    })
-    .await
 }
 
 async fn host_by_id(id: &str) -> Result<KnownHost, String> {
@@ -783,12 +736,13 @@ pub(crate) struct InstallView {
 /// The probe, for a step that changes the server: it must see the state now.
 async fn probe_now(h: &KnownHost) -> Result<skiff_client::host::check::Probe, String> {
     use skiff_client::host::check;
-    match check::run_probe(&h.target(), &SshOptions::default(), SOCKET_NAME, h.socket.as_deref()).await? {
+    match check::run_probe(&h.target(), &SshOptions::default()).await? {
         check::ProbeRun::Probed(p, _) => {
             let other = other_build(&p);
             memo(&h.id, |m| {
                 m.skiff = p.managed_version().map(str::to_string);
                 m.other_build = other;
+                m.socket = Some(p.socket.clone());
             });
             Ok(p)
         }
@@ -829,7 +783,7 @@ async fn install_run(id: &str, step: skiff_client::host::install::Steps<'_>) -> 
     step(Progress::Line { text: format!("{} on {}, {} MB free in your home folder", p.os, p.arch, p.free_kb / 1024) });
     step(Progress::Step { n: 2, text: format!("Get Skiff {VERSION} for {os} {arch}") });
     let bundle = bundle_for(os, arch).await?;
-    let outcome = install::install(&h.target(), &SshOptions::default(), &bundle, VERSION, SOCKET_NAME, p.free_kb, &h.name, step).await?;
+    let outcome = install::install(&h.target(), &SshOptions::default(), &bundle, VERSION, p.free_kb, &h.name, step).await?;
     memo(&id, |m| {
         m.linger_refused = outcome.linger == "refused";
         m.ok = None;
@@ -958,7 +912,7 @@ async fn update_managed(h: &KnownHost, end_sessions: bool, reinstall: bool, step
     };
     step(Progress::Step { n: 2, text: format!("Get Skiff {VERSION} for {os} {arch}") });
     let bundle = bundle_for(os, arch).await?;
-    let result = install::update(&h.target(), &SshOptions::default(), &bundle, VERSION, SOCKET_NAME, p.free_kb, &h.name, end_sessions, reinstall, step).await;
+    let result = install::update(&h.target(), &SshOptions::default(), &bundle, VERSION, p.free_kb, &h.name, end_sessions, reinstall, step).await;
     let failed = match &result {
         Err(e) => Some(e.clone()),
         Ok(install::Updated::NoHandover { from, sessions }) => Some(no_handover(&h.name, from, sessions)),
@@ -1012,6 +966,13 @@ pub(crate) struct Arrival {
     /// versions: what the check list's Skiff row compares. Never skiffd's
     /// own crate version. None: not managed, or not known.
     pub(crate) version: Option<String>,
+}
+
+/// The socket the last probe of this app run found on the Host `target`
+/// logs in to, for the selection's forward.
+pub(crate) fn found_socket(target: &SshTarget) -> Option<String> {
+    let h = load(&path()).ok()?.find_login(target).cloned()?;
+    memo(&h.id, |m| m.socket.clone())
 }
 
 /// How long after a failed probe on connect the next connect probes again.
@@ -1085,7 +1046,7 @@ pub(crate) async fn start_skiff(id: String) -> Result<skiff_client::host::instal
     if p.managed.is_none() {
         return Err(format!("Skiff did not install Skiff on {}, so it does not start it.", h.name));
     }
-    let out = skiff_client::host::install::start(&h.target(), &SshOptions::default(), SOCKET_NAME).await?;
+    let out = skiff_client::host::install::start(&h.target(), &SshOptions::default()).await?;
     if out.linger == "refused" {
         memo(&id, |m| m.linger_refused = true);
     }
@@ -1237,7 +1198,7 @@ mod tests {
         assert_eq!(load(&file).unwrap(), Hosts::default());
         let hosts = Hosts {
             selected: Some("h_devbox".into()),
-            hosts: vec![KnownHost::new("devbox".into(), "/run/user/1000/skiff/skiffd.sock".into())],
+            hosts: vec![KnownHost::new("devbox".into())],
         };
         save(&file, &hosts).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
@@ -1311,7 +1272,7 @@ mod tests {
             let e = f.parse().unwrap_err().to_string();
             assert!(e.starts_with(want), "{e}");
         }
-        let mut h = KnownHost::new("devbox".into(), "/s.sock".into());
+        let mut h = KnownHost::new("devbox".into());
         h.user = Some("me".into());
         h.port = Some(2222);
         let hosts = Hosts { selected: Some(h.id.clone()), hosts: vec![h.clone()] };
@@ -1323,12 +1284,11 @@ mod tests {
         assert!(check_unique(&hosts, "x", &h.target(), Some("h_devbox")).is_ok());
         assert!(check_unique(&hosts, "DEVBOX", &SshTarget::new("devbox", "/s.sock"), None).unwrap_err().to_string().contains("this name"));
         assert!(check_unique(&hosts, "other", &SshTarget::new("devbox", "/s.sock"), None).is_ok());
-        // A dev build's entry from before the socket pick: its socket stays,
-        // and `socket_override` is dropped on the next write.
-        let old = "[[host]]\nid = \"h_p0p\"\nname = \"p0p-deb\"\ndestination = \"p0p-deb\"\nsocket = \"/run/user/1000/skiff/skiffd-dev.sock\"\nsocket_override = true\n";
-        let old = toml::from_str::<Hosts>(old).unwrap();
-        assert_eq!(old.hosts[0].socket.as_deref(), Some("/run/user/1000/skiff/skiffd-dev.sock"));
-        assert!(!toml::to_string(&old).unwrap().contains("socket_override"));
+        // No socket is stored: one Host has one skiffd, and the probe finds
+        // its socket. A line from an unreleased build is dropped on the next write.
+        let old = "[[host]]\nid = \"h_p0p\"\nname = \"p0p-deb\"\ndestination = \"p0p-deb\"\nsocket = \"/run/user/1000/skiff/skiffd.sock\"\n";
+        let text = toml::to_string(&toml::from_str::<Hosts>(old).unwrap()).unwrap();
+        assert!(!text.contains("socket"), "{text}");
         // A file without an id is not a shape any release wrote: it does not load.
         assert!(toml::from_str::<Hosts>("[[host]]\ndestination = \"d\"\nsocket = \"/s\"\n").is_err());
     }
@@ -1342,7 +1302,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let file = dir.join("hosts.toml");
         let id = |s: &str| HostId::try_from(s.to_string()).unwrap();
-        save(&file, &Hosts { selected: Some("h_devbox".into()), hosts: vec![KnownHost::new("devbox".into(), "/s.sock".into())] }).unwrap();
+        save(&file, &Hosts { selected: Some("h_devbox".into()), hosts: vec![KnownHost::new("devbox".into())] }).unwrap();
         pin_first(&file, &dev(), &id("A")).unwrap();
         pin_first(&file, &dev(), &id("A")).unwrap();
         let changed = pin_first(&file, &dev(), &id("B")).unwrap_err();
@@ -1361,7 +1321,7 @@ mod tests {
         assert!(!accepted.hosts[0].clipboard_for(&id("B")), "the old identity's permission is gone");
         assert_eq!(load(&file).unwrap().selection(local).pinned(), Some(id("B")));
         // A file whose permission names another identity allows nothing.
-        let foreign = KnownHost { host_id: Some("B".into()), clipboard_host: Some("A".into()), ..KnownHost::new("x".into(), "/s".into()) };
+        let foreign = KnownHost { host_id: Some("B".into()), clipboard_host: Some("A".into()), ..KnownHost::new("x".into()) };
         assert!(!foreign.clipboard_for(&id("A")) && !foreign.clipboard_for(&id("B")));
         // The old bool key from before pinning is ignored, not trusted.
         std::fs::write(&file, "[[host]]\nid = \"h_devbox\"\nname = \"devbox\"\ndestination = \"devbox\"\nsocket = \"/s.sock\"\nclipboard = true\n").unwrap();
@@ -1381,7 +1341,7 @@ mod tests {
         let id = |s: &str| HostId::try_from(s.to_string()).unwrap();
         update(&file, |h| {
             h.selected = Some("h_devbox".into());
-            h.hosts.push(KnownHost::new("devbox".into(), "/s.sock".into()));
+            h.hosts.push(KnownHost::new("devbox".into()));
             Ok(())
         })
         .unwrap();
@@ -1425,7 +1385,7 @@ mod tests {
             ("pin", h) => pin_first(file, &dev(), &id(h)).map(drop),
             ("accept", h) => accept_identity(file, "h_devbox", &id(h)).map(drop),
             ("add", d) => update(file, |hosts| {
-                hosts.hosts.push(KnownHost::new(d.into(), "/s.sock".into()));
+                hosts.hosts.push(KnownHost::new(d.into()));
                 Ok(())
             }),
             _ => unreachable!(),
@@ -1446,7 +1406,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("hosts.toml");
         update(&file, |h| {
-            h.hosts.push(KnownHost::new("devbox".into(), "/s.sock".into()));
+            h.hosts.push(KnownHost::new("devbox".into()));
             Ok(())
         })
         .unwrap();
