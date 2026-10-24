@@ -704,19 +704,12 @@ pub enum WatchOutcome {
     Kept(String),
 }
 
-/// The watcher in `h` runs another build than `cli` at `version`: an older
-/// version, a record from before the version, or the same version from
-/// another executable. A newer watcher is never replaced.
-pub fn stale_holder(h: &WatchHolder, cli: &Path, version: &str) -> bool {
-    let Some(v) = &h.version else { return true };
-    match skiff_core::compare_versions(v, version) {
-        std::cmp::Ordering::Less => true,
-        std::cmp::Ordering::Greater => false,
-        std::cmp::Ordering::Equal => {
-            let real = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
-            h.exe.as_deref().is_some_and(|e| real(Path::new(e)) != real(cli))
-        }
-    }
+/// The watcher in `h` is older than `cli` at `version`: an older version,
+/// or a record from before the version. One computer runs one watcher per
+/// socket, and the newer build replaces it: the same version stays,
+/// whatever executable runs it, and a newer watcher is never replaced.
+pub fn stale_holder(h: &WatchHolder, _cli: &Path, version: &str) -> bool {
+    h.version.as_deref().is_none_or(|v| skiff_core::compare_versions(v, version).is_lt())
 }
 
 /// Makes one current watcher run for `session`, without the user. `cli` is
@@ -812,7 +805,13 @@ pub fn outliving(program: &Path, unit: &str) -> std::process::Command {
 /// `unit-<socket name>`, in the characters a unit name takes.
 pub fn unit_for(unit: &str, socket: &Path) -> String {
     let stem = socket.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-    format!("{unit}-{stem}")
+    if skiff_core::state::is_live(socket) {
+        return format!("{unit}-{stem}");
+    }
+    // Another socket, as a test's or an agent's throwaway daemon: most are
+    // named skiffd.sock too, and two scopes cannot share a name.
+    let hash = socket.as_os_str().as_encoded_bytes().iter().fold(0xcbf29ce484222325u64, |h, b| (h ^ *b as u64).wrapping_mul(0x100000001b3));
+    format!("{unit}-{stem}-{:08x}", hash as u32)
 }
 
 #[cfg(target_os = "linux")]
@@ -1012,7 +1011,9 @@ os.execv("/bin/cat", ["skiff", "watch"])
         };
         assert!(stale_holder(&h(None, None), cli, "1.6.5"));
         assert!(stale_holder(&h(Some("1.6.4"), Some(cli.to_str().unwrap())), cli, "1.6.5"));
-        assert!(stale_holder(&h(Some("1.6.5"), Some("/src/skiff/target/debug/skiff")), cli, "1.6.5"));
+        // The same version from another executable stays: a dev build and
+        // the installed app share one watcher.
+        assert!(!stale_holder(&h(Some("1.6.5"), Some("/src/skiff/target/debug/skiff")), cli, "1.6.5"));
         assert!(!stale_holder(&h(Some("1.6.5"), Some(cli.to_str().unwrap())), cli, "1.6.5"));
         assert!(!stale_holder(&h(Some("1.7.0"), Some("/elsewhere/skiff")), cli, "1.6.5"));
         let legacy: WatchHolder = serde_json::from_str(r#"{"pid":7,"socket":"/s.sock","started_at":3}"#).unwrap();
@@ -1056,6 +1057,20 @@ os.execv("/bin/cat", ["skiff", "watch"])
         // A free lock gets a watcher.
         assert_eq!(ensure_watch(&socket, cli, CLI_VERSION, "abc", &[], Some(&AtomicBool::new(false))).unwrap(), WatchOutcome::Started);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The live socket's scope keeps its plain name. Any other socket gets
+    /// one of its own, so a test daemon named skiffd.sock beside the live
+    /// one does not fail to start its watcher.
+    #[test]
+    fn each_socket_gets_its_own_scope_unit() {
+        let live = skiff_core::state::live_socket();
+        assert_eq!(unit_for("skiff-watch", &live), "skiff-watch-skiffd");
+        let a = unit_for("skiff-watch", Path::new("/tmp/a/skiffd.sock"));
+        let b = unit_for("skiff-watch", Path::new("/tmp/b/skiffd.sock"));
+        assert!(a.starts_with("skiff-watch-skiffd-") && a.len() == "skiff-watch-skiffd-".len() + 8, "{a}");
+        assert_ne!(a, b);
+        assert_eq!(a, unit_for("skiff-watch", Path::new("/tmp/a/skiffd.sock")));
     }
 
     /// One attempt per flag. A stale watcher that ignores SIGTERM holds the

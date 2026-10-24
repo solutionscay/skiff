@@ -166,14 +166,15 @@ pub(crate) enum Check {
     Hung,
 }
 
-/// Compares the daemon with this app. An older daemon that can reload is
-/// planned for a reload onto the bundled skiffd, which keeps its sessions.
-/// So is a checkout's daemon of the same version under a release app: the
-/// same version string is not the same build. Else an older daemon, or an
-/// incompatible one that is not newer, with no live session is stopped with
-/// SIGTERM and replaced without a word. A newer daemon is never replaced.
-/// One that does not stop, or has live sessions, keeps running: this records
-/// a warning that says the update is not finished.
+/// Compares the daemon with this app. Version order decides, whatever the
+/// build: one computer runs one skiffd, and the newer build updates it. An
+/// older daemon that can reload is planned for a reload onto the bundled
+/// skiffd, which keeps its sessions. The same version stays as it is. Else
+/// an older daemon, or an incompatible one that is not newer, with no live
+/// session is stopped with SIGTERM and replaced without a word. A newer
+/// daemon is never replaced. One that does not stop, or has live sessions,
+/// keeps running: this records a warning that says the update is not
+/// finished.
 pub(crate) async fn check_daemon(app: &App, c: &Client, may_replace: bool) -> Check {
     let Ok(Ok(info)) = tokio::time::timeout(HELLO_TIMEOUT, c.daemon_info()).await else {
         *app.warning.lock().await = Some(Warning {
@@ -191,15 +192,14 @@ pub(crate) async fn check_daemon(app: &App, c: &Client, may_replace: bool) -> Ch
     // The skiffd this app ships with, not the app version.
     let order = compare_versions(&version, skiff_core::VERSION);
     let same_protocol = info.protocol == skiff_core::PROTOCOL;
-    let other_build = order.is_eq() && !cfg!(debug_assertions) && info.debug == Some(true);
-    if same_protocol && order.is_eq() && !other_build {
+    if same_protocol && order.is_eq() {
         *app.warning.lock().await = None;
         return Check::Use;
     }
     // Never a downgrade, and one try per app run.
     let mut old_build = None;
-    if (order.is_lt() || other_build) && !app.reload_tried.load(Ordering::Relaxed) {
-        match reload::plan(&info, other_build).await {
+    if order.is_lt() && !app.reload_tried.load(Ordering::Relaxed) {
+        match reload::plan(&info).await {
             Ok(plan) => {
                 *app.reload.lock().await = Some(plan);
                 *app.warning.lock().await = None;
@@ -231,7 +231,7 @@ pub(crate) async fn check_daemon(app: &App, c: &Client, may_replace: bool) -> Ch
         return Check::Use;
     }
     // Never a downgrade: a newer daemon keeps running, whatever its protocol.
-    let stale = !order.is_gt() && (!same_protocol || order.is_lt() || other_build);
+    let stale = !order.is_gt() && (!same_protocol || order.is_lt());
     // Never SIGKILL here: a daemon that does not stop keeps running as it is.
     if let (true, true, Some(0), Some(pid)) = (may_replace, stale, live, c.daemon_pid) {
         if stop_daemon(pid, false).await {
@@ -440,7 +440,8 @@ mod tests {
     /// A stand-in daemon on a private socket: it answers `ping` as
     /// `version` on `protocol` and lists no session. The connection names
     /// `pid` as the daemon, a process the test owns, so a stop shows on it.
-    async fn fake_daemon(dir: &std::path::Path, version: &'static str, protocol: u32, pid: u32) -> skiff_client::Client {
+    /// With `reloads`, the pong says it can hand over (state 2, its pid).
+    async fn fake_daemon(dir: &std::path::Path, version: &'static str, protocol: u32, pid: u32, reloads: bool) -> skiff_client::Client {
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
         let socket = dir.join(format!("{version}.sock"));
         let listener = tokio::net::UnixListener::bind(&socket).unwrap();
@@ -452,6 +453,7 @@ mod tests {
                 let req: serde_json::Value = serde_json::from_str(&line).unwrap();
                 let id = req["id"].clone();
                 let reply = match req["cmd"].as_str() {
+                    Some("ping") if reloads => serde_json::json!({"id": id, "type": "pong", "version": version, "protocol": protocol, "reload_state": 2, "pid": pid}),
                     Some("ping") => serde_json::json!({"id": id, "type": "pong", "version": version, "protocol": protocol}),
                     Some("list_sessions") => serde_json::json!({"id": id, "type": "sessions", "sessions": []}),
                     other => serde_json::json!({"id": id, "type": "error", "message": format!("{other:?}")}),
@@ -480,7 +482,7 @@ mod tests {
             let mut stand_in = std::process::Command::new("sleep").arg("30").spawn().unwrap();
             let app = super::App::default();
             let check = rt.block_on(async {
-                let c = fake_daemon(&dir, version, other, stand_in.id()).await;
+                let c = fake_daemon(&dir, version, other, stand_in.id(), false).await;
                 super::check_daemon(&app, &c, true).await
             });
             // The stop reaps what it ends, so a gone child reads as ECHILD.
@@ -495,5 +497,46 @@ mod tests {
             }
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Version order decides, whatever the build. An older daemon that can
+    /// hand over is planned for a reload onto the bundled skiffd, with no
+    /// warning. A newer one is left alone, with the "newer" notice. The
+    /// same version is used as it is. Nothing is signalled in any case.
+    #[test]
+    fn an_older_daemon_reloads_and_a_newer_one_is_left_alone() {
+        let _env = crate::reload::tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("skiff-app-order-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // The bundled skiffd: it answers --reload-info as this build's version.
+        let bin = dir.join("skiffd");
+        std::fs::write(&bin, format!("#!/bin/sh\necho '{{\"version\":\"{}\",\"handover\":[2],\"fingerprint\":\"x\"}}'\n", skiff_core::VERSION)).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let old_daemon = std::env::var_os("SKIFF_DAEMON");
+        std::env::set_var("SKIFF_DAEMON", &bin);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let mut outcome = Vec::new();
+        for (version, want) in [("0.0.1", "reload"), ("99.0.0", "newer"), (skiff_core::VERSION, "same")] {
+            let mut stand_in = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+            let app = super::App::default();
+            let check = rt.block_on(async {
+                let c = fake_daemon(&dir, version, skiff_core::PROTOCOL, stand_in.id(), true).await;
+                super::check_daemon(&app, &c, true).await
+            });
+            let running = stand_in.try_wait().is_ok_and(|s| s.is_none());
+            let _ = stand_in.kill();
+            let _ = stand_in.wait();
+            let planned = rt.block_on(app.reload.lock()).is_some();
+            let warning = rt.block_on(app.warning.lock()).as_ref().map(|w| w.kind);
+            outcome.push((want, matches!(check, super::Check::Use), running, planned, warning));
+        }
+        match old_daemon {
+            Some(v) => std::env::set_var("SKIFF_DAEMON", v),
+            None => std::env::remove_var("SKIFF_DAEMON"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(outcome, [("reload", true, true, true, None), ("newer", true, true, false, Some("newer")), ("same", true, true, false, None)]);
     }
 }
