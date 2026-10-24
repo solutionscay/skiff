@@ -1,6 +1,6 @@
 import { DEFAULT_THEME, isLight, mix, readable } from "./colors";
 /** Terminal and app themes. */
-import { applyAppTheme } from "./appTheme";
+import { applyAppTheme, appThemeVars } from "./appTheme";
 import { sessionsOf } from "../workspace/layout";
 
 import { taskTitle } from "../workspace/model";
@@ -43,6 +43,23 @@ function themeFor(p: Project | null | undefined): string {
 export function appThemeOf(p: Project | null): TerminalTheme | null {
   const id = themeFor(p);
   return S.themes.find((t) => t.id === id) ?? null;
+}
+
+/**
+ * A themed project's sidebar block: the app colors of its own theme, and its
+ * color (its own, else the theme's accent) made readable on them. `null`: the
+ * project has no theme, and its block takes the window's colors.
+ */
+export function projectBlockTheme(p: Project, color: string | null | undefined): { vars: Record<string, string>; pc: string } | null {
+  const id = projectThemes.get(p.name);
+  const t = id ? S.themes.find((x) => x.id === id) : null;
+  if (!t) return null;
+  const vars = appThemeVars(t);
+  // Unread marks take the theme's green, so they read on a light block too.
+  vars["--diff-add"] = vars["--ok"];
+  const on = [vars["--bg-panel"], vars["--bg-raised"]];
+  if (!color) return { vars, pc: vars["--accent"] };
+  return { vars, pc: /^#[0-9a-f]{6}/i.test(color) ? readable(color, on, 3) : color };
 }
 
 /** A terminal's theme: its own, else its project's, else the app's. */
