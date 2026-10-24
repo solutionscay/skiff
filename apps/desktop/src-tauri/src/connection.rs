@@ -385,6 +385,10 @@ pub(crate) async fn host_now(app: &App) -> Result<Arc<HostConnection>, String> {
 /// data-plane service answers, that service's. Without the service the
 /// list simply lacks `projects` and `git_status`; nothing falls back to
 /// this Mac's data.
+///
+/// This Mac's agent and Skiff agent changes are the exception: this app's
+/// local adapter writes them (`config.rs`, `skiff_agent.rs`), so they are
+/// offered whatever skiff-host answers, or whether one answers at all.
 #[tauri::command]
 pub(crate) async fn host_capabilities(app: State<'_, App>) -> Result<Vec<String>, String> {
     let c = host_now(&app).await?;
@@ -393,7 +397,21 @@ pub(crate) async fn host_capabilities(app: State<'_, App>) -> Result<Vec<String>
         Ok(d) => names.extend(capability_names(&d).into_iter().filter(|n| !names.contains(n)).collect::<Vec<_>>()),
         Err(e) => eprintln!("data plane: {e}"),
     }
+    if !app.remote() {
+        add_local_adapter(&mut names);
+    }
     Ok(names)
+}
+
+/// The capabilities this app serves itself for This Mac.
+const LOCAL_ADAPTER: [&str; 2] = ["agent_config@1", "skipper_config@1"];
+
+fn add_local_adapter(names: &mut Vec<String>) {
+    for cap in LOCAL_ADAPTER {
+        if !names.iter().any(|n| n == cap) {
+            names.push(cap.to_string());
+        }
+    }
 }
 
 /// M4: the selected Host's data-plane connection. Its Host id must be the
@@ -955,6 +973,18 @@ mod tests {
     use super::{compare_versions, spawn_data_service, stop_daemon, App, ProcessControl};
     use std::{path::PathBuf, time::Duration};
     use std::cmp::Ordering::*;
+
+    /// This Mac's settings writes do not wait on skiff-host: an old one that
+    /// lacks them, or none, still leaves them offered, each once.
+    #[test]
+    fn this_mac_offers_its_own_settings_writes() {
+        let mut none = vec!["session_inventory@1".to_string()];
+        super::add_local_adapter(&mut none);
+        assert_eq!(none, ["session_inventory@1", "agent_config@1", "skipper_config@1"]);
+        let mut current = vec!["skipper_config@1".to_string(), "agent_config@1".to_string()];
+        super::add_local_adapter(&mut current);
+        assert_eq!(current.len(), 2);
+    }
 
     #[tokio::test]
     async fn status_and_legacy_commands_share_the_selected_local_connection() {

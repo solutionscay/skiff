@@ -159,8 +159,9 @@ async fn read(app: &App) -> Result<HostSkipper, String> {
 
 /// Saves one setting on the selected Host: This Mac's config here, a remote
 /// Host's through its `skiff-host` (`skipper_config@1`). Answers with all of
-/// them, read again through the Host. The page reloads its projects on the
-/// event, so the row follows at once.
+/// them: a remote Host's read again through it, This Mac's from the config
+/// just written, so an old or stopped skiff-host cannot fail the change.
+/// The page reloads its projects on the event, so the row follows at once.
 #[tauri::command]
 pub async fn set_skiff_agent(app: State<'_, App>, handle: AppHandle, edit: SkipperEdit) -> Result<HostSkipper, String> {
     if app.remote() {
@@ -168,9 +169,13 @@ pub async fn set_skiff_agent(app: State<'_, App>, handle: AppHandle, edit: Skipp
         let _ = handle.emit(PROJECTS_CHANGED, ());
         return Ok(settings);
     }
-    blocking(move || skipper::apply(&edit)).await?;
+    let settings = blocking(move || {
+        skipper::apply(&edit)?;
+        skipper::settings(&config::load()?)
+    })
+    .await?;
     let _ = handle.emit(PROJECTS_CHANGED, ());
-    read(&app).await
+    Ok(settings)
 }
 
 /// The chosen folder, resolved and read on the selected Host. A relative
