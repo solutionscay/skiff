@@ -52,6 +52,13 @@ pub fn name(cfg: &Config) -> String {
     cfg.skiff_agent.name.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or(DEFAULT_NAME).to_string()
 }
 
+/// A project Skipper's session name: the project, then the Skiff agent's
+/// name ("gesher Skipper"). Unique per project, and never the grand
+/// Skipper's, so `skiff send "gesher Skipper"` reaches one session.
+pub fn project_name(cfg: &Config, project: &str) -> String {
+    format!("{project} {}", name(cfg))
+}
+
 /// The agent the Skiff agent starts: the one from Settings while it is
 /// installed and on (a custom agent is on), else the first enabled one.
 /// Settings shows the same.
@@ -501,7 +508,7 @@ pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipp
     }
     let agents = c.list_agents().await?;
     let Some(agent) = project_agent(&cfg, &agents, p) else { bail!("No agent is on. Turn one on in Settings › Agents") };
-    let mut s = spec(agent, &name(&cfg), p.path.clone());
+    let mut s = spec(agent, &self::project_name(&cfg, &p.name), p.path.clone());
     s.skipper = Some(p.name.clone());
     s.cols = 120;
     s.rows = 40;
@@ -1167,6 +1174,19 @@ os.execv("/bin/cat", ["skiff", "watch"])
         assert!(!too_old_for_project(PROJECT_SKIPPER_SINCE));
         assert!(!too_old_for_project(skiff_core::VERSION), "this skiffd marks project Skippers");
         assert!(!too_old_for_project("0.7.0"));
+    }
+
+    /// A project Skipper is named after its project and the Skiff agent's
+    /// name, so no two sessions share a name.
+    #[test]
+    fn a_project_skipper_takes_its_project_and_the_agents_name() {
+        let cfg = skiff_core::config::parse("[skiff_agent]\nname = \"Skipper\"\n").unwrap();
+        assert_eq!(project_name(&cfg, "gesher"), "gesher Skipper");
+        let cfg = skiff_core::config::parse("[skiff_agent]\nname = \"Captain\"\n").unwrap();
+        assert_eq!(project_name(&cfg, "skiff"), "skiff Captain");
+        assert_ne!(project_name(&cfg, "skiff"), name(&cfg));
+        let cfg = skiff_core::config::parse("").unwrap();
+        assert_eq!(project_name(&cfg, "p"), format!("p {DEFAULT_NAME}"));
     }
 
     /// Each socket gets a scope of its own, so a test daemon named

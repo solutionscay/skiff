@@ -323,6 +323,21 @@ export function skiffWatch(s: SessionInfo): { state: WatchState; text: string } 
   return { state, text: watchText(state, s, skiffAgentName(), startError) };
 }
 
+/** A project Skipper's watcher state, from its own registration: the
+ *  watcher registers on each Skipper it follows. The app starts no watcher
+ *  for a project Skipper on its own (`skiff skipper --project` does, and the
+ *  Skiff agent's watcher follows every Skipper), so none registered is
+ *  unknown here, not missing. */
+export function projectWatch(s: SessionInfo): { state: WatchState; text: string } {
+  const state: WatchState = s.state === "done" || !s.watch ? "unknown" : s.watch.failure ? "failed" : "runs";
+  return { state, text: watchText(state, s, projectSkipperName(s), null) };
+}
+
+/** A project Skipper's session name: its project, then the Skiff agent's name ("gesher Skipper"). */
+export function projectSkipperName(s: SessionInfo): string {
+  return `${s.skipper} ${skiffAgentName()}`;
+}
+
 /** Restored panes Skiff already asked skiffd to continue. Once each. */
 const continued = new Set<string>();
 
@@ -337,8 +352,14 @@ export function syncSkiffAgent() {
   if (!S.skiffAgent) return;
   const s = skiffAgentSession();
   const name = skiffAgentName();
-  // Only a change in Settings renames it. A rename of the pane itself stays.
-  if (s && shownName !== null && shownName !== name && s.name !== name) rename(s.id, name);
+  // Only a change in Settings renames it, and each project Skipper with it
+  // ("gesher Skipper"). A rename of the pane itself stays.
+  if (shownName !== null && shownName !== name) {
+    if (s && s.name !== name) rename(s.id, name);
+    for (const p of projectSkippers()) {
+      if (p.name !== projectSkipperName(p)) rename(p.id, projectSkipperName(p));
+    }
+  }
   shownName = name;
   if (!s) return;
   watch(s.id);
