@@ -2,6 +2,7 @@ import type { AgentInfo, SessionInfo } from "../platform/types";
 import { ink } from "./appTheme";
 import { ownTheme, signatureColor } from "./themes";
 import { basename } from "../workspace/model";
+import { svg } from "../ui/icons";
 
 export type AgentKind = "claude" | "codex" | "gemini" | "grok" | "opencode" | "hermes" | "shell" | "other";
 
@@ -70,13 +71,8 @@ const GLYPHS: Record<AgentKind, string> = {
  * signature color. It follows the session, so it holds inside any group.
  */
 export function agentIcon(s: SessionInfo, size = 14): HTMLSpanElement {
-  const span = iconOf(agentKind(s), size);
   const t = ownTheme(s);
-  if (t) {
-    const c = ink(signatureColor(t));
-    span.innerHTML = span.innerHTML.replace(/#[0-9a-f]{6}/gi, c);
-  }
-  return span;
+  return iconOf(agentKind(s), size, t ? ink(signatureColor(t)) : undefined);
 }
 
 /** The icon a new session of this agent gets. `null` is a plain shell. */
@@ -86,10 +82,11 @@ export function launchIcon(a: AgentInfo | null, size = 14): HTMLSpanElement {
   return iconOf(BY_PROGRAM[a.id] ?? BY_PROGRAM[prog] ?? "other", size);
 }
 
-function iconOf(kind: AgentKind, size: number): HTMLSpanElement {
+/** The glyph in a span, its colors inked for the app theme, or all of them `color`. */
+function iconOf(kind: AgentKind, size: number, color?: string): HTMLSpanElement {
   const span = document.createElement("span");
   span.className = `agent-icon ${kind}`;
   span.setAttribute("aria-hidden", "true");
-  span.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 16 16">${GLYPHS[kind].replace(/#[0-9a-f]{6}/gi, ink)}</svg>`;
+  span.appendChild(svg(`<svg width="${size}" height="${size}" viewBox="0 0 16 16">${GLYPHS[kind].replace(/#[0-9a-f]{6}/gi, color ? () => color : ink)}</svg>`));
   return span;
 }
