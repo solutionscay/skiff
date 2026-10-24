@@ -9,6 +9,22 @@ export interface DropTarget {
   outer?: boolean;
   /** A group row in the sidebar: the sessions join that group. */
   group?: string;
+  /** A session row in no group: it and the sessions make a new group. */
+  pair?: string;
+  /** A row in the dragged session's own group: the two trade places. */
+  swap?: string;
+  /** The worktree row: the sessions leave their groups. */
+  out?: boolean;
+  /** A group row, for a dragged group: it moves before or after that one. */
+  order?: { group: string; side: "before" | "after" };
+}
+
+type Box = { l: number; t: number; w: number; h: number };
+
+/** A sidebar row that takes a drop. `hit` gets the pointer's y; null lets a row behind it take the drop. */
+export interface RowTarget {
+  rect: DOMRect;
+  hit: (y: number) => { t: DropTarget; p?: Box } | null;
 }
 
 interface Opts {
@@ -18,8 +34,10 @@ interface Opts {
   cells: () => Map<string, DOMRect>;
   /** The whole terminal area, for a drop when no pane is shown. Null: no drop there. */
   area: HTMLElement | null;
-  /** Group rows in the sidebar that take a drop, read when the drag starts. */
-  groupRows?: () => { id: string; rect: DOMRect }[];
+  /** Sidebar rows that take a drop, read when the drag starts. The first hit wins. */
+  rows?: () => RowTarget[];
+  /** What the drop on this target does, shown on the ghost. Null: the label. */
+  says?: (t: DropTarget) => string | null;
   /** Why the target takes no drop, shown on the ghost. Null: no objection. */
   refuses?: (t: DropTarget) => string | null;
   /** False: the drop would change nothing, so the target shows no highlight. */
@@ -49,7 +67,7 @@ function zoneAt(r: DOMRect, x: number, y: number, held?: Zone): Zone {
   return keep && keep[1] - d[0][1] < ZONE_HOLD ? held! : d[0][0];
 }
 
-function previewRect(r: DOMRect, z: Zone): { l: number; t: number; w: number; h: number } {
+function previewRect(r: DOMRect, z: Zone): Box {
   const hw = r.width / 2;
   const hh = r.height / 2;
   switch (z) {
@@ -74,7 +92,7 @@ export function beginDrag(down: MouseEvent, o: Opts) {
   const sy = down.clientY;
   let active = false;
   let cells = new Map<string, DOMRect>();
-  let rows: { id: string; rect: DOMRect }[] = [];
+  let rows: RowTarget[] = [];
   let target: DropTarget | null = null;
   /** The last hit, accepted or not: the zone and rim hold against it. */
   let last: DropTarget | null = null;
@@ -91,7 +109,7 @@ export function beginDrag(down: MouseEvent, o: Opts) {
   const start = () => {
     active = true;
     cells = o.cells();
-    rows = o.groupRows?.() ?? [];
+    rows = o.rows?.() ?? [];
     document.body.classList.add("dragging-session");
     for (const el of document.querySelectorAll("#sidebar-scroll [title]")) {
       titled.push([el, el.getAttribute("title") ?? ""]);
@@ -110,9 +128,12 @@ export function beginDrag(down: MouseEvent, o: Opts) {
   const whole = (r: DOMRect) => ({ l: r.left, t: r.top, w: r.width, h: r.height });
 
   /** The target under the pointer and its preview box, before `accepts` has its say. */
-  const hit = (x: number, y: number): { t: DropTarget; p: ReturnType<typeof previewRect> } | null => {
-    const row = rows.find(({ rect }) => inside(rect, x, y));
-    if (row) return { t: { session: null, zone: "center", group: row.id }, p: whole(row.rect) };
+  const hit = (x: number, y: number): { t: DropTarget; p: Box } | null => {
+    for (const row of rows) {
+      if (!inside(row.rect, x, y)) continue;
+      const r = row.hit(y);
+      if (r) return { t: r.t, p: r.p ?? whole(row.rect) };
+    }
     const area = o.area?.getBoundingClientRect();
     if (area && cells.size > 0 && inside(area, x, y)) {
       const d: [Zone, number][] = [["left", x - area.left], ["right", area.right - x - 1], ["top", y - area.top], ["bottom", area.bottom - y - 1]];
@@ -150,17 +171,18 @@ export function beginDrag(down: MouseEvent, o: Opts) {
     const h = hit(mx, my);
     last = h?.t ?? null;
     const why = h ? o.refuses?.(h.t) ?? null : null;
-    const text = why ?? o.label;
+    target = h && !why && (o.accepts?.(h.t) ?? true) ? h.t : null;
+    const text = why ?? (target && o.says?.(target)) ?? o.label;
     if (ghost.textContent !== text) ghost.textContent = text;
     ghost.classList.toggle("refused", !!why);
     document.body.classList.toggle("drop-refused", !!why);
-    target = h && !why && (o.accepts?.(h.t) ?? true) ? h.t : null;
     const p = target ? h!.p : null;
     const key = p ? `${p.l},${p.t},${p.w},${p.h},${target!.zone}` : "";
     if (key === painted) return;
     painted = key;
     if (p) Object.assign(preview.style, { left: `${p.l}px`, top: `${p.t}px`, width: `${p.w}px`, height: `${p.h}px` });
     preview.hidden = !p;
+    preview.classList.toggle("line", !!target?.order);
     preview.dataset.zone = target?.zone ?? "";
   };
 

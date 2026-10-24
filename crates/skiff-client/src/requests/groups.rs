@@ -25,4 +25,8 @@ impl Client {
         })
         .await
     }
+
+    pub async fn order_groups(&self, ids: Vec<String>) -> Result<()> {
+        self.expect_ok(Request::OrderGroups { groups: ids }).await
+    }
 }

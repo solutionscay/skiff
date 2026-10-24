@@ -158,3 +158,17 @@ async fn coordinator_starts_once() {
         pool.kill(&s.id).unwrap();
     }
 }
+
+#[test]
+fn order_groups_moves_named_groups_first() {
+    use skiff_core::group::{Group, Layout};
+    let pool = SessionPool::new();
+    let mut ids = Vec::new();
+    for n in ["a", "b", "c"] {
+        let g = Group { id: String::new(), name: n.into(), layout: Layout::Pane { session: format!("slot:{n}") }, focus: None, cwd: None };
+        ids.push(pool.save_group(g).unwrap().id);
+    }
+    pool.order_groups(&[ids[2].clone(), "gone".into(), ids[0].clone()]).unwrap();
+    let names: Vec<String> = pool.list_groups().into_iter().map(|g| g.name).collect();
+    assert_eq!(names, ["c", "a", "b"]);
+}
