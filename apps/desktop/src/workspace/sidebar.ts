@@ -35,8 +35,8 @@ import { dragTree } from "./treeDrag";
 import { bareWorktree, fleetKey, folded, isOpen, openToFocused, projectBadge, projectKey, rollCounts, rollup, toggleRow, treeDrag, treeSections, type Section } from "./tree";
 import { render } from "../app/renderRequest";
 import { projectsPlus, renderWorkspaceStatus, shows, workspaceOpen } from "./profile";
-import { ledgerCounts, ledgerNeeds, ledgerPanes, ledgerWorkTitle } from "./ledger";
-import { projectSkipperOf, openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, syncSkiffAgent } from "../app/skiffAgent";
+import { ledgerCounts, ledgerNeeds, ledgerWorkTitle } from "./ledger";
+import { projectSkipperOf, projectWatch, openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, syncSkiffAgent } from "../app/skiffAgent";
 
 /** 20px lines, flush against whatever follows. */
 function sessionBlock(lines: Line[], color: string): HTMLElement {
@@ -412,13 +412,7 @@ function skiffAgentRow(): HTMLElement {
 function skipperSig(p: Project) {
   const s = projectSkipperOf(p.name);
   if (!s) return null;
-  return [s.id, s.state, S.selection.includes(s.id), ledgerCounts(p.name), ledgerWorkTitle(p.name), skipperWatched(p.name), s.title ?? null, s.unread ?? false];
-}
-
-/** The watcher follows a pane of one of the project Skipper's open tasks. The grand Skipper's registration names them all. */
-function skipperWatched(project: string): boolean {
-  const follows = skiffAgentSession()?.watch?.follows ?? [];
-  return ledgerPanes(project).some((id) => follows.includes(id));
+  return [s.id, s.state, S.selection.includes(s.id), ledgerCounts(p.name), ledgerWorkTitle(p.name), s.watch ?? null, s.title ?? null, s.unread ?? false];
 }
 
 /**
@@ -431,10 +425,20 @@ function projectSkipperRow(p: Project, s: SessionInfo): HTMLElement {
   const row = h("button", "session-row project-skipper-row" + ` st-${s.state}` + (S.selection.includes(s.id) ? " selected" : ""));
   row.type = "button";
   row.dataset.session = s.id;
-  if (skipperWatched(p.name)) row.classList.add("watch-on");
+  // Its own watcher, as on the Skiff agent's row: teal while it runs, turning
+  // while the Skipper is idle and the watcher follows a pane with an open
+  // task of this project, red when its last line failed.
+  const watch = projectWatch(s);
+  if (watch.state === "runs") row.classList.add("watch-on");
+  if (watch.state === "runs" && s.state === "idle" && (s.watch?.follows?.length ?? 0) > 0) {
+    row.classList.add("watch-turn");
+    row.style.setProperty("--turn-delay", `${-(performance.now() % 8000)}ms`);
+  }
+  if (watch.state === "failed") row.classList.add("watch-error");
+  if (watch.text) row.title = watch.text;
   const title = ledgerWorkTitle(p.name) ?? s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? "";
   const { need, working } = ledgerCounts(p.name);
-  row.setAttribute("aria-label", `${p.name} ${name}, ${title || s.state}`);
+  row.setAttribute("aria-label", `${p.name} ${name}, ${title || s.state}${watch.text ? `. ${watch.text}` : ""}`);
   row.append(h("span", "chev-space"), agentIcon(s), h("span", "skiff-agent-name", name), h("span", "title", title));
   const roll = rollCounts(need, working);
   if (roll) row.append(roll);

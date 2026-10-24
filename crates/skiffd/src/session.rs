@@ -452,7 +452,9 @@ pub struct SessionPool {
     coordinator: Mutex<Option<(SessionId, Instant)>>,
     /// `skiff watch` registrations by connection number. Not saved and not
     /// handed over: a watcher registers again when it connects again.
-    watchers: Mutex<HashMap<u64, Watcher>>,
+    /// By connection and the session watched: one watcher process may
+    /// register for several Skippers, each on its own session.
+    watchers: Mutex<HashMap<(u64, SessionId), Watcher>>,
 }
 
 /// One connection's [`Request::Watching`] registration.
@@ -532,7 +534,9 @@ impl SessionPool {
     }
 
     /// Registers connection `conn` as a watcher of `session`, or replaces its
-    /// registration. A replacement keeps `since`.
+    /// registration for that session. A replacement keeps `since`. One
+    /// connection may watch several sessions: a Skipper's watcher registers
+    /// on the grand Skipper and on each project Skipper.
     pub fn watching(
         &self,
         conn: u64,
@@ -544,22 +548,24 @@ impl SessionPool {
         if self.get(session).is_none() {
             bail!("no such session: {session}");
         }
-        let old = {
+        {
             let mut w = self.watchers.lock().unwrap();
-            let since = w.get(&conn).filter(|o| o.session == session).map_or_else(now_ms, |o| o.since);
-            w.insert(conn, Watcher { session: session.to_string(), pid, since, failure, follows })
-        };
-        if let Some(old) = old.filter(|o| o.session != session) {
-            self.publish_watch(&old.session);
+            let key = (conn, session.to_string());
+            let since = w.get(&key).map_or_else(now_ms, |o| o.since);
+            w.insert(key, Watcher { session: session.to_string(), pid, since, failure, follows });
         }
         self.publish_watch(session);
         Ok(())
     }
 
-    /// Connection `conn` closed: its registration, if any, ends.
+    /// Connection `conn` closed: its registrations, if any, end.
     pub fn unwatch(&self, conn: u64) {
-        let old = self.watchers.lock().unwrap().remove(&conn);
-        if let Some(old) = old {
+        let gone: Vec<Watcher> = {
+            let mut w = self.watchers.lock().unwrap();
+            let keys: Vec<(u64, SessionId)> = w.keys().filter(|k| k.0 == conn).cloned().collect();
+            keys.into_iter().filter_map(|k| w.remove(&k)).collect()
+        };
+        for old in gone {
             self.publish_watch(&old.session);
         }
     }

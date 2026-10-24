@@ -42,7 +42,7 @@ impl Conn {
 async fn updated(events: &mut broadcast::Receiver<Event>, id: &str) -> SessionInfo {
     loop {
         match tokio::time::timeout(Duration::from_secs(5), events.recv()).await.expect("no SessionUpdated") {
-            Ok(Event::SessionUpdated { session }) if session.id == id => return session,
+            Ok(Event::SessionUpdated { session }) if id.is_empty() || session.id == id => return session,
             _ => {}
         }
     }
@@ -91,6 +91,29 @@ async fn watching_lasts_until_the_connection_closes() {
     drop(a);
     assert!(updated(&mut events, &s.id).await.watch.is_none());
     assert!(pool.get(&s.id).unwrap().info().watch.is_none());
+
+    // One connection watches two sessions, as one watcher does for the grand
+    // Skipper and a project Skipper: each gets its own registration, and
+    // the close ends both.
+    let t = pool
+        .create(SessionSpec { command: Some("sleep".into()), args: vec!["30".into()], ..Default::default() })
+        .unwrap();
+    let mut d = connect(&pool);
+    assert!(matches!(d.ask(&watching(r#","follows":["g1"]"#)).await, Response::Ok));
+    assert_eq!(updated(&mut events, &s.id).await.watch.unwrap().follows, Some(vec!["g1".into()]));
+    assert!(matches!(d.ask(&format!(r#"{{"id":1,"cmd":"watching","session":"{}","follows":["p1"]}}"#, t.id)).await, Response::Ok));
+    assert_eq!(updated(&mut events, &t.id).await.watch.unwrap().follows, Some(vec!["p1".into()]));
+    assert_eq!(pool.get(&s.id).unwrap().info().watch.unwrap().follows, Some(vec!["g1".into()]), "the first registration stays");
+    drop(d);
+    let mut cleared = 0;
+    while cleared < 2 {
+        let u = updated(&mut events, "").await;
+        if (u.id == s.id || u.id == t.id) && u.watch.is_none() {
+            cleared += 1;
+        }
+    }
+    assert!(pool.get(&s.id).unwrap().info().watch.is_none() && pool.get(&t.id).unwrap().info().watch.is_none());
+    pool.kill(&t.id).unwrap();
 
     let mut c = connect(&pool);
     match c.ask(r#"{"id":2,"cmd":"watching","session":"nope"}"#).await {
