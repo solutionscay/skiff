@@ -165,13 +165,18 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-back:hover { color: var(--text); }
 .set-host-field input.c-cmd { height: 100%; padding: 0 calc(12 * var(--u)); }
 .set-host-field { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr); }
-.set-auto-update { grid-template-columns: calc(40 * var(--u)) minmax(0, 1fr); align-items: center; cursor: pointer; }
-.set-auto-update input { justify-self: center; margin: 0; accent-color: var(--state-working); }
+/* Under the check list: the switch in the mark column, the label from the step column on. */
+.set-auto-update { grid-template-columns: calc(40 * var(--u)) minmax(0, 1fr); }
+.set-auto-update .c-text { font-size: calc(13px * var(--zoom, 1)); cursor: pointer; }
+.set-auto-update button.c-on:disabled { cursor: progress; }
 .set-resolve.bad { color: var(--error-text); }
-.set-form-acts { height: var(--row); flex-shrink: 0; display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(24 * var(--u)); border-bottom: 1px solid var(--rule); }
-.set-form-acts .set-rm, .set-form-acts .set-add { height: calc(26 * var(--u)); padding: 0 calc(10 * var(--u)); border: 1px solid var(--rule-strong); border-radius: 0; background: transparent; color: var(--text-2); font: 500 calc(12px * var(--zoom, 1)) var(--font); white-space: nowrap; }
-.set-form-acts .set-rm:hover { border-color: var(--text-3); color: var(--text); }
-.set-form-acts .set-add.ready { border-color: var(--state-working); background: var(--state-working); color: var(--on-working); }
+/* The foot of a form or the check list: each button fills a cell of the row, with a rule on its inner side. */
+.set-form-acts { height: var(--row); flex-shrink: 0; display: flex; align-items: stretch; border-bottom: 1px solid var(--rule); }
+.set-form-acts .set-rm, .set-form-acts .set-add { padding: 0 calc(16 * var(--u)); border: 0; border-right: 1px solid var(--rule); border-radius: 0; background: transparent; color: var(--text-2); font: 500 calc(12px * var(--zoom, 1)) var(--font); white-space: nowrap; }
+.set-form-acts .set-fill ~ :is(.set-rm, .set-add) { border-right: 0; border-left: 1px solid var(--rule); }
+.set-form-acts .set-rm:hover:not(:disabled) { background: var(--bg-raised); color: var(--text); }
+.set-form-acts .set-rm:disabled { color: var(--text-dim); cursor: default; }
+.set-form-acts .set-add.ready { background: var(--state-working); color: var(--on-working); }
 .set-fill { flex-grow: 1; }
 .set-host-field input.c-cmd { width: 100%; min-width: 0; border: 0; border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font-size: calc(13px * var(--zoom, 1)); }
 .set-host-field input.c-cmd::placeholder { color: var(--text-dim); }
@@ -187,6 +192,9 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-check.warning .sq { background: var(--state-waiting); }
 .set-remove-box { padding: calc(12 * var(--u)) calc(20 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(13px * var(--zoom, 1)); line-height: 1.6; color: var(--text-2); }
 .set-remove-box .set-sub { font-size: calc(12px * var(--zoom, 1)); }
-.set-check-label { display: flex; gap: calc(8 * var(--u)); align-items: baseline; cursor: pointer; }
-.set-check-label input { flex-shrink: 0; margin: 0; accent-color: var(--danger); }
+/* Also uninstall: Skiff's switch, red when on, as a destructive choice. */
+.set-check-label { display: flex; gap: calc(12 * var(--u)); align-items: center; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.set-check-label .switch { flex-shrink: 0; }
+.set-check-label.on .switch { border-color: var(--error); background: color-mix(in srgb, var(--error) 25%, transparent); }
+.set-check-label.on .switch::after { left: calc(16 * var(--u)); background: var(--error); }
 .set-check .c-secs { margin-left: calc(8 * var(--u)); font-family: var(--mono); color: var(--text-3); }

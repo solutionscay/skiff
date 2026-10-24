@@ -446,20 +446,28 @@ export function createHostsTab(redraw: () => void) {
   /** The Host's own setting: on, an older install Skiff made is updated as
    *  the app connects, when every session survives. */
   function autoUpdate(x: KnownHost): HTMLElement {
-    const row = h("label", "set-row set-open set-host-field set-auto-update");
-    const box = h("input");
-    box.type = "checkbox";
-    box.checked = x.auto_update;
-    box.addEventListener("change", async () => {
+    const row = h("div", "set-row set-agent set-auto-update" + (x.auto_update ? " on" : ""));
+    const sw = h("button", "c-on");
+    sw.type = "button";
+    sw.setAttribute("role", "switch");
+    sw.setAttribute("aria-checked", String(x.auto_update));
+    sw.setAttribute("aria-label", `Update Skiff here automatically ${x.auto_update ? "on" : "off"}`);
+    sw.append(h("span", "switch"));
+    const flip = async () => {
+      sw.disabled = true;
       try {
-        await invoke("set_host_auto_update", { id: x.id, on: box.checked });
+        await invoke("set_host_auto_update", { id: x.id, on: !x.auto_update });
         await loadHosts();
+        redraw();
       } catch (e) {
-        box.checked = !box.checked;
+        sw.disabled = false;
         alertCheck(e);
       }
-    });
-    row.append(box, h("span", "c-text", "Update Skiff here automatically"));
+    };
+    sw.addEventListener("click", () => void flip());
+    const label = h("span", "c-text", "Update Skiff here automatically");
+    label.addEventListener("click", () => void flip());
+    row.append(sw, label);
     return row;
   }
 
@@ -679,12 +687,17 @@ export function createHostsTab(redraw: () => void) {
     const extra = h("div", "set-remove-box");
     const status = h("div", "set-sub", `Checking ${x.name}…`);
     extra.append(status);
-    const box = h("input") as HTMLInputElement;
-    box.type = "checkbox";
-    box.id = "set-uninstall";
+    let uninstall = false;
     let ends = "";
-    box.addEventListener("change", () => {
-      body.textContent = box.checked
+    const box = h("button", "set-check-label");
+    box.type = "button";
+    box.setAttribute("role", "switch");
+    box.setAttribute("aria-checked", "false");
+    box.addEventListener("click", () => {
+      uninstall = !uninstall;
+      box.setAttribute("aria-checked", String(uninstall));
+      box.classList.toggle("on", uninstall);
+      body.textContent = uninstall
         ? `Skiff uninstalls itself from ${x.name}. ${ends}Your other files stay.`
         : kept;
     });
@@ -695,7 +708,7 @@ export function createHostsTab(redraw: () => void) {
       tone: "danger",
       submit: async () => {
         error = null;
-        await invoke("remove_host", { id: x.id, uninstall: box.checked });
+        await invoke("remove_host", { id: x.id, uninstall });
         await loadHosts().catch(() => {});
         redraw();
       },
@@ -705,10 +718,8 @@ export function createHostsTab(redraw: () => void) {
         if (!p.managed) return void (status.textContent = `Skiff on ${x.name} is its own install. It stays.`);
         const n = p.sessions.length;
         ends = n === 0 ? "" : `This ends: ${p.sessions.join(", ")}. `;
-        const label = h("label", "set-check-label");
-        label.setAttribute("for", "set-uninstall");
-        label.append(box, h("span", "", `Also uninstall Skiff on ${x.name}. ${ends}`.trim()));
-        status.replaceWith(label);
+        box.append(h("span", "switch"), h("span", "", `Also uninstall Skiff on ${x.name}. ${ends}`.trim()));
+        status.replaceWith(box);
       },
       () => void (status.textContent = `${x.name} does not answer. Skiff removes it here only.`),
     );
