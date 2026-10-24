@@ -197,7 +197,7 @@ export function createHostsTab(redraw: () => void) {
     table.append(cols, hostRow(null));
     for (const x of knownHosts()) table.append(hostRow(x));
     main.append(table);
-    if (!knownHosts().length) main.append(h("div", "set-note", "No servers yet. Add one from your SSH config."));
+    if (!knownHosts().length) main.append(h("div", "set-note set-line", "No servers yet. Add one from your SSH config."));
     if (error) main.append(alert(error));
     return main;
   }
@@ -330,7 +330,7 @@ export function createHostsTab(redraw: () => void) {
     main.append(table);
     if (x) main.append(autoUpdate(x));
     if (c.error) main.append(alert(c.error));
-    if (c.note) main.append(h("div", "set-note", c.note));
+    if (c.note) main.append(h("div", "set-note set-line", c.note));
     const acts = h("div", "set-form-acts");
     const running = !c.report && !c.error;
     const again = button("set-rm", running ? "Checking…" : "Check again", () => void runCheck(c.id));
@@ -730,7 +730,7 @@ export function createHostsTab(redraw: () => void) {
     dest.setAttribute("list", list.id);
     dest.addEventListener("input", () => lookup(f));
     main.append(fieldRow("Server", dest, list));
-    const said = h("div", "set-note set-resolve" + (line.bad ? " bad" : ""), line.text || "User and port come from your SSH config.");
+    const said = h("div", "set-note set-line set-resolve" + (line.bad ? " bad" : ""), line.text || "User and port come from your SSH config.");
     said.id = "set-resolve";
     main.append(said);
 
@@ -856,7 +856,7 @@ export function createHostsTab(redraw: () => void) {
   }
 
   function alert(text: string): HTMLElement {
-    const err = h("div", "set-error", text);
+    const err = h("div", "set-error set-line", text);
     err.setAttribute("role", "alert");
     return err;
   }

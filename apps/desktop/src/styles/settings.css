@@ -127,7 +127,8 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-head-words { display: flex; flex-direction: column; gap: calc(4 * var(--u)); min-width: 0; }
 /* One grid for the header and every row: mark, Name, Server, Skiff, State, menu. */
 .set-table.g-hosts .set-row { grid-template-columns: calc(40 * var(--u)) minmax(calc(160 * var(--u)), 1fr) minmax(0, 1.4fr) calc(128 * var(--u)) calc(148 * var(--u)) calc(40 * var(--u)); }
-.set-table.g-hosts .set-row.set-cols { height: calc(20 * var(--u)); }
+/* A one-line note or error on the Hosts pages: one row tall, so the rows under it stay on the nav's lines. */
+.set-line { min-height: var(--row); display: flex; align-items: center; }
 .set-table.g-hosts .set-row > .c-more { padding: 0; justify-content: center; }
 .set-host.act { cursor: default; }
 .set-host.act:hover { background: var(--bg-raised); }
