@@ -662,3 +662,33 @@ fn m5_folders_is_a_family_of_its_own_that_lists_folders_only() {
         assert!(serde_json::from_value::<Response>(bad.clone()).is_err(), "{bad}");
     }
 }
+
+/// #166 R7 and R8: Skipper's changes, its session and watcher, and the
+/// agents table are families of their own, each with one reply kind.
+#[test]
+fn skipper_changes_launch_and_agent_changes_are_families_of_their_own() {
+    let cases = [
+        (json!({"cmd":"skipper_edit","edit":{"key":"name","value":"Mate"}}), Capability::skipper_config()),
+        (json!({"cmd":"skipper_edit","edit":{"key":"add_task","value":{"type":"review","agent":"claude","model":null}}}), Capability::skipper_config()),
+        (json!({"cmd":"skipper_folder_preview","path":"~/skiff-agent"}), Capability::skipper_config()),
+        (json!({"cmd":"skipper_folder_change","path":"/home/me/a","mode":"copy","end_skipper":true,"anyway":false}), Capability::skipper_config()),
+        (json!({"cmd":"skipper_open"}), Capability::skipper_run()),
+        (json!({"cmd":"skipper_open","restore":4}), Capability::skipper_run()),
+        (json!({"cmd":"skipper_watch","session":"s1"}), Capability::skipper_run()),
+        (json!({"cmd":"agent_config"}), Capability::agent_config()),
+        (json!({"cmd":"agent_edit","revision":"r1","edit":{"key":"enabled","agents":["claude"]}}), Capability::agent_config()),
+        (json!({"cmd":"agent_edit","revision":"r1","edit":{"key":"restore"}}), Capability::agent_config()),
+    ];
+    for (value, cap) in cases {
+        let request: Request = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&request).unwrap(), value);
+        assert_eq!(request.capability(), Some(cap));
+        // Only an open answers `ok`: a restore that found no session.
+        assert_eq!(request.accepts(&Response::Ok), matches!(request, Request::SkipperOpen { .. }), "{value}");
+    }
+    let agents = Response::AgentConfig { agents: vec![], revision: "r2".into() };
+    let edit: Request = serde_json::from_value(json!({"cmd":"agent_edit","revision":"r1","edit":{"key":"restore"}})).unwrap();
+    assert!(edit.accepts(&agents));
+    assert!(!Request::SkipperWatch { session: "s1".into() }.accepts(&agents));
+    assert!(Request::SkipperWatch { session: "s1".into() }.accepts(&Response::Watch { started: true }));
+}

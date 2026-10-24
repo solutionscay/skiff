@@ -102,14 +102,15 @@ pub(super) fn target(file: &Path) -> Result<PathBuf> {
     Ok(dir.join(name))
 }
 
-/// The `[[project]]` tables changed after they were read: a Host write
-/// made against that read is refused, not applied over the change.
+/// The `[[project]]` tables, or the `[agents]` table, changed after they
+/// were read: a Host write made against that read is refused, not applied
+/// over the change. It holds what changed: `projects` or `agents`.
 #[derive(Debug)]
-pub struct Stale;
+pub struct Stale(&'static str);
 
 impl std::fmt::Display for Stale {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str("The projects changed on this Host since they were read.")
+        write!(f, "The {} changed on this Host since they were read.", self.0)
     }
 }
 impl std::error::Error for Stale {}
@@ -139,8 +140,17 @@ impl std::error::Error for Refused {}
 /// The projects as read, as a short token: equal tokens, equal `[[project]]`
 /// tables. The rest of the file (keys, appearance, agents) does not count.
 pub fn projects_revision(projects: &[super::types::ProjectConfig]) -> String {
+    revision_of(projects)
+}
+
+/// The `[agents]` table as read, as a short token, as [`projects_revision`].
+pub fn agents_revision(agents: &super::types::Agents) -> String {
+    revision_of(agents)
+}
+
+fn revision_of<T: serde::Serialize + ?Sized>(value: &T) -> String {
     // FNV-1a: the same token from every build, so a restarted service agrees.
-    let bytes = serde_json::to_vec(projects).unwrap_or_default();
+    let bytes = serde_json::to_vec(value).unwrap_or_default();
     let hash = bytes.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3));
     format!("{hash:016x}")
 }
@@ -163,10 +173,21 @@ pub fn check_label<'a>(what: &str, value: &'a str) -> Result<&'a str> {
 pub fn edit_projects<T>(revision: &str, edit: impl FnOnce() -> Result<T>) -> Result<(T, String)> {
     let _edit = edit_lock()?;
     if projects_revision(&load()?.projects) != revision {
-        return Err(Stale.into());
+        return Err(Stale("projects").into());
     }
     let out = edit()?;
     Ok((out, projects_revision(&load()?.projects)))
+}
+
+/// [`edit_projects`] for the `[agents]` table: `edit` runs only while it is
+/// still at `revision`.
+pub fn edit_agents_at<T>(revision: &str, edit: impl FnOnce() -> Result<T>) -> Result<(T, String)> {
+    let _edit = edit_lock()?;
+    if agents_revision(&load()?.agents) != revision {
+        return Err(Stale("agents").into());
+    }
+    let out = edit()?;
+    Ok((out, agents_revision(&load()?.agents)))
 }
 
 /// Writes a temp file beside the target and renames it over, so a reader

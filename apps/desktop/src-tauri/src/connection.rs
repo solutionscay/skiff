@@ -21,6 +21,9 @@ pub(crate) struct App {
     /// The Host id and the `[[project]]` revision of the last project read or
     /// change: what the next project change is made from.
     pub(crate) revision: std::sync::Mutex<Option<(skiff_host_api::HostId, String)>>,
+    /// The Host id and the `[agents]` revision of the last agent read or
+    /// change of a remote Host: what the next agent change is made from.
+    pub(crate) agent_revision: std::sync::Mutex<Option<(skiff_host_api::HostId, String)>>,
     /// The one endpoint this window reaches: this Mac, or the remote Host
     /// `hosts.toml` selects. Only `select_host` changes it, never a reconnect.
     /// Legacy paths only borrow its accepted Client.

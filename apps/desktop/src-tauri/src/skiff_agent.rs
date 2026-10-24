@@ -4,21 +4,19 @@
 
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use skiff_client::{
     agent_folder::{self, Mode},
+    host::data,
     skipper,
 };
-use skiff_core::{
-    config::{self, SkiffAgentKey},
-    session::SessionInfo,
-};
-use skiff_host_api::HostSkipper;
+use skiff_core::{config, session::SessionInfo};
+use skiff_host_api::{HostSkipper, SkipperEdit, SkipperFolderDone, SkipperFolderPreview};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::{
     config::PROJECTS_CHANGED,
-    connection::{blocking, bundled, ensure_client, err, App},
+    connection::{blocking, bundled, data_write, ensure_client, err, App},
 };
 use skiff_client::host::local::ProcessControl;
 
@@ -38,11 +36,6 @@ pub(crate) fn sync(app: &App) -> bool {
     true
 }
 
-/// Makes the agent's folder ready. Returns the folder.
-fn ensure() -> anyhow::Result<PathBuf> {
-    skipper::ensure(&config::load()?)
-}
-
 /// The `skiff` CLI beside the app binary, else the one on `PATH`.
 fn cli() -> PathBuf {
     bundled("skiff", None)
@@ -50,11 +43,12 @@ fn cli() -> PathBuf {
 
 /// Starts `skiff watch` for the agent's session, unless one runs for this
 /// daemon. The page calls it on every start and every restore. True when it
-/// started one.
+/// started one. A remote Host starts its own, which its `skiff-host` keeps.
 #[tauri::command]
 pub async fn start_skiff_watch(app: State<'_, App>, session: String) -> Result<bool, String> {
-    // A remote Host's watcher runs there; this app only reaches it.
-    let Some(local) = app.selection().process_control() else { return Ok(false) };
+    let Some(local) = app.selection().process_control() else {
+        return data_write(&app, |c| async move { data::skipper_watch(&c, &session).await }).await;
+    };
     ensure_watch(&app, &local, cli(), session).await
 }
 
@@ -108,9 +102,19 @@ pub struct Opened {
 /// The row and the key: find the Skiff agent's session or start it, through
 /// the daemon's guarded request, and start its watcher. With `restore`, the
 /// `input_gen` the page read: only continue a restored shell, as Settings
-/// says. `null` when there is nothing to open.
+/// says. `null` when there is nothing to open. A remote Host does it all
+/// there, through its `skiff-host`.
 #[tauri::command]
 pub async fn open_skiff_agent(app: State<'_, App>, restore: Option<u64>) -> Result<Option<Opened>, String> {
+    if app.remote() {
+        let opened = data_write(&app, |c| async move { data::skipper_open(&c, restore).await }).await?;
+        return Ok(opened.map(|o| Opened {
+            session: skiff_client::host::restore_session(o.session),
+            created: o.created,
+            typed: o.typed,
+            watch_error: o.watch_error,
+        }));
+    }
     let (c, _) = ensure_client(&app).await?;
     let how = match restore {
         Some(expect) => skipper::Open::Restore { expect },
@@ -127,31 +131,6 @@ pub async fn open_skiff_agent(app: State<'_, App>, restore: Option<u64>) -> Resu
     Ok(Some(Opened { session: found.session, created: found.created, typed: found.typed, watch_error }))
 }
 
-/// One edit from Settings › Skiff agent. `null` or empty takes the default.
-#[derive(Deserialize)]
-#[serde(tag = "key", content = "value", rename_all = "snake_case")]
-pub enum Edit {
-    Name(Option<String>),
-    Agent(Option<String>),
-    Enabled(bool),
-    ContinueOnRestore(bool),
-    /// A new row at the end of Task types.
-    AddTask(TaskEdit),
-    /// A row's agent or model.
-    Task(TaskEdit),
-    RenameTask { from: String, to: String },
-    RemoveTask(String),
-}
-
-/// A task type row as Settings sends it. An empty model is the agent's default.
-#[derive(Deserialize)]
-pub struct TaskEdit {
-    #[serde(rename = "type")]
-    name: String,
-    agent: String,
-    model: Option<String>,
-}
-
 /// `[skiff_agent]` and its task types, from the selected Host (`skipper@1`):
 /// This Mac's and an SSH Host's alike. Nothing is read from a config here.
 #[tauri::command]
@@ -163,55 +142,35 @@ async fn read(app: &App) -> Result<HostSkipper, String> {
     crate::connection::data_read(app, |c| async move { skiff_client::host::data::skipper_settings(&c).await }).await
 }
 
-/// Saves one setting on This Mac (the Host's config is this Mac's: the
-/// command is local-only) and answers with all of them, read again through
-/// the Host. The page reloads its projects on the event, so the row follows
-/// at once.
+/// Saves one setting on the selected Host: This Mac's config here, a remote
+/// Host's through its `skiff-host` (`skipper_config@1`). Answers with all of
+/// them, read again through the Host. The page reloads its projects on the
+/// event, so the row follows at once.
 #[tauri::command]
-pub async fn set_skiff_agent(app: State<'_, App>, handle: AppHandle, edit: Edit) -> Result<HostSkipper, String> {
-    blocking(move || {
-        match edit {
-            Edit::Name(v) => config::set_skiff_agent(SkiffAgentKey::Name(v.as_deref()))?,
-            Edit::Agent(v) => config::set_skiff_agent(SkiffAgentKey::Agent(v.as_deref()))?,
-            Edit::ContinueOnRestore(on) => config::set_skiff_agent(SkiffAgentKey::ContinueOnRestore(on))?,
-            Edit::AddTask(t) => config::add_task_type(&t.name, &t.agent, t.model.as_deref())?,
-            Edit::Task(t) => config::set_task_type(&t.name, &t.agent, t.model.as_deref())?,
-            Edit::RenameTask { from, to } => config::rename_task_type(&from, &to)?,
-            Edit::RemoveTask(name) => config::remove_task_type(&name)?,
-            Edit::Enabled(on) => {
-                // On makes the folder ready first: a refused folder stays off.
-                if on {
-                    ensure()?;
-                }
-                config::set_skiff_agent(SkiffAgentKey::Enabled(on))?
-            }
-        }
-        Ok(())
-    })
-    .await?;
+pub async fn set_skiff_agent(app: State<'_, App>, handle: AppHandle, edit: SkipperEdit) -> Result<HostSkipper, String> {
+    if app.remote() {
+        let settings = data_write(&app, |c| async move { data::skipper_edit(&c, edit).await }).await?;
+        let _ = handle.emit(PROJECTS_CHANGED, ());
+        return Ok(settings);
+    }
+    blocking(move || skipper::apply(&edit)).await?;
     let _ = handle.emit(PROJECTS_CHANGED, ());
     read(&app).await
 }
 
-/// A preview for the Change… dialog, with Skipper's session when it runs.
-#[derive(Serialize)]
-pub struct FolderPreview {
-    #[serde(flatten)]
-    preview: agent_folder::Preview,
-    /// Skipper's session runs: the change ends it first.
-    skipper_runs: bool,
-}
-
-/// The chosen folder, resolved and read. A relative path resolves against
-/// the home folder. Changes nothing.
+/// The chosen folder, resolved and read on the selected Host. A relative
+/// path resolves against the Host's home folder. Changes nothing.
 #[tauri::command]
-pub async fn preview_skiff_folder(app: State<'_, App>, path: String) -> Result<FolderPreview, String> {
+pub async fn preview_skiff_folder(app: State<'_, App>, path: String) -> Result<SkipperFolderPreview, String> {
+    if app.remote() {
+        return crate::connection::data_read(&app, |c| async move { data::skipper_folder_preview(&c, &path).await }).await;
+    }
     let (panes, skipper) = live(&app).await;
     blocking(move || {
         let home = skipper::home()?;
         let to = agent_folder::resolve(&path, &home, &home)?;
         let preview = agent_folder::preview(&config::load()?, &to, &panes)?;
-        Ok(FolderPreview { preview, skipper_runs: skipper.is_some() })
+        Ok(preview.to_host(skipper.is_some()))
     })
     .await
 }
@@ -227,7 +186,7 @@ async fn live(app: &App) -> (agent_folder::Panes, Option<SessionInfo>) {
 /// Copy, check and switch, start empty, or switch to a Skiff folder. `path`
 /// is the preview's resolved folder. Skipper's session ends first when
 /// `end_skipper`, else a running one stops the change. `anyway` lets the
-/// change run while tasks still run.
+/// change run while tasks still run. A remote Host runs it there.
 #[tauri::command]
 pub async fn change_skiff_folder(
     app: State<'_, App>,
@@ -236,7 +195,13 @@ pub async fn change_skiff_folder(
     mode: Mode,
     end_skipper: bool,
     anyway: bool,
-) -> Result<agent_folder::Done, String> {
+) -> Result<SkipperFolderDone, String> {
+    if app.remote() {
+        let path = path.to_string_lossy().into_owned();
+        let done = data_write(&app, |c| async move { data::skipper_folder_change(&c, &path, mode.into(), end_skipper, anyway).await }).await?;
+        let _ = handle.emit(PROJECTS_CHANGED, ());
+        return Ok(done);
+    }
     let (mut panes, skipper) = live(&app).await;
     if let Some(s) = skipper {
         if !end_skipper {
@@ -248,12 +213,12 @@ pub async fn change_skiff_folder(
     }
     let done = blocking(move || agent_folder::change(&config::load()?, &path, mode, &panes, anyway)).await?;
     let _ = handle.emit(PROJECTS_CHANGED, ());
-    Ok(done)
+    Ok(done.to_host())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Edit;
+    use skiff_host_api::SkipperEdit as Edit;
 
     /// Review P2: a launch with a remote Host selected leaves this Mac's
     /// Skipper skill alone (private config; the review's repro wrote it).

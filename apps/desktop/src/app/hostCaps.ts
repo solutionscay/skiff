@@ -21,7 +21,10 @@ type HostCap =
   | "folders"
   | "project_assets"
   | "ledger"
-  | "skipper";
+  | "skipper"
+  | "skipper_config"
+  | "skipper_run"
+  | "agent_config";
 
 /** The major of each capability that this page speaks. */
 const MAJOR: Record<HostCap, number> = {
@@ -42,6 +45,9 @@ const MAJOR: Record<HostCap, number> = {
   project_assets: 1,
   ledger: 1,
   skipper: 1,
+  skipper_config: 1,
+  skipper_run: 1,
+  agent_config: 1,
 };
 
 /** What each capability offers, for the refusal. */
@@ -63,6 +69,9 @@ const OFFERS: Record<HostCap, string> = {
   project_assets: "project images",
   ledger: "the ledger",
   skipper: "Skiff agent settings",
+  skipper_config: "changes to its Skiff agent",
+  skipper_run: "a Skiff agent it starts",
+  agent_config: "changes to its agents",
 };
 
 /** `name@major` of the selected Host. `null` until the first answer. */

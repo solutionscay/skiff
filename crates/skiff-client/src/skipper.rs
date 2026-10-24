@@ -268,6 +268,29 @@ pub(crate) fn refusal(d: &Path, home: &Path, cfg: &Config) -> Option<String> {
     None
 }
 
+/// One edit from Settings › Skiff agent, on this Host's config: the app's
+/// for This Mac, `skiff-host`'s for a remote Host (`skipper_config@1`).
+pub fn apply(edit: &skiff_host_api::SkipperEdit) -> Result<()> {
+    use config::SkiffAgentKey as K;
+    use skiff_host_api::SkipperEdit as E;
+    match edit {
+        E::Name(v) => config::set_skiff_agent(K::Name(v.as_deref())),
+        E::Agent(v) => config::set_skiff_agent(K::Agent(v.as_deref())),
+        E::ContinueOnRestore(on) => config::set_skiff_agent(K::ContinueOnRestore(*on)),
+        E::AddTask(t) => config::add_task_type(&t.name, &t.agent, t.model.as_deref()),
+        E::Task(t) => config::set_task_type(&t.name, &t.agent, t.model.as_deref()),
+        E::RenameTask { from, to } => config::rename_task_type(from, to),
+        E::RemoveTask(name) => config::remove_task_type(name),
+        E::Enabled(on) => {
+            // On makes the folder ready first: a refused folder stays off.
+            if *on {
+                ensure(&config::load()?)?;
+            }
+            config::set_skiff_agent(K::Enabled(*on))
+        }
+    }
+}
+
 /// Makes the agent's folder ready: writes the template parts it lacks, with
 /// the name from Settings. Settings runs it when the user turns the agent on,
 /// and every open runs it before it starts a session. Returns the folder.

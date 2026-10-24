@@ -13,7 +13,7 @@ import { changeSkiffFolder } from "./skiffFolderDialog";
 import { rowTable, tableState } from "./rowTable";
 import { type HostsPage, hostName, isRemote } from "../app/hosts";
 import { createHostsTab } from "./hostSettings";
-import { hostInvoke } from "../app/hostCaps";
+import { hostCan, hostInvoke } from "../app/hostCaps";
 
 /**
  * Settings over the sidebar and terminal: agents, appearance, Open with and Hosts.
@@ -51,6 +51,18 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   const tasksTable = tableState();
   const hostsTab = createHostsTab(() => render());
 
+  /** The agents, from the selected Host. A remote Host's come with the revision its next change is made from. */
+  function loadAgents(): Promise<AgentInfo[]> {
+    if (isRemote() && hostCan("agent_config")) return hostInvoke<AgentInfo[]>("agent_config", "agent_config");
+    return hostInvoke<AgentInfo[]>("session_agents", "list_agents");
+  }
+
+  /** One agent change: This Mac's config, or a remote Host's through its skiff-host. */
+  function agentCall(cmd: string, args: Record<string, unknown> = {}): Promise<AgentInfo[]> {
+    if (isRemote()) return hostInvoke<AgentInfo[]>("agent_config", cmd, args);
+    return invoke<AgentInfo[]>(cmd, args);
+  }
+
   async function toggle(id: string) {
     if (saving) return;
     const enabled = agents.filter((a) => (a.id === id ? !a.enabled : a.enabled)).map((a) => a.id);
@@ -60,11 +72,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     agents = agents.map((a) => (a.id === id ? { ...a, enabled: !a.enabled } : a));
     render();
     try {
-      agents = await invoke<AgentInfo[]>("set_agents", { enabled });
+      agents = await agentCall("set_agents", { enabled });
       onAgents(agents);
     } catch (e) {
       error = String(e);
-      agents = await hostInvoke<AgentInfo[]>("session_agents", "list_agents").catch(() => agents);
+      agents = await loadAgents().catch(() => agents);
     } finally {
       saving = false;
       render();
@@ -75,10 +87,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   async function editAgents(cmd: string, args: Record<string, string> = {}) {
     error = null;
     try {
-      agents = await invoke<AgentInfo[]>(cmd, args);
+      agents = await agentCall(cmd, args);
       onAgents(agents);
     } catch (e) {
       error = String(e);
+      agents = await loadAgents().catch(() => agents);
     }
     render();
   }
@@ -86,9 +99,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   /** An agent edit from its table. Answers with the error to show; the table redraws. */
   async function agentEdit(cmd: string, args: Record<string, string>): Promise<string | null> {
     try {
-      agents = await invoke<AgentInfo[]>(cmd, args);
+      agents = await agentCall(cmd, args);
       onAgents(agents);
     } catch (e) {
+      // A conflict forgot the revision: read the Host's agents again.
+      agents = await loadAgents().catch(() => agents);
       return String(e);
     }
     // A renamed agent takes its task types with it.
@@ -150,10 +165,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const title = h("div", "set-h", "Agents");
     title.id = "set-h-agents";
     intro.append(title);
-    // A remote Host's agents are its own: listed here, changed on that Host.
-    if (isRemote()) {
+    // A Host whose Skiff is too old to take changes: its agents, read-only.
+    if (isRemote() && !hostCan("agent_config")) {
       const rows = agents.map((a) => h("div", "set-note mono", `${a.id}: ${a.command} (${a.installed ? (a.enabled ? "on" : "off") : "not on PATH"})`));
-      main.append(intro, h("div", "set-note", `The agents on ${hostName()}, from its PATH and its projects.toml. Change them on that Host.`), ...(rows.length ? rows : [h("div", "set-note", "No agents.")]));
+      main.append(intro, h("div", "set-note", `The agents on ${hostName()}, from its PATH and its projects.toml. Its Skiff is too old to change them from here: update Skiff on ${hostName()}.`), ...(rows.length ? rows : [h("div", "set-note", "No agents.")]));
       if (error) main.appendChild(h("div", "set-error", error));
       root.replaceChildren(nav, main, closeButton());
       return;
@@ -367,10 +382,16 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     { key: "html", label: "HTML" },
   ];
 
+  /** One Skiff agent setting, on This Mac or through a remote Host's skiff-host. */
+  function skiffAgentEdit(edit: SkiffAgentEdit): Promise<SkiffAgentSettings> {
+    if (isRemote()) return hostInvoke<SkiffAgentSettings>("skipper_config", "set_skiff_agent", { edit });
+    return invoke<SkiffAgentSettings>("set_skiff_agent", { edit });
+  }
+
   /** A task type edit. Answers with the error to show; the table redraws. */
   async function saveTask(edit: SkiffAgentEdit): Promise<string | null> {
     try {
-      agentSet = await invoke<SkiffAgentSettings>("set_skiff_agent", { edit });
+      agentSet = await skiffAgentEdit(edit);
       return null;
     } catch (e) {
       return String(e);
@@ -380,7 +401,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   async function setSkiffAgent(edit: SkiffAgentEdit) {
     error = null;
     try {
-      agentSet = await invoke<SkiffAgentSettings>("set_skiff_agent", { edit });
+      agentSet = await skiffAgentEdit(edit);
     } catch (e) {
       error = String(e);
     }
@@ -408,10 +429,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       h("div", "set-sub", "One agent for all projects."),
     );
     main.append(intro);
-    // A remote Host's Skiff agent is its own: shown here, changed on that Host.
-    if (isRemote()) {
+    // A Host whose Skiff is too old to take changes: its Skiff agent, read-only.
+    if (isRemote() && !hostCan("skipper_config")) {
       main.append(h("div", "set-note", agentSet
-        ? `The Skiff agent on ${hostName()}, from its projects.toml. Change it on that Host.`
+        ? `The Skiff agent on ${hostName()}, from its projects.toml. Its Skiff is too old to change it from here: update Skiff on ${hostName()}.`
         : `${hostName()} does not offer Skiff agent settings.`));
       if (agentSet) {
         const a = agentSet;
@@ -610,7 +631,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       openSet = await invoke<OpenSettings>("open_settings").catch(() => null);
       menuSet = await invoke<MenuLayout>("menu_layout").catch(() => null);
       agentSet = await hostInvoke<SkiffAgentSettings>("skipper", "get_skiff_agent").catch(() => null);
-      agents = await hostInvoke<AgentInfo[]>("session_agents", "list_agents").catch((e) => {
+      agents = await loadAgents().catch((e) => {
         error = String(e);
         return [];
       });

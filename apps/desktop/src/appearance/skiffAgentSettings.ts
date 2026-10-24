@@ -8,6 +8,7 @@ import { BAD_TASK_TYPE_NAME, modelError, modelFlag, taskCommand, TASK_TYPE_NAME 
 import { reveal } from "../platform/fileActions";
 import { copyText } from "../platform/clipboard";
 import { showError } from "../ui/alerts";
+import { isRemote } from "../app/hosts";
 
 /** A task type row as `set_skiff_agent` takes it. Null model: the agent's default. */
 export interface TaskEdit {
@@ -100,7 +101,8 @@ function folderRows(set: SkiffAgentSettings, change: () => void): HTMLElement[] 
   copy.type = "button";
   copy.addEventListener("click", () => void copyText(set.configured).catch(showError));
   acts.append(copy);
-  if (set.folder_status === "ready") {
+  // A remote Host's folder is on that Host: no file manager here opens it.
+  if (set.folder_status === "ready" && !isRemote()) {
     const show = h("button", "set-rm", "Show in file manager");
     show.type = "button";
     show.addEventListener("click", () => reveal(set.configured));
