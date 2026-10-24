@@ -282,6 +282,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             | Request::SkipperFolderChange { .. }
             | Request::SkipperOpen { .. }
             | Request::SkipperWatch { .. }
+            | Request::SkipperProject { .. }
             | Request::AgentConfig
             | Request::AgentEdit { .. }
     ) {
@@ -467,6 +468,7 @@ fn ledger_rows() -> Result<Vec<HostLedgerRow>, Error> {
                 id: r.id,
                 uid: r.uid,
                 kind: r.kind,
+                owner: r.owner,
                 parent: r.parent,
                 pane_id: r.pane_id,
                 pane_gen: r.pane_gen,

@@ -63,6 +63,11 @@ pub struct SessionSpec {
     /// [`Request::Coordinator`]: crate::protocol::Request::Coordinator
     #[serde(skip)]
     pub coordinator: bool,
+    /// A project Skipper: the project it coordinates. The CLI starts it with
+    /// at most one live per project. Not saved: a restore brings the pane
+    /// back as a plain shell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skipper: Option<String>,
     #[serde(default = "default_cols")]
     pub cols: u16,
     #[serde(default = "default_rows")]
@@ -143,6 +148,10 @@ pub struct SessionInfo {
     /// daemon has it. A restore keeps it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub coordinator: bool,
+    /// A project Skipper: the project it coordinates. See [`SessionSpec::skipper`].
+    /// A reload keeps it; a restore does not.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skipper: Option<String>,
     /// The `skiff watch` processes registered for this session. `None` when
     /// none is, or from a daemon older than protocol 27. Not saved, not
     /// restored, not in a reload handover.

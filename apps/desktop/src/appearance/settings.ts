@@ -8,7 +8,7 @@ import { nextCard, themeGrid, type ThemeFilters } from "./themeCards";
 import { type Action, actionFor, isMac } from "../app/keys";
 import { editField, fieldEditKey, textField } from "../ui/fieldClipboard";
 import { DEFAULT_NAME, type SkiffAgentSettings } from "../app/skiffAgent";
-import { type SkiffAgentEdit, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
+import { type SkiffAgentEdit, projectSkippersSection, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
 import { changeSkiffFolder } from "./skiffFolderDialog";
 import { rowTable, tableState } from "./rowTable";
 import { type HostsPage, hostName, isRemote } from "../app/hosts";
@@ -447,6 +447,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       main.appendChild(err);
     }
     if (agentSet) main.append(...taskTypesSection(agentSet, agents, tasksTable, saveTask, render));
+    if (agentSet) main.append(...projectSkippersSection(agentSet, agents, (e) => void setSkiffAgent(e)));
     return main;
   }
 

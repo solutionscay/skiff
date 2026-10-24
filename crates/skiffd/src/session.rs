@@ -679,6 +679,7 @@ impl SessionPool {
             interactive: false,
             input_gen: 0,
             coordinator: spec.coordinator,
+            skipper: spec.skipper.filter(|p| !p.trim().is_empty()),
             watch: None,
         };
 

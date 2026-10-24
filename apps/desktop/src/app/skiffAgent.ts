@@ -32,6 +32,12 @@ export interface SkiffAgentSettings {
   /** ready: a Skiff folder. new: setup makes it at On. other: it holds other files. */
   folder_status: "ready" | "new" | "other" | "refused";
   continue_on_restore: boolean;
+  /** The project menu offers Start project Skipper. */
+  project_skippers: boolean;
+  /** The agent project Skippers start. Null: the Skipper's. */
+  project_agent: string | null;
+  /** `projects/` in the folder: each project Skipper's SKIPPER.md and results. Null when the folder is refused. */
+  projects_folder: string | null;
   /** `[skiff_agent.tasks]` in file order. */
   tasks: TaskType[];
 }
@@ -84,6 +90,35 @@ export function skiffAgentSession(): SessionInfo | null {
 
 /** True for the Skiff agent's session. It has no project, no splits and no rename: its name lives in Settings. */
 export const isSkiffAgent = (id: string | null | undefined) => !!id && skiffAgentSession()?.id === id;
+
+/** The live project Skippers: sessions skiffd marks with their project. A restore brings one back as a plain shell, with no mark. */
+export function projectSkippers(): SessionInfo[] {
+  if (!skiffAgentFolder()) return [];
+  return [...sessions.values()].filter((s) => !!s.skipper && !s.coordinator && s.state !== "done");
+}
+
+/** The live project Skipper of `project`, if one runs. */
+export const projectSkipperOf = (project: string) => projectSkippers().find((s) => s.skipper === project) ?? null;
+
+/** The coordinator whose session `id` is: "grand" for the Skiff agent, a project for a project Skipper, else null. */
+export function coordinatorOf(id: string | null | undefined): string | null {
+  if (!id) return null;
+  if (isSkiffAgent(id)) return "grand";
+  return projectSkippers().find((s) => s.id === id)?.skipper ?? null;
+}
+
+/** Project menu › Start project Skipper. `skiff skipper --project` starts it in the project's folder and sends SKIPPER.md as its first message. */
+export function startProjectSkipper(project: string) {
+  const s = projectSkipperOf(project);
+  if (s) return show(s.id);
+  // A remote Host starts it there, through its skiff-host (skipper_run@1).
+  const start = isRemote() ? hostInvoke<string>("skipper_run", "start_project_skipper", { project }) : invoke<string>("start_project_skipper", { project });
+  start
+    .then((id) => {
+      if (id) show(id);
+    })
+    .catch(showError);
+}
 
 /** What `open_skiff_agent` answers. */
 interface Opened {

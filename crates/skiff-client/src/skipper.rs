@@ -14,9 +14,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use skiff_core::{
-    config::{self, Config},
+    config::{self, Config, ProjectConfig},
     project::AgentInfo,
-    session::{Role, SessionSpec},
+    session::{Role, SessionInfo, SessionSpec, SessionState},
 };
 
 use crate::{Client, Coordinated, Coordinator};
@@ -26,6 +26,11 @@ pub const DEFAULT_NAME: &str = "Skipper";
 
 /// The folder's instructions. `{{name}}` becomes the agent's name.
 const TEMPLATE: &str = include_str!("../agent-template/AGENTS.md.tmpl");
+
+/// The project section of a project Skipper's `SKIPPER.md`, after
+/// [`TEMPLATE`]. `{{project}}`, `{{path}}` and `{{dir}}` become the
+/// project, its folder and the Skipper's folder.
+const PROJECT_TEMPLATE: &str = include_str!("../agent-template/SKIPPER-project.md.tmpl");
 
 /// The `skiff-cli` skill, file by file: (path, bytes, runnable).
 /// `skill_files_match_the_repo` keeps this list in step with the folder.
@@ -279,6 +284,8 @@ pub fn apply(edit: &skiff_host_api::SkipperEdit) -> Result<()> {
         E::Name(v) => config::set_skiff_agent(K::Name(v.as_deref())),
         E::Agent(v) => config::set_skiff_agent(K::Agent(v.as_deref())),
         E::ContinueOnRestore(on) => config::set_skiff_agent(K::ContinueOnRestore(*on)),
+        E::ProjectSkippers(on) => config::set_skiff_agent(K::ProjectSkippers(*on)),
+        E::ProjectAgent(v) => config::set_skiff_agent(K::ProjectAgent(v.as_deref())),
         E::AddTask(t) => config::add_task_type(&t.name, &t.agent, t.model.as_deref()),
         E::Task(t) => config::set_task_type(&t.name, &t.agent, t.model.as_deref()),
         E::RenameTask { from, to } => config::rename_task_type(from, to),
@@ -391,6 +398,126 @@ fn link(target: &Path, at: &Path) -> Result<()> {
 #[cfg(not(unix))]
 fn link(_target: &Path, _at: &Path) -> Result<()> {
     bail!("not supported on this platform")
+}
+
+/// The name of a project Skipper's file in its folder.
+pub const SKIPPER_FILE: &str = "SKIPPER.md";
+
+/// `SKIPPER.md` for the project `p`, whose Skipper's folder is `dir`.
+pub fn project_template(name: &str, p: &ProjectConfig, dir: &Path) -> String {
+    let section = PROJECT_TEMPLATE
+        .replace("{{project}}", &p.name)
+        .replace("{{path}}", &p.path.display().to_string())
+        .replace("{{dir}}", &dir.display().to_string());
+    format!("{}{section}", template(name))
+}
+
+/// The configured project, by name.
+pub fn project<'a>(cfg: &'a Config, name: &str) -> Result<&'a ProjectConfig> {
+    cfg.projects.iter().find(|p| p.name == name).with_context(|| format!("no project {name:?} in {}", config::config_path().display()))
+}
+
+/// A project Skipper's folder: `projects/<project>` in the Skiff agent's
+/// folder. Nothing goes into the project itself.
+pub fn project_folder(cfg: &Config, project: &str) -> Result<PathBuf> {
+    if project.is_empty() || project == "." || project == ".." || project.contains(['/', '\\']) {
+        bail!("the project name {project:?} cannot name a folder");
+    }
+    Ok(folder(cfg)?.join("projects").join(project))
+}
+
+/// The agent a project Skipper starts: the project's `skipper_agent`, else
+/// `[skiff_agent] project_agent`, else the Skipper's own (see [`choose`]).
+/// One that is not installed and on falls through to the next.
+pub fn project_agent<'a>(cfg: &Config, agents: &'a [AgentInfo], p: &ProjectConfig) -> Option<&'a AgentInfo> {
+    let usable = |id: Option<&str>| agents.iter().find(|a| Some(a.id.as_str()) == id && a.installed && (a.enabled || a.custom));
+    usable(p.skipper_agent.as_deref())
+        .or_else(|| usable(cfg.skiff_agent.project_agent.as_deref()))
+        .or_else(|| choose(agents, cfg.skiff_agent.agent.as_deref()))
+}
+
+/// Makes a project Skipper's folder ready: the Skiff agent's folder first,
+/// then `projects/<project>/` with `SKIPPER.md` and `results/`. `SKIPPER.md`
+/// is written again at each start, so it follows Skiff and the project.
+/// Returns the folder. The caller holds [`lock`].
+fn setup_project(cfg: &Config, p: &ProjectConfig) -> Result<PathBuf> {
+    setup_in(&folder(cfg)?, &name(cfg), &sync_skill()?)?;
+    let dir = project_folder(cfg, &p.name)?;
+    std::fs::create_dir_all(dir.join("results")).with_context(|| format!("create {}", dir.join("results").display()))?;
+    let file = dir.join(SKIPPER_FILE);
+    std::fs::write(&file, project_template(&name(cfg), p, &dir)).with_context(|| format!("write {}", file.display()))?;
+    Ok(dir)
+}
+
+/// The first message a new project Skipper gets.
+pub fn first_message(dir: &Path) -> String {
+    format!("Read {} and follow it. Then do its First steps.", dir.join(SKIPPER_FILE).display())
+}
+
+/// The live project Skipper of `project` in `all`, if one runs.
+pub fn find_project<'a>(all: &'a [SessionInfo], project: &str) -> Option<&'a SessionInfo> {
+    all.iter().find(|s| s.skipper.as_deref() == Some(project) && s.state != SessionState::Done)
+}
+
+/// A project Skipper the CLI found or started.
+pub struct ProjectSkipper {
+    pub session: SessionInfo,
+    /// It started now: it needs [`first_message`].
+    pub created: bool,
+    /// Its folder.
+    pub dir: PathBuf,
+}
+
+/// Finds the live project Skipper of `project`, or starts one in the
+/// project's folder. The setup lock keeps two starts apart, so a project
+/// has at most one. Refuses when the Skiff agent or Project Skippers is off.
+pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipper> {
+    let cfg = config::load()?;
+    if !cfg.skiff_agent.enabled {
+        bail!("The Skiff agent is off. Turn it on in Settings › Skiff agent");
+    }
+    if !cfg.skiff_agent.project_skippers {
+        bail!("Project Skippers are off. Turn them on in Settings › Skiff agent › Project Skippers");
+    }
+    let p = project(&cfg, project_name)?;
+    let _lock = lock()?;
+    let dir = setup_project(&cfg, p)?;
+    if let Some(s) = find_project(&c.list_sessions().await?, &p.name) {
+        return Ok(ProjectSkipper { session: s.clone(), created: false, dir });
+    }
+    let agents = c.list_agents().await?;
+    let Some(agent) = project_agent(&cfg, &agents, p) else { bail!("No agent is on. Turn one on in Settings › Agents") };
+    let mut s = spec(agent, &name(&cfg), p.path.clone());
+    s.skipper = Some(p.name.clone());
+    s.cols = 120;
+    s.rows = 40;
+    let info = c.create_session(s).await?;
+    if info.skipper.as_deref() != Some(p.name.as_str()) {
+        bail!("skiffd is too old to mark a project Skipper. Run `skiff daemon reload`. Session {} runs as a plain agent", info.id);
+    }
+    Ok(ProjectSkipper { session: info, created: true, dir })
+}
+
+/// Runs `skiff skipper --project P --no-attach` with `cli` on `socket`: it
+/// finds or starts the project Skipper, sends a new one its first message,
+/// and starts the watcher. The app and `skiff-host` share it, so both start
+/// one the same way. Returns the session id. It waits for a new agent's
+/// input box, so it can take a while.
+pub fn start_project(socket: &Path, cli: &Path, project: &str) -> Result<String> {
+    let out = std::process::Command::new(cli)
+        .arg("--socket")
+        .arg(socket)
+        .args(["skipper", "--project", project, "--no-attach"])
+        // The caller is the person, not a pane.
+        .env_remove("SKIFF_SESSION")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .with_context(|| format!("run {}", cli.display()))?;
+    if !out.status.success() {
+        let msg = String::from_utf8_lossy(&out.stderr);
+        bail!("{}", msg.trim().trim_start_matches("skiff: ").trim_start_matches("Error: "));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).lines().last().unwrap_or_default().trim().to_string())
 }
 
 /// What [`open`] does with the coordinator it finds.
@@ -816,6 +943,7 @@ pub fn settings(cfg: &Config) -> Result<skiff_host_api::HostSkipper> {
         (_, Ok(Kind::New | Kind::Empty)) => "new",
         _ => "other",
     };
+    let projects_folder = folder.as_ref().map(|f| PathBuf::from(f).join("projects").display().to_string());
     let a = &cfg.skiff_agent;
     // The command lines come from this config, so the list builds the same ones skiffd would.
     let tasks = skiff_core::tasks::resolve(&a.tasks, &skiff_core::project::agents())
@@ -831,6 +959,9 @@ pub fn settings(cfg: &Config) -> Result<skiff_host_api::HostSkipper> {
         configured: configured.display().to_string(),
         folder_status: folder_status.into(),
         continue_on_restore: a.continue_on_restore,
+        project_skippers: a.project_skippers,
+        project_agent: a.project_agent.clone(),
+        projects_folder,
         tasks,
     })
 }

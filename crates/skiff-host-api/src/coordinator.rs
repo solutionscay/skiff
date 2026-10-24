@@ -15,9 +15,13 @@ pub struct HostLedgerRow {
     pub id: i64,
     /// 8 hex characters; names the row in `ledger_result`.
     pub uid: String,
-    /// `task`, or `plan`: a row with no pane that groups tasks.
+    /// `task`; `plan`: a row with no pane that groups tasks; or `handoff`:
+    /// a Skipper's task for a project Skipper, with its tasks under it.
     pub kind: String,
-    /// The plan's uid.
+    /// The coordinator whose row it is: `grand`, or a project Skipper's project.
+    #[serde(default = "grand")]
+    pub owner: String,
+    /// The plan's or the hand-off's uid.
     #[serde(default)]
     pub parent: Option<String>,
     /// The full session id on the Host's skiffd. A plan has none.
@@ -56,6 +60,10 @@ pub struct HostLedgerRow {
     pub result_exists: bool,
 }
 
+fn grand() -> String {
+    "grand".into()
+}
+
 /// A task type: Skipper starts a task of this type with this agent and model.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostTaskType {
@@ -90,6 +98,16 @@ pub struct HostSkipper {
     /// `ready`, `new`, `other` or `refused`.
     pub folder_status: String,
     pub continue_on_restore: bool,
+    /// The project menu offers Start project Skipper.
+    #[serde(default)]
+    pub project_skippers: bool,
+    /// The agent project Skippers start. Absent: the Skipper's.
+    #[serde(default)]
+    pub project_agent: Option<String>,
+    /// Where project Skippers keep `SKIPPER.md` and their results, on the
+    /// Host. Absent when the folder is refused.
+    #[serde(default)]
+    pub projects_folder: Option<String>,
     /// `[skiff_agent.tasks]` in file order.
     pub tasks: Vec<HostTaskType>,
 }
@@ -105,6 +123,9 @@ pub enum SkipperEdit {
     /// On makes the folder ready first: a refused folder stays off.
     Enabled(bool),
     ContinueOnRestore(bool),
+    ProjectSkippers(bool),
+    /// `None`: Same as Skipper.
+    ProjectAgent(Option<String>),
     /// A new row at the end of Task types.
     AddTask(TaskEdit),
     /// A row's agent or model.

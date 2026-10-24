@@ -81,6 +81,13 @@ pub async fn answer(request: Request) -> Result<Response, Error> {
             let started = ensure_watch(session).await.map_err(|message| Error::OperationFailed { message })?;
             Ok(Response::Watch { started })
         }
+        Request::SkipperProject { project } => {
+            let id = blocking(move || skipper::start_project(&skiff_core::state::socket(), &cli(), &project).map_err(failed)).await?;
+            let c = connect().await?;
+            let s = c.list_sessions().await.map_err(failed)?.into_iter().find(|s| s.id == id);
+            let s = s.ok_or_else(|| Error::OperationFailed { message: format!("session {id} is gone") })?;
+            Ok(Response::Session { session: Box::new(skiff_client::host::project_session(s)?) })
+        }
         Request::AgentConfig => {
             let revision = blocking(|| Ok(config::agents_revision(&config::load().map_err(failed)?.agents))).await?;
             Ok(Response::AgentConfig { agents: agents().await?, revision })

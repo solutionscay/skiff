@@ -6,8 +6,8 @@ use skiff_host_api::{groups as api_group, lifecycle as api, Error, HostAgent};
 use super::inventory::{project_role, restore_role};
 
 /// The desktop's spec, as the Host contract carries it. `coordinator` is never
-/// on the legacy wire (`serde(skip)`); a spec that sets it is refused here
-/// rather than silently changed.
+/// on the legacy wire (`serde(skip)`); a spec that sets it, or a project
+/// Skipper's mark, is refused here rather than silently changed.
 pub(super) fn project_spec(value: core::SessionSpec) -> Result<api::SessionSpec, Error> {
     let core::SessionSpec {
         label,
@@ -18,12 +18,18 @@ pub(super) fn project_spec(value: core::SessionSpec) -> Result<api::SessionSpec,
         args,
         peek,
         coordinator,
+        skipper,
         cols,
         rows,
     } = value;
     if coordinator {
         return Err(Error::MalformedContract {
             message: "a coordinator session starts only through the coordinator request".into(),
+        });
+    }
+    if skipper.is_some() {
+        return Err(Error::MalformedContract {
+            message: "a project Skipper starts only through the skipper_project request".into(),
         });
     }
     Ok(api::SessionSpec {
@@ -60,6 +66,7 @@ pub(super) fn restore_spec(value: api::SessionSpec) -> core::SessionSpec {
         args,
         peek,
         coordinator: false,
+        skipper: None,
         cols,
         rows,
     }

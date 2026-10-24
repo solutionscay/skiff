@@ -65,6 +65,9 @@ pub struct InventorySession {
     pub input_gen: u64,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub coordinator: bool,
+    /// A project Skipper: the project it coordinates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_skipper: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watch: Option<WatchInfo>,
 }

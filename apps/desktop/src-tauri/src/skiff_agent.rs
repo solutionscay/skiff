@@ -89,6 +89,21 @@ pub fn skiff_watch_log() -> String {
     skiff_core::socket::socket_path().with_extension("watch.log").display().to_string()
 }
 
+/// Project menu › Start project Skipper: finds or starts the project's
+/// Skipper, sends a new one SKIPPER.md as its first message, and starts the
+/// watcher. Returns its session id. This Mac runs the bundled `skiff`
+/// (local process control); a remote Host does it there, through its
+/// `skiff-host` (`skipper_run@1`).
+#[tauri::command]
+pub async fn start_project_skipper(app: State<'_, App>, project: String) -> Result<String, String> {
+    if app.selection().process_control().is_none() {
+        let s = data_write(&app, |c| async move { data::skipper_project(&c, &project).await }).await?;
+        return Ok(s.id);
+    }
+    let socket = app.selection().socket().to_path_buf();
+    blocking(move || skipper::start_project(&socket, &cli(), &project)).await
+}
+
 /// The Skiff agent's session, and what the open did to it.
 #[derive(Serialize)]
 pub struct Opened {

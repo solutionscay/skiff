@@ -13,15 +13,15 @@ use skiff_core::{
 };
 
 use crate::{print, resolve, sessions, LedgerCmd};
-pub use skiff_client::ledger::{path, Row};
-use skiff_client::ledger::{buckets, gen, roll_up, rows, GONE, INTERRUPTED, OPEN, VERSION, WORKING};
+pub use skiff_client::ledger::{path, Row, GRAND};
+use skiff_client::ledger::{buckets, gen, heads, owner_name, roll_up, rows, GONE, INTERRUPTED, OPEN, VERSION, WORKING};
 
 const STATES: [&str; 4] = ["sent", "pending", "blocked", "done"];
 const TASKS: &str = "
 CREATE TABLE IF NOT EXISTS tasks (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   uid         TEXT NOT NULL UNIQUE,
-  kind        TEXT NOT NULL DEFAULT 'task' CHECK (kind IN ('task', 'plan')),
+  kind        TEXT NOT NULL DEFAULT 'task' CHECK (kind IN ('task', 'plan', 'handoff')),
   parent      TEXT,
   pane_id     TEXT,
   pane_gen    INTEGER,
@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   reported_at TEXT,
   title       TEXT,
   closed_at   TEXT,
-  gone_at     TEXT
+  gone_at     TEXT,
+  owner       TEXT NOT NULL DEFAULT 'grand'
 );
 ";
 
@@ -105,6 +106,9 @@ fn open_at(file: &Path) -> Result<Connection> {
 ///   work is over.
 /// - 7 to 8: `gone_at`. No row has it: the next read with the session list
 ///   closes the tasks whose panes are gone.
+/// - 8 to 9: `owner`, and the `handoff` kind. The table is built again in
+///   the new shape, each row with its id and owner `grand`: before project
+///   Skippers, the grand Skipper owned every row.
 fn migrate(db: &mut Connection) -> Result<()> {
     add_column(db, "socket", |tx| {
         tx.execute("UPDATE tasks SET socket = ?1 WHERE kind = 'task'", [state::live_socket().display().to_string()])?;
@@ -113,7 +117,27 @@ fn migrate(db: &mut Connection) -> Result<()> {
     add_column(db, "reported_at", |_| Ok(()))?;
     add_column(db, "title", |_| Ok(()))?;
     add_column(db, "closed_at", |_| Ok(()))?;
-    add_column(db, "gone_at", |_| Ok(()))
+    add_column(db, "gone_at", |_| Ok(()))?;
+    add_owner(db)
+}
+
+/// The 8 to 9 step. SQLite cannot change a CHECK in place, so the rows move
+/// to a new table, in one transaction.
+fn add_owner(db: &mut Connection) -> Result<()> {
+    let has = |db: &Connection| -> rusqlite::Result<bool> {
+        db.query_row("SELECT count(*) FROM pragma_table_info('tasks') WHERE name = 'owner'", [], |r| r.get::<_, i64>(0)).map(|n| n > 0)
+    };
+    if has(db)? {
+        return Ok(());
+    }
+    let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    if !has(&tx)? {
+        let old = "id, uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, reported_at, title, closed_at, gone_at";
+        tx.execute_batch(&TASKS.replace("IF NOT EXISTS tasks", "tasks_9"))?;
+        tx.execute_batch(&format!("INSERT INTO tasks_9 ({old}, owner) SELECT {old}, 'grand' FROM tasks; DROP TABLE tasks; ALTER TABLE tasks_9 RENAME TO tasks;"))?;
+    }
+    tx.commit()?;
+    Ok(())
 }
 
 /// Adds the column `name TEXT` to `tasks` and runs `fill`, unless it is
@@ -186,16 +210,16 @@ fn slug(text: &str) -> String {
     }
 }
 
-/// Where a row's result goes when `add` names no path, in `results/` next to
-/// the ledger:
+/// Where a row's result goes when `add` names no path, in `results`: the
+/// folder next to the ledger, or a project Skipper's (see [`results_dir`]):
 ///
 /// - a plan: `<date>-<uid>-<slug>/plan.md`, a folder of its own;
 /// - a task in a plan: `<uid>-<slug>.md` in the plan's folder;
 /// - any other task: `<date>-<uid>-<slug>.md`.
 ///
 /// The date is today's, local time. Nothing is made on disk.
-fn result_path(ledger: &Path, date: &str, uid: &str, task: &str, plan: bool, parent: Option<&Row>) -> PathBuf {
-    let results = ledger.parent().unwrap_or(Path::new(".")).join("results");
+fn result_path(results: &Path, date: &str, uid: &str, task: &str, plan: bool, parent: Option<&Row>) -> PathBuf {
+    let results = results.to_path_buf();
     let name = format!("{uid}-{}", slug(task));
     if plan {
         return results.join(format!("{date}-{name}")).join("plan.md");
@@ -206,8 +230,19 @@ fn result_path(ledger: &Path, date: &str, uid: &str, task: &str, plan: bool, par
     }
 }
 
-/// The folder of the plan's `plan.md`. A plan whose result is elsewhere gets
-/// the folder it would have had.
+/// The results folder of `owner`'s rows: `results/` next to the ledger for
+/// the grand Skipper, `projects/<project>/results/` for a project Skipper.
+pub fn results_dir(ledger: &Path, owner: &str) -> PathBuf {
+    let dir = ledger.parent().unwrap_or(Path::new("."));
+    if owner == GRAND {
+        dir.join("results")
+    } else {
+        dir.join("projects").join(owner).join("results")
+    }
+}
+
+/// The folder of the plan's `plan.md`, or the folder of a hand-off's tasks.
+/// A plan whose result is elsewhere gets the folder it would have had.
 fn plan_folder(results: &Path, p: &Row) -> PathBuf {
     if let Some(dir) = p.result_path.as_deref().map(Path::new).filter(|r| r.file_name() == Some("plan.md".as_ref())).and_then(Path::parent) {
         return dir.to_path_buf();
@@ -227,21 +262,25 @@ fn open_tasks_at(file: &Path) -> Result<Vec<Row>> {
         return Ok(Vec::new());
     }
     let db = open_at(file)?;
-    rows(&db, "WHERE kind = 'task' AND state IN ('sent', 'pending', 'blocked')", None)
+    rows(&db, "WHERE kind IN ('task', 'handoff') AND state IN ('sent', 'pending', 'blocked')", None)
 }
 
-/// The done tasks the person was not told of yet. `skiff watch` names the
-/// count at its start. No `ledger.db` yet gives 0, and makes no file.
-pub fn unreported() -> Result<usize> {
-    unreported_at(&path()?)
+/// The done tasks of `owner` the person was not told of yet. `skiff watch`
+/// names the count at its start. No `ledger.db` yet gives 0, and makes no file.
+pub fn unreported(owner: &str) -> Result<usize> {
+    unreported_at(&path()?, owner)
 }
 
-fn unreported_at(file: &Path) -> Result<usize> {
+fn unreported_at(file: &Path, owner: &str) -> Result<usize> {
     if !file.exists() {
         return Ok(0);
     }
     let db = open_at(file)?;
-    let n: i64 = db.query_row("SELECT count(*) FROM tasks WHERE kind = 'task' AND state = 'done' AND reported_at IS NULL", [], |r| r.get(0))?;
+    let n: i64 = db.query_row(
+        "SELECT count(*) FROM tasks WHERE kind IN ('task', 'handoff') AND state = 'done' AND reported_at IS NULL AND owner = ?1",
+        [owner],
+        |r| r.get(0),
+    )?;
     Ok(usize::try_from(n).unwrap_or(0))
 }
 
@@ -261,7 +300,7 @@ pub fn close_gone(here: &Path, all: &[SessionInfo]) -> Result<Vec<Row>> {
 
 fn close_gone_in(db: &mut Connection, here: &Path, all: &[SessionInfo]) -> Result<Vec<Row>> {
     let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let open = rows(&tx, "WHERE kind = 'task' AND state IN ('sent', 'pending', 'blocked') AND pane_id IS NOT NULL", None)?;
+    let open = rows(&tx, "WHERE kind IN ('task', 'handoff') AND state IN ('sent', 'pending', 'blocked') AND pane_id IS NOT NULL", None)?;
     // A stored id may be a prefix: any session it could name keeps the task.
     let gone: Vec<Row> = open
         .into_iter()
@@ -295,7 +334,17 @@ pub fn gone_unreported() -> Result<Vec<Row>> {
     if !file.exists() {
         return Ok(Vec::new());
     }
-    rows(&open_at(&file)?, "WHERE kind = 'task' AND state = 'done' AND gone_at IS NOT NULL AND reported_at IS NULL", None)
+    rows(&open_at(&file)?, "WHERE kind IN ('task', 'handoff') AND state = 'done' AND gone_at IS NOT NULL AND reported_at IS NULL", None)
+}
+
+/// The hand-offs a project Skipper set done, not yet reported: the grand
+/// Skipper's watcher tells it each once. No `ledger.db` yet gives none.
+pub fn handed_back() -> Result<Vec<Row>> {
+    let file = path()?;
+    if !file.exists() {
+        return Ok(Vec::new());
+    }
+    rows(&open_at(&file)?, "WHERE kind = 'handoff' AND state = 'done' AND gone_at IS NULL AND reported_at IS NULL", None)
 }
 
 fn state(s: &str) -> Result<&str> {
@@ -339,39 +388,72 @@ fn one(db: &Connection, arg: &str) -> Result<Row> {
     found.into_iter().next().with_context(|| format!("no ledger row {arg}"))
 }
 
-/// The work head `arg` names: a plan, or a task with no plan.
+/// The work head `arg` names: a plan, or a task or hand-off with no plan.
 fn head(db: &Connection, arg: &str) -> Result<Row> {
     let r = one(db, arg)?;
     if let Some(p) = &r.parent {
-        bail!("task {} is in plan {p}. Name the plan. Nothing changed", r.uid);
+        let above = one(db, p).map(|p| p.kind).unwrap_or_else(|_| "plan".into());
+        bail!("{} {} is in {above} {p}. Name the {above}. Nothing changed", r.kind, r.uid);
     }
     Ok(r)
 }
 
-/// The plan a task joins with `--parent arg`: the plan `arg` names or holds
-/// a task of, or a new plan that wraps the task with no plan `arg` names.
-/// The new plan takes the task's text, title, project, ref, type, send time
-/// and close stamp. Closed work opens again: the task is new work in it. Run
-/// it in a transaction.
+/// The row `--parent arg` adds under, without a change: the hand-off or
+/// plan `arg` names or holds a task of, else the lone task a new plan wraps.
+fn container(db: &Connection, arg: &str) -> Result<Row> {
+    let r = one(db, arg)?;
+    match &r.parent {
+        Some(p) if !r.is_handoff() => one(db, p),
+        _ => Ok(r),
+    }
+}
+
+/// The work head above `r`: the row at the top of its parents.
+fn top(db: &Connection, r: &Row) -> Result<Row> {
+    let mut at = r.clone();
+    for _ in 0..4 {
+        match &at.parent {
+            Some(p) => at = one(db, p)?,
+            None => break,
+        }
+    }
+    Ok(at)
+}
+
+/// The rows under `r`, its hand-offs' tasks included.
+fn under(db: &Connection, r: &Row) -> Result<Vec<Row>> {
+    let mut out = rows(db, "WHERE parent = ?1", Some(&r.uid))?;
+    let handoffs: Vec<String> = out.iter().filter(|t| t.is_handoff()).map(|t| t.uid.clone()).collect();
+    for h in handoffs {
+        out.extend(rows(db, "WHERE parent = ?1", Some(&h))?);
+    }
+    Ok(out)
+}
+
+/// The row a task joins with `--parent arg`: a hand-off `arg` names or holds
+/// a task of, the plan `arg` names or holds a task of, or a new plan that
+/// wraps the task with no plan `arg` names. The new plan takes the task's
+/// text, title, project, ref, type, send time, owner and close stamp. Closed
+/// work opens again: the task is new work in it. Run it in a transaction.
 fn join(db: &Connection, file: &Path, arg: &str) -> Result<Row> {
     let r = one(db, arg)?;
     let r = match &r.parent {
-        Some(p) => one(db, p)?,
-        None => r,
+        Some(p) if !r.is_handoff() => one(db, p)?,
+        _ => r,
     };
-    if r.is_plan() {
-        db.execute("UPDATE tasks SET closed_at = NULL WHERE id = ?1", [r.id])?;
+    if r.is_plan() || r.is_handoff() {
+        db.execute("UPDATE tasks SET closed_at = NULL WHERE id = ?1", [top(db, &r)?.id])?;
         return one(db, &r.uid);
     }
     let uid = new_uid(db)?;
     let date: String = db.query_row("SELECT date('now', 'localtime')", [], |r| r.get(0))?;
-    let result = result_path(file, &date, &uid, &r.task, true, None).display().to_string();
+    let result = result_path(&results_dir(file, &r.owner), &date, &uid, &r.task, true, None).display().to_string();
     db.execute(
         &format!(
-            "INSERT INTO tasks (uid, kind, project, task, sent_at, state, result_path, ref, updated_at, type, title)
-             VALUES (?1, 'plan', ?2, ?3, ?4, 'sent', ?5, ?6, {NOW}, ?7, ?8)"
+            "INSERT INTO tasks (uid, kind, project, task, sent_at, state, result_path, ref, updated_at, type, title, owner)
+             VALUES (?1, 'plan', ?2, ?3, ?4, 'sent', ?5, ?6, {NOW}, ?7, ?8, ?9)"
         ),
-        params![uid, r.project, r.task, r.sent_at, result, r.reference, r.task_type, r.title],
+        params![uid, r.project, r.task, r.sent_at, result, r.reference, r.task_type, r.title, r.owner],
     )?;
     db.execute(&format!("UPDATE tasks SET parent = ?2, closed_at = NULL, updated_at = {NOW} WHERE id = ?1"), params![r.id, uid])?;
     one(db, &uid)
@@ -413,12 +495,13 @@ enum View {
 /// closed with its plan.
 fn keep(rows: &mut Vec<Row>, view: View) {
     use std::collections::HashSet;
+    let head = heads(rows);
     let closed: HashSet<String> = rows.iter().filter(|r| r.closed_at.is_some()).map(|r| r.uid.clone()).collect();
     let untold = |r: &Row| !r.is_plan() && r.state == "done" && r.reported_at.is_none();
     let plans: HashSet<String> = rows.iter().filter(|r| untold(r)).filter_map(|r| r.parent.clone()).collect();
     rows.retain(|r| match view {
-        View::Open => !closed.contains(r.work()),
-        View::Closed => closed.contains(r.work()),
+        View::Open => !closed.contains(&head[&r.uid]),
+        View::Closed => closed.contains(&head[&r.uid]),
         View::All => true,
         View::Unreported => untold(r) || plans.contains(&r.uid),
     });
@@ -433,17 +516,25 @@ fn rank(bucket: Option<&str>) -> u8 {
     }
 }
 
-/// Each plan with its tasks under it, by id. A task whose plan is not in
-/// `rows` stands alone. The bool marks a task shown under its plan.
-fn tree(rows: Vec<Row>) -> Vec<(Row, bool)> {
-    let plans: std::collections::HashSet<String> = rows.iter().filter(|r| r.is_plan()).map(|r| r.uid.clone()).collect();
-    let under = |r: &Row| r.parent.as_ref().is_some_and(|p| plans.contains(p));
+/// Each plan with its tasks under it, and each hand-off with its tasks under
+/// it, by id. A row whose parent is not in `rows` stands alone. The number
+/// is the depth: 0 at the top.
+fn tree(rows: Vec<Row>) -> Vec<(Row, usize)> {
+    let uids: std::collections::HashSet<String> = rows.iter().map(|r| r.uid.clone()).collect();
+    let under = |r: &Row| r.parent.as_ref().is_some_and(|p| uids.contains(p));
     let (children, top): (Vec<Row>, Vec<Row>) = rows.into_iter().partition(under);
+    fn add(out: &mut Vec<(Row, usize)>, r: Row, depth: usize, children: &[Row]) {
+        let uid = r.uid.clone();
+        out.push((r, depth));
+        for c in children.iter().filter(|c| c.parent.as_deref() == Some(&uid)) {
+            if depth < 3 {
+                add(out, c.clone(), depth + 1, children);
+            }
+        }
+    }
     let mut out = Vec::new();
     for r in top {
-        let uid = r.uid.clone();
-        out.push((r, false));
-        out.extend(children.iter().filter(|c| c.parent.as_deref() == Some(&uid)).cloned().map(|c| (c, true)));
+        add(&mut out, r, 0, &children);
     }
     out
 }
@@ -461,7 +552,7 @@ fn shown_path(p: &str) -> String {
 
 /// Rows grouped by bucket. WORK names each group on its first row. `closed`:
 /// add the CLOSED column, the work head's stamp.
-fn print_rows(rows: &[(Row, bool)], closed: bool) {
+fn print_rows(rows: &[(Row, usize)], closed: bool) {
     let yn = |l: Option<bool>| match l {
         Some(true) => "yes",
         Some(false) => "no",
@@ -470,6 +561,7 @@ fn print_rows(rows: &[(Row, bool)], closed: bool) {
     let refs = rows.iter().any(|(r, _)| r.reference.is_some());
     let types = rows.iter().any(|(r, _)| r.task_type.is_some());
     let sockets = rows.iter().any(|(r, _)| r.elsewhere);
+    let owners = rows.iter().any(|(r, _)| r.owner != GRAND);
     let table: Vec<Vec<String>> = rows
         .iter()
         .enumerate()
@@ -477,10 +569,16 @@ fn print_rows(rows: &[(Row, bool)], closed: bool) {
             let first = i == 0 || rows[i - 1].0.bucket != r.bucket;
             let mut row = vec![
                 if first { r.bucket.unwrap_or_default().to_string() } else { String::new() },
-                if *child { format!("└ {}", r.id) } else { r.id.to_string() },
+                if *child > 0 { format!("{}└ {}", "  ".repeat(child - 1), r.id) } else { r.id.to_string() },
                 r.uid.clone(),
                 r.shown_state().to_string(),
-                if r.is_plan() { "plan".into() } else { print::short_id(r.pane_id.as_deref().unwrap_or("")).to_string() },
+                if r.is_plan() {
+                    "plan".into()
+                } else if r.is_handoff() {
+                    format!("handoff {}", print::short_id(r.pane_id.as_deref().unwrap_or("")))
+                } else {
+                    print::short_id(r.pane_id.as_deref().unwrap_or("")).to_string()
+                },
                 if r.is_plan() { "-".into() } else if r.elsewhere { "elsewhere".into() } else { yn(r.live).to_string() },
                 r.project.clone(),
                 r.sent_at.clone(),
@@ -494,6 +592,9 @@ fn print_rows(rows: &[(Row, bool)], closed: bool) {
             }
             if sockets {
                 row.push(if r.elsewhere { r.socket.clone().unwrap_or_default() } else { String::new() });
+            }
+            if owners {
+                row.push(r.owner.clone());
             }
             if closed {
                 row.push(r.closed_at.clone().unwrap_or_default());
@@ -511,6 +612,9 @@ fn print_rows(rows: &[(Row, bool)], closed: bool) {
     }
     if sockets {
         header.push("SOCKET");
+    }
+    if owners {
+        header.push("OWNER");
     }
     if closed {
         header.push("CLOSED");
@@ -541,6 +645,7 @@ fn print_one(r: &Row, closed: Option<&str>) {
         }
     }
     f.extend([
+        ("owner", r.owner.clone()),
         ("project", r.project.clone()),
         ("sent", r.sent_at.clone()),
         ("updated", r.updated_at.clone()),
@@ -580,6 +685,10 @@ struct New {
     task_type: Option<String>,
     /// The socket of the pane.
     socket: Option<String>,
+    /// [`GRAND`], or a project Skipper's project.
+    owner: String,
+    /// A hand-off: a task for a project Skipper.
+    handoff: bool,
 }
 
 /// Adds a row with a new uid, and its default result path unless it names
@@ -593,15 +702,22 @@ fn insert(db: &mut Connection, file: &Path, n: New) -> Result<(i64, String, Stri
         Some(r) => r,
         None => {
             let date: String = tx.query_row("SELECT date('now', 'localtime')", [], |r| r.get(0))?;
-            result_path(file, &date, &uid, &n.task, n.plan, parent.as_ref()).display().to_string()
+            // A hand-off's result goes with the project Skipper's, not in the plan's folder.
+            let (results, above) = if n.handoff { (results_dir(file, &n.project), None) } else { (results_dir(file, &n.owner), parent.as_ref()) };
+            result_path(&results, &date, &uid, &n.task, n.plan, above).display().to_string()
         }
+    };
+    let kind = match (n.plan, n.handoff) {
+        (true, _) => "plan",
+        (_, true) => "handoff",
+        _ => "task",
     };
     tx.execute(
         &format!(
-            "INSERT INTO tasks (uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, title)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, {NOW}, ?8, ?9, ?10, {NOW}, ?11, ?12, ?13)"
+            "INSERT INTO tasks (uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, title, owner)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, {NOW}, ?8, ?9, ?10, {NOW}, ?11, ?12, ?13, ?14)"
         ),
-        params![uid, if n.plan { "plan" } else { "task" }, parent.as_ref().map(|p| &p.uid), n.pane_id, n.pane_gen, n.project, n.task, n.state, result, n.reference, n.task_type, n.socket, n.title],
+        params![uid, kind, parent.as_ref().map(|p| &p.uid), n.pane_id, n.pane_gen, n.project, n.task, n.state, result, n.reference, n.task_type, n.socket, n.title, n.owner],
     )?;
     let id = tx.last_insert_rowid();
     tx.commit()?;
@@ -672,11 +788,76 @@ fn claim_at(file: &Path, socket: &Path, session: &str) -> Result<()> {
     Ok(())
 }
 
+/// Who changes the ledger: a coordinator, or the person.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Caller {
+    /// The grand Skipper: the Skiff agent session that owns the ledger.
+    Grand,
+    /// A project Skipper, with its project.
+    Project(String),
+    /// A shell pane, or a shell outside Skiff with `--person`.
+    Person,
+}
+
+impl Caller {
+    /// The owner of the rows this caller adds. The person's rows are the
+    /// grand Skipper's.
+    fn owner(&self) -> &str {
+        match self {
+            Caller::Project(p) => p,
+            Caller::Grand | Caller::Person => GRAND,
+        }
+    }
+
+    /// The caller may change `r`: the person any row, a coordinator its own.
+    fn owns(&self, r: &Row) -> bool {
+        *self == Caller::Person || r.owner == self.owner()
+    }
+
+    /// Refuses a row the caller does not own.
+    fn check(&self, r: &Row) -> Result<()> {
+        if self.owns(r) {
+            return Ok(());
+        }
+        bail!(
+            "{} {} belongs to {}. Only it, or the person, changes it. Nothing changed",
+            r.kind,
+            r.uid,
+            owner_name(&r.owner)
+        )
+    }
+
+    /// A project Skipper may also report the hand-off it was given: set its
+    /// state and its result, and nothing else.
+    fn check_report(&self, r: &Row) -> Result<()> {
+        match self {
+            Caller::Project(p) if r.is_handoff() && r.project == *p => Ok(()),
+            _ => self.check(r),
+        }
+    }
+
+    /// Refuses a parent the caller may not add under. A coordinator adds
+    /// under its own plans. Under a hand-off, only its project's Skipper
+    /// (or the person) adds; the grand Skipper cannot. Returns the owner of
+    /// the new row.
+    fn check_parent(&self, p: &Row) -> Result<String> {
+        if p.is_handoff() {
+            return match self {
+                Caller::Project(me) if *me == p.project => Ok(me.clone()),
+                Caller::Person => Ok(p.project.clone()),
+                _ => bail!("hand-off {} belongs to the {} Skipper: only it adds tasks under it. Nothing changed", p.uid, p.project),
+            };
+        }
+        self.check(p)?;
+        Ok(if *self == Caller::Person { p.owner.clone() } else { self.owner().to_string() })
+    }
+}
+
 /// What a change to the ledger from `me` (`$SKIFF_SESSION`), whose session
 /// on `socket` is `s`, may do.
 #[derive(Debug, PartialEq)]
 enum Writer {
-    Yes,
+    Yes(Caller),
     /// The Skiff agent of this socket takes the ledger first.
     Claim,
     No,
@@ -684,24 +865,26 @@ enum Writer {
 
 /// A shell pane is a person: it may. A shell outside Skiff (no `me`) may only
 /// with `person` (`--person`): an agent there has no `SKIFF_SESSION` either,
-/// and nothing else tells the two apart. The owner may. Any other pane is
+/// and nothing else tells the two apart. The owner may, as the grand
+/// Skipper. A project Skipper may, for its project. Any other pane is
 /// refused, a Skiff agent on another socket included, unless [`may_claim`]
 /// lets the Skiff agent of `socket` take it.
 fn writer(me: Option<&str>, s: Option<&SessionInfo>, cur: Option<&Owner>, socket: &Path, person: bool) -> Writer {
-    let Some(me) = me else { return if person { Writer::Yes } else { Writer::No } };
+    let Some(me) = me else { return if person { Writer::Yes(Caller::Person) } else { Writer::No } };
     if is_owner(cur, me, socket) {
-        return Writer::Yes;
+        return Writer::Yes(Caller::Grand);
     }
     match s {
         Some(s) if s.coordinator && may_claim(cur, socket) => Writer::Claim,
-        Some(s) if s.role == Role::Shell && !s.coordinator => Writer::Yes,
+        Some(s) if s.skipper.is_some() && !s.coordinator => Writer::Yes(Caller::Project(s.skipper.clone().unwrap_or_default())),
+        Some(s) if s.role == Role::Shell && !s.coordinator => Writer::Yes(Caller::Person),
         _ => Writer::No,
     }
 }
 
-/// Refuses a change from a pane that is not the ledger's owner. It runs
-/// before the change.
-async fn check_writer(socket: &Path, db: &Connection, person: bool) -> Result<()> {
+/// Who calls, from `$SKIFF_SESSION` and the live sessions. Refuses a pane
+/// that may not change the ledger. It runs before the change.
+async fn check_writer(socket: &Path, db: &Connection, person: bool) -> Result<Caller> {
     let me = std::env::var("SKIFF_SESSION").ok().filter(|s| !s.is_empty());
     let cur = owner(db)?;
     let all = match &me {
@@ -710,8 +893,8 @@ async fn check_writer(socket: &Path, db: &Connection, person: bool) -> Result<()
     };
     let s = me.as_deref().and_then(|m| all.iter().find(|s| s.id == m));
     match writer(me.as_deref(), s, cur.as_ref(), socket, person) {
-        Writer::Yes => Ok(()),
-        Writer::Claim => set_owner(db, &s.expect("a claim has a session").id, socket),
+        Writer::Yes(c) => Ok(c),
+        Writer::Claim => set_owner(db, &s.expect("a claim has a session").id, socket).map(|_| Caller::Grand),
         Writer::No if me.is_none() => bail!("{}", outside_refusal(cur.as_ref())),
         Writer::No => bail!("{}", refusal(cur.as_ref())),
     }
@@ -720,11 +903,11 @@ async fn check_writer(socket: &Path, db: &Connection, person: bool) -> Result<()
 fn refusal(cur: Option<&Owner>) -> String {
     match cur {
         Some(o) => format!(
-            "this ledger belongs to the Skiff agent session {} on {}. Only that session adds, sends, updates, reports or removes tasks. Nothing changed",
+            "this ledger belongs to the Skiff agent session {} on {}, and to the project Skippers for their rows. Only they add, send, update, report or remove tasks. Nothing changed",
             print::short_id(&o.session),
             o.socket
         ),
-        None => "this ledger has no owner yet: `skiff skipper` records the Skiff agent's session, and only that session changes it. Nothing changed".into(),
+        None => "this ledger has no owner yet: `skiff skipper` records the Skiff agent's session, and only that session and the project Skippers change it. Nothing changed".into(),
     }
 }
 
@@ -753,9 +936,17 @@ fn unsendable(row: &Row, s: Option<&SessionInfo>) -> Option<String> {
     s.is_none().then(|| format!("the pane of task {} is gone. Nothing was sent", row.uid))
 }
 
-/// The text a task goes out with when no text is given.
+/// The text a task goes out with when no text is given. A hand-off says how
+/// to report it.
 fn message(row: &Row) -> String {
     let task = row.task.trim();
+    if row.is_handoff() {
+        let path = row.result_path.as_deref().unwrap_or("your results folder");
+        return format!(
+            "Hand-off {uid}: {task} Add your tasks for it with --parent {uid}. When they are done, write the result to {path}, then run: skiff ledger update {uid} --state done --result {path}",
+            uid = row.uid
+        );
+    }
     match row.result_path.as_deref() {
         Some(p) => format!("{task} Write your result to {p}."),
         None => task.to_string(),
@@ -806,18 +997,22 @@ async fn send_row(socket: &Path, db: &Connection, row: &Row, o: SendOpts) -> Res
 
 /// Stamps `reported_at` on the done rows `ids` name, in one transaction.
 /// A plan with tasks stamps its done tasks and leaves the others; a plan with
-/// none is stamped itself. A row that is not done refuses the lot. A first
-/// stamp stays. `all`: every done task, and every done plan with no task.
+/// none is stamped itself. A hand-off is stamped itself. A row that is not
+/// done, or that `caller` does not own, refuses the lot. A first stamp stays.
+/// `all`: every done task the caller owns, and every done plan with no task.
 /// Returns how many rows took a new stamp.
-fn report(db: &mut Connection, ids: &[String], all: bool) -> Result<usize> {
+fn report(db: &mut Connection, caller: &Caller, ids: &[String], all: bool) -> Result<usize> {
     let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let stamp = format!("UPDATE tasks SET reported_at = {NOW} WHERE state = 'done' AND reported_at IS NULL");
     let mut n = 0;
     if all {
-        n += tx.execute(&format!("{stamp} AND (kind = 'task' OR NOT EXISTS (SELECT 1 FROM tasks t WHERE t.parent = tasks.uid))"), [])?;
+        let mine = if *caller == Caller::Person { "1" } else { "owner = ?1" };
+        let sql = format!("{stamp} AND {mine} AND (kind IN ('task', 'handoff') OR NOT EXISTS (SELECT 1 FROM tasks t WHERE t.parent = tasks.uid))");
+        n += if *caller == Caller::Person { tx.execute(&sql, [])? } else { tx.execute(&sql, [caller.owner()])? };
     }
     for id in ids {
         let r = one(&tx, id)?;
+        caller.check(&r)?;
         let tasks = if r.is_plan() { rows(&tx, "WHERE parent = ?1", Some(&r.uid))? } else { Vec::new() };
         if !tasks.is_empty() {
             n += tx.execute(&format!("{stamp} AND parent = ?1"), [&r.uid])?;
@@ -837,31 +1032,35 @@ fn report(db: &mut Connection, ids: &[String], all: bool) -> Result<usize> {
 fn restate(db: &Connection, r: &Row, st: Option<&str>) -> Result<()> {
     if st.is_some_and(|s| s != "done") {
         db.execute("UPDATE tasks SET reported_at = NULL WHERE id = ?1", [r.id])?;
-        db.execute("UPDATE tasks SET closed_at = NULL WHERE uid = ?1", [r.work()])?;
+        db.execute("UPDATE tasks SET closed_at = NULL WHERE id = ?1", [top(db, r)?.id])?;
     }
     Ok(())
 }
 
 /// Stamps `closed_at` on the work `ids` name, in one transaction, and
 /// `reported_at` on its done tasks not yet reported. Work with a task that is
-/// not done refuses the lot. A first stamp stays. Returns how many work
-/// items took a new stamp.
-fn close(db: &mut Connection, ids: &[String]) -> Result<usize> {
+/// not done, a hand-off's tasks included, refuses the lot, as does work
+/// `caller` does not own. A first stamp stays. Returns how many work items
+/// took a new stamp.
+fn close(db: &mut Connection, caller: &Caller, ids: &[String]) -> Result<usize> {
     let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let mut n = 0;
     for id in ids {
         let r = head(&tx, id)?;
-        let tasks = if r.is_plan() { rows(&tx, "WHERE parent = ?1", Some(&r.uid))? } else { vec![r.clone()] };
+        caller.check(&r)?;
+        let mut tasks = under(&tx, &r)?;
+        if !r.is_plan() {
+            tasks.insert(0, r.clone());
+        }
         if let Some(t) = tasks.iter().find(|t| t.state != "done") {
-            bail!("task {} is {}, not done. Set it done or remove it first. Nothing changed", t.uid, t.state);
+            bail!("{} {} is {}, not done. Set it done or remove it first. Nothing changed", t.kind, t.uid, t.state);
         }
         if r.closed_at.is_some() {
             continue;
         }
-        tx.execute(
-            &format!("UPDATE tasks SET reported_at = {NOW} WHERE kind = 'task' AND state = 'done' AND reported_at IS NULL AND (id = ?1 OR parent = ?2)"),
-            params![r.id, r.uid],
-        )?;
+        for t in tasks.iter().filter(|t| t.reported_at.is_none()) {
+            tx.execute(&format!("UPDATE tasks SET reported_at = {NOW} WHERE id = ?1 AND kind IN ('task', 'handoff')"), [t.id])?;
+        }
         n += tx.execute(&format!("UPDATE tasks SET closed_at = {NOW} WHERE id = ?1"), [r.id])?;
     }
     tx.commit()?;
@@ -870,11 +1069,12 @@ fn close(db: &mut Connection, ids: &[String]) -> Result<usize> {
 
 /// Clears `closed_at` on the work `ids` name, in one transaction. Returns how
 /// many work items were closed.
-fn reopen(db: &mut Connection, ids: &[String]) -> Result<usize> {
+fn reopen(db: &mut Connection, caller: &Caller, ids: &[String]) -> Result<usize> {
     let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let mut n = 0;
     for id in ids {
         let r = head(&tx, id)?;
+        caller.check(&r)?;
         n += tx.execute("UPDATE tasks SET closed_at = NULL WHERE id = ?1 AND closed_at IS NOT NULL", [r.id])?;
     }
     tx.commit()?;
@@ -910,15 +1110,19 @@ fn age(s: &str) -> Result<i64> {
     Ok(n * unit)
 }
 
-/// The rows `prune` takes: the work closed at least `secs` ago, each with its
-/// tasks. Open work never goes. `yes`: delete them.
-fn prune(db: &mut Connection, secs: i64, yes: bool) -> Result<Vec<Row>> {
+/// The rows `prune` takes: the work `caller` owns closed at least `secs`
+/// ago, each with its tasks. Open work never goes. `yes`: delete them.
+fn prune(db: &mut Connection, caller: &Caller, secs: i64, yes: bool) -> Result<Vec<Row>> {
     let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let cutoff: String = tx.query_row("SELECT strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?1)", [format!("-{secs} seconds")], |r| r.get(0))?;
     let all = rows(&tx, "", None)?;
-    let old: std::collections::HashSet<&str> =
-        all.iter().filter(|r| r.closed_at.as_deref().is_some_and(|t| t <= cutoff.as_str())).map(|r| r.uid.as_str()).collect();
-    let gone: Vec<Row> = all.iter().filter(|r| old.contains(r.work())).cloned().collect();
+    let head = heads(&all);
+    let old: std::collections::HashSet<&str> = all
+        .iter()
+        .filter(|r| caller.owns(r) && r.closed_at.as_deref().is_some_and(|t| t <= cutoff.as_str()))
+        .map(|r| r.uid.as_str())
+        .collect();
+    let gone: Vec<Row> = all.iter().filter(|r| old.contains(head[&r.uid].as_str())).cloned().collect();
     if yes {
         for r in &gone {
             // The row only: a result file stays where it is.
@@ -956,23 +1160,78 @@ pub async fn run(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
             };
             let file = path()?;
             let here = pane_id.as_ref().map(|_| socket.display().to_string());
-            let new = New { plan: is_plan, parent, pane_id, pane_gen, project, task, title, state: st, result, reference, task_type, socket: here };
             let mut db = open_at(&file)?;
-            check_writer(socket, &db, person).await?;
+            let caller = check_writer(socket, &db, person).await?;
+            let owner = match parent.as_deref() {
+                Some(p) => caller.check_parent(&container(&db, p)?)?,
+                None => caller.owner().to_string(),
+            };
+            let new = New { plan: is_plan, parent, pane_id, pane_gen, project, task, title, state: st, result, reference, task_type, socket: here, owner, handoff: false };
             let (id, uid, result, plan) = insert(&mut db, &file, new)?;
             println!("id {id}\nuid {uid}\nresult {result}");
             if let Some(p) = plan {
-                println!("plan {p}");
+                // A task under a hand-off names the hand-off.
+                println!("{} {p}", one(&db, &p).map(|r| r.kind).unwrap_or_else(|_| "plan".into()));
             }
             if send {
                 let row = one(&db, &uid)?;
                 return send_row(socket, &db, &row, SendOpts { text: Vec::new(), enter, shell }).await;
             }
         }
+        LedgerCmd::Handoff { project, task, title, parent } => {
+            let file = path()?;
+            let mut db = open_at(&file)?;
+            let caller = check_writer(socket, &db, person).await?;
+            if matches!(caller, Caller::Project(_)) {
+                bail!("a project Skipper does not hand off. Add your own tasks with skiff ledger add. Nothing changed");
+            }
+            if let Some(p) = parent.as_deref() {
+                let c = container(&db, p)?;
+                if c.is_handoff() {
+                    bail!("{p} is in hand-off {}: a hand-off goes under a plan of the Skipper's. Nothing changed", c.uid);
+                }
+                caller.check_parent(&c)?;
+            }
+            let c = crate::connect(socket).await?;
+            let ps = crate::skipper::start_project(socket, &c, &project).await?;
+            let s = &ps.session;
+            let new = New {
+                plan: false,
+                parent,
+                pane_id: Some(s.id.clone()),
+                pane_gen: gen(s),
+                project: project.clone(),
+                task,
+                title,
+                state: "pending".into(),
+                result: None,
+                reference: None,
+                task_type: None,
+                socket: Some(socket.display().to_string()),
+                owner: GRAND.into(),
+                handoff: true,
+            };
+            let (id, uid, result, plan) = insert(&mut db, &file, new)?;
+            println!("id {id}\nuid {uid}\nresult {result}");
+            if let Some(p) = plan {
+                // A task under a hand-off names the hand-off.
+                println!("{} {p}", one(&db, &p).map(|r| r.kind).unwrap_or_else(|_| "plan".into()));
+            }
+            let row = one(&db, &uid)?;
+            let mut text = message(&row);
+            if ps.created {
+                // A new agent takes its instructions first, then the task, in one turn.
+                text = format!("{} Then take this hand-off. {text}", skiff_client::skipper::first_message(&ps.dir));
+                crate::skipper::ready(&c, &s.id).await?;
+                println!("started the {project} Skipper");
+            }
+            return send_row(socket, &db, &row, SendOpts { text: vec![text], enter: true, shell: false }).await;
+        }
         LedgerCmd::Send { id, text, enter, shell } => {
             let db = open()?;
-            check_writer(socket, &db, person).await?;
+            let caller = check_writer(socket, &db, person).await?;
             let row = one(&db, &id)?;
+            caller.check(&row)?;
             return send_row(socket, &db, &row, SendOpts { text, enter, shell }).await;
         }
         LedgerCmd::Update { id, state: st, result, task, title, pane: p, project, parent, reference, task_type } => {
@@ -980,8 +1239,20 @@ pub async fn run(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
             let task_type = task_type.as_deref().map(skiff_core::tasks::check_name).transpose()?;
             let file = path()?;
             let mut db = open_at(&file)?;
-            check_writer(socket, &db, person).await?;
+            let caller = check_writer(socket, &db, person).await?;
             let row = one(&db, &id)?;
+            // A project Skipper reports the hand-off it was given: its state and result.
+            let report_only = task.is_none() && title.is_none() && p.is_none() && project.is_none() && parent.is_none() && reference.is_none() && task_type.is_none();
+            if report_only {
+                caller.check_report(&row)?;
+            } else {
+                caller.check(&row)?;
+            }
+            if let Some(p) = parent.as_deref() {
+                if caller.check_parent(&container(&db, p)?)? != row.owner {
+                    bail!("{} {} cannot move under {p}: its rows belong to another coordinator. Nothing changed", row.kind, row.uid);
+                }
+            }
             if row.is_plan() && (p.is_some() || parent.is_some()) {
                 bail!("ledger row {id} is a plan: it has no pane and no plan above it");
             }
@@ -1053,27 +1324,27 @@ pub async fn run(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
         }
         LedgerCmd::Report { ids, all } => {
             let mut db = open()?;
-            check_writer(socket, &db, person).await?;
-            let n = report(&mut db, &ids, all)?;
+            let caller = check_writer(socket, &db, person).await?;
+            let n = report(&mut db, &caller, &ids, all)?;
             println!("reported {n} {}", rows_word(n));
         }
         LedgerCmd::Close { ids } => {
             let mut db = open()?;
-            check_writer(socket, &db, person).await?;
-            let n = close(&mut db, &ids)?;
+            let caller = check_writer(socket, &db, person).await?;
+            let n = close(&mut db, &caller, &ids)?;
             println!("closed {n} {}", work_word(n));
         }
         LedgerCmd::Reopen { ids } => {
             let mut db = open()?;
-            check_writer(socket, &db, person).await?;
-            let n = reopen(&mut db, &ids)?;
+            let caller = check_writer(socket, &db, person).await?;
+            let n = reopen(&mut db, &caller, &ids)?;
             println!("reopened {n} {}", work_word(n));
         }
         LedgerCmd::Prune { older_than, yes } => {
             let secs = age(&older_than)?;
             let mut db = open()?;
-            check_writer(socket, &db, person).await?;
-            let mut gone = prune(&mut db, secs, yes)?;
+            let caller = check_writer(socket, &db, person).await?;
+            let mut gone = prune(&mut db, &caller, secs, yes)?;
             if gone.is_empty() {
                 println!("no work was closed more than {older_than} ago. Nothing changed");
                 return Ok(0);
@@ -1093,10 +1364,12 @@ pub async fn run(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
             sweep(&mut db, socket, all.as_deref())?;
             let r = one(&db, &id)?;
             // The whole work: a plan's state and the bucket come from its tasks.
-            let mut work = rows(&db, "WHERE uid = ?1 OR parent = ?1", Some(&r.work().to_string()))?;
+            let h = top(&db, &r)?;
+            let mut work = under(&db, &h)?;
+            work.push(h.clone());
             mark_live(socket, all.as_deref(), &mut work);
             roll_up(&mut work);
-            let closed = work.iter().find(|w| w.uid == r.work()).and_then(|w| w.closed_at.clone());
+            let closed = h.closed_at.clone();
             let r = work.into_iter().find(|w| w.uid == r.uid).context("the row left the ledger")?;
             if json {
                 print::json(&r)?;
@@ -1106,12 +1379,13 @@ pub async fn run(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
         }
         LedgerCmd::Rm { id } => {
             let db = open()?;
-            check_writer(socket, &db, person).await?;
+            let caller = check_writer(socket, &db, person).await?;
             let row = one(&db, &id)?;
-            if row.is_plan() {
+            caller.check(&row)?;
+            if row.is_plan() || row.is_handoff() {
                 let n: i64 = db.query_row("SELECT count(*) FROM tasks WHERE parent = ?1", [&row.uid], |r| r.get(0))?;
                 if n > 0 {
-                    bail!("plan {id} still has {n} tasks. Remove them first");
+                    bail!("{} {id} still has {n} tasks. Remove them first", row.kind);
                 }
             }
             // The row only: a result file stays where it is.
@@ -1154,6 +1428,8 @@ mod tests {
             reference: None,
             task_type: None,
             socket: Some("/tmp/here.sock".into()),
+            owner: GRAND.into(),
+            handoff: false,
         }
     }
 
@@ -1234,7 +1510,7 @@ mod tests {
         // The v4 socket stays as it was.
         assert_eq!(list[0].socket.as_deref(), Some("/tmp/s.sock"));
         assert_eq!(db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0)).unwrap(), VERSION);
-        assert_eq!(unreported_at(&file).unwrap(), 1);
+        assert_eq!(unreported_at(&file, GRAND).unwrap(), 1);
         assert!(list.iter().all(|r| r.title.is_none()));
         db.execute("UPDATE tasks SET title = 'Old work' WHERE uid = 'a1b2c3d4'", []).unwrap();
         assert_eq!(one(&db, "a1b2c3d4").unwrap().title.as_deref(), Some("Old work"));
@@ -1272,8 +1548,8 @@ mod tests {
         let (_, p_told, _, _) = insert(&mut db, &file, New { parent: Some(p.clone()), ..done("b") }).unwrap();
         let (_, q, _, _) = insert(&mut db, &file, New { plan: true, pane_id: None, ..task("over") }).unwrap();
         let (_, q_done, _, _) = insert(&mut db, &file, New { parent: Some(q.clone()), ..done("c") }).unwrap();
-        assert_eq!(report(&mut db, &[told.clone(), p_told.clone()], false).unwrap(), 2);
-        assert_eq!(close(&mut db, &[told.clone(), q.clone()]).unwrap(), 2);
+        assert_eq!(report(&mut db, &Caller::Person, &[told.clone(), p_told.clone()], false).unwrap(), 2);
+        assert_eq!(close(&mut db, &Caller::Person, &[told.clone(), q.clone()]).unwrap(), 2);
         let s = |v: &[&String]| v.iter().map(|u| u.to_string()).collect::<Vec<_>>();
 
         // Done work stays listed until it is closed, told or not.
@@ -1302,7 +1578,7 @@ mod tests {
         let (_, p_on, _, _) = insert(&mut db, &file, New { parent: Some(p.clone()), ..task("a") }).unwrap();
         insert(&mut db, &file, New { parent: Some(p.clone()), state: "pending".into(), ..task("b") }).unwrap();
         let (_, q, _, _) = insert(&mut db, &file, New { state: "done".into(), ..task("q") }).unwrap();
-        close(&mut db, std::slice::from_ref(&q)).unwrap();
+        close(&mut db, &Caller::Person, std::slice::from_ref(&q)).unwrap();
         let mut list = rows(&db, "", None).unwrap();
         list.iter_mut().find(|r| r.uid == p_on).unwrap().agent_on = true;
         buckets(&mut list);
@@ -1327,26 +1603,26 @@ mod tests {
         let closed = |db: &Connection, uid: &str| one(db, uid).unwrap().closed_at;
 
         // Work with a task that is not done refuses the lot.
-        let err = close(&mut db, &[a.clone(), open.clone()]).unwrap_err().to_string();
+        let err = close(&mut db, &Caller::Person, &[a.clone(), open.clone()]).unwrap_err().to_string();
         assert_eq!(err, format!("task {open} is pending, not done. Set it done or remove it first. Nothing changed"));
         assert!(closed(&db, &a).is_none());
         // A task in a plan is not a work head.
-        let err = close(&mut db, std::slice::from_ref(&p_done)).unwrap_err().to_string();
+        let err = close(&mut db, &Caller::Person, std::slice::from_ref(&p_done)).unwrap_err().to_string();
         assert_eq!(err, format!("task {p_done} is in plan {p}. Name the plan. Nothing changed"));
         // The stamp goes on the head, and the person was told of its tasks.
-        assert_eq!(close(&mut db, &[a.clone(), p.clone()]).unwrap(), 2);
+        assert_eq!(close(&mut db, &Caller::Person, &[a.clone(), p.clone()]).unwrap(), 2);
         assert!(closed(&db, &p).is_some() && closed(&db, &p_done).is_none());
         assert!(one(&db, &p_done).unwrap().reported_at.is_some() && one(&db, &a).unwrap().reported_at.is_some());
         assert!(one(&db, &p).unwrap().reported_at.is_none());
         // A first stamp stays.
         db.execute("UPDATE tasks SET closed_at = '2020-01-01T00:00:00Z' WHERE uid = ?1", [&a]).unwrap();
-        assert_eq!(close(&mut db, std::slice::from_ref(&a)).unwrap(), 0);
+        assert_eq!(close(&mut db, &Caller::Person, std::slice::from_ref(&a)).unwrap(), 0);
         assert_eq!(closed(&db, &a).as_deref(), Some("2020-01-01T00:00:00Z"));
 
-        assert_eq!(reopen(&mut db, &[a.clone(), open.clone()]).unwrap(), 1);
+        assert_eq!(reopen(&mut db, &Caller::Person, &[a.clone(), open.clone()]).unwrap(), 1);
         assert!(closed(&db, &a).is_none());
         // A task set back from done opens its work again.
-        close(&mut db, std::slice::from_ref(&a)).unwrap();
+        close(&mut db, &Caller::Person, std::slice::from_ref(&a)).unwrap();
         restate(&db, &one(&db, &p_done).unwrap(), Some("sent")).unwrap();
         assert!(closed(&db, &p).is_none() && one(&db, &p_done).unwrap().reported_at.is_none());
         std::fs::remove_dir_all(&dir).unwrap();
@@ -1361,7 +1637,7 @@ mod tests {
         let first = New { state: "done".into(), title: Some("Build 177".into()), reference: Some("#177".into()), task_type: Some("build".into()), ..task("Build issue 177") };
         let (_, lone, lone_path, none) = insert(&mut db, &file, first).unwrap();
         assert_eq!(none, None);
-        close(&mut db, std::slice::from_ref(&lone)).unwrap();
+        close(&mut db, &Caller::Person, std::slice::from_ref(&lone)).unwrap();
 
         // The follow-up wraps the lone task in a plan, and the closed work opens.
         let (_, check, check_path, plan) = insert(&mut db, &file, New { parent: Some(lone.clone()), ..task("Check the app") }).unwrap();
@@ -1376,7 +1652,7 @@ mod tests {
 
         // A second follow-up names the plan, and a closed plan opens.
         db.execute("UPDATE tasks SET state = 'done' WHERE uid = ?1", [&check]).unwrap();
-        close(&mut db, std::slice::from_ref(&p.uid)).unwrap();
+        close(&mut db, &Caller::Person, std::slice::from_ref(&p.uid)).unwrap();
         let (_, _, _, again) = insert(&mut db, &file, New { parent: Some(p.uid.clone()), ..task("Commit it") }).unwrap();
         assert_eq!(again.as_deref(), Some(p.uid.as_str()));
         assert!(one(&db, &p.uid).unwrap().closed_at.is_none());
@@ -1423,26 +1699,26 @@ mod tests {
         let (_, p_done, _, _) = insert(&mut db, &file, New { parent: Some(p.clone()), ..done("c") }).unwrap();
         let (_, p_open, _, _) = insert(&mut db, &file, New { parent: Some(p.clone()), ..task("d") }).unwrap();
         let stamp = |db: &Connection, uid: &str| one(db, uid).unwrap().reported_at;
-        assert_eq!(unreported_at(&file).unwrap(), 3);
+        assert_eq!(unreported_at(&file, GRAND).unwrap(), 3);
 
-        assert_eq!(report(&mut db, std::slice::from_ref(&a), false).unwrap(), 1);
+        assert_eq!(report(&mut db, &Caller::Person, std::slice::from_ref(&a), false).unwrap(), 1);
         assert!(stamp(&db, &a).is_some());
         // A second run keeps the first stamp.
         db.execute("UPDATE tasks SET reported_at = '2020-01-01T00:00:00Z' WHERE uid = ?1", [&a]).unwrap();
-        assert_eq!(report(&mut db, std::slice::from_ref(&a), false).unwrap(), 0);
+        assert_eq!(report(&mut db, &Caller::Person, std::slice::from_ref(&a), false).unwrap(), 0);
         assert_eq!(stamp(&db, &a).as_deref(), Some("2020-01-01T00:00:00Z"));
         // An open task refuses the lot.
-        let err = report(&mut db, &[b.clone(), open.clone()], false).unwrap_err().to_string();
+        let err = report(&mut db, &Caller::Person, &[b.clone(), open.clone()], false).unwrap_err().to_string();
         assert_eq!(err, format!("task {open} is sent, not done. Nothing changed"));
         assert!(stamp(&db, &b).is_none());
         // A plan stamps its done tasks only.
-        assert_eq!(report(&mut db, std::slice::from_ref(&p), false).unwrap(), 1);
+        assert_eq!(report(&mut db, &Caller::Person, std::slice::from_ref(&p), false).unwrap(), 1);
         assert!(stamp(&db, &p_done).is_some() && stamp(&db, &p_open).is_none() && stamp(&db, &p).is_none());
         // --all stamps every done task not reported, and only those.
-        assert_eq!(report(&mut db, &[], true).unwrap(), 1);
+        assert_eq!(report(&mut db, &Caller::Person, &[], true).unwrap(), 1);
         assert!(stamp(&db, &b).is_some() && stamp(&db, &open).is_none());
         assert_eq!(stamp(&db, &a).as_deref(), Some("2020-01-01T00:00:00Z"));
-        assert_eq!(unreported_at(&file).unwrap(), 0);
+        assert_eq!(unreported_at(&file, GRAND).unwrap(), 0);
 
         // A task that opens again loses its stamp.
         restate(&db, &one(&db, &b).unwrap(), Some("done")).unwrap();
@@ -1467,8 +1743,8 @@ mod tests {
         let (_, p, _, _) = insert(&mut db, &file, New { plan: true, pane_id: None, ..task("p") }).unwrap();
         let (_, p_a, _, _) = insert(&mut db, &file, New { parent: Some(p.clone()), ..done("a") }).unwrap();
         let (_, p_b, _, _) = insert(&mut db, &file, New { parent: Some(p.clone()), ..done("b") }).unwrap();
-        close(&mut db, &[old.clone(), new.clone(), p.clone()]).unwrap();
-        report(&mut db, std::slice::from_ref(&told), false).unwrap();
+        close(&mut db, &Caller::Person, &[old.clone(), new.clone(), p.clone()]).unwrap();
+        report(&mut db, &Caller::Person, std::slice::from_ref(&told), false).unwrap();
         for uid in [&old, &p] {
             db.execute("UPDATE tasks SET closed_at = '2020-01-01T00:00:00Z' WHERE uid = ?1", [uid]).unwrap();
         }
@@ -1479,15 +1755,15 @@ mod tests {
 
         // A dry run lists and changes nothing.
         let want = vec![old.clone(), p.clone(), p_a.clone(), p_b.clone()];
-        assert_eq!(uids(prune(&mut db, 7 * 86_400, false).unwrap()), want);
+        assert_eq!(uids(prune(&mut db, &Caller::Person, 7 * 86_400, false).unwrap()), want);
         assert_eq!(all(), before);
-        assert_eq!(uids(prune(&mut db, 7 * 86_400, true).unwrap()), want);
+        assert_eq!(uids(prune(&mut db, &Caller::Person, 7 * 86_400, true).unwrap()), want);
         // Work told long ago but not closed stays.
         assert_eq!(all(), [new.clone(), told.clone(), open.clone()]);
         // A short window takes the new one too.
         db.execute("UPDATE tasks SET closed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-2 hours') WHERE uid = ?1", [&new]).unwrap();
-        assert!(prune(&mut db, age("7d").unwrap(), true).unwrap().is_empty());
-        assert_eq!(uids(prune(&mut db, age("1h").unwrap(), true).unwrap()), [new]);
+        assert!(prune(&mut db, &Caller::Person, age("7d").unwrap(), true).unwrap().is_empty());
+        assert_eq!(uids(prune(&mut db, &Caller::Person, age("1h").unwrap(), true).unwrap()), [new]);
         assert_eq!(age("30m").unwrap(), 1800);
         assert!(age("7").is_err() && age("xd").is_err());
         std::fs::remove_dir_all(&dir).unwrap();
@@ -1553,7 +1829,7 @@ mod tests {
         roll_up(&mut list);
         let p = list.iter().find(|r| r.uid == plan).unwrap();
         assert_eq!((p.state.as_str(), p.closed_at.as_deref()), ("done", None));
-        assert_eq!(unreported_at(&file).unwrap(), 4);
+        assert_eq!(unreported_at(&file, GRAND).unwrap(), 4);
         // A second sweep finds nothing.
         assert!(close_gone_in(&mut db, here, &all).unwrap().is_empty());
         std::fs::remove_dir_all(&dir).unwrap();
@@ -1580,9 +1856,9 @@ mod tests {
         let shell = pane("70808970aaaa", "shell", false);
         let w = |me: &SessionInfo, cur: Option<&Owner>, socket: &Path| writer(Some(&me.id), Some(me), cur, socket, false);
         // The owner, a person outside Skiff and a shell pane may.
-        assert_eq!(w(&skipper, Some(&owner), &live), Writer::Yes);
-        assert_eq!(writer(None, None, Some(&owner), &live, true), Writer::Yes);
-        assert_eq!(w(&shell, Some(&owner), &live), Writer::Yes);
+        assert_eq!(w(&skipper, Some(&owner), &live), Writer::Yes(Caller::Grand));
+        assert_eq!(writer(None, None, Some(&owner), &live, true), Writer::Yes(Caller::Person));
+        assert_eq!(w(&shell, Some(&owner), &live), Writer::Yes(Caller::Person));
         // Another agent pane may not, on any socket.
         assert_eq!(w(&worker, Some(&owner), &live), Writer::No);
         assert_eq!(w(&worker, None, &live), Writer::No);
@@ -1603,6 +1879,98 @@ mod tests {
         assert_eq!(w(&skipper, Some(&on("4d43fa26aaaa", test)), &live), Writer::Claim);
         assert_eq!(w(&dev, None, test), Writer::Claim);
         assert!(refusal(Some(&owner)).contains("96cb7de8") && refusal(Some(&owner)).contains(live.to_str().unwrap()));
+    }
+
+    #[test]
+    fn a_project_skipper_changes_only_its_rows_and_reports_its_hand_off() {
+        let live = state::live_socket();
+        let owner = Owner { session: "96cb7de8aaaa".into(), socket: live.display().to_string() };
+        let mut gesher = pane("5e5e5e5eaaaa", "agent", false);
+        gesher.skipper = Some("gesher".into());
+        // The CLI knows the caller from its session.
+        let me = writer(Some(&gesher.id), Some(&gesher), Some(&owner), &live, false);
+        assert_eq!(me, Writer::Yes(Caller::Project("gesher".into())));
+        let Writer::Yes(me) = me else { unreachable!() };
+
+        let dir = scratch("owners");
+        let file = dir.join("ledger.db");
+        let mut db = open_at(&file).unwrap();
+        // The grand Skipper's plan, its own task, and a hand-off to gesher.
+        let (_, plan, _, _) = insert(&mut db, &file, New { plan: true, pane_id: None, ..task("Ship it") }).unwrap();
+        let (_, mine_g, _, _) = insert(&mut db, &file, New { parent: Some(plan.clone()), ..task("grand work") }).unwrap();
+        let ho = New { parent: Some(plan.clone()), project: "gesher".into(), handoff: true, ..task("Chapter polish") };
+        let (_, hand, hand_path, _) = insert(&mut db, &file, ho).unwrap();
+        // The hand-off's result is in the project Skipper's folder.
+        assert!(hand_path.starts_with(dir.join("projects/gesher/results").to_str().unwrap()), "{hand_path}");
+        // gesher adds its task under the hand-off: the row is gesher's.
+        let parent = container(&db, &hand).unwrap();
+        let sub_owner = me.check_parent(&parent).unwrap();
+        assert_eq!(sub_owner, "gesher");
+        let (_, sub, sub_path, _) = insert(&mut db, &file, New { parent: Some(hand.clone()), owner: sub_owner, ..task("chapter nav") }).unwrap();
+        assert!(sub_path.contains(&format!("projects/gesher/results/")) && sub_path.contains(&hand), "{sub_path}");
+        let sub = one(&db, &sub).unwrap();
+        assert_eq!(sub.parent.as_deref(), Some(hand.as_str()));
+
+        // gesher changes its row, reports the hand-off, and nothing of the grand Skipper's.
+        assert!(me.check(&sub).is_ok());
+        let hand_row = one(&db, &hand).unwrap();
+        assert!(me.check_report(&hand_row).is_ok());
+        assert!(me.check(&hand_row).is_err());
+        let err = me.check(&one(&db, &mine_g).unwrap()).unwrap_err().to_string();
+        assert!(err.contains("belongs to the Skipper"), "{err}");
+        assert!(me.check_parent(&one(&db, &plan).unwrap()).is_err());
+        // Another project Skipper reports no hand-off of gesher's.
+        let other = Caller::Project("skiff".into());
+        assert!(other.check_report(&hand_row).is_err() && other.check(&sub).is_err());
+        // The grand Skipper cannot change gesher's task or add under the hand-off; the person can.
+        assert!(Caller::Grand.check(&sub).is_err());
+        assert!(Caller::Grand.check_parent(&hand_row).is_err());
+        assert!(Caller::Grand.check(&hand_row).is_ok());
+        assert!(Caller::Person.check(&sub).is_ok());
+        assert_eq!(Caller::Person.check_parent(&hand_row).unwrap(), "gesher");
+        // report --all from gesher stamps only its rows.
+        db.execute("UPDATE tasks SET state = 'done'", []).unwrap();
+        assert_eq!(report(&mut db, &me, &[], true).unwrap(), 1);
+        assert!(one(&db, &mine_g).unwrap().reported_at.is_none());
+        assert!(report(&mut db, &me, std::slice::from_ref(&mine_g), false).is_err());
+        // The tree nests three deep, and the whole work is the plan's.
+        let list = rows(&db, "", None).unwrap();
+        let depth: Vec<(String, usize)> = tree(list.clone()).into_iter().map(|(r, d)| (r.uid, d)).collect();
+        assert_eq!(depth, [(plan.clone(), 0), (mine_g.clone(), 1), (hand.clone(), 1), (sub.uid.clone(), 2)]);
+        assert!(heads(&list).values().all(|h| *h == plan));
+        // Closing the plan takes the hand-off's task too; gesher cannot close it.
+        assert!(close(&mut db, &me, std::slice::from_ref(&plan)).is_err());
+        assert_eq!(close(&mut db, &Caller::Grand, std::slice::from_ref(&plan)).unwrap(), 1);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_version_8_ledger_takes_owners_in_one_step_and_keeps_its_rows() {
+        let dir = scratch("v8");
+        let file = dir.join("ledger.db");
+        {
+            let v8 = TASKS.replace(",\n  owner       TEXT NOT NULL DEFAULT 'grand'", "").replace(", 'handoff'", "");
+            assert!(!v8.contains("owner") && !v8.contains("handoff"));
+            let db = Connection::open(&file).unwrap();
+            db.execute_batch(&v8).unwrap();
+            db.execute_batch(UIDS).unwrap();
+            db.execute_batch(OWNER).unwrap();
+            db.execute_batch(
+                "INSERT INTO tasks (id, uid, kind, task, sent_at, state, updated_at) VALUES (7, 'e5f6a7b8', 'plan', 'a plan', 'x', 'sent', 'x');
+                 INSERT INTO tasks (id, uid, kind, parent, pane_id, task, sent_at, state, updated_at) VALUES (9, 'a1b2c3d4', 'task', 'e5f6a7b8', 'abc', 'work', 'x', 'sent', 'x');
+                 PRAGMA user_version = 8;",
+            )
+            .unwrap();
+        }
+        let mut db = open_at(&file).unwrap();
+        let list = rows(&db, "", None).unwrap();
+        assert_eq!(list.iter().map(|r| (r.id, r.uid.as_str(), r.owner.as_str())).collect::<Vec<_>>(), [(7, "e5f6a7b8", GRAND), (9, "a1b2c3d4", GRAND)]);
+        assert_eq!(db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0)).unwrap(), VERSION);
+        // The new shape takes a hand-off, and ids go on from the old ones.
+        let (id, _, _, _) = insert(&mut db, &file, New { handoff: true, project: "gesher".into(), ..task("polish") }).unwrap();
+        assert_eq!(id, 10);
+        assert!(skiff_client::ledger::open_read(&file).is_ok());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -1681,7 +2049,7 @@ mod tests {
         db.execute("DELETE FROM tasks WHERE uid = ?1", [&x]).unwrap();
 
         let shown: Vec<_> = tree(rows(&db, "", None).unwrap()).into_iter().map(|(r, child)| (r.uid, child)).collect();
-        assert_eq!(shown, [(lone.clone(), false), (puid.clone(), false), (a, true), (b, true)]);
+        assert_eq!(shown, [(lone.clone(), 0), (puid.clone(), 0), (a, 1), (b, 1)]);
         let p = one(&db, &puid).unwrap();
         assert!(p.is_plan() && p.pane_id.is_none() && p.reference.as_deref() == Some("JIRA-12"));
         // The watcher gets the open tasks, not the plan.

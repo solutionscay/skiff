@@ -109,7 +109,7 @@ pub fn private_home(dir: &Path) -> PathBuf {
 /// The ledger's table as `skiff ledger` makes it.
 pub const SCHEMA: &str = "CREATE TABLE tasks (id INTEGER PRIMARY KEY, uid TEXT UNIQUE, kind TEXT, parent TEXT, pane_id TEXT, pane_gen INTEGER,
     project TEXT, task TEXT, sent_at TEXT, state TEXT, result_path TEXT, ref TEXT, updated_at TEXT, type TEXT, socket TEXT,
-    reported_at TEXT, title TEXT, closed_at TEXT, gone_at TEXT); PRAGMA user_version = 8;";
+    reported_at TEXT, title TEXT, closed_at TEXT, gone_at TEXT, owner TEXT NOT NULL DEFAULT 'grand'); PRAGMA user_version = 9;";
 
 /// One row, as `skiff ledger add` leaves it.
 #[allow(clippy::too_many_arguments)]

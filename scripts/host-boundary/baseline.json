@@ -145,7 +145,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "7d9ac43ac97a2fcb5fffbcac25add90a8670912799c35151c1f143ba3f6cac6c"
+    "sha256": "78e9d5b397ed00462344350d4e421df389452a463cd3d2d2355b4dde939eb76f"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -194,7 +194,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "4224f4caaa0246609d63db89286d22d07137ed79021721c684a330d89b9d6c0f"
+    "sha256": "24801a5c603d28f3d4e94f1cadbd119399fa2aef0b0fd912cfd1bfa0891bd348"
   },
   "apps/desktop/src-tauri/src/streaming.rs": {
     "ownership": "M1e terminal output via selected Host session_terminal@1; M1d page session events via selected Host; core Event only for the page channel type",
@@ -370,7 +370,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "059bd6ebc3b20946530630ae4100fb7b521f83d564b21d09150d502b4eae56eb"
+    "sha256": "dc91b7dccff060b740215ffe0482cac064e0cb85dd8b00f57f38efa18404b67a"
   },
   "apps/desktop/src/app/state.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -446,14 +446,14 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "0356d732bd3b494e602ec45b8ec20fe29712711463f4e8c6a0b852bab09b00e9"
+    "sha256": "29d8f11968135caac71a39ca5f83311c3951347a095d596ea3c14854e86520c0"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6; Show in file manager only on This Mac (#166)",
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "f78e0688e76fd08bbbaa4df66a3e725e7816d7053a0dfe4677eace2e71cf4ba3"
+    "sha256": "88f040ad3a254b80347e926259da2dcf50bc15e5f75168d64dfa7ea3d03c6239"
   },
   "apps/desktop/src/appearance/skiffFolderDialog.ts": {
     "ownership": "Host caller (#166 R7): folder preview and change through hostInvoke(skipper_config); the system picker and reveal are this client's own, used only on This Mac",
@@ -722,7 +722,7 @@
     "reasons": [
       "@tauri-apps/api/event"
     ],
-    "sha256": "8ad27aaa3cae18a42e050eccf4f91fb55a1cc6198fdf8d572505ea909dc1f9e2"
+    "sha256": "0c018c7c765a159ba23deefbfca69b0ca831f626c0bc31703da53c6598fdfdad"
   },
   "apps/desktop/src/workspace/menus.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -732,7 +732,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "6f325e232391017e42c47f849c01f1ba32a32b82b569d494678aec9a7332bc2a"
+    "sha256": "7f317d6ae02cd9791f9ff7af3467fe8cb4b0e2538e8387d97f92a20576f78cd6"
   },
   "apps/desktop/src/workspace/missionControl.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -842,7 +842,7 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "df51490d6b938cc182a61abdd4b6303ff5939ab135cf967988e0fba831435097"
+    "sha256": "b9b97e97654550fd573566e2ef487c292b81db5a1e0c7bd1e933780e8108ac02"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -852,7 +852,7 @@
       "local provider: apps/desktop/src/app/stateQueries.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "0dc062068f5d3652fabb52fd4891d2b8fe8645a52496916277a96c16a2911b74"
+    "sha256": "dff92979d8661a01c2cf368dc898d62140d41eac8c72519f5ec33669e8b2e583"
   },
   "apps/desktop/src/workspace/status.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -868,7 +868,7 @@
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/app/stateQueries.ts"
     ],
-    "sha256": "444056dd8c63971f2a54c2181033a6045fc40a4b407b068be00b7a8520fa1260"
+    "sha256": "cf9b2226f7c600a637d32bb662d72fe7562ec3e1670ef8db50e3d3b162ef32a5"
   },
   "apps/desktop/src/workspace/treeDrag.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

@@ -45,6 +45,8 @@ export interface SessionInfo {
   input_gen?: number;
   /** The Skiff agent's session. skiffd marks at most one live session. */
   coordinator?: boolean;
+  /** A project Skipper: the project it coordinates. A restore drops it. */
+  skipper?: string;
   /** The `skiff watch` processes registered for this session. Absent when none is, or from a daemon older than protocol 27. */
   watch?: WatchInfo | null;
 }

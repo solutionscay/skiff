@@ -656,6 +656,12 @@ pub enum Request {
     SkipperWatch {
         session: String,
     },
+    /// Finds the project Skipper of `project` or starts it in the project's
+    /// folder, with `SKIPPER.md` as its first message, and the watcher.
+    /// Answers `session`. Not retried: the session may have started.
+    SkipperProject {
+        project: String,
+    },
     /// Answers `agent_config`: the agent list and the `[agents]` revision.
     AgentConfig,
     /// Changes the `[agents]` table, only while it is still at `revision`.
@@ -697,7 +703,7 @@ impl Request {
             Self::SkipperEdit { .. } | Self::SkipperFolderPreview { .. } | Self::SkipperFolderChange { .. } => {
                 Some(Capability::skipper_config())
             }
-            Self::SkipperOpen { .. } | Self::SkipperWatch { .. } => Some(Capability::skipper_run()),
+            Self::SkipperOpen { .. } | Self::SkipperWatch { .. } | Self::SkipperProject { .. } => Some(Capability::skipper_run()),
             Self::AgentConfig | Self::AgentEdit { .. } => Some(Capability::agent_config()),
             Self::ProjectInspect { .. }
             | Self::ProjectInit { .. }
@@ -753,6 +759,7 @@ impl Request {
                 | (Self::SkipperFolderChange { .. }, Response::SkipperFolderDone { .. })
                 | (Self::SkipperOpen { .. }, Response::SkipperOpened { .. })
                 | (Self::SkipperWatch { .. }, Response::Watch { .. })
+                | (Self::SkipperProject { .. }, Response::Session { .. })
                 | (Self::AgentConfig | Self::AgentEdit { .. }, Response::AgentConfig { .. })
         ) || (!matches!(
             self,
@@ -792,6 +799,7 @@ impl Request {
                 | Self::SkipperFolderPreview { .. }
                 | Self::SkipperFolderChange { .. }
                 | Self::SkipperWatch { .. }
+                | Self::SkipperProject { .. }
                 | Self::AgentConfig
                 | Self::AgentEdit { .. }
         ) && matches!(reply, Response::Ok))

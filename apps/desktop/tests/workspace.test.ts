@@ -109,6 +109,7 @@ test("mixed-scope plans keep qualifying headings without excluded children", () 
   const ledger = moduleFromSource("../src/workspace/ledger.ts", {
     "./profile": { ledgerScope: () => ({ names: new Set(["A"]) }) },
     "../app/state": { S: {}, sessions: new Map() },
+    "../app/stateQueries": { shownIds: () => [], accent: () => "" },
   }, {
     document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
   }, "\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units };\n");
@@ -128,4 +129,32 @@ test("mixed-scope plans keep qualifying headings without excluded children", () 
   assert.equal(units[1].kids.length, 0);
   assert.deepEqual(Array.from(units[2].kids, (k: any) => k.r.uid), ["shown"]);
   assert.deepEqual(rows, before, "filtering must not mutate canonical rows");
+});
+
+test("a hand-off nests under its plan with its tasks, and the filter keeps one project", () => {
+  const ledger = moduleFromSource("../src/workspace/ledger.ts", {
+    "./profile": { ledgerScope: () => null },
+    "../app/state": { S: { projects: [] }, sessions: new Map() },
+    "../app/stateQueries": { shownIds: () => [], accent: () => "" },
+  }, {
+    document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
+  }, "\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units, ledgerCounts };\n");
+  const row = (uid: string, kind: string, project: string, owner: string, parent: string | null, state = "sent") =>
+    ({ id: 1, uid, kind, project, owner, parent, state, closed_at: null, pane_id: null, task: uid, title: null });
+  ledger.review.setRows([
+    row("ship", "plan", "", "grand", null),
+    row("mine", "task", "skiff", "grand", "ship"),
+    row("polish", "handoff", "gesher", "grand", "ship"),
+    row("nav", "task", "gesher", "gesher", "polish", "blocked"),
+    row("copy", "task", "gesher", "gesher", "polish", "done"),
+  ]);
+  const all = ledger.review.units(null);
+  assert.deepEqual(Array.from(all, (u: any) => u.r.uid), ["ship"]);
+  assert.deepEqual(Array.from(all[0].kids, (k: any) => k.r.uid), ["mine", "polish"]);
+  assert.deepEqual(Array.from(all[0].kids[1].kids, (k: any) => k.r.uid), ["nav", "copy"]);
+  // One project: the plan heads only gesher's rows.
+  const one = ledger.review.units("gesher");
+  assert.deepEqual(Array.from(one[0].kids, (k: any) => k.r.uid), ["polish"]);
+  // The gesher Skipper's counts are its own tasks. A blocked task needs the person.
+  assert.equal(ledger.review.ledgerCounts("gesher").need, 1);
 });

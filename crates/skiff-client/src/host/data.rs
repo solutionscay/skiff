@@ -18,7 +18,7 @@ use std::{
 use skiff_host_api::{
     AgentEdit, Error, FolderListing, FolderPlaces, Hello, HostAgent, HostChange, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
     HostListing, HostProject, HostSkipper, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response, SkipperEdit, SkipperFolderDone,
-    SkipperFolderMode, SkipperFolderPreview, SkipperOpened,
+    SkipperFolderMode, SkipperFolderPreview, SkipperOpened, InventorySession,
 };
 use tokio::net::UnixStream;
 
@@ -400,6 +400,14 @@ pub async fn skipper_open(c: &HostConnection, restore: Option<u64>) -> Result<Op
 pub async fn skipper_watch(c: &HostConnection, session: &str) -> Result<bool, Error> {
     match c.request(Request::SkipperWatch { session: session.into() }).await? {
         Response::Watch { started } => Ok(started),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// Finds or starts the Host's project Skipper of `project`. Answers its session.
+pub async fn skipper_project(c: &HostConnection, project: &str) -> Result<InventorySession, Error> {
+    match c.request(Request::SkipperProject { project: project.into() }).await? {
+        Response::Session { session } => Ok(*session),
         _ => unreachable!("checked by Request::accepts"),
     }
 }
