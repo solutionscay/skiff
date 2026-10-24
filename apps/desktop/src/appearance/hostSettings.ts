@@ -174,6 +174,10 @@ export function createHostsTab(redraw: () => void) {
   const defaultName = (d: string) => d.split("@").pop() ?? d;
 
   function draw(): HTMLElement {
+    // The Host it was about left the list: back to the list.
+    const known = (id: string) => knownHosts().some((x) => x.id === id);
+    if (check && !known(check.id)) check = null;
+    if (form?.id && !known(form.id)) form = null;
     return form ? drawForm(form) : check ? drawCheck(check) : drawList();
   }
 

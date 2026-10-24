@@ -15,7 +15,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { switcher } from "./app/commands";
 import { failureLine, followDataPlane, hostOnline, loadProjects, reconnectRemote, refreshSessions, reloadDaemon, setDaemon, subscribeEvents, untilConnected } from "./app/daemon";
 import { connectAttempt, connectDone, connectFailed } from "./app/connectPanel";
-import { isRemote, loadHosts, onManageHosts, setHostConnected, watchHostLink } from "./app/hosts";
+import { isRemote, loadHosts, onManageHosts, setHostConnected, watchHostLink, watchHosts } from "./app/hosts";
 import { muteInput } from "./terminal/terminalRuntime";
 import { loadHostCaps } from "./app/hostCaps";
 import { $ } from "./ui/dom";
@@ -61,6 +61,7 @@ async function boot() {
   await startWorkspaceQuitGuard();
   // Which Host this window shows decides everything below.
   await loadHosts().catch(showError);
+  watchHosts();
   // `tauri dev` build: a badge in the status bar tells it apart from an installed Skiff.
   if (import.meta.env.DEV) {
     const badge = document.createElement("span");
