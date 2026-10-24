@@ -17,7 +17,8 @@
 //!
 //! It keeps no state of its own. The ledger, the session list and each pane's
 //! unread flag are the input, so a new run rebuilds the same view. One lock
-//! file per daemon socket keeps it to one copy.
+//! file per daemon socket keeps it to one copy. When a build or an update
+//! puts a new `skiff` at its path, the watcher runs the new one in its place.
 //!
 //! Best effort: the list, the ledger read and the submit are separate reads,
 //! and the state events can lag. Held pending lines are checked against a
@@ -27,7 +28,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs::File,
-    path::Path,
+    path::{Path, PathBuf},
     process::Stdio,
     time::Duration,
 };
@@ -58,6 +59,9 @@ const RECONNECT_LIMIT: Duration = Duration::from_secs(600);
 const LOCK_WAIT: Duration = Duration::from_secs(10);
 /// Failed ledger reads in a row before the watcher reports a failure.
 const LEDGER_FAILS: u32 = 3;
+/// How old a new `skiff` file must be before the watcher runs it: a build
+/// may still write it.
+const SETTLE: Duration = Duration::from_secs(2);
 
 pub struct Options {
     /// The Skiff agent's session.
@@ -680,6 +684,7 @@ pub async fn watch(socket: &Path, o: Options) -> Result<i32> {
     };
     log(format!("watching for {}", o.skipper));
     let mut ws = Watchers::default();
+    let mut build = Build::now();
     let mut lost: Option<Instant> = None;
     loop {
         if let Ok(c) = Client::connect(socket).await {
@@ -689,7 +694,7 @@ pub async fn watch(socket: &Path, o: Options) -> Result<i32> {
                 w.sent = None;
                 w.unregistered = false;
             }
-            match follow(&c, &o, &mut ws).await {
+            match follow(&c, &o, &mut ws, &mut build).await {
                 Ok(code) => return Ok(code),
                 Err(e) => log(format!("lost skiffd: {e:#}")),
             }
@@ -735,14 +740,71 @@ async fn lock(socket: &Path) -> Result<Option<File>> {
 /// One watcher per coordinator, by owner: [`ledger::GRAND`], or a project.
 type Watchers = HashMap<String, Watcher>;
 
+/// The `skiff` file this watcher runs, as it was at the start. A build or an
+/// update puts a new file at the path, and the running watcher keeps the old
+/// code: its rules, such as who owns a row, fall behind the ledger. It then
+/// runs the new file in its place, with the same arguments.
+struct Build {
+    path: PathBuf,
+    stamp: Stamp,
+}
+
+/// Device, inode and change time.
+type Stamp = (u64, u64, Option<std::time::SystemTime>);
+
+impl Build {
+    fn now() -> Option<Build> {
+        let path = std::env::current_exe().ok()?;
+        let stamp = Self::stamp(&path)?;
+        Some(Build { path, stamp })
+    }
+
+    #[cfg(unix)]
+    fn stamp(path: &Path) -> Option<Stamp> {
+        use std::os::unix::fs::MetadataExt;
+        let m = std::fs::metadata(path).ok()?;
+        Some((m.dev(), m.ino(), m.modified().ok()))
+    }
+
+    /// Windows keeps a running file: no new build comes while it runs.
+    #[cfg(not(unix))]
+    fn stamp(_: &Path) -> Option<Stamp> {
+        None
+    }
+
+    /// Another file is at the path, written [`SETTLE`] ago or more.
+    fn replaced(&self) -> bool {
+        Self::stamp(&self.path).is_some_and(|s| s != self.stamp && s.2.and_then(|t| t.elapsed().ok()).is_some_and(|age| age >= SETTLE))
+    }
+
+    /// Runs the new file in this process. The lock closes with the old
+    /// program, and the new one takes it. Returns only on a failure.
+    #[cfg(unix)]
+    fn take_over(&self) -> std::io::Error {
+        use std::os::unix::process::CommandExt;
+        std::process::Command::new(&self.path).args(std::env::args_os().skip(1)).exec()
+    }
+
+    #[cfg(not(unix))]
+    fn take_over(&self) -> std::io::Error {
+        std::io::Error::other("not on this system")
+    }
+}
+
 /// One connection: a step on each event and each tick.
-async fn follow(c: &Client, o: &Options, ws: &mut Watchers) -> Result<i32> {
+async fn follow(c: &Client, o: &Options, ws: &mut Watchers, build: &mut Option<Build>) -> Result<i32> {
     // Listen before the first read, so no change falls between the two.
     let mut events = c.events();
     let mut tick = interval(TICK);
     tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
     let note = |ws: &mut Watchers, e: &Event| ws.values_mut().for_each(|w| w.note(e));
     loop {
+        if let Some(b) = build.as_ref().filter(|b| b.replaced()) {
+            log(format!("{} is a new build: it takes over", b.path.display()));
+            let e = b.take_over();
+            log(format!("cannot run the new build: {e}"));
+            *build = None;
+        }
         if let Some(code) = step(c, o, ws).await? {
             return Ok(code);
         }
@@ -1222,6 +1284,48 @@ mod tests {
             "[watch] the gesher Skipper reported hand-off u3. Read its result. Tell the person, then run skiff ledger report u3."
         );
         assert!(route(&mut ws, &targets, &[], &[], std::slice::from_ref(&done), &all).is_empty());
+    }
+
+    #[test]
+    fn the_grand_skipper_never_hears_a_project_row() {
+        let mut grand = info("aaaa1111", "idle", false);
+        grand.coordinator = true;
+        let mut gesher = info("7508753f0000", "working", false);
+        gesher.skipper = Some("gesher".into());
+        // gesher's task 9e0caa67 on pane 7902ac72, idle after a turn.
+        let sub = ledger::Row { owner: "gesher".into(), ..row(357, "9e0caa67", "7902ac72405d", "sent", None) };
+        let all = [grand.clone(), gesher, info("7902ac72405d", "idle", true)];
+        let mut ws = Watchers::default();
+        let told = route(&mut ws, &targets(&all), std::slice::from_ref(&sub), &[], &[], &all);
+        assert_eq!(told.iter().map(|(o, w)| (o.as_str(), w.id.as_str())).collect::<Vec<_>>(), [("gesher", "7902ac72405d")]);
+        assert!(ws["grand"].held.is_empty());
+        assert_eq!(ws["grand"].follows.as_deref(), Some(&[][..]));
+        // With no gesher Skipper running, the row goes to no one.
+        let all = [grand, info("7902ac72405d", "idle", true)];
+        let mut ws = Watchers::default();
+        assert!(route(&mut ws, &targets(&all), &[sub], &[], &[], &all).is_empty());
+        assert!(ws["grand"].held.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_new_file_at_the_path_is_a_new_build() {
+        let dir = std::env::temp_dir().join(format!("skiff-watch-build-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("skiff");
+        std::fs::write(&path, "old").unwrap();
+        let b = Build { stamp: Build::stamp(&path).unwrap(), path: path.clone() };
+        assert!(!b.replaced());
+        // A build writes a new file, then links it in place of the old one.
+        let new = dir.join("skiff.new");
+        std::fs::write(&new, "new").unwrap();
+        std::fs::rename(&new, &path).unwrap();
+        // Too fresh: the build may still write it.
+        assert!(!b.replaced());
+        let old = std::time::SystemTime::now() - SETTLE * 2;
+        File::options().write(true).open(&path).unwrap().set_modified(old).unwrap();
+        assert!(b.replaced());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
