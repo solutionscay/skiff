@@ -10,4 +10,4 @@
 #sidebar-scroll .wt-pick.current, body.kbd #sidebar-scroll .wt-pick.current:focus { background: transparent; box-shadow: none; }
 body.kbd #sidebar-scroll .wt-row:has(> .wt-pick.current:focus) { box-shadow: inset 2px 0 0 var(--pc), inset 0 1px 0 var(--pc), inset 0 -1px 0 var(--pc); }
 .wt-row .wt-plus { visibility: hidden; }
-.wt-row:hover .wt-plus, .wt-row:has(.hover) .wt-plus, .wt-row:has(.current) .wt-plus, .wt-row .wt-plus[aria-expanded="true"] { visibility: visible; }
+.wt-row:hover .wt-plus, .wt-row > .hover ~ .wt-plus, .wt-row > .wt-plus.hover, .wt-row > .current ~ .wt-plus, .wt-row .wt-plus[aria-expanded="true"] { visibility: visible; }
