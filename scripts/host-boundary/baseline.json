@@ -59,7 +59,7 @@
     "sha256": "bf3b8e737190fc705e503a4f0868da2afbe841ddcce36ced927f5f0b1c9dcc8c"
   },
   "apps/desktop/src-tauri/src/connection.rs": {
-    "ownership": "M1a\u2013M1e selected-local Host owner; M4 data-plane owner (skiff-host paired by host_id); endpoint-local process control for skiffd and skiff-host spawn/stop; existing local lifecycle/legacy client adapter; remote refused-channel probe (read-only, skiff-client check) to name its cause; This Mac's capability list adds agent_config@1, skipper_config@1, skipper@1 and session_agents@1, which this app's local adapter serves",
+    "ownership": "M1a\u2013M1e selected-local Host owner; M4 data-plane owner (skiff-host paired by host_id); endpoint-local process control for skiffd and skiff-host spawn/stop; existing local lifecycle/legacy client adapter; remote refused-channel probe (read-only, skiff-client check) to name its cause; This Mac's capability list adds agent_config@1, skipper_config@1, skipper@1, skipper_run@1 and session_agents@1, which this app's local adapter serves",
     "reasons": [
       "config",
       "env",
@@ -75,7 +75,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "07064d959db6d2126f5aa45db1f1287b1a4d2373cdde51eaf58b4ed72e318477"
+    "sha256": "67aec6e6cd96b3d3f392d18301c41b0000cad1724cbd6a3f9c46cdaa03244b90"
   },
   "apps/desktop/src-tauri/src/copies.rs": {
     "ownership": "client-owned (M5 reviewed): local copies of bytes the Host sent, for this computer's Open with; never reads or opens a Host path",
@@ -733,7 +733,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "7f317d6ae02cd9791f9ff7af3467fe8cb4b0e2538e8387d97f92a20576f78cd6"
+    "sha256": "32cfebe010f8e79e1df3d7cf9cb0bda2048844beacb08a55856ac38ec5b04779"
   },
   "apps/desktop/src/workspace/missionControl.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

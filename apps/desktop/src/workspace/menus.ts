@@ -233,7 +233,8 @@ export function projectMenu(p: Project, x: number, y: number) {
   ctxMenu.open(x, y, p.path, tidy([
     start,
     hostCan("worktrees") && { icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
-    ...(hostCan("skipper_run") ? projectSkipperEntries(p) : []),
+    // This Mac starts them itself; a remote Host, through its skiff-host.
+    ...(local || hostCan("skipper_run") ? projectSkipperEntries(p) : []),
     { sep: true },
     local && { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: run["project-folder"] },
     { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
