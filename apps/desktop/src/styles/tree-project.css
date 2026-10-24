@@ -19,6 +19,13 @@
 .fleet-pick:hover .chev, .fleet-pick.current .chev, .project-row:hover .chev, .project-pick.current .chev { opacity: 1; }
 
 .tree-project { display: flex; flex-direction: column; flex-shrink: 0; }
+/* A project with its own theme: the whole block takes the theme's colors, as its panes do.
+   A 1px rule parts it from the block above, drawn over the rows so the grid does not move. */
+.tree-project.themed { position: relative; background: var(--bg-panel); color: var(--text); }
+.tree-project.themed + .tree-project::before, .tree-project + .tree-project.themed::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--rule-strong); z-index: 1; pointer-events: none;
+}
+.tree-project.themed + .tree-project:not(.themed) { position: relative; }
 .project-row { height: var(--row); flex-shrink: 0; display: flex; align-items: stretch; }
 .project-pick {
   flex-grow: 1; min-width: 0;
@@ -42,7 +49,7 @@
 .project-row .project-name { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(13px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
 .project-meta { flex-shrink: 0; font-size: calc(11px * var(--zoom, 1)); color: var(--error); }
 .project-row .wt-plus { visibility: hidden; }
-.project-row:hover .wt-plus, .project-row:has(.current) .wt-plus, .project-row .wt-plus[aria-expanded="true"] { visibility: visible; }
+.project-row:hover .wt-plus, .project-row > .current ~ .wt-plus, .project-row .wt-plus[aria-expanded="true"] { visibility: visible; }
 /* The project row is current: the whole row lights, its buttons included. */
 #sidebar-scroll .project-row:has(> .project-pick.current) { background: color-mix(in srgb, var(--pc) 22%, var(--bg-panel)); box-shadow: inset 2px 0 0 var(--pc); }
 #sidebar-scroll .project-pick.current, body.kbd #sidebar-scroll .project-pick.current:focus { background: transparent; box-shadow: none; }
@@ -92,7 +99,8 @@ body.kbd #sidebar-scroll .project-row:has(> .project-pick.current:focus) { outli
 }
 #sidebar-scroll > .tree-head:first-child { margin-top: 0; border-top: 0; height: calc(28 * var(--u)); }
 #sidebar-scroll > .tree-head .tree-head-add { height: calc(26 * var(--u)); align-self: flex-end; margin-bottom: calc(-6 * var(--u)); }
-.tree-kids > .tree-project + .tree-project { border-top: 1px solid var(--rule); }
+.tree-kids > .tree-project { border-top: 1px solid var(--rule); }
+.tree-kids > .tree-project:first-child { border-top: 0; }
 .tree-project .wt-row { height: calc(20 * var(--u)); background: transparent; }
 .tree-project .wt-pick { font-size: calc(12px * var(--zoom, 1)); }
 .tree-project .wt-row .wt-plus { height: calc(20 * var(--u)); }

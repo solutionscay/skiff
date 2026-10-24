@@ -8,6 +8,9 @@
 //! so the command updates with the app. It replaces the link, never what the
 //! link points at, and never a file of the user's.
 //!
+//! The Linux .deb and .rpm apps do the same for a checkout's link in
+//! ~/.local/bin: they point it at /usr/bin/skiff again.
+//!
 //! The Linux dev build (`pnpm tauri dev`) builds the CLI beside the app
 //! binary and links ~/.local/bin/skiff to it on every start, so the `skiff`
 //! on PATH is the one built from this tree. It replaces only a link or a
@@ -161,23 +164,44 @@ pub(crate) fn reconcile(dirs: &[&Path], src: &Path, dev: bool) -> anyhow::Result
 
 #[cfg(target_os = "linux")]
 mod imp {
-    use super::{bundled, replaceable};
+    use super::{bundled, links_to, relink, replaceable};
     use anyhow::{bail, Context};
     use std::path::{Path, PathBuf};
 
     /// The AppImage's mount point changes on every start, so it copies the
     /// CLI to ~/.local/bin, which most distros put on PATH. A dev build
-    /// links it there instead, so it follows each rebuild.
+    /// links it there instead, so it follows each rebuild. A .deb or .rpm
+    /// app takes back a checkout's link there.
     pub fn sync() -> anyhow::Result<()> {
         if std::env::var_os("APPIMAGE").is_none() {
+            let home = std::env::var_os("HOME").context("HOME is not set")?;
+            let dir = PathBuf::from(home).join(".local/bin");
             if cfg!(debug_assertions) {
                 let src = bundled().context("this dev build has no skiff CLI beside the app")?;
-                let home = std::env::var_os("HOME").context("HOME is not set")?;
-                dev_link(&src, &PathBuf::from(home).join(".local/bin"))?;
+                dev_link(&src, &dir)?;
+            } else if let Some(src) = bundled() {
+                if let Some(dest) = take_back(&src, &dir)? {
+                    eprintln!("skiff CLI: {} now points at {}", dest.display(), src.display());
+                }
             }
             return Ok(());
         }
         install().map(|_| ())
+    }
+
+    /// Points `dir/skiff` at `src` when it is a link into a checkout
+    /// (`target/debug/skiff` or `target/release/skiff`), whether that still
+    /// resolves or not. Replaces only the link. Anything else stays, and no
+    /// link is added: the package puts `src` on PATH already.
+    pub(super) fn take_back(src: &Path, dir: &Path) -> anyhow::Result<Option<PathBuf>> {
+        let dest = dir.join("skiff");
+        let Ok(target) = std::fs::read_link(&dest) else { return Ok(None) };
+        let checkout = target.ends_with("target/debug/skiff") || target.ends_with("target/release/skiff");
+        if !checkout || links_to(&dest, src) {
+            return Ok(None);
+        }
+        relink(&dest, src)?;
+        Ok(Some(dest))
     }
 
     /// Links `dir/skiff` to `src`. Replaces only a link or a skiff CLI: a
@@ -325,7 +349,8 @@ mod imp {
 
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
-    use super::imp::dev_link;
+    use super::imp::{dev_link, take_back};
+    use std::os::unix::fs::symlink;
 
     #[test]
     fn dev_link_replaces_a_link_and_keeps_a_file_of_the_users() {
@@ -347,6 +372,50 @@ mod tests {
         std::fs::remove_file(&dest).unwrap();
         std::fs::write(&dest, "#!/bin/sh\necho mine\n").unwrap();
         assert!(dev_link(&src, &bin).is_err());
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "#!/bin/sh\necho mine\n");
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    /// A .deb app points a checkout's link at its own CLI again. The
+    /// checkout binary stays; a file of the user's, a link to another
+    /// program, or no `skiff` at all stays as it is.
+    #[test]
+    fn a_release_app_takes_back_a_checkout_link() {
+        let tmp = std::env::temp_dir().join(format!("skiff-cli-take-back-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let bin = tmp.join("home/.local/bin");
+        let src = tmp.join("usr/bin/skiff");
+        let checkout = tmp.join("checkout/target/debug/skiff");
+        for d in [bin.as_path(), src.parent().unwrap(), checkout.parent().unwrap()] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::fs::write(&src, "release").unwrap();
+        std::fs::write(&checkout, "checkout").unwrap();
+        let dest = bin.join("skiff");
+        // No skiff: none is added.
+        assert_eq!(take_back(&src, &bin).unwrap(), None);
+        assert!(dest.symlink_metadata().is_err());
+        // A checkout's link points at the app's CLI again.
+        symlink(&checkout, &dest).unwrap();
+        assert_eq!(take_back(&src, &bin).unwrap(), Some(dest.clone()));
+        assert_eq!(std::fs::read_link(&dest).unwrap(), src);
+        assert_eq!(std::fs::read_to_string(&checkout).unwrap(), "checkout");
+        // Again: nothing to do.
+        assert_eq!(take_back(&src, &bin).unwrap(), None);
+        // A dangling release-build link of a removed checkout counts too.
+        std::fs::remove_file(&dest).unwrap();
+        symlink("/nowhere/target/release/skiff", &dest).unwrap();
+        assert_eq!(take_back(&src, &bin).unwrap(), Some(dest.clone()));
+        assert_eq!(std::fs::read_link(&dest).unwrap(), src);
+        // A link to another program stays.
+        std::fs::remove_file(&dest).unwrap();
+        symlink("/usr/bin/true", &dest).unwrap();
+        assert_eq!(take_back(&src, &bin).unwrap(), None);
+        assert_eq!(std::fs::read_link(&dest).unwrap(), std::path::Path::new("/usr/bin/true"));
+        // A file of the user's stays.
+        std::fs::remove_file(&dest).unwrap();
+        std::fs::write(&dest, "#!/bin/sh\necho mine\n").unwrap();
+        assert_eq!(take_back(&src, &bin).unwrap(), None);
         assert_eq!(std::fs::read_to_string(&dest).unwrap(), "#!/bin/sh\necho mine\n");
         std::fs::remove_dir_all(&tmp).unwrap();
     }

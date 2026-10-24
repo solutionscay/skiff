@@ -5,7 +5,7 @@ import { groupRenameInput } from "./rename";
 import { filledOf } from "./layoutSlots";
 import { agentIcon, agentKind, launchIcon } from "../appearance/agentIcon";
 import { ink } from "../appearance/appTheme";
-import { appliedTheme, ownTheme, signatureColor } from "../appearance/themes";
+import { appliedTheme, ownTheme, projectBlockTheme, projectTheme, signatureColor } from "../appearance/themes";
 import { glyph } from "./layoutIcon";
 import { agentName, basename, branchName, taskTitle } from "./model";
 import type { Group, Project, SessionInfo, Worktree } from "../platform/types";
@@ -28,7 +28,7 @@ import { stateIcon } from "../appearance/stateIcon";
 import { collapsed, DEFAULT_ACCENT, removeErrors, removing, S, selectedWorktree, sessions } from "../app/state";
 import { accent, awayPlaces, currentWorktree, place } from "../app/stateQueries";
 
-import { dragSessions, revealSession, selectWorktree, showGroup } from "./view";
+import { dragSessions, groupHome, revealSession, selectWorktree, showGroup } from "./view";
 import { addProject } from "../app/panels";
 import { animateFold, growOpened } from "../ui/fold";
 import { dragTree } from "./treeDrag";
@@ -102,8 +102,19 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
     const tag = h("span", "where away mono", `→ ${names}`);
     row.appendChild(tag);
   }
-  row.appendChild(stateIcon(s));
+  row.appendChild(unreadMark(row, s));
   return row;
+}
+
+/**
+ * The row's state mark. An idle row with an unread mark shows its title in
+ * bold. A class does this, not `:has(.unread)`: WebKit and Chromium restyle
+ * every row title on any change under a `:has()` rule.
+ */
+function unreadMark(row: HTMLElement, s: SessionInfo): HTMLElement {
+  const mark = stateIcon(s);
+  if (s.state === "idle" && mark.classList.contains("unread")) row.classList.add("unread-row");
+  return mark;
 }
 
 /**
@@ -155,13 +166,25 @@ function errorRow(text: string): HTMLElement {
 let lastProjects: Project[] | null = null;
 let lastGroups: Group[] | null = null;
 let listGen = 0;
+let lastSig = "";
+
+/** What each kept block draws, by its key: the agent row, a section head, a project, Other. */
+let blockSigs = new Map<string, string>();
+/** The blocks the last render drew, by the same keys, and each section's rows. */
+let blocks = new Map<string, HTMLElement>();
+const sectionKids = new Map<string, HTMLElement>();
+
+const AGENT_BLOCK = "agent";
+const OTHER_BLOCK = "other";
+const projectBlockKey = (name: string) => `project:${name}`;
 
 /**
- * Everything the tree draws, as one string. Renders run while agents work. A
- * rebuilt tree loses its hover, restarts its icons and forces a layout to put
- * the focus back, so the tree is rebuilt only when what it shows changes.
+ * Everything the tree draws, as one string, and the part of it each block
+ * draws. Renders run while agents work. A rebuilt row loses its hover,
+ * restarts its icons and costs a style pass, so a block is rebuilt only when
+ * what it shows changes. Expanding one project rebuilds that project.
  */
-function sidebarSig(): string {
+function sidebarSig(): { all: string; parts: Map<string, string> } {
   // Rows close over project, worktree and group objects. A new list brings new
   // objects, and some callers compare them by identity: the rows are rebuilt.
   if (S.projects !== lastProjects || S.groups !== lastGroups) {
@@ -169,20 +192,37 @@ function sidebarSig(): string {
     lastGroups = S.groups;
     listGen++;
   }
+  // The session rows each project draws: its own, its visitors' and its groups' members.
+  const under = new Map<string, unknown[]>();
+  const add = (name: string | null, row: unknown) => {
+    const k = name === null ? OTHER_BLOCK : projectBlockKey(name);
+    (under.get(k) ?? under.set(k, []).get(k)!).push(row);
+  };
+  const rowOf = new Map<string, unknown>();
   const rows = [...sessions.values()].map((s) => {
     const t = ownTheme(s);
-    return [
+    const at = place(s);
+    const away = awayPlaces(s);
+    const row = [
       s.id, s.state, s.unread, s.exit_code, s.agent_exit, s.started_at,
       taskTitle(s), agentName(s), agentKind(s), t ? ink(signatureColor(t)) : null,
-      place(s)?.worktree.path ?? null, awayPlaces(s).map((a) => a.worktree.path),
+      at?.worktree.path ?? null, away.map((a) => a.worktree.path),
     ];
+    rowOf.set(s.id, row);
+    add(at?.project.name ?? null, row);
+    for (const a of away) add(a.project.name, row);
+    return row;
   });
   const groups = S.groups.map((g) => {
     const lead = sessions.get(g.focus ?? filledOf(g.layout)[0]);
-    return [g.id, g.name, g.layout, g.cwd, groupColor(g), accent(lead ? place(lead)?.project : null)];
+    const row = [g.id, g.name, g.layout, g.cwd, groupColor(g), accent(lead ? place(lead)?.project : null)];
+    const home = groupHome(g);
+    const owner = home ? S.projects.find((p) => p.worktrees.includes(home))?.name ?? null : null;
+    add(owner, [row, filledOf(g.layout).map((id) => rowOf.get(id) ?? null)]);
+    return row;
   });
   const projects = S.projects.map((p) => [
-    p.name, p.short, p.icon, p.fleet ?? null, p.error, p.default_branch, accent(p), selectedWorktree.get(p.name),
+    p.name, p.short, p.icon, p.fleet ?? null, p.error, p.default_branch, accent(p), projectTheme(p), selectedWorktree.get(p.name),
     p.worktrees.map((w) => [
       w.path, w.branch, w.is_main, w.locked, w.prunable, collapsed.has(w.path), removing.has(w.path), removeErrors.get(w.path),
       showsChanges(p) ? changesSig(w) : null, showsFiles(p) ? filesSig(w) : null,
@@ -191,12 +231,33 @@ function sidebarSig(): string {
   // The agent icons are inked against the applied app theme: a new theme re-inks them.
   // The watcher state changes with no session event when the grace ends.
   const sa = skiffAgentSession();
-  const agent = skiffAgentFolder() ? [skiffAgentName(), sa?.id ?? null, skiffAgentChoice()?.id ?? null, sa ? skiffWatch(sa) : null, sa?.watch?.follows ?? null, ledgerNeeds()] : null;
-  return JSON.stringify([
+  const agent = skiffAgentFolder() ? [skiffAgentName(), sa?.id ?? null, skiffAgentChoice()?.id ?? null, sa ? skiffWatch(sa) : null, sa?.watch?.follows ?? null, ledgerNeeds(), sa ? rowOf.get(sa.id) : null] : null;
+  const base = [listGen, appliedTheme(), S.selection, S.renamingSession, S.renaming?.id ?? null, sa?.id ?? null];
+  const parts = new Map<string, string>();
+  parts.set(AGENT_BLOCK, JSON.stringify([base, agent]));
+  parts.set(OTHER_BLOCK, JSON.stringify([base, under.get(OTHER_BLOCK) ?? null]));
+  S.projects.forEach((p, i) => {
+    const k = projectBlockKey(p.name);
+    parts.set(k, JSON.stringify([base, projects[i], isOpen(projectKey(p.name)), p.name === S.selectedProject, under.get(k) ?? null]));
+  });
+  const all = JSON.stringify([
     listGen, appliedTheme(), S.selectedProject, folded.keys(), S.projects.map(shows),
     S.selection, S.renamingSession, S.renaming?.id ?? null, rows, groups, projects, agent,
     S.dataState, S.dataNote,
   ]);
+  return { all, parts };
+}
+
+/**
+ * Puts `nodes` in `parent` in order. Kept nodes stay where they are: a node
+ * taken out and put back loses its style and restarts its animations.
+ */
+function setChildren(parent: HTMLElement, nodes: HTMLElement[]) {
+  const want = new Set<Node>(nodes);
+  for (const c of [...parent.children]) if (!want.has(c)) c.remove();
+  nodes.forEach((n, i) => {
+    if (parent.children[i] !== n) parent.insertBefore(n, parent.children[i] ?? null);
+  });
 }
 
 export function renderSidebar() {
@@ -206,8 +267,8 @@ export function renderSidebar() {
   syncSkiffAgent();
   openToFocused();
   const sig = sidebarSig();
-  if (side.dataset.sig === sig) return;
-  side.dataset.sig = sig;
+  if (lastSig === sig.all) return;
+  lastSig = sig.all;
   // Keep focus and the selected range in an inline control across re-renders,
   // so a render while a rename is open does not undo its select-all.
   const active = document.activeElement as HTMLElement | null;
@@ -223,29 +284,88 @@ export function renderSidebar() {
   const items = listItems();
   const at = active ? items.indexOf(active) : -1;
   const near = at < 0 ? [] : [...items.slice(at + 1), ...items.slice(0, at).reverse()].map(itemKey);
+  const anchor = anchorOf(side, items);
 
-  side.replaceChildren();
-  if (skiffAgentFolder()) side.appendChild(skiffAgentRow());
+  // The block drawn last time when what it shows is the same, else a new one.
+  const next = new Map<string, HTMLElement>();
+  const sigs = new Map<string, string>();
+  const keep = (key: string, sig: string, build: () => HTMLElement) => {
+    const old = blocks.get(key);
+    const el = old && blockSigs.get(key) === sig ? old : build();
+    next.set(key, el);
+    sigs.set(key, sig);
+    return el;
+  };
+  const nodes: HTMLElement[] = [];
+  const kidsNow = new Set<string>();
+  if (skiffAgentFolder()) nodes.push(keep(AGENT_BLOCK, sig.parts.get(AGENT_BLOCK)!, skiffAgentRow));
   for (const sec of treeSections()) {
-    side.appendChild(sectionHead(sec));
-    if (sec.fleet && !isOpen(fleetKey(sec.fleet))) continue;
-    const kids = h("div", "tree-kids");
-    if (sec.fleet) kids.dataset.kids = fleetKey(sec.fleet);
-    for (const p of sec.projects) kids.appendChild(projectBlock(p));
-    side.appendChild(kids);
+    // A fleet head holds its projects for drag and menu. Folded, it counts
+    // what they wait on, work on and left unread.
+    const open = !sec.fleet || isOpen(fleetKey(sec.fleet));
+    const headSig = JSON.stringify([
+      listGen, sec.fleet, open, workspaceOpen(), sec.projects.map((p) => p.name),
+      open ? null : sec.projects.map((p) => sig.parts.get(projectBlockKey(p.name))),
+    ]);
+    nodes.push(keep(`head:${sec.fleet ?? ""}`, headSig, () => sectionHead(sec)));
+    if (!open) continue;
+    const sk = sec.fleet ?? "";
+    kidsNow.add(sk);
+    let kids = sectionKids.get(sk);
+    if (!kids) {
+      kids = h("div", "tree-kids");
+      if (sec.fleet) kids.dataset.kids = fleetKey(sec.fleet);
+      sectionKids.set(sk, kids);
+    }
+    setChildren(kids, sec.projects.map((p) => {
+      const k = projectBlockKey(p.name);
+      return keep(k, sig.parts.get(k)!, () => projectBlock(p));
+    }));
+    nodes.push(kids);
   }
+  // A folded fleet's rows start over when it opens: the fold left them shrunk.
+  for (const k of [...sectionKids.keys()]) if (!kidsNow.has(k)) sectionKids.delete(k);
   const note = projectsNote();
-  if (note) side.appendChild(note);
-  else if (S.projects.length && !S.projects.some(shows)) side.appendChild(h("div", "note-row", "No projects in this workspace"));
+  if (note) nodes.push(note);
+  else if (S.projects.length && !S.projects.some(shows)) nodes.push(h("div", "note-row", "No projects in this workspace"));
   // Sessions whose folder is in no project.
-  const other = worktreeLines(null);
-  if (other.length) {
-    const head = h("div", "tree-head");
-    head.append(h("span", "tree-head-name", "Other"));
-    side.append(head, sessionBlock(other, DEFAULT_ACCENT));
+  if (worktreeLines(null).length) {
+    nodes.push(keep(`${OTHER_BLOCK}-head`, "", otherHead));
+    nodes.push(keep(OTHER_BLOCK, sig.parts.get(OTHER_BLOCK)!, () => sessionBlock(worktreeLines(null), DEFAULT_ACCENT)));
   }
+  setChildren(side, nodes);
+  blocks = next;
+  blockSigs = sigs;
+  keepAnchor(side, anchor);
   growOpened();
   restoreFocus(side, activeKey, caret, near);
+}
+
+/**
+ * The first row in view and how far it sits from the list's top. WebKit has
+ * no scroll anchoring: a row that comes or grows above the view would push
+ * the rows the person reads down. At the top there is nothing to keep.
+ */
+function anchorOf(side: HTMLElement, items: HTMLElement[]): [key: string, dy: number] | null {
+  if (!side.scrollTop) return null;
+  const top = side.getBoundingClientRect().top;
+  const el = items.find((x) => x.getBoundingClientRect().bottom > top);
+  return el ? [itemKey(el), el.getBoundingClientRect().top - top] : null;
+}
+
+function keepAnchor(side: HTMLElement, anchor: [key: string, dy: number] | null) {
+  if (!anchor) return;
+  const el = listItems().find((x) => itemKey(x) === anchor[0]);
+  if (!el) return;
+  const moved = el.getBoundingClientRect().top - side.getBoundingClientRect().top - anchor[1];
+  if (Math.abs(moved) >= 1) side.scrollTop += moved;
+}
+
+/** The head over sessions whose folder is in no project. */
+function otherHead(): HTMLElement {
+  const head = h("div", "tree-head");
+  head.append(h("span", "tree-head-name", "Other"));
+  return head;
 }
 
 /**
@@ -299,7 +419,7 @@ function skiffAgentRow(): HTMLElement {
     c.title = `${needs} ledger ${needs === 1 ? "task needs" : "tasks need"} you`;
     row.append(c);
   }
-  row.append(stateIcon(s));
+  row.append(unreadMark(row, s));
   row.addEventListener("mousedown", (e) => {
     if (e.button === 0) row.focus();
   });
@@ -353,7 +473,9 @@ function sectionHead(sec: Section): HTMLElement {
 
 /** A project: one 40px row, then its worktrees, groups and sessions while it is open. */
 function projectBlock(p: Project): HTMLElement {
-  const color = accent(p);
+  // A project with its own theme shows it on its whole block, as its panes do.
+  const themed = projectBlockTheme(p, p.color);
+  const color = themed?.pc ?? accent(p);
   const key = projectKey(p.name);
   const open = isOpen(key);
   const bare = bareWorktree(p);
@@ -362,6 +484,10 @@ function projectBlock(p: Project): HTMLElement {
   const changes = bare && showsChanges(p) ? changesBlock(bare) : null;
   const empty = !!bare && !p.error && !worktreeLines(bare).length && !changes && !showsFiles(p);
   const block = h("div", "tree-project" + (p.name === S.selectedProject ? " selected" : ""));
+  if (themed) {
+    block.classList.add("themed");
+    for (const [k, v] of Object.entries(themed.vars)) block.style.setProperty(k, v);
+  }
   block.style.setProperty("--pc", color);
 
   const head = h("div", "project-row" + (empty ? " empty" : ""));
@@ -452,7 +578,8 @@ function restoreFocus(side: HTMLElement, activeKey: string | undefined, caret: C
       ? again.disabled
       : false;
     if (again && !disabled) {
-      again.focus();
+      // The list stays where the person scrolled it, away from the row or not.
+      again.focus({ preventScroll: true });
       if (caret !== null && again instanceof HTMLInputElement) again.setSelectionRange(...caret);
     } else if (!again) {
       const keys = new Set(listItems().map(itemKey));

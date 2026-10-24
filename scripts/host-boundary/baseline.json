@@ -25,7 +25,7 @@
       "read_dir",
       "read_to_string"
     ],
-    "sha256": "aab5b51260b55c660d0904871b724395a6d73d1b5b50a07e7eea61ac9c88f5c4"
+    "sha256": "e384df9b35f76370af2b7274ced1713b437f70486b3cf182e4c24109eab3ff6f"
   },
   "apps/desktop/src-tauri/src/commands.rs": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -393,7 +393,7 @@
       "local provider: apps/desktop/src/appearance/appTheme.ts",
       "local provider: apps/desktop/src/appearance/themes.ts"
     ],
-    "sha256": "dc12700ed30f5b896bc27eba2e962f259a6f36b734944197f5637e498e7b869c"
+    "sha256": "d68099b63c2b5eccd3c0b882a18414232a488a41ff4223a7815785042f27d3f4"
   },
   "apps/desktop/src/appearance/appTheme.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -480,7 +480,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "4a40bf02ed7c0192b6531023f7cf7b896712cd9e39307ad8dc7e58feb831c392"
+    "sha256": "8c9f1991d8ce0a758571368981f1b16a02c4228b3fcb21285c31e8ed15fa4540"
   },
   "apps/desktop/src/diagnostics/latency.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -574,7 +574,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "b1b8d6c3c7b10f220bc1c3bbfdc449bfd2eaef0f11ca359f4ea860cdb0b3e9ae"
+    "sha256": "a3132589a2019c615dd95c11fc9ee5cd92196dc70533f95b5294e827ca7ecd3f"
   },
   "apps/desktop/src/terminal/terminal.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -724,7 +724,7 @@
     "reasons": [
       "@tauri-apps/api/event"
     ],
-    "sha256": "988e68e417c60e6a9ed4a6217f05ad1d54214058a895e117741ea4158f23dbb5"
+    "sha256": "8ad27aaa3cae18a42e050eccf4f91fb55a1cc6198fdf8d572505ea909dc1f9e2"
   },
   "apps/desktop/src/workspace/menus.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -763,7 +763,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "0ddbdf43e2b845ce63621efb10b9f52ee2bd6506f45912108a9cec7809ff50ab"
+    "sha256": "a95df2d58c849f72ffaadb079bf0b2972eac241b5273b43dd58ec1ede8322669"
   },
   "apps/desktop/src/workspace/projectClose.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -817,7 +817,7 @@
       "local provider: apps/desktop/src/app/stateQueries.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "6a4e1a0dfe511ce8191c0f528679a601609b17d2fa5ed32f6a30d059ac21af41"
+    "sha256": "d507d1ae4c6729a960b1a10d1fa4d173d9154ef5babae455774a3749ade7d65a"
   },
   "apps/desktop/src/workspace/sidebar.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -844,7 +844,7 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "bdfb9c1554d9d57c49e6c507a69ff11a83e90ae39ce0a090fc8ae1dc74211197"
+    "sha256": "6538624c373ec5df4e7a0b5842a135b7a3c41ef5c118e09d1699c9a32b9275d2"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -862,7 +862,7 @@
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/workspace/welcome.ts"
     ],
-    "sha256": "6a336766ba2137c92678890743d92a2b7ed33d79c9fc89fea1054f4e3e44eb69"
+    "sha256": "20044526c3e44c9bf9f81aa7ea2be88faa0f9c30d300a43d5153bef3b38fa518"
   },
   "apps/desktop/src/workspace/tree.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

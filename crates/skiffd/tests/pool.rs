@@ -91,6 +91,41 @@ async fn write_reaches_the_process() {
     pool.kill(&info.id).unwrap();
 }
 
+/// Keys typed while the program is silent: the answer's write time is the
+/// first key's, so the wait shows as the program's, not skiffd's.
+#[tokio::test]
+async fn echo_times_start_at_the_first_unanswered_write() {
+    let pool = SessionPool::new();
+    let spec = SessionSpec {
+        command: Some("sh".into()),
+        args: vec!["-c".into(), "stty -echo; exec cat".into()],
+        ..Default::default()
+    };
+    let info = pool.create(spec).unwrap();
+    let mut output = pool.get(&info.id).unwrap().output.subscribe();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    pool.write(&info.id, b"a").unwrap();
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    pool.write(&info.id, b"b\n").unwrap();
+
+    let mut bytes = Vec::new();
+    let mut echo = None;
+    let deadline = tokio::time::sleep(Duration::from_secs(5));
+    tokio::pin!(deadline);
+    while !String::from_utf8_lossy(&bytes).contains("ab") {
+        tokio::select! {
+            chunk = output.recv() => if let Ok(c) = chunk {
+                bytes.extend_from_slice(&c);
+                echo = echo.or(c.echo);
+            },
+            _ = &mut deadline => panic!("no answer from cat"),
+        }
+    }
+    let echo = echo.expect("no echo times on the answer");
+    assert!(echo.read - echo.wrote >= 200_000, "{echo:?}");
+    pool.kill(&info.id).unwrap();
+}
+
 /// Two opens at once start one coordinator. `CreateSession` cannot set the mark.
 #[tokio::test]
 async fn coordinator_starts_once() {

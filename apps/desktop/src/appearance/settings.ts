@@ -200,7 +200,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   }
 
   /** The agents Skiff ships with. Restore defaults brings back any the user removed. */
-  const DEFAULT_AGENTS = ["claude", "codex", "gemini", "grok", "opencode"];
+  const DEFAULT_AGENTS = ["claude", "codex", "gemini", "grok", "opencode", "hermes"];
 
   /** One row per agent: its switch, name, command and status. The draft row adds a custom agent. */
   function agentTable(): HTMLElement {

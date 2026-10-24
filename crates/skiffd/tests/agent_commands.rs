@@ -53,7 +53,7 @@ async fn fresh_config_has_no_bypass_and_an_override_applies() {
 
     let fresh = c.list_agents().await.unwrap();
     let ids: Vec<&str> = fresh.iter().map(|a| a.id.as_str()).collect();
-    assert_eq!(ids, ["claude", "codex", "gemini", "grok", "opencode"]);
+    assert_eq!(ids, ["claude", "codex", "gemini", "grok", "opencode", "hermes"]);
     for a in &fresh {
         assert_eq!(a.command, a.default_command, "{}", a.id);
         assert!(!BYPASS.iter().any(|f| a.command.contains(f)), "{} starts with a bypass flag: {}", a.id, a.command);
@@ -70,6 +70,7 @@ async fn fresh_config_has_no_bypass_and_an_override_applies() {
     assert_eq!(command("codex"), Some(("codex --yolo", "codex")));
     assert_eq!(command("gemini"), Some(("agy --dangerously-skip-permissions", "agy")));
     assert_eq!(command("grok"), Some(("grok", "grok")));
+    assert_eq!(command("hermes"), Some(("hermes", "hermes")));
 }
 
 async fn connect(socket: &std::path::Path) -> Client {

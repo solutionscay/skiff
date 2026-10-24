@@ -71,6 +71,8 @@ pub fn continue_line(agent: &str, cmd: &str) -> Option<String> {
     match agent {
         "claude" | "opencode" | "grok" | "gemini" => Some(format!("{cmd} --continue")),
         "codex" => Some(sub("resume --last")),
+        // `--continue` takes the newest session anywhere; `--in` keeps it to this folder.
+        "hermes" => Some(format!("{cmd} --resume latest --in .")),
         _ => None,
     }
 }

@@ -209,7 +209,7 @@ impl Screen {
     }
 
     /// The agent shows the line it keeps up while it works, above its input
-    /// box. Proof of a turn, however short. Grok has no such line known yet.
+    /// box. Proof of a turn, however short. Grok and Hermes have no such line known yet.
     pub fn busy_line(&self, agent: &str) -> bool {
         if !has_busy_line(agent) {
             return false;

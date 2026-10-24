@@ -9,7 +9,7 @@ import { keyLabel } from "../app/keys";
 import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { type MenuEntry } from "../ui/menu";
 import { isRemote } from "../app/hosts";
-import { agentName, basename, branchName, byStart, locate, taskTitle } from "./model";
+import { agentName, basename, branchName, locate, taskTitle } from "./model";
 import { cwdOf } from "./canvas";
 import { filledOf, slotsOf } from "./layoutSlots";
 import type { Group, Project, SessionInfo, SplitDir, Worktree } from "../platform/types";
@@ -34,7 +34,7 @@ import { MAX_PANES, removeErrors, removing, S, selectedWorktree, sessions } from
 import { groupOf, launchChoices, launchDigit, place, shownIds, splitFull } from "../app/stateQueries";
 
 import { groupThemeMenu, projectThemeMenu, sessionThemeMenu } from "../appearance/themes";
-import { focusPane, refocusTerminal, removeFromGroup, showGroup, splitWith, unsplit } from "./view";
+import { focusPane, refocusTerminal, removeFromGroup, showGroup, unsplit } from "./view";
 import { resumeAllEntry, resumeOffer, resumePane } from "../terminal/resume";
 import { ledgerFolded, ledgerShown, toggleLedger } from "./ledger";
 import { hostCan, hostInvoke } from "../app/hostCaps";
@@ -485,7 +485,7 @@ export function skiffAgentMenu(s: SessionInfo | null, x: number, y: number) {
   if (entries.length) ctxMenu.open(x, y, s ? sessionLabel(s) : skiffAgentName(), entries);
 }
 
-/** Second step of Split: a new agent in this pane's worktree, or a session not shown. */
+/** Second step of Split: a new shell or agent in this pane's worktree. */
 export function splitMenu(id: string, dir: SplitDir, x: number, y: number) {
   const s = sessions.get(id);
   if (!s) return;
@@ -501,14 +501,6 @@ export function splitMenu(id: string, dir: SplitDir, x: number, y: number) {
       run: () => void newSession(cwd, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell", { target: id, dir }).catch(showError),
     });
   });
-  const shown = shownIds();
-  const others = [...sessions.values()].filter((o) => !shown.includes(o.id)).sort(byStart);
-  if (others.length) {
-    entries.push({ head: "OPEN SESSION" });
-    for (const o of others) {
-      entries.push({ icon: "·", label: sessionLabel(o), run: () => splitWith(id, dir, o.id) });
-    }
-  }
   ctxMenu.open(x, y, `${dir === "row" ? "Add pane right" : "Add pane below"}:`, entries);
 }
 

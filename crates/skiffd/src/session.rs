@@ -123,8 +123,8 @@ pub struct Session {
     input: std::sync::mpsc::Sender<Input>,
     /// Writes accepted and not yet in the PTY. A reload waits for 0.
     queued: Arc<AtomicUsize>,
-    /// Unix µs when the writer thread last wrote input to the PTY. The reader
-    /// takes it with the first output after it; 0 once taken.
+    /// Unix µs when the writer thread first wrote input to the PTY since the
+    /// last output. The reader takes it with the first output after it; 0 once taken.
     wrote: Arc<AtomicU64>,
     /// Wakes the reader thread out of its wait, so it sees a pause request.
     waker: Poller,
@@ -1304,7 +1304,7 @@ pub(crate) enum Input {
 }
 
 /// The thread that writes input to the PTY, its count of writes queued, and
-/// when it last wrote. A program that stops reading its input blocks this
+/// when it first wrote since the last output. A program that stops reading its input blocks this
 /// thread alone. Input after the PTY is gone is dropped and still counted
 /// down, so a reload never waits on a dead session.
 fn start_writer(id: &str, pty: &Pty) -> Result<(std::sync::mpsc::Sender<Input>, Arc<AtomicUsize>, Arc<AtomicU64>)> {
@@ -1324,7 +1324,10 @@ fn start_writer(id: &str, pty: &Pty) -> Result<(std::sync::mpsc::Sender<Input>, 
                     Input::Bytes(data) => {
                         // Before the write: a terminal in canonical mode echoes
                         // inside it, so the reader can see the answer first.
-                        wrote_at.store(now_us(), Ordering::Relaxed);
+                        // The first write since the last read: keys typed while
+                        // the program is silent wait on the program, and the
+                        // trace must not count that wait as skiffd's.
+                        let _ = wrote_at.compare_exchange(0, now_us(), Ordering::Relaxed, Ordering::Relaxed);
                         if open && writer.write_all(&data).and_then(|_| writer.flush()).is_err() {
                             open = false;
                         }

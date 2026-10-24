@@ -27,7 +27,7 @@ import type { Project } from "../platform/types";
 import { showError } from "../ui/alerts";
 import { ctxMenu } from "../ui/contextMenu";
 import { dialogFrame } from "../ui/dialogParts";
-import { button, h } from "../ui/dom";
+import { button, h, setHidden } from "../ui/dom";
 import type { MenuEntry } from "../ui/menu";
 import { fleetKey, projectKey, treeSections, useTreeView } from "./tree";
 import { selectProject } from "./view";
@@ -969,7 +969,7 @@ export function renderWorkspaceStatus() {
   }
   const el = document.getElementById("ws-status");
   if (!el) return;
-  el.hidden = !doc;
+  setHidden(el, !doc);
   if (!doc) return;
   const lost = missing();
   const state = markOf(lost.length);
