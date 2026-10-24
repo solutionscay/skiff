@@ -2,7 +2,8 @@
 //! envelope on its own socket beside skiffd's and answers projects, Git
 //! status, diff text, worktree files (M5), project backgrounds, and
 //! Skipper's ledger, results and settings (M6, read-only) from the Host's
-//! own config, disk and git, and is the
+//! own config, disk and git, the account's folders for the picker
+//! (`folders@1`), and is the
 //! writer of the Host's `[[project]]` tables and project worktrees, through
 //! the same `skiff-core` code the app ran before. It holds no PTY and no session:
 //! restarting it never touches skiffd or a terminal (#62, M1f topology).
@@ -10,6 +11,8 @@
 //! Identity: the same durable `host_id` store skiffd reads, beside the
 //! selected `projects.toml`, so both endpoints of one Host agree. Its
 //! `instance_id` is its own and changes on every start.
+pub mod folders;
+
 use anyhow::{bail, Context};
 use std::{
     collections::BTreeMap,
@@ -49,6 +52,7 @@ pub fn capabilities() -> Vec<Capability> {
         Capability::worktrees(),
         Capability::files(),
         Capability::project_assets(),
+        Capability::folders(),
         Capability::ledger_read(),
         Capability::skipper_settings(),
     ]
@@ -261,6 +265,9 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         Request::WorktreeRemove { .. } => live_sessions().await?,
         _ => Vec::new(),
     };
+    if matches!(request, Request::FolderPlaces) {
+        note_in_use().await;
+    }
     blocking(move || match request {
         Request::ProjectList => {
             let (rows, revision) = project::list_with_revision().map_err(failed)?;
@@ -319,6 +326,10 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             let (mime, bytes) = files::read_background(&p.path, configured).map_err(unread)?;
             Ok(Response::Image { image: HostImage { mime, bytes } })
         }
+        Request::FolderHome => Ok(Response::Path { path: folders::home()? }),
+        Request::FolderList { path, hidden, filter } => Ok(Response::Folders { listing: folders::list(&path, hidden, filter.as_deref())? }),
+        Request::FolderPlaces => Ok(Response::Places { places: folders::places()? }),
+        Request::FolderCreate { parent, name } => Ok(Response::Path { path: folders::create(&parent, &name)? }),
         Request::LedgerRows => Ok(Response::Ledger { rows: ledger_rows()? }),
         Request::LedgerStamp => {
             let file = skiff_client::ledger::path().map_err(failed)?;
@@ -330,10 +341,19 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             Ok(Response::Skipper { settings: Box::new(skiff_client::skipper::settings(&cfg).map_err(failed)?) })
         }
         Request::ProjectInspect { path } => Ok(Response::Folder { folder: host_folder(config::inspect_folder(&host_folder_path(&path)?)) }),
+        Request::ProjectInit { path } => {
+            let path = host_folder_path(&path)?;
+            if !path.is_dir() {
+                return Err(Error::NotFound { message: "This folder is no longer on this Host.".into() });
+            }
+            git::init_repository(&path).map_err(failed)?;
+            Ok(Response::Folder { folder: host_folder(config::inspect_folder(&path)) })
+        }
         Request::ProjectAdd { path, revision, name, short, color } => {
             let path = host_folder_path(&path)?;
             let (added, revision) =
                 config::edit_projects(&revision, || config::add_project(&path, name, short, color, None, Vec::new())).map_err(refused)?;
+            folders::recent::note([(added.path.to_string_lossy().into_owned(), folders::now_ms())]);
             Ok(Response::ProjectAdded {
                 project: Box::new(host_project(project::Project::from_config(&added))),
                 revision,
@@ -512,6 +532,24 @@ pub async fn live_sessions() -> Result<Vec<SessionInfo>, Error> {
             message: "Skiff cannot read this Host's sessions, so the worktree stays.".into(),
         }),
     }
+}
+
+/// Adds to Recent the folders this Host's sessions, groups and open
+/// projects use. Best effort: without skiffd, Recent stays as it was.
+async fn note_in_use() {
+    let socket = skiff_core::state::socket();
+    let read = async {
+        let client = skiff_client::Client::connect(&socket).await?;
+        anyhow::Ok((client.list_sessions().await?, client.list_groups().await?))
+    };
+    let mut seen: Vec<(String, u64)> = Vec::new();
+    if let Ok(Ok((sessions, groups))) = tokio::time::timeout(SESSIONS_TIMEOUT, read).await {
+        seen.extend(sessions.into_iter().map(|s| (s.cwd.to_string_lossy().into_owned(), s.started_at)));
+        seen.extend(groups.into_iter().filter_map(|g| g.cwd).map(|c| (c, 0)));
+    }
+    let projects = tokio::task::spawn_blocking(config).await.ok().and_then(Result::ok).unwrap_or_default();
+    seen.extend(projects.into_iter().filter(|p| !p.closed).map(|p| (p.path.to_string_lossy().into_owned(), 0)));
+    let _ = tokio::task::spawn_blocking(move || folders::recent::note(seen)).await;
 }
 
 fn config() -> Result<Vec<ProjectConfig>, Error> {

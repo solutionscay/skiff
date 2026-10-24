@@ -233,6 +233,46 @@ export interface DaemonWarning {
   sessions: number | null;
 }
 
+/** A git repository's state, read by the Host from its files. */
+export interface FolderRepo {
+  branch: string | null;
+  /** Unix seconds when the branch last moved. */
+  last_commit: number | null;
+}
+
+/** One folder on a Host (`folders@1`): a folder or a link to one. */
+export interface FolderEntry {
+  name: string;
+  kind: "dir" | "link";
+  repo?: FolderRepo;
+}
+
+/** The folders in one Host folder. Paths are the Host's own. */
+export interface FolderListing {
+  path: string;
+  /** The same folder, links resolved. */
+  real: string;
+  parent: string | null;
+  entries: FolderEntry[];
+  /** More than 2000 folders: the rest are left out. */
+  truncated: boolean;
+}
+
+/** The picker's Places from the Host: Recent, and repositories under home. */
+export interface FolderPlaces {
+  /** Newest first. */
+  recent: string[];
+  repos: { path: string; branch: string | null; last_commit: number | null }[];
+  /** A scan runs: ask again. */
+  scanning: boolean;
+}
+
+/** A Host error as the Host typed it. */
+export interface HostError {
+  code: string;
+  message?: string;
+}
+
 export interface FolderInfo {
   /** Git top level. `null` when the folder is not in a repository. */
   root: string | null;

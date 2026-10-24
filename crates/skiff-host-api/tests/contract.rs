@@ -623,3 +623,55 @@ fn m6_ledger_and_skipper_are_read_only_families_of_their_own() {
         assert!(serde_json::from_value::<Request>(bad.clone()).is_err(), "{bad}");
     }
 }
+
+#[test]
+fn m5_folders_is_a_family_of_its_own_that_lists_folders_only() {
+    let fixture: Value = serde_json::from_str(include_str!("fixtures/m5f.json")).unwrap();
+    let folders = Capability::folders();
+    assert_eq!(serde_json::to_value(&folders).unwrap(), fixture["capabilities"]["folders"]);
+    let path = Response::Path { path: "/h".into() };
+    let listing = Response::Folders {
+        listing: FolderListing { path: "/".into(), real: "/".into(), parent: None, entries: vec![], truncated: false },
+    };
+    let places = Response::Places { places: FolderPlaces { recent: vec![], repos: vec![], scanning: false } };
+    for value in fixture["folder_requests"].as_array().unwrap() {
+        let request: Request = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&request).unwrap(), *value);
+        assert_eq!(request.capability().as_ref(), Some(&folders));
+        // Exactly one reply kind each, never Ok.
+        assert!(!request.accepts(&Response::Ok));
+        assert_eq!(request.accepts(&path), matches!(request, Request::FolderHome | Request::FolderCreate { .. }), "{value}");
+        assert_eq!(request.accepts(&places), matches!(request, Request::FolderPlaces), "{value}");
+        assert_eq!(request.accepts(&listing), matches!(request, Request::FolderList { .. }), "{value}");
+    }
+    for value in fixture["replies"].as_array().unwrap() {
+        let message: Message = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&message).unwrap(), *value);
+    }
+    // Not granted by files, which reads inside open worktrees only.
+    for other in [Capability::files(), Capability::projects(), Capability::project_config(), Capability::project_assets()] {
+        assert_ne!(other, folders);
+    }
+    // Without `hidden`, hidden folders stay out.
+    let plain: Request = serde_json::from_value(json!({"cmd":"folder_list","path":"/h"})).unwrap();
+    assert_eq!(plain, Request::FolderList { path: "/h".into(), hidden: false, filter: None });
+    // Initialize repository is a project_config change, never a folders one.
+    let init: Request = serde_json::from_value(json!({"cmd":"project_init","path":"/h/notes"})).unwrap();
+    assert_eq!(init.capability(), Some(Capability::project_config()));
+    assert!(init.accepts(&serde_json::from_value(json!({"kind":"folder","folder":{"root":"/h/notes","name":"notes","short":"N","color":"#123456","branch":null,"worktrees":1,"error":null}})).unwrap()));
+    assert!(!init.accepts(&Response::Ok));
+    for bad in [
+        json!({"cmd":"folder_list"}),
+        json!({"cmd":"folder_create","parent":"/h"}),
+        json!({"cmd":"folder_read","path":"/etc/hosts"}),
+    ] {
+        assert!(serde_json::from_value::<Request>(bad.clone()).is_err(), "{bad}");
+    }
+    for bad in [
+        json!({"kind":"folders","listing":{"path":"/","real":"/","parent":null,"entries":[{"name":"a","kind":"file"}],"truncated":false}}),
+        json!({"kind":"folders","listing":{"path":"/","entries":[],"truncated":false}}),
+        json!({"kind":"path"}),
+    ] {
+        assert!(serde_json::from_value::<Response>(bad.clone()).is_err(), "{bad}");
+    }
+}

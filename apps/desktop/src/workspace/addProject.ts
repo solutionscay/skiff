@@ -1,7 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFolder } from "@tauri-apps/plugin-dialog";
 import { showError } from "../ui/alerts";
-import { promptAction } from "../ui/confirm";
+import { actionDialog } from "../ui/dialogParts";
+import { S } from "../app/state";
+import { openFolderPicker } from "./folderPicker";
+import { selectProject } from "./view";
 import { hostInvoke } from "../app/hostCaps";
 import { hostName, isRemote } from "../app/hosts";
 import type { FolderInfo, Project } from "../platform/types";
@@ -10,8 +13,8 @@ import type { FolderInfo, Project } from "../platform/types";
  * Pick a folder, check it with the Host, and add it with the defaults: the
  * repo's name, letters or its own icon, a random free color and theme. The
  * project's right-click menu changes them afterwards. The Host checks and
- * adds it (`project_config@1`): on This Mac a folder picked here, on a remote
- * Host a folder path typed for that Host, never one of this Mac.
+ * adds it (`project_config@1`): on This Mac a folder from the system dialog,
+ * on a remote Host one from the folder picker, never a path of this Mac.
  */
 /** `fleet`: the fleet the new project joins, from the + on a fleet head. */
 export function createAddProject(onAdded: (p: Project, fleet: string | null) => void, onClose: () => void) {
@@ -27,19 +30,57 @@ export function createAddProject(onAdded: (p: Project, fleet: string | null) => 
     });
     await onAdded(p, fleet);
   }
-  /** A remote Host: its folder, typed. Errors stay in the dialog. */
+  /** A remote Host: its folder, picked from the Host's own disk. The
+   *  picker checks each folder with the Host before the button acts. */
   function addRemote() {
-    promptAction({
-      title: `Add a project on ${hostName()}`,
-      body: `A folder in a git repository on ${hostName()}, as a full path from / or ~/.`,
-      placeholder: "a folder path on that Host",
+    const host = hostName();
+    const inspect = (path: string) => hostInvoke<FolderInfo>("project_config", "inspect_folder", { path });
+    openFolderPicker({
       action: "Add project",
-      submit: async (path) => {
-        const folder = await hostInvoke<FolderInfo>("project_config", "inspect_folder", { path });
-        if (!folder.root) throw new Error(folder.error ?? `${path} is not inside a git repository on ${hostName()}.`);
-        await add(folder);
+      start: "repos",
+      check: async (path, name) => {
+        const folder = await inspect(path);
+        if (!folder.root) {
+          return {
+            label: "Initialize repository…",
+            note: `${name} is not a git repository.`,
+            run: () => initRemote(path, name, host),
+          };
+        }
+        const known = S.projects.find((p) => p.path === folder.root);
+        if (known) {
+          return {
+            label: "Show it",
+            note: `${name} is a project already.`,
+            run: async () => {
+              selectProject(known.name);
+              return true;
+            },
+          };
+        }
+        return null;
       },
-      onClose,
+      pick: async (path) => add(await inspect(path)),
+      onClose: (picked) => {
+        if (!picked) onClose();
+      },
+    });
+  }
+  /** Asks first, then runs `git init` there through the Host and adds it. */
+  function initRemote(path: string, name: string, host: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      let done = false;
+      actionDialog({
+        title: `Initialize a git repository in ${name}?`,
+        body: `Git makes a .git folder in ${path} on ${host}. Nothing else changes.`,
+        action: "Initialize",
+        tone: "go",
+        submit: async () => {
+          await add(await hostInvoke<FolderInfo>("project_config", "init_host_repository", { path }));
+          done = true;
+        },
+        onClose: () => resolve(done),
+      });
     });
   }
   return {

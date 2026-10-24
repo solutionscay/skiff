@@ -18,6 +18,7 @@ type HostCap =
   | "project_config"
   | "worktrees"
   | "files"
+  | "folders"
   | "project_assets"
   | "ledger"
   | "skipper";
@@ -37,6 +38,7 @@ const MAJOR: Record<HostCap, number> = {
   project_config: 1,
   worktrees: 1,
   files: 1,
+  folders: 1,
   project_assets: 1,
   ledger: 1,
   skipper: 1,
@@ -57,6 +59,7 @@ const OFFERS: Record<HostCap, string> = {
   project_config: "changes to its projects",
   worktrees: "new or removed worktrees",
   files: "its files",
+  folders: "its folders",
   project_assets: "project images",
   ledger: "the ledger",
   skipper: "Skiff agent settings",
