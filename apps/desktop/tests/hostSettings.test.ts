@@ -297,7 +297,7 @@ test("Update Skiff asks once; when sessions would end, a red dialog names them f
   for (let i = 0; i < 4; i++) await flush();
   assert.equal(
     JSON.stringify(x.calls.filter(([c]) => c === "update_skiff")),
-    JSON.stringify([["update_skiff", { id: "h_dev", endSessions: false }], ["update_skiff", { id: "h_dev", endSessions: true }]]),
+    JSON.stringify([["update_skiff", { id: "h_dev", endSessions: false, reinstall: false }], ["update_skiff", { id: "h_dev", endSessions: true, reinstall: false }]]),
   );
 });
 

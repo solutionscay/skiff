@@ -109,6 +109,45 @@ async fn fetch(url: &str, to: &Path) -> Option<Vec<u8>> {
     if ok { std::fs::read(to).ok() } else { None }
 }
 
+/// The build id of a debug build's own server: `dev-` and the first 16
+/// hex digits of the SHA-256 over skiffd, skiff-host and skiff beside this
+/// app's executable. Two dev builds of one version differ by it. Read
+/// again only when a binary's size or time changes.
+pub fn dev_build(beside: &Path) -> Result<String, String> {
+    use sha2::Digest;
+    type Seen = (Vec<(u64, Option<std::time::SystemTime>)>, String);
+    static LAST: std::sync::Mutex<Option<Seen>> = std::sync::Mutex::new(None);
+    let names = ["skiffd", "skiff-host", "skiff"];
+    let missing = |b: &str| format!("This dev build has no {b} beside it. Build the workspace first.");
+    let stamps = names
+        .iter()
+        .map(|b| std::fs::metadata(beside.join(b)).map(|m| (m.len(), m.modified().ok())).map_err(|_| missing(b)))
+        .collect::<Result<Vec<_>, _>>()?;
+    if let Some((seen, id)) = LAST.lock().unwrap().as_ref() {
+        if *seen == stamps {
+            return Ok(id.clone());
+        }
+    }
+    let mut all = sha2::Sha256::new();
+    for b in names {
+        let bytes = std::fs::read(beside.join(b)).map_err(|_| missing(b))?;
+        all.update(sha2::Sha256::digest(&bytes));
+    }
+    let id = format!("dev-{}", &format!("{:x}", all.finalize())[..16]);
+    *LAST.lock().unwrap() = Some((stamps, id.clone()));
+    Ok(id)
+}
+
+/// The build `theirs` on a server is the one this app sends: `mine`, a dev
+/// build's id ([`dev_build`]), or None for the release bundle of this
+/// version, which is one build: any id but a dev one.
+pub fn same_build(mine: Option<&str>, theirs: &str) -> bool {
+    match mine {
+        Some(id) => theirs == id,
+        None => !theirs.is_empty() && theirs != "dev" && !theirs.starts_with("dev-"),
+    }
+}
+
 /// A debug build's own server: skiffd, skiff-host and skiff beside this
 /// app's executable, packed as a bundle. Only for a server with this
 /// computer's OS and arch, and never in a release build.
@@ -133,6 +172,7 @@ pub async fn dev_bundle(version: &str, arch: &str, beside: &Path) -> Result<Bund
             arch: arch.into(),
             target: "this build".into(),
             commit: "dev".into(),
+            build: dev_build(beside)?,
             files: Default::default(),
         };
         for b in ["skiffd", "skiff-host", "skiff"] {
@@ -293,18 +333,21 @@ pub enum Updated {
     NoHandover { from: String, sessions: Vec<String> },
 }
 
-/// Moves the managed install up to `version`, never down. skiffd reloads
-/// onto the new binary and keeps its sessions. When it cannot, nothing
-/// changes, unless `end_sessions`: then skiffd restarts on the new version.
-/// A failed update leaves the old version running.
+/// Moves the managed install up to `version`, or to another build of it,
+/// never down. skiffd reloads onto the new binary and keeps its sessions.
+/// When it cannot, nothing changes, unless `end_sessions`: then skiffd
+/// restarts on the new version. `reinstall`: install and reload `b` even
+/// when its build is there already. A failed update leaves the old
+/// version running.
 #[allow(clippy::too_many_arguments)]
-pub async fn update(target: &SshTarget, options: &SshOptions, b: &Bundle, version: &str, socket_name: &str, free_kb: u64, name: &str, end_sessions: bool, step: Steps<'_>) -> Result<Updated, String> {
+pub async fn update(target: &SshTarget, options: &SshOptions, b: &Bundle, version: &str, socket_name: &str, free_kb: u64, name: &str, end_sessions: bool, reinstall: bool, step: Steps<'_>) -> Result<Updated, String> {
     if !plain_version(version) || !plain_version(socket_name) {
         return Err("This version has a form Skiff does not send.".into());
     }
     let hash = upload(target, options, b, free_kb, name, step).await?;
     let agreed = if end_sessions { "yes" } else { "no" };
-    let command = format!("sh -s -- update {} {} {} {agreed}", quote(version), quote(&hash), quote(socket_name));
+    let force = if reinstall { " force" } else { "" };
+    let command = format!("sh -s -- update {} {} {} {agreed}{force}", quote(version), quote(&hash), quote(socket_name));
     let out = run(target, options, command, SERVER.as_bytes(), step).await?;
     updated(&out, name, version, b)
 }
