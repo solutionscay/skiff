@@ -247,6 +247,8 @@ pub enum SkiffAgentKey<'a> {
     Folder(Option<&'a std::path::Path>),
     Enabled(bool),
     ContinueOnRestore(bool),
+    ProjectSkippers(bool),
+    ProjectAgent(Option<&'a str>),
 }
 
 /// Sets one `[skiff_agent]` key, keeping the rest of the file. The folder is
@@ -262,6 +264,9 @@ pub fn set_skiff_agent(key: SkiffAgentKey) -> Result<()> {
             SkiffAgentKey::Enabled(on) => ("enabled", on.then(|| toml_edit::value(true))),
             // Off is the default: the key goes.
             SkiffAgentKey::ContinueOnRestore(on) => ("continue_on_restore", on.then(|| toml_edit::value(true))),
+            SkiffAgentKey::ProjectSkippers(on) => ("project_skippers", on.then(|| toml_edit::value(true))),
+            // None: the Skipper's own agent.
+            SkiffAgentKey::ProjectAgent(v) => ("project_agent", text(v).map(toml_edit::value)),
         };
         match v {
             Some(v) => t[k] = v,

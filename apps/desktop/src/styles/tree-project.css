@@ -153,3 +153,11 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 }
 @keyframes sk-turn { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .skiff-agent-row.watch-turn .agent-icon { animation: none; } }
+
+/* A project Skipper: the first row of its project block, on the worktree line. The icon sits where a worktree's branch icon does. */
+.tree-project .session-row.project-skipper-row { padding-left: calc(10 * var(--u)); }
+.project-skipper-row .skiff-agent-name { flex-shrink: 0; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
+.project-skipper-row .title { color: var(--text-3); }
+/* Teal while the watcher follows one of its tasks, as on the Skipper's row. */
+.project-skipper-row.watch-on .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--watch); }
+.project-skipper-row.watch-on .agent-icon svg [fill]:not([fill="none"]) { fill: var(--watch); }

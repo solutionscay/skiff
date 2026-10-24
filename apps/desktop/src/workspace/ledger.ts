@@ -28,6 +28,13 @@
  * task, with only visible tasks under it. All work, in the head, shows every row.
  * The filter is a view: no row changes.
  *
+ * Project Skippers (#project-skippers): the panel also shows beside a
+ * project Skipper's pane. Its head filter shows all projects or one: the
+ * Skipper's panel opens on all, a project Skipper's on its project. A
+ * hand-off nests under its plan with its project's letters in place of the
+ * dot, and its tasks nest one more step. A project Skipper's own rows show
+ * the letters too.
+ *
  * The person can fold the panel to a rail: a chevron, and the amber count of
  * the tasks that need them. The fold stays in localStorage on this machine.
  * A fold or an unfold slides the width; a saved fold at start does not.
@@ -36,7 +43,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { keyLabel } from "../app/keys";
 import { render } from "../app/renderRequest";
-import { skiffAgentSession } from "../app/skiffAgent";
+import { coordinatorOf, projectSkipperOf, skiffAgentSession } from "../app/skiffAgent";
+import { accent } from "../app/stateQueries";
+import { ctxMenu } from "../ui/contextMenu";
 import { S, sessions } from "../app/state";
 import { shownIds } from "../app/stateQueries";
 import type { SessionInfo } from "../platform/types";
@@ -55,7 +64,9 @@ import { ledgerAllWork, ledgerScope, setLedgerAllWork, workspaceName, workspaceO
 interface Entry {
   id: number;
   uid: string;
-  kind: "task" | "plan";
+  kind: "task" | "plan" | "handoff";
+  /** The coordinator whose row it is: "grand", or a project Skipper's project. */
+  owner: string;
   parent: string | null;
   pane_id: string | null;
   pane_gen: number | null;
@@ -99,6 +110,8 @@ interface Look {
   pane: SessionInfo | null;
   /** The pane name, or what stands for it. */
   where: string;
+  /** A hand-off's tasks: the project Skipper's rows under it. */
+  kids?: Look[];
 }
 
 /** An item of the list: a task, or a plan with its tasks. */
@@ -166,7 +179,9 @@ const titleOf = (r: Entry) => r.title?.trim() || shortTitle(r.task);
 
 function look(r: Entry): Look {
   const s = r.pane_id ? sessions.get(r.pane_id) ?? null : null;
-  const base = { r, pane: s, where: s ? taskTitle(s) : r.pane_id?.slice(0, 8) ?? "" };
+  // A hand-off's pane is the project Skipper.
+  const name = r.kind === "handoff" ? `${r.project} Skipper` : s ? taskTitle(s) : r.pane_id?.slice(0, 8) ?? "";
+  const base = { r, pane: s, where: name };
   if (r.elsewhere) return { ...base, st: r.state === "done" || r.state === "pending" ? r.state : "sent", pane: null, where: "elsewhere" };
   // Done because the pane went: it has no result to show for it.
   if (r.state === "done") return { ...base, st: r.gone_at ? "gone" : "done" };
@@ -179,6 +194,15 @@ function look(r: Entry): Look {
   return { ...base, st: "sent" };
 }
 
+/** A look and its hand-off's tasks. */
+const flat = (l: Look): Look[] => [l, ...(l.kids ?? [])];
+
+/** A hand-off with its tasks under it. Each task shows by the view. */
+function handoff(r: Entry, view: (r: Entry) => boolean): Look {
+  const l = look(r);
+  return { ...l, kids: rows.filter((k) => k.parent === r.uid && view(k)).map(look) };
+}
+
 /** A plan's state from its tasks: the most urgent need shows. */
 function planState(kids: Look[]): State {
   for (const st of URGENT) if (kids.some((k) => k.st === st)) return st;
@@ -187,21 +211,28 @@ function planState(kids: Look[]): State {
   return "sent";
 }
 
-/** The row shows in the current Ledger view: no workspace or All work, its project in the workspace, or no project. */
-function inView(r: Entry, scope = ledgerScope()): boolean {
+/** The row shows in the current Ledger view: no workspace or All work, its project in the workspace, or no project. With `project`, only that project's rows. */
+function inView(r: Entry, scope = ledgerScope(), project: string | null = null): boolean {
+  if (project !== null) return r.project === project;
   return !scope || !r.project || scope.names.has(r.project);
 }
 
-/** Every item the view shows, in ledger order. */
-function units(): Unit[] {
+/** Every item the view shows, in ledger order. `project`: only its rows; undefined takes the panel's filter. */
+function units(project: string | null | undefined = filter()): Unit[] {
   const scope = ledgerScope();
-  const plans = new Set(rows.filter((r) => r.kind === "plan").map((r) => r.uid));
+  const view = (k: Entry) => inView(k, scope, project);
+  const heads = new Set(rows.filter((r) => r.kind === "plan" || r.kind === "handoff").map((r) => r.uid));
+  // A hand-off in a plan, and a row under a hand-off, show under their head.
+  const placed = (r: Entry) => !!r.parent && heads.has(r.parent) && rows.some((p) => p.uid === r.parent && (p.kind === "plan" || p.kind === "handoff"));
   const out: Unit[] = [];
   for (const r of rows) {
     if (r.kind === "plan") {
-      const all = rows.filter((k) => k.kind === "task" && k.parent === r.uid);
+      const all = rows.filter((k) => k.kind !== "plan" && k.parent === r.uid);
       // Each task shows by its own project. The plan heads the ones that show.
-      const kids = all.filter((k) => inView(k, scope)).map(look);
+      // A hand-off shows when it or one of its tasks does.
+      const kids = all
+        .map((k) => (k.kind === "handoff" ? handoff(k, view) : view(k) ? look(k) : null))
+        .filter((k): k is Look => !!k && (view(k.r) || !!k.kids?.length));
       if (!kids.length) {
         if (!inView(r, scope)) continue;
         // A heading with no visible task keeps its own state.
@@ -209,11 +240,12 @@ function units(): Unit[] {
         out.push({ r, st, kids, closed: r.closed_at, working: false });
         continue;
       }
-      out.push({ r, st: planState(kids), kids, closed: r.closed_at, working: kids.some((k) => k.st === "sent") });
-    } else if (!r.parent || !plans.has(r.parent)) {
-      if (!inView(r, scope)) continue;
-      const l = look(r);
-      out.push({ r, st: l.st, look: l, closed: r.closed_at, working: l.st === "sent" });
+      const every = kids.flatMap(flat);
+      out.push({ r, st: planState(every), kids, closed: r.closed_at, working: every.some((k) => k.st === "sent") });
+    } else if (!placed(r)) {
+      const l = r.kind === "handoff" ? handoff(r, view) : look(r);
+      if (!view(r) && !l.kids?.length) continue;
+      out.push({ r, st: l.st, look: l, closed: r.closed_at, working: flat(l).some((k) => k.st === "sent") });
     }
   }
   return out;
@@ -239,26 +271,67 @@ function sections(us: Unit[]): Sections {
   };
 }
 
-/** The tasks of work not closed that need the person. */
-function needing(us: Unit[]): number {
-  return us
+/** Every task of work not closed, hand-offs' tasks included. */
+const openLooks = (us: Unit[]) =>
+  us
     .filter((u) => !u.closed)
     .flatMap((u) => u.kids ?? (u.look ? [u.look] : []))
-    .filter((l) => NEED[l.st]).length;
+    .flatMap(flat);
+
+/** The tasks of work not closed that need the person. */
+function needing(us: Unit[]): number {
+  return openLooks(us).filter((l) => NEED[l.st]).length;
 }
 
-/** The count on Skipper's row. */
+/** The count on Skipper's row: every row that needs the person, whatever its owner. */
 export function ledgerNeeds(): number {
-  return needing(units());
+  return needing(units(null));
 }
 
-/** The panel shows while Skipper's pane is the one pane on screen. A preview a row opened keeps it; any other preview hides it. */
-function wanted(): boolean {
-  const s = skiffAgentSession();
-  const t = previewToken();
-  if (!s || (t && t !== ours)) return false;
+/** The counts on a project Skipper's row: its tasks that need the person, and its tasks an agent is on. */
+export function ledgerCounts(project: string): { need: number; working: number } {
+  const mine = openLooks(units(null)).filter((l) => l.r.owner === project);
+  return { need: mine.filter((l) => NEED[l.st]).length, working: mine.filter((l) => l.st === "sent").length };
+}
+
+/** The live panes of a project Skipper's open tasks, for its watcher mark. */
+export function ledgerPanes(project: string): string[] {
+  return rows.filter((r) => r.owner === project && r.state !== "done" && r.pane_id).map((r) => r.pane_id!);
+}
+
+/** The title of a project Skipper's newest open work: a hand-off it was given, or its own. */
+export function ledgerWorkTitle(project: string): string | null {
+  const r = [...rows].reverse().find((r) => !r.closed_at && r.state !== "done" && !r.parent && (r.owner === project || (r.kind === "handoff" && r.project === project)))
+    ?? [...rows].reverse().find((r) => r.kind === "handoff" && r.project === project && r.state !== "done");
+  return r ? titleOf(r) : null;
+}
+
+/** The coordinator whose pane is the one pane on screen: "grand" or a project. */
+function shownOwner(): string | null {
   const ids = shownIds().filter((id) => !isSlot(id));
-  return ids.length === 1 && ids[0] === s.id;
+  return ids.length === 1 ? coordinatorOf(ids[0]) : null;
+}
+
+/** The coordinator's session the panel sits beside. */
+function owner(): SessionInfo | null {
+  const o = shownOwner();
+  return o === "grand" ? skiffAgentSession() : o ? projectSkipperOf(o) : null;
+}
+
+/** The project the filter picked for each coordinator's panel. Absent: its default. */
+const filters = new Map<string, string | null>();
+
+/** The panel's project filter: null for all projects. The Skipper's panel opens on all, a project Skipper's on its project. */
+function filter(): string | null {
+  const o = shownOwner();
+  if (!o) return null;
+  return filters.has(o) ? filters.get(o)! : o === "grand" ? null : o;
+}
+
+/** The panel shows while a Skipper's pane is the one pane on screen. A preview a row opened keeps it; any other preview hides it. */
+function wanted(): boolean {
+  const t = previewToken();
+  return !!owner() && !(t && t !== ours);
 }
 
 /** The panel is on screen: focus mode keeps it, maximize hides it. The fold acts only then. */
@@ -339,6 +412,7 @@ const opens = (l: Look) => !!l.pane && l.st !== "gone";
 /** The row icons, at the stroke weight of the tree icons. */
 const ICON = {
   fold: '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3.5 1.5 7 5 3.5 8.5"/></svg>',
+  down: '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 3.5 5 7l3.5-3.5"/></svg>',
   unfold: '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M6.5 1.5 3 5l3.5 3.5"/></svg>',
   pane: '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><rect x=".65" y="1.15" width="8.7" height="7.7"/><path d="M2.6 3.8 4.2 5 2.6 6.2M5.2 6.4h2"/></svg>',
   result: '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 .65h4L8.35 3v6.35H2z"/><path d="M5.8.65V3.2h2.55"/></svg>',
@@ -383,9 +457,9 @@ function taskActs(l: Look, fin: boolean): Acts {
 }
 
 /** One 20px line, with its actions. */
-function line(r: Entry, st: State, label: string, a: Acts, o: { plan?: boolean; kid?: boolean; fin?: boolean }): HTMLElement {
+function line(r: Entry, st: State, label: string, a: Acts, o: { plan?: boolean; kid?: boolean; kid2?: boolean; fin?: boolean; count?: string }): HTMLElement {
   const need = !o.fin && !!NEED[st];
-  const row = h("div", `lg-row s-${st}` + (need ? " need" : "") + (o.plan ? " plan" : "") + (o.kid ? " kid" : "") + (o.fin ? " fin" : "") + (a.click ? "" : " dead"));
+  const row = h("div", `lg-row s-${st}` + (need ? " need" : "") + (o.plan ? " plan" : "") + (o.kid ? " kid" : "") + (o.kid2 ? " kid2" : "") + (o.fin ? " fin" : "") + (a.click ? "" : " dead"));
   row.dataset.key = r.uid;
   row.tabIndex = -1;
   row.dataset.look = o.fin ? "fin" : `${st}:${label}`;
@@ -404,30 +478,51 @@ function line(r: Entry, st: State, label: string, a: Acts, o: { plan?: boolean; 
     });
     acts.append(b);
   }
-  row.append(h("span", "lg-dot"), h("span", "lg-title", titleOf(r)), h("span", o.plan ? "lg-n" : "lg-pane", label), acts);
+  row.append(mark(r), h("span", "lg-title", titleOf(r)), h("span", o.plan ? "lg-n" : "lg-pane", label));
+  if (o.count) row.append(h("span", "lg-n", o.count));
+  row.append(acts);
   if (a.click) row.addEventListener("click", a.click);
   return row;
 }
 
-function taskRow(l: Look, kid: boolean, fin: boolean): HTMLElement {
-  return line(l.r, l.st, (!fin && NEED[l.st]) || l.where, taskActs(l, fin), { kid, fin });
+/**
+ * The dot, or the project's letters in its color: on a hand-off, and on a
+ * project Skipper's top-level row. A task under a hand-off keeps its dot.
+ */
+function mark(r: Entry): HTMLElement {
+  const tagged = r.kind === "handoff" || (r.owner !== "grand" && !rows.some((p) => p.uid === r.parent && p.kind === "handoff"));
+  const p = tagged ? S.projects.find((x) => x.name === (r.kind === "handoff" ? r.project : r.owner)) : null;
+  if (!p) return h("span", "lg-dot");
+  const tag = h("span", "lg-tag", p.short);
+  tag.style.setProperty("--pc", accent(p));
+  return tag;
+}
+
+/** "done/all" of a hand-off's tasks. */
+const progress = (kids: Look[]) => (kids.length ? `${kids.filter((k) => k.st === "done").length}/${kids.length}` : "");
+
+/** A task, or a hand-off with its tasks one step under it. `depth`: 0 at the top, 1 under a plan. */
+function taskRows(l: Look, depth: 0 | 1, fin: boolean): HTMLElement[] {
+  const row = line(l.r, l.st, (!fin && NEED[l.st]) || l.where, taskActs(l, fin), { kid: depth === 1, fin, count: l.kids ? progress(l.kids) : undefined });
+  const kids = (l.kids ?? []).map((k) => line(k.r, k.st, (!fin && NEED[k.st]) || k.where, taskActs(k, fin), { kid: depth === 0, kid2: depth === 1, fin }));
+  return [row, ...kids];
 }
 
 function unitRows(u: Unit, fin: boolean): HTMLElement[] {
-  if (u.look) return [taskRow(u.look, false, fin)];
+  if (u.look) return taskRows(u.look, 0, fin);
   const kids = u.kids ?? [];
-  const n = kids.length ? `${kids.filter((k) => k.st === "done").length}/${kids.length}` : "";
   // A plan row is a head for its tasks: its click opens plan.md.
   const res = result(u.r);
-  const row = line(u.r, fin ? "done" : u.st, n, { click: res, icons: [] }, { plan: true, fin });
-  return [row, ...kids.map((k) => taskRow(k, true, fin))];
+  const row = line(u.r, fin ? "done" : u.st, progress(kids), { click: res, icons: [] }, { plan: true, fin });
+  return [row, ...kids.flatMap((k) => taskRows(k, 1, fin))];
 }
 
 /** What the list draws. The panel is rebuilt only when it changes. */
 function signature(x: Sections): string {
-  const look = (l: Look) => [l.r.id, l.r.state, l.r.title, l.r.task, l.r.updated_at, l.r.closed_at, l.r.result_exists, l.st, l.where, opens(l)];
+  const look = (l: Look): unknown[] => [l.r.id, l.r.state, l.r.title, l.r.task, l.r.updated_at, l.r.closed_at, l.r.result_exists, l.st, l.where, opens(l), l.kids?.map(look)];
   const unit = (u: Unit) => [u.r.id, u.st, u.r.title, u.r.task, u.r.updated_at, u.r.closed_at, u.r.result_exists, u.look ? look(u.look) : null, u.kids?.map(look)];
-  return JSON.stringify([error, scopeLabel(), x.working.map(unit), x.open.map(unit), x.finished.map(unit)]);
+  const tags = S.projects.map((p) => [p.name, p.short, accent(p)]);
+  return JSON.stringify([error, scopeLabel(), filter(), tags, x.working.map(unit), x.open.map(unit), x.finished.map(unit)]);
 }
 
 const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -536,6 +631,34 @@ function scopeButton(b: HTMLElement) {
   b.setAttribute("aria-label", all ? `All work. Show only ${workspaceName()} work` : `${workspaceName()} work. Show all work`);
 }
 
+/** What the head's filter says: All projects, or the project. */
+const filterLabel = () => filter() ?? "All projects";
+
+/** The head's filter: a quiet text button with a chevron. A click lists All projects and each project. */
+function filterButton(b: HTMLElement) {
+  b.replaceChildren(h("span", "lg-filter-name", filterLabel()));
+  const chev = h("span", "lg-filter-chev");
+  chev.innerHTML = ICON.down;
+  b.append(chev);
+  b.setAttribute("aria-label", `Ledger filter: ${filterLabel()}. Change it`);
+}
+
+function filterMenu(b: HTMLElement) {
+  const o = shownOwner();
+  if (!o) return;
+  const now = filter();
+  const pick = (v: string | null) => () => {
+    filters.set(o, v);
+    render();
+  };
+  const r = b.getBoundingClientRect();
+  ctxMenu.open(r.left, r.bottom, "LEDGER", [
+    { icon: now === null ? "indicators-check" : "", label: "All projects", run: pick(null) },
+    { sep: true },
+    ...S.projects.map((p) => ({ icon: now === p.name ? "indicators-check" : "", label: p.name, run: pick(p.name) })),
+  ]);
+}
+
 /** Runs on each render, before the modes: shows, hides and fills the panel. */
 export function renderLedger() {
   const panel = document.getElementById("ledger");
@@ -563,6 +686,8 @@ export function renderLedger() {
   if (fold) foldTip(fold, "Hide the Ledger");
   const scope = panel.querySelector<HTMLElement>(".lg-head .lg-scope");
   if (scope) scopeButton(scope);
+  const pick = panel.querySelector<HTMLElement>(".lg-head .lg-filter");
+  if (pick) filterButton(pick);
   if (drawn && list && panel.dataset.sig === sig) return;
   panel.dataset.sig = sig;
 
@@ -579,7 +704,13 @@ export function renderLedger() {
     keepKeys(scope);
     scope.addEventListener("click", () => setLedgerAllWork(!ledgerAllWork()));
     scopeButton(scope);
-    head.append(h("span", "lg-name", "Ledger"), scope, need, fold);
+    const pick = h("button", "lg-filter");
+    (pick as HTMLButtonElement).type = "button";
+    pick.setAttribute("aria-haspopup", "menu");
+    keepKeys(pick);
+    pick.addEventListener("click", () => filterMenu(pick));
+    filterButton(pick);
+    head.append(h("span", "lg-name", "Ledger"), pick, scope, need, fold);
     list = h("div", "lg-list");
     panel.replaceChildren(head, list);
   }
@@ -593,7 +724,9 @@ export function renderLedger() {
 
   const out: HTMLElement[] = [];
   if (error) out.push(h("div", "lg-empty", error));
-  else if (!x.working.length && !x.open.length && !x.finished.length && scopeLabel() && !ledgerAllWork()) {
+  else if (!x.working.length && !x.open.length && !x.finished.length && filter() !== null) {
+    out.push(h("div", "lg-empty", `No work in ${filter()}.`));
+  } else if (!x.working.length && !x.open.length && !x.finished.length && scopeLabel() && !ledgerAllWork()) {
     out.push(h("div", "lg-empty", "No work in this workspace."));
   }
   for (const [label, part, fin] of [["Working", x.working, false], ["Open", x.open, false], ["Finished", x.finished, true]] as const) {
@@ -653,11 +786,11 @@ function enter() {
   light();
 }
 
-/** Ctrl+Shift+Left or Esc: the keys go back to Skipper's pane. */
+/** Ctrl+Shift+Left or Esc: the keys go back to the Skipper's pane. */
 function leave() {
   setKeys(false);
   for (const r of rowEls()) r.classList.remove("lit");
-  const s = skiffAgentSession();
+  const s = owner();
   if (s) panes.get(s.id)?.term.focus();
 }
 

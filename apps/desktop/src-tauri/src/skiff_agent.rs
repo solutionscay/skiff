@@ -135,6 +135,13 @@ pub struct SkiffAgent {
     /// holds other files) or `refused`.
     folder_status: &'static str,
     continue_on_restore: bool,
+    /// The project menu offers Start project Skipper.
+    project_skippers: bool,
+    /// The agent project Skippers start. Absent: the Skipper's.
+    project_agent: Option<String>,
+    /// Where project Skippers keep `SKIPPER.md` and their results. Absent
+    /// when the folder is refused.
+    projects_folder: Option<String>,
     /// `[skiff_agent.tasks]` in file order, with the command each row starts.
     tasks: Vec<TaskType>,
 }
@@ -153,6 +160,7 @@ fn read() -> anyhow::Result<SkiffAgent> {
         _ => "other",
     };
     let configured = configured.display().to_string();
+    let projects_folder = folder.as_ref().map(|f| PathBuf::from(f).join("projects").display().to_string());
     let a = cfg.skiff_agent;
     // The command lines come from projects.toml, so the local list builds the same ones skiffd would.
     let tasks = tasks::resolve(&a.tasks, &skiff_core::project::agents());
@@ -165,6 +173,9 @@ fn read() -> anyhow::Result<SkiffAgent> {
         configured,
         folder_status,
         continue_on_restore: a.continue_on_restore,
+        project_skippers: a.project_skippers,
+        project_agent: a.project_agent,
+        projects_folder,
         tasks,
     })
 }
@@ -177,6 +188,9 @@ pub enum Edit {
     Agent(Option<String>),
     Enabled(bool),
     ContinueOnRestore(bool),
+    ProjectSkippers(bool),
+    /// `null`: Same as Skipper.
+    ProjectAgent(Option<String>),
     /// A new row at the end of Task types.
     AddTask(TaskEdit),
     /// A row's agent or model.
@@ -215,6 +229,8 @@ pub async fn set_skiff_agent(app: AppHandle, edit: Edit) -> Result<SkiffAgent, S
             Edit::Name(v) => config::set_skiff_agent(SkiffAgentKey::Name(v.as_deref()))?,
             Edit::Agent(v) => config::set_skiff_agent(SkiffAgentKey::Agent(v.as_deref()))?,
             Edit::ContinueOnRestore(on) => config::set_skiff_agent(SkiffAgentKey::ContinueOnRestore(on))?,
+            Edit::ProjectSkippers(on) => config::set_skiff_agent(SkiffAgentKey::ProjectSkippers(on))?,
+            Edit::ProjectAgent(v) => config::set_skiff_agent(SkiffAgentKey::ProjectAgent(v.as_deref()))?,
             Edit::AddTask(t) => config::add_task_type(&t.name, &t.agent, t.model.as_deref())?,
             Edit::Task(t) => config::set_task_type(&t.name, &t.agent, t.model.as_deref())?,
             Edit::RenameTask { from, to } => config::rename_task_type(&from, &to)?,
@@ -232,6 +248,32 @@ pub async fn set_skiff_agent(app: AppHandle, edit: Edit) -> Result<SkiffAgent, S
     .await?;
     let _ = app.emit(PROJECTS_CHANGED, ());
     Ok(out)
+}
+
+/// Project menu › Start project Skipper: finds or starts the project's
+/// Skipper with `skiff skipper --project`, which also gives a new one its
+/// first message and starts the watcher. Returns its session id. It waits
+/// for the agent's input box, so it can take a while.
+#[tauri::command]
+pub async fn start_project_skipper(project: String) -> Result<String, String> {
+    let socket = skiff_core::socket::socket_path();
+    blocking(move || {
+        let out = std::process::Command::new(cli())
+            .arg("--socket")
+            .arg(&socket)
+            .args(["skipper", "--project", &project, "--no-attach"])
+            // The app is a person, not a pane.
+            .env_remove("SKIFF_SESSION")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .with_context(|| format!("run {}", cli().display()))?;
+        if !out.status.success() {
+            let msg = String::from_utf8_lossy(&out.stderr);
+            anyhow::bail!("{}", msg.trim().trim_start_matches("skiff: ").trim_start_matches("Error: "));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).lines().last().unwrap_or_default().trim().to_string())
+    })
+    .await
 }
 
 /// A preview for the Change… dialog, with Skipper's session when it runs.
@@ -308,6 +350,8 @@ mod tests {
         assert!(matches!(rename, Edit::RenameTask { from, to } if from == "review" && to == "code-review"));
         assert!(matches!(edit(serde_json::json!({ "key": "remove_task", "value": "review" })), Edit::RemoveTask(t) if t == "review"));
         assert!(matches!(edit(serde_json::json!({ "key": "name", "value": null })), Edit::Name(None)));
+        assert!(matches!(edit(serde_json::json!({ "key": "project_skippers", "value": true })), Edit::ProjectSkippers(true)));
+        assert!(matches!(edit(serde_json::json!({ "key": "project_agent", "value": "codex" })), Edit::ProjectAgent(Some(a)) if a == "codex"));
     }
 
     /// The modes `Mode` in apps/desktop/src/appearance/skiffFolderDialog.ts sends.

@@ -106,6 +106,8 @@ pub enum Fact {
     Interrupted,
     /// Gone, and skiff set its open tasks done.
     Closed,
+    /// A project Skipper set its hand-off done.
+    Reported,
 }
 
 impl Fact {
@@ -116,6 +118,7 @@ impl Fact {
             Fact::Exit => "exited",
             Fact::Gone | Fact::Closed => "is gone",
             Fact::Interrupted => "restarted",
+            Fact::Reported => "reported",
         }
     }
 }
@@ -203,19 +206,25 @@ impl Wake {
 
 /// The one line the agent gets for all held wakes.
 pub fn wake_line(wakes: &[Wake]) -> String {
+    let told_fact = |w: &&Wake| matches!(w.fact, Fact::Closed | Fact::Reported);
     let parts: Vec<String> = wakes
         .iter()
-        .filter(|w| w.fact != Fact::Closed)
-        .chain(wakes.iter().filter(|w| w.fact == Fact::Closed))
+        .filter(|w| !told_fact(w))
+        .chain(wakes.iter().filter(told_fact))
         .map(|w| {
+            if w.fact == Fact::Reported {
+                return format!("the {} reported hand-off {}", w.name, w.task.as_deref().unwrap_or_default());
+            }
             let who = if w.name.is_empty() { String::new() } else { format!("{} ", w.name) };
             format!("pane {who}{} {}{}", print::short_id(&w.id), w.fact.phrase(), w.tail())
         })
         .collect();
-    // A task skiff closed is told to the person, then reported.
-    let closed: Vec<&str> = wakes.iter().filter(|w| w.fact == Fact::Closed).filter_map(|w| w.task.as_deref()).collect();
-    let told = (!closed.is_empty()).then(|| format!("Tell the person, then run skiff ledger report {}.", closed.join(" ").replace(',', "")));
-    let wakes: Vec<&Wake> = wakes.iter().filter(|w| w.fact != Fact::Closed).collect();
+    // A task skiff closed, and a hand-off a project Skipper reported, is
+    // told to the person, then reported.
+    let closed: Vec<&str> = wakes.iter().filter(told_fact).filter_map(|w| w.task.as_deref()).collect();
+    let read = if wakes.iter().any(|w| w.fact == Fact::Reported) { "Read its result. " } else { "" };
+    let told = (!closed.is_empty()).then(|| format!("{read}Tell the person, then run skiff ledger report {}.", closed.join(" ").replace(',', "")));
+    let wakes: Vec<&Wake> = wakes.iter().filter(|w| !told_fact(w)).collect();
     if wakes.is_empty() {
         return format!("[watch] {}. {}", parts.join("; "), told.unwrap_or_default());
     }
@@ -269,6 +278,9 @@ struct Watcher {
     /// The tasks closed for a gone pane and not reported, as last read.
     /// `None` before the first read: those are in the count.
     gone: Option<HashSet<String>>,
+    /// The hand-offs project Skippers set done and not reported, as last
+    /// read. `None` before the first read: those are in the count.
+    handed: Option<HashSet<String>>,
 }
 
 /// The open tasks whose panes are on `here`, and a log line for the others.
@@ -322,13 +334,15 @@ struct Group<'a> {
 
 /// The open rows by pane, and the interrupted tasks apart. Rows that resolve
 /// to one session (a full id and an imported prefix) make one group. The
-/// agent's own pane is skipped.
-fn group<'a>(tasks: &'a [ledger::Row], all: &'a [SessionInfo], skipper: &str) -> (Vec<Group<'a>>, Vec<(&'a str, &'a SessionInfo)>) {
+/// coordinators' own panes are skipped: a hand-off at work is followed by
+/// its row, not its pane. A pending hand-off is not: its project Skipper's
+/// idle pane names it.
+fn group<'a>(tasks: &'a [ledger::Row], all: &'a [SessionInfo], coordinators: &[&str]) -> (Vec<Group<'a>>, Vec<(&'a str, &'a SessionInfo)>) {
     let (mut groups, mut interrupted) = (Vec::<Group>::new(), Vec::new());
     for t in tasks {
         let Some(pane) = t.pane_id.as_deref() else { continue };
         let s = resolve::session(all, pane).ok();
-        if s.is_some_and(|s| s.id == skipper) {
+        if s.is_some_and(|s| coordinators.contains(&s.id.as_str())) && !(t.is_handoff() && t.state == "pending") {
             continue;
         }
         if let Some(s) = s.filter(|s| t.interrupted_in(Some(s))) {
@@ -482,8 +496,8 @@ impl Watcher {
         self.prompted.clear();
         self.busy.clear();
         self.panes.retain(|k, _| open.contains(k));
-        // A row the agent closed needs no line. One skiff closed does.
-        self.held.retain(|h| h.fact == Fact::Closed || open.contains(&h.pane));
+        // A row the agent closed needs no line. One skiff closed, or a reported hand-off, does.
+        self.held.retain(|h| matches!(h.fact, Fact::Closed | Fact::Reported) || open.contains(&h.pane));
         self.drop_stale(groups);
         wakes
     }
@@ -514,6 +528,28 @@ impl Watcher {
             self.held.retain(|h| h.pane != w.pane && h.pane != w.id);
             self.held.push(w.clone());
         }
+        wakes
+    }
+
+    /// Takes the hand-offs project Skippers set done, not yet reported. Each
+    /// one new since the last read holds one line. The first read only notes
+    /// them: the unreported count names them.
+    fn handed(&mut self, rows: &[ledger::Row]) -> Vec<Wake> {
+        let now: HashSet<String> = rows.iter().map(|r| r.uid.clone()).collect();
+        self.held.retain(|h| h.fact != Fact::Reported || h.task.as_deref().is_some_and(|t| now.contains(t)));
+        let Some(known) = self.handed.replace(now) else { return Vec::new() };
+        let wakes: Vec<Wake> = rows
+            .iter()
+            .filter(|r| !known.contains(&r.uid))
+            .map(|r| Wake {
+                fact: Fact::Reported,
+                pane: format!("handoff:{}", r.uid),
+                name: format!("{} Skipper", r.project),
+                id: r.pane_id.clone().unwrap_or_default(),
+                task: Some(r.uid.clone()),
+            })
+            .collect();
+        self.held.extend(wakes.iter().cloned());
         wakes
     }
 
@@ -597,21 +633,21 @@ impl Watcher {
     }
 }
 
-/// The refusal for a session that is not the Skiff agent's, if it is not.
-/// A daemon older than 27 may not mark the coordinator: `coordinator_known`
-/// is false then, and any session passes.
+/// The refusal for a session that is not a Skipper's, the grand Skipper's or
+/// a project Skipper's, if it is not. A daemon older than 27 may not mark the
+/// coordinator: `coordinator_known` is false then, and any session passes.
 fn not_the_agent(all: &[SessionInfo], skipper: &str, coordinator_known: bool) -> Option<String> {
     let s = resolve::session(all, skipper).ok()?;
-    (coordinator_known && !s.coordinator).then(|| format!("skiff watch: {skipper} is not the Skiff agent's session"))
+    (coordinator_known && !s.coordinator && s.skipper.is_none()).then(|| format!("skiff watch: {skipper} is not a Skipper's session"))
 }
 
 fn log(msg: impl std::fmt::Display) {
     println!("{} {msg}", skiff_core::session::now_ms() / 1000);
 }
 
-/// Runs until the agent's session ends. Exit codes: 0 when it ends or another
-/// watcher runs; 1 when skiffd does not come back; 2 when the session is not
-/// the Skiff agent's.
+/// Runs while a Skipper runs: the grand Skipper or a project Skipper. Exit
+/// codes: 0 when none runs or another watcher runs; 1 when skiffd does not
+/// come back; 2 when the session is not a Skipper's.
 pub async fn watch(socket: &Path, o: Options) -> Result<i32> {
     // Another socket never follows the live agent's ledger.
     if let Some(dir) = ledger::path()?.parent() {
@@ -627,7 +663,7 @@ pub async fn watch(socket: &Path, o: Options) -> Result<i32> {
             return Ok(2);
         }
         // The app starts the agent without `skiff skipper`: its watcher records the owner.
-        if let Some(s) = resolve::session(&all, &o.skipper).ok().filter(|s| s.coordinator) {
+        if let Some(s) = all.iter().find(|s| s.coordinator && s.state != SessionState::Done) {
             if let Err(e) = ledger::claim(socket, &s.id) {
                 log(format!("{e:#}"));
             }
@@ -638,15 +674,17 @@ pub async fn watch(socket: &Path, o: Options) -> Result<i32> {
         return Ok(0);
     };
     log(format!("watching for {}", o.skipper));
-    let mut w = Watcher::default();
+    let mut ws = Watchers::default();
     let mut lost: Option<Instant> = None;
     loop {
         if let Ok(c) = Client::connect(socket).await {
             lost = None;
             // A new connection has no registration yet.
-            w.sent = None;
-            w.unregistered = false;
-            match follow(&c, &o, &mut w).await {
+            for w in ws.values_mut() {
+                w.sent = None;
+                w.unregistered = false;
+            }
+            match follow(&c, &o, &mut ws).await {
                 Ok(code) => return Ok(code),
                 Err(e) => log(format!("lost skiffd: {e:#}")),
             }
@@ -689,27 +727,31 @@ async fn lock(socket: &Path) -> Result<Option<File>> {
     }
 }
 
+/// One watcher per coordinator, by owner: [`ledger::GRAND`], or a project.
+type Watchers = HashMap<String, Watcher>;
+
 /// One connection: a step on each event and each tick.
-async fn follow(c: &Client, o: &Options, w: &mut Watcher) -> Result<i32> {
+async fn follow(c: &Client, o: &Options, ws: &mut Watchers) -> Result<i32> {
     // Listen before the first read, so no change falls between the two.
     let mut events = c.events();
     let mut tick = interval(TICK);
     tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    let note = |ws: &mut Watchers, e: &Event| ws.values_mut().for_each(|w| w.note(e));
     loop {
-        if let Some(code) = step(c, o, w).await? {
+        if let Some(code) = step(c, o, ws).await? {
             return Ok(code);
         }
         tokio::select! {
             e = events.recv() => {
                 match e {
                     Err(RecvError::Closed) => bail!("skiffd closed the connection"),
-                    Ok(e) => w.note(&e),
+                    Ok(e) => note(ws, &e),
                     Err(RecvError::Lagged(_)) => {}
                 }
                 // One step reads everything, so a burst counts once.
                 loop {
                     match events.try_recv() {
-                        Ok(e) => w.note(&e),
+                        Ok(e) => note(ws, &e),
                         Err(TryRecvError::Lagged(_)) => continue,
                         Err(TryRecvError::Closed) => bail!("skiffd closed the connection"),
                         Err(TryRecvError::Empty) => break,
@@ -721,20 +763,34 @@ async fn follow(c: &Client, o: &Options, w: &mut Watcher) -> Result<i32> {
     }
 }
 
-/// Reads the ledger and the session list, tells what is new, and delivers the
-/// held lines when the agent can take them. `Some` stops the watcher.
-async fn step(c: &Client, o: &Options, w: &mut Watcher) -> Result<Option<i32>> {
+/// The live coordinators, each with its owner: the grand Skipper first, then
+/// each project Skipper.
+fn targets(all: &[SessionInfo]) -> Vec<(String, &SessionInfo)> {
+    let live = |s: &&SessionInfo| s.state != SessionState::Done;
+    let grand = all.iter().filter(live).find(|s| s.coordinator).map(|s| (ledger::GRAND.to_string(), s));
+    let projects = all.iter().filter(live).filter(|s| !s.coordinator).filter_map(|s| s.skipper.clone().map(|p| (p, s)));
+    grand.into_iter().chain(projects).collect()
+}
+
+/// Reads the ledger and the session list, tells what is new, and delivers
+/// each coordinator's held lines when it can take them. Each line goes to
+/// the coordinator that owns the task. `Some` stops the watcher.
+async fn step(c: &Client, o: &Options, ws: &mut Watchers) -> Result<Option<i32>> {
     let all = sessions::sorted(c).await?;
-    let skipper = match &w.skipper {
-        Some(id) => all.iter().find(|s| &s.id == id),
-        None => resolve::session(&all, &o.skipper).ok(),
-    };
-    let Some(skipper) = skipper.filter(|s| s.state != SessionState::Done) else {
-        log("the agent's session ended");
+    let targets = targets(&all);
+    if targets.is_empty() {
+        log("no Skipper runs");
         return Ok(Some(0));
-    };
-    w.skipper = Some(skipper.id.clone());
-    w.register(c, &skipper.id).await?;
+    }
+    // A coordinator that ended starts over when one comes back.
+    ws.retain(|k, w| targets.iter().any(|(o, s)| o == k && w.skipper.as_deref() == Some(s.id.as_str())));
+    for (owner, s) in &targets {
+        ws.entry(owner.clone()).or_default().skipper = Some(s.id.clone());
+    }
+    let grand = targets.iter().find(|(o, _)| o == ledger::GRAND).map(|(_, s)| *s);
+    if let Some(g) = grand {
+        ws.get_mut(ledger::GRAND).expect("added above").register(c, &g.id).await?;
+    }
     // A read that fails (the file busy past its timeout) skips this step: the
     // next tick reads again. An empty list would forget the open panes.
     let here = skiff_core::state::socket();
@@ -749,6 +805,7 @@ async fn step(c: &Client, o: &Options, w: &mut Watcher) -> Result<Option<i32>> {
     let tasks = match ledger::open_tasks() {
         Ok(t) => {
             let (mine, line) = on_socket(t, &here);
+            let w = ws.values_mut().next().expect("a target");
             if line != w.elsewhere {
                 if !line.is_empty() {
                     log(&line);
@@ -759,38 +816,100 @@ async fn step(c: &Client, o: &Options, w: &mut Watcher) -> Result<Option<i32>> {
         }
         Err(e) => {
             log(format!("cannot read the ledger: {e:#}"));
-            w.after_ledger(Err(&format!("{e:#}")));
-            w.register(c, &skipper.id).await?;
+            for w in ws.values_mut() {
+                w.after_ledger(Err(&format!("{e:#}")));
+            }
+            if let Some(g) = grand {
+                ws.get_mut(ledger::GRAND).expect("added above").register(c, &g.id).await?;
+            }
             return Ok(None);
         }
     };
-    w.after_ledger(Ok(()));
-    if !w.counted {
-        match ledger::unreported() {
-            Ok(n) => w.count_unreported(n),
-            Err(e) => log(format!("cannot count the done tasks not reported: {e:#}")),
-        }
-    }
-    let closed = match ledger::gone_unreported() {
-        Ok(rows) => w.closed(&on_socket(rows, &here).0),
+    let gone = match ledger::gone_unreported() {
+        Ok(rows) => on_socket(rows, &here).0,
         Err(e) => {
             log(format!("cannot read the tasks of gone panes: {e:#}"));
             Vec::new()
         }
     };
-    let (groups, interrupted) = group(&tasks, &all, &skipper.id);
-    w.follows = Some(follows(&groups));
-    w.register(c, &skipper.id).await?;
-
-    for wake in closed.into_iter().chain(w.take(&groups, &interrupted)) {
-        log(format!("{} {} {}{}", wake.fact.phrase(), print::short_id(&wake.id), wake.name, wake.tail()));
+    let handed = match ledger::handed_back() {
+        Ok(rows) => rows,
+        Err(e) => {
+            log(format!("cannot read the reported hand-offs: {e:#}"));
+            Vec::new()
+        }
+    };
+    let coordinators: Vec<&str> = targets.iter().map(|(_, s)| s.id.as_str()).collect();
+    if let Some(w) = ws.get_mut(ledger::GRAND).filter(|w| !w.counted) {
+        match ledger::unreported(ledger::GRAND) {
+            Ok(n) => w.count_unreported(n),
+            Err(e) => log(format!("cannot count the done tasks not reported: {e:#}")),
+        }
+    }
+    let (told, mut followed) = route(ws, &targets, &tasks, &gone, &handed, &all);
+    for (owner, wake) in told {
+        let to = if owner == ledger::GRAND { String::new() } else { format!(" (to the {owner} Skipper)") };
+        log(format!("{} {} {}{}{to}", wake.fact.phrase(), print::short_id(&wake.id), wake.name, wake.tail()));
         if wake.fact == Fact::Waiting && o.notify {
             let title = format!("{} ({}) is waiting", wake.name, print::short_id(&wake.id));
             desktop_notify(&title, "It needs you. Answer it in its pane.");
         }
     }
+    // The app reads what the watcher follows from the grand Skipper's
+    // registration: every coordinator's panes.
+    if let Some(g) = grand {
+        followed.sort_unstable();
+        followed.dedup();
+        let w = ws.get_mut(ledger::GRAND).expect("added above");
+        w.follows = Some(followed);
+        w.register(c, &g.id).await?;
+    }
+    for (owner, s) in &targets {
+        let w = ws.get_mut(owner).expect("added above");
+        deliver(c, w, owner, s, &all, &coordinators, &here).await?;
+        if owner == ledger::GRAND {
+            w.register(c, &s.id).await?;
+        }
+    }
+    Ok(None)
+}
 
-    // The start line goes alone, before any wake. A refused one waits.
+/// Gives each coordinator's watcher the rows it owns, and returns what each
+/// one tells, by owner, and every pane the watchers follow. The grand
+/// Skipper alone hears of a hand-off a project Skipper reported.
+fn route(
+    ws: &mut Watchers,
+    targets: &[(String, &SessionInfo)],
+    tasks: &[ledger::Row],
+    gone: &[ledger::Row],
+    handed: &[ledger::Row],
+    all: &[SessionInfo],
+) -> (Vec<(String, Wake)>, Vec<String>) {
+    let coordinators: Vec<&str> = targets.iter().map(|(_, s)| s.id.as_str()).collect();
+    let owned = |rows: &[ledger::Row], owner: &str| rows.iter().filter(|r| r.owner == owner).cloned().collect::<Vec<_>>();
+    let (mut told, mut followed) = (Vec::new(), Vec::new());
+    for (owner, _) in targets {
+        let w = ws.entry(owner.clone()).or_default();
+        w.after_ledger(Ok(()));
+        let mut wakes = w.closed(&owned(gone, owner));
+        if owner == ledger::GRAND {
+            wakes.extend(w.handed(handed));
+        }
+        let mine = owned(tasks, owner);
+        let (groups, interrupted) = group(&mine, all, &coordinators);
+        let f = follows(&groups);
+        followed.extend(f.iter().cloned());
+        w.follows = Some(f);
+        wakes.extend(w.take(&groups, &interrupted));
+        told.extend(wakes.into_iter().map(|wk| (owner.clone(), wk)));
+    }
+    (told, followed)
+}
+
+/// Types the held lines of `owner`'s watcher into its coordinator `skipper`
+/// when it can take them. The start line goes alone, before any wake. A
+/// refused one waits.
+async fn deliver(c: &Client, w: &mut Watcher, owner: &str, skipper: &SessionInfo, all: &[SessionInfo], coordinators: &[&str], here: &Path) -> Result<()> {
     if let Some(line) = w.unreported.clone() {
         if ready(c, skipper).await {
             let d = submit(c, skipper, &line).await?;
@@ -800,32 +919,32 @@ async fn step(c: &Client, o: &Options, w: &mut Watcher) -> Result<Option<i32>> {
             let msg = report(d, &line);
             log(&msg);
             w.after_delivery(d, &msg);
-            w.register(c, &skipper.id).await?;
         }
-        return Ok(None);
+        return Ok(());
     }
-
     if !w.held.is_empty() && ready(c, skipper).await {
         // The check above took time. Read the rows again, so a task sent
         // meanwhile is not named.
         match ledger::open_tasks() {
-            Ok(tasks) => w.drop_stale(&group(&on_socket(tasks, &here).0, &all, &skipper.id).0),
+            Ok(tasks) => {
+                let mine: Vec<ledger::Row> = on_socket(tasks, here).0.into_iter().filter(|r| r.owner == owner).collect();
+                w.drop_stale(&group(&mine, all, coordinators).0);
+            }
             Err(e) => {
                 log(format!("cannot read the ledger: {e:#}"));
-                return Ok(None);
+                return Ok(());
             }
         }
         if w.held.is_empty() {
-            return Ok(None);
+            return Ok(());
         }
         let line = wake_line(&w.held);
         let d = submit(c, skipper, &line).await?;
         let msg = w.delivered(d, &line);
         log(&msg);
         w.after_delivery(d, &msg);
-        w.register(c, &skipper.id).await?;
     }
-    Ok(None)
+    Ok(())
 }
 
 /// Types `line` into the agent's pane and presses Enter. The check before it
@@ -1072,12 +1191,47 @@ mod tests {
     }
 
     #[test]
+    fn a_watch_line_goes_to_the_coordinator_that_owns_the_task() {
+        let mut grand = info("aaaa1111", "idle", false);
+        grand.coordinator = true;
+        let mut gesher = info("bbbb2222", "working", false);
+        gesher.skipper = Some("gesher".into());
+        let all = [grand, gesher, info("cccc3333", "idle", true), info("dddd4444", "idle", true)];
+        let targets = targets(&all);
+        assert_eq!(targets.iter().map(|(o, s)| (o.as_str(), s.id.as_str())).collect::<Vec<_>>(), [("grand", "aaaa1111"), ("gesher", "bbbb2222")]);
+        // A grand task on one pane, gesher's task on another, and the
+        // hand-off at work on the gesher Skipper's own pane.
+        let mine = row(1, "u1", "cccc3333", "sent", None);
+        let sub = ledger::Row { owner: "gesher".into(), ..row(2, "u2", "dddd4444", "sent", None) };
+        let hand = ledger::Row { kind: "handoff".into(), project: "gesher".into(), ..row(3, "u3", "bbbb2222", "sent", None) };
+        let mut ws = Watchers::default();
+        let (told, followed) = route(&mut ws, &targets, &[mine, sub, hand.clone()], &[], &[], &all);
+        let told: Vec<(&str, &str)> = told.iter().map(|(o, w)| (o.as_str(), w.id.as_str())).collect();
+        assert_eq!(told, [("grand", "cccc3333"), ("gesher", "dddd4444")]);
+        // The Skipper's pane is no task pane.
+        assert_eq!(followed, ["cccc3333", "dddd4444"]);
+        assert_eq!(wake_line(&ws["gesher"].held), "[watch] pane dddd4444 dddd4444 is idle. Read it, then mark it seen.");
+
+        // gesher reports the hand-off: the grand Skipper alone hears it, once.
+        let done = ledger::Row { state: "done".into(), ..hand };
+        assert!(ws.get_mut("grand").unwrap().handed(&[]).is_empty());
+        let (told, _) = route(&mut ws, &targets, &[], &[], std::slice::from_ref(&done), &all);
+        assert_eq!(told.iter().map(|(o, w)| (o.as_str(), w.fact)).collect::<Vec<_>>(), [("grand", Fact::Reported)]);
+        let grand_held: Vec<Wake> = ws["grand"].held.iter().filter(|h| h.fact == Fact::Reported).cloned().collect();
+        assert_eq!(
+            wake_line(&grand_held),
+            "[watch] the gesher Skipper reported hand-off u3. Read its result. Tell the person, then run skiff ledger report u3."
+        );
+        assert!(route(&mut ws, &targets, &[], &[], std::slice::from_ref(&done), &all).0.is_empty());
+    }
+
+    #[test]
     fn only_the_agents_session_is_watched() {
         let mut agent = info("abc12345", "idle", false);
         agent.coordinator = true;
         let all = [agent, info("def67890", "idle", false)];
         assert_eq!(not_the_agent(&all, "abc12345", true), None);
-        assert_eq!(not_the_agent(&all, "def67890", true).as_deref(), Some("skiff watch: def67890 is not the Skiff agent's session"));
+        assert_eq!(not_the_agent(&all, "def67890", true).as_deref(), Some("skiff watch: def67890 is not a Skipper's session"));
         // An older daemon cannot tell, and an unknown session ends the watch as before.
         assert_eq!(not_the_agent(&all, "def67890", false), None);
         assert_eq!(not_the_agent(&all, "zzz", true), None);
@@ -1186,6 +1340,7 @@ mod tests {
             title: None,
             closed_at: None,
             gone_at: None,
+            owner: ledger::GRAND.into(),
             bucket: None,
             agent_on: false,
             elsewhere: false,
@@ -1201,7 +1356,7 @@ mod tests {
 
     /// One step with these rows and sessions, as `step` runs it.
     fn run(w: &mut Watcher, rows: &[ledger::Row], all: &[SessionInfo]) -> Vec<Fact> {
-        let (groups, interrupted) = group(rows, all, "skipper");
+        let (groups, interrupted) = group(rows, all, &["skipper"]);
         w.take(&groups, &interrupted).iter().map(|k| k.fact).collect()
     }
 
@@ -1381,7 +1536,7 @@ mod tests {
         assert_eq!(w.held.len(), 2);
         // The read after `ready`: u1 was sent meanwhile.
         let rows = [row(1, "u1", "a", "sent", None), row(2, "s1", "b", "sent", None)];
-        w.drop_stale(&group(&rows, &all, "skipper").0);
+        w.drop_stale(&group(&rows, &all, &["skipper"]).0);
         assert_eq!(held(&w), [(Fact::Idle, None)]);
     }
 
@@ -1411,14 +1566,14 @@ mod tests {
         let all = [info("abc12345xyz", "idle", false)];
         // An imported prefix row and a full-id row, the newer one first in id order.
         let rows = [row(4, "u1", "abc12345", "pending", None), row(7, "u2", "abc12345xyz", "pending", None)];
-        let (groups, _) = group(&rows, &all, "skipper");
+        let (groups, _) = group(&rows, &all, &["skipper"]);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].pending, ["u1", "u2"]);
         assert_eq!(run(&mut w, &rows, &all), [Fact::Pending]);
         assert_eq!(held(&w), [(Fact::Pending, Some("u1"))]);
         // The agent's own pane is skipped.
         let all = [info("skipper", "idle", false)];
-        assert!(group(&[row(1, "u1", "skipper", "pending", None)], &all, "skipper").0.is_empty());
+        assert!(group(&[row(1, "u1", "skipper", "pending", None)], &all, &["skipper"]).0.is_empty());
     }
 
     #[test]
@@ -1432,8 +1587,8 @@ mod tests {
             row(4, "u4", "gone", "sent", None),
             row(5, "u5", "skipper", "pending", None),
         ];
-        assert_eq!(follows(&group(&rows, &all, "skipper").0), ["a", "b"]);
-        assert!(follows(&group(&[], &all, "skipper").0).is_empty());
+        assert_eq!(follows(&group(&rows, &all, &["skipper"]).0), ["a", "b"]);
+        assert!(follows(&group(&[], &all, &["skipper"]).0).is_empty());
     }
 
     #[test]

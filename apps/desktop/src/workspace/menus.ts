@@ -1,6 +1,6 @@
 import { ctxMenu } from "../ui/contextMenu";
 /** Right-click menus for projects, sessions, panes and groups. */
-import { isSkiffAgent, openWatchLog, skiffAgentFolder, skiffAgentName, skiffWatch, startSkiffWatch } from "../app/skiffAgent";
+import { isSkiffAgent, openWatchLog, projectSkipperOf, startProjectSkipper, skiffAgentFolder, skiffAgentName, skiffWatch, startSkiffWatch } from "../app/skiffAgent";
 import { launchIcon } from "../appearance/agentIcon";
 import { confirmAction, promptAction } from "../ui/confirm";
 import { pickColor } from "../appearance/colorPicker";
@@ -209,6 +209,7 @@ export function projectMenu(p: Project, x: number, y: number) {
   ctxMenu.open(x, y, p.path, [
     { icon: "indicators-plus", label: "New session…", hint: keyLabel("new-session"), disabled: !w, run: () => w && launchMenu.open(plus ?? { x, y }, p, w) },
     { icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
+    ...projectSkipperEntries(p),
     { sep: true },
     { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: run["project-folder"] },
     { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
@@ -394,6 +395,31 @@ function endManyEntry(ids: string[], label: string, title: string): MenuEntry {
       else refocusTerminal();
     },
   };
+}
+
+/**
+ * Start project Skipper, while Settings › Skiff agent › Project Skippers is
+ * on. It opens no dialog. While one runs: Stop project Skipper…, which asks
+ * first, as End does. Its panes keep running.
+ */
+function projectSkipperEntries(p: Project): MenuEntry[] {
+  if (!skiffAgentFolder() || !S.skiffAgent?.project_skippers) return [];
+  const s = projectSkipperOf(p.name);
+  if (!s) return [{ icon: "tools-sparkles", label: "Start project Skipper", disabled: !!p.error, run: () => startProjectSkipper(p.name) }];
+  return [{
+    icon: "indicators-square-stop",
+    label: "Stop project Skipper…",
+    danger: true,
+    run: async () => {
+      const ok = await confirmAction({
+        title: `Stop the ${p.name} Skipper?`,
+        body: `Stops ${agentName(s)} and removes its session. The panes it started keep running, and its ledger rows stay.`,
+        action: "Stop project Skipper",
+      });
+      if (ok) void endSession(s.id);
+      else refocusTerminal();
+    },
+  }];
 }
 
 async function endSession(id: string) {

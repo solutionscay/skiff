@@ -107,6 +107,11 @@ export function rollup(projects: Project[]): HTMLElement | null {
     else if (s.state === "working") working++;
     else if (isUnread(s)) unread++;
   }
+  return rollCounts(waiting, working, unread);
+}
+
+/** The amber, blue and green counts of a folded row. Null when all are 0. */
+export function rollCounts(waiting: number, working: number, unread = 0): HTMLElement | null {
   if (!waiting && !working && !unread) return null;
   const el = h("span", "tree-roll");
   const part = (cls: string, paths: string, n: number, label: string) => {
