@@ -36,8 +36,6 @@ export interface SkiffAgentSettings {
   project_skippers: boolean;
   /** The agent project Skippers start. Null: the Skipper's. */
   project_agent: string | null;
-  /** `projects/` in the folder: each project Skipper's SKIPPER.md and results. Null when the folder is refused. */
-  projects_folder: string | null;
   /** `[skiff_agent.tasks]` in file order. */
   tasks: TaskType[];
 }

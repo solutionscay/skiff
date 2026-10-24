@@ -943,7 +943,6 @@ pub fn settings(cfg: &Config) -> Result<skiff_host_api::HostSkipper> {
         (_, Ok(Kind::New | Kind::Empty)) => "new",
         _ => "other",
     };
-    let projects_folder = folder.as_ref().map(|f| PathBuf::from(f).join("projects").display().to_string());
     let a = &cfg.skiff_agent;
     // The command lines come from this config, so the list builds the same ones skiffd would.
     let tasks = skiff_core::tasks::resolve(&a.tasks, &skiff_core::project::agents())
@@ -961,7 +960,6 @@ pub fn settings(cfg: &Config) -> Result<skiff_host_api::HostSkipper> {
         continue_on_restore: a.continue_on_restore,
         project_skippers: a.project_skippers,
         project_agent: a.project_agent.clone(),
-        projects_folder,
         tasks,
     })
 }

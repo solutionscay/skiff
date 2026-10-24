@@ -233,7 +233,7 @@ export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInf
   const head = h("div", "set-head");
   head.append(
     h("div", "set-h", "Project Skippers"),
-    h("div", "set-sub", "One Skipper per project. It works in that project and delegates through skiff only."),
+    h("div", "set-sub", "One Skipper per project. It works in that project and delegates through skiff only. Its SKIPPER.md and results are in projects/<project>/ in the Folder above."),
   );
   const on = set.project_skippers;
   const sw = switchRow("Project Skippers", on, !!set.folder, (v) => save({ key: "project_skippers", value: v }));
@@ -255,18 +255,7 @@ export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInf
   pick.addEventListener("change", () => save({ key: "project_agent", value: pick.value || null }));
   agentRow.append(h("span", "c-name", "Agent"), pick, h("span", "c-mode", "At next start"));
 
-  const dir = set.projects_folder;
-  const results = h("div", "set-row set-open set-agent on");
-  const path = h("span", "c-cmd mono", dir ? `${dir}/<project>/` : "Change the folder to use project Skippers.");
-  const acts = h("span", "c-mode set-folder-acts");
-  if (dir) {
-    const show = h("button", "set-rm", "Show");
-    show.type = "button";
-    show.addEventListener("click", () => reveal(dir));
-    acts.append(show);
-  }
-  results.append(h("span", "c-name", "Results"), path, acts);
-  return [head, sw, agentRow, results];
+  return [head, sw, agentRow];
 }
 
 /** A label, a cell for the caller, and a switch. */

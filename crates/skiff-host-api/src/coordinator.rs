@@ -104,10 +104,6 @@ pub struct HostSkipper {
     /// The agent project Skippers start. Absent: the Skipper's.
     #[serde(default)]
     pub project_agent: Option<String>,
-    /// Where project Skippers keep `SKIPPER.md` and their results, on the
-    /// Host. Absent when the folder is refused.
-    #[serde(default)]
-    pub projects_folder: Option<String>,
     /// `[skiff_agent.tasks]` in file order.
     pub tasks: Vec<HostTaskType>,
 }
