@@ -21,6 +21,7 @@ class El {
     this.textContent = textContent;
   }
   append(...c: El[]) { this.children.push(...c.filter((x) => x instanceof El)); }
+  prepend(...c: El[]) { this.children.unshift(...c.filter((x) => x instanceof El)); }
   setAttribute(k: string, v: string) { this.attrs[k] = v; }
   getAttribute(k: string) { return this.attrs[k] ?? null; }
   addEventListener(k: string, f: (e: unknown) => void) { (this.listeners[k] ??= []).push(f); }
@@ -35,7 +36,7 @@ function tab(report?: unknown) {
   const calls: [string, unknown][] = [];
   const dialogs: { title: string; body?: string; tone?: string; content?: El[]; submit: () => Promise<void>; onClose?: () => void }[] = [];
   let prompt: { value?: string; submit: (v: string) => Promise<void> } | null = null;
-  const hosts = [{ id: "h_dev", name: "devbox", destination: "devbox", user: "me", port: 2222, socket: "/run/user/1000/skiff/skiffd.sock", socket_override: false, state: "attention" }];
+  const hosts = [{ id: "h_dev", name: "devbox", destination: "devbox", user: "me", port: 2222, socket: "/run/user/1000/skiff/skiffd.sock", state: "attention" }];
   const invoke = async (c: string, a?: unknown) => {
     calls.push([c, a]);
     if (c === "resolve_ssh") return { hostname: "devbox.lan", user: "me", port: 2222, jump: "" };
@@ -92,20 +93,45 @@ test("Edit opens the form with the Host's values and saves them under its id", a
   port.value = "2200";
   for (const f of port.listeners.input) f({});
   x.redraw();
-  // The socket was found, not set: its field is empty and says what was found.
-  const socket = x.page().all().find((e) => e.attrs["aria-label"] === "Socket on the server")!;
-  assert.equal(socket.value, "");
-  assert.equal(socket.placeholder, "Found: /run/user/1000/skiff/skiffd.sock");
+  // The check finds the socket: the form has no field for it.
+  assert.equal(x.page().all().find((e) => e.attrs["aria-label"] === "Socket on the server"), undefined);
   assert.equal(x.page().find("Save"), undefined, "a changed port needs Connect");
   x.page().find("Connect")!.click();
   for (let i = 0; i < 6; i++) await flush();
   const edit = x.calls.find(([c]) => c === "edit_host")!;
-  assert.equal(JSON.stringify(edit), JSON.stringify(["edit_host", { id: "h_dev", form: { destination: "devbox", name: "devbox", user: "me", port: "2200", socket: "" } }]));
+  assert.equal(JSON.stringify(edit), JSON.stringify(["edit_host", { id: "h_dev", form: { destination: "devbox", name: "devbox", user: "me", port: "2200" } }]));
   // Connect checks the Host at once, and a passed check offers the switch.
   assert.ok(x.calls.some(([c, a]) => c === "check_host" && JSON.stringify(a) === '{"id":"h_dev"}'));
   assert.ok(x.page().find("devbox.lan answers. 12 ms."));
   x.page().find("Switch to devbox")!.click();
   assert.ok(x.calls.some(([c, a]) => c === "pick" && a === "h_dev"));
+});
+
+test("two Skiffs on the server: the check list offers both by name and stores the pick", async () => {
+  const rel = "/run/user/1000/skiff/skiffd.sock";
+  const dev = "/run/user/1000/skiff/skiffd-dev.sock";
+  const x = tab({
+    ok: true,
+    socket: dev,
+    choices: [
+      { socket: rel, label: "Skiff", version: "2.0.0" },
+      { socket: dev, label: "Skiff dev build", version: "2.1.0" },
+    ],
+    rows: [{ row: "sessions", title: "Sessions service (skiffd)", state: "passed", text: "skiffd 2.1.0 answers.", fix: null }],
+  });
+  await x.t.load();
+  x.t.open({ check: "h_dev" });
+  for (let i = 0; i < 4; i++) await flush();
+  x.redraw();
+  assert.ok(x.page().find("Which Skiff"));
+  const inUse = x.page().find("Skiff dev build 2.1.0")!;
+  assert.equal(inUse.attrs["aria-pressed"], "true");
+  assert.ok(inUse.disabled, "the one in use is not a button to press");
+  const checks = x.calls.filter(([c]) => c === "check_host").length;
+  x.page().find("Skiff 2.0.0")!.click();
+  for (let i = 0; i < 4; i++) await flush();
+  assert.equal(JSON.stringify(x.calls.find(([c]) => c === "pick_socket")), JSON.stringify(["pick_socket", { id: "h_dev", socket: rel }]));
+  assert.equal(x.calls.filter(([c]) => c === "check_host").length, checks + 1, "the check runs again");
 });
 
 test("a Host that needs attention opens its check list from the menu link", async () => {

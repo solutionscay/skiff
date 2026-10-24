@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { flush, moduleFromSource } from "./workspaceHarness.ts";
 
 /** The real hosts module over a fake `invoke`, `listen` and document. */
-type Host = { id: string; name: string; destination: string; user: string | null; port: number | null; socket: string | null; socket_override: boolean; state: string };
+type Host = { id: string; name: string; destination: string; user: string | null; port: number | null; socket: string | null; state: string };
 type Answer = { selected: string | null; localName?: string; hosts: Host[]; clipboard: boolean };
 
 /** `live`: what Rust's `host_clipboard` answers now, for the identity the
@@ -34,7 +34,7 @@ function hosts(answer: Answer, live = { clipboard: answer.clipboard }) {
   return { mod, calls, listeners, document, reloads: () => reloads };
 }
 
-const devbox: Host = { id: "h_dev", name: "devbox", destination: "jose@devbox.lan", user: null, port: null, socket: "/run/user/1000/skiff/skiffd.sock", socket_override: false, state: "ok" };
+const devbox: Host = { id: "h_dev", name: "devbox", destination: "jose@devbox.lan", user: null, port: null, socket: "/run/user/1000/skiff/skiffd.sock", state: "ok" };
 
 /** The real osc52 module over the given hosts module; returns the texts it
  *  put on the clipboard and a way to feed it an OSC 52 sequence. */
