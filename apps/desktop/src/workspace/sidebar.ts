@@ -5,7 +5,7 @@ import { groupRenameInput } from "./rename";
 import { filledOf } from "./layoutSlots";
 import { agentIcon, agentKind, launchIcon } from "../appearance/agentIcon";
 import { ink } from "../appearance/appTheme";
-import { appliedTheme, ownTheme, projectBlockTheme, projectTheme, signatureColor } from "../appearance/themes";
+import { appliedTheme, ownTheme, signatureColor } from "../appearance/themes";
 import { glyph } from "./layoutIcon";
 import { agentName, basename, branchName, taskTitle } from "./model";
 import type { Group, Project, SessionInfo, Worktree } from "../platform/types";
@@ -198,7 +198,7 @@ function sidebarSig(): { all: string; parts: Map<string, string> } {
     return row;
   });
   const projects = S.projects.map((p) => [
-    p.name, p.short, p.icon, p.fleet ?? null, p.error, p.default_branch, accent(p), projectTheme(p), selectedWorktree.get(p.name),
+    p.name, p.short, p.icon, p.fleet ?? null, p.error, p.default_branch, accent(p), selectedWorktree.get(p.name),
     p.worktrees.map((w) => [
       w.path, w.branch, w.is_main, w.locked, w.prunable, collapsed.has(w.path), removing.has(w.path), removeErrors.get(w.path),
       showsChanges(p) ? changesSig(w) : null, showsFiles(p) ? filesSig(w) : null,
@@ -447,9 +447,7 @@ function sectionHead(sec: Section): HTMLElement {
 
 /** A project: one 40px row, then its worktrees, groups and sessions while it is open. */
 function projectBlock(p: Project): HTMLElement {
-  // A project with its own theme shows it on its whole block, as its panes do.
-  const themed = projectBlockTheme(p, p.color);
-  const color = themed?.pc ?? accent(p);
+  const color = accent(p);
   const key = projectKey(p.name);
   const open = isOpen(key);
   const bare = bareWorktree(p);
@@ -458,10 +456,6 @@ function projectBlock(p: Project): HTMLElement {
   const changes = bare && showsChanges(p) ? changesBlock(bare) : null;
   const empty = !!bare && !p.error && !worktreeLines(bare).length && !changes && !showsFiles(p);
   const block = h("div", "tree-project" + (p.name === S.selectedProject ? " selected" : ""));
-  if (themed) {
-    block.classList.add("themed");
-    for (const [k, v] of Object.entries(themed.vars)) block.style.setProperty(k, v);
-  }
   block.style.setProperty("--pc", color);
 
   const head = h("div", "project-row" + (empty ? " empty" : ""));

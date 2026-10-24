@@ -19,13 +19,6 @@
 .fleet-pick:hover .chev, .fleet-pick.current .chev, .project-row:hover .chev, .project-pick.current .chev { opacity: 1; }
 
 .tree-project { display: flex; flex-direction: column; flex-shrink: 0; }
-/* A project with its own theme: the whole block takes the theme's colors, as its panes do.
-   A 1px rule parts it from the block above, drawn over the rows so the grid does not move. */
-.tree-project.themed { position: relative; background: var(--bg-panel); color: var(--text); }
-.tree-project.themed + .tree-project::before, .tree-project + .tree-project.themed::before {
-  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--rule-strong); z-index: 1; pointer-events: none;
-}
-.tree-project.themed + .tree-project:not(.themed) { position: relative; }
 .project-row { height: var(--row); flex-shrink: 0; display: flex; align-items: stretch; }
 .project-pick {
   flex-grow: 1; min-width: 0;
