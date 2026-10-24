@@ -38,12 +38,12 @@
     "sha256": "aa794a1f2d4daf017ad6ead03cbb712bc99520726cb8d66ef2817e62eeb55d38"
   },
   "apps/desktop/src-tauri/src/config.rs": {
-    "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
+    "ownership": "agent settings (#166 R8): a remote Host's through HostConnection (agent_config@1); This Mac's [agents] stays the legacy local adapter: migrate in M1\u2013M6",
     "reasons": [
       "config",
       "skiff_core"
     ],
-    "sha256": "cf5b117ae71cdabfd6fdfaf80c018e037795dcc5759a8feaa7f0a7ba9704b4c0"
+    "sha256": "e95c1a40b07dda4f6d318c45868b8f98af331095cc9dbefa359c07479100dc51"
   },
   "apps/desktop/src-tauri/src/config_tests.rs": {
     "ownership": "test only: an in-process skiff-host on private state, never the live config",
@@ -75,7 +75,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "e8f5347686e8b882c1437af68238dcc41d125827d16073dc44cf9fc6b93d0751"
+    "sha256": "fd8e5d666953130d11181361eae00b271fc80740aae4805a55f16eb3bb0a2037"
   },
   "apps/desktop/src-tauri/src/copies.rs": {
     "ownership": "client-owned (M5 reviewed): local copies of bytes the Host sent, for this computer's Open with; never reads or opens a Host path",
@@ -113,7 +113,7 @@
     "sha256": "a5dc5bcca7f832f3301cbc42e01411dde6a2e7d1fef2aeda7f88046c32ed5378"
   },
   "apps/desktop/src-tauri/src/hosts.rs": {
-    "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
+    "ownership": "client policy: this client's own SSH install and update jobs, with its own exe folder and build id (#166); legacy local adapter otherwise",
     "reasons": [
       "config",
       "env",
@@ -125,7 +125,7 @@
       "skiff_agent",
       "skiff_core"
     ],
-    "sha256": "acf1638f97842ab6ab7ced56c8b0d357abf13dd99c7430f5300ee7aa3d2d5162"
+    "sha256": "c1e8b9ced4716fc647cbd24d2417996ebe6127ea308bd26e05189eaf87550f20"
   },
   "apps/desktop/src-tauri/src/ledger.rs": {
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",
@@ -136,7 +136,7 @@
     "sha256": "92fd8b4f030b200e667213d538bb2cf9605d91fbf4119f3bf0a7e8ef379953cc"
   },
   "apps/desktop/src-tauri/src/lib.rs": {
-    "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
+    "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6; LOCAL_ONLY no longer holds Skipper and agent commands, which route per Host (#166 R7, R8)",
     "reasons": [
       "config",
       "env",
@@ -145,7 +145,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "56c83e2dc2a67f6f46806df540fa12f1009613e9eb29b1422bf613dea7f995d9"
+    "sha256": "ec48a8a298d0c97de22cef491e49034c3307dee8c9819be731bc12e7e7988d14"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -182,7 +182,7 @@
     "sha256": "a6e2d58bdc00fc7335d7e064351161975b0c551fe0d7fbd05ec301c91bf7af0c"
   },
   "apps/desktop/src-tauri/src/skiff_agent.rs": {
-    "ownership": "M6 settings read via selected Host skipper@1; Skipper settings writes, folder change, launch and watcher stay endpoint-local (LOCAL_ONLY): migrate in later M6 slices",
+    "ownership": "Skipper (#166 R7): a remote Host's settings, folder, launch and watcher through HostConnection (skipper_config@1, skipper_run@1); This Mac's stay the local adapter and its own process control; the watch log is LOCAL_ONLY",
     "reasons": [
       "agent_folder",
       "config",
@@ -194,7 +194,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "67281332b83bb826cfa8d63bf4b6c59f963151b60ce1472a52c788ecdc83413a"
+    "sha256": "4224f4caaa0246609d63db89286d22d07137ed79021721c684a330d89b9d6c0f"
   },
   "apps/desktop/src-tauri/src/streaming.rs": {
     "ownership": "M1e terminal output via selected Host session_terminal@1; M1d page session events via selected Host; core Event only for the page channel type",
@@ -279,7 +279,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "ebdae1ca786ac07108eb4364ef7ee65ce3b31ebdb30b8b8d41fd054f9e3e1a68"
+    "sha256": "9bdfe7ad6f987f448bba5e3b908cdb2bc96c2d9a7cddad791f4afa794579a577"
   },
   "apps/desktop/src/app/hosts.ts": {
     "ownership": "client policy: Host picker and label (list/select Hosts, links to Settings \u203a Hosts, clipboard opt-in) and the remote link-lost signal",
@@ -288,7 +288,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "64c97fa72876ae7b47f85385f6f84601434ac466db8c7c2898cb435f13e19046"
+    "sha256": "020d6a337b63d173810a60f0459fa85a7478662357f24c161c7249139eea40ce"
   },
   "apps/desktop/src/app/keyboard.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -365,12 +365,12 @@
     "sha256": "4876a2ad378feed9aa49008b08209f269f2fc55be5d43546cee554d26aedb32d"
   },
   "apps/desktop/src/app/skiffAgent.ts": {
-    "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
+    "ownership": "Host caller (#166 R7): a remote Host's Skipper and watcher through hostInvoke(skipper_run); This Mac's skiffd starts its own (local process control); the watch log stays local",
     "reasons": [
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "e9c147c56a271469b29cbe6f99b3c92231517e0aa15c0e45107c73c3fd1f618e"
+    "sha256": "059bd6ebc3b20946530630ae4100fb7b521f83d564b21d09150d502b4eae56eb"
   },
   "apps/desktop/src/app/state.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -438,32 +438,30 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "480057650fa1155fd9131a4bd689b0facda7508df62e782363ea8149a4fbc94a"
+    "sha256": "4d4495d837197e18ea6867863bc6dc4f35bb3f1f95353cfcf24ac7c424e98299"
   },
   "apps/desktop/src/appearance/settings.ts": {
-    "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6",
+    "ownership": "mixed: agent changes (agent_config@1) and Skipper settings (skipper_config@1) through hostInvoke (#166 R7, R8); Open with and the menu layout are this client's own settings",
     "reasons": [
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "fce295e853964166a214385e9b26f06a108de2eede868f8775af2ba469d3ba00"
+    "sha256": "0356d732bd3b494e602ec45b8ec20fe29712711463f4e8c6a0b852bab09b00e9"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
-    "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6",
+    "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6; Show in file manager only on This Mac (#166)",
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "91992496e025471fa19624da6a8d86f81b5834985d67888ceaf9a9509577f38b"
+    "sha256": "f78e0688e76fd08bbbaa4df66a3e725e7816d7053a0dfe4677eace2e71cf4ba3"
   },
   "apps/desktop/src/appearance/skiffFolderDialog.ts": {
-    "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6",
+    "ownership": "Host caller (#166 R7): folder preview and change through hostInvoke(skipper_config); the system picker and reveal are this client's own, used only on This Mac",
     "reasons": [
       "../platform/fileActions",
-      "@tauri-apps/api/core",
-      "@tauri-apps/plugin-dialog",
-      "invoke"
+      "@tauri-apps/plugin-dialog"
     ],
-    "sha256": "d4e8de428328c641069a5ac385e3cb2c79f44a1dfb49a6588ffb554c339c393f"
+    "sha256": "3cf3239192d47abe47978e60754edeea1786b8f4b971a7c059cfd2cd62553e02"
   },
   "apps/desktop/src/appearance/themeCards.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -709,7 +707,7 @@
       "local provider: apps/desktop/src/app/hosts.ts",
       "local provider: apps/desktop/src/app/state.ts"
     ],
-    "sha256": "7f761745163a59f76fb5c9c5070f12ab4f3d906f6761a5c2f282241a00100cca"
+    "sha256": "5b2090322fc0fb47481e7c6f65199cb6318a3d940cde06b2bbf2470cc0468549"
   },
   "apps/desktop/src/workspace/header.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -734,7 +732,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "4b76c72322bb20371b1bc80205f313b40e938b095e8d0079d6994e785ec80d01"
+    "sha256": "6f325e232391017e42c47f849c01f1ba32a32b82b569d494678aec9a7332bc2a"
   },
   "apps/desktop/src/workspace/missionControl.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
