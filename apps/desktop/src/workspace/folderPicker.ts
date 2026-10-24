@@ -8,8 +8,7 @@
  * Every path here is the Host's. It goes only into another Host request,
  * never to an opener or a file call on this machine.
  */
-import { invoke } from "@tauri-apps/api/core";
-import { hostCan } from "../app/hostCaps";
+import { hostCan, hostInvoke } from "../app/hostCaps";
 import { checkShownHost, hostName } from "../app/hosts";
 import type { FolderListing, FolderPlaces, HostError } from "../platform/types";
 import { actionDialog, dialogActions, dialogFrame } from "../ui/dialogParts";
@@ -245,7 +244,7 @@ export function openFolderPicker(use: PickerUse): void {
   async function go(path: string, o: { keep?: boolean; light?: string; query?: string } = {}): Promise<void> {
     const mine = ++seq;
     try {
-      const listing = await invoke<FolderListing>("folder_list", { path, hidden, filter: o.query ?? null });
+      const listing = await hostInvoke<FolderListing>("folders", "folder_list", { path, hidden, filter: o.query ?? null });
       if (mine !== seq || !open) return;
       const was = rows[lit]?.path;
       view = { kind: "dir", listing };
@@ -323,7 +322,7 @@ export function openFolderPicker(use: PickerUse): void {
   /** Asks the Host for Places, and again while its scan runs. */
   async function loadPlaces() {
     try {
-      known = await invoke<FolderPlaces>("folder_places");
+      known = await hostInvoke<FolderPlaces>("folders", "folder_places");
     } catch {
       return;
     }
@@ -385,7 +384,7 @@ export function openFolderPicker(use: PickerUse): void {
       submit: async () => {
         const n = newFolderName(input.value);
         try {
-          made = await invoke<string>("folder_create", { parent, name: n });
+          made = await hostInvoke<string>("folders", "folder_create", { parent, name: n });
         } catch (e) {
           if (code(e) === "conflict") throw `${name} has a folder with this name already.`;
           if (code(e) === "invalid") throw "Type one folder name, with no /.";
@@ -451,7 +450,7 @@ export function openFolderPicker(use: PickerUse): void {
   renderRows();
   filter.focus();
   const places0 = loadPlaces();
-  invoke<string>("folder_home")
+  hostInvoke<string>("folders", "folder_home")
     .then(async (path) => {
       home = path;
       if (use.start === "repos") {

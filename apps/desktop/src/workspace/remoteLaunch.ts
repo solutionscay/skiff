@@ -6,13 +6,12 @@
  * that Host: it goes only into the session spec, never to an opener on
  * this Mac.
  */
-import { invoke } from "@tauri-apps/api/core";
 import type { FolderPlaces, Group, Project, SessionInfo } from "../platform/types";
 import type { MenuEntry } from "../ui/menu";
 import { ctxMenu } from "../ui/contextMenu";
 import { showError } from "../ui/alerts";
 import { newSession } from "../app/daemon";
-import { hostCan } from "../app/hostCaps";
+import { hostCan, hostInvoke } from "../app/hostCaps";
 import { hostConnected, hostName } from "../app/hosts";
 import { S, sessions } from "../app/state";
 import { launchChoices, launchDigit } from "../app/stateQueries";
@@ -51,7 +50,7 @@ let recent: { host: string; list: string[] } = { host: "", list: [] };
 function refreshRecent(host: string) {
   try {
     if (!hostCan("folders")) return;
-    void invoke<FolderPlaces>("folder_places")
+    void hostInvoke<FolderPlaces>("folders", "folder_places")
       .then((p) => void (recent = { host, list: p.recent }))
       .catch(() => {});
   } catch {
