@@ -46,9 +46,13 @@ pub struct HostLedgerRow {
     pub reference: Option<String>,
     #[serde(default)]
     pub reported_at: Option<String>,
-    /// When the person closed the work. Only a work head has it.
+    /// When the person, or Skiff once every task was done and reported,
+    /// closed the work. Only a work head has it.
     #[serde(default)]
     pub closed_at: Option<String>,
+    /// The work's bucket, as `skiff ledger ls` on the Host gives it:
+    /// `working`, `open` or `finished`. Every row of one work has the same one.
+    pub bucket: String,
     /// When skiff set the task done because its pane was gone.
     #[serde(default)]
     pub gone_at: Option<String>,

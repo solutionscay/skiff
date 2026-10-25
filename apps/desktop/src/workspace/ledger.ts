@@ -81,8 +81,10 @@ interface Entry {
   title: string | null;
   state: "sent" | "pending" | "blocked" | "done";
   updated_at: string;
-  /** When the person closed the work. Only a plan, or a task with no plan, has it. */
+  /** When the person, or Skiff once every task was done and reported, closed the work. Only a work head has it. */
   closed_at: string | null;
+  /** The work's bucket, as `skiff ledger ls` gives it. Every row of one work has the same one. */
+  bucket: "working" | "open" | "finished";
   /** When skiff set the task done because its pane was gone. */
   gone_at: string | null;
   /** The pane is on another daemon. */
@@ -123,7 +125,7 @@ interface Unit {
   st: State;
   look?: Look;
   kids?: Look[];
-  /** When the work was closed. `null`: it is open. */
+  /** When the work was closed: its head's stamp. `null`: its bucket is not finished. */
   closed: string | null;
   /** An agent is on one of its tasks now. */
   working: boolean;
@@ -206,6 +208,15 @@ function look(r: Entry): Look {
   return { ...base, st: "sent" };
 }
 
+/** The stamp a unit files by: its work head's `closed_at` once the row's bucket is finished, else `null`. */
+function closedOf(r: Entry): string | null {
+  if (r.bucket !== "finished") return null;
+  let at = r;
+  // Two steps at most: plan, hand-off, task.
+  for (let i = 0; i < 3 && at.parent; i++) at = rows.find((p) => p.uid === at.parent) ?? at;
+  return at.closed_at ?? r.updated_at;
+}
+
 /** A look and its hand-off's tasks. */
 const flat = (l: Look): Look[] => [l, ...(l.kids ?? [])];
 
@@ -249,15 +260,15 @@ function units(project: string | null | undefined = filter()): Unit[] {
         if (!inView(r, scope)) continue;
         // A heading with no visible task keeps its own state.
         const st: State = r.state === "done" || r.state === "pending" || r.state === "blocked" ? r.state : "sent";
-        out.push({ r, st, kids, closed: r.closed_at, working: false });
+        out.push({ r, st, kids, closed: closedOf(r), working: false });
         continue;
       }
       const every = kids.flatMap(flat);
-      out.push({ r, st: planState(every), kids, closed: r.closed_at, working: every.some((k) => k.st === "sent") });
+      out.push({ r, st: planState(every), kids, closed: closedOf(r), working: every.some((k) => k.st === "sent") });
     } else if (!placed(r)) {
       const l = r.kind === "handoff" ? handoff(r, view) : look(r);
       if (!view(r) && !l.kids?.length) continue;
-      out.push({ r, st: l.st, look: l, closed: r.closed_at, working: flat(l).some((k) => k.st === "sent") });
+      out.push({ r, st: l.st, look: l, closed: closedOf(r), working: flat(l).some((k) => k.st === "sent") });
     }
   }
   return out;
@@ -313,7 +324,7 @@ export function ledgerPanes(project: string): string[] {
 
 /** The title of a project Skipper's newest open work: a hand-off it was given, or its own. */
 export function ledgerWorkTitle(project: string): string | null {
-  const r = [...rows].reverse().find((r) => !r.closed_at && r.state !== "done" && !r.parent && (r.owner === project || (r.kind === "handoff" && r.project === project)))
+  const r = [...rows].reverse().find((r) => r.bucket !== "finished" && r.state !== "done" && !r.parent && (r.owner === project || (r.kind === "handoff" && r.project === project)))
     ?? [...rows].reverse().find((r) => r.kind === "handoff" && r.project === project && r.state !== "done");
   return r ? titleOf(r) : null;
 }

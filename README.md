@@ -41,8 +41,9 @@ detaches. See the [wiki Skiff agent page](https://github.com/solutionscay/skiff/
 
 The Ledger panel at the right of Skipper's pane sorts the work into Working, Open and
 Finished. Work is a plan with its tasks, or a task with no plan. It moves to Finished
-only when Skipper closes it on your word (`skiff ledger close`); `skiff ledger reopen`
-opens it again. `skiff ledger prune` removes only closed work. Ctrl+Alt+Shift+L folds the
+when every task in it is done and reported, or when Skipper closes it on your word
+(`skiff ledger close`). `skiff ledger reopen` opens it again and keeps it open until a
+task in it changes state. `skiff ledger prune` removes only closed work. Ctrl+Alt+Shift+L folds the
 panel to a rail with the count of tasks that need you. Focus mode keeps the panel and
 maximize hides it. Only Skipper's session can change the ledger. A shell outside Skiff,
 such as an SSH login, adds `--person` to change a row.

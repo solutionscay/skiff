@@ -147,6 +147,8 @@ async fn host_ledger(dir: PathBuf) {
         }
         assert!(!row("bbbb0009").result_exists);
         assert_eq!(rows.iter().filter(|r| r.closed_at.is_some()).count(), 100, "Finished keeps 100");
+        assert!(rows.iter().filter(|r| r.closed_at.is_some()).all(|r| r.bucket == "finished"), "closed work is finished");
+        assert_eq!(row("bbbb0009").bucket, "open", "work no agent is on is open");
         assert!(rows.iter().all(|r| r.uid != "cccc0000" && r.uid != "cccc0001"), "the oldest closed stay in the file");
         assert_eq!(rows, data::ledger_rows(&l).await.unwrap(), "both routes agree");
     }

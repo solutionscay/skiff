@@ -273,6 +273,12 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         Request::WorktreeRemove { .. } => live_sessions().await?,
         _ => Vec::new(),
     };
+    // The ledger's buckets need them too. Without them, a sent task counts as
+    // worked on, as in `skiff ledger ls`.
+    let ledger_sessions = match &request {
+        Request::LedgerRows => live_sessions().await.ok(),
+        _ => None,
+    };
     if matches!(request, Request::FolderPlaces) {
         note_in_use().await;
     }
@@ -356,7 +362,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             let path = skiff_client::cache::put(&cfg, &name, &bytes).map_err(refused)?;
             Ok(Response::Path { path: path.to_string_lossy().into_owned() })
         }
-        Request::LedgerRows => Ok(Response::Ledger { rows: ledger_rows()? }),
+        Request::LedgerRows => Ok(Response::Ledger { rows: ledger_rows(ledger_sessions.as_deref())? }),
         Request::LedgerStamp => {
             let file = skiff_client::ledger::path().map_err(failed)?;
             Ok(Response::LedgerStamp { stamp: skiff_client::ledger::stamp(&file) })
@@ -465,15 +471,17 @@ fn unread(e: anyhow::Error) -> Error {
 
 /// The Ledger panel's rows from this Host's `ledger.db`, read-only. A pane
 /// is `elsewhere` when its socket is not this Host's skiffd; a result
-/// exists only when [`ledger_result`] would serve it.
-fn ledger_rows() -> Result<Vec<HostLedgerRow>, Error> {
+/// exists only when [`ledger_result`] would serve it. Each row carries its
+/// work's bucket from the sessions `all`, as `skiff ledger ls` gives it.
+fn ledger_rows(all: Option<&[SessionInfo]>) -> Result<Vec<HostLedgerRow>, Error> {
     let file = skiff_client::ledger::path().map_err(failed)?;
-    let rows = skiff_client::ledger::panel(&file).map_err(ledger_unread)?;
-    let here = skiff_core::state::socket();
+    let mut rows = skiff_client::ledger::panel(&file).map_err(ledger_unread)?;
+    skiff_client::ledger::mark_live(&skiff_core::state::socket(), all, &mut rows);
     Ok(rows
         .into_iter()
         .map(|r| {
-            let elsewhere = r.socket_other_than(&here).is_some();
+            let elsewhere = r.elsewhere;
+            let bucket = r.bucket.unwrap_or(skiff_client::ledger::OPEN).to_string();
             let result_exists = r.result_path.as_deref().is_some_and(|p| result_file(&file, p).is_ok());
             HostLedgerRow {
                 id: r.id,
@@ -494,6 +502,7 @@ fn ledger_rows() -> Result<Vec<HostLedgerRow>, Error> {
                 reported_at: r.reported_at,
                 closed_at: r.closed_at,
                 gone_at: r.gone_at,
+                bucket,
                 elsewhere,
                 result_exists,
             }
