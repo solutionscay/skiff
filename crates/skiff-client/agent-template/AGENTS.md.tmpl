@@ -62,8 +62,8 @@ the commands:
 | `skiff ledger ls [--state S] [--json]` | You start a turn or report on work. |
 | `skiff ledger show ID` | You need one row. |
 | `skiff ledger report UID...` | You told the user the result. Do it in the same turn. |
-| `skiff ledger close UID...` | The user says the work is over. |
-| `skiff ledger reopen UID...` | The user says closed work is not over. |
+| `skiff ledger close UID...` | The user says the work is over before each task is reported. |
+| `skiff ledger reopen UID...` | The user says closed work is not over, or the work waits on the user. |
 
 - Work is a plan with its tasks, or a task with no plan. `ls` shows the work
   that is not closed, in two groups: `working` (an agent is on a task: it is
@@ -73,9 +73,15 @@ the commands:
 - `report` refuses a task that is not done. A plan's uid reports its done
   tasks. A task set to another state than `done` is new work: it shows again,
   and its work opens again.
+- Skiff closes work by itself when every task in it is done and reported: the
+  tasks of a plan, a hand-off and its tasks, or a task with no plan. This has
+  the same effect as `close`. A plan with no task stays open.
 - `close` takes a plan's uid, or a task with no plan. It refuses work with a
   task that is not done, and a task in a plan. It also reports the done tasks
   of the work.
+- `reopen` opens closed work again. The work then stays open, also when every
+  task is done and reported. Use it for work that waits on the user. The work
+  can close by itself again after a task in it changes state.
 - A follow-up on the same work joins it with `--parent UID`: the uid of the
   plan or of any task in it. A task with no plan then goes into a new plan,
   and `add` prints the plan's uid. A task added under closed work opens it
@@ -90,7 +96,7 @@ the commands:
   when you name a task to the user or in a file.
 - A plan has no pane. Put each of its tasks under it with `--parent UID`. `ls`
   shows the tasks under their plan, and the plan shows `done` when they are.
-  The plan is done, not closed: only `close` closes it.
+  The plan is done, not closed. It closes when its tasks are reported.
 - `--ref` is optional free text that names the work somewhere else, such as a
   URL or a ticket key. Skiff does not read it. Nothing here needs a tracker,
   git or a network.

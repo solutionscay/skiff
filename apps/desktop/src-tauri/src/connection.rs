@@ -340,6 +340,13 @@ pub(crate) async fn restart_daemon(app: State<'_, App>) -> Result<DaemonStatus, 
     daemon_status(app).await
 }
 
+/// The sessions on the open connection. `None` when the daemon does not
+/// answer. Never starts a daemon.
+pub(crate) async fn open_sessions(app: &App) -> Option<Vec<skiff_core::session::SessionInfo>> {
+    let c = app.client.lock().await.clone().filter(|c| !c.is_closed())?;
+    c.list_sessions().await.ok()
+}
+
 pub(crate) fn err(e: anyhow::Error) -> String {
     format!("{e:#}")
 }

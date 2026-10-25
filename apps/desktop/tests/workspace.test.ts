@@ -160,3 +160,27 @@ test("a hand-off nests under its plan with its tasks, and the filter keeps one p
   // The gesher Skipper's counts are its own tasks. A blocked task needs the person.
   assert.equal(ledger.review.ledgerCounts("gesher").need, 1);
 });
+
+test("every row files by its work's bucket: a closed hand-off's tasks show in Finished", () => {
+  const ledger = moduleFromSource("../src/workspace/ledger.ts", {
+    "../app/skiffAgent": { skiffAgentName: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
+    "./profile": { ledgerScope: () => null },
+    "../app/state": { S: { projects: [] }, sessions: new Map() },
+    "../app/stateQueries": { shownIds: () => [], accent: () => "" },
+  }, {
+    document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
+  }, "\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units, sections };\n");
+  const row = (id: number, uid: string, kind: string, owner: string, parent: string | null, bucket: string, closed: string | null = null) =>
+    ({ id, uid, kind, project: "skiff", owner, parent, state: "done", bucket, closed_at: closed, pane_id: null, task: uid, title: null, updated_at: "u" });
+  ledger.review.setRows([
+    row(1, "db975634", "handoff", "grand", null, "finished", "2026-10-25T20:19:12Z"),
+    row(2, "230ff854", "task", "skiff", "db975634", "finished"),
+    // A task whose head is not among the rows still files by its bucket.
+    row(3, "0d423aae", "task", "skiff", "1c89bc67", "finished"),
+    row(4, "beef0001", "task", "grand", null, "open"),
+  ]);
+  const x = ledger.review.sections(ledger.review.units(null));
+  assert.deepEqual(Array.from(x.open, (u: any) => u.r.uid), ["beef0001"]);
+  assert.deepEqual(Array.from(x.finished, (u: any) => u.r.uid).sort(), ["0d423aae", "db975634"]);
+  assert.deepEqual(Array.from(x.finished.find((u: any) => u.r.uid === "db975634").look.kids, (k: any) => k.r.uid), ["230ff854"]);
+});

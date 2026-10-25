@@ -176,7 +176,7 @@ Task states are `pending`, `sent`, `blocked` and `done`. `ls` and `show` also pr
 
 A plan shows `done` when every task in it is done, else `sent`.
 
-Work is a plan with its tasks, or a task with no plan. It is `working` while an agent is on one of its tasks (the task is `sent`, and its pane works or ended its turn), `open` otherwise, and `finished` once closed. Only `ledger close` closes work. Done is not closed.
+Work is a plan with its tasks, or a task with no plan. It is `working` while an agent is on one of its tasks (the task is `sent`, and its pane works or ended its turn), `open` otherwise, and `finished` once closed. Done is not closed. Work closes by itself when every task in it is done and reported: the tasks of a plan, a hand-off and its tasks, or a task with no plan. This has the same effect as `ledger close`. A plan with no task stays open. After `ledger reopen`, work stays open until a task in it changes state.
 
 ### Project Skippers
 
@@ -200,8 +200,8 @@ With Settings › Skiff agent › Project Skippers on, a project can have its ow
 | `ledger ls [--state S] [--all \| --closed \| --unreported] [--json]` | Show the work that is not closed: working, then open. |
 | `ledger show UID [--json]` | Show one row. |
 | `ledger report UID... \| --all` | Mark done tasks as told to the person. |
-| `ledger close UID...` | Close work on the person's word. |
-| `ledger reopen UID...` | Open closed work again. |
+| `ledger close UID...` | Close work on the person's word, before each task is reported. |
+| `ledger reopen UID...` | Open closed work again, or keep open work open. Use it for work that waits on the person. |
 | `ledger prune [--older-than 7d] [--yes]` | Remove closed work. Without `--yes` it only prints it. |
 | `ledger rm UID` | Remove one row now. |
 
@@ -216,6 +216,7 @@ With Settings › Skiff agent › Project Skippers on, a project can have its ow
 - `ls --state` takes `sent`, `pending`, `blocked`, `done`, `interrupted` or `gone`. `ls --unreported` lists the done tasks to report.
 - Run `ledger report` in the same turn as you tell the person. A plan's uid reports its done tasks. A task that is not done is refused. A state change away from `done` clears the mark and opens the work again.
 - `ledger close` takes a plan, or a task with no plan. It refuses work with a task that is not done, and a task in a plan. It reports the done tasks of the work.
+- After each `ledger` command that writes, Skiff closes the work whose tasks are all done and reported, and prints one line for each to stderr. Work that `ledger reopen` named is not closed until a task in it changes state, is added, or moves into it.
 - `prune` removes only closed work, with its tasks. `rm` and `prune` keep the result files.
 
 Result paths, in `results/` in the agent folder, or in `projects/<project>/results/` for a project Skipper's rows and a hand-off:
@@ -236,7 +237,7 @@ Result paths, in `results/` in the agent folder, or in `projects/<project>/resul
 
 ### The Ledger panel
 
-The app shows the ledger in a panel at the right of the Skiff agent's pane, and of each project Skipper's pane. The panel is read-only. Its filter shows all projects, or one: the Skipper's panel opens on all, a project Skipper's on its project. A hand-off shows its project's letters and nests under its plan, with its tasks one step under it. It shows three sections: Working, Open and Finished. Open lists the rows that need the person first, then done tasks, then the rest. Finished shows the last 20 closed work items. A row that needs the person is amber. `ledger close` moves work to Finished. The panel shows `--title`.
+The app shows the ledger in a panel at the right of the Skiff agent's pane, and of each project Skipper's pane. The panel is read-only. Its filter shows all projects, or one: the Skipper's panel opens on all, a project Skipper's on its project. A hand-off shows its project's letters and nests under its plan, with its tasks one step under it. It shows three sections: Working, Open and Finished. Open lists the rows that need the person first, then done tasks, then the rest. Finished shows the last 20 closed work items. A row that needs the person is amber. Closed work moves to Finished. Each row shows in the section of its work's bucket, as `ledger ls` gives it. The panel shows `--title`.
 
 ## Recipe
 

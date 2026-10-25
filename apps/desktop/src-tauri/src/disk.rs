@@ -11,7 +11,7 @@ use skiff_client::{
 use skiff_core::{config, session::SessionInfo};
 use tauri::State;
 
-use crate::connection::App;
+use crate::connection::{open_sessions, App};
 
 /// The counts, with the auto flush setting for its row.
 #[derive(Serialize)]
@@ -21,13 +21,6 @@ pub struct Usage {
     /// The folder with `~` for home.
     shown: String,
     cache_days: u32,
-}
-
-/// The sessions on the open connection. `None` when the daemon does not
-/// answer. Never starts a daemon.
-async fn sessions(app: &App) -> Option<Vec<SessionInfo>> {
-    let c = app.client.lock().await.clone().filter(|c| !c.is_closed())?;
-    c.list_sessions().await.ok()
 }
 
 /// The folder and its cache, or the `/tmp` cache alone when no agent folder is usable.
@@ -60,7 +53,7 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Sen
 
 #[tauri::command]
 pub async fn disk_usage(app: State<'_, App>) -> Result<Usage, String> {
-    let s = sessions(&app).await;
+    let s = open_sessions(&app).await;
     blocking(move || count(s)).await
 }
 
@@ -73,7 +66,7 @@ pub async fn flush_cache() -> Result<Removed, String> {
 /// does not answer: the closed work needs the session list.
 #[tauri::command]
 pub async fn flush_done(app: State<'_, App>, expected: Vec<String>) -> Result<Removed, String> {
-    let Some(s) = sessions(&app).await else {
+    let Some(s) = open_sessions(&app).await else {
         return Err("Skiff cannot reach skiffd. Flush done work needs the session list.".into());
     };
     blocking(move || {
