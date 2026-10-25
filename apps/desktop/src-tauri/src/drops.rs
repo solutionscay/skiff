@@ -12,10 +12,7 @@ use std::path::{Path, PathBuf};
 use skiff_client::{cache, host::data};
 use tauri::{AppHandle, State};
 
-use crate::connection::{data_err, data_now, ensure_client, err, App};
-
-/// The largest file a drop sends to a remote Host: one frame holds it.
-const REMOTE_MAX: u64 = 5 * 1024 * 1024;
+use crate::connection::{data_now, ensure_client, err, App};
 
 /// What the page types, and whether to say an image was too large.
 #[derive(serde::Serialize)]
@@ -56,31 +53,13 @@ pub(crate) async fn drop_files(app: State<'_, App>, session: String, paths: Vec<
     let t = if app.remote() {
         let mut files = Vec::new();
         for p in paths {
-            let name = file_name(&p);
-            files.push((name, read_for_host(p, host.as_deref()).await?));
+            files.push(data::drop_file(&p, host.as_deref()).await?);
         }
         to_host(&app, files, host.as_deref()).await?
     } else {
         blocking(move || cache::files(&cache_dir()?, &paths)).await?
     };
     finish(&app, &session, t).await
-}
-
-fn file_name(p: &Path) -> String {
-    p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
-}
-
-/// A file to send to a remote Host: no folder, and small enough for one frame.
-async fn read_for_host(p: PathBuf, host: Option<&str>) -> Result<Vec<u8>, String> {
-    let on = host.unwrap_or("the Host");
-    let m = tokio::fs::metadata(&p).await.map_err(|e| format!("{}: {e}", p.display()))?;
-    if m.is_dir() {
-        return Err(format!("Drop files, not folders, on a pane on {on}."));
-    }
-    if m.len() > REMOTE_MAX {
-        return Err(format!("{} is larger than 5 MB. Skiff cannot send it to {on} yet.", p.display()));
-    }
-    tokio::fs::read(&p).await.map_err(|e| format!("{}: {e}", p.display()))
 }
 
 /// Sends each file to the remote Host and types its Host path. An image
@@ -92,13 +71,7 @@ async fn to_host(app: &App, files: Vec<(String, Vec<u8>)>, host: Option<&str>) -
         let ext = Path::new(&name).extension().and_then(|e| e.to_str()).map(str::to_string);
         let image = cache::image_ext(&bytes, ext.as_deref());
         let local = image.map(|ext| (ext, bytes.clone()));
-        let path = data::drop_put(&c, &name, bytes).await.map_err(|e| match e {
-            skiff_host_api::Error::UnsupportedCapability { .. } => format!(
-                "{} cannot take dropped files. Its Skiff is older than this app: use Update Skiff… on that Host in Settings › Hosts.",
-                host.unwrap_or("This Host")
-            ),
-            e => data_err(e),
-        })?;
+        let path = data::drop_send(&c, &name, bytes, host).await?;
         if let Some((ext, bytes)) = local {
             blocking(move || cache::store(&cache_dir()?, &bytes, ext)).await?;
             out.images.push(path.clone());
@@ -124,8 +97,7 @@ pub(crate) async fn clipboard_image(handle: AppHandle, app: State<'_, App>, sess
         Clip::Files(paths) if app.remote() => {
             let mut files = Vec::new();
             for p in paths {
-                let name = file_name(&p);
-                files.push((name, read_for_host(p, host.as_deref()).await?));
+                files.push(data::drop_file(&p, host.as_deref()).await?);
             }
             to_host(&app, files, host.as_deref()).await?
         }

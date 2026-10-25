@@ -28,87 +28,7 @@ use tauri::{Manager, State};
 
 use crate::connection::{blocking, err, App};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub(crate) struct KnownHost {
-    /// Local only. Rename and edit keep it; `selected` names it.
-    pub(crate) id: String,
-    /// Shown in the Host menu, Settings and the window title.
-    pub(crate) name: String,
-    /// What `ssh` takes: an alias from ssh config, `host` or `user@host`.
-    pub(crate) destination: String,
-    /// Sent as `-l` only when the person set it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) user: Option<String>,
-    /// Sent as `-p` only when the person set it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) port: Option<u16>,
-    /// The Host id skiffd reported on the first accepted connection. Only
-    /// the person changes it, by accepting a new identity.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) host_id: Option<String>,
-    /// The Host id whose OSC 52 clipboard writes reach this Mac. It counts
-    /// only while it is `host_id`: a new identity has no permission.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) clipboard_host: Option<String>,
-    /// Update Skiff on this server automatically when this app is newer.
-    /// On by default; only an install Skiff made is updated.
-    #[serde(default = "yes", skip_serializing_if = "is_yes")]
-    pub(crate) auto_update: bool,
-}
-
-fn yes() -> bool {
-    true
-}
-
-fn is_yes(b: &bool) -> bool {
-    *b
-}
-
-impl KnownHost {
-    #[cfg(test)]
-    fn new(destination: String) -> Self {
-        Self { id: format!("h_{destination}"), name: destination.clone(), destination, user: None, port: None, host_id: None, clipboard_host: None, auto_update: true }
-    }
-
-    /// The login, with the socket the last probe of this app run found
-    /// there, or empty before one: the first connect probes.
-    pub(crate) fn target(&self) -> SshTarget {
-        SshTarget { destination: self.destination.clone(), user: self.user.clone(), port: self.port, socket: memo(&self.id, |m| m.socket.clone()).unwrap_or_default() }
-    }
-
-    /// The same login: destination, user and port.
-    fn logs_in_as(&self, t: &SshTarget) -> bool {
-        self.destination == t.destination && self.user == t.user && self.port == t.port
-    }
-
-    /// Clipboard writes from a connection that answers as `live` are
-    /// allowed: it is the identity this Host must have, and the one the
-    /// person allowed. Another window's newer pin or grant does not count.
-    pub(crate) fn clipboard_for(&self, live: &HostId) -> bool {
-        self.host_id.as_deref() == Some(live.as_str()) && self.clipboard_host.as_deref() == Some(live.as_str())
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct Hosts {
-    /// The id of the Host this window shows. None: this Mac.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) selected: Option<String>,
-    #[serde(default, rename = "host")]
-    pub(crate) hosts: Vec<KnownHost>,
-}
-
-pub(crate) fn path() -> PathBuf {
-    skiff_core::config::config_path().with_file_name("hosts.toml")
-}
-
-pub(crate) fn load(path: &Path) -> anyhow::Result<Hosts> {
-    match std::fs::read_to_string(path) {
-        Ok(text) => Ok(toml::from_str(&text)?),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Hosts::default()),
-        Err(e) => Err(e.into()),
-    }
-}
+pub(crate) use skiff_client::host::known::{forward_dir, load, path, Hosts, KnownHost};
 
 /// Changes the file as one step for every window and app run. An exclusive
 /// `flock` on `hosts.toml.lock`, beside it, is held from the read to the
@@ -143,37 +63,32 @@ fn save(path: &Path, hosts: &Hosts) -> anyhow::Result<()> {
     Ok(())
 }
 
-impl Hosts {
-    pub(crate) fn find(&self, id: &str) -> Option<&KnownHost> {
-        self.hosts.iter().find(|h| h.id == id)
-    }
 
-    /// The Host a selection's target logs in to.
-    pub(crate) fn find_login(&self, t: &SshTarget) -> Option<&KnownHost> {
-        self.hosts.iter().find(|h| h.logs_in_as(t))
-    }
+/// What this app run knows on top of `hosts.toml`: the skiffd socket the last
+/// probe found there.
+pub(crate) trait Known {
+    fn target(&self) -> SshTarget;
+}
 
-    /// The selection the file names. A selected Host that is not in the list
-    /// is this Mac: the file never points at an unknown endpoint.
-    pub(crate) fn selection(&self, local: impl FnOnce() -> HostSelection) -> HostSelection {
-        match self.selected.as_deref().and_then(|d| self.find(d)) {
-            Some(h) => remote(h).unwrap_or_else(|_| local()),
-            None => local(),
-        }
+impl Known for KnownHost {
+    /// The login, with the socket the last probe of this app run found
+    /// there, or empty before one: the first connect probes.
+    fn target(&self) -> SshTarget {
+        self.target_with(memo(&self.id, |m| m.socket.clone()))
     }
 }
 
-/// The private directory for this Host's forwards. Each forward makes its
-/// own directory inside it. Short, as a socket path must be.
-fn forward_dir(id: &str) -> PathBuf {
-    let hash = id.bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3));
-    // SAFETY: geteuid takes no arguments and cannot fail.
-    std::env::temp_dir().join(format!("skiff-{}-{:08x}", unsafe { libc::geteuid() }, hash as u32))
+/// The selection the file names. A selected Host that is not in the list
+/// is this Mac: the file never points at an unknown endpoint.
+pub(crate) fn selected(hosts: &Hosts, local: impl FnOnce() -> HostSelection) -> HostSelection {
+    match hosts.selected.as_deref().and_then(|d| hosts.find(d)) {
+        Some(h) => remote(h).unwrap_or_else(|_| local()),
+        None => local(),
+    }
 }
 
 pub(crate) fn remote(h: &KnownHost) -> Result<HostSelection, String> {
-    let pin = h.host_id.clone().map(HostId::try_from).transpose()?;
-    HostSelection::ssh(h.target(), SshOptions::default(), forward_dir(&h.id), pin)
+    h.selection(memo(&h.id, |m| m.socket.clone()))
 }
 
 fn known<'a>(hosts: &'a mut Hosts, id: &str) -> anyhow::Result<&'a mut KnownHost> {
@@ -1143,7 +1058,7 @@ pub(crate) async fn select_host(handle: tauri::AppHandle, app: State<'_, App>, i
                 remote(h).map_err(anyhow::Error::msg)?;
             }
             hosts.selected = id;
-            Ok(hosts.selection(crate::connection::local_selection))
+            Ok(selected(&hosts, crate::connection::local_selection))
         })
     })
     .await?;
@@ -1181,7 +1096,7 @@ pub(crate) async fn accept_host_identity(app: State<'_, App>, id: String) -> Res
     };
     let selection = blocking(move || {
         let hosts = accept_identity(&path(), &id, &received)?;
-        Ok(hosts.selection(crate::connection::local_selection))
+        Ok(selected(&hosts, crate::connection::local_selection))
     })
     .await?;
     crate::connection::replace_selection(&app, selection).await;
@@ -1211,16 +1126,16 @@ mod tests {
         assert!(text.contains("selected = \"h_devbox\"") && text.contains("[[host]]"), "{text}");
         assert_eq!(load(&file).unwrap(), hosts);
         let local = || HostSelection::new("/l.sock".into(), "/id".into());
-        let picked = hosts.selection(local);
+        let picked = selected(&hosts, local);
         assert_eq!(picked.ssh_target().map(|t| t.destination.as_str()), Some("devbox"));
         assert!(picked.process_control().is_none());
         // Room under the forwards' directory for `<pid>-<n>/skiffd.sock`.
         assert!(picked.socket().as_os_str().len() + 32 < 104, "{}", picked.socket().display());
         assert_eq!(picked.pinned(), None);
         let gone = Hosts { selected: Some("h_gone".into()), ..hosts.clone() };
-        assert!(gone.selection(local).is_local());
+        assert!(selected(&gone, local).is_local());
         let bad = Hosts { hosts: vec![KnownHost { destination: "-oProxyCommand=x".into(), ..hosts.hosts[0].clone() }], selected: Some("h_devbox".into()) };
-        assert!(bad.selection(local).is_local(), "an invalid entry never becomes an endpoint");
+        assert!(selected(&bad, local).is_local(), "an invalid entry never becomes an endpoint");
         // A selection whose Host was removed by hand is cleared on the next read.
         assert_eq!(forget_removed(&file).unwrap(), hosts);
         save(&file, &gone).unwrap();
@@ -1320,7 +1235,7 @@ mod tests {
         let hosts = load(&file).unwrap();
         assert_eq!(hosts.hosts[0].host_id.as_deref(), Some("A"));
         let local = || HostSelection::new("/l.sock".into(), "/id".into());
-        assert_eq!(hosts.selection(local).pinned(), Some(id("A")));
+        assert_eq!(selected(&hosts, local).pinned(), Some(id("A")));
 
         // Clipboard needs a live identity, and is given to that one only.
         assert!(set_clipboard(&file, "h_devbox", None, true).is_err());
@@ -1329,7 +1244,7 @@ mod tests {
         let accepted = accept_identity(&file, "h_devbox", &id("B")).unwrap();
         assert_eq!(accepted.hosts[0].host_id.as_deref(), Some("B"));
         assert!(!accepted.hosts[0].clipboard_for(&id("B")), "the old identity's permission is gone");
-        assert_eq!(load(&file).unwrap().selection(local).pinned(), Some(id("B")));
+        assert_eq!(selected(&load(&file).unwrap(), local).pinned(), Some(id("B")));
         // A file whose permission names another identity allows nothing.
         let foreign = KnownHost { host_id: Some("B".into()), clipboard_host: Some("A".into()), ..KnownHost::new("x".into()) };
         assert!(!foreign.clipboard_for(&id("A")) && !foreign.clipboard_for(&id("B")));
