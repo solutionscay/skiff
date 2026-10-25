@@ -6,9 +6,10 @@ use std::{path::Path, time::Duration};
 
 use serde::Serialize;
 use skiff_client::ledger::{self, Row};
-use tauri::{AppHandle, Emitter};
+use skiff_core::session::SessionInfo;
+use tauri::{AppHandle, Emitter, State};
 
-use crate::connection::err;
+use crate::connection::{err, open_sessions, App};
 
 /// The page reads the ledger again on this event.
 const LEDGER_CHANGED: &str = "skiff:ledger-changed";
@@ -26,10 +27,13 @@ pub struct Entry {
 }
 
 /// Every row, reported ones included, oldest first. Plans carry the state
-/// their tasks give them. No `ledger.db` yet gives none.
+/// their tasks give them. Each row carries its work's bucket, as `skiff
+/// ledger ls` gives it, from the sessions on the open connection. No
+/// `ledger.db` yet gives none.
 #[tauri::command]
-pub async fn ledger_rows() -> Result<Vec<Entry>, String> {
-    tauri::async_runtime::spawn_blocking(read).await.map_err(|e| e.to_string())?.map_err(err)
+pub async fn ledger_rows(app: State<'_, App>) -> Result<Vec<Entry>, String> {
+    let all = open_sessions(&app).await;
+    tauri::async_runtime::spawn_blocking(move || read(all.as_deref())).await.map_err(|e| e.to_string())?.map_err(err)
 }
 
 /// Finished shows this many closed items, newest first. Keep in step with
@@ -43,7 +47,7 @@ const KEEP: i64 = 100;
 const PANEL: &str = "WHERE coalesce((SELECT h.parent FROM tasks h WHERE h.uid = tasks.parent), parent, uid) NOT IN (SELECT uid FROM tasks WHERE closed_at IS NOT NULL) \
      OR coalesce((SELECT h.parent FROM tasks h WHERE h.uid = tasks.parent), parent, uid) IN (SELECT uid FROM tasks WHERE closed_at IS NOT NULL ORDER BY closed_at DESC, id DESC LIMIT ?1)";
 
-fn read() -> anyhow::Result<Vec<Entry>> {
+fn read(all: Option<&[SessionInfo]>) -> anyhow::Result<Vec<Entry>> {
     let file = ledger::path()?;
     if !file.exists() {
         return Ok(Vec::new());
@@ -51,11 +55,10 @@ fn read() -> anyhow::Result<Vec<Entry>> {
     let db = ledger::open_read(&file)?;
     let mut rows = ledger::rows(&db, PANEL, Some(&KEEP))?;
     ledger::roll_up(&mut rows);
-    let here = skiff_core::state::socket();
+    ledger::mark_live(&skiff_core::state::socket(), all, &mut rows);
     Ok(rows
         .into_iter()
-        .map(|mut row| {
-            row.elsewhere = row.socket_other_than(&here).is_some();
+        .map(|row| {
             let result_exists = row.result_path.as_deref().is_some_and(|p| Path::new(p).is_file());
             Entry { row, result_exists }
         })

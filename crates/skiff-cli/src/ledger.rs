@@ -14,7 +14,7 @@ use skiff_core::{
 
 use crate::{print, resolve, sessions, LedgerCmd};
 pub use skiff_client::ledger::{path, Row, GRAND};
-use skiff_client::ledger::{buckets, gen, heads, owner_name, roll_up, rows, GONE, INTERRUPTED, OPEN, VERSION, WORKING};
+use skiff_client::ledger::{gen, heads, mark_live, owner_name, roll_up, rows, GONE, INTERRUPTED, OPEN, VERSION, WORKING};
 
 const STATES: [&str; 4] = ["sent", "pending", "blocked", "done"];
 const TASKS: &str = "
@@ -38,8 +38,27 @@ CREATE TABLE IF NOT EXISTS tasks (
   title       TEXT,
   closed_at   TEXT,
   gone_at     TEXT,
-  owner       TEXT NOT NULL DEFAULT 'grand'
+  owner       TEXT NOT NULL DEFAULT 'grand',
+  reopened_at TEXT
 );
+";
+
+/// A task's state change, a new task, or a task that moves into work clears
+/// its work head's `reopened_at`: the work may close by itself again (see
+/// [`auto_close`]). The head of a hand-off's task is two steps up.
+const REOPEN_ENDS: &str = "
+CREATE TRIGGER IF NOT EXISTS reopen_ends_on_state AFTER UPDATE OF state, parent ON tasks
+WHEN OLD.state IS NOT NEW.state OR OLD.parent IS NOT NEW.parent
+BEGIN
+  UPDATE tasks SET reopened_at = NULL
+  WHERE uid = coalesce((SELECT h.parent FROM tasks h WHERE h.uid = NEW.parent), NEW.parent, NEW.uid) AND reopened_at IS NOT NULL;
+END;
+CREATE TRIGGER IF NOT EXISTS reopen_ends_on_add AFTER INSERT ON tasks
+WHEN NEW.parent IS NOT NULL
+BEGIN
+  UPDATE tasks SET reopened_at = NULL
+  WHERE uid = coalesce((SELECT h.parent FROM tasks h WHERE h.uid = NEW.parent), NEW.parent) AND reopened_at IS NOT NULL;
+END;
 ";
 
 /// The one Skiff agent session that changes this ledger, and its socket.
@@ -85,6 +104,7 @@ fn open_at(file: &Path) -> Result<Connection> {
     db.execute_batch(UIDS)?;
     db.execute_batch(OWNER)?;
     migrate(&mut db)?;
+    db.execute_batch(REOPEN_ENDS)?;
     // Only up: an older skiff that opens the file stamps its own version, and
     // must not undo a newer one's. The columns, not the stamp, tell the shape.
     let v: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
@@ -109,6 +129,8 @@ fn open_at(file: &Path) -> Result<Connection> {
 /// - 8 to 9: `owner`, and the `handoff` kind. The table is built again in
 ///   the new shape, each row with its id and owner `grand`: before project
 ///   Skippers, the grand Skipper owned every row.
+/// - 9 to 10: `reopened_at`. No work has it: work that is done and reported
+///   closes at the next write (see [`auto_close`]).
 fn migrate(db: &mut Connection) -> Result<()> {
     add_column(db, "socket", |tx| {
         tx.execute("UPDATE tasks SET socket = ?1 WHERE kind = 'task'", [state::live_socket().display().to_string()])?;
@@ -118,7 +140,8 @@ fn migrate(db: &mut Connection) -> Result<()> {
     add_column(db, "title", |_| Ok(()))?;
     add_column(db, "closed_at", |_| Ok(()))?;
     add_column(db, "gone_at", |_| Ok(()))?;
-    add_owner(db)
+    add_owner(db)?;
+    add_column(db, "reopened_at", |_| Ok(()))
 }
 
 /// The 8 to 9 step. SQLite cannot change a CHECK in place, so the rows move
@@ -133,7 +156,8 @@ fn add_owner(db: &mut Connection) -> Result<()> {
     let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
     if !has(&tx)? {
         let old = "id, uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, reported_at, title, closed_at, gone_at";
-        tx.execute_batch(&TASKS.replace("IF NOT EXISTS tasks", "tasks_9"))?;
+        // Version 9's shape: `reopened_at` comes in the next step.
+        tx.execute_batch(&TASKS.replace("IF NOT EXISTS tasks", "tasks_9").replace(",\n  reopened_at TEXT", ""))?;
         tx.execute_batch(&format!("INSERT INTO tasks_9 ({old}, owner) SELECT {old}, 'grand' FROM tasks; DROP TABLE tasks; ALTER TABLE tasks_9 RENAME TO tasks;"))?;
     }
     tx.commit()?;
@@ -457,26 +481,6 @@ fn join(db: &Connection, file: &Path, arg: &str) -> Result<Row> {
     )?;
     db.execute(&format!("UPDATE tasks SET parent = ?2, closed_at = NULL, updated_at = {NOW} WHERE id = ?1"), params![r.id, uid])?;
     one(db, &uid)
-}
-
-/// Fills in `live`, `interrupted` and `agent_on` from the sessions `all`,
-/// when the daemon answered, then each row's bucket. A task of another
-/// socket is marked `elsewhere` and not checked. A sent task that cannot be
-/// checked counts as worked on.
-fn mark_live(socket: &Path, all: Option<&[SessionInfo]>, rows: &mut [Row]) {
-    for r in rows.iter_mut() {
-        r.elsewhere = r.socket_other_than(socket).is_some();
-        r.agent_on = !r.is_plan() && r.state == "sent";
-    }
-    if let Some(all) = all {
-        for r in rows.iter_mut().filter(|r| !r.is_plan() && !r.elsewhere) {
-            let s = r.pane_id.as_deref().and_then(|p| resolve::session(all, p).ok());
-            r.live = Some(s.is_some());
-            r.interrupted = Some(r.interrupted_in(s));
-            r.agent_on = r.agent_on_in(s);
-        }
-    }
-    buckets(rows);
 }
 
 /// Which rows `ls` lists.
@@ -1061,24 +1065,63 @@ fn close(db: &mut Connection, caller: &Caller, ids: &[String]) -> Result<usize> 
         for t in tasks.iter().filter(|t| t.reported_at.is_none()) {
             tx.execute(&format!("UPDATE tasks SET reported_at = {NOW} WHERE id = ?1 AND kind IN ('task', 'handoff')"), [t.id])?;
         }
-        n += tx.execute(&format!("UPDATE tasks SET closed_at = {NOW} WHERE id = ?1"), [r.id])?;
+        n += tx.execute(&format!("UPDATE tasks SET closed_at = {NOW}, reopened_at = NULL WHERE id = ?1"), [r.id])?;
     }
     tx.commit()?;
     Ok(n)
 }
 
-/// Clears `closed_at` on the work `ids` name, in one transaction. Returns how
-/// many work items were closed.
+/// Clears `closed_at` on the work `ids` name and stamps `reopened_at`, in one
+/// transaction: the work stays open, also when it is done and reported, until
+/// a task in it changes state. Open work takes the stamp too, so it does not
+/// close by itself. Returns how many work items took it.
 fn reopen(db: &mut Connection, caller: &Caller, ids: &[String]) -> Result<usize> {
     let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let mut n = 0;
     for id in ids {
         let r = head(&tx, id)?;
         caller.check(&r)?;
-        n += tx.execute("UPDATE tasks SET closed_at = NULL WHERE id = ?1 AND closed_at IS NOT NULL", [r.id])?;
+        n += tx.execute(&format!("UPDATE tasks SET closed_at = NULL, reopened_at = {NOW} WHERE id = ?1"), [r.id])?;
     }
     tx.commit()?;
     Ok(n)
+}
+
+/// Closes, as `close` does, each open work item whose tasks are all done and
+/// reported: a plan's tasks, a hand-off and its tasks, or a lone task. A plan
+/// with no task stays open, as does work with `reopened_at`. Returns the work
+/// heads it closed.
+fn auto_close(db: &mut Connection) -> Result<Vec<Row>> {
+    let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let all = rows(&tx, "", None)?;
+    let held: std::collections::HashSet<String> = {
+        let mut st = tx.prepare("SELECT uid FROM tasks WHERE reopened_at IS NOT NULL")?;
+        let out = st.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<_>>()?;
+        out
+    };
+    let head = heads(&all);
+    // Each open work head, with whether every task in it is done and reported.
+    let mut ready: std::collections::BTreeMap<&str, bool> = std::collections::BTreeMap::new();
+    for r in &all {
+        let h = head[&r.uid].as_str();
+        if r.is_plan() && r.uid == h {
+            continue;
+        }
+        let done = r.state == "done" && r.reported_at.is_some();
+        ready.entry(h).and_modify(|ok| *ok &= done).or_insert(done);
+    }
+    let mut out = Vec::new();
+    for (h, ok) in ready {
+        let Some(r) = all.iter().find(|r| r.uid == h) else { continue };
+        if !ok || r.closed_at.is_some() || held.contains(h) {
+            continue;
+        }
+        if tx.execute(&format!("UPDATE tasks SET closed_at = {NOW} WHERE id = ?1 AND closed_at IS NULL"), [r.id])? == 1 {
+            out.push(r.clone());
+        }
+    }
+    tx.commit()?;
+    Ok(out)
 }
 
 fn work_word(n: usize) -> &'static str {
@@ -1145,7 +1188,20 @@ fn add_state(st: Option<&str>, plan: bool, send: bool) -> Result<&str> {
 }
 
 /// The exit code: `send`'s for `send` and `add --send`, else 0.
+/// Runs one `skiff ledger` command. After a command that writes, work that
+/// is done and reported closes by itself (see [`auto_close`]).
 pub async fn run(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
+    let writes = !matches!(cmd, LedgerCmd::Ls { .. } | LedgerCmd::Show { .. });
+    let code = run_one(socket, cmd, person).await?;
+    if writes {
+        for r in auto_close(&mut open()?)? {
+            eprintln!("skiff: closed {} {}: every task is done and reported", r.kind, r.uid);
+        }
+    }
+    Ok(code)
+}
+
+async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
     match cmd {
         LedgerCmd::Add { pane: p, task, title, plan: is_plan, parent, project, state: st, result, reference, task_type, send, enter, shell } => {
             let task_type = task_type.as_deref().map(skiff_core::tasks::check_name).transpose()?.map(str::to_string);
@@ -1569,6 +1625,60 @@ mod tests {
     }
 
     #[test]
+    fn done_and_reported_work_closes_by_itself_until_reopened() {
+        let dir = scratch("autoclose");
+        let file = dir.join("ledger.db");
+        let mut db = open_at(&file).unwrap();
+        let closed = |db: &Connection, uid: &str| one(db, uid).unwrap().closed_at.is_some();
+        let done = |t: &str| New { state: "done".into(), ..task(t) };
+        let (_, lone, _, _) = insert(&mut db, &file, done("lone")).unwrap();
+        let (_, p, _, _) = insert(&mut db, &file, New { plan: true, pane_id: None, ..task("p") }).unwrap();
+        let (_, a, _, _) = insert(&mut db, &file, New { parent: Some(p.clone()), ..done("a") }).unwrap();
+        let (_, h, _, _) = insert(&mut db, &file, New { parent: Some(p.clone()), handoff: true, ..done("h") }).unwrap();
+        let (_, k, _, _) = insert(&mut db, &file, New { parent: Some(h.clone()), owner: "web".into(), ..task("k") }).unwrap();
+        let (_, empty, _, _) = insert(&mut db, &file, New { plan: true, pane_id: None, ..task("empty") }).unwrap();
+        // Done is not enough: the person was not told yet.
+        assert!(auto_close(&mut db).unwrap().is_empty());
+        report(&mut db, &Caller::Person, &[], true).unwrap();
+        // The hand-off's task is still sent: the plan stays open. A plan with no task stays open.
+        assert_eq!(auto_close(&mut db).unwrap().iter().map(|r| r.uid.clone()).collect::<Vec<_>>(), [lone.clone()]);
+        assert!(!closed(&db, &p) && !closed(&db, &empty));
+        db.execute("UPDATE tasks SET state = 'done' WHERE uid = ?1", [&k]).unwrap();
+        report(&mut db, &Caller::Person, &[], true).unwrap();
+        auto_close(&mut db).unwrap();
+        assert!(closed(&db, &p));
+        // Reopened work stays open, until a task in it changes state.
+        reopen(&mut db, &Caller::Person, &[p.clone(), lone.clone()]).unwrap();
+        assert!(auto_close(&mut db).unwrap().is_empty());
+        assert!(!closed(&db, &p) && !closed(&db, &lone));
+        db.execute("UPDATE tasks SET state = 'sent' WHERE uid = ?1", [&a]).unwrap();
+        db.execute("UPDATE tasks SET state = 'done' WHERE uid = ?1", [&a]).unwrap();
+        auto_close(&mut db).unwrap();
+        assert!(closed(&db, &p) && !closed(&db, &lone));
+        // A hand-off's task clears the mark two steps up.
+        reopen(&mut db, &Caller::Person, std::slice::from_ref(&p)).unwrap();
+        db.execute("UPDATE tasks SET state = 'pending' WHERE uid = ?1", [&k]).unwrap();
+        assert!(one(&db, &p).unwrap().closed_at.is_none());
+        let held: Option<String> = db.query_row("SELECT reopened_at FROM tasks WHERE uid = ?1", [&p], |r| r.get(0)).unwrap();
+        assert!(held.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_version_9_ledger_takes_reopened_at_and_keeps_its_rows() {
+        let dir = scratch("v9");
+        let file = dir.join("ledger.db");
+        let db = Connection::open(&file).unwrap();
+        db.execute_batch(&TASKS.replace(",\n  reopened_at TEXT", "")).unwrap();
+        db.execute_batch(&format!("INSERT INTO tasks (uid, task, sent_at, state, updated_at) VALUES ('a1b2c3d4', 't', 'x', 'done', 'x'); PRAGMA user_version = 9;")).unwrap();
+        drop(db);
+        let db = open_at(&file).unwrap();
+        assert_eq!(rows(&db, "", None).unwrap().len(), 1);
+        assert!(skiff_client::ledger::open_read(&file).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn work_is_working_while_an_agent_is_on_a_task_else_open_until_closed() {
         let dir = scratch("buckets");
         let file = dir.join("ledger.db");
@@ -1581,7 +1691,7 @@ mod tests {
         close(&mut db, &Caller::Person, std::slice::from_ref(&q)).unwrap();
         let mut list = rows(&db, "", None).unwrap();
         list.iter_mut().find(|r| r.uid == p_on).unwrap().agent_on = true;
-        buckets(&mut list);
+        skiff_client::ledger::buckets(&mut list);
         let b = |uid: &str| list.iter().find(|r| r.uid == uid).unwrap().bucket.unwrap();
         // A plan and every task in it share one bucket.
         assert!(list.iter().filter(|r| r.work() == p).all(|r| r.bucket == Some(WORKING)));
@@ -1619,7 +1729,8 @@ mod tests {
         assert_eq!(close(&mut db, &Caller::Person, std::slice::from_ref(&a)).unwrap(), 0);
         assert_eq!(closed(&db, &a).as_deref(), Some("2020-01-01T00:00:00Z"));
 
-        assert_eq!(reopen(&mut db, &Caller::Person, &[a.clone(), open.clone()]).unwrap(), 1);
+        // Open work takes the stamp too, so it does not close by itself.
+        assert_eq!(reopen(&mut db, &Caller::Person, &[a.clone(), open.clone()]).unwrap(), 2);
         assert!(closed(&db, &a).is_none());
         // A task set back from done opens its work again.
         close(&mut db, &Caller::Person, std::slice::from_ref(&a)).unwrap();
