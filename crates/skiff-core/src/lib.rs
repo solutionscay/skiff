@@ -12,7 +12,7 @@ pub mod protocol;
 pub mod session;
 pub mod socket;
 pub mod state;
-mod shell;
+pub mod shell;
 pub mod tasks;
 pub mod theme;
 

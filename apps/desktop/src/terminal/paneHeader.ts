@@ -19,6 +19,7 @@ import { accent, awayPlaces, inShownGroup, place, shownIds } from "../app/stateQ
 
 import { closePane, dragSessions, focusPane } from "./paneActions";
 import { resumeOffer, resumePane } from "./resume";
+import { syncStrip } from "./imageStrip";
 /** One pane header: the agent icon, the title, then the close button. */
 export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   if (isSlot(id)) return slotHead(id, head);
@@ -40,6 +41,7 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
       else toggleFocusMode();
     });
   }
+  syncStrip(id, cell);
   const s = sessions.get(id);
   const at = s ? place(s) : null;
   cell.style.setProperty("--pc", accent(at?.project));

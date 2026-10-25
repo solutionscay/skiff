@@ -149,12 +149,13 @@ pub fn folder(cfg: &Config) -> Result<PathBuf> {
 
 /// The image cache: `cache/` in the agent's [`folder`]. With no usable
 /// folder, `/tmp/skiff-drops`, or `/tmp/skiff-drops-<uid>` when another
-/// user owns that one. Makes nothing. Every reader of the cache path calls
-/// this.
+/// user owns that one. A folder that does not exist yet is not usable: a
+/// drop must not make `~/skiff-agent` before the Skiff agent is set up.
+/// Makes nothing. Every reader of the cache path calls this.
 pub fn cache_dir(cfg: &Config) -> PathBuf {
     match folder(cfg) {
-        Ok(dir) => dir.join("cache"),
-        Err(_) => fallback_cache(),
+        Ok(dir) if dir.is_dir() => dir.join("cache"),
+        _ => fallback_cache(),
     }
 }
 
@@ -493,6 +494,7 @@ pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipp
     let agents = c.list_agents().await?;
     let Some(agent) = project_agent(&cfg, &agents, p) else { bail!("No agent is on. Turn one on in Settings › Agents") };
     let mut s = spec(agent, &self::project_name(&cfg, &p.name), p.path.clone());
+    crate::cache::add_flags(&cfg, std::slice::from_ref(agent), &mut s);
     s.skipper = Some(p.name.clone());
     s.cols = 120;
     s.rows = 40;
@@ -527,14 +529,20 @@ pub async fn open(c: &Client, how: Open) -> Result<Option<Coordinated>> {
     folder(&cfg)?;
     let agents = c.list_agents().await?;
     let agent = choose(&agents, a.agent.as_deref());
-    let resume = agent.filter(|_| a.continue_on_restore).and_then(|g| continue_line(&g.id, &g.command));
+    // Each line ends with the image cache's read flag, as the + menu adds it.
+    let resume = agent
+        .filter(|_| a.continue_on_restore)
+        .and_then(|g| continue_line(&g.id, &g.command).map(|l| l + &crate::cache::flags_typed(&cfg, g)));
     let ask = match how {
         Open::Restore { expect } => Coordinator { resume, expect: Some(expect), ..Default::default() },
         Open::Start => {
             let Some(agent) = agent else { bail!("No agent is on. Turn one on in Settings › Agents") };
             // The folder is made ready first: files the user deleted come back.
             let dir = ensure(&cfg)?;
-            Coordinator { spec: Some(spec(agent, &name(&cfg), dir)), start: Some(agent.command.trim().to_string()), resume, expect: None }
+            let mut s = spec(agent, &name(&cfg), dir);
+            crate::cache::add_flags(&cfg, std::slice::from_ref(agent), &mut s);
+            let start = format!("{}{}", agent.command.trim(), crate::cache::flags_typed(&cfg, agent));
+            Coordinator { spec: Some(s), start: Some(start), resume, expect: None }
         }
     };
     c.coordinator(ask).await
