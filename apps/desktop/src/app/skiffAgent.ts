@@ -96,14 +96,16 @@ export const isSkiffAgent = (id: string | null | undefined) => !!id && skiffAgen
 function skipperProject(s: SessionInfo): string | null {
   if (s.coordinator || s.state === "done") return null;
   if (s.skipper) return s.skipper;
+  if (!skiffAgentFolder()) return null;
   const tail = ` ${skiffAgentName()}`;
   const project = s.name?.endsWith(tail) ? s.name.slice(0, -tail.length) : null;
   return project && S.projects.some((p) => p.name === project) ? project : null;
 }
 
-/** The live project Skippers, marked or found by name. */
+/** The live project Skippers, marked or found by name. A marked one counts
+ *  while the Skiff agent's settings are off or not read yet: it runs, and its
+ *  title already says so. */
 export function projectSkippers(): SessionInfo[] {
-  if (!skiffAgentFolder()) return [];
   return [...sessions.values()].filter((s) => skipperProject(s) !== null);
 }
 

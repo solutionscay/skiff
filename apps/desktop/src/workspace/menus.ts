@@ -414,10 +414,9 @@ function endManyEntry(ids: string[], label: string, title: string): MenuEntry {
  * asks first, as End does. Its panes keep running.
  */
 function projectSkipperEntries(p: Project): MenuEntry[] {
-  if (!skiffAgentFolder()) return [];
   const s = projectSkipperOf(p.name);
   if (!s) {
-    if (!S.skiffAgent?.project_skippers) return [];
+    if (!skiffAgentFolder() || !S.skiffAgent?.project_skippers) return [];
     return [{ icon: "tools-sparkles", label: "Start project Skipper", disabled: !!p.error, run: () => startProjectSkipper(p.name) }];
   }
   return [
