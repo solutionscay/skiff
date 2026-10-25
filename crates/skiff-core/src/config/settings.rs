@@ -208,11 +208,11 @@ pub fn set_menu_layout(layout: Option<&str>) -> Result<()> {
 }
 
 /// The keys `[open]` takes.
-pub const OPEN_KEYS: [&str; 4] = ["diff", "text", "markdown", "html"];
+pub const OPEN_KEYS: [&str; 5] = ["diff", "text", "markdown", "html", "image"];
 
 /// Sets whether selecting this file kind opens its command in the peek.
 pub fn set_open_peek(key: &str, peek: bool) -> Result<()> {
-    if !OPEN_KEYS.contains(&key) || key == "diff" {
+    if !OPEN_KEYS.contains(&key) || key == "diff" || key == "image" {
         anyhow::bail!("unknown file kind: {key}");
     }
     edit_table("open", |t| {

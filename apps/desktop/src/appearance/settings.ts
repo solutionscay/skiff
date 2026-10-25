@@ -35,7 +35,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   const TABS = ["agents", "skiff-agent", "appearance", "open"] as const;
   let tab: (typeof TABS)[number] = "agents";
   const themeFilters: ThemeFilters = { query: "", family: null };
-  type OpenKey = "diff" | "text" | "markdown" | "html";
+  type OpenKey = "diff" | "text" | "markdown" | "html" | "image";
   type OpenSettings = Record<OpenKey, string> & { default_diff: string; peek: string[] };
   let openSet: OpenSettings | null = null;
   type MenuLayout = { available: boolean; chosen: string | null; auto: string; current: string };
@@ -349,6 +349,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     { key: "text", label: "Text files" },
     { key: "markdown", label: "Markdown" },
     { key: "html", label: "HTML" },
+    { key: "image", label: "Images" },
   ];
 
   /** A task type edit. Answers with the error to show; the table redraws. */
@@ -433,6 +434,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       });
       row.append(h("span", "c-name", label), cmd);
       if (key === "diff") row.append(h("span", "c-mode", "Peek"));
+      else if (key === "image") row.append(h("span", "c-mode", "External app"));
       else {
         const mode = h("select", "c-mode");
         mode.setAttribute("aria-label", `${label} open mode`);

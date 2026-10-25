@@ -6,6 +6,7 @@ mod connection;
 mod commands;
 mod config;
 mod diagnostics;
+mod drops;
 mod input;
 mod ledger;
 mod quit;
@@ -78,6 +79,11 @@ pub fn run() {
             native_menu::set_window_dark,
             clipboard::clipboard_write,
             clipboard::clipboard_read,
+            drops::drop_files,
+            drops::clipboard_image,
+            drops::clear_session_images,
+            drops::open_image,
+            drops::agent_cache_flags,
             connection::daemon_status,
             cli_path::install_cli,
             skiff_agent::get_skiff_agent,

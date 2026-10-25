@@ -47,6 +47,10 @@ pub struct Open {
     pub markdown: Option<String>,
     /// Opens `.html` files. Absent: the OS default app.
     pub html: Option<String>,
+    /// Opens images, such as one in a pane's image strip. Absent: the OS
+    /// default app. Never in the peek.
+    #[serde(default)]
+    pub image: Option<String>,
 }
 
 /// `[skiff_agent]`: the one agent session that coordinates the others. The
