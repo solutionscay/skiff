@@ -14,8 +14,8 @@ import { rowTable, tableState } from "./rowTable";
 import { countDisk, diskState, diskUseSection } from "./diskUse";
 
 /**
- * Settings over the sidebar and terminal: agents, the Skiff agent, disk use,
- * appearance, and Open with.
+ * Settings over the sidebar and terminal: agents, the Skiff agent,
+ * appearance, Open with, and disk use.
  */
 export interface AppearanceHooks {
   themes: () => TerminalTheme[];
@@ -34,7 +34,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   document.getElementById("body")!.appendChild(root);
 
   let agents: AgentInfo[] = [];
-  const TABS = ["agents", "skiff-agent", "disk", "appearance", "open"] as const;
+  const TABS = ["agents", "skiff-agent", "appearance", "open", "disk"] as const;
   let tab: (typeof TABS)[number] = "agents";
   const themeFilters: ThemeFilters = { query: "", family: null };
   type OpenKey = "diff" | "text" | "markdown" | "html";
