@@ -26,10 +26,11 @@ fn rows() -> Result<Vec<Row>> {
                 "diff" => &o.diff,
                 "text" => &o.text,
                 "markdown" => &o.markdown,
+                "image" => &o.image,
                 _ => &o.html,
             };
             let command = cmd.as_deref().map(str::trim).filter(|c| !c.is_empty()).map(String::from);
-            let opens = if key == "diff" || o.peek.iter().any(|k| k == key) { "peek" } else { "app" };
+            let opens = if key == "image" { "app" } else if key == "diff" || o.peek.iter().any(|k| k == key) { "peek" } else { "app" };
             Row { key, command, opens }
         })
         .collect())

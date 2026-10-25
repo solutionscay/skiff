@@ -226,6 +226,14 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
                 Ok(session) => Response::Session { session },
                 Err(e) => error(e),
             },
+            Request::AddSessionImages { session, images } => match pool.set_images(&session, Some(&images)) {
+                Ok(session) => Response::Session { session },
+                Err(e) => error(e),
+            },
+            Request::ClearSessionImages { session } => match pool.set_images(&session, None) {
+                Ok(session) => Response::Session { session },
+                Err(e) => error(e),
+            },
             Request::RenameSession { session, name } => match pool.rename(&session, &name) {
                 Ok(session) => Response::Session { session },
                 Err(e) => error(e),

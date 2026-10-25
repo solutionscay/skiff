@@ -10,8 +10,16 @@ pub(crate) async fn list_sessions(app: State<'_, App>) -> Result<Vec<SessionInfo
 }
 
 #[tauri::command]
-pub(crate) async fn create_session(app: State<'_, App>, spec: SessionSpec) -> Result<SessionInfo, String> {
+pub(crate) async fn create_session(app: State<'_, App>, mut spec: SessionSpec) -> Result<SessionInfo, String> {
     let c = crate::connection::host_now(&app).await?;
+    // The + menu's agent gets the image cache's read flag at the end of its line.
+    // This computer's cache only: a remote Host's cache is its own.
+    if spec.role == skiff_core::session::Role::Agent && !app.remote() {
+        if let Ok(agents) = legacy_agents(&c).await {
+            let cfg = skiff_core::config::load().unwrap_or_default();
+            skiff_client::cache::add_flags(&cfg, &agents, &mut spec);
+        }
+    }
     legacy_create(&c, spec).await.map_err(err)
 }
 
@@ -245,6 +253,7 @@ pub(crate) struct OpenSettings {
     text: String,
     markdown: String,
     html: String,
+    image: String,
     default_diff: &'static str,
 }
 
@@ -256,6 +265,7 @@ fn open_settings_now() -> Result<OpenSettings, String> {
         text: o.text.unwrap_or_default(),
         markdown: o.markdown.unwrap_or_default(),
         html: o.html.unwrap_or_default(),
+        image: o.image.unwrap_or_default(),
         default_diff: skiff_core::git::DEFAULT_DIFF,
     })
 }

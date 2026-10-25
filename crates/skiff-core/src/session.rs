@@ -157,6 +157,23 @@ pub struct SessionInfo {
     /// restored, not in a reload handover.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watch: Option<WatchInfo>,
+    /// The images Skiff typed into this session, newest first, at most
+    /// [`MAX_IMAGES`]. The pane's image strip shows them. Saved and restored.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<String>,
+}
+
+/// The most images a session's strip keeps. The oldest goes first.
+pub const MAX_IMAGES: usize = 50;
+
+/// `list` with `added` in front, newest first: a repeat moves to the front,
+/// and the oldest go past [`MAX_IMAGES`].
+pub fn add_images(list: &mut Vec<String>, added: &[String]) {
+    for p in added {
+        list.retain(|x| x != p);
+        list.insert(0, p.clone());
+    }
+    list.truncate(MAX_IMAGES);
 }
 
 /// The watchers registered for a session with [`Request::Watching`].

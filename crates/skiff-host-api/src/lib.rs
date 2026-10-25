@@ -50,6 +50,7 @@ pub const SKIPPER: &str = "skipper";
 pub const SKIPPER_CONFIG: &str = "skipper_config";
 pub const SKIPPER_RUN: &str = "skipper_run";
 pub const AGENT_CONFIG: &str = "agent_config";
+pub const DROPS: &str = "drops";
 
 macro_rules! identity {
     ($name:ident) => {
@@ -261,6 +262,15 @@ impl Capability {
     pub fn agent_config() -> Self {
         Self {
             name: AGENT_CONFIG.into(),
+            version: 1,
+        }
+    }
+    /// Put a file dropped or pasted on a pane into the Host's image cache, so
+    /// the pane can type its Host path. Data plane; grants no read, no other
+    /// write and no path outside the cache.
+    pub fn drops() -> Self {
+        Self {
+            name: DROPS.into(),
             version: 1,
         }
     }
@@ -614,6 +624,15 @@ pub enum Request {
         parent: String,
         name: String,
     },
+    /// Writes a file dropped or pasted on a pane into the Host's cache.
+    /// Answers `path`, the Host path to type. An image (by its first bytes)
+    /// is `cache/<hash>.<ext>`; any other file is `cache/files/<hash>/<name>`.
+    /// `name` is one file name, no `/`; a bad name is `invalid`.
+    DropPut {
+        name: String,
+        #[serde(with = "crate::bytes")]
+        bytes: Vec<u8>,
+    },
     /// Answers `image`: the project's configured background, read on the
     /// Host. No background is `not_found`; a file that is not an image, or
     /// is over 5 MiB, is `invalid`.
@@ -709,6 +728,7 @@ impl Request {
             Self::FileList { .. } | Self::FileRead { .. } => Some(Capability::files()),
             Self::ProjectBackground { .. } => Some(Capability::project_assets()),
             Self::FolderHome | Self::FolderList { .. } | Self::FolderPlaces | Self::FolderCreate { .. } => Some(Capability::folders()),
+            Self::DropPut { .. } => Some(Capability::drops()),
             Self::LedgerRows | Self::LedgerStamp | Self::LedgerResult { .. } => Some(Capability::ledger_read()),
             Self::SkipperSettings => Some(Capability::skipper_settings()),
             Self::SkipperEdit { .. } | Self::SkipperFolderPreview { .. } | Self::SkipperFolderChange { .. } => {
@@ -760,7 +780,7 @@ impl Request {
                 | (Self::FileList { .. }, Response::Files { .. })
                 | (Self::FileRead { .. }, Response::File { .. })
                 | (Self::ProjectBackground { .. }, Response::Image { .. })
-                | (Self::FolderHome | Self::FolderCreate { .. }, Response::Path { .. })
+                | (Self::FolderHome | Self::FolderCreate { .. } | Self::DropPut { .. }, Response::Path { .. })
                 | (Self::FolderList { .. }, Response::Folders { .. })
                 | (Self::FolderPlaces, Response::Places { .. })
                 | (Self::LedgerRows, Response::Ledger { .. })
@@ -804,6 +824,7 @@ impl Request {
                 | Self::FolderList { .. }
                 | Self::FolderPlaces
                 | Self::FolderCreate { .. }
+                | Self::DropPut { .. }
                 | Self::LedgerRows
                 | Self::LedgerStamp
                 | Self::LedgerResult { .. }

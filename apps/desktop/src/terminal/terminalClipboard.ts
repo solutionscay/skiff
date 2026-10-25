@@ -1,3 +1,5 @@
+import { invoke } from "@tauri-apps/api/core";
+
 import { copyText, pasteText } from "../platform/clipboard";
 
 import { h } from "../ui/dom";
@@ -5,6 +7,7 @@ import { h } from "../ui/dom";
 import { showError } from "../ui/alerts";
 
 import { S } from "../app/state";
+import { isRemote, hostName } from "../app/hosts";
 
 import { panes } from "./terminalState";
 
@@ -35,9 +38,33 @@ export async function copySelection() {
   }
 }
 
+/** What the backend typed for a drop or a paste of files or an image. */
+export interface Typed {
+  text: string;
+  warning: string | null;
+}
+
+/** Types the words as a paste, so an agent attaches a pasted image path. Never presses Enter. */
+export function typeFiles(id: string, t: Typed) {
+  panes.get(id)?.term.paste(t.text);
+  if (t.warning) showError(t.warning);
+}
+
+/**
+ * Skiff's Paste: text as it is; else a file list as a drop does; else an
+ * image, saved to the cache with its path typed. Bare Ctrl+V stays with the
+ * terminal, where Claude Code and Codex read the clipboard themselves.
+ */
 export async function pasteClipboard() {
-  const pane = S.focused ? panes.get(S.focused) : undefined;
-  if (!pane) return;
+  const id = S.focused;
+  const pane = id ? panes.get(id) : undefined;
+  if (!id || !pane) return;
   const text = await pasteText().catch(() => "");
-  if (text) pane.term.paste(text);
+  if (text) return pane.term.paste(text);
+  try {
+    const t = await invoke<Typed | null>("clipboard_image", { session: id, host: isRemote() ? hostName() : null });
+    if (t) typeFiles(id, t);
+  } catch (e) {
+    showError(e);
+  }
 }

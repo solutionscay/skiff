@@ -516,6 +516,7 @@ enum OpenKey {
     Text,
     Markdown,
     Html,
+    Image,
 }
 
 impl OpenKey {
@@ -525,6 +526,7 @@ impl OpenKey {
             OpenKey::Text => "text",
             OpenKey::Markdown => "markdown",
             OpenKey::Html => "html",
+            OpenKey::Image => "image",
         }
     }
 }

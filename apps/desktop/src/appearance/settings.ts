@@ -15,8 +15,11 @@ import { type HostsPage, hostName, isRemote } from "../app/hosts";
 import { createHostsTab } from "./hostSettings";
 import { hostCan, hostInvoke } from "../app/hostCaps";
 
+import { countDisk, diskState, diskUseSection } from "./diskUse";
+
 /**
- * Settings over the sidebar and terminal: agents, appearance, Open with and Hosts.
+ * Settings over the sidebar and terminal: agents, the Skiff agent,
+ * appearance, Open with, disk use and Hosts.
  */
 export interface AppearanceHooks {
   themes: () => TerminalTheme[];
@@ -35,10 +38,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   document.getElementById("body")!.appendChild(root);
 
   let agents: AgentInfo[] = [];
-  const TABS = ["agents", "skiff-agent", "appearance", "open", "hosts"] as const;
+  const TABS = ["agents", "skiff-agent", "appearance", "open", "disk", "hosts"] as const;
   let tab: (typeof TABS)[number] = "agents";
   const themeFilters: ThemeFilters = { query: "", family: null };
-  type OpenKey = "diff" | "text" | "markdown" | "html";
+  type OpenKey = "diff" | "text" | "markdown" | "html" | "image";
   type OpenSettings = Record<OpenKey, string> & { default_diff: string; peek: string[] };
   let openSet: OpenSettings | null = null;
   type MenuLayout = { available: boolean; chosen: string | null; auto: string; current: string };
@@ -59,6 +62,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
 
   /** One agent change on the selected Host: This Mac's config, or a remote Host's through its skiff-host. */
   const agentCall = (cmd: string, args: Record<string, unknown> = {}) => hostInvoke<AgentInfo[]>("agent_config", cmd, args);
+  const disk = diskState();
 
   async function toggle(id: string) {
     if (saving) return;
@@ -114,7 +118,13 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     // So does the focused field: a save on blur finishes after the click that moved focus to the next field.
     const a = document.activeElement;
     const field = a instanceof HTMLInputElement && root.contains(a) ? { label: a.getAttribute("aria-label"), at: a.selectionStart, to: a.selectionEnd } : null;
+    // Disk use redraws under its buttons after a count. The keys stay on the same button, else the first one on.
+    const button = tab === "disk" && a instanceof HTMLButtonElement && a.closest(".set-main") ? a.textContent : null;
     draw();
+    if (button !== null) {
+      const stops = [...root.querySelectorAll<HTMLButtonElement>(".set-main button:not(:disabled)")];
+      (stops.find((b) => b.textContent === button) ?? stops[0])?.focus();
+    }
     const main = root.querySelector(".set-main");
     if (main) main.scrollTop = scroll;
     if (field?.label) {
@@ -128,13 +138,14 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const nav = h("div", "set-nav");
     const head = h("div", "set-nav-head");
     head.append(h("div", "set-title", "Settings"), h("div", "set-path mono", "~/.config/skiff/projects.toml"));
-    const names = { agents: "Agents", "skiff-agent": "Skiff agent", appearance: "Appearance", open: "Open with", hosts: "Hosts" };
+    const names = { agents: "Agents", "skiff-agent": "Skiff agent", appearance: "Appearance", open: "Open with", disk: "Disk use", hosts: "Hosts" };
     const tabs = TABS.map((t) => {
       const b = h("button", "set-tab" + (tab === t ? " active" : ""), names[t]);
       b.type = "button";
       b.addEventListener("click", () => {
         tab = t;
         draw();
+        if (tab === "disk") void countDisk(disk, render);
         if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
       });
       return b;
@@ -154,6 +165,12 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     }
     if (tab === "hosts") {
       root.replaceChildren(nav, hostsTab.draw(), closeButton());
+      return;
+    }
+    if (tab === "disk") {
+      const main = h("div", "set-main");
+      main.append(...diskUseSection(disk, render, (days) => void setCacheDays(days)));
+      root.replaceChildren(nav, main, closeButton());
       return;
     }
 
@@ -377,6 +394,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     { key: "text", label: "Text files" },
     { key: "markdown", label: "Markdown" },
     { key: "html", label: "HTML" },
+    { key: "image", label: "Images" },
   ];
 
   /** One Skiff agent setting on the selected Host: This Mac, or a remote Host through its skiff-host. */
@@ -398,6 +416,18 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       agentSet = await skiffAgentEdit(edit);
     } catch (e) {
       error = String(e);
+    }
+    render();
+  }
+
+  /** Settings › Disk use › Auto flush: `[skiff_agent] cache_days`. */
+  async function setCacheDays(days: number) {
+    try {
+      await invoke("set_cache_days", { days });
+      if (disk.usage) disk.usage.cache_days = days;
+      disk.error = null;
+    } catch (e) {
+      disk.error = String(e);
     }
     render();
   }
@@ -481,6 +511,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       });
       row.append(h("span", "c-name", label), cmd);
       if (key === "diff") row.append(h("span", "c-mode", "Peek"));
+      else if (key === "image") row.append(h("span", "c-mode", "External app"));
       else {
         const mode = h("select", "c-mode");
         mode.setAttribute("aria-label", `${label} open mode`);
@@ -517,6 +548,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     (document.activeElement as HTMLElement | null)?.blur();
     tab = TABS[(TABS.indexOf(tab) + dir + TABS.length) % TABS.length];
     draw();
+    if (tab === "disk") void countDisk(disk, render);
     document.body.classList.add("kbd");
     root.querySelector<HTMLButtonElement>(".set-tab.active")?.focus();
   }
@@ -638,6 +670,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       await hostsTab.load();
       render();
       if (tab === "hosts") hostsTab.focusServer();
+      if (tab === "disk") void countDisk(disk, render);
       if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
       else root.querySelector<HTMLButtonElement>(".set-agent .c-on:not(:disabled)")?.focus();
     },

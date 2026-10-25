@@ -7,6 +7,8 @@ mod commands;
 mod config;
 mod copies;
 mod diagnostics;
+mod disk;
+mod drops;
 mod hosts;
 mod input;
 mod ledger;
@@ -78,6 +80,8 @@ pub fn run() {
             if let Some(local) = app.state::<App>().selection().process_control() {
                 std::thread::spawn(move || cli_path::sync(&local));
             }
+            // This computer's image cache: the age from Disk use.
+            std::thread::spawn(disk::auto_flush);
             // This Mac's Skipper skill: not for a remote Host. The ledger
             // watcher asks whichever Host is selected.
             let handle = app.handle().clone();
@@ -118,6 +122,12 @@ pub fn run() {
             native_menu::set_window_dark,
             clipboard::clipboard_write,
             clipboard::clipboard_read,
+            drops::drop_files,
+            drops::clipboard_image,
+            drops::clear_session_images,
+            drops::strip_image,
+            drops::open_image,
+            drops::agent_cache_flags,
             connection::daemon_status,
             connection::host_capabilities,
             hosts::list_hosts,
@@ -157,6 +167,10 @@ pub fn run() {
             skiff_agent::change_skiff_folder,
             ledger::ledger_rows,
             ledger::ledger_result,
+            disk::disk_usage,
+            disk::flush_cache,
+            disk::flush_done,
+            disk::set_cache_days,
             commands::list_sessions,
             commands::create_session,
             commands::pty_write,
@@ -326,7 +340,10 @@ mod tests {
             "open_settings", "set_open", "set_open_peek", "open_url", "list_themes", "import_themes", "open_theme_folder", "get_appearance",
             "memory_usage", "get_keys", "trace_info", "trace_write", "trace_set", "system_load", "set_appearance", "set_font_size", "set_mission_filter",
             "list_groups", "session_screen", "save_group", "delete_group", "order_groups", "subscribe_output", "ack_output", "unsubscribe_output", "subscribe_events",
-            "workspace_read", "workspace_revision", "workspace_write", "workspace_launch_file", "workspace_took"];
+            "workspace_read", "workspace_revision", "workspace_write", "workspace_launch_file", "workspace_took",
+            // This computer's Disk use and image cache, whichever Host is shown. A drop on a remote Host's pane goes to that Host.
+            "disk_usage", "flush_cache", "flush_done", "set_cache_days",
+            "drop_files", "clipboard_image", "clear_session_images", "strip_image", "open_image", "agent_cache_flags"];
         for c in &all {
             assert!(super::LOCAL_ONLY.contains(&c.as_str()) || allowed.contains(&c.as_str()), "{c}: decide whether a remote Host may run it");
         }

@@ -38,6 +38,7 @@ import { nextUnread, nextWaiting, selectProject, showGroup, showSingle } from ".
 import { closeMission, goToSession } from "./workspace/missionMotion";
 import { missionOpen, restoreRunning } from "./workspace/missionControl";
 import { startLedger } from "./workspace/ledger";
+import "./terminal/fileDrop";
 import { startWorkspaceQuitGuard, startWorkspaces } from "./workspace/profile";
 
 configureRender(render);

@@ -70,6 +70,9 @@ pub struct InventorySession {
     pub project_skipper: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watch: Option<WatchInfo>,
+    /// The images Skiff typed into this session, as Host paths, newest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

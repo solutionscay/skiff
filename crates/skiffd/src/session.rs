@@ -687,6 +687,7 @@ impl SessionPool {
             coordinator: spec.coordinator,
             skipper: spec.skipper.filter(|p| !p.trim().is_empty()),
             watch: None,
+            images: Vec::new(),
         };
 
         let (input, queued, wrote) = start_writer(&id, &pty)?;
@@ -1135,6 +1136,25 @@ impl SessionPool {
         let _change = self.change()?;
         let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
         session.info.lock().unwrap().theme = theme.filter(|t| !t.is_empty());
+        let info = session.info();
+        let _ = self.events.send(Event::SessionUpdated {
+            session: info.clone(),
+        });
+        self.dirty.notify_one();
+        Ok(info)
+    }
+
+    /// Adds paths to the session's image strip; `None` empties it.
+    pub fn set_images(&self, id: &str, added: Option<&[String]>) -> Result<SessionInfo> {
+        let _change = self.change()?;
+        let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
+        {
+            let mut info = session.info.lock().unwrap();
+            match added {
+                Some(paths) => skiff_core::session::add_images(&mut info.images, paths),
+                None => info.images.clear(),
+            }
+        }
         let info = session.info();
         let _ = self.events.send(Event::SessionUpdated {
             session: info.clone(),

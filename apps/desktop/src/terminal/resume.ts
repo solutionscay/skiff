@@ -132,9 +132,11 @@ function commandFor(agent: string): string {
   return S.agents.find((a) => a.id === agent)?.command || (agent === "gemini" ? "agy" : agent);
 }
 
-/** Types a line into the pane's shell and runs it. */
+/** Types a line into the pane's shell and runs it, with the image cache's read flag for Claude Code at the end. */
 function run(id: string, line: string) {
-  hostInvoke("session_terminal", "pty_write", { session: id, data: line + "\r" }).catch(showError);
+  const agent = sessions.get(id)?.resume?.agent;
+  const flags = agent ? invoke<string>("agent_cache_flags", { agent }).catch(() => "") : Promise.resolve("");
+  void flags.then((f) => hostInvoke("session_terminal", "pty_write", { session: id, data: line + f + "\r" })).catch(showError);
 }
 
 /** A UUIDv7 starts with its creation time in ms. grok prints only a date, so its ids give the time. */

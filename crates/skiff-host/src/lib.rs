@@ -60,6 +60,7 @@ pub fn capabilities() -> Vec<Capability> {
         Capability::skipper_config(),
         Capability::skipper_run(),
         Capability::agent_config(),
+        Capability::drops(),
     ]
 }
 
@@ -350,6 +351,11 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         Request::FolderList { path, hidden, filter } => Ok(Response::Folders { listing: folders::list(&path, hidden, filter.as_deref())? }),
         Request::FolderPlaces => Ok(Response::Places { places: folders::places()? }),
         Request::FolderCreate { parent, name } => Ok(Response::Path { path: folders::create(&parent, &name)? }),
+        Request::DropPut { name, bytes } => {
+            let cfg = config::load().map_err(failed)?;
+            let path = skiff_client::cache::put(&cfg, &name, &bytes).map_err(refused)?;
+            Ok(Response::Path { path: path.to_string_lossy().into_owned() })
+        }
         Request::LedgerRows => Ok(Response::Ledger { rows: ledger_rows()? }),
         Request::LedgerStamp => {
             let file = skiff_client::ledger::path().map_err(failed)?;

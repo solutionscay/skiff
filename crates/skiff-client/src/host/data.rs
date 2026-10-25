@@ -316,6 +316,14 @@ pub async fn folder_create(c: &HostConnection, parent: &str, name: &str) -> Resu
     }
 }
 
+/// Puts a dropped or pasted file into the Host's cache. Answers its Host path.
+pub async fn drop_put(c: &HostConnection, name: &str, bytes: Vec<u8>) -> Result<String, Error> {
+    match c.request(Request::DropPut { name: name.into(), bytes }).await? {
+        Response::Path { path } => Ok(path),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
 /// Adds the repository at `path` on the Host. Answers the row and the new revision.
 pub async fn project_add(
     c: &HostConnection,

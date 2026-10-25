@@ -23,7 +23,8 @@ export type SkiffAgentEdit =
   | { key: "enabled" | "continue_on_restore" | "project_skippers"; value: boolean }
   | { key: "add_task" | "task"; value: TaskEdit }
   | { key: "rename_task"; value: { from: string; to: string } }
-  | { key: "remove_task"; value: string };
+  | { key: "remove_task"; value: string }
+  | { key: "cache_days"; value: number };
 
 /**
  * Settings › Skiff agent: on or off, its folder, its name, the agent it

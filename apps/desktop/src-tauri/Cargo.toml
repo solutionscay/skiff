@@ -33,3 +33,6 @@ skiff-host.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+png = "0.17"

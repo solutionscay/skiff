@@ -25,6 +25,9 @@ pub enum Plan {
     Default,
 }
 
+/// The extensions the `image` row opens, SVG included.
+const IMAGE_EXTS: [&str; 11] = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "heic", "avif", "svg"];
+
 /// The `[open]` row for `file`, if one applies. Markdown and HTML go by
 /// extension; any other text file uses `text`.
 fn key_for(file: &Path) -> Option<&'static str> {
@@ -33,6 +36,7 @@ fn key_for(file: &Path) -> Option<&'static str> {
     match ext.as_str() {
         "md" | "markdown" => Some("markdown"),
         "html" | "htm" => Some("html"),
+        e if IMAGE_EXTS.contains(&e) => Some("image"),
         _ if is_text(file) => Some("text"),
         _ => None,
     }
@@ -45,6 +49,7 @@ fn command(open: &Open, key: &str) -> Option<String> {
         "text" => open.text.as_ref(),
         "markdown" => open.markdown.as_ref(),
         "html" => open.html.as_ref(),
+        "image" => open.image.as_ref(),
         _ => None,
     };
     cmd.map(|c| c.trim().to_string()).filter(|c| !c.is_empty())
@@ -168,6 +173,7 @@ mod tests {
             text: Some("code".into()),
             markdown: Some("typora".into()),
             html: Some("  ".into()),
+            image: None,
         };
         let text = plan_file(&dir.join("c.rs"), &open);
         let markdown = plan_file(&dir.join("a.md"), &open);

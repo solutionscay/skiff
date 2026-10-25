@@ -42,6 +42,7 @@ pub fn project_session(value: core::SessionInfo) -> Result<api::InventorySession
         coordinator,
         skipper,
         watch,
+        images,
     } = value;
     Ok(api::InventorySession {
         id,
@@ -75,6 +76,7 @@ pub fn project_session(value: core::SessionInfo) -> Result<api::InventorySession
         coordinator,
         project_skipper: skipper,
         watch: watch.map(project_watch),
+        images,
     })
 }
 
@@ -160,6 +162,7 @@ pub fn restore_session(value: api::InventorySession) -> core::SessionInfo {
         coordinator,
         project_skipper: skipper,
         watch,
+        images,
     } = value;
     core::SessionInfo {
         id,
@@ -190,6 +193,7 @@ pub fn restore_session(value: api::InventorySession) -> core::SessionInfo {
         coordinator,
         skipper,
         watch: watch.map(restore_watch),
+        images,
     }
 }
 
