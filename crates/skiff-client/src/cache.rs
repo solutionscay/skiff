@@ -30,21 +30,7 @@ pub const TOO_LARGE: &str = "The image is larger than 50 MB. Skiff typed its pat
 
 /// The cache folder. It may not exist yet: [`ensure`] makes it.
 pub fn dir(cfg: &Config) -> PathBuf {
-    match crate::skipper::folder(cfg).ok().filter(|d| d.is_dir()) {
-        Some(d) => d.join("cache"),
-        None => fallback(),
-    }
-}
-
-/// `/tmp/skiff-drops`, or `/tmp/skiff-drops-<uid>` when another user owns it.
-fn fallback() -> PathBuf {
-    use std::os::unix::fs::MetadataExt;
-    let shared = PathBuf::from("/tmp/skiff-drops");
-    let uid = unsafe { libc::getuid() };
-    match shared.symlink_metadata() {
-        Ok(m) if m.uid() != uid || !m.is_dir() => PathBuf::from(format!("/tmp/skiff-drops-{uid}")),
-        _ => shared,
-    }
+    crate::skipper::cache_dir(cfg)
 }
 
 /// Makes the cache folder, mode 0700, and returns it.

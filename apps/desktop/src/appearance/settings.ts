@@ -11,9 +11,11 @@ import type { SkiffAgentSettings } from "../app/skiffAgent";
 import { type SkiffAgentEdit, projectSkippersSection, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
 import { changeSkiffFolder } from "./skiffFolderDialog";
 import { rowTable, tableState } from "./rowTable";
+import { countDisk, diskState, diskUseSection } from "./diskUse";
 
 /**
- * Settings over the sidebar and terminal: agents, appearance, and Open with.
+ * Settings over the sidebar and terminal: agents, the Skiff agent,
+ * appearance, Open with, and disk use.
  */
 export interface AppearanceHooks {
   themes: () => TerminalTheme[];
@@ -32,7 +34,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   document.getElementById("body")!.appendChild(root);
 
   let agents: AgentInfo[] = [];
-  const TABS = ["agents", "skiff-agent", "appearance", "open"] as const;
+  const TABS = ["agents", "skiff-agent", "appearance", "open", "disk"] as const;
   let tab: (typeof TABS)[number] = "agents";
   const themeFilters: ThemeFilters = { query: "", family: null };
   type OpenKey = "diff" | "text" | "markdown" | "html" | "image";
@@ -46,6 +48,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   // The draft rows and their error lines survive every redraw.
   const agentsTable = tableState();
   const tasksTable = tableState();
+  const disk = diskState();
 
   async function toggle(id: string) {
     if (saving) return;
@@ -98,7 +101,13 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     // So does the focused field: a save on blur finishes after the click that moved focus to the next field.
     const a = document.activeElement;
     const field = a instanceof HTMLInputElement && root.contains(a) ? { label: a.getAttribute("aria-label"), at: a.selectionStart, to: a.selectionEnd } : null;
+    // Disk use redraws under its buttons after a count. The keys stay on the same button, else the first one on.
+    const button = tab === "disk" && a instanceof HTMLButtonElement && a.closest(".set-main") ? a.textContent : null;
     draw();
+    if (button !== null) {
+      const stops = [...root.querySelectorAll<HTMLButtonElement>(".set-main button:not(:disabled)")];
+      (stops.find((b) => b.textContent === button) ?? stops[0])?.focus();
+    }
     const main = root.querySelector(".set-main");
     if (main) main.scrollTop = scroll;
     if (field?.label) {
@@ -112,13 +121,14 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const nav = h("div", "set-nav");
     const head = h("div", "set-nav-head");
     head.append(h("div", "set-title", "Settings"), h("div", "set-path mono", "~/.config/skiff/projects.toml"));
-    const names = { agents: "Agents", "skiff-agent": "Skiff agent", appearance: "Appearance", open: "Open with" };
+    const names = { agents: "Agents", "skiff-agent": "Skiff agent", disk: "Disk use", appearance: "Appearance", open: "Open with" };
     const tabs = TABS.map((t) => {
       const b = h("button", "set-tab" + (tab === t ? " active" : ""), names[t]);
       b.type = "button";
       b.addEventListener("click", () => {
         tab = t;
         draw();
+        if (tab === "disk") void countDisk(disk, render);
         if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
       });
       return b;
@@ -134,6 +144,12 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     }
     if (tab === "skiff-agent") {
       root.replaceChildren(nav, skiffAgent(), closeButton());
+      return;
+    }
+    if (tab === "disk") {
+      const main = h("div", "set-main");
+      main.append(...diskUseSection(disk, render, (days) => void setCacheDays(days)));
+      root.replaceChildren(nav, main, closeButton());
       return;
     }
 
@@ -372,6 +388,18 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     render();
   }
 
+  /** Settings › Disk use › Auto flush: `[skiff_agent] cache_days`. */
+  async function setCacheDays(days: number) {
+    try {
+      agentSet = await invoke<SkiffAgentSettings>("set_skiff_agent", { edit: { key: "cache_days", value: days } });
+      if (disk.usage) disk.usage.cache_days = days;
+      disk.error = null;
+    } catch (e) {
+      disk.error = String(e);
+    }
+    render();
+  }
+
   /** Settings › Skiff agent › Folder › Change…. The page reads the folder again after a change. */
   function changeFolder() {
     if (!agentSet) return;
@@ -471,6 +499,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     (document.activeElement as HTMLElement | null)?.blur();
     tab = TABS[(TABS.indexOf(tab) + dir + TABS.length) % TABS.length];
     draw();
+    if (tab === "disk") void countDisk(disk, render);
     document.body.classList.add("kbd");
     root.querySelector<HTMLButtonElement>(".set-tab.active")?.focus();
   }
@@ -580,6 +609,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         return [];
       });
       render();
+      if (tab === "disk") void countDisk(disk, render);
       if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
       else root.querySelector<HTMLButtonElement>(".set-agent .c-on:not(:disabled)")?.focus();
     },

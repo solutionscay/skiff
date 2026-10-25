@@ -192,6 +192,8 @@ pub enum Edit {
     Task(TaskEdit),
     RenameTask { from: String, to: String },
     RemoveTask(String),
+    /// Auto flush's age in days. `0`: off.
+    CacheDays(u32),
 }
 
 /// A task type row as Settings sends it. An empty model is the agent's default.
@@ -230,6 +232,7 @@ pub async fn set_skiff_agent(app: AppHandle, edit: Edit) -> Result<SkiffAgent, S
             Edit::Task(t) => config::set_task_type(&t.name, &t.agent, t.model.as_deref())?,
             Edit::RenameTask { from, to } => config::rename_task_type(&from, &to)?,
             Edit::RemoveTask(name) => config::remove_task_type(&name)?,
+            Edit::CacheDays(n) => config::set_skiff_agent(SkiffAgentKey::CacheDays(n))?,
             Edit::Enabled(on) => {
                 // On makes the folder ready first: a refused folder stays off.
                 if on {
