@@ -6,6 +6,7 @@ mod connection;
 mod commands;
 mod config;
 mod diagnostics;
+mod disk;
 mod input;
 mod ledger;
 mod quit;
@@ -56,6 +57,7 @@ pub fn run() {
         .setup(|app| {
             std::thread::spawn(cli_path::sync);
             std::thread::spawn(skiff_agent::sync);
+            std::thread::spawn(disk::auto_flush);
             let handle = app.handle().clone();
             std::thread::spawn(move || ledger::watch(handle));
             let Some(window) = app.get_webview_window("main") else { return Ok(()) };
@@ -89,6 +91,9 @@ pub fn run() {
             skiff_agent::preview_skiff_folder,
             skiff_agent::change_skiff_folder,
             ledger::ledger_rows,
+            disk::disk_usage,
+            disk::flush_cache,
+            disk::flush_done,
             commands::list_sessions,
             commands::create_session,
             commands::pty_write,
