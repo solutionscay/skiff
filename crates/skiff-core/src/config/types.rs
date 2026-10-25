@@ -76,6 +76,20 @@ pub struct SkiffAgent {
     /// `[skiff_agent.tasks]`: the agent and model each task type starts.
     #[serde(default, skip_serializing_if = "TaskTypes::is_empty")]
     pub tasks: TaskTypes,
+    /// `cache_days`: at app start, cache files older than this many days go.
+    /// `0`: never. Absent: [`CACHE_DAYS`].
+    pub cache_days: Option<u32>,
+}
+
+/// Cache files older than this many days go at app start, unless
+/// `[skiff_agent] cache_days` says otherwise.
+pub const CACHE_DAYS: u32 = 30;
+
+impl SkiffAgent {
+    /// The age in days at which auto flush removes a cache file. `0`: off.
+    pub fn cache_days(&self) -> u32 {
+        self.cache_days.unwrap_or(CACHE_DAYS)
+    }
 }
 
 /// One `[skiff_agent.tasks]` row: `review = { agent = "claude", model = "opus" }`.

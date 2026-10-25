@@ -147,6 +147,29 @@ pub fn folder(cfg: &Config) -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// The image cache: `cache/` in the agent's [`folder`]. With no usable
+/// folder, `/tmp/skiff-drops`, or `/tmp/skiff-drops-<uid>` when another
+/// user owns that one. Makes nothing. Every reader of the cache path calls
+/// this.
+pub fn cache_dir(cfg: &Config) -> PathBuf {
+    match folder(cfg) {
+        Ok(dir) => dir.join("cache"),
+        Err(_) => fallback_cache(),
+    }
+}
+
+/// The cache with no agent folder. See [`cache_dir`].
+pub fn fallback_cache() -> PathBuf {
+    use std::os::unix::fs::MetadataExt;
+    let shared = PathBuf::from("/tmp/skiff-drops");
+    // SAFETY: getuid has no preconditions.
+    let uid = unsafe { libc::getuid() };
+    match std::fs::symlink_metadata(&shared) {
+        Ok(m) if m.uid() != uid || !m.is_dir() => PathBuf::from(format!("/tmp/skiff-drops-{uid}")),
+        _ => shared,
+    }
+}
+
 /// The folder projects.toml names, refused or not: the override, else
 /// [`default_folder`]. A change of folder copies from it.
 pub fn configured(cfg: &Config) -> Result<PathBuf> {

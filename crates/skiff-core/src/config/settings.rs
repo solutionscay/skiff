@@ -249,6 +249,8 @@ pub enum SkiffAgentKey<'a> {
     ContinueOnRestore(bool),
     ProjectSkippers(bool),
     ProjectAgent(Option<&'a str>),
+    /// Auto flush's age in days. `0`: off.
+    CacheDays(u32),
 }
 
 /// Sets one `[skiff_agent]` key, keeping the rest of the file. The folder is
@@ -267,6 +269,8 @@ pub fn set_skiff_agent(key: SkiffAgentKey) -> Result<()> {
             SkiffAgentKey::ProjectSkippers(on) => ("project_skippers", on.then(|| toml_edit::value(true))),
             // None: the Skipper's own agent.
             SkiffAgentKey::ProjectAgent(v) => ("project_agent", text(v).map(toml_edit::value)),
+            // The default: the key goes.
+            SkiffAgentKey::CacheDays(n) => ("cache_days", (n != crate::config::CACHE_DAYS).then(|| toml_edit::value(i64::from(n)))),
         };
         match v {
             Some(v) => t[k] = v,
