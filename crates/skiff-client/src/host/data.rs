@@ -324,6 +324,49 @@ pub async fn drop_put(c: &HostConnection, name: &str, bytes: Vec<u8>) -> Result<
     }
 }
 
+/// The largest file a drop sends to a remote Host: one frame holds it.
+pub const DROP_MAX: u64 = 5 * 1024 * 1024;
+
+/// A dropped or pasted file for the Host `on`: no folder, and no larger than
+/// [`DROP_MAX`]. Answers its name and bytes, or the message to show. It
+/// reads at once: the file is small.
+pub async fn drop_file(p: &std::path::Path, on: Option<&str>) -> Result<(String, Vec<u8>), String> {
+    let on = on.unwrap_or("the Host");
+    let m = std::fs::metadata(p).map_err(|e| format!("{}: {e}", p.display()))?;
+    if m.is_dir() {
+        return Err(format!("Drop files, not folders, on a pane on {on}."));
+    }
+    if m.len() > DROP_MAX {
+        return Err(format!("{} is larger than 5 MB. Skiff cannot send it to {on} yet.", p.display()));
+    }
+    let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let bytes = std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()))?;
+    Ok((name, bytes))
+}
+
+/// [`drop_put`] with the message to show when it fails. `on` names the Host.
+pub async fn drop_send(c: &HostConnection, name: &str, bytes: Vec<u8>, on: Option<&str>) -> Result<String, String> {
+    drop_put(c, name, bytes).await.map_err(|e| match e {
+        Error::UnsupportedCapability { .. } => format!(
+            "{} cannot take dropped files. Its Skiff is older than this app: use Update Skiff… on that Host in Settings › Hosts.",
+            on.unwrap_or("This Host")
+        ),
+        e => message(e),
+    })
+}
+
+/// A data-plane error as a person reads it.
+pub fn message(e: Error) -> String {
+    match e {
+        Error::OperationFailed { message } | Error::NotFound { message } | Error::Invalid { message } | Error::Conflict { message } | Error::Permission { message } | Error::MalformedContract { message } => message,
+        Error::UnsupportedCapability { capability } => format!("This Host does not offer {}.", capability.name),
+        Error::HostBusy => "skiff-host is busy. Try again.".into(),
+        Error::TransportLost => "The connection to skiff-host was lost.".into(),
+        Error::TimedOut => "skiff-host did not answer in time.".into(),
+        e => e.to_string(),
+    }
+}
+
 /// Adds the repository at `path` on the Host. Answers the row and the new revision.
 pub async fn project_add(
     c: &HostConnection,

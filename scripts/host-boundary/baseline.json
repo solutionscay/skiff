@@ -75,7 +75,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "91550f78a279151c6dc151e8070176be773634fc4209b2ecf6102d47b7d9ad54"
+    "sha256": "e06e41a8a817aa35ebefe7e60d03786ea953ba8d2142f319d3cb5983870f5e73"
   },
   "apps/desktop/src-tauri/src/copies.rs": {
     "ownership": "client-owned (M5 reviewed): local copies of bytes the Host sent, for this computer's Open with; never reads or opens a Host path",
@@ -121,13 +121,11 @@
     "reasons": [
       "config",
       "fs",
-      "is_dir",
       "is_file",
-      "metadata",
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "56e7e59f9ff5e61aebcd91d16d2e6296aacc9d472bb6f887e95aa02187bad92b"
+    "sha256": "7647af4413f551f0d46565828a202746e8b97059ad1c0fc02cc726c14aee47e9"
   },
   "apps/desktop/src-tauri/src/header_bar.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -141,7 +139,6 @@
   "apps/desktop/src-tauri/src/hosts.rs": {
     "ownership": "client policy: this client's own SSH install and update jobs, with its own exe folder and build id (#166); legacy local adapter otherwise",
     "reasons": [
-      "config",
       "env",
       "exists",
       "fs",
@@ -151,7 +148,7 @@
       "skiff_agent",
       "skiff_core"
     ],
-    "sha256": "7b0e487b92bf0fbfc69aa3026383b970422680788519e1c9e40bb861181c7046"
+    "sha256": "094d300e4593442798483e8fd30f104047607c688499ae54bf96a32db4952486"
   },
   "apps/desktop/src-tauri/src/ledger.rs": {
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",

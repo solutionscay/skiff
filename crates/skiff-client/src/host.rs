@@ -26,6 +26,7 @@ pub mod check;
 pub mod data;
 pub mod install;
 pub mod keys;
+pub mod known;
 mod inventory;
 mod lifecycle;
 pub mod local;

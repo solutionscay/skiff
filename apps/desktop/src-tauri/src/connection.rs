@@ -79,7 +79,7 @@ impl App {
         let mut selection = self.selection.lock().unwrap();
         let selection = selection.get_or_insert_with(|| {
             crate::hosts::load(&crate::hosts::path())
-                .map(|hosts| hosts.selection(local_selection))
+                .map(|hosts| crate::hosts::selected(&hosts, local_selection))
                 .unwrap_or_else(|e| {
                     eprintln!("hosts.toml: {e:#}; showing this computer");
                     local_selection()
@@ -669,15 +669,7 @@ pub(crate) fn data_failure(e: &anyhow::Error, selection: &HostSelection) -> Stri
 
 /// A data-plane reply error as the page shows it.
 pub(crate) fn data_err(e: skiff_host_api::Error) -> String {
-    use skiff_host_api::Error as E;
-    match e {
-        E::OperationFailed { message } | E::NotFound { message } | E::Invalid { message } | E::Conflict { message } | E::Permission { message } | E::MalformedContract { message } => message,
-        E::UnsupportedCapability { capability } => format!("This Host does not offer {}.", capability.name),
-        E::HostBusy => "skiff-host is busy. Try again.".into(),
-        E::TransportLost => "The connection to skiff-host was lost.".into(),
-        E::TimedOut => "skiff-host did not answer in time.".into(),
-        e => e.to_string(),
-    }
+    skiff_client::host::data::message(e)
 }
 
 pub(crate) fn data_binary() -> PathBuf {

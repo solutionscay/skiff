@@ -9,6 +9,7 @@ use skiff_core::{group::SplitDir, session::Role};
 use layout::Side;
 
 mod attach;
+mod drops;
 mod callsign;
 mod daemon;
 mod events;
@@ -121,7 +122,12 @@ enum Cmd {
     /// Run a session in this terminal. Ctrl-\ detaches. The session
     /// takes this terminal's size, in the app too, and gets its own size
     /// back on detach. A quick second Ctrl-C is held back once.
-    Attach { session: String },
+    Attach {
+        session: String,
+        /// A remote Host from Settings › Hosts: its name, id or ssh destination.
+        #[arg(long, value_name = "HOST")]
+        host: Option<String>,
+    },
     /// Attach to the Skiff agent (Skipper). Start it first if it does not
     /// run. Ctrl-\ detaches; the agent keeps running.
     #[command(
@@ -647,6 +653,7 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Skipper { move_to: Some(to), empty, dry_run, .. } => return skipper::move_to(&socket, &to, empty, dry_run).await.map(|_| 0),
         Cmd::Skipper { project: Some(p), no_attach, .. } => return skipper::run_project(&socket, &p, no_attach).await.map(|_| 0),
         Cmd::Skipper { no_attach, .. } => return skipper::run(&socket, no_attach).await.map(|_| 0),
+        Cmd::Attach { session, host: Some(host) } => return attach::attach_remote(&host, &session).await.map(|_| 0),
         // It connects again after a daemon reload, so it holds no connection here.
         Cmd::Watch { skipper, no_notify } => {
             return watch::watch(&socket, watch::Options { skipper, notify: !no_notify }).await
@@ -677,7 +684,7 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Group(g) => group(&c, g).await,
         Cmd::Rename { session, name } => sessions::rename(&c, &session, &name).await,
         Cmd::Kill { sessions: ids } => sessions::kill(&c, &ids).await,
-        Cmd::Attach { session } => attach::attach(&c, &session).await,
+        Cmd::Attach { session, .. } => attach::attach(&c, &session, None).await,
         Cmd::Peek { session, lines } => peek::peek(&c, &session, lines).await,
         Cmd::Seen { session } => sessions::seen(&c, &session).await,
         Cmd::Agents { json } => info::agents(&c, json).await,
