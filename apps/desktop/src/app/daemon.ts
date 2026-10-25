@@ -57,6 +57,8 @@ export function setDaemon(status: DaemonStatus) {
   else socket.textContent = status.socket;
   daemonBadge(status.warning);
   noteDaemon(status);
+  // The welcome page names the version gap the badge shows.
+  if (isRemote()) scheduleRender();
 }
 
 /** Counts event subscriptions. An event from an older one is dropped. */

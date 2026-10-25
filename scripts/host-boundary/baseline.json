@@ -125,7 +125,7 @@
       "skiff_agent",
       "skiff_core"
     ],
-    "sha256": "db3f371e48e7f6485d3728d6ac636cf71240d3dcbc91a970bc33e756bc7be227"
+    "sha256": "7b0e487b92bf0fbfc69aa3026383b970422680788519e1c9e40bb861181c7046"
   },
   "apps/desktop/src-tauri/src/ledger.rs": {
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",
@@ -245,7 +245,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "16257e8b2a1a8afcb1284dac21701e18e34059b50c46226635718484067e476c"
+    "sha256": "ca955a8498f103c16230dd924851a0002eebc321a9255abb49a01fba197f9e21"
   },
   "apps/desktop/src/app/daemonRestart.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -253,7 +253,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "80e990744dafc92d87af76028117bc58879afe18b5cc4c4e0391e3f25d448dab"
+    "sha256": "143ded188759d4c515e48f8fbca3a8ef090adbd5ebeb0f87fc3eea51efcfa3f6"
   },
   "apps/desktop/src/app/dataPlane.ts": {
     "ownership": "legacy local adapter/caller: migrate behind Host API in M1\u2013M6",
@@ -289,7 +289,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "bd3fa326900989e634f3cf89d1d7f356ff5943866033afab2831bb733e1d36ab"
+    "sha256": "9137d171a75cacc6e10f5dc5ed4700aff3a170cad449a93a73980ef570a0758f"
   },
   "apps/desktop/src/app/keyboard.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -439,7 +439,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "3717c54f05df93116a92d77ebef0e1c588a8623c20d9dd96d9762afe992fadec"
+    "sha256": "9b226d783a30083aa08977dafed9202fe1cb35907e9a4d93885972874049560a"
   },
   "apps/desktop/src/appearance/settings.ts": {
     "ownership": "mixed: agent changes (agent_config@1) and Skipper settings (skipper_config@1) through hostInvoke (#166 R7, R8); Open with and the menu layout are this client's own settings",
@@ -903,6 +903,7 @@
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
     "reasons": [
       "local provider: apps/desktop/src/app/daemon.ts",
+      "local provider: apps/desktop/src/app/daemonRestart.ts",
       "local provider: apps/desktop/src/app/hostCaps.ts",
       "local provider: apps/desktop/src/app/hosts.ts",
       "local provider: apps/desktop/src/app/panels.ts",
@@ -913,6 +914,6 @@
       "local provider: apps/desktop/src/workspace/projectClose.ts",
       "local provider: apps/desktop/src/workspace/remoteLaunch.ts"
     ],
-    "sha256": "ce9b497c4e44c488a87e0aa6a8a7fc206f2a999392b95e1daf755a9522a18d0e"
+    "sha256": "8d25dfcd01e35adeeab264b8040266e0abe89aba9b72b718ffab7b5672d0bb95"
   }
 }

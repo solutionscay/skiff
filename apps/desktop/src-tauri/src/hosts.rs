@@ -1029,9 +1029,15 @@ pub(crate) fn version_warning(name: &str, version: Option<&str>, protocol: u32, 
             "{name} runs Skiff {v}, older than this computer's {VERSION}. You can see and type in its sessions. Update Skiff on {name} to start and end sessions here."
         ))),
         (true, Some(v), true) => Some(("update", format!("Update available: Skiff {v} to {VERSION}."))),
+        // Managed, version not read: the protocol still says it is older.
+        (true, None, false) if protocol < here => Some(("update", format!(
+            "{name} runs an older Skiff. You can see and type in its sessions. Update Skiff on {name} to start and end sessions here."
+        ))),
         (false, _, false) if protocol < here => Some(("remote", format!(
             "{name} runs an older Skiff from its own install. You can see and type in its sessions. Update Skiff on {name} to start and end sessions here."
         ))),
+        // Never down: a newer Skiff there waits for this computer.
+        (_, _, false) if protocol > here => Some(("remote", format!("{name} runs a newer Skiff. This computer runs {VERSION}. Update Skiff on this computer."))),
         (_, _, false) => Some(("remote", format!("Skiff on {name} speaks protocol {protocol}, and this app speaks {here}. Parts of the app fail."))),
         _ => None,
     }
@@ -1248,6 +1254,10 @@ mod tests {
         let (kind, text) = version_warning("devbox", None, p - 1, false).unwrap();
         assert!(kind == "remote" && text.contains("from its own install"), "{text}");
         assert_eq!(version_warning("devbox", None, p, false), None, "its own install, same protocol: it works as it is");
+        let (kind, text) = version_warning("devbox", None, p + 1, false).unwrap();
+        assert!(kind == "remote" && text.ends_with("Update Skiff on this computer."), "never down: {text}");
+        let (kind, text) = version_warning("devbox", None, p - 1, true).unwrap();
+        assert!(kind == "update" && text.starts_with("devbox runs an older Skiff."), "{text}");
         // A fresh install of this app's version: no badge, whatever skiffd's
         // own crate version is. The badge never sees that one.
         assert_eq!(version_warning("p0p-deb", Some(VERSION), p, true), None);
