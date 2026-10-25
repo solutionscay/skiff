@@ -264,10 +264,12 @@ pub fn check_branch(branch: &str) -> Result<()> {
     Ok(())
 }
 
-/// Adds a worktree on a new branch and returns it as git reports it.
-pub fn add_worktree(name: &str, branch: &str, base: Option<&str>) -> Result<Worktree> {
+/// Adds a worktree on a new branch and returns it as git reports it. With
+/// `checkout`, the branch is one `branches` lists without a worktree, and
+/// git checks it out instead; `base` must then be `None`.
+pub fn add_worktree(name: &str, branch: &str, base: Option<&str>, checkout: bool) -> Result<Worktree> {
     check_branch(branch)?;
-    if base.is_some_and(|b| b.is_empty() || b.starts_with('-')) {
+    if base.is_some_and(|b| b.is_empty() || b.starts_with('-')) || (checkout && base.is_some()) {
         return Err(crate::config::Refused::Invalid("not a base git takes".into()).into());
     }
     let p = find(name)?;
@@ -275,11 +277,35 @@ pub fn add_worktree(name: &str, branch: &str, base: Option<&str>) -> Result<Work
         return Err(crate::config::Refused::NoProject(name.into()).into());
     }
     let path = worktree_path(&p.path, branch);
-    git::add_worktree(&p.path, branch, &path, base)?;
+    if checkout {
+        if !free_branch(&git::branches(&p.path)?, branch) {
+            return Err(crate::config::Refused::Invalid(format!("{branch} is not a branch without a worktree")).into());
+        }
+        git::checkout_worktree(&p.path, branch, &path)?;
+    } else {
+        git::add_worktree(&p.path, branch, &path, base)?;
+    }
     git::list_worktrees(&p.path)?
         .into_iter()
         .find(|w| same_path(&w.path, &path))
         .ok_or_else(|| anyhow!("git added {} but does not list it", path.display()))
+}
+
+/// A local branch no worktree has, or a name only one remote has.
+fn free_branch(list: &[git::Branch], branch: &str) -> bool {
+    match list.iter().find(|b| !b.remote && b.name == branch) {
+        Some(local) => !local.worktree,
+        None => list.iter().filter(|b| b.remote && b.name.split_once('/').is_some_and(|(_, n)| n == branch)).count() == 1,
+    }
+}
+
+/// The open project's branches, and the one its folder has checked out.
+pub fn branches(name: &str) -> Result<(Option<String>, Vec<git::Branch>)> {
+    let p = find(name)?;
+    if p.closed {
+        return Err(crate::config::Refused::NoProject(name.into()).into());
+    }
+    Ok((git::head_branch(&p.path), git::branches(&p.path)?))
 }
 
 /// Why a worktree stays: the edit is refused, nothing is removed.

@@ -28,7 +28,7 @@ use std::{
 use skiff_core::{config::{self, ProjectConfig}, files, git, project, session::SessionInfo};
 use skiff_host_api::{
     Capability, ChangeStatus, EntryKind, Envelope, Error, FileContent, Hello, Host, HostChange, HostDiff, HostEntry,
-    HostFile, HostFolder, HostId, HostImage, HostLedgerRow, HostListing, HostProject, HostWorktree, InstanceId, Limits, Message,
+    HostFile, HostBranch, HostBranches, HostFolder, HostId, HostImage, HostLedgerRow, HostListing, HostProject, HostWorktree, InstanceId, Limits, Message,
     ProjectEdit, ReadPurpose, Request, Response, API_MAJOR,
 };
 use tokio::{
@@ -403,9 +403,14 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             let ((), revision) = config::edit_projects(&revision, || config::remove_project(&project)).map_err(refused)?;
             Ok(Response::Revision { revision })
         }
-        Request::WorktreeAdd { project, branch, base } => {
-            let w = project::add_worktree(&project, &branch, base.as_deref()).map_err(refused)?;
+        Request::WorktreeAdd { project, branch, base, checkout } => {
+            let w = project::add_worktree(&project, &branch, base.as_deref(), checkout).map_err(refused)?;
             Ok(Response::Worktree { worktree: host_worktree(w) })
+        }
+        Request::BranchList { project } => {
+            let (head, list) = project::branches(&project).map_err(refused)?;
+            let branches = list.into_iter().map(|b| HostBranch { name: b.name, remote: b.remote, worktree: b.worktree }).collect();
+            Ok(Response::Branches { branches: HostBranches { head, branches } })
         }
         Request::WorktreeRemove { project, path, force } => {
             project::remove_worktree(&project, Path::new(&path), force, &sessions).map_err(refused)?;

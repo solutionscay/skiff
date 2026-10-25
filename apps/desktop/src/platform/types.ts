@@ -87,6 +87,14 @@ export interface Away {
   at: number;
 }
 
+/** A project's branches from the Host, for New worktree. */
+export interface HostBranches {
+  /** The branch the project's folder has checked out. */
+  head: string | null;
+  /** Newest commit first. `remote`: `origin/main` and the like. */
+  branches: { name: string; remote?: boolean; worktree?: boolean }[];
+}
+
 export interface Worktree {
   path: string;
   /** Short branch name. `null` when detached. */

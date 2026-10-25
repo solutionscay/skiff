@@ -32,7 +32,7 @@ use tokio::{
 };
 
 mod common;
-use common::{fake_ssh, repo, start, Guard};
+use common::{fake_ssh, git, repo, start, Guard};
 
 /// The sessions the stand-in skiffd lists. `None`: it answers nothing.
 type Sessions = Arc<Mutex<Option<Vec<Value>>>>;
@@ -221,14 +221,14 @@ async fn skiff_host_is_the_writer_of_the_hosts_projects_and_worktrees() {
 
     // Worktrees: made by the Host's git beside the project, never elsewhere.
     for bad in ["../escape", "-x", "a b", "", "x..y", "x.lock"] {
-        let got = data::worktree_add(&r, "app", bad, None).await;
+        let got = data::worktree_add(&r, "app", bad, None, false).await;
         assert!(matches!(got, Err(Error::Invalid { .. })), "{bad:?}: {got:?}");
     }
     assert!(!dir.join("escape").exists() && !dir.join("app-worktrees").exists());
-    let w = data::worktree_add(&r, "app", "feat/x", None).await.unwrap();
+    let w = data::worktree_add(&r, "app", "feat/x", None, false).await.unwrap();
     assert_eq!(Path::new(&w.path), dir.join("app-worktrees/feat-x").canonicalize().unwrap());
-    assert!(data::worktree_add(&r, "app", "feat/x", None).await.is_err(), "git refuses the same branch twice");
-    assert!(matches!(data::worktree_add(&r, "nope", "y", None).await, Err(Error::NotFound { .. })));
+    assert!(data::worktree_add(&r, "app", "feat/x", None, false).await.is_err(), "git refuses the same branch twice");
+    assert!(matches!(data::worktree_add(&r, "nope", "y", None, false).await, Err(Error::NotFound { .. })));
 
     // Removal: the Host's sessions and changes decide, not the client.
     let wt = PathBuf::from(&w.path);
@@ -254,6 +254,28 @@ async fn skiff_host_is_the_writer_of_the_hosts_projects_and_worktrees() {
     data::worktree_remove(&l, "app", &w.path, true).await.unwrap();
     assert!(!wt.exists());
 
+    // Branches: the existing ones to check out, and a base for a new one.
+    git(&app, &["branch", "old"]);
+    git(&app, &["remote", "add", "origin", "/nowhere"]);
+    git(&app, &["update-ref", "refs/remotes/origin/far", "HEAD"]);
+    let b = data::branch_list(&r, "app").await.unwrap();
+    assert_eq!(b.head.as_deref(), Some("main"));
+    let seen: Vec<_> = b.branches.iter().map(|b| (b.name.as_str(), b.remote, b.worktree)).collect();
+    for want in [("main", false, true), ("feat/x", false, false), ("old", false, false), ("origin/far", true, false)] {
+        assert!(seen.contains(&want), "{want:?} in {seen:?}");
+    }
+    for (bad, base) in [("main", None), ("nosuch", None), ("old", Some("main"))] {
+        let got = data::worktree_add(&r, "app", bad, base, true).await;
+        assert!(matches!(got, Err(Error::Invalid { .. })), "{bad:?}: {got:?}");
+    }
+    let old = data::worktree_add(&r, "app", "old", None, true).await.unwrap();
+    assert_eq!((old.branch.as_deref(), Path::new(&old.path)), (Some("old"), dir.join("app-worktrees/old").canonicalize().unwrap().as_path()));
+    let far = data::worktree_add(&r, "app", "far", None, true).await.unwrap();
+    assert_eq!(far.branch.as_deref(), Some("far"), "a remote's branch becomes a local one");
+    let from = data::worktree_add(&r, "app", "feat/y", Some("old"), false).await.unwrap();
+    assert_eq!(from.branch.as_deref(), Some("feat/y"));
+    assert!(data::branch_list(&r, "app").await.unwrap().branches.iter().any(|b| b.name == "old" && b.worktree));
+
     // The client table and the comment stayed; the Host made no client file.
     assert!(file().contains("[appearance]\ntheme = \"harbor\"") && file().contains("# the main app"));
     assert!(!skiff_core::config::client::path().exists());
@@ -263,7 +285,7 @@ async fn skiff_host_is_the_writer_of_the_hosts_projects_and_worktrees() {
     let mut reads_only = hello.clone();
     reads_only.capabilities.retain(|c| *c != Capability::project_config() && *c != Capability::worktrees());
     let edit = Request::ProjectEdit { project: "app".into(), revision: rev3.clone(), edit: ProjectEdit::Files { on: true } };
-    for request in [edit.clone(), Request::WorktreeAdd { project: "app".into(), branch: "z".into(), base: None }] {
+    for request in [edit.clone(), Request::WorktreeAdd { project: "app".into(), branch: "z".into(), base: None, checkout: false }] {
         assert!(matches!(skiff_host::answer(request, &reads_only).await, Err(Error::UnsupportedCapability { .. })));
     }
     let before = file();
@@ -312,7 +334,7 @@ async fn no_replay(dir: &Path, hello: &Hello) {
     let c = HostConnection::connect_with_timeout(stream, None, Duration::from_secs(5)).await.unwrap();
     let got = data::project_edit(&c, "r", "app", ProjectEdit::Files { on: true }).await;
     assert!(matches!(got, Err(Error::TransportLost)), "{got:?}");
-    let got = data::worktree_add(&c, "app", "lost", None).await;
+    let got = data::worktree_add(&c, "app", "lost", None, false).await;
     assert!(matches!(got, Err(Error::TransportLost)), "a lost connection sends nothing more: {got:?}");
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert_eq!((connections.load(Ordering::SeqCst), edits.load(Ordering::SeqCst)), (1, 1));
