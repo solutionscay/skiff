@@ -100,12 +100,18 @@ export const shownHost = () => list.selected;
 
 /** What a Host menu link opens in Settings › Hosts: its Add form, a Host's
  *  check list, or the list. */
-export type HostsPage = { add: true } | { check: string; reinstall?: true } | Record<string, never>;
+export type HostsPage = { add: true } | { check: string; reinstall?: true; update?: true } | Record<string, never>;
 let manage: (page: HostsPage) => void = () => {};
 
 /** Opens the shown Host's check list in Settings › Hosts. */
 export const checkShownHost = () => {
   if (list.selected) manage({ check: list.selected });
+};
+
+/** Opens the shown Host's check list, then Update Skiff…: the confirm,
+ *  and the red one when the update would end sessions. */
+export const updateShownHost = () => {
+  if (list.selected) manage({ check: list.selected, update: true });
 };
 
 /** Opens the shown Host's check list, then Update Skiff…, which installs

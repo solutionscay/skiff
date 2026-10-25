@@ -134,7 +134,7 @@ export function createHostsTab(redraw: () => void) {
     error = null;
     form = "add" in page ? newForm(null) : null;
     check = null;
-    if ("check" in page) void (page.reinstall ? checkThenUpdate(page.check, true) : runCheck(page.check));
+    if ("check" in page) void (page.reinstall || page.update ? checkThenUpdate(page.check, !!page.reinstall) : runCheck(page.check));
   }
 
   /** Runs the read-only check list of a Host and shows it. */

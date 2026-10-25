@@ -39,7 +39,7 @@ function recovery() {
       "./daemonRestart": { daemonBadge() {} },
       "./skiffAgent": { noteDaemon() {} },
       "./hosts": { isRemote: () => true, hostName: () => "devbox" },
-      "./render": { render() {} },
+      "./render": { render() {}, scheduleRender() {} },
       "./state": { S, sessions, born: new Set(), gone: new Set(), upsert: (s: any) => sessions.set(s.id, s) },
       "./seen": { quietSeen() {} },
       "../terminal/terminalRuntime": { muteInput() {}, reattachPanes() {} },

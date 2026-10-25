@@ -6,7 +6,7 @@ import { showError } from "../ui/alerts";
 import { dialogFrame } from "../ui/dialogParts";
 import { $, button, h } from "../ui/dom";
 import { opensAtOnce } from "./daemonNotice";
-import { acceptHostIdentity, checkShownHost } from "./hosts";
+import { acceptHostIdentity, updateShownHost } from "./hosts";
 import { branchName, taskTitle } from "../workspace/model";
 import { sessions } from "./state";
 import { place } from "./stateQueries";
@@ -24,6 +24,9 @@ const WARNINGS: Record<DaemonWarning["kind"], [string, string]> = {
 };
 
 let shown: DaemonWarning | null = null;
+
+/** The warning the badge shows now. `null`: none. */
+export const daemonWarning = () => shown;
 /** Set by "Restart when idle": the restart waits until no agent works. */
 let whenIdle = false;
 
@@ -92,7 +95,7 @@ export function daemonBadge(warning: DaemonWarning | null, requested = false) {
       later,
       button("confirm-act go", "Update Skiff…", () => {
         close();
-        checkShownHost();
+        updateShownHost();
       }),
     );
   else if (warning.kind === "identity")

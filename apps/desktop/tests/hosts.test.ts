@@ -200,7 +200,7 @@ test("a second loss during recovery runs the whole recovery again before input i
       "./daemonRestart": { daemonBadge: noop },
       "./skiffAgent": { noteDaemon: noop },
       "./hosts": hostsMod,
-      "./render": { render: noop },
+      "./render": { render: noop, scheduleRender: noop },
       "./state": { born: new Set(), gone: new Set(), sessions: new Map(), S: {} },
       "./seen": { quietSeen: noop },
       "../terminal/terminalRuntime": {
