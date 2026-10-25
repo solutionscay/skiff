@@ -77,9 +77,12 @@ let lists = 0;
  * The list under a prompt's field. Typing completes the field from the first
  * name that starts with the text and shows every name that holds it. The arrows
  * put the lit row's name in the field, so Enter takes the lit row or the typed text.
+ * The names scroll; the clear row stays pinned under them, always in view.
  */
 function pickList(input: HTMLInputElement, options: string[], clearLabel: string | undefined, run: () => void) {
   const list = h("div", "prompt-list");
+  const scroll = h("div", "prompt-scroll");
+  scroll.setAttribute("role", "presentation");
   list.id = `prompt-list-${++lists}`;
   list.setAttribute("role", "listbox");
   list.setAttribute("aria-label", "Matches");
@@ -93,23 +96,24 @@ function pickList(input: HTMLInputElement, options: string[], clearLabel: string
   let active = -1;
 
   const render = () => {
-    list.replaceChildren(
-      ...rows.map((r, i) => {
-        const row = h("div", "lm-item prompt-opt" + (r.clear ? " clear" : "") + (i === active ? " active" : ""), r.label);
-        row.id = `${list.id}-${i}`;
-        row.setAttribute("role", "option");
-        row.setAttribute("aria-selected", String(i === active));
-        row.addEventListener("mousedown", (e) => e.preventDefault());
-        row.addEventListener("click", () => {
-          input.value = r.value;
-          run();
-        });
-        return row;
-      }),
-    );
+    const els = rows.map((r, i) => {
+      const row = h("div", "lm-item prompt-opt" + (r.clear ? " clear" : "") + (i === active ? " active" : ""), r.label);
+      row.id = `${list.id}-${i}`;
+      row.setAttribute("role", "option");
+      row.setAttribute("aria-selected", String(i === active));
+      row.addEventListener("mousedown", (e) => e.preventDefault());
+      row.addEventListener("click", () => {
+        input.value = r.value;
+        run();
+      });
+      return row;
+    });
+    scroll.replaceChildren(...els.filter((_, i) => !rows[i].clear));
+    list.replaceChildren(scroll, ...els.filter((_, i) => rows[i].clear));
+    list.hidden = !rows.length;
     if (active >= 0) input.setAttribute("aria-activedescendant", `${list.id}-${active}`);
     else input.removeAttribute("aria-activedescendant");
-    list.children[active]?.scrollIntoView({ block: "nearest" });
+    if (active >= 0 && !rows[active].clear) els[active].scrollIntoView({ block: "nearest" });
   };
 
   const fill = (names: string[]) => (rows = [...names.map((n) => ({ label: n, value: n })), ...(clearLabel ? [{ label: clearLabel, value: "", clear: true }] : [])]);
