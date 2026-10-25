@@ -526,18 +526,12 @@ function projectBlock(p: Project): HTMLElement {
   // A click opens or folds the project, as on a fleet head. Its sessions open from their rows.
   if (!empty) pick.addEventListener("click", () => toggleRow(key, render));
   head.appendChild(pick);
-  if (bare) {
-    const plus = button("wt-plus", "", () => launchMenu.open(plus, p, bare));
-    plus.dataset.wt = bare.path;
-    plus.setAttribute("aria-label", `Start a session in ${p.name}`);
-    plus.setAttribute("aria-haspopup", "menu");
-    plus.appendChild(plusIcon());
-    head.appendChild(plus);
-  }
+  // One button: the ⋯ menu starts sessions too. A bare worktree's launch menu hangs off it.
   const more = button("wt-plus", "", () => {
     const r = more.getBoundingClientRect();
     projectMenu(p, r.right, r.top);
   });
+  if (bare) more.dataset.wt = bare.path;
   more.setAttribute("aria-label", `${p.name} menu`);
   more.setAttribute("aria-haspopup", "menu");
   more.appendChild(icon('<circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle>'));

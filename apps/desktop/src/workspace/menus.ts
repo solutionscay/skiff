@@ -25,6 +25,7 @@ import { setShowFiles, showsFiles } from "./files";
 import { deleteGroup } from "../app/groups";
 import { closeEntries } from "./projectClose";
 import { sessionsOf } from "./layout";
+import { bareWorktree } from "./tree";
 
 import { startRename, startSessionRename } from "./rename";
 import { render } from "../app/render";
@@ -199,21 +200,29 @@ export function projectRun(p: Project) {
   } as const;
 }
 
-/** The project's + in the sidebar, a right-click on its row, or the menu key. */
+/** The project row's ⋯, a right-click on it, or the menu key. */
 export function projectMenu(p: Project, x: number, y: number) {
   const run = projectRun(p);
-  // New session goes to the project's selected worktree, else its main one, as Ctrl+Shift+T does.
-  const sel = selectedWorktree.get(p.name);
-  const w = p.worktrees.find((x) => x.path === sel) ?? p.worktrees.find((x) => x.is_main) ?? p.worktrees[0];
-  const plus = w && [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === w.path);
+  // One worktree: its start choices show here, as on a worktree's +. More: pick the worktree first.
+  const bare = bareWorktree(p);
+  const start: MenuEntry[] = bare && !p.error
+    ? launchMenu.entries(p, bare)
+    : [{ icon: "indicators-plus", label: "New session", disabled: !!p.error || !p.worktrees.length, sub: p.worktrees.map((w) => ({
+        icon: "code-git-branch",
+        label: branchName(w),
+        run: () => {
+          const plus = [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === w.path);
+          launchMenu.open(plus ?? { x, y }, p, w);
+        },
+      })) }];
   ctxMenu.open(x, y, p.path, [
-    { icon: "indicators-plus", label: "New session…", hint: keyLabel("new-session"), disabled: !w, run: () => w && launchMenu.open(plus ?? { x, y }, p, w) },
+    ...start,
+    ...(bare ? [{ sep: true } as const] : []),
     { icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
     ...projectSkipperEntries(p),
     { sep: true },
     { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: run["project-folder"] },
     { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
-    { sep: true },
     // How the project looks. Icon and Background are sections: a flyout goes one level deep.
     { icon: "tools-sparkles", label: "Appearance", sub: [
       { icon: "tools-sparkles", label: "Color…", hint: keyLabel("project-color"), run: run["project-color"] },
@@ -400,27 +409,35 @@ function endManyEntry(ids: string[], label: string, title: string): MenuEntry {
 
 /**
  * Start project Skipper, while Settings › Skiff agent › Project Skippers is
- * on. It opens no dialog. While one runs: Stop project Skipper…, which asks
- * first, as End does. Its panes keep running.
+ * on. It opens no dialog. While one runs, whatever Settings says: Open
+ * project Skipper, which shows its pane, and Stop project Skipper…, which
+ * asks first, as End does. Its panes keep running.
  */
 function projectSkipperEntries(p: Project): MenuEntry[] {
-  if (!skiffAgentFolder() || !S.skiffAgent?.project_skippers) return [];
+  if (!skiffAgentFolder()) return [];
   const s = projectSkipperOf(p.name);
-  if (!s) return [{ icon: "tools-sparkles", label: "Start project Skipper", disabled: !!p.error, run: () => startProjectSkipper(p.name) }];
-  return [{
-    icon: "indicators-square-stop",
-    label: "Stop project Skipper…",
-    danger: true,
-    run: async () => {
-      const ok = await confirmAction({
-        title: `Stop the ${p.name} Skipper?`,
-        body: `Stops ${agentName(s)} and removes its session. The panes it started keep running, and its ledger rows stay.`,
-        action: "Stop project Skipper",
-      });
-      if (ok) void endSession(s.id);
-      else refocusTerminal();
+  if (!s) {
+    if (!S.skiffAgent?.project_skippers) return [];
+    return [{ icon: "tools-sparkles", label: "Start project Skipper", disabled: !!p.error, run: () => startProjectSkipper(p.name) }];
+  }
+  return [
+    // startProjectSkipper shows the one that runs.
+    { icon: "tools-sparkles", label: "Open project Skipper", run: () => startProjectSkipper(p.name) },
+    {
+      icon: "indicators-square-stop",
+      label: "Stop project Skipper…",
+      danger: true,
+      run: async () => {
+        const ok = await confirmAction({
+          title: `Stop the ${p.name} Skipper?`,
+          body: `Stops ${agentName(s)} and removes its session. The panes it started keep running, and its ledger rows stay.`,
+          action: "Stop project Skipper",
+        });
+        if (ok) void endSession(s.id);
+        else refocusTerminal();
+      },
     },
-  }];
+  ];
 }
 
 async function endSession(id: string) {
