@@ -19,6 +19,9 @@
   ],
   "worktree_requests": [
     { "cmd": "worktree_add", "project": "web", "branch": "feat/x", "base": null },
+    { "cmd": "worktree_add", "project": "web", "branch": "feat/y", "base": "origin/main" },
+    { "cmd": "worktree_add", "project": "web", "branch": "fix/z", "base": null, "checkout": true },
+    { "cmd": "branch_list", "project": "web" },
     { "cmd": "worktree_remove", "project": "web", "path": "/srv/web-worktrees/feat-x", "force": false }
   ],
   "replies": [
@@ -28,6 +31,13 @@
     { "type": "reply", "id": 4, "result": { "Ok": { "kind": "revision", "revision": "1111222233334444" } } },
     { "type": "reply", "id": 5, "result": { "Ok": { "kind": "worktree", "worktree": { "path": "/srv/web-worktrees/feat-x", "branch": "feat/x", "head": "0123abcd", "is_main": false, "locked": false, "prunable": false } } } },
     { "type": "reply", "id": 6, "result": { "Ok": { "kind": "ok" } } },
+    { "type": "reply", "id": 9, "result": { "Ok": { "kind": "branches", "branches": { "head": "main", "branches": [
+      { "name": "main", "worktree": true },
+      { "name": "fix/z" },
+      { "name": "origin/main", "remote": true },
+      { "name": "origin/feat/λ", "remote": true }
+    ] } } } },
+    { "type": "reply", "id": 10, "result": { "Ok": { "kind": "branches", "branches": { "head": null, "branches": [] } } } },
     { "type": "reply", "id": 7, "result": { "Err": { "code": "conflict", "message": "The projects changed on this Host since they were read." } } },
     { "type": "reply", "id": 8, "result": { "Err": { "code": "invalid", "message": "not a #rrggbb color: red" } } }
   ]

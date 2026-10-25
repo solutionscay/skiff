@@ -459,6 +459,7 @@ fn m4_project_and_worktree_changes_have_their_own_capabilities_and_golden_shapes
     assert_eq!(serde_json::to_value(&config).unwrap(), fixture["capabilities"]["project_config"]);
     assert_eq!(serde_json::to_value(&worktrees).unwrap(), fixture["capabilities"]["worktrees"]);
     let revision = Response::Revision { revision: "r".into() };
+    let branches = Response::Branches { branches: skiff_host_api::HostBranches { head: None, branches: vec![] } };
     for (key, cap) in [("project_requests", &config), ("worktree_requests", &worktrees)] {
         for value in fixture[key].as_array().unwrap() {
             let request: Request = serde_json::from_value(value.clone()).unwrap();
@@ -470,6 +471,7 @@ fn m4_project_and_worktree_changes_have_their_own_capabilities_and_golden_shapes
             assert_eq!(request.accepts(&revision), edits, "{value}");
             // Only a worktree removal answers `ok`.
             assert_eq!(request.accepts(&Response::Ok), matches!(request, Request::WorktreeRemove { .. }), "{value}");
+            assert_eq!(request.accepts(&branches), matches!(request, Request::BranchList { .. }), "{value}");
         }
     }
     assert_ne!(config, worktrees);
@@ -488,6 +490,7 @@ fn m4_project_and_worktree_changes_have_their_own_capabilities_and_golden_shapes
         json!({"cmd":"project_arrange","order":[]}),
         json!({"cmd":"project_add","path":"/srv/new"}),
         json!({"cmd":"project_edit","project":"web","revision":"r","edit":{"key":"icon","icon":"/etc/passwd"}}),
+        json!({"cmd":"branch_list"}),
     ] {
         assert!(serde_json::from_value::<Request>(bad.clone()).is_err(), "{bad}");
     }

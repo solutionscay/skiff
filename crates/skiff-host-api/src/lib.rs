@@ -24,7 +24,7 @@ pub use coordinator::{
     SkipperOpened, SkipperRunningTask, TaskEdit,
 };
 pub use lifecycle::SessionSpec;
-pub use projects::{ChangeStatus, HostChange, HostDiff, HostFolder, HostProject, HostWorktree, ProjectEdit, ProjectFleet};
+pub use projects::{ChangeStatus, HostBranch, HostBranches, HostChange, HostDiff, HostFolder, HostProject, HostWorktree, ProjectEdit, ProjectFleet};
 pub use terminal::{EchoTimes, TerminalFrame};
 pub use updates::SessionUpdate;
 
@@ -179,9 +179,10 @@ impl Capability {
             version: 1,
         }
     }
-    /// Add a worktree on a new branch to one of the Host's open projects, or
-    /// remove a linked one that no live session uses. Data plane; grants no
-    /// other Git write.
+    /// Add a worktree on a new branch, or on a branch with no worktree, to
+    /// one of the Host's open projects; list its branches; remove a linked
+    /// worktree that no live session uses. Data plane; grants no other Git
+    /// write.
     pub fn worktrees() -> Self {
         Self {
             name: WORKTREES.into(),
@@ -546,12 +547,22 @@ pub enum Request {
         revision: String,
     },
     /// Adds a worktree on the new `branch`, beside the project's folder.
-    /// Answers `worktree`. Not retried: git may have made it.
+    /// With `checkout`, `branch` is one `branch_list` shows without a
+    /// worktree (a remote's by its name after the remote), and `base` is
+    /// absent: git checks it out. Answers `worktree`. Not retried: git may
+    /// have made it.
     WorktreeAdd {
         project: String,
         branch: String,
         #[serde(default)]
         base: Option<String>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        checkout: bool,
+    },
+    /// Answers `branches`: the open project's local and remote branches,
+    /// newest commit first, and the branch its folder has checked out.
+    BranchList {
+        project: String,
     },
     /// Removes a linked worktree of the project. Refused (`conflict`) while
     /// a session of the Host's skiffd runs in it, or with uncommitted changes
@@ -711,7 +722,7 @@ impl Request {
             | Self::ProjectEdit { .. }
             | Self::ProjectArrange { .. }
             | Self::ProjectRemove { .. } => Some(Capability::project_config()),
-            Self::WorktreeAdd { .. } | Self::WorktreeRemove { .. } => {
+            Self::WorktreeAdd { .. } | Self::WorktreeRemove { .. } | Self::BranchList { .. } => {
                 Some(Capability::worktrees())
             }
         }
@@ -745,6 +756,7 @@ impl Request {
                     Response::Revision { .. }
                 )
                 | (Self::WorktreeAdd { .. }, Response::Worktree { .. })
+                | (Self::BranchList { .. }, Response::Branches { .. })
                 | (Self::FileList { .. }, Response::Files { .. })
                 | (Self::FileRead { .. }, Response::File { .. })
                 | (Self::ProjectBackground { .. }, Response::Image { .. })
@@ -784,6 +796,7 @@ impl Request {
                 | Self::ProjectArrange { .. }
                 | Self::ProjectRemove { .. }
                 | Self::WorktreeAdd { .. }
+                | Self::BranchList { .. }
                 | Self::FileList { .. }
                 | Self::FileRead { .. }
                 | Self::ProjectBackground { .. }
@@ -836,6 +849,7 @@ pub enum Response {
     /// Boxed, as `Project`. Same JSON.
     ProjectAdded { project: Box<HostProject>, revision: String },
     Worktree { worktree: HostWorktree },
+    Branches { branches: HostBranches },
     Files { listing: HostListing },
     /// Boxed, as `Project`. Same JSON.
     File { file: Box<HostFile> },

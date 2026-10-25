@@ -95,6 +95,54 @@ pub fn add_worktree(repo: &Path, branch: &str, path: &Path, base: Option<&str>) 
     git(repo, &args).map(drop)
 }
 
+/// Checks out the existing `branch` in a new worktree at `path`. A name
+/// only a remote has becomes a local branch that tracks it, as git does.
+pub fn checkout_worktree(repo: &Path, branch: &str, path: &Path) -> Result<()> {
+    let path = path.to_str().ok_or_else(|| anyhow!("path is not UTF-8"))?;
+    git(repo, &["worktree", "add", "--", path, branch]).map(drop)
+}
+
+/// One branch of a repository, local or a remote's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Branch {
+    /// Short: `main`, or `origin/main` for a remote's.
+    pub name: String,
+    pub remote: bool,
+    /// A worktree has it checked out. Always false for a remote's.
+    pub worktree: bool,
+}
+
+/// At most this many branches, newest commit first.
+pub const BRANCHES_MAX: usize = 1000;
+
+/// The local and remote branches, newest commit first. A remote's `HEAD`
+/// link is left out.
+pub fn branches(repo: &Path) -> Result<Vec<Branch>> {
+    let out = git(
+        repo,
+        &["for-each-ref", "--sort=-committerdate", "--format=%(refname)%00%(worktreepath)%00%(symref)", "refs/heads", "refs/remotes"],
+    )?;
+    Ok(out
+        .lines()
+        .filter_map(|l| {
+            let mut f = l.split('\0');
+            let (r, wt, sym) = (f.next()?, f.next().unwrap_or(""), f.next().unwrap_or(""));
+            if let Some(name) = r.strip_prefix("refs/heads/") {
+                Some(Branch { name: name.into(), remote: false, worktree: !wt.is_empty() })
+            } else {
+                let name = r.strip_prefix("refs/remotes/")?;
+                (sym.is_empty() && !name.ends_with("/HEAD")).then(|| Branch { name: name.into(), remote: true, worktree: false })
+            }
+        })
+        .take(BRANCHES_MAX)
+        .collect())
+}
+
+/// The branch checked out in `dir`; `None` when HEAD is detached.
+pub fn head_branch(dir: &Path) -> Option<String> {
+    git(dir, &["symbolic-ref", "--quiet", "--short", "HEAD"]).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
 /// Without `force`, git refuses a dirty worktree. A locked one is refused either way.
 pub fn remove_worktree(repo: &Path, path: &Path, force: bool) -> Result<()> {
     let path = path.to_str().ok_or_else(|| anyhow!("path is not UTF-8"))?;

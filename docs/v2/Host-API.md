@@ -1820,6 +1820,58 @@ worktree git of its own.
   review.
 - Manual two-machine and CI acceptance for M2, M3 and M4.
 
+## M4 (additive): branches for New worktree (#166 R5)
+
+New worktree offers the project's existing branches and a base for a new
+one, on This Mac and on an SSH Host alike. The Host's git lists and checks
+out the branches. The person types only the name of a new branch.
+
+### Contract (additive, API major 1)
+
+- **`worktrees@1`** gains `branch_list { project }`, which answers
+  `branches { branches: HostBranches }`:
+  - `head`: the branch the project's folder has checked out. A new branch
+    starts there when `worktree_add` names no base. `null` when detached.
+  - `branches`: `{ name, remote?, worktree? }`, local and remote, newest
+    commit first, at most 1000. `name` is short (`main`, `origin/main`). A
+    remote's `HEAD` link is left out. `worktree` is set when a worktree has
+    the branch checked out, never on a remote's. False flags are left out.
+- `worktree_add` gains `checkout` (left out when false). With it, `branch`
+  is a local branch with no worktree, or a name exactly one remote has
+  (`far` for `origin/far`). Git checks it out, and a remote's becomes a
+  local branch that tracks it. `base` must be absent. The folder is
+  `<dir>-worktrees/<branch>`, as for a new branch.
+- `branch_list` asks for an open project; a closed or unknown one is
+  `not_found`. Refused with `invalid`: `checkout` with a base, and a
+  `checkout` branch that has a worktree or is not listed. A Host older than
+  this slice ignores `checkout` (a new-branch add of a taken name, which git
+  refuses) and does not know `branch_list`, so the page asks for it first.
+- Golden shapes: `tests/fixtures/m4b.json` (`worktree_requests` and the
+  `branches` replies).
+
+### The app
+
+- **New worktree** keeps one name field. The list under it is the branches
+  with no worktree, under "Branches without a worktree". A listed name is
+  checked out. Any other name is a new branch from **From:**, a menu of the
+  branches that opens on `head`. From hides while the field names a listed
+  branch. When `branch_list` fails, the dialog is the name field alone, as
+  before.
+- Audit row 5 of the #166 remote-input spec. The new branch name stays a
+  typed field (in the R10 allowlist).
+
+### Tests
+
+- **Contract** (`m4b.json`): `branch_list` is in `worktrees@1` and answers
+  `branches` only; one without `project` is malformed.
+- **Service** (`config_writes.rs`, over the fake SSH forward): the list has
+  the main branch with its worktree, free local branches and a remote's;
+  checkout of a local branch and of a remote's; a new branch from a base;
+  refusals for a branch with a worktree, an unknown one, and checkout with
+  a base.
+- **Page** (`newWorktree.test.ts`): the free names, From's default and
+  hiding, the request for each choice, and an older Host.
+
 ## M5 (first slice): files, previews, local copies and backgrounds
 
 Tracking: M5 child issue of [epic #155](https://github.com/solutionscay/skiff/issues/155).

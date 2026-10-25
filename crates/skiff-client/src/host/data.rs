@@ -16,7 +16,7 @@ use std::{
 };
 
 use skiff_host_api::{
-    AgentEdit, Error, FolderListing, FolderPlaces, Hello, HostAgent, HostChange, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
+    AgentEdit, Error, FolderListing, FolderPlaces, Hello, HostBranches, HostAgent, HostChange, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
     HostListing, HostProject, HostSkipper, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response, SkipperEdit, SkipperFolderDone,
     SkipperFolderMode, SkipperFolderPreview, SkipperOpened, InventorySession,
 };
@@ -359,11 +359,20 @@ fn revised(reply: Response) -> Result<String, Error> {
     }
 }
 
-/// A worktree on the new `branch` of a Host project.
-pub async fn worktree_add(c: &HostConnection, project: &str, branch: &str, base: Option<&str>) -> Result<HostWorktree, Error> {
-    let request = Request::WorktreeAdd { project: project.into(), branch: branch.into(), base: base.map(Into::into) };
+/// A worktree on the new `branch` of a Host project, or, with `checkout`,
+/// on an existing branch that has none.
+pub async fn worktree_add(c: &HostConnection, project: &str, branch: &str, base: Option<&str>, checkout: bool) -> Result<HostWorktree, Error> {
+    let request = Request::WorktreeAdd { project: project.into(), branch: branch.into(), base: base.map(Into::into), checkout };
     match c.request(request).await? {
         Response::Worktree { worktree } => Ok(worktree),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// A Host project's branches, and the one its folder has checked out.
+pub async fn branch_list(c: &HostConnection, project: &str) -> Result<HostBranches, Error> {
+    match c.request(Request::BranchList { project: project.into() }).await? {
+        Response::Branches { branches } => Ok(branches),
         _ => unreachable!("checked by Request::accepts"),
     }
 }

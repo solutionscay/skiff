@@ -20,6 +20,27 @@ pub struct HostWorktree {
     pub prunable: bool,
 }
 
+/// A project's branches, for New worktree (`branch_list`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostBranches {
+    /// The branch the project's folder has checked out: a new branch
+    /// starts here when `worktree_add` names no base. `None` when detached.
+    pub head: Option<String>,
+    /// Newest commit first, at most 1000.
+    pub branches: Vec<HostBranch>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostBranch {
+    /// Short: `main`, or `origin/main` for a remote's.
+    pub name: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub remote: bool,
+    /// A worktree has it checked out. Never set on a remote's.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub worktree: bool,
+}
+
 /// One project of the Host's `projects.toml`, joined with its worktrees.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostProject {
