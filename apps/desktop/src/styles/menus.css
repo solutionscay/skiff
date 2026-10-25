@@ -23,7 +23,7 @@
 /* The item with the keys: the sidebar's current-row shade and bar, never an
    outline. :focus, not :focus-visible: WebKit does not count focus that a
    right-click or Ctrl+Shift+M gives the menu. The pointer moves focus (menu.ts). */
-.lm-item:focus, .lm-item[aria-expanded="true"], .slot-item:hover, .slot-item:focus {
+.lm-item:focus, .lm-item[aria-expanded="true"], .prompt-opt.active, .slot-item:hover, .slot-item:focus {
   background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent);
   box-shadow: inset 2px 0 0 var(--pc, var(--project-default));
 }

@@ -40,6 +40,9 @@ function page(config: { project_skippers: boolean }) {
     "./changes": { showsChanges: () => false },
     "./files": { showsFiles: () => false },
     "./projectClose": { closeEntries: () => [] },
+    // One worktree: its start choices come from the launch menu.
+    "./tree": { bareWorktree: (p: any) => p.worktrees[0] },
+    "../app/panels": { launchMenu: { entries: () => [{ label: "Shell" }] } },
     "./profile": { projectWorkspaceEntries: () => [] },
   }, { ...g, document: { querySelectorAll: () => [] } }, "");
   const labels = () => {

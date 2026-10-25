@@ -26,6 +26,7 @@ import { setShowFiles, showsFiles } from "./files";
 import { deleteGroup } from "../app/groups";
 import { closeEntries } from "./projectClose";
 import { sessionsOf } from "./layout";
+import { bareWorktree } from "./tree";
 
 import { startRename, startSessionRename } from "./rename";
 import { render } from "../app/render";
@@ -126,20 +127,19 @@ function setInitials(p: Project) {
   });
 }
 
-/** The fleets now, for the dialog's note. */
-const fleetNames = () => [...new Set(S.projects.map((x) => x.fleet).filter((f): f is string => !!f))];
+/** The fleets now, for the picker. */
+const fleetNames = () => [...new Set(S.projects.map((x) => x.fleet).filter((f): f is string => !!f))].sort((a, b) => a.localeCompare(b));
 
-/** Ask for the fleet the project sits in. Projects with the same fleet go under one fleet head in the tree. */
+/** Pick the fleet the project sits in. Projects with the same fleet go under one fleet head in the tree. */
 function setFleet(p: Project) {
-  const names = fleetNames();
   promptAction({
     title: `Fleet for ${p.name}`,
-    body:
-      "Projects with the same fleet name go under one fleet head in the side panel. Leave the field empty to put the project under Projects." +
-      (names.length ? ` Fleets now: ${names.join(", ")}.` : ""),
+    body: "Projects with the same fleet go under one fleet head in the side panel. Pick a fleet or type a new name.",
     placeholder: "a fleet name",
     value: p.fleet ?? "",
     allowEmpty: true,
+    options: fleetNames(),
+    clearLabel: p.fleet ? "No fleet: back under Projects" : undefined,
     action: "Set fleet",
     submit: (fleet) => hostInvoke("project_config", "set_project_fleet", { project: p.name, fleet }),
     onClose: refocusTerminal,
@@ -203,19 +203,28 @@ export function projectRun(p: Project) {
   } as const;
 }
 
-/** The project's + in the sidebar, a right-click on its row, or the menu key. */
+/** The project row's ⋯, a right-click on it, or the menu key. */
 export function projectMenu(p: Project, x: number, y: number) {
   const run = projectRun(p);
-  // New session goes to the project's selected worktree, else its main one, as Ctrl+Shift+T does.
-  const sel = selectedWorktree.get(p.name);
-  const w = p.worktrees.find((x) => x.path === sel) ?? p.worktrees.find((x) => x.is_main) ?? p.worktrees[0];
-  const plus = w && [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === w.path);
-  const start: MenuEntry = { icon: "indicators-plus", label: "New session…", hint: keyLabel("new-session"), disabled: !w || !hostCan("session_lifecycle"), run: () => w && launchMenu.open(plus ?? { x, y }, p, w) };
   // A remote Host's path is that Host's: nothing here opens it on this Mac,
   // and its images are paths there, which no capability sends yet. Its
   // settings and worktrees change on that Host, when it takes the change.
   const local = !isRemote();
   const edits = hostCan("project_config");
+  const starts = hostCan("session_lifecycle");
+  // One worktree: its start choices show here, as on a worktree's +. More: pick the worktree first.
+  // A Host that starts no sessions shows New session, off.
+  const bare = bareWorktree(p);
+  const start: MenuEntry[] = bare && !p.error && starts
+    ? launchMenu.entries(p, bare)
+    : [{ icon: "indicators-plus", label: "New session", disabled: !!p.error || !p.worktrees.length || !starts, sub: p.worktrees.map((w) => ({
+        icon: "code-git-branch",
+        label: branchName(w),
+        run: () => {
+          const plus = [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === w.path);
+          launchMenu.open(plus ?? { x, y }, p, w);
+        },
+      })) }];
   // How the project looks. Icon and Background are sections: a flyout goes one level deep.
   const appearance = tidy([
     edits && { icon: "tools-sparkles", label: "Color…", hint: keyLabel("project-color"), run: run["project-color"] },
@@ -227,21 +236,21 @@ export function projectMenu(p: Project, x: number, y: number) {
   const sidebar = tidy([
     edits && { icon: showsChanges(p) ? "indicators-check" : "", label: "Changes", hint: keyLabel("project-changes"), run: run["project-changes"] },
     edits && hostCan("files") && { icon: showsFiles(p) ? "indicators-check" : "", label: "Files", hint: keyLabel("project-files"), run: run["project-files"] },
-    { sep: true },
-    edits && { icon: "code-group", label: "Fleet…", run: () => setFleet(p) },
   ]);
   ctxMenu.open(x, y, p.path, tidy([
-    start,
+    ...start,
+    !!bare && { sep: true },
     hostCan("worktrees") && { icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
     // This Mac starts them itself; a remote Host, through its skiff-host.
     ...(local || hostCan("skipper_run") ? projectSkipperEntries(p) : []),
     { sep: true },
     local && { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: run["project-folder"] },
     { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
-    { sep: true },
     appearance.length > 0 && { icon: "tools-sparkles", label: "Appearance", sub: appearance },
     sidebar.length > 0 && { icon: "layouts-panel-left", label: "Sidebar", sub: sidebar },
     { sep: true },
+    // Where the project sits: its fleet, then the workspace. The Host keeps its fleets.
+    edits && { icon: "code-group", label: p.fleet ? "Move to fleet…" : "Add to fleet…", run: () => setFleet(p) },
     ...(local ? projectWorkspaceEntries(p) : []),
     ...(edits ? closeEntries(p) : []),
   ]));
@@ -427,27 +436,34 @@ function endManyEntry(ids: string[], label: string, title: string): MenuEntry {
 
 /**
  * Start project Skipper, while Settings › Skiff agent › Project Skippers is
- * on. It opens no dialog. While one runs: Stop project Skipper…, which asks
- * first, as End does. Its panes keep running.
+ * on. It opens no dialog. While one runs, whatever Settings says: Open
+ * project Skipper, which shows its pane, and Stop project Skipper…, which
+ * asks first, as End does. Its panes keep running.
  */
 function projectSkipperEntries(p: Project): MenuEntry[] {
-  if (!skiffAgentFolder() || !S.skiffAgent?.project_skippers) return [];
   const s = projectSkipperOf(p.name);
-  if (!s) return [{ icon: "tools-sparkles", label: "Start project Skipper", disabled: !!p.error, run: () => startProjectSkipper(p.name) }];
-  return [{
-    icon: "indicators-square-stop",
-    label: "Stop project Skipper…",
-    danger: true,
-    run: async () => {
-      const ok = await confirmAction({
-        title: `Stop the ${p.name} Skipper?`,
-        body: `Stops ${agentName(s)} and removes its session. The panes it started keep running, and its ledger rows stay.`,
-        action: "Stop project Skipper",
-      });
-      if (ok) void endSession(s.id);
-      else refocusTerminal();
+  if (!s) {
+    if (!skiffAgentFolder() || !S.skiffAgent?.project_skippers) return [];
+    return [{ icon: "tools-sparkles", label: "Start project Skipper", disabled: !!p.error, run: () => startProjectSkipper(p.name) }];
+  }
+  return [
+    // startProjectSkipper shows the one that runs.
+    { icon: "tools-sparkles", label: "Open project Skipper", run: () => startProjectSkipper(p.name) },
+    {
+      icon: "indicators-square-stop",
+      label: "Stop project Skipper…",
+      danger: true,
+      run: async () => {
+        const ok = await confirmAction({
+          title: `Stop the ${p.name} Skipper?`,
+          body: `Stops ${agentName(s)} and removes its session. The panes it started keep running, and its ledger rows stay.`,
+          action: "Stop project Skipper",
+        });
+        if (ok) void endSession(s.id);
+        else refocusTerminal();
+      },
     },
-  }];
+  ];
 }
 
 async function endSession(id: string) {

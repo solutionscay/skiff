@@ -107,5 +107,5 @@ export function actionDialog(o: {
     e.preventDefault();
   });
   (o.focus ?? act).focus();
-  return { close, error };
+  return { close, error, run };
 }

@@ -90,20 +90,40 @@ export function skiffAgentSession(): SessionInfo | null {
 /** True for the Skiff agent's session. It has no project, no splits and no rename: its name lives in Settings. */
 export const isSkiffAgent = (id: string | null | undefined) => !!id && skiffAgentSession()?.id === id;
 
-/** The live project Skippers: sessions skiffd marks with their project. A restore brings one back as a plain shell, with no mark. */
-export function projectSkippers(): SessionInfo[] {
-  if (!skiffAgentFolder()) return [];
-  return [...sessions.values()].filter((s) => !!s.skipper && !s.coordinator && s.state !== "done");
+/**
+ * The project a live project Skipper coordinates, else null. skiffd marks it
+ * with its project. A restore brings one back with no mark, and an older
+ * skiffd starts one with no mark (the CLI then says it is too old, but the
+ * agent runs): its name, "<project> <Skiff agent's name>", still finds it.
+ */
+function skipperProject(s: SessionInfo): string | null {
+  if (s.coordinator || s.state === "done") return null;
+  if (s.skipper) return s.skipper;
+  if (!skiffAgentFolder()) return null;
+  const tail = ` ${skiffAgentName()}`;
+  const project = s.name?.endsWith(tail) ? s.name.slice(0, -tail.length) : null;
+  return project && S.projects.some((p) => p.name === project) ? project : null;
 }
 
-/** The live project Skipper of `project`, if one runs. */
-export const projectSkipperOf = (project: string) => projectSkippers().find((s) => s.skipper === project) ?? null;
+/** The live project Skippers, marked or found by name. A marked one counts
+ *  while the Skiff agent's settings are off or not read yet: it runs, and its
+ *  title already says so. */
+export function projectSkippers(): SessionInfo[] {
+  return [...sessions.values()].filter((s) => skipperProject(s) !== null);
+}
+
+/** The live project Skipper of `project`, if one runs. A marked one comes first. */
+export function projectSkipperOf(project: string): SessionInfo | null {
+  const all = projectSkippers().filter((s) => skipperProject(s) === project);
+  return all.find((s) => s.skipper === project) ?? all[0] ?? null;
+}
 
 /** The coordinator whose session `id` is: "grand" for the Skiff agent, a project for a project Skipper, else null. */
 export function coordinatorOf(id: string | null | undefined): string | null {
   if (!id) return null;
   if (isSkiffAgent(id)) return "grand";
-  return projectSkippers().find((s) => s.id === id)?.skipper ?? null;
+  const s = projectSkippers().find((s) => s.id === id);
+  return s ? skipperProject(s) : null;
 }
 
 /** What `start_project_skipper` answers on this computer. */
@@ -335,7 +355,7 @@ export function projectWatch(s: SessionInfo): { state: WatchState; text: string 
 
 /** A project Skipper's session name: its project, then the Skiff agent's name ("gesher Skipper"). */
 export function projectSkipperName(s: SessionInfo): string {
-  return `${s.skipper} ${skiffAgentName()}`;
+  return `${skipperProject(s) ?? s.skipper} ${skiffAgentName()}`;
 }
 
 /** Restored panes Skiff already asked skiffd to continue. Once each. */

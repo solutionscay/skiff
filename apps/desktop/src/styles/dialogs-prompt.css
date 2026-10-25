@@ -1,6 +1,12 @@
 /* Prompt dialog: the confirm panel with one text field. */
 .prompt-input { height: var(--row); padding: 0 calc(20 * var(--u)); border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font: calc(13px * var(--zoom, 1)) var(--mono); }
 .prompt-input:focus { box-shadow: inset 0 -2px 0 var(--state-working); }
+/* The prompt's pick list: the field's names, flush under it. */
+.prompt-list { max-height: calc(5 * var(--row)); overflow-y: auto; border-bottom: 1px solid var(--rule); }
+.prompt-list:empty { display: none; }
+.prompt-opt { padding: 0 calc(20 * var(--u)); font: calc(13px * var(--zoom, 1)) var(--mono); cursor: pointer; }
+.prompt-opt.clear { font-family: var(--font); color: var(--text-2); }
+.prompt-opt + .prompt-opt.clear { border-top: 1px solid var(--rule); }
 .prompt-error { padding: calc(10 * var(--u)) calc(20 * var(--u)); background: var(--error-bg); border-bottom: 1px solid var(--rule); color: var(--error-text); font-size: calc(12px * var(--zoom, 1)); white-space: pre-wrap; overflow-wrap: anywhere; }
 .prompt-error:empty { display: none; }
 .confirm-act.go { background: var(--state-working); color: var(--on-working); }
