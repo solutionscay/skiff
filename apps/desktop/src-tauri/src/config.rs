@@ -65,7 +65,8 @@ pub(crate) async fn get_project(app: State<'_, App>, name: String) -> Result<Hos
     data_read(&app, |c| async move { data::project_get(&c, &name).await }).await
 }
 
-/// A worktree on a new branch, made by the Host's git (`worktrees@1`).
+/// A worktree on a new branch, or with `checkout` on an existing one, made
+/// by the Host's git (`worktrees@1`).
 #[tauri::command]
 pub(crate) async fn add_worktree(
     handle: AppHandle,
@@ -73,9 +74,17 @@ pub(crate) async fn add_worktree(
     project: String,
     branch: String,
     base: Option<String>,
+    checkout: Option<bool>,
 ) -> Result<HostWorktree, String> {
-    let out = data_write(&app, |c| async move { data::worktree_add(&c, &project, &branch, base.as_deref()).await }).await;
+    let checkout = checkout.unwrap_or(false);
+    let out = data_write(&app, |c| async move { data::worktree_add(&c, &project, &branch, base.as_deref(), checkout).await }).await;
     changed(&handle, out)
+}
+
+/// The project's branches for New worktree, from the Host's git.
+#[tauri::command]
+pub(crate) async fn list_branches(app: State<'_, App>, project: String) -> Result<skiff_host_api::HostBranches, String> {
+    data_read(&app, |c| async move { data::branch_list(&c, &project).await }).await
 }
 
 /// The Host refuses the main worktree and one its own live sessions run

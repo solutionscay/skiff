@@ -43,7 +43,7 @@
       "config",
       "skiff_core"
     ],
-    "sha256": "ec4e2db1af03b58a28986b754186a1ea96cbd88ece3a4ad3bece735daaea583d"
+    "sha256": "128edf227a46ba7f540ce4ec8986fb6e1693db5167d996ec670707e737639db7"
   },
   "apps/desktop/src-tauri/src/config_tests.rs": {
     "ownership": "test only: an in-process skiff-host on private state, never the live config",
@@ -145,7 +145,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "d9e57cda8126bf8752b092290adc3fef31474fda914a8990e31c79497d2aa277"
+    "sha256": "ffaef685df8de705cef454a59f6189c72a37413a2813108d0a48a258ebdeae22"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -733,7 +733,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "c6af4d1841bc8babbbaa0866618a2d024655c8649c786d4f33738930300bd2de"
+    "sha256": "66464d477dd8ccbe0e56d3d2800d4c378637ac6580c6f16553773d664223518b"
   },
   "apps/desktop/src/workspace/missionControl.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

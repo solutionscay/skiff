@@ -3,6 +3,7 @@ import { ctxMenu } from "../ui/contextMenu";
 import { isSkiffAgent, openWatchLog, projectSkipperOf, startProjectSkipper, skiffAgentFolder, skiffAgentName, skiffWatch, startSkiffWatch } from "../app/skiffAgent";
 import { launchIcon } from "../appearance/agentIcon";
 import { confirmAction, promptAction } from "../ui/confirm";
+import { h } from "../ui/dom";
 import { pickColor } from "../appearance/colorPicker";
 import { pickBackgroundOpacity } from "../appearance/backdropOpacity";
 import { keyLabel } from "../app/keys";
@@ -12,7 +13,7 @@ import { isRemote } from "../app/hosts";
 import { agentName, basename, branchName, locate, taskTitle, isProjectSkipper } from "./model";
 import { cwdOf } from "./canvas";
 import { filledOf, slotsOf } from "./layoutSlots";
-import type { Group, Project, SessionInfo, SplitDir, Worktree } from "../platform/types";
+import type { Group, HostBranches, Project, SessionInfo, SplitDir, Worktree } from "../platform/types";
 import type { Fleet } from "./fleets";
 import { fleetWorkspaceEntries, projectWorkspaceEntries } from "./profile";
 import { invoke } from "@tauri-apps/api/core";
@@ -175,16 +176,53 @@ export function fleetMenu(f: Fleet, x: number, y: number) {
   ]);
 }
 
-/** Ask for a branch, then make a worktree for it. Errors stay in the dialog. */
-export function newWorktree(p: Project) {
+/** Ask for a branch, then make a worktree for it. A name the list shows is an
+ *  existing branch with no worktree: git checks it out. Any other name is a new
+ *  branch from the From branch. Errors stay in the dialog. */
+export async function newWorktree(p: Project) {
   S.justAdded = null;
+  // A Host without `branch_list` still makes new branches from the folder's.
+  const b = await hostInvoke<HostBranches>("worktrees", "list_branches", { project: p.name }).catch(() => null);
+  const local = new Set(b?.branches.filter((x) => !x.remote).map((x) => x.name));
+  // A remote's branch is offered by its own name, as git checks it out.
+  const free = [
+    ...new Set(
+      (b?.branches ?? []).flatMap((x) => {
+        if (!x.remote) return x.worktree ? [] : [x.name];
+        const name = x.name.slice(x.name.indexOf("/") + 1);
+        return local.has(name) ? [] : [name];
+      }),
+    ),
+  ];
+  const isFree = (v: string) => free.some((n) => n.toLowerCase() === v.toLowerCase());
+
+  const from = h("label", "prompt-from");
+  const base = h("select", "");
+  base.setAttribute("aria-label", "The branch the new branch starts from");
+  const head = b?.head ?? "";
+  for (const name of [...(b && !b.head ? [""] : []), ...(b?.branches.map((x) => x.name) ?? [])]) {
+    const o = h("option", "", name || "HEAD");
+    o.value = name;
+    base.append(o);
+  }
+  base.value = head;
+  from.append(h("span", "", "From:"), base);
+  from.hidden = !b;
+
   promptAction({
     title: `New worktree in ${p.name}`,
-    body: "Git makes a new branch and checks it out in its own folder next to the project.",
+    body: free.length
+      ? "Type a new branch name, or pick a branch with no worktree. Git checks it out in its own folder next to the project."
+      : "Git makes a new branch and checks it out in its own folder next to the project.",
     placeholder: "a branch name",
+    ...(free.length ? { options: free, optionsHead: "Branches without a worktree" } : {}),
+    after: [from],
+    onInput: (v) => (from.hidden = !b || isFree(v)),
     action: "Create",
     submit: async (branch) => {
-      const w = await hostInvoke<Worktree>("worktrees", "add_worktree", { project: p.name, branch, base: null });
+      const checkout = isFree(branch);
+      const start = checkout || base.value === head ? null : base.value;
+      const w = await hostInvoke<Worktree>("worktrees", "add_worktree", { project: p.name, branch, base: start, checkout });
       selectedWorktree.set(p.name, w.path);
       await loadProjects();
     },
