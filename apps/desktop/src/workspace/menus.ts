@@ -125,20 +125,19 @@ function setInitials(p: Project) {
   });
 }
 
-/** The fleets now, for the dialog's note. */
-const fleetNames = () => [...new Set(S.projects.map((x) => x.fleet).filter((f): f is string => !!f))];
+/** The fleets now, for the picker. */
+const fleetNames = () => [...new Set(S.projects.map((x) => x.fleet).filter((f): f is string => !!f))].sort((a, b) => a.localeCompare(b));
 
-/** Ask for the fleet the project sits in. Projects with the same fleet go under one fleet head in the tree. */
+/** Pick the fleet the project sits in. Projects with the same fleet go under one fleet head in the tree. */
 function setFleet(p: Project) {
-  const names = fleetNames();
   promptAction({
     title: `Fleet for ${p.name}`,
-    body:
-      "Projects with the same fleet name go under one fleet head in the side panel. Leave the field empty to put the project under Projects." +
-      (names.length ? ` Fleets now: ${names.join(", ")}.` : ""),
+    body: "Projects with the same fleet go under one fleet head in the side panel. Pick a fleet or type a new name.",
     placeholder: "a fleet name",
     value: p.fleet ?? "",
     allowEmpty: true,
+    options: fleetNames(),
+    clearLabel: p.fleet ? "No fleet: back under Projects" : undefined,
     action: "Set fleet",
     submit: (fleet) => invoke("set_project_fleet", { project: p.name, fleet }),
     onClose: refocusTerminal,
@@ -237,10 +236,10 @@ export function projectMenu(p: Project, x: number, y: number) {
     { icon: "layouts-panel-left", label: "Sidebar", sub: [
       { icon: showsChanges(p) ? "indicators-check" : "", label: "Changes", hint: keyLabel("project-changes"), run: run["project-changes"] },
       { icon: showsFiles(p) ? "indicators-check" : "", label: "Files", hint: keyLabel("project-files"), run: run["project-files"] },
-      { sep: true },
-      { icon: "code-group", label: "Fleet…", run: () => setFleet(p) },
     ] },
     { sep: true },
+    // Where the project sits: its fleet, then the workspace.
+    { icon: "code-group", label: p.fleet ? "Move to fleet…" : "Add to fleet…", run: () => setFleet(p) },
     ...projectWorkspaceEntries(p),
     ...closeEntries(p),
   ]);

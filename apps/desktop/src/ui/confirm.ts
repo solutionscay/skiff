@@ -34,6 +34,10 @@ export function promptAction(o: {
   /** An empty field is allowed and goes to `submit` as "". */
   allowEmpty?: boolean;
   maxLength?: number;
+  /** Names to pick from. The field completes from them as you type, and a list under it shows the matches. */
+  options?: string[];
+  /** The label of a last list row that submits an empty field. */
+  clearLabel?: string;
   action: string;
   submit: (value: string) => Promise<void>;
   onClose?: () => void;
@@ -45,16 +49,19 @@ export function promptAction(o: {
   if (o.value) input.value = o.value;
   if (o.maxLength) input.maxLength = o.maxLength;
   input.setAttribute("aria-label", o.placeholder);
-  actionDialog({
+  const list = o.options || o.clearLabel ? pickList(input, o.options ?? [], o.clearLabel, () => dialog.run()) : null;
+  const dialog = actionDialog({
     title: o.title,
     body: o.body,
-    content: [input],
+    content: list ? [input, list] : [input],
     action: o.action,
     tone: "go",
     focus: input,
     onClose: o.onClose,
     submit: async () => {
-      const v = input.value.trim();
+      // A name typed in other letter case is the listed name.
+      const typed = input.value.trim();
+      const v = o.options?.find((n) => n.toLowerCase() === typed.toLowerCase()) ?? typed;
       if (!v && !o.allowEmpty) {
         input.focus();
         throw `Type ${o.placeholder}.`;
@@ -62,4 +69,78 @@ export function promptAction(o: {
       await o.submit(v);
     },
   });
+}
+
+let lists = 0;
+
+/**
+ * The list under a prompt's field. Typing completes the field from the first
+ * name that starts with the text and shows every name that holds it. The arrows
+ * put the lit row's name in the field, so Enter takes the lit row or the typed text.
+ */
+function pickList(input: HTMLInputElement, options: string[], clearLabel: string | undefined, run: () => void) {
+  const list = h("div", "prompt-list");
+  list.id = `prompt-list-${++lists}`;
+  list.setAttribute("role", "listbox");
+  list.setAttribute("aria-label", "Matches");
+  input.autocomplete = "off";
+  input.setAttribute("role", "combobox");
+  input.setAttribute("aria-autocomplete", "both");
+  input.setAttribute("aria-controls", list.id);
+  input.setAttribute("aria-expanded", "true");
+
+  let rows: { label: string; value: string; clear?: boolean }[] = [];
+  let active = -1;
+
+  const render = () => {
+    list.replaceChildren(
+      ...rows.map((r, i) => {
+        const row = h("div", "lm-item prompt-opt" + (r.clear ? " clear" : "") + (i === active ? " active" : ""), r.label);
+        row.id = `${list.id}-${i}`;
+        row.setAttribute("role", "option");
+        row.setAttribute("aria-selected", String(i === active));
+        row.addEventListener("mousedown", (e) => e.preventDefault());
+        row.addEventListener("click", () => {
+          input.value = r.value;
+          run();
+        });
+        return row;
+      }),
+    );
+    if (active >= 0) input.setAttribute("aria-activedescendant", `${list.id}-${active}`);
+    else input.removeAttribute("aria-activedescendant");
+    list.children[active]?.scrollIntoView({ block: "nearest" });
+  };
+
+  const fill = (names: string[]) => (rows = [...names.map((n) => ({ label: n, value: n })), ...(clearLabel ? [{ label: clearLabel, value: "", clear: true }] : [])]);
+
+  // Opened: every name, the current one lit and selected, so typing replaces it.
+  fill(options);
+  active = options.findIndex((n) => n === input.value);
+  queueMicrotask(() => input.select());
+  render();
+
+  input.addEventListener("input", (e) => {
+    const typed = input.value;
+    const q = typed.trim().toLowerCase();
+    const starts = options.filter((n) => n.toLowerCase().startsWith(q));
+    fill([...starts, ...options.filter((n) => !starts.includes(n) && n.toLowerCase().includes(q))]);
+    active = rows.findIndex((r) => !r.clear && r.value.toLowerCase() === q);
+    // Complete only while the user adds text: Backspace must be able to undo a completion.
+    if (q && starts.length && (e as InputEvent).inputType?.startsWith("insert")) {
+      input.value = starts[0];
+      input.setSelectionRange(typed.length, starts[0].length);
+      active = 0;
+    }
+    render();
+  });
+  input.addEventListener("keydown", (e) => {
+    if ((e.key !== "ArrowDown" && e.key !== "ArrowUp") || !rows.length) return;
+    e.preventDefault();
+    active = (active + (e.key === "ArrowDown" ? 1 : active < 0 ? 0 : -1) + rows.length) % rows.length;
+    input.value = rows[active].value;
+    input.select();
+    render();
+  });
+  return list;
 }
