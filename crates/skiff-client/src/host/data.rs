@@ -10,7 +10,7 @@
 //! skiffd. This module never starts a service anywhere; the desktop policy
 //! starts one only for a local endpoint.
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -84,8 +84,8 @@ pub enum DataError {
 impl std::fmt::Display for DataError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NotRunning => write!(f, "skiff-host does not run for this Host"),
-            Self::Waiting { seconds } => write!(f, "skiff-host was not reachable; trying again in {seconds}s"),
+            Self::NotRunning => write!(f, "The projects service does not run for this Host."),
+            Self::Waiting { seconds } => write!(f, "Skiff cannot reach the projects service. It tries again in {seconds} s."),
         }
     }
 }
@@ -141,10 +141,34 @@ impl HostSelection {
             return Err(Error::IdentityChanged { expected: host.clone(), received: received.clone() }.into());
         }
         if forward.is_some() {
-            let v = connection.hello().service_versions.get("skiff-host").cloned().unwrap_or_default();
+            let v = connection.hello().service_versions.get("skiff-host").map_or("", |v| release(v));
             ssh::connect_note(format!("skiff-host {v} answers"));
         }
         Ok(DataPlane { connection: Arc::new(connection), _forward: forward, pid })
+    }
+}
+
+/// A service version without its build: `0.6.26+1a2b…` is `0.6.26`.
+pub fn release(version: &str) -> &str {
+    version.split_once('+').map_or(version, |(v, _)| v)
+}
+
+/// The build in a service version: `1a2b…` of `0.6.26+1a2b…`.
+pub fn build(version: &str) -> Option<&str> {
+    version.split_once('+').map(|(_, b)| b)
+}
+
+pub use crate::skipper::build_of;
+
+/// The local `skiff-host` that reports `theirs` is not the build of the
+/// program at `bin`, of `version`: an older version, or this version from
+/// another build or from a build that did not name it. A newer version is
+/// never stale, nor is any when `bin` cannot be read.
+pub fn stale_service(theirs: &str, version: &str, bin: &Path) -> bool {
+    match skiff_core::compare_versions(release(theirs), version) {
+        std::cmp::Ordering::Less => true,
+        std::cmp::Ordering::Greater => false,
+        std::cmp::Ordering::Equal => build_of(bin).is_some_and(|mine| build(theirs) != Some(mine.as_str())),
     }
 }
 
@@ -360,10 +384,11 @@ pub fn message(e: Error) -> String {
     match e {
         Error::OperationFailed { message } | Error::NotFound { message } | Error::Invalid { message } | Error::Conflict { message } | Error::Permission { message } | Error::MalformedContract { message } => message,
         Error::UnsupportedCapability { capability } => format!("This Host does not offer {}.", capability.name),
-        Error::HostBusy => "skiff-host is busy. Try again.".into(),
-        Error::TransportLost => "The connection to skiff-host was lost.".into(),
-        Error::TimedOut => "skiff-host did not answer in time.".into(),
-        e => e.to_string(),
+        Error::HostBusy => "The projects service is busy. Try again.".into(),
+        Error::TransportLost => "Skiff lost the connection to the projects service. It connects again on its own.".into(),
+        Error::TimedOut => "The projects service did not answer in time.".into(),
+        Error::IncompatibleVersion { .. } => "The projects service is from another Skiff version. Update Skiff… in Settings › Hosts updates it.".into(),
+        Error::IdentityChanged { .. } => "The projects service answers as another Skiff Host. Skiff sends it nothing.".into(),
     }
 }
 
@@ -485,4 +510,25 @@ pub async fn skipper_project(c: &HostConnection, project: &str) -> Result<Invent
 /// and the new revision.
 pub async fn agent_edit(c: &HostConnection, revision: &str, edit: AgentEdit) -> Result<(Vec<HostAgent>, String), Error> {
     agents_of(c.request(Request::AgentEdit { revision: revision.into(), edit }).await?)
+}
+
+#[cfg(test)]
+mod tests {
+    /// A local skiff-host of this version from another build, or from one
+    /// that did not name its build, is stale; a newer one never is.
+    #[test]
+    fn a_service_of_another_build_is_stale() {
+        let bin = std::env::temp_dir().join(format!("skiff-host-build-{}", std::process::id()));
+        std::fs::write(&bin, "a build").unwrap();
+        let mine = super::build_of(&bin).unwrap();
+        let stale = |theirs: &str| super::stale_service(theirs, "0.6.26", &bin);
+        assert!(stale("0.6.25"));
+        assert!(stale(&format!("0.6.25+{mine}")));
+        assert!(stale("0.6.26"));
+        assert!(stale("0.6.26+0000000000000000"));
+        assert!(!stale(&format!("0.6.26+{mine}")));
+        assert!(!stale("0.6.27"));
+        assert!(!super::stale_service("0.6.26+0000000000000000", "0.6.26", &bin.with_extension("gone")));
+        let _ = std::fs::remove_file(&bin);
+    }
 }

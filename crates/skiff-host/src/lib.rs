@@ -77,11 +77,21 @@ pub fn hello() -> anyhow::Result<Hello> {
             account: skiff_core::host_identity::account(),
         },
         instance_id: InstanceId::try_from(uuid::Uuid::new_v4().to_string()).map_err(anyhow::Error::msg)?,
-        service_versions: BTreeMap::from([("skiff-host".into(), skiff_core::VERSION.into())]),
+        service_versions: BTreeMap::from([("skiff-host".into(), version())]),
         api_major: API_MAJOR,
         capabilities: capabilities(),
         limits: Limits { max_frame_bytes: MAX_FRAME, max_in_flight: MAX_IN_FLIGHT },
     })
+}
+
+/// This service's version, with its build as SemVer build metadata
+/// (`0.6.26+<build id>`): the app replaces a service of its own version
+/// from another build.
+fn version() -> String {
+    match std::env::current_exe().ok().as_deref().and_then(skiff_client::skipper::build_of) {
+        Some(build) => format!("{}+{build}", skiff_core::VERSION),
+        None => skiff_core::VERSION.into(),
+    }
 }
 
 /// The socket file this service bound. Only it is ever removed:

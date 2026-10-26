@@ -148,9 +148,9 @@ export function projectsNote(): HTMLElement | null {
     return h("div", "note-row", remote ? `Waiting for ${hostName()}` : "Loading projects…");
   }
   if (S.dataState === "unavailable") {
-    const why = S.dataNote ?? `Projects${on} need skiff-host there.`;
-    const last = S.projects.length ? " The list shows the last read." : "";
-    const text = `${why}${last} Skiff checks again on its own.`;
+    // Each cause says what is wrong and what Skiff does about it.
+    const why = S.dataNote ?? `Skiff cannot show the projects${on || " on this computer"}. It checks again on its own.`;
+    const text = S.projects.length ? `${why} The list shows the last read.` : why;
     // A remote Host without its service is a setup, not a fault: no red.
     return remote ? h("div", "note-row", text) : errorRow(text);
   }

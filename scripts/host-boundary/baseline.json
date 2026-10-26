@@ -75,7 +75,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "e06e41a8a817aa35ebefe7e60d03786ea953ba8d2142f319d3cb5983870f5e73"
+    "sha256": "04c63033644388bf02ca0a5c49722319c9d843f817ae80f75f66bd3f2e681228"
   },
   "apps/desktop/src-tauri/src/copies.rs": {
     "ownership": "client-owned (M5 reviewed): local copies of bytes the Host sent, for this computer's Open with; never reads or opens a Host path",
@@ -891,7 +891,7 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "2ccbe8e4979c153c4634fed5fd3ff50d8c2f51787504b4f3ad3964f6014c4b5a"
+    "sha256": "108875a9503b32d2d613db57d4d4b78dc18c673dd4543c2922fcd60f676877da"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

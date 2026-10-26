@@ -384,7 +384,7 @@ pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
             let same = if input.pin.is_some() { " Same install as before." } else { "" };
             list.pass(Row::Identity, format!("Protocol {}.{same}", info.protocol));
             let answer = match skiff_host_api::HostId::try_from(host_id.clone()) {
-                Ok(id) => selection.connect_data(&id).await.map(|plane| plane.connection().hello().service_versions.get("skiff-host").map(|v| format!(" {v}")).unwrap_or_default()),
+                Ok(id) => selection.connect_data(&id).await.map(|plane| plane.connection().hello().service_versions.get("skiff-host").map(|v| format!(" {}", super::data::release(v))).unwrap_or_default()),
                 Err(e) => Err(anyhow::anyhow!(e)),
             };
             list.rows.push(projects(answer, probe.managed.is_some()));

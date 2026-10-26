@@ -12,8 +12,12 @@ pub(crate) struct App {
     /// M4: the selected Host's data-plane service (`skiff-host`), checked
     /// against the session plane's Host id on every connection.
     pub(crate) data: Mutex<Option<DataPlane>>,
-    /// This run replaced an older local `skiff-host` already: once per run.
+    /// This run replaced a local `skiff-host` of another build already:
+    /// once per run.
     pub(crate) data_replaced: AtomicBool,
+    /// A reply from the local `skiff-host` was unreadable: the next
+    /// connection replaces it, whatever its build.
+    pub(crate) data_unreadable: AtomicBool,
     /// When this app run last started `skiff-host`: one that stops right
     /// after it starts is not started again every read.
     pub(crate) data_started: std::sync::Mutex<Option<std::time::Instant>>,
@@ -269,7 +273,10 @@ pub(crate) fn remote_failure(e: &anyhow::Error, destination: &str) -> (Option<Wa
                  If you expect this, as after Skiff was reinstalled there, accept the new identity."
             ),
         ),
-        Some(skiff_host_api::Error::MalformedContract { message }) => warn("remote", message.clone()),
+        Some(skiff_host_api::Error::MalformedContract { .. }) => warn(
+            "remote",
+            format!("Skiff cannot read the replies from the sessions service on {destination}. Settings › Hosts checks {destination}."),
+        ),
         _ if e.downcast_ref::<RemoteSilent>().is_some() => warn(
             "remote",
             format!("skiffd on {destination} did not answer within {} s. Settings › Hosts checks {destination}.", REMOTE_HELLO_TIMEOUT.as_secs()),
@@ -460,7 +467,7 @@ pub(crate) async fn data_now(app: &App) -> Result<Arc<HostConnection>, String> {
             if too_soon {
                 return Err(data_failure(&e, &selection));
             }
-            spawn_data_service(&control, selection.socket()).map_err(|e| format!("start skiff-host: {e:#}"))?;
+            spawn_data_service(&control, selection.socket()).map_err(start_failure)?;
             let mut last = e;
             let mut plane = None;
             for _ in 0..50 {
@@ -476,6 +483,18 @@ pub(crate) async fn data_now(app: &App) -> Result<Arc<HostConnection>, String> {
             }
             plane.ok_or_else(|| data_failure(&last, &selection))?
         }
+        // This computer's service from a build this app cannot read: it is
+        // replaced as in `replace_older_data_service`, by its socket's peer.
+        Err(e) if unreadable(&e) && selection.process_control().is_some() => {
+            let control = selection.process_control().expect("checked");
+            match data_service_pid(&selection).await {
+                Some(pid) if !app.data_replaced.swap(true, Ordering::SeqCst) => {
+                    eprintln!("skiff-host (pid {pid}) is from a build this app cannot read: replacing it");
+                    restart_data_service(app, &control, &selection, &host, pid).await?
+                }
+                _ => return Err(data_failure(&e, &selection)),
+            }
+        }
         Err(e) => return Err(data_failure(&e, &selection)),
     };
     let plane = match selection.process_control() {
@@ -488,25 +507,37 @@ pub(crate) async fn data_now(app: &App) -> Result<Arc<HostConnection>, String> {
     Ok(c)
 }
 
-/// One skiff-host per computer, from the newer build: a local service older
-/// than this app's is stopped with SIGTERM and the bundled one started, once
-/// per app run. It holds no session, so nothing is lost. The same version or
-/// a newer one stays. One that does not stop is used as it is. One that does
-/// not come back within 5 s is an error for this read: the next read starts
-/// it as for any missing service. Only for a local endpoint (`_local` proves it).
+/// One skiff-host per computer, from this app's build: a local service of an
+/// older version, or of this version from another build, is stopped with
+/// SIGTERM and the bundled one started, once per app run, as the `skiff
+/// watch` watcher is (`skipper::stale_holder`). So is one whose reply was
+/// unreadable. It holds no session, so nothing is lost. A newer version
+/// stays. One that does not stop is used as it is. One that does not come
+/// back within 5 s is an error for this read: the next read starts it as for
+/// any missing service. Only for a local endpoint (`_local` proves it).
 async fn replace_older_data_service(app: &App, _local: &ProcessControl, selection: &HostSelection, host: &skiff_host_api::HostId, plane: DataPlane) -> Result<DataPlane, String> {
     let theirs = plane.connection().hello().service_versions.get("skiff-host").cloned().unwrap_or_default();
-    let (Some(pid), true) = (plane.pid(), compare_versions(&theirs, skiff_core::VERSION).is_lt()) else { return Ok(plane) };
+    let Some(pid) = plane.pid() else { return Ok(plane) };
+    let unreadable = app.data_unreadable.load(Ordering::SeqCst);
+    if !unreadable && !stale_service(&theirs).await {
+        return Ok(plane);
+    }
     if app.data_replaced.swap(true, Ordering::SeqCst) {
         return Ok(plane);
     }
-    eprintln!("skiff-host {theirs} is older than this app's {}: replacing it", skiff_core::VERSION);
+    app.data_unreadable.store(false, Ordering::SeqCst);
+    eprintln!("skiff-host {theirs} is not this app's build ({}): replacing it", skiff_core::VERSION);
     drop(plane);
+    restart_data_service(app, _local, selection, host, pid).await
+}
+
+/// Stops this computer's `skiff-host` at `pid` and starts the bundled one.
+async fn restart_data_service(app: &App, _local: &ProcessControl, selection: &HostSelection, host: &skiff_host_api::HostId, pid: u32) -> Result<DataPlane, String> {
     if !stop_daemon(_local, pid as i32, false).await {
         eprintln!("skiff-host (pid {pid}) did not stop; it keeps running");
         return selection.connect_data(host).await.map_err(|e| data_failure(&e, selection));
     }
-    spawn_data_service(_local, selection.socket()).map_err(|e| format!("start skiff-host: {e:#}"))?;
+    spawn_data_service(_local, selection.socket()).map_err(start_failure)?;
     *app.data_started.lock().unwrap() = Some(std::time::Instant::now());
     let mut last = None;
     for _ in 0..50 {
@@ -516,11 +547,39 @@ async fn replace_older_data_service(app: &App, _local: &ProcessControl, selectio
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    Err(last.map(|e| data_failure(&e, selection)).unwrap_or_else(|| "skiff-host did not answer after the update.".into()))
+    Err(last.map(|e| data_failure(&e, selection)).unwrap_or_else(|| "The new projects service on this computer did not answer. Skiff checks again on its own.".into()))
+}
+
+/// The local `skiff-host` that reports `theirs` is not this app's: an older
+/// version, or this version from another build or from a build that did not
+/// name its build. A newer version is never replaced, nor is any when this
+/// app's `skiff-host` cannot be read.
+async fn stale_service(theirs: &str) -> bool {
+    let (theirs, bin) = (theirs.to_string(), data_binary());
+    tauri::async_runtime::spawn_blocking(move || skiff_client::host::data::stale_service(&theirs, skiff_core::VERSION, &bin)).await.unwrap_or(false)
+}
+
+/// The Hello of a data service this app cannot use: another Host API, or
+/// one it cannot read.
+fn unreadable(e: &anyhow::Error) -> bool {
+    use skiff_host_api::Error as E;
+    matches!(e.downcast_ref(), Some(E::IncompatibleVersion { .. } | E::MalformedContract { .. }))
+}
+
+/// The pid of the service at this computer's data socket, by its peer
+/// credentials.
+async fn data_service_pid(selection: &HostSelection) -> Option<u32> {
+    let s = tokio::net::UnixStream::connect(skiff_core::socket::data_socket(selection.socket())).await.ok()?;
+    s.peer_cred().ok()?.pid().and_then(|p| u32::try_from(p).ok())
+}
+
+/// Why this computer's `skiff-host` did not start.
+fn start_failure(e: anyhow::Error) -> String {
+    format!("Skiff cannot start the projects service on this computer ({e:#}). It tries again on its own.")
 }
 
 /// Why a data reply is not shown: the connection it came on was replaced.
-pub(crate) const DATA_REPLACED: &str = "The connection to skiff-host changed during the read. Skiff reads again.";
+pub(crate) const DATA_REPLACED: &str = "The connection to the projects service changed during the read. Skiff reads again.";
 
 /// One data-plane read. Its reply is used only if the connection it came on
 /// is still the selected Host's data connection: a reply from a connection
@@ -536,7 +595,24 @@ where
     if !current.is_some_and(|d| Arc::ptr_eq(&d, &c)) {
         return Err(DATA_REPLACED.into());
     }
-    result.map_err(data_err)
+    result.map_err(|e| read_err(app, e))
+}
+
+/// A data-plane read error as the page shows it. An unreadable reply from
+/// this computer's `skiff-host` marks it for a replace at the next
+/// connection, once per run.
+fn read_err(app: &App, e: skiff_host_api::Error) -> String {
+    let skiff_host_api::Error::MalformedContract { .. } = e else { return data_err(e) };
+    match app.selection().ssh_target().map(|t| t.destination.clone()) {
+        Some(d) => format!("Skiff cannot read the replies from the projects service on {d}. Update Skiff… in Settings › Hosts updates it."),
+        None if app.data_replaced.load(Ordering::SeqCst) => {
+            "Skiff cannot read the replies from the projects service on this computer, also after a restart. Skiff checks again on its own.".into()
+        }
+        None => {
+            app.data_unreadable.store(true, Ordering::SeqCst);
+            "Skiff cannot read the replies from the projects service on this computer. It starts the service again.".into()
+        }
+    }
 }
 
 /// Why a change was not sent: no project read of this Host to make it from.
@@ -655,15 +731,22 @@ pub(crate) fn data_failure(e: &anyhow::Error, selection: &HostSelection) -> Stri
     }
     match (e.downcast_ref::<DataError>(), e.downcast_ref::<skiff_host_api::Error>()) {
         (Some(DataError::NotRunning), _) if host.is_some() => format!(
-            "skiff-host does not run{on}, so its projects and Git are not shown. Start `skiff-host` on that Host: this app never starts it there."
+            "The projects service does not run{on}, so Skiff cannot show its projects. Settings › Hosts starts it."
         ),
-        (Some(DataError::NotRunning), _) => "skiff-host did not start on this computer. Projects and Git need it.".into(),
-        (Some(e @ DataError::Waiting { .. }), _) => e.to_string(),
+        (Some(DataError::NotRunning), _) => {
+            "The projects service did not start on this computer, so Skiff cannot show the projects. It starts the service again on its own.".into()
+        }
+        (Some(DataError::Waiting { seconds }), _) => format!("Skiff cannot reach the projects service{on}. It tries again in {seconds} s."),
         (_, Some(skiff_host_api::Error::IdentityChanged { .. })) => format!(
-            "skiff-host{on} answers as another Skiff Host than its skiffd. Skiff sends it nothing."
+            "The projects service{on} answers as another Skiff Host than the sessions service. Skiff sends it nothing and checks again on its own."
         ),
-        (_, Some(skiff_host_api::Error::IncompatibleVersion { .. })) => format!("skiff-host{on} speaks another Host API. Update Skiff there."),
-        _ => format!("Cannot reach skiff-host{on}."),
+        (_, Some(skiff_host_api::Error::IncompatibleVersion { .. })) if host.is_some() => {
+            format!("The projects service{on} is from another Skiff version. Update Skiff… in Settings › Hosts updates it.")
+        }
+        (_, Some(skiff_host_api::Error::IncompatibleVersion { .. } | skiff_host_api::Error::MalformedContract { .. })) if host.is_none() => {
+            "The projects service on this computer is from another Skiff build, and Skiff could not replace it. It checks again on its own.".into()
+        }
+        _ => format!("Skiff cannot reach the projects service{}. It checks again on its own.", if on.is_empty() { " on this computer" } else { &on }),
     }
 }
 
@@ -1582,9 +1665,12 @@ mod tests {
             });
             let app = App::default();
             app.set_selection(HostSelection::new(session.clone(), dir.join("bootstrap-id")));
+            // The launcher's build is the bundled service's: the service is current.
+            let version = format!("{}+{}", skiff_core::VERSION, skiff_client::host::data::build_of(&launcher).unwrap());
             let host = |id: &str| {
                 let mut h = skiff_host::hello().unwrap();
                 h.host.host_id = skiff_host_api::HostId::try_from(id.to_string()).unwrap();
+                h.service_versions.insert("skiff-host".into(), version.clone());
                 h
             };
             // The "started" service binds once the launcher has run.
