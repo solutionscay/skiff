@@ -483,7 +483,7 @@
       "local provider: apps/desktop/src/platform/clipboard.ts",
       "local provider: apps/desktop/src/terminal/images.ts"
     ],
-    "sha256": "8bb2ef5833fb8b5e723a45d3e3d955b37f790f3a0a7ce9bb2769c55ac60e0617"
+    "sha256": "469dfc95ac9a7f1701c3d32ea62dc92d19ad74a294098282f94100859446abec"
   },
   "apps/desktop/src/appearance/settings.ts": {
     "ownership": "mixed: agent changes (agent_config@1) and Skipper settings (skipper_config@1) through hostInvoke (#166 R7, R8); Open with and the menu layout are this client's own settings",
@@ -590,7 +590,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "c1a83e00bd0a7b8e14231edc9581f151f9273220b5efce763c585b9c7f17e403"
+    "sha256": "dbfa84a0b1fae2100a0ce9c0e63b4ab68f8bf1a44ecc9e351a42fe8bc92aad13"
   },
   "apps/desktop/src/terminal/insertSignal.ts": {
     "ownership": "legacy local adapter/caller: migrate behind Host API in M1\u2013M6",
