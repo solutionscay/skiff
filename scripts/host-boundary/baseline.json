@@ -590,7 +590,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "cd767a4dcf7c086f382a8e1d65678f88de9a37b6ad1e43bee35f9bdda2b9992d"
+    "sha256": "aef01e9d79c46fefccaf1b8342e3cd39f76bb27886f7902052fed22da55c9978"
   },
   "apps/desktop/src/terminal/insertSignal.ts": {
     "ownership": "legacy local adapter/caller: migrate behind Host API in M1\u2013M6",
