@@ -104,3 +104,32 @@ fn the_service_refuses_to_start_over_a_regular_file() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("is not a socket"), "{}", String::from_utf8_lossy(&out.stderr));
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "not a socket");
 }
+
+/// The binary makes its agent folder and cache at start, with no Skipper
+/// files, in the private state of its socket.
+#[test]
+fn the_service_makes_the_agent_folder_at_start() {
+    let dir = PathBuf::from("/tmp").join(format!("hf-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let _guard = Guard(dir.clone());
+    let session = dir.join("skiffd.sock");
+    let folder = dir.join("skiffd.state/skiff-agent");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_skiff-host"))
+        .arg("--session-socket")
+        .arg(&session)
+        .env_remove("SKIFF_CONFIG")
+        .env_remove("SKIFF_REAL_STATE")
+        .env_remove("SKIFF_STATE")
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !is_socket(&skiff_core::socket::data_socket(&session)) && std::time::Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(folder.join("cache").is_dir() && folder.join(".skiff-agent").is_file(), "{}", folder.display());
+    assert!(!folder.join("AGENTS.md").exists() && !folder.join("results").exists());
+}
