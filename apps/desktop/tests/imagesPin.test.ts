@@ -103,6 +103,8 @@ async function app() {
   const lib = moduleFromSource("../src/terminal/images.ts", {
     "@tauri-apps/api/core": { invoke },
     "@tauri-apps/api/event": { listen: async (_: string, f: () => void) => (changed = f) },
+    // v2 only: Insert names the Host of a remote pane.
+    "../app/hosts": { isRemote: () => false, hostName: () => null },
     "../app/render": { scheduleRender() {} },
     "../app/state": { S, sessions: new Map() },
     "../app/stateQueries": { accent: () => "#3366cc", place: () => null },
