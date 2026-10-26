@@ -149,9 +149,9 @@ function setFleet(p: Project) {
 }
 
 /** Give the fleet a new name: its projects, and its Skipper's folder, rows and session. */
-async function renameFleet(f: Fleet, name: string) {
-  await invoke<void>("rename_fleet", { old: f.name, new: name });
+function renameFleet(f: Fleet, name: string) {
   renameHidden(f.name, name);
+  return invoke<void>("rename_fleet", { old: f.name, new: name });
 }
 
 /** Take every project out of the fleet. Each goes back under Projects. */

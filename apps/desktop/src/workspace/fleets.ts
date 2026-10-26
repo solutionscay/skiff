@@ -9,6 +9,7 @@ import { showError } from "../ui/alerts";
 import { render } from "../app/renderRequest";
 
 import { S } from "../app/state";
+import { renameHidden } from "./tree";
 import { fleetSkipperOf, joinFleet, projectSkipperOf } from "../app/skiffAgent";
 
 export interface Fleet {
@@ -141,6 +142,7 @@ export function nameFleet(name: string) {
     if (!keep || taken || !next || next === name) return;
     const members = S.projects.filter((p) => p.fleet === name);
     for (const p of members) p.fleet = next;
+    renameHidden(name, next);
     render();
     invoke("rename_fleet", { old: name, new: next }).catch(showError);
   };
