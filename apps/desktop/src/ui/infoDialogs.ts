@@ -68,7 +68,6 @@ const FIXED_SHORTCUTS: Shortcut[] = [
   ["Images", "Pin or unpin the image", "P"],
   ["Images", "Copy the path", "C"],
   ["Images", "Delete the image", "Delete"],
-  ["Images", "Settings › Disk use", "D"],
   ["Images", "Close Images", "Esc"],
   ["Settings", "Change the section from its tab", "↑ / ↓"],
   ["Settings", "Go into the section from its tab", "→"],
