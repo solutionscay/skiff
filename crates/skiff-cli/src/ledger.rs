@@ -14,7 +14,7 @@ use skiff_core::{
 
 use crate::{print, resolve, sessions, LedgerCmd};
 pub use skiff_client::ledger::{path, Row, GRAND};
-use skiff_client::ledger::{gen, heads, mark_live, owner_name, roll_up, rows, GONE, INTERRUPTED, OPEN, VERSION, WORKING};
+use skiff_client::ledger::{gen, heads, mark_live, roll_up, rows, GONE, INTERRUPTED, OPEN, VERSION, WORKING};
 
 const STATES: [&str; 4] = ["sent", "pending", "blocked", "done"];
 const TASKS: &str = "
@@ -785,7 +785,7 @@ fn claim_at(file: &Path, socket: &Path, session: &str) -> Result<()> {
     }
     if !may_claim(cur.as_ref(), socket) {
         let o = cur.expect("only an owner refuses");
-        bail!("the ledger belongs to the Skiff agent session {} on {}. It stays there", print::short_id(&o.session), o.socket);
+        bail!("this ledger is Skipper's on {}. Do ledger work from that Skipper", o.socket);
     }
     set_owner(&tx, session, socket)?;
     tx.commit()?;
@@ -823,12 +823,8 @@ impl Caller {
         if self.owns(r) {
             return Ok(());
         }
-        bail!(
-            "{} {} belongs to {}. Only it, or the person, changes it. Nothing changed",
-            r.kind,
-            r.uid,
-            owner_name(&r.owner)
-        )
+        let ask = if r.owner == GRAND { "Ask Skipper" } else { "Ask that Skipper" };
+        bail!("{} is {}'s {}. {ask} to change it", r.uid, who(&r.owner), kind_word(&r.kind))
     }
 
     /// A project Skipper may also report the hand-off it was given: set its
@@ -849,7 +845,7 @@ impl Caller {
             return match self {
                 Caller::Project(me) if *me == p.project => Ok(me.clone()),
                 Caller::Person => Ok(p.project.clone()),
-                _ => bail!("hand-off {} belongs to the {} Skipper: only it adds tasks under it. Nothing changed", p.uid, p.project),
+                _ => bail!("{} is a hand-off to the {} project Skipper. Ask that Skipper to add tasks under it", p.uid, p.project),
             };
         }
         self.check(p)?;
@@ -899,25 +895,35 @@ async fn check_writer(socket: &Path, db: &Connection, person: bool) -> Result<Ca
     match writer(me.as_deref(), s, cur.as_ref(), socket, person) {
         Writer::Yes(c) => Ok(c),
         Writer::Claim => set_owner(db, &s.expect("a claim has a session").id, socket).map(|_| Caller::Grand),
-        Writer::No if me.is_none() => bail!("{}", outside_refusal(cur.as_ref())),
-        Writer::No => bail!("{}", refusal(cur.as_ref())),
+        Writer::No if me.is_none() => bail!("this shell is outside Skiff, so Skiff cannot tell a person from an agent. If you are the person, run the command again with --person"),
+        Writer::No => bail!("{}", refusal(cur.as_ref(), s.is_some_and(|s| s.coordinator))),
     }
 }
 
-fn refusal(cur: Option<&Owner>) -> String {
+/// The refusal for an agent pane. `skipper`: the caller is Skipper on
+/// another socket, which may not take the ledger.
+fn refusal(cur: Option<&Owner>, skipper: bool) -> String {
     match cur {
-        Some(o) => format!(
-            "this ledger belongs to the Skiff agent session {} on {}, and to the project Skippers for their rows. Only they add, send, update, report or remove tasks. Nothing changed",
-            print::short_id(&o.session),
-            o.socket
-        ),
-        None => "this ledger has no owner yet: `skiff skipper` records the Skiff agent's session, and only that session and the project Skippers change it. Nothing changed".into(),
+        Some(o) if skipper => format!("this ledger is Skipper's on {}. Ask that Skipper to make this change", o.socket),
+        Some(_) => "only Skipper and the project Skippers change the ledger. Ask Skipper to make this change".into(),
+        None => "this ledger has no Skipper yet. Start Skipper in the Skiff app, then ask it to make this change".into(),
     }
 }
 
-/// The refusal for a shell outside Skiff without `--person`.
-fn outside_refusal(cur: Option<&Owner>) -> String {
-    format!("{}. This shell is outside Skiff: a person passes --person, an agent does not", refusal(cur))
+/// "Skipper", or "the <project> project Skipper": a row's owner.
+fn who(owner: &str) -> String {
+    match owner {
+        GRAND => "Skipper".into(),
+        p => format!("the {p} project Skipper"),
+    }
+}
+
+/// "hand-off" for `handoff`, else the kind as it is.
+fn kind_word(kind: &str) -> &str {
+    match kind {
+        "handoff" => "hand-off",
+        k => k,
+    }
 }
 
 /// What `ledger send` and `ledger add --send` type, and how.
@@ -1306,7 +1312,7 @@ async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
             }
             if let Some(p) = parent.as_deref() {
                 if caller.check_parent(&container(&db, p)?)? != row.owner {
-                    bail!("{} {} cannot move under {p}: its rows belong to another coordinator. Nothing changed", row.kind, row.uid);
+                    bail!("{} is {}'s {}, and {p} is not. Move it under a plan of {}", row.uid, who(&row.owner), kind_word(&row.kind), who(&row.owner));
                 }
             }
             if row.is_plan() && (p.is_some() || parent.is_some()) {
@@ -1989,7 +1995,9 @@ mod tests {
         assert_eq!(w(&next, Some(&owner), &live), Writer::Claim);
         assert_eq!(w(&skipper, Some(&on("4d43fa26aaaa", test)), &live), Writer::Claim);
         assert_eq!(w(&dev, None, test), Writer::Claim);
-        assert!(refusal(Some(&owner)).contains("96cb7de8") && refusal(Some(&owner)).contains(live.to_str().unwrap()));
+        assert_eq!(refusal(Some(&owner), true), format!("this ledger is Skipper's on {}. Ask that Skipper to make this change", live.display()));
+        assert_eq!(refusal(Some(&owner), false), "only Skipper and the project Skippers change the ledger. Ask Skipper to make this change");
+        assert!(refusal(None, false).starts_with("this ledger has no Skipper yet."));
     }
 
     #[test]
@@ -2028,11 +2036,14 @@ mod tests {
         assert!(me.check_report(&hand_row).is_ok());
         assert!(me.check(&hand_row).is_err());
         let err = me.check(&one(&db, &mine_g).unwrap()).unwrap_err().to_string();
-        assert!(err.contains("belongs to the Skipper"), "{err}");
+        assert_eq!(err, format!("{mine_g} is Skipper's task. Ask Skipper to change it"));
         assert!(me.check_parent(&one(&db, &plan).unwrap()).is_err());
         // Another project Skipper reports no hand-off of gesher's.
         let other = Caller::Project("skiff".into());
         assert!(other.check_report(&hand_row).is_err() && other.check(&sub).is_err());
+        assert_eq!(other.check(&sub).unwrap_err().to_string(), format!("{} is the gesher project Skipper's task. Ask that Skipper to change it", sub.uid));
+        let err = Caller::Grand.check_parent(&hand_row).unwrap_err().to_string();
+        assert_eq!(err, format!("{hand} is a hand-off to the gesher project Skipper. Ask that Skipper to add tasks under it"));
         // The grand Skipper cannot change gesher's task or add under the hand-off; the person can.
         assert!(Caller::Grand.check(&sub).is_err());
         assert!(Caller::Grand.check_parent(&hand_row).is_err());
@@ -2094,7 +2105,8 @@ mod tests {
         let get = || owner(&open_at(&file).unwrap()).unwrap().unwrap();
         assert_eq!(get(), Owner { session: "96cb7de8aaaa".into(), socket: live.display().to_string() });
         // A Skiff agent on another socket does not take it.
-        assert!(claim_at(&file, test, "4d43fa26aaaa").unwrap_err().to_string().contains("96cb7de8"));
+        let err = claim_at(&file, test, "4d43fa26aaaa").unwrap_err().to_string();
+        assert_eq!(err, format!("this ledger is Skipper's on {}. Do ledger work from that Skipper", live.display()));
         assert_eq!(get().session, "96cb7de8aaaa");
         // A restart on the live daemon moves it.
         claim_at(&file, &live, "f0afaa59aaaa").unwrap();
