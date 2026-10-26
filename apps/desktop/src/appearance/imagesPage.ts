@@ -28,9 +28,12 @@ export interface ImagesState {
   /** The count cell says "Copied". */
   copied: boolean;
   copiedTimer: number;
+  /** The tiles that Pin or Unpin moves: the rebuild that shows them in their new
+   *  section scrolls the current one into view. */
+  moving: { paths: string[]; pinned: boolean } | null;
 }
 
-export const imagesState = (): ImagesState => ({ query: "", sel: new Set(), anchor: null, now: null, keys: null, scroll: 0, copied: false, copiedTimer: 0 });
+export const imagesState = (): ImagesState => ({ query: "", sel: new Set(), anchor: null, now: null, keys: null, scroll: 0, copied: false, copiedTimer: 0, moving: null });
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -254,7 +257,19 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
 
   async function pin() {
     const sel = picked();
-    if (sel.length) await pinImages(sel, !sel.every((i) => i.pinned));
+    if (!sel.length) return;
+    const on = !sel.every((i) => i.pinned);
+    st.moving = { paths: sel.map((i) => i.path), pinned: on };
+    await pinImages(sel, on);
+  }
+
+  /** After Pin or Unpin: the current tile, else the first moved one, comes into view. */
+  function follow() {
+    const m = st.moving;
+    if (!m || shown.some((i) => m.paths.includes(i.path) && i.pinned !== m.pinned)) return;
+    st.moving = null;
+    const to = st.now && m.paths.includes(st.now) ? st.now : m.paths.find((p) => tiles.has(p));
+    if (to) tiles.get(to)?.scrollIntoView({ block: "nearest" });
   }
 
   async function copy() {
@@ -377,6 +392,7 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
     scroll.scrollTop = st.scroll;
     if (st.keys === "grid") scroll.focus();
     else if (st.keys === "field") field.focus();
+    follow();
   });
   return main;
 }
