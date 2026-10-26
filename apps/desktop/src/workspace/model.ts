@@ -44,24 +44,33 @@ export function agentName(s: SessionInfo): string {
   return s.command ? basename(s.command) : s.role;
 }
 
-/** A project Skipper: its session carries its project, and it is not the grand Skipper. */
+/** A project or fleet Skipper: its session carries its scope, and it is not the grand Skipper. */
 export function isProjectSkipper(s: SessionInfo): boolean {
   return !!s.skipper && !s.coordinator;
 }
 
-/** The Skiff agent's name as a project Skipper's session carries it: its
- *  session is named "<project> <name>" ("gesher Skipper"), so the name is
- *  what follows the project. A session from before that naming keeps its
- *  name whole. */
-export function skipperBase(s: SessionInfo): string {
-  const name = s.name || s.label || "Skipper";
-  return s.skipper && name.startsWith(`${s.skipper} `) ? name.slice(s.skipper.length + 1) : name;
+/** The fleet a scope names ("fleet:Harbor"), else null for a project's. */
+export function scopeFleet(scope: string | null | undefined): string | null {
+  return scope?.startsWith("fleet:") ? scope.slice(6) : null;
 }
 
-/** What a project Skipper shows outside its project block: "Skipper · gesher".
- *  Derived, never typed: the row inside its project block shows the name alone. */
+/** A scope as a person reads it: the project, or the fleet's name. */
+export const scopeName = (scope: string) => scopeFleet(scope) ?? scope;
+
+/** The Skiff agent's name as a Skipper's session carries it: its session is
+ *  named "<scope> <name>" ("gesher Skipper", "Harbor Skipper"), so the name
+ *  is what follows the project or fleet. A session from before that naming
+ *  keeps its name whole. */
+export function skipperBase(s: SessionInfo): string {
+  const name = s.name || s.label || "Skipper";
+  const at = s.skipper ? scopeName(s.skipper) : null;
+  return at && name.startsWith(`${at} `) ? name.slice(at.length + 1) : name;
+}
+
+/** What a project or fleet Skipper shows outside its block: "Skipper · gesher",
+ *  "Skipper · Harbor". Derived, never typed: the row in the tree shows the name alone. */
 export function skipperTitle(s: SessionInfo): string {
-  return `${skipperBase(s)} · ${s.skipper}`;
+  return `${skipperBase(s)} · ${scopeName(s.skipper ?? "")}`;
 }
 
 /** A user or Skiff name wins. An agent label wins over its terminal title.

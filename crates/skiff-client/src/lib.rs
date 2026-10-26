@@ -23,6 +23,7 @@ use tokio::{
 pub mod agent_folder;
 pub mod cache;
 pub mod disk;
+pub mod fleet;
 pub mod host;
 pub mod ledger;
 mod requests;

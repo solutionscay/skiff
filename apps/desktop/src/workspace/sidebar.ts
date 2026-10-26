@@ -7,7 +7,7 @@ import { agentIcon, agentKind, launchIcon } from "../appearance/agentIcon";
 import { ink } from "../appearance/appTheme";
 import { appliedTheme, ownTheme, signatureColor } from "../appearance/themes";
 import { glyph } from "./layoutIcon";
-import { agentName, basename, branchName, taskTitle } from "./model";
+import { agentName, basename, branchName, scopeName, taskTitle } from "./model";
 import type { Group, Project, SessionInfo, Worktree } from "../platform/types";
 
 import { changeCounts, changesBlock, changesSig, showsChanges } from "./changes";
@@ -36,7 +36,7 @@ import { bareWorktree, fleetKey, folded, isOpen, openToFocused, projectBadge, pr
 import { render } from "../app/renderRequest";
 import { projectsPlus, renderWorkspaceStatus, shows, workspaceOpen } from "./profile";
 import { ledgerCounts, ledgerNeeds, ledgerWorkTitle } from "./ledger";
-import { projectSkipperOf, projectWatch, openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, syncSkiffAgent } from "../app/skiffAgent";
+import { fleetScope, fleetSkipperOf, projectSkipperOf, projectWatch, openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, syncSkiffAgent } from "../app/skiffAgent";
 import { hostConnected, hostName, isRemote } from "../app/hosts";
 
 /** 20px lines, flush against whatever follows. */
@@ -238,7 +238,7 @@ function sidebarSig(): { all: string; parts: Map<string, string> } {
   parts.set(OTHER_BLOCK, JSON.stringify([base, under.get(OTHER_BLOCK) ?? null]));
   S.projects.forEach((p, i) => {
     const k = projectBlockKey(p.name);
-    parts.set(k, JSON.stringify([base, projects[i], isOpen(projectKey(p.name)), p.name === S.selectedProject, under.get(k) ?? null, skipperSig(p)]));
+    parts.set(k, JSON.stringify([base, projects[i], isOpen(projectKey(p.name)), p.name === S.selectedProject, under.get(k) ?? null, skipperSig(p.name)]));
   });
   const all = JSON.stringify([
     listGen, appliedTheme(), S.selectedProject, folded.keys(), S.projects.map(shows),
@@ -306,6 +306,7 @@ export function renderSidebar() {
     const headSig = JSON.stringify([
       listGen, sec.fleet, open, workspaceOpen(), sec.projects.map((p) => p.name),
       open ? null : sec.projects.map((p) => sig.parts.get(projectBlockKey(p.name))),
+      open || !sec.fleet ? null : [fleetSkipperOf(sec.fleet)?.state ?? null, fleetSkipperOf(sec.fleet)?.unread ?? false],
     ]);
     nodes.push(keep(`head:${sec.fleet ?? ""}`, headSig, () => sectionHead(sec)));
     if (!open) continue;
@@ -317,10 +318,15 @@ export function renderSidebar() {
       if (sec.fleet) kids.dataset.kids = fleetKey(sec.fleet);
       sectionKids.set(sk, kids);
     }
-    setChildren(kids, sec.projects.map((p) => {
+    // A fleet's Skipper is the first row under its head.
+    const fleetSkipper = sec.fleet ? fleetSkipperOf(sec.fleet) : null;
+    const skipperRow = sec.fleet && fleetSkipper
+      ? [keep(`skipper:${sec.fleet}`, JSON.stringify([listGen, skipperSig(fleetScope(sec.fleet))]), () => projectSkipperRow(fleetScope(sec.fleet!), fleetSkipper))]
+      : [];
+    setChildren(kids, [...skipperRow, ...sec.projects.map((p) => {
       const k = projectBlockKey(p.name);
       return keep(k, sig.parts.get(k)!, () => projectBlock(p));
-    }));
+    })]);
     nodes.push(kids);
   }
   // A folded fleet's rows start over when it opens: the fold left them shrunk.
@@ -434,19 +440,20 @@ function skiffAgentRow(): HTMLElement {
   return row;
 }
 
-/** What a project's Skipper row shows, for the block's signature. */
-function skipperSig(p: Project) {
-  const s = projectSkipperOf(p.name);
+/** What a project's or a fleet's Skipper row shows, for the block's signature. */
+function skipperSig(scope: string) {
+  const s = projectSkipperOf(scope);
   if (!s) return null;
-  return [s.id, s.state, S.selection.includes(s.id), ledgerCounts(p.name), ledgerWorkTitle(p.name), s.watch ?? null, s.title ?? null, s.unread ?? false];
+  return [s.id, s.state, S.selection.includes(s.id), ledgerCounts(scope), ledgerWorkTitle(scope), s.watch ?? null, s.title ?? null, s.unread ?? false];
 }
 
 /**
- * A project Skipper: the first row of its project block, on the worktree
- * line. Its agent icon, "Skipper", the title of its work, and the amber and
- * blue counts of the tasks it owns. Its session is left out of the tree below.
+ * A project or fleet Skipper: the first row of its project block, or the
+ * first row under its fleet head. Its agent icon, "Skipper", the title of
+ * its work, and the amber and blue counts of the tasks it owns. Its session
+ * is left out of the tree below.
  */
-function projectSkipperRow(p: Project, s: SessionInfo): HTMLElement {
+function projectSkipperRow(scope: string, s: SessionInfo): HTMLElement {
   const name = skiffAgentName();
   const row = h("button", "session-row project-skipper-row" + ` st-${s.state}` + (S.selection.includes(s.id) ? " selected" : ""));
   row.type = "button";
@@ -462,9 +469,9 @@ function projectSkipperRow(p: Project, s: SessionInfo): HTMLElement {
   }
   if (watch.state === "failed") row.classList.add("watch-error");
   if (watch.text) row.title = watch.text;
-  const title = ledgerWorkTitle(p.name) ?? s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? "";
-  const { need, working } = ledgerCounts(p.name);
-  row.setAttribute("aria-label", `${p.name} ${name}, ${title || s.state}${watch.text ? `. ${watch.text}` : ""}`);
+  const title = ledgerWorkTitle(scope) ?? s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? "";
+  const { need, working } = ledgerCounts(scope);
+  row.setAttribute("aria-label", `${scopeName(scope)} ${name}, ${title || s.state}${watch.text ? `. ${watch.text}` : ""}`);
   row.append(h("span", "chev-space"), agentIcon(s), h("span", "skiff-agent-name", name), h("span", "title", title));
   const roll = rollCounts(need, working);
   if (roll) row.append(roll);
@@ -510,8 +517,16 @@ function sectionHead(sec: Section): HTMLElement {
   add.title = `Add project to ${name}`;
   add.setAttribute("aria-label", `Add project to ${name}`);
   add.appendChild(plusIcon());
-  head.append(pick, add);
-  const roll = open ? null : rollup(sec.projects);
+  // The ⋯ opens the fleet's menu, as on a project row: the same items as a right-click.
+  const more = button("tree-head-add tree-head-more", "", () => {
+    const r = more.getBoundingClientRect();
+    fleetMenu({ name, projects: sec.projects }, r.right, r.top);
+  });
+  more.setAttribute("aria-label", `${name} menu`);
+  more.setAttribute("aria-haspopup", "menu");
+  more.appendChild(icon('<circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle>'));
+  head.append(pick, more, add);
+  const roll = open ? null : rollup(sec.projects, name);
   if (roll) pick.appendChild(roll);
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -572,7 +587,7 @@ function projectBlock(p: Project): HTMLElement {
   const kids = h("div", "tree-kids");
   kids.dataset.kids = key;
   block.appendChild(kids);
-  if (skipper) kids.appendChild(projectSkipperRow(p, skipper));
+  if (skipper) kids.appendChild(projectSkipperRow(p.name, skipper));
   if (p.error) kids.appendChild(errorRow(p.error));
   else if (p.worktrees.length === 0) kids.appendChild(h("div", "note-row", "No worktrees"));
   else if (bare) {

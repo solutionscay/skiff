@@ -9,6 +9,7 @@ import { showError } from "../ui/alerts";
 import { render } from "../app/renderRequest";
 
 import { S } from "../app/state";
+import { fleetSkipperOf, joinFleet, projectSkipperOf, renameFleetOn } from "../app/skiffAgent";
 
 export interface Fleet {
   name: string;
@@ -65,10 +66,29 @@ function freeFleetName(): string {
   return `Fleet ${n}`;
 }
 
-/** The fleets and the project order after the drop, saved in one write. A fleet left with one project goes away. */
+/**
+ * The fleets and the project order after the drop, saved in one write. A
+ * fleet left with one project goes away, unless its Skipper runs. A project
+ * Skipper that comes under a running fleet Skipper is taken over first,
+ * after one confirm; Cancel changes nothing.
+ */
 export function applyDrop(moving: Project[], d: Drop): string | null {
   // The Host keeps the order and the fleets: one that takes no project changes keeps them as they are.
   if (!hostCan("project_config")) return null;
+  const joins = d.fleet && !d.make && fleetSkipperOf(d.fleet) ? moving.filter((p) => p.fleet !== d.fleet && projectSkipperOf(p.name)) : [];
+  if (!joins.length) return place(moving, d);
+  void (async () => {
+    try {
+      for (const p of joins) if ((await joinFleet(p.name, d.fleet!)) === null) return;
+      place(moving, d);
+    } catch (e) {
+      showError(e);
+    }
+  })();
+  return null;
+}
+
+function place(moving: Project[], d: Drop): string | null {
   const order = projectOrder().filter((p) => !moving.includes(p));
   order.splice(order.indexOf(d.anchor) + (d.side === "after" ? 1 : 0), 0, ...moving);
   const made = d.make ? freeFleetName() : null;
@@ -77,7 +97,7 @@ export function applyDrop(moving: Project[], d: Drop): string | null {
   if (d.make) next.set(d.make, made);
   const size = new Map<string, number>();
   for (const f of next.values()) if (f) size.set(f, (size.get(f) ?? 0) + 1);
-  for (const [p, f] of next) if (f && size.get(f) === 1) next.set(p, null);
+  for (const [p, f] of next) if (f && size.get(f) === 1 && !fleetSkipperOf(f)) next.set(p, null);
   const fleets = [...next].filter(([p, f]) => (p.fleet ?? null) !== f).map(([p, f]) => [p.name, f ?? ""]);
   for (const [p, f] of next) p.fleet = f;
   S.projects = order;
@@ -124,7 +144,7 @@ export function nameFleet(name: string) {
     const members = S.projects.filter((p) => p.fleet === name);
     for (const p of members) p.fleet = next;
     render();
-    hostInvoke("project_config", "reorder_projects", { order: S.projects.map((x) => x.name), fleets: members.map((p) => [p.name, next]) }).catch(showError);
+    renameFleetOn(name, next, members.map((p) => p.name)).catch(showError);
   };
   input.addEventListener("keydown", (e) => {
     e.stopPropagation();

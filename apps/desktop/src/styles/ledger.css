@@ -129,6 +129,8 @@ body.ledger-keys .cell.focused .cell-head { background: var(--bg-panel); }
   background: color-mix(in srgb, var(--pc) 14%, transparent);
 }
 .lg-row.fin .lg-tag { opacity: 0.8; }
+/* A fleet has no color: its letters in the dim text, in a 1px frame. */
+.lg-tag.fleet { color: var(--text-3); background: none; box-shadow: inset 0 0 0 1px var(--rule-strong); }
 /* The head's filter: All projects, or one project. A quiet text button with a chevron. */
 .lg-filter {
   display: flex; align-items: center; gap: calc(4 * var(--u)); min-width: 0; max-width: calc(140 * var(--u));

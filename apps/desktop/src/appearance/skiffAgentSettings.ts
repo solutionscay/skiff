@@ -226,24 +226,25 @@ export function taskTypesSection(
 }
 
 /**
- * Settings › Skiff agent › Project Skippers: the switch that adds Start
- * project Skipper to the project menu, the agent they start, and where they
- * keep their instructions and results. Task types are the Skipper's.
+ * Settings › Skiff agent › Project and fleet Skippers: the switch that adds
+ * Start project Skipper to the project menu and Start fleet Skipper to the
+ * fleet menu, the agent they start, and where they keep their instructions
+ * and results. Task types are the Skipper's.
  */
 export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInfo[], save: (e: SkiffAgentEdit) => void): HTMLElement[] {
   const head = h("div", "set-head");
   head.append(
-    h("div", "set-h", "Project Skippers"),
-    h("div", "set-sub", "One Skipper per project. It works in that project and delegates through skiff only. Its SKIPPER.md and results are in projects/<project>/ in the Folder above."),
+    h("div", "set-h", "Project and fleet Skippers"),
+    h("div", "set-sub", "One Skipper per project or fleet. It works in its projects and delegates through skiff only. Its SKIPPER.md and results are in projects/<project>/ or fleets/<fleet>/ in the Folder above."),
   );
   const on = set.project_skippers;
-  const sw = switchRow("Project Skippers", on, !!set.folder, (v) => save({ key: "project_skippers", value: v }));
-  sw.insertBefore(h("span", "c-cmd", "Adds Start project Skipper to the project menu."), sw.lastChild);
+  const sw = switchRow("Project and fleet Skippers", on, !!set.folder, (v) => save({ key: "project_skippers", value: v }));
+  sw.insertBefore(h("span", "c-cmd", "Adds Start project Skipper and Start fleet Skipper to the menus."), sw.lastChild);
 
   const choices = agents.filter((a) => a.enabled || a.custom);
   const agentRow = h("div", "set-row set-open set-agent on");
   const pick = h("select", "c-cmd");
-  pick.setAttribute("aria-label", "Project Skippers' agent");
+  pick.setAttribute("aria-label", "Project and fleet Skippers' agent");
   const same = h("option", "", "Same as Skipper");
   same.value = "";
   pick.append(same);

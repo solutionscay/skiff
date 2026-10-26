@@ -1,7 +1,7 @@
 import { ctxMenu } from "../ui/contextMenu";
 /** Right-click menus for projects, sessions, panes and groups. */
 import { imageCount, openImages } from "../terminal/images";
-import { isSkiffAgent, openWatchLog, projectSkipperOf, startProjectSkipper, skiffAgentFolder, skiffAgentName, skiffWatch, startSkiffWatch } from "../app/skiffAgent";
+import { fleetSkipperOf, fleetSkippersHere, isSkiffAgent, joinFleet, renameFleetOn, openWatchLog, projectSkipperOf, startFleetSkipper, startProjectSkipper, skiffAgentFolder, skiffAgentName, skiffWatch, startSkiffWatch } from "../app/skiffAgent";
 import { launchIcon } from "../appearance/agentIcon";
 import { confirmAction, promptAction } from "../ui/confirm";
 import { h } from "../ui/dom";
@@ -143,21 +143,58 @@ function setFleet(p: Project) {
     options: fleetNames(),
     clearLabel: p.fleet ? "No fleet: back under Projects" : undefined,
     action: "Set fleet",
-    submit: (fleet) => hostInvoke("project_config", "set_project_fleet", { project: p.name, fleet }),
+    // A project Skipper that comes under a running fleet Skipper is taken over, after one confirm.
+    submit: async (fleet) => {
+      if ((await joinFleet(p.name, fleet.trim())) === false) await hostInvoke("project_config", "set_project_fleet", { project: p.name, fleet });
+    },
     onClose: refocusTerminal,
   });
 }
 
-/** Give every project of the fleet the new name. An empty name puts each under Projects. */
+/** Give the fleet a new name: its projects, and its Skipper's folder, rows and session. */
 function renameFleet(f: Fleet, name: string) {
-  return hostInvoke<void>("project_config", "reorder_projects", { order: S.projects.map((x) => x.name), fleets: f.projects.map((p) => [p.name, name]) });
+  return renameFleetOn(f.name, name, f.projects.map((p) => p.name));
+}
+
+/** Take every project out of the fleet. Each goes back under Projects. */
+function dissolveFleet(f: Fleet) {
+  return hostInvoke<void>("project_config", "reorder_projects", { order: S.projects.map((x) => x.name), fleets: f.projects.map((p) => [p.name, ""]) });
+}
+
+/**
+ * The fleet head's Skipper items, as a project row has them: Start fleet
+ * Skipper while Settings › Skiff agent › Project and fleet Skippers is on;
+ * while one runs, Open fleet Skipper and Stop fleet Skipper….
+ */
+function fleetSkipperEntries(f: Fleet): MenuEntry[] {
+  if (!fleetSkippersHere()) return [];
+  const s = fleetSkipperOf(f.name);
+  if (!s) {
+    if (!skiffAgentFolder() || !S.skiffAgent?.project_skippers) return [];
+    return [{ icon: "tools-sparkles", label: "Start fleet Skipper", run: () => void startFleetSkipper(f.name) }];
+  }
+  return [
+    { icon: "tools-sparkles", label: "Open fleet Skipper", run: () => void startFleetSkipper(f.name) },
+    {
+      icon: "indicators-square-stop",
+      label: "Stop fleet Skipper…",
+      danger: true,
+      run: async () => {
+        if (await confirmAction({ title: `Stop the ${f.name} Skipper?`, body: "", action: "Stop fleet Skipper" })) void endSession(s.id);
+        else refocusTerminal();
+      },
+    },
+  ];
 }
 
 /** A right-click on a fleet tile. */
 export function fleetMenu(f: Fleet, x: number, y: number) {
   // The Host keeps its fleets: one that takes no project changes keeps them as they are.
   if (!hostCan("project_config")) return;
+  const skipper = fleetSkipperEntries(f);
   ctxMenu.open(x, y, `Fleet ${f.name}`, [
+    ...skipper,
+    ...(skipper.length ? [{ sep: true as const }] : []),
     {
       icon: "tools-pencil",
       label: "Rename fleet…",
@@ -172,7 +209,17 @@ export function fleetMenu(f: Fleet, x: number, y: number) {
           onClose: refocusTerminal,
         }),
     },
-    { icon: "code-ungroup", label: "Remove fleet", run: () => void renameFleet(f, "").catch(showError) },
+    {
+      icon: "code-ungroup",
+      label: fleetSkipperOf(f.name) ? "Remove fleet…" : "Remove fleet",
+      run: async () => {
+        // The fleet is gone, so its Skipper stops: one confirm.
+        const s = fleetSkipperOf(f.name);
+        if (s && !(await confirmAction({ title: `Remove fleet ${f.name}?`, body: `${f.projects.map((p) => p.name).join(", ")}. The ${f.name} Skipper stops.`, action: "Remove fleet" }))) return refocusTerminal();
+        if (s) await endSession(s.id);
+        await dissolveFleet(f).catch(showError);
+      },
+    },
     ...fleetWorkspaceEntries(f.name),
   ]);
 }
@@ -474,13 +521,16 @@ function endManyEntry(ids: string[], label: string, title: string): MenuEntry {
 }
 
 /**
- * Start project Skipper, while Settings › Skiff agent › Project Skippers is
+ * Start project Skipper, while Settings › Skiff agent › Project and fleet Skippers is
  * on. It opens no dialog. While one runs, whatever Settings says: Open
  * project Skipper, which shows its pane, and Stop project Skipper…, which
  * asks first, as End does. Its panes keep running.
  */
 function projectSkipperEntries(p: Project): MenuEntry[] {
   const s = projectSkipperOf(p.name);
+  // One Skipper per project: the fleet's Skipper commands it while it runs.
+  const fleet = p.fleet && !s ? fleetSkipperOf(p.fleet) : null;
+  if (fleet) return [{ icon: "tools-sparkles", label: "Open fleet Skipper", run: () => void startFleetSkipper(p.fleet!) }];
   if (!s) {
     if (!skiffAgentFolder() || !S.skiffAgent?.project_skippers) return [];
     return [{ icon: "tools-sparkles", label: "Start project Skipper", disabled: !!p.error, run: () => startProjectSkipper(p.name) }];

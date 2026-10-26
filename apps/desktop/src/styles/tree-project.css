@@ -129,6 +129,8 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 }
 #sidebar-scroll > .fleet-head .tree-head-add { height: auto; align-self: stretch; margin: 0; visibility: hidden; }
 #sidebar-scroll > .fleet-head:hover .tree-head-add, #sidebar-scroll > .fleet-head .tree-head-add:focus-visible { visibility: visible; }
+/* The ⋯ also shows on the current fleet head and while its menu is open, as on a project row. */
+#sidebar-scroll > .fleet-head .fleet-pick.current ~ .tree-head-more, #sidebar-scroll > .fleet-head .tree-head-more[aria-expanded="true"] { visibility: visible; }
 .fleet-head:hover { color: var(--text-2); }
 
 /* The Skiff agent (#95): one session row above the projects, in line with the section heads. */
@@ -156,6 +158,8 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 
 /* A project Skipper: the first row of its project block, on the worktree line. The icon sits where a worktree's branch icon does. */
 .tree-project .session-row.project-skipper-row { padding-left: calc(10 * var(--u)); }
+/* A fleet's Skipper: the first row under its fleet head, in line with the project rows' chevrons. */
+.tree-kids > .session-row.project-skipper-row { padding-left: calc(10 * var(--u)); }
 .project-skipper-row .skiff-agent-name { flex-shrink: 0; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
 .project-skipper-row .title { color: var(--text-3); }
 /* Its own watcher, with the Skiff agent row's states: teal while it runs,

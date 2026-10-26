@@ -111,21 +111,28 @@ the commands:
   `skiff ledger report UID...`. To run a task again, reassign it with
   `skiff ledger update UID --pane S --state pending`.
 
-## Project Skippers
+## Project and fleet Skippers
 
-When the person turns on Project Skippers in Settings, a project can have
-its own Skipper. Hand a project's work to it when the work stays in that
-project:
+When the person turns on Project and fleet Skippers in Settings, a project
+can have its own Skipper, and a fleet can have one for all its projects.
+Hand work to one when it stays in that project or that fleet:
 
-    skiff ledger handoff PROJECT "TASK" --title "..." [--parent UID]
+    skiff ledger handoff SCOPE "TASK" --title "..." [--parent UID]
 
-- This adds a hand-off row. It is yours, and its pane is the project Skipper.
-  If no project Skipper runs, Skiff starts one and sends it the task.
-- The project Skipper adds its own tasks under the hand-off. You can read
-  them. You cannot change them. You can cancel the hand-off.
-- When the project Skipper reports the hand-off, you get one `[watch]` line.
-  Read its result, tell the person, then run `skiff ledger report UID`.
+- SCOPE is a project or a fleet, by its name in `skiff projects --json`. A
+  name that is both is refused: use `project:NAME` or `fleet:NAME`.
+- This adds a hand-off row. It is yours, and its pane is that Skipper. If
+  none runs, Skiff starts one and sends it the task.
+- That Skipper adds its own tasks under the hand-off. You can read them. You
+  cannot change them. You can cancel the hand-off.
+- When that Skipper reports the hand-off, you get one `[watch]` line. Read
+  its result, tell the person, then run `skiff ledger report UID`.
 - Its tasks' `[watch]` lines go to it, not to you.
+- A project in a fleet whose Skipper runs has no project Skipper. A hand-off
+  to that project is refused: hand off to the fleet.
+- A hand-off to a fleet whose projects have project Skippers, and no fleet
+  Skipper, is refused. The person starts the fleet Skipper in Skiff, which
+  takes the project Skippers over. Or hand off to one project.
 
 ## Task types
 

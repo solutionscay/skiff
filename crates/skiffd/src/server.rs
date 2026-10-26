@@ -297,6 +297,14 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
                 Ok(()) => Response::Ok,
                 Err(e) => error(e),
             },
+            Request::Retire { session } => match pool.retire(&session) {
+                Ok(()) => Response::Ok,
+                Err(e) => error(e),
+            },
+            Request::Rescope { session, scope, name } => match pool.rescope(&session, &scope, &name) {
+                Ok(session) => Response::Session { session },
+                Err(e) => error(e),
+            },
             Request::Seen { session } => match pool.seen(&session) {
                 Ok(()) => Response::Ok,
                 Err(e) => error(e),

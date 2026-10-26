@@ -686,6 +686,7 @@ impl SessionPool {
             input_gen: 0,
             coordinator: spec.coordinator,
             skipper: spec.skipper.filter(|p| !p.trim().is_empty()),
+            retiring: false,
             watch: None,
         };
 
@@ -1131,6 +1132,67 @@ impl SessionPool {
         Ok(info)
     }
 
+    /// Takes a project Skipper over: its mark goes now, and the session ends
+    /// at its next idle (see [`Self::retired`]). An idle one ends now.
+    pub fn retire(&self, id: &str) -> Result<()> {
+        let info = {
+            let _change = self.change()?;
+            let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
+            let mut info = session.info.lock().unwrap();
+            if info.skipper.is_none() || info.coordinator {
+                bail!("session {id} is not a project Skipper");
+            }
+            info.skipper = None;
+            info.retiring = true;
+            info.clone()
+        };
+        tracing::info!("session {id} retires: a fleet Skipper took it over");
+        let _ = self.events.send(Event::SessionUpdated { session: info });
+        self.dirty.notify_one();
+        self.end_retired();
+        Ok(())
+    }
+
+    /// Moves a Skipper to a new scope and name: a fleet's rename.
+    pub fn rescope(&self, id: &str, scope: &str, name: &str) -> Result<SessionInfo> {
+        let _change = self.change()?;
+        let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
+        {
+            let mut info = session.info.lock().unwrap();
+            if info.skipper.is_none() || info.coordinator || scope.trim().is_empty() {
+                bail!("session {id} is not a project or fleet Skipper");
+            }
+            info.skipper = Some(scope.to_string());
+            info.name = (!name.trim().is_empty()).then(|| name.trim().to_string());
+        }
+        let info = session.info();
+        let _ = self.events.send(Event::SessionUpdated { session: info.clone() });
+        self.dirty.notify_one();
+        Ok(info)
+    }
+
+    /// The retiring sessions that are idle or done. A waiting one keeps its
+    /// prompt for the person; a working one finishes its turn.
+    fn retired(&self) -> Vec<String> {
+        let sessions = self.sessions.read().unwrap();
+        sessions
+            .values()
+            .filter_map(|s| {
+                let info = s.info.lock().unwrap();
+                (info.retiring && matches!(info.state, SessionState::Idle | SessionState::Done)).then(|| info.id.clone())
+            })
+            .collect()
+    }
+
+    fn end_retired(&self) {
+        for id in self.retired() {
+            match self.kill(&id) {
+                Ok(()) => tracing::info!("session {id} retired: it was idle"),
+                Err(e) => tracing::warn!("cannot end retiring session {id}: {e:#}"),
+            }
+        }
+    }
+
     pub fn set_theme(&self, id: &str, theme: Option<String>) -> Result<SessionInfo> {
         let _change = self.change()?;
         let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
@@ -1244,12 +1306,16 @@ impl SessionPool {
             let mut tick = tokio::time::interval(Duration::from_secs(1));
             loop {
                 tick.tick().await;
-                let Some(_quiet) = pool.quiet() else { continue };
-                let sessions: Vec<Arc<Session>> =
-                    pool.sessions.read().unwrap().values().cloned().collect();
-                for s in sessions {
-                    pool.idle_if_quiet(&s);
+                {
+                    let Some(_quiet) = pool.quiet() else { continue };
+                    let sessions: Vec<Arc<Session>> =
+                        pool.sessions.read().unwrap().values().cloned().collect();
+                    for s in sessions {
+                        pool.idle_if_quiet(&s);
+                    }
                 }
+                // Out of the guard: a kill takes it again.
+                pool.end_retired();
             }
         });
     }

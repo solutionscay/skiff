@@ -11,6 +11,9 @@ import { revealSession } from "../workspace/view";
 import { openPath } from "../terminal/peek";
 import { hostCan, hostInvoke } from "./hostCaps";
 import { checkShownHost, hostName, isRemote } from "./hosts";
+import { actionDialog } from "../ui/dialogParts";
+import { h } from "../ui/dom";
+import { scopeName } from "../workspace/model";
 
 /** The name until Settings has one. skiffd's setup keeps the same default. */
 export const DEFAULT_NAME = "Skipper";
@@ -91,13 +94,15 @@ export function skiffAgentSession(): SessionInfo | null {
 export const isSkiffAgent = (id: string | null | undefined) => !!id && skiffAgentSession()?.id === id;
 
 /**
- * The project a live project Skipper coordinates, else null. skiffd marks it
- * with its project. A restore brings one back with no mark, and an older
- * skiffd starts one with no mark (the CLI then says it is too old, but the
- * agent runs): its name, "<project> <Skiff agent's name>", still finds it.
+ * The scope a live project or fleet Skipper coordinates, else null: a
+ * project's name, or "fleet:<fleet>". skiffd marks it with its scope. A
+ * restore brings one back with no mark, and an older skiffd starts one with
+ * no mark (the CLI then says it is too old, but the agent runs): its name,
+ * "<project> <Skiff agent's name>", still finds a project Skipper. A
+ * retiring one is a plain session.
  */
 function skipperProject(s: SessionInfo): string | null {
-  if (s.coordinator || s.state === "done") return null;
+  if (s.coordinator || s.state === "done" || s.retiring) return null;
   if (s.skipper) return s.skipper;
   if (!skiffAgentFolder()) return null;
   const tail = ` ${skiffAgentName()}`;
@@ -112,13 +117,19 @@ export function projectSkippers(): SessionInfo[] {
   return [...sessions.values()].filter((s) => skipperProject(s) !== null);
 }
 
-/** The live project Skipper of `project`, if one runs. A marked one comes first. */
+/** The live Skipper of a scope: a project, or "fleet:<fleet>". A marked one comes first. */
 export function projectSkipperOf(project: string): SessionInfo | null {
   const all = projectSkippers().filter((s) => skipperProject(s) === project);
   return all.find((s) => s.skipper === project) ?? all[0] ?? null;
 }
 
-/** The coordinator whose session `id` is: "grand" for the Skiff agent, a project for a project Skipper, else null. */
+/** The live fleet Skipper of `fleet`, if one runs. */
+export const fleetSkipperOf = (fleet: string) => projectSkipperOf(fleetScope(fleet));
+
+/** A fleet's scope, as its Skipper's mark and its rows' owner carry it. */
+export const fleetScope = (fleet: string) => `fleet:${fleet}`;
+
+/** The coordinator whose session `id` is: "grand" for the Skiff agent, a scope for a project or fleet Skipper, else null. */
 export function coordinatorOf(id: string | null | undefined): string | null {
   if (!id) return null;
   if (isSkiffAgent(id)) return "grand";
@@ -154,6 +165,76 @@ export function startProjectSkipper(project: string) {
       if (r.id) show(r.id);
     })
     .catch(showError);
+}
+
+/** One project Skipper a takeover stops, as `fleet_takeover_preview` gives it. */
+export interface Taken {
+  project: string;
+  session: string;
+  tasks: { uid: string; title: string }[];
+  handoffs: string[];
+}
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** The confirm's body: one line per project Skipper, with its open tasks by title and its hand-offs. */
+function takenLines(taken: Taken[]): HTMLElement[] {
+  const body = h("div", "confirm-body");
+  body.append(...taken.map((t) => {
+    let line = `${t.project} Skipper: ${count(t.tasks.length, "open task", "open tasks")}`;
+    if (t.tasks.length) line += ` (${t.tasks.map((x) => x.title).join(", ")})`;
+    if (t.handoffs.length) line += `, ${count(t.handoffs.length, "hand-off", "hand-offs")}`;
+    return h("div", "", `${line}.`);
+  }));
+  return [body];
+}
+
+/** One confirm for a takeover. Nothing to take over asks nothing. */
+function confirmTakeover(title: string, action: string, taken: Taken[]): Promise<boolean> {
+  if (!taken.length) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    let ok = false;
+    actionDialog({ title, content: takenLines(taken), action, tone: "go", submit: () => void (ok = true), onClose: () => resolve(ok) });
+  });
+}
+
+/** The shown Host runs fleet Skippers: this computer. */
+export const fleetSkippersHere = () => !isRemote();
+
+/** Rename fleet…: with fleet Skippers, the Host moves the fleet's Skipper
+ *  folder, rows and session too; else the projects take the new name. */
+export function renameFleetOn(old: string, name: string, members: string[]): Promise<void> {
+  if (fleetSkippersHere()) return invoke<void>("rename_fleet", { old, new: name });
+  return hostInvoke<void>("project_config", "reorder_projects", { order: S.projects.map((x) => x.name), fleets: members.map((p) => [p, name]) });
+}
+
+/** Fleet menu › Start fleet Skipper, or Open fleet Skipper while it runs. Project Skippers in the fleet are taken over after one confirm. */
+export async function startFleetSkipper(fleet: string) {
+  const s = fleetSkipperOf(fleet);
+  if (s) return show(s.id);
+  try {
+    const taken = await invoke<Taken[]>("fleet_takeover_preview", { fleet, join: null });
+    if (!(await confirmTakeover(`Start the ${fleet} Skipper?`, "Start fleet Skipper", taken))) return;
+    const id = await invoke<string>("start_fleet_skipper", { fleet });
+    if (id) show(id);
+  } catch (e) {
+    showError(e);
+  }
+}
+
+/**
+ * Add to fleet…, Move to fleet… or a drop: when `fleet` has a running fleet
+ * Skipper and `project` a project Skipper, one confirm, then the takeover,
+ * which also sets the fleet. False: not a takeover, the caller sets the
+ * fleet itself. Null: the person cancelled.
+ */
+export async function joinFleet(project: string, fleet: string): Promise<boolean | null> {
+  if (!fleet || !fleetSkippersHere() || !fleetSkipperOf(fleet) || !projectSkipperOf(project)) return false;
+  const taken = await invoke<Taken[]>("fleet_takeover_preview", { fleet, join: project });
+  if (!taken.length) return false;
+  if (!(await confirmTakeover(`Add ${project} to ${fleet}?`, "Add to fleet", taken))) return null;
+  await invoke("fleet_takeover", { fleet, join: project });
+  return true;
 }
 
 /** What `open_skiff_agent` answers. */
@@ -353,9 +434,9 @@ export function projectWatch(s: SessionInfo): { state: WatchState; text: string 
   return { state, text: watchText(state, s, projectSkipperName(s), null) };
 }
 
-/** A project Skipper's session name: its project, then the Skiff agent's name ("gesher Skipper"). */
+/** A project or fleet Skipper's session name: its project or fleet, then the Skiff agent's name ("gesher Skipper", "Harbor Skipper"). */
 export function projectSkipperName(s: SessionInfo): string {
-  return `${skipperProject(s) ?? s.skipper} ${skiffAgentName()}`;
+  return `${scopeName(skipperProject(s) ?? s.skipper ?? "")} ${skiffAgentName()}`;
 }
 
 /** Restored panes Skiff already asked skiffd to continue. Once each. */

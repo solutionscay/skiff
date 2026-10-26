@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use serde::Serialize;
 use skiff_client::{
     agent_folder::{self, Mode},
+    fleet,
     host::data,
     skipper,
 };
@@ -198,6 +199,66 @@ pub async fn set_skiff_agent(app: State<'_, App>, handle: AppHandle, edit: Skipp
     .await?;
     let _ = handle.emit(PROJECTS_CHANGED, ());
     Ok(settings)
+}
+
+/// The refusal on a Host whose Skiff has no fleet Skippers.
+const NO_FLEETS: &str = "This Host does not offer fleet Skippers. Its Skiff is older than this app: use Update Skiff… on that Host in Settings › Hosts.";
+
+/// Fleet menu › Start fleet Skipper: finds or starts the fleet's Skipper
+/// with the bundled `skiff skipper --fleet`, which also gives a new one its
+/// first message and starts the watcher. The page asked first, so `--yes`
+/// takes the fleet's project Skippers over. Returns its session id. This
+/// Mac refuses first when its skiffd is too old to retire a project Skipper.
+#[tauri::command]
+pub async fn start_fleet_skipper(app: State<'_, App>, fleet: String) -> Result<String, String> {
+    if app.selection().process_control().is_none() {
+        return Err(NO_FLEETS.into());
+    }
+    let (c, _) = ensure_client(&app).await?;
+    let daemon = c.daemon_info().await.map_err(err)?;
+    if skipper::too_old_for_fleet(&daemon.version) {
+        return Err(format!("skiffd {} is older than this Skiff and cannot start a fleet Skipper. Update skiffd first", daemon.version));
+    }
+    let socket = app.selection().socket().to_path_buf();
+    blocking(move || skipper::start_fleet(&socket, &cli(), &fleet)).await
+}
+
+/// The project Skippers a takeover of `fleet` would stop, for the confirm:
+/// those of its projects, and of `join` when it joins. Changes nothing.
+#[tauri::command]
+pub async fn fleet_takeover_preview(app: State<'_, App>, fleet: String, join: Option<String>) -> Result<Vec<fleet::Taken>, String> {
+    if app.remote() {
+        return Err(NO_FLEETS.into());
+    }
+    let (c, _) = ensure_client(&app).await?;
+    fleet::preview(&c, &fleet, join.as_deref()).await.map_err(err)
+}
+
+/// Add to fleet…, Move to fleet… or a drop, on the person's confirm: the
+/// running fleet Skipper of `fleet` takes `join`'s project Skipper over,
+/// then `join` joins the fleet.
+#[tauri::command]
+pub async fn fleet_takeover(app: State<'_, App>, handle: AppHandle, fleet: String, join: String) -> Result<(), String> {
+    if app.remote() {
+        return Err(NO_FLEETS.into());
+    }
+    let (c, _) = ensure_client(&app).await?;
+    let socket = app.selection().socket().to_path_buf();
+    let out = fleet::takeover(&c, &socket, &fleet, Some(&join), true).await.map_err(err);
+    let _ = handle.emit(PROJECTS_CHANGED, ());
+    out.map(|_| ())
+}
+
+/// Rename fleet…: the fleet, its Skipper's folder, rows, session and mark.
+#[tauri::command]
+pub async fn rename_fleet(app: State<'_, App>, handle: AppHandle, old: String, new: String) -> Result<(), String> {
+    if app.remote() {
+        return Err(NO_FLEETS.into());
+    }
+    let (c, _) = ensure_client(&app).await?;
+    let out = fleet::rename(&c, &old, new.trim()).await.map_err(err);
+    let _ = handle.emit(PROJECTS_CHANGED, ());
+    out
 }
 
 /// The chosen folder, resolved and read on the selected Host. A relative
