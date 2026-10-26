@@ -8,7 +8,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
-import { settings } from "../app/panels";
 import { scheduleRender } from "../app/render";
 import { S, sessions } from "../app/state";
 import { accent, place } from "../app/stateQueries";
@@ -120,13 +119,7 @@ const libCount = h("span", "lib-count");
 const libHead = h("div", "lib-head");
 libHead.append(h("b", "", "Images"), libCount);
 const rows = h("div", "lib-list");
-const diskUse = button("lib-foot", "", () => {
-  closeImages(false);
-  void settings.open("disk");
-});
-diskUse.tabIndex = -1;
-diskUse.textContent = "Disk use…";
-lib.append(libHead, rows, diskUse);
+lib.append(libHead, rows);
 document.body.appendChild(lib);
 
 /** The lit row, by path, so a redraw keeps it. */
@@ -305,7 +298,6 @@ lib.addEventListener("keydown", (e) => {
   else if (k === "p" && i) void pin(i);
   else if (k === "c" && i) void copyPath(i);
   else if (e.key === "Delete" && i) void remove(i);
-  else if (k === "d") diskUse.click();
   else if (e.key !== "Tab") return;
   e.preventDefault();
   e.stopPropagation();
