@@ -59,6 +59,9 @@
 .lib-act { display: none; flex: 1 1 auto; justify-content: center; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(10 * var(--u)); border: 0; border-left: 1px solid var(--rule); background: transparent; color: var(--text-2); font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
 .lib-row.lit .lib-act { display: flex; }
 .lib-row.lit .lib-time:not(.copied), .lib-row.copied .lib-act { display: none; }
+/* "Copied" or "Inserted" for 1.5 s, in place of the buttons. Inserted has a check. */
+.lib-time.copied { display: flex; align-items: center; gap: calc(6 * var(--u)); color: var(--text-2); }
+.lib-time.copied svg { width: calc(12 * var(--u)); height: calc(12 * var(--u)); color: var(--ok); }
 .lib-act:hover { background: color-mix(in srgb, var(--text) 14%, transparent); color: var(--text); }
 .lib-act.x { flex: 0 0 calc(40 * var(--u)); padding: 0; }
 .lib-act.x:hover { color: var(--error-text); }
