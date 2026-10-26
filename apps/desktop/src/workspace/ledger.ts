@@ -55,7 +55,7 @@ import { panes } from "../terminal/terminalState";
 import type { Action } from "../app/keys";
 import { h, setHidden } from "../ui/dom";
 import { isSlot } from "./layoutSlots";
-import { taskTitle } from "./model";
+import { scopeFleet, scopeName, taskTitle } from "./model";
 import { skiffAgentName } from "../app/skiffAgent";
 import { keepRow } from "./selection";
 import { revealSession } from "./view";
@@ -183,7 +183,7 @@ const titleOf = (r: Entry) => r.title?.trim() || shortTitle(r.task);
 function look(r: Entry): Look {
   const s = r.pane_id ? sessions.get(r.pane_id) ?? null : null;
   // A hand-off's pane is the project Skipper.
-  const name = r.kind === "handoff" ? `${r.project} ${skiffAgentName()}` : s ? taskTitle(s) : r.pane_id?.slice(0, 8) ?? "";
+  const name = r.kind === "handoff" ? `${scopeName(r.project)} ${skiffAgentName()}` : s ? taskTitle(s) : r.pane_id?.slice(0, 8) ?? "";
   const base = { r, pane: s, where: name };
   if (r.elsewhere) return { ...base, st: r.state === "done" || r.state === "pending" ? r.state : "sent", pane: null, where: "elsewhere" };
   // Done because the pane went: it has no result to show for it.
@@ -223,9 +223,21 @@ function planState(kids: Look[]): State {
   return "sent";
 }
 
-/** The row shows in the current Ledger view: no workspace or All work, its project in the workspace, or no project. With `project`, only that project's rows. */
+/** The projects of the fleet a scope names ("fleet:Harbor"), as projects.toml has them now. */
+const fleetProjects = (fleet: string) => S.projects.filter((p) => p.fleet === fleet).map((p) => p.name);
+
+/**
+ * The row shows in the current Ledger view: no workspace or All work, its
+ * project in the workspace, or no project. With `project`, only that
+ * project's rows. A fleet ("fleet:Harbor") shows its Skipper's rows, the
+ * hand-offs to it, and every row of its projects, whatever their owner.
+ */
 function inView(r: Entry, scope = ledgerScope(), project: string | null = null): boolean {
+  const fleet = scopeFleet(project);
+  if (fleet !== null) return r.project === project || r.owner === project || fleetProjects(fleet).includes(r.project);
   if (project !== null) return r.project === project;
+  const at = scopeFleet(r.project);
+  if (at !== null) return !scope || fleetProjects(at).some((p) => scope.names.has(p));
   return !scope || !r.project || scope.names.has(r.project);
 }
 
@@ -499,11 +511,17 @@ function line(r: Entry, st: State, label: string, a: Acts, o: { plan?: boolean; 
 
 /**
  * The dot, or the project's letters in its color: on a hand-off, and on a
- * project Skipper's top-level row. A task under a hand-off keeps its dot.
+ * project Skipper's top-level row. A task under a project's hand-off keeps
+ * its dot. A hand-off to a fleet shows the fleet's letters with no color: a
+ * fleet has none. A fleet Skipper's task shows its project's letters, so
+ * the list says which repository it is in.
  */
 function mark(r: Entry): HTMLElement {
-  const tagged = r.kind === "handoff" || (r.owner !== "grand" && !rows.some((p) => p.uid === r.parent && p.kind === "handoff"));
-  const p = tagged ? S.projects.find((x) => x.name === (r.kind === "handoff" ? r.project : r.owner)) : null;
+  const fleet = r.kind === "handoff" ? scopeFleet(r.project) : null;
+  if (fleet !== null) return h("span", "lg-tag fleet", fleet.slice(0, 3).toUpperCase());
+  const ownFleet = scopeFleet(r.owner) !== null;
+  const tagged = r.kind === "handoff" || ownFleet || (r.owner !== "grand" && !rows.some((p) => p.uid === r.parent && p.kind === "handoff"));
+  const p = tagged ? S.projects.find((x) => x.name === (r.kind === "handoff" || ownFleet ? r.project : r.owner)) : null;
   if (!p) return h("span", "lg-dot");
   const tag = h("span", "lg-tag", p.short);
   tag.style.setProperty("--pc", accent(p));
@@ -643,8 +661,11 @@ function scopeButton(b: HTMLElement) {
   b.setAttribute("aria-label", all ? `All work. Show only ${workspaceName()} work` : `${workspaceName()} work. Show all work`);
 }
 
-/** What the head's filter says: All projects, or the project. */
-const filterLabel = () => filter() ?? "All projects";
+/** What the head's filter says: All projects, the fleet, or the project. */
+const filterLabel = () => {
+  const f = filter();
+  return f === null ? "All projects" : scopeName(f);
+};
 
 /** The head's filter: a quiet text button with a chevron. A click lists All projects and each project. */
 function filterButton(b: HTMLElement) {
@@ -659,6 +680,7 @@ function filterMenu(b: HTMLElement) {
   const o = shownOwner();
   if (!o) return;
   const now = filter();
+  const fleets = [...new Set(S.projects.map((p) => p.fleet).filter((f): f is string => !!f))];
   const pick = (v: string | null) => () => {
     filters.set(o, v);
     render();
@@ -667,6 +689,9 @@ function filterMenu(b: HTMLElement) {
   ctxMenu.open(r.left, r.bottom, "LEDGER", [
     { icon: now === null ? "indicators-check" : "", label: "All projects", run: pick(null) },
     { sep: true },
+    // The fleets, then the projects.
+    ...fleets.map((f) => ({ icon: now === `fleet:${f}` ? "indicators-check" : "", label: f, run: pick(`fleet:${f}`) })),
+    ...(fleets.length ? [{ sep: true as const }] : []),
     ...S.projects.map((p) => ({ icon: now === p.name ? "indicators-check" : "", label: p.name, run: pick(p.name) })),
   ]);
 }
@@ -737,7 +762,7 @@ export function renderLedger() {
   const out: HTMLElement[] = [];
   if (error) out.push(h("div", "lg-empty", error));
   else if (!x.working.length && !x.open.length && !x.finished.length && filter() !== null) {
-    out.push(h("div", "lg-empty", `No work in ${filter()}.`));
+    out.push(h("div", "lg-empty", `No work in ${filterLabel()}.`));
   } else if (!x.working.length && !x.open.length && !x.finished.length && scopeLabel() && !ledgerAllWork()) {
     out.push(h("div", "lg-empty", "No work in this workspace."));
   }

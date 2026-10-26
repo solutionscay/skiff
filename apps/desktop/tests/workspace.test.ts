@@ -105,9 +105,14 @@ test("a clean native quit needs no prompt", async () => {
   assert.equal(h.elements().some((el) => el.textContent === "Don't Save"), false);
 });
 
+/** The scope helpers of workspace/model.ts the Ledger uses. */
+const fleetOf = (scope: string | null | undefined) => (scope?.startsWith("fleet:") ? scope.slice(6) : null);
+const MODEL = { scopeFleet: fleetOf, scopeName: (scope: string) => fleetOf(scope) ?? scope, taskTitle: () => "" };
+
 test("mixed-scope plans keep qualifying headings without excluded children", () => {
   const ledger = moduleFromSource("../src/workspace/ledger.ts", {
     "../app/skiffAgent": { skiffAgentName: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
+    "./model": MODEL,
     "./profile": { ledgerScope: () => ({ names: new Set(["A"]) }) },
     "../app/state": { S: {}, sessions: new Map() },
     "../app/stateQueries": { shownIds: () => [], accent: () => "" },
@@ -135,6 +140,7 @@ test("mixed-scope plans keep qualifying headings without excluded children", () 
 test("a hand-off nests under its plan with its tasks, and the filter keeps one project", () => {
   const ledger = moduleFromSource("../src/workspace/ledger.ts", {
     "../app/skiffAgent": { skiffAgentName: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
+    "./model": MODEL,
     "./profile": { ledgerScope: () => null },
     "../app/state": { S: { projects: [] }, sessions: new Map() },
     "../app/stateQueries": { shownIds: () => [], accent: () => "" },
@@ -164,6 +170,7 @@ test("a hand-off nests under its plan with its tasks, and the filter keeps one p
 test("every row files by its work's bucket: a closed hand-off's tasks show in Finished", () => {
   const ledger = moduleFromSource("../src/workspace/ledger.ts", {
     "../app/skiffAgent": { skiffAgentName: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
+    "./model": MODEL,
     "./profile": { ledgerScope: () => null },
     "../app/state": { S: { projects: [] }, sessions: new Map() },
     "../app/stateQueries": { shownIds: () => [], accent: () => "" },
@@ -183,4 +190,38 @@ test("every row files by its work's bucket: a closed hand-off's tasks show in Fi
   assert.deepEqual(Array.from(x.open, (u: any) => u.r.uid), ["beef0001"]);
   assert.deepEqual(Array.from(x.finished, (u: any) => u.r.uid).sort(), ["0d423aae", "db975634"]);
   assert.deepEqual(Array.from(x.finished.find((u: any) => u.r.uid === "db975634").look.kids, (k: any) => k.r.uid), ["230ff854"]);
+});
+
+test("the fleet filter shows its Skipper's rows, the hand-offs to it and its projects' rows", () => {
+  const projects = [{ name: "web", fleet: "Harbor" }, { name: "api", fleet: "Harbor" }, { name: "gesher" }];
+  const ledger = moduleFromSource("../src/workspace/ledger.ts", {
+    "../app/skiffAgent": { skiffAgentName: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
+    "./model": MODEL,
+    "./profile": { ledgerScope: () => null },
+    "../app/state": { S: { projects }, sessions: new Map() },
+    "../app/stateQueries": { shownIds: () => [], accent: () => "" },
+  }, {
+    document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
+  }, "\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units, ledgerCounts, ledgerWorkTitle };\n");
+  const row = (uid: string, kind: string, project: string, owner: string, parent: string | null, state = "sent") =>
+    ({ id: 1, uid, kind, project, owner, parent, state, closed_at: null, pane_id: null, task: uid, title: null });
+  ledger.review.setRows([
+    row("release", "plan", "", "grand", null),
+    row("across", "handoff", "fleet:Harbor", "grand", "release"),
+    row("bump", "task", "api", "fleet:Harbor", "across"),
+    row("client", "task", "web", "fleet:Harbor", "across", "blocked"),
+    row("flaky", "task", "web", "grand", null, "pending"),
+    row("polish", "task", "gesher", "gesher", null),
+  ]);
+  const fleet = ledger.review.units("fleet:Harbor");
+  assert.deepEqual(Array.from(fleet, (u: any) => u.r.uid), ["release", "flaky"]);
+  assert.deepEqual(Array.from(fleet[0].kids, (k: any) => k.r.uid), ["across"]);
+  assert.deepEqual(Array.from(fleet[0].kids[0].kids, (k: any) => k.r.uid), ["bump", "client"]);
+  // The fleet Skipper's row counts its own tasks: no pane is live here, so both need the person.
+  assert.deepEqual({ ...ledger.review.ledgerCounts("fleet:Harbor") }, { need: 2, working: 0 });
+  assert.equal(ledger.review.ledgerWorkTitle("fleet:Harbor"), "across");
+  // A project out of the fleet: none of the fleet's rows.
+  const gesher = ledger.review.units("gesher");
+  assert.deepEqual(Array.from(gesher, (u: any) => u.r.uid), ["release", "polish"]);
+  assert.equal(gesher[0].kids.length, 0);
 });

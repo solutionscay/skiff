@@ -108,6 +108,21 @@ impl Client {
         }
     }
 
+    /// Takes a project Skipper over: see [`Request::Retire`].
+    pub async fn retire(&self, session: &str) -> Result<()> {
+        self.expect_ok(Request::Retire { session: session.to_string() }).await
+    }
+
+    /// A fleet's rename: see [`Request::Rescope`].
+    pub async fn rescope(&self, session: &str, scope: &str, name: &str) -> Result<SessionInfo> {
+        let req = Request::Rescope { session: session.to_string(), scope: scope.to_string(), name: name.to_string() };
+        match self.request(req).await? {
+            Response::Session { session } => Ok(session),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
+
     pub async fn resize(&self, session: &str, cols: u16, rows: u16) -> Result<()> {
         self.expect_ok(Request::Resize {
             session: session.to_string(),

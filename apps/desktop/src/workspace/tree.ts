@@ -1,5 +1,6 @@
 /** The side panel's tree: fleets as section heads, projects as rows, each folded or open (#87). */
 
+import { fleetSkipperOf } from "../app/skiffAgent";
 import type { Project, SessionInfo, Worktree } from "../platform/types";
 
 import { isUnread } from "./model";
@@ -96,8 +97,10 @@ export function openToFocused() {
 }
 
 /** A folded row's marks: how many sessions under it wait, work, or have unread output. */
-export function rollup(projects: Project[]): HTMLElement | null {
-  const under = (s: SessionInfo) => projects.includes(place(s)?.project as Project);
+export function rollup(projects: Project[], fleet: string | null = null): HTMLElement | null {
+  // A folded fleet counts its Skipper too.
+  const skipper = fleet ? fleetSkipperOf(fleet)?.id : null;
+  const under = (s: SessionInfo) => s.id === skipper || projects.includes(place(s)?.project as Project);
   let waiting = 0;
   let working = 0;
   let unread = 0;

@@ -285,6 +285,40 @@ struct Watcher {
     /// The hand-offs project Skippers set done and not reported, as last
     /// read. `None` before the first read: those are in the count.
     handed: Option<HashSet<String>>,
+    /// A fleet Skipper's projects, as last read. `None` before the first
+    /// read, and for any other Skipper.
+    fleet: Option<Vec<String>>,
+    /// Lines of the watcher's own, such as a fleet change, until the agent
+    /// takes them.
+    lines: Vec<String>,
+}
+
+impl Watcher {
+    /// Notes that the fleet `fleet` has `now` for projects. A change since
+    /// the last read holds one line. True on a change: the caller writes
+    /// `SKIPPER.md` again.
+    fn fleet_is(&mut self, fleet: &str, now: Vec<String>) -> bool {
+        let Some(old) = self.fleet.replace(now.clone()) else { return false };
+        if old == now {
+            return false;
+        }
+        self.lines.push(fleet_line(fleet, &old, &now));
+        true
+    }
+}
+
+/// The line for a fleet that changed: who joined, who left.
+fn fleet_line(fleet: &str, old: &[String], now: &[String]) -> String {
+    let joined: Vec<&str> = now.iter().filter(|p| !old.contains(p)).map(String::as_str).collect();
+    let left: Vec<&str> = old.iter().filter(|p| !now.contains(p)).map(String::as_str).collect();
+    let mut parts = Vec::new();
+    if !joined.is_empty() {
+        parts.push(format!("{} joined", joined.join(", ")));
+    }
+    if !left.is_empty() {
+        parts.push(format!("{} left", left.join(", ")));
+    }
+    format!("{fleet} changed: {}. Read SKIPPER.md again.", parts.join(", "))
 }
 
 /// The open tasks whose panes are on `here`, and a log line for the others.
@@ -553,7 +587,7 @@ impl Watcher {
                     .iter()
                     .find(|s| s.skipper.as_deref() == Some(r.project.as_str()) && s.state != SessionState::Done)
                     .map(|s| resolve::display_name(s).into_owned())
-                    .unwrap_or_else(|| format!("{} Skipper", r.project)),
+                    .unwrap_or_else(|| format!("{} Skipper", skiff_client::skipper::scope_fleet(&r.project).unwrap_or(&r.project))),
                 id: r.pane_id.clone().unwrap_or_default(),
                 task: Some(r.uid.clone()),
             })
@@ -907,6 +941,22 @@ async fn step(c: &Client, o: &Options, ws: &mut Watchers) -> Result<Option<i32>>
             Vec::new()
         }
     };
+    if targets.iter().any(|(o, _)| skiff_client::skipper::scope_fleet(o).is_some()) {
+        match skiff_core::config::load() {
+            Ok(cfg) => {
+                for (owner, _) in &targets {
+                    let Some(fleet) = skiff_client::skipper::scope_fleet(owner) else { continue };
+                    let now = skiff_client::skipper::fleet_projects(&cfg, fleet).into_iter().map(|p| p.name.clone()).collect();
+                    if ws.get_mut(owner).expect("added above").fleet_is(fleet, now) {
+                        if let Err(e) = skiff_client::skipper::write_fleet(&cfg, fleet) {
+                            log(format!("cannot write the {fleet} Skipper's SKIPPER.md: {e:#}"));
+                        }
+                    }
+                }
+            }
+            Err(e) => log(format!("cannot read the fleets: {e:#}")),
+        }
+    }
     let coordinators: Vec<&str> = targets.iter().map(|(_, s)| s.id.as_str()).collect();
     if let Some(w) = ws.get_mut(ledger::GRAND).filter(|w| !w.counted) {
         match ledger::unreported(ledger::GRAND) {
@@ -978,6 +1028,28 @@ async fn deliver(c: &Client, w: &mut Watcher, owner: &str, skipper: &SessionInfo
             log(&msg);
             w.after_delivery(d, &msg);
         }
+        return Ok(());
+    }
+    // A takeover or a rename left lines for this Skipper in the ledger.
+    let file = skiff_client::ledger::path()?;
+    let notes = skiff_client::ledger::notes(&file, owner).unwrap_or_else(|e| {
+        log(format!("cannot read the notes: {e:#}"));
+        Vec::new()
+    });
+    if (!w.lines.is_empty() || !notes.is_empty()) && ready(c, skipper).await {
+        let text: Vec<&str> = w.lines.iter().map(String::as_str).chain(notes.iter().map(|n| n.1.as_str())).collect();
+        let line = format!("[watch] {}", text.join(" "));
+        let d = submit(c, skipper, &line).await?;
+        if d != Delivery::Refused {
+            w.lines.clear();
+            let ids: Vec<i64> = notes.iter().map(|n| n.0).collect();
+            if let Err(e) = skiff_client::ledger::drop_notes(&file, &ids) {
+                log(format!("cannot drop the notes: {e:#}"));
+            }
+        }
+        let msg = report(d, &line);
+        log(&msg);
+        w.after_delivery(d, &msg);
         return Ok(());
     }
     if !w.held.is_empty() && ready(c, skipper).await {
@@ -1246,6 +1318,16 @@ mod tests {
         let mut w = Watcher::default();
         w.count_unreported(1);
         assert_eq!(w.unreported.as_deref(), Some("[watch] 1 done task not reported: skiff ledger ls --unreported"));
+    }
+
+    #[test]
+    fn a_fleet_change_holds_one_line_after_the_first_read() {
+        let mut w = Watcher::default();
+        assert!(!w.fleet_is("Harbor", vec!["api".into(), "web".into()]));
+        assert!(!w.fleet_is("Harbor", vec!["api".into(), "web".into()]));
+        assert!(w.lines.is_empty());
+        assert!(w.fleet_is("Harbor", vec!["web".into(), "cli".into()]));
+        assert_eq!(w.lines, ["Harbor changed: cli joined, api left. Read SKIPPER.md again."]);
     }
 
     #[test]

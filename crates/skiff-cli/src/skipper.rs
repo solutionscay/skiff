@@ -82,6 +82,84 @@ pub async fn start_project(socket: &Path, c: &Client, project: &str) -> Result<s
     Ok(ps)
 }
 
+/// `skiff skipper --fleet`: finds or starts the fleet Skipper of `fleet`,
+/// then attaches unless `no_attach`. Project Skippers in the fleet are
+/// taken over after a y/N, or at once with `yes`.
+pub async fn run_fleet(socket: &Path, fleet: &str, no_attach: bool, yes: bool) -> Result<()> {
+    let c = connect_or_start(socket).await?;
+    let fs = start_fleet(socket, &c, fleet, Over::Ask { yes }).await?;
+    let s = fs.skipper.session;
+    if fs.skipper.created {
+        let mut text = skipper::first_message(&fs.skipper.dir);
+        if !fs.taken.is_empty() {
+            text = format!("{text} {}", skiff_client::fleet::line(fleet, &fs.taken));
+        }
+        match greet(&c, &s.id, &text).await? {
+            0 => {}
+            code => bail!("the {fleet} Skipper started, but its first message did not go in (exit {code}). Tell it to read {}", fs.skipper.dir.join(skipper::SKIPPER_FILE).display()),
+        }
+    }
+    if no_attach {
+        println!("{}", s.id);
+        return Ok(());
+    }
+    if fs.skipper.created {
+        eprintln!("skiff: started the {fleet} Skipper");
+    }
+    attach::attach(&c, &s.id).await
+}
+
+/// What [`start_fleet`] does with project Skippers in the fleet.
+pub enum Over {
+    /// Name them and ask y/N on the terminal; `yes` takes them over at once.
+    Ask { yes: bool },
+    /// Refuse: a hand-off cannot stop agents.
+    Refuse,
+}
+
+/// A fleet Skipper found or started, and what it took over.
+pub struct FleetStart {
+    pub skipper: skipper::ProjectSkipper,
+    pub taken: Vec<skiff_client::fleet::Taken>,
+}
+
+/// Finds or starts the fleet Skipper of `fleet`, and the watcher. Project
+/// Skippers in the fleet are taken over as `over` says. A new one has no
+/// message yet: see [`greet`].
+pub async fn start_fleet(socket: &Path, c: &Client, fleet: &str, over: Over) -> Result<FleetStart> {
+    let cfg = skiff_core::config::load()?;
+    let all = c.list_sessions().await?;
+    let file = skiff_client::ledger::path()?;
+    let taken = skiff_client::fleet::taken(&cfg, &all, &file, fleet, None)?;
+    if !taken.is_empty() {
+        let names = taken.iter().map(|t| t.project.as_str()).collect::<Vec<_>>().join(", ");
+        match over {
+            Over::Refuse => bail!("{fleet} has project Skippers: {names}. Start the {fleet} Skipper from the fleet's menu in Skiff, or hand off to one project"),
+            Over::Ask { yes: false } => {
+                use std::io::IsTerminal;
+                if !std::io::stdin().is_terminal() {
+                    bail!("{fleet} has project Skippers: {names}. Run this in a terminal to answer, or add --yes");
+                }
+                eprintln!("{}", skiff_client::fleet::summary(&taken));
+                if !ask(&format!("Start the {fleet} Skipper?"))? {
+                    bail!("Nothing changed");
+                }
+            }
+            Over::Ask { yes: true } => {}
+        }
+    }
+    let ps = skipper::open_fleet(c, fleet).await?;
+    let exe = std::env::current_exe().context("find this skiff binary")?;
+    if let Err(e) = skipper::start_watch(socket, &exe, &ps.session.id) {
+        eprintln!("skiff: the {fleet} Skipper runs, but the watcher did not start: {e:#}");
+    }
+    let taken = if taken.is_empty() { taken } else { skiff_client::fleet::takeover(c, socket, fleet, None, !ps.created).await? };
+    for t in &taken {
+        eprintln!("skiff: the {fleet} Skipper took over the {} Skipper", t.project);
+    }
+    Ok(FleetStart { skipper: ps, taken })
+}
+
 /// How long a new agent has to show its input box.
 const READY: Duration = Duration::from_secs(90);
 

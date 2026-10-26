@@ -6,7 +6,7 @@ import { isSlot } from "../workspace/layoutSlots";
 import { type Action, keyLabel } from "../app/keys";
 import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { rune, type RuneName } from "../ui/runes";
-import { branchName, isProjectSkipper, skipperBase, taskTitle } from "../workspace/model";
+import { branchName, isProjectSkipper, scopeName, skipperBase, taskTitle } from "../workspace/model";
 import { projectIcon } from "../appearance/projectIcon";
 import { stateIcon } from "../appearance/stateIcon";
 
@@ -118,6 +118,7 @@ function headTitle(s: SessionInfo): HTMLElement {
     else mark.textContent = p.short;
     title.appendChild(mark);
   }
-  title.append(s.skipper ?? "");
+  // A fleet has no color and no icon: its name alone.
+  title.append(scopeName(s.skipper ?? ""));
   return title;
 }
