@@ -1,9 +1,11 @@
 /**
  * Images: one library of this computer's image cache, newest first. Every
  * drop and Skiff Paste puts its image there. The pane header button shows
- * the newest one and opens the library. Each row opens the image, inserts
- * its path into the focused pane, pins it, copies its path or deletes it.
- * Drag a thumbnail onto any pane to insert the path there.
+ * the newest one and opens the library. Its search row filters the list.
+ * Each row opens the image, inserts its path into the focused pane, pins it,
+ * copies its path or deletes it. Drag a thumbnail onto any pane to insert
+ * the path there. Settings › Images (`appearance/imagesPage.ts`) shows the
+ * same library as a gallery.
  */
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -19,12 +21,13 @@ import { icon } from "../ui/icons";
 import { menuOpened } from "../ui/menu";
 import { refocusTerminal } from "../workspace/view";
 import { endImageDrag, showImageDrag } from "./fileDrop";
+import { insertShown } from "./insertSignal";
 import { focusPane } from "./paneActions";
 import { type Typed, typeFiles, whoOf } from "./terminalClipboard";
 import { panes } from "./terminalState";
 
 /** One library image, as `images` answers. */
-interface Image {
+export interface Image {
   path: string;
   file: string;
   /** The dropped file's own name. Null: a paste, or a file Skiff has no entry for. */
@@ -35,18 +38,21 @@ interface Image {
   /** Unix ms of the last drop, paste or Insert. */
   at: number;
   pinned: boolean;
+  /** The file's length in bytes. */
+  size: number;
 }
 
 let list: Image[] = [];
 
-/** Thumbnails by path: a small data URL, or "" for a format the webview cannot draw. */
+/** Thumbnails by size and path ("160 /path"): a small data URL, or "" for a format the webview cannot draw. */
 const thumbs = new Map<string, Promise<string>>();
 
 const MIME: Record<string, string> = { svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg", gif: "image/gif", webp: "image/webp", bmp: "image/bmp", tif: "image/tiff", heic: "image/heic", avif: "image/avif" };
 
-/** Draws the image into a small canvas, so the page keeps no full-size copy. */
-function thumb(path: string): Promise<string> {
-  let t = thumbs.get(path);
+/** Draws the image into a canvas `size` px on its long side, so the page keeps no full-size copy. */
+function thumb(path: string, size: number): Promise<string> {
+  const key = `${size} ${path}`;
+  let t = thumbs.get(key);
   if (!t) {
     t = invoke<ArrayBuffer>("image_thumb", { path })
       .then((bytes) => new Promise<string>((done) => {
@@ -55,7 +61,7 @@ function thumb(path: string): Promise<string> {
         const img = new Image();
         img.onload = () => {
           const c = document.createElement("canvas");
-          const scale = Math.min(1, 160 / Math.max(img.naturalWidth, img.naturalHeight, 1));
+          const scale = Math.min(1, size / Math.max(img.naturalWidth, img.naturalHeight, 1));
           c.width = Math.max(1, Math.round(img.naturalWidth * scale));
           c.height = Math.max(1, Math.round(img.naturalHeight * scale));
           c.getContext("2d")?.drawImage(img, 0, 0, c.width, c.height);
@@ -70,14 +76,14 @@ function thumb(path: string): Promise<string> {
         img.src = url;
       }))
       .catch(() => "");
-    thumbs.set(path, t);
+    thumbs.set(key, t);
   }
   return t;
 }
 
 /** Fills `box` with the thumbnail when it is ready. */
-function fillThumb(box: HTMLElement, path: string) {
-  void thumb(path).then((url) => {
+export function fillThumb(box: HTMLElement, path: string, size = 160) {
+  void thumb(path, size).then((url) => {
     if (!url || box.dataset.path !== path) return;
     const img = h("img");
     img.src = url;
@@ -89,6 +95,11 @@ function fillThumb(box: HTMLElement, path: string) {
 
 export const imageCount = () => list.length;
 export const newestImage = (): string | null => list[0]?.path ?? null;
+export const allImages = (): readonly Image[] => list;
+
+/** Called after each load, so Settings › Images redraws too. */
+const watchers = new Set<() => void>();
+export const onImagesChanged = (f: () => void) => watchers.add(f);
 
 async function load() {
   try {
@@ -98,8 +109,9 @@ async function load() {
     console.warn("images:", e);
   }
   const live = new Set(list.map((i) => i.path));
-  for (const p of thumbs.keys()) if (!live.has(p)) thumbs.delete(p);
+  for (const k of thumbs.keys()) if (!live.has(k.slice(k.indexOf(" ") + 1))) thumbs.delete(k);
   scheduleRender();
+  watchers.forEach((f) => f());
   if (!lib.hidden) {
     if (!list.length) closeImages();
     else draw();
@@ -117,11 +129,27 @@ lib.setAttribute("aria-label", "Images");
 lib.tabIndex = -1;
 lib.hidden = true;
 const libCount = h("span", "lib-count");
+const field = searchField();
 const libHead = h("div", "lib-head");
-libHead.append(h("b", "", "Images"), libCount);
+libHead.append(icon('<circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.5 15.5L20 20"></path>'), field, libCount);
 const rows = h("div", "lib-list");
+rows.tabIndex = -1;
 lib.append(libHead, rows);
 document.body.appendChild(lib);
+
+/** The search field of the drop-down and the gallery: placeholder "Search". */
+export function searchField(): HTMLInputElement {
+  const f = h("input", "lib-search");
+  f.type = "text";
+  f.placeholder = "Search";
+  f.spellcheck = false;
+  f.autocomplete = "off";
+  f.setAttribute("aria-label", "Search");
+  return f;
+}
+
+/** Where the keys are: the search field types, the list acts on the lit row. */
+let keysIn: "field" | "list" = "field";
 
 /** The lit row, by path, so a redraw keeps it. */
 let lit: string | null = null;
@@ -130,7 +158,43 @@ let copied: string | null = null;
 let copiedTimer = 0;
 
 /** Pinned first, then the rest; each newest first. */
-const ordered = () => [...list.filter((i) => i.pinned), ...list.filter((i) => !i.pinned)];
+export const ordered = () => [...list.filter((i) => i.pinned), ...list.filter((i) => !i.pinned)];
+
+/** Lower case with no accents. Each character stays one character, so a match maps back to the text. */
+const foldChar = (c: string) => (c.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()[0] ?? c);
+const fold = (t: string) => [...t].map(foldChar).join("");
+
+/** The query's words, folded. */
+export const queryWords = (q: string) => fold(q).split(/\s+/).filter(Boolean);
+
+/** Every word is in the shown name, the session title, the project letters or the project name. */
+export function matches(i: Image, words: string[]): boolean {
+  if (!words.length) return true;
+  const p = i.project ? S.projects.find((x) => x.name === i.project) : undefined;
+  const hay = fold([shownName(i), i.title ?? "", p?.short ?? "", i.project ?? ""].join("\n"));
+  return words.every((w) => hay.includes(w));
+}
+
+/** The matched parts in weight 600, with no color. */
+export function marked(text: string, words: string[]): (string | HTMLElement)[] {
+  if (!words.length) return [text];
+  const chars = [...text];
+  const f = chars.map(foldChar).join("");
+  const on = new Array<boolean>(chars.length).fill(false);
+  for (const w of words) for (let at = f.indexOf(w); at >= 0; at = f.indexOf(w, at + 1)) on.fill(true, at, at + w.length);
+  const out: (string | HTMLElement)[] = [];
+  for (let n = 0; n < chars.length; ) {
+    let e = n;
+    while (e < chars.length && on[e] === on[n]) e++;
+    const part = chars.slice(n, e).join("");
+    out.push(on[n] ? h("mark", "", part) : part);
+    n = e;
+  }
+  return out;
+}
+
+const query = () => queryWords(field.value);
+const shown = () => ordered().filter((i) => matches(i, query()));
 
 const seen = new IntersectionObserver((es) => {
   for (const e of es) {
@@ -141,7 +205,7 @@ const seen = new IntersectionObserver((es) => {
   }
 }, { root: rows });
 
-function when(at: number): string {
+export function when(at: number): string {
   const d = new Date(at);
   const now = new Date();
   if (d.toDateString() === now.toDateString()) return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -149,16 +213,17 @@ function when(at: number): string {
 }
 
 /** Line 2: the project letters in its color and the session title. Dim once that session ended. */
-function whoLine(i: Image): HTMLElement {
+export function whoLine(i: Image, words: string[] = []): HTMLElement {
   const s = i.session ? sessions.get(i.session) : undefined;
   const line = h("span", "lib-who" + (!s || s.state === "done" ? " ended" : ""));
   const p = i.project ? S.projects.find((x) => x.name === i.project) : undefined;
   if (p) {
-    const mark = h("span", "lib-proj", p.short);
+    const mark = h("span", "lib-proj");
+    mark.append(...marked(p.short, words));
     mark.style.color = accent(p);
     line.append(mark);
   }
-  line.append(i.title ?? "");
+  line.append(...marked(i.title ?? "", words));
   return line;
 }
 
@@ -173,14 +238,14 @@ function act(label: string, run: () => void, cls = ""): HTMLButtonElement {
 /** The dropped file's name; "Pasted image" for a paste. An image from
  *  before the index has no entry: "PNG image", or "Image" with no extension,
  *  never its cache hash. */
-function shownName(i: Image): string {
+export function shownName(i: Image): string {
   if (i.name) return i.name;
   if (i.session) return "Pasted image";
   const ext = i.file.includes(".") ? i.file.split(".").pop()!.toUpperCase() : "";
   return ext ? `${ext} image` : "Image";
 }
 
-function row(i: Image): HTMLElement {
+function row(i: Image, words: string[]): HTMLElement {
   const r = h("div", "lib-row" + (i.path === lit ? " lit" : "") + (i.path === copied ? " copied" : ""));
   r.setAttribute("role", "menuitem");
   r.dataset.path = i.path;
@@ -189,8 +254,10 @@ function row(i: Image): HTMLElement {
   seen.observe(th);
   th.addEventListener("pointerdown", (e) => startDrag(e, i, th));
   const text = h("span", "lib-text");
-  text.append(h("span", "lib-name", shownName(i)));
-  if (i.session) text.append(whoLine(i));
+  const name = h("span", "lib-name");
+  name.append(...marked(shownName(i), words));
+  text.append(name);
+  if (i.session) text.append(whoLine(i, words));
   const right = h("span", "lib-right");
   const x = act("", () => void remove(i), " x");
   x.appendChild(icon('<path d="M6 6l12 12M18 6L6 18"></path>'));
@@ -208,22 +275,28 @@ function row(i: Image): HTMLElement {
   return r;
 }
 
-function section(name: string, n: number): HTMLElement {
+export function section(name: string, n: number): HTMLElement {
   const s = h("div", "lib-sec");
   s.append(name, h("span", "", String(n)));
   return s;
 }
 
+/** "8", or "2 of 8" with a query. */
+export const countText = (n: number, words: string[]) => (words.length ? `${n} of ${list.length}` : String(list.length));
+
 function draw() {
-  const o = ordered();
+  const words = query();
+  const o = shown();
   if (!o.some((i) => i.path === lit)) lit = o[0]?.path ?? null;
-  libCount.textContent = String(o.length);
+  libCount.textContent = countText(o.length, words);
+  lib.classList.toggle("in-list", keysIn === "list");
   const pins = o.filter((i) => i.pinned).length;
   const kids: HTMLElement[] = [];
+  if (!o.length) kids.push(h("div", "lib-none", "No images match"));
   o.forEach((i, n) => {
     if (pins && n === 0) kids.push(section("PINNED", pins));
-    if (pins && n === pins) kids.push(section("RECENT", o.length - pins));
-    kids.push(row(i));
+    if (pins && n === pins && pins < o.length) kids.push(section("RECENT", o.length - pins));
+    kids.push(row(i, words));
   });
   seen.disconnect();
   rows.replaceChildren(...kids);
@@ -239,27 +312,36 @@ function light(path: string | null) {
 
 const litImage = () => list.find((i) => i.path === lit);
 
-function openImage(i: Image) {
+export function openImage(i: Image) {
   invoke("open_image", { path: i.path }).catch(showError);
 }
 
-/** Inserts the path into `id`'s pane, as a drop types one. */
-async function insertInto(id: string, i: Image) {
+/** Inserts the paths into `id`'s pane, as a drop of these files types them. */
+export async function insertInto(id: string, imgs: readonly Image[]) {
   try {
-    const t = await invoke<Typed>("image_insert", { path: i.path, who: whoOf(id), host: isRemote() ? hostName() : null });
+    const t = await invoke<Typed>("image_insert", { paths: imgs.map((i) => i.path), who: whoOf(id), host: isRemote() ? hostName() : null });
     typeFiles(id, t);
   } catch (e) {
     showError(e);
   }
 }
 
+/** The pane Insert types into: the focused one. Null when it has no terminal. */
+export const insertTarget = (): string | null => (S.focused && panes.has(S.focused) ? S.focused : null);
+
 async function insertImage(i: Image) {
-  const id = S.focused;
-  if (id && panes.has(id)) await insertInto(id, i);
+  const id = insertTarget();
+  if (id) await insertInto(id, [i]);
 }
 
-async function pin(i: Image) {
-  await invoke("image_pin", { path: i.path, on: !i.pinned }).catch(showError);
+export async function pinImages(imgs: readonly Image[], on: boolean) {
+  await invoke("image_pin", { paths: imgs.map((i) => i.path), on }).catch(showError);
+}
+
+const pin = (i: Image) => pinImages([i], !i.pinned);
+
+export async function deleteImages(imgs: readonly Image[]) {
+  await invoke("image_delete", { paths: imgs.map((i) => i.path) }).catch(showError);
 }
 
 async function copyPath(i: Image) {
@@ -279,26 +361,70 @@ async function copyPath(i: Image) {
 
 async function remove(i: Image) {
   // The row below takes the light.
-  const o = ordered();
+  const o = shown();
   const n = o.findIndex((x) => x.path === i.path);
   lit = (o[n + 1] ?? o[n - 1])?.path ?? null;
-  await invoke("image_delete", { path: i.path }).catch(showError);
+  await deleteImages([i]);
 }
 
-lib.addEventListener("keydown", (e) => {
+/** The keys go to the field. `typed` goes in at the caret: a character, or "\b" to remove one. */
+function toField(typed = "") {
+  keysIn = "field";
+  if (typed === "\b") field.value = field.value.slice(0, -1);
+  else field.value += typed;
+  field.focus();
+  lit = null;
+  draw();
+}
+
+field.addEventListener("input", () => {
+  // The first match is always lit, so Enter opens it.
+  lit = null;
+  draw();
+  rows.scrollTop = 0;
+});
+field.addEventListener("focus", () => {
+  if (keysIn === "list") {
+    keysIn = "field";
+    draw();
+  }
+});
+field.addEventListener("keydown", (e) => {
+  const i = litImage();
+  if (e.key === "Escape") closeImages();
+  else if (e.key === "ArrowDown") {
+    if (!shown().length) return e.preventDefault();
+    keysIn = "list";
+    rows.focus();
+    draw();
+  } else if (e.key === "Enter" && i) openImage(i);
+  else if (e.key !== "Tab") {
+    // Letters, Backspace and Delete edit the query.
+    if (!e.ctrlKey && !e.metaKey) e.stopPropagation();
+    return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+});
+
+rows.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  const o = ordered();
+  const o = shown();
   const n = o.findIndex((i) => i.path === lit);
   const i = litImage();
   const k = e.key.toLowerCase();
   if (e.key === "Escape") closeImages();
-  else if (e.key === "ArrowDown") light(o[(n + 1) % o.length]?.path ?? null);
-  else if (e.key === "ArrowUp") light(o[(n - 1 + o.length) % o.length]?.path ?? null);
-  else if (e.key === "Enter" && i) openImage(i);
+  else if (e.key === "ArrowDown") light(o[Math.min(n + 1, o.length - 1)]?.path ?? null);
+  else if (e.key === "ArrowUp") {
+    if (n <= 0) toField();
+    else light(o[n - 1].path);
+  } else if (e.key === "Enter" && i) openImage(i);
   else if (k === "i" && i) void insertImage(i);
   else if (k === "p" && i) void pin(i);
   else if (k === "c" && i) void copyPath(i);
   else if (e.key === "Delete" && i) void remove(i);
+  else if (e.key === "Backspace") toField("\b");
+  else if (e.key.length === 1) toField(e.key);
   else if (e.key !== "Tab") return;
   e.preventDefault();
   e.stopPropagation();
@@ -317,7 +443,9 @@ function expanded(on: boolean) {
 function openAt(at: DOMRect) {
   if (!list.length) return;
   menuOpened();
-  lit = ordered()[0]?.path ?? null;
+  field.value = "";
+  keysIn = "field";
+  lit = null;
   const s = S.focused ? sessions.get(S.focused) : undefined;
   lib.style.setProperty("--pc", accent(s ? place(s)?.project : null));
   lib.hidden = false;
@@ -327,7 +455,7 @@ function openAt(at: DOMRect) {
   lib.style.left = `${Math.max(0, Math.min(at.right - w, window.innerWidth - w - 8))}px`;
   lib.style.top = `${Math.max(0, Math.min(at.bottom, window.innerHeight - hgt - 8))}px`;
   expanded(true);
-  lib.focus();
+  field.focus();
 }
 
 export function closeImages(refocus = true) {
@@ -350,9 +478,11 @@ export function openImages() {
 
 /** The pane header button: the newest image, on the focused pane and a hovered header. */
 export function imagesButton(id: string): HTMLElement | null {
-  const newest = newestImage();
+  // Just after an insert: that image, with a check, for 1.5 s.
+  const done = insertShown(id);
+  const newest = done ?? newestImage();
   if (!newest) return null;
-  const b = button("head-btn head-images", "", () => {
+  const b = button("head-btn head-images" + (done ? " done" : ""), "", () => {
     if (!lib.hidden) return closeImages();
     const at = b.getBoundingClientRect();
     if (id !== S.focused) focusPane(id);
@@ -365,6 +495,11 @@ export function imagesButton(id: string): HTMLElement | null {
   mini.dataset.path = newest;
   fillThumb(mini, newest);
   b.append(mini);
+  if (done) {
+    const check = h("span", "head-check");
+    check.append(icon('<path d="M4 12.5l5 5 11-11"></path>'));
+    b.append(check);
+  }
   return b;
 }
 
@@ -397,7 +532,7 @@ function startDrag(e: PointerEvent, i: Image, th: HTMLElement) {
     const id = endImageDrag(u.clientX, u.clientY);
     if (!id) return;
     if (id !== S.focused) focusPane(id);
-    void insertInto(id, i);
+    void insertInto(id, [i]);
   };
   window.addEventListener("pointermove", move, true);
   window.addEventListener("pointerup", up, true);

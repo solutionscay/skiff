@@ -20,6 +20,7 @@ import { accent, awayPlaces, inShownGroup, place, shownIds } from "../app/stateQ
 import { closePane, dragSessions, focusPane } from "./paneActions";
 import { resumeOffer, resumePane } from "./resume";
 import { imagesButton, newestImage } from "./images";
+import { insertShown } from "./insertSignal";
 /** One pane header: the agent icon, the title, then the close button. */
 export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   if (isSlot(id)) return slotHead(id, head);
@@ -51,7 +52,7 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   const grouped = inShownGroup(id);
   const away = s ? awayPlaces(s).map((a) => branchName(a.worktree)).join(", ") : "";
   // Rebuild only on change, so a click that spans a daemon event still lands.
-  const sig = s ? JSON.stringify([s.state, s.exit_code, s.agent_exit, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, grouped, away, resumeOffer(s), newestImage()]) : "";
+  const sig = s ? JSON.stringify([s.state, s.exit_code, s.agent_exit, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, grouped, away, resumeOffer(s), newestImage(), insertShown(id)]) : "";
   if (head.dataset.sig === sig) return;
   head.dataset.sig = sig;
   head.replaceChildren();
