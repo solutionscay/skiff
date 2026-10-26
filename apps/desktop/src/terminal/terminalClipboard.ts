@@ -10,6 +10,7 @@ import { S, sessions } from "../app/state";
 import { place } from "../app/stateQueries";
 import { taskTitle } from "../workspace/model";
 
+import { signalButton, signalLine } from "./insertSignal";
 import { panes } from "./terminalState";
 
 let copyNoticeTimer: number | undefined;
@@ -43,6 +44,8 @@ export async function copySelection() {
 export interface Typed {
   text: string;
   warning: string | null;
+  /** The first library image typed. Null: no image, so no insert signals. */
+  image: string | null;
 }
 
 /** The session that gets an image, as Images shows it: its title and project. */
@@ -51,9 +54,15 @@ export function whoOf(id: string) {
   return { session: id, title: s ? taskTitle(s) : "", project: (s && place(s)?.project.name) ?? null };
 }
 
-/** Types the words as a paste, so an agent attaches a pasted image path. Never presses Enter. */
+/** Types the words as a paste, so an agent attaches a pasted image path.
+ *  Never presses Enter. An image shows the insert signals. */
 export function typeFiles(id: string, t: Typed) {
-  panes.get(id)?.term.paste(t.text);
+  const pane = panes.get(id);
+  if (pane && t.image) {
+    signalLine(pane.term, pane.el);
+    signalButton(id, t.image);
+  }
+  pane?.term.paste(t.text);
   if (t.warning) showError(t.warning);
 }
 

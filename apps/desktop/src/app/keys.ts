@@ -19,7 +19,7 @@ export type Action =
   | "focus-left" | "focus-right" | "focus-up" | "focus-down"
   | "project-menu" | "project-folder" | "project-copy-path" | "project-color" | "project-changes" | "project-files"
   | "region-next" | "region-prev" | "session-next" | "session-prev" | "list-project" | "list-back" | "list-main" | "shortcuts"
-  | "focus-mode" | "maximize" | "mission-control" | "skiff-agent" | "ledger" | "images";
+  | "focus-mode" | "maximize" | "mission-control" | "skiff-agent" | "ledger" | "images" | "images-gallery";
 
 export const isMac = navigator.userAgent.includes("Macintosh");
 
@@ -72,6 +72,7 @@ export const DEFAULTS: Record<Action, string> = {
   ledger: "ctrl+shift+alt+l",
   // No default key: the palette and the pane menu have it. `[keys]` can set one.
   images: "",
+  "images-gallery": "",
 };
 
 interface Combo { ctrl: boolean; shift: boolean; alt: boolean; key: string }
@@ -182,6 +183,7 @@ export const DESCRIBE: [string, Action, string][] = [
   ["Edit", "copy", "Copy the terminal selection. In Settings, the selected text in the field"],
   ["Edit", "paste", "Paste into the terminal. An image is saved to Images and its path typed. In Settings, into the field. A one-line field gets one line"],
   ["Edit", "images", "Show the images on this computer. Insert puts a path into the focused pane"],
+  ["Edit", "images-gallery", "Show Settings › Images"],
   ["Edit", "find", "Find in the terminal"],
   ["Edit", "rename", "Rename the session, or the group or session row in the list"],
   ["Edit", "theme", "Session theme, or the theme of the group or session row in the list. On a project or another row, the project theme"],
