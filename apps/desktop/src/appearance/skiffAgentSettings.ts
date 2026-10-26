@@ -115,7 +115,7 @@ function folderRows(set: SkiffAgentSettings, change: () => void): HTMLElement[] 
   const why =
     set.folder_status === "other"
       ? "Not usable: it holds other files. Choose another folder."
-      : set.folder_status === "refused"
+      : set.folder_status === "refused" || set.folder_status === "missing"
         ? (set.folder_error ?? "Refused.")
         : null;
   if (!why) return [row];

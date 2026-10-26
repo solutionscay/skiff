@@ -22,9 +22,13 @@ use crate::{
     connection::{ensure_client, err, App},
 };
 
-/// Runs at app start, off the main thread. Never prompts. Copies the
+/// Runs at app start, off the main thread. Never prompts. Makes the agent's
+/// folder when it is missing, with Skipper on or off, and copies the
 /// built-in `skiff-cli` skill out when it changed.
 pub fn sync() {
+    if let Err(e) = config::load().and_then(|cfg| skipper::make_folder(&cfg)) {
+        eprintln!("skiff agent folder: {e:#}");
+    }
     if let Err(e) = skipper::sync_skill() {
         eprintln!("skiff-cli skill: {e:#}");
     }
@@ -131,8 +135,8 @@ pub struct SkiffAgent {
     folder_error: Option<String>,
     /// The folder projects.toml names, refused or not, for the Folder row.
     configured: String,
-    /// `ready` (a Skiff folder), `new` (setup makes it at On), `other` (it
-    /// holds other files) or `refused`.
+    /// `ready` (a Skiff folder), `missing` (the app could not make it),
+    /// `other` (it holds other files) or `refused`.
     folder_status: &'static str,
     continue_on_restore: bool,
     /// The project menu offers Start project Skipper.
@@ -145,7 +149,7 @@ pub struct SkiffAgent {
 
 fn read() -> anyhow::Result<SkiffAgent> {
     let cfg = config::load().context("read projects.toml")?;
-    let (folder, folder_error) = match skipper::folder(&cfg) {
+    let (folder, mut folder_error) = match skipper::folder(&cfg) {
         Ok(f) => (Some(f.display().to_string()), None),
         Err(e) => (None, Some(format!("{e:#}"))),
     };
@@ -153,7 +157,10 @@ fn read() -> anyhow::Result<SkiffAgent> {
     let folder_status = match (&folder, agent_folder::kind(&configured)) {
         (None, _) => "refused",
         (_, Ok(Kind::Skiff)) => "ready",
-        (_, Ok(Kind::New | Kind::Empty)) => "new",
+        (_, Ok(Kind::New | Kind::Empty)) => {
+            folder_error = Some(skipper::no_folder(&configured));
+            "missing"
+        }
         _ => "other",
     };
     let configured = configured.display().to_string();

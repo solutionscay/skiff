@@ -142,7 +142,7 @@ async fn read_clip(handle: &AppHandle) -> Result<Clip, String> {
 pub(crate) async fn images() -> Result<Vec<cache::Image>, String> {
     blocking(|| {
         let cfg = skiff_core::config::load().unwrap_or_default();
-        Ok(cache::list(&cache::dir(&cfg)))
+        Ok(cache::list(&cache::ensure(&cfg)?))
     })
     .await
 }

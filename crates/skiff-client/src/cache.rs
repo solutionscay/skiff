@@ -1,7 +1,7 @@
 //! The image cache: images dropped or pasted on a pane are copied here, and
-//! the pane gets the copy's path. `<agent folder>/cache/<hash>.<ext>`, or
-//! `/tmp/skiff-drops/` when the Skiff agent has no usable folder. The cache
-//! does not need the Skiff agent to be on. Other files keep their own path.
+//! the pane gets the copy's path: `<agent folder>/cache/<hash>.<ext>`. The
+//! cache does not need the Skiff agent to be on. Other files keep their own
+//! path.
 //!
 //! The first bytes decide what is an image, not the extension. The name is
 //! the first 16 hex characters of the SHA-256 of the bytes, so the same
@@ -37,22 +37,14 @@ pub const MAX_BYTES: u64 = 50 * 1024 * 1024;
 pub const TOO_LARGE: &str = "The image is larger than 50 MB. Skiff typed its path and did not copy it.";
 
 /// The cache folder. It may not exist yet: [`ensure`] makes it.
-pub fn dir(cfg: &Config) -> PathBuf {
+pub fn dir(cfg: &Config) -> Result<PathBuf> {
     crate::skipper::cache_dir(cfg)
 }
 
-/// Makes the cache folder, mode 0700, and returns it.
+/// Makes the agent folder and its cache when they are missing, and returns
+/// the cache. See [`crate::skipper::make_folder`].
 pub fn ensure(cfg: &Config) -> Result<PathBuf> {
-    use std::os::unix::fs::DirBuilderExt;
-    let d = dir(cfg);
-    if !d.is_dir() {
-        std::fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(&d)
-            .with_context(|| format!("create {}", d.display()))?;
-    }
-    Ok(d)
+    Ok(crate::skipper::make_folder(cfg)?.join("cache"))
 }
 
 /// The cache extension of an image, from its first bytes. SVG also needs the
@@ -364,12 +356,12 @@ pub fn kept(dir: &Path) -> HashSet<PathBuf> {
 
 /// The flags for the agent's start line, as argv words. See [`tasks::cache_flags`].
 pub fn flags(cfg: &Config, agent: &AgentInfo) -> Vec<String> {
-    tasks::cache_flags(agent, &dir(cfg)).unwrap_or_default()
+    dir(cfg).ok().and_then(|d| tasks::cache_flags(agent, &d)).unwrap_or_default()
 }
 
 /// [`flags`] as text to type after a start line in a shell.
 pub fn flags_typed(cfg: &Config, agent: &AgentInfo) -> String {
-    tasks::cache_flags_typed(agent, &dir(cfg))
+    dir(cfg).map(|d| tasks::cache_flags_typed(agent, &d)).unwrap_or_default()
 }
 
 /// Adds the cache flags to an agent session that runs one of `agents` as

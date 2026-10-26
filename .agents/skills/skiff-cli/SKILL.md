@@ -159,7 +159,7 @@ For several agents, give each a different task and folder. If they share a repos
 
 ## The Skiff agent and its ledger
 
-The Skiff agent (default name Skipper) is the normal coordinator. It is one agent session in its own folder, `~/skiff-agent` by default. Its `AGENTS.md` is the user's standing permission to send tasks to sessions in Skiff projects. A person opens it from its row in the app, or with `skiff skipper` in any terminal. `skiff skipper --no-attach` prints its id.
+The Skiff agent (default name Skipper) is the normal coordinator. It is one agent session in its own folder, `~/skiff-agent` by default. The app makes that folder at start, with the agent on or off, and turning the agent on adds its files there. Its `AGENTS.md` is the user's standing permission to send tasks to sessions in Skiff projects. A person opens it from its row in the app, or with `skiff skipper` in any terminal. `skiff skipper --no-attach` prints its id.
 
 The ledger is `ledger.db` in that folder. Use only `skiff ledger` to read or change it. Never open or edit the file.
 

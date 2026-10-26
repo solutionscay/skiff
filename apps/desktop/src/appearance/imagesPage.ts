@@ -9,7 +9,7 @@ import { icon } from "../ui/icons";
 import { taskTitle } from "../workspace/model";
 import {
   type Image, allImages, countText, deleteImages, fillThumb, insertInto, insertTarget, marked, matches, openImage, ordered,
-  pinImages, queryWords, searchField, section, shownName, when, whoLine,
+  imagesError, pinImages, queryWords, searchField, section, shownName, when, whoLine,
 } from "../terminal/images";
 import { size } from "./skiffFolderDialog";
 
@@ -105,7 +105,12 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
     seen.disconnect();
     tiles.clear();
     const kids: HTMLElement[] = [];
-    if (!allImages().length) kids.push(h("div", "lib-none", "No images"));
+    const error = imagesError();
+    if (error) {
+      const el = h("div", "set-error", error);
+      el.setAttribute("role", "alert");
+      kids.push(el);
+    } else if (!allImages().length) kids.push(h("div", "lib-none", "No images"));
     else if (!shown.length) kids.push(h("div", "lib-none", "No images match"));
     const pins = shown.filter((i) => i.pinned);
     const rest = shown.filter((i) => !i.pinned);

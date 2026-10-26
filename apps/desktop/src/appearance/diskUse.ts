@@ -13,8 +13,6 @@ interface Line {
 export interface DiskUsage {
   /** The folder with `~` for home. */
   shown: string;
-  /** No agent folder is usable: the folder is the `/tmp` cache. */
-  fallback: boolean;
   /** The images, pinned ones included. */
   cache: Line;
   /** The pinned images: no flush removes them. */
@@ -135,10 +133,10 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
 
   const known = !!u && u.results !== null;
   const loose = u ? u.cache.files - u.pinned.files : 0;
-  const doneOff = !u || !known || u.fallback || !u.daemon || (!u.closed.files && !u.plans && !loose);
+  const doneOff = !u || !known || !u.daemon || (!u.closed.files && !u.plans && !loose);
   table.append(
     row("Images", u?.cache, {
-      folder: u?.fallback ? "" : "cache/",
+      folder: "cache/",
       act: button("Flush images", !loose, () => void flush(s, redraw, () => invoke("flush_cache"))),
     }),
     row("Pinned", u?.pinned, { sub: true }),
@@ -162,7 +160,7 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
   const errors = [
     s.error,
     u?.ledger_error,
-    u && !u.fallback && !u.daemon ? "Skiff cannot reach skiffd. Flush done work needs the session list." : null,
+    u && !u.daemon ? "Skiff cannot reach skiffd. Flush done work needs the session list." : null,
     u?.unreadable ? `Skiff could not read ${plural(u.unreadable, "file")}.` : null,
   ]
     .filter((e): e is string => !!e)
