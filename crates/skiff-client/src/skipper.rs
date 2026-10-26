@@ -32,6 +32,25 @@ const TEMPLATE: &str = include_str!("../agent-template/AGENTS.md.tmpl");
 /// project, its folder and the Skipper's folder.
 const PROJECT_TEMPLATE: &str = include_str!("../agent-template/SKIPPER-project.md.tmpl");
 
+/// The fleet section of a fleet Skipper's `SKIPPER.md`, after [`TEMPLATE`].
+/// `{{fleet}}`, `{{projects}}` and `{{dir}}` become the fleet, one line per
+/// project with its folder, and the Skipper's folder.
+const FLEET_TEMPLATE: &str = include_str!("../agent-template/SKIPPER-fleet.md.tmpl");
+
+/// The scope prefix of a fleet: a fleet Skipper's mark and its rows' owner
+/// are `fleet:<fleet>`. A project's are its bare name.
+pub const FLEET: &str = "fleet:";
+
+/// The scope of the fleet `fleet`: `fleet:<fleet>`.
+pub fn fleet_scope(fleet: &str) -> String {
+    format!("{FLEET}{fleet}")
+}
+
+/// The fleet a scope names, or `None` for a project's.
+pub fn scope_fleet(scope: &str) -> Option<&str> {
+    scope.strip_prefix(FLEET)
+}
+
 /// The `skiff-cli` skill, file by file: (path, bytes, runnable).
 /// `skill_files_match_the_repo` keeps this list in step with the folder.
 const SKILL: &[(&str, &[u8], bool)] = &[
@@ -57,6 +76,12 @@ pub fn name(cfg: &Config) -> String {
 /// Skipper's, so `skiff send "gesher Skipper"` reaches one session.
 pub fn project_name(cfg: &Config, project: &str) -> String {
     format!("{project} {}", name(cfg))
+}
+
+/// A fleet Skipper's session name: the fleet, then the Skiff agent's name
+/// ("Harbor Skipper").
+pub fn fleet_name(cfg: &Config, fleet: &str) -> String {
+    format!("{fleet} {}", name(cfg))
 }
 
 /// The agent the Skiff agent starts: the one from Settings while it is
@@ -455,6 +480,50 @@ fn setup_project(cfg: &Config, p: &ProjectConfig) -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// The open projects of `fleet`, in config order.
+pub fn fleet_projects<'a>(cfg: &'a Config, fleet: &str) -> Vec<&'a ProjectConfig> {
+    cfg.projects.iter().filter(|p| !p.closed && p.fleet.as_deref() == Some(fleet)).collect()
+}
+
+/// A fleet Skipper's folder: `fleets/<fleet>` in the Skiff agent's folder.
+pub fn fleet_folder(cfg: &Config, fleet: &str) -> Result<PathBuf> {
+    if fleet.is_empty() || fleet == "." || fleet == ".." || fleet.contains(['/', '\\']) {
+        bail!("the fleet name {fleet:?} cannot name a folder");
+    }
+    Ok(folder(cfg)?.join("fleets").join(fleet))
+}
+
+/// `SKIPPER.md` for the fleet `fleet`, whose Skipper's folder is `dir`.
+pub fn fleet_template(name: &str, fleet: &str, projects: &[&ProjectConfig], dir: &Path) -> String {
+    let width = projects.iter().map(|p| p.name.chars().count()).max().unwrap_or(0);
+    let list: Vec<String> = projects.iter().map(|p| format!("- {:width$}  {}", p.name, p.path.display())).collect();
+    let section = FLEET_TEMPLATE
+        .replace("{{fleet}}", fleet)
+        .replace("{{projects}}", &list.join("\n"))
+        .replace("{{dir}}", &dir.display().to_string());
+    format!("{}{section}", template(name))
+}
+
+/// The agent a fleet Skipper starts: `[skiff_agent] project_agent`, else the
+/// Skipper's own. A project's `skipper_agent` is for its project Skipper only.
+pub fn fleet_agent<'a>(cfg: &Config, agents: &'a [AgentInfo]) -> Option<&'a AgentInfo> {
+    agents
+        .iter()
+        .find(|a| Some(a.id.as_str()) == cfg.skiff_agent.project_agent.as_deref() && a.installed && (a.enabled || a.custom))
+        .or_else(|| choose(agents, cfg.skiff_agent.agent.as_deref()))
+}
+
+/// Writes a fleet Skipper's folder and its `SKIPPER.md` again, from the
+/// fleet as `projects.toml` has it now. Returns the folder. The app and the
+/// watcher call it when the fleet changes under a running fleet Skipper.
+pub fn write_fleet(cfg: &Config, fleet: &str) -> Result<PathBuf> {
+    let dir = fleet_folder(cfg, fleet)?;
+    std::fs::create_dir_all(dir.join("results")).with_context(|| format!("create {}", dir.join("results").display()))?;
+    let file = dir.join(SKIPPER_FILE);
+    std::fs::write(&file, fleet_template(&name(cfg), fleet, &fleet_projects(cfg, fleet), &dir)).with_context(|| format!("write {}", file.display()))?;
+    Ok(dir)
+}
+
 /// The first message a new project Skipper gets.
 pub fn first_message(dir: &Path) -> String {
     format!("Read {} and follow it. Then do its First steps.", dir.join(SKIPPER_FILE).display())
@@ -465,7 +534,28 @@ pub fn find_project<'a>(all: &'a [SessionInfo], project: &str) -> Option<&'a Ses
     all.iter().find(|s| s.skipper.as_deref() == Some(project) && s.state != SessionState::Done)
 }
 
-/// A project Skipper the CLI found or started.
+/// The live fleet Skipper of `fleet` in `all`, if one runs.
+pub fn find_fleet<'a>(all: &'a [SessionInfo], fleet: &str) -> Option<&'a SessionInfo> {
+    find_project(all, &fleet_scope(fleet))
+}
+
+/// The live project Skippers of the projects of `fleet`, in config order.
+pub fn project_skippers_in<'a>(cfg: &Config, all: &'a [SessionInfo], fleet: &str) -> Vec<(String, &'a SessionInfo)> {
+    fleet_projects(cfg, fleet).into_iter().filter_map(|p| find_project(all, &p.name).map(|s| (p.name.clone(), s))).collect()
+}
+
+/// The fleet of `project` when that fleet's Skipper runs.
+pub fn commanding_fleet<'a>(cfg: &'a Config, all: &[SessionInfo], project: &str) -> Option<&'a str> {
+    let fleet = cfg.projects.iter().find(|p| p.name == project)?.fleet.as_deref()?;
+    find_fleet(all, fleet).is_some().then_some(fleet)
+}
+
+/// The fleet named `fleet` exists: an open project carries it.
+pub fn is_fleet(cfg: &Config, fleet: &str) -> bool {
+    !fleet_projects(cfg, fleet).is_empty()
+}
+
+/// A project or fleet Skipper the CLI found or started.
 pub struct ProjectSkipper {
     pub session: SessionInfo,
     /// It started now: it needs [`first_message`].
@@ -483,14 +573,19 @@ pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipp
         bail!("The Skiff agent is off. Turn it on in Settings › Skiff agent");
     }
     if !cfg.skiff_agent.project_skippers {
-        bail!("Project Skippers are off. Turn them on in Settings › Skiff agent › Project Skippers");
+        bail!("Project and fleet Skippers are off. Turn them on in Settings › Skiff agent › Project and fleet Skippers");
     }
     let p = project(&cfg, project_name)?;
     let _lock = lock()?;
-    let dir = setup_project(&cfg, p)?;
-    if let Some(s) = find_project(&c.list_sessions().await?, &p.name) {
-        return Ok(ProjectSkipper { session: s.clone(), created: false, dir });
+    let all = c.list_sessions().await?;
+    if let Some(s) = find_project(&all, &p.name) {
+        return Ok(ProjectSkipper { session: s.clone(), created: false, dir: setup_project(&cfg, p)? });
     }
+    // One Skipper per project: a running fleet Skipper commands this one.
+    if let Some(fleet) = commanding_fleet(&cfg, &all, &p.name) {
+        bail!("{} is in {fleet}, which has a fleet Skipper. Run: skiff skipper --fleet {fleet}", p.name);
+    }
+    let dir = setup_project(&cfg, p)?;
     let agents = c.list_agents().await?;
     let Some(agent) = project_agent(&cfg, &agents, p) else { bail!("No agent is on. Turn one on in Settings › Agents") };
     let mut s = spec(agent, &self::project_name(&cfg, &p.name), p.path.clone());
@@ -501,6 +596,41 @@ pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipp
     let info = c.create_session(s).await?;
     if info.skipper.as_deref() != Some(p.name.as_str()) {
         bail!("skiffd is too old to mark a project Skipper. Run `skiff daemon reload`. Session {} runs as a plain agent", info.id);
+    }
+    Ok(ProjectSkipper { session: info, created: true, dir })
+}
+
+/// Finds the live fleet Skipper of `fleet`, or starts one in its folder.
+/// Refuses as [`open_project`] does. It does not look at project Skippers
+/// in the fleet: the caller takes them over first (see
+/// [`crate::takeover`]).
+pub async fn open_fleet(c: &Client, fleet: &str) -> Result<ProjectSkipper> {
+    let cfg = config::load()?;
+    if !cfg.skiff_agent.enabled {
+        bail!("The Skiff agent is off. Turn it on in Settings › Skiff agent");
+    }
+    if !cfg.skiff_agent.project_skippers {
+        bail!("Project and fleet Skippers are off. Turn them on in Settings › Skiff agent › Project and fleet Skippers");
+    }
+    if !is_fleet(&cfg, fleet) {
+        bail!("no fleet {fleet:?} in {}", config::config_path().display());
+    }
+    let _lock = lock()?;
+    setup_in(&folder(&cfg)?, &name(&cfg), &sync_skill()?)?;
+    let dir = write_fleet(&cfg, fleet)?;
+    if let Some(s) = find_fleet(&c.list_sessions().await?, fleet) {
+        return Ok(ProjectSkipper { session: s.clone(), created: false, dir });
+    }
+    let agents = c.list_agents().await?;
+    let Some(agent) = fleet_agent(&cfg, &agents) else { bail!("No agent is on. Turn one on in Settings › Agents") };
+    let mut s = spec(agent, &fleet_name(&cfg, fleet), dir.clone());
+    crate::cache::add_flags(&cfg, std::slice::from_ref(agent), &mut s);
+    s.skipper = Some(fleet_scope(fleet));
+    s.cols = 120;
+    s.rows = 40;
+    let info = c.create_session(s).await?;
+    if info.skipper.as_deref() != Some(fleet_scope(fleet).as_str()) {
+        bail!("skiffd is too old to mark a fleet Skipper. Run `skiff daemon reload`. Session {} runs as a plain agent", info.id);
     }
     Ok(ProjectSkipper { session: info, created: true, dir })
 }

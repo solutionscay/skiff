@@ -21,6 +21,7 @@ import { DEFAULT_THEME, isLight } from "../appearance/colors";
 import { appThemeOf, themeIdFor, xtermTheme } from "../appearance/themes";
 import { appThemeVars } from "../appearance/appTheme";
 import { type Action, actionFor, keyLabel } from "../app/keys";
+import { fleetSkipperOf } from "../app/skiffAgent";
 import { S } from "../app/state";
 import { accent, place } from "../app/stateQueries";
 import { h } from "../ui/dom";
@@ -192,10 +193,17 @@ function shown(): string[][] {
  */
 function lanes(): Lane[] {
   const out: Lane[] = treeSections()
-    .map((sec) => ({
-      name: sec.fleet ?? "Projects",
-      projects: sec.projects.map((p) => ({ p: p as Project | null, list: projectSessions(p) })).filter((x) => x.list.length),
-    }))
+    .map((sec) => {
+      // A fleet's Skipper is the first tile in its lane.
+      const skipper = sec.fleet ? fleetSkipperOf(sec.fleet) : null;
+      return {
+        name: sec.fleet ?? "Projects",
+        projects: [
+          ...(skipper ? [{ p: null, list: [skipper] }] : []),
+          ...sec.projects.map((p) => ({ p: p as Project | null, list: projectSessions(p) })).filter((x) => x.list.length),
+        ],
+      };
+    })
     .filter((l) => l.projects.length);
   const other = projectSessions(null);
   if (other.length) out.push({ name: "Other", projects: [{ p: null, list: other }] });

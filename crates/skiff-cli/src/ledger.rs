@@ -255,13 +255,14 @@ fn result_path(results: &Path, date: &str, uid: &str, task: &str, plan: bool, pa
 }
 
 /// The results folder of `owner`'s rows: `results/` next to the ledger for
-/// the grand Skipper, `projects/<project>/results/` for a project Skipper.
+/// the grand Skipper, `projects/<project>/results/` for a project Skipper,
+/// `fleets/<fleet>/results/` for a fleet Skipper.
 pub fn results_dir(ledger: &Path, owner: &str) -> PathBuf {
     let dir = ledger.parent().unwrap_or(Path::new("."));
-    if owner == GRAND {
-        dir.join("results")
-    } else {
-        dir.join("projects").join(owner).join("results")
+    match (owner, skiff_client::skipper::scope_fleet(owner)) {
+        (GRAND, _) => dir.join("results"),
+        (_, Some(fleet)) => dir.join("fleets").join(fleet).join("results"),
+        _ => dir.join("projects").join(owner).join("results"),
     }
 }
 
@@ -797,7 +798,8 @@ fn claim_at(file: &Path, socket: &Path, session: &str) -> Result<()> {
 pub enum Caller {
     /// The grand Skipper: the Skiff agent session that owns the ledger.
     Grand,
-    /// A project Skipper, with its project.
+    /// A project or fleet Skipper, with its scope: a project's name, or
+    /// `fleet:<fleet>`.
     Project(String),
     /// A shell pane, or a shell outside Skiff with `--person`.
     Person,
@@ -845,7 +847,7 @@ impl Caller {
             return match self {
                 Caller::Project(me) if *me == p.project => Ok(me.clone()),
                 Caller::Person => Ok(p.project.clone()),
-                _ => bail!("{} is a hand-off to the {} project Skipper. Ask that Skipper to add tasks under it", p.uid, p.project),
+                _ => bail!("{} is a hand-off to {}. Ask that Skipper to add tasks under it", p.uid, who(&p.project)),
             };
         }
         self.check(p)?;
@@ -860,6 +862,8 @@ enum Writer {
     Yes(Caller),
     /// The Skiff agent of this socket takes the ledger first.
     Claim,
+    /// A Skipper a fleet Skipper took over: it ends when idle.
+    Retired,
     No,
 }
 
@@ -876,6 +880,7 @@ fn writer(me: Option<&str>, s: Option<&SessionInfo>, cur: Option<&Owner>, socket
     }
     match s {
         Some(s) if s.coordinator && may_claim(cur, socket) => Writer::Claim,
+        Some(s) if s.retiring => Writer::Retired,
         Some(s) if s.skipper.is_some() && !s.coordinator => Writer::Yes(Caller::Project(s.skipper.clone().unwrap_or_default())),
         Some(s) if s.role == Role::Shell && !s.coordinator => Writer::Yes(Caller::Person),
         _ => Writer::No,
@@ -895,6 +900,15 @@ async fn check_writer(socket: &Path, db: &Connection, person: bool) -> Result<Ca
     match writer(me.as_deref(), s, cur.as_ref(), socket, person) {
         Writer::Yes(c) => Ok(c),
         Writer::Claim => set_owner(db, &s.expect("a claim has a session").id, socket).map(|_| Caller::Grand),
+        Writer::Retired => {
+            let s = s.expect("a retired caller has a session");
+            let project = project_of(s);
+            let fleet = skiff_core::config::load().ok().and_then(|c| c.projects.into_iter().find(|p| p.name == project)).and_then(|p| p.fleet);
+            match fleet {
+                Some(f) => bail!("the {f} Skipper commands {project} now. This session ends when it is idle"),
+                None => bail!("a fleet Skipper commands {project} now. This session ends when it is idle"),
+            }
+        }
         Writer::No if me.is_none() => bail!("this shell is outside Skiff, so Skiff cannot tell a person from an agent. If you are the person, run the command again with --person"),
         Writer::No => bail!("{}", refusal(cur.as_ref(), s.is_some_and(|s| s.coordinator))),
     }
@@ -905,16 +919,59 @@ async fn check_writer(socket: &Path, db: &Connection, person: bool) -> Result<Ca
 fn refusal(cur: Option<&Owner>, skipper: bool) -> String {
     match cur {
         Some(o) if skipper => format!("this ledger is Skipper's on {}. Ask that Skipper to make this change", o.socket),
-        Some(_) => "only Skipper and the project Skippers change the ledger. Ask Skipper to make this change".into(),
+        Some(_) => "only Skipper and the project and fleet Skippers change the ledger. Ask Skipper to make this change".into(),
         None => "this ledger has no Skipper yet. Start Skipper in the Skiff app, then ask it to make this change".into(),
     }
 }
 
-/// "Skipper", or "the <project> project Skipper": a row's owner.
+/// "Skipper", "the <project> project Skipper" or "the <fleet> fleet
+/// Skipper": a row's owner, or a hand-off's scope.
 fn who(owner: &str) -> String {
-    match owner {
-        GRAND => "Skipper".into(),
-        p => format!("the {p} project Skipper"),
+    match (owner, skiff_client::skipper::scope_fleet(owner)) {
+        (GRAND, _) => "Skipper".into(),
+        (_, Some(f)) => format!("the {f} fleet Skipper"),
+        (p, _) => format!("the {p} project Skipper"),
+    }
+}
+
+/// A fleet Skipper sends only into the projects of its fleet, as
+/// `projects.toml` has it now. Refuses a pane in another project, with
+/// both names. Any other caller may send anywhere.
+fn check_scope(caller: &Caller, s: &SessionInfo) -> Result<()> {
+    let Caller::Project(scope) = caller else { return Ok(()) };
+    let Some(fleet) = skiff_client::skipper::scope_fleet(scope) else { return Ok(()) };
+    let cfg = skiff_core::config::load()?;
+    let project = project_of(s);
+    if cfg.projects.iter().any(|p| p.name == project && p.fleet.as_deref() == Some(fleet)) {
+        return Ok(());
+    }
+    bail!("pane {} is in {project}, which is not in {fleet}. Nothing changed", resolve::display_name(s))
+}
+
+/// What `handoff SCOPE` names: a project or a fleet, as an owner key.
+#[derive(Debug, PartialEq)]
+enum Scope {
+    Project(String),
+    Fleet(String),
+}
+
+/// Reads SCOPE: `project:NAME`, `fleet:NAME`, or a bare name that is one
+/// of the two. A bare name that is both is refused with both spellings.
+fn scope(cfg: &skiff_core::config::Config, arg: &str) -> Result<Scope> {
+    if let Some(p) = arg.strip_prefix("project:") {
+        return Ok(Scope::Project(p.to_string()));
+    }
+    if let Some(f) = skiff_client::skipper::scope_fleet(arg) {
+        if !skiff_client::skipper::is_fleet(cfg, f) {
+            bail!("no fleet {f:?} in {}", skiff_core::config::config_path().display());
+        }
+        return Ok(Scope::Fleet(f.to_string()));
+    }
+    let project = cfg.projects.iter().any(|p| p.name == arg);
+    match (project, skiff_client::skipper::is_fleet(cfg, arg)) {
+        (true, true) => bail!("{arg} is a project and a fleet. Use project:{arg} or fleet:{arg}. Nothing changed"),
+        (false, true) => Ok(Scope::Fleet(arg.to_string())),
+        _ => Ok(Scope::Project(arg.to_string())),
     }
 }
 
@@ -1212,18 +1269,21 @@ async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
         LedgerCmd::Add { pane: p, task, title, plan: is_plan, parent, project, state: st, result, reference, task_type, send, enter, shell } => {
             let task_type = task_type.as_deref().map(skiff_core::tasks::check_name).transpose()?.map(str::to_string);
             let st = add_state(st.as_deref(), is_plan, send)?.to_string();
-            let (pane_id, pane_gen, project) = match p {
-                Some(p) if !is_plan => {
-                    let s = pane(socket, &p).await?;
-                    let project = project.unwrap_or_else(|| project_of(&s));
-                    (Some(s.id.clone()), gen(&s), project)
-                }
-                _ => (None, None, project.unwrap_or_default()),
+            let target = match p {
+                Some(p) if !is_plan => Some(pane(socket, &p).await?),
+                _ => None,
+            };
+            let (pane_id, pane_gen, project) = match &target {
+                Some(s) => (Some(s.id.clone()), gen(s), project.unwrap_or_else(|| project_of(s))),
+                None => (None, None, project.unwrap_or_default()),
             };
             let file = path()?;
             let here = pane_id.as_ref().map(|_| socket.display().to_string());
             let mut db = open_at(&file)?;
             let caller = check_writer(socket, &db, person).await?;
+            if let Some(s) = &target {
+                check_scope(&caller, s)?;
+            }
             let owner = match parent.as_deref() {
                 Some(p) => caller.check_parent(&container(&db, p)?)?,
                 None => caller.owner().to_string(),
@@ -1245,8 +1305,10 @@ async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
             let mut db = open_at(&file)?;
             let caller = check_writer(socket, &db, person).await?;
             if matches!(caller, Caller::Project(_)) {
-                bail!("a project Skipper does not hand off. Add your own tasks with skiff ledger add. Nothing changed");
+                bail!("a project or fleet Skipper does not hand off. Add your own tasks with skiff ledger add. Nothing changed");
             }
+            let cfg = skiff_core::config::load()?;
+            let target = scope(&cfg, &project)?;
             if let Some(p) = parent.as_deref() {
                 let c = container(&db, p)?;
                 if c.is_handoff() {
@@ -1255,14 +1317,26 @@ async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
                 caller.check_parent(&c)?;
             }
             let c = crate::connect(socket).await?;
-            let ps = crate::skipper::start_project(socket, &c, &project).await?;
+            let (ps, key, name) = match target {
+                Scope::Project(p) => {
+                    // One Skipper per project: its fleet's Skipper takes the work.
+                    if let Some(f) = skiff_client::skipper::commanding_fleet(&cfg, &c.list_sessions().await?, &p) {
+                        bail!("{p} is in {f}, which has a fleet Skipper. Use: skiff ledger handoff {f}. Nothing changed");
+                    }
+                    (crate::skipper::start_project(socket, &c, &p).await?, p.clone(), p)
+                }
+                Scope::Fleet(f) => {
+                    let fs = crate::skipper::start_fleet(socket, &c, &f, crate::skipper::Over::Refuse).await?;
+                    (fs.skipper, skiff_client::skipper::fleet_scope(&f), f)
+                }
+            };
             let s = &ps.session;
             let new = New {
                 plan: false,
                 parent,
                 pane_id: Some(s.id.clone()),
                 pane_gen: gen(s),
-                project: project.clone(),
+                project: key,
                 task,
                 title,
                 state: "pending".into(),
@@ -1285,7 +1359,7 @@ async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
                 // A new agent takes its instructions first, then the task, in one turn.
                 text = format!("{} Then take this hand-off. {text}", skiff_client::skipper::first_message(&ps.dir));
                 crate::skipper::ready(&c, &s.id).await?;
-                println!("started the {project} Skipper");
+                println!("started the {name} Skipper");
             }
             return send_row(socket, &db, &row, SendOpts { text: vec![text], enter: true, shell: false }).await;
         }
@@ -1323,6 +1397,7 @@ async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
             let (pane_id, gen) = match (&p, st) {
                 (Some(p), _) => {
                     let s = pane(socket, p).await?;
+                    check_scope(&caller, &s)?;
                     (Some(s.id.clone()), Some(gen(&s)))
                 }
                 (None, Some("sent")) if !row.is_plan() && row.socket_other_than(socket).is_none() => {
@@ -1996,7 +2071,7 @@ mod tests {
         assert_eq!(w(&skipper, Some(&on("4d43fa26aaaa", test)), &live), Writer::Claim);
         assert_eq!(w(&dev, None, test), Writer::Claim);
         assert_eq!(refusal(Some(&owner), true), format!("this ledger is Skipper's on {}. Ask that Skipper to make this change", live.display()));
-        assert_eq!(refusal(Some(&owner), false), "only Skipper and the project Skippers change the ledger. Ask Skipper to make this change");
+        assert_eq!(refusal(Some(&owner), false), "only Skipper and the project and fleet Skippers change the ledger. Ask Skipper to make this change");
         assert!(refusal(None, false).starts_with("this ledger has no Skipper yet."));
     }
 
@@ -2282,5 +2357,77 @@ mod tests {
         assert_eq!(ra.shown_state(), "done");
         roll_up(&mut list);
         assert_eq!(st(&list, &p), "done");
+    }
+
+    #[test]
+    fn a_takeover_moves_every_row_and_gives_the_hand_offs_the_fleet_skipper() {
+        let dir = scratch("takeover");
+        let file = dir.join("ledger.db");
+        let mut db = open_at(&file).unwrap();
+        let mine = |t: &str| New { owner: "web".into(), project: "web".into(), ..task(t) };
+        let (_, open, _, _) = insert(&mut db, &file, New { title: Some("Update client".into()), ..mine("update") }).unwrap();
+        let (_, closed, closed_path, _) = insert(&mut db, &file, New { state: "done".into(), ..mine("old") }).unwrap();
+        let hand = |st: &str| New { handoff: true, pane_id: Some("websk0000000".into()), state: st.into(), project: "web".into(), ..task("h") };
+        let (_, sent, _, _) = insert(&mut db, &file, hand("sent")).unwrap();
+        let (_, blocked, _, _) = insert(&mut db, &file, hand("blocked")).unwrap();
+        let (_, finished, _, _) = insert(&mut db, &file, hand("done")).unwrap();
+        let (_, other, _, _) = insert(&mut db, &file, New { owner: "api".into(), ..task("api") }).unwrap();
+        let fs = pane("fleet0000000", "agent", false);
+        let t = vec![skiff_client::fleet::Taken {
+            project: "web".into(),
+            session: "websk0000000".into(),
+            tasks: vec![skiff_client::fleet::Task { uid: open.clone(), title: "Update client".into() }],
+            handoffs: vec![sent.clone(), blocked.clone()],
+        }];
+        skiff_client::fleet::move_rows(&file, Path::new("/tmp/here.sock"), "Harbor", &fs, &t, true).unwrap();
+        let r = |uid: &str| one(&db, uid).unwrap();
+        assert_eq!(r(&open).owner, "fleet:Harbor");
+        assert_eq!((r(&closed).owner.as_str(), r(&closed).result_path.as_deref()), ("fleet:Harbor", Some(closed_path.as_str())));
+        assert_eq!(r(&other).owner, "api");
+        for (uid, st) in [(&sent, "sent"), (&blocked, "pending")] {
+            let h = r(uid);
+            assert_eq!((h.owner.as_str(), h.project.as_str(), h.state.as_str(), h.pane_id.as_deref()), (GRAND, "fleet:Harbor", st, Some("fleet0000000")));
+        }
+        assert_eq!(r(&finished).project, "web");
+        let notes = skiff_client::ledger::notes(&file, "fleet:Harbor").unwrap();
+        assert_eq!(notes.len(), 1);
+        assert!(notes[0].1.starts_with("The Harbor Skipper took over web: 1 open task"), "{}", notes[0].1);
+        // The fleet Skipper reports a hand-off it took over, and adds under it.
+        let me = Caller::Project("fleet:Harbor".into());
+        assert!(me.check_report(&r(&sent)).is_ok());
+        assert_eq!(me.check_parent(&r(&sent)).unwrap(), "fleet:Harbor");
+        assert!(me.check(&r(&open)).is_ok());
+        assert!(Caller::Project("web".into()).check(&r(&open)).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_fleet_skippers_rows_go_to_its_folder_and_a_name_that_is_both_is_refused() {
+        let l = Path::new("/a/ledger.db");
+        assert_eq!(results_dir(l, "fleet:Harbor"), Path::new("/a/fleets/Harbor/results"));
+        assert_eq!(results_dir(l, "web"), Path::new("/a/projects/web/results"));
+        assert_eq!(who("fleet:Harbor"), "the Harbor fleet Skipper");
+        let cfg = skiff_core::config::parse(
+            "[[project]]\nname = \"web\"\npath = \"/w\"\nfleet = \"Harbor\"\n\n[[project]]\nname = \"api\"\npath = \"/a\"\nfleet = \"Port\"\n\n[[project]]\nname = \"Port\"\npath = \"/p\"\n",
+        )
+        .unwrap();
+        assert_eq!(scope(&cfg, "web").unwrap(), Scope::Project("web".into()));
+        assert_eq!(scope(&cfg, "Harbor").unwrap(), Scope::Fleet("Harbor".into()));
+        let err = scope(&cfg, "Port").unwrap_err().to_string();
+        assert!(err.contains("project:Port") && err.contains("fleet:Port"), "{err}");
+        assert_eq!(scope(&cfg, "fleet:Port").unwrap(), Scope::Fleet("Port".into()));
+        assert_eq!(scope(&cfg, "project:Port").unwrap(), Scope::Project("Port".into()));
+        assert!(scope(&cfg, "fleet:Nope").is_err());
+    }
+
+    #[test]
+    fn a_retiring_skipper_is_refused() {
+        let live = Path::new("/tmp/live.sock");
+        let mut s = pane("retired00000", "agent", false);
+        s.retiring = true;
+        assert_eq!(writer(Some("retired00000"), Some(&s), None, live, false), Writer::Retired);
+        let mut f = pane("fleet0000000", "agent", false);
+        f.skipper = Some("fleet:Harbor".into());
+        assert_eq!(writer(Some("fleet0000000"), Some(&f), None, live, false), Writer::Yes(Caller::Project("fleet:Harbor".into())));
     }
 }

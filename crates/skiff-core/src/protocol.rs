@@ -160,6 +160,20 @@ pub enum Request {
         #[serde(default)]
         expect: Option<u64>,
     },
+    /// Takes a project Skipper over: clears its Skipper mark and sets it
+    /// retiring, so skiffd ends it at its next idle. An idle one ends now.
+    /// Answers [`Response::Ok`].
+    Retire {
+        session: SessionId,
+    },
+    /// Gives a fleet Skipper its fleet's new name: its Skipper mark becomes
+    /// `scope` and its name `name`, in one step. Answers
+    /// [`Response::Session`].
+    Rescope {
+        session: SessionId,
+        scope: String,
+        name: String,
+    },
     /// This connection watches `session` for the Skiff agent. The
     /// registration lasts until the connection closes. A second call on the
     /// same connection replaces it: the watcher sends it again to report or
@@ -318,6 +332,8 @@ impl Request {
             Request::Shutdown => "shutdown",
             Request::Coordinator { .. } => "coordinator",
             Request::Watching { .. } => "watching",
+            Request::Retire { .. } => "retire",
+            Request::Rescope { .. } => "rescope",
         }
     }
 }

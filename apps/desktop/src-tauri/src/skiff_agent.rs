@@ -8,7 +8,7 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use skiff_client::{
     agent_folder::{self, Kind, Mode},
-    skipper,
+    fleet, skipper,
 };
 use skiff_core::{
     config::{self, SkiffAgentKey},
@@ -272,6 +272,61 @@ pub async fn start_project_skipper(project: String) -> Result<String, String> {
         Ok(String::from_utf8_lossy(&out.stdout).lines().last().unwrap_or_default().trim().to_string())
     })
     .await
+}
+
+/// Fleet menu › Start fleet Skipper: finds or starts the fleet's Skipper
+/// with `skiff skipper --fleet`, which also gives a new one its first
+/// message and starts the watcher. The page asked first, so `--yes` takes
+/// the fleet's project Skippers over. Returns its session id.
+#[tauri::command]
+pub async fn start_fleet_skipper(fleet: String) -> Result<String, String> {
+    let socket = skiff_core::socket::socket_path();
+    blocking(move || {
+        let out = std::process::Command::new(cli())
+            .arg("--socket")
+            .arg(&socket)
+            .args(["skipper", "--fleet", &fleet, "--no-attach", "--yes"])
+            // The app is a person, not a pane.
+            .env_remove("SKIFF_SESSION")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .with_context(|| format!("run {}", cli().display()))?;
+        if !out.status.success() {
+            let msg = String::from_utf8_lossy(&out.stderr);
+            anyhow::bail!("{}", msg.trim().trim_start_matches("skiff: ").trim_start_matches("Error: "));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).lines().last().unwrap_or_default().trim().to_string())
+    })
+    .await
+}
+
+/// The project Skippers a takeover of `fleet` would stop, for the confirm:
+/// those of its projects, and of `join` when it joins. Changes nothing.
+#[tauri::command]
+pub async fn fleet_takeover_preview(app: State<'_, App>, fleet: String, join: Option<String>) -> Result<Vec<fleet::Taken>, String> {
+    let (c, _) = ensure_client(&app).await?;
+    fleet::preview(&c, &fleet, join.as_deref()).await.map_err(err)
+}
+
+/// Add to fleet…, Move to fleet… or a drop, on the person's confirm: the
+/// running fleet Skipper of `fleet` takes `join`'s project Skipper over,
+/// then `join` joins the fleet.
+#[tauri::command]
+pub async fn fleet_takeover(app: State<'_, App>, handle: AppHandle, fleet: String, join: String) -> Result<(), String> {
+    let (c, _) = ensure_client(&app).await?;
+    let socket = skiff_core::socket::socket_path();
+    let out = fleet::takeover(&c, &socket, &fleet, Some(&join), true).await.map_err(err);
+    let _ = handle.emit(PROJECTS_CHANGED, ());
+    out.map(|_| ())
+}
+
+/// Rename fleet…: the fleet, its Skipper's folder, rows, session and mark.
+#[tauri::command]
+pub async fn rename_fleet(app: State<'_, App>, handle: AppHandle, old: String, new: String) -> Result<(), String> {
+    let (c, _) = ensure_client(&app).await?;
+    let out = fleet::rename(&c, &old, new.trim()).await.map_err(err);
+    let _ = handle.emit(PROJECTS_CHANGED, ());
+    out
 }
 
 /// A preview for the Change… dialog, with Skipper's session when it runs.

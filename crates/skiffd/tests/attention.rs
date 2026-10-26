@@ -193,3 +193,32 @@ async fn the_exit_code_of_a_program_survives_the_hand_off() {
     assert_eq!(pool.get(&info.id).unwrap().info().agent_exit, None);
     pool.kill(&info.id).unwrap();
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_retired_skipper_loses_its_mark_at_once_and_ends_when_idle() {
+    let pool = pool();
+    let info = pool
+        .create(SessionSpec {
+            command: Some("/bin/bash".into()),
+            args: vec!["--noprofile".into(), "--norc".into(), "-i".into()],
+            skipper: Some("web".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    until(&pool, &info.id, 6, "shell did not go idle", |i| i.state == SessionState::Idle).await;
+    // A plain session is no Skipper to retire.
+    let plain = bash(&pool);
+    assert!(pool.retire(&plain.id).is_err());
+    // It works: the mark goes now, the session stays until its turn ends.
+    pool.write(&info.id, b"/bin/sh -c 'for i in 1 2 3 4 5 6 7 8; do echo tick; sleep 0.3; done'\r").unwrap();
+    until(&pool, &info.id, 4, "shell did not work", |i| i.state == SessionState::Working).await;
+    pool.retire(&info.id).unwrap();
+    let now = pool.get(&info.id).unwrap().info();
+    assert!(now.skipper.is_none() && now.retiring, "{now:?}");
+    let end = std::time::Instant::now() + Duration::from_secs(12);
+    while pool.get(&info.id).is_some() {
+        assert!(std::time::Instant::now() < end, "the retiring session did not end when idle");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    pool.kill(&plain.id).unwrap();
+}

@@ -158,12 +158,13 @@ impl Row {
     }
 }
 
-/// "the Skipper", or "the <project> Skipper".
+/// "the Skipper", "the <project> Skipper", or "the <fleet> Skipper" for
+/// the owner `fleet:<fleet>`.
 pub fn owner_name(owner: &str) -> String {
-    if owner == GRAND {
-        "the Skipper".into()
-    } else {
-        format!("the {owner} Skipper")
+    match (owner, crate::skipper::scope_fleet(owner)) {
+        (GRAND, _) => "the Skipper".into(),
+        (_, Some(fleet)) => format!("the {fleet} Skipper"),
+        _ => format!("the {owner} Skipper"),
     }
 }
 
@@ -202,6 +203,53 @@ pub fn path() -> Result<PathBuf> {
 /// The pane generation as the ledger stores it.
 pub fn gen(s: &SessionInfo) -> Option<i64> {
     s.generation().and_then(|g| i64::try_from(g).ok())
+}
+
+/// Lines for a Skipper that skiff wrote outside a `skiff ledger` command, such
+/// as a takeover: the watcher types each into its owner's Skipper, then
+/// deletes it.
+pub const NOTES: &str = "
+CREATE TABLE IF NOT EXISTS notes (
+  id    INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner TEXT NOT NULL,
+  text  TEXT NOT NULL,
+  at    TEXT NOT NULL
+);
+";
+
+/// Opens the ledger to change it, for a writer outside `skiff ledger`: no
+/// migration, no new file. Refuses a file older than [`VERSION`], as
+/// [`open_read`] does.
+pub fn open_write(file: &Path) -> Result<Connection> {
+    let db = Connection::open_with_flags(file, OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX)
+        .with_context(|| format!("open {}", file.display()))?;
+    db.busy_timeout(std::time::Duration::from_secs(5))?;
+    let n: i64 = db.query_row("SELECT count(*) FROM pragma_table_info('tasks') WHERE name = 'reopened_at'", [], |r| r.get(0))?;
+    if n == 0 {
+        bail!("the ledger is older than version {VERSION}. Run any `skiff ledger` command to update it");
+    }
+    db.execute_batch(NOTES)?;
+    Ok(db)
+}
+
+/// The notes for `owner`, oldest first. No ledger yet gives none.
+pub fn notes(file: &Path, owner: &str) -> Result<Vec<(i64, String)>> {
+    if !file.exists() {
+        return Ok(Vec::new());
+    }
+    let db = open_write(file)?;
+    let mut st = db.prepare("SELECT id, text FROM notes WHERE owner = ?1 ORDER BY id")?;
+    let it = st.query_map([owner], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    Ok(it.collect::<rusqlite::Result<_>>()?)
+}
+
+/// Deletes the notes `ids`: their Skipper got them.
+pub fn drop_notes(file: &Path, ids: &[i64]) -> Result<()> {
+    let db = open_write(file)?;
+    for id in ids {
+        db.execute("DELETE FROM notes WHERE id = ?1", [id])?;
+    }
+    Ok(())
 }
 
 /// Opens the ledger read-only, for a reader that must not change it: no

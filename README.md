@@ -48,6 +48,14 @@ panel to a rail with the count of tasks that need you. Focus mode keeps the pane
 maximize hides it. Only Skipper's session can change the ledger. A shell outside Skiff,
 such as an SSH login, adds `--person` to change a row.
 
+A project can have a Skipper of its own, and a fleet can have one for all its projects.
+Turn them on in Settings › Skiff agent › Project and fleet Skippers, then pick Start
+project Skipper in a project's menu or Start fleet Skipper in a fleet's menu. Skipper hands
+work to them with `skiff ledger handoff PROJECT` or `skiff ledger handoff FLEET`. Each one
+changes only its own rows. A project has one Skipper at most: when a project with a
+project Skipper comes under a running fleet Skipper, the fleet Skipper takes its rows over
+after one confirm, and the project Skipper stops when it is idle.
+
 <p align="center"><img src=".github/screenshot-skipper.webp" alt="Skiff on Linux: Skipper in the center pane reports a finished release, the Ledger panel on the right lists finished tasks and plans, and the projects sidebar is on the left"></p>
 
 Settings › Skiff agent › Folder › Change… moves the folder: `~/skiff-agent`, `~/.skiff-agent`, or
