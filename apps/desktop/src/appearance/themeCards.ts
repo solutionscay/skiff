@@ -69,6 +69,8 @@ export interface CardOpts {
   none?: { label: string; theme: TerminalTheme | undefined };
   reload?: () => Promise<TerminalTheme[]>;
   filters?: ThemeFilters;
+  /** Cards a lower scope uses on screen, with a label that names it: "Project: skiff". */
+  scopes?: { id: string; label: string }[];
 }
 
 /** A grid of theme cards. A click picks; nothing previews on hover. */
@@ -118,6 +120,7 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
     foot.appendChild(signature);
     foot.append(h("span", "tc-name", label), h("span", "tc-badge", badge));
     if (on) foot.appendChild(h("span", "tc-state", "✓ Active"));
+    for (const s of o.scopes ?? []) if (s.id === id) foot.appendChild(h("span", "tc-in-scope", s.label));
     b.appendChild(foot);
     b.addEventListener("click", () => {
       o.active = id;

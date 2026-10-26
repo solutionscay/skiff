@@ -55,14 +55,31 @@ let appliedApp: string | undefined;
 /**
  * The app's own colors: sidebar, top bar, panels. The selected project's theme
  * wins. The Skiff agent has no project row to select: while its pane is on
- * screen, the app takes its terminal's theme.
+ * screen, the app takes its terminal's theme. Settings is app scope: while it
+ * shows, the app wears the app theme, so a pick there shows at once.
  */
 export function applyApp() {
   const agent = skiffAgentSession();
-  const want = agent && !S.activeGroup && S.single === agent.id ? themeIdFor(agent) : themeFor(currentProject());
+  const want = S.settingsShown ? knownTheme(S.appTheme)
+    : agent && !S.activeGroup && S.single === agent.id ? themeIdFor(agent) : themeFor(currentProject());
   if (want === appliedApp) return;
   appliedApp = want;
   applyAppTheme(S.themes.find((t) => t.id === want) ?? null);
+}
+
+/**
+ * The themes that replace the app theme on screen when Settings closes: the
+ * selected project's own, and the focused session's own. Each names its scope.
+ */
+export function themeOverrides(): { id: string; label: string }[] {
+  const out: { id: string; label: string }[] = [];
+  const app = knownTheme(S.appTheme);
+  const p = currentProject();
+  const own = p && projectThemes.get(p.name);
+  if (own && knownTheme(own) !== app) out.push({ id: knownTheme(own), label: `Project: ${p!.name}` });
+  const s = S.focused ? sessions.get(S.focused) : undefined;
+  if (s?.theme && knownTheme(s.theme) !== app) out.push({ id: knownTheme(s.theme), label: `Session: ${taskTitle(s)}` });
+  return out;
 }
 
 /** The theme id the app colors come from. Icons are inked against it. */
