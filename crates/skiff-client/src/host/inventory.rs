@@ -41,7 +41,7 @@ pub fn project_session(value: core::SessionInfo) -> Result<api::InventorySession
         input_gen,
         coordinator,
         skipper,
-        retiring: _,
+        retiring,
         watch,
     } = value;
     Ok(api::InventorySession {
@@ -75,6 +75,7 @@ pub fn project_session(value: core::SessionInfo) -> Result<api::InventorySession
         input_gen,
         coordinator,
         project_skipper: skipper,
+        retiring,
         watch: watch.map(project_watch),
     })
 }
@@ -160,6 +161,7 @@ pub fn restore_session(value: api::InventorySession) -> core::SessionInfo {
         input_gen,
         coordinator,
         project_skipper: skipper,
+        retiring,
         watch,
     } = value;
     core::SessionInfo {
@@ -190,7 +192,7 @@ pub fn restore_session(value: api::InventorySession) -> core::SessionInfo {
         input_gen,
         coordinator,
         skipper,
-        retiring: false,
+        retiring,
         watch: watch.map(restore_watch),
     }
 }

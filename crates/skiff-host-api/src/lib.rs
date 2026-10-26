@@ -21,7 +21,7 @@ pub use groups::Group;
 pub use inventory::InventorySession;
 pub use coordinator::{
     HostLedgerRow, HostSkipper, HostTaskType, SkipperEdit, SkipperFolderCounts, SkipperFolderDone, SkipperFolderMode, SkipperFolderPreview,
-    SkipperOpened, SkipperRunningTask, TaskEdit,
+    SkipperOpened, SkipperRunningTask, TakenSkipper, TakenTask, TaskEdit,
 };
 pub use lifecycle::SessionSpec;
 pub use projects::{ChangeStatus, HostBranch, HostBranches, HostChange, HostDiff, HostFolder, HostProject, HostWorktree, ProjectEdit, ProjectFleet};
@@ -253,6 +253,17 @@ impl Capability {
         Self {
             name: SKIPPER_RUN.into(),
             version: 1,
+        }
+    }
+    /// What `skipper_run@1` grants, and fleet Skippers: find or start one,
+    /// preview and run the takeover of a fleet's project Skippers on the
+    /// person's confirm, and rename a fleet with its Skipper. Data plane;
+    /// grants no other session, no ledger write of the client's own and no
+    /// settings change. A Host that offers it offers `skipper_run@1` too.
+    pub fn skipper_run_fleets() -> Self {
+        Self {
+            name: SKIPPER_RUN.into(),
+            version: 2,
         }
     }
     /// Read and change the Host's `[agents]` table: which agents are on,
@@ -692,6 +703,35 @@ pub enum Request {
     SkipperProject {
         project: String,
     },
+    /// Finds the fleet Skipper of `fleet` or starts it in its folder, with
+    /// `SKIPPER.md` as its first message, and the watcher. The client asked
+    /// the person first: a start takes the fleet's project Skippers over.
+    /// Answers `session`. Not retried: the session may have started.
+    SkipperFleet {
+        fleet: String,
+    },
+    /// The project Skippers a takeover of `fleet` would stop: those of its
+    /// projects, and of `join` when it joins. Writes nothing. Answers
+    /// `fleet_takeover`.
+    FleetTakeoverPreview {
+        fleet: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        join: Option<String>,
+    },
+    /// On the person's confirm: the running fleet Skipper of `fleet` takes
+    /// `join`'s project Skipper over, then `join` joins the fleet. The
+    /// ledger, then skiffd, then `projects.toml`. Answers `fleet_takeover`
+    /// with what it took over. Not retried: a repeat is the repair.
+    FleetTakeover {
+        fleet: String,
+        join: String,
+    },
+    /// Rename fleet…: the fleet, its Skipper's folder, rows, session and
+    /// mark. Answers `ok`. Not retried.
+    FleetRename {
+        old: String,
+        new: String,
+    },
     /// Answers `agent_config`: the agent list and the `[agents]` revision.
     AgentConfig,
     /// Changes the `[agents]` table, only while it is still at `revision`.
@@ -735,6 +775,9 @@ impl Request {
                 Some(Capability::skipper_config())
             }
             Self::SkipperOpen { .. } | Self::SkipperWatch { .. } | Self::SkipperProject { .. } => Some(Capability::skipper_run()),
+            Self::SkipperFleet { .. } | Self::FleetTakeoverPreview { .. } | Self::FleetTakeover { .. } | Self::FleetRename { .. } => {
+                Some(Capability::skipper_run_fleets())
+            }
             Self::AgentConfig | Self::AgentEdit { .. } => Some(Capability::agent_config()),
             Self::ProjectInspect { .. }
             | Self::ProjectInit { .. }
@@ -791,7 +834,8 @@ impl Request {
                 | (Self::SkipperFolderChange { .. }, Response::SkipperFolderDone { .. })
                 | (Self::SkipperOpen { .. }, Response::SkipperOpened { .. })
                 | (Self::SkipperWatch { .. }, Response::Watch { .. })
-                | (Self::SkipperProject { .. }, Response::Session { .. })
+                | (Self::SkipperProject { .. } | Self::SkipperFleet { .. }, Response::Session { .. })
+                | (Self::FleetTakeoverPreview { .. } | Self::FleetTakeover { .. }, Response::FleetTakeover { .. })
                 | (Self::AgentConfig | Self::AgentEdit { .. }, Response::AgentConfig { .. })
         ) || (!matches!(
             self,
@@ -834,6 +878,9 @@ impl Request {
                 | Self::SkipperFolderChange { .. }
                 | Self::SkipperWatch { .. }
                 | Self::SkipperProject { .. }
+                | Self::SkipperFleet { .. }
+                | Self::FleetTakeoverPreview { .. }
+                | Self::FleetTakeover { .. }
                 | Self::AgentConfig
                 | Self::AgentEdit { .. }
         ) && matches!(reply, Response::Ok))
@@ -893,6 +940,8 @@ pub enum Response {
     SkipperOpened { opened: Box<SkipperOpened> },
     /// `started`: this request started a watcher. False: one ran already.
     Watch { started: bool },
+    /// The project Skippers a fleet Skipper's takeover stops, or stopped.
+    FleetTakeover { taken: Vec<TakenSkipper> },
     /// The Host's agents, and the `[agents]` revision they were read at.
     AgentConfig { agents: Vec<HostAgent>, revision: String },
     SessionInventory { sessions: Vec<InventorySession> },

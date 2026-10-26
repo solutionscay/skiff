@@ -700,3 +700,41 @@ fn skipper_changes_launch_and_agent_changes_are_families_of_their_own() {
     assert!(!Request::SkipperWatch { session: "s1".into() }.accepts(&agents));
     assert!(Request::SkipperWatch { session: "s1".into() }.accepts(&Response::Watch { started: true }));
 }
+
+#[test]
+fn fleet_skippers_are_skipper_run_major_2_apart_from_major_1() {
+    let fleets = Capability::skipper_run_fleets();
+    assert_eq!((fleets.name.as_str(), fleets.version), ("skipper_run", 2));
+    assert_ne!(fleets, Capability::skipper_run());
+    let taken = Response::FleetTakeover {
+        taken: vec![skiff_host_api::TakenSkipper {
+            project: "web".into(),
+            session: "s2".into(),
+            tasks: vec![skiff_host_api::TakenTask { uid: "c0d4e7f2".into(), title: "Update client".into() }],
+            handoffs: vec!["9f1d0c3e".into()],
+        }],
+    };
+    let cases = [
+        json!({"cmd":"skipper_fleet","fleet":"Harbor"}),
+        json!({"cmd":"fleet_takeover_preview","fleet":"Harbor"}),
+        json!({"cmd":"fleet_takeover_preview","fleet":"Harbor","join":"web"}),
+        json!({"cmd":"fleet_takeover","fleet":"Harbor","join":"web"}),
+        json!({"cmd":"fleet_rename","old":"Harbor","new":"Port"}),
+    ];
+    for value in cases {
+        let request: Request = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&request).unwrap(), value);
+        assert_eq!(request.capability(), Some(Capability::skipper_run_fleets()), "{value}");
+        let takeover = matches!(request, Request::FleetTakeoverPreview { .. } | Request::FleetTakeover { .. });
+        assert_eq!(request.accepts(&taken), takeover, "{value}");
+        assert_eq!(request.accepts(&Response::Ok), matches!(request, Request::FleetRename { .. }), "{value}");
+    }
+    // A retiring session keeps the field across the wire; a plain one omits it.
+    let mut plain: skiff_host_api::InventorySession = serde_json::from_value(json!({
+        "id":"s1","label":"claude","role":"agent","cwd":"/w","command":"claude","args":[],"state":"idle","cols":80,"rows":24,"pid":null,"exit_code":null
+    }))
+    .unwrap();
+    assert!(serde_json::to_value(&plain).unwrap().get("retiring").is_none());
+    plain.retiring = true;
+    assert_eq!(serde_json::to_value(&plain).unwrap()["retiring"], json!(true));
+}

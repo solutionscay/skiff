@@ -230,6 +230,26 @@ pub struct SkipperFolderDone {
     pub warning: Option<String>,
 }
 
+/// One project Skipper that a fleet Skipper's takeover stops, as the
+/// confirm names it (`skipper_run@2`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TakenSkipper {
+    pub project: String,
+    /// The project Skipper's session id.
+    pub session: String,
+    /// Its open tasks: sent, pending or blocked.
+    pub tasks: Vec<TakenTask>,
+    /// The uids of the open hand-offs it holds.
+    pub handoffs: Vec<String>,
+}
+
+/// An open task a takeover moves.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TakenTask {
+    pub uid: String,
+    pub title: String,
+}
+
 /// Skipper's session on the Host, found or started (`skipper_run@1`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkipperOpened {

@@ -12,7 +12,7 @@ use skiff_client::{
     skipper,
 };
 use skiff_core::{config, session::SessionInfo};
-use skiff_host_api::{HostSkipper, SkipperEdit, SkipperFolderDone, SkipperFolderPreview};
+use skiff_host_api::{HostSkipper, SkipperEdit, SkipperFolderDone, SkipperFolderPreview, TakenSkipper};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::{
@@ -201,18 +201,18 @@ pub async fn set_skiff_agent(app: State<'_, App>, handle: AppHandle, edit: Skipp
     Ok(settings)
 }
 
-/// The refusal on a Host whose Skiff has no fleet Skippers.
-const NO_FLEETS: &str = "This Host does not offer fleet Skippers. Its Skiff is older than this app: use Update Skiff… on that Host in Settings › Hosts.";
-
-/// Fleet menu › Start fleet Skipper: finds or starts the fleet's Skipper
-/// with the bundled `skiff skipper --fleet`, which also gives a new one its
-/// first message and starts the watcher. The page asked first, so `--yes`
-/// takes the fleet's project Skippers over. Returns its session id. This
-/// Mac refuses first when its skiffd is too old to retire a project Skipper.
+/// Fleet menu › Start fleet Skipper: finds or starts the fleet's Skipper,
+/// takes the fleet's project Skippers over (the page asked first), sends a
+/// new one SKIPPER.md as its first message, and starts the watcher. Returns
+/// its session id. This Mac runs the bundled `skiff skipper --fleet --yes`,
+/// and refuses first when its skiffd is too old to retire a project
+/// Skipper; a remote Host does it there, through its `skiff-host`
+/// (`skipper_run@2`).
 #[tauri::command]
 pub async fn start_fleet_skipper(app: State<'_, App>, fleet: String) -> Result<String, String> {
     if app.selection().process_control().is_none() {
-        return Err(NO_FLEETS.into());
+        let s = data_write(&app, |c| async move { data::skipper_fleet(&c, &fleet).await }).await?;
+        return Ok(s.id);
     }
     let (c, _) = ensure_client(&app).await?;
     let daemon = c.daemon_info().await.map_err(err)?;
@@ -226,37 +226,41 @@ pub async fn start_fleet_skipper(app: State<'_, App>, fleet: String) -> Result<S
 /// The project Skippers a takeover of `fleet` would stop, for the confirm:
 /// those of its projects, and of `join` when it joins. Changes nothing.
 #[tauri::command]
-pub async fn fleet_takeover_preview(app: State<'_, App>, fleet: String, join: Option<String>) -> Result<Vec<fleet::Taken>, String> {
+pub async fn fleet_takeover_preview(app: State<'_, App>, fleet: String, join: Option<String>) -> Result<Vec<TakenSkipper>, String> {
     if app.remote() {
-        return Err(NO_FLEETS.into());
+        return crate::connection::data_read(&app, |c| async move { data::fleet_takeover_preview(&c, &fleet, join.as_deref()).await }).await;
     }
     let (c, _) = ensure_client(&app).await?;
-    fleet::preview(&c, &fleet, join.as_deref()).await.map_err(err)
+    let taken = fleet::preview(&c, &fleet, join.as_deref()).await.map_err(err)?;
+    Ok(taken.iter().map(fleet::Taken::to_host).collect())
 }
 
 /// Add to fleet…, Move to fleet… or a drop, on the person's confirm: the
 /// running fleet Skipper of `fleet` takes `join`'s project Skipper over,
-/// then `join` joins the fleet.
+/// then `join` joins the fleet. A remote Host does it there.
 #[tauri::command]
 pub async fn fleet_takeover(app: State<'_, App>, handle: AppHandle, fleet: String, join: String) -> Result<(), String> {
-    if app.remote() {
-        return Err(NO_FLEETS.into());
-    }
-    let (c, _) = ensure_client(&app).await?;
-    let socket = app.selection().socket().to_path_buf();
-    let out = fleet::takeover(&c, &socket, &fleet, Some(&join), true).await.map_err(err);
+    let out = if app.remote() {
+        data_write(&app, |c| async move { data::fleet_takeover(&c, &fleet, &join).await }).await.map(|_| ())
+    } else {
+        let (c, _) = ensure_client(&app).await?;
+        let socket = app.selection().socket().to_path_buf();
+        fleet::takeover(&c, &socket, &fleet, Some(&join), true).await.map(|_| ()).map_err(err)
+    };
     let _ = handle.emit(PROJECTS_CHANGED, ());
-    out.map(|_| ())
+    out
 }
 
 /// Rename fleet…: the fleet, its Skipper's folder, rows, session and mark.
+/// A remote Host does it there.
 #[tauri::command]
 pub async fn rename_fleet(app: State<'_, App>, handle: AppHandle, old: String, new: String) -> Result<(), String> {
-    if app.remote() {
-        return Err(NO_FLEETS.into());
-    }
-    let (c, _) = ensure_client(&app).await?;
-    let out = fleet::rename(&c, &old, new.trim()).await.map_err(err);
+    let out = if app.remote() {
+        data_write(&app, |c| async move { data::fleet_rename(&c, &old, &new).await }).await
+    } else {
+        let (c, _) = ensure_client(&app).await?;
+        fleet::rename(&c, &old, new.trim()).await.map_err(err)
+    };
     let _ = handle.emit(PROJECTS_CHANGED, ());
     out
 }
