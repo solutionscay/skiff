@@ -168,8 +168,9 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 
 /* A project Skipper: the first row of its project block, on the worktree line. The icon sits where a worktree's branch icon does. */
 .tree-project .session-row.project-skipper-row { padding-left: calc(10 * var(--u)); }
-/* A fleet's Skipper: the first row under its fleet head, in line with the project rows' chevrons. */
-.tree-kids > .session-row.project-skipper-row { padding-left: calc(10 * var(--u)); }
+/* A fleet's Skipper: the first row under its fleet head, in line with the project rows' chevrons.
+   A fleet has no color: its Skipper takes the default one, as the Skiff agent's row does. */
+.tree-kids > .session-row.project-skipper-row { padding-left: calc(10 * var(--u)); --pc: var(--project-default); }
 .project-skipper-row .skiff-agent-name { flex-shrink: 0; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
 .project-skipper-row .title { color: var(--text-3); }
 /* Its own watcher, with the Skiff agent row's states: teal while it runs,

@@ -4,7 +4,7 @@ import { isSkiffAgent } from "../app/skiffAgent";
 import { beginDrag, type DropTarget, type RowTarget } from "./drag";
 import { build, type Direction, leaf, neighbor, removePane, replacePane, sessionsOf, shape, splitPane, swapPanes } from "./layout";
 
-import { branchName, bySessionPriority, isUnread, locate, taskTitle } from "./model";
+import { branchName, bySessionPriority, isUnread, locate, scopeFleet, taskTitle } from "./model";
 import type { Group, Layout, Project, SplitDir, Worktree } from "../platform/types";
 import { focusFirstSlot } from "./canvas";
 import { filledOf, isSlot, slot, slotsOf } from "./layoutSlots";
@@ -68,11 +68,11 @@ export function focusPane(id: string, grab = true) {
     S.selectedProject = at.project.name;
     selectedWorktree.set(at.project.name, at.worktree.path);
     noteSelected(at.project.name);
-  } else if (s && !isSkiffAgent(id)) {
+  } else if (s && !isSkiffAgent(id) && scopeFleet(s.skipper) === null) {
     S.selectedProject = OTHER;
   }
-  // The Skiff agent is in no project: the project stays as it was, so the
-  // tree does not fall back to the first project and light it.
+  // The Skiff agent and a fleet Skipper are in no project: the project stays
+  // as it was, so the tree does not fall back to the first project and light it.
   render();
   requestAnimationFrame(() => {
     // A right-click focuses the pane, then opens a menu that keeps the keys.

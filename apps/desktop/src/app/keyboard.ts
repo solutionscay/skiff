@@ -13,7 +13,7 @@ import { launchMenu } from "./panels";
 import { closeEntries } from "../workspace/projectClose";
 import { renameListItem } from "../workspace/rename";
 import { clearSelection, extendSelection, keepRow, splitSelection } from "../workspace/selection";
-import { collapsed, S, selectedWorktree } from "./state";
+import { collapsed, S, selectedWorktree, sessions } from "./state";
 
 import { panes } from "../terminal/terminalState";
 import { revealSession, selectProject, showGroup } from "../workspace/view";
@@ -22,7 +22,8 @@ import { rowActs } from "../workspace/rowActs";
 import { worktreeLines } from "../workspace/sidebarLines";
 import { ledgerKey } from "../workspace/ledger";
 import { animateFold } from "../ui/fold";
-import { isOpen, projectKey as projectRowKey, toggleRow, visibleProjects } from "../workspace/tree";
+import { fleetKey, isOpen, projectKey as projectRowKey, toggleRow, visibleProjects } from "../workspace/tree";
+import { scopeFleet } from "../workspace/model";
 
 /** Ctrl+Shift+1..9 picks a project row the tree shows (Command+Shift+1..9 on macOS). Not in the keymap: it is a range, not one key. */
 function projectKey(e: KeyboardEvent): number | null {
@@ -255,8 +256,11 @@ export function toProject() {
   S.groupPicked = null;
   // The Skiff agent has no project: its row stays the current one.
   if (isSkiffAgent(S.focused) && currentRow()?.dataset.session === S.focused) return;
+  // A fleet Skipper has no project: the keys go to its fleet's row.
+  const fleet = scopeFleet(S.focused ? sessions.get(S.focused)?.skipper : null);
   const name = S.selectedProject;
-  const row = listItems().find((el) => el.dataset.key === (name ? projectRowKey(name) : ""));
+  const key = fleet !== null ? fleetKey(fleet) : name ? projectRowKey(name) : "";
+  const row = listItems().find((el) => el.dataset.key === key);
   if (!row) return;
   render();
   landOn(listItems().find((el) => el.dataset.key === row.dataset.key) ?? row);
