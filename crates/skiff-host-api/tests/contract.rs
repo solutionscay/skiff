@@ -599,6 +599,10 @@ fn m6_ledger_and_skipper_are_read_only_families_of_their_own() {
         let message: Message = serde_json::from_value(value.clone()).unwrap();
         assert_eq!(serde_json::to_value(&message).unwrap(), *value);
     }
+    // A row names its work's bucket; a row from a Host that predates it
+    // still reads, with none.
+    let Response::Ledger { rows } = serde_json::from_value(fixture["replies"][0]["result"]["Ok"].clone()).unwrap() else { panic!("ledger rows") };
+    assert_eq!(rows.iter().map(|r| r.bucket.as_str()).collect::<Vec<_>>(), ["open", ""]);
     // Neither family is granted by another, nor by files: a result is read
     // by its row, never as a worktree file.
     for other in [Capability::projects(), Capability::project_config(), Capability::files(), Capability::project_assets()] {
