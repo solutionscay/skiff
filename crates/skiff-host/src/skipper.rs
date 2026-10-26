@@ -1,6 +1,7 @@
 //! Skipper and the agents on this Host, through the data plane (M6, #166 R7
 //! and R8): settings changes and the folder change (`skipper_config@1`),
-//! Skipper's session and its watcher (`skipper_run@1`), and the `[agents]`
+//! Skipper's session and its watcher (`skipper_run@1`), fleet Skippers and
+//! their takeover (`skipper_run@2`), and the `[agents]`
 //! table (`agent_config@1`). The same `skiff-client` code the app runs on
 //! its own desktop does the work, against this Host's config and skiffd.
 //!
@@ -9,7 +10,7 @@
 //! stops or replaces a watcher; the lock beside the socket keeps it to one.
 use std::{path::PathBuf, time::Duration};
 
-use skiff_client::{agent_folder, host::project_agent, skipper, Client};
+use skiff_client::{agent_folder, fleet, host::project_agent, skipper, Client};
 use skiff_core::{
     config,
     session::{SessionInfo, SessionState},
@@ -87,6 +88,32 @@ pub async fn answer(request: Request) -> Result<Response, Error> {
             let s = c.list_sessions().await.map_err(failed)?.into_iter().find(|s| s.id == id);
             let s = s.ok_or_else(|| Error::OperationFailed { message: format!("session {id} is gone") })?;
             Ok(Response::Session { session: Box::new(skiff_client::host::project_session(s)?) })
+        }
+        Request::SkipperFleet { fleet } => {
+            let c = connect().await?;
+            let daemon = c.daemon_info().await.map_err(failed)?;
+            if skipper::too_old_for_fleet(&daemon.version) {
+                return Err(Error::OperationFailed { message: format!("skiffd {} on this Host cannot start a fleet Skipper. Update Skiff on this Host first", daemon.version) });
+            }
+            let id = blocking(move || skipper::start_fleet(&skiff_core::state::socket(), &cli(), &fleet).map_err(failed)).await?;
+            let s = c.list_sessions().await.map_err(failed)?.into_iter().find(|s| s.id == id);
+            let s = s.ok_or_else(|| Error::OperationFailed { message: format!("session {id} is gone") })?;
+            Ok(Response::Session { session: Box::new(skiff_client::host::project_session(s)?) })
+        }
+        Request::FleetTakeoverPreview { fleet, join } => {
+            let c = connect().await?;
+            let taken = fleet::preview(&c, &fleet, join.as_deref()).await.map_err(failed)?;
+            Ok(Response::FleetTakeover { taken: taken.iter().map(fleet::Taken::to_host).collect() })
+        }
+        Request::FleetTakeover { fleet, join } => {
+            let c = connect().await?;
+            let taken = fleet::takeover(&c, &skiff_core::state::socket(), &fleet, Some(&join), true).await.map_err(failed)?;
+            Ok(Response::FleetTakeover { taken: taken.iter().map(fleet::Taken::to_host).collect() })
+        }
+        Request::FleetRename { old, new } => {
+            let c = connect().await?;
+            fleet::rename(&c, &old, new.trim()).await.map_err(refused)?;
+            Ok(Response::Ok)
         }
         Request::AgentConfig => {
             let revision = blocking(|| Ok(config::agents_revision(&config::load().map_err(failed)?.agents))).await?;

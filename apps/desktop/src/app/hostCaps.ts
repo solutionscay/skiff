@@ -24,6 +24,7 @@ type HostCap =
   | "skipper"
   | "skipper_config"
   | "skipper_run"
+  | "skipper_fleets"
   | "agent_config";
 
 /** The major of each capability that this page speaks. */
@@ -47,8 +48,12 @@ const MAJOR: Record<HostCap, number> = {
   skipper: 1,
   skipper_config: 1,
   skipper_run: 1,
+  skipper_fleets: 2,
   agent_config: 1,
 };
+
+/** A capability the page names apart from its wire name: fleet Skippers are `skipper_run@2`. */
+const WIRE: Partial<Record<HostCap, string>> = { skipper_fleets: "skipper_run" };
 
 /** What each capability offers, for the refusal. */
 const OFFERS: Record<HostCap, string> = {
@@ -71,6 +76,7 @@ const OFFERS: Record<HostCap, string> = {
   skipper: "Skiff agent settings",
   skipper_config: "changes to its Skiff agent",
   skipper_run: "a Skiff agent it starts",
+  skipper_fleets: "fleet Skippers",
   agent_config: "changes to its agents",
 };
 
@@ -92,7 +98,7 @@ export function loadHostCaps(): Promise<void> {
 /** The Host offers `cap`. Before the first answer, a surface stays as it is;
  *  the call itself still waits for the answer in `hostInvoke`. */
 export function hostCan(cap: HostCap): boolean {
-  return !caps || caps.has(`${cap}@${MAJOR[cap]}`);
+  return !caps || caps.has(`${WIRE[cap] ?? cap}@${MAJOR[cap]}`);
 }
 
 /** `invoke`, only when the selected Host offers `cap`. Once the

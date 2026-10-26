@@ -18,7 +18,7 @@ use std::{
 use skiff_host_api::{
     AgentEdit, Error, FolderListing, FolderPlaces, Hello, HostBranches, HostAgent, HostChange, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
     HostListing, HostProject, HostSkipper, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response, SkipperEdit, SkipperFolderDone,
-    SkipperFolderMode, SkipperFolderPreview, SkipperOpened, InventorySession,
+    SkipperFolderMode, SkipperFolderPreview, SkipperOpened, InventorySession, TakenSkipper,
 };
 use tokio::net::UnixStream;
 
@@ -504,6 +504,37 @@ pub async fn skipper_project(c: &HostConnection, project: &str) -> Result<Invent
         Response::Session { session } => Ok(*session),
         _ => unreachable!("checked by Request::accepts"),
     }
+}
+
+/// Finds or starts the Host's fleet Skipper of `fleet`, taking the fleet's
+/// project Skippers over. Answers its session.
+pub async fn skipper_fleet(c: &HostConnection, fleet: &str) -> Result<InventorySession, Error> {
+    match c.request(Request::SkipperFleet { fleet: fleet.into() }).await? {
+        Response::Session { session } => Ok(*session),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// The project Skippers a takeover of `fleet` would stop on the Host.
+pub async fn fleet_takeover_preview(c: &HostConnection, fleet: &str, join: Option<&str>) -> Result<Vec<TakenSkipper>, Error> {
+    match c.request(Request::FleetTakeoverPreview { fleet: fleet.into(), join: join.map(Into::into) }).await? {
+        Response::FleetTakeover { taken } => Ok(taken),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// The takeover on the Host: `join` joins `fleet`, whose Skipper takes its
+/// project Skipper over. Answers what it took over.
+pub async fn fleet_takeover(c: &HostConnection, fleet: &str, join: &str) -> Result<Vec<TakenSkipper>, Error> {
+    match c.request(Request::FleetTakeover { fleet: fleet.into(), join: join.into() }).await? {
+        Response::FleetTakeover { taken } => Ok(taken),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// Renames a fleet on the Host, with its Skipper.
+pub async fn fleet_rename(c: &HostConnection, old: &str, new: &str) -> Result<(), Error> {
+    c.request(Request::FleetRename { old: old.into(), new: new.into() }).await.map(|_| ())
 }
 
 /// One change to the Host's `[agents]`, from `revision`. Answers the agents

@@ -38,6 +38,18 @@ pub struct Taken {
     pub handoffs: Vec<String>,
 }
 
+impl Taken {
+    /// As a Host answers it (`skipper_run@2`).
+    pub fn to_host(&self) -> skiff_host_api::TakenSkipper {
+        skiff_host_api::TakenSkipper {
+            project: self.project.clone(),
+            session: self.session.clone(),
+            tasks: self.tasks.iter().map(|t| skiff_host_api::TakenTask { uid: t.uid.clone(), title: t.title.clone() }).collect(),
+            handoffs: self.handoffs.clone(),
+        }
+    }
+}
+
 /// The title a task shows: its `--title`, else its first sentence.
 fn title_of(r: &ledger::Row) -> String {
     if let Some(t) = r.title.as_deref().map(str::trim).filter(|t| !t.is_empty()) {

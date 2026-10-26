@@ -73,3 +73,20 @@ test("the entry follows the Settings switch at the next projects reload, with no
   await p.skiffAgent.loadSkiffAgent();
   assert.ok(!p.labels().includes("Start project Skipper"));
 });
+
+test("fleet Skippers need skipper_run@2: This Mac has it, an older Host does not", async () => {
+  const caps = (list: string[]) => {
+    const invoke = async (cmd: string) => {
+      if (cmd === "host_capabilities") return list;
+      throw new Error(`unexpected ${cmd}`);
+    };
+    return moduleFromSource("../src/app/hostCaps.ts", { "@tauri-apps/api/core": { invoke } }, { Promise, Set, Map, Error, JSON }, "");
+  };
+  const mac = caps([...OLD_HOST, ...LOCAL_ADAPTER]);
+  await mac.loadHostCaps();
+  assert.ok(mac.hostCan("skipper_fleets") && mac.hostCan("skipper_run"));
+  const old = caps([...OLD_HOST, "skipper_run@1"]);
+  await old.loadHostCaps();
+  assert.ok(old.hostCan("skipper_run") && !old.hostCan("skipper_fleets"));
+  await assert.rejects(old.hostInvoke("skipper_fleets", "start_fleet_skipper", { fleet: "Harbor" }), /does not offer fleet Skippers/);
+});

@@ -59,6 +59,7 @@ pub fn capabilities() -> Vec<Capability> {
         Capability::skipper_settings(),
         Capability::skipper_config(),
         Capability::skipper_run(),
+        Capability::skipper_run_fleets(),
         Capability::agent_config(),
         Capability::drops(),
     ]
@@ -300,6 +301,10 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             | Request::SkipperOpen { .. }
             | Request::SkipperWatch { .. }
             | Request::SkipperProject { .. }
+            | Request::SkipperFleet { .. }
+            | Request::FleetTakeoverPreview { .. }
+            | Request::FleetTakeover { .. }
+            | Request::FleetRename { .. }
             | Request::AgentConfig
             | Request::AgentEdit { .. }
     ) {

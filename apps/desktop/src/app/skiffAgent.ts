@@ -198,13 +198,14 @@ function confirmTakeover(title: string, action: string, taken: Taken[]): Promise
   });
 }
 
-/** The shown Host runs fleet Skippers: this computer. */
-export const fleetSkippersHere = () => !isRemote();
+/** The shown Host runs fleet Skippers: this computer, or a Host whose
+ *  skiff-host offers `skipper_run@2`. */
+export const fleetSkippersHere = () => !isRemote() || hostCan("skipper_fleets");
 
 /** Rename fleet…: with fleet Skippers, the Host moves the fleet's Skipper
  *  folder, rows and session too; else the projects take the new name. */
 export function renameFleetOn(old: string, name: string, members: string[]): Promise<void> {
-  if (fleetSkippersHere()) return invoke<void>("rename_fleet", { old, new: name });
+  if (fleetSkippersHere()) return hostInvoke<void>("skipper_fleets", "rename_fleet", { old, new: name });
   return hostInvoke<void>("project_config", "reorder_projects", { order: S.projects.map((x) => x.name), fleets: members.map((p) => [p, name]) });
 }
 
@@ -213,9 +214,9 @@ export async function startFleetSkipper(fleet: string) {
   const s = fleetSkipperOf(fleet);
   if (s) return show(s.id);
   try {
-    const taken = await invoke<Taken[]>("fleet_takeover_preview", { fleet, join: null });
+    const taken = await hostInvoke<Taken[]>("skipper_fleets", "fleet_takeover_preview", { fleet, join: null });
     if (!(await confirmTakeover(`Start the ${fleet} Skipper?`, "Start fleet Skipper", taken))) return;
-    const id = await invoke<string>("start_fleet_skipper", { fleet });
+    const id = await hostInvoke<string>("skipper_fleets", "start_fleet_skipper", { fleet });
     if (id) show(id);
   } catch (e) {
     showError(e);
@@ -230,10 +231,10 @@ export async function startFleetSkipper(fleet: string) {
  */
 export async function joinFleet(project: string, fleet: string): Promise<boolean | null> {
   if (!fleet || !fleetSkippersHere() || !fleetSkipperOf(fleet) || !projectSkipperOf(project)) return false;
-  const taken = await invoke<Taken[]>("fleet_takeover_preview", { fleet, join: project });
+  const taken = await hostInvoke<Taken[]>("skipper_fleets", "fleet_takeover_preview", { fleet, join: project });
   if (!taken.length) return false;
   if (!(await confirmTakeover(`Add ${project} to ${fleet}?`, "Add to fleet", taken))) return null;
-  await invoke("fleet_takeover", { fleet, join: project });
+  await hostInvoke("skipper_fleets", "fleet_takeover", { fleet, join: project });
   return true;
 }
 
