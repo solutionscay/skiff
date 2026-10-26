@@ -159,17 +159,18 @@ let doneTimer = 0;
 /** Pinned first, then the rest; each newest first. */
 export const ordered = () => [...list.filter((i) => i.pinned), ...list.filter((i) => !i.pinned)];
 
-/** Each row's place and section when the drop-down opened. Insert and Pin
- *  do not move a row while it is open; the new order shows on the next open. */
-let held: Map<string, { n: number; pinned: boolean }> | null = null;
-const heldPinned = (i: Image) => held?.get(i.path)?.pinned ?? i.pinned;
+/** Each row's time when the drop-down opened. Insert does not move a row
+ *  while it is open; the new order shows on the next open. Pin and Unpin move
+ *  the row to its section at once. */
+let held: Map<string, number> | null = null;
 
-/** The drop-down's order: as it opened, with a new image first in its section. */
+/** The drop-down's order: pinned first, then the rest, each by the time it had
+ *  when the drop-down opened. A new image has no held time, so it comes first. */
 function libOrder(): Image[] {
   const o = ordered();
   if (!held) return o;
-  const n = (i: Image) => held!.get(i.path)?.n ?? -1;
-  return o.sort((a, b) => Number(heldPinned(b)) - Number(heldPinned(a)) || n(a) - n(b));
+  const at = (i: Image) => held!.get(i.path) ?? i.at;
+  return o.sort((a, b) => Number(b.pinned) - Number(a.pinned) || at(b) - at(a));
 }
 
 /** Lower case with no accents. Each character stays one character, so a match maps back to the text. */
@@ -321,7 +322,7 @@ function draw() {
   if (!o.some((i) => i.path === lit)) lit = o[0]?.path ?? null;
   libCount.textContent = countText(o.length, words);
   lib.classList.toggle("in-list", keysIn === "list");
-  const pins = o.filter(heldPinned).length;
+  const pins = o.filter((i) => i.pinned).length;
   const kids: HTMLElement[] = [];
   if (!o.length) kids.push(h("div", "lib-none", "No images match"));
   o.forEach((i, n) => {
@@ -332,6 +333,10 @@ function draw() {
   seen.disconnect();
   rows.replaceChildren(...kids);
   rows.querySelectorAll<HTMLElement>(".lib-th").forEach((t) => seen.observe(t));
+  if (moving && o.some((i) => i.path === moving!.path && i.pinned === moving!.pinned)) {
+    moving = null;
+    rows.querySelector<HTMLElement>(".lib-row.lit")?.scrollIntoView({ block: "nearest" });
+  }
 }
 
 function light(path: string | null) {
@@ -372,7 +377,15 @@ export async function pinImages(imgs: readonly Image[], on: boolean) {
   await invoke("image_pin", { paths: imgs.map((i) => i.path), on }).catch(showError);
 }
 
-const pin = (i: Image) => pinImages([i], !i.pinned);
+/** A row that Pin or Unpin moves: the next draw that shows it in its new
+ *  section scrolls it into view. The light stays on it. */
+let moving: { path: string; pinned: boolean } | null = null;
+
+function pin(i: Image) {
+  lit = i.path;
+  moving = { path: i.path, pinned: !i.pinned };
+  return pinImages([i], !i.pinned);
+}
 
 export async function deleteImages(imgs: readonly Image[]) {
   await invoke("image_delete", { paths: imgs.map((i) => i.path) }).catch(showError);
@@ -474,7 +487,7 @@ function openAt(at: DOMRect) {
   field.value = "";
   keysIn = "field";
   lit = null;
-  held = new Map(ordered().map((i, n) => [i.path, { n, pinned: i.pinned }]));
+  held = new Map(list.map((i) => [i.path, i.at]));
   const s = S.focused ? sessions.get(S.focused) : undefined;
   lib.style.setProperty("--pc", accent(s ? place(s)?.project : null));
   lib.hidden = false;
@@ -491,6 +504,7 @@ export function closeImages(refocus = true) {
   if (lib.hidden) return;
   lib.hidden = true;
   held = null;
+  moving = null;
   seen.disconnect();
   expanded(false);
   if (refocus) refocusTerminal();
