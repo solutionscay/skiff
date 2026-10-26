@@ -678,20 +678,19 @@ pub struct WatchHolder {
 /// The CLI version this crate builds with: the app's and the CLI's.
 pub const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// The build id of the `skiff` file at `path`: 16 hex digits of a 64-bit
-/// FNV-1a hash over its bytes. Two builds of one version differ by it, as
-/// a dev build and the next one do. Read again only when the file's size
-/// or time changes. `None` when the file cannot be read.
+/// The build id of the program file at `path` (`skiff`, `skiff-host`): 16
+/// hex digits of a 64-bit FNV-1a hash over its bytes. Two builds of one
+/// version differ by it, as a dev build and the next one do. Read again
+/// only when the file's size or time changes. `None` when the file cannot
+/// be read.
 pub fn build_of(path: &Path) -> Option<String> {
     use std::io::Read;
     type Seen = (PathBuf, u64, Option<std::time::SystemTime>, String);
-    static LAST: std::sync::Mutex<Option<Seen>> = std::sync::Mutex::new(None);
+    static SEEN: std::sync::Mutex<Vec<Seen>> = std::sync::Mutex::new(Vec::new());
     let m = std::fs::metadata(path).ok()?;
     let (len, time) = (m.len(), m.modified().ok());
-    if let Some((p, l, t, id)) = LAST.lock().unwrap().as_ref() {
-        if p == path && *l == len && *t == time {
-            return Some(id.clone());
-        }
+    if let Some((_, _, _, id)) = SEEN.lock().unwrap().iter().find(|(p, l, t, _)| p == path && *l == len && *t == time) {
+        return Some(id.clone());
     }
     let mut f = std::fs::File::open(path).ok()?;
     let mut buf = vec![0u8; 1 << 20];
@@ -704,7 +703,9 @@ pub fn build_of(path: &Path) -> Option<String> {
         h = buf[..n].iter().fold(h, |h, &b| (h ^ b as u64).wrapping_mul(0x100000001b3));
     }
     let id = format!("{h:016x}");
-    *LAST.lock().unwrap() = Some((path.to_path_buf(), len, time, id.clone()));
+    let mut seen = SEEN.lock().unwrap();
+    seen.retain(|(p, ..)| p != path);
+    seen.push((path.to_path_buf(), len, time, id.clone()));
     Some(id)
 }
 

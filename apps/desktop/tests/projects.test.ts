@@ -88,13 +88,13 @@ test("this Mac reads its projects and their settings through the data plane, as 
 });
 
 test("this Mac without its service still asks, and the cause shows; nothing else stands in", async () => {
-  const p = page({ remote: false, caps: [], fail: "skiff-host did not start on this computer. Projects and Git need it." });
+  const p = page({ remote: false, caps: [], fail: "The projects service did not start on this computer, so Skiff cannot show the projects. It starts the service again on its own." });
   await p.mod.loadProjects();
   assert.ok(p.calls.includes("list_projects"));
   assert.equal(p.S.projects.length, 0);
-  assert.match(p.S.projectsError, /skiff-host did not start/);
+  assert.match(p.S.projectsError, /projects service did not start/);
   assert.equal(p.S.dataState, "unavailable");
-  assert.match(p.S.dataNote, /skiff-host did not start/);
+  assert.match(p.S.dataNote, /projects service did not start/);
 });
 
 test("review M4 P2: a failed project or capability read on a live data connection is read again by the next check", async () => {
