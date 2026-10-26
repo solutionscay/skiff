@@ -23,26 +23,29 @@
   font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.06em; color: var(--text-3);
 }
 .lib-sec span { font-weight: 400; letter-spacing: 0; font-variant-numeric: tabular-nums; }
-.lib-row { height: var(--row); flex-shrink: 0; display: grid; grid-template-columns: calc(64 * var(--u)) minmax(0, 1fr) auto; align-items: center; border-bottom: 1px solid var(--rule); cursor: default; }
+/* One fixed track: a thumbnail never sets the row's height. The right column has one width, so the buttons never cover the text. */
+.lib-row {
+  height: var(--row); flex-shrink: 0; display: grid; grid-template-columns: calc(64 * var(--u)) minmax(0, 1fr) calc(232 * var(--u)); grid-template-rows: minmax(0, 1fr);
+  overflow: hidden; border-bottom: 1px solid var(--rule); cursor: default;
+}
 .lib-row.lit { background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); }
-.lib-th { height: 100%; padding: calc(4 * var(--u)); display: flex; border-right: 1px solid var(--rule); background: var(--bg-deep); cursor: grab; }
-.lib-th img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.lib-text { min-width: 0; padding: 0 calc(12 * var(--u)); display: flex; flex-direction: column; justify-content: center; line-height: 1.3; }
+.lib-th { position: relative; min-height: 0; overflow: hidden; border-right: 1px solid var(--rule); background: var(--bg-deep); cursor: grab; }
+.lib-th img { position: absolute; inset: calc(4 * var(--u)); width: calc(100% - calc(8 * var(--u))); height: calc(100% - calc(8 * var(--u))); object-fit: cover; display: block; }
+.lib-text { min-width: 0; min-height: 0; overflow: hidden; padding: 0 calc(12 * var(--u)); display: flex; flex-direction: column; justify-content: center; line-height: 1.3; }
 .lib-name { font-size: calc(13px * var(--zoom, 1)); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lib-who { font-size: calc(11px * var(--zoom, 1)); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lib-who.ended { color: var(--text-dim); }
 .lib-proj { margin-right: calc(5 * var(--u)); font-size: calc(9px * var(--zoom, 1)); font-weight: 700; }
 .lib-who.ended .lib-proj { opacity: 0.6; }
-.lib-right { height: 100%; display: flex; justify-content: flex-end; }
+.lib-right { min-height: 0; display: flex; justify-content: flex-end; }
 .lib-time { align-self: center; padding-right: calc(16 * var(--u)); font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); font-variant-numeric: tabular-nums; }
-.lib-act { display: none; height: 100%; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(10 * var(--u)); border: 0; border-left: 1px solid var(--rule); background: transparent; color: var(--text-2); font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
+.lib-act { display: none; flex: 1 1 auto; justify-content: center; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(10 * var(--u)); border: 0; border-left: 1px solid var(--rule); background: transparent; color: var(--text-2); font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
 .lib-row.lit .lib-act { display: flex; }
-.lib-row.lit .lib-time:not(.copied) { display: none; }
+.lib-row.lit .lib-time:not(.copied), .lib-row.copied .lib-act { display: none; }
 .lib-act:hover { background: color-mix(in srgb, var(--text) 14%, transparent); color: var(--text); }
-.lib-act.x { width: calc(64 * var(--u)); justify-content: center; }
+.lib-act.x { flex: 0 0 calc(40 * var(--u)); padding: 0; }
 .lib-act.x:hover { color: var(--error-text); }
-.lib-key { font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
-.lib-foot { height: var(--row); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 calc(16 * var(--u)); margin-top: -1px; border: 0; border-top: 1px solid var(--rule); background: transparent; color: var(--text-2); font-size: calc(13px * var(--zoom, 1)); text-align: left; }
+.lib-foot { height: var(--row); flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(16 * var(--u)); margin-top: -1px; border: 0; border-top: 1px solid var(--rule); background: transparent; color: var(--text-2); font-size: calc(13px * var(--zoom, 1)); text-align: left; }
 .lib-foot:hover { background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); color: var(--text); }
 .lib-ghost {
   position: fixed; z-index: 30; pointer-events: none; display: flex; align-items: center; gap: calc(8 * var(--u));

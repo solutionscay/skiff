@@ -124,7 +124,7 @@ const diskUse = button("lib-foot", "", () => {
   void settings.open("disk");
 });
 diskUse.tabIndex = -1;
-diskUse.append(h("span", "", "Disk use…"), h("span", "lib-key", "D"));
+diskUse.textContent = "Disk use…";
 lib.append(libHead, rows, diskUse);
 document.body.appendChild(lib);
 
@@ -167,17 +167,24 @@ function whoLine(i: Image): HTMLElement {
   return line;
 }
 
-function act(label: string, key: string, run: () => void, cls = ""): HTMLButtonElement {
-  const b = button("lib-act" + cls, "", run);
+function act(label: string, run: () => void, cls = ""): HTMLButtonElement {
+  const b = button("lib-act" + cls, label, run);
   // The row's own click opens the image.
   b.addEventListener("click", (e) => e.stopPropagation());
   b.tabIndex = -1;
-  b.append(label, h("span", "lib-key", key));
   return b;
 }
 
+/** The dropped file's name; "Pasted image" for a paste. An image from
+ *  before the index has no entry: "PNG image", never its cache hash. */
+function shownName(i: Image): string {
+  if (i.name) return i.name;
+  if (i.session) return "Pasted image";
+  return `${(i.file.split(".").pop() ?? "").toUpperCase()} image`.trim();
+}
+
 function row(i: Image): HTMLElement {
-  const r = h("div", "lib-row" + (i.path === lit ? " lit" : ""));
+  const r = h("div", "lib-row" + (i.path === lit ? " lit" : "") + (i.path === copied ? " copied" : ""));
   r.setAttribute("role", "menuitem");
   r.dataset.path = i.path;
   const th = h("span", "lib-th");
@@ -185,16 +192,16 @@ function row(i: Image): HTMLElement {
   seen.observe(th);
   th.addEventListener("pointerdown", (e) => startDrag(e, i, th));
   const text = h("span", "lib-text");
-  text.append(h("span", "lib-name", i.name ?? (i.session ? "Pasted image" : i.file)));
+  text.append(h("span", "lib-name", shownName(i)));
   if (i.session) text.append(whoLine(i));
   const right = h("span", "lib-right");
-  const x = act("×", "Del", () => void remove(i), " x");
+  const x = act("×", () => void remove(i), " x");
   x.setAttribute("aria-label", "Delete");
   right.append(
     h("span", "lib-time" + (i.path === copied ? " copied" : ""), i.path === copied ? "Copied" : when(i.at)),
-    act("Type", "T", () => void typeImage(i)),
-    act(i.pinned ? "Unpin" : "Pin", "P", () => void pin(i)),
-    act("Copy path", "C", () => void copyPath(i)),
+    act("Type", () => void typeImage(i)),
+    act(i.pinned ? "Unpin" : "Pin", () => void pin(i)),
+    act("Copy path", () => void copyPath(i)),
     x,
   );
   r.append(th, text, right);
@@ -378,7 +385,7 @@ function startDrag(e: PointerEvent, i: Image, th: HTMLElement) {
       ghost = h("div", "lib-ghost");
       const mini = h("span", "head-mini");
       if (url) mini.append(Object.assign(h("img"), { src: url, alt: "" }));
-      ghost.append(mini, i.name ?? (i.session ? "Pasted image" : i.file));
+      ghost.append(mini, shownName(i));
       document.body.appendChild(ghost);
     }
     ghost.style.left = `${m.clientX + 12}px`;

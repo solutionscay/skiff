@@ -222,6 +222,29 @@ pub struct Image {
 /// One writer of `images.json` at a time in this process.
 static INDEX_LOCK: Mutex<()> = Mutex::new(());
 
+/// The file whose lock keeps writers in other processes (a second app, a
+/// dev build) from writing over each other's entries.
+const LOCK_FILE: &str = ".images.lock";
+
+/// Holds both locks while an index change reads and writes the file.
+struct Locked {
+    _file: Option<std::fs::File>,
+    _here: std::sync::MutexGuard<'static, ()>,
+}
+
+/// `images.json` or its lock file: the library's own files, not images.
+pub fn is_index_file(p: &Path) -> bool {
+    p.file_name().is_some_and(|n| n == INDEX || n == LOCK_FILE)
+}
+
+fn lock(dir: &Path) -> Locked {
+    let here = INDEX_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let file = std::fs::File::options().create(true).truncate(false).write(true).open(dir.join(LOCK_FILE)).ok();
+    // Without the lock file the change still runs, as before.
+    let file = file.filter(|f| f.lock().is_ok());
+    Locked { _file: file, _here: here }
+}
+
 /// A cache image's file name: no index, no temp file.
 fn is_image_name(name: &str) -> bool {
     const EXTS: [&str; 9] = ["png", "jpg", "gif", "webp", "bmp", "tif", "avif", "heic", "svg"];
@@ -281,7 +304,7 @@ pub fn list(dir: &Path) -> Vec<Image> {
 /// name; `None` keeps the one it has.
 pub fn record(dir: &Path, file: &Path, name: Option<&str>, who: Option<&Who>) -> Result<()> {
     let key = name_in(dir, file)?;
-    let _lock = INDEX_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = lock(dir);
     let mut index = read_index(dir);
     let i = index.iter().position(|e| e.file == key).unwrap_or_else(|| {
         index.push(Entry { file: key.clone(), ..Default::default() });
@@ -306,7 +329,7 @@ pub fn record(dir: &Path, file: &Path, name: Option<&str>, who: Option<&Who>) ->
 /// Pins or unpins `file`. A flush never removes a pinned image.
 pub fn pin(dir: &Path, file: &Path, on: bool) -> Result<()> {
     let key = name_in(dir, file)?;
-    let _lock = INDEX_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = lock(dir);
     let mut index = read_index(dir);
     match index.iter_mut().find(|e| e.file == key) {
         Some(e) => e.pinned = on,
@@ -321,7 +344,7 @@ pub fn pin(dir: &Path, file: &Path, on: bool) -> Result<()> {
 /// Deletes `file` and its entry, pinned or not.
 pub fn delete(dir: &Path, file: &Path) -> Result<()> {
     let key = name_in(dir, file)?;
-    let _lock = INDEX_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = lock(dir);
     match std::fs::remove_file(file) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e).with_context(|| format!("delete {}", file.display())),
         _ => {}
@@ -333,7 +356,7 @@ pub fn delete(dir: &Path, file: &Path) -> Result<()> {
 /// The cache paths a flush keeps: the pinned images and the index.
 pub fn kept(dir: &Path) -> HashSet<PathBuf> {
     let root = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
-    read_index(dir).into_iter().filter(|e| e.pinned).map(|e| root.join(e.file)).chain([root.join(INDEX)]).collect()
+    read_index(dir).into_iter().filter(|e| e.pinned).map(|e| root.join(e.file)).chain([root.join(INDEX), root.join(LOCK_FILE)]).collect()
 }
 
 /// The flags for the agent's start line, as argv words. See [`tasks::cache_flags`].
