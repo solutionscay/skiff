@@ -357,7 +357,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "600ca43aec88d032fec5c481cb5a55c1077999a9bd4ec4281a3950b0365c9e39"
+    "sha256": "29440972c2f4d182f1480e7677381c1e360a9656441bf1ab93f85382dba89e5a"
   },
   "apps/desktop/src/app/render.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -403,7 +403,7 @@
     "reasons": [
       "local provider: apps/desktop/src/app/skiffAgent.ts"
     ],
-    "sha256": "8046f1da45ac2d2e626cc5fc452712de7085a0069476a22e32e5095b984327de"
+    "sha256": "58eab62641019788a7a4be9bf3aa1c7b57a5b19b017d269588e7bdc8142632ef"
   },
   "apps/desktop/src/app/stateQueries.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -491,7 +491,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "fa5c81c232b02e0293f6388ec7c2851bd485644c7a98ed184ca6e06d9f124a8f"
+    "sha256": "8d3ea271c13e9069764438e34ce03981d2e59a0d97e1e25083ea0ecec12d57cf"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6; Show in file manager only on This Mac (#166)",
@@ -515,7 +515,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "478e24d89fb971a8b2e036de5803bb85d48b564b2a5a598845406d3a9bab326c"
+    "sha256": "876a8111388226b8faf92100dca4822667a3a0cf9d4e9710bdab04fdba93c85e"
   },
   "apps/desktop/src/appearance/themes.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6",
@@ -523,7 +523,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "4a40bf02ed7c0192b6531023f7cf7b896712cd9e39307ad8dc7e58feb831c392"
+    "sha256": "31bc094db7fd982a828b5808b837ee66c755345a54576dcd83f0a648fc8bf877"
   },
   "apps/desktop/src/diagnostics/latency.ts": {
     "ownership": "client policy: exact existing adapter only",
