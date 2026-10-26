@@ -80,8 +80,12 @@ pub fn run() {
             if let Some(local) = app.state::<App>().selection().process_control() {
                 std::thread::spawn(move || cli_path::sync(&local));
             }
-            // This computer's image cache: the age from Disk use.
-            std::thread::spawn(disk::auto_flush);
+            // This computer's agent folder and its image cache, Skipper on
+            // or off, then the cache's age from Disk use.
+            std::thread::spawn(|| {
+                skiff_agent::make_folder();
+                disk::auto_flush();
+            });
             // This Mac's Skipper skill: not for a remote Host. The ledger
             // watcher asks whichever Host is selected.
             let handle = app.handle().clone();

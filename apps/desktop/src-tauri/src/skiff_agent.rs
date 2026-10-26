@@ -21,6 +21,15 @@ use crate::{
 };
 use skiff_client::host::local::ProcessControl;
 
+/// Runs at app start, off the main thread: makes this computer's agent
+/// folder when it is missing, with Skipper on or off. A remote Host's
+/// `skiff-host` makes its own.
+pub(crate) fn make_folder() {
+    if let Err(e) = config::load().and_then(|cfg| skipper::make_folder(&cfg)) {
+        eprintln!("skiff agent folder: {e:#}");
+    }
+}
+
 /// Runs off the main thread at app start, and again on a switch to this Mac.
 /// Never prompts. Copies the built-in `skiff-cli` skill out when it changed:
 /// this Mac's Skipper setup, so only while this Mac is the shown Host, and

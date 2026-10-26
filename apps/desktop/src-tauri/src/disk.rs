@@ -3,8 +3,6 @@
 //! This computer only, also while the window shows a remote Host: a Host's
 //! own disk use needs a Host op (v2 follow-up).
 
-use std::path::PathBuf;
-
 use serde::Serialize;
 use skiff_client::{
     disk::{self, Removed},
@@ -36,18 +34,12 @@ async fn sessions(app: &App) -> Option<Vec<SessionInfo>> {
     skiff_client::host::local::legacy_inventory(&c).await.ok()
 }
 
-/// The folder and its cache, or the `/tmp` cache alone when no agent folder is usable.
+/// The folder and its cache. Makes the folder when it is missing.
 fn count(sessions: Option<Vec<SessionInfo>>) -> anyhow::Result<Usage> {
     let cfg = config::load()?;
-    let cache = skipper::cache_dir(&cfg);
+    let folder = skipper::make_folder(&cfg)?;
     let cache_days = cfg.skiff_agent.cache_days();
-    let usage = match skipper::folder(&cfg) {
-        Ok(folder) => {
-            let file = ledger::path()?;
-            disk::usage(&folder, &cache, Some(&file), sessions.as_deref(), &skiff_core::state::socket())
-        }
-        Err(_) => disk::usage(&cache, &cache, None, None, &skiff_core::state::socket()),
-    };
+    let usage = disk::usage(&folder, &folder.join("cache"), &ledger::path()?, sessions.as_deref(), &skiff_core::state::socket());
     let home = skipper::home().ok();
     let shown = match home.as_deref().and_then(|h| usage.folder.strip_prefix(h).ok()) {
         Some(rel) if rel.as_os_str().is_empty() => "~".to_string(),
@@ -78,7 +70,7 @@ pub async fn set_cache_days(days: u32) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn flush_cache(handle: AppHandle) -> Result<Removed, String> {
-    let out = blocking(|| Ok(disk::flush_cache(&skipper::cache_dir(&config::load()?)))).await;
+    let out = blocking(|| Ok(disk::flush_cache(&skipper::cache_dir(&config::load()?)?))).await;
     let _ = handle.emit(crate::drops::IMAGES_CHANGED, ());
     out
 }
@@ -110,7 +102,7 @@ pub fn auto_flush() {
     if days == 0 {
         return;
     }
-    let cache: PathBuf = skipper::cache_dir(&cfg);
+    let Ok(cache) = skipper::cache_dir(&cfg) else { return };
     let out = disk::flush_old(&cache, days);
     eprintln!("auto flush: removed {} files, {} from {}", out.files, skiff_client::agent_folder::size(out.bytes), cache.display());
 }

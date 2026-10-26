@@ -93,6 +93,10 @@ export function fillThumb(box: HTMLElement, path: string, size = 160) {
   });
 }
 
+/** Why the library did not load, as one line. Null when it loaded. */
+let loadError: string | null = null;
+export const imagesError = () => loadError;
+
 export const imageCount = () => list.length;
 export const newestImage = (): string | null => list[0]?.path ?? null;
 export const allImages = (): readonly Image[] => list;
@@ -104,9 +108,10 @@ export const onImagesChanged = (f: () => void) => watchers.add(f);
 async function load() {
   try {
     list = await invoke<Image[]>("images");
+    loadError = null;
   } catch (e) {
     list = [];
-    console.warn("images:", e);
+    loadError = String(e);
   }
   const live = new Set(list.map((i) => i.path));
   for (const k of thumbs.keys()) if (!live.has(k.slice(k.indexOf(" ") + 1))) thumbs.delete(k);

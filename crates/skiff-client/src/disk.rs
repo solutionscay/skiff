@@ -42,8 +42,6 @@ pub struct Skipper {
 #[derive(Serialize, Debug, Default)]
 pub struct Usage {
     pub folder: PathBuf,
-    /// The folder is the `/tmp` cache: no agent folder is usable.
-    pub fallback: bool,
     /// The images in the cache, pinned ones included.
     pub cache: Line,
     /// The pinned images: no flush removes them.
@@ -220,12 +218,11 @@ fn named(file: &Path, sessions: Option<&[SessionInfo]>, socket: &Path, folder: &
     Ok(out)
 }
 
-/// Counts `folder`. `ledger`: the ledger file, `None` for the `/tmp` cache.
-/// `cache`: the cache folder from [`crate::skipper::cache_dir`].
-pub fn usage(folder: &Path, cache: &Path, ledger: Option<&Path>, sessions: Option<&[SessionInfo]>, socket: &Path) -> Usage {
+/// Counts `folder`. `ledger`: the ledger file. `cache`: the cache folder
+/// from [`crate::skipper::cache_dir`].
+pub fn usage(folder: &Path, cache: &Path, ledger: &Path, sessions: Option<&[SessionInfo]>, socket: &Path) -> Usage {
     let mut u = Usage {
         folder: folder.to_path_buf(),
-        fallback: ledger.is_none(),
         daemon: sessions.is_some(),
         ..Default::default()
     };
@@ -237,10 +234,9 @@ pub fn usage(folder: &Path, cache: &Path, ledger: Option<&Path>, sessions: Optio
     let cache = cache.canonicalize().unwrap_or_else(|_| cache.to_path_buf());
     let results = roots(&root);
     let dirs: Vec<PathBuf> = results.iter().map(|r| r.2.clone()).collect();
-    let n = match ledger.map(|l| named(l, sessions, socket, &root, &dirs)) {
-        None => Some(Named::default()),
-        Some(Ok(n)) => Some(n),
-        Some(Err(e)) => {
+    let n = match named(ledger, sessions, socket, &root, &dirs) {
+        Ok(n) => Some(n),
+        Err(e) => {
             u.ledger_error = Some(format!("{e:#}"));
             None
         }
@@ -416,7 +412,7 @@ mod tests {
     #[test]
     fn closed_work_names_what_goes_and_unnamed_files_stay() {
         let dir = folder("count");
-        let u = usage(&dir, &dir.join("cache"), Some(&dir.join("ledger.db")), Some(&[]), Path::new("/nowhere"));
+        let u = usage(&dir, &dir.join("cache"), &dir.join("ledger.db"), Some(&[]), Path::new("/nowhere"));
         assert_eq!(u.cache, Line { files: 2, bytes: 6 });
         assert_eq!(u.pinned, Line::default());
         // plan, step, lone, open, shared, web.
@@ -434,7 +430,7 @@ mod tests {
         let shown = u.removable.clone();
         let db = Connection::open(dir.join("ledger.db")).unwrap();
         db.execute("UPDATE tasks SET closed_at = NULL WHERE uid = 'c0ffee01'", []).unwrap();
-        let fresh = usage(&dir, &dir.join("cache"), Some(&dir.join("ledger.db")), Some(&[]), Path::new("/nowhere"));
+        let fresh = usage(&dir, &dir.join("cache"), &dir.join("ledger.db"), Some(&[]), Path::new("/nowhere"));
         let out = flush_done(&shown, &fresh);
         assert_eq!(out.files, 5);
         assert!(!dir.join("results/2026-10-01-a1b2c3d4-plan").exists());
@@ -452,12 +448,12 @@ mod tests {
         let dir = folder("nodaemon");
         let db = Connection::open(dir.join("ledger.db")).unwrap();
         db.execute("UPDATE tasks SET state = 'sent' WHERE uid = 'e5f6a7b8'", []).unwrap();
-        let u = usage(&dir, &dir.join("cache"), Some(&dir.join("ledger.db")), None, Path::new("/nowhere"));
+        let u = usage(&dir, &dir.join("cache"), &dir.join("ledger.db"), None, Path::new("/nowhere"));
         assert!(!u.daemon);
         // The plan has a sent task that cannot be checked: lone and web only.
         assert_eq!((u.closed.files, u.plans), (2, 0));
         crate::cache::pin(&dir.join("cache"), &dir.join("cache/0123456789abcdef.png"), true).unwrap();
-        let u = usage(&dir, &dir.join("cache"), Some(&dir.join("ledger.db")), None, Path::new("/nowhere"));
+        let u = usage(&dir, &dir.join("cache"), &dir.join("ledger.db"), None, Path::new("/nowhere"));
         assert_eq!((u.cache.files, u.pinned.files), (2, 1));
         assert!(!u.removable.iter().any(|p| p.ends_with(".png") || p.ends_with(crate::cache::INDEX)));
         assert_eq!(flush_cache(&dir.join("cache")), Removed { files: 1, bytes: 3 });

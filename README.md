@@ -32,8 +32,12 @@ Skiff does not edit files. Each worktree lists its changed files and its file tr
 
 Sessions run in `skiffd`, a daemon that owns every PTY. You can close the window and the agents keep running. When the window opens again, each terminal shows its last screen.
 
-The Skiff agent is an optional coordinator: one agent session in its own folder,
-`~/skiff-agent`, turned on in Settings › Skiff agent. It sends tasks to sessions in your
+Skiff makes its agent folder, `~/skiff-agent`, when the app starts. The folder holds the
+image cache in `cache/`, so dropped and pasted images work with the Skiff agent off. If
+Skiff cannot make the folder, the Images and Disk use features say so in one line.
+
+The Skiff agent is an optional coordinator: one agent session in that folder, turned on
+in Settings › Skiff agent. Turning it on adds its files to the folder. It sends tasks to sessions in your
 projects and records them in a SQLite ledger (`skiff ledger`). `skiff watch` tells it when
 a task's pane ends a turn, exits or restarts. `skiff skipper` attaches to it from any
 terminal, an SSH login included, and starts it first when it does not run. Ctrl-\

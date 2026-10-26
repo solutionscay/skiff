@@ -78,17 +78,16 @@ const UIDS: &str = "CREATE TABLE IF NOT EXISTS uids (uid TEXT PRIMARY KEY);";
 /// UTC, to the second, set by SQLite.
 const NOW: &str = "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')";
 
-/// Opens the ledger, making it on first use.
+/// Opens the ledger, making it on first use. The agent's folder is made
+/// first when it is missing, as the app makes it at start.
 fn open() -> Result<Connection> {
+    if std::env::var_os("SKIFF_LEDGER").is_none() {
+        skiff_client::skipper::make_folder(&skiff_core::config::load()?)?;
+    }
     open_at(&path()?)
 }
 
 fn open_at(file: &Path) -> Result<Connection> {
-    if let Some(dir) = file.parent() {
-        if !dir.is_dir() {
-            bail!("{} does not exist. Turn on the Skiff agent in Settings first", dir.display());
-        }
-    }
     let mut db = connect(file)?;
     if outdated(&db)? {
         drop(db);

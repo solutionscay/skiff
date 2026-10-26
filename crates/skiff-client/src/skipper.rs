@@ -172,28 +172,52 @@ pub fn folder(cfg: &Config) -> Result<PathBuf> {
     Ok(dir)
 }
 
-/// The image cache: `cache/` in the agent's [`folder`]. With no usable
-/// folder, `/tmp/skiff-drops`, or `/tmp/skiff-drops-<uid>` when another
-/// user owns that one. A folder that does not exist yet is not usable: a
-/// drop must not make `~/skiff-agent` before the Skiff agent is set up.
-/// Makes nothing. Every reader of the cache path calls this.
-pub fn cache_dir(cfg: &Config) -> PathBuf {
-    match folder(cfg) {
-        Ok(dir) if dir.is_dir() => dir.join("cache"),
-        _ => fallback_cache(),
-    }
+/// The image cache: `cache/` in the agent's [`folder`]. Makes nothing:
+/// [`make_folder`] makes it. Every reader of the cache path calls this.
+pub fn cache_dir(cfg: &Config) -> Result<PathBuf> {
+    Ok(folder(cfg)?.join("cache"))
 }
 
-/// The cache with no agent folder. See [`cache_dir`].
-pub fn fallback_cache() -> PathBuf {
-    use std::os::unix::fs::MetadataExt;
-    let shared = PathBuf::from("/tmp/skiff-drops");
-    // SAFETY: getuid has no preconditions.
-    let uid = unsafe { libc::getuid() };
-    match std::fs::symlink_metadata(&shared) {
-        Ok(m) if m.uid() != uid || !m.is_dir() => PathBuf::from(format!("/tmp/skiff-drops-{uid}")),
-        _ => shared,
+/// What the image and Disk use features say when [`make_folder`] fails.
+pub fn no_folder(dir: &Path) -> String {
+    format!("Skiff cannot make the folder {}.", dir.display())
+}
+
+/// Makes the agent's [`folder`] when it is missing, with the marker and
+/// `cache/` (mode 0700). The app runs it at start, with Skipper on or off,
+/// and each feature that writes in the folder runs it first. Writes no
+/// Skipper file: [`setup`] adds those later. A folder that holds other
+/// files is refused, as [`setup`] refuses it. Every failure is the one line
+/// of [`no_folder`]; the log keeps the cause. Returns the folder.
+pub fn make_folder(cfg: &Config) -> Result<PathBuf> {
+    use std::os::unix::fs::DirBuilderExt;
+    let dir = match folder(cfg) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("skiff: {e:#}");
+            bail!(no_folder(&configured(cfg)?));
+        }
+    };
+    let cache = dir.join("cache");
+    if dir.join(MARKER).is_file() && cache.is_dir() {
+        return Ok(dir);
     }
+    if dir.is_dir() && !dir.join(MARKER).exists() && std::fs::read_dir(&dir).is_ok_and(|mut r| r.next().is_some()) {
+        eprintln!("skiff: {} holds other files", dir.display());
+        bail!(no_folder(&dir));
+    }
+    let made = std::fs::create_dir_all(&dir)
+        .and_then(|_| std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&cache))
+        .and_then(|_| match std::fs::OpenOptions::new().write(true).create_new(true).open(dir.join(MARKER)) {
+            Ok(mut f) => std::io::Write::write_all(&mut f, b"1\n"),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+            Err(e) => Err(e),
+        });
+    if let Err(e) = made {
+        eprintln!("skiff: make {}: {e}", dir.display());
+        bail!(no_folder(&dir));
+    }
+    Ok(dir)
 }
 
 /// The folder projects.toml names, refused or not: the override, else
@@ -364,8 +388,9 @@ pub fn ensure(cfg: &Config) -> Result<PathBuf> {
 }
 
 /// Writes the parts of the template that `dir` does not have yet. The folder
-/// must be new, empty, or one this setup made before (it has the marker), so
-/// setup never mixes the agent's files with other files. A second run keeps
+/// must be new, empty, or a Skiff folder (it has the marker: the app makes
+/// one at start, or this setup made it before), so setup never mixes the
+/// agent's files with other files. A second run keeps
 /// the user's edits and puts back what is missing. Nothing is written outside
 /// the folder and the skill's copy. A lock beside `projects.toml` keeps two
 /// setups at once (the app and the CLI) apart.
@@ -376,6 +401,7 @@ pub fn ensure(cfg: &Config) -> Result<PathBuf> {
 /// .claude                      a link to .agents, for Claude's skills
 /// .agents/skills/skiff-cli     a link to the copy of the skill
 /// results/                     long child reports
+/// cache/                       the image cache, mode 0700
 /// ```
 pub fn setup(dir: &Path, name: &str) -> Result<PathBuf> {
     let _lock = lock()?;
@@ -404,6 +430,10 @@ pub(crate) fn setup_in(dir: &Path, name: &str, skill: &Path) -> Result<PathBuf> 
         }
     }
     std::fs::create_dir_all(dir.join("results")).context("create results")?;
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir.join("cache")).context("create cache")?;
+    }
     let skills = dir.join(".agents").join("skills");
     std::fs::create_dir_all(&skills).context("create .agents/skills")?;
     if missing(&skills.join("skiff-cli")) {
@@ -1188,7 +1218,7 @@ pub fn detach(cmd: &mut std::process::Command) {
 /// and the folder; changes nothing. The Host serves it (`skipper@1`).
 pub fn settings(cfg: &Config) -> Result<skiff_host_api::HostSkipper> {
     use crate::agent_folder::{self, Kind};
-    let (folder, folder_error) = match folder(cfg) {
+    let (folder, mut folder_error) = match folder(cfg) {
         Ok(f) => (Some(f.display().to_string()), None),
         Err(e) => (None, Some(format!("{e:#}"))),
     };
@@ -1196,7 +1226,10 @@ pub fn settings(cfg: &Config) -> Result<skiff_host_api::HostSkipper> {
     let folder_status = match (&folder, agent_folder::kind(&configured)) {
         (None, _) => "refused",
         (_, Ok(Kind::Skiff)) => "ready",
-        (_, Ok(Kind::New | Kind::Empty)) => "new",
+        (_, Ok(Kind::New | Kind::Empty)) => {
+            folder_error = Some(no_folder(&configured));
+            "missing"
+        }
         _ => "other",
     };
     let a = &cfg.skiff_agent;

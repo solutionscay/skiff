@@ -34,8 +34,8 @@ export interface SkiffAgentSettings {
   folder_error: string | null;
   /** The folder projects.toml names, refused or not. */
   configured: string;
-  /** ready: a Skiff folder. new: setup makes it at On. other: it holds other files. */
-  folder_status: "ready" | "new" | "other" | "refused";
+  /** ready: a Skiff folder. missing: Skiff could not make it. other: it holds other files. */
+  folder_status: "ready" | "missing" | "other" | "refused";
   continue_on_restore: boolean;
   /** The project menu offers Start project Skipper. */
   project_skippers: boolean;

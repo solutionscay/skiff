@@ -187,7 +187,7 @@ async fn read_clip(handle: &AppHandle) -> Result<Clip, String> {
 pub(crate) async fn images() -> Result<Vec<cache::Image>, String> {
     blocking(|| {
         let cfg = skiff_core::config::load().unwrap_or_default();
-        Ok(cache::list(&cache::dir(&cfg)))
+        Ok(cache::list(&cache::ensure(&cfg)?))
     })
     .await
 }
@@ -246,7 +246,7 @@ pub(crate) async fn image_delete(handle: AppHandle, paths: Vec<PathBuf>) -> Resu
 #[tauri::command]
 pub(crate) async fn image_thumb(path: PathBuf) -> Result<tauri::ipc::Response, String> {
     let cfg = skiff_core::config::load().unwrap_or_default();
-    let dir = cache::dir(&cfg).canonicalize().map_err(|e| e.to_string())?;
+    let dir = cache::dir(&cfg).map_err(|e| format!("{e:#}"))?.canonicalize().map_err(|e| e.to_string())?;
     let file = path.canonicalize().map_err(|e| format!("read {}: {e}", path.display()))?;
     if file.parent() != Some(dir.as_path()) {
         return Err(format!("{} is not in the Images folder", path.display()));

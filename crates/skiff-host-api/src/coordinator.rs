@@ -102,7 +102,7 @@ pub struct HostSkipper {
     pub folder_error: Option<String>,
     /// The folder the Host's config names, refused or not.
     pub configured: String,
-    /// `ready`, `new`, `other` or `refused`.
+    /// `ready`, `missing` (the Host could not make it), `other` or `refused`.
     pub folder_status: String,
     pub continue_on_restore: bool,
     /// The project menu offers Start project Skipper.

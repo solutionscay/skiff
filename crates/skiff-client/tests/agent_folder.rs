@@ -340,3 +340,70 @@ fn start_empty_sets_up_a_new_ledger() {
     assert_eq!(skipper::ensure(&cfg()).unwrap(), to);
     done(&home);
 }
+
+#[test]
+fn the_folder_is_made_without_skipper_files() {
+    let _t = TURN.lock().unwrap_or_else(|e| e.into_inner());
+    let home = world("made");
+    let dir = skipper::make_folder(&cfg()).unwrap();
+    assert_eq!(dir, home.join("skiff-agent"));
+    assert!(dir.join(".skiff-agent").is_file() && dir.join("cache").is_dir());
+    use std::os::unix::fs::PermissionsExt;
+    assert_eq!(std::fs::metadata(dir.join("cache")).unwrap().permissions().mode() & 0o777, 0o700);
+    for f in ["AGENTS.md", "CLAUDE.md", "GEMINI.md", ".claude", ".agents", "results"] {
+        assert!(dir.join(f).symlink_metadata().is_err(), "{f}");
+    }
+    assert_eq!(skipper::cache_dir(&cfg()).unwrap(), dir.join("cache"));
+    assert_eq!(skiff_client::cache::ensure(&cfg()).unwrap(), dir.join("cache"));
+    // A second start changes nothing.
+    let before = snapshot(&dir);
+    skipper::make_folder(&cfg()).unwrap();
+    assert!(differ(&snapshot(&dir), &before).is_empty());
+    done(&home);
+}
+
+#[test]
+fn the_override_is_made_in_place_of_the_default() {
+    let _t = TURN.lock().unwrap_or_else(|e| e.into_inner());
+    let home = world("override");
+    let to = home.join("agents/mine");
+    config::set_skiff_agent(config::SkiffAgentKey::Folder(Some(&to))).unwrap();
+    assert_eq!(skipper::make_folder(&cfg()).unwrap(), to);
+    assert!(to.join("cache").is_dir() && to.join(".skiff-agent").is_file());
+    assert_eq!(skipper::cache_dir(&cfg()).unwrap(), to.join("cache"));
+    assert!(!home.join("skiff-agent").exists());
+    done(&home);
+}
+
+#[test]
+fn skipper_setup_fills_the_folder_the_app_made() {
+    let _t = TURN.lock().unwrap_or_else(|e| e.into_inner());
+    let home = world("setup-made");
+    let dir = skipper::make_folder(&cfg()).unwrap();
+    std::fs::write(dir.join("cache/0123456789abcdef.png"), b"\x89PNG\r\n\x1a\n").unwrap();
+    assert_eq!(skipper::ensure(&cfg()).unwrap(), dir);
+    assert!(dir.join("AGENTS.md").is_file() && dir.join("results").is_dir() && dir.join(".claude").symlink_metadata().is_ok());
+    assert!(dir.join("cache/0123456789abcdef.png").is_file());
+    // The fleet and project Skippers set up through the same rule.
+    skipper::setup(&dir, "Skipper").unwrap();
+    done(&home);
+}
+
+#[test]
+fn a_folder_that_cannot_be_made_gives_one_line() {
+    let _t = TURN.lock().unwrap_or_else(|e| e.into_inner());
+    let home = world("unmade");
+    // A file where a disk would be mounted: nothing can go under it.
+    std::fs::write(home.join("disk"), "").unwrap();
+    let to = home.join("disk/skiff-agent");
+    config::set_skiff_agent(config::SkiffAgentKey::Folder(Some(&to))).unwrap();
+    let line = format!("Skiff cannot make the folder {}.", to.display());
+    assert_eq!(format!("{:#}", skipper::make_folder(&cfg()).unwrap_err()), line);
+    assert_eq!(format!("{:#}", skiff_client::cache::ensure(&cfg()).unwrap_err()), line);
+    // No fallback: the cache path stays in the folder.
+    assert_eq!(skipper::cache_dir(&cfg()).unwrap(), to.join("cache"));
+    // A refused override gives the same line.
+    config::set_skiff_agent(config::SkiffAgentKey::Folder(Some(&home))).unwrap();
+    assert_eq!(format!("{:#}", skipper::make_folder(&cfg()).unwrap_err()), format!("Skiff cannot make the folder {}.", home.display()));
+    done(&home);
+}
