@@ -15,6 +15,7 @@ import { accent, place } from "../app/stateQueries";
 import { copyText } from "../platform/clipboard";
 import { showError } from "../ui/alerts";
 import { button, h } from "../ui/dom";
+import { icon } from "../ui/icons";
 import { menuOpened } from "../ui/menu";
 import { refocusTerminal } from "../workspace/view";
 import { endImageDrag, showImageDrag } from "./fileDrop";
@@ -176,11 +177,13 @@ function act(label: string, run: () => void, cls = ""): HTMLButtonElement {
 }
 
 /** The dropped file's name; "Pasted image" for a paste. An image from
- *  before the index has no entry: "PNG image", never its cache hash. */
+ *  before the index has no entry: "PNG image", or "Image" with no extension,
+ *  never its cache hash. */
 function shownName(i: Image): string {
   if (i.name) return i.name;
   if (i.session) return "Pasted image";
-  return `${(i.file.split(".").pop() ?? "").toUpperCase()} image`.trim();
+  const ext = i.file.includes(".") ? i.file.split(".").pop()!.toUpperCase() : "";
+  return ext ? `${ext} image` : "Image";
 }
 
 function row(i: Image): HTMLElement {
@@ -195,7 +198,8 @@ function row(i: Image): HTMLElement {
   text.append(h("span", "lib-name", shownName(i)));
   if (i.session) text.append(whoLine(i));
   const right = h("span", "lib-right");
-  const x = act("×", () => void remove(i), " x");
+  const x = act("", () => void remove(i), " x");
+  x.appendChild(icon('<path d="M6 6l12 12M18 6L6 18"></path>'));
   x.setAttribute("aria-label", "Delete");
   right.append(
     h("span", "lib-time" + (i.path === copied ? " copied" : ""), i.path === copied ? "Copied" : when(i.at)),
