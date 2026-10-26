@@ -9,7 +9,7 @@ use skiff_client::{
     ledger, skipper,
 };
 use skiff_core::{config, session::SessionInfo};
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::connection::{open_sessions, App};
 
@@ -58,25 +58,29 @@ pub async fn disk_usage(app: State<'_, App>) -> Result<Usage, String> {
 }
 
 #[tauri::command]
-pub async fn flush_cache() -> Result<Removed, String> {
-    blocking(|| Ok(disk::flush_cache(&skipper::cache_dir(&config::load()?)))).await
+pub async fn flush_cache(handle: AppHandle) -> Result<Removed, String> {
+    let out = blocking(|| Ok(disk::flush_cache(&skipper::cache_dir(&config::load()?)))).await;
+    let _ = handle.emit(crate::drops::IMAGES_CHANGED, ());
+    out
 }
 
 /// Counts again, then removes what is on both lists. Refused when the daemon
 /// does not answer: the closed work needs the session list.
 #[tauri::command]
-pub async fn flush_done(app: State<'_, App>, expected: Vec<String>) -> Result<Removed, String> {
+pub async fn flush_done(handle: AppHandle, app: State<'_, App>, expected: Vec<String>) -> Result<Removed, String> {
     let Some(s) = open_sessions(&app).await else {
         return Err("Skiff cannot reach skiffd. Flush done work needs the session list.".into());
     };
-    blocking(move || {
+    let out = blocking(move || {
         let fresh = count(Some(s))?.usage;
         if let Some(e) = fresh.ledger_error {
             anyhow::bail!("{e}");
         }
         Ok(disk::flush_done(&expected, &fresh))
     })
-    .await
+    .await;
+    let _ = handle.emit(crate::drops::IMAGES_CHANGED, ());
+    out
 }
 
 /// Runs at app start on its own thread: removes cache files older than

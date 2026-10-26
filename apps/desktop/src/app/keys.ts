@@ -19,7 +19,7 @@ export type Action =
   | "focus-left" | "focus-right" | "focus-up" | "focus-down"
   | "project-menu" | "project-folder" | "project-copy-path" | "project-color" | "project-changes" | "project-files"
   | "region-next" | "region-prev" | "session-next" | "session-prev" | "list-project" | "list-back" | "list-main" | "shortcuts"
-  | "focus-mode" | "maximize" | "mission-control" | "skiff-agent" | "ledger" | "open-last-image";
+  | "focus-mode" | "maximize" | "mission-control" | "skiff-agent" | "ledger" | "images";
 
 export const isMac = navigator.userAgent.includes("Macintosh");
 
@@ -71,7 +71,7 @@ export const DEFAULTS: Record<Action, string> = {
   "skiff-agent": "ctrl+shift+l",
   ledger: "ctrl+shift+alt+l",
   // No default key: the palette and the pane menu have it. `[keys]` can set one.
-  "open-last-image": "",
+  images: "",
 };
 
 interface Combo { ctrl: boolean; shift: boolean; alt: boolean; key: string }
@@ -180,8 +180,8 @@ export const DESCRIBE: [string, Action, string][] = [
   ["File", "settings", "Settings"],
   ["File", "quit", "Quit Skiff. Sessions keep running in skiffd"],
   ["Edit", "copy", "Copy the terminal selection. In Settings, the selected text in the field"],
-  ["Edit", "paste", "Paste into the terminal. An image is saved to the cache and its path typed. In Settings, into the field. A one-line field gets one line"],
-  ["Edit", "open-last-image", "Open the newest image in the focused session's image strip"],
+  ["Edit", "paste", "Paste into the terminal. An image is saved to Images and its path typed. In Settings, into the field. A one-line field gets one line"],
+  ["Edit", "images", "Show the images on this computer. Type puts a path into the focused pane"],
   ["Edit", "find", "Find in the terminal"],
   ["Edit", "rename", "Rename the session, or the group or session row in the list"],
   ["Edit", "theme", "Session theme, or the theme of the group or session row in the list. On a project or another row, the project theme"],

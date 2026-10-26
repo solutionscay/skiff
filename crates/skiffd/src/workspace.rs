@@ -48,9 +48,6 @@ pub struct SavedSession {
     /// The Skiff agent's session.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub coordinator: bool,
-    /// The pane's image strip, newest first.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub images: Vec<String>,
 }
 
 impl From<&SessionInfo> for SavedSession {
@@ -69,7 +66,6 @@ impl From<&SessionInfo> for SavedSession {
             cols: info.cols,
             rows: info.rows,
             coordinator: info.coordinator,
-            images: info.images.clone(),
         }
     }
 }
