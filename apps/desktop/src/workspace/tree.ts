@@ -80,7 +80,7 @@ const savedHidden = storedSet("skiff.tree.hidden");
 
 export const projectsHidden = (fleet: string) => savedHidden.has(fleetKey(fleet));
 
-/** Show projects in the fleet menu, and the count on its head. */
+/** Hide projects / Show projects in the fleet menu, and the count on its head. */
 export function setProjectsHidden(fleet: string, hide: boolean) {
   if (hide) savedHidden.add(fleetKey(fleet));
   else savedHidden.delete(fleetKey(fleet));

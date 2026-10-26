@@ -138,21 +138,24 @@ function app() {
   };
   const fleetMenu = (name: string) => {
     menus.fleetMenu({ name, projects: projects.filter((p) => p.fleet === name) }, 0, 0);
-    return menu.find((m) => m.label === "Show projects");
+    return menu.find((m) => m.label === "Hide projects" || m.label === "Show projects");
   };
   return { S, sessions, tree, stored, draw, fleetMenu, palette: () => palette(), harbor, rendered: () => rendered };
 }
 
-test("Show projects hides a fleet's projects; waiting and on-screen sessions stay; the count shows them again", () => {
+test("Hide projects hides a fleet's projects; waiting and on-screen sessions stay; the count shows them again", () => {
   const a = app();
-  // Shown by default: the item is checked and the head has no count.
+  // Shown by default: the item offers to hide, with no check, and the head has no count.
   let item = a.fleetMenu("Harbor");
-  assert.equal(item.icon, "indicators-check");
+  assert.equal(item.label, "Hide projects");
+  assert.equal(item.icon, "senses-eye-off");
   assert.equal(a.draw().head.all().find((e) => e.className === "fleet-hidden"), undefined);
 
   item.run();
   assert.equal(a.tree.projectsHidden("Harbor"), true);
-  assert.equal(a.fleetMenu("Harbor").icon, "");
+  item = a.fleetMenu("Harbor");
+  assert.equal(item.label, "Show projects");
+  assert.equal(item.icon, "senses-eye");
   assert.match(a.stored.get("skiff.tree.hidden") ?? "", /fleet:Harbor/);
   assert.deepEqual([...a.tree.visibleProjects().map((p: any) => p.name)], ["site"]);
 
@@ -175,6 +178,7 @@ test("Show projects hides a fleet's projects; waiting and on-screen sessions sta
   assert.equal(a.tree.projectsHidden("Harbor"), false);
   assert.equal(a.rendered(), before + 1);
   assert.equal(a.draw().split, null);
+  assert.equal(a.fleetMenu("Harbor").label, "Hide projects");
 });
 
 test("a session picked in the palette shows alone under its hidden fleet", () => {
