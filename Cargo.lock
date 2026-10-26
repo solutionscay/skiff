@@ -3586,7 +3586,7 @@ dependencies = [
 
 [[package]]
 name = "skiff-host"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
