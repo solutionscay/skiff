@@ -28,7 +28,7 @@ import { setShowFiles, showsFiles } from "./files";
 import { deleteGroup } from "../app/groups";
 import { closeEntries } from "./projectClose";
 import { sessionsOf } from "./layout";
-import { bareWorktree } from "./tree";
+import { bareWorktree, projectsHidden, renameHidden, setProjectsHidden } from "./tree";
 
 import { startRename, startSessionRename } from "./rename";
 import { render } from "../app/render";
@@ -153,6 +153,7 @@ function setFleet(p: Project) {
 
 /** Give the fleet a new name: its projects, and its Skipper's folder, rows and session. */
 function renameFleet(f: Fleet, name: string) {
+  renameHidden(f.name, name);
   return renameFleetOn(f.name, name, f.projects.map((p) => p.name));
 }
 
@@ -195,6 +196,16 @@ export function fleetMenu(f: Fleet, x: number, y: number) {
   ctxMenu.open(x, y, `Fleet ${f.name}`, [
     ...skipper,
     ...(skipper.length ? [{ sep: true as const }] : []),
+    // A check marks what shows. Hidden, the head keeps its Skipper and the sessions that need a look.
+    {
+      icon: projectsHidden(f.name) ? "" : "indicators-check",
+      label: "Show projects",
+      run: () => {
+        setProjectsHidden(f.name, !projectsHidden(f.name));
+        render();
+      },
+    },
+    { sep: true },
     {
       icon: "tools-pencil",
       label: "Rename fleet…",
