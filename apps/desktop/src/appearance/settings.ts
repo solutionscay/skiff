@@ -651,11 +651,13 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     hostsChanged() {
       if (!root.hidden && tab === "hosts") render();
     },
-    /** `hosts`: open on Settings › Hosts, at its list or its Add form. */
-    async open(hosts?: HostsPage) {
-      if (hosts) {
+    /** `at`: the section to show, else the last one. A Hosts page opens
+     *  Settings › Hosts at its list or its Add form. */
+    async open(at?: HostsPage | (typeof TABS)[number]) {
+      if (typeof at === "string") tab = at;
+      else if (at) {
         tab = "hosts";
-        hostsTab.open(hosts);
+        hostsTab.open(at);
       }
       root.hidden = false;
       onShowChange();

@@ -44,7 +44,10 @@ pub struct Usage {
     pub folder: PathBuf,
     /// The folder is the `/tmp` cache: no agent folder is usable.
     pub fallback: bool,
+    /// The images in the cache, pinned ones included.
     pub cache: Line,
+    /// The pinned images: no flush removes them.
+    pub pinned: Line,
     /// Files a ledger row names, in the results folders. `None`: the ledger
     /// was refused (see `ledger_error`).
     pub results: Option<Line>,
@@ -230,7 +233,9 @@ pub fn usage(folder: &Path, cache: &Path, ledger: Option<&Path>, sessions: Optio
         u.results = Some(Line::default());
         return u;
     };
+    let keep = crate::cache::kept(cache);
     let cache = cache.canonicalize().unwrap_or_else(|_| cache.to_path_buf());
+    let index = cache.join(crate::cache::INDEX);
     let results = roots(&root);
     let dirs: Vec<PathBuf> = results.iter().map(|r| r.2.clone()).collect();
     let n = match ledger.map(|l| named(l, sessions, socket, &root, &dirs)) {
@@ -248,9 +253,13 @@ pub fn usage(folder: &Path, cache: &Path, ledger: Option<&Path>, sessions: Optio
     let mut cached = Vec::new();
     for (p, bytes) in &files {
         u.total.add(*bytes);
-        if p.starts_with(&cache) {
+        if p.starts_with(&cache) && *p != index {
             u.cache.add(*bytes);
-            cached.push(p);
+            if keep.contains(p) {
+                u.pinned.add(*bytes);
+            } else {
+                cached.push(p);
+            }
         } else if let Some(n) = n.as_ref().filter(|n| n.all.contains(p)) {
             res.add(*bytes);
             if let Some(i) = dirs.iter().position(|d| p.starts_with(d)) {
@@ -288,22 +297,25 @@ pub fn usage(folder: &Path, cache: &Path, ledger: Option<&Path>, sessions: Optio
     u
 }
 
-/// Removes every file in the cache. Its folders stay.
+/// Removes every file in the cache but the pinned images and the index. Its folders stay.
 pub fn flush_cache(cache: &Path) -> Removed {
     let Ok(root) = cache.canonicalize() else { return Removed::default() };
+    let keep = crate::cache::kept(&root);
     let (files, _) = walk(&root);
-    remove(files.into_iter().filter(|(p, _)| p.starts_with(&root)))
+    remove(files.into_iter().filter(|(p, _)| p.starts_with(&root) && !keep.contains(p)))
 }
 
-/// Removes cache files whose last change is older than `days` days. `0` does nothing.
+/// Removes cache files whose last change is older than `days` days, but
+/// not the pinned images or the index. `0` does nothing.
 pub fn flush_old(cache: &Path, days: u32) -> Removed {
     let Ok(root) = cache.canonicalize() else { return Removed::default() };
     let Some(before) = SystemTime::now().checked_sub(Duration::from_secs(u64::from(days) * 86_400)).filter(|_| days > 0) else {
         return Removed::default();
     };
+    let keep = crate::cache::kept(&root);
     let (files, _) = walk(&root);
     let old = |p: &Path| std::fs::symlink_metadata(p).and_then(|m| m.modified()).is_ok_and(|t| t < before);
-    remove(files.into_iter().filter(|(p, _)| p.starts_with(&root) && old(p)))
+    remove(files.into_iter().filter(|(p, _)| p.starts_with(&root) && !keep.contains(p) && old(p)))
 }
 
 /// Flush done work: removes what is on both `expected`, the list the dialog
@@ -407,6 +419,7 @@ mod tests {
         let dir = folder("count");
         let u = usage(&dir, &dir.join("cache"), Some(&dir.join("ledger.db")), Some(&[]), Path::new("/nowhere"));
         assert_eq!(u.cache, Line { files: 2, bytes: 6 });
+        assert_eq!(u.pinned, Line::default());
         // plan, step, lone, open, shared, web.
         assert_eq!(u.results.unwrap().files, 6);
         assert_eq!(u.skippers.iter().map(|s| (s.name.as_str(), s.line.files)).collect::<Vec<_>>(), [("Skipper", 5), ("web Skipper", 1)]);
@@ -444,7 +457,12 @@ mod tests {
         assert!(!u.daemon);
         // The plan has a sent task that cannot be checked: lone and web only.
         assert_eq!((u.closed.files, u.plans), (2, 0));
-        assert_eq!(flush_cache(&dir.join("cache")), Removed { files: 2, bytes: 6 });
+        crate::cache::pin(&dir.join("cache"), &dir.join("cache/0123456789abcdef.png"), true).unwrap();
+        let u = usage(&dir, &dir.join("cache"), Some(&dir.join("ledger.db")), None, Path::new("/nowhere"));
+        assert_eq!((u.cache.files, u.pinned.files), (2, 1));
+        assert!(!u.removable.iter().any(|p| p.ends_with(".png") || p.ends_with(crate::cache::INDEX)));
+        assert_eq!(flush_cache(&dir.join("cache")), Removed { files: 1, bytes: 3 });
+        assert!(dir.join("cache/0123456789abcdef.png").is_file());
         assert_eq!(flush_old(&dir.join("cache"), 30), Removed::default());
         let _ = std::fs::remove_dir_all(&dir);
     }

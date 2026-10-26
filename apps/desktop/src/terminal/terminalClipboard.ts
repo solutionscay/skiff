@@ -6,8 +6,10 @@ import { h } from "../ui/dom";
 
 import { showError } from "../ui/alerts";
 
-import { S } from "../app/state";
+import { S, sessions } from "../app/state";
 import { isRemote, hostName } from "../app/hosts";
+import { place } from "../app/stateQueries";
+import { taskTitle } from "../workspace/model";
 
 import { panes } from "./terminalState";
 
@@ -44,6 +46,12 @@ export interface Typed {
   warning: string | null;
 }
 
+/** The session that gets an image, as Images shows it: its title and project. */
+export function whoOf(id: string) {
+  const s = sessions.get(id);
+  return { session: id, title: s ? taskTitle(s) : "", project: (s && place(s)?.project.name) ?? null };
+}
+
 /** Types the words as a paste, so an agent attaches a pasted image path. Never presses Enter. */
 export function typeFiles(id: string, t: Typed) {
   panes.get(id)?.term.paste(t.text);
@@ -62,7 +70,7 @@ export async function pasteClipboard() {
   const text = await pasteText().catch(() => "");
   if (text) return pane.term.paste(text);
   try {
-    const t = await invoke<Typed | null>("clipboard_image", { session: id, host: isRemote() ? hostName() : null });
+    const t = await invoke<Typed | null>("clipboard_image", { who: whoOf(id), host: isRemote() ? hostName() : null });
     if (t) typeFiles(id, t);
   } catch (e) {
     showError(e);

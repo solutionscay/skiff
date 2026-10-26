@@ -29,6 +29,7 @@ import { accent, activeGroupObj, currentProject, currentWorktree, inShownGroup, 
 import { sessionThemeMenu } from "../appearance/themes";
 import { modeKeyBlocked } from "./modes";
 import { ledgerFolded, ledgerShown } from "../workspace/ledger";
+import { imageCount } from "../terminal/images";
 import {
   closeWorkspace, editWorkspace, keepWorkspace, ledgerAllWork, newWorkspace, openWorkspace, recentWorkspacesMenu, reloadWorkspace,
   saveWorkspace, saveWorkspaceAs, setLedgerAllWork, workspaceNotice, workspaceOpen,
@@ -77,7 +78,7 @@ function commands(): Cmd[] {
     // In Settings, they act on the text field with the keys.
     { section: "Edit", label: "Copy", key: k("copy"), action: "copy", run: act("copy"), off: !s && !settings.isOpen },
     { section: "Edit", label: "Paste", key: k("paste"), action: "paste", run: act("paste"), off: !s && !settings.isOpen },
-    { section: "Edit", label: "Open the last image", key: k("open-last-image"), action: "open-last-image", run: act("open-last-image"), off: !s?.images?.length },
+    { section: "Edit", label: "Images…", key: k("images"), action: "images", run: act("images"), off: !imageCount() || !s },
     { section: "Edit", label: "Find…", key: k("find"), action: "find", run: act("find"), off: !shown },
     { section: "Edit", label: "Rename session", key: k("rename"), action: "rename", run: act("rename"), off: !s || isSkiffAgent(s.id) || isProjectSkipper(s) || !hostCan("session_lifecycle") },
     { section: "Edit", label: "Session theme…", key: k("theme"), run: () => s && void sessionThemeMenu(s), off: !s || !hostCan("session_lifecycle") },

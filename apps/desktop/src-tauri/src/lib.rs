@@ -124,8 +124,11 @@ pub fn run() {
             clipboard::clipboard_read,
             drops::drop_files,
             drops::clipboard_image,
-            drops::clear_session_images,
-            drops::strip_image,
+            drops::images,
+            drops::image_thumb,
+            drops::image_type,
+            drops::image_pin,
+            drops::image_delete,
             drops::open_image,
             drops::agent_cache_flags,
             connection::daemon_status,
@@ -341,9 +344,9 @@ mod tests {
             "memory_usage", "get_keys", "trace_info", "trace_write", "trace_set", "system_load", "set_appearance", "set_font_size", "set_mission_filter",
             "list_groups", "session_screen", "save_group", "delete_group", "order_groups", "subscribe_output", "ack_output", "unsubscribe_output", "subscribe_events",
             "workspace_read", "workspace_revision", "workspace_write", "workspace_launch_file", "workspace_took",
-            // This computer's Disk use and image cache, whichever Host is shown. A drop on a remote Host's pane goes to that Host.
+            // This computer's Disk use and Images, whichever Host is shown. A drop or a Type on a remote Host's pane goes to that Host.
             "disk_usage", "flush_cache", "flush_done", "set_cache_days",
-            "drop_files", "clipboard_image", "clear_session_images", "strip_image", "open_image", "agent_cache_flags"];
+            "drop_files", "clipboard_image", "images", "image_thumb", "image_type", "image_pin", "image_delete", "open_image", "agent_cache_flags"];
         for c in &all {
             assert!(super::LOCAL_ONLY.contains(&c.as_str()) || allowed.contains(&c.as_str()), "{c}: decide whether a remote Host may run it");
         }

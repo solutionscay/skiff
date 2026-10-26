@@ -1,6 +1,6 @@
 import { ctxMenu } from "../ui/contextMenu";
 /** Right-click menus for projects, sessions, panes and groups. */
-import { openLastImage } from "../terminal/imageStrip";
+import { imageCount, openImages } from "../terminal/images";
 import { isSkiffAgent, openWatchLog, projectSkipperOf, startProjectSkipper, skiffAgentFolder, skiffAgentName, skiffWatch, startSkiffWatch } from "../app/skiffAgent";
 import { launchIcon } from "../appearance/agentIcon";
 import { confirmAction, promptAction } from "../ui/confirm";
@@ -532,7 +532,7 @@ export function paneMenu(id: string, x: number, y: number) {
   }
   entries.push({ icon: "view-focus", label: S.focusMode ? "Leave focus mode" : "Focus mode", hint: keyLabel("focus-mode"), run: toggleFocusMode });
   entries.push(themeEntry(s));
-  entries.push({ icon: "playback-image", label: "Open the last image", hint: keyLabel("open-last-image"), disabled: !s.images?.length, run: openLastImage });
+  entries.push({ icon: "playback-image", label: "Images…", hint: keyLabel("images"), disabled: !imageCount(), run: openImages });
   if (shownIds().length > 1) {
     entries.push({ icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), disabled: !hostCan("session_groups"), run: () => removeFromGroup(id) });
   }

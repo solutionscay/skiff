@@ -49,8 +49,6 @@ export interface SessionInfo {
   skipper?: string;
   /** The `skiff watch` processes registered for this session. Absent when none is, or from a daemon older than protocol 27. */
   watch?: WatchInfo | null;
-  /** The images Skiff typed into this session, newest first. Absent when none, or from an older daemon. */
-  images?: string[];
 }
 
 /** The watchers registered for a session. */

@@ -21,7 +21,7 @@ import { paneCenter } from "../terminal/terminal";
 
 import { openFind } from "../terminal/terminalSearch";
 import { copySelection, pasteClipboard } from "../terminal/terminalClipboard";
-import { openLastImage } from "../terminal/imageStrip";
+import { openImages } from "../terminal/images";
 import { fontTarget, setFontSize, stepPaneFont } from "../terminal/terminalFont";
 
 import { modeGate, modeKeyBlocked, toggleFocusMode, toggleMaximize } from "./modes";
@@ -140,7 +140,7 @@ export function runAction(a: Action) {
     case "end-session": return endCurrentSession();
     case "copy": return void copySelection();
     case "paste": return void pasteClipboard();
-    case "open-last-image": return openLastImage();
+    case "images": return openImages();
     case "find": return openFind();
     case "font-bigger": return fontKey(1);
     case "font-smaller": return fontKey(-1);

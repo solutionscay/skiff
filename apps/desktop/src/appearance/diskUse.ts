@@ -15,7 +15,10 @@ export interface DiskUsage {
   shown: string;
   /** No agent folder is usable: the folder is the `/tmp` cache. */
   fallback: boolean;
+  /** The images, pinned ones included. */
   cache: Line;
+  /** The pinned images: no flush removes them. */
+  pinned: Line;
   /** Null: the ledger was refused. */
   results: Line | null;
   skippers: { name: string; folder: string; line: Line }[];
@@ -78,14 +81,15 @@ async function flushDone(s: DiskState, u: DiskUsage, redraw: () => void) {
   const lines: string[] = [];
   if (u.closed.files || u.plans)
     lines.push(`Remove ${plural(u.closed.files, "result file")} (${size(u.closed.bytes)}) of ${plural(u.items, "closed work item")}, and ${plural(u.plans, "plan folder")}.`);
-  if (u.cache.files) lines.push(`Remove ${plural(u.cache.files, "cache image")} (${size(u.cache.bytes)}).`);
+  const loose = { files: u.cache.files - u.pinned.files, bytes: u.cache.bytes - u.pinned.bytes };
+  if (loose.files) lines.push(`Remove ${plural(loose.files, "image")} (${size(loose.bytes)}). Pinned images stay.`);
   lines.push("Open and working work stays. The ledger, SKIPPER.md and AGENTS.md stay.");
   const ok = await confirmAction({ title: "Flush done work?", body: lines.join("\n"), action: "Flush" });
   if (ok) await flush(s, redraw, () => invoke("flush_done", { expected: u.removable }));
 }
 
 /**
- * Settings › Disk use: what the Skiff agent's folder holds, Flush cache,
+ * Settings › Disk use: what the Skiff agent's folder holds, Flush images,
  * Flush done work… and the auto flush switch. `setDays` saves
  * `[skiff_agent] cache_days`.
  */
@@ -130,12 +134,14 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
   };
 
   const known = !!u && u.results !== null;
-  const doneOff = !u || !known || u.fallback || !u.daemon || (!u.closed.files && !u.plans && !u.cache.files);
+  const loose = u ? u.cache.files - u.pinned.files : 0;
+  const doneOff = !u || !known || u.fallback || !u.daemon || (!u.closed.files && !u.plans && !loose);
   table.append(
-    row("Cache", u?.cache, {
+    row("Images", u?.cache, {
       folder: u?.fallback ? "" : "cache/",
-      act: button("Flush cache", !u?.cache.files, () => void flush(s, redraw, () => invoke("flush_cache"))),
+      act: button("Flush images", !loose, () => void flush(s, redraw, () => invoke("flush_cache"))),
     }),
+    row("Pinned", u?.pinned, { sub: true }),
     row("Results", u?.results, { known }),
     ...(u?.skippers ?? []).map((k) => row(k.name, k.line, { sub: true, folder: k.folder, known })),
     row("Closed work", u?.closed, {

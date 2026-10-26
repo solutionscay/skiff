@@ -88,16 +88,6 @@ pub enum Request {
         #[serde(default)]
         theme: Option<String>,
     },
-    /// Adds image paths to the session's image strip, in the order Skiff
-    /// typed them. A repeat moves to the front. Answers the session.
-    AddSessionImages {
-        session: SessionId,
-        images: Vec<String>,
-    },
-    /// Empties the session's image strip. The files stay.
-    ClearSessionImages {
-        session: SessionId,
-    },
     /// The session's pane has the keys: the user has seen it. Clears
     /// `unread` and `agent_exit`.
     Seen {
@@ -333,8 +323,6 @@ impl Request {
             Request::Unsubscribe { .. } => "unsubscribe",
             Request::RenameSession { .. } => "rename_session",
             Request::SetSessionTheme { .. } => "set_session_theme",
-            Request::AddSessionImages { .. } => "add_session_images",
-            Request::ClearSessionImages { .. } => "clear_session_images",
             Request::Seen { .. } => "seen",
             Request::Screen { .. } => "screen",
             Request::Kill { .. } => "kill",

@@ -113,26 +113,6 @@ impl Client {
         }
     }
 
-    /// Adds image paths to the session's image strip.
-    pub async fn add_session_images(&self, session: &str, images: Vec<String>) -> Result<SessionInfo> {
-        let req = Request::AddSessionImages { session: session.to_string(), images };
-        match self.request(req).await? {
-            Response::Session { session } => Ok(session),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
-    /// Empties the session's image strip.
-    pub async fn clear_session_images(&self, session: &str) -> Result<SessionInfo> {
-        let req = Request::ClearSessionImages { session: session.to_string() };
-        match self.request(req).await? {
-            Response::Session { session } => Ok(session),
-            Response::Error { message } => bail!(message),
-            other => bail!("unexpected reply: {other:?}"),
-        }
-    }
-
     pub async fn rename_session(&self, session: &str, name: &str) -> Result<SessionInfo> {
         let req = Request::RenameSession {
             session: session.to_string(),

@@ -94,7 +94,6 @@ impl SessionPool {
                         info.resume = saved.was.clone();
                         info.was = saved.was;
                         info.agent_exit = saved.agent_exit;
-                        info.images = saved.images;
                     }
                 }
                 Err(e) => {
