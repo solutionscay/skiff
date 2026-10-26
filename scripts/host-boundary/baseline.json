@@ -769,7 +769,7 @@
       "local provider: apps/desktop/src/app/hostCaps.ts",
       "local provider: apps/desktop/src/app/state.ts"
     ],
-    "sha256": "f5ea170533991b147e7f3553b59d834e5e5a910a9c6ba09d18bee195c9b2fb92"
+    "sha256": "94a749f655b1ca8fa2d6a96525aebacd07d930b199b700de50176acc1914eb09"
   },
   "apps/desktop/src/workspace/folderPicker.ts": {
     "ownership": "Host caller (#166): remote folder picker over folders@1 through hostInvoke; Host paths only, never opened on this computer",
@@ -803,7 +803,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "4a046544bed88c498072ff24bc000718421c424c380908ca67ef2c8b3900e3f6"
+    "sha256": "b979578ffb2a98057e168671da613937980fafe9b236c822ceeb39b8f26efdbb"
   },
   "apps/desktop/src/workspace/missionControl.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -913,7 +913,7 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "039b4e5d8f255290d6e8e28e5a2d413338b60bfa0d29e08fddeba59938c46735"
+    "sha256": "b5b0d878d1157d4406cc0f96e7e492d06c5019de24338083f99eb789e555c9bf"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -939,7 +939,7 @@
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/app/stateQueries.ts"
     ],
-    "sha256": "1ff633e8c3c7820bdc7803fed25f963bd2f4b1baf27846744f205a944d5600ba"
+    "sha256": "809ebfb3e2619fccdc722231afb214cd377d1e81e4b0957a92caee461b494e3f"
   },
   "apps/desktop/src/workspace/treeDrag.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
