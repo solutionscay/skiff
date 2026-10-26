@@ -77,6 +77,7 @@ function commands(): Cmd[] {
     { section: "Edit", label: "Copy", key: k("copy"), action: "copy", run: act("copy"), off: !s && !settings.isOpen },
     { section: "Edit", label: "Paste", key: k("paste"), action: "paste", run: act("paste"), off: !s && !settings.isOpen },
     { section: "Edit", label: "Images…", key: k("images"), action: "images", run: act("images"), off: !imageCount() || !s },
+    { section: "Edit", label: "Settings › Images…", key: k("images-gallery"), action: "images-gallery", run: act("images-gallery") },
     { section: "Edit", label: "Find…", key: k("find"), action: "find", run: act("find"), off: !shown },
     { section: "Edit", label: "Rename session", key: k("rename"), action: "rename", run: act("rename"), off: !s || isSkiffAgent(s.id) || isProjectSkipper(s) },
     { section: "Edit", label: "Session theme…", key: k("theme"), run: () => s && void sessionThemeMenu(s), off: !s },

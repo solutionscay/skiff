@@ -217,6 +217,8 @@ pub struct Image {
     pub path: String,
     #[serde(flatten)]
     pub entry: Entry,
+    /// The file's length in bytes.
+    pub size: u64,
 }
 
 /// One writer of `images.json` at a time in this process.
@@ -288,11 +290,12 @@ pub fn list(dir: &Path) -> Vec<Image> {
             if !is_image_name(&file) {
                 return None;
             }
+            let meta = e.metadata().ok();
             let entry = index.iter().find(|x| x.file == file).cloned().unwrap_or_else(|| {
-                let at = e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok());
+                let at = meta.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(UNIX_EPOCH).ok());
                 Entry { file: file.clone(), at: at.map_or(0, |d| d.as_millis() as u64), ..Default::default() }
             });
-            Some(Image { path: e.path().to_string_lossy().into_owned(), entry })
+            Some(Image { path: e.path().to_string_lossy().into_owned(), entry, size: meta.map_or(0, |m| m.len()) })
         })
         .collect();
     out.sort_by(|a, b| b.entry.at.cmp(&a.entry.at).then_with(|| a.entry.file.cmp(&b.entry.file)));
@@ -442,6 +445,7 @@ mod tests {
         std::fs::write(dir.join("notes.txt"), "x").unwrap();
         // No entry yet: the cache name and the mtime.
         assert_eq!(list(&dir).len(), 2);
+        assert_eq!(list(&dir)[0].size, 9);
         assert!(list(&dir).iter().all(|i| i.entry.session.is_none()));
         let who = Who { session: "s1".into(), title: "Header clips".into(), project: Some("skiff".into()) };
         record(&dir, &a, Some("header.png"), Some(&who)).unwrap();

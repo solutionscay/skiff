@@ -18,6 +18,8 @@ pub(crate) struct Typed {
     text: String,
     /// The text for `showError`, when an image kept its own path.
     warning: Option<&'static str>,
+    /// The first library image typed: the pane's insert signals show it.
+    image: Option<String>,
 }
 
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> Result<T, String> {
@@ -30,6 +32,7 @@ pub(crate) const IMAGES_CHANGED: &str = "skiff:images-changed";
 /// Records the images for `who`, then builds the text. A failed record
 /// costs only the library line: the text is typed all the same.
 async fn finish(handle: &AppHandle, who: Who, t: cache::Typed) -> Result<Typed, String> {
+    let image = t.images.first().map(|i| i.path.to_string_lossy().into_owned());
     if !t.images.is_empty() {
         let images = t.images;
         let done = blocking(move || {
@@ -46,7 +49,7 @@ async fn finish(handle: &AppHandle, who: Who, t: cache::Typed) -> Result<Typed, 
         let _ = handle.emit(IMAGES_CHANGED, ());
     }
     let text = t.words.iter().map(|w| format!("{w} ")).collect();
-    Ok(Typed { text, warning: t.too_large.then_some(cache::TOO_LARGE) })
+    Ok(Typed { text, warning: t.too_large.then_some(cache::TOO_LARGE), image })
 }
 
 /// The cache folder, made when an image needs it.
@@ -144,29 +147,44 @@ pub(crate) async fn images() -> Result<Vec<cache::Image>, String> {
     .await
 }
 
-/// Insert: the library image goes to the top with `who` as its session, and
-/// the page types its path as a drop does.
+/// Insert: the library images go to the top with `who` as their session, and
+/// the page types their paths as a drop of several files does. The first
+/// path ends up newest.
 #[tauri::command]
-pub(crate) async fn image_insert(handle: AppHandle, path: PathBuf, who: Who) -> Result<Typed, String> {
-    let word = skiff_core::shell::quote_word(&path.to_string_lossy());
-    blocking(move || cache::record(&cache_dir()?, &path, None, Some(&who))).await?;
+pub(crate) async fn image_insert(handle: AppHandle, paths: Vec<PathBuf>, who: Who) -> Result<Typed, String> {
+    let text = paths.iter().map(|p| format!("{} ", skiff_core::shell::quote_word(&p.to_string_lossy()))).collect();
+    let image = paths.first().map(|p| p.to_string_lossy().into_owned());
+    blocking(move || {
+        let dir = cache_dir()?;
+        paths.iter().rev().try_for_each(|p| cache::record(&dir, p, None, Some(&who)))
+    })
+    .await?;
     let _ = handle.emit(IMAGES_CHANGED, ());
-    Ok(Typed { text: format!("{word} "), warning: None })
+    Ok(Typed { text, warning: None, image })
 }
 
 #[tauri::command]
-pub(crate) async fn image_pin(handle: AppHandle, path: PathBuf, on: bool) -> Result<(), String> {
-    blocking(move || cache::pin(&cache_dir()?, &path, on)).await?;
+pub(crate) async fn image_pin(handle: AppHandle, paths: Vec<PathBuf>, on: bool) -> Result<(), String> {
+    blocking(move || {
+        let dir = cache_dir()?;
+        paths.iter().try_for_each(|p| cache::pin(&dir, p, on))
+    })
+    .await?;
     let _ = handle.emit(IMAGES_CHANGED, ());
     Ok(())
 }
 
-/// Deletes the file. It asks nothing: the agent has the image already.
+/// Deletes the files. The page asks first only for two or more.
 #[tauri::command]
-pub(crate) async fn image_delete(handle: AppHandle, path: PathBuf) -> Result<(), String> {
-    blocking(move || cache::delete(&cache_dir()?, &path)).await?;
+pub(crate) async fn image_delete(handle: AppHandle, paths: Vec<PathBuf>) -> Result<(), String> {
+    let done = blocking(move || {
+        let dir = cache_dir()?;
+        paths.iter().try_for_each(|p| cache::delete(&dir, p))
+    })
+    .await;
+    // Some files can be gone before a later one fails.
     let _ = handle.emit(IMAGES_CHANGED, ());
-    Ok(())
+    done
 }
 
 /// Opens a library image with `[open] image`, else the OS default app. It

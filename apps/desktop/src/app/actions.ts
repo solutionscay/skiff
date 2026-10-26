@@ -125,6 +125,7 @@ export function runAction(a: Action) {
     case "copy": return void copySelection();
     case "paste": return void pasteClipboard();
     case "images": return openImages();
+    case "images-gallery": return void settings.open("images");
     case "find": return openFind();
     case "font-bigger": return fontKey(1);
     case "font-smaller": return fontKey(-1);

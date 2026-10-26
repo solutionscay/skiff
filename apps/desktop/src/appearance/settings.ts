@@ -12,10 +12,12 @@ import { type SkiffAgentEdit, projectSkippersSection, skiffAgentSection, taskTyp
 import { changeSkiffFolder } from "./skiffFolderDialog";
 import { rowTable, tableState } from "./rowTable";
 import { countDisk, diskState, diskUseSection } from "./diskUse";
+import { imagesSection, imagesState } from "./imagesPage";
+import { onImagesChanged } from "../terminal/images";
 
 /**
  * Settings over the sidebar and terminal: agents, the Skiff agent,
- * appearance, Open with, and disk use.
+ * appearance, Open with, images and disk use.
  */
 export interface AppearanceHooks {
   themes: () => TerminalTheme[];
@@ -34,7 +36,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   document.getElementById("body")!.appendChild(root);
 
   let agents: AgentInfo[] = [];
-  const TABS = ["agents", "skiff-agent", "appearance", "open", "disk"] as const;
+  const TABS = ["agents", "skiff-agent", "appearance", "open", "images", "disk"] as const;
   let tab: (typeof TABS)[number] = "agents";
   const themeFilters: ThemeFilters = { query: "", family: null };
   type OpenKey = "diff" | "text" | "markdown" | "html" | "image";
@@ -49,6 +51,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   const agentsTable = tableState();
   const tasksTable = tableState();
   const disk = diskState();
+  const gallery = imagesState();
+  // A drop, a paste or a delete elsewhere redraws the gallery.
+  onImagesChanged(() => {
+    if (!root.hidden && tab === "images") render();
+  });
 
   async function toggle(id: string) {
     if (saving) return;
@@ -121,7 +128,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const nav = h("div", "set-nav");
     const head = h("div", "set-nav-head");
     head.append(h("div", "set-title", "Settings"), h("div", "set-path mono", "~/.config/skiff/projects.toml"));
-    const names = { agents: "Agents", "skiff-agent": "Skiff agent", disk: "Disk use", appearance: "Appearance", open: "Open with" };
+    const names = { agents: "Agents", "skiff-agent": "Skiff agent", images: "Images", disk: "Disk use", appearance: "Appearance", open: "Open with" };
     const tabs = TABS.map((t) => {
       const b = h("button", "set-tab" + (tab === t ? " active" : ""), names[t]);
       b.type = "button";
@@ -144,6 +151,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     }
     if (tab === "skiff-agent") {
       root.replaceChildren(nav, skiffAgent(), closeButton());
+      return;
+    }
+    if (tab === "images") {
+      root.replaceChildren(nav, imagesSection(gallery, close), closeButton());
       return;
     }
     if (tab === "disk") {
@@ -489,6 +500,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     // Leaving a name list saves it.
     if (document.activeElement instanceof HTMLTextAreaElement) document.activeElement.blur();
     root.hidden = true;
+    gallery.keys = null;
     onClose();
     onShowChange();
   }
@@ -613,6 +625,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       render();
       if (tab === "disk") void countDisk(disk, render);
       if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
+      else if (tab === "images") root.querySelector<HTMLInputElement>(".img-page .lib-search")?.focus();
       else root.querySelector<HTMLButtonElement>(".set-agent .c-on:not(:disabled)")?.focus();
     },
     close,
