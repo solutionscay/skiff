@@ -6,7 +6,7 @@
 //!
 //! On a remote Host's pane each file goes to that Host (`drops@1`), and the
 //! pane gets the Host path. An image also stays in this computer's cache,
-//! so Images lists it here. Type from Images sends the file the same way.
+//! so Images lists it here. Insert from Images sends the file the same way.
 
 use std::path::{Path, PathBuf};
 
@@ -189,11 +189,11 @@ pub(crate) async fn images() -> Result<Vec<cache::Image>, String> {
     .await
 }
 
-/// Type: the library image goes to the top with `who` as its session, and
+/// Insert: the library image goes to the top with `who` as its session, and
 /// the page types its path as a drop does. On a remote Host's pane the file
 /// goes to the Host first, and the page types the Host path.
 #[tauri::command]
-pub(crate) async fn image_type(handle: AppHandle, app: State<'_, App>, path: PathBuf, who: Who, host: Option<String>) -> Result<Typed, String> {
+pub(crate) async fn image_insert(handle: AppHandle, app: State<'_, App>, path: PathBuf, who: Who, host: Option<String>) -> Result<Typed, String> {
     let word = if app.remote() {
         let (name, bytes) = data::drop_file(&path, host.as_deref()).await?;
         let c = data_now(&app).await?;

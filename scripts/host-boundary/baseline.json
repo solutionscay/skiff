@@ -127,7 +127,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "bb7df5392350232ec8077ab7a6d55628f4fa8a8b0886288a371cc82595d3182b"
+    "sha256": "51249b2b735da2b2f3dfa9711e09edff4a75986668aef37ad2f87d748f391c64"
   },
   "apps/desktop/src-tauri/src/header_bar.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -170,7 +170,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "493bba965f9a593844f1f5ee27c43f3f2bea831997d1691758d1070b9c372784"
+    "sha256": "fbbbae3dbec45dcef8517643d585472d0f4d06d20c2c727830cdf79475db2a63"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -570,7 +570,7 @@
       "@tauri-apps/api/webview",
       "invoke"
     ],
-    "sha256": "90d6328d1e7f0fca5e211a1c80bc5f28a447a7100bf6490418be12a1bbfbc178"
+    "sha256": "dd34f6277128234ab3aed0d0d0d7318660393b3fdc8a7218b889742e2ca9b524"
   },
   "apps/desktop/src/terminal/images.ts": {
     "ownership": "client policy: Images, the library of this computer's image cache; a Type on a remote pane goes through drops.rs to the Host",
@@ -579,7 +579,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "477155b2f01a63924626566bbf19e6257820506c7bc76dbe1620b35c7c2ddc43"
+    "sha256": "126fa882dee1dc2dbdc819e44fe0a66010e8202168a6f2a4edef5d41eead0a8c"
   },
   "apps/desktop/src/terminal/osc52.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -696,7 +696,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "3307fcb1f4e5192a97f8e1b7d3c24587cc2e19a35a476a7753e3a9b2fbce37e4"
+    "sha256": "26c15ac3732fe5fd98a77a1b5a2ac0bf5f046075ee3250becd108b2b12079acd"
   },
   "apps/desktop/src/ui/launchMenu.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

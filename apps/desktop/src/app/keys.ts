@@ -181,7 +181,7 @@ export const DESCRIBE: [string, Action, string][] = [
   ["File", "quit", "Quit Skiff. Sessions keep running in skiffd"],
   ["Edit", "copy", "Copy the terminal selection. In Settings, the selected text in the field"],
   ["Edit", "paste", "Paste into the terminal. An image is saved to Images and its path typed. In Settings, into the field. A one-line field gets one line"],
-  ["Edit", "images", "Show the images on this computer. Type puts a path into the focused pane"],
+  ["Edit", "images", "Show the images on this computer. Insert puts a path into the focused pane"],
   ["Edit", "find", "Find in the terminal"],
   ["Edit", "rename", "Rename the session, or the group or session row in the list"],
   ["Edit", "theme", "Session theme, or the theme of the group or session row in the list. On a project or another row, the project theme"],

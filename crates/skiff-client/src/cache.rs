@@ -226,7 +226,7 @@ pub struct Entry {
     pub title: Option<String>,
     #[serde(default)]
     pub project: Option<String>,
-    /// Unix ms of the last drop, paste or Type. A file with no entry: its mtime.
+    /// Unix ms of the last drop, paste or Insert. A file with no entry: its mtime.
     pub at: u64,
     #[serde(default)]
     pub pinned: bool,
@@ -328,7 +328,7 @@ pub fn list(dir: &Path) -> Vec<Image> {
     out
 }
 
-/// A drop, a paste or a Type of `file` into `who`'s pane: the image goes to
+/// A drop, a paste or an Insert of `file` into `who`'s pane: the image goes to
 /// the top, with its session and a new mtime. `name`: the dropped file's own
 /// name; `None` keeps the one it has.
 pub fn record(dir: &Path, file: &Path, name: Option<&str>, who: Option<&Who>) -> Result<()> {
@@ -499,7 +499,7 @@ mod tests {
         record(&dir, &a, Some("header.png"), Some(&who)).unwrap();
         let top = &list(&dir)[0];
         assert_eq!((top.path.as_str(), top.entry.name.as_deref(), top.entry.title.as_deref()), (a.to_str().unwrap(), Some("header.png"), Some("Header clips")));
-        // Type keeps the name and moves the image to the top.
+        // Insert keeps the name and moves the image to the top.
         std::thread::sleep(std::time::Duration::from_millis(2));
         record(&dir, &b, None, Some(&who)).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(2));
