@@ -84,7 +84,7 @@ pub fn run() {
             drops::drop_files,
             drops::clipboard_image,
             drops::images,
-            drops::image_type,
+            drops::image_insert,
             drops::image_pin,
             drops::image_delete,
             drops::open_image,

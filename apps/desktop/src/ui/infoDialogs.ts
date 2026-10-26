@@ -64,7 +64,7 @@ const FIXED_SHORTCUTS: Shortcut[] = [
   ["Ledger", "Back to Skipper's pane", "Esc"],
   ["Images", "Next or previous image", "↑ / ↓"],
   ["Images", "Open the image", "Enter"],
-  ["Images", "Type the path into the focused pane", "T"],
+  ["Images", "Insert the path into the focused pane", "I"],
   ["Images", "Pin or unpin the image", "P"],
   ["Images", "Copy the path", "C"],
   ["Images", "Delete the image", "Delete"],

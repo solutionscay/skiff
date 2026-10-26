@@ -144,10 +144,10 @@ pub(crate) async fn images() -> Result<Vec<cache::Image>, String> {
     .await
 }
 
-/// Type: the library image goes to the top with `who` as its session, and
+/// Insert: the library image goes to the top with `who` as its session, and
 /// the page types its path as a drop does.
 #[tauri::command]
-pub(crate) async fn image_type(handle: AppHandle, path: PathBuf, who: Who) -> Result<Typed, String> {
+pub(crate) async fn image_insert(handle: AppHandle, path: PathBuf, who: Who) -> Result<Typed, String> {
     let word = skiff_core::shell::quote_word(&path.to_string_lossy());
     blocking(move || cache::record(&cache_dir()?, &path, None, Some(&who))).await?;
     let _ = handle.emit(IMAGES_CHANGED, ());

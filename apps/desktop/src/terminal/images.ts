@@ -1,9 +1,9 @@
 /**
  * Images: one library of this computer's image cache, newest first. Every
  * drop and Skiff Paste puts its image there. The pane header button shows
- * the newest one and opens the library. Each row opens the image, types its
- * path into the focused pane, pins it, copies its path or deletes it. Drag
- * a thumbnail onto any pane to type the path there.
+ * the newest one and opens the library. Each row opens the image, inserts
+ * its path into the focused pane, pins it, copies its path or deletes it.
+ * Drag a thumbnail onto any pane to insert the path there.
  */
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -32,7 +32,7 @@ interface Image {
   session: string | null;
   title: string | null;
   project: string | null;
-  /** Unix ms of the last drop, paste or Type. */
+  /** Unix ms of the last drop, paste or Insert. */
   at: number;
   pinned: boolean;
 }
@@ -203,7 +203,7 @@ function row(i: Image): HTMLElement {
   x.setAttribute("aria-label", "Delete");
   right.append(
     h("span", "lib-time" + (i.path === copied ? " copied" : ""), i.path === copied ? "Copied" : when(i.at)),
-    act("Type", () => void typeImage(i)),
+    act("Insert", () => void insertImage(i)),
     act(i.pinned ? "Unpin" : "Pin", () => void pin(i)),
     act("Copy path", () => void copyPath(i)),
     x,
@@ -249,19 +249,19 @@ function openImage(i: Image) {
   invoke("open_image", { path: i.path }).catch(showError);
 }
 
-/** Types the path into `id`'s pane, as a drop does. */
-async function typeInto(id: string, i: Image) {
+/** Inserts the path into `id`'s pane, as a drop types one. */
+async function insertInto(id: string, i: Image) {
   try {
-    const t = await invoke<Typed>("image_type", { path: i.path, who: whoOf(id) });
+    const t = await invoke<Typed>("image_insert", { path: i.path, who: whoOf(id) });
     typeFiles(id, t);
   } catch (e) {
     showError(e);
   }
 }
 
-async function typeImage(i: Image) {
+async function insertImage(i: Image) {
   const id = S.focused;
-  if (id && panes.has(id)) await typeInto(id, i);
+  if (id && panes.has(id)) await insertInto(id, i);
 }
 
 async function pin(i: Image) {
@@ -301,7 +301,7 @@ lib.addEventListener("keydown", (e) => {
   else if (e.key === "ArrowDown") light(o[(n + 1) % o.length]?.path ?? null);
   else if (e.key === "ArrowUp") light(o[(n - 1 + o.length) % o.length]?.path ?? null);
   else if (e.key === "Enter" && i) openImage(i);
-  else if (k === "t" && i) void typeImage(i);
+  else if (k === "i" && i) void insertImage(i);
   else if (k === "p" && i) void pin(i);
   else if (k === "c" && i) void copyPath(i);
   else if (e.key === "Delete" && i) void remove(i);
@@ -376,7 +376,7 @@ export function imagesButton(id: string): HTMLElement | null {
 }
 
 /** A thumbnail dragged out of the library: a ghost row under the pointer,
- *  the drop look on the pane under it, and Type into that pane on release. */
+ *  the drop look on the pane under it, and Insert into that pane on release. */
 function startDrag(e: PointerEvent, i: Image, th: HTMLElement) {
   if (e.button !== 0) return;
   e.preventDefault();
@@ -404,7 +404,7 @@ function startDrag(e: PointerEvent, i: Image, th: HTMLElement) {
     const id = endImageDrag(u.clientX, u.clientY);
     if (!id) return;
     if (id !== S.focused) focusPane(id);
-    void typeInto(id, i);
+    void insertInto(id, i);
   };
   window.addEventListener("pointermove", move, true);
   window.addEventListener("pointerup", up, true);
