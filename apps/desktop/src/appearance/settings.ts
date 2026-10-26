@@ -29,6 +29,8 @@ export interface AppearanceHooks {
   current: () => string | null;
   load: () => Promise<void>;
   set: (id: string | null) => void;
+  /** Themes that replace the app theme on screen, each with a label that names its scope. */
+  overrides?: () => { id: string; label: string }[];
 }
 
 export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () => void, look: AppearanceHooks, onShowChange: () => void = () => {}) {
@@ -337,6 +339,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       themeGrid(look.themes(), {
         active: look.themes().some((t) => t.id === cur) ? cur : DEFAULT_THEME,
         filters: themeFilters,
+        scopes: look.overrides?.(),
         reload: async () => { await look.load(); return look.themes(); },
         pick: (id) => {
           look.set(id === DEFAULT_THEME ? null : id);

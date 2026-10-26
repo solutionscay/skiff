@@ -14,7 +14,7 @@ import { render, scheduleRender } from "./render";
 import { collapsed, S, selectedWorktree } from "./state";
 import { launchChoices } from "./stateQueries";
 
-import { loadThemes } from "../appearance/themes";
+import { loadThemes, themeOverrides } from "../appearance/themes";
 import { refocusTerminal, selectProject } from "../workspace/view";
 import { includeAdded } from "../workspace/profile";
 
@@ -27,6 +27,7 @@ export const settings = createSettings(
   {
     themes: () => S.themes,
     current: () => S.appTheme,
+    overrides: themeOverrides,
     load: loadThemes,
     set: (id) => {
       S.appTheme = id;
@@ -34,8 +35,11 @@ export const settings = createSettings(
       invoke("set_appearance", { theme: id }).catch(showError);
     },
   },
-  // Edit › Copy and Paste work in its text fields while it shows.
-  scheduleRender,
+  // Edit › Copy and Paste work in its text fields while it shows. The app wears the app theme while it shows.
+  () => {
+    S.settingsShown = settings.isOpen;
+    scheduleRender();
+  },
 );
 
 export const launchMenu = createLaunchMenu({
