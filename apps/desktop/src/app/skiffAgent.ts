@@ -5,6 +5,7 @@ import type { AgentInfo, DaemonStatus, SessionInfo } from "../platform/types";
 import { setSkiffAgentName } from "./keys";
 import { render } from "./renderRequest";
 import { S, sessions, upsert } from "./state";
+import { place } from "./stateQueries";
 import { agentKind } from "../appearance/agentIcon";
 import { keepRow } from "../workspace/selection";
 import { revealSession } from "../workspace/view";
@@ -147,24 +148,70 @@ export function startProjectSkipper(project: string) {
   const s = projectSkipperOf(project);
   if (s) return show(s.id);
   // A remote Host starts it there, through its skiff-host (skipper_run@1).
-  const start: Promise<ProjectStart> = isRemote()
+  const start = (): Promise<ProjectStart> => isRemote()
     ? hostInvoke<string>("skipper_run", "start_project_skipper", { project }).then((id) => ({ kind: "started", id }))
     : invoke<ProjectStart>("start_project_skipper", { project });
-  start
-    .then((r) => {
-      if (r.kind === "daemon_older") {
-        showError(`skiffd ${r.version} is older than this Skiff, so it cannot start a project Skipper. Its sessions keep running through the update.`, {
-          label: "Update skiffd",
-          run: async () => {
-            await updateDaemon();
-            startProjectSkipper(project);
-          },
-        });
-        return;
-      }
-      if (r.id) show(r.id);
-    })
-    .catch(showError);
+  void starting(project, async () => {
+    const r = await start();
+    if (r.kind !== "daemon_older") return r.id;
+    showError(`skiffd ${r.version} is older than this Skiff, so it cannot start a project Skipper. Its sessions keep running through the update.`, {
+      label: "Update skiffd",
+      run: async () => {
+        await updateDaemon();
+        startProjectSkipper(project);
+      },
+    });
+    return "";
+  }).catch(showError);
+}
+
+/** The scope of a Skipper the app is starting: its session shows as soon as skiffd has it. */
+let awaited: string | null = null;
+
+/**
+ * Runs `start`, and shows the new Skipper of `scope` the moment skiffd adds
+ * it. The start returns only after the agent is ready and has its first
+ * message, which takes seconds. A pane that ends meanwhile then gives its
+ * keys to the new Skipper, not to the next row.
+ */
+async function starting(scope: string, start: () => Promise<string>) {
+  awaited = scope;
+  try {
+    const id = await start();
+    // Shown already when skiffd added it: the person may have moved on since.
+    if (id && awaited === scope) show(id);
+  } finally {
+    if (awaited === scope) awaited = null;
+  }
+}
+
+/** skiffd added session `s`: the Skipper the app is starting shows at once. */
+export function skipperCreated(s: SessionInfo) {
+  if (!awaited || s.skipper !== awaited) return;
+  awaited = null;
+  show(s.id);
+}
+
+/** Project Skipper sessions that a takeover hands to a fleet Skipper, and the fleet. */
+const handedTo = new Map<string, string>();
+
+/**
+ * Session `id` ends. When it has the keys, they go to the fleet Skipper that
+ * took this retiring project Skipper over, else null. A takeover from the app
+ * names its fleet. One from a terminal is found by the project's fleet.
+ */
+export function heirOf(id: string, focused: boolean): string | null {
+  const s = sessions.get(id);
+  const named = handedTo.get(id);
+  handedTo.delete(id);
+  if (!focused) return null;
+  const fleet = named ?? (s?.retiring ? place(s)?.project.fleet : null);
+  const heir = fleet ? fleetSkipperOf(fleet)?.id : null;
+  return heir && heir !== id ? heir : null;
+}
+
+function handOver(fleet: string, taken: Taken[]) {
+  for (const t of taken) handedTo.set(t.session, fleet);
 }
 
 /** One project Skipper a takeover stops, as `fleet_takeover_preview` gives it. */
@@ -216,8 +263,8 @@ export async function startFleetSkipper(fleet: string) {
   try {
     const taken = await hostInvoke<Taken[]>("skipper_fleets", "fleet_takeover_preview", { fleet, join: null });
     if (!(await confirmTakeover(`Start the ${fleet} Skipper?`, "Start fleet Skipper", taken))) return;
-    const id = await hostInvoke<string>("skipper_fleets", "start_fleet_skipper", { fleet });
-    if (id) show(id);
+    handOver(fleet, taken);
+    await starting(fleetScope(fleet), () => hostInvoke<string>("skipper_fleets", "start_fleet_skipper", { fleet }));
   } catch (e) {
     showError(e);
   }
@@ -234,7 +281,10 @@ export async function joinFleet(project: string, fleet: string): Promise<boolean
   const taken = await hostInvoke<Taken[]>("skipper_fleets", "fleet_takeover_preview", { fleet, join: project });
   if (!taken.length) return false;
   if (!(await confirmTakeover(`Add ${project} to ${fleet}?`, "Add to fleet", taken))) return null;
+  handOver(fleet, taken);
   await hostInvoke("skipper_fleets", "fleet_takeover", { fleet, join: project });
+  const s = fleetSkipperOf(fleet);
+  if (s) show(s.id);
   return true;
 }
 

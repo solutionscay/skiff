@@ -23,7 +23,7 @@ import { hasKeys, markSeen, quietSeen } from "./seen";
 import { peekExited, peekUpdated, previewToken, strayPeek } from "../terminal/peek";
 import { activeGroupObj, awayPlaces, currentWorktree, place, shownIds } from "./stateQueries";
 import { agentKind } from "../appearance/agentIcon";
-import { loadSkiffAgent, noteDaemon } from "./skiffAgent";
+import { heirOf, loadSkiffAgent, noteDaemon, skipperCreated } from "./skiffAgent";
 import { taskTitle } from "../workspace/model";
 import { panes } from "../terminal/terminalState";
 import { ptySized } from "../terminal/terminal";
@@ -502,6 +502,7 @@ export function onEvent(e: DaemonEvent) {
       upsert(e.session);
       // A restore brings the id back with the size the daemon saved.
       ptySized(e.session);
+      skipperCreated(e.session);
       break;
     case "session_updated": {
       if (e.session.peek) return peekUpdated(e.session);
@@ -534,7 +535,9 @@ function dropPane(id: string) {
   if (!sessions.has(id)) return;
   // The keys go to a neighbor, picked while the pane and its row are still there:
   // the pane beside it in a group, else the next session row in the list.
-  const near = S.focused !== id ? null : shownIds().length > 1 ? paneNear(id) : S.single === id ? rowNear(id) : null;
+  // A retiring project Skipper gives them to the fleet Skipper that took it over.
+  const heir = heirOf(id, S.focused === id);
+  const near = S.focused !== id || heir ? null : shownIds().length > 1 ? paneNear(id) : S.single === id ? rowNear(id) : null;
   sessions.delete(id);
   panes.get(id)?.term.dispose();
   panes.get(id)?.el.remove();
@@ -558,6 +561,7 @@ function dropPane(id: string) {
   if (S.single === id) S.single = null;
   const ids = shownIds();
   if (S.focused && !ids.includes(S.focused)) S.focused = null;
+  if (heir && sessions.has(heir)) return revealSession(heir);
   if (near && ids.includes(near)) return focusPane(near);
   if (!ids.length) return near && sessions.has(near) ? revealSession(near) : unfocus();
   if (!S.focused) {
