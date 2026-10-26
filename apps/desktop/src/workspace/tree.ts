@@ -89,7 +89,7 @@ const hiddenKey = (fleet: string) => {
 
 export const projectsHidden = (fleet: string) => savedHidden.has(hiddenKey(fleet));
 
-/** Show projects in the fleet menu, and the count on its head. */
+/** Hide projects / Show projects in the fleet menu, and the count on its head. */
 export function setProjectsHidden(fleet: string, hide: boolean) {
   if (hide) savedHidden.add(hiddenKey(fleet));
   else savedHidden.delete(hiddenKey(fleet));
