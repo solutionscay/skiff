@@ -153,12 +153,25 @@ let keysIn: "field" | "list" = "field";
 
 /** The lit row, by path, so a redraw keeps it. */
 let lit: string | null = null;
-/** The path whose time cell says "Copied". */
-let copied: string | null = null;
-let copiedTimer = 0;
+/** The row whose right column says "Copied" or "Inserted" for 1.5 s, in place of its buttons. */
+let done: { path: string; word: "Copied" | "Inserted" } | null = null;
+let doneTimer = 0;
 
 /** Pinned first, then the rest; each newest first. */
 export const ordered = () => [...list.filter((i) => i.pinned), ...list.filter((i) => !i.pinned)];
+
+/** Each row's place and section when the drop-down opened. Insert and Pin
+ *  do not move a row while it is open; the new order shows on the next open. */
+let held: Map<string, { n: number; pinned: boolean }> | null = null;
+const heldPinned = (i: Image) => held?.get(i.path)?.pinned ?? i.pinned;
+
+/** The drop-down's order: as it opened, with a new image first in its section. */
+function libOrder(): Image[] {
+  const o = ordered();
+  if (!held) return o;
+  const n = (i: Image) => held!.get(i.path)?.n ?? -1;
+  return o.sort((a, b) => Number(heldPinned(b)) - Number(heldPinned(a)) || n(a) - n(b));
+}
 
 /** Lower case with no accents. Each character stays one character, so a match maps back to the text. */
 const foldChar = (c: string) => (c.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase()[0] ?? c);
@@ -194,7 +207,7 @@ export function marked(text: string, words: string[]): (string | HTMLElement)[] 
 }
 
 const query = () => queryWords(field.value);
-const shown = () => ordered().filter((i) => matches(i, query()));
+const shown = () => libOrder().filter((i) => matches(i, query()));
 
 const seen = new IntersectionObserver((es) => {
   for (const e of es) {
@@ -246,7 +259,8 @@ export function shownName(i: Image): string {
 }
 
 function row(i: Image, words: string[]): HTMLElement {
-  const r = h("div", "lib-row" + (i.path === lit ? " lit" : "") + (i.path === copied ? " copied" : ""));
+  const word = done?.path === i.path ? done.word : null;
+  const r = h("div", "lib-row" + (i.path === lit ? " lit" : "") + (word ? " copied" : ""));
   r.setAttribute("role", "menuitem");
   r.dataset.path = i.path;
   const th = h("span", "lib-th");
@@ -263,7 +277,7 @@ function row(i: Image, words: string[]): HTMLElement {
   x.appendChild(icon('<path d="M6 6l12 12M18 6L6 18"></path>'));
   x.setAttribute("aria-label", "Delete");
   right.append(
-    h("span", "lib-time" + (i.path === copied ? " copied" : ""), i.path === copied ? "Copied" : when(i.at)),
+    doneCell(word, i.at),
     act("Insert", () => void insertImage(i)),
     act(i.pinned ? "Unpin" : "Pin", () => void pin(i)),
     act("Copy path", () => void copyPath(i)),
@@ -273,6 +287,24 @@ function row(i: Image, words: string[]): HTMLElement {
   r.addEventListener("mousemove", () => light(i.path));
   r.addEventListener("click", () => openImage(i));
   return r;
+}
+
+/** The time; else "Copied", or "Inserted" with a check. */
+function doneCell(word: string | null, at: number): HTMLElement {
+  const cell = h("span", "lib-time" + (word ? " copied" : ""), word ?? when(at));
+  if (word === "Inserted") cell.prepend(icon('<path d="M4 12.5l5 5 11-11"></path>'));
+  return cell;
+}
+
+/** Shows `word` on the row for 1.5 s. */
+function showDone(path: string, word: "Copied" | "Inserted") {
+  done = { path, word };
+  clearTimeout(doneTimer);
+  doneTimer = window.setTimeout(() => {
+    done = null;
+    if (!lib.hidden) draw();
+  }, 1500);
+  if (!lib.hidden) draw();
 }
 
 export function section(name: string, n: number): HTMLElement {
@@ -290,7 +322,7 @@ function draw() {
   if (!o.some((i) => i.path === lit)) lit = o[0]?.path ?? null;
   libCount.textContent = countText(o.length, words);
   lib.classList.toggle("in-list", keysIn === "list");
-  const pins = o.filter((i) => i.pinned).length;
+  const pins = o.filter(heldPinned).length;
   const kids: HTMLElement[] = [];
   if (!o.length) kids.push(h("div", "lib-none", "No images match"));
   o.forEach((i, n) => {
@@ -316,13 +348,15 @@ export function openImage(i: Image) {
   invoke("open_image", { path: i.path }).catch(showError);
 }
 
-/** Inserts the paths into `id`'s pane, as a drop of these files types them. */
-export async function insertInto(id: string, imgs: readonly Image[]) {
+/** Inserts the paths into `id`'s pane, as a drop of these files types them. False: it failed, and the error shows. */
+export async function insertInto(id: string, imgs: readonly Image[]): Promise<boolean> {
   try {
     const t = await invoke<Typed>("image_insert", { paths: imgs.map((i) => i.path), who: whoOf(id), host: isRemote() ? hostName() : null });
     typeFiles(id, t);
+    return true;
   } catch (e) {
     showError(e);
+    return false;
   }
 }
 
@@ -331,7 +365,8 @@ export const insertTarget = (): string | null => (S.focused && panes.has(S.focus
 
 async function insertImage(i: Image) {
   const id = insertTarget();
-  if (id) await insertInto(id, [i]);
+  if (!id) return;
+  if (await insertInto(id, [i])) showDone(i.path, "Inserted");
 }
 
 export async function pinImages(imgs: readonly Image[], on: boolean) {
@@ -350,13 +385,7 @@ async function copyPath(i: Image) {
   } catch (e) {
     return showError(e);
   }
-  copied = i.path;
-  clearTimeout(copiedTimer);
-  copiedTimer = window.setTimeout(() => {
-    copied = null;
-    if (!lib.hidden) draw();
-  }, 1500);
-  draw();
+  showDone(i.path, "Copied");
 }
 
 async function remove(i: Image) {
@@ -446,6 +475,7 @@ function openAt(at: DOMRect) {
   field.value = "";
   keysIn = "field";
   lit = null;
+  held = new Map(ordered().map((i, n) => [i.path, { n, pinned: i.pinned }]));
   const s = S.focused ? sessions.get(S.focused) : undefined;
   lib.style.setProperty("--pc", accent(s ? place(s)?.project : null));
   lib.hidden = false;
@@ -461,6 +491,7 @@ function openAt(at: DOMRect) {
 export function closeImages(refocus = true) {
   if (lib.hidden) return;
   lib.hidden = true;
+  held = null;
   seen.disconnect();
   expanded(false);
   if (refocus) refocusTerminal();
