@@ -152,7 +152,7 @@ let keysIn: "field" | "list" = "field";
 
 /** The lit row, by path, so a redraw keeps it. */
 let lit: string | null = null;
-/** The row whose right column says "Copied" or "Inserted" for 1.5 s, in place of its buttons. */
+/** The row whose right column says "Copied" (1.5 s) or "Inserted" (3 s), in place of its buttons. */
 let done: { path: string; word: "Copied" | "Inserted" } | null = null;
 let doneTimer = 0;
 
@@ -295,14 +295,14 @@ function doneCell(word: string | null, at: number): HTMLElement {
   return cell;
 }
 
-/** Shows `word` on the row for 1.5 s. */
+/** Shows `word` on the row: "Inserted" for 3 s, "Copied" for 1.5 s. */
 function showDone(path: string, word: "Copied" | "Inserted") {
   done = { path, word };
   clearTimeout(doneTimer);
   doneTimer = window.setTimeout(() => {
     done = null;
     if (!lib.hidden) draw();
-  }, 1500);
+  }, word === "Inserted" ? 3000 : 1500);
   if (!lib.hidden) draw();
 }
 
