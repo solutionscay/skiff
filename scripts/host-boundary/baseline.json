@@ -115,7 +115,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "86a6bf477f2355655c09a80592151e3f4ebba49552ecb0228f527e6b1117f7e2"
+    "sha256": "7d3c849f2d288f6c046271ebc5d2ffce87e9f52d1519a65f75cf7cb3133b786a"
   },
   "apps/desktop/src-tauri/src/drops.rs": {
     "ownership": "client policy: reads dropped files and this computer's clipboard and cache; a remote Host gets each file through drops@1",
@@ -127,7 +127,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "0998e9edf78732fcb60490c3dd68b3d7c069a8d6008ad3569a4134adbc4d3c34"
+    "sha256": "86d1c1fb9960cc5b29aad0dd9f2b5d237cf849bb61d6292b08b8d03926a673ce"
   },
   "apps/desktop/src-tauri/src/header_bar.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -170,7 +170,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "6a2a12910c999b84b33109ea6cc4abb47b66f38769265a5f9b980a58a6ae398d"
+    "sha256": "cf3a2c3ce8abd78356dcec882c87ecd567a3c773e7a23dec37fd7f3413d1f822"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -220,7 +220,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "84e839d7f151caa8851fbdb185c59c59431ee0a4ae3b8c4bd6e06da71d29c561"
+    "sha256": "cfe860594bed4898537329b7d4d56cc89120bc0ff1d30487e6815a7591670444"
   },
   "apps/desktop/src-tauri/src/streaming.rs": {
     "ownership": "M1e terminal output via selected Host session_terminal@1; M1d page session events via selected Host; core Event only for the page channel type",
@@ -396,7 +396,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "1c7ac8a90dd2cc4d3d2fb3743e33845161399fecd92d3003b67fd22bc33498fe"
+    "sha256": "d8b17d319e3a8a5f61f17d22327783a3e9dcbda7874928458a7529547b794d8f"
   },
   "apps/desktop/src/app/state.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -454,7 +454,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "0f804f8db2ce42c6733ce9a3a48f341e68897540d16f42ef3e5219a6835c2df0"
+    "sha256": "d056bac6d8e314564f2cc44f1e14a5334bec4fde6e3a33f29ec37330cb04f19f"
   },
   "apps/desktop/src/appearance/hostProgress.ts": {
     "ownership": "client policy (#166): progress of this client's own SSH install/update job (skiff:host-step) and its cancel_install; the Host is not there yet, so no HostConnection",
@@ -483,7 +483,7 @@
       "local provider: apps/desktop/src/platform/clipboard.ts",
       "local provider: apps/desktop/src/terminal/images.ts"
     ],
-    "sha256": "469dfc95ac9a7f1701c3d32ea62dc92d19ad74a294098282f94100859446abec"
+    "sha256": "51576db95bd03941b6963e3a70185260768fd79cd669a40d6b8ff271f2f13229"
   },
   "apps/desktop/src/appearance/settings.ts": {
     "ownership": "mixed: agent changes (agent_config@1) and Skipper settings (skipper_config@1) through hostInvoke (#166 R7, R8); Open with and the menu layout are this client's own settings",
@@ -498,7 +498,7 @@
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "edcf38c9edb9c1e5a7202e801b26d05057e2991d0dc814c77b35c3ef54d0b87f"
+    "sha256": "4dfbc99b4da1ff2af4f432473d0179532bf6c5f801b410aeaf2cd50be6bae603"
   },
   "apps/desktop/src/appearance/skiffFolderDialog.ts": {
     "ownership": "Host caller (#166 R7): folder preview and change through hostInvoke(skipper_config); the system picker and reveal are this client's own, used only on This Mac",
@@ -590,7 +590,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "dbfa84a0b1fae2100a0ce9c0e63b4ab68f8bf1a44ecc9e351a42fe8bc92aad13"
+    "sha256": "e34f2105a8f10678fef44c0694aaa4ca889e536b356221939c7a2cb937dab825"
   },
   "apps/desktop/src/terminal/insertSignal.ts": {
     "ownership": "legacy local adapter/caller: migrate behind Host API in M1\u2013M6",
