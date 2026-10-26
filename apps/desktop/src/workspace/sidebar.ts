@@ -32,7 +32,7 @@ import { dragGroup, dragSessions, groupHome, revealSession, selectWorktree, show
 import { addProject } from "../app/panels";
 import { animateFold, growOpened } from "../ui/fold";
 import { dragTree } from "./treeDrag";
-import { bareWorktree, fleetKey, folded, isOpen, openToFocused, projectBadge, projectKey, rollCounts, rollup, toggleRow, treeDrag, treeSections, type Section } from "./tree";
+import { bareWorktree, fleetKey, folded, hiddenSplit, isOpen, openToFocused, projectBadge, projectKey, projectsHidden, rollCounts, rollup, setProjectsHidden, toggleRow, treeDrag, treeSections, type Section } from "./tree";
 import { render } from "../app/renderRequest";
 import { projectsPlus, renderWorkspaceStatus, shows, workspaceOpen } from "./profile";
 import { ledgerCounts, ledgerNeeds, ledgerWorkTitle } from "./ledger";
@@ -51,7 +51,7 @@ function sessionBlock(lines: Line[], color: string): HTMLElement {
   return block;
 }
 
-function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: Group; groupRail?: boolean }): HTMLElement {
+function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: Group; groupRail?: boolean; where?: string }): HTMLElement {
   if (S.renamingSession === s.id) return renameRow(s, color);
   // State shows only when it matters: waiting stands out, working pulses, done fades.
   const cls = ["session-row", `st-${s.state}`];
@@ -95,6 +95,7 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
     const at = place(s);
     row.appendChild(h("span", "where mono", at ? branchName(at.worktree) : "other"));
   }
+  if (o.where) row.appendChild(h("span", "where mono", o.where));
   const away = awayPlaces(s);
   if (away.length) {
     const names = away.map((a) => branchName(a.worktree)).join(", ");
@@ -217,10 +218,19 @@ function sidebarSig(): { all: string; parts: Map<string, string> } {
     parts.set(k, JSON.stringify([base, projects[i], isOpen(projectKey(p.name)), p.name === S.selectedProject, under.get(k) ?? null, skipperSig(p.name)]));
   });
   const all = JSON.stringify([
-    listGen, appliedTheme(), S.selectedProject, folded.keys(), S.projects.map(shows),
+    listGen, appliedTheme(), S.selectedProject, folded.keys(), S.projects.map(shows), hiddenSig(),
     S.selection, S.renamingSession, S.renaming?.id ?? null, rows, groups, projects, agent,
   ]);
   return { all, parts };
+}
+
+/** What each fleet that hides its projects shows: its head's count and the rows still under it. */
+function hiddenSig() {
+  return treeSections().flatMap((sec) => {
+    if (!sec.fleet || !projectsHidden(sec.fleet)) return [];
+    const { shown, hidden } = hiddenSplit(sec.projects);
+    return [[sec.fleet, hidden, shown.map((x) => x.id)]];
+  });
 }
 
 /**
@@ -277,13 +287,18 @@ export function renderSidebar() {
   for (const sec of treeSections()) {
     // A fleet head holds its projects for drag and menu. Folded, it counts
     // what they wait on, work on and left unread.
-    const open = !sec.fleet || isOpen(fleetKey(sec.fleet));
+    const fleetSkipper = sec.fleet ? fleetSkipperOf(sec.fleet) : null;
+    // A fleet that hides its projects keeps its Skipper and the sessions that need a look.
+    const split = sec.fleet && projectsHidden(sec.fleet) ? hiddenSplit(sec.projects) : null;
+    // With none of them, the head is alone: no chevron and no fold.
+    const alone = !!split && !fleetSkipper && !split.shown.length;
+    const open = !sec.fleet || (!alone && isOpen(fleetKey(sec.fleet)));
     const headSig = JSON.stringify([
-      listGen, sec.fleet, open, workspaceOpen(), sec.projects.map((p) => p.name),
+      listGen, sec.fleet, open, workspaceOpen(), sec.projects.map((p) => p.name), split?.hidden ?? null, alone,
       open ? null : sec.projects.map((p) => sig.parts.get(projectBlockKey(p.name))),
       open || !sec.fleet ? null : [fleetSkipperOf(sec.fleet)?.state ?? null, fleetSkipperOf(sec.fleet)?.unread ?? false],
     ]);
-    nodes.push(keep(`head:${sec.fleet ?? ""}`, headSig, () => sectionHead(sec)));
+    nodes.push(keep(`head:${sec.fleet ?? ""}`, headSig, () => sectionHead(sec, split?.hidden ?? null, alone)));
     if (!open) continue;
     const sk = sec.fleet ?? "";
     kidsNow.add(sk);
@@ -294,14 +309,16 @@ export function renderSidebar() {
       sectionKids.set(sk, kids);
     }
     // A fleet's Skipper is the first row under its head.
-    const fleetSkipper = sec.fleet ? fleetSkipperOf(sec.fleet) : null;
     const skipperRow = sec.fleet && fleetSkipper
       ? [keep(`skipper:${sec.fleet}`, JSON.stringify([listGen, skipperSig(fleetScope(sec.fleet))]), () => projectSkipperRow(fleetScope(sec.fleet!), fleetSkipper))]
       : [];
-    setChildren(kids, [...skipperRow, ...sec.projects.map((p) => {
-      const k = projectBlockKey(p.name);
-      return keep(k, sig.parts.get(k)!, () => projectBlock(p));
-    })]);
+    const shownSig = split ? JSON.stringify([listGen, appliedTheme(), S.selection, S.renamingSession, split.shown.map((x) => [x.id, x.state, x.unread, x.exit_code, x.agent_exit, taskTitle(x), agentName(x), agentKind(x), place(x)?.project.name])]) : "";
+    setChildren(kids, [...skipperRow, ...(split
+      ? split.shown.length ? [keep(`shown:${sec.fleet}`, shownSig, () => shownBlock(split.shown))] : []
+      : sec.projects.map((p) => {
+        const k = projectBlockKey(p.name);
+        return keep(k, sig.parts.get(k)!, () => projectBlock(p));
+      }))]);
     nodes.push(kids);
   }
   // A folded fleet's rows start over when it opens: the fold left them shrunk.
@@ -465,8 +482,26 @@ function projectSkipperRow(scope: string, s: SessionInfo): HTMLElement {
   return row;
 }
 
-/** A section head: "Projects" with its +, or a fleet that folds and opens. */
-function sectionHead(sec: Section): HTMLElement {
+/**
+ * The sessions still under a fleet that hides its projects: each one that
+ * waits, and the one on screen. Each row names its project.
+ */
+function shownBlock(shown: SessionInfo[]): HTMLElement {
+  const block = h("div", "sessions-block fleet-shown");
+  block.style.height = `calc(${shown.length * 20} * var(--u))`;
+  for (const s of shown) {
+    const p = place(s)!.project;
+    block.appendChild(sessionRow(s, accent(p), { where: p.name }));
+  }
+  return block;
+}
+
+/**
+ * A section head: "Projects" with its +, or a fleet that folds and opens.
+ * A fleet that hides its projects counts its hidden sessions (`hidden`); a
+ * click on the count shows the projects. `alone`: nothing under the head.
+ */
+function sectionHead(sec: Section, hidden: number | null = null, alone = false): HTMLElement {
   if (!sec.fleet) {
     const head = h("div", "tree-head");
     head.append(h("span", "tree-head-name", "Projects"));
@@ -481,12 +516,17 @@ function sectionHead(sec: Section): HTMLElement {
   }
   const name = sec.fleet;
   const key = fleetKey(name);
-  const open = isOpen(key);
-  const head = h("div", "tree-head fleet-head");
-  const pick = button("fleet-pick", "", () => toggleRow(key, render));
-  pick.dataset.key = pick.dataset.fold = key;
-  pick.setAttribute("aria-expanded", String(open));
-  pick.append(chevron(open), h("span", "tree-head-name", name));
+  const open = !alone && isOpen(key);
+  const head = h("div", "tree-head fleet-head" + (alone ? " alone" : ""));
+  const pick = button("fleet-pick", "", () => {
+    if (!alone) toggleRow(key, render);
+  });
+  pick.dataset.key = key;
+  if (!alone) {
+    pick.dataset.fold = key;
+    pick.setAttribute("aria-expanded", String(open));
+  }
+  pick.append(alone ? h("span", "chev-space") : chevron(open), h("span", "tree-head-name", name));
   const add = button("tree-head-add", "", () => void addProject.open(name));
   add.title = `Add project to ${name}`;
   add.setAttribute("aria-label", `Add project to ${name}`);
@@ -499,8 +539,17 @@ function sectionHead(sec: Section): HTMLElement {
   more.setAttribute("aria-label", `${name} menu`);
   more.setAttribute("aria-haspopup", "menu");
   more.appendChild(icon('<circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle>'));
-  head.append(pick, more, add);
-  const roll = open ? null : rollup(sec.projects, name);
+  head.append(pick);
+  if (hidden !== null) {
+    const count = button("fleet-hidden", `· ${hidden}`, () => {
+      setProjectsHidden(name, false);
+      render();
+    });
+    count.setAttribute("aria-label", `Show projects, ${hidden} hidden ${hidden === 1 ? "session" : "sessions"}`);
+    head.append(count);
+  }
+  head.append(more, add);
+  const roll = open || alone ? null : rollup(sec.projects, name);
   if (roll) pick.appendChild(roll);
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
