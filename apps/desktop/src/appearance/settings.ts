@@ -597,7 +597,9 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   });
 
   return {
-    async open() {
+    /** `at`: the section to show, else the last one. */
+    async open(at?: (typeof TABS)[number]) {
+      if (at) tab = at;
       root.hidden = false;
       onShowChange();
       await look.load();

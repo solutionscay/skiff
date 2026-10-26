@@ -6,13 +6,21 @@
 //! The first bytes decide what is an image, not the extension. The name is
 //! the first 16 hex characters of the SHA-256 of the bytes, so the same
 //! image is one file. A repeat sets the mtime to now and writes nothing.
+//!
+//! The folder is the Images library, newest first. `images.json` beside the
+//! images keeps each one's own name, the session that last got it, and its
+//! pin. Flushes skip pinned images and the index.
 
 use std::{
+    collections::HashSet,
     io::{Read, Write},
     path::{Path, PathBuf},
+    sync::Mutex,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use skiff_core::{
     config::Config,
@@ -112,13 +120,21 @@ pub fn store(dir: &Path, bytes: &[u8], ext: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// An image Skiff put in the cache for a drop or a paste.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Stored {
+    pub path: PathBuf,
+    /// The dropped file's own name. `None`: a paste.
+    pub name: Option<String>,
+}
+
 /// What Skiff types for dropped or pasted files.
 #[derive(Debug, Default, PartialEq)]
 pub struct Typed {
     /// Each file's word, quoted, in order.
     pub words: Vec<String>,
-    /// The cache paths of the images, in order.
-    pub images: Vec<String>,
+    /// The images, in order.
+    pub images: Vec<Stored>,
     /// An image was over [`MAX_BYTES`]: it kept its own path.
     pub too_large: bool,
 }
@@ -141,7 +157,7 @@ pub fn files(dir: &Path, paths: &[PathBuf]) -> Result<Typed> {
         let bytes = std::fs::read(p).with_context(|| format!("read {}", p.display()))?;
         let stored = store(dir, &bytes, ext)?;
         out.words.push(word(&stored));
-        out.images.push(stored.to_string_lossy().into_owned());
+        out.images.push(Stored { path: stored, name: p.file_name().map(|n| n.to_string_lossy().into_owned()) });
     }
     Ok(out)
 }
@@ -160,6 +176,164 @@ fn image_of(p: &Path) -> Result<Option<(u64, &'static str)>> {
     }
     let file_ext = p.extension().and_then(|e| e.to_str());
     Ok(image_ext(&head, file_ext).map(|e| (m.len(), e)))
+}
+
+/// The library's index, beside the images.
+pub const INDEX: &str = "images.json";
+
+/// One image of the library, as `images.json` keeps it.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct Entry {
+    /// The cache file's name.
+    pub file: String,
+    /// The dropped file's own name. `None`: a paste, or a file with no entry.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// The session that last got the image, with its title and project as
+    /// its pane showed them then.
+    #[serde(default)]
+    pub session: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub project: Option<String>,
+    /// Unix ms of the last drop, paste or Type. A file with no entry: its mtime.
+    pub at: u64,
+    #[serde(default)]
+    pub pinned: bool,
+}
+
+/// The session that gets an image, as its pane shows it.
+#[derive(Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct Who {
+    pub session: String,
+    pub title: String,
+    pub project: Option<String>,
+}
+
+/// An image of the library: its path and its entry.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Image {
+    pub path: String,
+    #[serde(flatten)]
+    pub entry: Entry,
+}
+
+/// One writer of `images.json` at a time in this process.
+static INDEX_LOCK: Mutex<()> = Mutex::new(());
+
+/// A cache image's file name: no index, no temp file.
+fn is_image_name(name: &str) -> bool {
+    const EXTS: [&str; 9] = ["png", "jpg", "gif", "webp", "bmp", "tif", "avif", "heic", "svg"];
+    !name.starts_with('.') && !name.contains(".tmp-") && name.rsplit_once('.').is_some_and(|(_, e)| EXTS.contains(&e))
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
+}
+
+fn read_index(dir: &Path) -> Vec<Entry> {
+    std::fs::read_to_string(dir.join(INDEX)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+/// Writes the entries whose file is still there.
+fn write_index(dir: &Path, entries: Vec<Entry>) -> Result<()> {
+    let kept: Vec<Entry> = entries.into_iter().filter(|e| dir.join(&e.file).is_file()).collect();
+    skiff_core::config::write_atomic(&dir.join(INDEX), &serde_json::to_string(&kept)?)
+}
+
+/// The cache file's name, when `file` is an image directly in `dir`.
+fn name_in(dir: &Path, file: &Path) -> Result<String> {
+    let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let inside = file.parent().is_some_and(|p| p == dir || p.canonicalize().ok() == dir.canonicalize().ok());
+    if !inside || !is_image_name(&name) {
+        anyhow::bail!("{} is not in the Images folder", file.display());
+    }
+    Ok(name)
+}
+
+/// Every image in `dir`, newest first. A file with no entry shows with its
+/// mtime; an entry with no file is left out.
+pub fn list(dir: &Path) -> Vec<Image> {
+    let index = read_index(dir);
+    let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut out: Vec<Image> = rd
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+        .filter_map(|e| {
+            let file = e.file_name().to_string_lossy().into_owned();
+            if !is_image_name(&file) {
+                return None;
+            }
+            let entry = index.iter().find(|x| x.file == file).cloned().unwrap_or_else(|| {
+                let at = e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok());
+                Entry { file: file.clone(), at: at.map_or(0, |d| d.as_millis() as u64), ..Default::default() }
+            });
+            Some(Image { path: e.path().to_string_lossy().into_owned(), entry })
+        })
+        .collect();
+    out.sort_by(|a, b| b.entry.at.cmp(&a.entry.at).then_with(|| a.entry.file.cmp(&b.entry.file)));
+    out
+}
+
+/// A drop, a paste or a Type of `file` into `who`'s pane: the image goes to
+/// the top, with its session and a new mtime. `name`: the dropped file's own
+/// name; `None` keeps the one it has.
+pub fn record(dir: &Path, file: &Path, name: Option<&str>, who: Option<&Who>) -> Result<()> {
+    let key = name_in(dir, file)?;
+    let _lock = INDEX_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut index = read_index(dir);
+    let i = index.iter().position(|e| e.file == key).unwrap_or_else(|| {
+        index.push(Entry { file: key.clone(), ..Default::default() });
+        index.len() - 1
+    });
+    let e = &mut index[i];
+    if name.is_some() {
+        e.name = name.map(str::to_string);
+    }
+    if let Some(w) = who {
+        e.session = Some(w.session.clone());
+        e.title = Some(w.title.clone());
+        e.project = w.project.clone();
+    }
+    e.at = now_ms();
+    if let Ok(f) = std::fs::File::options().write(true).open(file) {
+        let _ = f.set_modified(SystemTime::now());
+    }
+    write_index(dir, index)
+}
+
+/// Pins or unpins `file`. A flush never removes a pinned image.
+pub fn pin(dir: &Path, file: &Path, on: bool) -> Result<()> {
+    let key = name_in(dir, file)?;
+    let _lock = INDEX_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut index = read_index(dir);
+    match index.iter_mut().find(|e| e.file == key) {
+        Some(e) => e.pinned = on,
+        None => {
+            let at = std::fs::metadata(file).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok());
+            index.push(Entry { file: key, at: at.map_or_else(now_ms, |d| d.as_millis() as u64), pinned: on, ..Default::default() });
+        }
+    }
+    write_index(dir, index)
+}
+
+/// Deletes `file` and its entry, pinned or not.
+pub fn delete(dir: &Path, file: &Path) -> Result<()> {
+    let key = name_in(dir, file)?;
+    let _lock = INDEX_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    match std::fs::remove_file(file) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e).with_context(|| format!("delete {}", file.display())),
+        _ => {}
+    }
+    let index = read_index(dir).into_iter().filter(|e| e.file != key).collect();
+    write_index(dir, index)
+}
+
+/// The cache paths a flush keeps: the pinned images and the index.
+pub fn kept(dir: &Path) -> HashSet<PathBuf> {
+    let root = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+    read_index(dir).into_iter().filter(|e| e.pinned).map(|e| root.join(e.file)).chain([root.join(INDEX)]).collect()
 }
 
 /// The flags for the agent's start line, as argv words. See [`tasks::cache_flags`].
@@ -226,11 +400,45 @@ mod tests {
         assert!(named, "{copy:?}");
         assert_eq!(t.images.len(), 2);
         assert_eq!(t.images[0], t.images[1]);
-        assert_eq!(t.words[0], t.images[0]);
+        assert_eq!(t.images[0].name.as_deref(), Some("shot one.png"));
+        assert_eq!(t.words[0], quote_word(&t.images[0].path.to_string_lossy()));
         assert_eq!(t.words[1], note.to_string_lossy());
         assert_eq!(t.words[2], root.to_string_lossy());
         assert!(!t.too_large);
         assert_eq!(quote_word("/a/shot one.png"), "'/a/shot one.png'");
         assert_eq!(quote_word("/a/it's"), r"'/a/it'\''s'");
+    }
+
+    #[test]
+    fn the_library_lists_records_pins_and_deletes() {
+        let dir = std::env::temp_dir().join(format!("skiff-library-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = store(&dir, b"\x89PNG\r\n\x1a\na", "png").unwrap();
+        let b = store(&dir, b"\x89PNG\r\n\x1a\nb", "png").unwrap();
+        std::fs::write(dir.join("notes.txt"), "x").unwrap();
+        // No entry yet: the cache name and the mtime.
+        assert_eq!(list(&dir).len(), 2);
+        assert!(list(&dir).iter().all(|i| i.entry.session.is_none()));
+        let who = Who { session: "s1".into(), title: "Header clips".into(), project: Some("skiff".into()) };
+        record(&dir, &a, Some("header.png"), Some(&who)).unwrap();
+        let top = &list(&dir)[0];
+        assert_eq!((top.path.as_str(), top.entry.name.as_deref(), top.entry.title.as_deref()), (a.to_str().unwrap(), Some("header.png"), Some("Header clips")));
+        // Type keeps the name and moves the image to the top.
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        record(&dir, &b, None, Some(&who)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        record(&dir, &a, None, None).unwrap();
+        assert_eq!(list(&dir)[0].entry.name.as_deref(), Some("header.png"));
+        pin(&dir, &b, true).unwrap();
+        assert!(kept(&dir).contains(&dir.canonicalize().unwrap().join(b.file_name().unwrap())));
+        assert!(crate::disk::flush_cache(&dir).files == 2 && b.is_file() && !a.is_file());
+        assert!(dir.join(INDEX).is_file());
+        // The entry of a gone file drops on the next write.
+        delete(&dir, &b).unwrap();
+        assert!(list(&dir).is_empty() && read_index(&dir).is_empty());
+        assert!(pin(&dir, &dir.join("notes.txt"), true).is_err());
+        assert!(delete(&dir, Path::new("/etc/x.png")).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

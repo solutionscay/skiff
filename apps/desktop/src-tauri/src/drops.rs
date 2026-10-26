@@ -1,12 +1,13 @@
-//! Files dropped on a pane, and Skiff's Paste of a file list or an image.
-//! Images go to the cache ([`skiff_client::cache`]) and into the session's
-//! image strip. The page types the words with `term.paste()`, so an agent
-//! that reads a pasted path attaches the image. Skiff never presses Enter.
+//! Files dropped on a pane, Skiff's Paste of a file list or an image, and
+//! the Images library. Images go to the cache ([`skiff_client::cache`]),
+//! which is the library. The page types the words with `term.paste()`, so an
+//! agent that reads a pasted path attaches the image. Skiff never presses
+//! Enter.
 
 use std::path::PathBuf;
 
-use skiff_client::cache;
-use tauri::{AppHandle, State};
+use skiff_client::cache::{self, Who};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::connection::{ensure_client, err, App};
 
@@ -23,14 +24,26 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Sen
     tokio::task::spawn_blocking(f).await.map_err(|e| e.to_string())?.map_err(|e| format!("{e:#}"))
 }
 
-/// Adds the images to the session's strip, then builds the text. An older
-/// skiffd has no strip: the text is typed all the same.
-async fn finish(app: &App, session: &str, t: cache::Typed) -> Result<Typed, String> {
+/// Every header button and open library redraws on this.
+pub(crate) const IMAGES_CHANGED: &str = "skiff:images-changed";
+
+/// Records the images for `who`, then builds the text. A failed record
+/// costs only the library line: the text is typed all the same.
+async fn finish(handle: &AppHandle, who: Who, t: cache::Typed) -> Result<Typed, String> {
     if !t.images.is_empty() {
-        let (c, _) = ensure_client(app).await?;
-        if let Err(e) = c.add_session_images(session, t.images).await {
-            eprintln!("skiff: image strip: {e:#}");
+        let images = t.images;
+        let done = blocking(move || {
+            let dir = cache_dir()?;
+            for i in &images {
+                cache::record(&dir, &i.path, i.name.as_deref(), Some(&who))?;
+            }
+            Ok(())
+        })
+        .await;
+        if let Err(e) = done {
+            eprintln!("skiff: images: {e}");
         }
+        let _ = handle.emit(IMAGES_CHANGED, ());
     }
     let text = t.words.iter().map(|w| format!("{w} ")).collect();
     Ok(Typed { text, warning: t.too_large.then_some(cache::TOO_LARGE) })
@@ -44,9 +57,9 @@ fn cache_dir() -> anyhow::Result<PathBuf> {
 
 /// Files dropped on a session's pane, in drop order.
 #[tauri::command]
-pub(crate) async fn drop_files(app: State<'_, App>, session: String, paths: Vec<PathBuf>) -> Result<Typed, String> {
+pub(crate) async fn drop_files(handle: AppHandle, who: Who, paths: Vec<PathBuf>) -> Result<Typed, String> {
     let t = blocking(move || cache::files(&cache_dir()?, &paths)).await?;
-    finish(&app, &session, t).await
+    finish(&handle, who, t).await
 }
 
 /// What Skiff's Paste found on the clipboard besides text.
@@ -59,24 +72,23 @@ enum Clip {
 /// Skiff's Paste with no text on the clipboard: a file list does what a
 /// drop does; an image is saved as PNG in the cache. `None`: neither.
 #[tauri::command]
-pub(crate) async fn clipboard_image(handle: AppHandle, app: State<'_, App>, session: String) -> Result<Option<Typed>, String> {
+pub(crate) async fn clipboard_image(handle: AppHandle, who: Who) -> Result<Option<Typed>, String> {
     let t = match read_clip(&handle).await? {
         Clip::Nothing => return Ok(None),
         Clip::Files(paths) => blocking(move || cache::files(&cache_dir()?, &paths)).await?,
         Clip::Png(bytes) => {
             blocking(move || {
                 let path = cache::store(&cache_dir()?, &bytes, "png")?;
-                let path = path.to_string_lossy().into_owned();
                 Ok(cache::Typed {
-                    words: vec![skiff_core::shell::quote_word(&path)],
-                    images: vec![path],
+                    words: vec![skiff_core::shell::quote_word(&path.to_string_lossy())],
+                    images: vec![cache::Stored { path, name: None }],
                     too_large: false,
                 })
             })
             .await?
         }
     };
-    finish(&app, &session, t).await.map(Some)
+    finish(&handle, who, t).await.map(Some)
 }
 
 /// GTK on the main thread, for the reason `clipboard.rs` gives.
@@ -122,15 +134,43 @@ async fn read_clip(handle: &AppHandle) -> Result<Clip, String> {
     .await
 }
 
-/// Empties the session's image strip. The files stay.
+/// The Images library: this computer's cache, newest first.
 #[tauri::command]
-pub(crate) async fn clear_session_images(app: State<'_, App>, session: String) -> Result<(), String> {
-    let (c, _) = ensure_client(&app).await?;
-    c.clear_session_images(&session).await.map(|_| ()).map_err(err)
+pub(crate) async fn images() -> Result<Vec<cache::Image>, String> {
+    blocking(|| {
+        let cfg = skiff_core::config::load().unwrap_or_default();
+        Ok(cache::list(&cache::dir(&cfg)))
+    })
+    .await
 }
 
-/// Opens an image from the strip with `[open] image`, else the OS default
-/// app. It never runs in the peek.
+/// Type: the library image goes to the top with `who` as its session, and
+/// the page types its path as a drop does.
+#[tauri::command]
+pub(crate) async fn image_type(handle: AppHandle, path: PathBuf, who: Who) -> Result<Typed, String> {
+    let word = skiff_core::shell::quote_word(&path.to_string_lossy());
+    blocking(move || cache::record(&cache_dir()?, &path, None, Some(&who))).await?;
+    let _ = handle.emit(IMAGES_CHANGED, ());
+    Ok(Typed { text: format!("{word} "), warning: None })
+}
+
+#[tauri::command]
+pub(crate) async fn image_pin(handle: AppHandle, path: PathBuf, on: bool) -> Result<(), String> {
+    blocking(move || cache::pin(&cache_dir()?, &path, on)).await?;
+    let _ = handle.emit(IMAGES_CHANGED, ());
+    Ok(())
+}
+
+/// Deletes the file. It asks nothing: the agent has the image already.
+#[tauri::command]
+pub(crate) async fn image_delete(handle: AppHandle, path: PathBuf) -> Result<(), String> {
+    blocking(move || cache::delete(&cache_dir()?, &path)).await?;
+    let _ = handle.emit(IMAGES_CHANGED, ());
+    Ok(())
+}
+
+/// Opens a library image with `[open] image`, else the OS default app. It
+/// never runs in the peek.
 #[tauri::command]
 pub(crate) async fn open_image(path: PathBuf) -> Result<(), String> {
     blocking(move || {
