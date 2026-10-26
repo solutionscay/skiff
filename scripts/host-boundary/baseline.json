@@ -803,7 +803,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "b979578ffb2a98057e168671da613937980fafe9b236c822ceeb39b8f26efdbb"
+    "sha256": "3073e41ae74ef304cbc80f9d7b736715f4bba9cd6451c06d16cb3d3c48591f06"
   },
   "apps/desktop/src/workspace/missionControl.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -939,7 +939,7 @@
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/app/stateQueries.ts"
     ],
-    "sha256": "809ebfb3e2619fccdc722231afb214cd377d1e81e4b0957a92caee461b494e3f"
+    "sha256": "fcc0f31dd8efc3b7ccb3e2d1918b13693d46f3030399237fc82b1f05037ea86c"
   },
   "apps/desktop/src/workspace/treeDrag.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
