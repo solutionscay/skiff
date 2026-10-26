@@ -13,7 +13,7 @@
   ],
   "replies": [
     { "type": "reply", "id": 1, "result": { "Ok": { "kind": "ledger", "rows": [
-      { "id": 1, "uid": "a1b2c3d4", "kind": "plan", "owner": "grand", "parent": null, "pane_id": null, "pane_gen": null, "project": "web", "task": "Ship it", "sent_at": "2026-10-21 10:00:00", "title": "Ship the thing", "state": "sent", "updated_at": "2026-10-21 10:00:00", "type": null, "ref": null, "reported_at": null, "closed_at": null, "gone_at": null, "result_exists": true },
+      { "id": 1, "uid": "a1b2c3d4", "kind": "plan", "owner": "grand", "parent": null, "pane_id": null, "pane_gen": null, "project": "web", "task": "Ship it", "sent_at": "2026-10-21 10:00:00", "title": "Ship the thing", "state": "sent", "updated_at": "2026-10-21 10:00:00", "type": null, "ref": null, "reported_at": null, "closed_at": null, "bucket": "open", "gone_at": null, "result_exists": true },
       { "id": 2, "uid": "e5f6a7b8", "kind": "task", "owner": "grand", "parent": "a1b2c3d4", "pane_id": "0f3c", "pane_gen": 3, "project": "", "task": "Review", "sent_at": "2026-10-21 10:01:00", "title": null, "state": "done", "updated_at": "2026-10-21 11:00:00", "type": "review", "ref": "#12", "reported_at": "2026-10-21 11:05:00", "closed_at": null, "gone_at": null, "elsewhere": true, "result_exists": false }
     ] } } },
     { "type": "reply", "id": 2, "result": { "Ok": { "kind": "ledger", "rows": [] } } },

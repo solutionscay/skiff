@@ -737,10 +737,10 @@ async fn remote_projects_and_git_status_come_from_the_hosts_data_plane_over_a_re
     let outside = f.dir.join("config/projects.toml").display().to_string();
     let sql = format!(
         "CREATE TABLE tasks (id INTEGER PRIMARY KEY, uid TEXT UNIQUE, kind TEXT, parent TEXT, pane_id TEXT, pane_gen INTEGER, project TEXT, task TEXT,
-           sent_at TEXT, state TEXT, result_path TEXT, ref TEXT, updated_at TEXT, type TEXT, socket TEXT, reported_at TEXT, title TEXT, closed_at TEXT, gone_at TEXT, owner TEXT NOT NULL DEFAULT 'grand');
+           sent_at TEXT, state TEXT, result_path TEXT, ref TEXT, updated_at TEXT, type TEXT, socket TEXT, reported_at TEXT, title TEXT, closed_at TEXT, gone_at TEXT, owner TEXT NOT NULL DEFAULT 'grand', reopened_at TEXT);
          INSERT INTO tasks (uid, kind, project, task, sent_at, state, result_path, updated_at) VALUES ('aaaa0001', 'task', '', 'in', 'x', 'done', '{inside}', 'x');
          INSERT INTO tasks (uid, kind, project, task, sent_at, state, result_path, updated_at) VALUES ('aaaa0002', 'task', '', 'out', 'x', 'done', '{outside}', 'x');
-         PRAGMA user_version = 9;"
+         PRAGMA user_version = 10;"
     );
     let made = Command::new("sqlite3").arg(&ledger).arg(sql).output();
     let ledger_made = made.is_ok_and(|o| o.status.success());

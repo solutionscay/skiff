@@ -52,6 +52,9 @@ pub struct HostLedgerRow {
     pub closed_at: Option<String>,
     /// The work's bucket, as `skiff ledger ls` on the Host gives it:
     /// `working`, `open` or `finished`. Every row of one work has the same one.
+    /// Empty from a Host that predates it: a `ledger@1` reply without it
+    /// stays readable.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub bucket: String,
     /// When skiff set the task done because its pane was gone.
     #[serde(default)]

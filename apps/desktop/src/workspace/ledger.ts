@@ -83,8 +83,9 @@ interface Entry {
   updated_at: string;
   /** When the person, or Skiff once every task was done and reported, closed the work. Only a work head has it. */
   closed_at: string | null;
-  /** The work's bucket, as `skiff ledger ls` gives it. Every row of one work has the same one. */
-  bucket: "working" | "open" | "finished";
+  /** The work's bucket, as `skiff ledger ls` gives it. Every row of one work has the same one.
+   *  Missing from a Host that predates it: its rows file as not finished. */
+  bucket?: "working" | "open" | "finished";
   /** When skiff set the task done because its pane was gone. */
   gone_at: string | null;
   /** The pane is on another daemon. */
