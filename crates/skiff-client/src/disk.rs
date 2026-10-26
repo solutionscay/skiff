@@ -235,7 +235,6 @@ pub fn usage(folder: &Path, cache: &Path, ledger: Option<&Path>, sessions: Optio
     };
     let keep = crate::cache::kept(cache);
     let cache = cache.canonicalize().unwrap_or_else(|_| cache.to_path_buf());
-    let index = cache.join(crate::cache::INDEX);
     let results = roots(&root);
     let dirs: Vec<PathBuf> = results.iter().map(|r| r.2.clone()).collect();
     let n = match ledger.map(|l| named(l, sessions, socket, &root, &dirs)) {
@@ -253,7 +252,7 @@ pub fn usage(folder: &Path, cache: &Path, ledger: Option<&Path>, sessions: Optio
     let mut cached = Vec::new();
     for (p, bytes) in &files {
         u.total.add(*bytes);
-        if p.starts_with(&cache) && *p != index {
+        if p.starts_with(&cache) && !crate::cache::is_index_file(p) {
             u.cache.add(*bytes);
             if keep.contains(p) {
                 u.pinned.add(*bytes);
