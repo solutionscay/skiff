@@ -46,8 +46,6 @@
 .lib-act:hover { background: color-mix(in srgb, var(--text) 14%, transparent); color: var(--text); }
 .lib-act.x { flex: 0 0 calc(40 * var(--u)); padding: 0; }
 .lib-act.x:hover { color: var(--error-text); }
-.lib-foot { height: var(--row); flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(16 * var(--u)); margin-top: -1px; border: 0; border-top: 1px solid var(--rule); background: transparent; color: var(--text-2); font-size: calc(13px * var(--zoom, 1)); text-align: left; }
-.lib-foot:hover { background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); color: var(--text); }
 .lib-ghost {
   position: fixed; z-index: 30; pointer-events: none; display: flex; align-items: center; gap: calc(8 * var(--u));
   height: calc(28 * var(--u)); max-width: calc(280 * var(--u)); padding: 0 calc(10 * var(--u)) 0 calc(4 * var(--u));
