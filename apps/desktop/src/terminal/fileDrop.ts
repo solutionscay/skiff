@@ -46,7 +46,8 @@ function paneAt(x: number, y: number, fromImages = false): string | null {
   return null;
 }
 
-/** `thumb`: the dragged library image's thumbnail, `null` for a file drag. */
+/** `thumb`: the dragged library image's thumbnail, `null` for a file drag.
+ *  A file drag types the paths; a library image runs Insert, so it says so. */
 function show(id: string | null, n = dragged.length, thumb: string | null = null) {
   const body = id ? view.body(id) : null;
   if (!body || !n) {
@@ -55,7 +56,7 @@ function show(id: string | null, n = dragged.length, thumb: string | null = null
   }
   const r = body.getBoundingClientRect();
   Object.assign(overlay.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
-  words.textContent = n === 1 ? "Type the path" : `Type ${n} paths`;
+  words.textContent = thumb !== null ? "Insert the path" : n === 1 ? "Type the path" : `Type ${n} paths`;
   mini.hidden = thumb === null;
   if (thumb !== null && mini.dataset.src !== thumb) {
     mini.dataset.src = thumb;
