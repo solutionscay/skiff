@@ -90,7 +90,7 @@ States: `working`, `waiting`, `idle`, `done`.
 ## Send a task
 
 1. Find the pane in the JSON. Use its id. Confirm its working directory.
-2. Run `skiff peek S -n 40`. Check the current result and the input box. If the task already runs or is complete, report that. Do not send it again.
+2. Run `skiff peek S -n 40`. Check the current result and the input box. If the task already runs or is complete, report that. Do not send it again. Claude Code shows a prompt suggestion in gray in an empty input box. `peek` shows no color, so the suggestion looks like typed text after `❯`. It is not a draft, and the person did not type it. Do not report a draft from `peek`. Send: only exit 9 tells you that the box holds a real draft.
 3. Write a clear task: the result, the scope, the context, the permitted actions, and what to report. An investigation request permits an investigation only. Pass on a permission to fix or deploy only when the user gave it.
 4. For a long prompt, write a file and send it with `skiff send S - --enter < file`. Keep shell syntax and user text apart.
 
@@ -109,7 +109,7 @@ Skiff has no message queue. A refused send types nothing. Do not wait and retry.
 | 4 | The session is `working` | Do not wait and do not retry. |
 | 6 | The session is `done` | Its program exited. Start a new session. |
 | 5 | A shell or an unknown program is in front | Add `--shell` only to type a shell command. A `skiff new -- CMD` session or a custom agent shows its launch shell, so it needs `--shell`. |
-| 9 | A known agent shows a draft or its busy line, or the session took input after the check | For a draft, tell the user which pane holds it. For the busy line, do as for exit 4. |
+| 9 | A known agent shows a draft or its busy line, or the session took input after the check | For a draft, tell the user which pane holds it. For the busy line, do as for exit 4. A gray Claude Code prompt suggestion is not a draft. `send` exits 0 for it. |
 | 0 | Sent | |
 | 1 | Error, for example no match or more than one | |
 
