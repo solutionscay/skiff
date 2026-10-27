@@ -76,7 +76,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "fabba83f150ba7e228f67f9b2468a3b124d238bb462bae341317fb62e2ba4410"
+    "sha256": "ca2649793f17b528496eb1e8fe64b7355a55fadc11b6fd058909ddd1fccabc1e"
   },
   "apps/desktop/src-tauri/src/copies.rs": {
     "ownership": "client-owned (M5 reviewed): local copies of bytes the Host sent, for this computer's Open with; never reads or opens a Host path",
@@ -163,7 +163,7 @@
       "skiff_agent",
       "skiff_core"
     ],
-    "sha256": "094d300e4593442798483e8fd30f104047607c688499ae54bf96a32db4952486"
+    "sha256": "92aee52e69ef340f92d80dcc608ee24755872ecaa07141be9f8587ca7a85d09e"
   },
   "apps/desktop/src-tauri/src/ledger.rs": {
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",
@@ -232,7 +232,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "cdcb3b32a52cde1af4bca719c6f7221046ee940ed5b38dc1a4ad980038651d2b"
+    "sha256": "6137bf2ac8c15e68835d687312167c66e5422fe8c86a8097d5dc6c6bf5ef301e"
   },
   "apps/desktop/src-tauri/src/streaming.rs": {
     "ownership": "M1e terminal output via selected Host session_terminal@1; M1d page session events via selected Host; core Event only for the page channel type",
@@ -249,7 +249,7 @@
       "process",
       "read_to_string"
     ],
-    "sha256": "ec112ae1e1417c805b13819ba6da88898d3f415dbbacc016878c68a0e031d050"
+    "sha256": "e153e3c5e7d055037a7b70f69546199c0c5b7fe8e655c05091a501979777f6ea"
   },
   "apps/desktop/src/app/actions.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
