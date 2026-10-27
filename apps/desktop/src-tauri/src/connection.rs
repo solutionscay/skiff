@@ -423,8 +423,8 @@ pub(crate) async fn host_capabilities(app: State<'_, App>) -> Result<Vec<String>
 /// The capabilities this app serves itself for This Mac: the settings it
 /// writes, and their reads, so a change reads back from the same config, and
 /// Skipper's sessions, which it starts with the bundled `skiff`, fleet
-/// Skippers included.
-const LOCAL_ADAPTER: [&str; 6] = ["agent_config@1", "skipper_config@1", "skipper@1", "skipper_run@1", "skipper_run@2", "session_agents@1"];
+/// Skippers included, and the Skippers' instruction files.
+const LOCAL_ADAPTER: [&str; 7] = ["agent_config@1", "skipper_config@1", "skipper@1", "skipper_file@1", "skipper_run@1", "skipper_run@2", "session_agents@1"];
 
 fn add_local_adapter(names: &mut Vec<String>) {
     for cap in LOCAL_ADAPTER {
@@ -1103,10 +1103,10 @@ mod tests {
     fn this_mac_offers_its_own_settings_writes() {
         let mut none = vec!["session_inventory@1".to_string()];
         super::add_local_adapter(&mut none);
-        assert_eq!(none, ["session_inventory@1", "agent_config@1", "skipper_config@1", "skipper@1", "skipper_run@1", "skipper_run@2", "session_agents@1"]);
-        let mut current = ["skipper_config@1", "agent_config@1", "skipper@1", "skipper_run@1", "skipper_run@2", "session_agents@1"].map(String::from).to_vec();
+        assert_eq!(none, ["session_inventory@1", "agent_config@1", "skipper_config@1", "skipper@1", "skipper_file@1", "skipper_run@1", "skipper_run@2", "session_agents@1"]);
+        let mut current = ["skipper_config@1", "agent_config@1", "skipper@1", "skipper_file@1", "skipper_run@1", "skipper_run@2", "session_agents@1"].map(String::from).to_vec();
         super::add_local_adapter(&mut current);
-        assert_eq!(current.len(), 6);
+        assert_eq!(current.len(), 7);
     }
 
     #[tokio::test]

@@ -1,7 +1,8 @@
 //! M6 data plane: Skipper's ledger as the Ledger panel reads it (`ledger@1`),
 //! Skipper's settings and task types (`skipper@1`), their changes and the
-//! folder change (`skipper_config@1`), and Skipper's session and watcher on
-//! the Host (`skipper_run@1`). Served by `skiff-host` from the Host's own
+//! folder change (`skipper_config@1`), the instruction files
+//! (`skipper_file@1`), and Skipper's session and watcher on the Host
+//! (`skipper_run@1`). Served by `skiff-host` from the Host's own
 //! `ledger.db` and config: `skiff ledger` on the Host stays the ledger's only
 //! writer. A result is read by its row's
 //! uid, never by a path the client names, and comes back as bounded bytes or
@@ -94,7 +95,9 @@ pub struct HostSkipper {
     pub name: Option<String>,
     #[serde(default)]
     pub agent: Option<String>,
-    pub enabled: bool,
+    /// The Skipper's model. Absent: the agent's default.
+    #[serde(default)]
+    pub model: Option<String>,
     /// The Host's Skipper folder. Absent when the override is refused.
     #[serde(default)]
     pub folder: Option<String>,
@@ -105,14 +108,57 @@ pub struct HostSkipper {
     /// `ready`, `missing` (the Host could not make it), `other` or `refused`.
     pub folder_status: String,
     pub continue_on_restore: bool,
-    /// The project menu offers Start project Skipper.
-    #[serde(default)]
-    pub project_skippers: bool,
-    /// The agent project Skippers start. Absent: the Skipper's.
+    /// The agent project and fleet Skippers start. Absent: the Skipper's.
     #[serde(default)]
     pub project_agent: Option<String>,
+    /// Their model. Absent: the agent's default.
+    #[serde(default)]
+    pub project_model: Option<String>,
     /// `[skiff_agent.tasks]` in file order.
     pub tasks: Vec<HostTaskType>,
+    /// Each Skipper's instruction file, in tree order: `AGENTS.md`, then
+    /// each fleet's and each open project's `SKIPPER.md`.
+    #[serde(default)]
+    pub instructions: Vec<HostInstruction>,
+}
+
+/// An instruction file on the Host, by what it is for, never by a path the
+/// client names (`skipper_file@1`). The Host makes the path in its Skipper
+/// folder: `AGENTS.md`, `fleets/<fleet>/SKIPPER.md`,
+/// `projects/<project>/SKIPPER.md` or `types/<type>.md`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "name", rename_all = "snake_case")]
+pub enum HostFileScope {
+    /// `AGENTS.md`: the Skipper's, and the base of every Skipper.
+    Skipper,
+    Fleet(String),
+    Project(String),
+    /// A task type's instructions.
+    Type(String),
+}
+
+/// One row of Settings › Skippers › Instructions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostInstruction {
+    pub scope: HostFileScope,
+    /// Its path in the Host's Skipper folder, for display.
+    pub file: String,
+    /// `none`, `template`, `edited` or `edited-template-changed`.
+    pub status: String,
+    /// Unix time in milliseconds. Absent with no file.
+    #[serde(default)]
+    pub modified: Option<u64>,
+    /// In bytes. Absent with no file.
+    #[serde(default)]
+    pub size: Option<u64>,
+}
+
+/// An instruction file's text as the Host read it, and its revision: a
+/// write made from another revision is refused (`conflict`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostSkipperFile {
+    pub text: String,
+    pub revision: String,
 }
 
 /// One change to the Host's `[skiff_agent]` (`skipper_config@1`), in the
@@ -123,12 +169,12 @@ pub struct HostSkipper {
 pub enum SkipperEdit {
     Name(Option<String>),
     Agent(Option<String>),
-    /// On makes the folder ready first: a refused folder stays off.
-    Enabled(bool),
+    /// One word. `None`: the agent's default.
+    Model(Option<String>),
     ContinueOnRestore(bool),
-    ProjectSkippers(bool),
     /// `None`: Same as Skipper.
     ProjectAgent(Option<String>),
+    ProjectModel(Option<String>),
     /// A new row at the end of Task types.
     AddTask(TaskEdit),
     /// A row's agent or model.

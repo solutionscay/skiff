@@ -5,7 +5,7 @@ import { flush, moduleFromSource } from "./workspaceHarness.ts";
 // The real skiffAgent.ts and daemon.ts, with the view reduced to one shown pane.
 // `remote`: the shown Host is a remote one that offers fleet Skippers.
 function app(projects: { name: string; path: string; fleet: string | null }[], remote: boolean) {
-  const S: any = { projects, skiffAgent: { enabled: true, folder: "/skipper" }, focused: null, single: null, groups: [], selection: [] };
+  const S: any = { projects, skiffAgent: { folder: "/skipper" }, focused: null, single: null, groups: [], selection: [] };
   const sessions = new Map<string, any>();
   const upsert = (s: any) => sessions.set(s.id, { ...sessions.get(s.id), ...s });
   const calls: Record<string, (args: any) => unknown> = {};

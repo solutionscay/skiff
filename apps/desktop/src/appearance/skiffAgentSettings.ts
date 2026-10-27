@@ -1,9 +1,9 @@
 import { h } from "../ui/dom";
 import type { AgentInfo } from "../platform/types";
-import type { SkiffAgentSettings, TaskType } from "../app/skiffAgent";
+import type { InstructionFile, SkiffAgentSettings, TaskType } from "../app/skiffAgent";
 import { DEFAULT_NAME, skiffAgentChoice } from "../app/skiffAgent";
 import { continueLine } from "../terminal/resume";
-import { rowTable, type RowTableState } from "./rowTable";
+import { rowTable, tableState, type RowTableState } from "./rowTable";
 import { BAD_TASK_TYPE_NAME, modelError, modelFlag, taskCommand, TASK_TYPE_NAME } from "./taskTypes";
 import { reveal } from "../platform/fileActions";
 import { copyText } from "../platform/clipboard";
@@ -19,18 +19,29 @@ export interface TaskEdit {
 
 /** One edit, as `set_skiff_agent` takes it. */
 export type SkiffAgentEdit =
-  | { key: "name" | "agent" | "project_agent"; value: string | null }
-  | { key: "enabled" | "continue_on_restore" | "project_skippers"; value: boolean }
+  | { key: "name" | "agent" | "model" | "project_agent" | "project_model"; value: string | null }
+  | { key: "continue_on_restore"; value: boolean }
   | { key: "add_task" | "task"; value: TaskEdit }
   | { key: "rename_task"; value: { from: string; to: string } }
   | { key: "remove_task"; value: string }
   | { key: "cache_days"; value: number };
 
+/** What the Instructions table does with a row. */
+export interface InstructionActs {
+  files: InstructionFile[];
+  /** One error line under a row, by its file. */
+  errors: Map<string, string>;
+  /** False on a Host whose Skiff cannot send its files: the rows show, with no buttons. */
+  editable: boolean;
+  edit: (f: InstructionFile) => void;
+  reset: (f: InstructionFile) => void;
+}
+
 /**
- * Settings › Skiff agent: on or off, its folder, its name, the agent it
- * starts, and whether a restored pane continues the last conversation.
- * `changeFolder` opens the Change… dialog: a change copies, checks and
- * switches, so the ledger and results go with the folder.
+ * Settings › Skippers: the folder, the name, the agent and model, Continue
+ * on restore, the agent and model of project and fleet Skippers, and the
+ * instruction files. `changeFolder` opens the Change… dialog: a change
+ * copies, checks and switches, so the ledger and results go with the folder.
  */
 export function skiffAgentSection(
   set: SkiffAgentSettings,
@@ -44,24 +55,12 @@ export function skiffAgentSection(
 
   const name = textRow("Name", set.name ?? "", DEFAULT_NAME, (v) => save({ key: "name", value: v || null }));
 
-  const agentRow = h("div", "set-row set-open set-agent on");
-  const pick = h("select", "c-cmd");
-  pick.setAttribute("aria-label", "Skiff agent's agent");
-  if (!choices.length) pick.append(h("option", "", "No agent is on"));
-  for (const a of choices) {
-    const o = h("option", "", a.custom ? `${a.id} (custom)` : a.id);
-    o.value = a.id;
-    pick.append(o);
-  }
+  const pick = agentPick("Skipper's agent", choices, null);
   if (chosen) pick.value = chosen.id;
-  pick.disabled = !choices.length;
   pick.addEventListener("change", () => save({ key: "agent", value: pick.value }));
-  agentRow.append(h("span", "c-name", "Agent"), pick, h("span", "c-mode", "At next start"));
-  // On sets up the folder and shows the row. A refused override stays off: the Folder row says why.
-  const onRow = switchRow("On", set.enabled && !!set.folder, !!set.folder, (on) => save({ key: "enabled", value: on }));
-  onRow.insertBefore(h("span", "c-cmd", set.folder ? "" : "Change the folder to turn it on."), onRow.lastChild);
+  const agentRow = agentModelRow(pick, chosen ?? undefined, set.model, "Skipper's model", (v) => save({ key: "model", value: v }));
 
-  // A custom agent has no continue line: the switch shows off, with the reason.
+  // A custom agent has no continue line: the switch shows off.
   const line = chosen ? continueLine(chosen.id, chosen.command) : null;
   const on = !!line && set.continue_on_restore;
   const cont = h("div", "set-row set-open set-agent" + (on ? " on" : "") + (line ? "" : " missing"));
@@ -75,9 +74,162 @@ export function skiffAgentSection(
   sw.addEventListener("click", () => save({ key: "continue_on_restore", value: !on }));
   const what = line
     ? h("span", "c-cmd mono", line)
-    : h("span", "c-cmd", chosen ? `${chosen.id} has no continue command. The pane restores as a shell.` : "No agent is on.");
+    : h("span", "c-cmd", chosen ? `${chosen.id} has no continue command.` : "No agent is on.");
   cont.append(h("span", "c-name", "Continue on restore"), what, sw);
-  return [onRow, ...folderRows(set, changeFolder), name, agentRow, cont];
+  return [...folderRows(set, changeFolder), name, agentRow, cont];
+}
+
+/**
+ * Settings › Skippers › Project and fleet Skippers: one agent and model for
+ * both levels. "Same as Skipper" takes the Skipper's agent. A project's
+ * `skipper_agent` in projects.toml still wins for its project Skipper.
+ */
+export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInfo[], save: (e: SkiffAgentEdit) => void): HTMLElement[] {
+  const head = h("div", "set-head");
+  head.append(h("div", "set-h", "Project and fleet Skippers"));
+  const choices = agents.filter((a) => a.enabled || a.custom);
+  const pick = agentPick("Project and fleet Skippers' agent", choices, "Same as Skipper");
+  const own = choices.find((a) => a.id === set.project_agent);
+  pick.value = own ? own.id : "";
+  pick.addEventListener("change", () => save({ key: "project_agent", value: pick.value || null }));
+  const agent = own ?? skiffAgentChoice(agents, set.agent) ?? undefined;
+  const row = agentModelRow(pick, agent, set.project_model, "Project and fleet Skippers' model", (v) => save({ key: "project_model", value: v }));
+  return [h("div", "set-gap"), head, row];
+}
+
+/**
+ * Settings › Skippers › Instructions: AGENTS.md, then each fleet's and each
+ * open project's SKIPPER.md, in tree order. Edit opens the file, and writes
+ * it from the template first when there is none. Reset… shows on an edited
+ * file only.
+ */
+export function instructionsSection(set: SkiffAgentSettings, acts: InstructionActs): HTMLElement[] {
+  const head = h("div", "set-head set-head-row");
+  const title = h("div", "set-h", "Instructions");
+  title.id = "set-h-instructions";
+  const edited = acts.files.filter((f) => f.status.startsWith("edited")).length;
+  head.append(title, h("span", "set-count", `${acts.files.length} ${acts.files.length === 1 ? "file" : "files"} · ${edited} edited`));
+  const skipper = set.name?.trim() || DEFAULT_NAME;
+  const table = rowTable<InstructionFile>(
+    {
+      grid: "g-instr",
+      noun: "file",
+      article: "A file",
+      dupHint: "",
+      labelledBy: title.id,
+      rows: acts.files,
+      id: (f) => f.file,
+      cols: [
+        {
+          key: "scope",
+          head: "SCOPE",
+          name: "scope",
+          kind: "lead",
+          draw: (f) => {
+            const cell = h("span", "c-scope", f.scope.kind === "skipper" ? skipper : f.scope.name);
+            if (f.scope.kind === "skipper" || f.scope.kind === "fleet") cell.append(h("span", "c-kind", f.scope.kind === "skipper" ? "every Skipper" : "fleet"));
+            return cell;
+          },
+        },
+        { key: "file", head: "FILE", name: "file", kind: "preview", get: (f) => f.file },
+        { key: "status", head: "STATUS", name: "status", kind: "lead", draw: fileState },
+      ],
+      status: (f) => {
+        const box = h("span", "c-acts");
+        if (!acts.editable) return box;
+        const edit = h("button", "set-rm", "Edit");
+        edit.type = "button";
+        edit.setAttribute("aria-label", `Edit ${f.file}`);
+        edit.addEventListener("click", () => acts.edit(f));
+        box.append(edit);
+        if (f.status.startsWith("edited")) {
+          const reset = h("button", "set-rm", "Reset…");
+          reset.type = "button";
+          reset.setAttribute("aria-label", `Reset ${f.file}`);
+          reset.addEventListener("click", () => acts.reset(f));
+          box.append(reset);
+        }
+        return box;
+      },
+    },
+    tableState(),
+    () => {},
+  );
+  // One error line under the row it is about.
+  for (const [file, why] of acts.errors) {
+    const row = [...table.querySelectorAll<HTMLElement>(".set-row")].find((r) => r.querySelector(".c-preview span")?.textContent === file);
+    const meta = h("div", "set-folder-meta", why);
+    meta.setAttribute("role", "alert");
+    row?.after(meta);
+  }
+  return [h("div", "set-gap"), head, table];
+}
+
+/** The STATUS cell: a square and the word. */
+function fileState(f: InstructionFile): HTMLElement {
+  const cls = f.status === "none" ? " none" : f.status === "template" ? " tpl" : "";
+  const cell = h("span", "c-state" + cls);
+  cell.append(h("span", "sq"), f.status === "edited-template-changed" ? "edited" : f.status);
+  if (f.status === "edited-template-changed") cell.append(h("span", "dim", "· template changed"));
+  return cell;
+}
+
+/** The agents to pick from, after `first` (value "") when given. */
+function agentPick(label: string, choices: AgentInfo[], first: string | null): HTMLSelectElement {
+  const pick = h("select", "c-cmd");
+  pick.setAttribute("aria-label", label);
+  if (first !== null) {
+    const o = h("option", "", first);
+    o.value = "";
+    pick.append(o);
+  } else if (!choices.length) pick.append(h("option", "", "No agent is on"));
+  for (const a of choices) {
+    const o = h("option", "", a.custom ? `${a.id} (custom)` : a.id);
+    o.value = a.id;
+    pick.append(o);
+  }
+  pick.disabled = !choices.length && first === null;
+  return pick;
+}
+
+/**
+ * An Agent row: the agent, then its model in the same cell, and "At next
+ * start". An empty model is the agent's default. An agent with no model
+ * flag shows "in the command" in place of the field.
+ */
+function agentModelRow(pick: HTMLSelectElement, agent: AgentInfo | undefined, model: string | null, label: string, save: (v: string | null) => void): HTMLElement {
+  const row = h("div", "set-row set-open set-agent on");
+  const cell = h("span", "c-split");
+  cell.append(pick);
+  if (modelFlag(agent)) {
+    const old = model ?? "";
+    const input = h("input", "c-cmd mono");
+    input.value = old;
+    input.placeholder = "agent's default";
+    input.spellcheck = false;
+    input.setAttribute("aria-label", label);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        input.blur();
+      } else if (e.key === "Escape") {
+        input.value = old;
+        input.blur();
+      }
+    });
+    input.addEventListener("blur", () => {
+      const v = input.value.trim();
+      if (v === old) return;
+      if (modelError(v)) {
+        input.value = old;
+        return void showError(modelError(v)!);
+      }
+      save(v || null);
+    });
+    cell.append(input);
+  } else cell.append(h("span", "c-note", agent ? "in the command" : ""));
+  row.append(h("span", "c-name", "Agent"), cell, h("span", "c-mode", "At next start"));
+  return row;
 }
 
 /**
@@ -129,7 +281,7 @@ function folderRows(set: SkiffAgentSettings, change: () => void): HTMLElement[] 
 }
 
 /**
- * Settings › Skiff agent › Task types: the agent and model Skipper starts
+ * Settings › Task types: the agent and model Skipper starts
  * for each kind of task. `save` answers with the error to show, or null.
  */
 export function taskTypesSection(
@@ -223,56 +375,6 @@ export function taskTypesSection(
     redraw,
   );
   return [head, table];
-}
-
-/**
- * Settings › Skiff agent › Project and fleet Skippers: the switch that adds
- * Start project Skipper to the project menu and Start fleet Skipper to the
- * fleet menu, the agent they start, and where they keep their instructions
- * and results. Task types are the Skipper's.
- */
-export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInfo[], save: (e: SkiffAgentEdit) => void): HTMLElement[] {
-  const head = h("div", "set-head");
-  head.append(
-    h("div", "set-h", "Project and fleet Skippers"),
-    h("div", "set-sub", "One Skipper per project or fleet. It works in its projects and delegates through skiff only. Its SKIPPER.md and results are in projects/<project>/ or fleets/<fleet>/ in the Folder above."),
-  );
-  const on = set.project_skippers;
-  const sw = switchRow("Project and fleet Skippers", on, !!set.folder, (v) => save({ key: "project_skippers", value: v }));
-  sw.insertBefore(h("span", "c-cmd", "Adds Start project Skipper and Start fleet Skipper to the menus."), sw.lastChild);
-
-  const choices = agents.filter((a) => a.enabled || a.custom);
-  const agentRow = h("div", "set-row set-open set-agent on");
-  const pick = h("select", "c-cmd");
-  pick.setAttribute("aria-label", "Project and fleet Skippers' agent");
-  const same = h("option", "", "Same as Skipper");
-  same.value = "";
-  pick.append(same);
-  for (const a of choices) {
-    const o = h("option", "", a.custom ? `${a.id} (custom)` : a.id);
-    o.value = a.id;
-    pick.append(o);
-  }
-  pick.value = choices.some((a) => a.id === set.project_agent) ? set.project_agent! : "";
-  pick.addEventListener("change", () => save({ key: "project_agent", value: pick.value || null }));
-  agentRow.append(h("span", "c-name", "Agent"), pick, h("span", "c-mode", "At next start"));
-
-  return [head, sw, agentRow];
-}
-
-/** A label, a cell for the caller, and a switch. */
-function switchRow(label: string, on: boolean, enabled: boolean, set: (on: boolean) => void): HTMLElement {
-  const row = h("div", "set-row set-open set-agent" + (on ? " on" : "") + (enabled ? "" : " missing"));
-  const sw = h("button", "c-mode set-switch");
-  sw.type = "button";
-  sw.disabled = !enabled;
-  sw.setAttribute("role", "switch");
-  sw.setAttribute("aria-checked", String(on));
-  sw.setAttribute("aria-label", `${label} ${on ? "on" : "off"}`);
-  sw.appendChild(h("span", "switch"));
-  sw.addEventListener("click", () => set(!on));
-  row.append(h("span", "c-name", label), sw);
-  return row;
 }
 
 /** A label and a text field that saves on Enter or blur. Esc puts the old value back. */

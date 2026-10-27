@@ -58,6 +58,7 @@ pub fn capabilities() -> Vec<Capability> {
         Capability::ledger_read(),
         Capability::skipper_settings(),
         Capability::skipper_config(),
+        Capability::skipper_file(),
         Capability::skipper_run(),
         Capability::skipper_run_fleets(),
         Capability::agent_config(),
@@ -296,6 +297,9 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
     if matches!(
         request,
         Request::SkipperEdit { .. }
+            | Request::SkipperFileRead { .. }
+            | Request::SkipperFileWrite { .. }
+            | Request::SkipperFileReset { .. }
             | Request::SkipperFolderPreview { .. }
             | Request::SkipperFolderChange { .. }
             | Request::SkipperOpen { .. }

@@ -210,6 +210,46 @@ pub async fn set_skiff_agent(app: State<'_, App>, handle: AppHandle, edit: Skipp
     Ok(settings)
 }
 
+/// Settings › Skippers › Instructions: each Skipper's file and its
+/// status, on the selected Host (`skipper@1` carries them for a remote one).
+#[tauri::command]
+pub async fn skipper_files(app: State<'_, App>) -> Result<Vec<skiff_host_api::HostInstruction>, String> {
+    if app.remote() {
+        let s = crate::connection::data_read(&app, |c| async move { data::skipper_settings(&c).await }).await?;
+        return Ok(s.instructions);
+    }
+    blocking(|| skipper::host_instructions(&config::load()?)).await
+}
+
+/// Edit: the file opens as Settings › Open with › Text files says. A
+/// missing file is written from the template first. On a remote Host, a
+/// local copy opens in an app on this computer, and each save goes back
+/// (`skipper_file@1`). The page shows a peek command; an app or the
+/// default app starts here.
+#[tauri::command]
+pub async fn edit_skipper_file(app: State<'_, App>, handle: AppHandle, scope: skiff_host_api::HostFileScope) -> Result<crate::commands::Opened, String> {
+    let remote = app.remote();
+    let path = if remote { crate::host_files::fetch(&app, handle, scope).await? } else { blocking(move || skipper::edit_file(&config::load()?, &skipper::scope_of(&scope)?)).await? };
+    crate::commands::open_text(path, remote).await
+}
+
+/// The saves of a remote Host's copy that did not go back since the last
+/// call, for one line under each row.
+#[tauri::command]
+pub fn skipper_file_errors() -> Vec<crate::host_files::FileError> {
+    crate::host_files::take_errors()
+}
+
+/// Reset…: the template again, the old file in `<name>.bak`, on the
+/// selected Host.
+#[tauri::command]
+pub async fn reset_skipper_file(app: State<'_, App>, scope: skiff_host_api::HostFileScope) -> Result<(), String> {
+    if app.remote() {
+        return data_write(&app, |c| async move { data::skipper_file_reset(&c, scope).await }).await;
+    }
+    blocking(move || skipper::reset_file(&config::load()?, &skipper::scope_of(&scope)?).map(|_| ())).await
+}
+
 /// Fleet menu › Start fleet Skipper: finds or starts the fleet's Skipper,
 /// takes the fleet's project Skippers over (the page asked first), sends a
 /// new one SKIPPER.md as its first message, and starts the watcher. Returns
@@ -359,22 +399,23 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// This Mac's Project Skippers switch reads back what it just wrote, from
-    /// projects.toml, with no skiff-host asked (the old one did not know it).
+    /// This Mac's Skipper model reads back what it just wrote, from
+    /// projects.toml, with no skiff-host asked.
     #[test]
-    fn this_mac_reads_back_project_skippers() {
+    fn this_mac_reads_back_the_skipper_model() {
         let _env = crate::reload::tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("skiff-read-back-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let old = std::env::var_os("SKIFF_CONFIG");
         std::env::set_var("SKIFF_CONFIG", dir.join("projects.toml"));
-        assert!(!super::local().unwrap().project_skippers);
-        super::skipper::apply(&Edit::ProjectSkippers(true)).unwrap();
-        assert!(std::fs::read_to_string(dir.join("projects.toml")).unwrap().contains("project_skippers = true"));
-        assert!(super::local().unwrap().project_skippers);
-        super::skipper::apply(&Edit::ProjectSkippers(false)).unwrap();
-        assert!(!super::local().unwrap().project_skippers);
+        assert_eq!(super::local().unwrap().model, None);
+        super::skipper::apply(&Edit::Model(Some("opus".into()))).unwrap();
+        super::skipper::apply(&Edit::ProjectModel(Some("sonnet".into()))).unwrap();
+        let s = super::local().unwrap();
+        assert_eq!((s.model.as_deref(), s.project_model.as_deref()), (Some("opus"), Some("sonnet")));
+        super::skipper::apply(&Edit::Model(None)).unwrap();
+        assert_eq!(super::local().unwrap().model, None);
         match old {
             Some(v) => std::env::set_var("SKIFF_CONFIG", v),
             None => std::env::remove_var("SKIFF_CONFIG"),
@@ -394,6 +435,21 @@ mod tests {
         assert!(matches!(rename, Edit::RenameTask { from, to } if from == "review" && to == "code-review"));
         assert!(matches!(edit(serde_json::json!({ "key": "remove_task", "value": "review" })), Edit::RemoveTask(t) if t == "review"));
         assert!(matches!(edit(serde_json::json!({ "key": "name", "value": null })), Edit::Name(None)));
+        assert!(matches!(edit(serde_json::json!({ "key": "model", "value": "opus" })), Edit::Model(Some(m)) if m == "opus"));
+        assert!(matches!(edit(serde_json::json!({ "key": "project_model", "value": null })), Edit::ProjectModel(None)));
+        // The keys Skippers dropped.
+        assert!(serde_json::from_value::<Edit>(serde_json::json!({ "key": "enabled", "value": true })).is_err());
+        assert!(serde_json::from_value::<Edit>(serde_json::json!({ "key": "project_skippers", "value": true })).is_err());
+    }
+
+    /// The scopes `InstructionScope` in apps/desktop/src/appearance/skiffAgentSettings.ts sends.
+    #[test]
+    fn reads_the_scopes_the_page_sends() {
+        use skiff_host_api::HostFileScope as Scope;
+        let scope = |v: serde_json::Value| serde_json::from_value::<Scope>(v).unwrap();
+        assert_eq!(scope(serde_json::json!({ "kind": "skipper" })), Scope::Skipper);
+        assert_eq!(scope(serde_json::json!({ "kind": "fleet", "name": "Harbor" })), Scope::Fleet("Harbor".into()));
+        assert_eq!(scope(serde_json::json!({ "kind": "project", "name": "gesher" })), Scope::Project("gesher".into()));
     }
 
     /// The modes `Mode` in apps/desktop/src/appearance/skiffFolderDialog.ts sends.

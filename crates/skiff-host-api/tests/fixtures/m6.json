@@ -19,8 +19,11 @@
     { "type": "reply", "id": 2, "result": { "Ok": { "kind": "ledger", "rows": [] } } },
     { "type": "reply", "id": 3, "result": { "Ok": { "kind": "ledger_stamp", "stamp": "9c1e…" } } },
     { "type": "reply", "id": 4, "result": { "Ok": { "kind": "file", "file": { "content": "text", "size": 6, "text": "# Done\n", "truncated": false } } } },
-    { "type": "reply", "id": 5, "result": { "Ok": { "kind": "skipper", "skipper": { "name": "Skipper", "agent": "claude", "enabled": true, "folder": "/home/me/skiff-agent", "folder_error": null, "configured": "/home/me/skiff-agent", "folder_status": "ready", "continue_on_restore": false, "project_skippers": false, "project_agent": null, "tasks": [
+    { "type": "reply", "id": 5, "result": { "Ok": { "kind": "skipper", "skipper": { "name": "Skipper", "agent": "claude", "model": "opus", "folder": "/home/me/skiff-agent", "folder_error": null, "configured": "/home/me/skiff-agent", "folder_status": "ready", "continue_on_restore": false, "project_agent": null, "project_model": null, "tasks": [
       { "type": "review", "agent": "claude", "model": "opus", "command": "claude --model opus", "error": null }
+    ], "instructions": [
+      { "scope": { "kind": "skipper" }, "file": "AGENTS.md", "status": "edited", "modified": 1793000000000, "size": 9300 },
+      { "scope": { "kind": "project", "name": "ops-web" }, "file": "projects/ops-web/SKIPPER.md", "status": "none", "modified": null, "size": null }
     ] } } } },
     { "type": "reply", "id": 6, "result": { "Err": { "code": "not_found", "message": "row a1b2c3d4 has no result this Host can show" } } }
   ]

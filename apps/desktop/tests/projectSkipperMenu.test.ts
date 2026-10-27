@@ -8,19 +8,19 @@ const LOCAL_ADAPTER = [...readFileSync(new URL("../src-tauri/src/connection.rs",
   .match(/const LOCAL_ADAPTER[^=]*= \[([^\]]*)\]/)![1]
   .matchAll(/"([^"]+)"/g)].map((m) => m[1]);
 
-/** An old skiffd and its skiff-host: neither knows skipper_run or project_skippers. */
+/** An old skiffd and its skiff-host: neither knows skipper_run. */
 const OLD_HOST = ["session_inventory@1", "session_screen@1", "session_updates@1", "session_terminal@1", "session_lifecycle@1", "session_groups@1",
   "projects@1", "git_status@1", "project_config@1", "worktrees@1", "files@1", "ledger@1", "skipper@1"];
 
 /** The real menus, hostCaps and skiffAgent modules over a fake `invoke`. */
-function page(config: { project_skippers: boolean }) {
+function page() {
   const S: any = { skiffAgent: null, agents: [], projects: [] };
   const sessions = new Map();
   const shown: any[] = [];
   const invoke = async (cmd: string) => {
     if (cmd === "host_capabilities") return [...OLD_HOST, ...LOCAL_ADAPTER.filter((c) => !OLD_HOST.includes(c))];
     // get_skiff_agent on This Mac reads projects.toml in the app, not skiff-host.
-    if (cmd === "get_skiff_agent") return { name: null, agent: null, enabled: true, folder: "/home/me/skiff-agent", continue_on_restore: false, tasks: [], ...config };
+    if (cmd === "get_skiff_agent") return { name: null, agent: null, folder: "/home/me/skiff-agent", continue_on_restore: false, tasks: [] };
     throw new Error(`unexpected ${cmd}`);
   };
   const core = { "@tauri-apps/api/core": { invoke } };
@@ -49,29 +49,25 @@ function page(config: { project_skippers: boolean }) {
     menus.projectMenu({ name: "web", path: "/w", worktrees: [{ path: "/w", is_main: true }] }, 0, 0);
     return shown.at(-1).map((e: any) => e.label).filter(Boolean);
   };
-  return { config, skiffAgent, hostCaps, labels };
+  return { skiffAgent, hostCaps, labels };
 }
 
 test("This Mac with an old skiffd: the project menu offers Start project Skipper", async () => {
-  const p = page({ project_skippers: true });
+  const p = page();
   await p.hostCaps.loadHostCaps();
   await p.skiffAgent.loadSkiffAgent();
   assert.ok(p.hostCaps.hostCan("skipper_run"), "the app starts This Mac's project Skippers itself");
   assert.ok(p.labels().includes("Start project Skipper"), p.labels().join(", "));
 });
 
-test("the entry follows the Settings switch at the next projects reload, with no restart", async () => {
-  const p = page({ project_skippers: false });
+test("Skippers are always on: the entry needs no setting, and stays after a projects reload", async () => {
+  const p = page();
   await p.hostCaps.loadHostCaps();
   await p.skiffAgent.loadSkiffAgent();
-  assert.ok(!p.labels().includes("Start project Skipper"));
+  assert.ok(p.labels().includes("Start project Skipper"));
   // set_skiff_agent writes projects.toml and emits skiff:projects-changed; loadProjects reads it again.
-  p.config.project_skippers = true;
   await p.skiffAgent.loadSkiffAgent();
   assert.ok(p.labels().includes("Start project Skipper"));
-  p.config.project_skippers = false;
-  await p.skiffAgent.loadSkiffAgent();
-  assert.ok(!p.labels().includes("Start project Skipper"));
 });
 
 test("fleet Skippers need skipper_run@2: This Mac has it, an older Host does not", async () => {

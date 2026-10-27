@@ -1,4 +1,4 @@
-//! Settings › Skiff agent › Folder (#135): choose where the Skiff agent's
+//! Settings › Skippers › Folder (#135): choose where the Skiff agent's
 //! folder is. The person picks where; the folder there decides what Skiff
 //! does:
 //!
@@ -749,7 +749,7 @@ fn write_folder(to: &Path) -> Result<()> {
 fn write_moved(note: &Path, to: &Path) -> Result<()> {
     let date: String = Connection::open_in_memory()?.query_row("SELECT date('now')", [], |r| r.get(0))?;
     let text = format!(
-        "# Skipper moved\n\nSkipper moved to {} on {date}.\n\nThis folder is a copy kept by Skiff. Tasks added after that date are only in the new folder. You can delete this folder.\n\nTo go back, choose this folder in Settings › Skiff agent › Folder › Change….\n",
+        "# Skipper moved\n\nSkipper moved to {} on {date}.\n\nThis folder is a copy kept by Skiff. Tasks added after that date are only in the new folder. You can delete this folder.\n\nTo go back, choose this folder in Settings › Skippers › Folder › Change….\n",
         to.display()
     );
     std::fs::write(note, text)?;

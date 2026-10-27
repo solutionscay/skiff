@@ -65,7 +65,7 @@
 .set-seg-item:hover { color: var(--text); }
 .set-seg-item.on { background: var(--bg-raised); color: var(--text); box-shadow: inset 0 -2px 0 var(--state-working); }
 .set-menu .c-status { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
-/* Settings › Skiff agent. */
+/* Settings › Skippers. */
 .set-open span.c-cmd { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(13px * var(--zoom, 1)); }
 .set-open .c-mode { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
 .set-agent button.set-switch { justify-content: center; border: 0; background: transparent; }
@@ -115,7 +115,7 @@
 /* Remove is destructive: red on hover and keyboard focus. */
 .set-table .c-remove { transition: border-color 120ms, color 120ms; }
 .set-table .c-remove:hover, body.kbd .set-table .c-remove:focus { border-color: var(--error); color: var(--error); }
-/* Settings › Skiff agent › Folder: the path to copy, its buttons, and a line under it only when the folder is not usable. */
+/* Settings › Skippers › Folder: the path to copy, its buttons, and a line under it only when the folder is not usable. */
 .set-folder { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) auto; }
 /* The path is a read-only field: it reads as text, not as a field to type in. */
 .set-folder input.set-path { background: transparent; color: var(--text); text-overflow: ellipsis; cursor: text; }
@@ -198,6 +198,28 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-check-label.on .switch { border-color: var(--error); background: color-mix(in srgb, var(--error) 25%, transparent); }
 .set-check-label.on .switch::after { left: calc(16 * var(--u)); background: var(--error); }
 .set-check .c-secs { margin-left: calc(8 * var(--u)); font-family: var(--mono); color: var(--text-3); }
+
+/* Settings › Skippers › Agent: the agent, then its model, in one cell. */
+.set-open .c-split { display: grid; grid-template-columns: 1fr 1fr; padding: 0; }
+.set-open .c-split > * { min-width: 0; height: 100%; }
+.set-open .c-split > * + * { border-left: 1px solid var(--rule); }
+.set-open .c-split > select.c-cmd { border-left: 0; }
+.set-open .c-split > input.c-cmd { padding: 0 calc(12 * var(--u)); }
+.set-open .c-split > .c-note { display: flex; align-items: center; padding: 0 calc(12 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); }
+.set-head-row .set-count { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
+/* Settings › Skippers › Instructions: SCOPE | FILE | STATUS | Edit, Reset…. Teal: a file the person edited. */
+.set-table.g-instr .set-row { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) calc(260 * var(--u)) calc(200 * var(--u)); }
+.set-table.g-instr .set-row > .c-lead { justify-content: flex-start; padding: 0 calc(12 * var(--u)); }
+.set-table.g-instr .c-scope { font-size: calc(14px * var(--zoom, 1)); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.set-table.g-instr .c-kind { margin-left: calc(8 * var(--u)); font-size: calc(11px * var(--zoom, 1)); font-weight: 400; color: var(--text-dim); }
+.set-table.g-instr .c-state { font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
+.set-table.g-instr .c-state .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--ok); }
+.set-table.g-instr .c-state.tpl .sq { background: var(--text-dim); }
+.set-table.g-instr .c-state.none { color: var(--text-dim); }
+.set-table.g-instr .c-state.none .sq { background: var(--rule-strong); }
+.set-table.g-instr .c-state .dim { color: var(--text-dim); }
+.set-table.g-instr .c-acts { display: flex; gap: calc(8 * var(--u)); margin-left: auto; }
+.set-table.g-instr .c-acts .set-rm { margin-left: 0; }
 
 /* Disk use: TYPE | FILES | SIZE | FOLDER | action. Sub-rows indent; numbers align right. */
 .set-disk .set-row { grid-template-columns: calc(200 * var(--u)) calc(96 * var(--u)) calc(112 * var(--u)) minmax(0, 1fr) calc(180 * var(--u)); }

@@ -3549,7 +3549,7 @@ dependencies = [
 
 [[package]]
 name = "skiff-core"
-version = "0.6.28"
+version = "0.6.29"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3612,7 +3612,7 @@ dependencies = [
 
 [[package]]
 name = "skiffd"
-version = "0.6.28"
+version = "0.6.29"
 dependencies = [
  "alacritty_terminal",
  "anyhow",

@@ -1,7 +1,7 @@
 use std::path::Path;
 use anyhow::{Context, Result};
 use super::types::{FolderInfo, ProjectConfig, short_name};
-use super::persistence::{load, config_path, edit_lock, home_relative, expand_home, write_atomic, check_label, Refused};
+use super::persistence::{load, config_path, edit_lock, home_relative, expand_home, write_doc, check_label, Refused};
 
 /// Accent colors for new projects. Kept clear of the state colors.
 const PALETTE: [&str; 8] = [
@@ -157,7 +157,7 @@ pub fn add_project(
     if let Some(dir) = file.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    write_atomic(&file, &doc.to_string())?;
+    write_doc(&file, &mut doc)?;
 
     Ok(ProjectConfig {
         name,
@@ -268,7 +268,7 @@ pub fn remove_project(project: &str) -> Result<()> {
     if tables.is_empty() {
         doc.remove("project");
     }
-    write_atomic(&file, &doc.to_string())
+    write_doc(&file, &mut doc)
 }
 
 /// Rewrites the `[[project]]` order. Comments on each table move with it.
@@ -324,7 +324,7 @@ pub fn arrange_projects(order: &[String], fleets: &[(String, String)]) -> Result
         t.set_position(pos);
         tables.push(t);
     }
-    write_atomic(&file, &doc.to_string())
+    write_doc(&file, &mut doc)
 }
 
 fn set_project_key(project: &str, key: &str, value: Option<impl Into<toml_edit::Value>>) -> Result<()> {
@@ -348,5 +348,5 @@ fn set_project_key(project: &str, key: &str, value: Option<impl Into<toml_edit::
             table.remove(key);
         }
     }
-    write_atomic(&file, &doc.to_string())
+    write_doc(&file, &mut doc)
 }

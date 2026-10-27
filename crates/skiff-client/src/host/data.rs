@@ -17,7 +17,7 @@ use std::{
 
 use skiff_host_api::{
     AgentEdit, Error, FolderListing, FolderPlaces, Hello, HostBranches, HostAgent, HostChange, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
-    HostListing, HostProject, HostSkipper, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response, SkipperEdit, SkipperFolderDone,
+    HostFileScope, HostListing, HostProject, HostSkipper, HostSkipperFile, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response, SkipperEdit, SkipperFolderDone,
     SkipperFolderMode, SkipperFolderPreview, SkipperOpened, InventorySession, TakenSkipper,
 };
 use tokio::net::UnixStream;
@@ -266,6 +266,29 @@ pub async fn skipper_settings(c: &HostConnection) -> Result<HostSkipper, Error> 
         Response::Skipper { settings } => Ok(*settings),
         _ => unreachable!("checked by Request::accepts"),
     }
+}
+
+/// An instruction file on the Host and its revision (`skipper_file@1`). A
+/// Skipper's missing file is written from the template there first.
+pub async fn skipper_file_read(c: &HostConnection, scope: HostFileScope) -> Result<HostSkipperFile, Error> {
+    match c.request(Request::SkipperFileRead { scope }).await? {
+        Response::SkipperFile { file } => Ok(file),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// Sends a saved copy back: refused (`conflict`) when the Host's file
+/// changed since `revision`. Answers the new revision.
+pub async fn skipper_file_write(c: &HostConnection, scope: HostFileScope, text: String, revision: String) -> Result<HostSkipperFile, Error> {
+    match c.request(Request::SkipperFileWrite { scope, text, revision }).await? {
+        Response::SkipperFile { file } => Ok(file),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// Reset… on the Host: the template again, the old file in `<name>.bak`.
+pub async fn skipper_file_reset(c: &HostConnection, scope: HostFileScope) -> Result<(), Error> {
+    c.request(Request::SkipperFileReset { scope }).await.map(drop)
 }
 
 /// What a change of Skipper's folder to `path` would do on the Host.

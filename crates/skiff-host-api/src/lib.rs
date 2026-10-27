@@ -20,7 +20,7 @@ pub use folders::{FolderEntry, FolderKind, FolderListing, FolderPlaces, FolderRe
 pub use groups::Group;
 pub use inventory::InventorySession;
 pub use coordinator::{
-    HostLedgerRow, HostSkipper, HostTaskType, SkipperEdit, SkipperFolderCounts, SkipperFolderDone, SkipperFolderMode, SkipperFolderPreview,
+    HostFileScope, HostInstruction, HostLedgerRow, HostSkipper, HostSkipperFile, HostTaskType, SkipperEdit, SkipperFolderCounts, SkipperFolderDone, SkipperFolderMode, SkipperFolderPreview,
     SkipperOpened, SkipperRunningTask, TakenSkipper, TakenTask, TaskEdit,
 };
 pub use lifecycle::SessionSpec;
@@ -48,6 +48,7 @@ pub const PROJECT_ASSETS: &str = "project_assets";
 pub const LEDGER: &str = "ledger";
 pub const SKIPPER: &str = "skipper";
 pub const SKIPPER_CONFIG: &str = "skipper_config";
+pub const SKIPPER_FILE: &str = "skipper_file";
 pub const SKIPPER_RUN: &str = "skipper_run";
 pub const AGENT_CONFIG: &str = "agent_config";
 pub const DROPS: &str = "drops";
@@ -243,6 +244,16 @@ impl Capability {
     pub fn skipper_config() -> Self {
         Self {
             name: SKIPPER_CONFIG.into(),
+            version: 1,
+        }
+    }
+    /// Read, write and reset the Host's instruction files by what they are
+    /// for, never by path: `AGENTS.md`, each `SKIPPER.md` and each task
+    /// type's file. A write carries the revision it was made from. Data
+    /// plane; grants no other file, no settings change and no Skipper launch.
+    pub fn skipper_file() -> Self {
+        Self {
+            name: SKIPPER_FILE.into(),
             version: 1,
         }
     }
@@ -667,6 +678,26 @@ pub enum Request {
     SkipperEdit {
         edit: SkipperEdit,
     },
+    /// Answers `skipper_file`: the file of `scope` and its revision. A
+    /// missing file is written from the template first, as Edit does on
+    /// the Host's own desktop.
+    SkipperFileRead {
+        scope: HostFileScope,
+    },
+    /// Writes `text` to the file of `scope`, then answers `skipper_file`
+    /// with the new revision. Refused (`conflict`) when the file changed
+    /// since `revision`. Over 1 MiB is `invalid`.
+    SkipperFileWrite {
+        scope: HostFileScope,
+        text: String,
+        revision: String,
+    },
+    /// Writes the template again and keeps the old file as `<name>.bak`,
+    /// then answers `skipper`, read again. A task type's file has no
+    /// template: `invalid`.
+    SkipperFileReset {
+        scope: HostFileScope,
+    },
     /// Answers `skipper_folder`: what a change to `path` would do. A full
     /// Host path, or one under home as `~/`. Writes nothing.
     SkipperFolderPreview {
@@ -774,6 +805,7 @@ impl Request {
             Self::SkipperEdit { .. } | Self::SkipperFolderPreview { .. } | Self::SkipperFolderChange { .. } => {
                 Some(Capability::skipper_config())
             }
+            Self::SkipperFileRead { .. } | Self::SkipperFileWrite { .. } | Self::SkipperFileReset { .. } => Some(Capability::skipper_file()),
             Self::SkipperOpen { .. } | Self::SkipperWatch { .. } | Self::SkipperProject { .. } => Some(Capability::skipper_run()),
             Self::SkipperFleet { .. } | Self::FleetTakeoverPreview { .. } | Self::FleetTakeover { .. } | Self::FleetRename { .. } => {
                 Some(Capability::skipper_run_fleets())
@@ -829,7 +861,8 @@ impl Request {
                 | (Self::LedgerRows, Response::Ledger { .. })
                 | (Self::LedgerStamp, Response::LedgerStamp { .. })
                 | (Self::LedgerResult { .. }, Response::File { .. })
-                | (Self::SkipperSettings | Self::SkipperEdit { .. }, Response::Skipper { .. })
+                | (Self::SkipperSettings | Self::SkipperEdit { .. } | Self::SkipperFileReset { .. }, Response::Skipper { .. })
+                | (Self::SkipperFileRead { .. } | Self::SkipperFileWrite { .. }, Response::SkipperFile { .. })
                 | (Self::SkipperFolderPreview { .. }, Response::SkipperFolder { .. })
                 | (Self::SkipperFolderChange { .. }, Response::SkipperFolderDone { .. })
                 | (Self::SkipperOpen { .. }, Response::SkipperOpened { .. })
@@ -874,6 +907,9 @@ impl Request {
                 | Self::LedgerResult { .. }
                 | Self::SkipperSettings
                 | Self::SkipperEdit { .. }
+                | Self::SkipperFileRead { .. }
+                | Self::SkipperFileWrite { .. }
+                | Self::SkipperFileReset { .. }
                 | Self::SkipperFolderPreview { .. }
                 | Self::SkipperFolderChange { .. }
                 | Self::SkipperWatch { .. }
@@ -933,6 +969,7 @@ pub enum Response {
         #[serde(rename = "skipper")]
         settings: Box<HostSkipper>,
     },
+    SkipperFile { file: HostSkipperFile },
     /// Boxed, as `Project`. Same JSON.
     SkipperFolder { preview: Box<SkipperFolderPreview> },
     SkipperFolderDone { done: SkipperFolderDone },

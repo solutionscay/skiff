@@ -50,7 +50,7 @@ async fn host_ledger(dir: PathBuf) {
     std::fs::create_dir_all(config.parent().unwrap()).unwrap();
     std::fs::write(
         &config,
-        "[skiff_agent]\nname = \"Mate\"\nagent = \"claude\"\nenabled = true\n\n[skiff_agent.tasks]\nreview = { agent = \"claude\", model = \"opus\" }\nghost = { agent = \"nope\" }\n",
+        "[skiff_agent]\nname = \"Mate\"\nagent = \"claude\"\nmodel = \"opus\"\n\n[skiff_agent.tasks]\nreview = { agent = \"claude\", model = \"opus\" }\nghost = { agent = \"nope\" }\n",
     )
     .unwrap();
 
@@ -187,7 +187,7 @@ async fn host_ledger(dir: PathBuf) {
     for c in [&l, &r] {
         let got = data::skipper_settings(c).await.unwrap();
         assert_eq!(got, want);
-        assert_eq!((got.name.as_deref(), got.enabled), (Some("Mate"), true));
+        assert_eq!((got.name.as_deref(), got.model.as_deref()), (Some("Mate"), Some("opus")));
         assert_eq!(got.tasks.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), ["review", "ghost"]);
         assert!(got.tasks[1].error.is_some(), "a gone agent says why");
         assert!(got.folder.as_deref().is_some_and(|f| Path::new(f).starts_with(&private)));

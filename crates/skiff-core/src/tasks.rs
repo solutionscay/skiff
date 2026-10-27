@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::{config::TaskTypes, project::AgentInfo};
 
 /// Where a person sets the table, for error messages.
-pub const SETTINGS: &str = "Settings › Skiff agent › Task types";
+pub const SETTINGS: &str = "Settings › Task types";
 
 /// The model flag of each known agent, from its `--help` (2026-10-15:
 /// claude 2.1.301, codex 0.162.1, grok 1.0.44). An agent with no flag here

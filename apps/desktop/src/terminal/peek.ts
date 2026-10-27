@@ -96,6 +96,15 @@ interface Active {
 
 let active: Active | null = null;
 let gen = 0;
+/** Runs once when the peek of {@link peekText} leaves the screen. */
+let afterPeek: (() => void) | null = null;
+
+/** The peek left the screen: Settings opens again when it sent the file. */
+function peekEnded() {
+  const f = afterPeek;
+  afterPeek = null;
+  f?.();
+}
 /** The card over the panes. Under a shown command it is hidden. */
 let card: HTMLElement | null = null;
 /** The card's own action: the Enter keycap. Its Esc keycap is not one. */
@@ -228,6 +237,7 @@ function endPreview() {
   open = null;
   if (p) retire(p);
   repaintPanes();
+  peekEnded();
 }
 
 /** Ctrl+Shift+Up/Down, Tab or F6 into the preview: the tool, the diff, or the card's button. */
@@ -253,6 +263,24 @@ export function enterPreview() {
   const b = !open?.shown ? cardAction() : null;
   if (b) b.click();
   else giveKeys();
+}
+
+/**
+ * Settings › Skippers › Edit with Open with › Text files in the peek: runs
+ * `script` over the current row. `ended` runs once when the peek leaves the
+ * screen.
+ */
+export function peekText(script: string, cwd: string, path: string, ended: () => void) {
+  if (!active || active.closed) {
+    endPreview();
+    active = { key: currentKey(), gen: 0, keys: true, closed: false };
+  }
+  active.gen = ++gen;
+  active.keys = true;
+  if (open) open.gen = active.gen;
+  afterPeek = ended;
+  const name = path.split("/").pop() ?? path;
+  handle({ kind: "run", script, cwd }, "file", name, path.slice(0, path.length - name.length - 1));
 }
 
 /** Shift+Enter, double-click, the card's button, a menu's Open: opens the path over the current row. */
@@ -318,11 +346,12 @@ export function closePeek(hold = false) {
   if (card && cardAction()) {
     card.hidden = false;
     if (hadKeys || active?.keys) giveKeys();
-    return;
+    return peekEnded();
   }
   if (active) active.closed = true;
   clearCard();
   if (p.shown) repaintPanes();
+  peekEnded();
   if (!hadKeys) return;
   // The keys go back to the row the user left.
   const row = currentRow();
@@ -345,6 +374,7 @@ export function closePreview() {
   if (p) drop(p, p.shown);
   repaintPanes();
   render();
+  peekEnded();
   if (!hadKeys) return;
   const row = currentRow();
   if (row) row.focus();

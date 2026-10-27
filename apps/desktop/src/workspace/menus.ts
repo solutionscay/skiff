@@ -164,14 +164,13 @@ function dissolveFleet(f: Fleet) {
 
 /**
  * The fleet head's Skipper items, as a project row has them: Start fleet
- * Skipper while Settings › Skiff agent › Project and fleet Skippers is on;
- * while one runs, Open fleet Skipper and Stop fleet Skipper….
+ * Skipper; while one runs, Open fleet Skipper and Stop fleet Skipper….
  */
 function fleetSkipperEntries(f: Fleet): MenuEntry[] {
   if (!fleetSkippersHere()) return [];
   const s = fleetSkipperOf(f.name);
   if (!s) {
-    if (!skiffAgentFolder() || !S.skiffAgent?.project_skippers) return [];
+    if (!skiffAgentFolder()) return [];
     return [{ icon: "tools-sparkles", label: "Start fleet Skipper", run: () => void startFleetSkipper(f.name) }];
   }
   return [
@@ -532,10 +531,9 @@ function endManyEntry(ids: string[], label: string, title: string): MenuEntry {
 }
 
 /**
- * Start project Skipper, while Settings › Skiff agent › Project and fleet Skippers is
- * on. It opens no dialog. While one runs, whatever Settings says: Open
- * project Skipper, which shows its pane, and Stop project Skipper…, which
- * asks first, as End does. Its panes keep running.
+ * Start project Skipper. It opens no dialog. While one runs: Open project
+ * Skipper, which shows its pane, and Stop project Skipper…, which asks
+ * first, as End does. Its panes keep running.
  */
 function projectSkipperEntries(p: Project): MenuEntry[] {
   const s = projectSkipperOf(p.name);
@@ -543,7 +541,7 @@ function projectSkipperEntries(p: Project): MenuEntry[] {
   const fleet = p.fleet && !s ? fleetSkipperOf(p.fleet) : null;
   if (fleet) return [{ icon: "tools-sparkles", label: "Open fleet Skipper", run: () => void startFleetSkipper(p.fleet!) }];
   if (!s) {
-    if (!skiffAgentFolder() || !S.skiffAgent?.project_skippers) return [];
+    if (!skiffAgentFolder()) return [];
     return [{ icon: "tools-sparkles", label: "Start project Skipper", disabled: !!p.error, run: () => startProjectSkipper(p.name) }];
   }
   return [

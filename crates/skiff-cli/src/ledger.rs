@@ -1356,7 +1356,7 @@ async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
             let mut text = message(&row);
             if ps.created {
                 // A new agent takes its instructions first, then the task, in one turn.
-                text = format!("{} Then take this hand-off. {text}", skiff_client::skipper::first_message(&ps.dir));
+                text = format!("{} Then take this hand-off. {text}", skiff_client::skipper::first_message(&skiff_core::config::load()?, &ps.dir)?);
                 crate::skipper::ready(&c, &s.id).await?;
                 println!("started the {name} Skipper");
             }

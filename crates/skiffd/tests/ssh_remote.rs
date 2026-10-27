@@ -1467,7 +1467,7 @@ async fn a_mac_server_gets_skiff_and_a_launch_agent_once() {
 #[tokio::test]
 async fn skipper_and_agents_are_changed_and_started_on_the_host_over_a_real_forward() {
     use skiff_client::host::data;
-    use skiff_host_api::{AgentEdit, Error as E, SkipperEdit};
+    use skiff_host_api::{AgentEdit, Error as E, HostFileScope, SkipperEdit};
     let Some(f) = fixture("s") else { return };
     let local = local_client(&f.socket()).await;
     // A custom agent that every machine has: `sh`.
@@ -1520,9 +1520,19 @@ async fn skipper_and_agents_are_changed_and_started_on_the_host_over_a_real_forw
 
     // R7: Skipper's settings change on the Host; its folder is read there.
     data::skipper_edit(&c, SkipperEdit::Agent(Some("sk".into()))).await.unwrap();
-    let on = data::skipper_edit(&c, SkipperEdit::Enabled(true)).await.unwrap();
-    assert!(on.enabled && on.folder_status == "ready", "{on:?}");
+    let on = data::skipper_edit(&c, SkipperEdit::Model(Some("m1".into()))).await.unwrap();
+    assert!(on.model.as_deref() == Some("m1") && on.folder_status == "ready", "{on:?}");
     assert!(config().contains("agent = \"sk\""), "{}", config());
+
+    // Skippers settings: an instruction file goes out and back with its revision.
+    let file = data::skipper_file_read(&c, HostFileScope::Skipper).await.unwrap();
+    assert!(file.text.contains("the Skiff agent"), "{}", file.text);
+    let saved = data::skipper_file_write(&c, HostFileScope::Skipper, "mine\n".into(), file.revision.clone()).await.unwrap();
+    assert_ne!(saved.revision, file.revision);
+    let stale = data::skipper_file_write(&c, HostFileScope::Skipper, "again\n".into(), file.revision).await;
+    assert!(matches!(stale, Err(E::Conflict { .. })), "{stale:?}");
+    let s = data::skipper_settings(&c).await.unwrap();
+    assert_eq!(s.instructions.first().map(|i| i.status.as_str()), Some("edited"), "{s:?}");
     let preview = data::skipper_folder_preview(&c, &f.dir.join("other").to_string_lossy()).await.unwrap();
     assert_eq!((preview.kind.as_str(), preview.skipper_runs), ("new", false), "{preview:?}");
 

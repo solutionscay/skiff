@@ -23,6 +23,7 @@ type HostCap =
   | "ledger"
   | "skipper"
   | "skipper_config"
+  | "skipper_file"
   | "skipper_run"
   | "skipper_fleets"
   | "agent_config";
@@ -47,6 +48,7 @@ const MAJOR: Record<HostCap, number> = {
   ledger: 1,
   skipper: 1,
   skipper_config: 1,
+  skipper_file: 1,
   skipper_run: 1,
   skipper_fleets: 2,
   agent_config: 1,
@@ -75,6 +77,7 @@ const OFFERS: Record<HostCap, string> = {
   ledger: "the ledger",
   skipper: "Skiff agent settings",
   skipper_config: "changes to its Skiff agent",
+  skipper_file: "its Skipper instruction files",
   skipper_run: "a Skiff agent it starts",
   skipper_fleets: "fleet Skippers",
   agent_config: "changes to its agents",

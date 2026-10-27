@@ -671,6 +671,44 @@ fn m5_folders_is_a_family_of_its_own_that_lists_folders_only() {
     }
 }
 
+/// Skippers settings: the instruction files are a family of their own,
+/// named by what they are for, never by path. A write carries a revision.
+/// The two switches Skippers dropped are no edits.
+#[test]
+fn skipper_files_are_a_family_of_their_own() {
+    let cap = Capability::skipper_file();
+    assert_eq!(serde_json::to_value(&cap).unwrap(), json!({"name":"skipper_file","version":1}));
+    let file = Response::SkipperFile { file: skiff_host_api::HostSkipperFile { text: "# x\n".into(), revision: "r1".into() } };
+    let settings: Response = serde_json::from_value(serde_json::from_str::<Value>(include_str!("fixtures/m6.json")).unwrap()["replies"][4]["result"]["Ok"].clone()).unwrap();
+    for value in [
+        json!({"cmd":"skipper_file_read","scope":{"kind":"skipper"}}),
+        json!({"cmd":"skipper_file_read","scope":{"kind":"fleet","name":"Harbor"}}),
+        json!({"cmd":"skipper_file_write","scope":{"kind":"project","name":"ops-web"},"text":"mine","revision":"r1"}),
+        json!({"cmd":"skipper_file_write","scope":{"kind":"type","name":"review"},"text":"","revision":""}),
+        json!({"cmd":"skipper_file_reset","scope":{"kind":"project","name":"ops-web"}}),
+    ] {
+        let request: Request = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&request).unwrap(), value);
+        assert_eq!(request.capability(), Some(cap.clone()), "{value}");
+        assert!(!request.accepts(&Response::Ok), "{value}");
+        let reset = matches!(request, Request::SkipperFileReset { .. });
+        assert_eq!(request.accepts(&file), !reset, "{value}");
+        assert_eq!(request.accepts(&settings), reset, "{value}");
+    }
+    for bad in [
+        json!({"cmd":"skipper_file_read","path":"/etc/passwd"}),
+        json!({"cmd":"skipper_file_read","scope":{"kind":"other","name":"x"}}),
+        json!({"cmd":"skipper_file_write","scope":{"kind":"skipper"},"text":"x"}),
+        json!({"cmd":"skipper_edit","edit":{"key":"enabled","value":true}}),
+        json!({"cmd":"skipper_edit","edit":{"key":"project_skippers","value":true}}),
+    ] {
+        assert!(serde_json::from_value::<Request>(bad.clone()).is_err(), "{bad}");
+    }
+    for other in [Capability::skipper_settings(), Capability::skipper_config(), Capability::files()] {
+        assert!(other != cap);
+    }
+}
+
 /// #166 R7 and R8: Skipper's changes, its session and watcher, and the
 /// agents table are families of their own, each with one reply kind.
 #[test]
@@ -678,6 +716,8 @@ fn skipper_changes_launch_and_agent_changes_are_families_of_their_own() {
     let cases = [
         (json!({"cmd":"skipper_edit","edit":{"key":"name","value":"Mate"}}), Capability::skipper_config()),
         (json!({"cmd":"skipper_edit","edit":{"key":"add_task","value":{"type":"review","agent":"claude","model":null}}}), Capability::skipper_config()),
+        (json!({"cmd":"skipper_edit","edit":{"key":"model","value":"opus"}}), Capability::skipper_config()),
+        (json!({"cmd":"skipper_edit","edit":{"key":"project_model","value":null}}), Capability::skipper_config()),
         (json!({"cmd":"skipper_folder_preview","path":"~/skiff-agent"}), Capability::skipper_config()),
         (json!({"cmd":"skipper_folder_change","path":"/home/me/a","mode":"copy","end_skipper":true,"anyway":false}), Capability::skipper_config()),
         (json!({"cmd":"skipper_open"}), Capability::skipper_run()),

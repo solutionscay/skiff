@@ -244,11 +244,12 @@ pub fn set_open(key: &str, command: Option<&str>) -> Result<()> {
 pub enum SkiffAgentKey<'a> {
     Name(Option<&'a str>),
     Agent(Option<&'a str>),
+    /// One word, as a task type's model.
+    Model(Option<&'a str>),
     Folder(Option<&'a std::path::Path>),
-    Enabled(bool),
     ContinueOnRestore(bool),
-    ProjectSkippers(bool),
     ProjectAgent(Option<&'a str>),
+    ProjectModel(Option<&'a str>),
     /// Auto flush's age in days. `0`: off.
     CacheDays(u32),
 }
@@ -257,18 +258,23 @@ pub enum SkiffAgentKey<'a> {
 /// written as the absolute path it is given.
 pub fn set_skiff_agent(key: SkiffAgentKey) -> Result<()> {
     let text = |v: Option<&str>| v.map(str::trim).filter(|v| !v.is_empty()).map(str::to_owned);
+    let model = |v: Option<&str>| crate::tasks::check_model(v).map(|m| m.map(toml_edit::value));
+    let model = match &key {
+        SkiffAgentKey::Model(v) | SkiffAgentKey::ProjectModel(v) => model(*v)?,
+        _ => None,
+    };
     edit_table("skiff_agent", |t| {
         let (k, v) = match key {
             SkiffAgentKey::Name(v) => ("name", text(v).map(toml_edit::value)),
             SkiffAgentKey::Agent(v) => ("agent", text(v).map(toml_edit::value)),
             // The full path, never `~` or a relative one: the folder is the same wherever Skiff starts.
             SkiffAgentKey::Folder(v) => ("folder", v.map(|p| toml_edit::value(p.to_string_lossy().into_owned()))),
-            SkiffAgentKey::Enabled(on) => ("enabled", on.then(|| toml_edit::value(true))),
+            SkiffAgentKey::Model(_) => ("model", model),
             // Off is the default: the key goes.
             SkiffAgentKey::ContinueOnRestore(on) => ("continue_on_restore", on.then(|| toml_edit::value(true))),
-            SkiffAgentKey::ProjectSkippers(on) => ("project_skippers", on.then(|| toml_edit::value(true))),
             // None: the Skipper's own agent.
             SkiffAgentKey::ProjectAgent(v) => ("project_agent", text(v).map(toml_edit::value)),
+            SkiffAgentKey::ProjectModel(_) => ("project_model", model),
             // The default: the key goes.
             SkiffAgentKey::CacheDays(n) => ("cache_days", (n != crate::config::CACHE_DAYS).then(|| toml_edit::value(i64::from(n)))),
         };

@@ -1,5 +1,6 @@
 //! Skipper and the agents on this Host, through the data plane (M6, #166 R7
 //! and R8): settings changes and the folder change (`skipper_config@1`),
+//! the instruction files (`skipper_file@1`),
 //! Skipper's session and its watcher (`skipper_run@1`), fleet Skippers and
 //! their takeover (`skipper_run@2`), and the `[agents]`
 //! table (`agent_config@1`). The same `skiff-client` code the app runs on
@@ -28,6 +29,28 @@ pub async fn answer(request: Request) -> Result<Response, Error> {
         Request::SkipperEdit { edit } => {
             let settings = blocking(move || {
                 skipper::apply(&edit).map_err(refused)?;
+                settings()
+            })
+            .await?;
+            Ok(Response::Skipper { settings: Box::new(settings) })
+        }
+        // A file by what it is for. The Host makes the path; a name that
+        // is not its fleet, project or task type is refused.
+        Request::SkipperFileRead { scope } => {
+            let file = blocking(move || skipper::host_read(&config::load().map_err(failed)?, &scope).map_err(invalid)).await?;
+            Ok(Response::SkipperFile { file })
+        }
+        Request::SkipperFileWrite { scope, text, revision } => {
+            let wrote = blocking(move || skipper::host_write(&config::load().map_err(failed)?, &scope, &text, &revision).map_err(invalid)).await?;
+            match wrote {
+                skipper::Wrote::Done(file) => Ok(Response::SkipperFile { file }),
+                skipper::Wrote::Changed => Err(Error::Conflict { message: "The file changed on this Host since it was read.".into() }),
+            }
+        }
+        Request::SkipperFileReset { scope } => {
+            let settings = blocking(move || {
+                let cfg = config::load().map_err(failed)?;
+                skipper::reset_file(&cfg, &skipper::scope_of(&scope).map_err(invalid)?).map_err(invalid)?;
                 settings()
             })
             .await?;
@@ -175,12 +198,8 @@ fn cli() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("skiff"))
 }
 
-/// Skipper's live session on this Host, while Skipper is on.
+/// Skipper's live session on this Host.
 async fn coordinator() -> Result<Option<SessionInfo>, Error> {
-    let on = blocking(|| Ok(config::load().map_err(failed)?.skiff_agent.enabled)).await?;
-    if !on {
-        return Ok(None);
-    }
     let c = connect().await?;
     let all = tokio::time::timeout(SESSIONS_TIMEOUT, c.list_sessions()).await.map_err(|_| Error::TimedOut)?.map_err(failed)?;
     Ok(all.into_iter().find(|s| s.coordinator && s.state != SessionState::Done))

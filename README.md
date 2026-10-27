@@ -33,11 +33,12 @@ Skiff does not edit files. Each worktree lists its changed files and its file tr
 Sessions run in `skiffd`, a daemon that owns every PTY. You can close the window and the agents keep running. When the window opens again, each terminal shows its last screen.
 
 Skiff makes its agent folder, `~/skiff-agent`, when the app starts. The folder holds the
-image cache in `cache/`, so dropped and pasted images work with the Skiff agent off. If
+image cache in `cache/`, so dropped and pasted images work before any Skipper runs. If
 Skiff cannot make the folder, the Images and Disk use features say so in one line.
 
-The Skiff agent is an optional coordinator: one agent session in that folder, turned on
-in Settings › Skiff agent. Turning it on adds its files to the folder. It sends tasks to sessions in your
+The Skiff agent, Skipper, is a coordinator: one agent session in that folder. Its row is
+always at the top of the tree, and no Skipper starts by itself. The first click on the
+row starts it, and its first start adds its files to the folder. It sends tasks to sessions in your
 projects and records them in a SQLite ledger (`skiff ledger`). `skiff watch` tells it when
 a task's pane ends a turn, exits or restarts. `skiff skipper` attaches to it from any
 terminal, an SSH login included, and starts it first when it does not run. Ctrl-\
@@ -53,16 +54,26 @@ maximize hides it. Only Skipper's session can change the ledger. A shell outside
 such as an SSH login, adds `--person` to change a row.
 
 A project can have a Skipper of its own, and a fleet can have one for all its projects.
-Turn them on in Settings › Skiff agent › Project and fleet Skippers, then pick Start
-project Skipper in a project's menu or Start fleet Skipper in a fleet's menu. Skipper hands
+Pick Start project Skipper in a project's menu or Start fleet Skipper in a fleet's menu.
+Skipper hands
 work to them with `skiff ledger handoff PROJECT` or `skiff ledger handoff FLEET`. Each one
 changes only its own rows. A project has one Skipper at most: when a project with a
 project Skipper comes under a running fleet Skipper, the fleet Skipper takes its rows over
 after one confirm, and the project Skipper stops when it is idle.
 
+Settings › Skippers sets the name, the agent and model of the Skipper, and one agent and
+model for project and fleet Skippers ("Same as Skipper" by default). Its Instructions
+table lists one file per Skipper: `AGENTS.md`, the base of every Skipper, and a
+`SKIPPER.md` with the scope section only in `fleets/<fleet>/` and `projects/<project>/`.
+Skiff writes each file once and never writes over an edit. The status is none,
+template, edited, or edited · template changed. Edit opens the file as Open with › Text
+files says. Reset… writes the template again and keeps the old file as `<name>.bak`. A
+file with status template follows a new template at the Skipper's next start. Settings ›
+Task types holds the task types.
+
 <p align="center"><img src=".github/screenshot-skipper.webp" alt="Skiff on Linux: Skipper in the center pane reports a finished release, the Ledger panel on the right lists finished tasks and plans, and the projects sidebar is on the left"></p>
 
-Settings › Skiff agent › Folder › Change… moves the folder: `~/skiff-agent`, `~/.skiff-agent`, or
+Settings › Skippers › Folder › Change… moves the folder: `~/skiff-agent`, `~/.skiff-agent`, or
 any folder of its own outside a Git repository, a project, an agent's home or a Hermes
 profile. A new or empty folder gets a copy (checked before the switch) or a new ledger. A
 folder that is already a Skiff folder is switched to as it is; Skiff never merges two

@@ -117,7 +117,7 @@ function details(p: Preview): string[] {
 }
 
 /**
- * Settings › Skiff agent › Folder › Change…: the person picks where, and the
+ * Settings › Skippers › Folder › Change…: the person picks where, and the
  * folder there decides what Skiff offers. Nothing changes before the action.
  * `current` is the folder now; the picker opens beside it. `changed` runs
  * after a change, so Settings reads the folder again. The keys

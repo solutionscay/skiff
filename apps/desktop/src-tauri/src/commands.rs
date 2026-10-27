@@ -328,6 +328,28 @@ pub(crate) async fn open_file(path: PathBuf) -> Result<Opened, String> {
     run_plan(plan, cwd, path).await
 }
 
+/// Opens a file as Settings › Open with › Text files says, whatever its
+/// extension. A peek command goes back to the page; an app starts here.
+/// `app_only`: the copy of a remote Host's file, which the peek on that
+/// Host cannot open, so a peek command gives the default app.
+pub(crate) async fn open_text(path: PathBuf, app_only: bool) -> Result<Opened, String> {
+    use skiff_core::open::{self, Plan};
+    let o = skiff_core::config::load().map(|c| c.open).unwrap_or_default();
+    let cwd = path.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
+    let plan = match open::plan_text(&path, &o) {
+        Plan::Run(_) if app_only && open::previews_text(&o) => Plan::Default,
+        plan => plan,
+    };
+    match plan {
+        Plan::Run(script) if !open::previews_text(&o) => tokio::task::spawn_blocking(move || open::start(&script, &cwd))
+            .await
+            .map_err(|e| e.to_string())?
+            .map(|_| Opened::Default)
+            .map_err(|e| format!("{e:#}")),
+        plan => run_plan(plan, cwd, path).await,
+    }
+}
+
 #[tauri::command]
 pub(crate) async fn reveal_file(path: PathBuf) -> Result<(), String> {
     blocking(move || reveal(&std::fs::canonicalize(&path)?)).await
