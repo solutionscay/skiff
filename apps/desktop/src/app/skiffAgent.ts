@@ -13,8 +13,18 @@ import { actionDialog } from "../ui/dialogParts";
 import { h } from "../ui/dom";
 import { scopeName } from "../workspace/model";
 
-/** The name until Settings has one. skiffd's setup keeps the same default. */
-export const DEFAULT_NAME = "Skipper";
+/** The main Skipper's name until Settings has one. skiffd's setup keeps the same default. */
+export const DEFAULT_NAME = "Admiral";
+
+/** The role word: the old default name, and the tail of a project or fleet Skipper's session name. */
+export const SKIPPER_WORD = "Skipper";
+
+/** The main Skipper's name from a stored one: Admiral when none is set. A
+ *  stored "Skipper" is the old default, so it reads Admiral too. */
+export const mainName = (stored: string | null | undefined) => {
+  const n = stored?.trim();
+  return !n || n === SKIPPER_WORD ? DEFAULT_NAME : n;
+};
 
 /** The row key while no Skiff agent session runs. */
 export const SKIFF_AGENT_KEY = "skiff-agent";
@@ -88,7 +98,13 @@ export async function loadSkiffAgent() {
 }
 
 export function skiffAgentName(): string {
-  return S.skiffAgent?.name?.trim() || DEFAULT_NAME;
+  return mainName(S.skiffAgent?.name);
+}
+
+/** The tail of a project or fleet Skipper's session name: the name from
+ *  Settings, else "Skipper" ("gesher Skipper"). skiffd names it the same. */
+export function skipperWord(): string {
+  return S.skiffAgent?.name?.trim() || SKIPPER_WORD;
 }
 
 /**
@@ -117,14 +133,14 @@ export const isSkiffAgent = (id: string | null | undefined) => !!id && skiffAgen
  * project's name, or "fleet:<fleet>". skiffd marks it with its scope. A
  * restore brings one back with no mark, and an older skiffd starts one with
  * no mark (the CLI then says it is too old, but the agent runs): its name,
- * "<project> <Skiff agent's name>", still finds a project Skipper. A
+ * "<project> Skipper", still finds a project Skipper. A
  * retiring one is a plain session.
  */
 function skipperProject(s: SessionInfo): string | null {
   if (s.coordinator || s.state === "done" || s.retiring) return null;
   if (s.skipper) return s.skipper;
   if (!skiffAgentFolder()) return null;
-  const tail = ` ${skiffAgentName()}`;
+  const tail = ` ${skipperWord()}`;
   const project = s.name?.endsWith(tail) ? s.name.slice(0, -tail.length) : null;
   return project && S.projects.some((p) => p.name === project) ? project : null;
 }
@@ -431,9 +447,9 @@ export function projectWatch(s: SessionInfo): { state: WatchState; text: string 
   return { state, text: watchText(state, s, projectSkipperName(s), null) };
 }
 
-/** A project or fleet Skipper's session name: its project or fleet, then the Skiff agent's name ("gesher Skipper", "Harbor Skipper"). */
+/** A project or fleet Skipper's session name: its project or fleet, then the Skipper word ("gesher Skipper", "Harbor Skipper"). */
 export function projectSkipperName(s: SessionInfo): string {
-  return `${scopeName(skipperProject(s) ?? s.skipper ?? "")} ${skiffAgentName()}`;
+  return `${scopeName(skipperProject(s) ?? s.skipper ?? "")} ${skipperWord()}`;
 }
 
 /** Restored panes Skiff already asked skiffd to continue. Once each. */
@@ -450,15 +466,17 @@ export function syncSkiffAgent() {
   if (!S.skiffAgent) return;
   const s = skiffAgentSession();
   const name = skiffAgentName();
-  // Only a change in Settings renames it, and each project Skipper with it
-  // ("gesher Skipper"). A rename of the pane itself stays.
-  if (shownName !== null && shownName !== name) {
-    if (s && s.name !== name) rename(s.id, name);
+  const word = skipperWord();
+  // Only a change in Settings renames it, and each project Skipper with its
+  // own word ("gesher Skipper"). A rename of the pane itself stays.
+  if (shownName !== null && shownName !== name && s && s.name !== name) rename(s.id, name);
+  if (shownWord !== null && shownWord !== word) {
     for (const p of projectSkippers()) {
       if (p.name !== projectSkipperName(p)) rename(p.id, projectSkipperName(p));
     }
   }
   shownName = name;
+  shownWord = word;
   if (!s) return;
   watch(s.id);
   if (!S.skiffAgent.continue_on_restore || !s.resume || continued.has(s.id) || agentKind(s) !== "shell") return;
@@ -470,6 +488,7 @@ export function syncSkiffAgent() {
 
 /** The name the last render saw, so a change from Settings shows. */
 let shownName: string | null = null;
+let shownWord: string | null = null;
 
 function rename(id: string, name: string) {
   invoke<SessionInfo>("rename_session", { session: id, name })

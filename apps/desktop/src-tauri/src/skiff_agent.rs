@@ -415,7 +415,7 @@ pub async fn change_skiff_folder(
     let (mut panes, skipper) = live(&app).await;
     if let Some(s) = skipper {
         if !end_skipper {
-            return Err("Skipper runs. It ends before the change.".into());
+            return Err("Admiral runs. It ends before the change.".into());
         }
         let (c, _) = ensure_client(&app).await?;
         c.kill(&s.id).await.map_err(err)?;

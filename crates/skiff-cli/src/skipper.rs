@@ -293,7 +293,7 @@ pub async fn move_to(socket: &Path, path: &Path, empty: bool, dry_run: bool) -> 
     let p = agent_folder::preview(&cfg, &to, &panes)?;
     print!("{}", preview_text(&p, running.is_some()));
     let mode = match p.kind {
-        Kind::Current => bail!("Skipper uses this folder now"),
+        Kind::Current => bail!("Admiral uses this folder now"),
         Kind::Refused => bail!("{}", p.refused.as_deref().unwrap_or("Skiff cannot use this folder")),
         Kind::Skiff if empty => bail!("{} is a Skiff folder. Skiff switches to it as it is; --empty does not apply", p.to.display()),
         Kind::Skiff => Mode::Switch,
@@ -333,14 +333,14 @@ pub async fn move_to(socket: &Path, path: &Path, empty: bool, dry_run: bool) -> 
         return Ok(());
     }
     if let (Some(c), Some(s)) = (&c, &running) {
-        c.kill(&s.id).await.context("end Skipper's session")?;
+        c.kill(&s.id).await.context("end Admiral's session")?;
     }
     let mut panes = panes;
     if let Some(s) = &running {
         panes.remove(&s.id);
     }
     let d = agent_folder::change(&cfg, &to, mode, &panes, anyway)?;
-    println!("Skipper now uses {}.", d.to.display());
+    println!("Admiral now uses {}.", d.to.display());
     if let Some(n) = &d.copied {
         println!("Copied and checked: {} tasks, {} results ({}).", n.tasks, n.results, agent_folder::size(n.bytes));
     }
@@ -350,7 +350,7 @@ pub async fn move_to(socket: &Path, path: &Path, empty: bool, dry_run: bool) -> 
     if let Some(w) = &d.warning {
         eprintln!("skiff: {w}");
     }
-    println!("Skipper starts in the new folder at the next `skiff skipper`, with a new conversation.");
+    println!("Admiral starts in the new folder at the next `skiff skipper`, with a new conversation.");
     Ok(())
 }
 
@@ -389,13 +389,13 @@ fn preview_text(p: &Preview, skipper_runs: bool) -> String {
         let _ = writeln!(s, "This folder: {} tasks, {} open. Skiff does not merge two ledgers.", t.tasks, t.open);
     }
     if p.moved.is_some() {
-        let _ = writeln!(s, "Skipper moved away from this folder before. Tasks added since then are only in the other folder.");
+        let _ = writeln!(s, "Admiral moved away from this folder before. Tasks added since then are only in the other folder.");
     }
     if p.kind != Kind::Current {
         let _ = writeln!(s, "The conversation does not move.");
     }
     if skipper_runs {
-        let _ = writeln!(s, "Skipper runs in {}. Its session ends before the change.", p.from.display());
+        let _ = writeln!(s, "Admiral runs in {}. Its session ends before the change.", p.from.display());
     }
     for r in &p.running {
         let _ = writeln!(s, "Still runs: {}  {}", r.uid, r.task);

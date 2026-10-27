@@ -158,11 +158,11 @@ impl Row {
     }
 }
 
-/// "the Skipper", "the <project> Skipper", or "the <fleet> Skipper" for
+/// "Admiral", "the <project> Skipper", or "the <fleet> Skipper" for
 /// the owner `fleet:<fleet>`.
 pub fn owner_name(owner: &str) -> String {
     match (owner, crate::skipper::scope_fleet(owner)) {
-        (GRAND, _) => "the Skipper".into(),
+        (GRAND, _) => "Admiral".into(),
         (_, Some(fleet)) => format!("the {fleet} Skipper"),
         _ => format!("the {owner} Skipper"),
     }

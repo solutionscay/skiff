@@ -21,8 +21,8 @@ use skiff_core::{
 
 use crate::{Client, Coordinated, Coordinator};
 
-/// The name until Settings has one. The app keeps the same default.
-pub const DEFAULT_NAME: &str = "Skipper";
+/// The main Skipper's name until Settings has one. The app keeps the same default.
+pub const DEFAULT_NAME: &str = config::ADMIRAL;
 
 /// The folder's instructions. `{{name}}` becomes the agent's name.
 const TEMPLATE: &str = include_str!("../agent-template/AGENTS.md.tmpl");
@@ -72,22 +72,22 @@ pub(crate) fn template(name: &str) -> String {
     TEMPLATE.replace("{{name}}", name)
 }
 
-/// The configured name, or the default.
+/// The configured name, or Admiral. A stored "Skipper" is the old default.
 pub fn name(cfg: &Config) -> String {
-    cfg.skiff_agent.name.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or(DEFAULT_NAME).to_string()
+    cfg.skiff_agent.name()
 }
 
-/// A project Skipper's session name: the project, then the Skiff agent's
-/// name ("gesher Skipper"). Unique per project, and never the grand
+/// A project Skipper's session name: the project, then the configured name
+/// or "Skipper" ("gesher Skipper"). Unique per project, and never the grand
 /// Skipper's, so `skiff send "gesher Skipper"` reaches one session.
 pub fn project_name(cfg: &Config, project: &str) -> String {
-    format!("{project} {}", name(cfg))
+    format!("{project} {}", cfg.skiff_agent.skipper_word())
 }
 
-/// A fleet Skipper's session name: the fleet, then the Skiff agent's name
-/// ("Harbor Skipper").
+/// A fleet Skipper's session name: the fleet, then the configured name or
+/// "Skipper" ("Harbor Skipper").
 pub fn fleet_name(cfg: &Config, fleet: &str) -> String {
-    format!("{fleet} {}", name(cfg))
+    format!("{fleet} {}", cfg.skiff_agent.skipper_word())
 }
 
 /// The agent the Skiff agent starts: the one from Settings while it is
@@ -339,7 +339,7 @@ pub(crate) fn refusal(d: &Path, home: &Path, cfg: &Config) -> Option<String> {
     }
     let hermes = std::env::var_os("HERMES_HOME").map(PathBuf::from).into_iter().chain([home.join(".hermes")]);
     if hermes.map(|h| real(&h)).any(|h| d.starts_with(h)) || HERMES_FILES.iter().any(|f| d.join(f).exists()) {
-        return Some("This is a Hermes profile. Choose another folder for Skipper.".into());
+        return Some("This is a Hermes profile. Choose another folder for Admiral.".into());
     }
     for (dir, agent) in AGENT_HOMES {
         if d.starts_with(real(&home.join(dir))) {
@@ -1579,13 +1579,16 @@ os.execv(exe, ["skiff", "watch"])
     /// name, so no two sessions share a name.
     #[test]
     fn a_project_skipper_takes_its_project_and_the_agents_name() {
+        // A stored "Skipper" is the old default: the main one reads Admiral.
         let cfg = skiff_core::config::parse("[skiff_agent]\nname = \"Skipper\"\n").unwrap();
         assert_eq!(project_name(&cfg, "gesher"), "gesher Skipper");
+        assert_eq!(name(&cfg), "Admiral");
         let cfg = skiff_core::config::parse("[skiff_agent]\nname = \"Captain\"\n").unwrap();
         assert_eq!(project_name(&cfg, "skiff"), "skiff Captain");
-        assert_ne!(project_name(&cfg, "skiff"), name(&cfg));
+        assert_eq!(name(&cfg), "Captain");
         let cfg = skiff_core::config::parse("").unwrap();
-        assert_eq!(project_name(&cfg, "p"), format!("p {DEFAULT_NAME}"));
+        assert_eq!(project_name(&cfg, "p"), "p Skipper");
+        assert_eq!(name(&cfg), "Admiral");
     }
 
     /// The live socket's scope keeps its plain name. Any other socket gets

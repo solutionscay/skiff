@@ -23,8 +23,12 @@ pub fn agent_name(s: &SessionInfo) -> String {
 
 /// The name the sidebar shows, as the app's `taskTitle`: the user's name;
 /// then for an agent its label before its title, for others the title
-/// first; else the program.
+/// first; else the program. The main Skipper named "Skipper" by the old
+/// default shows as Admiral, as in the app.
 pub fn display_name(s: &SessionInfo) -> Cow<'_, str> {
+    if s.coordinator && s.name.as_deref() == Some(skiff_core::config::SKIPPER) {
+        return Cow::Borrowed(skiff_core::config::ADMIRAL);
+    }
     let title = s.title.as_deref().unwrap_or("");
     let (first, second) = if s.role == Role::Agent { (s.label.as_str(), title) } else { (title, s.label.as_str()) };
     [s.name.as_deref().unwrap_or(""), first, second]

@@ -56,7 +56,7 @@ import type { Action } from "../app/keys";
 import { h, setAttr, setHidden, setText } from "../ui/dom";
 import { isSlot } from "./layoutSlots";
 import { scopeFleet, scopeName, taskTitle } from "./model";
-import { skiffAgentName } from "../app/skiffAgent";
+import { skipperWord } from "../app/skiffAgent";
 import { keepRow } from "./selection";
 import { revealSession } from "./view";
 import { ledgerAllWork, ledgerScope, setLedgerAllWork, workspaceName, workspaceOpen } from "./profile";
@@ -185,7 +185,7 @@ const titleOf = (r: Entry) => r.title?.trim() || shortTitle(r.task);
 function look(r: Entry): Look {
   const s = r.pane_id ? sessions.get(r.pane_id) ?? null : null;
   // A hand-off's pane is the project Skipper.
-  const name = r.kind === "handoff" ? `${scopeName(r.project)} ${skiffAgentName()}` : s ? taskTitle(s) : r.pane_id?.slice(0, 8) ?? "";
+  const name = r.kind === "handoff" ? `${scopeName(r.project)} ${skipperWord()}` : s ? taskTitle(s) : r.pane_id?.slice(0, 8) ?? "";
   const base = { r, pane: s, where: name };
   if (r.elsewhere) return { ...base, st: r.state === "done" || r.state === "pending" ? r.state : "sent", pane: null, where: "elsewhere" };
   // Done because the pane went: it has no result to show for it.

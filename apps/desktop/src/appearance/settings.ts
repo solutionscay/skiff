@@ -258,7 +258,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
           return status;
         },
         // − takes any agent away that nothing starts: a default goes to `[agents] removed`. An empty command does not remove.
-        // "Used by Skipper and 3 more" shows as "Skipper +3" in the STATUS cell.
+        // "Used by Admiral and 3 more" shows as "Admiral +3" in the STATUS cell.
         kept: (a) => a.used_by?.replace(/^Used by /, "").replace(/ and (\d+) more$/, " +$1") ?? null,
         checkEdit: (a, key, v) => (key === "command" && a.custom && !v ? `A custom agent needs a command. Press − to remove ${a.id}.` : null),
         add: async (d) => {

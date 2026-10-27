@@ -83,7 +83,7 @@ export interface RowTableSpec<R> {
   rowClass?: (row: R) => string;
   /** What shows in the end cell before the −, such as the agent's status. */
   status?: (row: R) => HTMLElement;
-  /** Why a row's − is off, short, after the status in the end cell: "Skipper +3". Null: it can go. */
+  /** Why a row's − is off, short, after the status in the end cell: "Admiral +3". Null: it can go. */
   kept?: (row: R) => string | null;
   /** The draft's preview column, as the person types. */
   preview?: (draft: Draft) => string;

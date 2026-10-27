@@ -36,7 +36,7 @@ import { bareWorktree, fleetKey, folded, hiddenSplit, isOpen, openToFocused, pro
 import { render } from "../app/renderRequest";
 import { projectsPlus, renderWorkspaceStatus, shows, workspaceOpen } from "./profile";
 import { ledgerCounts, ledgerNeeds, ledgerWorkTitle } from "./ledger";
-import { fleetScope, fleetSkipperOf, projectSkipperOf, projectWatch, openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, syncSkiffAgent } from "../app/skiffAgent";
+import { fleetScope, fleetSkipperOf, projectSkipperOf, projectWatch, openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, skipperWord, syncSkiffAgent } from "../app/skiffAgent";
 import { step, tally } from "../diagnostics/stalls";
 
 /** 20px lines, flush against whatever follows. */
@@ -515,7 +515,7 @@ function syncSkipperRow(block: HTMLElement, p: Project): HTMLElement {
  * is left out of the tree below.
  */
 function projectSkipperRow(scope: string, s: SessionInfo): HTMLElement {
-  const name = skiffAgentName();
+  const name = skipperWord();
   const row = h("button", "session-row project-skipper-row" + ` st-${s.state}` + (S.selection.includes(s.id) ? " selected" : ""));
   row.type = "button";
   row.dataset.session = s.id;

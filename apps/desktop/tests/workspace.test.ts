@@ -111,7 +111,7 @@ const MODEL = { scopeFleet: fleetOf, scopeName: (scope: string) => fleetOf(scope
 
 test("mixed-scope plans keep qualifying headings without excluded children", () => {
   const ledger = moduleFromSource("../src/workspace/ledger.ts", {
-    "../app/skiffAgent": { skiffAgentName: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
+    "../app/skiffAgent": { skipperWord: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
     "./model": MODEL,
     "./profile": { ledgerScope: () => ({ names: new Set(["A"]) }) },
     "../app/state": { S: {}, sessions: new Map() },
@@ -139,7 +139,7 @@ test("mixed-scope plans keep qualifying headings without excluded children", () 
 
 test("a hand-off nests under its plan with its tasks, and the filter keeps one project", () => {
   const ledger = moduleFromSource("../src/workspace/ledger.ts", {
-    "../app/skiffAgent": { skiffAgentName: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
+    "../app/skiffAgent": { skipperWord: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
     "./model": MODEL,
     "./profile": { ledgerScope: () => null },
     "../app/state": { S: { projects: [] }, sessions: new Map() },
@@ -169,7 +169,7 @@ test("a hand-off nests under its plan with its tasks, and the filter keeps one p
 
 test("every row files by its work's bucket: a closed hand-off's tasks show in Finished", () => {
   const ledger = moduleFromSource("../src/workspace/ledger.ts", {
-    "../app/skiffAgent": { skiffAgentName: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
+    "../app/skiffAgent": { skipperWord: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
     "./model": MODEL,
     "./profile": { ledgerScope: () => null },
     "../app/state": { S: { projects: [] }, sessions: new Map() },
@@ -195,7 +195,7 @@ test("every row files by its work's bucket: a closed hand-off's tasks show in Fi
 test("the fleet filter shows its Skipper's rows, the hand-offs to it and its projects' rows", () => {
   const projects = [{ name: "web", fleet: "Harbor" }, { name: "api", fleet: "Harbor" }, { name: "gesher" }];
   const ledger = moduleFromSource("../src/workspace/ledger.ts", {
-    "../app/skiffAgent": { skiffAgentName: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
+    "../app/skiffAgent": { skipperWord: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
     "./model": MODEL,
     "./profile": { ledgerScope: () => null },
     "../app/state": { S: { projects }, sessions: new Map() },
