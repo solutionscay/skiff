@@ -40,8 +40,13 @@ pub fn set_agent_command(id: &str, command: &str) -> Result<()> {
 }
 
 /// Takes an agent out of the list. A default goes to `[agents] removed`, so
-/// `restore_agents` can bring it back.
+/// `restore_agents` can bring it back. An agent that something starts
+/// ([`crate::project::used_by`]) is refused.
 pub fn remove_agent(id: &str) -> Result<()> {
+    // Something starts it: it stays, and the line says what.
+    if let Some(line) = crate::project::used_by(&super::load()?, id.trim()) {
+        anyhow::bail!("{line}. {} stays.", id.trim());
+    }
     edit_agents(|t| {
         drop_agent(t, id)?;
         Ok(())

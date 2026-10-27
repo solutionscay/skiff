@@ -120,6 +120,9 @@
 .set-hint[data-kind="added"]::before { background: var(--ok); }
 /* Remove is destructive: red on hover and keyboard focus. */
 .set-table .c-remove { transition: border-color 120ms, color 120ms; }
+.set-table .c-remove:disabled { opacity: 0.4; cursor: default; }
+.set-table .c-remove:disabled:hover { border-color: var(--rule); color: var(--text-3); }
+.set-row-line { height: calc(20 * var(--u)); display: flex; align-items: center; justify-content: flex-end; padding: 0 calc(16 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(11px * var(--zoom, 1)); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .set-table .c-remove:hover, body.kbd .set-table .c-remove:focus { border-color: var(--error); color: var(--error); }
 /* Settings › Skippers › Folder: the path to copy, its buttons, and a line under it only when the folder is not usable. */
 .set-folder { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) auto; }

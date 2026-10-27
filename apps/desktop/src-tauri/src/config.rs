@@ -226,7 +226,9 @@ async fn agents_after(
 ) -> Result<Vec<AgentInfo>, String> {
     blocking(f).await?;
     let (c, _) = ensure_client(app).await?;
-    c.list_agents().await.map_err(err)
+    let mut list = c.list_agents().await.map_err(err)?;
+    skiff_core::project::mark_used(&mut list);
+    Ok(list)
 }
 
 /// Saves which agents the + menu offers.

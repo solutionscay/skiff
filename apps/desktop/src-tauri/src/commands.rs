@@ -377,7 +377,10 @@ fn reveal(path: &std::path::Path) -> anyhow::Result<()> {
 #[tauri::command]
 pub(crate) async fn list_agents(app: State<'_, App>) -> Result<Vec<AgentInfo>, String> {
     let (c, _) = ensure_client(&app).await?;
-    c.list_agents().await.map_err(err)
+    let mut list = c.list_agents().await.map_err(err)?;
+    // What uses each agent comes from the config this app writes, whatever skiffd build runs.
+    skiff_core::project::mark_used(&mut list);
+    Ok(list)
 }
 
 #[tauri::command]
