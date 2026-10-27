@@ -484,6 +484,7 @@ pub async fn kill(c: &Client, args: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use skiff_core::session::{SessionInfo, SessionState};
+    use std::path::Path;
 
     use super::{agent_line, front_refusal, numbered, refusal, New};
     use skiff_core::{
