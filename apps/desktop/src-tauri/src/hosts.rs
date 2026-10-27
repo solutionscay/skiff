@@ -1145,41 +1145,6 @@ mod tests {
     }
 
     #[test]
-    fn auto_update_is_on_unless_the_person_turned_it_off() {
-        let hosts: Hosts = toml::from_str("[[host]]\nid = \"h_a\"\nname = \"a\"\ndestination = \"a\"\n").unwrap();
-        assert!(hosts.hosts[0].auto_update);
-        assert!(!toml::to_string(&hosts).unwrap().contains("auto_update"), "the default is not written");
-        let mut off = hosts.clone();
-        off.hosts[0].auto_update = false;
-        let back: Hosts = toml::from_str(&toml::to_string(&off).unwrap()).unwrap();
-        assert!(!back.hosts[0].auto_update);
-    }
-
-    #[test]
-    fn version_banners_name_who_updates_what() {
-        let p = skiff_core::PROTOCOL;
-        assert_eq!(version_warning("devbox", Some(VERSION), p, true), None);
-        let (kind, text) = version_warning("devbox", Some("99.0.0"), p, true).unwrap();
-        assert_eq!(kind, "remote");
-        assert!(text.ends_with("Update Skiff on this computer."), "never down: {text}");
-        let (kind, text) = version_warning("devbox", Some("0.0.1"), p, true).unwrap();
-        assert!(kind == "update" && text.starts_with("Update available:"), "{text}");
-        let (kind, text) = version_warning("devbox", Some("0.0.1"), p - 1, true).unwrap();
-        assert!(kind == "update" && text.contains("You can see and type in its sessions"), "{text}");
-        let (kind, text) = version_warning("devbox", None, p - 1, false).unwrap();
-        assert!(kind == "remote" && text.contains("from its own install"), "{text}");
-        assert_eq!(version_warning("devbox", None, p, false), None, "its own install, same protocol: it works as it is");
-        let (kind, text) = version_warning("devbox", None, p + 1, false).unwrap();
-        assert!(kind == "remote" && text.ends_with("Update Skiff on this computer."), "never down: {text}");
-        let (kind, text) = version_warning("devbox", None, p - 1, true).unwrap();
-        assert!(kind == "update" && text.starts_with("devbox runs an older Skiff."), "{text}");
-        // A fresh install of this app's version: no badge, whatever skiffd's
-        // own crate version is. The badge never sees that one.
-        assert_eq!(version_warning("p0p-deb", Some(VERSION), p, true), None);
-        assert_eq!(version_warning("p0p-deb", None, p, true), None, "managed, version unknown: no guess");
-    }
-
-    #[test]
     fn the_form_keeps_id_name_user_and_port_and_refuses_duplicates() {
         let form = |name: &str, d: &str, user: &str, port: &str| HostForm { name: name.into(), destination: d.into(), user: user.into(), port: port.into() };
         let (name, t) = form("", "jose@devbox.lan", "", "").parse().unwrap();

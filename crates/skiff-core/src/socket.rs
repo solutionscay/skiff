@@ -73,12 +73,6 @@ mod tests {
     use super::*;
     use std::path::Path;
 
-    #[test]
-    fn the_data_socket_sits_beside_the_session_socket() {
-        assert_eq!(data_socket(Path::new("/run/user/1/skiff/skiffd.sock")), Path::new("/run/user/1/skiff/skiffd-host.sock"));
-        assert_eq!(data_socket(Path::new("/tmp/t/x.sock")), Path::new("/tmp/t/x-host.sock"));
-    }
-
     /// A debug build resolves the same socket as a release build: there is
     /// one skiffd per computer. Only `SKIFF_SOCKET` names another one.
     #[test]

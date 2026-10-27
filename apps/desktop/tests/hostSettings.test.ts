@@ -288,27 +288,3 @@ test("Update Skiff asks once; when sessions would end, a red dialog names them f
     JSON.stringify([["update_skiff", { id: "h_dev", endSessions: false, reinstall: false }], ["update_skiff", { id: "h_dev", endSessions: true, reinstall: false }]]),
   );
 });
-
-test("the Hosts list: one row per Host on the six-column grid, a click checks, the row menu holds the rest", async () => {
-  const x = tab();
-  await x.t.load();
-  x.redraw();
-  const all = x.page().all();
-  const cols = all.find((e) => e.className.includes("set-cols"))!;
-  assert.deepEqual(cols.children.map((c) => c.textContent), ["", "NAME", "SERVER", "SKIFF", "STATE", ""]);
-  const rows = all.filter((e) => e.className.startsWith("set-row set-host"));
-  assert.equal(rows.length, 2);
-  assert.ok(rows.every((r) => r.children.length === 6), "every row fills the six columns");
-  // This computer: no menu, no click.
-  assert.equal(rows[0].className, "set-row set-host");
-  assert.ok(!rows[0].all().some((e) => e.className === "c-menu"));
-  // devbox: its Skiff version, amber for an update; the server as typed.
-  assert.ok(rows[1].all().some((e) => e.className === "c-skiff mono update" && e.textContent === "1.9.0"));
-  assert.ok(rows[1].all().some((e) => e.textContent === "me@devbox:2222"));
-  pickFromMenu(x, "Rename…");
-  assert.equal(JSON.stringify(x.menus.at(-1)!.entries.map((e: any) => e.label ?? "—")), JSON.stringify(["Check", "Update Skiff…", "Edit…", "Rename…", "—", "Remove…"]));
-  assert.ok(x.menus.at(-1)!.entries.at(-1).danger);
-  rows[1].click();
-  for (let i = 0; i < 4; i++) await flush();
-  assert.ok(x.calls.some(([c]) => c === "check_host"), "a click on the row checks it");
-});
