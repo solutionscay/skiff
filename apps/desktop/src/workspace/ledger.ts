@@ -134,6 +134,7 @@ let error: string | null = null;
 let loaded = false;
 
 export async function loadLedger() {
+  const before = loaded ? JSON.stringify([rows, error]) : null;
   try {
     rows = await invoke<Entry[]>("ledger_rows");
     error = null;
@@ -142,7 +143,8 @@ export async function loadLedger() {
     error = String(e);
   }
   loaded = true;
-  render("ledger");
+  // The file changes with every write to it, often with the same rows.
+  if (JSON.stringify([rows, error]) !== before) render("ledger");
 }
 
 /** Reads the ledger now and on each change. main.ts calls it once. */
