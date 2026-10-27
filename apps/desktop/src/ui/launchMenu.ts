@@ -3,6 +3,7 @@ import type { AgentInfo, Project, Worktree } from "../platform/types";
 import { launchIcon } from "../appearance/agentIcon";
 import { followPointer, menuOpened, type MenuEntry } from "./menu";
 import { launchDigit } from "../app/stateQueries";
+import { branchName } from "../workspace/model";
 
 interface Opts {
   /** Shell (null), then enabled agents. */
@@ -61,7 +62,7 @@ export function createLaunchMenu(o: Opts) {
     el?.setAttribute("aria-expanded", "true");
     const title = document.createElement("div");
     title.className = "lm-title";
-    title.textContent = "START IN " + (w.branch ?? "detached").toUpperCase();
+    title.textContent = "START IN " + branchName(w).toUpperCase();
     const rows = o.choices().map((a, i) =>
       item(launchDigit(i), a?.id ?? "Shell", "", () => o.start(p, w, a), "", launchIcon(a)),
     );
@@ -105,7 +106,7 @@ export function createLaunchMenu(o: Opts) {
   /** The same choices as entries of another menu: the project menu of a project with one worktree. */
   function entries(p: Project, w: Worktree): MenuEntry[] {
     return [
-      { head: "START IN " + (w.branch ?? "detached").toUpperCase() },
+      { head: "START IN " + branchName(w).toUpperCase() },
       ...o.choices().map((a, i) => ({ glyph: launchIcon(a), label: a?.id ?? "Shell", hint: launchDigit(i), run: () => o.start(p, w, a) })),
       {
         icon: "code-group",

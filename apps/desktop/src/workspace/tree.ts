@@ -3,7 +3,7 @@
 import { fleetSkipperOf } from "../app/skiffAgent";
 import type { Project, SessionInfo, Worktree } from "../platform/types";
 
-import { isUnread } from "./model";
+import { isFolder, isUnread } from "./model";
 import { BELL, SKIFF } from "../appearance/stateIcon";
 import { projectIcon } from "../appearance/projectIcon";
 import { storedSet } from "../app/stored";
@@ -190,6 +190,7 @@ export const treeDrag = { active: false };
 export function bareWorktree(p: Project): Worktree | null {
   if (p.worktrees.length !== 1) return null;
   const w = p.worktrees[0];
+  if (isFolder(p)) return w;
   const usual = p.default_branch ? w.branch === p.default_branch : ["main", "master"].includes(w.branch ?? "");
   return w.is_main && usual && !w.locked && !w.prunable && !removing.has(w.path) && !removeErrors.has(w.path) ? w : null;
 }

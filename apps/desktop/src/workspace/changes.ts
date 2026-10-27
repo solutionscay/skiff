@@ -14,7 +14,7 @@ import { animateFold } from "../ui/fold";
 import { showError } from "../ui/alerts";
 import type { MenuEntry } from "../ui/menu";
 import { ctxMenu } from "../ui/contextMenu";
-import { branchName } from "./model";
+import { branchName, isFolder } from "./model";
 import { setRowActs } from "./rowActs";
 import { select } from "../app/keyboard";
 import { render, scheduleRender } from "../app/render";
@@ -27,7 +27,8 @@ type Change = { path: string; status: "M" | "A" | "D" | "U"; added: number | nul
 /** Projects with `changes = false` in projects.toml. Changes show by default. */
 const hidden = new Set<string>();
 
-export const showsChanges = (p: Project) => !hidden.has(p.name);
+/** A plain folder has no changes: it never reads git. */
+export const showsChanges = (p: Project) => !isFolder(p) && !hidden.has(p.name);
 
 /** Reads which projects hide changes. Called with every project reload. */
 export async function loadChangesSetting() {
