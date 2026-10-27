@@ -37,6 +37,7 @@ Test every change with three questions:
 - **Show only what needs a look.** An idle session has no mark unless it has unread output. A shell at its prompt has no mark. The bell means an agent asks for approval. The flag means a turn or a command ended out of sight. Pane buttons show on the focused pane and on a hovered header. A changed file's folder shows on the current row and on hover.
 - **One rule weight.** Lines are 1px `--rule`. Pane dividers and edges of floating surfaces use `--rule-strong`. Do not stack accent lines.
 - **One row grid.** Main rows, menu items and pane headers are `--row` high (40px at zoom 1). Session rows, file rows and section headers use 20px. The top bar is 48px. Standard side padding is 16px; nested rows use indentation.
+- **Settings grid.** A Settings pane uses only 40px multiples: no 20px lines, no gaps; section heads are 40px tinted bands.
 - **Everything zooms.** Write lengths as `calc(N * var(--u))` and font sizes as `calc(Npx * var(--zoom, 1))`. Rules and small accent bars use fixed pixel widths. Measured positions use pixels.
 - **Tokens only.** Colors come from `styles/tokens.css`. A theme changes the tokens. The color picker uses fixed white and black for its cursor contrast.
 - **Typefaces.** IBM Plex Sans for the UI: 13px body, 11 to 12px for meta text and hints, weights 500 to 700 for emphasis. JetBrains Mono for terminals and code. The wordmark uses Space Grotesk.
@@ -54,7 +55,6 @@ Test every change with three questions:
 Themes cascade: app, then project, then session. A lower level replaces the one above it. A group theme sets the theme of each member session.
 
 - Each picker names its scope in the title: "Project theme: skiff", "Session theme: Sea Dog Mermaid".
-- A line under the title says what the theme covers.
 - The first card is the level above: "Same as app", "Same as project".
 
 Themes are location cues. One look tells you which project or session you are in.
@@ -75,6 +75,7 @@ Themes are location cues. One look tells you which project or session you are in
 
 - Use the Glossary terms. Do not invent synonyms.
 - Write in Simplified Technical English: short sentences, active voice, one idea per sentence.
+- No help text. A screen shows labels, counts and one error line for each fault. It has no notes and no advice lines.
 - Use sentence case. An item that opens a dialog or more choices ends in "…".
 - Name the scope: "Session theme", "Project theme", "Close the pane. The session keeps running."
 - Keep the tone plain and dry. Leave out hype.

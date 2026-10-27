@@ -183,5 +183,5 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
   sw.addEventListener("click", () => setDays(on ? 0 : 30));
   auto.append(h("span", "c-name", "Auto flush"), h("span", "c-cmd", on ? plural(days, "day") : ""), sw);
 
-  return [head, table, status, ...errors, h("div", "set-gap"), auto];
+  return [head, table, status, ...errors, auto];
 }
