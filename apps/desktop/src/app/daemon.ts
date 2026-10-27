@@ -423,7 +423,7 @@ window.addEventListener("focus", () => {
 });
 // The focused pane is in front of the user again: its result is seen.
 window.addEventListener("focus", () => {
-  if (S.focused) scheduleRender();
+  if (S.focused) scheduleRender("focus");
 });
 
 /**
@@ -436,8 +436,18 @@ function shownTitle(s: SessionInfo): string {
   return `${s.role === "shell" ? title : title.replace(/^[^\p{L}\p{N}]+/u, "")}\0${agentKind(s)}`;
 }
 
-/** Pulls `last_output_at` and anything missed, so relative times stay true. Drops what the daemon no longer has. */
-export async function refreshSessions() {
+/**
+ * A session as the tree and the headers show it: `last_output_at` moves with
+ * every poll, and `input_gen` with every key typed. Neither shows.
+ */
+const shownSessions = () => JSON.stringify([...sessions.values()].map((s) => ({ ...s, last_output_at: 0, input_gen: 0 })));
+
+/**
+ * Pulls `last_output_at` and anything missed, so relative times stay true.
+ * Drops what the daemon no longer has. True when something shown changed.
+ */
+export async function refreshSessions(): Promise<boolean> {
+  const before = shownSessions();
   const fresh = new Set<string>();
   born.add(fresh);
   let list: SessionInfo[];
@@ -453,6 +463,7 @@ export async function refreshSessions() {
   const listed = new Set(list.map((s) => s.id));
   for (const s of list) if (!gone.has(s.id)) upsert(s);
   for (const id of [...sessions.keys()]) if (!listed.has(id) && !fresh.has(id)) dropSession(id);
+  return shownSessions() !== before;
 }
 
 export function onEvent(e: DaemonEvent) {
@@ -521,8 +532,11 @@ export function onEvent(e: DaemonEvent) {
     case "groups_changed":
       void loadGroups();
       return;
+    // The state event before it brought the idle state, and session_updated the unread mark.
+    case "turn_ended":
+      return;
   }
-  scheduleRender();
+  scheduleRender(`event.${e.event}`);
 }
 
 /** The daemon pruned the session from its groups; groups_changed brings them. Here the view drops it at once. */

@@ -19,10 +19,10 @@ export function signalButton(id: string, image: string) {
   clearTimeout(shown.get(id)?.timer);
   const timer = window.setTimeout(() => {
     shown.delete(id);
-    scheduleRender();
+    scheduleRender("insert");
   }, 1500);
   shown.set(id, { image, timer });
-  scheduleRender();
+  scheduleRender("insert");
 }
 
 const still = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;

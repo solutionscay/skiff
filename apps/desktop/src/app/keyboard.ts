@@ -112,13 +112,14 @@ export function markCurrent() {
  * Everything else, the + buttons too, is reached by mouse, key, or palette.
  */
 export function applyTabOrder() {
+  const item = roveTarget();
   for (const el of document.querySelectorAll<HTMLElement>("#app button, #app [tabindex]")) {
     // Settings is its own screen with its own Tab order; xterm keeps its textarea.
     if (el.closest("#settings, .xterm")) continue;
-    el.tabIndex = -1;
+    // Only a change is written: a write of the same value still restyles.
+    if (el.tabIndex !== -1 && el !== item) el.tabIndex = -1;
   }
-  const item = roveTarget();
-  if (item) item.tabIndex = 0;
+  if (item && item.tabIndex !== 0) item.tabIndex = 0;
   markCurrent();
 }
 

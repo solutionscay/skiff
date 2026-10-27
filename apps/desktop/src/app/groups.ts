@@ -128,7 +128,9 @@ export async function loadGroups() {
   // Groups emptied before the daemon kept their folder: no session and no
   // place, so they piled up under Other. Drop them, unless one is on screen.
   const stale = list.filter((g) => !g.cwd && g.id !== S.activeGroup && sessionsOf(g.layout).every(isSlot));
-  S.groups = list.filter((g) => !stale.includes(g));
+  const next = list.filter((g) => !stale.includes(g));
+  // The same list keeps its objects: the tree compares groups by identity and keeps its rows.
+  if (JSON.stringify(next) !== JSON.stringify(S.groups)) S.groups = next;
   for (const g of stale) persist(() => hostInvoke("session_groups", "delete_group", { group: g.id }));
   const was = S.activeGroup;
   if (S.activeGroup && !activeGroupObj()) {
@@ -138,5 +140,5 @@ export async function loadGroups() {
   const ids = shownIds();
   if (S.focused && !ids.includes(S.focused)) S.focused = ids.find((x) => !isSlot(x)) ?? null;
   if (was && !S.activeGroup && !S.single) inBackground(unfocus);
-  else render();
+  else render("groups");
 }

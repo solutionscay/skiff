@@ -12,6 +12,7 @@ import { toBytes } from "../platform/ipcBytes";
 
 import { appKey } from "../app/keyboard";
 import { traceEcho, traceGl, traceKey, traceOutput, traceRender, traceSend } from "../diagnostics/latency";
+import { work } from "../diagnostics/stalls";
 
 import { FONT_DEFAULT, S, sessions } from "../app/state";
 import { paneFontSize } from "./terminalFont";
@@ -169,8 +170,11 @@ function streamOutput(id: string, pane: Pane, fromBottom = 0): Promise<void> {
     const bytes = toBytes(m);
     const traced = traceOutput(id, bytes.length);
     parsing++;
+    const queued = performance.now();
     pane.term.write(bytes, () => {
       traced?.();
+      // xterm parses in slices between frames: a long wait here is output it fell behind on.
+      work(`xterm parse ${bytes.length} B`, performance.now() - queued);
       if (pane.stream !== n) return;
       if (--parsing === 0 && fromBottom > 0) {
         const b = pane.term.buffer.active;

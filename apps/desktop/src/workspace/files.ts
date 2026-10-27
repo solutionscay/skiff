@@ -106,7 +106,7 @@ function load(root: string, dir: string) {
       reading.delete(dir);
       // Asked on a data connection that is gone since: ask the new one.
       if (at !== dataEpoch()) load(root, dir);
-      render();
+      render("files");
     });
 }
 

@@ -1,5 +1,5 @@
 /** render() and the throttled render for daemon events. */
-import { syncMenu } from "./commands";
+import { syncMenuSoon } from "./commands";
 import { host } from "../terminal/terminalHost";
 import { applyTabOrder } from "./keyboard";
 import { syncPreview } from "../terminal/peek";
@@ -19,7 +19,7 @@ import { renderLedger } from "../workspace/ledger";
 
 import { applyBackdrop } from "../appearance/backdrop";
 import { applyApp, applyThemes } from "../appearance/themes";
-import { step } from "../diagnostics/stalls";
+import { step, tally } from "../diagnostics/stalls";
 
 /**
  * Daemon events render at most every RENDER_MS, and never while a mouse
@@ -30,13 +30,16 @@ const RENDER_MS = 80;
 let renderTimer: number | undefined;
 let renderQueued = false;
 let pointerDown = false;
+/** Why the next render runs, for the trace: daemon events, polls, panels, the user. */
+const causes = new Set<string>();
 
-export function scheduleRender() {
+export function scheduleRender(cause = "other") {
+  causes.add(cause);
   renderQueued = true;
   if (pointerDown || renderTimer !== undefined) return;
   renderTimer = window.setTimeout(() => {
     renderTimer = undefined;
-    if (renderQueued && !pointerDown) render();
+    if (renderQueued && !pointerDown) step("render", renderAll);
   }, RENDER_MS);
 }
 
@@ -61,12 +64,17 @@ window.addEventListener("pointermove", (e) => {
 }, true);
 
 /** Each step is timed for the latency trace's stall report. */
-export function render() {
+export function render(cause = "ui") {
+  causes.add(cause);
   step("render", renderAll);
 }
 
 function renderAll() {
   renderQueued = false;
+  // A render takes every request made since the last one.
+  tally("render");
+  for (const c of causes) tally(`render.${c}`);
+  causes.clear();
   settleModes();
   // App colors first: the sidebar's marks are inked against them.
   step("render.app", applyApp);
@@ -76,18 +84,18 @@ function renderAll() {
   // The last outside session ended: Other goes away, and the first project shows.
   if (S.selectedProject === OTHER && !worktreeLines(null).length) S.selectedProject = projectOrder()[0]?.name ?? null;
   step("render.sidebar", renderSidebar);
-  renderSelectBar();
+  step("render.selectbar", renderSelectBar);
   step("render.layout", renderLayout);
-  renderLedger();
-  renderModes();
+  step("render.ledger", renderLedger);
+  step("render.modes", renderModes);
   step("render.themes", applyThemes);
   step("render.backdrop", applyBackdrop);
   step("render.header", renderHeader);
-  renderCounts();
-  applyTabOrder();
+  step("render.counts", renderCounts);
+  step("render.tabs", applyTabOrder);
   // The current row may have changed: a preview whose row it no longer is ends.
-  syncPreview();
-  step("render.menu", syncMenu);
+  step("render.preview", syncPreview);
+  syncMenuSoon();
   savePlace({
     project: S.selectedProject,
     session: S.focused,

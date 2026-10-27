@@ -2,6 +2,8 @@
 #ledger {
   width: calc(360 * var(--u)); flex-shrink: 0;
   display: flex; flex-direction: column;
+  /* As the sidebar: its rows lay out no other column, and theirs none here. */
+  contain: size layout;
   background: var(--bg-panel);
   border-left: 1px solid var(--rule-strong);
   overflow: hidden;
