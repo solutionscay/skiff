@@ -183,6 +183,7 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 .project-skipper-row.watch-error .agent-icon svg [fill]:not([fill="none"]) { fill: var(--error); }
 .project-skipper-row.watch-turn .agent-icon {
   transform-origin: center; transform-box: fill-box;
-  animation: sk-turn 8s linear var(--turn-delay, 0ms) infinite;
+  /* Stepped, as on the Skiff agent's row. */
+  animation: sk-turn 8s steps(48) var(--turn-delay, 0ms) infinite;
 }
 @media (prefers-reduced-motion: reduce) { .project-skipper-row.watch-turn .agent-icon { animation: none; } }
