@@ -3,7 +3,7 @@ import type { AgentInfo } from "../platform/types";
 import type { InstructionFile, SkiffAgentSettings, TaskType } from "../app/skiffAgent";
 import { DEFAULT_NAME, skiffAgentChoice } from "../app/skiffAgent";
 import { continueLine } from "../terminal/resume";
-import { rowTable, tableState, type RowTableState } from "./rowTable";
+import { rowTable, sectionHead, tableState, type RowTableState } from "./rowTable";
 import { BAD_TASK_TYPE_NAME, fileSize, modelError, modelFlag, taskCommand, TASK_TYPE_NAME } from "./taskTypes";
 import { reveal } from "../platform/fileActions";
 import { copyText } from "../platform/clipboard";
@@ -82,8 +82,7 @@ export function skiffAgentSection(
  * `skipper_agent` in projects.toml still wins for its project Skipper.
  */
 export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInfo[], save: (e: SkiffAgentEdit) => void): HTMLElement[] {
-  const head = h("div", "set-head");
-  head.append(h("div", "set-h", "Project and fleet Skippers"));
+  const head = sectionHead("Project and fleet Skippers");
   const choices = agents.filter((a) => a.enabled || a.custom);
   const pick = agentPick("Project and fleet Skippers' agent", choices, "Same as Skipper");
   const own = choices.find((a) => a.id === set.project_agent);
@@ -91,7 +90,7 @@ export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInf
   pick.addEventListener("change", () => save({ key: "project_agent", value: pick.value || null }));
   const agent = own ?? skiffAgentChoice(agents, set.agent) ?? undefined;
   const row = agentModelRow(pick, agent, set.project_model, "Project and fleet Skippers' model", (v) => save({ key: "project_model", value: v }));
-  return [h("div", "set-gap"), head, row];
+  return [head, row];
 }
 
 /**
@@ -101,11 +100,8 @@ export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInf
  * file only.
  */
 export function instructionsSection(set: SkiffAgentSettings, acts: InstructionActs): HTMLElement[] {
-  const head = h("div", "set-head set-head-row");
-  const title = h("div", "set-h", "Instructions");
-  title.id = "set-h-instructions";
   const edited = acts.files.filter((f) => f.status.startsWith("edited")).length;
-  head.append(title, h("span", "set-count", `${acts.files.length} ${acts.files.length === 1 ? "file" : "files"} · ${edited} edited`));
+  const head = sectionHead("Instructions", "set-h-instructions", `${acts.files.length} ${acts.files.length === 1 ? "file" : "files"} · ${edited} edited`);
   const skipper = set.name?.trim() || DEFAULT_NAME;
   const table = rowTable<InstructionFile>(
     {
@@ -113,7 +109,7 @@ export function instructionsSection(set: SkiffAgentSettings, acts: InstructionAc
       noun: "file",
       article: "A file",
       dupHint: "",
-      labelledBy: title.id,
+      labelledBy: "set-h-instructions",
       rows: acts.files,
       id: (f) => f.file,
       cols: [
@@ -151,14 +147,14 @@ export function instructionsSection(set: SkiffAgentSettings, acts: InstructionAc
     tableState(),
     () => {},
   );
-  // One error line under the row it is about.
+  // One 40px error row under the row it is about.
   for (const [file, why] of acts.errors) {
     const row = [...table.querySelectorAll<HTMLElement>(".set-row")].find((r) => r.querySelector(".c-preview span")?.textContent === file);
-    const meta = h("div", "set-folder-meta", why);
+    const meta = h("div", "set-error", why);
     meta.setAttribute("role", "alert");
     row?.after(meta);
   }
-  return [h("div", "set-gap"), head, table];
+  return [head, table];
 }
 
 /** The STATUS cell: a square and the word. */
@@ -230,7 +226,7 @@ function agentModelRow(pick: HTMLSelectElement, agent: AgentInfo | undefined, mo
 
 /**
  * The Folder row: the path, Copy path, Show in file manager and Change…. A
- * line under it says why only when the folder is not usable; the counts and
+ * 40px error row under it says why only when the folder is not usable; the counts and
  * safety checks show in the Change… preview. The path is a read-only text field, so it selects,
  * copies and selects all as any field does, with the keys and the field's
  * own right-click menu. Cut and paste do nothing in it: only Change… sets the
@@ -268,7 +264,7 @@ function folderRows(set: SkiffAgentSettings, change: () => void): HTMLElement[] 
         ? (set.folder_error ?? "Refused.")
         : null;
   if (!why) return [row];
-  const meta = h("div", "set-folder-meta", why);
+  const meta = h("div", "set-error", why);
   meta.id = "set-folder-why";
   path.setAttribute("aria-invalid", "true");
   path.setAttribute("aria-describedby", meta.id);
@@ -396,10 +392,10 @@ export function taskTypesSection(
     state,
     redraw,
   );
-  // One error line under the row it is about.
+  // One 40px error row under the row it is about.
   for (const [type, why] of files.errors) {
     const row = table.querySelector<HTMLElement>(`.set-row[data-id="${CSS.escape(type)}"]`);
-    const meta = h("div", "set-folder-meta", why);
+    const meta = h("div", "set-error", why);
     meta.setAttribute("role", "alert");
     row?.after(meta);
   }

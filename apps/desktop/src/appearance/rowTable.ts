@@ -83,7 +83,7 @@ export interface RowTableSpec<R> {
   rowClass?: (row: R) => string;
   /** What shows in the end cell before the −, such as the agent's status. */
   status?: (row: R) => HTMLElement;
-  /** Why a row's − is off, as one plain line under the row. Null: it can go. */
+  /** Why a row's − is off, short, after the status in the end cell: "Skipper +3". Null: it can go. */
   kept?: (row: R) => string | null;
   /** The draft's preview column, as the person types. */
   preview?: (draft: Draft) => string;
@@ -107,6 +107,19 @@ export interface RowTableState {
   pending: string | null;
   /** The name of the last draft added. The line says so until the next edit. */
   done: string | null;
+}
+
+/**
+ * A section head inside a Settings page: one 40px tinted band, the title
+ * left as a column label, a count right. The 80px head is for the page title.
+ */
+export function sectionHead(title: string, id?: string, count?: string): HTMLElement {
+  const head = h("div", "set-band");
+  const t = h("span", "set-band-title", title);
+  if (id) t.id = id;
+  head.append(t);
+  if (count !== undefined) head.append(h("span", "set-band-count", count));
+  return head;
 }
 
 export const tableState = (): RowTableState => ({ draft: {}, error: null, bad: null, pending: null, done: null });
@@ -201,16 +214,21 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
     end.setAttribute("role", "cell");
     if (spec.status) end.appendChild(spec.status(r));
     const kept = spec.kept?.(r) ?? null;
+    if (kept !== null) {
+      const why = h("span", "c-kept", `· ${kept}`);
+      why.title = kept;
+      end.appendChild(why);
+    }
     if (spec.remove) {
       const rm = iconButton("indicators-minus", "Remove", `Remove ${id}`);
       rm.classList.add("c-remove");
       rm.disabled = kept !== null;
+      if (kept !== null) rm.title = `Used by ${kept}`;
       rm.addEventListener("click", () => void remove(r, at));
       end.appendChild(rm);
     }
     row.appendChild(end);
     table.appendChild(row);
-    if (kept !== null) table.appendChild(h("div", "set-row-line", kept));
   });
   if (!spec.add) return table;
 

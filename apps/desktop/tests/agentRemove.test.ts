@@ -54,18 +54,20 @@ function table(rows: { id: string; used_by: string | null }[]) {
     () => {},
   );
   const minus = (id: string) => t.all().find((e) => e.className.includes("c-remove") && t.all().some((r) => r.dataset.id === id && r.all().includes(e)))!;
-  const lines = t.children.filter((e) => e.className === "set-row-line").map((e) => e.textContent);
+  // What keeps the − off shows in the STATUS cell. No line goes under the row.
+  const lines = t.all().filter((e) => e.className === "c-kept").map((e) => e.textContent);
+  assert.equal(t.children.some((e) => !e.className.startsWith("set-row") && e.className !== "set-hint"), false);
   return { minus, lines, removed };
 }
 
 test("a used agent keeps its − off and shows what uses it", async () => {
   const { minus, lines, removed } = table([
-    { id: "claude", used_by: "Used by Skipper and 2 more" },
+    { id: "claude", used_by: "Skipper +2" },
     { id: "hermes", used_by: null },
     { id: "aider", used_by: null },
   ]);
   assert.equal(minus("claude").disabled, true);
-  assert.deepEqual([...lines], ["Used by Skipper and 2 more"]);
+  assert.deepEqual([...lines], ["· Skipper +2"]);
   // A default (hermes) and a custom agent (aider) both remove.
   assert.equal(minus("hermes").disabled, false);
   minus("hermes").listeners.get("click")!();
