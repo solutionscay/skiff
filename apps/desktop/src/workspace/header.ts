@@ -5,7 +5,7 @@ import { sessionsOf } from "./layout";
 import { glyph } from "./layoutIcon";
 import { branchName, taskTitle } from "./model";
 
-import { $, h } from "../ui/dom";
+import { $, h, setText } from "../ui/dom";
 
 import { S, sessions } from "../app/state";
 import { accent, activeGroupObj, currentProject, place } from "../app/stateQueries";
@@ -21,19 +21,24 @@ export function renderHeader() {
   const keysTo = $("keys-to");
   const g = activeGroupObj();
   const groupLabel = $("group-label");
-  groupLabel.replaceChildren();
-  if (g) {
-    const n = sessionsOf(g.layout).length;
-    const empty = slotsOf(g.layout).length;
-    groupLabel.append(glyph(g.layout), h("span", "", g.name), h("span", "dim", empty ? `${empty} of ${n} empty` : `${n} panes`));
+  // Renders run many times a second: the label is rebuilt only when it changes.
+  const sig = g ? JSON.stringify([g.name, g.layout]) : "";
+  if (groupLabel.dataset.sig !== sig) {
+    groupLabel.dataset.sig = sig;
+    groupLabel.replaceChildren();
+    if (g) {
+      const n = sessionsOf(g.layout).length;
+      const empty = slotsOf(g.layout).length;
+      groupLabel.append(glyph(g.layout), h("span", "", g.name), h("span", "dim", empty ? `${empty} of ${n} empty` : `${n} panes`));
+    }
   }
   if (!s) {
-    keysTo.textContent = g && slotsOf(g.layout).length ? "pick an agent for each empty pane" : "no session to type into";
-    label.textContent = "";
+    setText(keysTo, g && slotsOf(g.layout).length ? "pick an agent for each empty pane" : "no session to type into");
+    setText(label, "");
     return;
   }
-  keysTo.textContent = "keys go to";
-  label.textContent = at
+  setText(keysTo, "keys go to");
+  setText(label, at
     ? `${at.project.name} / ${branchName(at.worktree)} / ${taskTitle(s)}`
-    : `${s.cwd} / ${taskTitle(s)}`;
+    : `${s.cwd} / ${taskTitle(s)}`);
 }

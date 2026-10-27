@@ -37,6 +37,7 @@ import { render } from "../app/renderRequest";
 import { projectsPlus, renderWorkspaceStatus, shows, workspaceOpen } from "./profile";
 import { ledgerCounts, ledgerNeeds, ledgerWorkTitle } from "./ledger";
 import { fleetScope, fleetSkipperOf, projectSkipperOf, projectWatch, openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, syncSkiffAgent } from "../app/skiffAgent";
+import { step, tally } from "../diagnostics/stalls";
 
 /** 20px lines, flush against whatever follows. */
 function sessionBlock(lines: Line[], color: string): HTMLElement {
@@ -53,8 +54,7 @@ function sessionBlock(lines: Line[], color: string): HTMLElement {
 
 function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: Group; groupRail?: boolean; where?: string }): HTMLElement {
   if (S.renamingSession === s.id) return renameRow(s, color);
-  // State shows only when it matters: waiting stands out, working pulses, done fades.
-  const cls = ["session-row", `st-${s.state}`];
+  const cls = ["session-row"];
   if (o.in) cls.push("nested");
   if (o.groupRail) cls.push("group-rail");
   if (S.selection.includes(s.id)) cls.push("selected");
@@ -89,7 +89,6 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
   });
   row.style.setProperty("--pc", color);
   if (o.in) row.style.setProperty("--gc", groupColor(o.in));
-  row.setAttribute("aria-label", `${agentName(s)}, ${taskTitle(s)}, ${s.state}`);
   row.append(agentIcon(s), h("span", "title", taskTitle(s)));
   if (o.branch) {
     const at = place(s);
@@ -102,9 +101,36 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
     const tag = h("span", "where away mono", `→ ${names}`);
     row.appendChild(tag);
   }
-  row.appendChild(unreadMark(row, s));
+  applyLook(row, s);
   return row;
 }
+
+/** What a session row shows of the session's state. A kept row takes a new one in place. */
+const look = (s: SessionInfo) => JSON.stringify([s.state, s.unread, s.exit_code, s.agent_exit]);
+
+/**
+ * Writes the session's state into its row: the state class, the label, the
+ * mark at the row's end and the bold title. State changes many times a
+ * minute while agents work; this keeps the row, its hover and its icons.
+ * A mark of the same kind stays, so a working skiff keeps rocking.
+ */
+function applyLook(row: HTMLElement, s: SessionInfo) {
+  const l = look(s);
+  if (row.dataset.look === l) return;
+  const kept = row.dataset.look !== undefined;
+  row.dataset.look = l;
+  // State shows only when it matters: waiting stands out, working pulses, done fades.
+  for (const st of STATES) if (st !== s.state) row.classList.remove(`st-${st}`);
+  row.classList.add(`st-${s.state}`);
+  row.setAttribute("aria-label", `${agentName(s)}, ${taskTitle(s)}, ${s.state}`);
+  const mark = stateIcon(s);
+  row.classList.toggle("unread-row", s.state === "idle" && mark.classList.contains("unread"));
+  // The mark is the row's last child.
+  if (!kept) row.appendChild(mark);
+  else if (row.lastElementChild!.className !== mark.className) row.lastElementChild!.replaceWith(mark);
+}
+
+const STATES: SessionInfo["state"][] = ["idle", "working", "waiting", "done"];
 
 /**
  * The row's state mark. An idle row with an unread mark shows its title in
@@ -161,7 +187,7 @@ const projectBlockKey = (name: string) => `project:${name}`;
  * restarts its icons and costs a style pass, so a block is rebuilt only when
  * what it shows changes. Expanding one project rebuilds that project.
  */
-function sidebarSig(): { all: string; parts: Map<string, string> } {
+function sidebarSig(): { all: string; parts: Map<string, string>; looks: Map<string, string[]> } {
   // Rows close over project, worktree and group objects. A new list brings new
   // objects, and some callers compare them by identity: the rows are rebuilt.
   if (S.projects !== lastProjects || S.groups !== lastGroups) {
@@ -175,20 +201,28 @@ function sidebarSig(): { all: string; parts: Map<string, string> } {
     const k = name === null ? OTHER_BLOCK : projectBlockKey(name);
     (under.get(k) ?? under.set(k, []).get(k)!).push(row);
   };
+  // A state change alone rebuilds no block: applyLook writes it into the kept rows.
+  // A folded row counts the states under it, so its block keeps them.
+  const looksUnder = new Map<string, string[]>();
+  const addLook = (name: string | null, l: string) => {
+    const k = name === null ? OTHER_BLOCK : projectBlockKey(name);
+    (looksUnder.get(k) ?? looksUnder.set(k, []).get(k)!).push(l);
+  };
   const rowOf = new Map<string, unknown>();
   const rows = [...sessions.values()].map((s) => {
     const t = ownTheme(s);
     const at = place(s);
     const away = awayPlaces(s);
     const row = [
-      s.id, s.state, s.unread, s.exit_code, s.agent_exit, s.started_at,
+      s.id, s.started_at,
       taskTitle(s), agentName(s), agentKind(s), t ? ink(signatureColor(t)) : null,
       at?.worktree.path ?? null, away.map((a) => a.worktree.path),
     ];
     rowOf.set(s.id, row);
     add(at?.project.name ?? null, row);
+    addLook(at?.project.name ?? null, look(s));
     for (const a of away) add(a.project.name, row);
-    return row;
+    return [row, look(s)];
   });
   const groups = S.groups.map((g) => {
     const lead = sessions.get(g.focus ?? filledOf(g.layout)[0]);
@@ -208,20 +242,23 @@ function sidebarSig(): { all: string; parts: Map<string, string> } {
   // The agent icons are inked against the applied app theme: a new theme re-inks them.
   // The watcher state changes with no session event when the grace ends.
   const sa = skiffAgentSession();
-  const agent = skiffAgentFolder() ? [skiffAgentName(), sa?.id ?? null, skiffAgentChoice()?.id ?? null, sa ? skiffWatch(sa) : null, sa?.watch?.follows ?? null, ledgerNeeds(), sa ? rowOf.get(sa.id) : null] : null;
+  const agent = skiffAgentFolder() ? [skiffAgentName(), sa?.id ?? null, skiffAgentChoice()?.id ?? null, sa ? skiffWatch(sa) : null, sa?.watch?.follows ?? null, ledgerNeeds(), sa ? [rowOf.get(sa.id), look(sa)] : null] : null;
   const base = [listGen, appliedTheme(), S.selection, S.renamingSession, S.renaming?.id ?? null, sa?.id ?? null];
   const parts = new Map<string, string>();
   parts.set(AGENT_BLOCK, JSON.stringify([base, agent]));
   parts.set(OTHER_BLOCK, JSON.stringify([base, under.get(OTHER_BLOCK) ?? null]));
   S.projects.forEach((p, i) => {
     const k = projectBlockKey(p.name);
-    parts.set(k, JSON.stringify([base, projects[i], isOpen(projectKey(p.name)), p.name === S.selectedProject, under.get(k) ?? null, skipperSig(p.name)]));
+    const open = isOpen(projectKey(p.name));
+    // An open project's Skipper row is rebuilt alone (syncSkipperRow).
+    const skipper = open ? !!projectSkipperOf(p.name) : skipperSig(p.name);
+    parts.set(k, JSON.stringify([base, projects[i], open, p.name === S.selectedProject, under.get(k) ?? null, skipper, open ? null : looksUnder.get(k) ?? null]));
   });
   const all = JSON.stringify([
     listGen, appliedTheme(), S.selectedProject, folded.keys(), S.projects.map(shows), hiddenSig(),
     S.selection, S.renamingSession, S.renaming?.id ?? null, rows, groups, projects, agent,
   ]);
-  return { all, parts };
+  return { all, parts, looks: looksUnder };
 }
 
 /** What each fleet that hides its projects shows: its head's count and the rows still under it. */
@@ -236,8 +273,11 @@ function hiddenSig() {
 /**
  * Puts `nodes` in `parent` in order. Kept nodes stay where they are: a node
  * taken out and put back loses its style and restarts its animations.
+ * `before` runs first when anything moves.
  */
-function setChildren(parent: HTMLElement, nodes: HTMLElement[]) {
+function setChildren(parent: HTMLElement, nodes: HTMLElement[], before: () => void) {
+  if (parent.children.length === nodes.length && nodes.every((n, i) => parent.children[i] === n)) return;
+  before();
   const want = new Set<Node>(nodes);
   for (const c of [...parent.children]) if (!want.has(c)) c.remove();
   nodes.forEach((n, i) => {
@@ -251,9 +291,10 @@ export function renderSidebar() {
   renderWorkspaceStatus();
   syncSkiffAgent();
   openToFocused();
-  const sig = sidebarSig();
-  if (lastSig === sig.all) return;
+  const sig = step("render.sidebar.sig", sidebarSig);
+  if (lastSig === sig.all) return tally("sidebar.same");
   lastSig = sig.all;
+  tally("sidebar.drawn");
   // Keep focus and the selected range in an inline control across re-renders,
   // so a render while a rename is open does not undo its select-all.
   const active = document.activeElement as HTMLElement | null;
@@ -269,14 +310,19 @@ export function renderSidebar() {
   const items = listItems();
   const at = active ? items.indexOf(active) : -1;
   const near = at < 0 ? [] : [...items.slice(at + 1), ...items.slice(0, at).reverse()].map(itemKey);
-  const anchor = anchorOf(side, items);
+  // Where the view is, read before the first row comes or goes. A state
+  // change alone moves no row: no read, and no layout forced for it.
+  let anchor: ReturnType<typeof anchorOf> | undefined;
+  const takeAnchor = () => {
+    if (anchor === undefined) anchor = anchorOf(side, items);
+  };
 
   // The block drawn last time when what it shows is the same, else a new one.
   const next = new Map<string, HTMLElement>();
   const sigs = new Map<string, string>();
   const keep = (key: string, sig: string, build: () => HTMLElement) => {
     const old = blocks.get(key);
-    const el = old && blockSigs.get(key) === sig ? old : build();
+    const el = old && blockSigs.get(key) === sig ? old : (tally("sidebar.block"), takeAnchor(), build());
     next.set(key, el);
     sigs.set(key, sig);
     return el;
@@ -295,7 +341,7 @@ export function renderSidebar() {
     const open = !sec.fleet || (!alone && isOpen(fleetKey(sec.fleet)));
     const headSig = JSON.stringify([
       listGen, sec.fleet, open, workspaceOpen(), sec.projects.map((p) => p.name), split?.hidden ?? null, alone,
-      open ? null : sec.projects.map((p) => sig.parts.get(projectBlockKey(p.name))),
+      open ? null : sec.projects.map((p) => [sig.parts.get(projectBlockKey(p.name)), sig.looks.get(projectBlockKey(p.name)) ?? null]),
       open || !sec.fleet ? null : [fleetSkipperOf(sec.fleet)?.state ?? null, fleetSkipperOf(sec.fleet)?.unread ?? false],
     ]);
     nodes.push(keep(`head:${sec.fleet ?? ""}`, headSig, () => sectionHead(sec, split?.hidden ?? null, alone)));
@@ -317,8 +363,8 @@ export function renderSidebar() {
       ? split.shown.length ? [keep(`shown:${sec.fleet}`, shownSig, () => shownBlock(split.shown))] : []
       : sec.projects.map((p) => {
         const k = projectBlockKey(p.name);
-        return keep(k, sig.parts.get(k)!, () => projectBlock(p));
-      }))]);
+        return syncSkipperRow(keep(k, sig.parts.get(k)!, () => projectBlock(p)), p);
+      }))], takeAnchor);
     nodes.push(kids);
   }
   // A folded fleet's rows start over when it opens: the fold left them shrunk.
@@ -330,10 +376,18 @@ export function renderSidebar() {
     nodes.push(keep(`${OTHER_BLOCK}-head`, "", otherHead));
     nodes.push(keep(OTHER_BLOCK, sig.parts.get(OTHER_BLOCK)!, () => sessionBlock(worktreeLines(null), DEFAULT_ACCENT)));
   }
-  setChildren(side, nodes);
+  setChildren(side, nodes, takeAnchor);
+  // Rows in kept blocks take the new state of their session.
+  for (const row of side.querySelectorAll<HTMLElement>(".session-row[data-look]")) {
+    const s = sessions.get(row.dataset.session!);
+    if (s && row.dataset.look !== look(s)) {
+      tally("sidebar.row");
+      applyLook(row, s);
+    }
+  }
   blocks = next;
   blockSigs = sigs;
-  keepAnchor(side, anchor);
+  if (anchor) keepAnchor(side, anchor);
   growOpened();
   restoreFocus(side, activeKey, caret, near);
 }
@@ -436,6 +490,22 @@ function skipperSig(scope: string) {
   const s = projectSkipperOf(scope);
   if (!s) return null;
   return [s.id, s.state, S.selection.includes(s.id), ledgerCounts(scope), ledgerWorkTitle(scope), s.watch ?? null, s.title ?? null, s.unread ?? false];
+}
+
+/**
+ * An open project's Skipper row changes with its state, its watcher and its
+ * Ledger counts. A kept block rebuilds that row alone.
+ */
+function syncSkipperRow(block: HTMLElement, p: Project): HTMLElement {
+  const s = projectSkipperOf(p.name);
+  const old = block.querySelector<HTMLElement>(":scope > .tree-kids > .project-skipper-row");
+  if (!s || !old) return block;
+  const sig = JSON.stringify(skipperSig(p.name));
+  if (block.dataset.skipper === sig) return block;
+  block.dataset.skipper = sig;
+  tally("sidebar.row");
+  old.replaceWith(projectSkipperRow(p.name, s));
+  return block;
 }
 
 /**
@@ -610,7 +680,10 @@ function projectBlock(p: Project): HTMLElement {
   const kids = h("div", "tree-kids");
   kids.dataset.kids = key;
   block.appendChild(kids);
-  if (skipper) kids.appendChild(projectSkipperRow(p.name, skipper));
+  if (skipper) {
+    kids.appendChild(projectSkipperRow(p.name, skipper));
+    block.dataset.skipper = JSON.stringify(skipperSig(p.name));
+  }
   if (p.error) kids.appendChild(errorRow(p.error));
   else if (p.worktrees.length === 0) kids.appendChild(h("div", "note-row", "No worktrees"));
   else if (bare) {

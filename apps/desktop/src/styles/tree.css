@@ -1,11 +1,15 @@
 #sidebar {
   width: calc(284 * var(--u)); flex-shrink: 0;
   display: flex; flex-direction: column;
+  /* Fixed width, stretched height: a row added here lays out no other column, and theirs none here. */
+  contain: size layout;
   background: var(--bg-panel);
   border-right: 1px solid var(--rule);
   overflow: hidden;
 }
-#sidebar-scroll { flex-grow: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+/* Its height comes from the flex, its width from the panel: a row that comes, goes or
+   changes lays out this list only, not the panel and the select bar around it. */
+#sidebar-scroll { flex-grow: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; contain: size layout; }
 /* WebKitGTK paints its overlay scrollbar above every layer, menus and dialogs too. While one is
    open the list cannot scroll anyway, so the scrollbar goes. It takes no room: nothing moves. */
 body:has(#ctx-menu:not([hidden]), #launch-menu:not([hidden]), #switcher:not([hidden]), #settings:not([hidden]), #mission-control:not([hidden]), .confirm-overlay) #sidebar-scroll { overflow-y: hidden; }

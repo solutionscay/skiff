@@ -114,7 +114,7 @@ async function load() {
   }
   const live = new Set(list.map((i) => i.path));
   for (const k of thumbs.keys()) if (!live.has(k.slice(k.indexOf(" ") + 1))) thumbs.delete(k);
-  scheduleRender();
+  scheduleRender("images");
   watchers.forEach((f) => f());
   if (!lib.hidden) {
     if (!list.length) closeImages();

@@ -24,6 +24,10 @@ export function setText(el: HTMLElement, text: string) {
   if (el.textContent !== text) el.textContent = text;
 }
 
+export function setAttr(el: HTMLElement, name: string, value: string) {
+  if (el.getAttribute(name) !== value) el.setAttribute(name, value);
+}
+
 export function h<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   cls?: string,

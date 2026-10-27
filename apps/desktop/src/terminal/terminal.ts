@@ -24,6 +24,7 @@ import { activeGroupObj, viewLayout } from "../app/stateQueries";
 import { type Pane, panes } from "./terminalState";
 import { focusPane } from "./paneActions";
 import { previewOnScreen } from "./peek";
+import { step } from "../diagnostics/stalls";
 
 export const view = createLayoutView(host, {
   attach: (id, body) => {
@@ -126,6 +127,10 @@ const FIT_TRIES = 10;
 
 /** Fit every visible terminal now; tell the daemon the new sizes once the drag settles. */
 export function fitShown() {
+  step("fit", fitNow);
+}
+
+function fitNow() {
   cancelAnimationFrame(fitFrame);
   fitFrame = 0;
   clearTimeout(fitTimer);

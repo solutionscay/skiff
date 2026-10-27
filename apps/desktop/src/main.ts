@@ -125,11 +125,8 @@ async function boot() {
     if (refreshing) return;
     refreshing = true;
     refreshSessions()
-      .catch(console.error)
-      .finally(() => {
-        refreshing = false;
-        scheduleRender();
-      });
+      .then((changed) => changed && scheduleRender("poll"), console.error)
+      .finally(() => (refreshing = false));
   }, 10_000);
 }
 

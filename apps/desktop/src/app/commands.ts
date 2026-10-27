@@ -33,6 +33,7 @@ import {
   saveWorkspace, saveWorkspaceAs, setLedgerAllWork, workspaceNotice, workspaceOpen,
 } from "../workspace/profile";
 import { refocusTerminal, revealSession, selectWorktree } from "../workspace/view";
+import { step } from "../diagnostics/stalls";
 
 interface Cmd {
   section: "File" | "Edit" | "View" | "Help";
@@ -143,6 +144,21 @@ const APP_MENU: Record<string, string> = { "About Skiff": "About Skiff", Setting
 
 let menuRuns = new Map<string, () => void>();
 let menuSent = "";
+let menuTimer: number | undefined;
+
+/**
+ * Renders ask for the menu sync; it runs once, MENU_MS after the first ask.
+ * Agents make many renders a second, and the menu shows none of them until
+ * it opens. The items keep the runs they were sent with until the sync.
+ */
+const MENU_MS = 250;
+export function syncMenuSoon() {
+  if (menuTimer !== undefined) return;
+  menuTimer = window.setTimeout(() => {
+    menuTimer = undefined;
+    step("render.menu", syncMenu);
+  }, MENU_MS);
+}
 
 /** Sends the command list to the native menu bar when it changes. */
 export function syncMenu() {

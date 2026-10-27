@@ -53,7 +53,7 @@ import { openPath, previewToken } from "../terminal/peek";
 import { holdFits, releaseFits } from "../terminal/terminal";
 import { panes } from "../terminal/terminalState";
 import type { Action } from "../app/keys";
-import { h, setHidden } from "../ui/dom";
+import { h, setAttr, setHidden, setText } from "../ui/dom";
 import { isSlot } from "./layoutSlots";
 import { scopeFleet, scopeName, taskTitle } from "./model";
 import { skiffAgentName } from "../app/skiffAgent";
@@ -134,6 +134,7 @@ let error: string | null = null;
 let loaded = false;
 
 export async function loadLedger() {
+  const before = loaded ? JSON.stringify([rows, error]) : null;
   try {
     rows = await invoke<Entry[]>("ledger_rows");
     error = null;
@@ -142,7 +143,8 @@ export async function loadLedger() {
     error = String(e);
   }
   loaded = true;
-  render();
+  // The file changes with every write to it, often with the same rows.
+  if (JSON.stringify([rows, error]) !== before) render("ledger");
 }
 
 /** Reads the ledger now and on each change. main.ts calls it once. */
@@ -408,7 +410,7 @@ function slide() {
   slideEnd = window.setTimeout(() => {
     panel.classList.remove("sliding");
     folding = false;
-    render();
+    render("ledger.slide");
     releaseFits();
   }, SLIDE_MS + 40);
 }
@@ -618,8 +620,8 @@ function foldButton(name: "fold" | "unfold"): HTMLButtonElement {
 /** A tooltip with the fold key, which `[keys]` can change. */
 function foldTip(b: HTMLElement, what: string) {
   const k = keyLabel("ledger");
-  b.title = k ? `${what} (${k})` : what;
-  b.setAttribute("aria-label", what);
+  setAttr(b, "title", k ? `${what} (${k})` : what);
+  setAttr(b, "aria-label", what);
 }
 
 /** The folded panel: a chevron that opens it, and the amber count under it. */
@@ -652,13 +654,13 @@ const scopeLabel = () => (workspaceOpen() ? (ledgerAllWork() ? "All work" : work
 /** The head's scope button: the workspace's work, or All work. A click switches. */
 function scopeButton(b: HTMLElement) {
   const label = scopeLabel();
-  b.hidden = !label;
+  setHidden(b, !label);
   if (!label) return;
   const all = ledgerAllWork();
-  b.textContent = label;
-  b.setAttribute("aria-pressed", String(all));
-  b.title = all ? `Every row shows. Show only ${workspaceName()} work.` : `Only ${workspaceName()} work shows. Show all work.`;
-  b.setAttribute("aria-label", all ? `All work. Show only ${workspaceName()} work` : `${workspaceName()} work. Show all work`);
+  setText(b, label);
+  setAttr(b, "aria-pressed", String(all));
+  setAttr(b, "title", all ? `Every row shows. Show only ${workspaceName()} work.` : `Only ${workspaceName()} work shows. Show all work.`);
+  setAttr(b, "aria-label", all ? `All work. Show only ${workspaceName()} work` : `${workspaceName()} work. Show all work`);
 }
 
 /** What the head's filter says: All projects, the fleet, or the project. */
@@ -669,6 +671,9 @@ const filterLabel = () => {
 
 /** The head's filter: a quiet text button with a chevron. A click lists All projects and each project. */
 function filterButton(b: HTMLElement) {
+  // Each render calls it: the button is rebuilt only when its label changes.
+  if (b.dataset.label === filterLabel()) return;
+  b.dataset.label = filterLabel();
   b.replaceChildren(h("span", "lg-filter-name", filterLabel()));
   const chev = h("span", "lg-filter-chev");
   chev.innerHTML = ICON.down;
@@ -752,8 +757,8 @@ export function renderLedger() {
     panel.replaceChildren(head, list);
   }
   const n = needing(us);
-  need.hidden = !n;
-  need.textContent = `${n} need${n === 1 ? "s" : ""} you`;
+  setHidden(need, !n);
+  setText(need, `${n} need${n === 1 ? "s" : ""} you`);
 
   const move = drawn && loaded && !still();
   const before = new Map<string, { top: number; el: HTMLElement }>();

@@ -326,7 +326,7 @@ const WATCH_GRACE = 5_000;
 let graceTimer = 0;
 function graceRender() {
   clearTimeout(graceTimer);
-  graceTimer = window.setTimeout(render, WATCH_GRACE + 100);
+  graceTimer = window.setTimeout(() => render("watcher"), WATCH_GRACE + 100);
 }
 
 /** setDaemon calls it on each status: the protocol, and a new grace after a connect. */
@@ -354,11 +354,11 @@ function watch(id: string, now = false) {
     .then(() => {
       if (startError === null) return;
       startError = null;
-      render();
+      render("watcher");
     })
     .catch((e) => {
       startError = String(e);
-      render();
+      render("watcher");
       if (now) showError(e);
       else console.error(e);
     });

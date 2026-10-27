@@ -21,7 +21,14 @@ function legible(c: string, ratio: number, on = surfaces): string {
  * app theme: at least 3:1 on its surfaces. Colors picked for dark themes turn
  * darker on a light one.
  */
-export const ink = (c: string) => legible(c, 3);
+export const ink = (c: string): string => {
+  let v = inked.get(c);
+  if (v === undefined) inked.set(c, (v = legible(c, 3)));
+  return v;
+};
+
+/** `ink` per color, for the surfaces of the moment. Rows ask for the same few colors on every render. */
+const inked = new Map<string, string>();
 
 /** Minimum contrast per text tier and per mark, on every surface. */
 const TEXT_MIN: Record<string, number> = {
@@ -53,10 +60,12 @@ export function applyAppTheme(t: TerminalTheme | null) {
     root.removeProperty("color-scheme");
     surfaces = ["#0f1216", "#13171c", "#1b2129"];
     lightScheme = false;
+    inked.clear();
     void invoke("set_window_dark", { dark: true }).catch(() => {});
     return;
   }
   const set = themeVars(t);
+  inked.clear();
   for (const [k, v] of Object.entries(set)) root.setProperty(k, v);
   root.setProperty("color-scheme", lightScheme ? "light" : "dark");
   // The GNOME header bar and its menu follow the app theme.
@@ -73,6 +82,7 @@ export function appThemeVars(t: TerminalTheme): Record<string, string> {
   const set = themeVars(t);
   set["color-scheme"] = lightScheme ? "light" : "dark";
   [surfaces, lightScheme] = keep;
+  inked.clear();
   return set;
 }
 
