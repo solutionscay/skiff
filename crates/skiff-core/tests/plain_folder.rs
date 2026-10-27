@@ -59,5 +59,22 @@ fn a_folder_in_no_repository_is_a_plain_project_until_it_has_a_git() {
     config::set_project_files("docs", true).unwrap();
     assert_eq!(files(), Some(true));
 
+    // Without git, a repository is not a plain folder: it shows the error.
+    let path = std::env::var_os("PATH");
+    let no_git = dir.join("no-git");
+    std::fs::create_dir_all(&no_git).unwrap();
+    std::env::set_var("PATH", &no_git);
+    let p = project::list().unwrap().into_iter().find(|p| p.name == "docs").unwrap();
+    let plain = dir.join("plain");
+    std::fs::create_dir_all(&plain).unwrap();
+    let info = config::inspect_folder(&plain);
+    match path {
+        Some(v) => std::env::set_var("PATH", v),
+        None => std::env::remove_var("PATH"),
+    }
+    assert_eq!(p.kind, ProjectKind::Git);
+    assert!(p.worktrees.is_empty() && p.error.is_some(), "{p:?}");
+    assert!(info.root.is_none() && info.error.as_deref().is_some_and(|e| e.contains("run git")), "{info:?}");
+
     let _ = std::fs::remove_dir_all(&dir);
 }

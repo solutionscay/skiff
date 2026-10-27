@@ -72,8 +72,9 @@ impl Project {
         } else {
             match git::list_worktrees(&p.path) {
                 Ok(w) => (w, None),
-                // Not in a repository: a plain folder, with the folder as its only worktree.
-                Err(_) if git::toplevel(&p.path).is_err() => {
+                // Git says it is in no repository: a plain folder, with the
+                // folder as its only worktree. A missing or failing git shows its error.
+                Err(_) if matches!(git::in_repository(&p.path), Ok(false)) => {
                     kind = ProjectKind::Folder;
                     (vec![folder_worktree(&p.path)], None)
                 }

@@ -119,6 +119,38 @@ pub fn default_branch(repo: &Path) -> Option<String> {
         .map(String::from)
 }
 
+/// Whether `dir` is in a git repository. `Ok(false)` only when git runs and
+/// says it is not. A missing git or any other failure is an error, so a
+/// repository never passes for a plain folder.
+pub fn in_repository(dir: &Path) -> Result<bool> {
+    // Git's own words, not a translation: the check reads them.
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["rev-parse", "--show-toplevel"])
+        .env("LC_ALL", "C")
+        .env("LANGUAGE", "C")
+        .output()
+        .context("run git")?;
+    classify_repository(out.status.success(), &String::from_utf8_lossy(&out.stderr))
+}
+
+/// What `git rev-parse --show-toplevel` says about the folder: in a
+/// repository, not in one, or a failure that answers neither.
+fn classify_repository(ok: bool, stderr: &str) -> Result<bool> {
+    if ok {
+        return Ok(true);
+    }
+    if stderr.contains("not a git repository") {
+        return Ok(false);
+    }
+    let stderr = stderr.trim();
+    if stderr.is_empty() {
+        bail!("git rev-parse failed");
+    }
+    bail!(stderr.to_string())
+}
+
 /// The top-level directory of the repository that contains `dir`.
 pub fn toplevel(dir: &Path) -> Result<PathBuf> {
     let out = git(dir, &["rev-parse", "--show-toplevel"])
@@ -280,6 +312,17 @@ pub fn ignored(dir: &Path, paths: &[String]) -> Result<HashSet<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_git_saying_not_a_repository_makes_a_plain_folder() {
+        assert!(classify_repository(true, "").unwrap());
+        let not = "fatal: not a git repository (or any of the parent directories): .git\n";
+        assert!(!classify_repository(false, not).unwrap());
+        // Any other failure is an error: the folder may well be a repository.
+        let unsafe_dir = "fatal: detected dubious ownership in repository at '/srv/repo'\n";
+        assert!(classify_repository(false, unsafe_dir).unwrap_err().to_string().contains("dubious ownership"));
+        assert!(classify_repository(false, "").is_err());
+    }
 
     #[test]
     fn init_repository_keeps_files_and_supports_an_unborn_branch() {

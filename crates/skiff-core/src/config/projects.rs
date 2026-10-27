@@ -37,7 +37,8 @@ pub fn inspect_folder(dir: &Path) -> FolderInfo {
         info.error = Some(format!("{} is not a folder", dir.display()));
         return info;
     }
-    // Not in a repository: the folder itself is a plain project.
+    // Git says it is in no repository: the folder itself is a plain project.
+    // A missing or failing git is an error, as before.
     let (root, worktrees) = match crate::git::toplevel(&dir) {
         Ok(top) => {
             // Inside a linked worktree, the project is the main worktree.
@@ -45,7 +46,14 @@ pub fn inspect_folder(dir: &Path) -> FolderInfo {
             let root = worktrees.iter().find(|w| w.is_main).map(|w| w.path.clone()).unwrap_or(top);
             (root, worktrees)
         }
-        Err(_) => (dir.canonicalize().unwrap_or(dir), Vec::new()),
+        Err(e) => match crate::git::in_repository(&dir) {
+            Ok(false) => (dir.canonicalize().unwrap_or(dir), Vec::new()),
+            other => {
+                let e = other.err().unwrap_or(e);
+                info.error = Some(format!("{e:#}"));
+                return info;
+            }
+        },
     };
     info.name = root
         .file_name()
