@@ -288,8 +288,11 @@ function shownTitle(s: SessionInfo): string {
   return `${s.role === "shell" ? title : title.replace(/^[^\p{L}\p{N}]+/u, "")}\0${agentKind(s)}`;
 }
 
-/** A session as the tree and the headers show it: `last_output_at` moves with every poll and shows nowhere. */
-const shownSessions = () => JSON.stringify([...sessions.values()].map((s) => ({ ...s, last_output_at: 0 })));
+/**
+ * A session as the tree and the headers show it: `last_output_at` moves with
+ * every poll, and `input_gen` with every key typed. Neither shows.
+ */
+const shownSessions = () => JSON.stringify([...sessions.values()].map((s) => ({ ...s, last_output_at: 0, input_gen: 0 })));
 
 /**
  * Pulls `last_output_at` and anything missed, so relative times stay true.
