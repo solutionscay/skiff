@@ -42,7 +42,7 @@ Use the report to show the user what is open. Use the JSON to pick a target or m
 
 | Task | Command |
 |---|---|
-| List sessions, groups, projects | `skiff ls --json`, `skiff g ls --json`, `skiff projects --json` |
+| List sessions, groups, projects | `skiff ls --json`, `skiff g ls --json`, `skiff projects --json` (`kind`: `git` or `folder`) |
 | Start a shell | `skiff new [--name N] [--cwd DIR]` |
 | Start an agent | `skiff new --agent ID [--name N] [--cwd DIR]` (`skiff agents --json` lists ids) |
 | Start a task type | `skiff new --type T [--model M] [--cwd DIR]` |

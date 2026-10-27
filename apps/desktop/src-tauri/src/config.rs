@@ -93,7 +93,7 @@ fn remove_worktree_now(name: &str, path: &Path, force: bool, sessions: &[Session
     git::remove_worktree(&p.path, &wt.path, force)
 }
 
-/// Appends the git repository that contains `path` to projects.toml.
+/// Appends the git repository that contains `path`, or the plain folder, to projects.toml.
 #[tauri::command]
 pub(crate) async fn add_project(
     handle: AppHandle,
@@ -109,12 +109,6 @@ pub(crate) async fn add_project(
         Ok(Project::from_config(&p))
     })
     .await
-}
-
-/// Initializes the selected folder without staging files or creating a commit.
-#[tauri::command]
-pub(crate) async fn init_repository(path: PathBuf) -> Result<(), String> {
-    blocking(move || git::init_repository(&path)).await
 }
 
 /// What `add_project` would do for `path`. Writes nothing.

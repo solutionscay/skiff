@@ -4,7 +4,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use skiff_client::Client;
-use skiff_core::session::SessionInfo;
+use skiff_core::{project::ProjectKind, session::SessionInfo};
 
 use crate::{print, resolve};
 
@@ -155,10 +155,14 @@ pub fn projects(json: bool) -> Result<()> {
             } else {
                 format!("{} worktrees", p.worktrees.len())
             };
-            vec![p.name.clone(), p.short.clone(), print::tilde(&p.path), p.agents.join(","), state]
+            let kind = match p.kind {
+                ProjectKind::Git => "git",
+                ProjectKind::Folder => "folder",
+            };
+            vec![p.name.clone(), p.short.clone(), kind.into(), print::tilde(&p.path), p.agents.join(","), state]
         })
         .collect();
-    print::table(&["NAME", "SHORT", "PATH", "AGENTS", "STATE"], &rows);
+    print::table(&["NAME", "SHORT", "KIND", "PATH", "AGENTS", "STATE"], &rows);
     Ok(())
 }
 

@@ -9,7 +9,7 @@ import { pickBackgroundOpacity } from "../appearance/backdropOpacity";
 import { keyLabel } from "../app/keys";
 import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { type MenuEntry } from "../ui/menu";
-import { agentName, basename, branchName, locate, taskTitle, isProjectSkipper } from "./model";
+import { agentName, basename, branchName, isFolder, locate, taskTitle, isProjectSkipper } from "./model";
 import { cwdOf } from "./canvas";
 import { filledOf, slotsOf } from "./layoutSlots";
 import type { Group, Project, SessionInfo, SplitDir, Worktree } from "../platform/types";
@@ -251,7 +251,7 @@ export function projectRun(p: Project) {
     "project-folder": () => void openPath(p.path).catch(showError),
     "project-copy-path": () => void navigator.clipboard.writeText(p.path).catch(showError),
     "project-color": () => pickProjectColor(p),
-    "project-changes": () => void setShowChanges(p, !showsChanges(p)),
+    "project-changes": () => void (isFolder(p) || setShowChanges(p, !showsChanges(p))),
     "project-files": () => void setShowFiles(p, !showsFiles(p)),
   } as const;
 }
@@ -274,7 +274,8 @@ export function projectMenu(p: Project, x: number, y: number) {
   ctxMenu.open(x, y, p.path, [
     ...start,
     ...(bare ? [{ sep: true } as const] : []),
-    { icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
+    // A plain folder has no git: no worktrees.
+    ...(isFolder(p) ? [] : [{ icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) }]),
     ...projectSkipperEntries(p),
     { sep: true },
     { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: run["project-folder"] },
@@ -291,7 +292,7 @@ export function projectMenu(p: Project, x: number, y: number) {
     ] },
     // What the project's row shows in the sidebar. A check marks what shows.
     { icon: "layouts-panel-left", label: "Sidebar", sub: [
-      { icon: showsChanges(p) ? "indicators-check" : "", label: "Changes", hint: keyLabel("project-changes"), run: run["project-changes"] },
+      ...(isFolder(p) ? [] : [{ icon: showsChanges(p) ? "indicators-check" : "", label: "Changes", hint: keyLabel("project-changes"), run: run["project-changes"] }]),
       { icon: showsFiles(p) ? "indicators-check" : "", label: "Files", hint: keyLabel("project-files"), run: run["project-files"] },
     ] },
     { sep: true },

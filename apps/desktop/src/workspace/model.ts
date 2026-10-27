@@ -80,8 +80,12 @@ export function taskTitle(s: SessionInfo): string {
   return s.name || (s.role === "agent" ? s.label || s.title : s.title || s.label) || agentName(s);
 }
 
+/** A plain folder in no git repository: no worktrees, branches or changes. */
+export const isFolder = (p: Project) => p.kind === "folder";
+
+/** A plain folder's worktree has no commit: it shows the folder's name. */
 export function branchName(w: Worktree): string {
-  return w.branch ?? "(detached)";
+  return w.branch ?? (w.head ? "(detached)" : basename(w.path));
 }
 
 /** Finished out of sight: a result waits to be read. */

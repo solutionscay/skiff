@@ -7,6 +7,7 @@ import { currentRow, cycleRegion, fromProject, listItems, stepList, toMainWorktr
 
 import { endEntry, killGroup, newWorktree, projectMenu, projectRun, splitMenu, ungroup } from "../workspace/menus";
 import { ctxMenu } from "../ui/contextMenu";
+import { isFolder } from "../workspace/model";
 import { addProject, launchMenu, settings } from "./panels";
 
 import { renameListItem, startRename, startSessionRename } from "../workspace/rename";
@@ -71,7 +72,7 @@ export function runAction(a: Action) {
     case "new-session": return openNewSession();
     case "new-worktree": {
       const p = currentProject();
-      return p ? newWorktree(p) : undefined;
+      return p && !isFolder(p) ? newWorktree(p) : undefined;
     }
     case "add-project": return void addProject.open();
     case "project-menu": {

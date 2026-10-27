@@ -1,6 +1,6 @@
 import { launchIcon } from "../appearance/agentIcon";
 
-import { branchName } from "./model";
+import { branchName, isFolder } from "./model";
 
 import { newSession } from "../app/daemon";
 
@@ -53,7 +53,7 @@ export function renderWelcome() {
     hint.appendChild(h("span", "mono", "~/.config/skiff/projects.toml"));
     box.append(
       h("div", "welcome-title", "Add your first project"),
-      h("div", "welcome-text", "Pick a folder in a git repository. Skiff lists its worktrees and runs agents in them."),
+      h("div", "welcome-text", "Pick a folder. Skiff runs agents in it. In a git repository, it also lists the worktrees."),
       add,
       hint,
     );
@@ -63,7 +63,7 @@ export function renderWelcome() {
     name.style.color = accent(p);
     title.append(name, S.justAdded === p.name ? " is ready" : "");
     const text = h("div", "welcome-text", "Start an agent in ");
-    text.append(h("span", "mono", branchName(w)), ", or make a worktree for a task first.");
+    text.append(h("span", "mono", branchName(w)), isFolder(p) ? "." : ", or make a worktree for a task first.");
     const actions = h("div", "welcome-actions");
     for (const a of launchChoices()) {
       const b = button("", "", () => {
@@ -73,9 +73,11 @@ export function renderWelcome() {
       b.append(launchIcon(a), a ? a.id : "shell");
       actions.appendChild(b);
     }
-    const wt = button("", "", () => newWorktree(p));
-    wt.append(branchIcon(), "worktree…");
-    actions.appendChild(wt);
+    if (!isFolder(p)) {
+      const wt = button("", "", () => newWorktree(p));
+      wt.append(branchIcon(), "worktree…");
+      actions.appendChild(wt);
+    }
     box.append(title, text, actions);
   } else if (!S.focused && !shownIds().length) {
     box.append(h("div", "welcome-text", "No session. Press + on a worktree to start one."));

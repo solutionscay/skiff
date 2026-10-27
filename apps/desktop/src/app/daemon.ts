@@ -24,7 +24,7 @@ import { peekExited, peekUpdated, previewToken, strayPeek } from "../terminal/pe
 import { activeGroupObj, awayPlaces, currentWorktree, place, shownIds } from "./stateQueries";
 import { agentKind } from "../appearance/agentIcon";
 import { heirOf, loadSkiffAgent, noteDaemon, skipperCreated } from "./skiffAgent";
-import { taskTitle } from "../workspace/model";
+import { isFolder, taskTitle } from "../workspace/model";
 import { panes } from "../terminal/terminalState";
 import { ptySized } from "../terminal/terminal";
 import { reattachPanes } from "../terminal/terminalRuntime";
@@ -230,7 +230,8 @@ export function reposStale(paths?: Iterable<string>) {
  * keeps its object, so place() keeps its cache.
  */
 async function reloadProjectsOf(paths: Set<string>) {
-  const names = S.projects.filter((p) => p.worktrees.some((w) => paths.has(w.path))).map((p) => p.name);
+  // A plain folder has no git to read after a turn. A full read still finds a new .git.
+  const names = S.projects.filter((p) => !isFolder(p) && p.worktrees.some((w) => paths.has(w.path))).map((p) => p.name);
   if (!names.length) return;
   const seq = projectsSeq;
   const fresh = await Promise.all(names.map((name) => invoke<Project>("get_project", { name }).catch(() => null)));
