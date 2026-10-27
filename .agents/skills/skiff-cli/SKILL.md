@@ -75,7 +75,7 @@ States: `working`, `waiting`, `idle`, `done`.
 
 ## Task types
 
-`skiff agents --json` prints `{"agents": [...], "tasks": [...]}`. Each task row has `type`, `agent`, `model` (null: the agent's default), `command` and `error`. The person sets the table in Settings › Skiff agent › Task types.
+`skiff agents --json` prints `{"agents": [...], "tasks": [...]}`. Each task row has `type`, `agent`, `model` (null: the agent's default), `command` and `error`. The person sets the table in Settings › Task types.
 
 1. Pick the type yourself. Skiff reads no task text.
 2. Do not use a row whose `error` is not null.
@@ -180,9 +180,9 @@ Work is a plan with its tasks, or a task with no plan. It is `working` while an 
 
 ### Project Skippers
 
-With Settings › Skiff agent › Project Skippers on, a project can have its own Skipper: one agent session in the project's folder, at most one per project. Its folder is always `projects/<project>/` in the Skipper folder (`~/skiff-agent/projects/<project>/` by default): its instructions are `SKIPPER.md` there, and its results go to `results/` there. Skiff writes nothing into the project. A restore brings its pane back as a plain shell. Its session is named `<project> <Skipper's name>`, such as `gesher Skipper`, so `skiff send "gesher Skipper" ...` reaches it and never the Skipper; the sidebar shows it as "Skipper" inside its project block.
+A project can have its own Skipper: one agent session in the project's folder, at most one per project. No Skipper starts by itself: the person starts it from the project menu, or a hand-off starts it. Its folder is always `projects/<project>/` in the Skipper folder (`~/skiff-agent/projects/<project>/` by default): its instructions are `SKIPPER.md` there, and its results go to `results/` there. `SKIPPER.md` holds the project section only. `AGENTS.md` in the Skipper folder is the base of every Skipper. Skiff writes `SKIPPER.md` once and never writes over the person's edit. Skiff writes nothing into the project. A restore brings its pane back as a plain shell. Its session is named `<project> <Skipper's name>`, such as `gesher Skipper`, so `skiff send "gesher Skipper" ...` reaches it and never the Skipper; the sidebar shows it as "Skipper" inside its project block.
 
-- `skiff skipper --project P` finds or starts it, and attaches. `--no-attach` prints its id. A new one gets one first message: read `SKIPPER.md`.
+- `skiff skipper --project P` finds or starts it, and attaches. `--no-attach` prints its id. A new one gets one first message: read `AGENTS.md` in the Skipper folder, then `SKIPPER.md`, which wins where the two differ, then do the First steps.
 - The Skipper hands work to it with `skiff ledger handoff P "TASK" --title "..." [--parent UID]`. This adds a hand-off row that the Skipper owns, with the project Skipper as its pane. It starts the project Skipper if none runs, and sends it the task. It exits with `send`'s code. A busy project Skipper keeps the row `pending`.
 - The project Skipper adds its tasks with `--parent UID` of the hand-off. Those rows are its own. When they are done, it reports the hand-off: `skiff ledger update UID --state done --result PATH`.
 - The Skipper can cancel a hand-off: it is the Skipper's row. It cannot change the project Skipper's tasks, or add tasks under a hand-off.
@@ -190,7 +190,7 @@ With Settings › Skiff agent › Project Skippers on, a project can have its ow
 
 ### Fleet Skippers
 
-A fleet can have one Skipper for all its projects. It is a project Skipper with a wider scope. Its folder is `fleets/<fleet>/` in the Skipper folder, with `SKIPPER.md` and `results/`, and it starts there. Its rows have the owner `fleet:<fleet>`. Its session is named `<fleet> <Skipper's name>`, such as `Harbor Skipper`. The sidebar shows it as "Skipper", the first row under its fleet head.
+A fleet can have one Skipper for all its projects. It is a project Skipper with a wider scope. Its folder is `fleets/<fleet>/` in the Skipper folder, with `SKIPPER.md` and `results/`, and it starts there. Its `SKIPPER.md` names no project: it runs `skiff projects --json` at the start of each turn. Its rows have the owner `fleet:<fleet>`. Its session is named `<fleet> <Skipper's name>`, such as `Harbor Skipper`. The sidebar shows it as "Skipper", the first row under its fleet head.
 
 - `skiff skipper --fleet F` finds or starts it, and attaches. `--no-attach` prints its id. When project Skippers run in the fleet, it names them and asks y/N; `--yes` does not ask. With no terminal and no `--yes`, it refuses.
 - The Skipper hands work to it with `skiff ledger handoff F "TASK" ...`. A name that is both a project and a fleet is refused: use `fleet:F` or `project:F`.

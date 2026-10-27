@@ -7,8 +7,10 @@ import { agentNameList, setAgentNameList } from "./agentNames";
 import { nextCard, themeGrid, type ThemeFilters } from "./themeCards";
 import { type Action, actionFor, isMac } from "../app/keys";
 import { editField, fieldEditKey, textField } from "../ui/fieldClipboard";
-import type { SkiffAgentSettings } from "../app/skiffAgent";
-import { type SkiffAgentEdit, projectSkippersSection, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
+import type { InstructionFile, SkiffAgentSettings } from "../app/skiffAgent";
+import { instructionsSection, type SkiffAgentEdit, projectSkippersSection, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
+import { peekText } from "../terminal/peek";
+import { confirmAction } from "../ui/confirm";
 import { changeSkiffFolder } from "./skiffFolderDialog";
 import { rowTable, tableState } from "./rowTable";
 import { countDisk, diskState, diskUseSection } from "./diskUse";
@@ -16,7 +18,7 @@ import { imagesSection, imagesState } from "./imagesPage";
 import { onImagesChanged } from "../terminal/images";
 
 /**
- * Settings over the sidebar and terminal: agents, the Skiff agent,
+ * Settings over the sidebar and terminal: agents, Skippers, task types,
  * appearance, Open with, images and disk use.
  */
 export interface AppearanceHooks {
@@ -38,7 +40,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   document.getElementById("body")!.appendChild(root);
 
   let agents: AgentInfo[] = [];
-  const TABS = ["agents", "skiff-agent", "appearance", "open", "images", "disk"] as const;
+  const TABS = ["agents", "skippers", "task-types", "appearance", "open", "images", "disk"] as const;
   let tab: (typeof TABS)[number] = "agents";
   const themeFilters: ThemeFilters = { query: "", family: null };
   type OpenKey = "diff" | "text" | "markdown" | "html" | "image";
@@ -47,6 +49,9 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   type MenuLayout = { available: boolean; chosen: string | null; auto: string; current: string };
   let menuSet: MenuLayout | null = null;
   let agentSet: SkiffAgentSettings | null = null;
+  // Settings › Skippers › Instructions, and one error line per row.
+  let files: InstructionFile[] = [];
+  const fileErrors = new Map<string, string>();
   let error: string | null = null;
   let saving = false;
   // The draft rows and their error lines survive every redraw.
@@ -130,13 +135,14 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const nav = h("div", "set-nav");
     const head = h("div", "set-nav-head");
     head.append(h("div", "set-title", "Settings"), h("div", "set-path mono", "~/.config/skiff/projects.toml"));
-    const names = { agents: "Agents", "skiff-agent": "Skiff agent", images: "Images", disk: "Disk use", appearance: "Appearance", open: "Open with" };
+    const names = { agents: "Agents", skippers: "Skippers", "task-types": "Task types", images: "Images", disk: "Disk use", appearance: "Appearance", open: "Open with" };
     const tabs = TABS.map((t) => {
       const b = h("button", "set-tab" + (tab === t ? " active" : ""), names[t]);
       b.type = "button";
       b.addEventListener("click", () => {
         tab = t;
         draw();
+        if (tab === "skippers") void loadFiles();
         if (tab === "disk") void countDisk(disk, render);
         if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
       });
@@ -151,8 +157,14 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       root.replaceChildren(nav, openWith(), closeButton());
       return;
     }
-    if (tab === "skiff-agent") {
-      root.replaceChildren(nav, skiffAgent(), closeButton());
+    if (tab === "skippers") {
+      root.replaceChildren(nav, skippers(), closeButton());
+      return;
+    }
+    if (tab === "task-types") {
+      const main = h("div", "set-main");
+      if (agentSet) main.append(...taskTypesSection(agentSet, agents, tasksTable, saveTask, render));
+      root.replaceChildren(nav, main, closeButton());
       return;
     }
     if (tab === "images") {
@@ -414,7 +426,61 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     render();
   }
 
-  /** Settings › Skiff agent › Folder › Change…. The page reads the folder again after a change. */
+  /** Settings › Skippers › Instructions: each file's status, read again on each show. */
+  async function loadFiles() {
+    try {
+      files = await invoke<InstructionFile[]>("skipper_files");
+    } catch (e) {
+      files = [];
+      error = String(e);
+    }
+    if (!root.hidden && tab === "skippers") render();
+  }
+
+  /**
+   * Edit: the file opens as Open with › Text files says, written from the
+   * template first when there is none. In the peek, Settings closes and
+   * opens again on this tab when the peek ends.
+   */
+  async function editFile(f: InstructionFile) {
+    fileErrors.delete(f.file);
+    type Opened = { kind: "run"; script: string; cwd: string } | { kind: "default" } | { kind: "no_app"; message: string };
+    let o: Opened;
+    try {
+      o = await invoke<Opened>("edit_skipper_file", { scope: f.scope });
+    } catch (e) {
+      fileErrors.set(f.file, String(e));
+      return void loadFiles();
+    }
+    if (o.kind === "run") {
+      close();
+      return peekText(o.script, o.cwd, f.path, () => void settings.open("skippers"));
+    }
+    if (o.kind === "no_app") fileErrors.set(f.file, `No app opens ${f.file}. Set one in Settings › Open with › Text files.`);
+    void loadFiles();
+  }
+
+  /** Reset…: asks, with the file's date and size, then writes the template again. */
+  async function resetFile(f: InstructionFile) {
+    const base = f.file.split("/").pop()!;
+    const date = f.modified ? new Date(f.modified).toISOString().slice(0, 10) : "";
+    const who = f.scope.kind === "skipper" ? "Every Skipper reads" : `The ${f.scope.name} Skipper reads`;
+    const ok = await confirmAction({
+      title: `Reset ${f.file} to the template?`,
+      body: `Edited ${date} · ${fileSize(f.size ?? 0)}. The file goes to ${base}.bak. ${who} it at its next start.`,
+      action: "Reset",
+    });
+    if (!ok) return;
+    fileErrors.delete(f.file);
+    try {
+      await invoke("reset_skipper_file", { scope: f.scope });
+    } catch (e) {
+      fileErrors.set(f.file, String(e));
+    }
+    void loadFiles();
+  }
+
+  /** Settings › Skippers › Folder › Change…. The page reads the folder again after a change. */
   function changeFolder() {
     if (!agentSet) return;
     changeSkiffFolder({
@@ -426,14 +492,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     });
   }
 
-  /** The one agent session that coordinates the others. */
-  function skiffAgent(): HTMLElement {
+  /** Settings › Skippers: the Skipper, project and fleet Skippers, and their instruction files. */
+  function skippers(): HTMLElement {
     const main = h("div", "set-main");
     const intro = h("div", "set-head");
-    intro.append(
-      h("div", "set-h", "Skiff agent"),
-      h("div", "set-sub", "One agent for all projects."),
-    );
+    intro.append(h("div", "set-h", "Skippers"));
     main.append(intro);
     if (agentSet) main.append(...skiffAgentSection(agentSet, agents, (e) => void setSkiffAgent(e), changeFolder));
     if (error) {
@@ -442,7 +505,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       main.appendChild(err);
     }
     if (agentSet) main.append(...projectSkippersSection(agentSet, agents, (e) => void setSkiffAgent(e)));
-    if (agentSet) main.append(...taskTypesSection(agentSet, agents, tasksTable, saveTask, render));
+    if (agentSet?.folder) main.append(...instructionsSection(agentSet, { files, errors: fileErrors, edit: (f) => void editFile(f), reset: (f) => void resetFile(f) }));
     return main;
   }
 
@@ -514,6 +577,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     (document.activeElement as HTMLElement | null)?.blur();
     tab = TABS[(TABS.indexOf(tab) + dir + TABS.length) % TABS.length];
     draw();
+    if (tab === "skippers") void loadFiles();
     if (tab === "disk") void countDisk(disk, render);
     document.body.classList.add("kbd");
     root.querySelector<HTMLButtonElement>(".set-tab.active")?.focus();
@@ -611,7 +675,12 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     close();
   });
 
-  return {
+  // An external app saved a file: its status shows when the window has the keys again.
+  window.addEventListener("focus", () => {
+    if (!root.hidden && tab === "skippers") void loadFiles();
+  });
+
+  const settings = {
     /** `at`: the section to show, else the last one. */
     async open(at?: (typeof TABS)[number]) {
       if (at) tab = at;
@@ -626,6 +695,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         return [];
       });
       render();
+      if (tab === "skippers") void loadFiles();
       if (tab === "disk") void countDisk(disk, render);
       if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
       else if (tab === "images") root.querySelector<HTMLInputElement>(".img-page .lib-search")?.focus();
@@ -638,4 +708,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       return !root.hidden;
     },
   };
+  return settings;
+}
+
+/** "640 B", "3.4 KB". */
+function fileSize(n: number): string {
+  return n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`;
 }

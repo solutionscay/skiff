@@ -1,4 +1,4 @@
-//! Settings › Skiff agent › Folder (#135): the rules, the path, the copy,
+//! Settings › Skippers › Folder (#135): the rules, the path, the copy,
 //! the switch and the rollback. Its own test binary: HOME and SKIFF_CONFIG
 //! are process-wide, so the tests take turns.
 

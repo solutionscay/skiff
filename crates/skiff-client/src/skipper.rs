@@ -27,14 +27,16 @@ pub const DEFAULT_NAME: &str = "Skipper";
 /// The folder's instructions. `{{name}}` becomes the agent's name.
 const TEMPLATE: &str = include_str!("../agent-template/AGENTS.md.tmpl");
 
-/// The project section of a project Skipper's `SKIPPER.md`, after
-/// [`TEMPLATE`]. `{{project}}`, `{{path}}` and `{{dir}}` become the
-/// project, its folder and the Skipper's folder.
+/// A project Skipper's `SKIPPER.md`: the project section only, as
+/// [`TEMPLATE`] is the base of every Skipper. `{{project}}`, `{{path}}`,
+/// `{{dir}}` and `{{folder}}` become the project, its folder, the
+/// Skipper's folder and the Skiff agent's folder.
 const PROJECT_TEMPLATE: &str = include_str!("../agent-template/SKIPPER-project.md.tmpl");
 
-/// The fleet section of a fleet Skipper's `SKIPPER.md`, after [`TEMPLATE`].
-/// `{{fleet}}`, `{{projects}}` and `{{dir}}` become the fleet, one line per
-/// project with its folder, and the Skipper's folder.
+/// A fleet Skipper's `SKIPPER.md`: the fleet section only. `{{fleet}}`,
+/// `{{dir}}` and `{{folder}}` become the fleet, the Skipper's folder and
+/// the Skiff agent's folder. It names no project: the fleet Skipper reads
+/// them from `skiff projects --json`, so the file never goes stale.
 const FLEET_TEMPLATE: &str = include_str!("../agent-template/SKIPPER-fleet.md.tmpl");
 
 /// The scope prefix of a fleet: a fleet Skipper's mark and its rows' owner
@@ -59,6 +61,10 @@ const SKILL: &[(&str, &[u8], bool)] = &[
 ];
 
 /// The marker setup leaves, so a later run knows the folder is the agent's.
+/// Its first line is `1`. Each line after it is the hash of an instruction
+/// file as Skiff last wrote it, then its path in the folder:
+/// `<hash> projects/gesher/SKIPPER.md`. So Skiff tells a file it wrote from
+/// one the person edited, with no second copy of the file.
 pub(crate) const MARKER: &str = ".skiff-agent";
 
 /// `AGENTS.md` as setup writes it for `name`.
@@ -155,7 +161,7 @@ pub fn sync_skill() -> Result<PathBuf> {
 }
 
 /// The agent's folder: [`default_folder`], or the override in projects.toml
-/// when it passes [`check`]. Settings › Skiff agent › Folder changes it with
+/// when it passes [`check`]. Settings › Skippers › Folder changes it with
 /// a copy, check and switch ([`crate::agent_folder`]), so the ledger, the
 /// results and the instructions go with it. A socket other than the live
 /// one never gets the live agent's folder ([`refuse_live_folder`]).
@@ -389,16 +395,17 @@ pub(crate) fn setup_in(dir: &Path, name: &str, skill: &Path) -> Result<PathBuf> 
         bail!("{} is not a folder", dir.display());
     }
     if dir.is_dir() && !dir.join(MARKER).exists() && std::fs::read_dir(dir)?.next().is_some() {
-        bail!("{} holds other files. Move them, or choose another folder in Settings › Skiff agent › Folder", dir.display());
+        bail!("{} holds other files. Move them, or choose another folder in Settings › Skippers › Folder", dir.display());
     }
 
     std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
     let dir = dir.canonicalize().with_context(|| format!("find {}", dir.display()))?;
     // A broken link counts as there: setup does not replace what the user made.
     let missing = |p: &Path| p.symlink_metadata().is_err();
-    if missing(&dir.join("AGENTS.md")) {
-        write_new(&dir.join("AGENTS.md"), &template(name))?;
+    if missing(&dir.join(MARKER)) {
+        write_new(&dir.join(MARKER), "1\n")?;
     }
+    refresh(&dir, AGENTS_FILE, &template(name))?;
     for f in ["CLAUDE.md", "GEMINI.md"] {
         if missing(&dir.join(f)) {
             link(Path::new("AGENTS.md"), &dir.join(f))?;
@@ -417,10 +424,67 @@ pub(crate) fn setup_in(dir: &Path, name: &str, skill: &Path) -> Result<PathBuf> 
     if missing(&dir.join(".claude")) {
         link(Path::new(".agents"), &dir.join(".claude"))?;
     }
-    if missing(&dir.join(MARKER)) {
-        write_new(&dir.join(MARKER), "1\n")?;
-    }
     Ok(dir)
+}
+
+/// The Skiff agent's instructions, the base of every Skipper.
+pub const AGENTS_FILE: &str = "AGENTS.md";
+
+/// The 16 hex digits of a 64-bit FNV-1a hash of `bytes`, as [`build_of`] makes.
+fn hash(bytes: &[u8]) -> String {
+    format!("{:016x}", bytes.iter().fold(0xcbf29ce484222325u64, |h, &b| (h ^ b as u64).wrapping_mul(0x100000001b3)))
+}
+
+/// The hashes in the marker of `dir`, by path in the folder.
+fn written(dir: &Path) -> std::collections::BTreeMap<String, String> {
+    let text = std::fs::read_to_string(dir.join(MARKER)).unwrap_or_default();
+    text.lines().skip(1).filter_map(|l| l.split_once(' ')).map(|(h, f)| (f.to_string(), h.to_string())).collect()
+}
+
+/// Puts the hash of `rel` in the marker of `dir`, or takes it out with `None`.
+fn record(dir: &Path, rel: &str, h: Option<&str>) -> Result<()> {
+    let mut all = written(dir);
+    match h {
+        Some(h) => all.insert(rel.to_string(), h.to_string()),
+        None => all.remove(rel),
+    };
+    let lines: String = all.iter().map(|(f, h)| format!("{h} {f}\n")).collect();
+    config::write_atomic(&dir.join(MARKER), &format!("1\n{lines}"))
+}
+
+/// Moves the hash of `from` to `to` in the marker of `dir`, as a renamed
+/// fleet moves its folder. The caller holds [`lock`].
+pub(crate) fn move_record(dir: &Path, from: &str, to: &str) -> Result<()> {
+    let Some(h) = written(dir).get(from).cloned() else { return Ok(()) };
+    record(dir, from, None)?;
+    record(dir, to, Some(&h))
+}
+
+/// Writes `text` to `rel` in `dir`, makes its folder, and keeps its hash.
+fn write_file(dir: &Path, rel: &str, text: &str) -> Result<()> {
+    let path = dir.join(rel);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+    }
+    std::fs::write(&path, text).with_context(|| format!("write {}", path.display()))?;
+    record(dir, rel, Some(&hash(text.as_bytes())))
+}
+
+/// At a Skipper's start: writes `rel` when it is missing, and again when its
+/// status is template and the template changed. An edited file stays.
+fn refresh(dir: &Path, rel: &str, text: &str) -> Result<()> {
+    let path = dir.join(rel);
+    // A broken link counts as there: setup does not replace what the user made.
+    if path.symlink_metadata().is_err() {
+        return write_file(dir, rel, text);
+    }
+    let Ok(now) = std::fs::read(&path) else { return Ok(()) };
+    match written(dir).get(rel) {
+        Some(h) if *h == hash(&now) && now != text.as_bytes() => write_file(dir, rel, text),
+        // The same text with no hash: keep it as Skiff's, so the next template change reaches it.
+        None if now == text.as_bytes() => record(dir, rel, Some(&hash(&now))),
+        _ => Ok(()),
+    }
 }
 
 /// The setup lock. It frees itself when the process ends. A change of
@@ -464,13 +528,14 @@ fn link(_target: &Path, _at: &Path) -> Result<()> {
 /// The name of a project Skipper's file in its folder.
 pub const SKIPPER_FILE: &str = "SKIPPER.md";
 
-/// `SKIPPER.md` for the project `p`, whose Skipper's folder is `dir`.
-pub fn project_template(name: &str, p: &ProjectConfig, dir: &Path) -> String {
-    let section = PROJECT_TEMPLATE
+/// `SKIPPER.md` for the project `p`, whose Skipper's folder is `dir`, in
+/// the Skiff agent's folder `folder`.
+pub fn project_template(p: &ProjectConfig, dir: &Path, folder: &Path) -> String {
+    PROJECT_TEMPLATE
         .replace("{{project}}", &p.name)
         .replace("{{path}}", &p.path.display().to_string())
-        .replace("{{dir}}", &dir.display().to_string());
-    format!("{}{section}", template(name))
+        .replace("{{dir}}", &dir.display().to_string())
+        .replace("{{folder}}", &folder.display().to_string())
 }
 
 /// The configured project, by name.
@@ -487,26 +552,28 @@ pub fn project_folder(cfg: &Config, project: &str) -> Result<PathBuf> {
     Ok(folder(cfg)?.join("projects").join(project))
 }
 
-/// The agent a project Skipper starts: the project's `skipper_agent`, else
-/// `[skiff_agent] project_agent`, else the Skipper's own (see [`choose`]).
-/// One that is not installed and on falls through to the next.
-pub fn project_agent<'a>(cfg: &Config, agents: &'a [AgentInfo], p: &ProjectConfig) -> Option<&'a AgentInfo> {
+/// The agent a project Skipper starts, with its model: the project's
+/// `skipper_agent` with the agent's default model, else `[skiff_agent]
+/// project_agent`, else the Skipper's agent (see [`choose`]), each with
+/// `project_model`. One that is not installed and on falls through to the
+/// next.
+pub fn project_agent<'a>(cfg: &Config, agents: &'a [AgentInfo], p: &ProjectConfig) -> Option<(&'a AgentInfo, Option<String>)> {
     let usable = |id: Option<&str>| agents.iter().find(|a| Some(a.id.as_str()) == id && a.installed && (a.enabled || a.custom));
-    usable(p.skipper_agent.as_deref())
-        .or_else(|| usable(cfg.skiff_agent.project_agent.as_deref()))
-        .or_else(|| choose(agents, cfg.skiff_agent.agent.as_deref()))
+    match usable(p.skipper_agent.as_deref()) {
+        Some(a) => Some((a, None)),
+        None => fleet_agent(cfg, agents),
+    }
 }
 
 /// Makes a project Skipper's folder ready: the Skiff agent's folder first,
-/// then `projects/<project>/` with `SKIPPER.md` and `results/`. `SKIPPER.md`
-/// is written again at each start, so it follows Skiff and the project.
-/// Returns the folder. The caller holds [`lock`].
+/// then `projects/<project>/` with `SKIPPER.md` and `results/`. Skiff
+/// writes `SKIPPER.md` once, and again only while its status is template
+/// (see [`refresh`]). Returns the folder. The caller holds [`lock`].
 fn setup_project(cfg: &Config, p: &ProjectConfig) -> Result<PathBuf> {
-    setup_in(&folder(cfg)?, &name(cfg), &sync_skill()?)?;
+    let top = setup_in(&folder(cfg)?, &name(cfg), &sync_skill()?)?;
     let dir = project_folder(cfg, &p.name)?;
     std::fs::create_dir_all(dir.join("results")).with_context(|| format!("create {}", dir.join("results").display()))?;
-    let file = dir.join(SKIPPER_FILE);
-    std::fs::write(&file, project_template(&name(cfg), p, &dir)).with_context(|| format!("write {}", file.display()))?;
+    refresh(&top, &Scope::Project(p.name.clone()).file(), &project_template(p, &dir, &top))?;
     Ok(dir)
 }
 
@@ -523,40 +590,188 @@ pub fn fleet_folder(cfg: &Config, fleet: &str) -> Result<PathBuf> {
     Ok(folder(cfg)?.join("fleets").join(fleet))
 }
 
-/// `SKIPPER.md` for the fleet `fleet`, whose Skipper's folder is `dir`.
-pub fn fleet_template(name: &str, fleet: &str, projects: &[&ProjectConfig], dir: &Path) -> String {
-    let width = projects.iter().map(|p| p.name.chars().count()).max().unwrap_or(0);
-    let list: Vec<String> = projects.iter().map(|p| format!("- {:width$}  {}", p.name, p.path.display())).collect();
-    let section = FLEET_TEMPLATE
+/// `SKIPPER.md` for the fleet `fleet`, whose Skipper's folder is `dir`, in
+/// the Skiff agent's folder `folder`.
+pub fn fleet_template(fleet: &str, dir: &Path, folder: &Path) -> String {
+    FLEET_TEMPLATE
         .replace("{{fleet}}", fleet)
-        .replace("{{projects}}", &list.join("\n"))
-        .replace("{{dir}}", &dir.display().to_string());
-    format!("{}{section}", template(name))
+        .replace("{{dir}}", &dir.display().to_string())
+        .replace("{{folder}}", &folder.display().to_string())
 }
 
-/// The agent a fleet Skipper starts: `[skiff_agent] project_agent`, else the
-/// Skipper's own. A project's `skipper_agent` is for its project Skipper only.
-pub fn fleet_agent<'a>(cfg: &Config, agents: &'a [AgentInfo]) -> Option<&'a AgentInfo> {
-    agents
+/// The agent a fleet Skipper starts, with its model: `[skiff_agent]
+/// project_agent`, else the Skipper's agent, with `project_model`. A
+/// project's `skipper_agent` is for its project Skipper only.
+pub fn fleet_agent<'a>(cfg: &Config, agents: &'a [AgentInfo]) -> Option<(&'a AgentInfo, Option<String>)> {
+    let a = agents
         .iter()
         .find(|a| Some(a.id.as_str()) == cfg.skiff_agent.project_agent.as_deref() && a.installed && (a.enabled || a.custom))
-        .or_else(|| choose(agents, cfg.skiff_agent.agent.as_deref()))
+        .or_else(|| choose(agents, cfg.skiff_agent.agent.as_deref()))?;
+    Some((a, cfg.skiff_agent.project_model.clone()))
 }
 
-/// Writes a fleet Skipper's folder and its `SKIPPER.md` again, from the
-/// fleet as `projects.toml` has it now. Returns the folder. The app and the
-/// watcher call it when the fleet changes under a running fleet Skipper.
+/// Makes a fleet Skipper's folder ready, with `results/` and `SKIPPER.md`.
+/// Skiff writes `SKIPPER.md` once, and again only while its status is
+/// template (see [`refresh`]). Returns the folder. The app and the watcher
+/// call it when the fleet changes under a running fleet Skipper.
 pub fn write_fleet(cfg: &Config, fleet: &str) -> Result<PathBuf> {
+    let top = folder(cfg)?;
     let dir = fleet_folder(cfg, fleet)?;
     std::fs::create_dir_all(dir.join("results")).with_context(|| format!("create {}", dir.join("results").display()))?;
-    let file = dir.join(SKIPPER_FILE);
-    std::fs::write(&file, fleet_template(&name(cfg), fleet, &fleet_projects(cfg, fleet), &dir)).with_context(|| format!("write {}", file.display()))?;
+    refresh(&top, &Scope::Fleet(fleet.to_string()).file(), &fleet_template(fleet, &dir, &top))?;
     Ok(dir)
 }
 
-/// The first message a new project Skipper gets.
-pub fn first_message(dir: &Path) -> String {
-    format!("Read {} and follow it. Then do its First steps.", dir.join(SKIPPER_FILE).display())
+/// The first message a new project or fleet Skipper gets. It names both
+/// files: an agent in a project folder does not read the Skiff agent's
+/// `AGENTS.md` by itself.
+pub fn first_message(cfg: &Config, dir: &Path) -> Result<String> {
+    Ok(format!(
+        "Read {}, then {}. {SKIPPER_FILE} wins where the two differ. Then do the First steps.",
+        folder(cfg)?.join(AGENTS_FILE).display(),
+        dir.join(SKIPPER_FILE).display()
+    ))
+}
+
+/// One instruction file: `AGENTS.md` for the Skipper and the base of every
+/// Skipper, or the `SKIPPER.md` of a fleet or a project.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", content = "name", rename_all = "snake_case")]
+pub enum Scope {
+    Skipper,
+    Fleet(String),
+    Project(String),
+}
+
+impl Scope {
+    /// Its path in the Skiff agent's folder.
+    pub fn file(&self) -> String {
+        match self {
+            Scope::Skipper => AGENTS_FILE.to_string(),
+            Scope::Fleet(f) => format!("fleets/{f}/{SKIPPER_FILE}"),
+            Scope::Project(p) => format!("projects/{p}/{SKIPPER_FILE}"),
+        }
+    }
+
+    /// The text Skiff writes for it now.
+    fn template(&self, cfg: &Config, top: &Path) -> Result<String> {
+        Ok(match self {
+            Scope::Skipper => template(&name(cfg)),
+            Scope::Fleet(f) => {
+                if !is_fleet(cfg, f) {
+                    bail!("no fleet {f:?} in {}", config::config_path().display());
+                }
+                fleet_template(f, &fleet_folder(cfg, f)?, top)
+            }
+            Scope::Project(p) => project_template(project(cfg, p)?, &project_folder(cfg, p)?, top),
+        })
+    }
+}
+
+/// What an instruction file is now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Status {
+    /// No file.
+    None,
+    /// The file is what Skiff last wrote.
+    Template,
+    /// The person changed it.
+    Edited,
+    /// The person changed it, and the template is newer than Skiff's last write.
+    EditedTemplateChanged,
+}
+
+/// One row of Settings › Skippers › Instructions.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FileStatus {
+    pub scope: Scope,
+    /// Its path in the Skiff agent's folder.
+    pub file: String,
+    /// Its full path.
+    pub path: PathBuf,
+    pub status: Status,
+    /// Unix time in milliseconds. `None` with no file.
+    pub modified: Option<u64>,
+    /// In bytes. `None` with no file.
+    pub size: Option<u64>,
+}
+
+/// The status of the file of `scope`. Reads only.
+pub fn file_status(cfg: &Config, scope: &Scope) -> Result<FileStatus> {
+    let top = folder(cfg)?;
+    status_in(&top, scope, &scope.template(cfg, &top)?)
+}
+
+fn status_in(top: &Path, scope: &Scope, text: &str) -> Result<FileStatus> {
+    let file = scope.file();
+    let path = top.join(&file);
+    let (status, modified, size) = match std::fs::read(&path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Status::None, None, None),
+        Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
+        Ok(now) => {
+            let m = std::fs::metadata(&path)?;
+            let at = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64);
+            // With no hash, Skiff did not write the file: it is the template only when it is the same.
+            let status = match written(top).get(&file) {
+                Some(h) if *h == hash(&now) => Status::Template,
+                Some(h) if *h == hash(text.as_bytes()) => Status::Edited,
+                None if now == text.as_bytes() => Status::Template,
+                _ => Status::EditedTemplateChanged,
+            };
+            (status, at, Some(m.len()))
+        }
+    };
+    Ok(FileStatus { scope: scope.clone(), file, path, status, modified, size })
+}
+
+/// Every instruction file, in tree order: the Skipper, each fleet, then
+/// each open project, the projects in no fleet first.
+pub fn instructions(cfg: &Config) -> Result<Vec<FileStatus>> {
+    let top = folder(cfg)?;
+    let open: Vec<&ProjectConfig> = cfg.projects.iter().filter(|p| !p.closed).collect();
+    let mut fleets: Vec<&str> = Vec::new();
+    for f in open.iter().filter_map(|p| p.fleet.as_deref()) {
+        if !fleets.contains(&f) {
+            fleets.push(f);
+        }
+    }
+    let mut scopes = vec![Scope::Skipper];
+    scopes.extend(fleets.iter().map(|f| Scope::Fleet(f.to_string())));
+    scopes.extend(open.iter().filter(|p| p.fleet.is_none()).map(|p| Scope::Project(p.name.clone())));
+    for f in &fleets {
+        scopes.extend(open.iter().filter(|p| p.fleet.as_deref() == Some(f)).map(|p| Scope::Project(p.name.clone())));
+    }
+    scopes.iter().map(|s| status_in(&top, s, &s.template(cfg, &top)?)).collect()
+}
+
+/// Settings › Edit: the file's full path. A missing file is written from
+/// the template first, with its folder.
+pub fn edit_file(cfg: &Config, scope: &Scope) -> Result<PathBuf> {
+    let _lock = lock()?;
+    let top = setup_in(&folder(cfg)?, &name(cfg), &sync_skill()?)?;
+    let file = scope.file();
+    let text = scope.template(cfg, &top)?;
+    if top.join(&file).symlink_metadata().is_err() {
+        write_file(&top, &file, &text)?;
+    }
+    Ok(top.join(file))
+}
+
+/// Settings › Reset…: the template again. The old file goes to
+/// `<name>.bak`, which replaces the last one.
+pub fn reset_file(cfg: &Config, scope: &Scope) -> Result<FileStatus> {
+    let _lock = lock()?;
+    let top = setup_in(&folder(cfg)?, &name(cfg), &sync_skill()?)?;
+    let file = scope.file();
+    let text = scope.template(cfg, &top)?;
+    let path = top.join(&file);
+    if path.exists() {
+        let bak = path.with_file_name(format!("{}.bak", path.file_name().unwrap_or_default().to_string_lossy()));
+        std::fs::rename(&path, &bak).with_context(|| format!("move {} to {}", path.display(), bak.display()))?;
+    }
+    write_file(&top, &file, &text)?;
+    status_in(&top, scope, &text)
 }
 
 /// The live project Skipper of `project` in `all`, if one runs.
@@ -596,15 +811,9 @@ pub struct ProjectSkipper {
 
 /// Finds the live project Skipper of `project`, or starts one in the
 /// project's folder. The setup lock keeps two starts apart, so a project
-/// has at most one. Refuses when the Skiff agent or Project Skippers is off.
+/// has at most one.
 pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipper> {
     let cfg = config::load()?;
-    if !cfg.skiff_agent.enabled {
-        bail!("The Skiff agent is off. Turn it on in Settings › Skiff agent");
-    }
-    if !cfg.skiff_agent.project_skippers {
-        bail!("Project and fleet Skippers are off. Turn them on in Settings › Skiff agent › Project and fleet Skippers");
-    }
     let p = project(&cfg, project_name)?;
     let _lock = lock()?;
     let all = c.list_sessions().await?;
@@ -617,8 +826,8 @@ pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipp
     }
     let dir = setup_project(&cfg, p)?;
     let agents = c.list_agents().await?;
-    let Some(agent) = project_agent(&cfg, &agents, p) else { bail!("No agent is on. Turn one on in Settings › Agents") };
-    let mut s = spec(agent, &self::project_name(&cfg, &p.name), p.path.clone());
+    let Some((agent, model)) = project_agent(&cfg, &agents, p) else { bail!("No agent is on. Turn one on in Settings › Agents") };
+    let mut s = spec(&with_model(agent, model.as_deref()), &self::project_name(&cfg, &p.name), p.path.clone());
     crate::cache::add_flags(&cfg, std::slice::from_ref(agent), &mut s);
     s.skipper = Some(p.name.clone());
     s.cols = 120;
@@ -631,17 +840,10 @@ pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipp
 }
 
 /// Finds the live fleet Skipper of `fleet`, or starts one in its folder.
-/// Refuses as [`open_project`] does. It does not look at project Skippers
-/// in the fleet: the caller takes them over first (see
-/// [`crate::takeover`]).
+/// It does not look at project Skippers in the fleet: the caller takes
+/// them over first (see [`crate::takeover`]).
 pub async fn open_fleet(c: &Client, fleet: &str) -> Result<ProjectSkipper> {
     let cfg = config::load()?;
-    if !cfg.skiff_agent.enabled {
-        bail!("The Skiff agent is off. Turn it on in Settings › Skiff agent");
-    }
-    if !cfg.skiff_agent.project_skippers {
-        bail!("Project and fleet Skippers are off. Turn them on in Settings › Skiff agent › Project and fleet Skippers");
-    }
     if !is_fleet(&cfg, fleet) {
         bail!("no fleet {fleet:?} in {}", config::config_path().display());
     }
@@ -652,8 +854,8 @@ pub async fn open_fleet(c: &Client, fleet: &str) -> Result<ProjectSkipper> {
         return Ok(ProjectSkipper { session: s.clone(), created: false, dir });
     }
     let agents = c.list_agents().await?;
-    let Some(agent) = fleet_agent(&cfg, &agents) else { bail!("No agent is on. Turn one on in Settings › Agents") };
-    let mut s = spec(agent, &fleet_name(&cfg, fleet), dir.clone());
+    let Some((agent, model)) = fleet_agent(&cfg, &agents) else { bail!("No agent is on. Turn one on in Settings › Agents") };
+    let mut s = spec(&with_model(agent, model.as_deref()), &fleet_name(&cfg, fleet), dir.clone());
     crate::cache::add_flags(&cfg, std::slice::from_ref(agent), &mut s);
     s.skipper = Some(fleet_scope(fleet));
     s.cols = 120;
@@ -682,9 +884,6 @@ pub enum Open {
 pub async fn open(c: &Client, how: Open) -> Result<Option<Coordinated>> {
     let cfg = config::load()?;
     let a = &cfg.skiff_agent;
-    if !a.enabled {
-        bail!("The Skiff agent is off. Turn it on in Settings › Skiff agent");
-    }
     // Before any request: another socket must not resume the live agent's conversation either.
     folder(&cfg)?;
     let agents = c.list_agents().await?;
@@ -692,25 +891,33 @@ pub async fn open(c: &Client, how: Open) -> Result<Option<Coordinated>> {
     // Each line ends with the image cache's read flag, as the + menu adds it.
     let resume = agent
         .filter(|_| a.continue_on_restore)
-        .and_then(|g| continue_line(&g.id, &g.command).map(|l| l + &crate::cache::flags_typed(&cfg, g)));
+        .and_then(|g| continue_line(&g.id, &with_model(g, a.model.as_deref())).map(|l| l + &crate::cache::flags_typed(&cfg, g)));
     let ask = match how {
         Open::Restore { expect } => Coordinator { resume, expect: Some(expect), ..Default::default() },
         Open::Start => {
             let Some(agent) = agent else { bail!("No agent is on. Turn one on in Settings › Agents") };
             // The folder is made ready first: files the user deleted come back.
             let dir = ensure(&cfg)?;
-            let mut s = spec(agent, &name(&cfg), dir);
+            let command = with_model(agent, a.model.as_deref());
+            let mut s = spec(&command, &name(&cfg), dir);
             crate::cache::add_flags(&cfg, std::slice::from_ref(agent), &mut s);
-            let start = format!("{}{}", agent.command.trim(), crate::cache::flags_typed(&cfg, agent));
+            let start = format!("{command}{}", crate::cache::flags_typed(&cfg, agent));
             Coordinator { spec: Some(s), start: Some(start), resume, expect: None }
         }
     };
     c.coordinator(ask).await
 }
 
-/// A new session of `agent` in `dir`, as the app's + menu starts one.
-fn spec(agent: &AgentInfo, name: &str, dir: PathBuf) -> SessionSpec {
-    let mut words = agent.command.split_whitespace().map(str::to_string);
+/// The agent's command with the model flag, as a task type adds it. An
+/// agent that takes its model in its command, or no model, gives the plain
+/// command: Settings shows "in the command" for it.
+pub fn with_model(agent: &AgentInfo, model: Option<&str>) -> String {
+    skiff_core::tasks::command(agent, model).unwrap_or_else(|_| agent.command.trim().to_string())
+}
+
+/// A new session that runs `command` in `dir`, as the app's + menu starts one.
+fn spec(command: &str, name: &str, dir: PathBuf) -> SessionSpec {
+    let mut words = command.split_whitespace().map(str::to_string);
     SessionSpec {
         label: name.to_string(),
         name: Some(name.to_string()),
@@ -1564,9 +1771,13 @@ os.execv(exe, ["skiff", "watch"])
             installed: true,
             enabled: true,
         };
-        let s = spec(&agent("codex"), "Skipper", PathBuf::from("/tmp"));
+        let s = spec(&with_model(&agent("codex"), None), "Skipper", PathBuf::from("/tmp"));
         assert_eq!((s.command.as_deref(), s.args.len()), (Some("codex"), 0));
-        let s = spec(&agent(" codex --yolo "), "Skipper", PathBuf::from("/tmp"));
-        assert_eq!((s.command.as_deref(), s.args), (Some("codex"), vec!["--yolo".to_string()]));
+        let s = spec(&with_model(&agent(" codex --yolo "), Some("gpt-5")), "Skipper", PathBuf::from("/tmp"));
+        assert_eq!((s.command.as_deref(), s.args), (Some("codex"), vec!["--yolo".to_string(), "-m".into(), "gpt-5".into()]));
+        // An agent with no model flag takes its model in its command.
+        let mut gemini = agent("gemini");
+        gemini.id = "gemini".into();
+        assert_eq!(with_model(&gemini, Some("pro")), "gemini");
     }
 }

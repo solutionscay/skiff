@@ -66,9 +66,9 @@ fn a_test_daemon_leaves_the_person_s_state_alone() {
     for d in [&home, &config, &run, &bin, &home.join("skiff-agent")] {
         std::fs::create_dir_all(d).unwrap();
     }
-    // The person's state: a Skiff agent on, its folder, its ledger.
+    // The person's state: a Skiff agent, its folder, its ledger.
     std::fs::create_dir_all(config.join("skiff")).unwrap();
-    std::fs::write(config.join("skiff/projects.toml"), "[skiff_agent]\nenabled = true\n").unwrap();
+    std::fs::write(config.join("skiff/projects.toml"), "[skiff_agent]\n").unwrap();
     std::fs::write(home.join("skiff-agent/ledger.db"), b"the live ledger").unwrap();
     std::fs::write(home.join("skiff-agent/.skiff-agent"), b"").unwrap();
     // An agent the daemon finds on PATH.
@@ -114,20 +114,16 @@ fn a_test_daemon_leaves_the_person_s_state_alone() {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
-        // The private projects.toml has no Skiff agent: `skiff skipper` starts none.
-        let off = skipper::open(&c, skipper::Open::Start).await.unwrap_err().to_string();
-        assert!(off.contains("is off"), "{off}");
-
         // A copy of the person's file that names the live folder is refused.
         std::fs::create_dir_all(private.join("config")).unwrap();
         let file = private.join("config/projects.toml");
-        std::fs::write(&file, format!("[skiff_agent]\nenabled = true\nfolder = \"{}\"\n", home.join("skiff-agent").display())).unwrap();
+        std::fs::write(&file, format!("[skiff_agent]\nfolder = \"{}\"\n", home.join("skiff-agent").display())).unwrap();
         let refused = skipper::open(&c, skipper::Open::Start).await.unwrap_err().to_string();
         assert!(refused.contains("folder of the live Skiff agent"), "{refused}");
         assert!(c.list_sessions().await.unwrap().iter().all(|s| !s.coordinator));
 
         // With no folder named, its Skiff agent starts in the private folder.
-        std::fs::write(&file, "[skiff_agent]\nenabled = true\n").unwrap();
+        std::fs::write(&file, "[skiff_agent]\n").unwrap();
         let found = skipper::open(&c, skipper::Open::Start).await.unwrap().unwrap();
         assert_eq!(found.session.cwd, private.join("skiff-agent"));
         assert!(private.join("skiff-agent/AGENTS.md").is_file());
