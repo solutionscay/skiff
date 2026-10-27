@@ -59,12 +59,13 @@ let version = 0;
 /** What the Changes section and the counts draw for `w`, as a string. Equal strings mean an equal section. */
 export const changesSig = (w: Worktree) => `${shown.has(w.path) ? "open" : "closed"}:${version}`;
 
-/** Keeps the list when the read brought the same one, so the sidebar does not rebuild. */
-function store(wt: string, list: Change[]) {
+/** Keeps the list when the read brought the same one, so the sidebar does not rebuild. True on a change. */
+function store(wt: string, list: Change[]): boolean {
   const known = lists.get(wt);
-  if (known && JSON.stringify(known) === JSON.stringify(list)) return;
+  if (known && JSON.stringify(known) === JSON.stringify(list)) return false;
   lists.set(wt, list);
   version++;
+  return true;
 }
 
 function load(wt: string) {
@@ -73,10 +74,10 @@ function load(wt: string) {
   invoke<Change[]>("git_changes", { path: wt })
     // Not a repository, or git is missing: the worktree shows no changes.
     .catch((): Change[] => [])
-    .then((list) => store(wt, list))
-    .finally(() => {
+    .then((list) => {
       loading.delete(wt);
-      scheduleRender("git");
+      // Each turn that ends reads its worktrees again, mostly to the same list.
+      if (store(wt, list)) scheduleRender("git");
     });
 }
 

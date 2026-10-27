@@ -381,6 +381,9 @@ export function onEvent(e: DaemonEvent) {
     case "groups_changed":
       void loadGroups();
       return;
+    // The state event before it brought the idle state, and session_updated the unread mark.
+    case "turn_ended":
+      return;
   }
   scheduleRender(`event.${e.event}`);
 }
