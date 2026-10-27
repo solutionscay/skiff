@@ -74,6 +74,9 @@
 
 /* Settings › Images: a tool row, then the gallery. Tiles touch, with 1px rules between them. */
 .img-page { overflow: hidden; }
+/* In Settings a section head is a 40px band, as .set-band. */
+.img-page .lib-sec { height: var(--row); padding: 0 calc(12 * var(--u)); background: var(--bg-raised); font-weight: 600; letter-spacing: 0.08em; color: var(--text-2); }
+.img-page .lib-sec span { color: var(--text-3); font-size: calc(12px * var(--zoom, 1)); }
 .img-tools { height: var(--row); flex-shrink: 0; display: flex; border-bottom: 1px solid var(--rule); }
 .img-tools .lib-head { flex: 1; min-width: 0; border-bottom: 0; }
 .img-tools .lib-search:focus { box-shadow: inset 0 -1px 0 var(--text-3); }

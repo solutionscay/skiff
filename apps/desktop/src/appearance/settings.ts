@@ -13,7 +13,7 @@ import { peekText } from "../terminal/peek";
 import { fileSize } from "./taskTypes";
 import { confirmAction } from "../ui/confirm";
 import { changeSkiffFolder } from "./skiffFolderDialog";
-import { rowTable, tableState } from "./rowTable";
+import { rowTable, sectionHead, tableState } from "./rowTable";
 import { countDisk, diskState, diskUseSection } from "./diskUse";
 import { imagesSection, imagesState } from "./imagesPage";
 import { onImagesChanged } from "../terminal/images";
@@ -258,7 +258,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
           return status;
         },
         // − takes any agent away that nothing starts: a default goes to `[agents] removed`. An empty command does not remove.
-        kept: (a) => a.used_by ?? null,
+        // "Used by Skipper and 3 more" shows as "Skipper +3" in the STATUS cell.
+        kept: (a) => a.used_by?.replace(/^Used by /, "").replace(/ and (\d+) more$/, " +$1") ?? null,
         checkEdit: (a, key, v) => (key === "command" && a.custom && !v ? `A custom agent needs a command. Press − to remove ${a.id}.` : null),
         add: async (d) => {
           const err = await agentEdit("set_agent_command", { agent: d.name, command: d.command });
@@ -283,9 +284,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   /** The words that make up the names of new agent sessions. */
   function callSigns(): HTMLElement {
     const box = h("div", "set-names-box");
-    const head = h("div", "set-head");
-    head.append(h("div", "set-h", "Agent names"));
-    box.appendChild(head);
+    box.appendChild(sectionHead("Agent names"));
     const cols = h("div", "set-names-cols");
     for (const [list, label] of [["ranks", "TITLES"], ["nouns", "NAMES"]] as const) {
       const col = h("div", "set-names-col");
