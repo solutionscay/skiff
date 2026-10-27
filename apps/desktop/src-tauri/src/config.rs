@@ -315,9 +315,11 @@ pub(crate) async fn local_agents(app: &App) -> Result<Vec<AgentInfo>, String> {
     };
     blocking(move || {
         let cfg = config::load()?.agents;
-        Ok(skiff_core::project::agents_in(&cfg, |id, command| {
+        let mut list = skiff_core::project::agents_in(&cfg, |id, command| {
             daemon.iter().find(|a| a.id == id && a.command == command).map(|a| a.installed)
-        }))
+        });
+        skiff_core::project::mark_used(&mut list);
+        Ok(list)
     })
     .await
 }

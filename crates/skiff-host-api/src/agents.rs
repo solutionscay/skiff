@@ -18,6 +18,10 @@ pub struct HostAgent {
     pub installed: bool,
     /// Offered to start. Only an installed agent is enabled.
     pub enabled: bool,
+    /// What starts it on the Host, from its config: "Used by task type
+    /// review". It cannot be removed then. Absent: nothing, or an older Host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub used_by: Option<String>,
 }
 
 /// One change to the Host's `[agents]` table (`agent_config@1`).

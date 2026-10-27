@@ -153,6 +153,7 @@ pub fn project_agent(value: AgentInfo) -> HostAgent {
         custom,
         installed,
         enabled,
+        used_by,
     } = value;
     HostAgent {
         id,
@@ -161,6 +162,7 @@ pub fn project_agent(value: AgentInfo) -> HostAgent {
         custom,
         installed,
         enabled,
+        used_by,
     }
 }
 
@@ -172,6 +174,7 @@ pub fn restore_agent(value: HostAgent) -> AgentInfo {
         custom,
         installed,
         enabled,
+        used_by,
     } = value;
     AgentInfo {
         id,
@@ -180,5 +183,22 @@ pub fn restore_agent(value: HostAgent) -> AgentInfo {
         custom,
         installed,
         enabled,
+        used_by,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_agent_in_use_says_so_through_the_host_contract() {
+        let a = AgentInfo { id: "grok".into(), command: "grok".into(), default_command: "grok".into(), custom: false, installed: true, enabled: true, used_by: Some("Used by task type web-research".into()) };
+        let wire = serde_json::to_value(project_agent(a.clone())).unwrap();
+        assert_eq!(wire["used_by"], "Used by task type web-research");
+        assert_eq!(restore_agent(serde_json::from_value(wire).unwrap()), a);
+        // An older Host sends no line: the agent reads as free.
+        let old: HostAgent = serde_json::from_value(serde_json::json!({ "id": "grok", "command": "grok", "installed": true, "enabled": true })).unwrap();
+        assert_eq!(restore_agent(old).used_by, None);
     }
 }

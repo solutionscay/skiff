@@ -217,7 +217,9 @@ async fn live() -> (agent_folder::Panes, Option<SessionInfo>) {
 /// The agents as this Host's skiffd lists them: installed from its PATH.
 async fn agents() -> Result<Vec<skiff_host_api::HostAgent>, Error> {
     let c = connect().await?;
-    let list = tokio::time::timeout(SESSIONS_TIMEOUT, c.list_agents()).await.map_err(|_| Error::TimedOut)?.map_err(failed)?;
+    let mut list = tokio::time::timeout(SESSIONS_TIMEOUT, c.list_agents()).await.map_err(|_| Error::TimedOut)?.map_err(failed)?;
+    // What uses each agent comes from this Host's config, whatever its skiffd build.
+    skiff_core::project::mark_used(&mut list);
     Ok(list.into_iter().map(project_agent).collect())
 }
 

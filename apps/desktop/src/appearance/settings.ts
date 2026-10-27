@@ -215,7 +215,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     // A Host whose Skiff is too old to take changes: its agents, read-only.
     if (isRemote() && !hostCan("agent_config")) {
       const rows = agents.map((a) => h("div", "set-note mono", `${a.id}: ${a.command} (${a.installed ? (a.enabled ? "on" : "off") : "not on PATH"})`));
-      main.append(intro, h("div", "set-note", `The agents on ${hostName()}, from its PATH and its projects.toml. Its Skiff is too old to change them from here: update Skiff on ${hostName()}.`), ...(rows.length ? rows : [h("div", "set-note", "No agents.")]));
+      main.append(intro, h("div", "set-note", `Skiff on ${hostName()} is older than this app. Its agents are read-only.`), ...(rows.length ? rows : [h("div", "set-note", "No agents.")]));
       if (error) main.appendChild(h("div", "set-error", error));
       root.replaceChildren(nav, main, closeButton());
       return;
@@ -228,15 +228,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       back.addEventListener("click", () => void editAgents("restore_agents"));
       intro.appendChild(back);
     }
-    main.append(
-      intro,
-      agentTable(),
-      h(
-        "div",
-        "set-note",
-        "An empty command runs the default. The agent then asks before it acts, as it ships. A flag that skips those prompts, such as codex --yolo, is your choice: add it to the command.",
-      ),
-    );
+    main.append(intro, agentTable());
     if (error) {
       const err = h("div", "set-error", error);
       err.setAttribute("role", "alert");
@@ -247,7 +239,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   }
 
   /** The agents Skiff ships with. Restore defaults brings back any the user removed. */
-  const DEFAULT_AGENTS = ["claude", "codex", "gemini", "grok", "opencode", "hermes"];
+  const DEFAULT_AGENTS = ["claude", "codex", "gemini", "grok", "opencode", "hermes", "kimi"];
 
   /** One row per agent: its switch, name, command and status. The draft row adds a custom agent. */
   function agentTable(): HTMLElement {
@@ -299,7 +291,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
           status.append(h("span", "sq"), a.installed ? "installed" : "not on PATH");
           return status;
         },
-        // Remove takes a custom agent away. An empty command does not. On a known agent it restores the default.
+        // − takes any agent away that nothing starts: a default goes to `[agents] removed`. An empty command does not remove.
+        kept: (a) => a.used_by ?? null,
         checkEdit: (a, key, v) => (key === "command" && a.custom && !v ? `A custom agent needs a command. Press − to remove ${a.id}.` : null),
         add: async (d) => {
           const err = await agentEdit("set_agent_command", { agent: d.name, command: d.command });
@@ -351,7 +344,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const intro = h("div", "set-head");
     intro.append(
       h("div", "set-h", "Appearance"),
-      h("div", "set-sub", "App theme. Colors the app and every project and session without a theme of its own."),
+      h("div", "set-sub", "App theme"),
     );
     const cur = look.current() ?? null;
     const cards = h("div", "set-cards");
@@ -576,8 +569,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     // A Host whose Skiff is too old to take changes: its Skiff agent, read-only.
     if (isRemote() && !hostCan("skipper_config")) {
       main.append(h("div", "set-note", agentSet
-        ? `The Skiff agent on ${hostName()}, from its projects.toml. Its Skiff is too old to change it from here: update Skiff on ${hostName()}.`
-        : `${hostName()} does not offer Skiff agent settings. Its Skiff is too old, or its skiff-host does not run: use Update Skiff… on its row in Settings › Hosts.`));
+        ? `Skiff on ${hostName()} is older than this app. Its Skiff agent is read-only.`
+        : `${hostName()} does not offer Skiff agent settings.`));
       if (agentSet) {
         const a = agentSet;
         main.append(

@@ -179,7 +179,7 @@ export function createHostsTab(redraw: () => void) {
     const words = h("div", "set-head-words");
     const title = h("div", "set-h", "Hosts");
     title.id = "set-h-hosts";
-    words.append(title, h("div", "set-sub", "Pick the shown Host in the top bar."));
+    words.append(title);
     const add = button("set-add ready", "Add SSH Host…", () => {
       form = newForm(null);
       redraw();
@@ -195,7 +195,7 @@ export function createHostsTab(redraw: () => void) {
     table.append(cols, hostRow(null));
     for (const x of knownHosts()) table.append(hostRow(x));
     main.append(table);
-    if (!knownHosts().length) main.append(h("div", "set-note set-line", "No servers yet. Add one from your SSH config."));
+    if (!knownHosts().length) main.append(h("div", "set-note set-line", "No servers yet."));
     if (error) main.append(alert(error));
     return main;
   }
@@ -717,7 +717,7 @@ export function createHostsTab(redraw: () => void) {
     dest.setAttribute("list", list.id);
     dest.addEventListener("input", () => lookup(f));
     main.append(fieldRow("Server", dest, list));
-    const said = h("div", "set-note set-line set-resolve" + (line.bad ? " bad" : ""), line.text || "User and port come from your SSH config.");
+    const said = h("div", "set-note set-line set-resolve" + (line.bad ? " bad" : ""), line.text);
     said.id = "set-resolve";
     main.append(said);
 
