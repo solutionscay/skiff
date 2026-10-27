@@ -39,7 +39,7 @@ export function scheduleRender(cause = "other") {
   if (pointerDown || renderTimer !== undefined) return;
   renderTimer = window.setTimeout(() => {
     renderTimer = undefined;
-    if (renderQueued && !pointerDown) render();
+    if (renderQueued && !pointerDown) step("render", renderAll);
   }, RENDER_MS);
 }
 
