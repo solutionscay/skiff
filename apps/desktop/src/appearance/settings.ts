@@ -282,7 +282,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
             mono: true,
             required: true,
             // A known agent shows its default as the placeholder. A custom one has no default.
-            placeholder: (a) => (a ? a.default_command : "command, for example aider --model sonnet"),
+            placeholder: (a) => (a ? a.default_command : "command"),
             get: (a) => (a.custom || a.command !== a.default_command ? a.command : ""),
           },
         ],
