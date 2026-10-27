@@ -275,7 +275,7 @@ window.addEventListener("focus", () => {
 });
 // The focused pane is in front of the user again: its result is seen.
 window.addEventListener("focus", () => {
-  if (S.focused) scheduleRender();
+  if (S.focused) scheduleRender("focus");
 });
 
 /**
@@ -382,7 +382,7 @@ export function onEvent(e: DaemonEvent) {
       void loadGroups();
       return;
   }
-  scheduleRender();
+  scheduleRender(`event.${e.event}`);
 }
 
 /** The daemon pruned the session from its groups; groups_changed brings them. Here the view drops it at once. */

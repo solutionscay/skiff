@@ -86,7 +86,7 @@ function load(dir: string) {
     })
     .finally(() => {
       reading.delete(dir);
-      render();
+      render("files");
     });
 }
 

@@ -31,8 +31,36 @@ export function step<T>(name: string, fn: () => T): T {
   try {
     return fn();
   } finally {
-    if (hooks) steps.push({ name, start, end: performance.now() });
+    if (hooks) {
+      const end = performance.now();
+      steps.push({ name, start, end });
+      const t = stepTimes.get(name);
+      if (t) {
+        t[0]++;
+        t[1] += end - start;
+      } else stepTimes.set(name, [1, end - start]);
+    }
   }
+}
+
+/**
+ * Counts an event by name while the trace runs: each render by its cause,
+ * and what the sidebar did with it. The trace writes the counts every 2 s.
+ */
+export function tally(name: string) {
+  if (hooks) tallies.set(name, (tallies.get(name) ?? 0) + 1);
+}
+
+let tallies = new Map<string, number>();
+/** Each step's runs and total ms, stall or not. */
+let stepTimes = new Map<string, [number, number]>();
+
+/** The counts and step times since the last call, and a fresh start. */
+export function takeTallies(): { tally: Map<string, number>; steps: Map<string, [number, number]> } {
+  const t = { tally: tallies, steps: stepTimes };
+  tallies = new Map();
+  stepTimes = new Map();
+  return t;
 }
 
 /** Async work that ran `ms` from start to end. */
@@ -45,6 +73,8 @@ export function startStalls(h: Hooks) {
   hooks = h;
   last = 0;
   steps = [];
+  tallies = new Map();
+  stepTimes = new Map();
   document.addEventListener("visibilitychange", reset);
   requestAnimationFrame(frame);
 }

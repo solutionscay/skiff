@@ -7,7 +7,7 @@ Each stage gets count, p50, p90, p99 and max in ms, split into keys typed
 into a quiet session and keys typed while the session was printing, then
 by system load band (low, medium, high: CPU or IO pressure on Linux, the
 load average per core elsewhere). Then the slowest main-thread stalls with
-the steps that ran in them, and slow async work.
+the steps that ran in them, slow async work, and renders per second by cause.
 
 `echo` is split into daemon-in (to skiffd's PTY write), program (the PTY
 write to the first output read) and daemon-out (that read to the page).
@@ -81,6 +81,28 @@ def main():
         print(f"\nSlow work over 50 ms: {len(works)}")
         for w in sorted(works, key=lambda r: -r["ms"])[:10]:
             print(f"  {w['ms']:>7.1f} ms  {w.get('band', ''):<7} {w['work']}")
+    # Counts written every 2 s: renders by cause, and what the sidebar did.
+    tallies = [r for r in lines if "tally" in r]
+    if len(tallies) > 1:
+        secs = (tallies[-1]["at"] - tallies[0]["at"]) / 1000 + 2
+        total = {}
+        for r in tallies:
+            for k, v in r["tally"].items():
+                total[k] = total.get(k, 0) + v
+        print(f"\nCounts over {secs:.0f} s, per second:")
+        for k, v in sorted(total.items(), key=lambda kv: (kv[0].split(".")[0], -kv[1])):
+            print(f"  {k:<32} {v:>7} {v / secs:>8.2f}/s")
+        steps = {}
+        for r in tallies:
+            for k, (n, ms) in r.get("steps", {}).items():
+                a = steps.setdefault(k, [0, 0.0])
+                a[0] += n
+                a[1] += ms
+        if steps:
+            print("\nSteps, stall or not:")
+            print(f"  {'step':<32} {'runs':>7} {'per s':>7} {'ms/run':>7} {'ms/min':>8}")
+            for k, (n, ms) in sorted(steps.items(), key=lambda kv: -kv[1][1]):
+                print(f"  {k:<32} {n:>7} {n / secs:>7.2f} {ms / n:>7.2f} {ms / secs * 60:>8.1f}")
     # A WebGL renderer attached to a pane, against a bare context.
     gls = [r["gl"] for r in lines if "gl" in r]
     probes = [r["glprobe"] for r in lines if "glprobe" in r]

@@ -121,5 +121,5 @@ export async function loadGroups() {
   const ids = shownIds();
   if (S.focused && !ids.includes(S.focused)) S.focused = ids.find((x) => !isSlot(x)) ?? null;
   if (was && !S.activeGroup && !S.single) inBackground(unfocus);
-  else render();
+  else render("groups");
 }

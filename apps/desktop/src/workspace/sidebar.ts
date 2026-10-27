@@ -37,7 +37,7 @@ import { render } from "../app/renderRequest";
 import { projectsPlus, renderWorkspaceStatus, shows, workspaceOpen } from "./profile";
 import { ledgerCounts, ledgerNeeds, ledgerWorkTitle } from "./ledger";
 import { fleetScope, fleetSkipperOf, projectSkipperOf, projectWatch, openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, syncSkiffAgent } from "../app/skiffAgent";
-import { step } from "../diagnostics/stalls";
+import { step, tally } from "../diagnostics/stalls";
 
 /** 20px lines, flush against whatever follows. */
 function sessionBlock(lines: Line[], color: string): HTMLElement {
@@ -253,8 +253,9 @@ export function renderSidebar() {
   syncSkiffAgent();
   openToFocused();
   const sig = step("render.sidebar.sig", sidebarSig);
-  if (lastSig === sig.all) return;
+  if (lastSig === sig.all) return tally("sidebar.same");
   lastSig = sig.all;
+  tally("sidebar.drawn");
   // Keep focus and the selected range in an inline control across re-renders,
   // so a render while a rename is open does not undo its select-all.
   const active = document.activeElement as HTMLElement | null;
@@ -277,7 +278,7 @@ export function renderSidebar() {
   const sigs = new Map<string, string>();
   const keep = (key: string, sig: string, build: () => HTMLElement) => {
     const old = blocks.get(key);
-    const el = old && blockSigs.get(key) === sig ? old : build();
+    const el = old && blockSigs.get(key) === sig ? old : (tally("sidebar.block"), build());
     next.set(key, el);
     sigs.set(key, sig);
     return el;

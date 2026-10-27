@@ -23,7 +23,8 @@
  * streaming program makes `echo` include other output. Each line also holds
  * the system load (`cpu`, `io`, `load`, and the `band` from them) and the
  * `build` of the app and skiffd. Main-thread stalls and slow async work go
- * in lines of their own (see stalls.ts). scripts/latency.py summarizes the
+ * in lines of their own (see stalls.ts), and so do the counts of renders by
+ * cause and each step's runs and total ms, every 2 s (`tally`, `steps`). scripts/latency.py summarizes the
  * file; Help → Copy latency report summarizes this run.
  */
 import { invoke } from "@tauri-apps/api/core";
@@ -32,7 +33,7 @@ import { button, h } from "../ui/dom";
 import { showError } from "../ui/alerts";
 import { scheduleRender } from "../app/render";
 import { S } from "../app/state";
-import { startStalls, stopStalls, type StepTime } from "./stalls";
+import { startStalls, stopStalls, takeTallies, type StepTime } from "./stalls";
 
 interface Entry {
   sid: string;
@@ -291,6 +292,9 @@ function done(e: Entry) {
 }
 
 function flush() {
+  const { tally, steps } = takeTallies();
+  const ms = [...steps].map(([k, [n, t]]) => [k, [n, Math.round(t * 10) / 10]]);
+  if (tally.size || steps.size) lines.push(JSON.stringify({ at: Date.now(), tally: Object.fromEntries(tally), steps: Object.fromEntries(ms) }));
   if (!lines.length) return;
   const out = lines;
   lines = [];
@@ -315,7 +319,7 @@ let indicatorEl: HTMLButtonElement | null = null;
 function indicator() {
   indicatorEl ??= button("status-item trace-indicator", "", () => {
     stopTrace();
-    scheduleRender();
+    scheduleRender("trace");
   });
   indicatorEl.title = "Stop latency trace";
   indicatorEl.replaceChildren(h("span", "dot"), h("span", "", `Latency trace · ${rows.length} keys`));

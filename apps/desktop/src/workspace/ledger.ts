@@ -142,7 +142,7 @@ export async function loadLedger() {
     error = String(e);
   }
   loaded = true;
-  render();
+  render("ledger");
 }
 
 /** Reads the ledger now and on each change. main.ts calls it once. */
@@ -408,7 +408,7 @@ function slide() {
   slideEnd = window.setTimeout(() => {
     panel.classList.remove("sliding");
     folding = false;
-    render();
+    render("ledger.slide");
     releaseFits();
   }, SLIDE_MS + 40);
 }

@@ -76,7 +76,7 @@ function load(wt: string) {
     .then((list) => store(wt, list))
     .finally(() => {
       loading.delete(wt);
-      scheduleRender();
+      scheduleRender("git");
     });
 }
 
