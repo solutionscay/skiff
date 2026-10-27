@@ -26,7 +26,7 @@ them to suit the work.
 
 ## How it works
 
-You add a project (a Git repository), make worktrees in it, and start agent or shell sessions in each worktree. Sessions can sit side by side in a named group. A project, a group and a session can each have a terminal theme.
+You add a project (a Git repository, or a plain folder), make worktrees in it, and start agent or shell sessions in each worktree. A plain folder has no worktrees or changes; its sessions start in the folder. Sessions can sit side by side in a named group. A project, a group and a session can each have a terminal theme.
 
 Skiff does not edit files. Each worktree lists its changed files and its file tree. Select a changed file and its diff shows in the main area. Select a file and its preview shows there. Press Enter to open the file in the app you choose under Settings › Open with (see the [wiki](https://github.com/solutionscay/skiff/wiki/Open-with)), or to show a folder in your file manager. Each Open with row says where it opens: in the peek for a terminal tool, or as an app. `skiff open-with ls` and `skiff open-with set` read and set the same rows. If a program is missing, Skiff names it. There are no plugins, no hooks into agent configs, and no automations. Settings live in one file, `projects.toml`.
 
