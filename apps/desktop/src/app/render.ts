@@ -1,5 +1,5 @@
 /** render() and the throttled render for daemon events. */
-import { syncMenu } from "./commands";
+import { syncMenuSoon } from "./commands";
 import { host } from "../terminal/terminalHost";
 import { applyTabOrder } from "./keyboard";
 import { syncPreview } from "../terminal/peek";
@@ -95,7 +95,7 @@ function renderAll() {
   step("render.tabs", applyTabOrder);
   // The current row may have changed: a preview whose row it no longer is ends.
   step("render.preview", syncPreview);
-  step("render.menu", syncMenu);
+  syncMenuSoon();
   savePlace({
     project: S.selectedProject,
     session: S.focused,
