@@ -158,8 +158,12 @@ this codebase uses for its own screen areas, session-tree contents, and keyboard
 
 ```
 cd apps/desktop && pnpm install && pnpm tauri dev
-cargo test --workspace
+CARGO_BUILD_JOBS=8 cargo test -p CRATE TEST_NAME
 ```
+
+During a task, run only the tests for the code you changed. The full suite
+(`cargo test --workspace`) runs one time, on the release commit. See
+[AGENTS.md](AGENTS.md#testing).
 
 `pnpm tauri dev` builds `skiffd` first, then the app, and puts both in `target/debug`.
 
