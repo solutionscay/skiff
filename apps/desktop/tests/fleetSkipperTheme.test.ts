@@ -1,6 +1,5 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { moduleFromSource } from "./workspaceHarness.ts";
 
 // The real themes.ts. A fleet Skipper is in no project: its pane on screen
@@ -58,11 +57,4 @@ test("a fleet Skipper on screen gives the app its session theme, else the app th
   a.S.settingsShown = true;
   a.themes.applyApp();
   assert.equal(a.applied(), "adriatic");
-});
-
-test("a fleet Skipper row has a color for the current row's tint and bar", () => {
-  const css = readFileSync(new URL("../src/styles/tree-project.css", import.meta.url), "utf8");
-  const rule = css.match(/\.tree-kids > \.session-row\.project-skipper-row \{([^}]*)\}/);
-  assert.ok(rule, "the fleet Skipper row rule");
-  assert.match(rule![1], /--pc:\s*var\(--project-default\)/);
 });

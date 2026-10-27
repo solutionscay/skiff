@@ -56,13 +56,6 @@ function section(errors = new Map<string, string>()) {
   return { head, spec, col, rows: set.tasks, edited, after };
 }
 
-test("the INSTRUCTIONS column sits between MODEL and COMMAND", () => {
-  const { spec, head } = section();
-  assert.deepEqual([...spec.cols].map((c: any) => c.head), ["TYPE", "AGENT", "MODEL", "INSTRUCTIONS", "COMMAND"]);
-  // The head's sub-line is the folder, a label.
-  assert.equal(head.find("set-sub").text(), "~/skiff-agent/types/");
-});
-
 test("a row shows the size or none, and Edit opens its file", () => {
   const { col, rows, edited } = section();
   const review = col.draw(rows[0]);

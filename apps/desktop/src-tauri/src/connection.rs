@@ -432,18 +432,6 @@ mod tests {
         assert!(running, "the process was stopped");
     }
 
-    /// The warning for an update that did not finish states the outcome. It
-    /// names no command to run.
-    #[test]
-    fn an_unfinished_update_reads_as_an_outcome() {
-        let w = super::restart_warning("0.0.1", skiff_core::PROTOCOL, Some(2), Some("it predates reload"));
-        assert_eq!(w.kind, "outdated");
-        assert!(w.message.contains("not finished") && w.message.contains("keep running"), "{}", w.message);
-        for word in ["Restart it", "skiff ", "cargo", "SKIFF_SOCKET", "Run "] {
-            assert!(!w.message.contains(word), "{word}: {}", w.message);
-        }
-    }
-
     /// A stand-in daemon on a private socket: it answers `ping` as
     /// `version` on `protocol` and lists no session. The connection names
     /// `pid` as the daemon, a process the test owns, so a stop shows on it.

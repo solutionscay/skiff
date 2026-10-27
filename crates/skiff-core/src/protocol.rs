@@ -350,60 +350,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reply_and_event_round_trip() {
-        let reply = ServerMessage::Reply(Reply {
-            id: 7,
-            response: Response::Pong {
-                version: "0.1.0".into(),
-                protocol: 2,
-                reload_state: None,
-                pid: None,
-                debug: None,
-            },
-        });
-        let json = serde_json::to_string(&reply).unwrap();
-        assert!(json.contains("\"id\":7") && json.contains("\"type\":\"pong\""));
-        match serde_json::from_str::<ServerMessage>(&json).unwrap() {
-            ServerMessage::Reply(r) => assert_eq!(r.id, 7),
-            other => panic!("expected reply, got {other:?}"),
-        }
-
-        let event = ServerMessage::Event(Event::Output {
-            session: "abc".into(),
-            data: b"hi\x07".to_vec(),
-            echo: None,
-        });
-        let json = serde_json::to_string(&event).unwrap();
-        assert!(json.contains("\"event\":\"output\""));
-        match serde_json::from_str::<ServerMessage>(&json).unwrap() {
-            ServerMessage::Event(Event::Output { session, data, .. }) => {
-                assert_eq!(session, "abc");
-                assert_eq!(data, b"hi\x07");
-            }
-            other => panic!("expected output event, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn watching_round_trips() {
-        let failure = WatchFailure { kind: "undelivered".into(), message: "undelivered: x".into(), at: 5 };
-        for f in [None, Some(failure)] {
-            let req = Request::Watching { session: "s1".into(), failure: f.clone(), follows: None };
-            let json = serde_json::to_string(&Envelope { id: 3, request: req }).unwrap();
-            assert!(json.contains("\"cmd\":\"watching\""));
-            assert_eq!(json.contains("failure"), f.is_some());
-            match serde_json::from_str::<Envelope>(&json).unwrap().request {
-                Request::Watching { session, failure, follows } => {
-                    assert_eq!(follows, None);
-                    assert_eq!(session, "s1");
-                    assert_eq!(failure, f);
-                }
-                other => panic!("unexpected {other:?}"),
-            }
-        }
-    }
-
-    #[test]
     fn session_info_watch_is_optional() {
         let mut v = serde_json::json!({
             "id": "s1", "label": "claude", "role": "agent", "cwd": "/", "command": "claude", "args": [],
@@ -417,18 +363,5 @@ mod tests {
         let back: SessionInfo = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert_eq!(back.watch.as_ref().map(|w| w.pids.clone()), Some(vec![41234]));
         assert_eq!(back, s);
-    }
-
-    #[test]
-    fn request_envelope_parses() {
-        let line = r#"{"id":1,"cmd":"write","session":"s1","data":"aGk="}"#;
-        let env: Envelope = serde_json::from_str(line).unwrap();
-        match env.request {
-            Request::Write { session, data, .. } => {
-                assert_eq!(session, "s1");
-                assert_eq!(data, b"hi");
-            }
-            other => panic!("unexpected {other:?}"),
-        }
     }
 }

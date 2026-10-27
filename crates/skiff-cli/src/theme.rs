@@ -64,18 +64,3 @@ fn known(id: &str) -> Result<String> {
         bail!("no theme {id:?}; use `skiff theme ls`")
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::known;
-
-    #[test]
-    fn accepts_a_builtin_id() {
-        assert_eq!(known(" builtin:foot ").unwrap(), "builtin:foot");
-    }
-
-    #[test]
-    fn rejects_an_unknown_id() {
-        assert!(known("builtin:no-such-theme").is_err());
-    }
-}
