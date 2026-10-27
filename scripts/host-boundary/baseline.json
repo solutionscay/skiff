@@ -183,7 +183,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "b991f56bfb5a6f8026580f4001dc8581fce18d50dded879b1fdae6b58f2e047d"
+    "sha256": "bdd9ecec383fca078c0dcf4714ca45d7607c8f3fcfcda199052d84eb2b29605a"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -232,7 +232,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "711d6e801e3c72548706f678f4933814329d476a4986179a33a8d92d1ff216bd"
+    "sha256": "cdcb3b32a52cde1af4bca719c6f7221046ee940ed5b38dc1a4ad980038651d2b"
   },
   "apps/desktop/src-tauri/src/streaming.rs": {
     "ownership": "M1e terminal output via selected Host session_terminal@1; M1d page session events via selected Host; core Event only for the page channel type",
@@ -408,7 +408,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "02f82a568e35af16c5d63820508fbd9443618169d452ade8b8d241dbc87b6286"
+    "sha256": "aa062f47f6747aae7484d1891d79a6fee6bac8323c0eaf4be22371e272538f0b"
   },
   "apps/desktop/src/app/state.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -503,14 +503,14 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "794abe557e85599235b523eae739b7ff672da2879333b6e6d3b01b1cb2d9a8ff"
+    "sha256": "0322bacfcd32ab71ff7fe6c56e73f31ea214315bbde876aae4642717eecba235"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6; Show in file manager only on This Mac (#166)",
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "afba1dca5ddf3bc00bd0f2acb517b46a98207de03c43cab87c472c4e7fd140e3"
+    "sha256": "252f600f5e78061f0712859cb01847f24f13e5740986242235440a882c4375ef"
   },
   "apps/desktop/src/appearance/skiffFolderDialog.ts": {
     "ownership": "Host caller (#166 R7): folder preview and change through hostInvoke(skipper_config); the system picker and reveal are this client's own, used only on This Mac",
