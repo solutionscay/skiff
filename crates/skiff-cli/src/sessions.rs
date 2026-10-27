@@ -1,6 +1,6 @@
 //! Session commands: ls, new, send, rename, kill.
 
-use std::{io::Read, path::PathBuf, time::Duration};
+use std::{io::Read, path::{Path, PathBuf}, time::Duration};
 
 use anyhow::{bail, Context, Result};
 use skiff_client::Client;
@@ -9,6 +9,7 @@ use skiff_core::{
     group::Group,
     project::AgentInfo,
     session::{Role, SessionInfo, SessionSpec, SessionState},
+    tasks::Start,
 };
 
 use crate::{callsign::callsign, groups, layout::Side, print, resolve, watch};
@@ -101,15 +102,23 @@ pub async fn spec(c: &Client, o: New) -> Result<SessionSpec> {
     let mut flags = Vec::new();
     let words: Vec<String> = if o.task_type.is_some() || o.agent.is_some() {
         let cfg = skiff_core::config::load();
-        let rows = match o.task_type {
-            Some(_) => cfg.as_ref().map_err(|e| anyhow::anyhow!("{e:#}"))?.skiff_agent.tasks.clone(),
+        // A task type reads its rows and its instruction file in the agent's folder.
+        let (rows, dir) = match o.task_type {
+            Some(_) => {
+                let cfg = cfg.as_ref().map_err(|e| anyhow::anyhow!("{e:#}"))?;
+                (cfg.skiff_agent.tasks.clone(), skiff_client::skipper::folder(cfg)?)
+            }
             None => Default::default(),
         };
         let agents = c.list_agents().await?;
-        let (a, line) = agent_line(&agents, &rows, &o)?;
+        let start = agent_line(&agents, &rows, &o, &dir)?;
+        if !start.env.is_empty() {
+            needs_env(c, start.agent).await?;
+        }
         // The image cache's read flag goes after the model, as one argv word each.
-        flags = cfg.map(|cfg| skiff_client::cache::flags(&cfg, a)).unwrap_or_default();
-        line.split_whitespace().map(String::from).collect()
+        flags = cfg.map(|cfg| skiff_client::cache::flags(&cfg, start.agent)).unwrap_or_default();
+        spec.env = start.env;
+        start.words
     } else {
         o.command
     };
@@ -144,15 +153,17 @@ pub async fn spec(c: &Client, o: New) -> Result<SessionSpec> {
     Ok(spec)
 }
 
-/// The line `--type` or `--agent` starts: the person's command from Settings ›
-/// Agents, else the built-in one, which keeps the agent's permission prompts.
-fn agent_line<'a>(agents: &'a [AgentInfo], rows: &TaskTypes, o: &New) -> Result<(&'a AgentInfo, String)> {
+/// What `--type` or `--agent` starts: the person's command from Settings ›
+/// Agents, else the built-in one, which keeps the agent's permission
+/// prompts. A task type adds its model and its instruction file, read from
+/// the agent's folder `dir`.
+fn agent_line<'a>(agents: &'a [AgentInfo], rows: &TaskTypes, o: &New, dir: &Path) -> Result<Start<'a>> {
     if let Some(t) = &o.task_type {
-        let (a, line) = skiff_core::tasks::start(rows, agents, t, o.model.as_deref())?;
-        if !a.installed {
-            bail!("agent {:?} of task type {t} is not installed: {} is not on skiffd's PATH", a.id, a.command);
+        let start = skiff_core::tasks::start(rows, agents, t, o.model.as_deref(), dir)?;
+        if !start.agent.installed {
+            bail!("agent {:?} of task type {t} is not installed: {} is not on skiffd's PATH", start.agent.id, start.agent.command);
         }
-        return Ok((a, line));
+        return Ok(start);
     }
     let id = o.agent.as_deref().unwrap_or_default();
     let Some(a) = agents.iter().find(|a| a.id == id) else {
@@ -162,7 +173,21 @@ fn agent_line<'a>(agents: &'a [AgentInfo], rows: &TaskTypes, o: &New) -> Result<
     if !a.installed {
         bail!("agent {id:?} is not installed: {} is not on skiffd's PATH", a.command);
     }
-    Ok((a, a.command.clone()))
+    Ok(Start { agent: a, words: a.command.split_whitespace().map(String::from).collect(), env: vec![] })
+}
+
+/// The first skiffd that passes a session its variables. An older one drops
+/// them, and the agent would start without its instruction file.
+const ENV_SINCE: (u64, u64, u64) = (0, 6, 29);
+
+/// Refuses a start that needs variables on a skiffd older than [`ENV_SINCE`].
+async fn needs_env(c: &Client, a: &AgentInfo) -> Result<()> {
+    let info = c.daemon_info().await?;
+    let v: Vec<u64> = info.version.split(['.', '-', '+']).take(3).map(|n| n.parse().unwrap_or(0)).collect();
+    if (v.first().copied().unwrap_or(0), v.get(1).copied().unwrap_or(0), v.get(2).copied().unwrap_or(0)) < ENV_SINCE {
+        bail!("skiffd {} cannot give {} its instruction file. Run `skiff daemon reload`", info.version, a.id);
+    }
+    Ok(())
 }
 
 /// `name`, else `name 2`, `name 3` and on: the first one no live session uses.
@@ -459,6 +484,7 @@ pub async fn kill(c: &Client, args: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use skiff_core::session::{SessionInfo, SessionState};
+    use std::path::Path;
 
     use super::{agent_line, front_refusal, numbered, refusal, New};
     use skiff_core::{
@@ -477,15 +503,40 @@ mod tests {
     #[test]
     fn new_agent_and_new_type_start_the_persons_command() {
         let rows = TaskTypes(vec![("review".into(), TaskRow { agent: "codex".into(), model: Some("gpt-5".into()) })]);
+        let dir = Path::new("/no/such/skiff-agent");
+        let line = |agents: &[AgentInfo], o: &New| agent_line(agents, &rows, o, dir).unwrap().words.join(" ");
         // The built-in line: no permission bypass.
         let plain = [agent("claude", "claude"), agent("codex", "codex")];
-        assert_eq!(agent_line(&plain, &rows, &new(Some("claude"), None)).unwrap().1, "claude");
-        assert_eq!(agent_line(&plain, &rows, &new(None, Some("review"))).unwrap().1, "codex -m gpt-5");
+        assert_eq!(line(&plain, &new(Some("claude"), None)), "claude");
+        assert_eq!(line(&plain, &new(None, Some("review"))), "codex -m gpt-5");
         // The person's override, with its flags, on both paths.
         let mine = [agent("claude", "claude --dangerously-skip-permissions"), agent("codex", "codex --yolo")];
-        assert_eq!(agent_line(&mine, &rows, &new(Some("claude"), None)).unwrap().1, "claude --dangerously-skip-permissions");
-        assert_eq!(agent_line(&mine, &rows, &new(Some("codex"), None)).unwrap().1, "codex --yolo");
-        assert_eq!(agent_line(&mine, &rows, &new(None, Some("review"))).unwrap().1, "codex --yolo -m gpt-5");
+        assert_eq!(line(&mine, &new(Some("claude"), None)), "claude --dangerously-skip-permissions");
+        assert_eq!(line(&mine, &new(Some("codex"), None)), "codex --yolo");
+        assert_eq!(line(&mine, &new(None, Some("review"))), "codex --yolo -m gpt-5");
+    }
+
+    #[test]
+    fn new_type_gives_the_agent_its_instruction_file() {
+        let dir = std::env::temp_dir().join(format!("skiff-new-type agent-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("types")).unwrap();
+        for t in ["review", "fast", "ui"] {
+            std::fs::write(dir.join(format!("types/{t}.md")), "Review only.").unwrap();
+        }
+        let row = |agent: &str| TaskRow { agent: agent.into(), model: None };
+        let rows = TaskTypes(vec![("review".into(), row("claude")), ("fast".into(), row("gemini")), ("ui".into(), row("opencode")), ("plain".into(), row("gemini"))]);
+        let agents = [agent("claude", "claude"), agent("gemini", "agy"), agent("opencode", "opencode")];
+        let f = dir.join("types/review.md").display().to_string();
+        // The path stays one word: the daemon gets it as one argument.
+        assert_eq!(agent_line(&agents, &rows, &new(None, Some("review")), &dir).unwrap().words, ["claude", "--append-system-prompt-file", f.as_str()]);
+        let ui = agent_line(&agents, &rows, &new(None, Some("ui")), &dir).unwrap();
+        assert_eq!((ui.words, ui.env[0].0.as_str()), (vec!["opencode".to_string()], "OPENCODE_CONFIG_CONTENT"));
+        // An agent with no way to take it: an error, and nothing starts. No file: the plain command.
+        let e = agent_line(&agents, &rows, &new(None, Some("fast")), &dir).unwrap_err().to_string();
+        assert!(e.contains("gemini cannot take an instruction file"), "{e}");
+        assert_eq!(agent_line(&agents, &rows, &new(None, Some("plain")), &dir).unwrap().words, ["agy"]);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

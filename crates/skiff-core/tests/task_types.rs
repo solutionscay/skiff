@@ -59,6 +59,14 @@ fn task_types_round_trip_in_file_order() {
     std::fs::write(&file, text).unwrap();
     assert_eq!(rows(&file)[0].0, "first");
 
+    // PR #164's typed path: read and ignored, and gone at the next write of any setting.
+    let text = std::fs::read_to_string(&file).unwrap().replace("first = { agent = \"codex\" }", "first = { agent = \"codex\", instructions = \"~/x.md\" }");
+    std::fs::write(&file, text).unwrap();
+    assert_eq!(rows(&file)[0].1.agent, "codex");
+    config::set_agent_command("aider2", "aider --model opus").unwrap();
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(!text.contains("instructions") && text.contains("first = { agent = \"codex\" }"), "{text}");
+
     for k in ["first", "design", "review", "test", "docs"] {
         config::remove_task_type(k).unwrap();
     }

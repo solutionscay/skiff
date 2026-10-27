@@ -4,7 +4,7 @@ import type { InstructionFile, SkiffAgentSettings, TaskType } from "../app/skiff
 import { DEFAULT_NAME, skiffAgentChoice } from "../app/skiffAgent";
 import { continueLine } from "../terminal/resume";
 import { rowTable, tableState, type RowTableState } from "./rowTable";
-import { BAD_TASK_TYPE_NAME, modelError, modelFlag, taskCommand, TASK_TYPE_NAME } from "./taskTypes";
+import { BAD_TASK_TYPE_NAME, fileSize, modelError, modelFlag, taskCommand, TASK_TYPE_NAME } from "./taskTypes";
 import { reveal } from "../platform/fileActions";
 import { copyText } from "../platform/clipboard";
 import { showError } from "../ui/alerts";
@@ -275,9 +275,15 @@ function folderRows(set: SkiffAgentSettings, change: () => void): HTMLElement[] 
   return [row, meta];
 }
 
+/** Task types › Edit: opens a row's file. `errors`: one line under a row, by type. */
+export interface TypeFileActs {
+  edit: (t: TaskType) => void;
+  errors: Map<string, string>;
+}
+
 /**
- * Settings › Task types: the agent and model Skipper starts
- * for each kind of task. `save` answers with the error to show, or null.
+ * Settings › Task types: the agent, model and instruction file Skipper
+ * starts for each kind of task. `save` answers with the error to show, or null.
  */
 export function taskTypesSection(
   set: SkiffAgentSettings,
@@ -285,6 +291,7 @@ export function taskTypesSection(
   state: RowTableState,
   save: (e: SkiffAgentEdit) => Promise<string | null>,
   redraw: () => void,
+  files: TypeFileActs,
 ): HTMLElement[] {
   // As the Agent row above: enabled agents and the user's own.
   const choices = agents.filter((a) => a.enabled || a.custom);
@@ -293,10 +300,7 @@ export function taskTypesSection(
   const head = h("div", "set-head");
   const title = h("div", "set-h", "Task types");
   title.id = "set-h-tasks";
-  head.append(
-    title,
-    h("div", "set-sub", "Skipper starts a task of this type with this agent and model. Empty model: the agent's default. A model named in the task wins."),
-  );
+  head.append(title, h("div", "set-sub mono", set.types));
   const row = (t: TaskType, change: Partial<TaskEdit>): TaskEdit => ({ type: t.type, agent: t.agent, model: t.model, ...change });
   const table = rowTable<TaskType>(
     {
@@ -348,6 +352,29 @@ export function taskTypesSection(
           check: modelError,
         },
         {
+          key: "instructions",
+          head: "INSTRUCTIONS",
+          name: "instructions",
+          kind: "lead",
+          draw: (t) => {
+            const cell = h("span", "c-file");
+            const none = t.instructions === null;
+            const state = h("span", "c-state" + (none ? " none" : ""));
+            state.append(h("span", "sq"), none ? "none" : fileSize(t.instructions!));
+            const edit = h("button", "set-rm", "Edit");
+            edit.type = "button";
+            edit.setAttribute("aria-label", `Edit the instructions of ${t.type}`);
+            edit.addEventListener("click", () => files.edit(t));
+            cell.append(state, edit);
+            return cell;
+          },
+          drawDraft: () => {
+            const state = h("span", "c-state none");
+            state.append(h("span", "sq"), "none");
+            return state;
+          },
+        },
+        {
           key: "command",
           head: "COMMAND",
           name: "command",
@@ -369,6 +396,13 @@ export function taskTypesSection(
     state,
     redraw,
   );
+  // One error line under the row it is about.
+  for (const [type, why] of files.errors) {
+    const row = table.querySelector<HTMLElement>(`.set-row[data-id="${CSS.escape(type)}"]`);
+    const meta = h("div", "set-folder-meta", why);
+    meta.setAttribute("role", "alert");
+    row?.after(meta);
+  }
   return [head, table];
 }
 

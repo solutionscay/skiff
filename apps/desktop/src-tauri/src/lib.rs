@@ -93,6 +93,7 @@ pub fn run() {
             cli_path::install_cli,
             skiff_agent::get_skiff_agent,
             skiff_agent::set_skiff_agent,
+            skiff_agent::edit_task_type_file,
             skiff_agent::start_skiff_watch,
             skiff_agent::start_project_skipper,
             skiff_agent::skipper_files,

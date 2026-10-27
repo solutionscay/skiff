@@ -40,6 +40,8 @@ export interface SkiffAgentSettings {
   project_model: string | null;
   /** `[skiff_agent.tasks]` in file order. */
   tasks: TaskType[];
+  /** The folder of the task types' instruction files: `~/skiff-agent/types/`. */
+  types: string;
 }
 
 /** One task type: Skipper starts a task of this type with this agent and model. */
@@ -48,7 +50,11 @@ export interface TaskType {
   agent: string;
   /** Null: the agent's default. Always null for an agent that takes its model in its command. */
   model: string | null;
-  /** The command line skiffd builds. Null when the agent is gone. */
+  /** The type's instruction file, there or not: `types/<type>.md` in the agent's folder. */
+  file: string;
+  /** The file's size in bytes. Null: none (missing, empty, or its `# <type>` line alone). */
+  instructions: number | null;
+  /** The command line skiffd builds. Null when the agent is gone or cannot take the file. */
   command: string | null;
   /** Why the row does not start what it says. */
   error: string | null;

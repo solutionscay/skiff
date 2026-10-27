@@ -149,7 +149,7 @@ pub(crate) fn generic_title(title: &str) -> bool {
     let t = title.trim().to_lowercase();
     matches!(
         t.as_str(),
-        "claude" | "claude code" | "codex" | "openai codex" | "opencode" | "gemini" | "gemini cli" | "antigravity" | "agy" | "grok" | "grok build" | "hermes" | "hermes agent"
+        "claude" | "claude code" | "codex" | "openai codex" | "opencode" | "gemini" | "gemini cli" | "antigravity" | "agy" | "grok" | "grok build" | "hermes" | "hermes agent" | "kimi" | "kimi code"
     )
 }
 
@@ -192,6 +192,7 @@ pub(crate) fn known(name: &str) -> Option<&'static str> {
         "grok" => Some("grok"),
         "opencode" => Some("opencode"),
         "hermes" => Some("hermes"),
+        "kimi" => Some("kimi"),
         _ => None,
     }
 }

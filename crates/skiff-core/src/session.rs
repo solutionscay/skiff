@@ -53,6 +53,11 @@ pub struct SessionSpec {
     pub command: Option<String>,
     #[serde(default)]
     pub args: Vec<String>,
+    /// Variables the program gets on top of the daemon's own, as a task
+    /// type's instruction file for opencode. Not saved: a restore starts a
+    /// shell. An older daemon drops them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub env: Vec<(String, String)>,
     /// A tool the app runs in its peek: not saved, not restored, not listed
     /// as a session. Runs the command as is, with no shell after it.
     #[serde(default)]

@@ -141,6 +141,8 @@ pub struct SkiffAgent {
     project_model: Option<String>,
     /// `[skiff_agent.tasks]` in file order, with the command each row starts.
     tasks: Vec<TaskType>,
+    /// The folder of the task types' instruction files, as `~/…/types/`.
+    types: String,
 }
 
 fn read() -> anyhow::Result<SkiffAgent> {
@@ -159,10 +161,11 @@ fn read() -> anyhow::Result<SkiffAgent> {
         }
         _ => "other",
     };
+    // The command lines come from projects.toml, so the local list builds the same ones skiffd would.
+    let tasks = tasks::resolve(&cfg.skiff_agent.tasks, &skiff_core::project::agents(), &configured);
+    let types = format!("{}/", tasks::tilde(&configured.join(tasks::TYPES)));
     let configured = configured.display().to_string();
     let a = cfg.skiff_agent;
-    // The command lines come from projects.toml, so the local list builds the same ones skiffd would.
-    let tasks = tasks::resolve(&a.tasks, &skiff_core::project::agents());
     Ok(SkiffAgent {
         name: a.name,
         agent: a.agent,
@@ -175,6 +178,7 @@ fn read() -> anyhow::Result<SkiffAgent> {
         project_agent: a.project_agent,
         project_model: a.project_model,
         tasks,
+        types,
     })
 }
 
@@ -234,7 +238,15 @@ pub async fn set_skiff_agent(app: AppHandle, edit: Edit) -> Result<SkiffAgent, S
             Edit::ProjectModel(v) => config::set_skiff_agent(SkiffAgentKey::ProjectModel(v.as_deref()))?,
             Edit::AddTask(t) => config::add_task_type(&t.name, &t.agent, t.model.as_deref())?,
             Edit::Task(t) => config::set_task_type(&t.name, &t.agent, t.model.as_deref())?,
-            Edit::RenameTask { from, to } => config::rename_task_type(&from, &to)?,
+            Edit::RenameTask { from, to } => {
+                // The file moves first: a name a kept file has stops the rename.
+                let dir = skipper::folder(&config::load()?)?;
+                tasks::rename_file(&dir, &from, &to)?;
+                if let Err(e) = config::rename_task_type(&from, &to) {
+                    let _ = tasks::rename_file(&dir, &to, &from);
+                    return Err(e);
+                }
+            }
             Edit::RemoveTask(name) => config::remove_task_type(&name)?,
             Edit::CacheDays(n) => config::set_skiff_agent(SkiffAgentKey::CacheDays(n))?,
         }
@@ -243,6 +255,15 @@ pub async fn set_skiff_agent(app: AppHandle, edit: Edit) -> Result<SkiffAgent, S
     .await?;
     let _ = app.emit(PROJECTS_CHANGED, ());
     Ok(out)
+}
+
+/// Task types › Edit: the type's instruction file, with its stub written
+/// when it is missing. It opens as Settings › Open with › Text files says,
+/// as a Skipper's file does.
+#[tauri::command]
+pub async fn edit_task_type_file(name: String) -> Result<crate::commands::Opened, String> {
+    let path = blocking(move || Ok(tasks::edit_file(&skipper::folder(&config::load()?)?, &name)?)).await?;
+    crate::commands::open_text(path).await
 }
 
 /// Settings › Skippers › Instructions: each Skipper's file and its status.
