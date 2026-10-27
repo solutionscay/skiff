@@ -44,7 +44,7 @@
       "config",
       "skiff_core"
     ],
-    "sha256": "128edf227a46ba7f540ce4ec8986fb6e1693db5167d996ec670707e737639db7"
+    "sha256": "329917ce9a417d02ebd329472e1374f5bb414b8065572e7079f9fe2bfc521d70"
   },
   "apps/desktop/src-tauri/src/config_tests.rs": {
     "ownership": "test only: an in-process skiff-host on private state, never the live config",
@@ -484,7 +484,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "9b226d783a30083aa08977dafed9202fe1cb35907e9a4d93885972874049560a"
+    "sha256": "327bbf0a8634c3742e35d375fbe115acd56dcd8b8b34d5b6675e37b6e274f46b"
   },
   "apps/desktop/src/appearance/imagesPage.ts": {
     "ownership": "legacy local adapter/caller: migrate behind Host API in M1\u2013M6",
@@ -503,7 +503,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "0322bacfcd32ab71ff7fe6c56e73f31ea214315bbde876aae4642717eecba235"
+    "sha256": "9190923c63cc6cf616eb70c81f469e2a83da535126aad5dfa6590d4e9fe6e669"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6; Show in file manager only on This Mac (#166)",
