@@ -218,7 +218,8 @@ pub fn short_name(name: &str) -> String {
 /// What Skiff would add for `dir`, before anything is written.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct FolderInfo {
-    /// The git top level. `None` when `dir` is not in a repository.
+    /// The git top level, or `dir` itself when it is in no repository.
+    /// `None` when the folder cannot be added.
     pub root: Option<PathBuf>,
     pub name: String,
     pub short: String,

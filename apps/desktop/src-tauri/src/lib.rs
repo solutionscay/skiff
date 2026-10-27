@@ -127,7 +127,6 @@ pub fn run() {
             connection::restart_daemon,
             reload::reload_daemon,
             config::inspect_folder,
-            config::init_repository,
             config::set_project_icon,
             config::set_project_short,
             config::set_project_fleet,

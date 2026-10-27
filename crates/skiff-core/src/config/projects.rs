@@ -32,20 +32,21 @@ pub fn inspect_folder(dir: &Path) -> FolderInfo {
         icon: None,
         icon_path: None,
     };
-    let top = match crate::git::toplevel(&expand_home(dir)) {
-        Ok(r) => r,
-        Err(e) => {
-            info.error = Some(format!("{e:#}"));
-            return info;
+    let dir = expand_home(dir);
+    if !dir.is_dir() {
+        info.error = Some(format!("{} is not a folder", dir.display()));
+        return info;
+    }
+    // Not in a repository: the folder itself is a plain project.
+    let (root, worktrees) = match crate::git::toplevel(&dir) {
+        Ok(top) => {
+            // Inside a linked worktree, the project is the main worktree.
+            let worktrees = crate::git::list_worktrees(&top).unwrap_or_default();
+            let root = worktrees.iter().find(|w| w.is_main).map(|w| w.path.clone()).unwrap_or(top);
+            (root, worktrees)
         }
+        Err(_) => (dir.canonicalize().unwrap_or(dir), Vec::new()),
     };
-    // Inside a linked worktree, the project is the main worktree.
-    let worktrees = crate::git::list_worktrees(&top).unwrap_or_default();
-    let root = worktrees
-        .iter()
-        .find(|w| w.is_main)
-        .map(|w| w.path.clone())
-        .unwrap_or(top);
     info.name = root
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
@@ -69,7 +70,8 @@ pub fn inspect_folder(dir: &Path) -> FolderInfo {
     info
 }
 
-/// Appends a `[[project]]` for the git repository that contains `dir`.
+/// Appends a `[[project]]` for the git repository that contains `dir`, or
+/// for `dir` itself when it is in no repository.
 /// Comments and layout in the file are kept. A closed project for that
 /// repository opens again with its own settings; the arguments do not apply.
 pub fn add_project(
