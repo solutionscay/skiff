@@ -6,6 +6,8 @@ mod connection;
 mod commands;
 mod config;
 mod diagnostics;
+mod disk;
+mod drops;
 mod input;
 mod ledger;
 mod quit;
@@ -56,6 +58,7 @@ pub fn run() {
         .setup(|app| {
             std::thread::spawn(cli_path::sync);
             std::thread::spawn(skiff_agent::sync);
+            std::thread::spawn(disk::auto_flush);
             let handle = app.handle().clone();
             std::thread::spawn(move || ledger::watch(handle));
             let Some(window) = app.get_webview_window("main") else { return Ok(()) };
@@ -78,16 +81,32 @@ pub fn run() {
             native_menu::set_window_dark,
             clipboard::clipboard_write,
             clipboard::clipboard_read,
+            drops::drop_files,
+            drops::clipboard_image,
+            drops::images,
+            drops::image_insert,
+            drops::image_pin,
+            drops::image_delete,
+            drops::open_image,
+            drops::agent_cache_flags,
             connection::daemon_status,
             cli_path::install_cli,
             skiff_agent::get_skiff_agent,
             skiff_agent::set_skiff_agent,
             skiff_agent::start_skiff_watch,
+            skiff_agent::start_project_skipper,
+            skiff_agent::start_fleet_skipper,
+            skiff_agent::fleet_takeover_preview,
+            skiff_agent::fleet_takeover,
+            skiff_agent::rename_fleet,
             skiff_agent::skiff_watch_log,
             skiff_agent::open_skiff_agent,
             skiff_agent::preview_skiff_folder,
             skiff_agent::change_skiff_folder,
             ledger::ledger_rows,
+            disk::disk_usage,
+            disk::flush_cache,
+            disk::flush_done,
             commands::list_sessions,
             commands::create_session,
             commands::pty_write,
@@ -158,6 +177,7 @@ pub fn run() {
             commands::session_screen,
             commands::save_group,
             commands::delete_group,
+            commands::order_groups,
             streaming::subscribe_output,
             streaming::ack_output,
             streaming::unsubscribe_output,

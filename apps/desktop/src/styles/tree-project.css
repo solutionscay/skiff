@@ -42,7 +42,7 @@
 .project-row .project-name { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(13px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
 .project-meta { flex-shrink: 0; font-size: calc(11px * var(--zoom, 1)); color: var(--error); }
 .project-row .wt-plus { visibility: hidden; }
-.project-row:hover .wt-plus, .project-row:has(.current) .wt-plus, .project-row .wt-plus[aria-expanded="true"] { visibility: visible; }
+.project-row:hover .wt-plus, .project-row > .current ~ .wt-plus, .project-row .wt-plus[aria-expanded="true"] { visibility: visible; }
 /* The project row is current: the whole row lights, its buttons included. */
 #sidebar-scroll .project-row:has(> .project-pick.current) { background: color-mix(in srgb, var(--pc) 22%, var(--bg-panel)); box-shadow: inset 2px 0 0 var(--pc); }
 #sidebar-scroll .project-pick.current, body.kbd #sidebar-scroll .project-pick.current:focus { background: transparent; box-shadow: none; }
@@ -91,8 +91,10 @@ body.kbd #sidebar-scroll .project-row:has(> .project-pick.current:focus) { outli
   border-top: 1px solid var(--rule-strong);
 }
 #sidebar-scroll > .tree-head:first-child { margin-top: 0; border-top: 0; height: calc(28 * var(--u)); }
-#sidebar-scroll > .tree-head .tree-head-add { height: calc(26 * var(--u)); align-self: flex-end; margin-bottom: calc(-6 * var(--u)); }
-.tree-kids > .tree-project + .tree-project { border-top: 1px solid var(--rule); }
+/* The + fills its cell: from the rule to the row under it, against the right edge. */
+#sidebar-scroll > .tree-head .tree-head-add { height: auto; align-self: stretch; margin-bottom: calc(-6 * var(--u)); }
+.tree-kids > .tree-project { border-top: 1px solid var(--rule); }
+.tree-kids > .tree-project:first-child { border-top: 0; }
 .tree-project .wt-row { height: calc(20 * var(--u)); background: transparent; }
 .tree-project .wt-pick { font-size: calc(12px * var(--zoom, 1)); }
 .tree-project .wt-row .wt-plus { height: calc(20 * var(--u)); }
@@ -127,7 +129,19 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 }
 #sidebar-scroll > .fleet-head .tree-head-add { height: auto; align-self: stretch; margin: 0; visibility: hidden; }
 #sidebar-scroll > .fleet-head:hover .tree-head-add, #sidebar-scroll > .fleet-head .tree-head-add:focus-visible { visibility: visible; }
+/* The ⋯ also shows on the current fleet head and while its menu is open, as on a project row. */
+#sidebar-scroll > .fleet-head .fleet-pick.current ~ .tree-head-more, #sidebar-scroll > .fleet-head .tree-head-more[aria-expanded="true"] { visibility: visible; }
 .fleet-head:hover { color: var(--text-2); }
+/* A fleet that hides its projects: the count of hidden sessions shows them again. */
+.fleet-hidden {
+  flex-shrink: 0; display: flex; align-items: flex-end; padding: 0 calc(8 * var(--u)) calc(6 * var(--u));
+  border: 0; background: transparent; font-family: var(--mono); font-size: calc(11px * var(--zoom, 1)); font-weight: 700; letter-spacing: 0; color: var(--text-dim);
+}
+.fleet-hidden:hover { color: var(--text); background: var(--bg-raised); }
+/* Nothing under the head: no chevron, and the name does not light on hover. */
+#sidebar-scroll > .fleet-head.alone .fleet-pick { cursor: default; color: var(--text-dim); }
+/* The rows still under a fleet that hides its projects line up with its Skipper. */
+.tree-kids > .fleet-shown > .session-row { padding-left: calc(30 * var(--u)); }
 
 /* The Skiff agent (#95): one session row above the projects, in line with the section heads. */
 /* The Skiff agent: a full 40px row, flush at the top. The Projects divider's rule closes it, in line with the pane header. */
@@ -151,3 +165,23 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 }
 @keyframes sk-turn { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .skiff-agent-row.watch-turn .agent-icon { animation: none; } }
+
+/* A project Skipper: the first row of its project block, on the worktree line. The icon sits where a worktree's branch icon does. */
+.tree-project .session-row.project-skipper-row { padding-left: calc(10 * var(--u)); }
+/* A fleet's Skipper: the first row under its fleet head, in line with the project rows' chevrons.
+   A fleet has no color: its Skipper takes the default one, as the Skiff agent's row does. */
+.tree-kids > .session-row.project-skipper-row { padding-left: calc(10 * var(--u)); --pc: var(--project-default); }
+.project-skipper-row .skiff-agent-name { flex-shrink: 0; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
+.project-skipper-row .title { color: var(--text-3); }
+/* Its own watcher, with the Skiff agent row's states: teal while it runs,
+   turning while idle with a followed pane, red when a line failed. */
+.project-skipper-row .agent-icon { position: relative; }
+.project-skipper-row.watch-on .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--watch); }
+.project-skipper-row.watch-on .agent-icon svg [fill]:not([fill="none"]) { fill: var(--watch); }
+.project-skipper-row.watch-error .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--error); }
+.project-skipper-row.watch-error .agent-icon svg [fill]:not([fill="none"]) { fill: var(--error); }
+.project-skipper-row.watch-turn .agent-icon {
+  transform-origin: center; transform-box: fill-box;
+  animation: sk-turn 8s linear var(--turn-delay, 0ms) infinite;
+}
+@media (prefers-reduced-motion: reduce) { .project-skipper-row.watch-turn .agent-icon { animation: none; } }

@@ -296,6 +296,14 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
                 Ok(()) => Response::Ok,
                 Err(e) => error(e),
             },
+            Request::Retire { session } => match pool.retire(&session) {
+                Ok(()) => Response::Ok,
+                Err(e) => error(e),
+            },
+            Request::Rescope { session, scope, name } => match pool.rescope(&session, &scope, &name) {
+                Ok(session) => Response::Session { session },
+                Err(e) => error(e),
+            },
             Request::Seen { session } => match pool.seen(&session) {
                 Ok(()) => Response::Ok,
                 Err(e) => error(e),
@@ -316,6 +324,10 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
                 Err(e) => error(e),
             },
             Request::DeleteGroup { group } => match pool.delete_group(&group) {
+                Ok(()) => Response::Ok,
+                Err(e) => error(e),
+            },
+            Request::OrderGroups { groups } => match pool.order_groups(&groups) {
                 Ok(()) => Response::Ok,
                 Err(e) => error(e),
             },

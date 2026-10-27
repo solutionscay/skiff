@@ -1,6 +1,6 @@
 /** Inline rename of sessions and groups. */
 import { agentIcon } from "../appearance/agentIcon";
-import { agentName, taskTitle } from "./model";
+import { agentName, taskTitle, isProjectSkipper } from "./model";
 import type { Group, SessionInfo } from "../platform/types";
 import { invoke } from "@tauri-apps/api/core";
 import { $, h } from "../ui/dom";
@@ -35,6 +35,9 @@ export function leaveRename() {
 }
 
 export function startSessionRename(id: string) {
+  // A project Skipper's name is derived: the Skiff agent's name and its project. Nothing to type.
+  const s = sessions.get(id);
+  if (s && isProjectSkipper(s)) return;
   rememberRow();
   S.renamingSession = id;
   renameDraft = null;

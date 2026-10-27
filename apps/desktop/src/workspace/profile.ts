@@ -27,7 +27,7 @@ import type { Project } from "../platform/types";
 import { showError } from "../ui/alerts";
 import { ctxMenu } from "../ui/contextMenu";
 import { dialogFrame } from "../ui/dialogParts";
-import { button, h } from "../ui/dom";
+import { button, h, setHidden } from "../ui/dom";
 import type { MenuEntry } from "../ui/menu";
 import { fleetKey, projectKey, treeSections, useTreeView } from "./tree";
 import { selectProject } from "./view";
@@ -914,7 +914,7 @@ function workspaceMenu(at: HTMLElement) {
   // The keys come back to the item: on Esc, and before a pick runs, so its dialog returns them here.
   const back = () => (at.isConnected && !at.hidden ? at : home())?.focus();
   const wrap = (es: MenuEntry[]): MenuEntry[] =>
-    es.map((e) => ("head" in e ? e : { ...e, run: e.run && (() => (back(), e.run!())), sub: e.sub && wrap(e.sub) }));
+    es.map((e) => ("head" in e || "sep" in e ? e : { ...e, run: e.run && (() => (back(), e.run!())), sub: e.sub && wrap(e.sub) }));
   ctxMenu.open(r.left, r.top, doc?.path ?? workspaceName(), wrap(menuEntries()), () => requestAnimationFrame(back));
 }
 
@@ -969,7 +969,7 @@ export function renderWorkspaceStatus() {
   }
   const el = document.getElementById("ws-status");
   if (!el) return;
-  el.hidden = !doc;
+  setHidden(el, !doc);
   if (!doc) return;
   const lost = missing();
   const state = markOf(lost.length);

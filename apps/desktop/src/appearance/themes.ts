@@ -3,7 +3,7 @@ import { DEFAULT_THEME, isLight, mix, readable } from "./colors";
 import { applyAppTheme } from "./appTheme";
 import { sessionsOf } from "../workspace/layout";
 
-import { taskTitle } from "../workspace/model";
+import { scopeFleet, taskTitle } from "../workspace/model";
 import { pickTheme } from "./themeCards";
 import type { Group, Project, SessionInfo, TerminalTheme } from "../platform/types";
 import { invoke } from "@tauri-apps/api/core";
@@ -52,17 +52,41 @@ export function themeIdFor(s: SessionInfo | undefined): string {
 
 let appliedApp: string | undefined;
 
+/** The one pane on screen when it is the Skiff agent's or a fleet Skipper's: a session in no project. */
+function noProject(): SessionInfo | undefined {
+  if (S.activeGroup || !S.single) return undefined;
+  const s = sessions.get(S.single);
+  return s && (s.id === skiffAgentSession()?.id || scopeFleet(s.skipper) !== null) ? s : undefined;
+}
+
 /**
  * The app's own colors: sidebar, top bar, panels. The selected project's theme
- * wins. The Skiff agent has no project row to select: while its pane is on
- * screen, the app takes its terminal's theme.
+ * wins. The Skiff agent and a fleet Skipper have no project row to select:
+ * while one's pane is on screen, the app takes its terminal's theme, its
+ * session theme else the app theme. Settings is app scope: while it shows,
+ * the app wears the app theme, so a pick there shows at once.
  */
 export function applyApp() {
-  const agent = skiffAgentSession();
-  const want = agent && !S.activeGroup && S.single === agent.id ? themeIdFor(agent) : themeFor(currentProject());
+  const want = S.settingsShown ? knownTheme(S.appTheme)
+    : noProject() ? themeIdFor(noProject()!) : themeFor(currentProject());
   if (want === appliedApp) return;
   appliedApp = want;
   applyAppTheme(S.themes.find((t) => t.id === want) ?? null);
+}
+
+/**
+ * The themes that replace the app theme on screen when Settings closes: the
+ * selected project's own, and the focused session's own. Each names its scope.
+ */
+export function themeOverrides(): { id: string; label: string }[] {
+  const out: { id: string; label: string }[] = [];
+  const app = knownTheme(S.appTheme);
+  const p = currentProject();
+  const own = p && projectThemes.get(p.name);
+  if (own && knownTheme(own) !== app) out.push({ id: knownTheme(own), label: `Project: ${p!.name}` });
+  const s = S.focused ? sessions.get(S.focused) : undefined;
+  if (s?.theme && knownTheme(s.theme) !== app) out.push({ id: knownTheme(s.theme), label: `Session: ${taskTitle(s)}` });
+  return out;
 }
 
 /** The theme id the app colors come from. Icons are inked against it. */

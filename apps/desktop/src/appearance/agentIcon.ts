@@ -3,7 +3,7 @@ import { ink } from "./appTheme";
 import { ownTheme, signatureColor } from "./themes";
 import { basename } from "../workspace/model";
 
-export type AgentKind = "claude" | "codex" | "gemini" | "grok" | "opencode" | "shell" | "other";
+export type AgentKind = "claude" | "codex" | "gemini" | "grok" | "opencode" | "hermes" | "shell" | "other";
 
 const BY_PROGRAM: Record<string, AgentKind> = {
   claude: "claude",
@@ -12,6 +12,7 @@ const BY_PROGRAM: Record<string, AgentKind> = {
   agy: "gemini",
   grok: "grok",
   opencode: "opencode",
+  hermes: "hermes",
 };
 const SHELLS = new Set(["bash", "zsh", "fish", "sh", "dash", "nu", "elvish", "xonsh", "ksh", "tcsh"]);
 
@@ -56,6 +57,8 @@ const GLYPHS: Record<AgentKind, string> = {
     '<circle cx="8" cy="8" r="5.8" fill="none" stroke="#e6e8eb" stroke-width="1.8"/><path d="M3.2 12.8L12.8 3.2" stroke="#e6e8eb" stroke-width="1.8" stroke-linecap="round"/>',
   opencode:
     '<path d="M5.5 2.5H2.5v11h3M10.5 2.5h3v11h-3" fill="none" stroke="#e0c07e" stroke-width="1.8" stroke-linecap="square"/>',
+  hermes:
+    '<path d="M8 1.5v13M3 3.5c1.5 1.5 3.5 1.5 5 0 1.5 1.5 3.5 1.5 5 0" fill="none" stroke="#c3a6ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
   shell:
     '<path d="M2.5 4l4 4-4 4M8 12.5h5.5" fill="none" stroke="#9aa3ae" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
   other:

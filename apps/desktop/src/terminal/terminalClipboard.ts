@@ -1,11 +1,16 @@
+import { invoke } from "@tauri-apps/api/core";
+
 import { copyText, pasteText } from "../platform/clipboard";
 
 import { h } from "../ui/dom";
 
 import { showError } from "../ui/alerts";
 
-import { S } from "../app/state";
+import { S, sessions } from "../app/state";
+import { place } from "../app/stateQueries";
+import { taskTitle } from "../workspace/model";
 
+import { signalButton, signalLine } from "./insertSignal";
 import { panes } from "./terminalState";
 
 let copyNoticeTimer: number | undefined;
@@ -35,9 +40,47 @@ export async function copySelection() {
   }
 }
 
+/** What the backend typed for a drop or a paste of files or an image. */
+export interface Typed {
+  text: string;
+  warning: string | null;
+  /** The first library image typed. Null: no image, so no insert signals. */
+  image: string | null;
+}
+
+/** The session that gets an image, as Images shows it: its title and project. */
+export function whoOf(id: string) {
+  const s = sessions.get(id);
+  return { session: id, title: s ? taskTitle(s) : "", project: (s && place(s)?.project.name) ?? null };
+}
+
+/** Types the words as a paste, so an agent attaches a pasted image path.
+ *  Never presses Enter. An image shows the insert signals. */
+export function typeFiles(id: string, t: Typed) {
+  const pane = panes.get(id);
+  if (pane && t.image) {
+    signalLine(pane.term, pane.el);
+    signalButton(id, t.image);
+  }
+  pane?.term.paste(t.text);
+  if (t.warning) showError(t.warning);
+}
+
+/**
+ * Skiff's Paste: text as it is; else a file list as a drop does; else an
+ * image, saved to the cache with its path typed. Bare Ctrl+V stays with the
+ * terminal, where Claude Code and Codex read the clipboard themselves.
+ */
 export async function pasteClipboard() {
-  const pane = S.focused ? panes.get(S.focused) : undefined;
-  if (!pane) return;
+  const id = S.focused;
+  const pane = id ? panes.get(id) : undefined;
+  if (!id || !pane) return;
   const text = await pasteText().catch(() => "");
-  if (text) pane.term.paste(text);
+  if (text) return pane.term.paste(text);
+  try {
+    const t = await invoke<Typed | null>("clipboard_image", { who: whoOf(id) });
+    if (t) typeFiles(id, t);
+  } catch (e) {
+    showError(e);
+  }
 }

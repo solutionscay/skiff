@@ -47,6 +47,10 @@ pub struct Open {
     pub markdown: Option<String>,
     /// Opens `.html` files. Absent: the OS default app.
     pub html: Option<String>,
+    /// Opens images, such as one in the Images library. Absent: the OS
+    /// default app. Never in the peek.
+    #[serde(default)]
+    pub image: Option<String>,
 }
 
 /// `[skiff_agent]`: the one agent session that coordinates the others. The
@@ -66,9 +70,30 @@ pub struct SkiffAgent {
     /// A restored pane continues the last conversation in the folder.
     #[serde(default)]
     pub continue_on_restore: bool,
+    /// The project menu offers Start project Skipper: one Skipper per
+    /// project, in the project's folder.
+    #[serde(default)]
+    pub project_skippers: bool,
+    /// The agent id a project Skipper starts. Absent: the Skipper's agent.
+    /// A project's `skipper_agent` wins over it.
+    pub project_agent: Option<String>,
     /// `[skiff_agent.tasks]`: the agent and model each task type starts.
     #[serde(default, skip_serializing_if = "TaskTypes::is_empty")]
     pub tasks: TaskTypes,
+    /// `cache_days`: at app start, cache files older than this many days go.
+    /// `0`: never. Absent: [`CACHE_DAYS`].
+    pub cache_days: Option<u32>,
+}
+
+/// Cache files older than this many days go at app start, unless
+/// `[skiff_agent] cache_days` says otherwise.
+pub const CACHE_DAYS: u32 = 30;
+
+impl SkiffAgent {
+    /// The age in days at which auto flush removes a cache file. `0`: off.
+    pub fn cache_days(&self) -> u32 {
+        self.cache_days.unwrap_or(CACHE_DAYS)
+    }
 }
 
 /// One `[skiff_agent.tasks]` row: `review = { agent = "claude", model = "opus" }`.
@@ -174,6 +199,9 @@ pub struct ProjectConfig {
     pub closed: bool,
     /// The fleet this project sits in on the rail. Absent: on the rail by itself.
     pub fleet: Option<String>,
+    /// The agent id this project's Skipper starts, in place of
+    /// `[skiff_agent] project_agent`. Only by hand: Settings has no row for it.
+    pub skipper_agent: Option<String>,
 }
 
 impl ProjectConfig {

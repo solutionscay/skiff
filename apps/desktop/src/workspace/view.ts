@@ -1,17 +1,17 @@
 /** What the terminal area shows and which pane has the keys. */
 import { noteSelected } from "./profile";
 import { isSkiffAgent } from "../app/skiffAgent";
-import { beginDrag, type DropTarget } from "./drag";
-import { build, type Direction, leaf, neighbor, removePane, replacePane, sessionsOf, shape, splitPane } from "./layout";
+import { beginDrag, type DropTarget, type RowTarget } from "./drag";
+import { build, type Direction, leaf, neighbor, removePane, replacePane, sessionsOf, shape, splitPane, swapPanes } from "./layout";
 
-import { branchName, bySessionPriority, isUnread, locate, taskTitle } from "./model";
+import { branchName, bySessionPriority, isUnread, locate, scopeFleet, taskTitle } from "./model";
 import type { Group, Layout, Project, SplitDir, Worktree } from "../platform/types";
 import { focusFirstSlot } from "./canvas";
 import { filledOf, isSlot, slot, slotsOf } from "./layoutSlots";
 import { host } from "../terminal/terminalHost";
 import { modalOpen } from "../ui/dom";
 import { showError } from "../ui/alerts";
-import { autoName, deleteGroup, saveGroup } from "../app/groups";
+import { autoName, deleteGroup, moveGroup, saveGroup } from "../app/groups";
 import { render } from "../app/render";
 import { clearSelection } from "./selection";
 import { FULL_HINT, MAX_PANES, OTHER, S, selectedWorktree, sessions } from "../app/state";
@@ -68,11 +68,11 @@ export function focusPane(id: string, grab = true) {
     S.selectedProject = at.project.name;
     selectedWorktree.set(at.project.name, at.worktree.path);
     noteSelected(at.project.name);
-  } else if (s && !isSkiffAgent(id)) {
+  } else if (s && !isSkiffAgent(id) && scopeFleet(s.skipper) === null) {
     S.selectedProject = OTHER;
   }
-  // The Skiff agent is in no project: the project stays as it was, so the
-  // tree does not fall back to the first project and light it.
+  // The Skiff agent and a fleet Skipper are in no project: the project stays
+  // as it was, so the tree does not fall back to the first project and light it.
   render();
   requestAnimationFrame(() => {
     // A right-click focuses the pane, then opens a menu that keeps the keys.
@@ -288,6 +288,8 @@ export function moveFocus(dir: Direction) {
 function dropLayout(t: DropTarget, ids: string[]): Layout | null {
   if (ids.length === 1 && t.session === ids[0]) return null;
   const now = currentLayout();
+  // A pane dropped on the middle of another pane in the same split: the two trade places.
+  if (now && ids.length === 1 && t.zone === "center" && !t.outer && t.session && sessionsOf(now).includes(ids[0])) return swapPanes(now, ids[0], t.session);
   let base = now;
   for (const id of ids) base = removePane(base, id);
   if (sessionsOf(base).length + ids.length > MAX_PANES) return null;
@@ -324,6 +326,13 @@ function dropOn(t: DropTarget, dragged: string[]) {
   const ids = dragged.filter((id) => sessions.has(id));
   if (!ids.length) return;
   if (t.group) return addToGroup(t.group, ids);
+  if (t.swap) return swapInGroup(ids[0], t.swap);
+  if (t.pair) return pairUp(t.pair, ids);
+  if (t.out) {
+    clearSelection();
+    for (const id of ids) removeFromGroup(id);
+    return;
+  }
   const next = dropLayout(t, ids);
   if (!next) return;
   clearSelection();
@@ -336,8 +345,7 @@ function addToGroup(groupId: string, dragged: string[]) {
   if (!g) return;
   const ids = dragged.filter((id) => !sessionsOf(g.layout).includes(id));
   if (!ids.length) return;
-  const room = MAX_PANES - sessionsOf(g.layout).length + slotsOf(g.layout).length;
-  if (ids.length > room) return showError(`The group is full (${MAX_PANES} panes).`);
+  if (ids.length > room(g)) return showError(`The group is full (${MAX_PANES} panes).`);
   releaseFromOtherGroups(g, ids);
   let layout = g.layout;
   for (const id of ids) {
@@ -353,17 +361,85 @@ function addToGroup(groupId: string, dragged: string[]) {
   showGroup(g.id, false, ids[0]);
 }
 
-/** Each group's drop area: its header row and its nested session rows, as one box. */
-function groupRects() {
+/** Free panes in a group: its empty panes, and room under the cap. */
+const room = (g: Group) => MAX_PANES - sessionsOf(g.layout).length + slotsOf(g.layout).length;
+
+/** Two sessions of one group trade places, in the sidebar and in the split. */
+function swapInGroup(id: string, other: string) {
+  const g = groupOf(id);
+  if (!g || groupOf(other) !== g) return;
+  g.layout = swapPanes(g.layout, id, other);
+  saveGroup(g);
+  if (g.id === S.activeGroup) render();
+  else showGroup(g.id, false, id);
+}
+
+/** A loose session and the dragged ones make a new group. */
+function pairUp(with_: string, ids: string[]) {
+  const all = [with_, ...ids.filter((id) => id !== with_)];
+  const g: Group = { id: `tmp-${++S.tmpSeq}`, name: autoName(all), layout: build(all), focus: ids[0] };
+  S.groups.push(g);
+  releaseFromOtherGroups(g, all);
+  if (S.single && all.includes(S.single)) S.single = null;
+  clearSelection();
+  saveGroup(g);
+  showGroup(g.id, false, ids[0]);
+}
+
+const rowsIn = (sel: string) => [...document.querySelectorAll<HTMLElement>(`#sidebar-scroll ${sel}`)];
+
+/** The worktree a worktree row or a bare project's row stands for. */
+const rowWorktree = (el: HTMLElement) => el.querySelector<HTMLElement>(".wt-pick[data-wt], .wt-plus[data-wt]")?.dataset.wt ?? null;
+
+/**
+ * Sidebar rows that take dragged sessions. A row of the session's own group
+ * swaps with it. A loose session makes a new group with it. The worktree row
+ * takes it out of its group. Any row of another group adds it to that group.
+ */
+function sessionRows(ids: string[]): RowTarget[] {
+  const out: RowTarget[] = [];
+  const one = ids.length === 1 ? ids[0] : null;
+  const mine = one ? groupOf(one) : undefined;
+  for (const el of rowsIn(".session-row[data-in-group]")) {
+    const id = el.dataset.session!;
+    if (!mine || el.dataset.inGroup !== mine.id || id === one) continue;
+    out.push({ rect: el.getBoundingClientRect(), hit: () => ({ t: { session: null, zone: "center", swap: id } }) });
+  }
+  for (const el of rowsIn(".sessions-block > .session-row[data-session]:not([data-in-group])")) {
+    const id = el.dataset.session!;
+    if (ids.includes(id)) continue;
+    out.push({ rect: el.getBoundingClientRect(), hit: () => ({ t: { session: null, zone: "center", pair: id } }) });
+  }
+  const grouped = ids.filter((id) => groupOf(id));
+  if (grouped.length) {
+    for (const el of rowsIn(".wt-row, .project-row")) {
+      const path = rowWorktree(el);
+      if (path && grouped.every((id) => home(id) === path)) out.push({ rect: el.getBoundingClientRect(), hit: () => ({ t: { session: null, zone: "center", out: true } }) });
+    }
+  }
+  // Each group's drop area: its header row and its nested session rows, as one box.
   const boxes = new Map<string, DOMRect>();
-  for (const el of document.querySelectorAll<HTMLElement>("#sidebar-scroll .group-row, #sidebar-scroll .session-row[data-in-group]")) {
+  for (const el of rowsIn(".group-row, .session-row[data-in-group]")) {
     const id = el.dataset.group ?? el.dataset.inGroup;
     if (!id) continue;
     const r = el.getBoundingClientRect();
     const b = boxes.get(id);
     boxes.set(id, b ? new DOMRect(Math.min(b.left, r.left), Math.min(b.top, r.top), Math.max(b.right, r.right) - Math.min(b.left, r.left), Math.max(b.bottom, r.bottom) - Math.min(b.top, r.top)) : r);
   }
-  return [...boxes].map(([id, rect]) => ({ id, rect }));
+  for (const [id, rect] of boxes) out.push({ rect, hit: () => ({ t: { session: null, zone: "center", group: id } }) });
+  return out;
+}
+
+/** What a drop on a sidebar row does, for the ghost. */
+function says(t: DropTarget): string | null {
+  if (t.group) {
+    const g = S.groups.find((x) => x.id === t.group);
+    return g ? `Add to ${g.name}` : null;
+  }
+  if (t.swap) return "Swap";
+  if (t.pair) return "New group";
+  if (t.out) return "Take out of group";
+  return null;
 }
 
 /** A group lives in the worktree of its first session. A canvas with no session yet lives where it was made. */
@@ -385,11 +461,12 @@ const home = (id: string) => {
  */
 function mixesWorktrees(t: DropTarget, ids: string[]): string | null {
   let target: string | null | undefined;
+  if (t.out) return null;
   if (t.group) {
     const g = S.groups.find((x) => x.id === t.group);
     target = g ? groupHome(g)?.path ?? (filledOf(g.layout).length ? null : undefined) : undefined;
   } else {
-    const other = t.session ?? shownIds().find((id) => !ids.includes(id));
+    const other = t.pair ?? t.swap ?? t.session ?? shownIds().find((id) => !ids.includes(id));
     target = other ? home(other) : undefined;
   }
   if (target === undefined) return null;
@@ -398,6 +475,54 @@ function mixesWorktrees(t: DropTarget, ids: string[]): string | null {
   const s = sessions.get(off);
   const at = s ? place(s) : null;
   return `Runs in ${at ? branchName(at.worktree) : "another folder"}`;
+}
+
+/** Why a group or a new group has no room for the sessions, or null. */
+function groupFull(t: DropTarget, ids: string[]): string | null {
+  if (t.pair) return ids.length + 1 > MAX_PANES ? "Group is full" : null;
+  const g = t.group ? S.groups.find((x) => x.id === t.group) : undefined;
+  if (!g) return null;
+  const fresh = ids.filter((id) => !sessionsOf(g.layout).includes(id));
+  return fresh.length && fresh.length > room(g) ? "Group is full" : null;
+}
+
+/**
+ * Drag a group row onto another group row of the same worktree: it lands
+ * before or after it. A press that does not move stays a click.
+ */
+export function dragGroup(e: MouseEvent, g: Group) {
+  const at = groupHome(g);
+  const order = (anchor: string, side: "before" | "after") => {
+    const ids = S.groups.filter((x) => x !== g).map((x) => x.id);
+    ids.splice(ids.indexOf(anchor) + (side === "after" ? 1 : 0), 0, g.id);
+    return ids;
+  };
+  beginDrag(e, {
+    label: g.name,
+    cells: () => new Map(),
+    area: null,
+    rows: () =>
+      rowsIn(".sessions-block > .group-row[data-group]").flatMap((el) => {
+        const id = el.dataset.group!;
+        const other = S.groups.find((x) => x.id === id);
+        if (id === g.id || !other || groupHome(other) !== at) return [];
+        const r = el.getBoundingClientRect();
+        return [{
+          rect: r,
+          hit: (y: number) => {
+            const side = y < r.top + r.height / 2 ? "before" : "after";
+            const top = side === "before" ? r.top - 1 : r.bottom - 1;
+            return { t: { session: null, zone: "center", order: { group: id, side } }, p: { l: r.left, t: top, w: r.width, h: 2 } };
+          },
+        } satisfies RowTarget];
+      }),
+    accepts: (t) => !!t.order && order(t.order.group, t.order.side).join() !== S.groups.map((x) => x.id).join(),
+    drop: (t) => {
+      if (!t.order) return;
+      const anchor = S.groups.find((x) => x.id === t.order!.group);
+      if (anchor) moveGroup(g, anchor, t.order.side);
+    },
+  });
 }
 
 /** Start a drag of these sessions; a press that does not move stays a click. */
@@ -419,9 +544,10 @@ export function dragSessions(e: MouseEvent, ids: string[]) {
     label: blocked ? `${label}: ${FULL_HINT}` : label,
     cells,
     area: blocked || alone ? null : host,
-    groupRows: groupRects,
-    refuses: (t) => mixesWorktrees(t, ids),
-    accepts: (t) => (t.group ? groupGains(t.group, ids) : !!dropLayout(t, ids)),
+    rows: () => sessionRows(ids),
+    says,
+    refuses: (t) => mixesWorktrees(t, ids) ?? groupFull(t, ids),
+    accepts: (t) => (t.group ? groupGains(t.group, ids) : t.swap || t.pair || t.out ? true : !!dropLayout(t, ids)),
     drop: (t) => dropOn(t, ids),
   });
 }

@@ -4,10 +4,14 @@ import type { AgentInfo, DaemonStatus, SessionInfo } from "../platform/types";
 import { setSkiffAgentName } from "./keys";
 import { render } from "./renderRequest";
 import { S, sessions, upsert } from "./state";
+import { place } from "./stateQueries";
 import { agentKind } from "../appearance/agentIcon";
 import { keepRow } from "../workspace/selection";
 import { revealSession } from "../workspace/view";
 import { openPath } from "../terminal/peek";
+import { actionDialog } from "../ui/dialogParts";
+import { h } from "../ui/dom";
+import { scopeName } from "../workspace/model";
 
 /** The name until Settings has one. skiffd's setup keeps the same default. */
 export const DEFAULT_NAME = "Skipper";
@@ -27,9 +31,13 @@ export interface SkiffAgentSettings {
   folder_error: string | null;
   /** The folder projects.toml names, refused or not. */
   configured: string;
-  /** ready: a Skiff folder. new: setup makes it at On. other: it holds other files. */
-  folder_status: "ready" | "new" | "other" | "refused";
+  /** ready: a Skiff folder. missing: Skiff could not make it. other: it holds other files. */
+  folder_status: "ready" | "missing" | "other" | "refused";
   continue_on_restore: boolean;
+  /** The project menu offers Start project Skipper. */
+  project_skippers: boolean;
+  /** The agent project Skippers start. Null: the Skipper's. */
+  project_agent: string | null;
   /** `[skiff_agent.tasks]` in file order. */
   tasks: TaskType[];
 }
@@ -84,6 +92,169 @@ export function skiffAgentSession(): SessionInfo | null {
 
 /** True for the Skiff agent's session. It has no project, no splits and no rename: its name lives in Settings. */
 export const isSkiffAgent = (id: string | null | undefined) => !!id && skiffAgentSession()?.id === id;
+
+/**
+ * The scope a live project or fleet Skipper coordinates, else null: a
+ * project's name, or "fleet:<fleet>". skiffd marks it with its scope. A
+ * restore brings one back with no mark, and an older skiffd starts one with
+ * no mark (the CLI then says it is too old, but the agent runs): its name,
+ * "<project> <Skiff agent's name>", still finds a project Skipper. A
+ * retiring one is a plain session.
+ */
+function skipperProject(s: SessionInfo): string | null {
+  if (s.coordinator || s.state === "done" || s.retiring) return null;
+  if (s.skipper) return s.skipper;
+  if (!skiffAgentFolder()) return null;
+  const tail = ` ${skiffAgentName()}`;
+  const project = s.name?.endsWith(tail) ? s.name.slice(0, -tail.length) : null;
+  return project && S.projects.some((p) => p.name === project) ? project : null;
+}
+
+/** The live project Skippers, marked or found by name. A marked one counts
+ *  while the Skiff agent's settings are off or not read yet: it runs, and its
+ *  title already says so. */
+export function projectSkippers(): SessionInfo[] {
+  return [...sessions.values()].filter((s) => skipperProject(s) !== null);
+}
+
+/** The live Skipper of a scope: a project, or "fleet:<fleet>". A marked one comes first. */
+export function projectSkipperOf(project: string): SessionInfo | null {
+  const all = projectSkippers().filter((s) => skipperProject(s) === project);
+  return all.find((s) => s.skipper === project) ?? all[0] ?? null;
+}
+
+/** The live fleet Skipper of `fleet`, if one runs. */
+export const fleetSkipperOf = (fleet: string) => projectSkipperOf(fleetScope(fleet));
+
+/** A fleet's scope, as its Skipper's mark and its rows' owner carry it. */
+export const fleetScope = (fleet: string) => `fleet:${fleet}`;
+
+/** The coordinator whose session `id` is: "grand" for the Skiff agent, a scope for a project or fleet Skipper, else null. */
+export function coordinatorOf(id: string | null | undefined): string | null {
+  if (!id) return null;
+  if (isSkiffAgent(id)) return "grand";
+  const s = projectSkippers().find((s) => s.id === id);
+  return s ? skipperProject(s) : null;
+}
+
+/** Project menu › Start project Skipper. `skiff skipper --project` starts it in the project's folder and sends SKIPPER.md as its first message. */
+export function startProjectSkipper(project: string) {
+  const s = projectSkipperOf(project);
+  if (s) return show(s.id);
+  void starting(project, () => invoke<string>("start_project_skipper", { project })).catch(showError);
+}
+
+/** The scope of a Skipper the app is starting: its session shows as soon as skiffd has it. */
+let awaited: string | null = null;
+
+/**
+ * Runs `start`, and shows the new Skipper of `scope` the moment skiffd adds
+ * it. The start returns only after the agent is ready and has its first
+ * message, which takes seconds. A pane that ends meanwhile then gives its
+ * keys to the new Skipper, not to the next row.
+ */
+async function starting(scope: string, start: () => Promise<string>) {
+  awaited = scope;
+  try {
+    const id = await start();
+    // Shown already when skiffd added it: the person may have moved on since.
+    if (id && awaited === scope) show(id);
+  } finally {
+    if (awaited === scope) awaited = null;
+  }
+}
+
+/** skiffd added session `s`: the Skipper the app is starting shows at once. */
+export function skipperCreated(s: SessionInfo) {
+  if (!awaited || s.skipper !== awaited) return;
+  awaited = null;
+  show(s.id);
+}
+
+/** Project Skipper sessions that a takeover hands to a fleet Skipper, and the fleet. */
+const handedTo = new Map<string, string>();
+
+/**
+ * Session `id` ends. When it has the keys, they go to the fleet Skipper that
+ * took this retiring project Skipper over, else null. A takeover from the app
+ * names its fleet. One from a terminal is found by the project's fleet.
+ */
+export function heirOf(id: string, focused: boolean): string | null {
+  const s = sessions.get(id);
+  const named = handedTo.get(id);
+  handedTo.delete(id);
+  if (!focused) return null;
+  const fleet = named ?? (s?.retiring ? place(s)?.project.fleet : null);
+  const heir = fleet ? fleetSkipperOf(fleet)?.id : null;
+  return heir && heir !== id ? heir : null;
+}
+
+function handOver(fleet: string, taken: Taken[]) {
+  for (const t of taken) handedTo.set(t.session, fleet);
+}
+
+/** One project Skipper a takeover stops, as `fleet_takeover_preview` gives it. */
+export interface Taken {
+  project: string;
+  session: string;
+  tasks: { uid: string; title: string }[];
+  handoffs: string[];
+}
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** The confirm's body: one line per project Skipper, with its open tasks by title and its hand-offs. */
+function takenLines(taken: Taken[]): HTMLElement[] {
+  const body = h("div", "confirm-body");
+  body.append(...taken.map((t) => {
+    let line = `${t.project} Skipper: ${count(t.tasks.length, "open task", "open tasks")}`;
+    if (t.tasks.length) line += ` (${t.tasks.map((x) => x.title).join(", ")})`;
+    if (t.handoffs.length) line += `, ${count(t.handoffs.length, "hand-off", "hand-offs")}`;
+    return h("div", "", `${line}.`);
+  }));
+  return [body];
+}
+
+/** One confirm for a takeover. Nothing to take over asks nothing. */
+function confirmTakeover(title: string, action: string, taken: Taken[]): Promise<boolean> {
+  if (!taken.length) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    let ok = false;
+    actionDialog({ title, content: takenLines(taken), action, tone: "go", submit: () => void (ok = true), onClose: () => resolve(ok) });
+  });
+}
+
+/** Fleet menu › Start fleet Skipper, or Open fleet Skipper while it runs. Project Skippers in the fleet are taken over after one confirm. */
+export async function startFleetSkipper(fleet: string) {
+  const s = fleetSkipperOf(fleet);
+  if (s) return show(s.id);
+  try {
+    const taken = await invoke<Taken[]>("fleet_takeover_preview", { fleet, join: null });
+    if (!(await confirmTakeover(`Start the ${fleet} Skipper?`, "Start fleet Skipper", taken))) return;
+    handOver(fleet, taken);
+    await starting(fleetScope(fleet), () => invoke<string>("start_fleet_skipper", { fleet }));
+  } catch (e) {
+    showError(e);
+  }
+}
+
+/**
+ * Add to fleet…, Move to fleet… or a drop: when `fleet` has a running fleet
+ * Skipper and `project` a project Skipper, one confirm, then the takeover,
+ * which also sets the fleet. False: not a takeover, the caller sets the
+ * fleet itself. Null: the person cancelled.
+ */
+export async function joinFleet(project: string, fleet: string): Promise<boolean | null> {
+  if (!fleet || !fleetSkipperOf(fleet) || !projectSkipperOf(project)) return false;
+  const taken = await invoke<Taken[]>("fleet_takeover_preview", { fleet, join: project });
+  if (!taken.length) return false;
+  if (!(await confirmTakeover(`Add ${project} to ${fleet}?`, "Add to fleet", taken))) return null;
+  handOver(fleet, taken);
+  await invoke("fleet_takeover", { fleet, join: project });
+  const s = fleetSkipperOf(fleet);
+  if (s) show(s.id);
+  return true;
+}
 
 /** What `open_skiff_agent` answers. */
 interface Opened {
@@ -231,6 +402,21 @@ export function skiffWatch(s: SessionInfo): { state: WatchState; text: string } 
   return { state, text: watchText(state, s, skiffAgentName(), startError) };
 }
 
+/** A project Skipper's watcher state, from its own registration: the
+ *  watcher registers on each Skipper it follows. The app starts no watcher
+ *  for a project Skipper on its own (`skiff skipper --project` does, and the
+ *  Skiff agent's watcher follows every Skipper), so none registered is
+ *  unknown here, not missing. */
+export function projectWatch(s: SessionInfo): { state: WatchState; text: string } {
+  const state: WatchState = s.state === "done" || !s.watch ? "unknown" : s.watch.failure ? "failed" : "runs";
+  return { state, text: watchText(state, s, projectSkipperName(s), null) };
+}
+
+/** A project or fleet Skipper's session name: its project or fleet, then the Skiff agent's name ("gesher Skipper", "Harbor Skipper"). */
+export function projectSkipperName(s: SessionInfo): string {
+  return `${scopeName(skipperProject(s) ?? s.skipper ?? "")} ${skiffAgentName()}`;
+}
+
 /** Restored panes Skiff already asked skiffd to continue. Once each. */
 const continued = new Set<string>();
 
@@ -245,8 +431,14 @@ export function syncSkiffAgent() {
   if (!S.skiffAgent) return;
   const s = skiffAgentSession();
   const name = skiffAgentName();
-  // Only a change in Settings renames it. A rename of the pane itself stays.
-  if (s && shownName !== null && shownName !== name && s.name !== name) rename(s.id, name);
+  // Only a change in Settings renames it, and each project Skipper with it
+  // ("gesher Skipper"). A rename of the pane itself stays.
+  if (shownName !== null && shownName !== name) {
+    if (s && s.name !== name) rename(s.id, name);
+    for (const p of projectSkippers()) {
+      if (p.name !== projectSkipperName(p)) rename(p.id, projectSkipperName(p));
+    }
+  }
   shownName = name;
   if (!s) return;
   watch(s.id);

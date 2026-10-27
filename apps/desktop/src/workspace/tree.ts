@@ -1,5 +1,6 @@
 /** The side panel's tree: fleets as section heads, projects as rows, each folded or open (#87). */
 
+import { fleetSkipperOf } from "../app/skiffAgent";
 import type { Project, SessionInfo, Worktree } from "../platform/types";
 
 import { isUnread } from "./model";
@@ -69,9 +70,45 @@ export function treeSections(): Section[] {
   return [{ fleet: null, projects: loose }, ...[...fleets].map(([fleet, projects]) => ({ fleet, projects }))];
 }
 
-/** The project rows the tree shows, in order. A folded fleet hides its projects. */
+/** The project rows the tree shows, in order. A folded fleet, or one that hides its projects, has none. */
 export function visibleProjects(): Project[] {
-  return treeSections().flatMap((s) => (s.fleet && folded.has(fleetKey(s.fleet)) ? [] : s.projects));
+  return treeSections().flatMap((s) => (s.fleet && (folded.has(fleetKey(s.fleet)) || projectsHidden(s.fleet)) ? [] : s.projects));
+}
+
+/** Fleets that hide their projects, as `fleet:<name>`, in every workspace. Every fleet starts with its projects shown. */
+const savedHidden = storedSet("skiff.tree.hidden");
+
+export const projectsHidden = (fleet: string) => savedHidden.has(fleetKey(fleet));
+
+/** Hide projects / Show projects in the fleet menu, and the count on its head. */
+export function setProjectsHidden(fleet: string, hide: boolean) {
+  if (hide) savedHidden.add(fleetKey(fleet));
+  else savedHidden.delete(fleetKey(fleet));
+}
+
+/** A renamed fleet keeps its choice. */
+export function renameHidden(from: string, to: string) {
+  if (!savedHidden.delete(fleetKey(from))) return;
+  savedHidden.add(fleetKey(to));
+}
+
+/**
+ * A fleet that hides its projects still shows the sessions that need a look:
+ * each one that waits, and the one on screen, picked or current. The rest
+ * are hidden, and the head counts them. The fleet Skipper has its own row.
+ */
+export function hiddenSplit(projects: Project[]): { shown: SessionInfo[]; hidden: number } {
+  const shown: SessionInfo[] = [];
+  let hidden = 0;
+  for (const s of sessions.values()) {
+    const p = place(s)?.project;
+    if (!p || !projects.includes(p) || s.skipper?.startsWith("fleet:")) continue;
+    if (s.state === "waiting" || s.id === S.focused || s.id === S.roveKey || S.selection.includes(s.id)) shown.push(s);
+    else hidden++;
+  }
+  // In tree order: by project, then as the sessions came.
+  shown.sort((a, b) => projects.indexOf(place(a)!.project) - projects.indexOf(place(b)!.project));
+  return { shown, hidden };
 }
 
 export const isOpen = (key: string) => !folded.has(key);
@@ -96,8 +133,10 @@ export function openToFocused() {
 }
 
 /** A folded row's marks: how many sessions under it wait, work, or have unread output. */
-export function rollup(projects: Project[]): HTMLElement | null {
-  const under = (s: SessionInfo) => projects.includes(place(s)?.project as Project);
+export function rollup(projects: Project[], fleet: string | null = null): HTMLElement | null {
+  // A folded fleet counts its Skipper too.
+  const skipper = fleet ? fleetSkipperOf(fleet)?.id : null;
+  const under = (s: SessionInfo) => s.id === skipper || projects.includes(place(s)?.project as Project);
   let waiting = 0;
   let working = 0;
   let unread = 0;
@@ -107,6 +146,11 @@ export function rollup(projects: Project[]): HTMLElement | null {
     else if (s.state === "working") working++;
     else if (isUnread(s)) unread++;
   }
+  return rollCounts(waiting, working, unread);
+}
+
+/** The amber, blue and green counts of a folded row. Null when all are 0. */
+export function rollCounts(waiting: number, working: number, unread = 0): HTMLElement | null {
   if (!waiting && !working && !unread) return null;
   const el = h("span", "tree-roll");
   const part = (cls: string, paths: string, n: number, label: string) => {
@@ -150,9 +194,13 @@ export function bareWorktree(p: Project): Worktree | null {
   return w.is_main && usual && !w.locked && !w.prunable && !removing.has(w.path) && !removeErrors.has(w.path) ? w : null;
 }
 
-/** The list row for a worktree: its own row, or the project's row when it has none. Opens its fleet and project. */
+/**
+ * The list row for a worktree: its own row, or the project's row when it has none.
+ * Opens its fleet and project. A fleet that hides its projects shows them again.
+ */
 export function worktreeRowKey(p: Project, w: Worktree): string {
   autoOpen(projectKey(p.name));
   if (p.fleet) autoOpen(fleetKey(p.fleet));
+  if (p.fleet) setProjectsHidden(p.fleet, false);
   return bareWorktree(p) === w ? projectKey(p.name) : w.path;
 }

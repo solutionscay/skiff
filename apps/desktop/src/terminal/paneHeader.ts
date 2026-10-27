@@ -1,3 +1,4 @@
+import type { SessionInfo } from "../platform/types";
 import { agentIcon, agentKind } from "../appearance/agentIcon";
 import { slotHead } from "../workspace/canvas";
 import { isSlot } from "../workspace/layoutSlots";
@@ -5,7 +6,8 @@ import { isSlot } from "../workspace/layoutSlots";
 import { type Action, keyLabel } from "../app/keys";
 import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { rune, type RuneName } from "../ui/runes";
-import { branchName, taskTitle } from "../workspace/model";
+import { branchName, isProjectSkipper, scopeName, skipperBase, taskTitle } from "../workspace/model";
+import { projectIcon } from "../appearance/projectIcon";
 import { stateIcon } from "../appearance/stateIcon";
 
 import { button, h } from "../ui/dom";
@@ -17,6 +19,8 @@ import { accent, awayPlaces, inShownGroup, place, shownIds } from "../app/stateQ
 
 import { closePane, dragSessions, focusPane } from "./paneActions";
 import { resumeOffer, resumePane } from "./resume";
+import { imagesButton, newestImage } from "./images";
+import { insertShown } from "./insertSignal";
 /** One pane header: the agent icon, the title, then the close button. */
 export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   if (isSlot(id)) return slotHead(id, head);
@@ -48,7 +52,7 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   const grouped = inShownGroup(id);
   const away = s ? awayPlaces(s).map((a) => branchName(a.worktree)).join(", ") : "";
   // Rebuild only on change, so a click that spans a daemon event still lands.
-  const sig = s ? JSON.stringify([s.state, s.exit_code, s.agent_exit, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, grouped, away, resumeOffer(s)]) : "";
+  const sig = s ? JSON.stringify([s.state, s.exit_code, s.agent_exit, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, grouped, away, resumeOffer(s), newestImage(), insertShown(id)]) : "";
   if (head.dataset.sig === sig) return;
   head.dataset.sig = sig;
   head.replaceChildren();
@@ -56,7 +60,7 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   head.classList.toggle("st-waiting", s.state === "waiting");
   head.classList.toggle("st-done", s.state === "done");
   // The state reads with the name it belongs to, not with the buttons.
-  head.append(agentIcon(s), h("span", "title", taskTitle(s)), stateIcon(s));
+  head.append(agentIcon(s), headTitle(s), stateIcon(s));
   if (away) head.appendChild(h("span", "where mono", `${at ? branchName(at.worktree) : "other"} → working in ${away}`));
   // After a restart: the agent this pane ran, and a button to get back to it.
   const offer = resumeOffer(s);
@@ -72,6 +76,8 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
     r.title = `Resume ${offer.agent} in this pane`;
     head.appendChild(r);
   }
+  const images = imagesButton(id);
+  if (images) head.appendChild(images);
   // Mouse controls for the two view modes. The pane is focused first: they act on the focused pane.
   const viewBtn = (name: RuneName, label: string, key: Action, run: () => void) => {
     const b = button("head-btn", "", () => {
@@ -97,4 +103,22 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
     x.appendChild(icon('<path d="M6 6l12 12M18 6L6 18"></path>'));
     head.appendChild(x);
   }
+}
+
+/** The title in the head. A project Skipper reads "Skipper · gesher", with
+ *  its project's icon or letters before the project, as the tree shows it. */
+function headTitle(s: SessionInfo): HTMLElement {
+  const title = h("span", "title", taskTitle(s));
+  if (!isProjectSkipper(s)) return title;
+  const p = S.projects.find((x) => x.name === s.skipper);
+  title.replaceChildren(`${skipperBase(s)} · `);
+  if (p) {
+    const mark = h("span", "head-project");
+    if (p.icon) mark.appendChild(projectIcon(p, 14));
+    else mark.textContent = p.short;
+    title.appendChild(mark);
+  }
+  // A fleet has no color and no icon: its name alone.
+  title.append(scopeName(s.skipper ?? ""));
+  return title;
 }

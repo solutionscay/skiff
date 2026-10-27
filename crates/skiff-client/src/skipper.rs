@@ -14,9 +14,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use skiff_core::{
-    config::{self, Config},
+    config::{self, Config, ProjectConfig},
     project::AgentInfo,
-    session::{Role, SessionSpec},
+    session::{Role, SessionInfo, SessionSpec, SessionState},
 };
 
 use crate::{Client, Coordinated, Coordinator};
@@ -26,6 +26,30 @@ pub const DEFAULT_NAME: &str = "Skipper";
 
 /// The folder's instructions. `{{name}}` becomes the agent's name.
 const TEMPLATE: &str = include_str!("../agent-template/AGENTS.md.tmpl");
+
+/// The project section of a project Skipper's `SKIPPER.md`, after
+/// [`TEMPLATE`]. `{{project}}`, `{{path}}` and `{{dir}}` become the
+/// project, its folder and the Skipper's folder.
+const PROJECT_TEMPLATE: &str = include_str!("../agent-template/SKIPPER-project.md.tmpl");
+
+/// The fleet section of a fleet Skipper's `SKIPPER.md`, after [`TEMPLATE`].
+/// `{{fleet}}`, `{{projects}}` and `{{dir}}` become the fleet, one line per
+/// project with its folder, and the Skipper's folder.
+const FLEET_TEMPLATE: &str = include_str!("../agent-template/SKIPPER-fleet.md.tmpl");
+
+/// The scope prefix of a fleet: a fleet Skipper's mark and its rows' owner
+/// are `fleet:<fleet>`. A project's are its bare name.
+pub const FLEET: &str = "fleet:";
+
+/// The scope of the fleet `fleet`: `fleet:<fleet>`.
+pub fn fleet_scope(fleet: &str) -> String {
+    format!("{FLEET}{fleet}")
+}
+
+/// The fleet a scope names, or `None` for a project's.
+pub fn scope_fleet(scope: &str) -> Option<&str> {
+    scope.strip_prefix(FLEET)
+}
 
 /// The `skiff-cli` skill, file by file: (path, bytes, runnable).
 /// `skill_files_match_the_repo` keeps this list in step with the folder.
@@ -45,6 +69,19 @@ pub(crate) fn template(name: &str) -> String {
 /// The configured name, or the default.
 pub fn name(cfg: &Config) -> String {
     cfg.skiff_agent.name.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or(DEFAULT_NAME).to_string()
+}
+
+/// A project Skipper's session name: the project, then the Skiff agent's
+/// name ("gesher Skipper"). Unique per project, and never the grand
+/// Skipper's, so `skiff send "gesher Skipper"` reaches one session.
+pub fn project_name(cfg: &Config, project: &str) -> String {
+    format!("{project} {}", name(cfg))
+}
+
+/// A fleet Skipper's session name: the fleet, then the Skiff agent's name
+/// ("Harbor Skipper").
+pub fn fleet_name(cfg: &Config, fleet: &str) -> String {
+    format!("{fleet} {}", name(cfg))
 }
 
 /// The agent the Skiff agent starts: the one from Settings while it is
@@ -71,6 +108,8 @@ pub fn continue_line(agent: &str, cmd: &str) -> Option<String> {
     match agent {
         "claude" | "opencode" | "grok" | "gemini" => Some(format!("{cmd} --continue")),
         "codex" => Some(sub("resume --last")),
+        // `--continue` takes the newest session anywhere; `--in` keeps it to this folder.
+        "hermes" => Some(format!("{cmd} --resume latest --in .")),
         _ => None,
     }
 }
@@ -130,6 +169,54 @@ pub fn folder(cfg: &Config) -> Result<PathBuf> {
         None => default_folder()?,
     };
     refuse_live_folder(&dir)?;
+    Ok(dir)
+}
+
+/// The image cache: `cache/` in the agent's [`folder`]. Makes nothing:
+/// [`make_folder`] makes it. Every reader of the cache path calls this.
+pub fn cache_dir(cfg: &Config) -> Result<PathBuf> {
+    Ok(folder(cfg)?.join("cache"))
+}
+
+/// What the image and Disk use features say when [`make_folder`] fails.
+pub fn no_folder(dir: &Path) -> String {
+    format!("Skiff cannot make the folder {}.", dir.display())
+}
+
+/// Makes the agent's [`folder`] when it is missing, with the marker and
+/// `cache/` (mode 0700). The app runs it at start, with Skipper on or off,
+/// and each feature that writes in the folder runs it first. Writes no
+/// Skipper file: [`setup`] adds those later. A folder that holds other
+/// files is refused, as [`setup`] refuses it. Every failure is the one line
+/// of [`no_folder`]; the log keeps the cause. Returns the folder.
+pub fn make_folder(cfg: &Config) -> Result<PathBuf> {
+    use std::os::unix::fs::DirBuilderExt;
+    let dir = match folder(cfg) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("skiff: {e:#}");
+            bail!(no_folder(&configured(cfg)?));
+        }
+    };
+    let cache = dir.join("cache");
+    if dir.join(MARKER).is_file() && cache.is_dir() {
+        return Ok(dir);
+    }
+    if dir.is_dir() && !dir.join(MARKER).exists() && std::fs::read_dir(&dir).is_ok_and(|mut r| r.next().is_some()) {
+        eprintln!("skiff: {} holds other files", dir.display());
+        bail!(no_folder(&dir));
+    }
+    let made = std::fs::create_dir_all(&dir)
+        .and_then(|_| std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&cache))
+        .and_then(|_| match std::fs::OpenOptions::new().write(true).create_new(true).open(dir.join(MARKER)) {
+            Ok(mut f) => std::io::Write::write_all(&mut f, b"1\n"),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+            Err(e) => Err(e),
+        });
+    if let Err(e) = made {
+        eprintln!("skiff: make {}: {e}", dir.display());
+        bail!(no_folder(&dir));
+    }
     Ok(dir)
 }
 
@@ -276,8 +363,9 @@ pub fn ensure(cfg: &Config) -> Result<PathBuf> {
 }
 
 /// Writes the parts of the template that `dir` does not have yet. The folder
-/// must be new, empty, or one this setup made before (it has the marker), so
-/// setup never mixes the agent's files with other files. A second run keeps
+/// must be new, empty, or a Skiff folder (it has the marker: the app makes
+/// one at start, or this setup made it before), so setup never mixes the
+/// agent's files with other files. A second run keeps
 /// the user's edits and puts back what is missing. Nothing is written outside
 /// the folder and the skill's copy. A lock beside `projects.toml` keeps two
 /// setups at once (the app and the CLI) apart.
@@ -288,6 +376,7 @@ pub fn ensure(cfg: &Config) -> Result<PathBuf> {
 /// .claude                      a link to .agents, for Claude's skills
 /// .agents/skills/skiff-cli     a link to the copy of the skill
 /// results/                     long child reports
+/// cache/                       the image cache, mode 0700
 /// ```
 pub fn setup(dir: &Path, name: &str) -> Result<PathBuf> {
     let _lock = lock()?;
@@ -316,6 +405,10 @@ pub(crate) fn setup_in(dir: &Path, name: &str, skill: &Path) -> Result<PathBuf> 
         }
     }
     std::fs::create_dir_all(dir.join("results")).context("create results")?;
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir.join("cache")).context("create cache")?;
+    }
     let skills = dir.join(".agents").join("skills");
     std::fs::create_dir_all(&skills).context("create .agents/skills")?;
     if missing(&skills.join("skiff-cli")) {
@@ -368,6 +461,210 @@ fn link(_target: &Path, _at: &Path) -> Result<()> {
     bail!("not supported on this platform")
 }
 
+/// The name of a project Skipper's file in its folder.
+pub const SKIPPER_FILE: &str = "SKIPPER.md";
+
+/// `SKIPPER.md` for the project `p`, whose Skipper's folder is `dir`.
+pub fn project_template(name: &str, p: &ProjectConfig, dir: &Path) -> String {
+    let section = PROJECT_TEMPLATE
+        .replace("{{project}}", &p.name)
+        .replace("{{path}}", &p.path.display().to_string())
+        .replace("{{dir}}", &dir.display().to_string());
+    format!("{}{section}", template(name))
+}
+
+/// The configured project, by name.
+pub fn project<'a>(cfg: &'a Config, name: &str) -> Result<&'a ProjectConfig> {
+    cfg.projects.iter().find(|p| p.name == name).with_context(|| format!("no project {name:?} in {}", config::config_path().display()))
+}
+
+/// A project Skipper's folder: `projects/<project>` in the Skiff agent's
+/// folder. Nothing goes into the project itself.
+pub fn project_folder(cfg: &Config, project: &str) -> Result<PathBuf> {
+    if project.is_empty() || project == "." || project == ".." || project.contains(['/', '\\']) {
+        bail!("the project name {project:?} cannot name a folder");
+    }
+    Ok(folder(cfg)?.join("projects").join(project))
+}
+
+/// The agent a project Skipper starts: the project's `skipper_agent`, else
+/// `[skiff_agent] project_agent`, else the Skipper's own (see [`choose`]).
+/// One that is not installed and on falls through to the next.
+pub fn project_agent<'a>(cfg: &Config, agents: &'a [AgentInfo], p: &ProjectConfig) -> Option<&'a AgentInfo> {
+    let usable = |id: Option<&str>| agents.iter().find(|a| Some(a.id.as_str()) == id && a.installed && (a.enabled || a.custom));
+    usable(p.skipper_agent.as_deref())
+        .or_else(|| usable(cfg.skiff_agent.project_agent.as_deref()))
+        .or_else(|| choose(agents, cfg.skiff_agent.agent.as_deref()))
+}
+
+/// Makes a project Skipper's folder ready: the Skiff agent's folder first,
+/// then `projects/<project>/` with `SKIPPER.md` and `results/`. `SKIPPER.md`
+/// is written again at each start, so it follows Skiff and the project.
+/// Returns the folder. The caller holds [`lock`].
+fn setup_project(cfg: &Config, p: &ProjectConfig) -> Result<PathBuf> {
+    setup_in(&folder(cfg)?, &name(cfg), &sync_skill()?)?;
+    let dir = project_folder(cfg, &p.name)?;
+    std::fs::create_dir_all(dir.join("results")).with_context(|| format!("create {}", dir.join("results").display()))?;
+    let file = dir.join(SKIPPER_FILE);
+    std::fs::write(&file, project_template(&name(cfg), p, &dir)).with_context(|| format!("write {}", file.display()))?;
+    Ok(dir)
+}
+
+/// The open projects of `fleet`, in config order.
+pub fn fleet_projects<'a>(cfg: &'a Config, fleet: &str) -> Vec<&'a ProjectConfig> {
+    cfg.projects.iter().filter(|p| !p.closed && p.fleet.as_deref() == Some(fleet)).collect()
+}
+
+/// A fleet Skipper's folder: `fleets/<fleet>` in the Skiff agent's folder.
+pub fn fleet_folder(cfg: &Config, fleet: &str) -> Result<PathBuf> {
+    if fleet.is_empty() || fleet == "." || fleet == ".." || fleet.contains(['/', '\\']) {
+        bail!("the fleet name {fleet:?} cannot name a folder");
+    }
+    Ok(folder(cfg)?.join("fleets").join(fleet))
+}
+
+/// `SKIPPER.md` for the fleet `fleet`, whose Skipper's folder is `dir`.
+pub fn fleet_template(name: &str, fleet: &str, projects: &[&ProjectConfig], dir: &Path) -> String {
+    let width = projects.iter().map(|p| p.name.chars().count()).max().unwrap_or(0);
+    let list: Vec<String> = projects.iter().map(|p| format!("- {:width$}  {}", p.name, p.path.display())).collect();
+    let section = FLEET_TEMPLATE
+        .replace("{{fleet}}", fleet)
+        .replace("{{projects}}", &list.join("\n"))
+        .replace("{{dir}}", &dir.display().to_string());
+    format!("{}{section}", template(name))
+}
+
+/// The agent a fleet Skipper starts: `[skiff_agent] project_agent`, else the
+/// Skipper's own. A project's `skipper_agent` is for its project Skipper only.
+pub fn fleet_agent<'a>(cfg: &Config, agents: &'a [AgentInfo]) -> Option<&'a AgentInfo> {
+    agents
+        .iter()
+        .find(|a| Some(a.id.as_str()) == cfg.skiff_agent.project_agent.as_deref() && a.installed && (a.enabled || a.custom))
+        .or_else(|| choose(agents, cfg.skiff_agent.agent.as_deref()))
+}
+
+/// Writes a fleet Skipper's folder and its `SKIPPER.md` again, from the
+/// fleet as `projects.toml` has it now. Returns the folder. The app and the
+/// watcher call it when the fleet changes under a running fleet Skipper.
+pub fn write_fleet(cfg: &Config, fleet: &str) -> Result<PathBuf> {
+    let dir = fleet_folder(cfg, fleet)?;
+    std::fs::create_dir_all(dir.join("results")).with_context(|| format!("create {}", dir.join("results").display()))?;
+    let file = dir.join(SKIPPER_FILE);
+    std::fs::write(&file, fleet_template(&name(cfg), fleet, &fleet_projects(cfg, fleet), &dir)).with_context(|| format!("write {}", file.display()))?;
+    Ok(dir)
+}
+
+/// The first message a new project Skipper gets.
+pub fn first_message(dir: &Path) -> String {
+    format!("Read {} and follow it. Then do its First steps.", dir.join(SKIPPER_FILE).display())
+}
+
+/// The live project Skipper of `project` in `all`, if one runs.
+pub fn find_project<'a>(all: &'a [SessionInfo], project: &str) -> Option<&'a SessionInfo> {
+    all.iter().find(|s| s.skipper.as_deref() == Some(project) && s.state != SessionState::Done)
+}
+
+/// The live fleet Skipper of `fleet` in `all`, if one runs.
+pub fn find_fleet<'a>(all: &'a [SessionInfo], fleet: &str) -> Option<&'a SessionInfo> {
+    find_project(all, &fleet_scope(fleet))
+}
+
+/// The live project Skippers of the projects of `fleet`, in config order.
+pub fn project_skippers_in<'a>(cfg: &Config, all: &'a [SessionInfo], fleet: &str) -> Vec<(String, &'a SessionInfo)> {
+    fleet_projects(cfg, fleet).into_iter().filter_map(|p| find_project(all, &p.name).map(|s| (p.name.clone(), s))).collect()
+}
+
+/// The fleet of `project` when that fleet's Skipper runs.
+pub fn commanding_fleet<'a>(cfg: &'a Config, all: &[SessionInfo], project: &str) -> Option<&'a str> {
+    let fleet = cfg.projects.iter().find(|p| p.name == project)?.fleet.as_deref()?;
+    find_fleet(all, fleet).is_some().then_some(fleet)
+}
+
+/// The fleet named `fleet` exists: an open project carries it.
+pub fn is_fleet(cfg: &Config, fleet: &str) -> bool {
+    !fleet_projects(cfg, fleet).is_empty()
+}
+
+/// A project or fleet Skipper the CLI found or started.
+pub struct ProjectSkipper {
+    pub session: SessionInfo,
+    /// It started now: it needs [`first_message`].
+    pub created: bool,
+    /// Its folder.
+    pub dir: PathBuf,
+}
+
+/// Finds the live project Skipper of `project`, or starts one in the
+/// project's folder. The setup lock keeps two starts apart, so a project
+/// has at most one. Refuses when the Skiff agent or Project Skippers is off.
+pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipper> {
+    let cfg = config::load()?;
+    if !cfg.skiff_agent.enabled {
+        bail!("The Skiff agent is off. Turn it on in Settings › Skiff agent");
+    }
+    if !cfg.skiff_agent.project_skippers {
+        bail!("Project and fleet Skippers are off. Turn them on in Settings › Skiff agent › Project and fleet Skippers");
+    }
+    let p = project(&cfg, project_name)?;
+    let _lock = lock()?;
+    let all = c.list_sessions().await?;
+    if let Some(s) = find_project(&all, &p.name) {
+        return Ok(ProjectSkipper { session: s.clone(), created: false, dir: setup_project(&cfg, p)? });
+    }
+    // One Skipper per project: a running fleet Skipper commands this one.
+    if let Some(fleet) = commanding_fleet(&cfg, &all, &p.name) {
+        bail!("{} is in {fleet}, which has a fleet Skipper. Run: skiff skipper --fleet {fleet}", p.name);
+    }
+    let dir = setup_project(&cfg, p)?;
+    let agents = c.list_agents().await?;
+    let Some(agent) = project_agent(&cfg, &agents, p) else { bail!("No agent is on. Turn one on in Settings › Agents") };
+    let mut s = spec(agent, &self::project_name(&cfg, &p.name), p.path.clone());
+    crate::cache::add_flags(&cfg, std::slice::from_ref(agent), &mut s);
+    s.skipper = Some(p.name.clone());
+    s.cols = 120;
+    s.rows = 40;
+    let info = c.create_session(s).await?;
+    if info.skipper.as_deref() != Some(p.name.as_str()) {
+        bail!("skiffd is too old to mark a project Skipper. Run `skiff daemon reload`. Session {} runs as a plain agent", info.id);
+    }
+    Ok(ProjectSkipper { session: info, created: true, dir })
+}
+
+/// Finds the live fleet Skipper of `fleet`, or starts one in its folder.
+/// Refuses as [`open_project`] does. It does not look at project Skippers
+/// in the fleet: the caller takes them over first (see
+/// [`crate::takeover`]).
+pub async fn open_fleet(c: &Client, fleet: &str) -> Result<ProjectSkipper> {
+    let cfg = config::load()?;
+    if !cfg.skiff_agent.enabled {
+        bail!("The Skiff agent is off. Turn it on in Settings › Skiff agent");
+    }
+    if !cfg.skiff_agent.project_skippers {
+        bail!("Project and fleet Skippers are off. Turn them on in Settings › Skiff agent › Project and fleet Skippers");
+    }
+    if !is_fleet(&cfg, fleet) {
+        bail!("no fleet {fleet:?} in {}", config::config_path().display());
+    }
+    let _lock = lock()?;
+    setup_in(&folder(&cfg)?, &name(&cfg), &sync_skill()?)?;
+    let dir = write_fleet(&cfg, fleet)?;
+    if let Some(s) = find_fleet(&c.list_sessions().await?, fleet) {
+        return Ok(ProjectSkipper { session: s.clone(), created: false, dir });
+    }
+    let agents = c.list_agents().await?;
+    let Some(agent) = fleet_agent(&cfg, &agents) else { bail!("No agent is on. Turn one on in Settings › Agents") };
+    let mut s = spec(agent, &fleet_name(&cfg, fleet), dir.clone());
+    crate::cache::add_flags(&cfg, std::slice::from_ref(agent), &mut s);
+    s.skipper = Some(fleet_scope(fleet));
+    s.cols = 120;
+    s.rows = 40;
+    let info = c.create_session(s).await?;
+    if info.skipper.as_deref() != Some(fleet_scope(fleet).as_str()) {
+        bail!("skiffd is too old to mark a fleet Skipper. Run `skiff daemon reload`. Session {} runs as a plain agent", info.id);
+    }
+    Ok(ProjectSkipper { session: info, created: true, dir })
+}
+
 /// What [`open`] does with the coordinator it finds.
 pub enum Open {
     /// Find it, or start it. A bare shell gets the agent: its last
@@ -392,14 +689,20 @@ pub async fn open(c: &Client, how: Open) -> Result<Option<Coordinated>> {
     folder(&cfg)?;
     let agents = c.list_agents().await?;
     let agent = choose(&agents, a.agent.as_deref());
-    let resume = agent.filter(|_| a.continue_on_restore).and_then(|g| continue_line(&g.id, &g.command));
+    // Each line ends with the image cache's read flag, as the + menu adds it.
+    let resume = agent
+        .filter(|_| a.continue_on_restore)
+        .and_then(|g| continue_line(&g.id, &g.command).map(|l| l + &crate::cache::flags_typed(&cfg, g)));
     let ask = match how {
         Open::Restore { expect } => Coordinator { resume, expect: Some(expect), ..Default::default() },
         Open::Start => {
             let Some(agent) = agent else { bail!("No agent is on. Turn one on in Settings › Agents") };
             // The folder is made ready first: files the user deleted come back.
             let dir = ensure(&cfg)?;
-            Coordinator { spec: Some(spec(agent, &name(&cfg), dir)), start: Some(agent.command.trim().to_string()), resume, expect: None }
+            let mut s = spec(agent, &name(&cfg), dir);
+            crate::cache::add_flags(&cfg, std::slice::from_ref(agent), &mut s);
+            let start = format!("{}{}", agent.command.trim(), crate::cache::flags_typed(&cfg, agent));
+            Coordinator { spec: Some(s), start: Some(start), resume, expect: None }
         }
     };
     c.coordinator(ask).await
@@ -462,10 +765,44 @@ pub struct WatchHolder {
     /// Its executable, with links resolved. `None` from an older watcher.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exe: Option<String>,
+    /// The build of its executable when it started ([`build_of`]). `None`
+    /// from an older watcher: that counts as another build.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<String>,
 }
 
 /// The CLI version this crate builds with: the app's and the CLI's.
 pub const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// The build id of the `skiff` file at `path`: 16 hex digits of a 64-bit
+/// FNV-1a hash over its bytes. Two builds of one version differ by it, as
+/// a dev build and the next one do. Read again only when the file's size
+/// or time changes. `None` when the file cannot be read.
+pub fn build_of(path: &Path) -> Option<String> {
+    use std::io::Read;
+    type Seen = (PathBuf, u64, Option<std::time::SystemTime>, String);
+    static LAST: std::sync::Mutex<Option<Seen>> = std::sync::Mutex::new(None);
+    let m = std::fs::metadata(path).ok()?;
+    let (len, time) = (m.len(), m.modified().ok());
+    if let Some((p, l, t, id)) = LAST.lock().unwrap().as_ref() {
+        if p == path && *l == len && *t == time {
+            return Some(id.clone());
+        }
+    }
+    let mut f = std::fs::File::open(path).ok()?;
+    let mut buf = vec![0u8; 1 << 20];
+    let mut h = 0xcbf29ce484222325u64;
+    loop {
+        let n = f.read(&mut buf).ok()?;
+        if n == 0 {
+            break;
+        }
+        h = buf[..n].iter().fold(h, |h, &b| (h ^ b as u64).wrapping_mul(0x100000001b3));
+    }
+    let id = format!("{h:016x}");
+    *LAST.lock().unwrap() = Some((path.to_path_buf(), len, time, id.clone()));
+    Some(id)
+}
 
 /// The watch lock beside the socket, as [`watch_status`] reads it.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -486,13 +823,14 @@ pub fn watch_lock(socket: &Path) -> PathBuf {
 /// stale-watcher check and Restart. The lock stays on the file.
 pub fn write_holder(f: &mut std::fs::File, socket: &Path) -> Result<()> {
     use std::io::{Seek, Write};
-    let exe = std::env::current_exe().ok().map(|e| e.canonicalize().unwrap_or(e).display().to_string());
+    let exe = std::env::current_exe().ok().map(|e| e.canonicalize().unwrap_or(e));
     let me = WatchHolder {
         pid: std::process::id(),
         socket: socket.display().to_string(),
         started_at: skiff_core::session::now_ms(),
         version: Some(CLI_VERSION.to_string()),
-        exe,
+        build: exe.as_deref().and_then(build_of),
+        exe: exe.map(|e| e.display().to_string()),
     };
     f.set_len(0)?;
     f.seek(std::io::SeekFrom::Start(0))?;
@@ -588,29 +926,29 @@ pub fn restart_watch(socket: &Path, cli: &Path, session: &str) -> Result<bool> {
 /// What [`ensure_watch`] did.
 #[derive(Debug, Clone, PartialEq)]
 pub enum WatchOutcome {
-    /// A watcher of this CLI, or of a newer one, holds the lock.
+    /// A watcher of this build, or of a newer version, holds the lock.
     Current,
     /// None ran. It started one.
     Started,
-    /// It stopped an older watcher with SIGTERM and started one.
+    /// It stopped an older or other-build watcher with SIGTERM and started one.
     Replaced { pid: u32 },
     /// An older watcher holds the lock and keeps running: it is not proven to
     /// be a `skiff watch` for this socket, or it did not stop. Why, for logs.
     Kept(String),
 }
 
-/// The watcher in `h` runs another build than `cli` at `version`: an older
+/// The watcher in `h` is not the build of `cli` at `version`: an older
 /// version, a record from before the version, or the same version from
-/// another executable. A newer watcher is never replaced.
+/// another build ([`build_of`]), a record from before the build included.
+/// One computer runs one watcher per socket, and the app's build replaces
+/// it. A newer version is never replaced. A `cli` that cannot be read
+/// replaces nothing of its own version.
 pub fn stale_holder(h: &WatchHolder, cli: &Path, version: &str) -> bool {
-    let Some(v) = &h.version else { return true };
+    let Some(v) = h.version.as_deref() else { return true };
     match skiff_core::compare_versions(v, version) {
         std::cmp::Ordering::Less => true,
         std::cmp::Ordering::Greater => false,
-        std::cmp::Ordering::Equal => {
-            let real = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
-            h.exe.as_deref().is_some_and(|e| real(Path::new(e)) != real(cli))
-        }
+        std::cmp::Ordering::Equal => build_of(cli).is_some_and(|mine| h.build.as_deref() != Some(mine.as_str())),
     }
 }
 
@@ -707,7 +1045,13 @@ pub fn outliving(program: &Path, unit: &str) -> std::process::Command {
 /// `unit-<socket name>`, in the characters a unit name takes.
 pub fn unit_for(unit: &str, socket: &Path) -> String {
     let stem = socket.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-    format!("{unit}-{stem}")
+    if skiff_core::state::is_live(socket) {
+        return format!("{unit}-{stem}");
+    }
+    // Another socket, as a test's or an agent's throwaway daemon: most are
+    // named skiffd.sock too, and two scopes cannot share a name.
+    let hash = socket.as_os_str().as_encoded_bytes().iter().fold(0xcbf29ce484222325u64, |h, b| (h ^ *b as u64).wrapping_mul(0x100000001b3));
+    format!("{unit}-{stem}-{:08x}", hash as u32)
 }
 
 #[cfg(target_os = "linux")]
@@ -834,7 +1178,7 @@ mod tests {
         let err = restart_watch(&socket, &cli, "abc").unwrap_err().to_string();
         assert!(err.contains("is not skiff watch"), "{err}");
         // Another socket's record is refused before any process check.
-        let other = WatchHolder { pid: std::process::id(), socket: "/elsewhere.sock".into(), started_at: 0, version: None, exe: None };
+        let other = WatchHolder { pid: std::process::id(), socket: "/elsewhere.sock".into(), started_at: 0, version: None, exe: None, build: None };
         assert!(not_stoppable(&other, &socket).unwrap().contains("another socket"));
         assert!(watch_status(&socket).unwrap().held);
         drop(f);
@@ -893,25 +1237,96 @@ os.execv("/bin/cat", ["skiff", "watch"])
     }
 
     /// Which holder is stale: no version (a watcher from before the field),
-    /// an older one, or the same version from another executable. A newer
-    /// watcher, or this CLI's own, is current. Old records still read.
+    /// an older one, or the same version from another build, or with no
+    /// build. A newer version, or this build, is current, whatever
+    /// executable path runs it. Old records still read.
     #[test]
     fn tells_a_stale_watcher_by_its_record() {
-        let cli = Path::new("/Applications/Skiff.app/Contents/MacOS/skiff");
-        let h = |version: Option<&str>, exe: Option<&str>| WatchHolder {
+        let dir = std::env::temp_dir().join(format!("skiff-watch-build-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cli = dir.join("skiff");
+        std::fs::write(&cli, "this build").unwrap();
+        let mine = build_of(&cli).unwrap();
+        let h = |version: Option<&str>, build: Option<&str>| WatchHolder {
             pid: 1,
             socket: "/s.sock".into(),
             started_at: 0,
             version: version.map(Into::into),
-            exe: exe.map(Into::into),
+            exe: Some("/src/skiff/target/debug/skiff".into()),
+            build: build.map(Into::into),
         };
-        assert!(stale_holder(&h(None, None), cli, "1.6.5"));
-        assert!(stale_holder(&h(Some("1.6.4"), Some(cli.to_str().unwrap())), cli, "1.6.5"));
-        assert!(stale_holder(&h(Some("1.6.5"), Some("/src/skiff/target/debug/skiff")), cli, "1.6.5"));
-        assert!(!stale_holder(&h(Some("1.6.5"), Some(cli.to_str().unwrap())), cli, "1.6.5"));
-        assert!(!stale_holder(&h(Some("1.7.0"), Some("/elsewhere/skiff")), cli, "1.6.5"));
+        assert!(stale_holder(&h(None, None), &cli, "1.6.5"));
+        assert!(stale_holder(&h(Some("1.6.4"), Some(&mine)), &cli, "1.6.5"));
+        assert!(stale_holder(&h(Some("1.6.5"), Some("0123456789abcdef")), &cli, "1.6.5"));
+        assert!(stale_holder(&h(Some("1.6.5"), None), &cli, "1.6.5"));
+        assert!(!stale_holder(&h(Some("1.6.5"), Some(&mine)), &cli, "1.6.5"));
+        assert!(!stale_holder(&h(Some("1.7.0"), Some("0123456789abcdef")), &cli, "1.6.5"));
+        assert!(!stale_holder(&h(Some("1.6.5"), None), &dir.join("missing"), "1.6.5"));
+        // A new build at the path is another build.
+        std::fs::write(&cli, "the next build").unwrap();
+        assert!(stale_holder(&h(Some("1.6.5"), Some(&mine)), &cli, "1.6.5"));
         let legacy: WatchHolder = serde_json::from_str(r#"{"pid":7,"socket":"/s.sock","started_at":3}"#).unwrap();
-        assert_eq!((legacy.version, legacy.exe), (None, None));
+        assert_eq!((legacy.version, legacy.exe, legacy.build), (None, None, None));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A live `skiff watch` of this version from another build is stopped
+    /// and replaced. One of this build is kept. Skipped without python3,
+    /// which takes the lock.
+    #[test]
+    #[cfg(unix)]
+    fn replaces_a_watcher_of_another_build_and_keeps_this_one() {
+        let _one = LOCKS.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("skiff-watch-other-build-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let dir = dir.canonicalize().unwrap();
+        let socket = dir.join("s.sock");
+        // `skiff watch` to ps: a shell named skiff that reads the script `watch`.
+        std::os::unix::fs::symlink("/bin/sh", dir.join("skiff")).unwrap();
+        std::fs::write(dir.join("watch"), "while :; do sleep 0.1; done\n").unwrap();
+        // `true` stands in for the app's skiff that starts the new watcher.
+        let cli = Path::new("/usr/bin/true");
+        let script = r#"
+import fcntl, json, os, sys, time
+lock, sock, exe, version, build = sys.argv[1:6]
+fd = os.open(lock, os.O_WRONLY | os.O_CREAT)
+fcntl.flock(fd, fcntl.LOCK_EX)
+os.ftruncate(fd, 0)
+os.write(fd, json.dumps({"pid": os.getpid(), "socket": sock, "started_at": int(time.time() * 1000), "version": version, "build": build}).encode())
+os.set_inheritable(fd, True)
+os.execv(exe, ["skiff", "watch"])
+"#;
+        let stand_in = |build: &str| {
+            let child = std::process::Command::new("python3")
+                .args(["-c", script])
+                .arg(watch_lock(&socket))
+                .arg(&socket)
+                .arg(dir.join("skiff"))
+                .args([CLI_VERSION, build])
+                .current_dir(&dir)
+                .spawn()
+                .ok()?;
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while !watch_status(&socket).unwrap().held || !command_of(child.id()).is_some_and(|c| is_watch_command(&c)) {
+                assert!(std::time::Instant::now() < until, "the stand-in watcher did not start");
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Some(child)
+        };
+        // This build: kept, and nothing is signalled.
+        let Some(mut same) = stand_in(&build_of(cli).unwrap()) else { return };
+        assert_eq!(ensure_watch(&socket, cli, CLI_VERSION, "abc", &[], Some(&AtomicBool::new(false))).unwrap(), WatchOutcome::Current);
+        assert!(same.try_wait().unwrap().is_none());
+        unsafe { libc::kill(same.id() as libc::pid_t, libc::SIGKILL) };
+        let _ = same.wait();
+        // Another build of the same version: stopped and replaced.
+        let mut old = stand_in("0123456789abcdef").unwrap();
+        let out = ensure_watch(&socket, cli, CLI_VERSION, "abc", &[], Some(&AtomicBool::new(false))).unwrap();
+        assert_eq!(out, WatchOutcome::Replaced { pid: old.id() });
+        let code = old.wait().unwrap();
+        assert_eq!(std::os::unix::process::ExitStatusExt::signal(&code), Some(libc::SIGTERM));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A held lock with no record, and no registered `skiff watch` to name
@@ -951,6 +1366,33 @@ os.execv("/bin/cat", ["skiff", "watch"])
         // A free lock gets a watcher.
         assert_eq!(ensure_watch(&socket, cli, CLI_VERSION, "abc", &[], Some(&AtomicBool::new(false))).unwrap(), WatchOutcome::Started);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A project Skipper is named after its project and the Skiff agent's
+    /// name, so no two sessions share a name.
+    #[test]
+    fn a_project_skipper_takes_its_project_and_the_agents_name() {
+        let cfg = skiff_core::config::parse("[skiff_agent]\nname = \"Skipper\"\n").unwrap();
+        assert_eq!(project_name(&cfg, "gesher"), "gesher Skipper");
+        let cfg = skiff_core::config::parse("[skiff_agent]\nname = \"Captain\"\n").unwrap();
+        assert_eq!(project_name(&cfg, "skiff"), "skiff Captain");
+        assert_ne!(project_name(&cfg, "skiff"), name(&cfg));
+        let cfg = skiff_core::config::parse("").unwrap();
+        assert_eq!(project_name(&cfg, "p"), format!("p {DEFAULT_NAME}"));
+    }
+
+    /// The live socket's scope keeps its plain name. Any other socket gets
+    /// one of its own, so a test daemon named skiffd.sock beside the live
+    /// one does not fail to start its watcher.
+    #[test]
+    fn each_socket_gets_its_own_scope_unit() {
+        let live = skiff_core::state::live_socket();
+        assert_eq!(unit_for("skiff-watch", &live), "skiff-watch-skiffd");
+        let a = unit_for("skiff-watch", Path::new("/tmp/a/skiffd.sock"));
+        let b = unit_for("skiff-watch", Path::new("/tmp/b/skiffd.sock"));
+        assert!(a.starts_with("skiff-watch-skiffd-") && a.len() == "skiff-watch-skiffd-".len() + 8, "{a}");
+        assert_ne!(a, b);
+        assert_eq!(a, unit_for("skiff-watch", Path::new("/tmp/a/skiffd.sock")));
     }
 
     /// One attempt per flag. A stale watcher that ignores SIGTERM holds the

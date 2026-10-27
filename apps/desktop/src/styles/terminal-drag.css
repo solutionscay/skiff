@@ -17,3 +17,9 @@ body.dragging-session.drop-refused, body.dragging-session.drop-refused * { curso
 .drag-ghost.refused { border-color: var(--error); color: var(--error); }
 .cell-head { cursor: grab; }
 .cell-head button { cursor: pointer; }
+/* A group moving in the sidebar: a line where it lands. */
+.drop-preview.line { background: var(--state-working); border: 0; }
+/* Files from another app over a pane: the drop look on its body, one label in the middle. */
+.drop-preview.file-drop { display: flex; align-items: center; justify-content: center; }
+.drop-preview.file-drop[hidden] { display: none; }
+.file-drop .drag-ghost { position: static; box-shadow: none; }

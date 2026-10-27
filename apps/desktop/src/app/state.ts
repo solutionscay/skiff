@@ -95,5 +95,7 @@ export const S = {
   themes: [] as TerminalTheme[],
   /** `[appearance] theme`: a theme id, or null for Harbor. It colors the app and every terminal without its own. */
   appTheme: null as string | null,
+  /** Settings shows: the app wears the app theme, not the selected project's. */
+  settingsShown: false,
   fontSize: savedFontSize(),
 };

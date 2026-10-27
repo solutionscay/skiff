@@ -132,6 +132,21 @@ enum Cmd {
         /// switch to a Skiff folder. It shows the preview and asks first.
         #[arg(long, value_name = "PATH", conflicts_with = "no_attach")]
         move_to: Option<std::path::PathBuf>,
+        /// The project Skipper of PROJECT in place of the Skipper: find it,
+        /// or start it in the project's folder with SKIPPER.md as its first
+        /// message. Needs Settings › Skiff agent › Project and fleet Skippers.
+        #[arg(long, value_name = "PROJECT", conflicts_with = "move_to")]
+        project: Option<String>,
+        /// The fleet Skipper of FLEET: find it, or start it in its folder
+        /// with SKIPPER.md as its first message. When project Skippers run
+        /// in the fleet, it names them and asks: the fleet Skipper takes
+        /// their work over and they stop when idle. Needs Settings › Skiff
+        /// agent › Project and fleet Skippers.
+        #[arg(long, value_name = "FLEET", conflicts_with_all = ["move_to", "project"])]
+        fleet: Option<String>,
+        /// With --fleet: take the project Skippers over without asking.
+        #[arg(long, requires = "fleet")]
+        yes: bool,
         /// With --move-to: set up a new ledger in place of a copy.
         #[arg(long, requires = "move_to")]
         empty: bool,
@@ -227,7 +242,7 @@ enum Cmd {
         cmd: OpenWithCmd,
     },
     /// The Skiff agent's task ledger: ledger.db in its folder.
-    #[command(after_help = "States: sent, pending (not delivered: the pane was working), blocked (the pane needs the user), done.\nls and show print interrupted for a sent or blocked task whose pane restarted since the send: a restore runs a new shell under the old pane id. They print gone for an open task whose pane no longer exists. A task sent on another daemon shows elsewhere in LIVE and its socket: it is never gone from here, and send refuses it. A plan with tasks shows done when every task is done, else sent.\nID is the row number or the 8-character uid that add prints. Neither is ever reused.\nResults: a task writes to results/<date>-<uid>-<slug>.md next to the ledger; a plan owns results/<date>-<uid>-<slug>/ with plan.md, and its tasks write <uid>-<slug>.md in that folder. add stores and prints the path and makes no file. rm and prune keep the files.\nWork: a plan with its tasks, or a task with no plan. Work is working while an agent is on one of its tasks (the task is sent, and its pane works or ended its turn), open otherwise, and finished once closed. close stamps it on the person's word; reopen clears the stamp. A task added or moved under closed work, or set from done to another state, reopens it.\nReported: report stamps a done task once the person was told. An update to a state other than done clears the stamp. ls --unreported lists the done tasks not yet reported.\nThe ledger is ~/skiff-agent/ledger.db, or ledger.db in the [skiff_agent] folder override. On a socket other than the live one, it is in the socket's private state. SKIFF_LEDGER overrides the path.\nOne owner: add, send, update, report, close, reopen, prune and rm refuse unless the caller is the Skiff agent session that owns the ledger. skiff skipper and the agent's watcher record it; a new Skiff agent session on the owner's daemon, or on the live daemon, takes it over. The refusal names the owner and its socket. A shell pane is a person and may change rows. A shell outside Skiff has no SKIFF_SESSION, and an agent there looks the same, so it is refused too: a person there passes --person. ls and show work from anywhere.\nOn first use, an old ledger.md next to it is imported and kept as ledger.md.bak.")]
+    #[command(after_help = "States: sent, pending (not delivered: the pane was working), blocked (the pane needs the user), done.\nls and show print interrupted for a sent or blocked task whose pane restarted since the send: a restore runs a new shell under the old pane id. They print gone for an open task whose pane no longer exists. A task sent on another daemon shows elsewhere in LIVE and its socket: it is never gone from here, and send refuses it. A plan with tasks shows done when every task is done, else sent.\nID is the row number or the 8-character uid that add prints. Neither is ever reused.\nResults: a task writes to results/<date>-<uid>-<slug>.md next to the ledger, or in projects/<project>/results/ for a project Skipper's rows and a hand-off to it, or in fleets/<fleet>/results/ for a fleet Skipper's; a plan owns results/<date>-<uid>-<slug>/ with plan.md, and its tasks write <uid>-<slug>.md in that folder. add stores and prints the path and makes no file. rm and prune keep the files.\nWork: a plan with its tasks, or a task with no plan. Work is working while an agent is on one of its tasks (the task is sent, and its pane works or ended its turn), open otherwise, and finished once closed. close stamps it on the person's word; reopen clears the stamp. A task added or moved under closed work, or set from done to another state, reopens it.\nReported: report stamps a done task once the person was told. An update to a state other than done clears the stamp. ls --unreported lists the done tasks not yet reported.\nThe ledger is ~/skiff-agent/ledger.db, or ledger.db in the [skiff_agent] folder override. On a socket other than the live one, it is in the socket's private state. SKIFF_LEDGER overrides the path.\nOwners: each row is the Skipper's (grand), a project Skipper's (its project) or a fleet Skipper's (fleet:<fleet>). add, send, update, report, close, reopen, prune and rm refuse unless the caller owns the row: the Skiff agent session that owns the ledger for the Skipper's rows, a project or fleet Skipper for its own. A project or fleet Skipper may also set the state and result of the hand-off it was given. A fleet Skipper's add and update --pane refuse a pane outside its fleet's projects. A Skipper a fleet Skipper took over is refused. skiff skipper and the agent's watcher record the Skipper's session; a new Skiff agent session on the owner's daemon, or on the live daemon, takes it over. The refusal names the owner. A shell pane is a person and may change rows. A shell outside Skiff has no SKIFF_SESSION, and an agent there looks the same, so it is refused too: a person there passes --person. ls and show work from anywhere.\nOn first use, an old ledger.md next to it is imported and kept as ledger.md.bak.")]
     Ledger {
         /// From a shell outside Skiff: I am a person, not an agent. Without
         /// it, add, send, update, report, close, reopen, prune and rm refuse
@@ -289,6 +304,24 @@ pub enum LedgerCmd {
         #[arg(long, requires = "send")]
         shell: bool,
     },
+    /// Hand a task to a project's or a fleet's Skipper: add a hand-off row,
+    /// start that Skipper if none runs, and send it the task. Exits with
+    /// `send`'s code.
+    #[command(
+        after_help = "SCOPE is a project or a fleet, by its name in `skiff projects`. A name that is both is refused: use project:NAME or fleet:NAME. Both spellings always work.\nThe hand-off row is the Skipper's: its pane is the project or fleet Skipper, and its result path is in that Skipper's results folder. That Skipper adds its own tasks under it with --parent UID, and reports it with `skiff ledger update UID --state done --result PATH`. A project or fleet Skipper cannot hand off.\nA project in a fleet whose Skipper runs is refused: hand off to the fleet. A fleet with project Skippers and no fleet Skipper is refused: the person starts the fleet Skipper, which takes them over.\nA new Skipper gets SKIPPER.md as its first message, with the task after it. A busy one keeps the row pending: `skiff watch` names it when that Skipper is idle."
+    )]
+    Handoff {
+        /// The project or the fleet: NAME, project:NAME or fleet:NAME.
+        #[arg(value_name = "SCOPE")]
+        project: String,
+        task: String,
+        /// A short title for the app's Ledger panel: 3 to 6 words.
+        #[arg(long, value_name = "TEXT")]
+        title: Option<String>,
+        /// The work it joins: a plan of yours, or any task in it.
+        #[arg(long, value_name = "ID")]
+        parent: Option<String>,
+    },
     /// Send a pending or interrupted task to its pane, then mark it sent.
     /// Exits with `send`'s code.
     #[command(
@@ -332,8 +365,9 @@ pub enum LedgerCmd {
     },
     /// List the work that is not closed: working first, then open, oldest
     /// first, each plan's tasks under it. WORK names the group. LIVE says if
-    /// the pane still exists.
-    #[command(after_help = "--state filters inside the list. --json adds bucket (working, open or finished) and closed_at to each row.")]
+    /// the pane still exists. An open task whose pane is gone is set done
+    /// first, and shows `gone`.
+    #[command(after_help = "--state filters inside the list. --json adds bucket (working, open or finished), closed_at and gone_at to each row.")]
     Ls {
         /// sent, pending, blocked, done, interrupted or gone.
         #[arg(long)]
@@ -489,6 +523,7 @@ enum OpenKey {
     Text,
     Markdown,
     Html,
+    Image,
 }
 
 impl OpenKey {
@@ -498,6 +533,7 @@ impl OpenKey {
             OpenKey::Text => "text",
             OpenKey::Markdown => "markdown",
             OpenKey::Html => "html",
+            OpenKey::Image => "image",
         }
     }
 }
@@ -615,6 +651,8 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Daemon(DaemonCmd::Stop) => return daemon::stop(&socket).await.map(|_| 0),
         // Starts skiffd when it does not run.
         Cmd::Skipper { move_to: Some(to), empty, dry_run, .. } => return skipper::move_to(&socket, &to, empty, dry_run).await.map(|_| 0),
+        Cmd::Skipper { project: Some(p), no_attach, .. } => return skipper::run_project(&socket, &p, no_attach).await.map(|_| 0),
+        Cmd::Skipper { fleet: Some(f), no_attach, yes, .. } => return skipper::run_fleet(&socket, &f, no_attach, yes).await.map(|_| 0),
         Cmd::Skipper { no_attach, .. } => return skipper::run(&socket, no_attach).await.map(|_| 0),
         // It connects again after a daemon reload, so it holds no connection here.
         Cmd::Watch { skipper, no_notify } => {

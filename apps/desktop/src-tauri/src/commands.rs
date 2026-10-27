@@ -10,8 +10,15 @@ pub(crate) async fn list_sessions(app: State<'_, App>) -> Result<Vec<SessionInfo
 }
 
 #[tauri::command]
-pub(crate) async fn create_session(app: State<'_, App>, spec: SessionSpec) -> Result<SessionInfo, String> {
+pub(crate) async fn create_session(app: State<'_, App>, mut spec: SessionSpec) -> Result<SessionInfo, String> {
     let (c, _) = ensure_client(&app).await?;
+    // The + menu's agent gets the image cache's read flag at the end of its line.
+    if spec.role == skiff_core::session::Role::Agent {
+        if let Ok(agents) = c.list_agents().await {
+            let cfg = skiff_core::config::load().unwrap_or_default();
+            skiff_client::cache::add_flags(&cfg, &agents, &mut spec);
+        }
+    }
     c.create_session(spec).await.map_err(err)
 }
 
@@ -206,6 +213,7 @@ pub(crate) struct OpenSettings {
     text: String,
     markdown: String,
     html: String,
+    image: String,
     default_diff: &'static str,
 }
 
@@ -217,6 +225,7 @@ fn open_settings_now() -> Result<OpenSettings, String> {
         text: o.text.unwrap_or_default(),
         markdown: o.markdown.unwrap_or_default(),
         html: o.html.unwrap_or_default(),
+        image: o.image.unwrap_or_default(),
         default_diff: skiff_core::git::DEFAULT_DIFF,
     })
 }
@@ -380,4 +389,10 @@ pub(crate) async fn save_group(app: State<'_, App>, group: Group) -> Result<Grou
 pub(crate) async fn delete_group(app: State<'_, App>, group: String) -> Result<(), String> {
     let (c, _) = ensure_client(&app).await?;
     c.delete_group(&group).await.map_err(err)
+}
+
+#[tauri::command]
+pub(crate) async fn order_groups(app: State<'_, App>, groups: Vec<String>) -> Result<(), String> {
+    let (c, _) = ensure_client(&app).await?;
+    c.order_groups(groups).await.map_err(err)
 }

@@ -1,8 +1,9 @@
 //! Whose state a process uses: the person's, or a private copy for its
-//! socket. Only the release daemon's default socket serves the person's
-//! `projects.toml`, workspace, Skiff agent folder and ledger. Any other
-//! socket, a debug build's default included, gets a folder of its own next
-//! to the socket, so a test daemon never reads or writes live state.
+//! socket. Only the default socket, `<runtime dir>/skiff/skiffd.sock` in
+//! every build, serves the person's `projects.toml`, workspace, Skiff agent
+//! folder and ledger. Any other socket (a `SKIFF_SOCKET` override) gets a
+//! folder of its own next to the socket, so a test daemon never reads or
+//! writes live state.
 //! `SKIFF_REAL_STATE=1` opts a process on another socket in. `SKIFF_CONFIG`,
 //! `SKIFF_STATE` and `SKIFF_LEDGER` still name a file each.
 
@@ -25,10 +26,10 @@ pub fn socket() -> PathBuf {
     SOCKET.get().cloned().unwrap_or_else(crate::socket::socket_path)
 }
 
-/// The socket the installed app and its daemon use: a release build's
-/// default, with no `SKIFF_SOCKET`.
+/// The socket the app and its daemon use: the default of every build, with
+/// no `SKIFF_SOCKET`.
 pub fn live_socket() -> PathBuf {
-    crate::socket::runtime_dir().join("skiff").join("skiffd.sock")
+    crate::socket::runtime_dir().join("skiff").join(crate::socket::SOCKET_NAME)
 }
 
 /// `socket` is the live socket.

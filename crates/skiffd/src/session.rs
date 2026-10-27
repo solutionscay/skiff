@@ -123,8 +123,8 @@ pub struct Session {
     input: std::sync::mpsc::Sender<Input>,
     /// Writes accepted and not yet in the PTY. A reload waits for 0.
     queued: Arc<AtomicUsize>,
-    /// Unix µs when the writer thread last wrote input to the PTY. The reader
-    /// takes it with the first output after it; 0 once taken.
+    /// Unix µs when the writer thread first wrote input to the PTY since the
+    /// last output. The reader takes it with the first output after it; 0 once taken.
     wrote: Arc<AtomicU64>,
     /// Wakes the reader thread out of its wait, so it sees a pause request.
     waker: Poller,
@@ -452,7 +452,9 @@ pub struct SessionPool {
     coordinator: Mutex<Option<(SessionId, Instant)>>,
     /// `skiff watch` registrations by connection number. Not saved and not
     /// handed over: a watcher registers again when it connects again.
-    watchers: Mutex<HashMap<u64, Watcher>>,
+    /// By connection and the session watched: one watcher process may
+    /// register for several Skippers, each on its own session.
+    watchers: Mutex<HashMap<(u64, SessionId), Watcher>>,
 }
 
 /// One connection's [`Request::Watching`] registration.
@@ -532,7 +534,9 @@ impl SessionPool {
     }
 
     /// Registers connection `conn` as a watcher of `session`, or replaces its
-    /// registration. A replacement keeps `since`.
+    /// registration for that session. A replacement keeps `since`. One
+    /// connection may watch several sessions: a Skipper's watcher registers
+    /// on the grand Skipper and on each project Skipper.
     pub fn watching(
         &self,
         conn: u64,
@@ -544,22 +548,24 @@ impl SessionPool {
         if self.get(session).is_none() {
             bail!("no such session: {session}");
         }
-        let old = {
+        {
             let mut w = self.watchers.lock().unwrap();
-            let since = w.get(&conn).filter(|o| o.session == session).map_or_else(now_ms, |o| o.since);
-            w.insert(conn, Watcher { session: session.to_string(), pid, since, failure, follows })
-        };
-        if let Some(old) = old.filter(|o| o.session != session) {
-            self.publish_watch(&old.session);
+            let key = (conn, session.to_string());
+            let since = w.get(&key).map_or_else(now_ms, |o| o.since);
+            w.insert(key, Watcher { session: session.to_string(), pid, since, failure, follows });
         }
         self.publish_watch(session);
         Ok(())
     }
 
-    /// Connection `conn` closed: its registration, if any, ends.
+    /// Connection `conn` closed: its registrations, if any, end.
     pub fn unwatch(&self, conn: u64) {
-        let old = self.watchers.lock().unwrap().remove(&conn);
-        if let Some(old) = old {
+        let gone: Vec<Watcher> = {
+            let mut w = self.watchers.lock().unwrap();
+            let keys: Vec<(u64, SessionId)> = w.keys().filter(|k| k.0 == conn).cloned().collect();
+            keys.into_iter().filter_map(|k| w.remove(&k)).collect()
+        };
+        for old in gone {
             self.publish_watch(&old.session);
         }
     }
@@ -679,6 +685,8 @@ impl SessionPool {
             interactive: false,
             input_gen: 0,
             coordinator: spec.coordinator,
+            skipper: spec.skipper.filter(|p| !p.trim().is_empty()),
+            retiring: false,
             watch: None,
         };
 
@@ -1124,6 +1132,67 @@ impl SessionPool {
         Ok(info)
     }
 
+    /// Takes a project Skipper over: its mark goes now, and the session ends
+    /// at its next idle (see [`Self::retired`]). An idle one ends now.
+    pub fn retire(&self, id: &str) -> Result<()> {
+        let info = {
+            let _change = self.change()?;
+            let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
+            let mut info = session.info.lock().unwrap();
+            if info.skipper.is_none() || info.coordinator {
+                bail!("session {id} is not a project Skipper");
+            }
+            info.skipper = None;
+            info.retiring = true;
+            info.clone()
+        };
+        tracing::info!("session {id} retires: a fleet Skipper took it over");
+        let _ = self.events.send(Event::SessionUpdated { session: info });
+        self.dirty.notify_one();
+        self.end_retired();
+        Ok(())
+    }
+
+    /// Moves a Skipper to a new scope and name: a fleet's rename.
+    pub fn rescope(&self, id: &str, scope: &str, name: &str) -> Result<SessionInfo> {
+        let _change = self.change()?;
+        let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
+        {
+            let mut info = session.info.lock().unwrap();
+            if info.skipper.is_none() || info.coordinator || scope.trim().is_empty() {
+                bail!("session {id} is not a project or fleet Skipper");
+            }
+            info.skipper = Some(scope.to_string());
+            info.name = (!name.trim().is_empty()).then(|| name.trim().to_string());
+        }
+        let info = session.info();
+        let _ = self.events.send(Event::SessionUpdated { session: info.clone() });
+        self.dirty.notify_one();
+        Ok(info)
+    }
+
+    /// The retiring sessions that are idle or done. A waiting one keeps its
+    /// prompt for the person; a working one finishes its turn.
+    fn retired(&self) -> Vec<String> {
+        let sessions = self.sessions.read().unwrap();
+        sessions
+            .values()
+            .filter_map(|s| {
+                let info = s.info.lock().unwrap();
+                (info.retiring && matches!(info.state, SessionState::Idle | SessionState::Done)).then(|| info.id.clone())
+            })
+            .collect()
+    }
+
+    fn end_retired(&self) {
+        for id in self.retired() {
+            match self.kill(&id) {
+                Ok(()) => tracing::info!("session {id} retired: it was idle"),
+                Err(e) => tracing::warn!("cannot end retiring session {id}: {e:#}"),
+            }
+        }
+    }
+
     pub fn set_theme(&self, id: &str, theme: Option<String>) -> Result<SessionInfo> {
         let _change = self.change()?;
         let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
@@ -1236,12 +1305,16 @@ impl SessionPool {
             let mut tick = tokio::time::interval(Duration::from_secs(1));
             loop {
                 tick.tick().await;
-                let Some(_quiet) = pool.quiet() else { continue };
-                let sessions: Vec<Arc<Session>> =
-                    pool.sessions.read().unwrap().values().cloned().collect();
-                for s in sessions {
-                    pool.idle_if_quiet(&s);
+                {
+                    let Some(_quiet) = pool.quiet() else { continue };
+                    let sessions: Vec<Arc<Session>> =
+                        pool.sessions.read().unwrap().values().cloned().collect();
+                    for s in sessions {
+                        pool.idle_if_quiet(&s);
+                    }
                 }
+                // Out of the guard: a kill takes it again.
+                pool.end_retired();
             }
         });
     }
@@ -1303,7 +1376,7 @@ pub(crate) enum Input {
 }
 
 /// The thread that writes input to the PTY, its count of writes queued, and
-/// when it last wrote. A program that stops reading its input blocks this
+/// when it first wrote since the last output. A program that stops reading its input blocks this
 /// thread alone. Input after the PTY is gone is dropped and still counted
 /// down, so a reload never waits on a dead session.
 fn start_writer(id: &str, pty: &Pty) -> Result<(std::sync::mpsc::Sender<Input>, Arc<AtomicUsize>, Arc<AtomicU64>)> {
@@ -1323,7 +1396,10 @@ fn start_writer(id: &str, pty: &Pty) -> Result<(std::sync::mpsc::Sender<Input>, 
                     Input::Bytes(data) => {
                         // Before the write: a terminal in canonical mode echoes
                         // inside it, so the reader can see the answer first.
-                        wrote_at.store(now_us(), Ordering::Relaxed);
+                        // The first write since the last read: keys typed while
+                        // the program is silent wait on the program, and the
+                        // trace must not count that wait as skiffd's.
+                        let _ = wrote_at.compare_exchange(0, now_us(), Ordering::Relaxed, Ordering::Relaxed);
                         if open && writer.write_all(&data).and_then(|_| writer.flush()).is_err() {
                             open = false;
                         }

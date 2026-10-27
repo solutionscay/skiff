@@ -1,6 +1,7 @@
 import { ctxMenu } from "../ui/contextMenu";
 /** Right-click menus for projects, sessions, panes and groups. */
-import { isSkiffAgent, openWatchLog, skiffAgentFolder, skiffAgentName, skiffWatch, startSkiffWatch } from "../app/skiffAgent";
+import { imageCount, openImages } from "../terminal/images";
+import { fleetSkipperOf, isSkiffAgent, joinFleet, openWatchLog, projectSkipperOf, startFleetSkipper, startProjectSkipper, skiffAgentFolder, skiffAgentName, skiffWatch, startSkiffWatch } from "../app/skiffAgent";
 import { launchIcon } from "../appearance/agentIcon";
 import { confirmAction, promptAction } from "../ui/confirm";
 import { pickColor } from "../appearance/colorPicker";
@@ -8,7 +9,7 @@ import { pickBackgroundOpacity } from "../appearance/backdropOpacity";
 import { keyLabel } from "../app/keys";
 import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { type MenuEntry } from "../ui/menu";
-import { agentName, basename, branchName, byStart, locate, taskTitle } from "./model";
+import { agentName, basename, branchName, locate, taskTitle, isProjectSkipper } from "./model";
 import { cwdOf } from "./canvas";
 import { filledOf, slotsOf } from "./layoutSlots";
 import type { Group, Project, SessionInfo, SplitDir, Worktree } from "../platform/types";
@@ -25,6 +26,7 @@ import { setShowFiles, showsFiles } from "./files";
 import { deleteGroup } from "../app/groups";
 import { closeEntries } from "./projectClose";
 import { sessionsOf } from "./layout";
+import { bareWorktree, projectsHidden, renameHidden, setProjectsHidden } from "./tree";
 
 import { startRename, startSessionRename } from "./rename";
 import { render } from "../app/render";
@@ -33,7 +35,7 @@ import { MAX_PANES, removeErrors, removing, S, selectedWorktree, sessions } from
 import { groupOf, launchChoices, launchDigit, place, shownIds, splitFull } from "../app/stateQueries";
 
 import { groupThemeMenu, projectThemeMenu, sessionThemeMenu } from "../appearance/themes";
-import { focusPane, refocusTerminal, removeFromGroup, showGroup, splitWith, unsplit } from "./view";
+import { focusPane, refocusTerminal, removeFromGroup, showGroup, unsplit } from "./view";
 import { resumeAllEntry, resumeOffer, resumePane } from "../terminal/resume";
 import { ledgerFolded, ledgerShown, toggleLedger } from "./ledger";
 
@@ -124,34 +126,80 @@ function setInitials(p: Project) {
   });
 }
 
-/** The fleets now, for the dialog's note. */
-const fleetNames = () => [...new Set(S.projects.map((x) => x.fleet).filter((f): f is string => !!f))];
+/** The fleets now, for the picker. */
+const fleetNames = () => [...new Set(S.projects.map((x) => x.fleet).filter((f): f is string => !!f))].sort((a, b) => a.localeCompare(b));
 
-/** Ask for the fleet the project sits in. Projects with the same fleet go under one fleet head in the tree. */
+/** Pick the fleet the project sits in. Projects with the same fleet go under one fleet head in the tree. */
 function setFleet(p: Project) {
-  const names = fleetNames();
   promptAction({
     title: `Fleet for ${p.name}`,
-    body:
-      "Projects with the same fleet name go under one fleet head in the side panel. Leave the field empty to put the project under Projects." +
-      (names.length ? ` Fleets now: ${names.join(", ")}.` : ""),
+    body: "Projects with the same fleet go under one fleet head in the side panel. Pick a fleet or type a new name.",
     placeholder: "a fleet name",
     value: p.fleet ?? "",
     allowEmpty: true,
+    options: fleetNames(),
+    clearLabel: p.fleet ? "No fleet: back under Projects" : undefined,
     action: "Set fleet",
-    submit: (fleet) => invoke("set_project_fleet", { project: p.name, fleet }),
+    // A project Skipper that comes under a running fleet Skipper is taken over, after one confirm.
+    submit: async (fleet) => {
+      if ((await joinFleet(p.name, fleet.trim())) === false) await invoke("set_project_fleet", { project: p.name, fleet });
+    },
     onClose: refocusTerminal,
   });
 }
 
-/** Give every project of the fleet the new name. An empty name puts each under Projects. */
+/** Give the fleet a new name: its projects, and its Skipper's folder, rows and session. */
 function renameFleet(f: Fleet, name: string) {
-  return invoke<void>("reorder_projects", { order: S.projects.map((x) => x.name), fleets: f.projects.map((p) => [p.name, name]) });
+  renameHidden(f.name, name);
+  return invoke<void>("rename_fleet", { old: f.name, new: name });
+}
+
+/** Take every project out of the fleet. Each goes back under Projects. */
+function dissolveFleet(f: Fleet) {
+  return invoke<void>("reorder_projects", { order: S.projects.map((x) => x.name), fleets: f.projects.map((p) => [p.name, ""]) });
+}
+
+/**
+ * The fleet head's Skipper items, as a project row has them: Start fleet
+ * Skipper while Settings › Skiff agent › Project and fleet Skippers is on;
+ * while one runs, Open fleet Skipper and Stop fleet Skipper….
+ */
+function fleetSkipperEntries(f: Fleet): MenuEntry[] {
+  const s = fleetSkipperOf(f.name);
+  if (!s) {
+    if (!skiffAgentFolder() || !S.skiffAgent?.project_skippers) return [];
+    return [{ icon: "tools-sparkles", label: "Start fleet Skipper", run: () => void startFleetSkipper(f.name) }];
+  }
+  return [
+    { icon: "tools-sparkles", label: "Open fleet Skipper", run: () => void startFleetSkipper(f.name) },
+    {
+      icon: "indicators-square-stop",
+      label: "Stop fleet Skipper…",
+      danger: true,
+      run: async () => {
+        if (await confirmAction({ title: `Stop the ${f.name} Skipper?`, body: "", action: "Stop fleet Skipper" })) void endSession(s.id);
+        else refocusTerminal();
+      },
+    },
+  ];
 }
 
 /** A right-click on a fleet tile. */
 export function fleetMenu(f: Fleet, x: number, y: number) {
+  const skipper = fleetSkipperEntries(f);
   ctxMenu.open(x, y, `Fleet ${f.name}`, [
+    ...skipper,
+    ...(skipper.length ? [{ sep: true as const }] : []),
+    // The label says what a click does. Hidden, the head keeps its Skipper and the sessions that need a look.
+    {
+      icon: projectsHidden(f.name) ? "senses-eye" : "senses-eye-off",
+      label: projectsHidden(f.name) ? "Show projects" : "Hide projects",
+      run: () => {
+        setProjectsHidden(f.name, !projectsHidden(f.name));
+        render();
+      },
+    },
+    { sep: true },
     {
       icon: "tools-pencil",
       label: "Rename fleet…",
@@ -166,7 +214,17 @@ export function fleetMenu(f: Fleet, x: number, y: number) {
           onClose: refocusTerminal,
         }),
     },
-    { icon: "code-ungroup", label: "Remove fleet", run: () => void renameFleet(f, "").catch(showError) },
+    {
+      icon: "code-ungroup",
+      label: fleetSkipperOf(f.name) ? "Remove fleet…" : "Remove fleet",
+      run: async () => {
+        // The fleet is gone, so its Skipper stops: one confirm.
+        const s = fleetSkipperOf(f.name);
+        if (s && !(await confirmAction({ title: `Remove fleet ${f.name}?`, body: `${f.projects.map((p) => p.name).join(", ")}. The ${f.name} Skipper stops.`, action: "Remove fleet" }))) return refocusTerminal();
+        if (s) await endSession(s.id);
+        await dissolveFleet(f).catch(showError);
+      },
+    },
     ...fleetWorkspaceEntries(f.name),
   ]);
 }
@@ -199,26 +257,47 @@ export function projectRun(p: Project) {
   } as const;
 }
 
-/** The project's + in the sidebar, a right-click on its row, or the menu key. */
+/** The project row's ⋯, a right-click on it, or the menu key. */
 export function projectMenu(p: Project, x: number, y: number) {
   const run = projectRun(p);
-  // New session goes to the project's selected worktree, else its main one, as Ctrl+Shift+T does.
-  const sel = selectedWorktree.get(p.name);
-  const w = p.worktrees.find((x) => x.path === sel) ?? p.worktrees.find((x) => x.is_main) ?? p.worktrees[0];
-  const plus = w && [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === w.path);
+  // One worktree: its start choices show here, as on a worktree's +. More: pick the worktree first.
+  const bare = bareWorktree(p);
+  const start: MenuEntry[] = bare && !p.error
+    ? launchMenu.entries(p, bare)
+    : [{ icon: "indicators-plus", label: "New session", disabled: !!p.error || !p.worktrees.length, sub: p.worktrees.map((w) => ({
+        icon: "code-git-branch",
+        label: branchName(w),
+        run: () => {
+          const plus = [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === w.path);
+          launchMenu.open(plus ?? { x, y }, p, w);
+        },
+      })) }];
   ctxMenu.open(x, y, p.path, [
-    { icon: "indicators-plus", label: "New session…", hint: keyLabel("new-session"), disabled: !w, run: () => w && launchMenu.open(plus ?? { x, y }, p, w) },
+    ...start,
+    ...(bare ? [{ sep: true } as const] : []),
     { icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
+    ...projectSkipperEntries(p),
+    { sep: true },
     { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: run["project-folder"] },
     { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
-    { icon: "documents-file-image", label: "Icon…", sub: iconEntries(p) },
-    { icon: "tools-pencil", label: "Initials…", run: () => setInitials(p) },
-    { icon: "code-group", label: "Fleet…", run: () => setFleet(p) },
-    { icon: "tools-sparkles", label: "Color…", hint: keyLabel("project-color"), run: run["project-color"] },
-    { icon: "tools-sparkles", label: "Project theme…", hint: keyLabel("theme"), run: () => void projectThemeMenu(p) },
-    { icon: "playback-image", label: "Background…", sub: backgroundEntries(p) },
-    { icon: "code-git-branch", label: showsChanges(p) ? "Hide changes" : "Show changes", hint: keyLabel("project-changes"), run: run["project-changes"] },
-    { icon: "documents-folder-open", label: showsFiles(p) ? "Hide files" : "Show files", hint: keyLabel("project-files"), run: run["project-files"] },
+    // How the project looks. Icon and Background are sections: a flyout goes one level deep.
+    { icon: "tools-sparkles", label: "Appearance", sub: [
+      { icon: "tools-sparkles", label: "Color…", hint: keyLabel("project-color"), run: run["project-color"] },
+      { icon: "tools-sparkles", label: "Project theme…", hint: keyLabel("theme"), run: () => void projectThemeMenu(p) },
+      { icon: "tools-pencil", label: "Initials…", run: () => setInitials(p) },
+      { head: "ICON" },
+      ...iconEntries(p),
+      { head: "BACKGROUND" },
+      ...backgroundEntries(p),
+    ] },
+    // What the project's row shows in the sidebar. A check marks what shows.
+    { icon: "layouts-panel-left", label: "Sidebar", sub: [
+      { icon: showsChanges(p) ? "indicators-check" : "", label: "Changes", hint: keyLabel("project-changes"), run: run["project-changes"] },
+      { icon: showsFiles(p) ? "indicators-check" : "", label: "Files", hint: keyLabel("project-files"), run: run["project-files"] },
+    ] },
+    { sep: true },
+    // Where the project sits: its fleet, then the workspace.
+    { icon: "code-group", label: p.fleet ? "Move to fleet…" : "Add to fleet…", run: () => setFleet(p) },
     ...projectWorkspaceEntries(p),
     ...closeEntries(p),
   ]);
@@ -251,7 +330,8 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
     ...(groupOf(s.id)
       ? [{ icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), run: () => removeFromGroup(s.id) }]
       : []),
-    { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(s.id) },
+    // A project Skipper's name is derived from the Skiff agent's name and its project: nothing to type.
+    ...(isProjectSkipper(s) ? [] : [{ icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(s.id) }]),
     themeEntry(s),
     endEntry(s),
   ]);
@@ -384,6 +464,41 @@ function endManyEntry(ids: string[], label: string, title: string): MenuEntry {
   };
 }
 
+/**
+ * Start project Skipper, while Settings › Skiff agent › Project and fleet Skippers is
+ * on. It opens no dialog. While one runs, whatever Settings says: Open
+ * project Skipper, which shows its pane, and Stop project Skipper…, which
+ * asks first, as End does. Its panes keep running.
+ */
+function projectSkipperEntries(p: Project): MenuEntry[] {
+  const s = projectSkipperOf(p.name);
+  // One Skipper per project: the fleet's Skipper commands it while it runs.
+  const fleet = p.fleet && !s ? fleetSkipperOf(p.fleet) : null;
+  if (fleet) return [{ icon: "tools-sparkles", label: "Open fleet Skipper", run: () => void startFleetSkipper(p.fleet!) }];
+  if (!s) {
+    if (!skiffAgentFolder() || !S.skiffAgent?.project_skippers) return [];
+    return [{ icon: "tools-sparkles", label: "Start project Skipper", disabled: !!p.error, run: () => startProjectSkipper(p.name) }];
+  }
+  return [
+    // startProjectSkipper shows the one that runs.
+    { icon: "tools-sparkles", label: "Open project Skipper", run: () => startProjectSkipper(p.name) },
+    {
+      icon: "indicators-square-stop",
+      label: "Stop project Skipper…",
+      danger: true,
+      run: async () => {
+        const ok = await confirmAction({
+          title: `Stop the ${p.name} Skipper?`,
+          body: `Stops ${agentName(s)} and removes its session. The panes it started keep running, and its ledger rows stay.`,
+          action: "Stop project Skipper",
+        });
+        if (ok) void endSession(s.id);
+        else refocusTerminal();
+      },
+    },
+  ];
+}
+
 async function endSession(id: string) {
   try {
     await invoke("kill_session", { session: id });
@@ -401,7 +516,7 @@ export function paneMenu(id: string, x: number, y: number) {
   const entries: MenuEntry[] = [
     { icon: "layouts-panel-left:flip", label: "Add pane right…", hint: keyLabel("split-right"), disabled: full, run: () => splitMenu(id, "row", x, y) },
     { icon: "layouts-panel-bottom", label: "Add pane below…", hint: keyLabel("split-down"), disabled: full, run: () => splitMenu(id, "col", x, y) },
-    { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(id) },
+    ...(isProjectSkipper(s) ? [] : [{ icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(id) }]),
   ];
   const offer = resumeOffer(s);
   if (offer) entries.unshift({ icon: "schedule-refresh-cw", label: `Resume ${offer.agent}`, run: () => resumePane(id, { x, y }) });
@@ -411,6 +526,7 @@ export function paneMenu(id: string, x: number, y: number) {
   }
   entries.push({ icon: "view-focus", label: S.focusMode ? "Leave focus mode" : "Focus mode", hint: keyLabel("focus-mode"), run: toggleFocusMode });
   entries.push(themeEntry(s));
+  entries.push({ icon: "playback-image", label: "Images…", hint: keyLabel("images"), disabled: !imageCount(), run: openImages });
   if (shownIds().length > 1) {
     entries.push({ icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), run: () => removeFromGroup(id) });
   }
@@ -444,7 +560,7 @@ export function skiffAgentMenu(s: SessionInfo | null, x: number, y: number) {
   if (entries.length) ctxMenu.open(x, y, s ? sessionLabel(s) : skiffAgentName(), entries);
 }
 
-/** Second step of Split: a new agent in this pane's worktree, or a session not shown. */
+/** Second step of Split: a new shell or agent in this pane's worktree. */
 export function splitMenu(id: string, dir: SplitDir, x: number, y: number) {
   const s = sessions.get(id);
   if (!s) return;
@@ -460,14 +576,6 @@ export function splitMenu(id: string, dir: SplitDir, x: number, y: number) {
       run: () => void newSession(cwd, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell", { target: id, dir }).catch(showError),
     });
   });
-  const shown = shownIds();
-  const others = [...sessions.values()].filter((o) => !shown.includes(o.id)).sort(byStart);
-  if (others.length) {
-    entries.push({ head: "OPEN SESSION" });
-    for (const o of others) {
-      entries.push({ icon: "·", label: sessionLabel(o), run: () => splitWith(id, dir, o.id) });
-    }
-  }
   ctxMenu.open(x, y, `${dir === "row" ? "Add pane right" : "Add pane below"}:`, entries);
 }
 
@@ -545,7 +653,7 @@ export async function killGroup(id: string) {
 }
 
 /** The same group actions serve context menus, the menu bar, and the palette. */
-export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: string }>[] {
+export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: string } | { sep: true }>[] {
   const current = () => S.groups.find((x) => x.id === g?.id);
   const idsOf = (group: Group) => sessionsOf(group.layout).filter((id) => sessions.has(id));
   const hasSessions = !!g && idsOf(g).length > 0;
@@ -554,7 +662,7 @@ export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: s
     const group = current();
     if (group) ungroup(group);
   };
-  const entries: Exclude<MenuEntry, { head: string }>[] = [
+  const entries: Exclude<MenuEntry, { head: string } | { sep: true }>[] = [
     { icon: "code-ungroup", label: "Ungroup", hint: keyLabel("close-pane"), disabled: !g, run: drop },
   ];
   if (hasSessions) entries.push(

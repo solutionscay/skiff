@@ -149,7 +149,7 @@ pub(crate) fn generic_title(title: &str) -> bool {
     let t = title.trim().to_lowercase();
     matches!(
         t.as_str(),
-        "claude" | "claude code" | "codex" | "openai codex" | "opencode" | "gemini" | "gemini cli" | "antigravity" | "agy" | "grok" | "grok build"
+        "claude" | "claude code" | "codex" | "openai codex" | "opencode" | "gemini" | "gemini cli" | "antigravity" | "agy" | "grok" | "grok build" | "hermes" | "hermes agent"
     )
 }
 
@@ -191,6 +191,7 @@ pub(crate) fn known(name: &str) -> Option<&'static str> {
         "gemini" | "agy" => Some("gemini"),
         "grok" => Some("grok"),
         "opencode" => Some("opencode"),
+        "hermes" => Some("hermes"),
         _ => None,
     }
 }
@@ -206,8 +207,9 @@ fn agent_program(name: &str, argv: &[String]) -> Option<&'static str> {
     if let Some(agent) = known(name).or_else(|| argv.first().and_then(|s| known(&base(s)))) {
         return Some(agent);
     }
-    // JavaScript CLIs run as node/bun. Only inspect the script, never prompt arguments.
-    if !matches!(name, "node" | "bun" | "deno") {
+    // JavaScript CLIs run as node/bun, Python ones (hermes) as python. Only
+    // inspect the script, never prompt arguments.
+    if !matches!(name, "node" | "bun" | "deno") && !name.starts_with("python") {
         return None;
     }
     let script = argv.get(1)?;
@@ -253,6 +255,11 @@ mod tests {
             agent_program("node", &["node".into(), "/opt/bin/gemini".into()]),
             Some("gemini")
         );
+        assert_eq!(
+            agent_program("python3", &["python3".into(), "/home/u/.local/bin/hermes".into()]),
+            Some("hermes")
+        );
+        assert_eq!(agent_program("hermes", &[]), Some("hermes"));
         assert_eq!(
             agent_program("bash", &["bash".into(), "-c".into(), "codex".into()]),
             None

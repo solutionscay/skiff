@@ -8,7 +8,7 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use skiff_client::{
     agent_folder::{self, Kind, Mode},
-    skipper,
+    fleet, skipper,
 };
 use skiff_core::{
     config::{self, SkiffAgentKey},
@@ -22,9 +22,13 @@ use crate::{
     connection::{ensure_client, err, App},
 };
 
-/// Runs at app start, off the main thread. Never prompts. Copies the
+/// Runs at app start, off the main thread. Never prompts. Makes the agent's
+/// folder when it is missing, with Skipper on or off, and copies the
 /// built-in `skiff-cli` skill out when it changed.
 pub fn sync() {
+    if let Err(e) = config::load().and_then(|cfg| skipper::make_folder(&cfg)) {
+        eprintln!("skiff agent folder: {e:#}");
+    }
     if let Err(e) = skipper::sync_skill() {
         eprintln!("skiff-cli skill: {e:#}");
     }
@@ -131,17 +135,21 @@ pub struct SkiffAgent {
     folder_error: Option<String>,
     /// The folder projects.toml names, refused or not, for the Folder row.
     configured: String,
-    /// `ready` (a Skiff folder), `new` (setup makes it at On), `other` (it
-    /// holds other files) or `refused`.
+    /// `ready` (a Skiff folder), `missing` (the app could not make it),
+    /// `other` (it holds other files) or `refused`.
     folder_status: &'static str,
     continue_on_restore: bool,
+    /// The project menu offers Start project Skipper.
+    project_skippers: bool,
+    /// The agent project Skippers start. Absent: the Skipper's.
+    project_agent: Option<String>,
     /// `[skiff_agent.tasks]` in file order, with the command each row starts.
     tasks: Vec<TaskType>,
 }
 
 fn read() -> anyhow::Result<SkiffAgent> {
     let cfg = config::load().context("read projects.toml")?;
-    let (folder, folder_error) = match skipper::folder(&cfg) {
+    let (folder, mut folder_error) = match skipper::folder(&cfg) {
         Ok(f) => (Some(f.display().to_string()), None),
         Err(e) => (None, Some(format!("{e:#}"))),
     };
@@ -149,7 +157,10 @@ fn read() -> anyhow::Result<SkiffAgent> {
     let folder_status = match (&folder, agent_folder::kind(&configured)) {
         (None, _) => "refused",
         (_, Ok(Kind::Skiff)) => "ready",
-        (_, Ok(Kind::New | Kind::Empty)) => "new",
+        (_, Ok(Kind::New | Kind::Empty)) => {
+            folder_error = Some(skipper::no_folder(&configured));
+            "missing"
+        }
         _ => "other",
     };
     let configured = configured.display().to_string();
@@ -165,6 +176,8 @@ fn read() -> anyhow::Result<SkiffAgent> {
         configured,
         folder_status,
         continue_on_restore: a.continue_on_restore,
+        project_skippers: a.project_skippers,
+        project_agent: a.project_agent,
         tasks,
     })
 }
@@ -177,12 +190,17 @@ pub enum Edit {
     Agent(Option<String>),
     Enabled(bool),
     ContinueOnRestore(bool),
+    ProjectSkippers(bool),
+    /// `null`: Same as Skipper.
+    ProjectAgent(Option<String>),
     /// A new row at the end of Task types.
     AddTask(TaskEdit),
     /// A row's agent or model.
     Task(TaskEdit),
     RenameTask { from: String, to: String },
     RemoveTask(String),
+    /// Auto flush's age in days. `0`: off.
+    CacheDays(u32),
 }
 
 /// A task type row as Settings sends it. An empty model is the agent's default.
@@ -218,10 +236,13 @@ pub async fn set_skiff_agent(app: AppHandle, edit: Edit) -> Result<SkiffAgent, S
             Edit::Name(v) => config::set_skiff_agent(SkiffAgentKey::Name(v.as_deref()))?,
             Edit::Agent(v) => config::set_skiff_agent(SkiffAgentKey::Agent(v.as_deref()))?,
             Edit::ContinueOnRestore(on) => config::set_skiff_agent(SkiffAgentKey::ContinueOnRestore(on))?,
-            Edit::AddTask(t) => config::add_task_type(&t.name, &t.agent, t.model.as_deref(), t.instructions.as_deref())?,
-            Edit::Task(t) => config::set_task_type(&t.name, &t.agent, t.model.as_deref(), t.instructions.as_deref())?,
+            Edit::ProjectSkippers(on) => config::set_skiff_agent(SkiffAgentKey::ProjectSkippers(on))?,
+            Edit::ProjectAgent(v) => config::set_skiff_agent(SkiffAgentKey::ProjectAgent(v.as_deref()))?,
+            Edit::AddTask(t) => config::add_task_type(&t.name, &t.agent, t.model.as_deref())?,
+            Edit::Task(t) => config::set_task_type(&t.name, &t.agent, t.model.as_deref())?,
             Edit::RenameTask { from, to } => config::rename_task_type(&from, &to)?,
             Edit::RemoveTask(name) => config::remove_task_type(&name)?,
+            Edit::CacheDays(n) => config::set_skiff_agent(SkiffAgentKey::CacheDays(n))?,
             Edit::Enabled(on) => {
                 // On makes the folder ready first: a refused folder stays off.
                 if on {
@@ -235,6 +256,87 @@ pub async fn set_skiff_agent(app: AppHandle, edit: Edit) -> Result<SkiffAgent, S
     .await?;
     let _ = app.emit(PROJECTS_CHANGED, ());
     Ok(out)
+}
+
+/// Project menu › Start project Skipper: finds or starts the project's
+/// Skipper with `skiff skipper --project`, which also gives a new one its
+/// first message and starts the watcher. Returns its session id. It waits
+/// for the agent's input box, so it can take a while.
+#[tauri::command]
+pub async fn start_project_skipper(project: String) -> Result<String, String> {
+    let socket = skiff_core::socket::socket_path();
+    blocking(move || {
+        let out = std::process::Command::new(cli())
+            .arg("--socket")
+            .arg(&socket)
+            .args(["skipper", "--project", &project, "--no-attach"])
+            // The app is a person, not a pane.
+            .env_remove("SKIFF_SESSION")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .with_context(|| format!("run {}", cli().display()))?;
+        if !out.status.success() {
+            let msg = String::from_utf8_lossy(&out.stderr);
+            anyhow::bail!("{}", msg.trim().trim_start_matches("skiff: ").trim_start_matches("Error: "));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).lines().last().unwrap_or_default().trim().to_string())
+    })
+    .await
+}
+
+/// Fleet menu › Start fleet Skipper: finds or starts the fleet's Skipper
+/// with `skiff skipper --fleet`, which also gives a new one its first
+/// message and starts the watcher. The page asked first, so `--yes` takes
+/// the fleet's project Skippers over. Returns its session id.
+#[tauri::command]
+pub async fn start_fleet_skipper(fleet: String) -> Result<String, String> {
+    let socket = skiff_core::socket::socket_path();
+    blocking(move || {
+        let out = std::process::Command::new(cli())
+            .arg("--socket")
+            .arg(&socket)
+            .args(["skipper", "--fleet", &fleet, "--no-attach", "--yes"])
+            // The app is a person, not a pane.
+            .env_remove("SKIFF_SESSION")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .with_context(|| format!("run {}", cli().display()))?;
+        if !out.status.success() {
+            let msg = String::from_utf8_lossy(&out.stderr);
+            anyhow::bail!("{}", msg.trim().trim_start_matches("skiff: ").trim_start_matches("Error: "));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).lines().last().unwrap_or_default().trim().to_string())
+    })
+    .await
+}
+
+/// The project Skippers a takeover of `fleet` would stop, for the confirm:
+/// those of its projects, and of `join` when it joins. Changes nothing.
+#[tauri::command]
+pub async fn fleet_takeover_preview(app: State<'_, App>, fleet: String, join: Option<String>) -> Result<Vec<fleet::Taken>, String> {
+    let (c, _) = ensure_client(&app).await?;
+    fleet::preview(&c, &fleet, join.as_deref()).await.map_err(err)
+}
+
+/// Add to fleet…, Move to fleet… or a drop, on the person's confirm: the
+/// running fleet Skipper of `fleet` takes `join`'s project Skipper over,
+/// then `join` joins the fleet.
+#[tauri::command]
+pub async fn fleet_takeover(app: State<'_, App>, handle: AppHandle, fleet: String, join: String) -> Result<(), String> {
+    let (c, _) = ensure_client(&app).await?;
+    let socket = skiff_core::socket::socket_path();
+    let out = fleet::takeover(&c, &socket, &fleet, Some(&join), true).await.map_err(err);
+    let _ = handle.emit(PROJECTS_CHANGED, ());
+    out.map(|_| ())
+}
+
+/// Rename fleet…: the fleet, its Skipper's folder, rows, session and mark.
+#[tauri::command]
+pub async fn rename_fleet(app: State<'_, App>, handle: AppHandle, old: String, new: String) -> Result<(), String> {
+    let (c, _) = ensure_client(&app).await?;
+    let out = fleet::rename(&c, &old, new.trim()).await.map_err(err);
+    let _ = handle.emit(PROJECTS_CHANGED, ());
+    out
 }
 
 /// A preview for the Change… dialog, with Skipper's session when it runs.
@@ -313,6 +415,8 @@ mod tests {
         assert!(matches!(rename, Edit::RenameTask { from, to } if from == "review" && to == "code-review"));
         assert!(matches!(edit(serde_json::json!({ "key": "remove_task", "value": "review" })), Edit::RemoveTask(t) if t == "review"));
         assert!(matches!(edit(serde_json::json!({ "key": "name", "value": null })), Edit::Name(None)));
+        assert!(matches!(edit(serde_json::json!({ "key": "project_skippers", "value": true })), Edit::ProjectSkippers(true)));
+        assert!(matches!(edit(serde_json::json!({ "key": "project_agent", "value": "codex" })), Edit::ProjectAgent(Some(a)) if a == "codex"));
     }
 
     /// The modes `Mode` in apps/desktop/src/appearance/skiffFolderDialog.ts sends.

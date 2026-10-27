@@ -19,11 +19,12 @@ export interface TaskEdit {
 
 /** One edit, as `set_skiff_agent` takes it. */
 export type SkiffAgentEdit =
-  | { key: "name" | "agent"; value: string | null }
-  | { key: "enabled" | "continue_on_restore"; value: boolean }
+  | { key: "name" | "agent" | "project_agent"; value: string | null }
+  | { key: "enabled" | "continue_on_restore" | "project_skippers"; value: boolean }
   | { key: "add_task" | "task"; value: TaskEdit }
   | { key: "rename_task"; value: { from: string; to: string } }
-  | { key: "remove_task"; value: string };
+  | { key: "remove_task"; value: string }
+  | { key: "cache_days"; value: number };
 
 /**
  * Settings › Skiff agent: on or off, its folder, its name, the agent it
@@ -115,7 +116,7 @@ function folderRows(set: SkiffAgentSettings, change: () => void): HTMLElement[] 
   const why =
     set.folder_status === "other"
       ? "Not usable: it holds other files. Choose another folder."
-      : set.folder_status === "refused"
+      : set.folder_status === "refused" || set.folder_status === "missing"
         ? (set.folder_error ?? "Refused.")
         : null;
   if (!why) return [row];
@@ -236,6 +237,41 @@ export function taskTypesSection(
     redraw,
   );
   return [head, table];
+}
+
+/**
+ * Settings › Skiff agent › Project and fleet Skippers: the switch that adds
+ * Start project Skipper to the project menu and Start fleet Skipper to the
+ * fleet menu, the agent they start, and where they keep their instructions
+ * and results. Task types are the Skipper's.
+ */
+export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInfo[], save: (e: SkiffAgentEdit) => void): HTMLElement[] {
+  const head = h("div", "set-head");
+  head.append(
+    h("div", "set-h", "Project and fleet Skippers"),
+    h("div", "set-sub", "One Skipper per project or fleet. It works in its projects and delegates through skiff only. Its SKIPPER.md and results are in projects/<project>/ or fleets/<fleet>/ in the Folder above."),
+  );
+  const on = set.project_skippers;
+  const sw = switchRow("Project and fleet Skippers", on, !!set.folder, (v) => save({ key: "project_skippers", value: v }));
+  sw.insertBefore(h("span", "c-cmd", "Adds Start project Skipper and Start fleet Skipper to the menus."), sw.lastChild);
+
+  const choices = agents.filter((a) => a.enabled || a.custom);
+  const agentRow = h("div", "set-row set-open set-agent on");
+  const pick = h("select", "c-cmd");
+  pick.setAttribute("aria-label", "Project and fleet Skippers' agent");
+  const same = h("option", "", "Same as Skipper");
+  same.value = "";
+  pick.append(same);
+  for (const a of choices) {
+    const o = h("option", "", a.custom ? `${a.id} (custom)` : a.id);
+    o.value = a.id;
+    pick.append(o);
+  }
+  pick.value = choices.some((a) => a.id === set.project_agent) ? set.project_agent! : "";
+  pick.addEventListener("change", () => save({ key: "project_agent", value: pick.value || null }));
+  agentRow.append(h("span", "c-name", "Agent"), pick, h("span", "c-mode", "At next start"));
+
+  return [head, sw, agentRow];
 }
 
 /** A label, a cell for the caller, and a switch. */

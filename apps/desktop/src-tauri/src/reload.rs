@@ -58,13 +58,13 @@ impl From<String> for NoPlan {
     }
 }
 
-/// A reload onto the bundled skiffd, or why there is none. `same`: the
-/// daemon is another build of the same version, so the same version is new.
-pub(crate) async fn plan(info: &DaemonInfo, same: bool) -> Result<Plan, NoPlan> {
-    plan_with(info, &daemon_binary(), same).await
+/// A reload onto the bundled skiffd, or why there is none. The bundled
+/// skiffd must be newer than the daemon: the same version stays.
+pub(crate) async fn plan(info: &DaemonInfo) -> Result<Plan, NoPlan> {
+    plan_with(info, &daemon_binary()).await
 }
 
-async fn plan_with(info: &DaemonInfo, binary: &Path, same: bool) -> Result<Plan, NoPlan> {
+async fn plan_with(info: &DaemonInfo, binary: &Path) -> Result<Plan, NoPlan> {
     let (Some(state), Some(pid)) = (info.reload_state, info.pid) else {
         return Err(NoPlan::Other("it predates reload".into()));
     };
@@ -80,8 +80,7 @@ async fn plan_with(info: &DaemonInfo, binary: &Path, same: bool) -> Result<Plan,
         .filter(|_| out.status.success())
         .ok_or_else(|| format!("{} does not support reload", binary.display()))?;
     let version = target["version"].as_str().unwrap_or_default().to_string();
-    let order = compare_versions(&version, &info.version);
-    if !(order.is_gt() || (same && order.is_eq())) {
+    if !compare_versions(&version, &info.version).is_gt() {
         return Err(NoPlan::Stale(version));
     }
     let reads = target["handover"].as_array().is_some_and(|v| v.iter().any(|h| h.as_u64() == Some(state as u64)));
@@ -341,14 +340,14 @@ fn alive(pid: u32) -> bool {
 }
 
 #[cfg(all(test, unix))]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::connection::ensure_client;
     use skiff_client::skipper;
     use skiff_core::session::SessionSpec;
 
-    /// The tests that set `SKIFF_SOCKET` run one at a time.
-    static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    /// The tests that set `SKIFF_SOCKET` or `SKIFF_DAEMON` run one at a time.
+    pub(crate) static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// A bundled skiffd no newer than the daemon is stale, before the
     /// handover check: a restart onto it would ask again.
@@ -362,17 +361,15 @@ mod tests {
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
         let info = |version: &str| DaemonInfo { version: version.into(), protocol: skiff_core::PROTOCOL, reload_state: Some(2), pid: Some(1), debug: Some(true) };
         let rt = tokio::runtime::Runtime::new().unwrap();
+        // The same version is stale too: whatever its build, it stays.
         for running in ["0.6.19", "0.6.20"] {
-            match rt.block_on(plan_with(&info(running), &bin, false)) {
+            match rt.block_on(plan_with(&info(running), &bin)) {
                 Err(NoPlan::Stale(v)) => assert_eq!(v, "0.6.19"),
                 _ => panic!("skiffd {running}: not stale"),
             }
         }
         // Newer, but it cannot read handover 2.
-        assert!(matches!(rt.block_on(plan_with(&info("0.6.18"), &bin, false)), Err(NoPlan::Other(_))));
-        // Another build of the same version moves on; an older one never does.
-        assert!(matches!(rt.block_on(plan_with(&info("0.6.19"), &bin, true)), Err(NoPlan::Other(_))));
-        assert!(matches!(rt.block_on(plan_with(&info("0.6.20"), &bin, true)), Err(NoPlan::Stale(_))));
+        assert!(matches!(rt.block_on(plan_with(&info("0.6.18"), &bin)), Err(NoPlan::Other(_))));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -702,6 +699,7 @@ os.execv("/bin/cat", ["skiff", "watch"])
             };
             assert_eq!(holder.version.as_deref(), Some(skipper::CLI_VERSION));
             assert_eq!(holder.exe.as_deref().map(PathBuf::from), Some(skiff.clone()));
+            assert_eq!(holder.build, skipper::build_of(&skiff));
 
             // The `skiff` a shell finds is this CLI, on the same daemon and ledger.
             assert!(shell(&["ls", "--json"]).contains(&agent.id));

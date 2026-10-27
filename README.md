@@ -32,8 +32,12 @@ Skiff does not edit files. Each worktree lists its changed files and its file tr
 
 Sessions run in `skiffd`, a daemon that owns every PTY. You can close the window and the agents keep running. When the window opens again, each terminal shows its last screen.
 
-The Skiff agent is an optional coordinator: one agent session in its own folder,
-`~/skiff-agent`, turned on in Settings › Skiff agent. It sends tasks to sessions in your
+Skiff makes its agent folder, `~/skiff-agent`, when the app starts. The folder holds the
+image cache in `cache/`, so dropped and pasted images work with the Skiff agent off. If
+Skiff cannot make the folder, the Images and Disk use features say so in one line.
+
+The Skiff agent is an optional coordinator: one agent session in that folder, turned on
+in Settings › Skiff agent. Turning it on adds its files to the folder. It sends tasks to sessions in your
 projects and records them in a SQLite ledger (`skiff ledger`). `skiff watch` tells it when
 a task's pane ends a turn, exits or restarts. `skiff skipper` attaches to it from any
 terminal, an SSH login included, and starts it first when it does not run. Ctrl-\
@@ -41,11 +45,20 @@ detaches. See the [wiki Skiff agent page](https://github.com/solutionscay/skiff/
 
 The Ledger panel at the right of Skipper's pane sorts the work into Working, Open and
 Finished. Work is a plan with its tasks, or a task with no plan. It moves to Finished
-only when Skipper closes it on your word (`skiff ledger close`); `skiff ledger reopen`
-opens it again. `skiff ledger prune` removes only closed work. Ctrl+Alt+Shift+L folds the
+when every task in it is done and reported, or when Skipper closes it on your word
+(`skiff ledger close`). `skiff ledger reopen` opens it again and keeps it open until a
+task in it changes state. `skiff ledger prune` removes only closed work. Ctrl+Alt+Shift+L folds the
 panel to a rail with the count of tasks that need you. Focus mode keeps the panel and
 maximize hides it. Only Skipper's session can change the ledger. A shell outside Skiff,
 such as an SSH login, adds `--person` to change a row.
+
+A project can have a Skipper of its own, and a fleet can have one for all its projects.
+Turn them on in Settings › Skiff agent › Project and fleet Skippers, then pick Start
+project Skipper in a project's menu or Start fleet Skipper in a fleet's menu. Skipper hands
+work to them with `skiff ledger handoff PROJECT` or `skiff ledger handoff FLEET`. Each one
+changes only its own rows. A project has one Skipper at most: when a project with a
+project Skipper comes under a running fleet Skipper, the fleet Skipper takes its rows over
+after one confirm, and the project Skipper stops when it is idle.
 
 <p align="center"><img src=".github/screenshot-skipper.webp" alt="Skiff on Linux: Skipper in the center pane reports a finished release, the Ledger panel on the right lists finished tasks and plans, and the projects sidebar is on the left"></p>
 
@@ -168,8 +181,8 @@ app version. At launch the app compares the running daemon's version and protoco
   after the app sees the same daemon pid, the new version, and each session with the
   same child pid. Sessions keep running. The protocol may differ: the reload request
   and the handover keep their own format.
-- A checkout's daemon of the same version on a release app's socket counts as another
-  build, and reloads the same way.
+- A daemon of the same version stays, whatever its build: a dev build and the
+  installed app share one daemon, and neither replaces the other's.
 - A daemon that predates reload, or that the bundled skiffd cannot adopt, keeps
   running. With no live session the app stops it with SIGTERM, never SIGKILL, and
   starts the bundled one. Otherwise the badge says the update is not finished; a
@@ -186,8 +199,11 @@ A failed reload never stops a session on its own. Before exec, the old daemon ca
 on. After exec, the app reports the failure. Either way the badge and the status bar
 show the outcome, and no dialog opens: the restart stays your choice.
 
-A dev build has the same version as the daemon it replaces, so the app does not reload
-it. Run `skiff daemon reload` after `cargo build -p skiffd`, as above.
+A dev build with the same skiffd version as the daemon that runs does not reload it:
+the same version stays, whatever its build. Run `skiff daemon reload` after
+`cargo build -p skiffd`, as above. Raise the skiffd version in `crates/skiffd/Cargo.toml`
+and `crates/skiff-core/Cargo.toml` when the daemon changes, and the dev app moves the
+installed daemon onto its build at launch, sessions kept.
 
 `pnpm tauri dev` builds `skiffd` once, when it starts. When the app rebuilds after that,
 `target/debug/skiffd` stays as it was. If that skiffd is no newer than the daemon that
@@ -195,9 +211,12 @@ runs, the app keeps the daemon and offers no restart: a restart would start the 
 build. It logs a line that names the binary and says to rebuild it with
 `cargo build -p skiffd`. A protocol mismatch still shows the warning.
 
-Debug builds use `skiffd-dev.sock`, so `pnpm tauri dev` runs its own daemon beside the
-installed app, with private state in `skiffd-dev.state/` next to the socket. The daemon writes its log next to the socket
-(`skiffd.log` or `skiffd-dev.log`), which is `$XDG_RUNTIME_DIR/skiff/` on Linux.
+One computer runs one skiffd. Every build, debug or release, of the app, the CLI and
+skiffd uses `$XDG_RUNTIME_DIR/skiff/skiffd.sock` (`$TMPDIR/skiff/skiffd.sock` on macOS)
+and the same state files, so `pnpm tauri dev` talks to the daemon the installed app
+started, and the newer of the two updates it. The daemon writes its log next to the
+socket (`skiffd.log`). For a daemon of your own, as in tests, set `SKIFF_SOCKET` to
+another path: its state then sits beside that socket.
 
 ## Packages
 

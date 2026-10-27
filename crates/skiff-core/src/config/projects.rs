@@ -166,6 +166,7 @@ pub fn add_project(
         theme: Some(theme),
         closed: false,
         fleet: None,
+        skipper_agent: None,
     })
 }
 

@@ -7,7 +7,7 @@ import { agentIcon, agentKind, launchIcon } from "../appearance/agentIcon";
 import { ink } from "../appearance/appTheme";
 import { appliedTheme, ownTheme, signatureColor } from "../appearance/themes";
 import { glyph } from "./layoutIcon";
-import { agentName, basename, branchName, taskTitle } from "./model";
+import { agentName, basename, branchName, scopeName, taskTitle } from "./model";
 import type { Group, Project, SessionInfo, Worktree } from "../platform/types";
 
 import { changeCounts, changesBlock, changesSig, showsChanges } from "./changes";
@@ -28,15 +28,15 @@ import { stateIcon } from "../appearance/stateIcon";
 import { collapsed, DEFAULT_ACCENT, removeErrors, removing, S, selectedWorktree, sessions } from "../app/state";
 import { accent, awayPlaces, currentWorktree, place } from "../app/stateQueries";
 
-import { dragSessions, revealSession, selectWorktree, showGroup } from "./view";
+import { dragGroup, dragSessions, groupHome, revealSession, selectWorktree, showGroup } from "./view";
 import { addProject } from "../app/panels";
 import { animateFold, growOpened } from "../ui/fold";
 import { dragTree } from "./treeDrag";
-import { bareWorktree, fleetKey, folded, isOpen, openToFocused, projectBadge, projectKey, rollup, toggleRow, treeDrag, treeSections, type Section } from "./tree";
+import { bareWorktree, fleetKey, folded, hiddenSplit, isOpen, openToFocused, projectBadge, projectKey, projectsHidden, rollCounts, rollup, setProjectsHidden, toggleRow, treeDrag, treeSections, type Section } from "./tree";
 import { render } from "../app/renderRequest";
 import { projectsPlus, renderWorkspaceStatus, shows, workspaceOpen } from "./profile";
-import { ledgerNeeds } from "./ledger";
-import { openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, syncSkiffAgent } from "../app/skiffAgent";
+import { ledgerCounts, ledgerNeeds, ledgerWorkTitle } from "./ledger";
+import { fleetScope, fleetSkipperOf, projectSkipperOf, projectWatch, openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, syncSkiffAgent } from "../app/skiffAgent";
 
 /** 20px lines, flush against whatever follows. */
 function sessionBlock(lines: Line[], color: string): HTMLElement {
@@ -51,7 +51,7 @@ function sessionBlock(lines: Line[], color: string): HTMLElement {
   return block;
 }
 
-function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: Group; groupRail?: boolean }): HTMLElement {
+function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: Group; groupRail?: boolean; where?: string }): HTMLElement {
   if (S.renamingSession === s.id) return renameRow(s, color);
   // State shows only when it matters: waiting stands out, working pulses, done fades.
   const cls = ["session-row", `st-${s.state}`];
@@ -95,14 +95,26 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
     const at = place(s);
     row.appendChild(h("span", "where mono", at ? branchName(at.worktree) : "other"));
   }
+  if (o.where) row.appendChild(h("span", "where mono", o.where));
   const away = awayPlaces(s);
   if (away.length) {
     const names = away.map((a) => branchName(a.worktree)).join(", ");
     const tag = h("span", "where away mono", `→ ${names}`);
     row.appendChild(tag);
   }
-  row.appendChild(stateIcon(s));
+  row.appendChild(unreadMark(row, s));
   return row;
+}
+
+/**
+ * The row's state mark. An idle row with an unread mark shows its title in
+ * bold. A class does this, not `:has(.unread)`: WebKit and Chromium restyle
+ * every row title on any change under a `:has()` rule.
+ */
+function unreadMark(row: HTMLElement, s: SessionInfo): HTMLElement {
+  const mark = stateIcon(s);
+  if (s.state === "idle" && mark.classList.contains("unread")) row.classList.add("unread-row");
+  return mark;
 }
 
 /**
@@ -131,13 +143,25 @@ function errorRow(text: string): HTMLElement {
 let lastProjects: Project[] | null = null;
 let lastGroups: Group[] | null = null;
 let listGen = 0;
+let lastSig = "";
+
+/** What each kept block draws, by its key: the agent row, a section head, a project, Other. */
+let blockSigs = new Map<string, string>();
+/** The blocks the last render drew, by the same keys, and each section's rows. */
+let blocks = new Map<string, HTMLElement>();
+const sectionKids = new Map<string, HTMLElement>();
+
+const AGENT_BLOCK = "agent";
+const OTHER_BLOCK = "other";
+const projectBlockKey = (name: string) => `project:${name}`;
 
 /**
- * Everything the tree draws, as one string. Renders run while agents work. A
- * rebuilt tree loses its hover, restarts its icons and forces a layout to put
- * the focus back, so the tree is rebuilt only when what it shows changes.
+ * Everything the tree draws, as one string, and the part of it each block
+ * draws. Renders run while agents work. A rebuilt row loses its hover,
+ * restarts its icons and costs a style pass, so a block is rebuilt only when
+ * what it shows changes. Expanding one project rebuilds that project.
  */
-function sidebarSig(): string {
+function sidebarSig(): { all: string; parts: Map<string, string> } {
   // Rows close over project, worktree and group objects. A new list brings new
   // objects, and some callers compare them by identity: the rows are rebuilt.
   if (S.projects !== lastProjects || S.groups !== lastGroups) {
@@ -145,17 +169,34 @@ function sidebarSig(): string {
     lastGroups = S.groups;
     listGen++;
   }
+  // The session rows each project draws: its own, its visitors' and its groups' members.
+  const under = new Map<string, unknown[]>();
+  const add = (name: string | null, row: unknown) => {
+    const k = name === null ? OTHER_BLOCK : projectBlockKey(name);
+    (under.get(k) ?? under.set(k, []).get(k)!).push(row);
+  };
+  const rowOf = new Map<string, unknown>();
   const rows = [...sessions.values()].map((s) => {
     const t = ownTheme(s);
-    return [
+    const at = place(s);
+    const away = awayPlaces(s);
+    const row = [
       s.id, s.state, s.unread, s.exit_code, s.agent_exit, s.started_at,
       taskTitle(s), agentName(s), agentKind(s), t ? ink(signatureColor(t)) : null,
-      place(s)?.worktree.path ?? null, awayPlaces(s).map((a) => a.worktree.path),
+      at?.worktree.path ?? null, away.map((a) => a.worktree.path),
     ];
+    rowOf.set(s.id, row);
+    add(at?.project.name ?? null, row);
+    for (const a of away) add(a.project.name, row);
+    return row;
   });
   const groups = S.groups.map((g) => {
     const lead = sessions.get(g.focus ?? filledOf(g.layout)[0]);
-    return [g.id, g.name, g.layout, g.cwd, groupColor(g), accent(lead ? place(lead)?.project : null)];
+    const row = [g.id, g.name, g.layout, g.cwd, groupColor(g), accent(lead ? place(lead)?.project : null)];
+    const home = groupHome(g);
+    const owner = home ? S.projects.find((p) => p.worktrees.includes(home))?.name ?? null : null;
+    add(owner, [row, filledOf(g.layout).map((id) => rowOf.get(id) ?? null)]);
+    return row;
   });
   const projects = S.projects.map((p) => [
     p.name, p.short, p.icon, p.fleet ?? null, p.error, p.default_branch, accent(p), selectedWorktree.get(p.name),
@@ -167,11 +208,41 @@ function sidebarSig(): string {
   // The agent icons are inked against the applied app theme: a new theme re-inks them.
   // The watcher state changes with no session event when the grace ends.
   const sa = skiffAgentSession();
-  const agent = skiffAgentFolder() ? [skiffAgentName(), sa?.id ?? null, skiffAgentChoice()?.id ?? null, sa ? skiffWatch(sa) : null, sa?.watch?.follows ?? null, ledgerNeeds()] : null;
-  return JSON.stringify([
-    listGen, appliedTheme(), S.selectedProject, folded.keys(), S.projects.map(shows),
+  const agent = skiffAgentFolder() ? [skiffAgentName(), sa?.id ?? null, skiffAgentChoice()?.id ?? null, sa ? skiffWatch(sa) : null, sa?.watch?.follows ?? null, ledgerNeeds(), sa ? rowOf.get(sa.id) : null] : null;
+  const base = [listGen, appliedTheme(), S.selection, S.renamingSession, S.renaming?.id ?? null, sa?.id ?? null];
+  const parts = new Map<string, string>();
+  parts.set(AGENT_BLOCK, JSON.stringify([base, agent]));
+  parts.set(OTHER_BLOCK, JSON.stringify([base, under.get(OTHER_BLOCK) ?? null]));
+  S.projects.forEach((p, i) => {
+    const k = projectBlockKey(p.name);
+    parts.set(k, JSON.stringify([base, projects[i], isOpen(projectKey(p.name)), p.name === S.selectedProject, under.get(k) ?? null, skipperSig(p.name)]));
+  });
+  const all = JSON.stringify([
+    listGen, appliedTheme(), S.selectedProject, folded.keys(), S.projects.map(shows), hiddenSig(),
     S.selection, S.renamingSession, S.renaming?.id ?? null, rows, groups, projects, agent,
   ]);
+  return { all, parts };
+}
+
+/** What each fleet that hides its projects shows: its head's count and the rows still under it. */
+function hiddenSig() {
+  return treeSections().flatMap((sec) => {
+    if (!sec.fleet || !projectsHidden(sec.fleet)) return [];
+    const { shown, hidden } = hiddenSplit(sec.projects);
+    return [[sec.fleet, hidden, shown.map((x) => x.id)]];
+  });
+}
+
+/**
+ * Puts `nodes` in `parent` in order. Kept nodes stay where they are: a node
+ * taken out and put back loses its style and restarts its animations.
+ */
+function setChildren(parent: HTMLElement, nodes: HTMLElement[]) {
+  const want = new Set<Node>(nodes);
+  for (const c of [...parent.children]) if (!want.has(c)) c.remove();
+  nodes.forEach((n, i) => {
+    if (parent.children[i] !== n) parent.insertBefore(n, parent.children[i] ?? null);
+  });
 }
 
 export function renderSidebar() {
@@ -181,8 +252,8 @@ export function renderSidebar() {
   syncSkiffAgent();
   openToFocused();
   const sig = sidebarSig();
-  if (side.dataset.sig === sig) return;
-  side.dataset.sig = sig;
+  if (lastSig === sig.all) return;
+  lastSig = sig.all;
   // Keep focus and the selected range in an inline control across re-renders,
   // so a render while a rename is open does not undo its select-all.
   const active = document.activeElement as HTMLElement | null;
@@ -198,28 +269,100 @@ export function renderSidebar() {
   const items = listItems();
   const at = active ? items.indexOf(active) : -1;
   const near = at < 0 ? [] : [...items.slice(at + 1), ...items.slice(0, at).reverse()].map(itemKey);
+  const anchor = anchorOf(side, items);
 
-  side.replaceChildren();
-  if (skiffAgentFolder()) side.appendChild(skiffAgentRow());
+  // The block drawn last time when what it shows is the same, else a new one.
+  const next = new Map<string, HTMLElement>();
+  const sigs = new Map<string, string>();
+  const keep = (key: string, sig: string, build: () => HTMLElement) => {
+    const old = blocks.get(key);
+    const el = old && blockSigs.get(key) === sig ? old : build();
+    next.set(key, el);
+    sigs.set(key, sig);
+    return el;
+  };
+  const nodes: HTMLElement[] = [];
+  const kidsNow = new Set<string>();
+  if (skiffAgentFolder()) nodes.push(keep(AGENT_BLOCK, sig.parts.get(AGENT_BLOCK)!, skiffAgentRow));
   for (const sec of treeSections()) {
-    side.appendChild(sectionHead(sec));
-    if (sec.fleet && !isOpen(fleetKey(sec.fleet))) continue;
-    const kids = h("div", "tree-kids");
-    if (sec.fleet) kids.dataset.kids = fleetKey(sec.fleet);
-    for (const p of sec.projects) kids.appendChild(projectBlock(p));
-    side.appendChild(kids);
+    // A fleet head holds its projects for drag and menu. Folded, it counts
+    // what they wait on, work on and left unread.
+    const fleetSkipper = sec.fleet ? fleetSkipperOf(sec.fleet) : null;
+    // A fleet that hides its projects keeps its Skipper and the sessions that need a look.
+    const split = sec.fleet && projectsHidden(sec.fleet) ? hiddenSplit(sec.projects) : null;
+    // With none of them, the head is alone: no chevron and no fold.
+    const alone = !!split && !fleetSkipper && !split.shown.length;
+    const open = !sec.fleet || (!alone && isOpen(fleetKey(sec.fleet)));
+    const headSig = JSON.stringify([
+      listGen, sec.fleet, open, workspaceOpen(), sec.projects.map((p) => p.name), split?.hidden ?? null, alone,
+      open ? null : sec.projects.map((p) => sig.parts.get(projectBlockKey(p.name))),
+      open || !sec.fleet ? null : [fleetSkipperOf(sec.fleet)?.state ?? null, fleetSkipperOf(sec.fleet)?.unread ?? false],
+    ]);
+    nodes.push(keep(`head:${sec.fleet ?? ""}`, headSig, () => sectionHead(sec, split?.hidden ?? null, alone)));
+    if (!open) continue;
+    const sk = sec.fleet ?? "";
+    kidsNow.add(sk);
+    let kids = sectionKids.get(sk);
+    if (!kids) {
+      kids = h("div", "tree-kids");
+      if (sec.fleet) kids.dataset.kids = fleetKey(sec.fleet);
+      sectionKids.set(sk, kids);
+    }
+    // A fleet's Skipper is the first row under its head.
+    const skipperRow = sec.fleet && fleetSkipper
+      ? [keep(`skipper:${sec.fleet}`, JSON.stringify([listGen, skipperSig(fleetScope(sec.fleet))]), () => projectSkipperRow(fleetScope(sec.fleet!), fleetSkipper))]
+      : [];
+    const shownSig = split ? JSON.stringify([listGen, appliedTheme(), S.selection, S.renamingSession, split.shown.map((x) => [x.id, x.state, x.unread, x.exit_code, x.agent_exit, taskTitle(x), agentName(x), agentKind(x), place(x)?.project.name])]) : "";
+    setChildren(kids, [...skipperRow, ...(split
+      ? split.shown.length ? [keep(`shown:${sec.fleet}`, shownSig, () => shownBlock(split.shown))] : []
+      : sec.projects.map((p) => {
+        const k = projectBlockKey(p.name);
+        return keep(k, sig.parts.get(k)!, () => projectBlock(p));
+      }))]);
+    nodes.push(kids);
   }
-  if (!S.projects.length) side.appendChild(h("div", "note-row", "No projects"));
-  else if (!S.projects.some(shows)) side.appendChild(h("div", "note-row", "No projects in this workspace"));
+  // A folded fleet's rows start over when it opens: the fold left them shrunk.
+  for (const k of [...sectionKids.keys()]) if (!kidsNow.has(k)) sectionKids.delete(k);
+  if (!S.projects.length) nodes.push(h("div", "note-row", "No projects"));
+  else if (!S.projects.some(shows)) nodes.push(h("div", "note-row", "No projects in this workspace"));
   // Sessions whose folder is in no project.
-  const other = worktreeLines(null);
-  if (other.length) {
-    const head = h("div", "tree-head");
-    head.append(h("span", "tree-head-name", "Other"));
-    side.append(head, sessionBlock(other, DEFAULT_ACCENT));
+  if (worktreeLines(null).length) {
+    nodes.push(keep(`${OTHER_BLOCK}-head`, "", otherHead));
+    nodes.push(keep(OTHER_BLOCK, sig.parts.get(OTHER_BLOCK)!, () => sessionBlock(worktreeLines(null), DEFAULT_ACCENT)));
   }
+  setChildren(side, nodes);
+  blocks = next;
+  blockSigs = sigs;
+  keepAnchor(side, anchor);
   growOpened();
   restoreFocus(side, activeKey, caret, near);
+}
+
+/**
+ * The first row in view and how far it sits from the list's top. WebKit has
+ * no scroll anchoring: a row that comes or grows above the view would push
+ * the rows the person reads down. At the top there is nothing to keep.
+ */
+function anchorOf(side: HTMLElement, items: HTMLElement[]): [key: string, dy: number] | null {
+  if (!side.scrollTop) return null;
+  const top = side.getBoundingClientRect().top;
+  const el = items.find((x) => x.getBoundingClientRect().bottom > top);
+  return el ? [itemKey(el), el.getBoundingClientRect().top - top] : null;
+}
+
+function keepAnchor(side: HTMLElement, anchor: [key: string, dy: number] | null) {
+  if (!anchor) return;
+  const el = listItems().find((x) => itemKey(x) === anchor[0]);
+  if (!el) return;
+  const moved = el.getBoundingClientRect().top - side.getBoundingClientRect().top - anchor[1];
+  if (Math.abs(moved) >= 1) side.scrollTop += moved;
+}
+
+/** The head over sessions whose folder is in no project. */
+function otherHead(): HTMLElement {
+  const head = h("div", "tree-head");
+  head.append(h("span", "tree-head-name", "Other"));
+  return head;
 }
 
 /**
@@ -273,7 +416,7 @@ function skiffAgentRow(): HTMLElement {
     c.title = `${needs} ledger ${needs === 1 ? "task needs" : "tasks need"} you`;
     row.append(c);
   }
-  row.append(stateIcon(s));
+  row.append(unreadMark(row, s));
   row.addEventListener("mousedown", (e) => {
     if (e.button === 0) row.focus();
   });
@@ -288,8 +431,77 @@ function skiffAgentRow(): HTMLElement {
   return row;
 }
 
-/** A section head: "Projects" with its +, or a fleet that folds and opens. */
-function sectionHead(sec: Section): HTMLElement {
+/** What a project's or a fleet's Skipper row shows, for the block's signature. */
+function skipperSig(scope: string) {
+  const s = projectSkipperOf(scope);
+  if (!s) return null;
+  return [s.id, s.state, S.selection.includes(s.id), ledgerCounts(scope), ledgerWorkTitle(scope), s.watch ?? null, s.title ?? null, s.unread ?? false];
+}
+
+/**
+ * A project or fleet Skipper: the first row of its project block, or the
+ * first row under its fleet head. Its agent icon, "Skipper", the title of
+ * its work, and the amber and blue counts of the tasks it owns. Its session
+ * is left out of the tree below.
+ */
+function projectSkipperRow(scope: string, s: SessionInfo): HTMLElement {
+  const name = skiffAgentName();
+  const row = h("button", "session-row project-skipper-row" + ` st-${s.state}` + (S.selection.includes(s.id) ? " selected" : ""));
+  row.type = "button";
+  row.dataset.session = s.id;
+  // Its own watcher, as on the Skiff agent's row: teal while it runs, turning
+  // while the Skipper is idle and the watcher follows a pane with an open
+  // task of this project, red when its last line failed.
+  const watch = projectWatch(s);
+  if (watch.state === "runs") row.classList.add("watch-on");
+  if (watch.state === "runs" && s.state === "idle" && (s.watch?.follows?.length ?? 0) > 0) {
+    row.classList.add("watch-turn");
+    row.style.setProperty("--turn-delay", `${-(performance.now() % 8000)}ms`);
+  }
+  if (watch.state === "failed") row.classList.add("watch-error");
+  if (watch.text) row.title = watch.text;
+  const title = ledgerWorkTitle(scope) ?? s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? "";
+  const { need, working } = ledgerCounts(scope);
+  row.setAttribute("aria-label", `${scopeName(scope)} ${name}, ${title || s.state}${watch.text ? `. ${watch.text}` : ""}`);
+  row.append(h("span", "chev-space"), agentIcon(s), h("span", "skiff-agent-name", name), h("span", "title", title));
+  const roll = rollCounts(need, working);
+  if (roll) row.append(roll);
+  row.append(unreadMark(row, s));
+  row.addEventListener("mousedown", (e) => {
+    if (e.button === 0) row.focus();
+  });
+  row.addEventListener("click", () => {
+    clearSelection();
+    revealSession(s.id);
+    requestAnimationFrame(() => keepRow(s.id));
+  });
+  row.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    rowMenu(s, e.clientX, e.clientY);
+  });
+  return row;
+}
+
+/**
+ * The sessions still under a fleet that hides its projects: each one that
+ * waits, and the one on screen. Each row names its project.
+ */
+function shownBlock(shown: SessionInfo[]): HTMLElement {
+  const block = h("div", "sessions-block fleet-shown");
+  block.style.height = `calc(${shown.length * 20} * var(--u))`;
+  for (const s of shown) {
+    const p = place(s)!.project;
+    block.appendChild(sessionRow(s, accent(p), { where: p.name }));
+  }
+  return block;
+}
+
+/**
+ * A section head: "Projects" with its +, or a fleet that folds and opens.
+ * A fleet that hides its projects counts its hidden sessions (`hidden`); a
+ * click on the count shows the projects. `alone`: nothing under the head.
+ */
+function sectionHead(sec: Section, hidden: number | null = null, alone = false): HTMLElement {
   if (!sec.fleet) {
     const head = h("div", "tree-head");
     head.append(h("span", "tree-head-name", "Projects"));
@@ -304,18 +516,40 @@ function sectionHead(sec: Section): HTMLElement {
   }
   const name = sec.fleet;
   const key = fleetKey(name);
-  const open = isOpen(key);
-  const head = h("div", "tree-head fleet-head");
-  const pick = button("fleet-pick", "", () => toggleRow(key, render));
-  pick.dataset.key = pick.dataset.fold = key;
-  pick.setAttribute("aria-expanded", String(open));
-  pick.append(chevron(open), h("span", "tree-head-name", name));
+  const open = !alone && isOpen(key);
+  const head = h("div", "tree-head fleet-head" + (alone ? " alone" : ""));
+  const pick = button("fleet-pick", "", () => {
+    if (!alone) toggleRow(key, render);
+  });
+  pick.dataset.key = key;
+  if (!alone) {
+    pick.dataset.fold = key;
+    pick.setAttribute("aria-expanded", String(open));
+  }
+  pick.append(alone ? h("span", "chev-space") : chevron(open), h("span", "tree-head-name", name));
   const add = button("tree-head-add", "", () => void addProject.open(name));
   add.title = `Add project to ${name}`;
   add.setAttribute("aria-label", `Add project to ${name}`);
   add.appendChild(plusIcon());
-  head.append(pick, add);
-  const roll = open ? null : rollup(sec.projects);
+  // The ⋯ opens the fleet's menu, as on a project row: the same items as a right-click.
+  const more = button("tree-head-add tree-head-more", "", () => {
+    const r = more.getBoundingClientRect();
+    fleetMenu({ name, projects: sec.projects }, r.right, r.top);
+  });
+  more.setAttribute("aria-label", `${name} menu`);
+  more.setAttribute("aria-haspopup", "menu");
+  more.appendChild(icon('<circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle>'));
+  head.append(pick);
+  if (hidden !== null) {
+    const count = button("fleet-hidden", `· ${hidden}`, () => {
+      setProjectsHidden(name, false);
+      render();
+    });
+    count.setAttribute("aria-label", `Show projects, ${hidden} hidden ${hidden === 1 ? "session" : "sessions"}`);
+    head.append(count);
+  }
+  head.append(more, add);
+  const roll = open || alone ? null : rollup(sec.projects, name);
   if (roll) pick.appendChild(roll);
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -334,7 +568,8 @@ function projectBlock(p: Project): HTMLElement {
   // Nothing under the project: no chevron, no fold, no hover.
   // changesBlock reads the worktree's changes the first time, so a project folded since the start still learns of them.
   const changes = bare && showsChanges(p) ? changesBlock(bare) : null;
-  const empty = !!bare && !p.error && !worktreeLines(bare).length && !changes && !showsFiles(p);
+  const skipper = projectSkipperOf(p.name);
+  const empty = !!bare && !p.error && !worktreeLines(bare).length && !changes && !showsFiles(p) && !skipper;
   const block = h("div", "tree-project" + (p.name === S.selectedProject ? " selected" : ""));
   block.style.setProperty("--pc", color);
 
@@ -355,18 +590,12 @@ function projectBlock(p: Project): HTMLElement {
   // A click opens or folds the project, as on a fleet head. Its sessions open from their rows.
   if (!empty) pick.addEventListener("click", () => toggleRow(key, render));
   head.appendChild(pick);
-  if (bare) {
-    const plus = button("wt-plus", "", () => launchMenu.open(plus, p, bare));
-    plus.dataset.wt = bare.path;
-    plus.setAttribute("aria-label", `Start a session in ${p.name}`);
-    plus.setAttribute("aria-haspopup", "menu");
-    plus.appendChild(plusIcon());
-    head.appendChild(plus);
-  }
+  // One button: the ⋯ menu starts sessions too. A bare worktree's launch menu hangs off it.
   const more = button("wt-plus", "", () => {
     const r = more.getBoundingClientRect();
     projectMenu(p, r.right, r.top);
   });
+  if (bare) more.dataset.wt = bare.path;
   more.setAttribute("aria-label", `${p.name} menu`);
   more.setAttribute("aria-haspopup", "menu");
   more.appendChild(icon('<circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle>'));
@@ -381,6 +610,7 @@ function projectBlock(p: Project): HTMLElement {
   const kids = h("div", "tree-kids");
   kids.dataset.kids = key;
   block.appendChild(kids);
+  if (skipper) kids.appendChild(projectSkipperRow(p.name, skipper));
   if (p.error) kids.appendChild(errorRow(p.error));
   else if (p.worktrees.length === 0) kids.appendChild(h("div", "note-row", "No worktrees"));
   else if (bare) {
@@ -426,7 +656,8 @@ function restoreFocus(side: HTMLElement, activeKey: string | undefined, caret: C
       ? again.disabled
       : false;
     if (again && !disabled) {
-      again.focus();
+      // The list stays where the person scrolled it, away from the row or not.
+      again.focus({ preventScroll: true });
       if (caret !== null && again instanceof HTMLInputElement) again.setSelectionRange(...caret);
     } else if (!again) {
       const keys = new Set(listItems().map(itemKey));
@@ -460,6 +691,11 @@ function groupRow(g: Group, hasPrevious = false, hasNext = false): HTMLElement {
   const pick = h("button", "group-pick");
   pick.dataset.group = g.id;
   pick.type = "button";
+  pick.addEventListener("mousedown", (e) => {
+    // The drag stops the default focus; the row still takes the keys.
+    if (e.button === 0) pick.focus();
+    dragGroup(e, g);
+  });
   pick.append(glyph(g.layout), h("span", "group-name", g.name));
   pick.addEventListener("click", (e) => {
     if (e.ctrlKey || e.metaKey) return toggleSelectGroup(g);

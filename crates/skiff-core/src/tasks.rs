@@ -135,6 +135,39 @@ pub fn command(agent: &AgentInfo, model: Option<&str>) -> Result<String> {
     }
 }
 
+/// The flag that lets the built-in Claude Code read Skiff's image cache
+/// without a prompt, as argv words for the end of its start line. A path
+/// the agent reads with a tool (a `skiff send` task, a later look) is
+/// outside the project, and Claude Code asks or refuses. It is a flag on the
+/// line: Skiff writes nothing into the agent's config. A command that has
+/// `--settings` already gets `--add-dir=<cache>`, which also allows writes
+/// in acceptEdits and auto mode. Codex reads the whole disk; other agents
+/// get nothing.
+pub fn cache_flags(agent: &AgentInfo, cache: &std::path::Path) -> Option<Vec<String>> {
+    if agent.custom || agent.id != "claude" || !cache.is_absolute() {
+        return None;
+    }
+    let dir = cache.to_string_lossy();
+    let dir = dir.trim_end_matches('/');
+    let has_settings = agent.command.split_whitespace().any(|w| w == "--settings" || w.starts_with("--settings="));
+    if has_settings {
+        return Some(vec![format!("--add-dir={dir}")]);
+    }
+    // `//` marks an absolute path in a Claude Code rule.
+    let rule = serde_json::json!({ "permissions": { "allow": [format!("Read(/{dir}/**)")] } });
+    Some(vec!["--settings".into(), rule.to_string()])
+}
+
+/// [`cache_flags`] as text to type after a start line in a shell: each word
+/// quoted, with a space in front. Empty when the agent gets none.
+pub fn cache_flags_typed(agent: &AgentInfo, cache: &std::path::Path) -> String {
+    cache_flags(agent, cache)
+        .unwrap_or_default()
+        .iter()
+        .map(|w| format!(" {}", crate::shell::quote_word(w)))
+        .collect()
+}
+
 /// One task type as Settings and `skiff agents --json` show it.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct TaskType {
@@ -326,6 +359,26 @@ mod tests {
         assert!(t[1].command.is_none() && t[1].error.as_deref().unwrap().contains("custom agent"), "{:?}", t[1]);
         assert!(t[2].command.is_none() && t[2].error.as_deref().unwrap().contains("is not there"));
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn cache_flags_read_the_cache_for_claude_only() {
+        let cache = std::path::Path::new("/home/me/skiff-agent/cache");
+        let claude = agent("claude", "claude", false);
+        assert_eq!(
+            cache_flags(&claude, cache).unwrap(),
+            ["--settings", r#"{"permissions":{"allow":["Read(//home/me/skiff-agent/cache/**)"]}}"#]
+        );
+        assert_eq!(
+            cache_flags_typed(&claude, cache),
+            r#" --settings '{"permissions":{"allow":["Read(//home/me/skiff-agent/cache/**)"]}}'"#
+        );
+        let set = agent("claude", "claude --settings x.json", false);
+        assert_eq!(cache_flags(&set, cache).unwrap(), ["--add-dir=/home/me/skiff-agent/cache"]);
+        assert_eq!(cache_flags_typed(&set, cache), " --add-dir=/home/me/skiff-agent/cache");
+        assert!(cache_flags(&agent("codex", "codex", false), cache).is_none());
+        assert!(cache_flags(&agent("claude", "claude", true), cache).is_none());
+        assert_eq!(cache_flags_typed(&agent("grok", "grok", false), cache), "");
     }
 
     #[test]

@@ -14,17 +14,23 @@ use skiff_core::{
 /// Shown in place of `sent` or `blocked` when the pane restarted since the
 /// send. Never stored: the pane generation tells it.
 pub const INTERRUPTED: &str = "interrupted";
-/// Shown in place of an open state when the pane no longer exists. Never
-/// stored: the session list tells it.
+/// Shown in place of an open state when the pane no longer exists, and in
+/// place of `done` on a task that skiff set done for that reason (it has
+/// `gone_at`).
 pub const GONE: &str = "gone";
 
 /// The schema version, in `user_version`. 4 added `tasks.socket` and
 /// `owner`, 5 added `tasks.reported_at`, 6 added `tasks.title`, 7 added
-/// `tasks.closed_at`; an older file from version 3 on takes each in place,
-/// with its rows.
-pub const VERSION: i64 = 7;
+/// `tasks.closed_at`, 8 added `tasks.gone_at`, 9 added `tasks.owner` and the
+/// `handoff` kind, 10 added `tasks.reopened_at`; an older file from version 3
+/// on takes each in place, with its rows.
+pub const VERSION: i64 = 10;
 
-pub const COLUMNS: &str = "id, uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, reported_at, title, closed_at";
+pub const COLUMNS: &str = "id, uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, reported_at, title, closed_at, gone_at, owner";
+
+/// The owner of the grand Skipper's rows. A project Skipper's rows have its
+/// project's name.
+pub const GRAND: &str = "grand";
 
 /// Where work stands. Never stored: the close stamp, the task states and the
 /// panes tell it. An agent is on working work now; open work waits for the
@@ -38,9 +44,11 @@ pub struct Row {
     pub id: i64,
     /// 8 hex characters, at least one a letter, so it never reads as an id.
     pub uid: String,
-    /// `task`, or `plan`: a row with no pane that groups tasks.
+    /// `task`; `plan`: a row with no pane that groups tasks; or `handoff`: a
+    /// grand Skipper's task sent to a project Skipper, whose own tasks go
+    /// under it.
     pub kind: String,
-    /// The plan's uid.
+    /// The plan's or the hand-off's uid.
     pub parent: Option<String>,
     /// The full session id. A plan has none.
     pub pane_id: Option<String>,
@@ -69,6 +77,12 @@ pub struct Row {
     /// task with no plan. A task in a plan is closed with its plan. `None`:
     /// the work is open.
     pub closed_at: Option<String>,
+    /// When skiff set the task done because its pane was gone: no session
+    /// with its id on its daemon. `None`: the task did not close that way.
+    pub gone_at: Option<String>,
+    /// The coordinator whose row it is: [`GRAND`], or the project of a
+    /// project Skipper. Only it, or the person, changes the row.
+    pub owner: String,
     /// [`WORKING`], [`OPEN`] or [`FINISHED`], for the whole work. Set by
     /// [`buckets`].
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -94,6 +108,15 @@ impl Row {
         self.kind == "plan"
     }
 
+    pub fn is_handoff(&self) -> bool {
+        self.kind == "handoff"
+    }
+
+    /// The coordinator that owns the row, as a person reads it.
+    pub fn owner_name(&self) -> String {
+        owner_name(&self.owner)
+    }
+
     /// The socket of a task sent on another daemon than `here`'s. Its pane
     /// cannot be checked from here: it is neither live nor gone.
     pub fn socket_other_than(&self, here: &Path) -> Option<&str> {
@@ -109,7 +132,7 @@ impl Row {
             && s.and_then(gen).is_some_and(|g| Some(g) != self.pane_gen)
     }
 
-    /// The uid of the work the row belongs to: its plan's, else its own.
+    /// The uid of the row above it: its plan's or its hand-off's, else its own.
     pub fn work(&self) -> &str {
         self.parent.as_deref().unwrap_or(&self.uid)
     }
@@ -127,12 +150,44 @@ impl Row {
     pub fn shown_state(&self) -> &str {
         if self.interrupted == Some(true) {
             INTERRUPTED
-        } else if self.live == Some(false) && self.state != "done" {
+        } else if (self.gone_at.is_some() && self.state == "done") || (self.live == Some(false) && self.state != "done") {
             GONE
         } else {
             &self.state
         }
     }
+}
+
+/// "the Skipper", "the <project> Skipper", or "the <fleet> Skipper" for
+/// the owner `fleet:<fleet>`.
+pub fn owner_name(owner: &str) -> String {
+    match (owner, crate::skipper::scope_fleet(owner)) {
+        (GRAND, _) => "the Skipper".into(),
+        (_, Some(fleet)) => format!("the {fleet} Skipper"),
+        _ => format!("the {owner} Skipper"),
+    }
+}
+
+/// Each row's work head: the row at the top of its parents. A hand-off in a
+/// plan, and the tasks under it, belong to the plan's work. A parent not in
+/// `rows` ends the climb.
+pub fn heads(rows: &[Row]) -> std::collections::HashMap<String, String> {
+    use std::collections::HashMap;
+    let up: HashMap<&str, &str> = rows.iter().filter_map(|r| r.parent.as_deref().map(|p| (r.uid.as_str(), p))).collect();
+    let known: std::collections::HashSet<&str> = rows.iter().map(|r| r.uid.as_str()).collect();
+    rows.iter()
+        .map(|r| {
+            let mut at = r.uid.as_str();
+            // Two steps at most: plan, hand-off, task. The bound stops a loop.
+            for _ in 0..4 {
+                match up.get(at) {
+                    Some(p) if known.contains(p) => at = p,
+                    _ => break,
+                }
+            }
+            (r.uid.clone(), at.to_string())
+        })
+        .collect()
 }
 
 /// `SKIFF_LEDGER`, else `ledger.db` in the Skiff agent's folder: the
@@ -150,8 +205,55 @@ pub fn gen(s: &SessionInfo) -> Option<i64> {
     s.generation().and_then(|g| i64::try_from(g).ok())
 }
 
+/// Lines for a Skipper that skiff wrote outside a `skiff ledger` command, such
+/// as a takeover: the watcher types each into its owner's Skipper, then
+/// deletes it.
+pub const NOTES: &str = "
+CREATE TABLE IF NOT EXISTS notes (
+  id    INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner TEXT NOT NULL,
+  text  TEXT NOT NULL,
+  at    TEXT NOT NULL
+);
+";
+
+/// Opens the ledger to change it, for a writer outside `skiff ledger`: no
+/// migration, no new file. Refuses a file older than [`VERSION`], as
+/// [`open_read`] does.
+pub fn open_write(file: &Path) -> Result<Connection> {
+    let db = Connection::open_with_flags(file, OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX)
+        .with_context(|| format!("open {}", file.display()))?;
+    db.busy_timeout(std::time::Duration::from_secs(5))?;
+    let n: i64 = db.query_row("SELECT count(*) FROM pragma_table_info('tasks') WHERE name = 'reopened_at'", [], |r| r.get(0))?;
+    if n == 0 {
+        bail!("the ledger is older than version {VERSION}. Run any `skiff ledger` command to update it");
+    }
+    db.execute_batch(NOTES)?;
+    Ok(db)
+}
+
+/// The notes for `owner`, oldest first. No ledger yet gives none.
+pub fn notes(file: &Path, owner: &str) -> Result<Vec<(i64, String)>> {
+    if !file.exists() {
+        return Ok(Vec::new());
+    }
+    let db = open_write(file)?;
+    let mut st = db.prepare("SELECT id, text FROM notes WHERE owner = ?1 ORDER BY id")?;
+    let it = st.query_map([owner], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    Ok(it.collect::<rusqlite::Result<_>>()?)
+}
+
+/// Deletes the notes `ids`: their Skipper got them.
+pub fn drop_notes(file: &Path, ids: &[i64]) -> Result<()> {
+    let db = open_write(file)?;
+    for id in ids {
+        db.execute("DELETE FROM notes WHERE id = ?1", [id])?;
+    }
+    Ok(())
+}
+
 /// Opens the ledger read-only, for a reader that must not change it: no
-/// migration, no new file. A file without `tasks.closed_at` (older than
+/// migration, no new file. A file without `tasks.reopened_at` (older than
 /// [`VERSION`]) is refused: any `skiff ledger` command brings it up to date.
 /// The columns decide, not `user_version`: an older skiff stamps its own
 /// lower version on a file that has every column.
@@ -159,7 +261,7 @@ pub fn open_read(file: &Path) -> Result<Connection> {
     let db = Connection::open_with_flags(file, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
         .with_context(|| format!("open {}", file.display()))?;
     db.busy_timeout(std::time::Duration::from_secs(2))?;
-    let n: i64 = db.query_row("SELECT count(*) FROM pragma_table_info('tasks') WHERE name = 'closed_at'", [], |r| r.get(0))?;
+    let n: i64 = db.query_row("SELECT count(*) FROM pragma_table_info('tasks') WHERE name = 'reopened_at'", [], |r| r.get(0))?;
     if n == 0 {
         bail!("the ledger is older than version {VERSION}. Run any `skiff ledger` command to update it");
     }
@@ -189,6 +291,8 @@ pub fn rows(db: &Connection, where_: &str, arg: Option<&dyn rusqlite::ToSql>) ->
             reported_at: r.get(15)?,
             title: r.get(16)?,
             closed_at: r.get(17)?,
+            gone_at: r.get(18)?,
+            owner: r.get(19)?,
             bucket: None,
             agent_on: false,
             elsewhere: false,
@@ -227,17 +331,49 @@ pub fn roll_up(rows: &mut [Row]) {
 /// [`OPEN`]. Set `agent_on` first.
 pub fn buckets(rows: &mut [Row]) {
     use std::collections::HashSet;
+    let head = heads(rows);
     let closed: HashSet<String> = rows.iter().filter(|r| r.closed_at.is_some()).map(|r| r.uid.clone()).collect();
-    let working: HashSet<String> = rows.iter().filter(|r| r.agent_on).map(|r| r.work().to_string()).collect();
+    let working: HashSet<String> = rows.iter().filter(|r| r.agent_on).map(|r| head[&r.uid].clone()).collect();
     for r in rows.iter_mut() {
-        r.bucket = Some(if closed.contains(r.work()) {
+        let h = &head[&r.uid];
+        r.bucket = Some(if closed.contains(h) {
             FINISHED
-        } else if working.contains(r.work()) {
+        } else if working.contains(h) {
             WORKING
         } else {
             OPEN
         });
     }
+}
+
+/// The session a stored pane id names in `all`: the same id, else the one
+/// session it is a prefix of.
+fn session_of<'a>(all: &'a [SessionInfo], p: &str) -> Option<&'a SessionInfo> {
+    all.iter().find(|s| s.id == p).or_else(|| {
+        let mut found = all.iter().filter(|s| s.id.starts_with(p));
+        found.next().filter(|_| found.next().is_none())
+    })
+}
+
+/// Fills in `live`, `interrupted` and `agent_on` from the sessions `all`,
+/// when the daemon answered, then each row's bucket. A task of another
+/// socket is marked `elsewhere` and not checked. A sent task that cannot be
+/// checked counts as worked on. `skiff ledger ls` and the app's panel both
+/// file rows by it.
+pub fn mark_live(socket: &Path, all: Option<&[SessionInfo]>, rows: &mut [Row]) {
+    for r in rows.iter_mut() {
+        r.elsewhere = r.socket_other_than(socket).is_some();
+        r.agent_on = !r.is_plan() && r.state == "sent";
+    }
+    if let Some(all) = all {
+        for r in rows.iter_mut().filter(|r| !r.is_plan() && !r.elsewhere) {
+            let s = r.pane_id.as_deref().and_then(|p| session_of(all, p));
+            r.live = Some(s.is_some());
+            r.interrupted = Some(r.interrupted_in(s));
+            r.agent_on = r.agent_on_in(s);
+        }
+    }
+    buckets(rows);
 }
 
 #[cfg(test)]
@@ -250,9 +386,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("ledger.db");
-        // Version 6: no closed_at. Refused.
+        // Version 9: no reopened_at. Refused.
         let db = Connection::open(&file).unwrap();
-        db.execute_batch("CREATE TABLE tasks (id INTEGER PRIMARY KEY, uid TEXT, socket TEXT, reported_at TEXT, title TEXT); PRAGMA user_version = 6;").unwrap();
+        db.execute_batch("CREATE TABLE tasks (id INTEGER PRIMARY KEY, uid TEXT, socket TEXT, reported_at TEXT, title TEXT, closed_at TEXT, gone_at TEXT); PRAGMA user_version = 8;").unwrap();
         assert!(open_read(&file).unwrap_err().to_string().contains("skiff ledger"));
         drop(db);
         std::fs::remove_file(&file).unwrap();
@@ -260,7 +396,7 @@ mod tests {
         let db = Connection::open(&file).unwrap();
         db.execute_batch(&format!(
             "CREATE TABLE tasks (id INTEGER PRIMARY KEY, uid TEXT, kind TEXT, parent TEXT, pane_id TEXT, pane_gen INTEGER, project TEXT,
-               task TEXT, sent_at TEXT, state TEXT, result_path TEXT, ref TEXT, updated_at TEXT, type TEXT, socket TEXT, reported_at TEXT, title TEXT, closed_at TEXT);
+               task TEXT, sent_at TEXT, state TEXT, result_path TEXT, ref TEXT, updated_at TEXT, type TEXT, socket TEXT, reported_at TEXT, title TEXT, closed_at TEXT, gone_at TEXT, owner TEXT NOT NULL DEFAULT 'grand', reopened_at TEXT);
              INSERT INTO tasks (uid, kind, project, task, sent_at, state, updated_at) VALUES ('a1b2c3d4', 'plan', '', 'p', 'x', 'sent', 'x');
              INSERT INTO tasks (uid, kind, parent, project, task, sent_at, state, updated_at) VALUES ('e5f6a7b8', 'task', 'a1b2c3d4', '', 't', 'x', 'done', 'x');
              PRAGMA user_version = {};",

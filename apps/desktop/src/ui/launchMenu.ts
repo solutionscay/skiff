@@ -1,7 +1,7 @@
 import { menuRow } from "./menuRow";
 import type { AgentInfo, Project, Worktree } from "../platform/types";
 import { launchIcon } from "../appearance/agentIcon";
-import { followPointer, menuOpened } from "./menu";
+import { followPointer, menuOpened, type MenuEntry } from "./menu";
 import { launchDigit } from "../app/stateQueries";
 
 interface Opts {
@@ -102,5 +102,23 @@ export function createLaunchMenu(o: Opts) {
     if (!menu.hidden && !menu.contains(e.target as Node) && e.target !== anchor && !anchor?.contains(e.target as Node)) close(false);
   });
 
-  return { open, close };
+  /** The same choices as entries of another menu: the project menu of a project with one worktree. */
+  function entries(p: Project, w: Worktree): MenuEntry[] {
+    return [
+      { head: "START IN " + (w.branch ?? "detached").toUpperCase() },
+      ...o.choices().map((a, i) => ({ glyph: launchIcon(a), label: a?.id ?? "Shell", hint: launchDigit(i), run: () => o.start(p, w, a) })),
+      {
+        icon: "code-group",
+        label: "New group",
+        sub: o.splits().map((s, i) => {
+          const g = document.createElement("span");
+          g.className = "lm-glyph";
+          g.append(s.glyph);
+          return { glyph: g, label: s.name, run: () => o.split(p, w, i) };
+        }),
+      },
+    ];
+  }
+
+  return { open, close, entries };
 }

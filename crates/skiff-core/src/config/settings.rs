@@ -208,11 +208,11 @@ pub fn set_menu_layout(layout: Option<&str>) -> Result<()> {
 }
 
 /// The keys `[open]` takes.
-pub const OPEN_KEYS: [&str; 4] = ["diff", "text", "markdown", "html"];
+pub const OPEN_KEYS: [&str; 5] = ["diff", "text", "markdown", "html", "image"];
 
 /// Sets whether selecting this file kind opens its command in the peek.
 pub fn set_open_peek(key: &str, peek: bool) -> Result<()> {
-    if !OPEN_KEYS.contains(&key) || key == "diff" {
+    if !OPEN_KEYS.contains(&key) || key == "diff" || key == "image" {
         anyhow::bail!("unknown file kind: {key}");
     }
     edit_table("open", |t| {
@@ -247,6 +247,10 @@ pub enum SkiffAgentKey<'a> {
     Folder(Option<&'a std::path::Path>),
     Enabled(bool),
     ContinueOnRestore(bool),
+    ProjectSkippers(bool),
+    ProjectAgent(Option<&'a str>),
+    /// Auto flush's age in days. `0`: off.
+    CacheDays(u32),
 }
 
 /// Sets one `[skiff_agent]` key, keeping the rest of the file. The folder is
@@ -262,6 +266,11 @@ pub fn set_skiff_agent(key: SkiffAgentKey) -> Result<()> {
             SkiffAgentKey::Enabled(on) => ("enabled", on.then(|| toml_edit::value(true))),
             // Off is the default: the key goes.
             SkiffAgentKey::ContinueOnRestore(on) => ("continue_on_restore", on.then(|| toml_edit::value(true))),
+            SkiffAgentKey::ProjectSkippers(on) => ("project_skippers", on.then(|| toml_edit::value(true))),
+            // None: the Skipper's own agent.
+            SkiffAgentKey::ProjectAgent(v) => ("project_agent", text(v).map(toml_edit::value)),
+            // The default: the key goes.
+            SkiffAgentKey::CacheDays(n) => ("cache_days", (n != crate::config::CACHE_DAYS).then(|| toml_edit::value(i64::from(n)))),
         };
         match v {
             Some(v) => t[k] = v,

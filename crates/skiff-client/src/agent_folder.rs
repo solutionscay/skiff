@@ -398,6 +398,8 @@ fn manifest(dir: &Path) -> Result<BTreeMap<String, Entry>> {
 fn skipped(rel: &str, link: bool) -> bool {
     [MARKER, MOVED].contains(&rel)
         || LEDGER.contains(&rel)
+        // The image cache stays in the old folder: live sessions typed its paths.
+        || rel == "cache"
         || (link && ["CLAUDE.md", "GEMINI.md", ".claude", ".agents/skills/skiff-cli"].contains(&rel))
 }
 

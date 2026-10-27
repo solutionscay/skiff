@@ -5,7 +5,7 @@ import { isSkiffAgent, skiffAgentFolder, skiffAgentName, skiffAgentSession } fro
 
 /** One command list for the menu bar and the palette; key actions. */
 import { type Action, isMac, keyLabel, menuAccel } from "./keys";
-import { agentName, branchName, bySessionPriority, taskTitle } from "../workspace/model";
+import { agentName, branchName, bySessionPriority, taskTitle, isProjectSkipper } from "../workspace/model";
 import { createSwitcher, type SwitchItem } from "../ui/switcher";
 
 import { invoke } from "@tauri-apps/api/core";
@@ -27,6 +27,7 @@ import { accent, activeGroupObj, currentProject, currentWorktree, inShownGroup, 
 import { sessionThemeMenu } from "../appearance/themes";
 import { modeKeyBlocked } from "./modes";
 import { ledgerFolded, ledgerShown } from "../workspace/ledger";
+import { imageCount } from "../terminal/images";
 import {
   closeWorkspace, editWorkspace, keepWorkspace, ledgerAllWork, newWorkspace, openWorkspace, recentWorkspacesMenu, reloadWorkspace,
   saveWorkspace, saveWorkspaceAs, setLedgerAllWork, workspaceNotice, workspaceOpen,
@@ -75,8 +76,10 @@ function commands(): Cmd[] {
     // In Settings, they act on the text field with the keys.
     { section: "Edit", label: "Copy", key: k("copy"), action: "copy", run: act("copy"), off: !s && !settings.isOpen },
     { section: "Edit", label: "Paste", key: k("paste"), action: "paste", run: act("paste"), off: !s && !settings.isOpen },
+    { section: "Edit", label: "Images…", key: k("images"), action: "images", run: act("images"), off: !imageCount() || !s },
+    { section: "Edit", label: "Settings › Images…", key: k("images-gallery"), action: "images-gallery", run: act("images-gallery") },
     { section: "Edit", label: "Find…", key: k("find"), action: "find", run: act("find"), off: !shown },
-    { section: "Edit", label: "Rename session", key: k("rename"), action: "rename", run: act("rename"), off: !s || isSkiffAgent(s.id) },
+    { section: "Edit", label: "Rename session", key: k("rename"), action: "rename", run: act("rename"), off: !s || isSkiffAgent(s.id) || isProjectSkipper(s) },
     { section: "Edit", label: "Session theme…", key: k("theme"), run: () => s && void sessionThemeMenu(s), off: !s },
     {
       section: "Edit", label: "End session…", key: k("end-session"), action: "end-session", off: !s,

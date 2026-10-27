@@ -98,13 +98,18 @@ pub async fn spec(c: &Client, o: New) -> Result<SessionSpec> {
         rows: 40,
         ..SessionSpec::default()
     };
+    let mut flags = Vec::new();
     let words: Vec<String> = if o.task_type.is_some() || o.agent.is_some() {
+        let cfg = skiff_core::config::load();
         let rows = match o.task_type {
-            Some(_) => skiff_core::config::load()?.skiff_agent.tasks,
+            Some(_) => cfg.as_ref().map_err(|e| anyhow::anyhow!("{e:#}"))?.skiff_agent.tasks.clone(),
             None => Default::default(),
         };
         let agents = c.list_agents().await?;
-        agent_line(&agents, &rows, &o)?
+        let (a, line) = agent_line(&agents, &rows, &o)?;
+        // The image cache's read flag goes after the model, as one argv word each.
+        flags = cfg.map(|cfg| skiff_client::cache::flags(&cfg, a)).unwrap_or_default();
+        line.split_whitespace().map(String::from).collect()
     } else {
         o.command
     };
@@ -113,6 +118,7 @@ pub async fn spec(c: &Client, o: New) -> Result<SessionSpec> {
     if let Some((first, rest)) = words.split_first() {
         spec.command = Some(first.clone());
         spec.args = rest.to_vec();
+        spec.args.extend(flags);
     }
     if spec.role == Role::Agent {
         // The app gives an agent a call sign as both label and name.
@@ -140,14 +146,13 @@ pub async fn spec(c: &Client, o: New) -> Result<SessionSpec> {
 
 /// The words `--type` or `--agent` starts: the person's command from Settings ›
 /// Agents, else the built-in one, which keeps the agent's permission prompts.
-/// A task type adds its model and its instruction file.
-fn agent_line(agents: &[AgentInfo], rows: &TaskTypes, o: &New) -> Result<Vec<String>> {
+fn agent_line<'a>(agents: &'a [AgentInfo], rows: &TaskTypes, o: &New) -> Result<(&'a AgentInfo, String)> {
     if let Some(t) = &o.task_type {
         let (a, words) = skiff_core::tasks::start(rows, agents, t, o.model.as_deref())?;
         if !a.installed {
             bail!("agent {:?} of task type {t} is not installed: {} is not on skiffd's PATH", a.id, a.command);
         }
-        return Ok(words);
+        return Ok((a, line));
     }
     let id = o.agent.as_deref().unwrap_or_default();
     let Some(a) = agents.iter().find(|a| a.id == id) else {
@@ -157,7 +162,7 @@ fn agent_line(agents: &[AgentInfo], rows: &TaskTypes, o: &New) -> Result<Vec<Str
     if !a.installed {
         bail!("agent {id:?} is not installed: {} is not on skiffd's PATH", a.command);
     }
-    Ok(a.command.split_whitespace().map(String::from).collect())
+    Ok((a, a.command.clone()))
 }
 
 /// `name`, else `name 2`, `name 3` and on: the first one no live session uses.
@@ -474,31 +479,13 @@ mod tests {
         let rows = TaskTypes(vec![("review".into(), TaskRow { agent: "codex".into(), model: Some("gpt-5".into()), instructions: None })]);
         // The built-in line: no permission bypass.
         let plain = [agent("claude", "claude"), agent("codex", "codex")];
-        assert_eq!(agent_line(&plain, &rows, &new(Some("claude"), None)).unwrap().join(" "), "claude");
-        assert_eq!(agent_line(&plain, &rows, &new(None, Some("review"))).unwrap().join(" "), "codex -m gpt-5");
+        assert_eq!(agent_line(&plain, &rows, &new(Some("claude"), None)).unwrap().1, "claude");
+        assert_eq!(agent_line(&plain, &rows, &new(None, Some("review"))).unwrap().1, "codex -m gpt-5");
         // The person's override, with its flags, on both paths.
         let mine = [agent("claude", "claude --dangerously-skip-permissions"), agent("codex", "codex --yolo")];
-        assert_eq!(agent_line(&mine, &rows, &new(Some("claude"), None)).unwrap().join(" "), "claude --dangerously-skip-permissions");
-        assert_eq!(agent_line(&mine, &rows, &new(Some("codex"), None)).unwrap().join(" "), "codex --yolo");
-        assert_eq!(agent_line(&mine, &rows, &new(None, Some("review"))).unwrap().join(" "), "codex --yolo -m gpt-5");
-    }
-
-    #[test]
-    fn new_type_gives_the_agent_its_instruction_file() {
-        let dir = std::env::temp_dir().join(format!("skiff-new-type file-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let f = dir.join("review.md");
-        std::fs::write(&f, "Review only.").unwrap();
-        let row = |agent: &str, file: &str| TaskRow { agent: agent.into(), model: None, instructions: Some(file.into()) };
-        let p = f.display().to_string();
-        let rows = TaskTypes(vec![("review".into(), row("claude", &p)), ("fast".into(), row("grok", &p)), ("gone".into(), row("claude", "/no/such/skiff/file.md"))]);
-        let agents = [agent("claude", "claude"), agent("grok", "grok")];
-        // The path stays one word: the daemon gets it as one argument.
-        assert_eq!(agent_line(&agents, &rows, &new(None, Some("review"))).unwrap(), ["claude", "--append-system-prompt-file", p.as_str()]);
-        // An agent with no way to take it, or a file that is not there: an error, and nothing starts.
-        assert!(agent_line(&agents, &rows, &new(None, Some("fast"))).unwrap_err().to_string().contains("grok has no flag"));
-        assert!(agent_line(&agents, &rows, &new(None, Some("gone"))).unwrap_err().to_string().contains("is not there"));
-        std::fs::remove_dir_all(dir).unwrap();
+        assert_eq!(agent_line(&mine, &rows, &new(Some("claude"), None)).unwrap().1, "claude --dangerously-skip-permissions");
+        assert_eq!(agent_line(&mine, &rows, &new(Some("codex"), None)).unwrap().1, "codex --yolo");
+        assert_eq!(agent_line(&mine, &rows, &new(None, Some("review"))).unwrap().1, "codex --yolo -m gpt-5");
     }
 
     #[test]
@@ -571,7 +558,7 @@ mod tests {
     #[test]
     fn known_agents_only() {
         use SessionState::Idle;
-        for fg in ["claude", "codex", "gemini", "grok", "opencode"] {
+        for fg in ["claude", "codex", "gemini", "grok", "opencode", "hermes"] {
             assert!(super::is_agent(&s("shell", Idle, Some(fg))), "{fg}");
         }
         for fg in [None, Some("bash"), Some("sh"), Some("vim"), Some("node")] {

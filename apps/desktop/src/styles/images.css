@@ -1,0 +1,101 @@
+/* Images: the pane header button, the library under it, and a thumbnail dragged onto a pane. */
+.head-mini { position: relative; width: calc(24 * var(--u)); height: calc(16 * var(--u)); flex-shrink: 0; overflow: hidden; outline: 1px solid var(--rule-strong); background: var(--bg-deep); }
+.head-mini[hidden] { display: none; }
+.head-mini img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Just after an insert: the image under a scrim, with a check, for 1.5 s. It shows on any pane, hovered or not. */
+.head-images { position: relative; }
+.head-images.done .head-mini { outline-color: var(--ok); }
+.head-check {
+  position: absolute; left: 50%; top: 50%; width: calc(24 * var(--u)); height: calc(16 * var(--u)); transform: translate(-50%, -50%);
+  display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--bg-deep) 55%, transparent); color: var(--ok); pointer-events: none;
+}
+.head-check svg { width: calc(10 * var(--u)); height: calc(10 * var(--u)); }
+.cell:not(.focused) .cell-head:not(.hover) .head-btn.head-images.done { visibility: visible; }
+.head-images[aria-expanded="true"] { background: color-mix(in srgb, var(--pc) 22%, transparent); box-shadow: inset 0 -2px 0 var(--pc); }
+.file-drop .drag-ghost { gap: calc(8 * var(--u)); padding-left: calc(4 * var(--u)); }
+.file-drop .head-mini, .lib-ghost .head-mini { width: calc(30 * var(--u)); height: calc(20 * var(--u)); outline: 0; }
+
+#images-lib {
+  --menu-bg: linear-gradient(var(--bg-panel), var(--bg-panel)), linear-gradient(var(--bg), var(--bg)) #000;
+  position: fixed; z-index: 15; width: calc(600 * var(--u)); max-width: calc(100vw - calc(16 * var(--u)));
+  display: flex; flex-direction: column; background: var(--menu-bg); border: 1px solid var(--rule-strong);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); transform: translateZ(0); isolation: isolate; outline: 0;
+}
+#images-lib[hidden] { display: none; }
+/* The search row: icon, field, count. The gallery's tool row starts with the same three. */
+.lib-head { height: var(--row); flex-shrink: 0; display: flex; align-items: center; border-bottom: 1px solid var(--rule); }
+.lib-head > svg { flex-shrink: 0; width: calc(14 * var(--u)); height: calc(14 * var(--u)); margin-left: calc(16 * var(--u)); color: var(--text-3); }
+.lib-search { flex: 1; min-width: 0; height: 100%; padding: 0 calc(12 * var(--u)); border: 0; background: transparent; color: var(--text); font-size: calc(13px * var(--zoom, 1)); outline: 0; }
+.lib-search::placeholder { color: var(--text-dim); }
+#images-lib.in-list .lib-search { color: var(--text-2); }
+.lib-count { padding-right: calc(16 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lib-none { height: var(--row); flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(16 * var(--u)); color: var(--text-3); }
+.lib-name mark, .lib-who mark { background: none; color: var(--text); font-weight: 600; }
+.lib-list:focus { outline: 0; }
+.lib-list { display: flex; flex-direction: column; max-height: calc(8 * var(--row) + calc(40 * var(--u))); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--rule-strong) transparent; }
+.lib-sec {
+  height: calc(20 * var(--u)); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 calc(16 * var(--u));
+  position: sticky; top: 0; z-index: 1; background: var(--bg); border-bottom: 1px solid var(--rule);
+  font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.06em; color: var(--text-3);
+}
+.lib-sec span { font-weight: 400; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+/* One fixed track: a thumbnail never sets the row's height. The right column has one width, so the buttons never cover the text. */
+.lib-row {
+  height: var(--row); flex-shrink: 0; display: grid; grid-template-columns: calc(64 * var(--u)) minmax(0, 1fr) calc(232 * var(--u)); grid-template-rows: minmax(0, 1fr);
+  overflow: hidden; border-bottom: 1px solid var(--rule); cursor: default;
+}
+.lib-row.lit { background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); }
+.lib-row.lit .lib-th { box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); }
+.lib-th { position: relative; min-height: 0; overflow: hidden; border-right: 1px solid var(--rule); background: var(--bg-deep); cursor: grab; }
+.lib-th img { position: absolute; inset: calc(4 * var(--u)); width: calc(100% - calc(8 * var(--u))); height: calc(100% - calc(8 * var(--u))); object-fit: cover; display: block; }
+.lib-text { min-width: 0; min-height: 0; overflow: hidden; padding: 0 calc(12 * var(--u)); display: flex; flex-direction: column; justify-content: center; line-height: 1.3; }
+.lib-name { font-size: calc(13px * var(--zoom, 1)); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-who { font-size: calc(11px * var(--zoom, 1)); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-who.ended { color: var(--text-dim); }
+.lib-proj { margin-right: calc(5 * var(--u)); font-size: calc(9px * var(--zoom, 1)); font-weight: 700; }
+.lib-who.ended .lib-proj { opacity: 0.6; }
+.lib-right { min-height: 0; display: flex; justify-content: flex-end; }
+.lib-time { align-self: center; padding-right: calc(16 * var(--u)); font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.lib-act { display: none; flex: 1 1 auto; justify-content: center; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(10 * var(--u)); border: 0; border-left: 1px solid var(--rule); background: transparent; color: var(--text-2); font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
+.lib-row.lit .lib-act { display: flex; }
+.lib-row.lit .lib-time:not(.copied), .lib-row.copied .lib-act { display: none; }
+/* "Copied" or "Inserted" for 1.5 s, in place of the buttons. Inserted has a check. */
+.lib-time.copied { display: flex; align-items: center; gap: calc(6 * var(--u)); color: var(--text-2); }
+.lib-time.copied svg { width: calc(12 * var(--u)); height: calc(12 * var(--u)); color: var(--ok); }
+.lib-act:hover { background: color-mix(in srgb, var(--text) 14%, transparent); color: var(--text); }
+.lib-act.x { flex: 0 0 calc(40 * var(--u)); padding: 0; }
+.lib-act.x:hover { color: var(--error-text); }
+.lib-ghost {
+  position: fixed; z-index: 30; pointer-events: none; display: flex; align-items: center; gap: calc(8 * var(--u));
+  height: calc(28 * var(--u)); max-width: calc(280 * var(--u)); padding: 0 calc(10 * var(--u)) 0 calc(4 * var(--u));
+  background: var(--bg-raised); border: 1px solid var(--rule-strong); color: var(--text); font-size: calc(12px * var(--zoom, 1));
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); opacity: 0.92;
+}
+
+/* Settings › Images: a tool row, then the gallery. Tiles touch, with 1px rules between them. */
+.img-page { overflow: hidden; }
+.img-tools { height: var(--row); flex-shrink: 0; display: flex; border-bottom: 1px solid var(--rule); }
+.img-tools .lib-head { flex: 1; min-width: 0; border-bottom: 0; }
+.img-tools .lib-search:focus { box-shadow: inset 0 -1px 0 var(--text-3); }
+.img-btn {
+  height: 100%; flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(14 * var(--u)); border: 0; border-left: 1px solid var(--rule);
+  background: transparent; color: var(--text-2); font-size: calc(12px * var(--zoom, 1)); white-space: nowrap;
+}
+.img-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 14%, transparent); color: var(--text); }
+.img-btn:disabled { color: var(--text-dim); opacity: 0.55; }
+.img-btn.ins { max-width: calc(300 * var(--u)); }
+.img-btn.ins .t { overflow: hidden; text-overflow: ellipsis; }
+.img-btn.ins .lib-proj { margin-right: calc(5 * var(--u)); }
+.img-btn.del:hover:not(:disabled) { color: var(--error-text); }
+.img-scroll { flex: 1; min-height: 0; overflow-y: auto; outline: 0; scrollbar-width: thin; scrollbar-color: var(--rule-strong) transparent; }
+.img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(208 * var(--u)), 1fr)); gap: 1px; padding-bottom: 1px; }
+.img-tile { position: relative; display: flex; flex-direction: column; background: var(--bg); box-shadow: 0 0 0 1px var(--rule); cursor: default; user-select: none; }
+.img-pic { position: relative; height: calc(160 * var(--u)); background: var(--bg-deep); border-bottom: 1px solid var(--rule); }
+.img-pic img { position: absolute; inset: calc(8 * var(--u)) calc(12 * var(--u)); width: calc(100% - calc(24 * var(--u))); height: calc(100% - calc(16 * var(--u))); object-fit: contain; display: block; }
+.img-cap { height: var(--row); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-content: center; column-gap: calc(8 * var(--u)); padding: 0 calc(12 * var(--u)); line-height: 1.3; }
+.img-cap .lib-time { padding: 0; }
+.img-cap .lib-who { grid-column: 1 / -1; }
+.img-tile:hover:not(.sel) { background: color-mix(in srgb, var(--text) 6%, var(--bg)); }
+.img-tile.sel { background: color-mix(in srgb, var(--project-default) 22%, var(--bg)); box-shadow: inset 2px 0 0 var(--project-default), 0 0 0 1px var(--rule); }
+.img-tile.sel .img-pic { background: color-mix(in srgb, var(--project-default) 12%, var(--bg-deep)); box-shadow: inset 2px 0 0 var(--project-default); }
+body.kbd .img-scroll:focus .img-tile.now::after { content: ""; position: absolute; inset: 0; outline: 1px solid var(--text-3); outline-offset: -1px; pointer-events: none; }

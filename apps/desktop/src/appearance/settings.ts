@@ -8,12 +8,16 @@ import { nextCard, themeGrid, type ThemeFilters } from "./themeCards";
 import { type Action, actionFor, isMac } from "../app/keys";
 import { editField, fieldEditKey, textField } from "../ui/fieldClipboard";
 import type { SkiffAgentSettings } from "../app/skiffAgent";
-import { type SkiffAgentEdit, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
+import { type SkiffAgentEdit, projectSkippersSection, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
 import { changeSkiffFolder } from "./skiffFolderDialog";
 import { rowTable, tableState } from "./rowTable";
+import { countDisk, diskState, diskUseSection } from "./diskUse";
+import { imagesSection, imagesState } from "./imagesPage";
+import { onImagesChanged } from "../terminal/images";
 
 /**
- * Settings over the sidebar and terminal: agents, appearance, and Open with.
+ * Settings over the sidebar and terminal: agents, the Skiff agent,
+ * appearance, Open with, images and disk use.
  */
 export interface AppearanceHooks {
   themes: () => TerminalTheme[];
@@ -21,6 +25,8 @@ export interface AppearanceHooks {
   current: () => string | null;
   load: () => Promise<void>;
   set: (id: string | null) => void;
+  /** Themes that replace the app theme on screen, each with a label that names its scope. */
+  overrides?: () => { id: string; label: string }[];
 }
 
 export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () => void, look: AppearanceHooks, onShowChange: () => void = () => {}) {
@@ -32,10 +38,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   document.getElementById("body")!.appendChild(root);
 
   let agents: AgentInfo[] = [];
-  const TABS = ["agents", "skiff-agent", "appearance", "open"] as const;
+  const TABS = ["agents", "skiff-agent", "appearance", "open", "images", "disk"] as const;
   let tab: (typeof TABS)[number] = "agents";
   const themeFilters: ThemeFilters = { query: "", family: null };
-  type OpenKey = "diff" | "text" | "markdown" | "html";
+  type OpenKey = "diff" | "text" | "markdown" | "html" | "image";
   type OpenSettings = Record<OpenKey, string> & { default_diff: string; peek: string[] };
   let openSet: OpenSettings | null = null;
   type MenuLayout = { available: boolean; chosen: string | null; auto: string; current: string };
@@ -46,6 +52,12 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   // The draft rows and their error lines survive every redraw.
   const agentsTable = tableState();
   const tasksTable = tableState();
+  const disk = diskState();
+  const gallery = imagesState();
+  // A drop, a paste or a delete elsewhere redraws the gallery.
+  onImagesChanged(() => {
+    if (!root.hidden && tab === "images") render();
+  });
 
   async function toggle(id: string) {
     if (saving) return;
@@ -98,7 +110,13 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     // So does the focused field: a save on blur finishes after the click that moved focus to the next field.
     const a = document.activeElement;
     const field = a instanceof HTMLInputElement && root.contains(a) ? { label: a.getAttribute("aria-label"), at: a.selectionStart, to: a.selectionEnd } : null;
+    // Disk use redraws under its buttons after a count. The keys stay on the same button, else the first one on.
+    const button = tab === "disk" && a instanceof HTMLButtonElement && a.closest(".set-main") ? a.textContent : null;
     draw();
+    if (button !== null) {
+      const stops = [...root.querySelectorAll<HTMLButtonElement>(".set-main button:not(:disabled)")];
+      (stops.find((b) => b.textContent === button) ?? stops[0])?.focus();
+    }
     const main = root.querySelector(".set-main");
     if (main) main.scrollTop = scroll;
     if (field?.label) {
@@ -112,13 +130,14 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const nav = h("div", "set-nav");
     const head = h("div", "set-nav-head");
     head.append(h("div", "set-title", "Settings"), h("div", "set-path mono", "~/.config/skiff/projects.toml"));
-    const names = { agents: "Agents", "skiff-agent": "Skiff agent", appearance: "Appearance", open: "Open with" };
+    const names = { agents: "Agents", "skiff-agent": "Skiff agent", images: "Images", disk: "Disk use", appearance: "Appearance", open: "Open with" };
     const tabs = TABS.map((t) => {
       const b = h("button", "set-tab" + (tab === t ? " active" : ""), names[t]);
       b.type = "button";
       b.addEventListener("click", () => {
         tab = t;
         draw();
+        if (tab === "disk") void countDisk(disk, render);
         if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
       });
       return b;
@@ -134,6 +153,16 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     }
     if (tab === "skiff-agent") {
       root.replaceChildren(nav, skiffAgent(), closeButton());
+      return;
+    }
+    if (tab === "images") {
+      root.replaceChildren(nav, imagesSection(gallery, close), closeButton());
+      return;
+    }
+    if (tab === "disk") {
+      const main = h("div", "set-main");
+      main.append(...diskUseSection(disk, render, (days) => void setCacheDays(days)));
+      root.replaceChildren(nav, main, closeButton());
       return;
     }
 
@@ -169,7 +198,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   }
 
   /** The agents Skiff ships with. Restore defaults brings back any the user removed. */
-  const DEFAULT_AGENTS = ["claude", "codex", "gemini", "grok", "opencode"];
+  const DEFAULT_AGENTS = ["claude", "codex", "gemini", "grok", "opencode", "hermes"];
 
   /** One row per agent: its switch, name, command and status. The draft row adds a custom agent. */
   function agentTable(): HTMLElement {
@@ -281,6 +310,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       themeGrid(look.themes(), {
         active: look.themes().some((t) => t.id === cur) ? cur : DEFAULT_THEME,
         filters: themeFilters,
+        scopes: look.overrides?.(),
         reload: async () => { await look.load(); return look.themes(); },
         pick: (id) => {
           look.set(id === DEFAULT_THEME ? null : id);
@@ -349,6 +379,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     { key: "text", label: "Text files" },
     { key: "markdown", label: "Markdown" },
     { key: "html", label: "HTML" },
+    { key: "image", label: "Images" },
   ];
 
   /** A task type edit. Answers with the error to show; the table redraws. */
@@ -367,6 +398,18 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       agentSet = await invoke<SkiffAgentSettings>("set_skiff_agent", { edit });
     } catch (e) {
       error = String(e);
+    }
+    render();
+  }
+
+  /** Settings › Disk use › Auto flush: `[skiff_agent] cache_days`. */
+  async function setCacheDays(days: number) {
+    try {
+      agentSet = await invoke<SkiffAgentSettings>("set_skiff_agent", { edit: { key: "cache_days", value: days } });
+      if (disk.usage) disk.usage.cache_days = days;
+      disk.error = null;
+    } catch (e) {
+      disk.error = String(e);
     }
     render();
   }
@@ -398,6 +441,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       err.setAttribute("role", "alert");
       main.appendChild(err);
     }
+    if (agentSet) main.append(...projectSkippersSection(agentSet, agents, (e) => void setSkiffAgent(e)));
     if (agentSet) main.append(...taskTypesSection(agentSet, agents, tasksTable, saveTask, render));
     return main;
   }
@@ -432,6 +476,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       });
       row.append(h("span", "c-name", label), cmd);
       if (key === "diff") row.append(h("span", "c-mode", "Peek"));
+      else if (key === "image") row.append(h("span", "c-mode", "External app"));
       else {
         const mode = h("select", "c-mode");
         mode.setAttribute("aria-label", `${label} open mode`);
@@ -458,6 +503,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     // Leaving a name list saves it.
     if (document.activeElement instanceof HTMLTextAreaElement) document.activeElement.blur();
     root.hidden = true;
+    gallery.keys = null;
     onClose();
     onShowChange();
   }
@@ -468,6 +514,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     (document.activeElement as HTMLElement | null)?.blur();
     tab = TABS[(TABS.indexOf(tab) + dir + TABS.length) % TABS.length];
     draw();
+    if (tab === "disk") void countDisk(disk, render);
     document.body.classList.add("kbd");
     root.querySelector<HTMLButtonElement>(".set-tab.active")?.focus();
   }
@@ -565,7 +612,9 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   });
 
   return {
-    async open() {
+    /** `at`: the section to show, else the last one. */
+    async open(at?: (typeof TABS)[number]) {
+      if (at) tab = at;
       root.hidden = false;
       onShowChange();
       await look.load();
@@ -577,7 +626,9 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         return [];
       });
       render();
+      if (tab === "disk") void countDisk(disk, render);
       if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
+      else if (tab === "images") root.querySelector<HTMLInputElement>(".img-page .lib-search")?.focus();
       else root.querySelector<HTMLButtonElement>(".set-agent .c-on:not(:disabled)")?.focus();
     },
     close,

@@ -56,6 +56,22 @@ impl SessionPool {
         self.dirty.notify_one();
         Ok(())
     }
+
+    /// Named groups first, in the given order; the rest keep theirs.
+    pub fn order_groups(&self, ids: &[String]) -> Result<()> {
+        let _change = self.change()?;
+        let mut groups = self.groups.lock().unwrap();
+        let rank = |g: &Group| ids.iter().position(|x| *x == g.id).unwrap_or(usize::MAX);
+        let before: Vec<String> = groups.iter().map(|g| g.id.clone()).collect();
+        groups.sort_by_key(rank);
+        if groups.iter().map(|g| &g.id).eq(before.iter()) {
+            return Ok(());
+        }
+        drop(groups);
+        let _ = self.events.send(Event::GroupsChanged {});
+        self.dirty.notify_one();
+        Ok(())
+    }
 }
 
 /// Drops `id` from every group. A group left with no session keeps an empty

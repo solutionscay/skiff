@@ -120,6 +120,11 @@ pub enum Request {
     DeleteGroup {
         group: String,
     },
+    /// Puts the groups in this order of ids. Groups left out keep their
+    /// order after the named ones; unknown ids are skipped.
+    OrderGroups {
+        groups: Vec<String>,
+    },
     /// Moves skiffd onto another binary in place. The pid, sessions, PTYs and
     /// terminals stay. `binary` is an absolute path; `None` is the daemon's
     /// own executable as it is on disk now. A failure answers with an error
@@ -154,6 +159,20 @@ pub enum Request {
         resume: Option<String>,
         #[serde(default)]
         expect: Option<u64>,
+    },
+    /// Takes a project Skipper over: clears its Skipper mark and sets it
+    /// retiring, so skiffd ends it at its next idle. An idle one ends now.
+    /// Answers [`Response::Ok`].
+    Retire {
+        session: SessionId,
+    },
+    /// Gives a fleet Skipper its fleet's new name: its Skipper mark becomes
+    /// `scope` and its name `name`, in one step. Answers
+    /// [`Response::Session`].
+    Rescope {
+        session: SessionId,
+        scope: String,
+        name: String,
     },
     /// This connection watches `session` for the Skiff agent. The
     /// registration lasts until the connection closes. A second call on the
@@ -308,10 +327,13 @@ impl Request {
             Request::ListGroups => "list_groups",
             Request::SaveGroup { .. } => "save_group",
             Request::DeleteGroup { .. } => "delete_group",
+            Request::OrderGroups { .. } => "order_groups",
             Request::Reload { .. } => "reload",
             Request::Shutdown => "shutdown",
             Request::Coordinator { .. } => "coordinator",
             Request::Watching { .. } => "watching",
+            Request::Retire { .. } => "retire",
+            Request::Rescope { .. } => "rescope",
         }
     }
 }
