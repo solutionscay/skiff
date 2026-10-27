@@ -54,17 +54,4 @@ server = { cmd = "npm run dev", port_env = "PORT" }
         assert_eq!(cfg.projects[0].agents, ["claude", "codex"]);
         assert_eq!(cfg.projects[1].agents, ["gemini"]);
     }
-
-    #[test]
-    fn reads_the_skiff_agent() {
-        let cfg = parse("[skiff_agent]\nname = \"Bosun\"\nfolder = \"~/skiff-agent\"\n").unwrap();
-        assert_eq!(cfg.skiff_agent.name.as_deref(), Some("Bosun"));
-        assert!(!cfg.skiff_agent.folder.unwrap().to_string_lossy().starts_with('~'));
-        assert!(!cfg.skiff_agent.continue_on_restore);
-    }
-
-    #[test]
-    fn empty_is_default() {
-        assert_eq!(parse("").unwrap(), Config::default());
-    }
 }

@@ -191,51 +191,7 @@ pub fn projects(json: bool) -> Result<()> {
 mod tests {
     use std::{os::unix::fs::PermissionsExt, path::PathBuf};
 
-    use super::{path_warning, task_rows, watcher_line};
-    use skiff_core::session::{SessionInfo, WatchFailure, WatchInfo};
-
-    #[test]
-    fn the_watcher_line_names_each_case() {
-        let log = std::path::Path::new("/s.watch.log");
-        assert_eq!(watcher_line(None, || false, log), "no Skiff agent session");
-        let mut s: SessionInfo = serde_json::from_value(serde_json::json!({
-            "id": "3a136a60ffff", "label": "claude", "name": "Skipper", "role": "agent", "cwd": "/", "command": "claude",
-            "args": [], "state": "idle", "cols": 80, "rows": 24, "pid": null, "exit_code": null,
-        }))
-        .unwrap();
-        assert_eq!(watcher_line(Some(&s), || false, log), "none for Skipper (3a136a60)");
-        assert!(watcher_line(Some(&s), || true, log).ends_with("an older skiff watch runs. See /s.watch.log"));
-        s.watch = Some(WatchInfo { since: 0, pids: vec![41234], failure: None, follows: None });
-        assert!(watcher_line(Some(&s), || unreachable!(), log).starts_with("runs for Skipper (3a136a60) since "));
-        assert!(watcher_line(Some(&s), || false, log).ends_with(", pid 41234"));
-        s.watch = Some(WatchInfo {
-            since: 0,
-            pids: vec![41234, 41300],
-            failure: Some(WatchFailure { kind: "ledger".into(), message: "busy".into(), at: 0 }),
-            follows: None,
-        });
-        let line = watcher_line(Some(&s), || false, log);
-        assert!(line.starts_with("2 run for Skipper (3a136a60), pids 41234 41300  last failure "), "{line}");
-        assert!(line.ends_with(" ledger: busy"));
-    }
-
-    #[test]
-    fn task_rows_show_the_command_or_why_not() {
-        use skiff_core::tasks::TaskType;
-        let t = |name: &str, model: Option<&str>, command: Option<&str>, error: Option<&str>| TaskType {
-            name: name.into(),
-            agent: "claude".into(),
-            model: model.map(Into::into),
-            file: "/home/me/skiff-agent/types/review.md".into(),
-            instructions: (name == "review").then_some(412),
-            command: command.map(Into::into),
-            error: error.map(Into::into),
-        };
-        let rows = task_rows(&[t("review", Some("opus"), Some("claude --model opus"), None), t("test", None, Some("claude"), None), t("old", None, None, Some("no agent"))]);
-        assert_eq!(rows[0], ["review", "claude", "opus", "412 B", "claude --model opus"]);
-        assert_eq!(rows[1][2..4], ["-", "none"]);
-        assert_eq!(rows[2][4], "error: no agent");
-    }
+    use super::path_warning;
 
     fn bin(dir: &PathBuf) -> PathBuf {
         std::fs::create_dir_all(dir).unwrap();

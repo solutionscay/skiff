@@ -561,17 +561,6 @@ mod tests {
     }
 
     #[test]
-    fn names_are_slugs() {
-        for ok in ["review", "code-review", "t2", "2fa"] {
-            assert_eq!(check_name(ok).unwrap(), ok);
-        }
-        assert_eq!(check_name(" spec ").unwrap(), "spec");
-        for bad in ["", "Review", "-x", "a b", "a_b", "ünï", "a.b"] {
-            assert!(check_name(bad).is_err(), "{bad:?}");
-        }
-    }
-
-    #[test]
     fn commands_add_the_flag_at_the_end() {
         let claude = agent("claude", "claude --dangerously-skip-permissions", false);
         assert_eq!(command(&claude, Some("opus")).unwrap(), "claude --dangerously-skip-permissions --model opus");

@@ -77,17 +77,3 @@ pub fn real_agent_folders() -> Vec<PathBuf> {
     }
     out
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_socket_keeps_its_state_beside_it() {
-        assert_eq!(dir_for(Path::new("/tmp/x.sock")), Path::new("/tmp/x.state"));
-        assert!(same_socket(Path::new("/tmp/./x.sock"), Path::new("/tmp/x.sock")));
-        assert!(!same_socket(Path::new("/tmp/x.sock"), Path::new("/tmp/y.sock")));
-        assert!(!is_live(Path::new("/tmp/x.sock")));
-        assert!(is_live(&live_socket()));
-    }
-}

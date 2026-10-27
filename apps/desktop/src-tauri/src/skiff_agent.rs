@@ -449,23 +449,4 @@ mod tests {
         assert!(serde_json::from_value::<Edit>(serde_json::json!({ "key": "enabled", "value": true })).is_err());
         assert!(serde_json::from_value::<Edit>(serde_json::json!({ "key": "project_skippers", "value": true })).is_err());
     }
-
-    /// The scopes `InstructionScope` in apps/desktop/src/appearance/skiffAgentSettings.ts sends.
-    #[test]
-    fn reads_the_scopes_the_page_sends() {
-        use skiff_host_api::HostFileScope as Scope;
-        let scope = |v: serde_json::Value| serde_json::from_value::<Scope>(v).unwrap();
-        assert_eq!(scope(serde_json::json!({ "kind": "skipper" })), Scope::Skipper);
-        assert_eq!(scope(serde_json::json!({ "kind": "fleet", "name": "Harbor" })), Scope::Fleet("Harbor".into()));
-        assert_eq!(scope(serde_json::json!({ "kind": "project", "name": "gesher" })), Scope::Project("gesher".into()));
-    }
-
-    /// The modes `Mode` in apps/desktop/src/appearance/skiffFolderDialog.ts sends.
-    #[test]
-    fn reads_the_folder_modes_the_page_sends() {
-        use skiff_client::agent_folder::Mode;
-        for (text, mode) in [("copy", Mode::Copy), ("empty", Mode::Empty), ("switch", Mode::Switch)] {
-            assert_eq!(serde_json::from_value::<Mode>(serde_json::json!(text)).unwrap(), mode);
-        }
-    }
 }

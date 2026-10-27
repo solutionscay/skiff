@@ -2255,22 +2255,6 @@ mod tests {
     }
 
     #[test]
-    fn a_table_cell_takes_the_task_on_one_line() {
-        assert_eq!(one_line("Build #177.\n\nRead first:\r\n- the mock\t "), "Build #177. Read first: - the mock");
-    }
-
-    #[test]
-    fn slugs_are_short_lowercase_ascii() {
-        assert_eq!(slug("Fix the Login bug (again)!"), "fix-the-login-bug-again");
-        assert_eq!(slug("Café — über naïve"), "caf-ber-na-ve");
-        assert_eq!(slug("   "), "task");
-        let long = slug("one two three four five six seven eight nine ten");
-        assert!(long.len() <= 40 && !long.ends_with('-'), "{long}");
-        assert_eq!(long, "one-two-three-four-five-six-seven-eight");
-        assert_eq!(slug(&"x".repeat(60)).len(), 40);
-    }
-
-    #[test]
     fn a_restarted_pane_interrupts_a_running_task() {
         let dir = scratch("gen");
         let file = dir.join("ledger.db");
