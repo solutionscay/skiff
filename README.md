@@ -70,6 +70,13 @@ ledgers. The old folder keeps every file and gets `MOVED.md`. The conversation d
 move: Skipper starts a new one in the new folder. `skiff skipper --move-to PATH [--dry-run]`
 does the same from a terminal.
 
+Settings › Task types names the agent and the model that Skipper starts for each kind of
+task: `skiff new --type review`. Each type can have an instruction file,
+`types/<type>.md` in the agent folder. Edit in its row makes the file and opens it. The
+agent gets the file at start, on top of the project's own `AGENTS.md` or `CLAUDE.md`:
+claude, codex, grok, opencode and kimi each take it their own way. gemini, hermes and
+custom agents cannot take one, and the row shows an error. An empty file is no file.
+
 Each session row shows what needs you. A bell means an agent asks for approval. A flag means an agent finished its turn, or a shell command ended, while you were in another pane. `skiffd` reads this from the screen and from the program in front of the terminal, not from hooks.
 
 ## Install
