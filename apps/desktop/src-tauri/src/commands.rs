@@ -288,6 +288,19 @@ pub(crate) async fn open_file(path: PathBuf) -> Result<Opened, String> {
     run_plan(plan, cwd, path).await
 }
 
+/// Opens a file as Settings › Open with › Text files says, whatever its
+/// extension. A peek command goes back to the page; an app starts here.
+pub(crate) async fn open_text(path: PathBuf) -> Result<Opened, String> {
+    use skiff_core::open::{self, Plan};
+    let o = skiff_core::config::load().map(|c| c.open).unwrap_or_default();
+    let cwd = path.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
+    let plan = open::plan_text(&path, &o);
+    match plan {
+        Plan::Run(script) if !open::previews_text(&o) => blocking(move || open::start(&script, &cwd)).await.map(|_| Opened::Default),
+        plan => run_plan(plan, cwd, path).await,
+    }
+}
+
 /// Projects with `files = true`. Read from projects.toml here, so an older
 /// daemon that does not send the key still works.
 #[tauri::command]

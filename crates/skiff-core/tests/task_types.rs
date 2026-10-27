@@ -9,7 +9,7 @@ fn task_types_round_trip_in_file_order() {
     let file = dir.join("projects.toml");
     std::env::set_var("SKIFF_CONFIG", &file);
     // A hand-written file: its comments and the project stay.
-    std::fs::write(&file, "# mine\n[skiff_agent]\nenabled = true\n\n[[project]]\nname = \"app\"\npath = \"/tmp/app\"\n").unwrap();
+    std::fs::write(&file, "# mine\n[skiff_agent]\nname = \"Bosun\"\n\n[[project]]\nname = \"app\"\npath = \"/tmp/app\"\n").unwrap();
     config::set_agent_command("aider", "aider --model sonnet").unwrap();
 
     config::add_task_type("spec", "claude", Some("opus")).unwrap();
@@ -30,7 +30,7 @@ fn task_types_round_trip_in_file_order() {
         ]
     );
     let text = std::fs::read_to_string(&file).unwrap();
-    assert!(text.contains("# mine\n[skiff_agent]\nenabled = true\n") && text.contains("[skiff_agent.tasks]") && text.contains("spec = { agent = \"claude\", model = \"opus\" }"), "{text}");
+    assert!(text.contains("# mine\n[skiff_agent]\nname = \"Bosun\"\n") && text.contains("[skiff_agent.tasks]") && text.contains("spec = { agent = \"claude\", model = \"opus\" }"), "{text}");
     assert!(text.find("[skiff_agent.tasks]").unwrap() < text.find("[[project]]").unwrap(), "{text}");
 
     // Refusals change nothing.
@@ -71,6 +71,6 @@ fn task_types_round_trip_in_file_order() {
         config::remove_task_type(k).unwrap();
     }
     let text = std::fs::read_to_string(&file).unwrap();
-    assert!(!text.contains("tasks") && text.contains("enabled = true") && text.contains("[[project]]"), "{text}");
+    assert!(!text.contains("tasks") && text.contains("name = \"Bosun\"") && text.contains("[[project]]"), "{text}");
     std::fs::remove_dir_all(&dir).unwrap();
 }

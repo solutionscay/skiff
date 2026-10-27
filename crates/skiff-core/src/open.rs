@@ -73,6 +73,20 @@ pub fn plan_file(file: &Path, open: &Open) -> Plan {
     Plan::Run(file_script(&cmd, file))
 }
 
+/// How `file` opens as Settings › Open with › Text files says, whatever its
+/// extension, as an instruction file opens from Settings.
+pub fn plan_text(file: &Path, open: &Open) -> Plan {
+    match command(open, "text") {
+        Some(cmd) => Plan::Run(file_script(&cmd, file)),
+        None => Plan::Default,
+    }
+}
+
+/// Text files open in the peek: the `text` row has a command and the peek.
+pub fn previews_text(open: &Open) -> bool {
+    open.peek.iter().any(|k| k == "text") && command(open, "text").is_some()
+}
+
 /// How the diff opens: the `diff` command, else `git diff`, with `{target}`
 /// for what to compare. See [`crate::git::diff_script`].
 pub fn plan_diff(dir: &Path, file: Option<&str>, open: &Open) -> Plan {

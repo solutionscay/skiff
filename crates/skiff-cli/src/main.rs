@@ -127,21 +127,20 @@ enum Cmd {
         /// Do not attach. Print the session id.
         #[arg(long)]
         no_attach: bool,
-        /// Change the Skiff agent's folder to PATH, as Settings › Skiff agent ›
+        /// Change the Skiff agent's folder to PATH, as Settings › Skippers ›
         /// Folder does: copy, check and switch to a new or empty folder, or
         /// switch to a Skiff folder. It shows the preview and asks first.
         #[arg(long, value_name = "PATH", conflicts_with = "no_attach")]
         move_to: Option<std::path::PathBuf>,
         /// The project Skipper of PROJECT in place of the Skipper: find it,
         /// or start it in the project's folder with SKIPPER.md as its first
-        /// message. Needs Settings › Skiff agent › Project and fleet Skippers.
+        /// message.
         #[arg(long, value_name = "PROJECT", conflicts_with = "move_to")]
         project: Option<String>,
         /// The fleet Skipper of FLEET: find it, or start it in its folder
         /// with SKIPPER.md as its first message. When project Skippers run
         /// in the fleet, it names them and asks: the fleet Skipper takes
-        /// their work over and they stop when idle. Needs Settings › Skiff
-        /// agent › Project and fleet Skippers.
+        /// their work over and they stop when idle.
         #[arg(long, value_name = "FLEET", conflicts_with_all = ["move_to", "project"])]
         fleet: Option<String>,
         /// With --fleet: take the project Skippers over without asking.

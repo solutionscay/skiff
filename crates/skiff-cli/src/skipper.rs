@@ -56,7 +56,7 @@ pub async fn run_project(socket: &Path, project: &str, no_attach: bool) -> Resul
     let ps = start_project(socket, &c, project).await?;
     let s = ps.session;
     if ps.created {
-        match greet(&c, &s.id, &skipper::first_message(&ps.dir)).await? {
+        match greet(&c, &s.id, &skipper::first_message(&skiff_core::config::load()?, &ps.dir)?).await? {
             0 => {}
             code => bail!("the {project} Skipper started, but its first message did not go in (exit {code}). Tell it to read {}", ps.dir.join(skipper::SKIPPER_FILE).display()),
         }
@@ -90,7 +90,7 @@ pub async fn run_fleet(socket: &Path, fleet: &str, no_attach: bool, yes: bool) -
     let fs = start_fleet(socket, &c, fleet, Over::Ask { yes }).await?;
     let s = fs.skipper.session;
     if fs.skipper.created {
-        let mut text = skipper::first_message(&fs.skipper.dir);
+        let mut text = skipper::first_message(&skiff_core::config::load()?, &fs.skipper.dir)?;
         if !fs.taken.is_empty() {
             text = format!("{text} {}", skiff_client::fleet::line(fleet, &fs.taken));
         }
@@ -277,7 +277,7 @@ fn start_daemon(socket: &Path) -> Result<()> {
 }
 
 /// `skiff skipper --move-to PATH`: the Change… dialog of Settings ›
-/// Skiff agent › Folder as text. Prints the preview, asks, then copies,
+/// Skippers › Folder as text. Prints the preview, asks, then copies,
 /// checks and switches (or switches to a Skiff folder). Never without a
 /// terminal to ask in: there is no `--yes`.
 pub async fn move_to(socket: &Path, path: &Path, empty: bool, dry_run: bool) -> Result<()> {

@@ -23,8 +23,8 @@ export const SKIFF_AGENT_KEY = "skiff-agent";
 export interface SkiffAgentSettings {
   name: string | null;
   agent: string | null;
-  /** The row shows and the folder is set up. */
-  enabled: boolean;
+  /** The Skipper's model. Null: the agent's default. */
+  model: string | null;
   /** `~/skiff-agent`, or the override in projects.toml. Null when the override is refused. */
   folder: string | null;
   /** Why the override is refused. */
@@ -34,10 +34,10 @@ export interface SkiffAgentSettings {
   /** ready: a Skiff folder. missing: Skiff could not make it. other: it holds other files. */
   folder_status: "ready" | "missing" | "other" | "refused";
   continue_on_restore: boolean;
-  /** The project menu offers Start project Skipper. */
-  project_skippers: boolean;
-  /** The agent project Skippers start. Null: the Skipper's. */
+  /** The agent project and fleet Skippers start. Null: the Skipper's. */
   project_agent: string | null;
+  /** Their model. Null: the agent's default. */
+  project_model: string | null;
   /** `[skiff_agent.tasks]` in file order. */
   tasks: TaskType[];
 }
@@ -54,9 +54,24 @@ export interface TaskType {
   error: string | null;
 }
 
-/** The folder while the Skiff agent is on and its folder is good. */
+/** One instruction file: AGENTS.md, the base of every Skipper, or the SKIPPER.md of a fleet or a project. */
+export type InstructionScope = { kind: "skipper" } | { kind: "fleet" | "project"; name: string };
+
+/** A row of Settings › Skippers › Instructions. */
+export interface InstructionFile {
+  scope: InstructionScope;
+  /** Its path in the Skiff agent's folder. */
+  file: string;
+  path: string;
+  status: "none" | "template" | "edited" | "edited-template-changed";
+  /** Unix ms. Null with no file. */
+  modified: number | null;
+  size: number | null;
+}
+
+/** The Skiff agent's folder while it is good. Skippers are always on. */
 export function skiffAgentFolder(): string | null {
-  return S.skiffAgent?.enabled ? S.skiffAgent.folder : null;
+  return S.skiffAgent?.folder ?? null;
 }
 
 /** Reads `[skiff_agent]` again. loadProjects calls it, so an edit from Settings or the CLI shows at once. */
@@ -109,7 +124,7 @@ function skipperProject(s: SessionInfo): string | null {
 }
 
 /** The live project Skippers, marked or found by name. A marked one counts
- *  while the Skiff agent's settings are off or not read yet: it runs, and its
+ *  while the Skiff agent's settings are not read yet: it runs, and its
  *  title already says so. */
 export function projectSkippers(): SessionInfo[] {
   return [...sessions.values()].filter((s) => skipperProject(s) !== null);

@@ -23,7 +23,7 @@ use crate::{
 };
 
 /// Runs at app start, off the main thread. Never prompts. Makes the agent's
-/// folder when it is missing, with Skipper on or off, and copies the
+/// folder when it is missing, and copies the
 /// built-in `skiff-cli` skill out when it changed.
 pub fn sync() {
     if let Err(e) = config::load().and_then(|cfg| skipper::make_folder(&cfg)) {
@@ -32,11 +32,6 @@ pub fn sync() {
     if let Err(e) = skipper::sync_skill() {
         eprintln!("skiff-cli skill: {e:#}");
     }
-}
-
-/// Makes the agent's folder ready. Returns the folder.
-fn ensure() -> anyhow::Result<PathBuf> {
-    skipper::ensure(&config::load()?)
 }
 
 /// The `skiff` CLI beside the app binary, else the one on `PATH`.
@@ -128,7 +123,8 @@ pub async fn open_skiff_agent(app: State<'_, App>, restore: Option<u64>) -> Resu
 pub struct SkiffAgent {
     name: Option<String>,
     agent: Option<String>,
-    enabled: bool,
+    /// The Skipper's model. Absent: the agent's default.
+    model: Option<String>,
     /// `~/skiff-agent`, or the override. Absent when the override is refused.
     folder: Option<String>,
     /// Why the override in projects.toml is refused.
@@ -139,10 +135,10 @@ pub struct SkiffAgent {
     /// `other` (it holds other files) or `refused`.
     folder_status: &'static str,
     continue_on_restore: bool,
-    /// The project menu offers Start project Skipper.
-    project_skippers: bool,
-    /// The agent project Skippers start. Absent: the Skipper's.
+    /// The agent project and fleet Skippers start. Absent: the Skipper's.
     project_agent: Option<String>,
+    /// Their model. Absent: the agent's default.
+    project_model: Option<String>,
     /// `[skiff_agent.tasks]` in file order, with the command each row starts.
     tasks: Vec<TaskType>,
 }
@@ -170,29 +166,29 @@ fn read() -> anyhow::Result<SkiffAgent> {
     Ok(SkiffAgent {
         name: a.name,
         agent: a.agent,
-        enabled: a.enabled,
+        model: a.model,
         folder,
         folder_error,
         configured,
         folder_status,
         continue_on_restore: a.continue_on_restore,
-        project_skippers: a.project_skippers,
         project_agent: a.project_agent,
+        project_model: a.project_model,
         tasks,
     })
 }
 
-/// One edit from Settings › Skiff agent. `null` or empty takes the default.
+/// One edit from Settings › Skippers or Task types. `null` or empty takes the default.
 #[derive(Deserialize)]
 #[serde(tag = "key", content = "value", rename_all = "snake_case")]
 pub enum Edit {
     Name(Option<String>),
     Agent(Option<String>),
-    Enabled(bool),
+    Model(Option<String>),
     ContinueOnRestore(bool),
-    ProjectSkippers(bool),
     /// `null`: Same as Skipper.
     ProjectAgent(Option<String>),
+    ProjectModel(Option<String>),
     /// A new row at the end of Task types.
     AddTask(TaskEdit),
     /// A row's agent or model.
@@ -233,8 +229,9 @@ pub async fn set_skiff_agent(app: AppHandle, edit: Edit) -> Result<SkiffAgent, S
             Edit::Name(v) => config::set_skiff_agent(SkiffAgentKey::Name(v.as_deref()))?,
             Edit::Agent(v) => config::set_skiff_agent(SkiffAgentKey::Agent(v.as_deref()))?,
             Edit::ContinueOnRestore(on) => config::set_skiff_agent(SkiffAgentKey::ContinueOnRestore(on))?,
-            Edit::ProjectSkippers(on) => config::set_skiff_agent(SkiffAgentKey::ProjectSkippers(on))?,
+            Edit::Model(v) => config::set_skiff_agent(SkiffAgentKey::Model(v.as_deref()))?,
             Edit::ProjectAgent(v) => config::set_skiff_agent(SkiffAgentKey::ProjectAgent(v.as_deref()))?,
+            Edit::ProjectModel(v) => config::set_skiff_agent(SkiffAgentKey::ProjectModel(v.as_deref()))?,
             Edit::AddTask(t) => config::add_task_type(&t.name, &t.agent, t.model.as_deref())?,
             Edit::Task(t) => config::set_task_type(&t.name, &t.agent, t.model.as_deref())?,
             Edit::RenameTask { from, to } => {
@@ -248,13 +245,6 @@ pub async fn set_skiff_agent(app: AppHandle, edit: Edit) -> Result<SkiffAgent, S
             }
             Edit::RemoveTask(name) => config::remove_task_type(&name)?,
             Edit::CacheDays(n) => config::set_skiff_agent(SkiffAgentKey::CacheDays(n))?,
-            Edit::Enabled(on) => {
-                // On makes the folder ready first: a refused folder stays off.
-                if on {
-                    ensure()?;
-                }
-                config::set_skiff_agent(SkiffAgentKey::Enabled(on))?
-            }
         }
         read()
     })
@@ -264,14 +254,33 @@ pub async fn set_skiff_agent(app: AppHandle, edit: Edit) -> Result<SkiffAgent, S
 }
 
 /// Task types › Edit: the type's instruction file, with its stub written
-/// when it is missing. The page opens it as Open with › Text files says.
+/// when it is missing. It opens as Settings › Open with › Text files says,
+/// as a Skipper's file does.
 #[tauri::command]
-pub async fn edit_task_type_file(name: String) -> Result<String, String> {
-    blocking(move || {
-        let dir = skipper::folder(&config::load()?)?;
-        Ok(tasks::edit_file(&dir, &name)?.display().to_string())
-    })
-    .await
+pub async fn edit_task_type_file(name: String) -> Result<crate::commands::Opened, String> {
+    let path = blocking(move || Ok(tasks::edit_file(&skipper::folder(&config::load()?)?, &name)?)).await?;
+    crate::commands::open_text(path).await
+}
+
+/// Settings › Skippers › Instructions: each Skipper's file and its status.
+#[tauri::command]
+pub async fn skipper_files() -> Result<Vec<skipper::FileStatus>, String> {
+    blocking(|| skipper::instructions(&config::load()?)).await
+}
+
+/// Edit: the file opens as Settings › Open with › Text files says. A
+/// missing file is written from the template first. The page shows a
+/// peek command; an app or the default app starts here.
+#[tauri::command]
+pub async fn edit_skipper_file(scope: skipper::Scope) -> Result<crate::commands::Opened, String> {
+    let path = blocking(move || skipper::edit_file(&config::load()?, &scope)).await?;
+    crate::commands::open_text(path).await
+}
+
+/// Reset…: the template again, the old file in `<name>.bak`.
+#[tauri::command]
+pub async fn reset_skipper_file(scope: skipper::Scope) -> Result<skipper::FileStatus, String> {
+    blocking(move || skipper::reset_file(&config::load()?, &scope)).await
 }
 
 /// Project menu › Start project Skipper: finds or starts the project's
@@ -429,8 +438,22 @@ mod tests {
         assert!(matches!(rename, Edit::RenameTask { from, to } if from == "review" && to == "code-review"));
         assert!(matches!(edit(serde_json::json!({ "key": "remove_task", "value": "review" })), Edit::RemoveTask(t) if t == "review"));
         assert!(matches!(edit(serde_json::json!({ "key": "name", "value": null })), Edit::Name(None)));
-        assert!(matches!(edit(serde_json::json!({ "key": "project_skippers", "value": true })), Edit::ProjectSkippers(true)));
+        assert!(matches!(edit(serde_json::json!({ "key": "model", "value": "opus" })), Edit::Model(Some(m)) if m == "opus"));
+        assert!(matches!(edit(serde_json::json!({ "key": "project_model", "value": null })), Edit::ProjectModel(None)));
+        // The keys Skippers dropped.
+        assert!(serde_json::from_value::<Edit>(serde_json::json!({ "key": "enabled", "value": true })).is_err());
+        assert!(serde_json::from_value::<Edit>(serde_json::json!({ "key": "project_skippers", "value": true })).is_err());
         assert!(matches!(edit(serde_json::json!({ "key": "project_agent", "value": "codex" })), Edit::ProjectAgent(Some(a)) if a == "codex"));
+    }
+
+    /// The scopes `InstructionScope` in apps/desktop/src/appearance/skiffAgentSettings.ts sends.
+    #[test]
+    fn reads_the_scopes_the_page_sends() {
+        use skiff_client::skipper::Scope;
+        let scope = |v: serde_json::Value| serde_json::from_value::<Scope>(v).unwrap();
+        assert_eq!(scope(serde_json::json!({ "kind": "skipper" })), Scope::Skipper);
+        assert_eq!(scope(serde_json::json!({ "kind": "fleet", "name": "Harbor" })), Scope::Fleet("Harbor".into()));
+        assert_eq!(scope(serde_json::json!({ "kind": "project", "name": "gesher" })), Scope::Project("gesher".into()));
     }
 
     /// The modes `Mode` in apps/desktop/src/appearance/skiffFolderDialog.ts sends.

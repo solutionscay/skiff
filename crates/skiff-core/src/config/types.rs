@@ -54,29 +54,29 @@ pub struct Open {
 }
 
 /// `[skiff_agent]`: the one agent session that coordinates the others. The
-/// app reads and writes it; the daemon passes it by.
+/// app reads and writes it; the daemon passes it by. `enabled` and
+/// `project_skippers` from an older Skiff are read and ignored, and the
+/// next write takes them out ([`super::persistence::DROPPED`]).
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 pub struct SkiffAgent {
     /// The label on its row, its pane and its key. Absent: Skipper.
     pub name: Option<String>,
     /// The agent id it starts. Absent: the first enabled agent.
     pub agent: Option<String>,
-    /// Its row shows above the projects, and its folder is set up.
-    #[serde(default)]
-    pub enabled: bool,
+    /// The model it starts with. Absent: the agent's default.
+    pub model: Option<String>,
     /// A folder in place of `~/skiff-agent`. Only by hand in projects.toml:
     /// the app checks it and refuses one that would mix with other work.
     pub folder: Option<PathBuf>,
     /// A restored pane continues the last conversation in the folder.
     #[serde(default)]
     pub continue_on_restore: bool,
-    /// The project menu offers Start project Skipper: one Skipper per
-    /// project, in the project's folder.
-    #[serde(default)]
-    pub project_skippers: bool,
-    /// The agent id a project Skipper starts. Absent: the Skipper's agent.
-    /// A project's `skipper_agent` wins over it.
+    /// The agent id project and fleet Skippers start. Absent: the
+    /// Skipper's agent. A project's `skipper_agent` wins over it.
     pub project_agent: Option<String>,
+    /// The model project and fleet Skippers start with. Absent: the agent's
+    /// default.
+    pub project_model: Option<String>,
     /// `[skiff_agent.tasks]`: the agent and model each task type starts.
     #[serde(default, skip_serializing_if = "TaskTypes::is_empty")]
     pub tasks: TaskTypes,

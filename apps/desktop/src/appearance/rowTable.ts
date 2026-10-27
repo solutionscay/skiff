@@ -3,8 +3,10 @@ import { rune } from "../ui/runes";
 
 /**
  * A Settings table with a draft row last: Settings › Agents and Settings ›
- * Skiff agent › Task types. One implementation for both, so they add, edit,
- * remove and report errors the same way.
+ * Task types. One implementation for both, so they add, edit,
+ * remove and report errors the same way. A table with no `add` has no
+ * draft row, and one with no `remove` has no −, as Settings › Skippers ›
+ * Instructions.
  *
  * - The draft row is always last, on the panel color, with "New …" in its
  *   name field. Enter in it, or its "Add agent" button, adds. Blur never
@@ -86,9 +88,9 @@ export interface RowTableSpec<R> {
   /** Why a row's new value cannot be saved, past the column's own check. */
   checkEdit?: (row: R, key: string, value: string) => string | null;
   /** Each saves and answers with the error to show, or null. They do not redraw. */
-  add: (draft: Draft) => Promise<string | null>;
-  edit: (row: R, key: string, value: string) => Promise<string | null>;
-  remove: (row: R) => Promise<string | null>;
+  add?: (draft: Draft) => Promise<string | null>;
+  edit?: (row: R, key: string, value: string) => Promise<string | null>;
+  remove?: (row: R) => Promise<string | null>;
 }
 
 /** What survives a redraw. The caller keeps one per table. */
@@ -150,7 +152,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
   }
   const endHead = h("span", "c-status c-end", spec.endHead ?? "");
   endHead.setAttribute("role", "columnheader");
-  if (!spec.endHead) endHead.setAttribute("aria-label", "Remove");
+  if (!spec.endHead && spec.remove) endHead.setAttribute("aria-label", "Remove");
   head.appendChild(endHead);
   table.appendChild(head);
 
@@ -193,13 +195,16 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
     const end = h("span", "c-status c-end");
     end.setAttribute("role", "cell");
     if (spec.status) end.appendChild(spec.status(r));
-    const rm = iconButton("indicators-minus", "Remove", `Remove ${id}`);
-    rm.classList.add("c-remove");
-    rm.addEventListener("click", () => void remove(r, at));
-    end.appendChild(rm);
+    if (spec.remove) {
+      const rm = iconButton("indicators-minus", "Remove", `Remove ${id}`);
+      rm.classList.add("c-remove");
+      rm.addEventListener("click", () => void remove(r, at));
+      end.appendChild(rm);
+    }
     row.appendChild(end);
     table.appendChild(row);
   });
+  if (!spec.add) return table;
 
   // The draft row. It looks unlike the rows above: the panel color, "New …" and a labeled button.
   const draft = h("div", "set-row set-draft");
@@ -336,7 +341,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
     paint();
     let error: string | null;
     try {
-      error = await spec.add(d);
+      error = await spec.add!(d);
     } catch (e) {
       error = String(e);
     } finally {
@@ -359,13 +364,13 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
       const why = c.check?.(v) ?? spec.checkEdit?.(r, c.key, v);
       if (why) return void settle(why);
     }
-    settle(await spec.edit(r, c.key, v));
+    settle((await spec.edit?.(r, c.key, v)) ?? null);
     // Settings puts back a focused input itself. A select, or a renamed row, needs it here.
     if (c.kind === "select") focus(label);
   }
 
   async function remove(r: R, at: number) {
-    settle(await spec.remove(r));
+    settle(await spec.remove!(r));
     const t = document.querySelector(`[data-row-table="${spec.grid}"]`);
     const rms = t ? [...t.querySelectorAll<HTMLElement>(".c-remove")] : [];
     const next = rms[Math.min(at, rms.length - 1)];

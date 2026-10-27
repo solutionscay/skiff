@@ -50,24 +50,6 @@ pub fn write_atomic(file: &Path, text: &str) -> Result<()> {
     std::fs::rename(&tmp, &file).with_context(|| format!("write {}", file.display()))
 }
 
-/// Writes the edited config, without the keys Skiff no longer reads:
-/// `instructions` in a `[skiff_agent.tasks]` row (the file is
-/// `types/<type>.md` in the agent's folder now).
-pub(super) fn write_doc(file: &Path, doc: &mut toml_edit::DocumentMut) -> Result<()> {
-    if let Some(tasks) = doc.get_mut("skiff_agent").and_then(|t| t.get_mut("tasks")).and_then(|t| t.as_table_like_mut()) {
-        for (_, row) in tasks.iter_mut() {
-            if let Some(row) = row.as_inline_table_mut() {
-                if row.remove("instructions").is_some() {
-                    row.fmt();
-                }
-            } else if let Some(row) = row.as_table_like_mut() {
-                row.remove("instructions");
-            }
-        }
-    }
-    write_atomic(file, &doc.to_string())
-}
-
 /// A missing file is an empty config, not an error.
 pub fn load() -> Result<Config> {
     load_from(&config_path())
@@ -91,6 +73,33 @@ pub fn parse(text: &str) -> Result<Config> {
         *f = expand_home(f);
     }
     Ok(cfg)
+}
+
+/// `[skiff_agent]` keys an older Skiff wrote. A read ignores them, and
+/// every write takes them out: Skippers are always on.
+pub(super) const DROPPED: [&str; 2] = ["enabled", "project_skippers"];
+
+/// Writes `doc` to `file` as [`write_atomic`] does, without the
+/// [`DROPPED`] keys, and without `instructions` in a `[skiff_agent.tasks]`
+/// row: a type's file is `types/<type>.md` in the agent's folder now.
+pub(super) fn write_doc(file: &Path, doc: &mut toml_edit::DocumentMut) -> Result<()> {
+    if let Some(t) = doc.get_mut("skiff_agent").and_then(|t| t.as_table_like_mut()) {
+        for k in DROPPED {
+            t.remove(k);
+        }
+        if let Some(tasks) = t.get_mut("tasks").and_then(|t| t.as_table_like_mut()) {
+            for (_, row) in tasks.iter_mut() {
+                if let Some(row) = row.as_inline_table_mut() {
+                    if row.remove("instructions").is_some() {
+                        row.fmt();
+                    }
+                } else if let Some(row) = row.as_table_like_mut() {
+                    row.remove("instructions");
+                }
+            }
+        }
+    }
+    write_atomic(file, &doc.to_string())
 }
 
 /// Opens a top-level table in the config file, creating it above the projects.

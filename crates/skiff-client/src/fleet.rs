@@ -213,6 +213,10 @@ pub async fn rename(c: &Client, old: &str, new: &str) -> Result<()> {
     }
     if from.exists() {
         std::fs::rename(&from, &to).with_context(|| format!("move {} to {}", from.display(), to.display()))?;
+        // SKIPPER.md keeps its status: a file Skiff wrote gets the new name at the next start.
+        let (fa, fb) = (skipper::Scope::Fleet(old.into()).file(), skipper::Scope::Fleet(new.into()).file());
+        let _lock = skipper::lock()?;
+        skipper::move_record(&skipper::folder(&cfg)?, &fa, &fb)?;
     }
     if let Some(s) = &fs {
         c.rescope(&s.id, &b, &skipper::fleet_name(&cfg, new)).await?;
