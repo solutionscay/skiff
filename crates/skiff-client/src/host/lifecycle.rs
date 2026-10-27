@@ -16,12 +16,19 @@ pub(super) fn project_spec(value: core::SessionSpec) -> Result<api::SessionSpec,
         cwd,
         command,
         args,
+        env,
         peek,
         coordinator,
         skipper,
         cols,
         rows,
     } = value;
+    // A task type's variables go to skiffd through `skiff new --type` only.
+    if !env.is_empty() {
+        return Err(Error::MalformedContract {
+            message: "variables for a session start only through skiff new --type".into(),
+        });
+    }
     if coordinator {
         return Err(Error::MalformedContract {
             message: "a coordinator session starts only through the coordinator request".into(),
@@ -64,6 +71,7 @@ pub(super) fn restore_spec(value: api::SessionSpec) -> core::SessionSpec {
         cwd: cwd.map(Into::into),
         command,
         args,
+        env: Vec::new(),
         peek,
         coordinator: false,
         skipper: None,

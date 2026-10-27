@@ -237,11 +237,23 @@ pub fn parse(text: &str) -> Result<Config> {
 pub(super) const DROPPED: [&str; 2] = ["enabled", "project_skippers"];
 
 /// Writes `doc` to `file` as [`write_atomic`] does, without the
-/// [`DROPPED`] keys.
+/// [`DROPPED`] keys, and without `instructions` in a `[skiff_agent.tasks]`
+/// row: a type's file is `types/<type>.md` in the agent's folder now.
 pub(super) fn write_doc(file: &Path, doc: &mut toml_edit::DocumentMut) -> Result<()> {
     if let Some(t) = doc.get_mut("skiff_agent").and_then(|t| t.as_table_like_mut()) {
         for k in DROPPED {
             t.remove(k);
+        }
+        if let Some(tasks) = t.get_mut("tasks").and_then(|t| t.as_table_like_mut()) {
+            for (_, row) in tasks.iter_mut() {
+                if let Some(row) = row.as_inline_table_mut() {
+                    if row.remove("instructions").is_some() {
+                        row.fmt();
+                    }
+                } else if let Some(row) = row.as_table_like_mut() {
+                    row.remove("instructions");
+                }
+            }
         }
     }
     write_atomic(file, &doc.to_string())

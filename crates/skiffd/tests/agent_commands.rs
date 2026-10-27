@@ -53,7 +53,7 @@ async fn fresh_config_has_no_bypass_and_an_override_applies() {
 
     let fresh = c.list_agents().await.unwrap();
     let ids: Vec<&str> = fresh.iter().map(|a| a.id.as_str()).collect();
-    assert_eq!(ids, ["claude", "codex", "gemini", "grok", "opencode", "hermes"]);
+    assert_eq!(ids, ["claude", "codex", "gemini", "grok", "opencode", "hermes", "kimi"]);
     for a in &fresh {
         assert_eq!(a.command, a.default_command, "{}", a.id);
         assert!(!BYPASS.iter().any(|f| a.command.contains(f)), "{} starts with a bypass flag: {}", a.id, a.command);

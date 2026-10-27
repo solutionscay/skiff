@@ -210,6 +210,14 @@ pub async fn set_skiff_agent(app: State<'_, App>, handle: AppHandle, edit: Skipp
     Ok(settings)
 }
 
+/// Task types › Edit: the type's instruction file, with its `# <type>`
+/// line written when it is missing, on the selected Host. It opens as a
+/// Skipper's file does.
+#[tauri::command]
+pub async fn edit_task_type_file(app: State<'_, App>, handle: AppHandle, name: String) -> Result<crate::commands::Opened, String> {
+    edit_skipper_file(app, handle, skiff_host_api::HostFileScope::Type(name)).await
+}
+
 /// Settings › Skippers › Instructions: each Skipper's file and its
 /// status, on the selected Host (`skipper@1` carries them for a remote one).
 #[tauri::command]
@@ -229,7 +237,7 @@ pub async fn skipper_files(app: State<'_, App>) -> Result<Vec<skiff_host_api::Ho
 #[tauri::command]
 pub async fn edit_skipper_file(app: State<'_, App>, handle: AppHandle, scope: skiff_host_api::HostFileScope) -> Result<crate::commands::Opened, String> {
     let remote = app.remote();
-    let path = if remote { crate::host_files::fetch(&app, handle, scope).await? } else { blocking(move || skipper::edit_file(&config::load()?, &skipper::scope_of(&scope)?)).await? };
+    let path = if remote { crate::host_files::fetch(&app, handle, scope).await? } else { blocking(move || skipper::edit_host_file(&config::load()?, &scope)).await? };
     crate::commands::open_text(path, remote).await
 }
 

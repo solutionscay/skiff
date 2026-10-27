@@ -80,7 +80,16 @@ pub struct HostTaskType {
     pub agent: String,
     #[serde(default)]
     pub model: Option<String>,
-    /// The command line the Host's skiffd builds. `None` when the agent is gone.
+    /// The type's instruction file on the Host, there or not:
+    /// `types/<type>.md` in its Skipper folder. Empty from an older Host.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub file: String,
+    /// The file's size in bytes. Absent: none (missing, empty, or its
+    /// `# <type>` line alone), or an older Host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<u64>,
+    /// The command line the Host's skiffd builds. `None` when the agent is
+    /// gone, or when it cannot take the file.
     #[serde(default)]
     pub command: Option<String>,
     /// Why the row does not start what it says.
@@ -116,6 +125,10 @@ pub struct HostSkipper {
     pub project_model: Option<String>,
     /// `[skiff_agent.tasks]` in file order.
     pub tasks: Vec<HostTaskType>,
+    /// The folder of the task types' files, as `~/…/types/`. Empty from an
+    /// older Host.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub types: String,
     /// Each Skipper's instruction file, in tree order: `AGENTS.md`, then
     /// each fleet's and each open project's `SKIPPER.md`.
     #[serde(default)]

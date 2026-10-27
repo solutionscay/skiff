@@ -75,7 +75,7 @@ States: `working`, `waiting`, `idle`, `done`.
 
 ## Task types
 
-`skiff agents --json` prints `{"agents": [...], "tasks": [...]}`. Each task row has `type`, `agent`, `model` (null: the agent's default), `command` and `error`. The person sets the table in Settings › Task types.
+`skiff agents --json` prints `{"agents": [...], "tasks": [...]}`. Each task row has `type`, `agent`, `model` (null: the agent's default), `file`, `instructions`, `command` and `error`. The person sets the table in Settings › Task types.
 
 1. Pick the type yourself. Skiff reads no task text.
 2. Do not use a row whose `error` is not null.
@@ -84,6 +84,8 @@ States: `working`, `waiting`, `idle`, `done`.
 5. If no type fits, start the project's agent with `--agent`.
 
 `--type` with no row exits 1 and starts nothing. `--type` with `--agent` or `-- CMD` is an error.
+
+`file` is the type's instruction file, `types/<type>.md` in the agent folder. `instructions` is its size in bytes, or null when it is missing, empty or only its `# <type>` line. With a file, `--type` gives it to the agent at start, on top of the project's `AGENTS.md` or `CLAUDE.md`. Do not repeat the file in the task text. Do not write the file: the person owns it. gemini, hermes and custom agents cannot take a file: the row has an `error`, and `--type` exits 1.
 
 ## Send a task
 

@@ -376,7 +376,14 @@ pub fn apply(edit: &skiff_host_api::SkipperEdit) -> Result<()> {
         E::ProjectModel(v) => config::set_skiff_agent(K::ProjectModel(v.as_deref())),
         E::AddTask(t) => config::add_task_type(&t.name, &t.agent, t.model.as_deref()),
         E::Task(t) => config::set_task_type(&t.name, &t.agent, t.model.as_deref()),
-        E::RenameTask { from, to } => config::rename_task_type(from, to),
+        E::RenameTask { from, to } => {
+            // The file moves first: a name a kept file has stops the rename.
+            let dir = folder(&config::load()?)?;
+            skiff_core::tasks::rename_file(&dir, from, to)?;
+            config::rename_task_type(from, to).inspect_err(|_| {
+                let _ = skiff_core::tasks::rename_file(&dir, to, from);
+            })
+        }
         E::RemoveTask(name) => config::remove_task_type(name),
     }
 }
@@ -1437,10 +1444,19 @@ pub fn settings(cfg: &Config) -> Result<skiff_host_api::HostSkipper> {
     };
     let a = &cfg.skiff_agent;
     // The command lines come from this config, so the list builds the same ones skiffd would.
-    let tasks = skiff_core::tasks::resolve(&a.tasks, &skiff_core::project::agents())
+    let tasks = skiff_core::tasks::resolve(&a.tasks, &skiff_core::project::agents(), &configured)
         .into_iter()
-        .map(|t| skiff_host_api::HostTaskType { name: t.name, agent: t.agent, model: t.model, command: t.command, error: t.error })
+        .map(|t| skiff_host_api::HostTaskType {
+            name: t.name,
+            agent: t.agent,
+            model: t.model,
+            file: t.file.display().to_string(),
+            instructions: t.instructions,
+            command: t.command,
+            error: t.error,
+        })
         .collect();
+    let types = format!("{}/", skiff_core::tasks::tilde(&configured.join(skiff_core::tasks::TYPES)));
     Ok(skiff_host_api::HostSkipper {
         name: a.name.clone(),
         agent: a.agent.clone(),
@@ -1453,6 +1469,7 @@ pub fn settings(cfg: &Config) -> Result<skiff_host_api::HostSkipper> {
         project_agent: a.project_agent.clone(),
         project_model: a.project_model.clone(),
         tasks,
+        types,
         // A refused folder has no files to show.
         instructions: host_instructions(cfg).unwrap_or_default(),
     })
@@ -1532,13 +1549,20 @@ fn revision(path: &Path) -> String {
     std::fs::read(path).map(|b| hash(&b)).unwrap_or_default()
 }
 
-/// `skipper_file@1` read: the file and its revision. A Skipper's missing
-/// file is written from the template first, as Edit does.
+/// Edit on this Host: the file `s` names, written first when it is
+/// missing. A Skipper's comes from its template; a task type's is its
+/// `# <type>` line.
+pub fn edit_host_file(cfg: &Config, s: &skiff_host_api::HostFileScope) -> Result<PathBuf> {
+    match s {
+        skiff_host_api::HostFileScope::Type(t) => skiff_core::tasks::edit_file(&folder(cfg)?, t),
+        s => edit_file(cfg, &scope_of(s)?),
+    }
+}
+
+/// `skipper_file@1` read: the file and its revision. A missing file is
+/// written first, as Edit does.
 pub fn host_read(cfg: &Config, s: &skiff_host_api::HostFileScope) -> Result<skiff_host_api::HostSkipperFile> {
-    let path = match s {
-        skiff_host_api::HostFileScope::Type(_) => host_path(cfg, s)?,
-        s => edit_file(cfg, &scope_of(s)?)?,
-    };
+    let path = edit_host_file(cfg, s)?;
     let text = match std::fs::read_to_string(&path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         r => r.with_context(|| format!("read {}", path.display()))?,

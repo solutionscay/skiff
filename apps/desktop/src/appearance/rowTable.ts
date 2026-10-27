@@ -58,6 +58,8 @@ export interface RowCol<R> {
   bad?: (row: R) => boolean;
   /** lead: the caller's control for the row. The draft's lead cell is blank. */
   draw?: (row: R) => HTMLElement;
+  /** lead: what the draft's cell shows in place of the dim +. */
+  drawDraft?: () => HTMLElement;
   /** Why a value cannot be saved, checked before the daemon. Null: good. */
   check?: (value: string) => string | null;
 }
@@ -161,6 +163,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
     const id = spec.id(r);
     const row = h("div", ("set-row " + (spec.rowClass?.(r) ?? "")).trim());
     row.setAttribute("role", "row");
+    row.dataset.id = id;
     for (const c of spec.cols) {
       const cell = h("span", cellClass(c));
       cell.setAttribute("role", "cell");
@@ -218,7 +221,9 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
     cell.setAttribute("role", "cell");
     const label = draftLabel(c);
     const note = c.note?.(null, values);
-    if (c.kind === "lead") {
+    if (c.kind === "lead" && c.drawDraft) {
+      cell.appendChild(c.drawDraft());
+    } else if (c.kind === "lead") {
       // No switch: a dim + says the row is new.
       const plus = rune("indicators-plus");
       plus.classList.add("set-draft-mark");
