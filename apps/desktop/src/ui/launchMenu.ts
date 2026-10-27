@@ -17,6 +17,11 @@ interface Opts {
   onClose: () => void;
 }
 
+/** The menu's title: the branch, "detached" with no branch, or a plain folder's name. */
+export function startIn(w: Worktree): string {
+  return "START IN " + (w.branch ?? (w.head ? "detached" : branchName(w))).toUpperCase();
+}
+
 /** The + menu on a worktree: Shell, then enabled agents. Digits pick, Esc closes. */
 export function createLaunchMenu(o: Opts) {
   const menu = document.createElement("div");
@@ -62,7 +67,7 @@ export function createLaunchMenu(o: Opts) {
     el?.setAttribute("aria-expanded", "true");
     const title = document.createElement("div");
     title.className = "lm-title";
-    title.textContent = "START IN " + branchName(w).toUpperCase();
+    title.textContent = startIn(w);
     const rows = o.choices().map((a, i) =>
       item(launchDigit(i), a?.id ?? "Shell", "", () => o.start(p, w, a), "", launchIcon(a)),
     );
@@ -106,7 +111,7 @@ export function createLaunchMenu(o: Opts) {
   /** The same choices as entries of another menu: the project menu of a project with one worktree. */
   function entries(p: Project, w: Worktree): MenuEntry[] {
     return [
-      { head: "START IN " + branchName(w).toUpperCase() },
+      { head: startIn(w) },
       ...o.choices().map((a, i) => ({ glyph: launchIcon(a), label: a?.id ?? "Shell", hint: launchDigit(i), run: () => o.start(p, w, a) })),
       {
         icon: "code-group",

@@ -115,3 +115,10 @@ test("Files shows by default for a plain folder, not for a git project, and a st
   assert.equal(files.showsFiles(folder), false);
   assert.equal(files.showsFiles(repo), true);
 });
+
+test("the launch menu starts in the branch, DETACHED with no branch, or a plain folder's name", () => {
+  const launch = moduleFromSource("../src/ui/launchMenu.ts", withStubs({ "../workspace/model": model }), {}, "");
+  assert.equal(launch.startIn(repo.worktrees[0]), "START IN MAIN");
+  assert.equal(launch.startIn({ ...repo.worktrees[0], branch: null }), "START IN DETACHED");
+  assert.equal(launch.startIn(folder.worktrees[0]), "START IN DOCS");
+});
