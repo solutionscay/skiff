@@ -59,6 +59,10 @@ pub struct HostProject {
     #[serde(default)]
     pub background_opacity: Option<u8>,
     pub worktrees: Vec<HostWorktree>,
+    /// `folder`: a plain folder in no git repository, with the folder as its
+    /// only worktree and no changes. Absent from an older Host: `git`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
     #[serde(default)]
     pub default_branch: Option<String>,
     /// Why `worktrees` is empty, e.g. the path is missing on the Host.

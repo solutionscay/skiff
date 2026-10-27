@@ -122,7 +122,9 @@ export interface Project {
   worktrees: Worktree[];
   /** The branch the main checkout normally holds. `null` when unknown or from an older skiffd. */
   default_branch?: string | null;
-  /** Path missing, not a git repo, and so on. `worktrees` is empty then. */
+  /** `folder`: a plain folder in no git repository. Its only worktree is the folder. Absent from an older daemon. */
+  kind?: "git" | "folder";
+  /** Path missing, and so on. `worktrees` is empty then. */
   error: string | null;
   /** Out of the tree until it opens again. Its worktrees are not read. Absent from an older daemon. */
   closed?: boolean;
@@ -288,7 +290,7 @@ export interface HostError {
 }
 
 export interface FolderInfo {
-  /** Git top level. `null` when the folder is not in a repository. */
+  /** Git top level, or the folder itself when it is in no repository. `null` when it cannot be added. */
   root: string | null;
   name: string;
   short: string;

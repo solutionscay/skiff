@@ -5,7 +5,7 @@ import { isSkiffAgent, skiffAgentFolder, skiffAgentName, skiffAgentSession } fro
 
 /** One command list for the menu bar and the palette; key actions. */
 import { type Action, isMac, keyLabel, menuAccel } from "./keys";
-import { agentName, branchName, bySessionPriority, taskTitle, isProjectSkipper } from "../workspace/model";
+import { agentName, branchName, bySessionPriority, isFolder, taskTitle, isProjectSkipper } from "../workspace/model";
 import { createSwitcher, type SwitchItem } from "../ui/switcher";
 
 import { invoke } from "@tauri-apps/api/core";
@@ -57,7 +57,7 @@ function commands(): Cmd[] {
   const ws = workspaceNotice();
   return [
     { section: "File", label: "New session…", key: k("new-session"), action: "new-session", run: act("new-session"), off: (!currentWorktree() && !isRemote()) || !hostCan("session_lifecycle") },
-    { section: "File", label: "New worktree…", key: k("new-worktree"), action: "new-worktree", run: act("new-worktree"), off: !currentProject() },
+    { section: "File", label: "New worktree…", key: k("new-worktree"), action: "new-worktree", run: act("new-worktree"), off: !currentProject() || isFolder(currentProject()!) },
     { section: "File", label: "Add project…", key: k("add-project"), action: "add-project", run: act("add-project") },
     { section: "File", label: "Open closed project…", key: "", run: openClosedMenu, off: !S.closedProjects.length },
     { section: "File", label: "Project menu…", key: "", run: openProjectMenu, off: !currentProject() },
@@ -263,7 +263,8 @@ export const switcher = createSwitcher(() => {
       run: () => void openClosedProject(p),
     });
   }
-  for (const p of S.projects) {
+  // A plain folder has no worktrees to pick: its project entry opens it.
+  for (const p of S.projects.filter((p) => !isFolder(p))) {
     for (const w of p.worktrees) {
       items.push({
         kind: "worktree",

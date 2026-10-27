@@ -10,6 +10,7 @@ import { ctxMenu } from "../ui/contextMenu";
 import { isRemote } from "./hosts";
 import { hostCan } from "./hostCaps";
 import { openRemoteNewSession } from "../workspace/remoteLaunch";
+import { isFolder } from "../workspace/model";
 import { addProject, launchMenu, settings } from "./panels";
 
 import { renameListItem, startRename, startSessionRename } from "../workspace/rename";
@@ -83,7 +84,7 @@ export function runAction(a: Action) {
       // The Host makes it, when it offers worktrees.
       if (!hostCan("worktrees")) return;
       const p = currentProject();
-      return p ? newWorktree(p) : undefined;
+      return p && !isFolder(p) ? newWorktree(p) : undefined;
     }
     case "add-project": return void addProject.open();
     case "project-menu": {

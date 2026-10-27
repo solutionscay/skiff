@@ -61,7 +61,7 @@ const FIXED_SHORTCUTS: Shortcut[] = [
   ["Session list", "Open the row menu", "Menu / Shift+F10"],
   ["Ledger", "Next or previous row", "↑ / ↓"],
   ["Ledger", "Open the row's pane or result", "Enter"],
-  ["Ledger", "Back to Skipper's pane", "Esc"],
+  ["Ledger", "Back to {skiff-agent}'s pane", "Esc"],
   ["Images", "Search images", "Type"],
   ["Images", "Go from the search to the list, and back", "↓ / ↑"],
   ["Images", "Next or previous image", "↑ / ↓"],
@@ -112,7 +112,7 @@ export function showShortcuts() {
   const table = h("div", "keys-table");
   const shortcuts: Shortcut[] = [
     ...DESCRIBE.map(([section, action, what]): Shortcut => [section, describeText(what), keyLabel(action)]),
-    ...FIXED_SHORTCUTS,
+    ...FIXED_SHORTCUTS.map(([section, what, key]): Shortcut => [section, describeText(what), key]),
   ];
   const render = () => {
     const query = search.value.trim().toLocaleLowerCase();

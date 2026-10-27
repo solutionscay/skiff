@@ -59,7 +59,7 @@ pub struct Open {
 /// next write takes them out ([`super::persistence::DROPPED`]).
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 pub struct SkiffAgent {
-    /// The label on its row, its pane and its key. Absent: Skipper.
+    /// The label on its row, its pane and its key. Absent: Admiral.
     pub name: Option<String>,
     /// The agent id it starts. Absent: the first enabled agent.
     pub agent: Option<String>,
@@ -89,7 +89,29 @@ pub struct SkiffAgent {
 /// `[skiff_agent] cache_days` says otherwise.
 pub const CACHE_DAYS: u32 = 30;
 
+/// The main Skipper's name until Settings has one.
+pub const ADMIRAL: &str = "Admiral";
+
+/// The role word: the old default name of the main Skipper, and the tail of
+/// a project or fleet Skipper's session name ("gesher Skipper").
+pub const SKIPPER: &str = "Skipper";
+
 impl SkiffAgent {
+    /// The main Skipper's name: the one from Settings, else [`ADMIRAL`]. A
+    /// stored "Skipper" is the old default, so it reads Admiral too.
+    pub fn name(&self) -> String {
+        match self.name.as_deref().map(str::trim) {
+            None | Some("") | Some(SKIPPER) => ADMIRAL.into(),
+            Some(n) => n.into(),
+        }
+    }
+
+    /// The tail of a project or fleet Skipper's session name: the name from
+    /// Settings, else "Skipper". The default Admiral is not used there.
+    pub fn skipper_word(&self) -> String {
+        self.name.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or(SKIPPER).into()
+    }
+
     /// The age in days at which auto flush removes a cache file. `0`: off.
     pub fn cache_days(&self) -> u32 {
         self.cache_days.unwrap_or(CACHE_DAYS)
@@ -182,10 +204,10 @@ pub struct ProjectConfig {
     pub background_opacity: Option<u8>,
     #[serde(default)]
     pub agents: Vec<String>,
-    /// Shows a Files tree under each worktree. The app reads and writes it;
-    /// the daemon passes it by.
-    #[serde(default)]
-    pub files: bool,
+    /// Shows a Files tree under each worktree. Absent: shown for a plain
+    /// folder, hidden for a git project. The app reads and writes it, always
+    /// as `true` or `false`; the daemon passes it by.
+    pub files: Option<bool>,
     /// `false` hides the Changes section and the +/- counts. Absent: shown.
     pub changes: Option<bool>,
     /// Theme id for this project's chrome and its terminals. Absent: the app theme.
@@ -218,7 +240,8 @@ pub fn short_name(name: &str) -> String {
 /// What Skiff would add for `dir`, before anything is written.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct FolderInfo {
-    /// The git top level. `None` when `dir` is not in a repository.
+    /// The git top level, or `dir` itself when it is in no repository.
+    /// `None` when the folder cannot be added.
     pub root: Option<PathBuf>,
     pub name: String,
     pub short: String,

@@ -95,7 +95,7 @@ function app(host: string | null = null) {
   const state = { S, sessions, removing: new Set(), removeErrors: new Map(), collapsed: new Set(), selectedWorktree: new Map(), DEFAULT_ACCENT: "#888" };
   const stateQueries = { place, accent: () => "#888", awayPlaces: () => [] };
   const skiffAgent = orStub({ fleetSkipperOf, projectSkipperOf: () => null, fleetScope: (f: string) => `fleet:${f}`, skiffAgentFolder: () => null });
-  const model = { isUnread: () => false, taskTitle: (s: any) => s.title, agentName: () => "claude", branchName: (w: any) => w.branch, scopeName: (x: string) => x };
+  const model = { isUnread: () => false, taskTitle: (s: any) => s.title, agentName: () => "claude", branchName: (w: any) => w.branch, isFolder: () => false, scopeName: (x: string) => x };
   const stored_ = moduleFromSource("../src/app/stored.ts", {}, globals, "");
   const tree = moduleFromSource("../src/workspace/tree.ts", withStubs({
     "../app/skiffAgent": skiffAgent, "./model": model, "../app/stored": stored_, "../app/state": state,

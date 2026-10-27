@@ -101,7 +101,7 @@ pub(crate) async fn remove_worktree(
     changed(&handle, out)
 }
 
-/// Adds the git repository that contains `path`, a folder on the Host.
+/// Adds the git repository that contains `path`, or the plain folder, a folder on the Host.
 #[tauri::command]
 pub(crate) async fn add_project(
     handle: AppHandle,

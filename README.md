@@ -13,7 +13,7 @@ A minimalist desktop workspace for coding agents on Linux and macOS.
 Skiff keeps sessions organized across projects and Git worktrees. Editing and
 previews stay in the apps you already use.
 
-<p align="center"><img src=".github/screenshot.webp" alt="Skiff on Linux: the Skiff agent, Skipper, at the top of the side panel, the skiff project with its worktrees below it, and four agent sessions that Skipper started, shown side by side in one group"></p>
+<p align="center"><img src=".github/screenshot.webp" alt="Skiff on Linux: the Skiff agent, Admiral, at the top of the side panel, the skiff project with its worktrees below it, and four agent sessions that Admiral started, shown side by side in one group"></p>
 
 ## Philosophy
 
@@ -26,7 +26,7 @@ them to suit the work.
 
 ## How it works
 
-You add a project (a Git repository), make worktrees in it, and start agent or shell sessions in each worktree. Sessions can sit side by side in a named group. A project, a group and a session can each have a terminal theme.
+You add a project (a Git repository, or a plain folder), make worktrees in it, and start agent or shell sessions in each worktree. A plain folder has no worktrees or changes; its sessions start in the folder. Sessions can sit side by side in a named group. A project, a group and a session can each have a terminal theme.
 
 Skiff does not edit files. Each worktree lists its changed files and its file tree. Select a changed file and its diff shows in the main area. Select a file and its preview shows there. Press Enter to open the file in the app you choose under Settings › Open with (see the [wiki](https://github.com/solutionscay/skiff/wiki/Open-with)), or to show a folder in your file manager. Each Open with row says where it opens: in the peek for a terminal tool, or as an app. `skiff open-with ls` and `skiff open-with set` read and set the same rows. If a program is missing, Skiff names it. There are no plugins, no hooks into agent configs, and no automations. Settings live in one file, `projects.toml`.
 
@@ -36,33 +36,35 @@ Skiff makes its agent folder, `~/skiff-agent`, when the app starts. The folder h
 image cache in `cache/`, so dropped and pasted images work before any Skipper runs. If
 Skiff cannot make the folder, the Images and Disk use features say so in one line.
 
-The Skiff agent, Skipper, is a coordinator: one agent session in that folder. Its row is
-always at the top of the tree, and no Skipper starts by itself. The first click on the
+The Skiff agent is the main Skipper, a coordinator. Its default name is Admiral. It is one
+agent session in that folder. Its row is always at the top of the tree, and no Skipper
+starts by itself. The first click on the
 row starts it, and its first start adds its files to the folder. It sends tasks to sessions in your
 projects and records them in a SQLite ledger (`skiff ledger`). `skiff watch` tells it when
 a task's pane ends a turn, exits or restarts. `skiff skipper` attaches to it from any
 terminal, an SSH login included, and starts it first when it does not run. Ctrl-\
 detaches. See the [wiki Skiff agent page](https://github.com/solutionscay/skiff/wiki/Skiff-agent).
 
-The Ledger panel at the right of Skipper's pane sorts the work into Working, Open and
+The Ledger panel at the right of Admiral's pane sorts the work into Working, Open and
 Finished. Work is a plan with its tasks, or a task with no plan. It moves to Finished
-when every task in it is done and reported, or when Skipper closes it on your word
+when every task in it is done and reported, or when Admiral closes it on your word
 (`skiff ledger close`). `skiff ledger reopen` opens it again and keeps it open until a
 task in it changes state. `skiff ledger prune` removes only closed work. Ctrl+Alt+Shift+L folds the
 panel to a rail with the count of tasks that need you. Focus mode keeps the panel and
-maximize hides it. Only Skipper's session can change the ledger. A shell outside Skiff,
+maximize hides it. Only Admiral's session can change the ledger. A shell outside Skiff,
 such as an SSH login, adds `--person` to change a row.
 
 A project can have a Skipper of its own, and a fleet can have one for all its projects.
 Pick Start project Skipper in a project's menu or Start fleet Skipper in a fleet's menu.
-Skipper hands
+Admiral hands
 work to them with `skiff ledger handoff PROJECT` or `skiff ledger handoff FLEET`. Each one
 changes only its own rows. A project has one Skipper at most: when a project with a
 project Skipper comes under a running fleet Skipper, the fleet Skipper takes its rows over
 after one confirm, and the project Skipper stops when it is idle.
 
-Settings › Skippers sets the name, the agent and model of the Skipper, and one agent and
-model for project and fleet Skippers ("Same as Skipper" by default). Its Instructions
+Settings › Skippers sets the name, the agent and model of the main Skipper (Admiral until
+you set a name), and one agent and model for project and fleet Skippers ("Same as Admiral"
+by default). Its Instructions
 table lists one file per Skipper: `AGENTS.md`, the base of every Skipper, and a
 `SKIPPER.md` with the scope section only in `fleets/<fleet>/` and `projects/<project>/`.
 Skiff writes each file once and never writes over an edit. The status is none,
@@ -71,17 +73,17 @@ files says. Reset… writes the template again and keeps the old file as `<name>
 file with status template follows a new template at the Skipper's next start. Settings ›
 Task types holds the task types.
 
-<p align="center"><img src=".github/screenshot-skipper.webp" alt="Skiff on Linux: Skipper in the center pane reports a finished release, the Ledger panel on the right lists finished tasks and plans, and the projects sidebar is on the left"></p>
+<p align="center"><img src=".github/screenshot-skipper.webp" alt="Skiff on Linux: Admiral in the center pane reports a finished release, the Ledger panel on the right lists finished tasks and plans, and the projects sidebar is on the left"></p>
 
 Settings › Skippers › Folder › Change… moves the folder: `~/skiff-agent`, `~/.skiff-agent`, or
 any folder of its own outside a Git repository, a project, an agent's home or a Hermes
 profile. A new or empty folder gets a copy (checked before the switch) or a new ledger. A
 folder that is already a Skiff folder is switched to as it is; Skiff never merges two
 ledgers. The old folder keeps every file and gets `MOVED.md`. The conversation does not
-move: Skipper starts a new one in the new folder. `skiff skipper --move-to PATH [--dry-run]`
+move: Admiral starts a new one in the new folder. `skiff skipper --move-to PATH [--dry-run]`
 does the same from a terminal.
 
-Settings › Task types names the agent and the model that Skipper starts for each kind of
+Settings › Task types names the agent and the model that Admiral starts for each kind of
 task: `skiff new --type review`. Each type can have an instruction file,
 `types/<type>.md` in the agent folder. Edit in its row makes the file and opens it. The
 agent gets the file at start, on top of the project's own `AGENTS.md` or `CLAUDE.md`:

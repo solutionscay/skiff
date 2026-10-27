@@ -641,6 +641,10 @@ pub fn host_project(p: project::Project) -> HostProject {
         background: p.background,
         background_opacity: p.background_opacity,
         worktrees: p.worktrees.into_iter().map(host_worktree).collect(),
+        kind: Some(match p.kind {
+            project::ProjectKind::Git => "git",
+            project::ProjectKind::Folder => "folder",
+        }.into()),
         default_branch: p.default_branch,
         error: p.error,
         closed: p.closed,

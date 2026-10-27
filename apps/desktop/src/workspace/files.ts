@@ -2,7 +2,9 @@ import { open, reveal, copy } from "../platform/fileActions";
 import { setRowActs, type Preview } from "./rowActs";
 import { sectionHeader } from "../ui/sectionHeader";
 /**
- * The Files section under each worktree, for projects with `files = true`.
+ * The Files section under each worktree. `files` in projects.toml turns it on
+ * or off; without the key, a plain folder shows it and a git project does
+ * not. The Host reads the key and sends the result as `files`.
  * Every folder comes from the selected Host (`files@1`), This Mac and a
  * remote Host alike: bounded, links listed and never followed. On This Mac
  * selection previews files with their Open with setting, on the Host's own
@@ -27,7 +29,7 @@ import { openHostCopy } from "../terminal/peek";
 type Entry = HostEntry;
 type Listing = HostListing | { error: string };
 
-/** Projects that show the Files section, from projects.toml. */
+/** Projects whose Host says they show files. */
 const on = new Set<string>();
 /** The last listing of each folder read. The sidebar renders from here, never waiting. */
 const listings = new Map<string, Listing>();

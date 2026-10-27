@@ -3,6 +3,7 @@ import type { AgentInfo, Project, Worktree } from "../platform/types";
 import { launchIcon } from "../appearance/agentIcon";
 import { followPointer, menuOpened, type MenuEntry } from "./menu";
 import { launchDigit } from "../app/stateQueries";
+import { branchName } from "../workspace/model";
 
 interface Opts {
   /** Shell (null), then enabled agents. */
@@ -14,6 +15,11 @@ interface Opts {
   splits: () => { name: string; glyph: SVGElement }[];
   split: (p: Project, w: Worktree, i: number) => void;
   onClose: () => void;
+}
+
+/** The menu's title: the branch, "detached" with no branch, or a plain folder's name. */
+export function startIn(w: Worktree): string {
+  return "START IN " + (w.branch ?? (w.head ? "detached" : branchName(w))).toUpperCase();
 }
 
 /** The + menu on a worktree: Shell, then enabled agents. Digits pick, Esc closes. */
@@ -61,7 +67,7 @@ export function createLaunchMenu(o: Opts) {
     el?.setAttribute("aria-expanded", "true");
     const title = document.createElement("div");
     title.className = "lm-title";
-    title.textContent = "START IN " + (w.branch ?? "detached").toUpperCase();
+    title.textContent = startIn(w);
     const rows = o.choices().map((a, i) =>
       item(launchDigit(i), a?.id ?? "Shell", "", () => o.start(p, w, a), "", launchIcon(a)),
     );
@@ -105,7 +111,7 @@ export function createLaunchMenu(o: Opts) {
   /** The same choices as entries of another menu: the project menu of a project with one worktree. */
   function entries(p: Project, w: Worktree): MenuEntry[] {
     return [
-      { head: "START IN " + (w.branch ?? "detached").toUpperCase() },
+      { head: startIn(w) },
       ...o.choices().map((a, i) => ({ glyph: launchIcon(a), label: a?.id ?? "Shell", hint: launchDigit(i), run: () => o.start(p, w, a) })),
       {
         icon: "code-group",

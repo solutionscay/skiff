@@ -15,7 +15,7 @@ import { animateFold } from "../ui/fold";
 import { showError } from "../ui/alerts";
 import type { MenuEntry } from "../ui/menu";
 import { ctxMenu } from "../ui/contextMenu";
-import { branchName } from "./model";
+import { branchName, isFolder } from "./model";
 import { setRowActs } from "./rowActs";
 import { select } from "../app/keyboard";
 import { render, scheduleRender } from "../app/render";
@@ -29,8 +29,8 @@ import type { Preview } from "./rowActs";
 
 type Change = { path: string; status: "M" | "A" | "D" | "U"; added: number | null; removed: number | null };
 
-/** The project says it itself, from its Host's projects.toml. Changes show by default. */
-export const showsChanges = (p: Project) => p.changes !== false;
+/** The project says it itself, from its Host's projects.toml. Changes show by default. A plain folder has no changes: it never reads git. */
+export const showsChanges = (p: Project) => !isFolder(p) && p.changes !== false;
 
 /** The Host keeps it (`project_config@1`); the next project read brings it back. */
 export async function setShowChanges(p: Project, show: boolean) {

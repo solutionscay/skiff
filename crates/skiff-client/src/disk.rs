@@ -31,7 +31,7 @@ impl Line {
 /// One Skipper's results folder.
 #[derive(Serialize, Debug)]
 pub struct Skipper {
-    /// "Skipper", or "<project> Skipper".
+    /// "Admiral" for the main Skipper, or "<project> Skipper".
     pub name: String,
     /// The folder, relative to the agent folder, with a `/` at the end.
     pub folder: String,
@@ -135,7 +135,7 @@ fn is_log(rel: &Path) -> bool {
 fn roots(folder: &Path) -> Vec<(String, String, PathBuf)> {
     let mut out = Vec::new();
     if let Ok(p) = folder.join("results").canonicalize() {
-        out.push(("Skipper".to_string(), "results/".to_string(), p));
+        out.push((skiff_core::config::ADMIRAL.to_string(), "results/".to_string(), p));
     }
     let mut projects: Vec<_> = std::fs::read_dir(folder.join("projects"))
         .into_iter()
@@ -417,7 +417,7 @@ mod tests {
         assert_eq!(u.pinned, Line::default());
         // plan, step, lone, open, shared, web.
         assert_eq!(u.results.unwrap().files, 6);
-        assert_eq!(u.skippers.iter().map(|s| (s.name.as_str(), s.line.files)).collect::<Vec<_>>(), [("Skipper", 5), ("web Skipper", 1)]);
+        assert_eq!(u.skippers.iter().map(|s| (s.name.as_str(), s.line.files)).collect::<Vec<_>>(), [("Admiral", 5), ("web Skipper", 1)]);
         // plan, step, lone, web: shared is also named by open work.
         assert_eq!(u.closed.files, 4);
         assert_eq!((u.items, u.plans), (3, 1));

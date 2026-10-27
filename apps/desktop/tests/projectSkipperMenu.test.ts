@@ -44,6 +44,7 @@ function page() {
     "./tree": { bareWorktree: (p: any) => p.worktrees[0] },
     "../app/panels": { launchMenu: { entries: () => [{ label: "Shell" }] } },
     "./profile": { projectWorkspaceEntries: () => [] },
+    "./model": { isFolder: (p: any) => p.kind === "folder" },
   }, { ...g, document: { querySelectorAll: () => [] } }, "");
   const labels = () => {
     menus.projectMenu({ name: "web", path: "/w", worktrees: [{ path: "/w", is_main: true }] }, 0, 0);

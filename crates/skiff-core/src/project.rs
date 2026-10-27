@@ -19,6 +19,16 @@ pub struct Worktree {
     pub prunable: bool,
 }
 
+/// A project in a git repository, or a plain folder with no git.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProjectKind {
+    #[default]
+    Git,
+    /// One worktree, the folder itself, with no branch and no changes.
+    Folder,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Project {
     pub name: String,
@@ -39,7 +49,10 @@ pub struct Project {
     /// The branch the main checkout normally holds: origin's HEAD, else `main` or `master`.
     #[serde(default)]
     pub default_branch: Option<String>,
-    /// Why `worktrees` is empty, e.g. the path is missing or not a git repo.
+    /// Read again each time: a folder that has a `.git` then is a git project.
+    #[serde(default)]
+    pub kind: ProjectKind,
+    /// Why `worktrees` is empty, e.g. the path is missing.
     pub error: Option<String>,
     /// Out of the rail until it opens again. Its worktrees are not read.
     #[serde(default)]
@@ -54,13 +67,15 @@ pub struct Project {
     /// absent, so a row without it reads as before.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
-    /// Shows a Files tree under each worktree. Left out when off.
+    /// Shows a Files tree under each worktree: the `files` key, else on for
+    /// a plain folder and off for a git project. Left out when off.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub files: bool,
 }
 
 impl Project {
     pub fn from_config(p: &ProjectConfig) -> Self {
+        let mut kind = ProjectKind::Git;
         let (worktrees, error) = if p.closed {
             (Vec::new(), None)
         } else if !p.path.is_dir() {
@@ -68,6 +83,12 @@ impl Project {
         } else {
             match git::list_worktrees(&p.path) {
                 Ok(w) => (w, None),
+                // Git says it is in no repository: a plain folder, with the
+                // folder as its only worktree. A missing or failing git shows its error.
+                Err(_) if matches!(git::in_repository(&p.path), Ok(false)) => {
+                    kind = ProjectKind::Folder;
+                    (vec![folder_worktree(&p.path)], None)
+                }
                 Err(e) => (Vec::new(), Some(format!("{e:#}"))),
             }
         };
@@ -80,16 +101,22 @@ impl Project {
             icon: icon_file(&p.path, p.icon.as_deref()).and_then(|f| data_url(&f)),
             background: background_file(&p.path, p.background.as_deref()),
             background_opacity: p.background_opacity,
-            default_branch: if worktrees.is_empty() { None } else { git::default_branch(&p.path) },
+            default_branch: if kind == ProjectKind::Git && !worktrees.is_empty() { git::default_branch(&p.path) } else { None },
             worktrees,
+            kind,
             error,
             closed: p.closed,
             fleet: p.fleet.clone().filter(|f| !f.trim().is_empty()),
             changes: p.changes,
             theme: p.theme.clone(),
-            files: p.files,
+            files: p.files.unwrap_or(kind == ProjectKind::Folder),
         }
     }
+}
+
+/// The only worktree of a plain folder: the folder, with no branch or commit.
+pub fn folder_worktree(path: &Path) -> Worktree {
+    Worktree { path: path.to_path_buf(), branch: None, head: String::new(), is_main: true, locked: false, prunable: false }
 }
 
 /// Folders that hold a site's or app's icon, searched in order.
@@ -397,14 +424,14 @@ pub struct AgentInfo {
     pub used_by: Option<String>,
 }
 
-/// What in `cfg` starts agent `id`, in this order: the Skipper, project and
+/// What in `cfg` starts agent `id`, in this order: the main Skipper, project and
 /// fleet Skippers, a project's own Skipper (`skipper_agent`), a task type.
 pub fn agent_uses(cfg: &crate::config::Config, id: &str) -> Vec<String> {
     let a = &cfg.skiff_agent;
     let is = |v: &Option<String>| v.as_deref().map(str::trim) == Some(id);
     let mut uses = Vec::new();
     if is(&a.agent) {
-        uses.push(a.name.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or("Skipper").to_string());
+        uses.push(a.name());
     }
     if is(&a.project_agent) {
         uses.push("Project and fleet Skippers".into());
@@ -415,7 +442,7 @@ pub fn agent_uses(cfg: &crate::config::Config, id: &str) -> Vec<String> {
 }
 
 /// The one line for an agent in use: "Used by task type review", or with
-/// more uses, "Used by Skipper and 2 more". `None`: nothing uses it.
+/// more uses, "Used by Admiral and 2 more". `None`: nothing uses it.
 pub fn used_by(cfg: &crate::config::Config, id: &str) -> Option<String> {
     let uses = agent_uses(cfg, id);
     let first = uses.first()?;

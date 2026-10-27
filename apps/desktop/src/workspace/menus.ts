@@ -11,7 +11,7 @@ import { keyLabel } from "../app/keys";
 import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { type MenuEntry } from "../ui/menu";
 import { isRemote } from "../app/hosts";
-import { agentName, basename, branchName, locate, taskTitle, isProjectSkipper } from "./model";
+import { agentName, basename, branchName, isFolder, locate, taskTitle, isProjectSkipper } from "./model";
 import { cwdOf } from "./canvas";
 import { filledOf, slotsOf } from "./layoutSlots";
 import type { Group, HostBranches, Project, SessionInfo, SplitDir, Worktree } from "../platform/types";
@@ -294,7 +294,7 @@ export function projectRun(p: Project) {
     "project-folder": () => void openPath(p.path).catch(showError),
     "project-copy-path": () => void navigator.clipboard.writeText(p.path).catch(showError),
     "project-color": () => pickProjectColor(p),
-    "project-changes": () => void setShowChanges(p, !showsChanges(p)),
+    "project-changes": () => void (isFolder(p) || setShowChanges(p, !showsChanges(p))),
     "project-files": () => void setShowFiles(p, !showsFiles(p)),
   } as const;
 }
@@ -330,13 +330,15 @@ export function projectMenu(p: Project, x: number, y: number) {
   ]);
   // What the project's row shows in the sidebar. A check marks what shows.
   const sidebar = tidy([
-    edits && { icon: showsChanges(p) ? "indicators-check" : "", label: "Changes", hint: keyLabel("project-changes"), run: run["project-changes"] },
+    // A plain folder has no git: no Changes.
+    edits && !isFolder(p) && { icon: showsChanges(p) ? "indicators-check" : "", label: "Changes", hint: keyLabel("project-changes"), run: run["project-changes"] },
     edits && hostCan("files") && { icon: showsFiles(p) ? "indicators-check" : "", label: "Files", hint: keyLabel("project-files"), run: run["project-files"] },
   ]);
   ctxMenu.open(x, y, p.path, tidy([
     ...start,
     !!bare && { sep: true },
-    hostCan("worktrees") && { icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
+    // A plain folder has no git: no worktrees.
+    hostCan("worktrees") && !isFolder(p) && { icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
     // This Mac starts them itself; a remote Host, through its skiff-host.
     ...(local || hostCan("skipper_run") ? projectSkipperEntries(p) : []),
     { sep: true },

@@ -1,7 +1,7 @@
 import { h } from "../ui/dom";
 import type { AgentInfo } from "../platform/types";
 import type { InstructionFile, SkiffAgentSettings, TaskType } from "../app/skiffAgent";
-import { DEFAULT_NAME, skiffAgentChoice } from "../app/skiffAgent";
+import { DEFAULT_NAME, mainName, skiffAgentChoice } from "../app/skiffAgent";
 import { continueLine } from "../terminal/resume";
 import { rowTable, sectionHead, tableState, type RowTableState } from "./rowTable";
 import { BAD_TASK_TYPE_NAME, fileSize, modelError, modelFlag, taskCommand, TASK_TYPE_NAME } from "./taskTypes";
@@ -55,10 +55,11 @@ export function skiffAgentSection(
 
   const name = textRow("Name", set.name ?? "", DEFAULT_NAME, (v) => save({ key: "name", value: v || null }));
 
-  const pick = agentPick("Skipper's agent", choices, null);
+  const main = mainName(set.name);
+  const pick = agentPick(`${main}'s agent`, choices, null);
   if (chosen) pick.value = chosen.id;
   pick.addEventListener("change", () => save({ key: "agent", value: pick.value }));
-  const agentRow = agentModelRow(pick, chosen ?? undefined, set.model, "Skipper's model", (v) => save({ key: "model", value: v }));
+  const agentRow = agentModelRow(pick, chosen ?? undefined, set.model, `${main}'s model`, (v) => save({ key: "model", value: v }));
 
   // A custom agent has no continue line: the switch shows off.
   const line = chosen ? continueLine(chosen.id, chosen.command) : null;
@@ -81,13 +82,13 @@ export function skiffAgentSection(
 
 /**
  * Settings › Skippers › Project and fleet Skippers: one agent and model for
- * both levels. "Same as Skipper" takes the Skipper's agent. A project's
+ * both levels. "Same as Admiral" takes the main Skipper's agent. A project's
  * `skipper_agent` in projects.toml still wins for its project Skipper.
  */
 export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInfo[], save: (e: SkiffAgentEdit) => void): HTMLElement[] {
   const head = sectionHead("Project and fleet Skippers");
   const choices = agents.filter((a) => a.enabled || a.custom);
-  const pick = agentPick("Project and fleet Skippers' agent", choices, "Same as Skipper");
+  const pick = agentPick("Project and fleet Skippers' agent", choices, `Same as ${mainName(set.name)}`);
   const own = choices.find((a) => a.id === set.project_agent);
   pick.value = own ? own.id : "";
   pick.addEventListener("change", () => save({ key: "project_agent", value: pick.value || null }));
@@ -105,7 +106,7 @@ export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInf
 export function instructionsSection(set: SkiffAgentSettings, acts: InstructionActs): HTMLElement[] {
   const edited = acts.files.filter((f) => f.status.startsWith("edited")).length;
   const head = sectionHead("Instructions", "set-h-instructions", `${acts.files.length} ${acts.files.length === 1 ? "file" : "files"} · ${edited} edited`);
-  const skipper = set.name?.trim() || DEFAULT_NAME;
+  const skipper = mainName(set.name);
   const table = rowTable<InstructionFile>(
     {
       grid: "g-instr",

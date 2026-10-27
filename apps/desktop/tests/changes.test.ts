@@ -28,7 +28,7 @@ function section(o: { remote: boolean; caps: string[] }) {
       },
       "../ui/alerts": { showError: (e: unknown) => calls.push(`error ${e}`) },
       "../app/dataPlane": { dataEpoch: () => epoch },
-      "./model": { branchName: (w: any) => w.branch },
+      "./model": { branchName: (w: any) => w.branch, isFolder: (p: any) => p.kind === "folder" },
       "../app/stored": { storedSet: () => new Set() },
       "../app/render": { render() {}, scheduleRender() {} },
       "../app/state": { collapsed: new Set() },

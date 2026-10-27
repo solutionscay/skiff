@@ -32,20 +32,29 @@ pub fn inspect_folder(dir: &Path) -> FolderInfo {
         icon: None,
         icon_path: None,
     };
-    let top = match crate::git::toplevel(&expand_home(dir)) {
-        Ok(r) => r,
-        Err(e) => {
-            info.error = Some(format!("{e:#}"));
-            return info;
+    let dir = expand_home(dir);
+    if !dir.is_dir() {
+        info.error = Some(format!("{} is not a folder", dir.display()));
+        return info;
+    }
+    // Git says it is in no repository: the folder itself is a plain project.
+    // A missing or failing git is an error, as before.
+    let (root, worktrees) = match crate::git::toplevel(&dir) {
+        Ok(top) => {
+            // Inside a linked worktree, the project is the main worktree.
+            let worktrees = crate::git::list_worktrees(&top).unwrap_or_default();
+            let root = worktrees.iter().find(|w| w.is_main).map(|w| w.path.clone()).unwrap_or(top);
+            (root, worktrees)
         }
+        Err(e) => match crate::git::in_repository(&dir) {
+            Ok(false) => (dir.canonicalize().unwrap_or(dir), Vec::new()),
+            other => {
+                let e = other.err().unwrap_or(e);
+                info.error = Some(format!("{e:#}"));
+                return info;
+            }
+        },
     };
-    // Inside a linked worktree, the project is the main worktree.
-    let worktrees = crate::git::list_worktrees(&top).unwrap_or_default();
-    let root = worktrees
-        .iter()
-        .find(|w| w.is_main)
-        .map(|w| w.path.clone())
-        .unwrap_or(top);
     info.name = root
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
@@ -69,7 +78,8 @@ pub fn inspect_folder(dir: &Path) -> FolderInfo {
     info
 }
 
-/// Appends a `[[project]]` for the git repository that contains `dir`.
+/// Appends a `[[project]]` for the git repository that contains `dir`, or
+/// for `dir` itself when it is in no repository.
 /// Comments and layout in the file are kept. A closed project for that
 /// repository opens again with its own settings; the arguments do not apply.
 pub fn add_project(
@@ -168,7 +178,7 @@ pub fn add_project(
         background: None,
         background_opacity: None,
         agents,
-        files: false,
+        files: None,
         changes: None,
         theme: Some(theme),
         closed: false,
@@ -238,8 +248,10 @@ pub fn set_project_theme(project: &str, theme: Option<&str>) -> Result<()> {
 }
 
 /// Sets `files = true` on the named project, or removes the key.
+/// Writes `files = true` or `files = false`, never absent: absent means the
+/// default for the project's kind, and the choice must stick.
 pub fn set_project_files(project: &str, on: bool) -> Result<()> {
-    set_project_key(project, "files", on.then_some(true))
+    set_project_key(project, "files", Some(on))
 }
 
 /// Sets `closed = true` on the named project, or removes the key to open it again.

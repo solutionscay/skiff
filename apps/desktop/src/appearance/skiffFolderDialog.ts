@@ -3,6 +3,7 @@ import { isMac } from "../app/keys";
 import { hostInvoke } from "../app/hostCaps";
 import { hostName, isRemote } from "../app/hosts";
 import { openFolderPicker } from "../workspace/folderPicker";
+import { skiffAgentName } from "../app/skiffAgent";
 import { reveal } from "../platform/fileActions";
 import { confirmAction } from "../ui/confirm";
 import { dialogFrame } from "../ui/dialogParts";
@@ -76,7 +77,7 @@ export function countsLine(c: FolderCounts): string {
 function verdict(p: Preview): string {
   switch (p.kind) {
     case "current":
-      return "Skipper uses this folder now. There is nothing to change.";
+      return `${skiffAgentName()} uses this folder now. There is nothing to change.`;
     case "refused":
       return p.refused ?? "Skiff cannot use this folder.";
     case "skiff":
@@ -106,11 +107,11 @@ function details(p: Preview): string[] {
     const now = p.from_counts;
     out.push(`This folder: ${countsLine(p.to_counts)}.${now ? `\nThe current folder: ${countsLine(now)}.` : ""}`);
     if (now?.open) out.push(`${plural(now.open, "open task")} stay in the current ledger. Skiff does not merge two ledgers. Change back to finish them.`);
-    if (p.moved) out.push("Skipper moved away from this folder before. Tasks added since then are only in the other folder. Skiff removes MOVED.md here.");
+    if (p.moved) out.push(`${skiffAgentName()} moved away from this folder before. Tasks added since then are only in the other folder. Skiff removes MOVED.md here.`);
   }
   if (p.kind !== "current" && p.kind !== "refused") {
-    out.push("The conversation does not move. Skipper starts a new conversation in the new folder when you select its row.");
-    if (p.skipper_runs) out.push(`Skipper runs in ${p.from}. Its session ends before the change.`);
+    out.push(`The conversation does not move. ${skiffAgentName()} starts a new conversation in the new folder when you select its row.`);
+    if (p.skipper_runs) out.push(`${skiffAgentName()} runs in ${p.from}. Its session ends before the change.`);
     if (p.ledger_env) out.push(`SKIFF_LEDGER is set to ${p.ledger_env}. The change does not touch it.`);
   }
   return out;
@@ -255,7 +256,7 @@ export function changeSkiffFolder(o: { current: string; changed: () => void }) {
       anyway.addEventListener("click", async () => {
         const ok = await confirmAction({
           title: "Change while tasks run?",
-          body: `${plural(running, "task")} still ${running === 1 ? "runs" : "run"} in ${p.from}. ${running === 1 ? "Its" : "Their"} results stay in the old folder, and the new Skipper may not see ${running === 1 ? "it" : "them"} finish.`,
+          body: `${plural(running, "task")} still ${running === 1 ? "runs" : "run"} in ${p.from}. ${running === 1 ? "Its" : "Their"} results stay in the old folder, and the new ${skiffAgentName()} may not see ${running === 1 ? "it" : "them"} finish.`,
           action: "Change anyway",
         });
         if (ok) void run(primary.dataset.mode as Mode, true);
@@ -283,13 +284,13 @@ export function changeSkiffFolder(o: { current: string; changed: () => void }) {
       // Read the folders again, so Try again offers what is valid now.
       const from = preview.from;
       await show(preview.to);
-      error.textContent = `The change stopped. Nothing changed: Skipper stays on ${from}.\n${String(e)}`;
+      error.textContent = `The change stopped. Nothing changed: ${skiffAgentName()} stays on ${from}.\n${String(e)}`;
     }
   }
 
-  /** The done step: where Skipper is now, what was copied, what stays. */
+  /** The done step: where the main Skipper is now, what was copied, what stays. */
   function finished(d: Done) {
-    title.textContent = `Skipper now uses ${d.to}`;
+    title.textContent = `${skiffAgentName()} now uses ${d.to}`;
     choices.remove();
     typed.remove();
     const lines: string[] = [];
@@ -297,7 +298,7 @@ export function changeSkiffFolder(o: { current: string; changed: () => void }) {
     if (d.mode === "empty") lines.push("The new folder has a new, empty ledger.");
     if (d.mode === "switch") lines.push("Skiff switched without a copy. Both folders stay as they were.");
     if (d.moved_note) lines.push(`The old folder stays, with every file and MOVED.md. Skiff deleted nothing. You can delete it when you choose.`);
-    lines.push("Skipper starts in the new folder when you select its row, with a new conversation.");
+    lines.push(`${skiffAgentName()} starts in the new folder when you select its row, with a new conversation.`);
     lines.push(`To go back, choose ${d.from} again. Tasks added from now on are only in the new folder.`);
     if (d.warning) lines.push(d.warning);
     body.replaceChildren(h("div", "confirm-body", lines.join("\n\n")));

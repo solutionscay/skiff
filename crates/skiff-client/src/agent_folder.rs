@@ -624,7 +624,7 @@ pub fn change(cfg: &Config, to: &Path, mode: Mode, panes: &Panes, anyway: bool) 
         bail!("{why}");
     }
     let ok = match (mode, p.kind) {
-        (_, Kind::Current) => bail!("Skipper uses this folder now."),
+        (_, Kind::Current) => bail!("Admiral uses this folder now."),
         (Mode::Copy, Kind::New | Kind::Empty) => {
             if !p.can_copy {
                 bail!("{} is not a Skiff folder, so there is nothing to copy. Start empty instead.", p.from.display());
@@ -749,7 +749,7 @@ fn write_folder(to: &Path) -> Result<()> {
 fn write_moved(note: &Path, to: &Path) -> Result<()> {
     let date: String = Connection::open_in_memory()?.query_row("SELECT date('now')", [], |r| r.get(0))?;
     let text = format!(
-        "# Skipper moved\n\nSkipper moved to {} on {date}.\n\nThis folder is a copy kept by Skiff. Tasks added after that date are only in the new folder. You can delete this folder.\n\nTo go back, choose this folder in Settings › Skippers › Folder › Change….\n",
+        "# Admiral moved\n\nAdmiral moved to {} on {date}.\n\nThis folder is a copy kept by Skiff. Tasks added after that date are only in the new folder. You can delete this folder.\n\nTo go back, choose this folder in Settings › Skippers › Folder › Change….\n",
         to.display()
     );
     std::fs::write(note, text)?;

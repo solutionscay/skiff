@@ -42,7 +42,7 @@ Use the report to show the user what is open. Use the JSON to pick a target or m
 
 | Task | Command |
 |---|---|
-| List sessions, groups, projects | `skiff ls --json`, `skiff g ls --json`, `skiff projects --json` |
+| List sessions, groups, projects | `skiff ls --json`, `skiff g ls --json`, `skiff projects --json` (`kind`: `git` or `folder`) |
 | Start a shell | `skiff new [--name N] [--cwd DIR]` |
 | Start an agent | `skiff new --agent ID [--name N] [--cwd DIR]` (`skiff agents --json` lists ids) |
 | Start a task type | `skiff new --type T [--model M] [--cwd DIR]` |
@@ -90,7 +90,7 @@ States: `working`, `waiting`, `idle`, `done`.
 ## Send a task
 
 1. Find the pane in the JSON. Use its id. Confirm its working directory.
-2. Run `skiff peek S -n 40`. Check the current result and the input box. If the task already runs or is complete, report that. Do not send it again.
+2. Run `skiff peek S -n 40`. Check the current result and the input box. If the task already runs or is complete, report that. Do not send it again. Claude Code shows a prompt suggestion in gray in an empty input box. `peek` shows no color, so the suggestion looks like typed text after `❯`. It is not a draft, and the person did not type it. Do not report a draft from `peek`. Send: only exit 9 tells you that the box holds a real draft.
 3. Write a clear task: the result, the scope, the context, the permitted actions, and what to report. An investigation request permits an investigation only. Pass on a permission to fix or deploy only when the user gave it.
 4. For a long prompt, write a file and send it with `skiff send S - --enter < file`. Keep shell syntax and user text apart.
 
@@ -109,7 +109,7 @@ Skiff has no message queue. A refused send types nothing. Do not wait and retry.
 | 4 | The session is `working` | Do not wait and do not retry. |
 | 6 | The session is `done` | Its program exited. Start a new session. |
 | 5 | A shell or an unknown program is in front | Add `--shell` only to type a shell command. A `skiff new -- CMD` session or a custom agent shows its launch shell, so it needs `--shell`. |
-| 9 | A known agent shows a draft or its busy line, or the session took input after the check | For a draft, tell the user which pane holds it. For the busy line, do as for exit 4. |
+| 9 | A known agent shows a draft or its busy line, or the session took input after the check | For a draft, tell the user which pane holds it. For the busy line, do as for exit 4. A gray Claude Code prompt suggestion is not a draft. `send` exits 0 for it. |
 | 0 | Sent | |
 | 1 | Error, for example no match or more than one | |
 
@@ -161,12 +161,12 @@ For several agents, give each a different task and folder. If they share a repos
 
 ## The Skiff agent and its ledger
 
-The Skiff agent (default name Skipper) is the normal coordinator. It is one agent session in its own folder, `~/skiff-agent` by default. The app makes that folder at start, with the agent on or off, and turning the agent on adds its files there. Its `AGENTS.md` is the user's standing permission to send tasks to sessions in Skiff projects. A person opens it from its row in the app, or with `skiff skipper` in any terminal. `skiff skipper --no-attach` prints its id.
+The Skiff agent is the main Skipper and the normal coordinator. Its default name is Admiral; a stored name `Skipper` also shows as Admiral. It is one agent session in its own folder, `~/skiff-agent` by default. The app makes that folder at start, with the agent on or off, and turning the agent on adds its files there. Its `AGENTS.md` is the user's standing permission to send tasks to sessions in Skiff projects. A person opens it from its row in the app, or with `skiff skipper` in any terminal. `skiff skipper --no-attach` prints its id.
 
 The ledger is `ledger.db` in that folder. Use only `skiff ledger` to read or change it. Never open or edit the file.
 
-- Each row has an owner: the Skipper (`grand`), a project Skipper (its project's name), or a fleet Skipper (`fleet:<fleet>`). `ls` shows an OWNER column when a project or fleet Skipper owns a row.
-- A coordinator changes only its own rows: `add`, `send`, `update`, `report`, `close`, `reopen`, `prune`, `rm`. The CLI knows the caller from its session. `skiff skipper` records the Skipper's session. A project or fleet Skipper may also report the hand-off it was given: `ledger update UID --state done --result PATH`, and no other change. Another agent pane gets a refusal. A shell pane is a person and may change any row. A shell outside Skiff is refused, unless a person passes `--person`.
+- Each row has an owner: Admiral, the main Skipper (`grand`), a project Skipper (its project's name), or a fleet Skipper (`fleet:<fleet>`). `ls` shows an OWNER column when a project or fleet Skipper owns a row.
+- A coordinator changes only its own rows: `add`, `send`, `update`, `report`, `close`, `reopen`, `prune`, `rm`. The CLI knows the caller from its session. `skiff skipper` records Admiral's session. A project or fleet Skipper may also report the hand-off it was given: `ledger update UID --state done --result PATH`, and no other change. Another agent pane gets a refusal. A shell pane is a person and may change any row. A shell outside Skiff is refused, unless a person passes `--person`.
 - `ls` and `show` work from anywhere.
 - Each row has an id and an 8-character uid. Neither is used again. Every ID argument takes both. Use the uid when you name a task.
 
@@ -182,20 +182,20 @@ Work is a plan with its tasks, or a task with no plan. It is `working` while an 
 
 ### Project Skippers
 
-A project can have its own Skipper: one agent session in the project's folder, at most one per project. No Skipper starts by itself: the person starts it from the project menu, or a hand-off starts it. Its folder is always `projects/<project>/` in the Skipper folder (`~/skiff-agent/projects/<project>/` by default): its instructions are `SKIPPER.md` there, and its results go to `results/` there. `SKIPPER.md` holds the project section only. `AGENTS.md` in the Skipper folder is the base of every Skipper. Skiff writes `SKIPPER.md` once and never writes over the person's edit. Skiff writes nothing into the project. A restore brings its pane back as a plain shell. Its session is named `<project> <Skipper's name>`, such as `gesher Skipper`, so `skiff send "gesher Skipper" ...` reaches it and never the Skipper; the sidebar shows it as "Skipper" inside its project block.
+A project can have its own Skipper: one agent session in the project's folder, at most one per project. No Skipper starts by itself: the person starts it from the project menu, or a hand-off starts it. Its folder is always `projects/<project>/` in the Skipper folder (`~/skiff-agent/projects/<project>/` by default): its instructions are `SKIPPER.md` there, and its results go to `results/` there. `SKIPPER.md` holds the project section only. `AGENTS.md` in the Skipper folder is the base of every Skipper. Skiff writes `SKIPPER.md` once and never writes over the person's edit. Skiff writes nothing into the project. A restore brings its pane back as a plain shell. Its session is named `<project> Skipper`, such as `gesher Skipper` (a name set in Settings takes the place of `Skipper`), so `skiff send "gesher Skipper" ...` reaches it and never Admiral; the sidebar shows it as "Skipper" inside its project block.
 
 - `skiff skipper --project P` finds or starts it, and attaches. `--no-attach` prints its id. A new one gets one first message: read `AGENTS.md` in the Skipper folder, then `SKIPPER.md`, which wins where the two differ, then do the First steps.
-- The Skipper hands work to it with `skiff ledger handoff P "TASK" --title "..." [--parent UID]`. This adds a hand-off row that the Skipper owns, with the project Skipper as its pane. It starts the project Skipper if none runs, and sends it the task. It exits with `send`'s code. A busy project Skipper keeps the row `pending`.
+- Admiral hands work to it with `skiff ledger handoff P "TASK" --title "..." [--parent UID]`. This adds a hand-off row that Admiral owns, with the project Skipper as its pane. It starts the project Skipper if none runs, and sends it the task. It exits with `send`'s code. A busy project Skipper keeps the row `pending`.
 - The project Skipper adds its tasks with `--parent UID` of the hand-off. Those rows are its own. When they are done, it reports the hand-off: `skiff ledger update UID --state done --result PATH`.
-- The Skipper can cancel a hand-off: it is the Skipper's row. It cannot change the project Skipper's tasks, or add tasks under a hand-off.
-- `ledger close` on the Skipper's plan also needs the hand-off's tasks done.
+- Admiral can cancel a hand-off: it is Admiral's row. It cannot change the project Skipper's tasks, or add tasks under a hand-off.
+- `ledger close` on Admiral's plan also needs the hand-off's tasks done.
 
 ### Fleet Skippers
 
-A fleet can have one Skipper for all its projects. It is a project Skipper with a wider scope. Its folder is `fleets/<fleet>/` in the Skipper folder, with `SKIPPER.md` and `results/`, and it starts there. Its `SKIPPER.md` names no project: it runs `skiff projects --json` at the start of each turn. Its rows have the owner `fleet:<fleet>`. Its session is named `<fleet> <Skipper's name>`, such as `Harbor Skipper`. The sidebar shows it as "Skipper", the first row under its fleet head.
+A fleet can have one Skipper for all its projects. It is a project Skipper with a wider scope. Its folder is `fleets/<fleet>/` in the Skipper folder, with `SKIPPER.md` and `results/`, and it starts there. Its `SKIPPER.md` names no project: it runs `skiff projects --json` at the start of each turn. Its rows have the owner `fleet:<fleet>`. Its session is named `<fleet> Skipper`, such as `Harbor Skipper`. The sidebar shows it as "Skipper", the first row under its fleet head.
 
 - `skiff skipper --fleet F` finds or starts it, and attaches. `--no-attach` prints its id. When project Skippers run in the fleet, it names them and asks y/N; `--yes` does not ask. With no terminal and no `--yes`, it refuses.
-- The Skipper hands work to it with `skiff ledger handoff F "TASK" ...`. A name that is both a project and a fleet is refused: use `fleet:F` or `project:F`.
+- Admiral hands work to it with `skiff ledger handoff F "TASK" ...`. A name that is both a project and a fleet is refused: use `fleet:F` or `project:F`.
 - It sends tasks only into the projects of its fleet, as `skiff projects --json` shows them now. `ledger add --pane` and `ledger update --pane` refuse a pane in another project.
 - It does not hand off. One Skipper per project: while it runs, a project of its fleet has no project Skipper. `handoff PROJECT` and `skipper --project` for such a project are refused and name the fleet. `handoff F` while project Skippers run in the fleet and no fleet Skipper does is refused.
 - Takeover: a project with a project Skipper that joins a fleet whose Skipper runs, or a fleet Skipper that starts over project Skippers, takes the project Skippers over on the person's confirm. Every row they own moves to `fleet:<fleet>`. Each open hand-off to the project gets the fleet Skipper as its pane; `pending` and `blocked` become `pending`. The project Skipper loses its mark and ends when idle. Its ledger writes are refused. The fleet Skipper gets one `[watch]` line that names the project, the open tasks and the hand-offs.
@@ -207,7 +207,7 @@ A fleet can have one Skipper for all its projects. It is a project Skipper with 
 |---|---|
 | `ledger add --pane S --task "..." --title "..." --send --enter [--parent UID] [--type T] [--ref TEXT]` | Add a task and send it. |
 | `ledger add --plan --task "..." --title "..." [--ref TEXT]` | Add a plan for work with more than one task. |
-| `ledger handoff SCOPE "TASK" --title "..." [--parent UID]` | Hand a task to a project's or a fleet's Skipper. SCOPE: `NAME`, `project:NAME` or `fleet:NAME`. Skipper only. |
+| `ledger handoff SCOPE "TASK" --title "..." [--parent UID]` | Hand a task to a project's or a fleet's Skipper. SCOPE: `NAME`, `project:NAME` or `fleet:NAME`. Admiral only. |
 | `ledger send UID --enter` | Send a `pending` or `interrupted` task. |
 | `ledger update UID [--state S] [--pane S] [--title T] [--result PATH] [--parent UID] ...` | Change only the given fields. |
 | `ledger ls [--state S] [--all \| --closed \| --unreported] [--json]` | Show the work that is not closed: working, then open. |
@@ -240,7 +240,7 @@ Result paths, in `results/` in the agent folder, in `projects/<project>/results/
 
 ### The watcher
 
-`skiff watch` runs while a Skipper runs: the Skiff agent, or a project or fleet Skipper. Each `[watch]` line goes to the coordinator that owns the task. A project Skipper hears of its own tasks; the Skipper hears of its own, and once of each hand-off a project Skipper reports. It types one `[watch]` line into the coordinator when a ledger pane ends a turn, exits, restarts or is gone, or is idle with a pending task. It types only while the agent is idle and its input box is empty. A `waiting` pane gives the person a desktop notification and gives the agent nothing.
+`skiff watch` runs while a Skipper runs: the Skiff agent, or a project or fleet Skipper. Each `[watch]` line goes to the coordinator that owns the task. A project Skipper hears of its own tasks; Admiral hears of its own, and once of each hand-off a project Skipper reports. It types one `[watch]` line into the coordinator when a ledger pane ends a turn, exits, restarts or is gone, or is idle with a pending task. It types only while the agent is idle and its input box is empty. A `waiting` pane gives the person a desktop notification and gives the agent nothing.
 
 1. Read each pane that a `[watch]` line names with `skiff peek`.
 2. Then run `skiff seen S`. An unread pane is named again on the next run.
@@ -250,7 +250,7 @@ Result paths, in `results/` in the agent folder, in `projects/<project>/results/
 
 ### The Ledger panel
 
-The app shows the ledger in a panel at the right of the Skiff agent's pane, and of each project or fleet Skipper's pane. The panel is read-only. Its filter shows all projects, a fleet, or one project: the Skipper's panel opens on all, a fleet Skipper's on its fleet, a project Skipper's on its project. A fleet shows its Skipper's rows, the hand-offs to it and its projects' rows. A hand-off shows its project's letters, or the fleet's letters with no color, and nests under its plan, with its tasks one step under it. It shows three sections: Working, Open and Finished. Open lists the rows that need the person first, then done tasks, then the rest. Finished shows the last 20 closed work items. A row that needs the person is amber. Closed work moves to Finished. Each row shows in the section of its work's bucket, as `ledger ls` gives it. The panel shows `--title`.
+The app shows the ledger in a panel at the right of the Skiff agent's pane, and of each project or fleet Skipper's pane. The panel is read-only. Its filter shows all projects, a fleet, or one project: Admiral's panel opens on all, a fleet Skipper's on its fleet, a project Skipper's on its project. A fleet shows its Skipper's rows, the hand-offs to it and its projects' rows. A hand-off shows its project's letters, or the fleet's letters with no color, and nests under its plan, with its tasks one step under it. It shows three sections: Working, Open and Finished. Open lists the rows that need the person first, then done tasks, then the rest. Finished shows the last 20 closed work items. A row that needs the person is amber. Closed work moves to Finished. Each row shows in the section of its work's bucket, as `ledger ls` gives it. The panel shows `--title`.
 
 ## Recipe
 

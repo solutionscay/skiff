@@ -122,10 +122,10 @@ test("a remote Host starts its own Skipper, restore and watcher, only through sk
   await flush();
   assert.deepEqual(t.calls.slice(1), ["skipper_run start_skiff_watch", "skipper_run open_skiff_agent"]);
   assert.deepEqual(t.calls.filter((c) => c.startsWith("invoke")), [], "nothing of This Mac's");
-  // No session there: the row says so, and its Start Skipper starts it.
+  // No session there: the row says so, and its Start Admiral starts it.
   t.sessions.clear();
   t.mod.openSkiffAgent();
-  assert.equal(t.errors.at(-1), "Skipper does not run on devbox.");
+  assert.equal(t.errors.at(-1), "Admiral does not run on devbox.");
   // The status names the Host, never that this app tries.
   const text = t.mod.watchText("missing", t.coordinator, "Skipper", null);
   assert.equal(text, "No watcher runs for Skipper on devbox. Skipper does not hear when its panes finish.");
@@ -139,7 +139,7 @@ test("a remote Host without skipper_run is asked for nothing, and the row says t
   t.mod.openSkiffAgent();
   await flush();
   assert.deepEqual(t.calls, []);
-  assert.match(t.errors.at(-1) ?? "", /devbox cannot start Skipper\. Its Skiff is too old\./);
+  assert.match(t.errors.at(-1) ?? "", /devbox cannot start Admiral\. Its Skiff is too old\./);
 });
 
 test("This Mac keeps starting its own watcher and restoring Skipper", async () => {
@@ -204,7 +204,7 @@ test("review M6 P2: a remote Host's missing watcher shows as missing once the gr
     t.mod.syncSkiffAgent();
     const w = t.mod.skiffWatch(t.coordinator);
     assert.equal(w.state, "missing", `${at / 1000} s`);
-    assert.match(w.text, /^No watcher runs for Skipper on devbox\./);
+    assert.match(w.text, /^No watcher runs for Admiral on devbox\./);
   }
   await flush();
   assert.deepEqual(t.calls.filter((c) => c.startsWith("invoke") || c.endsWith("start_skiff_watch")), [], "no start_skiff_watch, here or there");

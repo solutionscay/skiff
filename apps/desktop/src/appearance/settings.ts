@@ -7,7 +7,7 @@ import { agentNameList, setAgentNameList } from "./agentNames";
 import { nextCard, themeGrid, type ThemeFilters } from "./themeCards";
 import { type Action, actionFor, isMac } from "../app/keys";
 import { editField, fieldEditKey, textField } from "../ui/fieldClipboard";
-import { DEFAULT_NAME, type InstructionFile, type SkiffAgentSettings, type TaskType } from "../app/skiffAgent";
+import { mainName, type InstructionFile, type SkiffAgentSettings, type TaskType } from "../app/skiffAgent";
 import { instructionsSection, type SkiffAgentEdit, projectSkippersSection, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
 import { peekText } from "../terminal/peek";
 import { fileSize } from "./taskTypes";
@@ -292,7 +292,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
           return status;
         },
         // − takes any agent away that nothing starts: a default goes to `[agents] removed`. An empty command does not remove.
-        // "Used by Skipper and 3 more" shows as "Skipper +3" in the STATUS cell.
+        // "Used by Admiral and 3 more" shows as "Admiral +3" in the STATUS cell.
         kept: (a) => a.used_by?.replace(/^Used by /, "").replace(/ and (\d+) more$/, " +$1") ?? null,
         checkEdit: (a, key, v) => (key === "command" && a.custom && !v ? `A custom agent needs a command. Press − to remove ${a.id}.` : null),
         add: async (d) => {
@@ -573,7 +573,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       if (agentSet) {
         const a = agentSet;
         main.append(
-          h("div", "set-note mono", `Name: ${a.name?.trim() || DEFAULT_NAME} · agent: ${a.agent ?? "default"}`),
+          h("div", "set-note mono", `Name: ${mainName(a.name)} · agent: ${a.agent ?? "default"}`),
           h("div", "set-note mono", `Folder: ${a.folder ?? a.configured}${a.folder_error ? ` (refused: ${a.folder_error})` : ""}`),
         );
       }
