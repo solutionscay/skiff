@@ -163,7 +163,7 @@ pub fn add_project(
         background: None,
         background_opacity: None,
         agents,
-        files: false,
+        files: None,
         changes: None,
         theme: Some(theme),
         closed: false,
@@ -227,8 +227,10 @@ pub fn set_project_theme(project: &str, theme: Option<&str>) -> Result<()> {
 }
 
 /// Sets `files = true` on the named project, or removes the key.
+/// Writes `files = true` or `files = false`, never absent: absent means the
+/// default for the project's kind, and the choice must stick.
 pub fn set_project_files(project: &str, on: bool) -> Result<()> {
-    set_project_key(project, "files", on.then_some(true))
+    set_project_key(project, "files", Some(on))
 }
 
 /// Sets `closed = true` on the named project, or removes the key to open it again.

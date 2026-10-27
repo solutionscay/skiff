@@ -301,12 +301,13 @@ pub(crate) async fn open_text(path: PathBuf) -> Result<Opened, String> {
     }
 }
 
-/// Projects with `files = true`. Read from projects.toml here, so an older
-/// daemon that does not send the key still works.
+/// Projects with a `files` key, as `[name, on]`. A project without the key
+/// takes its kind's default in the page. Read from projects.toml here, so an
+/// older daemon that does not send the key still works.
 #[tauri::command]
-pub(crate) fn files_projects() -> Result<Vec<String>, String> {
+pub(crate) fn files_projects() -> Result<Vec<(String, bool)>, String> {
     let cfg = skiff_core::config::load().map_err(err)?;
-    Ok(cfg.projects.into_iter().filter(|p| p.files).map(|p| p.name).collect())
+    Ok(cfg.projects.into_iter().filter_map(|p| p.files.map(|on| (p.name, on))).collect())
 }
 
 /// Projects with `changes = false`.

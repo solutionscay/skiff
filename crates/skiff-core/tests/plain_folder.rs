@@ -48,5 +48,16 @@ fn a_folder_in_no_repository_is_a_plain_project_until_it_has_a_git() {
     old.as_object_mut().unwrap().remove("kind");
     assert_eq!(serde_json::from_value::<project::Project>(old).unwrap().kind, ProjectKind::Git);
 
+    // Files: a new project has no key, so its kind sets the default. A choice
+    // is written as true or false, so off sticks for a plain folder.
+    let files = || config::load().unwrap().projects.into_iter().find(|p| p.name == "docs").unwrap().files;
+    assert_eq!(files(), None);
+    config::set_project_files("docs", false).unwrap();
+    assert_eq!(files(), Some(false));
+    let text = std::fs::read_to_string(dir.join("projects.toml")).unwrap();
+    assert!(text.contains("files = false"), "{text}");
+    config::set_project_files("docs", true).unwrap();
+    assert_eq!(files(), Some(true));
+
     let _ = std::fs::remove_dir_all(&dir);
 }

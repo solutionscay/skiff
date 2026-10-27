@@ -88,3 +88,30 @@ test("a plain folder's project menu has no New worktree… and no Changes switch
   assert.ok(git.top.includes("New worktree…"));
   assert.deepEqual(git.sidebar, ["Changes", "Files"]);
 });
+
+test("Files shows by default for a plain folder, not for a git project, and a stored choice wins", async () => {
+  let stored: [string, boolean][] = [];
+  const calls: any[] = [];
+  const files = moduleFromSource(
+    "../src/workspace/files.ts",
+    withStubs({
+      "./model": model,
+      "@tauri-apps/api/core": { invoke: async (cmd: string, args: any) => (cmd === "files_projects" ? stored : (calls.push([cmd, args]), null)) },
+      "../app/stored": { storedSet: () => new Set() },
+    }),
+    { console, localStorage: { getItem: () => null, setItem() {} } },
+    "",
+  );
+  // No `files` key: the kind decides.
+  await files.loadFilesSetting();
+  assert.equal(files.showsFiles(folder), true);
+  assert.equal(files.showsFiles(repo), false);
+  // Turned off: written as false, and it stays off after a reload.
+  await files.setShowFiles(folder, false);
+  assert.deepEqual(calls.map((c) => [c[0], c[1].on]), [["set_project_files", false]]);
+  assert.equal(files.showsFiles(folder), false);
+  stored = [["docs", false], ["api", true]];
+  await files.loadFilesSetting();
+  assert.equal(files.showsFiles(folder), false);
+  assert.equal(files.showsFiles(repo), true);
+});

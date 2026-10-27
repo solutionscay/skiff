@@ -182,10 +182,10 @@ pub struct ProjectConfig {
     pub background_opacity: Option<u8>,
     #[serde(default)]
     pub agents: Vec<String>,
-    /// Shows a Files tree under each worktree. The app reads and writes it;
-    /// the daemon passes it by.
-    #[serde(default)]
-    pub files: bool,
+    /// Shows a Files tree under each worktree. Absent: shown for a plain
+    /// folder, hidden for a git project. The app reads and writes it, always
+    /// as `true` or `false`; the daemon passes it by.
+    pub files: Option<bool>,
     /// `false` hides the Changes section and the +/- counts. Absent: shown.
     pub changes: Option<bool>,
     /// Theme id for this project's chrome and its terminals. Absent: the app theme.

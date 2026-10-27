@@ -2,12 +2,14 @@ import { open, reveal, copy } from "../platform/fileActions";
 import { setRowActs } from "./rowActs";
 import { sectionHeader } from "../ui/sectionHeader";
 /**
- * The Files section under each worktree, for projects with `files = true`.
+ * The Files section under each worktree. `files` in projects.toml turns it on
+ * or off; without the key, a plain folder shows it and a git project does not.
  * Selection previews files with their Open with setting. A folder is read
  * again when it opens, or on Refresh.
  */
 import { invoke } from "@tauri-apps/api/core";
 import type { Project, Worktree } from "../platform/types";
+import { isFolder } from "./model";
 import { h } from "../ui/dom";
 import { keyLabel } from "../app/keys";
 import { chevron, icon } from "../ui/icons";
@@ -20,8 +22,8 @@ import { storedSet } from "../app/stored";
 type Entry = { name: string; dir: boolean };
 type Listing = Entry[] | { error: string };
 
-/** Projects that show the Files section, from projects.toml. */
-const on = new Set<string>();
+/** Each project's `files` key in projects.toml, when it has one. */
+const setting = new Map<string, boolean>();
 /** The last listing of each folder read. The sidebar renders from here, never waiting. */
 const listings = new Map<string, Listing>();
 /** Worktrees whose Files section is open. Closed by default. */
@@ -36,7 +38,8 @@ let version = 0;
 
 const join = (dir: string, name: string) => `${dir}/${name}`;
 
-export const showsFiles = (p: Project) => on.has(p.name);
+/** A plain folder is for its files: they show unless turned off. */
+export const showsFiles = (p: Project) => setting.get(p.name) ?? isFolder(p);
 
 /** What the Files section draws for `w`, as a string. Equal strings mean an equal section. */
 export const filesSig = (w: Worktree) => (shown.has(w.path) ? `open:${version}` : "closed");
@@ -51,16 +54,15 @@ function store(dir: string, l: Listing) {
 
 /** Reads which projects show files. Called with every project reload. */
 export async function loadFilesSetting() {
-  const names = await invoke<string[]>("files_projects").catch(() => []);
-  on.clear();
-  for (const n of names) on.add(n);
+  const list = await invoke<[string, boolean][]>("files_projects").catch(() => []);
+  setting.clear();
+  for (const [n, show] of list) setting.set(n, show);
 }
 
 export async function setShowFiles(p: Project, show: boolean) {
   try {
     await invoke("set_project_files", { project: p.name, on: show });
-    if (show) on.add(p.name);
-    else on.delete(p.name);
+    setting.set(p.name, show);
     render();
   } catch (e) {
     showError(e);
