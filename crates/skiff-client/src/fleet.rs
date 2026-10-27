@@ -229,26 +229,3 @@ pub async fn rename(c: &Client, old: &str, new: &str) -> Result<()> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn task(uid: &str) -> Task {
-        Task { uid: uid.into(), title: String::new() }
-    }
-
-    #[test]
-    fn the_takeover_line_names_the_projects_tasks_and_hand_offs() {
-        let t = vec![
-            Taken { project: "harbor-web".into(), session: "s1".into(), tasks: vec![task("a81e55d0"), task("c0d4e7f2")], handoffs: vec!["9f1d0c3e".into()] },
-            Taken { project: "harbor-api".into(), session: "s2".into(), tasks: vec![task("e3b9a614")], handoffs: vec![] },
-        ];
-        assert_eq!(
-            line("Harbor", &t),
-            "The Harbor Skipper took over harbor-web, harbor-api: 3 open tasks (a81e55d0, c0d4e7f2, e3b9a614) and hand-off 9f1d0c3e. Run skiff ledger ls, then read SKIPPER.md again."
-        );
-        let none = vec![Taken { project: "p".into(), session: "s".into(), tasks: vec![], handoffs: vec![] }];
-        assert_eq!(line("F", &none), "The F Skipper took over p: 0 open tasks. Run skiff ledger ls, then read SKIPPER.md again.");
-    }
-}

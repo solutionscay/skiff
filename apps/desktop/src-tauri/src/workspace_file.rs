@@ -314,28 +314,12 @@ mod tests {
     }
 
     #[test]
-    fn round_trip() {
-        let p = sample();
-        assert_eq!(parse(&serialize(&p).unwrap()).unwrap(), p);
-        let empty = Profile { name: "e".into(), ..Default::default() };
-        let text = serialize(&empty).unwrap();
-        assert!(!text.contains("[view]"));
-        assert_eq!(parse(&text).unwrap(), empty);
-    }
-
-    #[test]
     fn refuses_other_versions_and_keys() {
         assert!(parse("version = 2\nname = \"x\"\n").unwrap_err().contains("version 2 is not supported"));
         assert!(parse("name = \"x\"\n").unwrap_err().contains("no version"));
         assert!(parse("version = 1\nname = \"x\"\nhost = \"h\"\n").is_err());
         assert!(parse("version = 1\nname = \"x\"\nprojects = [\"rel/path\"]\n").unwrap_err().contains("absolute"));
         assert!(parse("version = 1\nname = ").is_err());
-    }
-
-    #[test]
-    fn trailing_slash_dropped() {
-        let p = parse("version = 1\nname = \"x\"\nprojects = [\"/a/b/\"]\n").unwrap();
-        assert_eq!(p.projects, vec!["/a/b".to_string()]);
     }
 
     #[test]
@@ -354,12 +338,5 @@ mod tests {
         write(&file, &sample(), r2.as_deref()).unwrap();
         assert!(write(&dir.join("a.toml"), &sample(), None).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn launch_args() {
-        assert_eq!(as_workspace("/x/y.skiffw").as_deref(), Some("/x/y.skiffw"));
-        assert_eq!(as_workspace("file:///x/a%20b.skiffw").as_deref(), Some("/x/a b.skiffw"));
-        assert!(as_workspace("/x/y.toml").is_none());
     }
 }

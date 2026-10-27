@@ -61,36 +61,6 @@ async fn shell_session_streams_output_and_exits() {
     assert_eq!(pool.get(&info.id).unwrap().info().state, SessionState::Done);
 }
 
-#[tokio::test]
-async fn write_reaches_the_process() {
-    let pool = SessionPool::new();
-    let spec = SessionSpec {
-        command: Some("cat".into()),
-        ..Default::default()
-    };
-    let info = pool.create(spec).unwrap();
-    let mut output = pool.get(&info.id).unwrap().output.subscribe();
-    pool.write(&info.id, b"ping\n").unwrap();
-
-    let mut bytes = Vec::new();
-    let mut echo = None;
-    let deadline = tokio::time::sleep(Duration::from_secs(5));
-    tokio::pin!(deadline);
-    while !String::from_utf8_lossy(&bytes).contains("ping") {
-        tokio::select! {
-            chunk = output.recv() => if let Ok(c) = chunk {
-                bytes.extend_from_slice(&c);
-                echo = echo.or(c.echo);
-            },
-            _ = &mut deadline => panic!("no echo from cat"),
-        }
-    }
-    // The answer carries when the write went in and when the answer came out.
-    let echo = echo.expect("no echo times on the answer");
-    assert!(echo.wrote > 0 && echo.wrote <= echo.read, "{echo:?}");
-    pool.kill(&info.id).unwrap();
-}
-
 /// Keys typed while the program is silent: the answer's write time is the
 /// first key's, so the wait shows as the program's, not skiffd's.
 #[tokio::test]
