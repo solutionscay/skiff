@@ -141,6 +141,8 @@ pub struct SkiffAgent {
     project_model: Option<String>,
     /// `[skiff_agent.tasks]` in file order, with the command each row starts.
     tasks: Vec<TaskType>,
+    /// The folder of the task types' instruction files, as `~/…/types/`.
+    types: String,
 }
 
 fn read() -> anyhow::Result<SkiffAgent> {
@@ -161,6 +163,7 @@ fn read() -> anyhow::Result<SkiffAgent> {
     };
     // The command lines come from projects.toml, so the local list builds the same ones skiffd would.
     let tasks = tasks::resolve(&cfg.skiff_agent.tasks, &skiff_core::project::agents(), &configured);
+    let types = format!("{}/", tasks::tilde(&configured.join(tasks::TYPES)));
     let configured = configured.display().to_string();
     let a = cfg.skiff_agent;
     Ok(SkiffAgent {
@@ -175,6 +178,7 @@ fn read() -> anyhow::Result<SkiffAgent> {
         project_agent: a.project_agent,
         project_model: a.project_model,
         tasks,
+        types,
     })
 }
 

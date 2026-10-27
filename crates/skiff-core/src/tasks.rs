@@ -19,7 +19,7 @@ pub const SETTINGS: &str = "Settings › Task types";
 pub fn model_flag(agent: &str) -> Option<&'static str> {
     match agent {
         "claude" => Some("--model"),
-        "codex" | "grok" => Some("-m"),
+        "codex" | "grok" | "kimi" => Some("-m"),
         _ => None,
     }
 }
@@ -110,8 +110,7 @@ pub fn rename_file(dir: &Path, from: &str, to: &str) -> Result<()> {
 /// How a known agent takes the file at start, from its docs, help and source
 /// (research 499fa18a, 2026-10-26). Each one adds to the agent's own prompt
 /// and keeps the project's `AGENTS.md` / `CLAUDE.md` and the agent's own
-/// config. Keep in step with `INSTRUCTION_FLAGS` in
-/// apps/desktop/src/appearance/taskTypes.ts.
+/// config.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Delivery {
     /// claude `--append-system-prompt-file <path>`.
@@ -203,8 +202,8 @@ pub fn instruction_args(agent: &AgentInfo, dir: &Path, name: &str, text: &str) -
     })
 }
 
-/// `~/…` for a path under the home folder, for the preview.
-fn tilde(p: &Path) -> String {
+/// `~/…` for a path under the home folder, for the preview and the labels.
+pub fn tilde(p: &Path) -> String {
     match dirs::home_dir().and_then(|h| p.strip_prefix(h).ok().map(Path::to_path_buf)) {
         Some(rest) => format!("~/{}", rest.display()),
         None => p.display().to_string(),

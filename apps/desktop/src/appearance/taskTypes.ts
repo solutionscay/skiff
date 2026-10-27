@@ -5,7 +5,7 @@ import type { AgentInfo } from "../platform/types";
  * with `model_flag` in crates/skiff-core/src/tasks.rs, which builds the line
  * that runs. Settings only shows a hint from this.
  */
-const MODEL_FLAGS: Record<string, string> = { claude: "--model", codex: "-m", grok: "-m" };
+const MODEL_FLAGS: Record<string, string> = { claude: "--model", codex: "-m", grok: "-m", kimi: "-m" };
 
 /** The rule `check_name` in skiff-core keeps too. */
 export const TASK_TYPE_NAME = /^[a-z0-9][a-z0-9-]*$/;
@@ -30,4 +30,9 @@ export function taskCommand(agent: AgentInfo | undefined, model: string): string
 /** Why a model cannot be saved, or null. */
 export function modelError(model: string): string | null {
   return /\s/.test(model.trim()) ? BAD_MODEL : null;
+}
+
+/** "640 B", "3.4 KB". */
+export function fileSize(n: number): string {
+  return n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`;
 }

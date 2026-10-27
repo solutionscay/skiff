@@ -7,9 +7,10 @@ import { agentNameList, setAgentNameList } from "./agentNames";
 import { nextCard, themeGrid, type ThemeFilters } from "./themeCards";
 import { type Action, actionFor, isMac } from "../app/keys";
 import { editField, fieldEditKey, textField } from "../ui/fieldClipboard";
-import type { InstructionFile, SkiffAgentSettings } from "../app/skiffAgent";
+import type { InstructionFile, SkiffAgentSettings, TaskType } from "../app/skiffAgent";
 import { instructionsSection, type SkiffAgentEdit, projectSkippersSection, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
 import { peekText } from "../terminal/peek";
+import { fileSize } from "./taskTypes";
 import { confirmAction } from "../ui/confirm";
 import { changeSkiffFolder } from "./skiffFolderDialog";
 import { rowTable, tableState } from "./rowTable";
@@ -52,6 +53,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   // Settings › Skippers › Instructions, and one error line per row.
   let files: InstructionFile[] = [];
   const fileErrors = new Map<string, string>();
+  /** Task types › Edit faults, by type. */
+  const typeErrors = new Map<string, string>();
   let error: string | null = null;
   let saving = false;
   // The draft rows and their error lines survive every redraw.
@@ -163,7 +166,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     }
     if (tab === "task-types") {
       const main = h("div", "set-main");
-      if (agentSet) main.append(...taskTypesSection(agentSet, agents, tasksTable, saveTask, render));
+      if (agentSet) main.append(...taskTypesSection(agentSet, agents, tasksTable, saveTask, render, { edit: editTypeFile, errors: typeErrors }));
       root.replaceChildren(nav, main, closeButton());
       return;
     }
@@ -460,6 +463,35 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     void loadFiles();
   }
 
+  /** Task types: each row's file size, read again on each show. */
+  async function loadTypes() {
+    agentSet = (await invoke<SkiffAgentSettings>("get_skiff_agent").catch(() => null)) ?? agentSet;
+    if (!root.hidden && tab === "task-types") render();
+  }
+
+  /**
+   * Task types › Edit: the file opens as Open with › Text files says, with
+   * its `# <type>` line written first when there is none. In the peek,
+   * Settings closes and opens again on this tab when the peek ends.
+   */
+  async function editTypeFile(t: TaskType) {
+    typeErrors.delete(t.type);
+    type Opened = { kind: "run"; script: string; cwd: string } | { kind: "default" } | { kind: "no_app"; message: string };
+    let o: Opened;
+    try {
+      o = await invoke<Opened>("edit_task_type_file", { name: t.type });
+    } catch (e) {
+      typeErrors.set(t.type, String(e));
+      return void loadTypes();
+    }
+    if (o.kind === "run") {
+      close();
+      return peekText(o.script, o.cwd, t.file, () => void settings.open("task-types"));
+    }
+    if (o.kind === "no_app") typeErrors.set(t.type, `No app opens ${t.type}.md. Set one in Settings › Open with › Text files.`);
+    void loadTypes();
+  }
+
   /** Reset…: asks, with the file's date and size, then writes the template again. */
   async function resetFile(f: InstructionFile) {
     const base = f.file.split("/").pop()!;
@@ -678,6 +710,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   // An external app saved a file: its status shows when the window has the keys again.
   window.addEventListener("focus", () => {
     if (!root.hidden && tab === "skippers") void loadFiles();
+    if (!root.hidden && tab === "task-types") void loadTypes();
   });
 
   const settings = {
@@ -709,9 +742,4 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     },
   };
   return settings;
-}
-
-/** "640 B", "3.4 KB". */
-function fileSize(n: number): string {
-  return n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`;
 }
