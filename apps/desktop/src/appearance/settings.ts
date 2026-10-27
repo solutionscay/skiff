@@ -194,15 +194,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       back.addEventListener("click", () => void editAgents("restore_agents"));
       intro.appendChild(back);
     }
-    main.append(
-      intro,
-      agentTable(),
-      h(
-        "div",
-        "set-note",
-        "An empty command runs the default. The agent then asks before it acts, as it ships. A flag that skips those prompts, such as codex --yolo, is your choice: add it to the command.",
-      ),
-    );
+    main.append(intro, agentTable());
     if (error) {
       const err = h("div", "set-error", error);
       err.setAttribute("role", "alert");
@@ -213,7 +205,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   }
 
   /** The agents Skiff ships with. Restore defaults brings back any the user removed. */
-  const DEFAULT_AGENTS = ["claude", "codex", "gemini", "grok", "opencode", "hermes"];
+  const DEFAULT_AGENTS = ["claude", "codex", "gemini", "grok", "opencode", "hermes", "kimi"];
 
   /** One row per agent: its switch, name, command and status. The draft row adds a custom agent. */
   function agentTable(): HTMLElement {
@@ -265,7 +257,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
           status.append(h("span", "sq"), a.installed ? "installed" : "not on PATH");
           return status;
         },
-        // Remove takes a custom agent away. An empty command does not. On a known agent it restores the default.
+        // − takes any agent away that nothing starts: a default goes to `[agents] removed`. An empty command does not remove.
+        kept: (a) => a.used_by ?? null,
         checkEdit: (a, key, v) => (key === "command" && a.custom && !v ? `A custom agent needs a command. Press − to remove ${a.id}.` : null),
         add: async (d) => {
           const err = await agentEdit("set_agent_command", { agent: d.name, command: d.command });
@@ -317,7 +310,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const intro = h("div", "set-head");
     intro.append(
       h("div", "set-h", "Appearance"),
-      h("div", "set-sub", "App theme. Colors the app and every project and session without a theme of its own."),
+      h("div", "set-sub", "App theme"),
     );
     const cur = look.current() ?? null;
     const cards = h("div", "set-cards");

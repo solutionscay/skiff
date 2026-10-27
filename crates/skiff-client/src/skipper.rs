@@ -1770,6 +1770,7 @@ os.execv(exe, ["skiff", "watch"])
             custom: false,
             installed: true,
             enabled: true,
+            used_by: None,
         };
         let s = spec(&with_model(&agent("codex"), None), "Skipper", PathBuf::from("/tmp"));
         assert_eq!((s.command.as_deref(), s.args.len()), (Some("codex"), 0));

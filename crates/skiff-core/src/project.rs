@@ -260,13 +260,56 @@ pub struct AgentInfo {
     pub installed: bool,
     /// Offered in the + menu. Only an installed agent can be enabled.
     pub enabled: bool,
+    /// What starts this agent, as Settings › Agents shows it: "Used by task
+    /// type review". It cannot be removed while this is set. Absent from an
+    /// older skiffd.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub used_by: Option<String>,
+}
+
+/// What in `cfg` starts agent `id`, in this order: the Skipper, project and
+/// fleet Skippers, a project's own Skipper (`skipper_agent`), a task type.
+pub fn agent_uses(cfg: &crate::config::Config, id: &str) -> Vec<String> {
+    let a = &cfg.skiff_agent;
+    let is = |v: &Option<String>| v.as_deref().map(str::trim) == Some(id);
+    let mut uses = Vec::new();
+    if is(&a.agent) {
+        uses.push(a.name.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or("Skipper").to_string());
+    }
+    if is(&a.project_agent) {
+        uses.push("Project and fleet Skippers".into());
+    }
+    uses.extend(cfg.projects.iter().filter(|p| is(&p.skipper_agent)).map(|p| format!("project {}", p.name)));
+    uses.extend(a.tasks.0.iter().filter(|(_, r)| r.agent.trim() == id).map(|(t, _)| format!("task type {t}")));
+    uses
+}
+
+/// The one line for an agent in use: "Used by task type review", or with
+/// more uses, "Used by Skipper and 2 more". `None`: nothing uses it.
+pub fn used_by(cfg: &crate::config::Config, id: &str) -> Option<String> {
+    let uses = agent_uses(cfg, id);
+    let first = uses.first()?;
+    Some(match uses.len() {
+        1 => format!("Used by {first}"),
+        n => format!("Used by {first} and {} more", n - 1),
+    })
+}
+
+/// Sets [`AgentInfo::used_by`] from this process's config, for a list from
+/// a skiffd that may be older than the config.
+pub fn mark_used(list: &mut [AgentInfo]) {
+    let cfg = crate::config::load().unwrap_or_default();
+    for a in list {
+        a.used_by = used_by(&cfg, &a.id);
+    }
 }
 
 /// Every known agent with its installed and enabled state.
 pub fn agents() -> Vec<AgentInfo> {
     let path = std::env::var_os("PATH").unwrap_or_default();
     let dirs: Vec<PathBuf> = std::env::split_paths(&path).collect();
-    let cfg = crate::config::load().map(|c| c.agents).unwrap_or_default();
+    let full = crate::config::load().unwrap_or_default();
+    let cfg = &full.agents;
     // Known agents first, then the user's own, in the order the file sorts them.
     let custom: Vec<(&str, &str)> = cfg
         .commands
@@ -302,6 +345,7 @@ pub fn agents() -> Vec<AgentInfo> {
                 custom: !KNOWN_AGENTS.iter().any(|&(k, _)| k == id),
                 installed,
                 enabled: installed && on,
+                used_by: used_by(&full, id),
             }
         })
         .collect()

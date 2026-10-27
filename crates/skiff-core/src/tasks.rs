@@ -389,6 +389,7 @@ mod tests {
             custom,
             installed: true,
             enabled: true,
+            used_by: None,
         }
     }
 

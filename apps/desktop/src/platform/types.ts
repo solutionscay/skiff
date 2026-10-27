@@ -143,6 +143,8 @@ export interface AgentInfo {
   custom?: boolean;
   installed: boolean;
   enabled: boolean;
+  /** What starts it: "Used by task type review". It cannot be removed then. Absent: nothing. */
+  used_by?: string | null;
 }
 
 /** `[appearance]` in the daemon config. `font_size` is absent from an older daemon. */

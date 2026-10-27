@@ -83,6 +83,8 @@ export interface RowTableSpec<R> {
   rowClass?: (row: R) => string;
   /** What shows in the end cell before the −, such as the agent's status. */
   status?: (row: R) => HTMLElement;
+  /** Why a row's − is off, as one plain line under the row. Null: it can go. */
+  kept?: (row: R) => string | null;
   /** The draft's preview column, as the person types. */
   preview?: (draft: Draft) => string;
   /** Why the draft cannot add at all, such as no agent being on. */
@@ -198,14 +200,17 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
     const end = h("span", "c-status c-end");
     end.setAttribute("role", "cell");
     if (spec.status) end.appendChild(spec.status(r));
+    const kept = spec.kept?.(r) ?? null;
     if (spec.remove) {
       const rm = iconButton("indicators-minus", "Remove", `Remove ${id}`);
       rm.classList.add("c-remove");
+      rm.disabled = kept !== null;
       rm.addEventListener("click", () => void remove(r, at));
       end.appendChild(rm);
     }
     row.appendChild(end);
     table.appendChild(row);
+    if (kept !== null) table.appendChild(h("div", "set-row-line", kept));
   });
   if (!spec.add) return table;
 
@@ -377,7 +382,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
   async function remove(r: R, at: number) {
     settle(await spec.remove!(r));
     const t = document.querySelector(`[data-row-table="${spec.grid}"]`);
-    const rms = t ? [...t.querySelectorAll<HTMLElement>(".c-remove")] : [];
+    const rms = t ? [...t.querySelectorAll<HTMLButtonElement>(".c-remove:not(:disabled)")] : [];
     const next = rms[Math.min(at, rms.length - 1)];
     if (next) next.focus();
     else focusDraft();
