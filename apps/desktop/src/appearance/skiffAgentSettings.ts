@@ -358,7 +358,7 @@ export function taskTypesSection(
           kind: "lead",
           draw: (t) => {
             const cell = h("span", "c-file");
-            const none = t.instructions === null;
+            const none = t.instructions == null;
             const state = h("span", "c-state" + (none ? " none" : ""));
             state.append(h("span", "sq"), none ? "none" : fileSize(t.instructions!));
             const edit = h("button", "set-rm", "Edit");
