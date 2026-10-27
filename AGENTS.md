@@ -24,6 +24,28 @@ themes. Claude Code and Codex load the same rules as the `skiff-design` skill
 Before you add or change a keyboard shortcut, load the `skiff-keys` skill
 (`.agents/skills/skiff-keys`). It lists where each key lives and what to keep in step.
 
+## Testing
+
+A full test run uses too much CPU and takes too long. Run it only at release time.
+
+- During a task, run only the tests for the code you changed:
+  - the tests of one crate, filtered to the changed module or test file:
+    `cargo test -p CRATE TEST_NAME`;
+  - `npx tsc --noEmit -p apps/desktop`;
+  - the page tests for the changed pages:
+    `cd apps/desktop && node --experimental-strip-types --test tests/NAME.test.ts`.
+- Do not run `cargo test --workspace` during a task.
+- Run the full suite only when the operator asks for a release. Run it one time, on the
+  release commit: `cargo test --workspace` on v2, all page tests (`pnpm test` in
+  `apps/desktop`) and the host-boundary check.
+- Set `CARGO_BUILD_JOBS=8` for every cargo command.
+- Use one worktree target for each task. Do not build a second target for v2 unless the
+  change touches code that is only on v2.
+- Do not add tests by default. Add one test only when it guards the exact bug or rule of
+  the task.
+- The host-boundary check (`python3 scripts/host-boundary/check.py`) runs on v2 merges, as
+  before. It is fast.
+
 ## Development
 
 See the README's [Development](README.md#development) section for build and run

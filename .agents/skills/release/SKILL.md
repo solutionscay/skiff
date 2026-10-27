@@ -26,6 +26,9 @@ A `v*` tag triggers `.github/workflows/release.yml`. CI builds the Linux package
    the tag, tell the operator: users with live sessions must restart skiffd.
 5. Refresh the lockfile: `cargo update --workspace --offline`.
 6. Commit: `git commit -am "release: prepare vX.Y.Z"`.
+   Run the full suite one time, on this commit, with `CARGO_BUILD_JOBS=8`:
+   `cargo test --workspace`, all page tests (`cd apps/desktop && pnpm test`) and, on v2,
+   `python3 scripts/host-boundary/check.py`. If a test fails, stop and report it.
 7. Tag and push: `git tag vX.Y.Z && git push origin main vX.Y.Z`.
 8. Wait for the run: `gh run watch` (about 10 minutes).
 9. Check the assets: `gh release view vX.Y.Z --json isDraft,assets`.
