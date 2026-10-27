@@ -148,13 +148,7 @@ pub fn projects(json: bool) -> Result<()> {
     let rows: Vec<Vec<String>> = list
         .iter()
         .map(|p| {
-            let state = if p.closed {
-                "closed".to_string()
-            } else if let Some(e) = &p.error {
-                format!("error: {e}")
-            } else {
-                format!("{} worktrees", p.worktrees.len())
-            };
+            let state = project_state(p);
             let kind = match p.kind {
                 ProjectKind::Git => "git",
                 ProjectKind::Folder => "folder",
@@ -166,11 +160,37 @@ pub fn projects(json: bool) -> Result<()> {
     Ok(())
 }
 
+/// The STATE cell. A plain folder has no worktrees to count: `-`.
+fn project_state(p: &skiff_core::project::Project) -> String {
+    if p.closed {
+        "closed".to_string()
+    } else if let Some(e) = &p.error {
+        format!("error: {e}")
+    } else if p.kind == ProjectKind::Folder {
+        "-".to_string()
+    } else {
+        format!("{} worktrees", p.worktrees.len())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{os::unix::fs::PermissionsExt, path::PathBuf};
 
-    use super::path_warning;
+    use super::{path_warning, project_state};
+
+    #[test]
+    fn a_plain_folder_counts_no_worktrees() {
+        let project = |kind: &str| -> skiff_core::project::Project {
+            serde_json::from_value(serde_json::json!({
+                "name": "docs", "short": "doc", "path": "/docs", "color": null, "agents": [], "error": null, "kind": kind,
+                "worktrees": [{ "path": "/docs", "branch": null, "head": "", "is_main": true, "locked": false, "prunable": false }],
+            }))
+            .unwrap()
+        };
+        assert_eq!(project_state(&project("folder")), "-");
+        assert_eq!(project_state(&project("git")), "1 worktrees");
+    }
 
     fn bin(dir: &PathBuf) -> PathBuf {
         std::fs::create_dir_all(dir).unwrap();
