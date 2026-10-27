@@ -48,9 +48,7 @@ export interface TaskType {
   agent: string;
   /** Null: the agent's default. Always null for an agent that takes its model in its command. */
   model: string | null;
-  /** The instruction file as the row has it, a full path or `~/…`. Null: none. */
-  instructions: string | null;
-  /** The command line skiffd builds. Null when the agent is gone or cannot take the file. */
+  /** The command line skiffd builds. Null when the agent is gone. */
   command: string | null;
   /** Why the row does not start what it says. */
   error: string | null;

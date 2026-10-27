@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::{config::TaskTypes, project::AgentInfo, shell::shell_quote};
+use crate::{config::TaskTypes, project::AgentInfo, shell::{quote_word, shell_quote}};
 
 /// Where a person sets the table, for error messages.
 pub const SETTINGS: &str = "Settings › Skiff agent › Task types";
@@ -48,78 +48,180 @@ pub fn check_model(model: Option<&str>) -> Result<Option<&str>> {
     Ok(Some(m))
 }
 
-/// How a known agent takes an instruction file at start, from its CLI docs
-/// (2026-10-22). Each one adds to the agent's own prompt, so the project's
-/// `AGENTS.md` / `CLAUDE.md` still applies. Keep in step with
-/// `INSTRUCTION_FLAGS` in apps/desktop/src/appearance/taskTypes.ts.
+/// The folder of the instruction files, in the agent's folder.
+pub const TYPES: &str = "types";
+
+/// A type's instruction file: `types/<type>.md` in the agent's folder `dir`.
+/// Skiff names the file. The person writes it.
+pub fn file(dir: &Path, name: &str) -> PathBuf {
+    dir.join(TYPES).join(format!("{name}.md"))
+}
+
+/// What Edit writes when the file is missing. The stub alone counts as none.
+pub fn stub(name: &str) -> String {
+    format!("# {name}\n")
+}
+
+/// The file's text when it has instructions: not missing, not empty, not
+/// the stub alone.
+pub fn text(dir: &Path, name: &str) -> Option<String> {
+    let bytes = std::fs::read(file(dir, name)).ok()?;
+    let text = String::from_utf8_lossy(&bytes).into_owned();
+    let t = text.trim();
+    (!t.is_empty() && t != stub(name).trim()).then_some(text)
+}
+
+/// Makes the file with its stub when it is missing, for Edit. Keeps a file
+/// that is there. Returns the file.
+pub fn edit_file(dir: &Path, name: &str) -> Result<PathBuf> {
+    let name = check_name(name)?;
+    let f = file(dir, name);
+    let types = dir.join(TYPES);
+    std::fs::create_dir_all(&types).with_context(|| format!("make {}", types.display()))?;
+    match std::fs::OpenOptions::new().write(true).create_new(true).open(&f) {
+        Ok(mut out) => std::io::Write::write_all(&mut out, stub(name).as_bytes()).with_context(|| format!("write {}", f.display()))?,
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e).with_context(|| format!("make {}", f.display())),
+    }
+    Ok(f)
+}
+
+/// Moves `from`'s file to `to`'s name, before the row's rename. A stub gets
+/// the new name in its line. No file: nothing to move. A file that `to`
+/// has already (a removed type kept it) is refused, and nothing moves.
+pub fn rename_file(dir: &Path, from: &str, to: &str) -> Result<()> {
+    let to = check_name(to)?;
+    let (src, dst) = (file(dir, from), file(dir, to));
+    if from == to || !src.exists() {
+        return Ok(());
+    }
+    if dst.exists() {
+        bail!("{TYPES}/{to}.md exists. Move it out of {}, or pick another name.", dir.join(TYPES).display());
+    }
+    let stubbed = std::fs::read_to_string(&src).is_ok_and(|t| t.trim() == stub(from).trim());
+    if stubbed {
+        std::fs::write(&dst, stub(to)).with_context(|| format!("write {}", dst.display()))?;
+        std::fs::remove_file(&src).with_context(|| format!("remove {}", src.display()))
+    } else {
+        std::fs::rename(&src, &dst).with_context(|| format!("move {} to {}", src.display(), dst.display()))
+    }
+}
+
+/// How a known agent takes the file at start, from its docs, help and source
+/// (research 499fa18a, 2026-10-26). Each one adds to the agent's own prompt
+/// and keeps the project's `AGENTS.md` / `CLAUDE.md` and the agent's own
+/// config. Keep in step with `INSTRUCTION_FLAGS` in
+/// apps/desktop/src/appearance/taskTypes.ts.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Delivery {
-    /// The flag takes the file's path: claude `--append-system-prompt-file`.
-    File(&'static str),
-    /// codex `-c developer_instructions=<text>`: the config key takes text,
-    /// not a path, so Skiff reads the file when the session starts.
-    CodexDeveloperInstructions,
+    /// claude `--append-system-prompt-file <path>`.
+    Claude,
+    /// codex `-c developer_instructions=<text>`: a TOML string, not a path.
+    Codex,
+    /// grok `--rules <text>`.
+    Grok,
+    /// opencode `OPENCODE_CONFIG_CONTENT={"instructions":[<path>]}`. opencode
+    /// joins the list with the `instructions` of its global config.
+    Opencode,
+    /// kimi `--agent-file <wrapper>`: Skiff writes the wrapper in the agent
+    /// folder's cache. `${base_prompt}` keeps kimi's own prompt.
+    Kimi,
 }
 
-/// The way `agent` takes an instruction file. An agent with none refuses:
-/// Skiff does not send the file as a message or write it anywhere.
+/// The way `agent` takes the file. gemini (`agy`) has none. hermes takes
+/// its variable in place of the person's own system prompt, so it gets
+/// none. Skiff does not know a custom agent's command.
 pub fn delivery(agent: &AgentInfo) -> Result<Delivery> {
-    if agent.custom {
-        bail!("{} is a custom agent. Skiff does not know how it takes an instruction file. Put the flag in its command in Settings › Agents.", agent.id);
-    }
-    match agent.id.as_str() {
-        "claude" => Ok(Delivery::File("--append-system-prompt-file")),
-        "codex" => Ok(Delivery::CodexDeveloperInstructions),
-        id => bail!("{id} has no flag Skiff knows for an instruction file. Use claude or codex for this type, or take the file out."),
-    }
+    let d = match agent.id.as_str() {
+        _ if agent.custom => None,
+        "claude" => Some(Delivery::Claude),
+        "codex" => Some(Delivery::Codex),
+        "grok" => Some(Delivery::Grok),
+        "opencode" => Some(Delivery::Opencode),
+        "kimi" => Some(Delivery::Kimi),
+        _ => None,
+    };
+    d.ok_or_else(|| anyhow::anyhow!("{} cannot take an instruction file. Empty the file or change the agent.", agent.id))
 }
 
-/// The largest file codex gets on its command line. argv has a limit.
-pub const MAX_INLINE: u64 = 64 * 1024;
+/// The largest file codex and grok get on their command line. argv has a limit.
+pub const MAX_INLINE: usize = 64 * 1024;
 
-/// An instruction file as the row has it: one line, a full path or `~/…`.
-/// Empty is `None`. The file need not be there yet.
-pub fn check_instructions(path: Option<&str>) -> Result<Option<&str>> {
-    let Some(p) = path.map(str::trim).filter(|p| !p.is_empty()) else { return Ok(None) };
-    if p.contains(['\n', '\r']) || !(p.starts_with('/') || p.starts_with("~/")) {
-        bail!("Name the instruction file with a full path or ~/, as in ~/.skiff/types/review.md.");
-    }
-    Ok(Some(p))
+/// The kimi wrapper of a type's file, in the agent folder's cache.
+pub fn kimi_wrapper(dir: &Path, name: &str) -> PathBuf {
+    dir.join("cache").join(TYPES).join(format!("{name}.md"))
 }
 
-/// The row's file as a full path, with `~` expanded. It must be a file.
-pub fn instructions_path(path: &str) -> Result<PathBuf> {
-    let Some(p) = check_instructions(Some(path))? else { bail!("No instruction file.") };
-    let full = crate::config::expand_home(Path::new(p));
-    if !full.is_file() {
-        bail!("The instruction file {p} is not there. Make it, or change the path in {SETTINGS}.");
-    }
-    Ok(full)
+/// The kimi agent file: frontmatter, kimi's own prompt, then the text.
+fn kimi_agent(name: &str, text: &str) -> String {
+    // kimi takes a name of lowercase words joined by single dashes.
+    let slug: Vec<&str> = name.split('-').filter(|w| !w.is_empty()).collect();
+    format!("---\nname: {}\ndescription: Skiff task type {name}\n---\n${{base_prompt}}\n\n{text}", slug.join("-"))
 }
 
-/// The words that give `agent` the file at `path` (a full path).
-pub fn instruction_args(agent: &AgentInfo, path: &Path) -> Result<Vec<String>> {
-    match delivery(agent)? {
-        Delivery::File(flag) => Ok(vec![flag.to_string(), path.display().to_string()]),
-        Delivery::CodexDeveloperInstructions => {
-            let size = std::fs::metadata(path).with_context(|| format!("reading {}", path.display()))?.len();
-            if size > MAX_INLINE {
-                bail!("The instruction file {} has {size} bytes. codex takes it on its command line, so keep it under {MAX_INLINE}.", path.display());
-            }
-            let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-            // codex reads the value as TOML: a quoted string stays text, whatever the file holds.
-            Ok(vec!["-c".to_string(), format!("developer_instructions={}", toml::Value::String(text))])
+/// What a start adds for the file: argv words after the model, and variables.
+#[derive(Debug, Default, PartialEq)]
+pub struct Added {
+    pub words: Vec<String>,
+    pub env: Vec<(String, String)>,
+}
+
+/// The words and variables that give `agent` the text of `name`'s file. kimi
+/// gets its wrapper written first.
+pub fn instruction_args(agent: &AgentInfo, dir: &Path, name: &str, text: &str) -> Result<Added> {
+    let path = file(dir, name).display().to_string();
+    let inline = |agent: &str| {
+        if text.len() > MAX_INLINE {
+            bail!("The instruction file {path} has {} bytes. {agent} takes it on its command line, so keep it under {MAX_INLINE}.", text.len());
         }
+        Ok(())
+    };
+    let words = |w: &[&str]| w.iter().map(|w| w.to_string()).collect();
+    Ok(match delivery(agent)? {
+        Delivery::Claude => Added { words: words(&["--append-system-prompt-file", &path]), env: vec![] },
+        Delivery::Codex => {
+            inline("codex")?;
+            // codex reads the value as TOML: a quoted string stays text, whatever the file holds.
+            Added { words: vec!["-c".into(), format!("developer_instructions={}", toml::Value::String(text.into()))], env: vec![] }
+        }
+        Delivery::Grok => {
+            inline("grok")?;
+            Added { words: words(&["--rules", text]), env: vec![] }
+        }
+        Delivery::Opencode => {
+            let config = serde_json::json!({ "instructions": [path] }).to_string();
+            Added { words: vec![], env: vec![("OPENCODE_CONFIG_CONTENT".into(), config)] }
+        }
+        Delivery::Kimi => {
+            let wrapper = kimi_wrapper(dir, name);
+            if let Some(d) = wrapper.parent() {
+                std::fs::create_dir_all(d).with_context(|| format!("make {}", d.display()))?;
+            }
+            std::fs::write(&wrapper, kimi_agent(name, text)).with_context(|| format!("write {}", wrapper.display()))?;
+            Added { words: words(&["--agent-file", &wrapper.display().to_string()]), env: vec![] }
+        }
+    })
+}
+
+/// `~/…` for a path under the home folder, for the preview.
+fn tilde(p: &Path) -> String {
+    match dirs::home_dir().and_then(|h| p.strip_prefix(h).ok().map(Path::to_path_buf)) {
+        Some(rest) => format!("~/{}", rest.display()),
+        None => p.display().to_string(),
     }
 }
 
-/// The instruction words as Settings and `skiff agents` show them: the path
-/// as typed, and for codex a stand-in for the text it reads at start.
-pub fn instruction_preview(agent: &AgentInfo, path: &str) -> Result<String> {
-    let quote = |s: &str| if s.chars().all(|c| c.is_ascii_alphanumeric() || "/~._-+".contains(c)) { s.to_string() } else { shell_quote(s) };
+/// The file's part of the command line as Settings and `skiff agents` show
+/// it: the flag and the file, never the text. `<file>` stands for what Skiff
+/// builds from the file at start. The variable goes in front of the command.
+pub fn instruction_preview(agent: &AgentInfo, dir: &Path, name: &str) -> Result<(Option<String>, String)> {
+    let f = tilde(&file(dir, name));
     Ok(match delivery(agent)? {
-        Delivery::File(flag) => format!("{flag} {}", quote(path)),
-        Delivery::CodexDeveloperInstructions => format!("-c developer_instructions=<text of {path}>"),
+        Delivery::Claude => (None, format!("--append-system-prompt-file {}", quote_word(&f))),
+        Delivery::Codex => (None, format!("-c developer_instructions=<{f}>")),
+        Delivery::Grok => (None, format!("--rules <{f}>")),
+        Delivery::Opencode => (Some(format!("OPENCODE_CONFIG_CONTENT={}", shell_quote(&serde_json::json!({ "instructions": [f] }).to_string()))), String::new()),
+        Delivery::Kimi => (None, format!("--agent-file <{f}>")),
     })
 }
 
@@ -177,21 +279,33 @@ pub struct TaskType {
     /// `None`: the agent's default. Always `None` for an agent that takes its
     /// model in its command.
     pub model: Option<String>,
-    /// The instruction file as the row has it. `None`: none.
-    pub instructions: Option<String>,
+    /// The type's instruction file, there or not: `types/<type>.md` in the
+    /// agent's folder.
+    pub file: PathBuf,
+    /// The file's size in bytes when it has instructions. `None`: none.
+    pub instructions: Option<u64>,
     /// The command line the type starts. `None` when the agent is gone, or
-    /// when it cannot take the instruction file or the file is not there.
+    /// when it cannot take the file.
     pub command: Option<String>,
     /// Why the row does not start what it says.
     pub error: Option<String>,
 }
 
-/// Every row with its built command, in file order.
-pub fn resolve(rows: &TaskTypes, agents: &[AgentInfo]) -> Vec<TaskType> {
+/// Every row with its built command, in file order. `dir` is the agent's folder.
+pub fn resolve(rows: &TaskTypes, agents: &[AgentInfo], dir: &Path) -> Vec<TaskType> {
     rows.0
         .iter()
         .map(|(name, row)| {
-            let mut t = TaskType { name: name.clone(), agent: row.agent.clone(), model: None, instructions: row.instructions.clone(), command: None, error: None };
+            let text = text(dir, name);
+            let mut t = TaskType {
+                name: name.clone(),
+                agent: row.agent.clone(),
+                model: None,
+                file: file(dir, name),
+                instructions: text.as_ref().map(|t| t.len() as u64),
+                command: None,
+                error: None,
+            };
             let Some(a) = agents.iter().find(|a| a.id == row.agent) else {
                 t.error = Some(format!("There is no agent {}. Pick another agent in {SETTINGS}.", row.agent));
                 return t;
@@ -207,10 +321,10 @@ pub fn resolve(rows: &TaskTypes, agents: &[AgentInfo]) -> Vec<TaskType> {
                 }
             }
             t.command = command(a, t.model.as_deref()).ok();
-            // A file the agent cannot take, or that is not there, starts nothing: the row says why.
-            if let Some(p) = &t.instructions {
-                match instruction_preview(a, p).and_then(|w| instructions_path(p).map(|_| w)) {
-                    Ok(w) => t.command = t.command.map(|c| format!("{c} {w}")),
+            // A file the agent cannot take starts nothing: the row says why. No file: the plain command.
+            if t.instructions.is_some() {
+                match instruction_preview(a, dir, name) {
+                    Ok((env, words)) => t.command = t.command.map(|c| [env.unwrap_or_default(), c, words].into_iter().filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ")),
                     Err(e) => {
                         t.command = None;
                         t.error = Some(e.to_string());
@@ -222,11 +336,22 @@ pub fn resolve(rows: &TaskTypes, agents: &[AgentInfo]) -> Vec<TaskType> {
         .collect()
 }
 
-/// What `skiff new --type` starts: the row's agent and the words of its
-/// command line, the instruction file's last. A `model` replaces the row's
-/// model for this session. A file the agent cannot take, or that is not
-/// there, starts nothing.
-pub fn start<'a>(rows: &TaskTypes, agents: &'a [AgentInfo], name: &str, model: Option<&str>) -> Result<(&'a AgentInfo, Vec<String>)> {
+/// What `skiff new --type` starts.
+#[derive(Debug)]
+pub struct Start<'a> {
+    pub agent: &'a AgentInfo,
+    /// The command line as argv words: the command split on spaces, the
+    /// model, then the file's words, each one word whatever it holds.
+    pub words: Vec<String>,
+    /// Variables for the program, as opencode's file.
+    pub env: Vec<(String, String)>,
+}
+
+/// What `skiff new --type` starts: the row's agent, its command line and
+/// its instruction file. A `model` replaces the row's model for this
+/// session. A file the agent cannot take starts nothing. `dir` is the
+/// agent's folder.
+pub fn start<'a>(rows: &TaskTypes, agents: &'a [AgentInfo], name: &str, model: Option<&str>, dir: &Path) -> Result<Start<'a>> {
     let Some(row) = rows.get(name) else {
         let known: Vec<&str> = rows.0.iter().map(|(k, _)| k.as_str()).collect();
         let list = if known.is_empty() { "There are none.".to_string() } else { format!("Known: {}.", known.join(", ")) };
@@ -242,13 +367,14 @@ pub fn start<'a>(rows: &TaskTypes, agents: &'a [AgentInfo], name: &str, model: O
         None if takes_model => check_model(row.model.as_deref())?,
         None => None,
     };
-    // The command splits on spaces, as before. The file's words do not: a path may have spaces.
     let mut words: Vec<String> = command(a, model)?.split_whitespace().map(String::from).collect();
-    if let Some(p) = &row.instructions {
-        let args = delivery(a).and_then(|_| instructions_path(p)).and_then(|full| instruction_args(a, &full));
-        words.extend(args.map_err(|e| anyhow::anyhow!("Task type {name}: {e}"))?);
+    let mut env = Vec::new();
+    if let Some(text) = text(dir, name) {
+        let added = instruction_args(a, dir, name, &text).map_err(|e| anyhow::anyhow!("Task type {name}: {e}"))?;
+        words.extend(added.words);
+        env = added.env;
     }
-    Ok((a, words))
+    Ok(Start { agent: a, words, env })
 }
 
 #[cfg(test)]
@@ -268,96 +394,149 @@ mod tests {
     }
 
     fn rows(list: &[(&str, &str, Option<&str>)]) -> TaskTypes {
-        TaskTypes(list.iter().map(|(k, a, m)| (k.to_string(), TaskRow { agent: a.to_string(), model: m.map(str::to_string), instructions: None })).collect())
+        TaskTypes(list.iter().map(|(k, a, m)| (k.to_string(), TaskRow { agent: a.to_string(), model: m.map(str::to_string) })).collect())
     }
 
-    /// A folder with `review.md` in it, and its path. The name may have a space.
-    fn file(tag: &str, text: &str) -> (PathBuf, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("skiff-type-file {tag}-{}", std::process::id()));
+    /// An agent folder of its own, with a space in its name.
+    fn folder(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("skiff-types {tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let f = dir.join("review.md");
-        std::fs::write(&f, text).unwrap();
-        (dir, f)
+        dir
     }
 
-    fn with_file(mut r: TaskTypes, name: &str, path: &str) -> TaskTypes {
-        r.0.iter_mut().find(|(k, _)| k == name).unwrap().1.instructions = Some(path.into());
-        r
-    }
-
-    #[test]
-    fn instruction_files_are_full_paths() {
-        assert_eq!(check_instructions(None).unwrap(), None);
-        assert_eq!(check_instructions(Some("  ")).unwrap(), None);
-        assert_eq!(check_instructions(Some(" ~/.skiff/types/review.md ")).unwrap(), Some("~/.skiff/types/review.md"));
-        assert_eq!(check_instructions(Some("/etc/x.md")).unwrap(), Some("/etc/x.md"));
-        for bad in ["review.md", "./review.md", "~review.md", "/a\nb"] {
-            assert!(check_instructions(Some(bad)).is_err(), "{bad:?}");
-        }
-        assert!(instructions_path("/no/such/skiff/file.md").unwrap_err().to_string().contains("is not there"));
+    fn write(dir: &Path, name: &str, text: &str) {
+        std::fs::create_dir_all(dir.join(TYPES)).unwrap();
+        std::fs::write(file(dir, name), text).unwrap();
     }
 
     #[test]
-    fn each_agent_takes_the_file_its_own_way() {
-        let (dir, f) = file("args", "Review only. Say \"done\".\nkey = 1\n");
-        let claude = agent("claude", "claude", false);
-        assert_eq!(instruction_args(&claude, &f).unwrap(), ["--append-system-prompt-file".to_string(), f.display().to_string()]);
-        // codex: the text, quoted as a TOML string, so a line like `key = 1` stays text.
-        let codex = instruction_args(&agent("codex", "codex", false), &f).unwrap();
-        assert_eq!(codex[0], "-c");
-        let value = codex[1].strip_prefix("developer_instructions=").unwrap();
-        let parsed: toml::Value = toml::from_str(&format!("v = {value}")).unwrap();
-        assert_eq!(parsed["v"].as_str(), Some("Review only. Say \"done\".\nkey = 1\n"));
-        // No known way: a refusal, never a write or a message.
-        for a in [agent("grok", "grok", false), agent("gemini", "agy", false), agent("opencode", "opencode", false), agent("claude", "claude", true)] {
-            assert!(instruction_args(&a, &f).is_err(), "{}", a.id);
-        }
-        assert_eq!(instruction_preview(&claude, "~/types/my review.md").unwrap(), "--append-system-prompt-file '~/types/my review.md'");
-        assert_eq!(instruction_preview(&agent("codex", "codex", false), "~/r.md").unwrap(), "-c developer_instructions=<text of ~/r.md>");
+    fn a_missing_empty_or_stub_file_is_none() {
+        let dir = folder("none");
+        assert_eq!(text(&dir, "review"), None);
+        // Edit writes the stub, and it alone is none.
+        let f = edit_file(&dir, "review").unwrap();
+        assert_eq!(f, dir.join("types/review.md"));
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "# review\n");
+        assert_eq!(text(&dir, "review"), None);
+        write(&dir, "review", "  \n");
+        assert_eq!(text(&dir, "review"), None);
+        // A line below the stub counts. Edit keeps a file that is there.
+        write(&dir, "review", "# review\nReview only.\n");
+        assert_eq!(text(&dir, "review").as_deref(), Some("# review\nReview only.\n"));
+        edit_file(&dir, "review").unwrap();
+        assert!(text(&dir, "review").is_some());
+        assert!(edit_file(&dir, "../x").is_err());
         std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
-    fn codex_refuses_a_file_too_long_for_its_command_line() {
-        let (dir, f) = file("long", &"x".repeat(MAX_INLINE as usize + 1));
-        assert!(instruction_args(&agent("codex", "codex", false), &f).unwrap_err().to_string().contains("keep it under"));
-        // claude reads the file itself.
-        assert!(instruction_args(&agent("claude", "claude", false), &f).is_ok());
+    fn a_rename_moves_the_file_and_its_stub() {
+        let dir = folder("rename");
+        rename_file(&dir, "none", "other").unwrap();
+        write(&dir, "review", "Review only.");
+        rename_file(&dir, "review", "code-review").unwrap();
+        assert!(!file(&dir, "review").exists());
+        assert_eq!(std::fs::read_to_string(file(&dir, "code-review")).unwrap(), "Review only.");
+        edit_file(&dir, "spec").unwrap();
+        rename_file(&dir, "spec", "design").unwrap();
+        assert_eq!(std::fs::read_to_string(file(&dir, "design")).unwrap(), "# design\n");
+        // A file kept from a removed type is not overwritten.
+        let e = rename_file(&dir, "design", "code-review").unwrap_err().to_string();
+        assert!(e.contains("types/code-review.md exists"), "{e}");
+        assert!(file(&dir, "design").exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn each_agent_takes_the_file_its_own_way() {
+        let dir = folder("args");
+        let text = "Review only. Say \"done\".\nkey = 1\n";
+        let path = file(&dir, "review").display().to_string();
+        let args = |id: &str| instruction_args(&agent(id, id, false), &dir, "review", text);
+        assert_eq!(args("claude").unwrap(), Added { words: vec!["--append-system-prompt-file".into(), path.clone()], env: vec![] });
+        // codex: the text, quoted as a TOML string, so a line like `key = 1` stays text.
+        let codex = args("codex").unwrap().words;
+        assert_eq!(codex[0], "-c");
+        let value = codex[1].strip_prefix("developer_instructions=").unwrap();
+        let parsed: toml::Value = toml::from_str(&format!("v = {value}")).unwrap();
+        assert_eq!(parsed["v"].as_str(), Some(text));
+        assert_eq!(args("grok").unwrap().words, ["--rules", text]);
+        // opencode: the full path in its inline config, in the variable.
+        let open = args("opencode").unwrap();
+        assert!(open.words.is_empty());
+        assert_eq!(open.env, [("OPENCODE_CONFIG_CONTENT".to_string(), serde_json::json!({ "instructions": [path] }).to_string())]);
+        // kimi: a wrapper in the cache that keeps kimi's own prompt.
+        let kimi = args("kimi").unwrap().words;
+        let wrapper = kimi_wrapper(&dir, "review");
+        assert_eq!(kimi, ["--agent-file".to_string(), wrapper.display().to_string()]);
+        assert_eq!(std::fs::read_to_string(&wrapper).unwrap(), format!("---\nname: review\ndescription: Skiff task type review\n---\n${{base_prompt}}\n\n{text}"));
+        // No way: the row's error, never a write or a message.
+        for a in [agent("gemini", "agy", false), agent("hermes", "hermes", false), agent("claude", "claude", true)] {
+            let e = instruction_args(&a, &dir, "review", text).unwrap_err().to_string();
+            assert_eq!(e, format!("{} cannot take an instruction file. Empty the file or change the agent.", a.id));
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn codex_and_grok_refuse_a_file_too_long_for_the_command_line() {
+        let dir = folder("long");
+        let long = "x".repeat(MAX_INLINE + 1);
+        for id in ["codex", "grok"] {
+            assert!(instruction_args(&agent(id, id, false), &dir, "review", &long).unwrap_err().to_string().contains("keep it under"), "{id}");
+        }
+        // claude and opencode read the file themselves.
+        assert!(instruction_args(&agent("claude", "claude", false), &dir, "review", &long).is_ok());
+        assert!(instruction_args(&agent("opencode", "opencode", false), &dir, "review", &long).is_ok());
         std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn start_adds_the_file_after_the_model() {
-        let (dir, f) = file("start", "Review only.");
-        let p = f.display().to_string();
-        let agents = [agent("claude", "claude --dangerously-skip-permissions", false), agent("codex", "codex", false), agent("grok", "grok", false)];
-        let r = rows(&[("review", "claude", Some("opus")), ("impl", "codex", None), ("fast", "grok", None), ("gone", "claude", None)]);
-        let r = with_file(with_file(with_file(with_file(r, "review", &p), "impl", &p), "fast", &p), "gone", "/no/such/skiff/file.md");
+        let dir = folder("start");
+        let path = file(&dir, "review").display().to_string();
+        let agents = [agent("claude", "claude --dangerously-skip-permissions", false), agent("codex", "codex", false), agent("gemini", "agy", false), agent("opencode", "opencode", false)];
+        let r = rows(&[("review", "claude", Some("opus")), ("impl", "codex", None), ("fast", "gemini", None), ("plain", "gemini", None), ("ui", "opencode", None)]);
+        for name in ["review", "impl", "fast", "ui"] {
+            write(&dir, name, "Review only.");
+        }
+        let s = start(&r, &agents, "review", None, &dir).unwrap();
         // The path is one word, spaces and all.
-        assert_eq!(start(&r, &agents, "review", None).unwrap().1, ["claude", "--dangerously-skip-permissions", "--model", "opus", "--append-system-prompt-file", p.as_str()]);
-        assert_eq!(start(&r, &agents, "review", Some("sonnet")).unwrap().1[3], "sonnet");
-        assert_eq!(start(&r, &agents, "impl", None).unwrap().1, ["codex", "-c", "developer_instructions=\"Review only.\""]);
-        let e = start(&r, &agents, "fast", None).unwrap_err().to_string();
-        assert!(e.starts_with("Task type fast: grok has no flag"), "{e}");
-        let e = start(&r, &agents, "gone", None).unwrap_err().to_string();
-        assert!(e.contains("is not there") && e.contains(SETTINGS), "{e}");
+        assert_eq!(s.words, ["claude", "--dangerously-skip-permissions", "--model", "opus", "--append-system-prompt-file", path.as_str()]);
+        assert!(s.env.is_empty());
+        assert_eq!(start(&r, &agents, "review", Some("sonnet"), &dir).unwrap().words[3], "sonnet");
+        assert_eq!(start(&r, &agents, "impl", None, &dir).unwrap().words, ["codex", "-c", "developer_instructions=\"Review only.\""]);
+        let ui = start(&r, &agents, "ui", None, &dir).unwrap();
+        assert_eq!((ui.words.as_slice(), ui.env[0].0.as_str()), (["opencode".to_string()].as_slice(), "OPENCODE_CONFIG_CONTENT"));
+        let e = start(&r, &agents, "fast", None, &dir).unwrap_err().to_string();
+        assert_eq!(e, "Task type fast: gemini cannot take an instruction file. Empty the file or change the agent.");
+        // No file: the plain command, for any agent.
+        assert_eq!(start(&r, &agents, "plain", None, &dir).unwrap().words, ["agy"]);
         std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
-    fn resolve_shows_the_file_in_the_command_or_why_not() {
-        let (dir, f) = file("resolve", "Review only.");
-        let p = f.display().to_string();
-        let agents = [agent("claude", "claude", false), agent("aider", "aider", true)];
-        let r = rows(&[("review", "claude", Some("opus")), ("docs", "aider", None), ("gone", "claude", None)]);
-        let r = with_file(with_file(with_file(r, "review", &p), "docs", &p), "gone", "/no/such/skiff/file.md");
-        let t = resolve(&r, &agents);
-        assert_eq!(t[0].instructions.as_deref(), Some(p.as_str()));
-        assert_eq!(t[0].command.as_deref(), Some(format!("claude --model opus --append-system-prompt-file '{p}'").as_str()));
+    fn resolve_shows_the_flag_and_the_file_or_why_not() {
+        let dir = folder("resolve");
+        let agents = [agent("claude", "claude", false), agent("aider", "aider", true), agent("opencode", "opencode", false), agent("codex", "codex", false)];
+        let r = rows(&[("review", "claude", Some("opus")), ("docs", "aider", None), ("ui", "opencode", None), ("impl", "codex", None), ("none", "aider", None)]);
+        for name in ["review", "docs", "ui", "impl"] {
+            write(&dir, name, "Review only.");
+        }
+        edit_file(&dir, "none").unwrap();
+        let t = resolve(&r, &agents, &dir);
+        let f = |name: &str| tilde(&file(&dir, name));
+        assert_eq!((t[0].instructions, t[0].file.clone()), (Some(12), file(&dir, "review")));
+        assert_eq!(t[0].command.as_deref(), Some(format!("claude --model opus --append-system-prompt-file '{}'", f("review")).as_str()));
         assert!(t[0].error.is_none());
-        assert!(t[1].command.is_none() && t[1].error.as_deref().unwrap().contains("custom agent"), "{:?}", t[1]);
-        assert!(t[2].command.is_none() && t[2].error.as_deref().unwrap().contains("is not there"));
+        assert!(t[1].command.is_none());
+        assert_eq!(t[1].error.as_deref(), Some("aider cannot take an instruction file. Empty the file or change the agent."));
+        assert_eq!(t[2].command.as_deref(), Some(format!("OPENCODE_CONFIG_CONTENT='{{\"instructions\":[\"{}\"]}}' opencode", f("ui")).as_str()));
+        // The preview shows the file, never its text.
+        assert_eq!(t[3].command.as_deref(), Some(format!("codex -c developer_instructions=<{}>", f("impl")).as_str()));
+        // The stub alone: none, and the plain command, even for a custom agent.
+        assert_eq!((t[4].instructions, t[4].command.as_deref(), t[4].error.as_deref()), (None, Some("aider"), None));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -407,7 +586,7 @@ mod tests {
     #[test]
     fn resolves_each_row_in_order() {
         let agents = [agent("claude", "claude", false), agent("aider", "aider --model sonnet", true)];
-        let t = resolve(&rows(&[("spec", "claude", Some("opus")), ("docs", "aider", Some("x")), ("test", "claude", None), ("old", "gone", None)]), &agents);
+        let t = resolve(&rows(&[("spec", "claude", Some("opus")), ("docs", "aider", Some("x")), ("test", "claude", None), ("old", "gone", None)]), &agents, Path::new("/no/such/skiff-agent"));
         assert_eq!(t.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), ["spec", "docs", "test", "old"]);
         assert_eq!(t[0].command.as_deref(), Some("claude --model opus"));
         assert_eq!((t[1].model.as_deref(), t[1].command.as_deref()), (None, Some("aider --model sonnet")));
@@ -420,12 +599,13 @@ mod tests {
     fn start_takes_the_row_and_a_named_model_wins() {
         let agents = [agent("claude", "claude", false), agent("aider", "aider", true)];
         let r = rows(&[("review", "claude", Some("opus")), ("plain", "claude", None), ("docs", "aider", Some("x"))]);
-        assert_eq!(start(&r, &agents, "review", None).unwrap().1.join(" "), "claude --model opus");
-        assert_eq!(start(&r, &agents, "review", Some("sonnet")).unwrap().1.join(" "), "claude --model sonnet");
-        assert_eq!(start(&r, &agents, "plain", None).unwrap().1.join(" "), "claude");
-        assert_eq!(start(&r, &agents, "docs", None).unwrap().1.join(" "), "aider");
-        assert!(start(&r, &agents, "docs", Some("y")).is_err());
-        let e = start(&r, &agents, "nope", None).unwrap_err().to_string();
+        let nowhere = Path::new("/no/such/skiff-agent");
+        assert_eq!(start(&r, &agents, "review", None, nowhere).unwrap().words.join(" "), "claude --model opus");
+        assert_eq!(start(&r, &agents, "review", Some("sonnet"), nowhere).unwrap().words.join(" "), "claude --model sonnet");
+        assert_eq!(start(&r, &agents, "plain", None, nowhere).unwrap().words.join(" "), "claude");
+        assert_eq!(start(&r, &agents, "docs", None, nowhere).unwrap().words.join(" "), "aider");
+        assert!(start(&r, &agents, "docs", Some("y"), nowhere).is_err());
+        let e = start(&r, &agents, "nope", None, nowhere).unwrap_err().to_string();
         assert!(e.contains("no task type nope") && e.contains(SETTINGS) && e.contains("review, plain, docs"), "{e}");
     }
 }

@@ -105,7 +105,8 @@ fn path_warning(exe: &Path, path: &std::ffi::OsStr) -> Option<String> {
 /// `{"agents": [...], "tasks": [...]}`, so Skipper and the skill read one source.
 pub async fn agents(c: &Client, json: bool) -> Result<()> {
     let agents = c.list_agents().await?;
-    let tasks = skiff_core::tasks::resolve(&skiff_core::config::load()?.skiff_agent.tasks, &agents);
+    let cfg = skiff_core::config::load()?;
+    let tasks = skiff_core::tasks::resolve(&cfg.skiff_agent.tasks, &agents, &skiff_client::skipper::configured(&cfg)?);
     if json {
         return print::json(&serde_json::json!({ "agents": agents, "tasks": tasks }));
     }
@@ -117,7 +118,7 @@ pub async fn agents(c: &Client, json: bool) -> Result<()> {
     print::table(&["ID", "INSTALLED", "ENABLED", "COMMAND"], &rows);
     if !tasks.is_empty() {
         println!();
-        print::table(&["TYPE", "AGENT", "MODEL", "COMMAND"], &task_rows(&tasks));
+        print::table(&["TYPE", "AGENT", "MODEL", "INSTRUCTIONS", "COMMAND"], &task_rows(&tasks));
     }
     Ok(())
 }
@@ -132,7 +133,8 @@ fn task_rows(tasks: &[skiff_core::tasks::TaskType]) -> Vec<Vec<String>> {
                 (Some(c), Some(e)) => format!("{c}  ({e})"),
                 (None, e) => format!("error: {}", e.as_deref().unwrap_or("none")),
             };
-            vec![t.name.clone(), t.agent.clone(), t.model.clone().unwrap_or_else(|| "-".into()), cmd]
+            let file = t.instructions.map_or_else(|| "none".into(), |n| format!("{n} B"));
+            vec![t.name.clone(), t.agent.clone(), t.model.clone().unwrap_or_else(|| "-".into()), file, cmd]
         })
         .collect()
 }
@@ -199,14 +201,15 @@ mod tests {
             name: name.into(),
             agent: "claude".into(),
             model: model.map(Into::into),
-            instructions: None,
+            file: "/home/me/skiff-agent/types/review.md".into(),
+            instructions: (name == "review").then_some(412),
             command: command.map(Into::into),
             error: error.map(Into::into),
         };
         let rows = task_rows(&[t("review", Some("opus"), Some("claude --model opus"), None), t("test", None, Some("claude"), None), t("old", None, None, Some("no agent"))]);
-        assert_eq!(rows[0], ["review", "claude", "opus", "claude --model opus"]);
-        assert_eq!(rows[1][2], "-");
-        assert_eq!(rows[2][3], "error: no agent");
+        assert_eq!(rows[0], ["review", "claude", "opus", "412 B", "claude --model opus"]);
+        assert_eq!(rows[1][2..4], ["-", "none"]);
+        assert_eq!(rows[2][4], "error: no agent");
     }
 
     fn bin(dir: &PathBuf) -> PathBuf {

@@ -50,6 +50,24 @@ pub fn write_atomic(file: &Path, text: &str) -> Result<()> {
     std::fs::rename(&tmp, &file).with_context(|| format!("write {}", file.display()))
 }
 
+/// Writes the edited config, without the keys Skiff no longer reads:
+/// `instructions` in a `[skiff_agent.tasks]` row (the file is
+/// `types/<type>.md` in the agent's folder now).
+pub(super) fn write_doc(file: &Path, doc: &mut toml_edit::DocumentMut) -> Result<()> {
+    if let Some(tasks) = doc.get_mut("skiff_agent").and_then(|t| t.get_mut("tasks")).and_then(|t| t.as_table_like_mut()) {
+        for (_, row) in tasks.iter_mut() {
+            if let Some(row) = row.as_inline_table_mut() {
+                if row.remove("instructions").is_some() {
+                    row.fmt();
+                }
+            } else if let Some(row) = row.as_table_like_mut() {
+                row.remove("instructions");
+            }
+        }
+    }
+    write_atomic(file, &doc.to_string())
+}
+
 /// A missing file is an empty config, not an error.
 pub fn load() -> Result<Config> {
     load_from(&config_path())
@@ -102,7 +120,7 @@ pub(super) fn edit_table(name: &str, f: impl FnOnce(&mut toml_edit::Table) -> Re
     if let Some(dir) = file.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    write_atomic(&file, &doc.to_string())
+    write_doc(&file, &mut doc)
 }
 
 /// `~/x` for paths under the home directory, so the file moves between machines.
@@ -113,7 +131,7 @@ pub(super) fn home_relative(p: &Path) -> String {
     }
 }
 
-pub(crate) fn expand_home(p: &Path) -> PathBuf {
+pub(super) fn expand_home(p: &Path) -> PathBuf {
     let Some(rest) = p.to_str().and_then(|s| s.strip_prefix("~/")) else {
         return p.to_path_buf();
     };

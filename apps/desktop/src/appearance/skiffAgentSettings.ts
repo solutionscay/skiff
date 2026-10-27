@@ -4,17 +4,16 @@ import type { SkiffAgentSettings, TaskType } from "../app/skiffAgent";
 import { DEFAULT_NAME, skiffAgentChoice } from "../app/skiffAgent";
 import { continueLine } from "../terminal/resume";
 import { rowTable, type RowTableState } from "./rowTable";
-import { BAD_TASK_TYPE_NAME, instructionsError, modelError, modelFlag, taskCommand, TASK_TYPE_NAME } from "./taskTypes";
+import { BAD_TASK_TYPE_NAME, modelError, modelFlag, taskCommand, TASK_TYPE_NAME } from "./taskTypes";
 import { reveal } from "../platform/fileActions";
 import { copyText } from "../platform/clipboard";
 import { showError } from "../ui/alerts";
 
-/** A task type row as `set_skiff_agent` takes it. Null model: the agent's default. Null instructions: no file. */
+/** A task type row as `set_skiff_agent` takes it. Null model: the agent's default. */
 export interface TaskEdit {
   type: string;
   agent: string;
   model: string | null;
-  instructions: string | null;
 }
 
 /** One edit, as `set_skiff_agent` takes it. */
@@ -147,13 +146,9 @@ export function taskTypesSection(
   title.id = "set-h-tasks";
   head.append(
     title,
-    h(
-      "div",
-      "set-sub",
-      "Skipper starts a task of this type with this agent and model. Empty model: the agent's default. A model named in the task wins. An instruction file adds to the project's own AGENTS.md or CLAUDE.md, and Skiff writes nothing into the project.",
-    ),
+    h("div", "set-sub", "Skipper starts a task of this type with this agent and model. Empty model: the agent's default. A model named in the task wins."),
   );
-  const row = (t: TaskType, change: Partial<TaskEdit>): TaskEdit => ({ type: t.type, agent: t.agent, model: t.model, instructions: t.instructions, ...change });
+  const row = (t: TaskType, change: Partial<TaskEdit>): TaskEdit => ({ type: t.type, agent: t.agent, model: t.model, ...change });
   const table = rowTable<TaskType>(
     {
       grid: "g-tasks",
@@ -204,16 +199,6 @@ export function taskTypesSection(
           check: modelError,
         },
         {
-          key: "instructions",
-          head: "INSTRUCTIONS",
-          name: "instruction file",
-          kind: "text",
-          mono: true,
-          placeholder: () => "none",
-          get: (t) => t.instructions ?? "",
-          check: instructionsError,
-        },
-        {
           key: "command",
           head: "COMMAND",
           name: "command",
@@ -222,14 +207,13 @@ export function taskTypesSection(
           bad: (t) => !t.command,
         },
       ],
-      preview: (d) => taskCommand(byId(d.agent), d.model, d.instructions),
+      preview: (d) => taskCommand(byId(d.agent), d.model),
       blocked: () => (choices.length ? null : "Turn on an agent in Settings › Agents to add a task type."),
-      add: (d) => save({ key: "add_task", value: { type: d.type, agent: d.agent, model: d.model || null, instructions: d.instructions?.trim() || null } }),
+      add: (d) => save({ key: "add_task", value: { type: d.type, agent: d.agent, model: d.model || null } }),
       edit: (t, key, v) => {
         if (key === "type") return save({ key: "rename_task", value: { from: t.type, to: v } });
         // A new agent with no model flag drops the model: skiff-core saves none.
-        const change: Partial<TaskEdit> = key === "agent" ? { agent: v } : key === "instructions" ? { instructions: v.trim() || null } : { model: v || null };
-        return save({ key: "task", value: row(t, change) });
+        return save({ key: "task", value: row(t, key === "agent" ? { agent: v } : { model: v || null }) });
       },
       remove: (t) => save({ key: "remove_task", value: t.type }),
     },

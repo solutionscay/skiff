@@ -163,10 +163,10 @@ fn read() -> anyhow::Result<SkiffAgent> {
         }
         _ => "other",
     };
+    // The command lines come from projects.toml, so the local list builds the same ones skiffd would.
+    let tasks = tasks::resolve(&cfg.skiff_agent.tasks, &skiff_core::project::agents(), &configured);
     let configured = configured.display().to_string();
     let a = cfg.skiff_agent;
-    // The command lines come from projects.toml, so the local list builds the same ones skiffd would.
-    let tasks = tasks::resolve(&a.tasks, &skiff_core::project::agents());
     Ok(SkiffAgent {
         name: a.name,
         agent: a.agent,
@@ -210,9 +210,6 @@ pub struct TaskEdit {
     name: String,
     agent: String,
     model: Option<String>,
-    /// Absent from an older page: no file.
-    #[serde(default)]
-    instructions: Option<String>,
 }
 
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> Result<T, String> {
@@ -240,7 +237,15 @@ pub async fn set_skiff_agent(app: AppHandle, edit: Edit) -> Result<SkiffAgent, S
             Edit::ProjectAgent(v) => config::set_skiff_agent(SkiffAgentKey::ProjectAgent(v.as_deref()))?,
             Edit::AddTask(t) => config::add_task_type(&t.name, &t.agent, t.model.as_deref())?,
             Edit::Task(t) => config::set_task_type(&t.name, &t.agent, t.model.as_deref())?,
-            Edit::RenameTask { from, to } => config::rename_task_type(&from, &to)?,
+            Edit::RenameTask { from, to } => {
+                // The file moves first: a name a kept file has stops the rename.
+                let dir = skipper::folder(&config::load()?)?;
+                tasks::rename_file(&dir, &from, &to)?;
+                if let Err(e) = config::rename_task_type(&from, &to) {
+                    let _ = tasks::rename_file(&dir, &to, &from);
+                    return Err(e);
+                }
+            }
             Edit::RemoveTask(name) => config::remove_task_type(&name)?,
             Edit::CacheDays(n) => config::set_skiff_agent(SkiffAgentKey::CacheDays(n))?,
             Edit::Enabled(on) => {
@@ -256,6 +261,17 @@ pub async fn set_skiff_agent(app: AppHandle, edit: Edit) -> Result<SkiffAgent, S
     .await?;
     let _ = app.emit(PROJECTS_CHANGED, ());
     Ok(out)
+}
+
+/// Task types › Edit: the type's instruction file, with its stub written
+/// when it is missing. The page opens it as Open with › Text files says.
+#[tauri::command]
+pub async fn edit_task_type_file(name: String) -> Result<String, String> {
+    blocking(move || {
+        let dir = skipper::folder(&config::load()?)?;
+        Ok(tasks::edit_file(&dir, &name)?.display().to_string())
+    })
+    .await
 }
 
 /// Project menu › Start project Skipper: finds or starts the project's
@@ -408,9 +424,7 @@ mod tests {
         let add = edit(serde_json::json!({ "key": "add_task", "value": { "type": "review", "agent": "claude", "model": "opus" } }));
         assert!(matches!(add, Edit::AddTask(t) if t.name == "review" && t.agent == "claude" && t.model.as_deref() == Some("opus")));
         let set = edit(serde_json::json!({ "key": "task", "value": { "type": "review", "agent": "aider", "model": null } }));
-        assert!(matches!(set, Edit::Task(t) if t.model.is_none() && t.instructions.is_none()));
-        let file = edit(serde_json::json!({ "key": "task", "value": { "type": "review", "agent": "claude", "model": null, "instructions": "~/.skiff/types/review.md" } }));
-        assert!(matches!(file, Edit::Task(t) if t.instructions.as_deref() == Some("~/.skiff/types/review.md")));
+        assert!(matches!(set, Edit::Task(t) if t.model.is_none()));
         let rename = edit(serde_json::json!({ "key": "rename_task", "value": { "from": "review", "to": "code-review" } }));
         assert!(matches!(rename, Edit::RenameTask { from, to } if from == "review" && to == "code-review"));
         assert!(matches!(edit(serde_json::json!({ "key": "remove_task", "value": "review" })), Edit::RemoveTask(t) if t == "review"));

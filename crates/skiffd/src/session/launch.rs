@@ -15,6 +15,9 @@ pub(super) fn launch_command(spec: &SessionSpec, command: &str, cwd: &Path, id: 
         // `sh -c` sets no size, and tools such as delta read it to lay out.
         cmd.env("COLUMNS", spec.cols.to_string());
         cmd.env("LINES", spec.rows.to_string());
+        for (k, v) in &spec.env {
+            cmd.env(k, v);
+        }
         return (cmd, false);
     }
     // An alias from the user's rc files stands for a command line.
@@ -42,8 +45,14 @@ pub(super) fn launch_command(spec: &SessionSpec, command: &str, cwd: &Path, id: 
                 "trap : INT; \"$@\"; printf '\\033]0;{SHELL_HANDOFF_TITLE}:%s\\007' \"$?\"; exec \"$SKIFF_SHELL\" -i"
             ),
             "skiff".to_string(),
-            program,
         ];
+        // The client's variables go to the program alone, through `env`, so
+        // the fallback shell after it does not keep them.
+        if !spec.env.is_empty() {
+            wrapped.push("env".to_string());
+            wrapped.extend(spec.env.iter().map(|(k, v)| format!("{k}={v}")));
+        }
+        wrapped.push(program);
         wrapped.extend(args);
         ("/bin/sh".to_string(), wrapped)
     };
@@ -56,5 +65,29 @@ pub(super) fn launch_command(spec: &SessionSpec, command: &str, cwd: &Path, id: 
     // So the `skiff` CLI in a pane knows its own session and reaches this daemon.
     cmd.env("SKIFF_SESSION", id);
     cmd.env("SKIFF_SOCKET", crate::paths::socket());
+    if is_shell {
+        for (k, v) in &spec.env {
+            cmd.env(k, v);
+        }
+    }
     (cmd, is_shell)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn variables_go_to_the_program_alone() {
+        let spec = SessionSpec { args: vec!["--x".into()], env: vec![("OPENCODE_CONFIG_CONTENT".into(), r#"{"instructions":["/a b.md"]}"#.into())], ..Default::default() };
+        let (cmd, shell) = launch_command(&spec, "opencode", Path::new("/"), "s1");
+        assert!(!shell);
+        let argv: Vec<String> = cmd.get_argv().iter().map(|w| w.to_string_lossy().into_owned()).collect();
+        // `env` in the wrapper: the fallback shell after the program does not keep them.
+        assert_eq!(argv[3..], ["skiff", "env", r#"OPENCODE_CONFIG_CONTENT={"instructions":["/a b.md"]}"#, "opencode", "--x"]);
+        assert!(cmd.get_env("OPENCODE_CONFIG_CONTENT").is_none());
+        let plain = SessionSpec::default();
+        let (cmd, _) = launch_command(&plain, "opencode", Path::new("/"), "s1");
+        assert!(!cmd.get_argv().iter().any(|w| w == "env"));
+    }
 }
