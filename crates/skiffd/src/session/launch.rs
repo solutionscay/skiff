@@ -65,6 +65,14 @@ pub(super) fn launch_command(spec: &SessionSpec, command: &str, cwd: &Path, id: 
     // So the `skiff` CLI in a pane knows its own session and reaches this daemon.
     cmd.env("SKIFF_SESSION", id);
     cmd.env("SKIFF_SOCKET", crate::paths::socket());
+    // Prefer the CLI shipped beside this daemon over a dev CLI on PATH.
+    if let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)) {
+        let mut paths = vec![dir];
+        paths.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()));
+        if let Ok(path) = std::env::join_paths(paths) {
+            cmd.env("PATH", path);
+        }
+    }
     if is_shell {
         for (k, v) in &spec.env {
             cmd.env(k, v);
@@ -76,6 +84,15 @@ pub(super) fn launch_command(spec: &SessionSpec, command: &str, cwd: &Path, id: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn daemon_cli_directory_comes_first_on_path() {
+        let (cmd, _) = launch_command(&SessionSpec::default(), "opencode", Path::new("/"), "s1");
+        let path = cmd.get_env("PATH").expect("pane PATH");
+        let paths: Vec<_> = std::env::split_paths(path).collect();
+        assert_eq!(paths[0], std::env::current_exe().unwrap().parent().unwrap());
+        assert_eq!(paths[1..], std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).collect::<Vec<_>>());
+    }
 
     #[test]
     fn variables_go_to_the_program_alone() {
