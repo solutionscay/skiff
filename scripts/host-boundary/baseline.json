@@ -256,7 +256,7 @@
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "d60e78188b0cc03e19034d8293bec7188c3843d3fdf523228be90c2fdd36eea2"
+    "sha256": "78821bb6061642233fd159a2399883d5fe087a2234b99f4e1168b3fef4a5d3bb"
   },
   "apps/desktop/src/app/commands.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -647,7 +647,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "3aa20b2a66c24b6be2f0234eb59ed8a2d4da66bf6853c7c85cd85acbf186d1cb"
+    "sha256": "d411e8bfd1e38ceed453aa82d7b9448a2894d0bd9584e0910557ee8d7d737135"
   },
   "apps/desktop/src/terminal/resume.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
