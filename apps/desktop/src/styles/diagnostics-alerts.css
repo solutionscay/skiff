@@ -15,7 +15,7 @@
 }
 #topbar .daemon-badge:hover, #topbar .daemon-badge[aria-expanded="true"] { background: var(--state-waiting-bg); }
 #daemon-pop {
-  position: fixed; z-index: 50; width: calc(360 * var(--u));
+  transform: translateZ(0); isolation: isolate; position: fixed; z-index: 50; width: calc(360 * var(--u));
   background: var(--bg-panel); border: 1px solid var(--rule-strong); box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
 }
 

@@ -467,7 +467,7 @@
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/app/stateQueries.ts"
     ],
-    "sha256": "6fbe4de5501118e74fd27c950223bcc7d8831fc4594a1c337bca4105b6960e0d"
+    "sha256": "89f10e7fa5e76ca98ad9bd7ff9af45ef9f46b1228748af581f393f34116552cb"
   },
   "apps/desktop/src/appearance/diskUse.ts": {
     "ownership": "client policy: Disk use counts this computer's agent folder only; a Host's disk use needs a Host op (v2 follow-up)",

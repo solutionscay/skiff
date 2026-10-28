@@ -252,12 +252,17 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-disk .set-rm:not(:disabled):is(:hover, :focus-visible) { border-color: var(--error); color: var(--error); }
 .set-disk-auto span.c-cmd { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
 
-/* skiffd activity: inventory rows stay on the Settings 40px grid. */
-.set-daemon { flex-shrink: 0; display: flex; flex-direction: column; min-width: 0; }
-.set-daemon .set-row { grid-template-columns: calc(74 * var(--u)) minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1fr) calc(52 * var(--u)) calc(62 * var(--u)) calc(145 * var(--u)); }
-.set-daemon .set-row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--zoom, 1)); }
-.set-daemon .c-state::before { content: ""; width: calc(8 * var(--u)); height: calc(8 * var(--u)); margin-right: calc(8 * var(--u)); background: var(--text-dim); }
-.set-daemon .c-state.waiting::before { background: var(--state-waiting); }.set-daemon .c-state.working::before { background: var(--state-working); }.set-daemon .c-state.done::before { background: var(--text-dim); }
+/* skiffd activity: one grid for the whole table. STATE, SESSION and PROGRAM size to their content; WORKSPACE and FOLDER share the rest. */
+.set-daemon { flex-shrink: 0; display: grid; grid-template-columns: fit-content(calc(120 * var(--u))) fit-content(calc(300 * var(--u))) minmax(calc(112 * var(--u)), 1fr) fit-content(calc(140 * var(--u))) minmax(calc(104 * var(--u)), 1fr) calc(52 * var(--u)) calc(80 * var(--u)) calc(168 * var(--u)); min-width: 0; }
+.set-daemon .set-row { grid-column: 1 / -1; grid-template-columns: subgrid; }
+.set-daemon .set-row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); }
+.set-daemon .set-cols > * { color: var(--text-3); }
+.set-daemon .set-row > .c-span { grid-column: 1 / -1; }
+.set-daemon .c-name { font-size: calc(13px * var(--zoom, 1)); color: var(--text); }
+.set-daemon .c-state { gap: calc(8 * var(--u)); }.set-daemon .c-num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
 .set-daemon-row.out { box-shadow: inset 2px 0 0 var(--error); }.set-daemon .bad { color: var(--error-text); }
-.set-daemon .c-acts { gap: calc(8 * var(--u)); justify-content: flex-end; overflow: visible; }.set-daemon .set-rm { margin-left: 0; }.set-daemon .c-remove { color: var(--error); }
+.set-daemon .c-acts { gap: calc(8 * var(--u)); justify-content: flex-end; }.set-daemon .set-rm { margin-left: 0; }
+.set-daemon .set-rm:disabled { opacity: 0.5; cursor: default; }
+.set-daemon .set-rm:disabled:hover { border-color: var(--rule); color: var(--text-3); }
+.set-daemon .c-remove:is(:hover, :focus-visible) { border-color: var(--error); color: var(--error); }
 .set-daemon-band { justify-content: flex-start; font-variant-numeric: tabular-nums; }.set-daemon-band span + span { margin-left: calc(24 * var(--u)); }

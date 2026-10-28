@@ -10,7 +10,6 @@ import type { DaemonMetrics, DaemonStatus, SessionInfo } from "../platform/types
 export interface ActivityState { list: SessionInfo[]; metrics: DaemonMetrics | null; version: string | null; error: string | null; timer: number | null; }
 export const activityState = (): ActivityState => ({ list: [], metrics: null, version: null, error: null, timer: null });
 const bytes = (n: number) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
-const short = (id: string) => id.slice(0, 6);
 const folder = (path: string) => {
   const parts = path.split("/").filter(Boolean);
   return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : path;
@@ -57,26 +56,33 @@ function workspace(s: SessionInfo) {
 function stateRank(s: SessionInfo) { return { waiting: 0, working: 1, idle: 2, done: 3 }[s.state]; }
 
 export function daemonActivitySection(s: ActivityState, redraw: () => void, reveal: (id: string, closed: boolean) => void): HTMLElement[] {
-  const head = h("div", "set-head"); head.append(h("div", "set-h", "skiffd activity"), h("div", "set-sub mono", "This computer"));
+  const head = h("div", "set-head"), title = h("div", "set-h", "skiffd activity"); title.id = "set-h-activity";
+  head.append(title, h("div", "set-sub mono", "This computer"));
   const band = h("div", "set-band set-daemon-band");
   const m = s.metrics;
   const version = m?.version ?? s.version;
-  band.append(h("span", "", version ? `skiffd ${version}` : "skiffd"), h("span", "", m ? `Up ${Math.floor((Date.now() - m.started_at) / 60000)}m` : ""), h("span", "", m ? `${m.session_count} sessions` : ""), h("span", "", m?.memory_bytes == null ? "" : `Memory ${bytes(m.memory_bytes)}`));
+  // A value the daemon did not report shows a dash, never a zero.
+  const up = m?.started_at ? age(m.started_at).replace(/^now$/, "0m") : "—";
+  band.append(h("span", "", version ? `skiffd ${version}` : "skiffd"), h("span", "", `Up ${up}`), h("span", "", `${s.list.length} sessions`), h("span", "", `Memory ${m?.memory_bytes ? bytes(m.memory_bytes) : "—"}`));
   const table = h("div", "set-daemon");
+  table.setAttribute("role", "table");
+  table.setAttribute("aria-labelledby", title.id);
   const cols = h("div", "set-row set-cols");
-  for (const x of ["STATE", "SESSION", "WORKSPACE", "PROGRAM", "FOLDER", "AGE", "OUT", "ACTIONS"]) cols.append(h("span", "", x));
+  cols.setAttribute("role", "row");
+  for (const x of ["STATE", "SESSION", "WORKSPACE", "PROGRAM", "FOLDER", "AGE", "OUT", "ACTIONS"]) cols.append(h("span", x === "AGE" || x === "OUT" ? "c-num" : "", x));
   table.append(cols);
   const rows = [...s.list].sort((a, b) => Number(workspace(b).out) - Number(workspace(a).out) || stateRank(a) - stateRank(b) || a.started_at - b.started_at || a.id.localeCompare(b.id));
-  if (!rows.length) { const row = h("div", "set-row set-daemon-row"); row.append(h("span", "", "No sessions")); table.append(row); }
+  if (!rows.length) { const row = h("div", "set-row set-daemon-row"); row.append(h("span", "c-span", "No sessions")); table.append(row); }
   for (const item of rows) {
     const w = workspace(item), row = h("div", `set-row set-daemon-row${w.out ? " out" : ""}`);
-    const cell = (text: string, cls = "") => { const el = h("span", cls, text); el.title = text; return el; };
-    const when = item.started_at ? new Date(item.started_at).toLocaleString() : "";
-    row.append(cell(item.state, `c-state ${item.state}`), cell(`${taskTitle(item)} · ${short(item.id)}`), cell(w.text, w.out ? "bad" : ""), cell(item.foreground_program || [item.command, ...item.args].join(" ")), cell(folder(item.cwd)), cell(age(item.started_at)), cell(item.output_bytes == null ? "—" : bytes(item.output_bytes)));
-    row.children[4].setAttribute("title", item.cwd);
-    row.children[5].setAttribute("title", when);
+    row.setAttribute("role", "row");
+    const cell = (text: string, cls = "", title = text) => { const el = h("span", cls, text); el.title = title; return el; };
+    // The sidebar's state mark, in its state color.
+    const state = h("span", "c-state"); state.append(h("span", `dot ${item.state}`), h("span", "", item.state));
+    // The name alone, as the sidebar shows it. Hover shows the session id.
+    row.append(state, cell(taskTitle(item), "c-name", `${taskTitle(item)} · ${item.id}`), cell(w.text, w.out ? "bad" : ""), cell(item.foreground_program || [item.command, ...item.args].join(" ")), cell(folder(item.cwd), "", item.cwd), cell(age(item.started_at), "c-num", item.started_at ? new Date(item.started_at).toLocaleString() : ""), cell(item.output_bytes ? bytes(item.output_bytes) : "—", "c-num"));
     const acts = h("span", "c-acts");
-    const show = h("button", "set-rm", "Reveal"); show.type = "button"; show.disabled = item.skipper != null && !item.coordinator && !place(item); show.addEventListener("click", () => reveal(item.id, !!locate(S.closedProjects, item.cwd))); acts.append(show);
+    const show = h("button", "set-rm", "Reveal"); show.type = "button"; show.disabled = item.skipper != null && !item.coordinator && w.out; show.addEventListener("click", () => reveal(item.id, !!locate(S.closedProjects, item.cwd))); acts.append(show);
     const end = h("button", `set-rm${item.state === "done" ? "" : " c-remove"}`, item.state === "done" ? "Remove" : "End…"); end.type = "button";
     end.addEventListener("click", async () => { if (item.state !== "done" && !(await confirmAction({ title: `End ${taskTitle(item)}?`, body: "Ends this session. Unsaved work in the terminal is lost.", action: "End session" }))) return; await hostInvoke("session_lifecycle", "kill_session", { session: item.id }); void refreshActivity(s, redraw); }); acts.append(end); row.append(acts); table.append(row);
   }
