@@ -124,12 +124,13 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     // So does the focused field: a save on blur finishes after the click that moved focus to the next field.
     const a = document.activeElement;
     const field = a instanceof HTMLInputElement && root.contains(a) ? { label: a.getAttribute("aria-label"), at: a.selectionStart, to: a.selectionEnd } : null;
-    // Disk use redraws under its buttons after a count. The keys stay on the same button, else the first one on.
-    const button = tab === "disk" && a instanceof HTMLButtonElement && a.closest(".set-main") ? a.textContent : null;
+    // Disk use redraws under its buttons after a count, and skiffd activity under a sort head on a sort or
+    // a refresh. The keys stay on the same button, else the first one on.
+    const button = a instanceof HTMLButtonElement && a.closest(".set-main") && (tab === "disk" || a.classList.contains("set-sort")) ? a.dataset.key ?? a.textContent : null;
     draw();
     if (button !== null) {
       const stops = [...root.querySelectorAll<HTMLButtonElement>(".set-main button:not(:disabled, .set-x)")];
-      (stops.find((b) => b.textContent === button) ?? stops[0])?.focus();
+      (stops.find((b) => (b.dataset.key ?? b.textContent) === button) ?? stops[0])?.focus();
     }
     const main = root.querySelector(".set-main");
     if (main) main.scrollTop = scroll;
