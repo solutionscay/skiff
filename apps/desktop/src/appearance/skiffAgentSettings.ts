@@ -4,7 +4,7 @@ import type { InstructionFile, SkiffAgentSettings, TaskType } from "../app/skiff
 import { DEFAULT_NAME, mainName, skiffAgentChoice } from "../app/skiffAgent";
 import { continueLine } from "../terminal/resume";
 import { rowTable, sectionHead, tableState, type RowTableState } from "./rowTable";
-import { BAD_TASK_TYPE_NAME, fileSize, modelError, modelFlag, taskCommand, TASK_TYPE_NAME } from "./taskTypes";
+import { BAD_TASK_TYPE_NAME, fileSize, modelError, modelFlag, TASK_TYPE_NAME } from "./taskTypes";
 import { reveal } from "../platform/fileActions";
 import { copyText } from "../platform/clipboard";
 import { showError } from "../ui/alerts";
@@ -346,10 +346,10 @@ export function taskTypesSection(
           mono: true,
           placeholder: () => "agent's default",
           get: (t) => t.model ?? "",
-          // A custom agent has its model in its command. A gone agent has none.
+          // A custom agent sets its model itself. A gone agent has none.
           note: (t, d) => {
             const a = byId(t ? t.agent : (d.agent ?? ""));
-            return modelFlag(a) ? null : a ? "in the command" : "";
+            return modelFlag(a) ? null : a ? "set by agent" : "";
           },
           check: modelError,
         },
@@ -376,16 +376,7 @@ export function taskTypesSection(
             return state;
           },
         },
-        {
-          key: "command",
-          head: "COMMAND",
-          name: "command",
-          kind: "preview",
-          get: (t) => t.command ?? t.error ?? "",
-          bad: (t) => !t.command,
-        },
       ],
-      preview: (d) => taskCommand(byId(d.agent), d.model),
       blocked: () => (choices.length ? null : "Turn on an agent in Settings › Agents to add a task type."),
       add: (d) => save({ key: "add_task", value: { type: d.type, agent: d.agent, model: d.model || null } }),
       edit: (t, key, v) => {
