@@ -48,6 +48,8 @@ pub struct InventorySession {
     #[serde(default)]
     pub last_output_at: u64,
     #[serde(default)]
+    pub output_bytes: u64,
+    #[serde(default)]
     pub away: Vec<Away>,
     #[serde(default)]
     pub was: Option<Was>,

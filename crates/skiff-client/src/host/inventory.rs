@@ -31,6 +31,7 @@ pub fn project_session(value: core::SessionInfo) -> Result<api::InventorySession
         title,
         started_at,
         last_output_at,
+        output_bytes,
         away,
         was,
         resume,
@@ -62,6 +63,7 @@ pub fn project_session(value: core::SessionInfo) -> Result<api::InventorySession
         title,
         started_at,
         last_output_at,
+        output_bytes,
         away: away
             .into_iter()
             .map(project_away)
@@ -151,6 +153,7 @@ pub fn restore_session(value: api::InventorySession) -> core::SessionInfo {
         title,
         started_at,
         last_output_at,
+        output_bytes,
         away,
         was,
         resume,
@@ -182,6 +185,7 @@ pub fn restore_session(value: api::InventorySession) -> core::SessionInfo {
         title,
         started_at,
         last_output_at,
+        output_bytes,
         away: away.into_iter().map(restore_away).collect(),
         was: was.map(restore_was),
         resume: resume.map(restore_was),
