@@ -184,7 +184,10 @@ impl Screen {
         match agent {
             // "Esc to cancel · Tab to amend", "Enter to confirm · Esc to cancel".
             "claude" => self.bottom_text(2).contains("esctocancel"),
-            "codex" => self.bottom_text(2).contains("pressentertoconfirmoresctocancel"),
+            "codex" => {
+                let t = self.bottom_text(2);
+                t.contains("pressentertoconfirmoresctocancel") || t.contains("entercontinue·escskip")
+            }
             // "Allow once   Allow always   Reject".
             "opencode" => {
                 let t = self.bottom_text(4);
@@ -598,6 +601,22 @@ mod tests {
         // A prompt of one agent is not a prompt of another, or of a shell.
         assert!(!screen_with(&claude).approval_prompt("codex"));
         assert!(!screen_with(&claude).approval_prompt("bash"));
+    }
+
+    #[test]
+    fn codex_update_prompt_waits_for_input() {
+        let rows = [
+            "  Update available · 0.164.0 → 0.165.0",
+            "  Release notes: https://github.com/openai/codex/releases/latest",
+            "› 1. Update now (runs `npm install -g @openai/codex`)",
+            "  2. Skip",
+            "  3. Skip until next version",
+            "  enter continue · esc skip",
+        ];
+        assert!(screen_with(&rows).approval_prompt("codex"));
+        let mut quoted = rows.to_vec();
+        quoted.extend(["› Ask Codex to do anything", "  ? for shortcuts"]);
+        assert!(!screen_with(&quoted).approval_prompt("codex"));
     }
 
     #[test]
