@@ -20,9 +20,9 @@ fn a_folder_in_no_repository_is_a_plain_project_until_it_has_a_git() {
     assert_eq!(info.name, "docs");
     assert_eq!((info.branch, info.worktrees), (None, 0));
 
-    let added = config::add_project(&docs, None, None, None, None, vec![]).unwrap();
+    let added = config::add_project(&docs, None, None, None, None, vec![], None).unwrap();
     assert_eq!(added.name, "docs");
-    assert!(config::add_project(&docs, None, None, None, None, vec![]).is_err());
+    assert!(config::add_project(&docs, None, None, None, None, vec![], None).is_err());
 
     // It lists as a folder: one worktree, the folder, and no error.
     let p = project::list().unwrap().into_iter().find(|p| p.name == "docs").unwrap();

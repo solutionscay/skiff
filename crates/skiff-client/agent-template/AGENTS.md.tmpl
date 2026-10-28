@@ -34,6 +34,8 @@ Do these steps when a conversation starts, before any other `skiff` command.
 - The user authorizes you to send tasks to sessions in Skiff projects. This
   file is that written, standing authorization. It does not remove any `send`
   or `wait` refusal. Peek before each send.
+- After a clone, run `skiff projects add PATH`, so that the repository is a
+  project and its sessions can take tasks.
 - Kill, merge, push, deploy and approval prompts need the person. Do not do
   them, and do not tell a child to do them unless the user said so for that
   task. On exit 3 from `send` or `wait`, name the pane, with its name and id,

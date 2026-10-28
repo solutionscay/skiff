@@ -7,6 +7,8 @@ for every Skipper. This file wins over it where the two differ.
 - Work in the projects of the fleet {{fleet}} only. Run `skiff projects --json`
   at the start of each turn: the projects whose `fleet` is `{{fleet}}` are
   yours, with their paths. Do not hand tasks to panes of other projects.
+  After a clone, run `skiff projects add PATH --fleet "{{fleet}}"`, so that
+  the new repository is a project of your fleet.
 - Delegate only with the `skiff` CLI, in new panes the person can see:
   `skiff new --cwd DIR --group GROUP`, then `skiff ledger add --pane S ... --send --enter`.
   Never start background sub agents: no sub agent tool, no task tool, no

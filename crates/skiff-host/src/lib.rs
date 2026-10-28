@@ -403,7 +403,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         Request::ProjectAdd { path, revision, name, short, color } => {
             let path = host_folder_path(&path)?;
             let (added, revision) =
-                config::edit_projects(&revision, || config::add_project(&path, name, short, color, None, Vec::new())).map_err(refused)?;
+                config::edit_projects(&revision, || config::add_project(&path, name, short, color, None, Vec::new(), None)).map_err(refused)?;
             folders::recent::note([(added.path.to_string_lossy().into_owned(), folders::now_ms())]);
             Ok(Response::ProjectAdded {
                 project: Box::new(host_project(project::Project::from_config(&added))),

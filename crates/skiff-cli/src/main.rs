@@ -20,6 +20,7 @@ mod ledger;
 mod open_with;
 mod peek;
 mod print;
+mod projects;
 mod resolve;
 mod sessions;
 mod skipper;
@@ -230,10 +231,16 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// List the projects in projects.toml.
+    /// List the projects in projects.toml, or add or remove one.
+    #[command(
+        args_conflicts_with_subcommands = true,
+        after_help = "add and remove write projects.toml, as Add project and Remove do in the app. The app shows the change within a second or two."
+    )]
     Projects {
         #[arg(long)]
         json: bool,
+        #[command(subcommand)]
+        cmd: Option<ProjectsCmd>,
     },
     /// List and assign terminal color themes.
     #[command(after_help = "A session theme overrides its project's theme. A project theme overrides the app theme. Clear returns to the next setting.")]
@@ -548,6 +555,37 @@ impl OpenKey {
 }
 
 #[derive(Subcommand)]
+enum ProjectsCmd {
+    /// Add the git repository that holds PATH, or the folder itself when it
+    /// is in no repository. A folder in a linked worktree adds the main
+    /// worktree. Defaults: the folder's name, a free color, a theme of its
+    /// own. A closed project for the folder opens again with its own
+    /// settings; --name and --fleet do not apply to it.
+    Add {
+        path: PathBuf,
+        /// The project's name. Default: the folder's name.
+        #[arg(long)]
+        name: Option<String>,
+        /// Put the project in this fleet on the rail.
+        #[arg(long)]
+        fleet: Option<String>,
+        /// Print the project as one item of `skiff projects --json`.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove the project and its settings. The folder and its worktrees
+    /// stay on disk. With running sessions in the project, it refuses and
+    /// names them.
+    #[command(visible_alias = "rm")]
+    Remove {
+        name: String,
+        /// End the project's sessions first, then remove it.
+        #[arg(long)]
+        end_sessions: bool,
+    },
+}
+
+#[derive(Subcommand)]
 enum ThemeCmd {
     /// List available themes.
     Ls {
@@ -649,7 +687,13 @@ async fn run(cli: Cli) -> Result<i32> {
     skiff_core::state::set_socket(socket.clone());
     match cli.cmd {
         // Read locally: no daemon needed.
-        Cmd::Projects { json } => return info::projects(json).map(|_| 0),
+        Cmd::Projects { json, cmd: None } => return info::projects(json).map(|_| 0),
+        Cmd::Projects { cmd: Some(ProjectsCmd::Add { path, name, fleet, json }), .. } => {
+            return projects::add(&path, name, fleet, json).map(|_| 0)
+        }
+        Cmd::Projects { cmd: Some(ProjectsCmd::Remove { name, end_sessions }), .. } => {
+            return projects::remove(&socket, &name, end_sessions).await.map(|_| 0)
+        }
         Cmd::Theme { cmd: ThemeCmd::Ls { json } } => return theme::ls(json).map(|_| 0),
         Cmd::Theme { cmd: ThemeCmd::App { cmd } } => return theme::app(cmd).map(|_| 0),
         Cmd::Theme { cmd: ThemeCmd::Project { cmd } } => return theme::project(cmd).map(|_| 0),

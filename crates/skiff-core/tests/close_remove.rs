@@ -18,7 +18,7 @@ fn close_reopen_and_remove_keep_the_rest_of_the_file() {
     .unwrap();
     std::env::set_var("SKIFF_CONFIG", &file);
 
-    let added = config::add_project(&repo, Some("repo".into()), None, Some("#8fd0f2".into()), None, vec![]).unwrap();
+    let added = config::add_project(&repo, Some("repo".into()), None, Some("#8fd0f2".into()), None, vec![], None).unwrap();
     assert!(added.theme.as_deref().is_some_and(|t| t.starts_with("builtin:")));
     assert!(!added.closed);
 
@@ -35,11 +35,11 @@ fn close_reopen_and_remove_keep_the_rest_of_the_file() {
     // Adding the same folder opens it again with its own settings.
     let info = config::inspect_folder(&repo);
     assert_eq!(info.error, None);
-    let back = config::add_project(&repo, Some("other name".into()), None, Some("#000000".into()), None, vec![]).unwrap();
+    let back = config::add_project(&repo, Some("other name".into()), None, Some("#000000".into()), None, vec![], None).unwrap();
     assert_eq!(back.name, "repo");
     assert_eq!(back.color.as_deref(), Some("#8fd0f2"));
     assert!(!config::load().unwrap().projects.iter().any(|p| p.closed));
-    assert!(config::add_project(&repo, None, None, None, None, vec![]).is_err());
+    assert!(config::add_project(&repo, None, None, None, None, vec![], None).is_err());
 
     // Remove: the table goes; the other table and the comments stay.
     config::remove_project("repo").unwrap();
