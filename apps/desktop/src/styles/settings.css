@@ -42,7 +42,7 @@
 .set-agent input.c-name::placeholder { color: var(--text-dim); font-weight: 400; }
 .set-agent input.c-name:focus { box-shadow: inset 0 -2px 0 var(--state-working); }
 .set-open { grid-template-columns: calc(200 * var(--u)) minmax(0, 1fr) calc(160 * var(--u)); }
-.set-open.set-skipper-name { grid-template-columns: calc(240 * var(--u)) minmax(0, 1fr) calc(160 * var(--u)); }
+.set-open.set-skipper-name { grid-template-columns: calc(280 * var(--u)) minmax(0, 1fr) calc(160 * var(--u)); }
 .set-open select.c-mode, .set-open select.c-cmd { width: 100%; padding-right: calc(28 * var(--u)); border-left: 1px solid var(--rule); }
 .set-names-box { flex: 1 0 auto; min-height: calc(320 * var(--u)); display: flex; flex-direction: column; }
 .set-names-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; }
