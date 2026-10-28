@@ -1169,16 +1169,23 @@ pub fn rows_of(data: &[u8], cols: u16, rows: u16) -> Vec<(String, String)> {
 /// rules of box-drawing characters (Claude Code's `───`, Gemini's `╭──╮` and
 /// `╰──╯`): the last two such rows on the screen.
 pub fn input_box(rows: &[(String, String)], agent: &str) -> Option<bool> {
-    // An agent that draws inline leaves blank rows under a short screen.
-    let end = rows.iter().rposition(|(a, _)| !a.is_empty()).map_or(0, |i| i + 1);
-    let near = &rows[end.saturating_sub(16)..end];
     let content = |s: &str| {
         let t = s.trim().trim_matches(|c| c == '│' || c == '┃').trim();
         t.trim_start_matches(['>', '❯', '›']).trim().to_string()
     };
+    let range = input_box_rows(rows, agent)?;
+    Some(rows[range].iter().any(|(_, solid)| !content(solid).is_empty()))
+}
+
+/// The visible row range inside the agent's input box.
+pub fn input_box_rows(rows: &[(String, String)], agent: &str) -> Option<std::ops::Range<usize>> {
+    // An agent that draws inline leaves blank rows under a short screen.
+    let end = rows.iter().rposition(|(a, _)| !a.is_empty()).map_or(0, |i| i + 1);
+    let start = end.saturating_sub(16);
+    let near = &rows[start..end];
     if agent == "codex" {
-        let line = near.iter().rev().find(|(all, _)| all.trim_start().starts_with('›'))?;
-        return Some(!content(&line.1).is_empty());
+        let line = start + near.iter().rposition(|(all, _)| all.trim_start().starts_with('›'))?;
+        return Some(line..line + 1);
     }
     let cols = rows.iter().map(|(a, _)| a.chars().count()).max().unwrap_or(0);
     let rule = |r: &str| {
@@ -1191,7 +1198,7 @@ pub fn input_box(rows: &[(String, String)], agent: &str) -> Option<bool> {
     if bottom - top < 2 {
         return None;
     }
-    Some(near[top + 1..bottom].iter().any(|(_, solid)| !content(solid).is_empty()))
+    Some(start + top + 1..start + bottom)
 }
 
 /// Best effort. A missing tool leaves the log line as the only sign.
