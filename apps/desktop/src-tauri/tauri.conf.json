@@ -27,7 +27,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ1OEU2NEJCREY3OERDNDkKUldSSjNIamZ1MlNPMWNjT2FMRWg1Z3d5M1R6dzdBM1lKMXFMN3E0aUZpcUFoNXdaY3ZVZ1dqNnAK",
       "endpoints": [
         "https://github.com/solutionscay/skiff/releases/latest/download/latest.json"
       ]
