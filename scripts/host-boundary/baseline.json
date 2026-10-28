@@ -408,7 +408,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "75a666bb11c5fa633913e45219102e38fa50d8f0e918d27d984a404591aaf6d4"
+    "sha256": "1299aa03d5a1c77de88b043e4345899c9111c099c8eb4e5d68543b6ae21b0721"
   },
   "apps/desktop/src/app/state.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -467,7 +467,7 @@
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/app/stateQueries.ts"
     ],
-    "sha256": "2e340120978a42583d825f5880431fdf5f536b0d8960df85040451e0d7eae02d"
+    "sha256": "6fbe4de5501118e74fd27c950223bcc7d8831fc4594a1c337bca4105b6960e0d"
   },
   "apps/desktop/src/appearance/diskUse.ts": {
     "ownership": "client policy: Disk use counts this computer's agent folder only; a Host's disk use needs a Host op (v2 follow-up)",
@@ -519,7 +519,7 @@
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "17abbd070d0e9a8ecbc7f876e8dfbc6c251ba80c613ae1ed5d463e3d87dbf20b"
+    "sha256": "5bd7090184c87f1d212cd87759b28b460d64ffe9a92638e3ad086637c9905dd1"
   },
   "apps/desktop/src/appearance/skiffFolderDialog.ts": {
     "ownership": "Host caller (#166 R7): folder preview and change through hostInvoke(skipper_config); the system picker and reveal are this client's own, used only on This Mac",

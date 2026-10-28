@@ -34,10 +34,10 @@
 .set-agent.missing .c-name, .set-agent.missing .c-status { color: var(--text-dim); }
 .set-agent.missing .c-status .sq { background: var(--rule-strong); }
 .set-agent.missing button.c-on { cursor: not-allowed; }
-:is(.set-agent, .set-table) .set-rm { height: calc(26 * var(--u)); margin-left: auto; padding: 0 calc(10 * var(--u)); border: 1px solid var(--rule); border-radius: 0; background: transparent; color: var(--text-3); font: calc(12px * var(--zoom, 1)) var(--font); }
-:is(.set-agent, .set-table) .set-rm:hover { border-color: var(--text-3); color: var(--text); }
+:is(.set-agent, .set-table, .set-daemon) .set-rm { height: calc(26 * var(--u)); margin-left: auto; padding: 0 calc(10 * var(--u)); border: 1px solid var(--rule); border-radius: 0; background: transparent; color: var(--text-3); font: calc(12px * var(--zoom, 1)) var(--font); }
+:is(.set-agent, .set-table, .set-daemon) .set-rm:hover { border-color: var(--text-3); color: var(--text); }
 /* Remove: a square icon button. */
-:is(.set-agent, .set-table) .set-rm.set-ico { width: calc(26 * var(--u)); padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+:is(.set-agent, .set-table, .set-daemon) .set-rm.set-ico { width: calc(26 * var(--u)); padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .set-agent input.c-name { width: 100%; min-width: 0; border: 0; border-left: 1px solid var(--rule); border-radius: 0; outline: 0; background: transparent; color: inherit; font: 500 calc(14px * var(--zoom, 1)) var(--font); }
 .set-agent input.c-name::placeholder { color: var(--text-dim); font-weight: 400; }
 .set-agent input.c-name:focus { box-shadow: inset 0 -2px 0 var(--state-working); }
@@ -253,8 +253,8 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-disk-auto span.c-cmd { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
 
 /* skiffd activity: inventory rows stay on the Settings 40px grid. */
-.set-daemon { flex-shrink: 0; display: flex; flex-direction: column; min-width: 0; overflow-x: auto; }
-.set-daemon .set-row { grid-template-columns: calc(92 * var(--u)) minmax(calc(150 * var(--u)), 1fr) minmax(calc(190 * var(--u)), 1.2fr) minmax(calc(120 * var(--u)), 1fr) minmax(calc(160 * var(--u)), 1.2fr) calc(90 * var(--u)) calc(170 * var(--u)) calc(100 * var(--u)) calc(150 * var(--u)); }
+.set-daemon { flex-shrink: 0; display: flex; flex-direction: column; min-width: 0; }
+.set-daemon .set-row { grid-template-columns: calc(74 * var(--u)) minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1fr) calc(52 * var(--u)) calc(62 * var(--u)) calc(145 * var(--u)); }
 .set-daemon .set-row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--zoom, 1)); }
 .set-daemon .c-state::before { content: ""; width: calc(8 * var(--u)); height: calc(8 * var(--u)); margin-right: calc(8 * var(--u)); background: var(--text-dim); }
 .set-daemon .c-state.waiting::before { background: var(--state-waiting); }.set-daemon .c-state.working::before { background: var(--state-working); }.set-daemon .c-state.done::before { background: var(--text-dim); }
