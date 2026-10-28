@@ -51,8 +51,12 @@ use crate::{
 /// state shows in [`fingerprint`] on its own.
 pub const HANDOVER: u32 = 3;
 
-/// Handover versions this binary reads.
-const READS: [u32; 1] = [HANDOVER];
+/// Handover versions this binary reads. The daemon that runs when the user
+/// installs a new Skiff writes an older version, so keep each one this code
+/// still reads correctly: without it, the update cannot finish on its own
+/// and every session must stop (#182). Version 3 only added fields with a
+/// default (`Meta::started_at`, `SessionInfo::output_bytes`), so 2 reads as 3.
+const READS: [u32; 2] = [2, HANDOVER];
 
 const MAGIC: &[u8; 8] = b"SKIFFHO\n";
 const PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -539,6 +543,42 @@ fn preflight(binary: &Path, handover: Option<&Path>) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// A handover from a skiffd before version 3 (0.6.31 and older) loads,
+    /// with the fields that version added at their defaults (#182).
+    #[test]
+    fn reads_a_version_2_handover() {
+        // A 0.6.31 session, with no `output_bytes`.
+        let info = serde_json::json!({
+            "id": "s1", "label": "t", "role": "shell", "cwd": "/", "command": "/bin/sh", "args": [],
+            "state": "idle", "cols": 80, "rows": 24, "pid": 1, "exit_code": null, "started_at": 1, "last_output_at": 1,
+        });
+        let meta = serde_json::json!({
+            "listener": 3, "state": null, "aliases": "", "groups": [], "orphans": [],
+            "sessions": [{
+                "info": info, "fd": 4, "done": false, "last_output": 0, "last_work": 0, "last_input": 0,
+                "work_started": 0, "fresh": false, "busy_seen": false, "title_state": null, "shell": true,
+                "front": "Shell", "group": 0, "belled": false, "unscanned": false, "printed": false, "printed_work": false,
+            }],
+        });
+        let json = serde_json::to_vec(&meta).unwrap();
+        let mut bytes = MAGIC.to_vec();
+        bytes.extend(2u32.to_le_bytes());
+        bytes.extend((json.len() as u64).to_le_bytes());
+        bytes.extend(&json);
+        bytes.extend(3u64.to_le_bytes());
+        bytes.extend(b"scr");
+        let path = std::env::temp_dir().join(format!("skiffd-handover-v2-{}", std::process::id()));
+        std::fs::write(&path, &bytes).unwrap();
+        let loaded = load(&path);
+        let _ = std::fs::remove_file(&path);
+        let h = loaded.unwrap();
+        assert_eq!((h.meta.started_at, h.meta.sessions[0].info.output_bytes), (0, 0));
+        assert_eq!(&h.bytes[h.screens[0].clone()], b"scr");
+        assert!(reload_info().handover.contains(&2));
+    }
+
     #[test]
     fn fingerprint_is_stable() {
         assert_eq!(super::fingerprint(), super::fingerprint());
