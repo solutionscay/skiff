@@ -3832,6 +3832,7 @@ name = "skiff-desktop"
 version = "1.7.6"
 dependencies = [
  "anyhow",
+ "dirs 6.0.0",
  "gtk",
  "libc",
  "png 0.17.16",
