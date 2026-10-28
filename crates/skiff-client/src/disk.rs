@@ -133,9 +133,12 @@ fn is_log(rel: &Path) -> bool {
 /// The results folders: `results/` and each `projects/<p>/results/`, as
 /// (name, folder relative, canonical path).
 fn roots(folder: &Path) -> Vec<(String, String, PathBuf)> {
+    let names = skiff_core::config::load().unwrap_or_default().skiff_agent;
+    let main = names.name();
+    let skipper = names.skipper_word();
     let mut out = Vec::new();
     if let Ok(p) = folder.join("results").canonicalize() {
-        out.push((skiff_core::config::ADMIRAL.to_string(), "results/".to_string(), p));
+        out.push((main, "results/".to_string(), p));
     }
     let mut projects: Vec<_> = std::fs::read_dir(folder.join("projects"))
         .into_iter()
@@ -147,7 +150,20 @@ fn roots(folder: &Path) -> Vec<(String, String, PathBuf)> {
     projects.sort();
     for p in projects {
         if let Ok(dir) = folder.join("projects").join(&p).join("results").canonicalize() {
-            out.push((format!("{p} Skipper"), format!("projects/{p}/results/"), dir));
+            out.push((format!("{p} {skipper}"), format!("projects/{p}/results/"), dir));
+        }
+    }
+    let mut fleets: Vec<_> = std::fs::read_dir(folder.join("fleets"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    fleets.sort();
+    for f in fleets {
+        if let Ok(dir) = folder.join("fleets").join(&f).join("results").canonicalize() {
+            out.push((format!("{f} {skipper}"), format!("fleets/{f}/results/"), dir));
         }
     }
     out

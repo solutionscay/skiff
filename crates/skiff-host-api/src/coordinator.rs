@@ -103,6 +103,8 @@ pub struct HostSkipper {
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
+    pub skipper_name: Option<String>,
+    #[serde(default)]
     pub agent: Option<String>,
     /// The Skipper's model. Absent: the agent's default.
     #[serde(default)]
@@ -181,6 +183,7 @@ pub struct HostSkipperFile {
 #[serde(tag = "key", content = "value", rename_all = "snake_case")]
 pub enum SkipperEdit {
     Name(Option<String>),
+    SkipperName(Option<String>),
     Agent(Option<String>),
     /// One word. `None`: the agent's default.
     Model(Option<String>),

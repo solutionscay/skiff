@@ -785,7 +785,8 @@ fn claim_at(file: &Path, socket: &Path, session: &str) -> Result<()> {
     }
     if !may_claim(cur.as_ref(), socket) {
         let o = cur.expect("only an owner refuses");
-        bail!("this ledger is Admiral's on {}. Do ledger work from Admiral there", o.socket);
+        let name = main_name();
+        bail!("this ledger is {name}'s on {}. Do ledger work from {name} there", o.socket);
     }
     set_owner(&tx, session, socket)?;
     tx.commit()?;
@@ -824,7 +825,7 @@ impl Caller {
         if self.owns(r) {
             return Ok(());
         }
-        let ask = if r.owner == GRAND { "Ask Admiral" } else { "Ask that Skipper" };
+        let ask = if r.owner == GRAND { format!("Ask {}", main_name()) } else { format!("Ask that {}", skipper_name()) };
         bail!("{} is {}'s {}. {ask} to change it", r.uid, who(&r.owner), kind_word(&r.kind))
     }
 
@@ -917,9 +918,9 @@ async fn check_writer(socket: &Path, db: &Connection, person: bool) -> Result<Ca
 /// another socket, which may not take the ledger.
 fn refusal(cur: Option<&Owner>, skipper: bool) -> String {
     match cur {
-        Some(o) if skipper => format!("this ledger is Admiral's on {}. Ask Admiral there to make this change", o.socket),
-        Some(_) => "only Admiral and the project and fleet Skippers change the ledger. Ask Admiral to make this change".into(),
-        None => "this ledger has no Admiral yet. Start Admiral in the Skiff app, then ask it to make this change".into(),
+        Some(o) if skipper => format!("this ledger is {}'s on {}. Ask {} there to make this change", main_name(), o.socket, main_name()),
+        Some(_) => format!("only {} and the project and fleet {}s change the ledger. Ask {} to make this change", main_name(), skipper_name(), main_name()),
+        None => format!("this ledger has no {} yet. Start {} in the Skiff app, then ask it to make this change", main_name(), main_name()),
     }
 }
 
@@ -927,10 +928,18 @@ fn refusal(cur: Option<&Owner>, skipper: bool) -> String {
 /// Skipper": a row's owner, or a hand-off's scope.
 fn who(owner: &str) -> String {
     match (owner, skiff_client::skipper::scope_fleet(owner)) {
-        (GRAND, _) => "Admiral".into(),
-        (_, Some(f)) => format!("the {f} fleet Skipper"),
-        (p, _) => format!("the {p} project Skipper"),
+        (GRAND, _) => main_name(),
+        (_, Some(f)) => format!("the {f} fleet {}", skipper_name()),
+        (p, _) => format!("the {p} project {}", skipper_name()),
     }
+}
+
+fn main_name() -> String {
+    skiff_client::skipper::name(&skiff_core::config::load().unwrap_or_default())
+}
+
+fn skipper_name() -> String {
+    skiff_core::config::load().unwrap_or_default().skiff_agent.skipper_word()
 }
 
 /// A fleet Skipper sends only into the projects of its fleet, as

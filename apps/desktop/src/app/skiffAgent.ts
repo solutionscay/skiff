@@ -22,11 +22,10 @@ export const DEFAULT_NAME = "Admiral";
 /** The role word: the old default name, and the tail of a project or fleet Skipper's session name. */
 export const SKIPPER_WORD = "Skipper";
 
-/** The main Skipper's name from a stored one: Admiral when none is set. A
- *  stored "Skipper" is the old default, so it reads Admiral too. */
+/** The main Skipper's name from a stored one: Admiral when none is set. */
 export const mainName = (stored: string | null | undefined) => {
   const n = stored?.trim();
-  return !n || n === SKIPPER_WORD ? DEFAULT_NAME : n;
+  return !n ? DEFAULT_NAME : n;
 };
 
 /** The row key while no Skiff agent session runs. */
@@ -35,6 +34,7 @@ export const SKIFF_AGENT_KEY = "skiff-agent";
 /** `[skiff_agent]` in the selected Host's projects.toml (`skipper@1`). */
 export interface SkiffAgentSettings {
   name: string | null;
+  skipper_name: string | null;
   agent: string | null;
   /** The Skipper's model. Null: the agent's default. */
   model: string | null;
@@ -106,7 +106,7 @@ export function skiffAgentName(): string {
 /** The tail of a project or fleet Skipper's session name: the name from
  *  Settings, else "Skipper" ("gesher Skipper"). skiffd names it the same. */
 export function skipperWord(): string {
-  return S.skiffAgent?.name?.trim() || SKIPPER_WORD;
+  return S.skiffAgent?.skipper_name?.trim() || SKIPPER_WORD;
 }
 
 /**
@@ -142,9 +142,12 @@ function skipperProject(s: SessionInfo): string | null {
   if (s.coordinator || s.state === "done" || s.retiring) return null;
   if (s.skipper) return s.skipper;
   if (!skiffAgentFolder()) return null;
-  const tail = ` ${skipperWord()}`;
-  const project = s.name?.endsWith(tail) ? s.name.slice(0, -tail.length) : null;
-  return project && S.projects.some((p) => p.name === project) ? project : null;
+  for (const word of new Set([skipperWord(), skiffAgentName(), SKIPPER_WORD])) {
+    const tail = ` ${word}`;
+    const project = s.name?.endsWith(tail) ? s.name.slice(0, -tail.length) : null;
+    if (project && S.projects.some((p) => p.name === project)) return project;
+  }
+  return null;
 }
 
 /** The live project Skippers, marked or found by name. A marked one counts

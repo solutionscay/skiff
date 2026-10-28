@@ -61,6 +61,8 @@ pub struct Open {
 pub struct SkiffAgent {
     /// The label on its row, its pane and its key. Absent: Admiral.
     pub name: Option<String>,
+    /// The label for project and fleet Skippers. Absent: Skipper.
+    pub skipper_name: Option<String>,
     /// The agent id it starts. Absent: the first enabled agent.
     pub agent: Option<String>,
     /// The model it starts with. Absent: the agent's default.
@@ -97,19 +99,18 @@ pub const ADMIRAL: &str = "Admiral";
 pub const SKIPPER: &str = "Skipper";
 
 impl SkiffAgent {
-    /// The main Skipper's name: the one from Settings, else [`ADMIRAL`]. A
-    /// stored "Skipper" is the old default, so it reads Admiral too.
+    /// The main Skipper's name: the one from Settings, else [`ADMIRAL`].
     pub fn name(&self) -> String {
         match self.name.as_deref().map(str::trim) {
-            None | Some("") | Some(SKIPPER) => ADMIRAL.into(),
+            None | Some("") => ADMIRAL.into(),
             Some(n) => n.into(),
         }
     }
 
     /// The tail of a project or fleet Skipper's session name: the name from
-    /// Settings, else "Skipper". The default Admiral is not used there.
+    /// Settings, else "Skipper". The main name is not used there.
     pub fn skipper_word(&self) -> String {
-        self.name.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or(SKIPPER).into()
+        self.skipper_name.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or(SKIPPER).into()
     }
 
     /// The age in days at which auto flush removes a cache file. `0`: off.

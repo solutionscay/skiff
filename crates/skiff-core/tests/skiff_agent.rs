@@ -10,6 +10,7 @@ fn skiff_agent_keys_round_trip() {
     assert_eq!(config::load().unwrap().skiff_agent, config::SkiffAgent::default());
 
     config::set_skiff_agent(SkiffAgentKey::Name(Some(" Bosun "))).unwrap();
+    config::set_skiff_agent(SkiffAgentKey::SkipperName(Some(" Skipper "))).unwrap();
     config::set_skiff_agent(SkiffAgentKey::Agent(Some("codex"))).unwrap();
     config::set_skiff_agent(SkiffAgentKey::Folder(Some(&dir))).unwrap();
     config::set_skiff_agent(SkiffAgentKey::ContinueOnRestore(true)).unwrap();
@@ -17,6 +18,7 @@ fn skiff_agent_keys_round_trip() {
     config::set_skiff_agent(SkiffAgentKey::ProjectModel(Some("sonnet"))).unwrap();
     let a = config::load().unwrap().skiff_agent;
     assert_eq!(a.name.as_deref(), Some("Bosun"));
+    assert_eq!(a.skipper_name.as_deref(), Some("Skipper"));
     assert_eq!(a.agent.as_deref(), Some("codex"));
     assert_eq!(a.folder.as_deref(), Some(dir.as_path()));
     assert!(a.continue_on_restore);
@@ -27,6 +29,7 @@ fn skiff_agent_keys_round_trip() {
 
     // Empty or off takes the key out, so the default applies.
     config::set_skiff_agent(SkiffAgentKey::Name(Some(""))).unwrap();
+    config::set_skiff_agent(SkiffAgentKey::SkipperName(Some(""))).unwrap();
     config::set_skiff_agent(SkiffAgentKey::ContinueOnRestore(false)).unwrap();
     config::set_skiff_agent(SkiffAgentKey::Model(None)).unwrap();
     config::set_skiff_agent(SkiffAgentKey::ProjectModel(Some(""))).unwrap();

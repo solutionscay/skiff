@@ -19,7 +19,7 @@ export interface TaskEdit {
 
 /** One edit, as `set_skiff_agent` takes it. */
 export type SkiffAgentEdit =
-  | { key: "name" | "agent" | "model" | "project_agent" | "project_model"; value: string | null }
+  | { key: "name" | "skipper_name" | "agent" | "model" | "project_agent" | "project_model"; value: string | null }
   | { key: "continue_on_restore"; value: boolean }
   | { key: "add_task" | "task"; value: TaskEdit }
   | { key: "rename_task"; value: { from: string; to: string } }
@@ -54,6 +54,7 @@ export function skiffAgentSection(
   const chosen = skiffAgentChoice(agents, set.agent);
 
   const name = textRow("Name", set.name ?? "", DEFAULT_NAME, (v) => save({ key: "name", value: v || null }));
+  const skipperName = textRow("Project and fleet Skippers' name", set.skipper_name ?? "", "Skipper", (v) => save({ key: "skipper_name", value: v || null }));
 
   const main = mainName(set.name);
   const pick = agentPick(`${main}'s agent`, choices, null);
@@ -77,7 +78,7 @@ export function skiffAgentSection(
     ? h("span", "c-cmd mono", line)
     : h("span", "c-cmd", chosen ? `${chosen.id} has no continue command.` : "No agent is on.");
   cont.append(h("span", "c-name", "Continue on restore"), what, sw);
-  return [...folderRows(set, changeFolder), name, agentRow, cont];
+  return [...folderRows(set, changeFolder), name, skipperName, agentRow, cont];
 }
 
 /**

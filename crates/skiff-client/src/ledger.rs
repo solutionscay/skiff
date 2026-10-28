@@ -162,10 +162,18 @@ impl Row {
 /// the owner `fleet:<fleet>`.
 pub fn owner_name(owner: &str) -> String {
     match (owner, crate::skipper::scope_fleet(owner)) {
-        (GRAND, _) => "Admiral".into(),
-        (_, Some(fleet)) => format!("the {fleet} Skipper"),
-        _ => format!("the {owner} Skipper"),
+        (GRAND, _) => main_name(),
+        (_, Some(fleet)) => format!("the {fleet} {}", skipper_name()),
+        _ => format!("the {owner} {}", skipper_name()),
     }
+}
+
+fn main_name() -> String {
+    crate::skipper::name(&skiff_core::config::load().unwrap_or_default())
+}
+
+fn skipper_name() -> String {
+    skiff_core::config::load().unwrap_or_default().skiff_agent.skipper_word()
 }
 
 /// Each row's work head: the row at the top of its parents. A hand-off in a
