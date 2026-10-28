@@ -780,10 +780,10 @@ pub async fn connect(socket: &std::path::Path) -> Result<Client> {
         .with_context(|| format!("skiffd is not running at {}", socket.display()))
 }
 
-/// Refuse a different daemon before reading settings or sending commands.
+/// Refuse a different protocol; warn once when only the daemon version differs.
 async fn check_daemon(c: Client) -> Result<Client> {
     let info = c.daemon_info().await?;
-    if info.version != skiff_core::VERSION || info.protocol != skiff_core::PROTOCOL {
+    if info.protocol != skiff_core::PROTOCOL {
         let cli = c.daemon_pid
             .and_then(|pid| std::fs::read_link(format!("/proc/{pid}/exe")).ok())
             .map(|p| p.with_file_name("skiff"));
@@ -792,6 +792,13 @@ async fn check_daemon(c: Client) -> Result<Client> {
             "skiffd is {} (protocol {}), and this skiff was built for skiffd {} (protocol {}). Use the matching CLI: {}",
             info.version, info.protocol, skiff_core::VERSION, skiff_core::PROTOCOL, matching
         );
+    }
+    if info.version != skiff_core::VERSION {
+        static WARNING: std::sync::Once = std::sync::Once::new();
+        WARNING.call_once(|| eprintln!(
+            "skiff: warning: skiffd is {}, and this skiff was built for skiffd {}",
+            info.version, skiff_core::VERSION
+        ));
     }
     Ok(c)
 }
