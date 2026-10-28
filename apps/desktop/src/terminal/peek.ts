@@ -389,6 +389,26 @@ function escButton(): HTMLButtonElement {
   return b;
 }
 
+/** The key that quits a terminal tool that keeps Esc. */
+const QUIT_KEYS: Record<string, string> = {
+  micro: "Ctrl+Q", nano: "Ctrl+X", pico: "Ctrl+X", vi: ":q", vim: ":q", nvim: ":q", hx: ":q", helix: ":q",
+  kak: ":q", less: "q", most: "q", emacs: "Ctrl+X Ctrl+C", mg: "Ctrl+X Ctrl+C", ne: "Ctrl+Q",
+};
+
+/**
+ * The command took the terminal: Esc is the tool's now. The keycap names the
+ * key that quits the tool, which closes the preview. A click still closes it.
+ */
+function tookTerminal(p: Peek) {
+  p.interactive = true;
+  const b = p.el.querySelector<HTMLButtonElement>(".peek-esc");
+  if (!b) return;
+  const tool = p.program.split("/").pop() ?? p.program;
+  const quit = QUIT_KEYS[tool];
+  b.textContent = quit ?? "Close";
+  b.title = quit ? `Close the preview (${quit} in ${tool})` : "Close the preview";
+}
+
 const keysIn = (el: HTMLElement) => el.contains(document.activeElement) || document.activeElement === document.body;
 
 function repaintPanes() {
@@ -761,7 +781,7 @@ export function peekUpdated(info: SessionInfo) {
   // A start is in flight: the update may be its command's, ahead of the reply.
   if (!p.session) return void earlyInteractive.add(info.id);
   if (p.session !== info.id || p.interactive) return;
-  p.interactive = true;
+  tookTerminal(p);
   show(p);
 }
 
@@ -775,7 +795,7 @@ function reclaim({ p, key }: { p: Peek; key: string }) {
   if (open || p.gen !== gen || currentKey() !== key) return drop(p, true);
   if (!active || active.closed) active = { key, gen: p.gen, keys: true, closed: false };
   open = p;
-  p.interactive = true;
+  tookTerminal(p);
   show(p);
 }
 
