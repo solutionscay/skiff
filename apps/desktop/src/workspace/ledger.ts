@@ -464,7 +464,7 @@ const result = (r: Entry) =>
 /**
  * A task's actions. Running, approval, blocked, pending, exited: the click
  * opens the pane. Restarted: the pane, and a result icon when the file
- * exists. Gone: the result, else nothing. Done: the result, with a pane
+ * exists. Gone: the result, else its owning Skipper. Done: the result, with a pane
  * icon. Finished: the result only.
  */
 function taskActs(l: Look, fin: boolean): Acts {
@@ -477,7 +477,10 @@ function taskActs(l: Look, fin: boolean): Acts {
     if (pane) icons.push(["pane", "Open pane", pane]);
     return { click: res, icons };
   }
-  if (l.st === "gone") return { click: res, icons: [] };
+  if (l.st === "gone") {
+    const skipper = r.owner === "grand" ? skiffAgentSession() : projectSkipperOf(r.owner);
+    return { click: res ?? (skipper ? () => openPane(skipper) : null), icons: [] };
+  }
   const icons: Acts["icons"] = l.st === "interrupted" && res ? [["result", "Open result", res]] : [];
   return { click: pane, icons };
 }
@@ -554,7 +557,8 @@ function signature(x: Sections): string {
   const look = (l: Look): unknown[] => [l.r.id, l.r.state, l.r.title, l.r.task, l.r.updated_at, l.r.closed_at, l.r.result_exists, l.st, l.where, opens(l), l.kids?.map(look)];
   const unit = (u: Unit) => [u.r.id, u.st, u.r.title, u.r.task, u.r.updated_at, u.r.closed_at, u.r.result_exists, u.look ? look(u.look) : null, u.kids?.map(look)];
   const tags = S.projects.map((p) => [p.name, p.short, accent(p)]);
-  return JSON.stringify([error, scopeLabel(), filter(), tags, x.working.map(unit), x.open.map(unit), x.finished.map(unit)]);
+  const skippers = [...sessions.keys()].map((id) => [id, coordinatorOf(id)]).filter(([, scope]) => scope);
+  return JSON.stringify([error, scopeLabel(), filter(), tags, skippers, x.working.map(unit), x.open.map(unit), x.finished.map(unit)]);
 }
 
 const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
