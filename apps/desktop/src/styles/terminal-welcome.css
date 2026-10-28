@@ -9,4 +9,7 @@
 .welcome-actions button:last-child { border-right: 0; background: transparent; }
 .welcome-actions button:last-child:hover { background: var(--bg-raised); }
 .welcome-actions button svg { flex-shrink: 0; color: var(--text-2); }
+.welcome-first { display: flex; align-items: stretch; }
+.welcome-first .welcome-primary { height: auto; }
+.welcome-first .welcome-actions { border-left: 0; }
 .welcome-hint { font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); }
