@@ -3,6 +3,10 @@ name: Release
 # A tag like v0.2.0 builds the Linux packages and the macOS .dmg and attaches
 # them to a draft release. Run it by hand to get the packages as workflow
 # artifacts only.
+#
+# With TAURI_SIGNING_PRIVATE_KEY set, each package also gets a .sig, the Mac
+# gets Skiff.app.tar.gz, and a tag release gets latest.json for the in-app
+# updater. Published, it is releases/latest/download/latest.json.
 on:
   push:
     tags: ["v*"]
@@ -34,12 +38,28 @@ jobs:
           cache: pnpm
           cache-dependency-path: apps/desktop/pnpm-lock.yaml
 
+      # The repack changes the AppImage bytes, so it is signed again after it.
       - name: Build
         working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           pnpm install --frozen-lockfile
-          pnpm bundle
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            pnpm bundle --config src-tauri/tauri.updater.json
+          else
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set. The packages have no update signatures."
+            pnpm bundle
+          fi
           sh scripts/appimage-repack.sh ../../target/release/bundle/appimage/*.AppImage
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            version=$(node -p "require('./package.json').version")
+            for image in ../../target/release/bundle/appimage/*.AppImage; do
+              rm -f "$image.sig"
+              pnpm tauri signer sign --app-version "$version" "$image"
+            done
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -48,6 +68,7 @@ jobs:
             target/release/bundle/deb/*.deb
             target/release/bundle/rpm/*.rpm
             target/release/bundle/appimage/*.AppImage
+            target/release/bundle/*/*.sig
 
       - name: Draft release
         if: startsWith(github.ref, 'refs/tags/')
@@ -56,6 +77,10 @@ jobs:
         run: |
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft --generate-notes
           gh release upload "$GITHUB_REF_NAME" --clobber target/release/bundle/deb/*.deb target/release/bundle/rpm/*.rpm target/release/bundle/appimage/*.AppImage
+          # The updater's signatures, beside the packages that latest.json names.
+          for sig in target/release/bundle/*/*.sig; do
+            if [ -e "$sig" ]; then gh release upload "$GITHUB_REF_NAME" --clobber "$sig"; fi
+          done
           # Copies without the version, so releases/latest/download/<name> always works.
           mkdir -p stable
           cp target/release/bundle/deb/*.deb stable/Skiff_amd64.deb
@@ -98,14 +123,24 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           pnpm install --frozen-lockfile
-          pnpm bundle
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            pnpm bundle --config src-tauri/tauri.updater.json
+          else
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set. There is no Skiff.app.tar.gz for the updater."
+            pnpm bundle
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: skiff-macos
-          path: target/release/bundle/dmg/*.dmg
+          path: |
+            target/release/bundle/dmg/*.dmg
+            target/release/bundle/macos/*.app.tar.gz
+            target/release/bundle/macos/*.app.tar.gz.sig
 
       - name: Draft release
         if: startsWith(github.ref, 'refs/tags/')
@@ -114,7 +149,30 @@ jobs:
         run: |
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft --generate-notes
           gh release upload "$GITHUB_REF_NAME" --clobber target/release/bundle/dmg/*.dmg
+          # The updater's archive and its signature.
+          for f in target/release/bundle/macos/*.app.tar.gz target/release/bundle/macos/*.app.tar.gz.sig; do
+            if [ -e "$f" ]; then gh release upload "$GITHUB_REF_NAME" --clobber "$f"; fi
+          done
           # A copy without the version, so releases/latest/download/<name> always works.
           mkdir -p stable
           cp target/release/bundle/dmg/*.dmg stable/Skiff_aarch64.dmg
           gh release upload "$GITHUB_REF_NAME" --clobber stable/*
+
+  # The updater's manifest, after both builds. Only a tag release has one.
+  manifest:
+    needs: [linux, macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: latest.json
+        run: |
+          sh apps/desktop/scripts/latest-json.sh artifacts "$GITHUB_REF_NAME" \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME" > latest.json
+          cat latest.json
+          gh release upload "$GITHUB_REF_NAME" --clobber latest.json
