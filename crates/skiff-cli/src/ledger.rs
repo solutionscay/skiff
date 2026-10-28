@@ -2352,6 +2352,46 @@ mod tests {
     }
 
     #[test]
+    fn a_restarted_skipper_recovers_only_interrupted_handoffs_once() {
+        let dir = scratch("skipper-restart");
+        let file = dir.join("ledger.db");
+        let mut db = open_at(&file).unwrap();
+        let mut old = pane("abc123456789", "shell", false);
+        old.started_at = 2000;
+        let mut new = pane("newskipper00", "agent", false);
+        new.started_at = 3000;
+        for scope in ["web", "fleet:Harbor"] {
+            let hand = |st: &str| New { handoff: true, project: scope.into(), state: st.into(), ..task("resume me") };
+            let (_, sent, result, _) = insert(&mut db, &file, hand("sent")).unwrap();
+            let (_, blocked, _, _) = insert(&mut db, &file, hand("blocked")).unwrap();
+            let mut unchanged = Vec::new();
+            for n in [hand("done"), hand("pending"), New { pane_gen: Some(2000), ..hand("sent") },
+                New { handoff: false, ..hand("sent") }, New { project: "other".into(), ..hand("sent") }] {
+                let (_, uid, _, _) = insert(&mut db, &file, n).unwrap();
+                unchanged.push((uid.clone(), one(&db, &uid).unwrap()));
+            }
+            skiff_client::fleet::restart_rows(&file, scope, &new, &[old.clone()]).unwrap();
+            for uid in [&sent, &blocked] {
+                let r = one(&db, uid).unwrap();
+                assert_eq!((r.state.as_str(), r.pane_id.as_deref(), r.pane_gen), ("pending", Some(new.id.as_str()), Some(3000)));
+                assert_eq!((r.owner.as_str(), r.project.as_str()), (GRAND, scope));
+                assert!(!r.interrupted_in(Some(&new)));
+            }
+            assert_eq!(one(&db, &sent).unwrap().result_path.as_deref(), Some(result.as_str()));
+            for (uid, before) in unchanged {
+                assert_eq!(serde_json::to_value(one(&db, &uid).unwrap()).unwrap(), serde_json::to_value(before).unwrap());
+            }
+            let notes = skiff_client::ledger::notes(&file, GRAND).unwrap();
+            assert_eq!(notes.len(), 1);
+            assert!(notes[0].1.contains(&sent) && notes[0].1.contains(&blocked) && notes[0].1.contains("Resend"));
+            skiff_client::fleet::restart_rows(&file, scope, &new, &[old.clone(), new.clone()]).unwrap();
+            assert_eq!(skiff_client::ledger::notes(&file, GRAND).unwrap(), notes);
+            skiff_client::ledger::drop_notes(&file, &[notes[0].0]).unwrap();
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn a_takeover_moves_every_row_and_gives_the_hand_offs_the_fleet_skipper() {
         let dir = scratch("takeover");
         let file = dir.join("ledger.db");
