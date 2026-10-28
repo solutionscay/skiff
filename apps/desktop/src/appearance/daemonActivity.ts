@@ -1,7 +1,7 @@
 import { hostCan, hostInvoke } from "../app/hostCaps";
 import { confirmAction } from "../ui/confirm";
 import { h } from "../ui/dom";
-import { S, sessions } from "../app/state";
+import { S } from "../app/state";
 import { groupOf, place } from "../app/stateQueries";
 import { branchName, locate, taskTitle } from "../workspace/model";
 import type { DaemonMetrics, SessionInfo } from "../platform/types";

@@ -36,7 +36,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "3fb9eb40cae9250b3d8cc8a756212e69c9099e86915e2a9c007367a8aabd41c0"
+    "sha256": "f5e0b822fd8c4b322a8168bd4f91d1c9eacb9d97f41a200fdfef108965c59a76"
   },
   "apps/desktop/src-tauri/src/config.rs": {
     "ownership": "agent settings (#166 R8): a remote Host's through HostConnection (agent_config@1); This Mac's [agents] stays the legacy local adapter, read back from the config it writes (installed state from skiffd): migrate in M1\u2013M6",
@@ -76,7 +76,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "ca2649793f17b528496eb1e8fe64b7355a55fadc11b6fd058909ddd1fccabc1e"
+    "sha256": "11c3340e196cad2c3842c641721af08f435484eee401ad50ff0816aff43a37b2"
   },
   "apps/desktop/src-tauri/src/copies.rs": {
     "ownership": "client-owned (M5 reviewed): local copies of bytes the Host sent, for this computer's Open with; never reads or opens a Host path",
@@ -183,7 +183,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "bdd9ecec383fca078c0dcf4714ca45d7607c8f3fcfcda199052d84eb2b29605a"
+    "sha256": "ad31d8af072dd7a63394f7ff68b2c72d29a91ebd87f572d7ec9187ba54043aa6"
   },
   "apps/desktop/src-tauri/src/native_menu.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -317,7 +317,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "cabb2376ce805d2066bd644f97c138f5ddcb02942468da9ad0657fba58b13fcc"
+    "sha256": "60201633b0b80410a6bb541d3171e29795c7b899ecf57a7c87f79d461a07ed38"
   },
   "apps/desktop/src/app/hosts.ts": {
     "ownership": "client policy: Host picker and label (list/select Hosts, links to Settings \u203a Hosts, clipboard opt-in) and the remote link-lost signal",
@@ -460,6 +460,15 @@
     ],
     "sha256": "dd16187f3f3a5c2c10665788c23b5e6eb8cc3da151573633370f00e6db0b7075"
   },
+  "apps/desktop/src/appearance/daemonActivity.ts": {
+    "ownership": "legacy local adapter/caller: migrate behind Host API in M1\u2013M6",
+    "reasons": [
+      "local provider: apps/desktop/src/app/hostCaps.ts",
+      "local provider: apps/desktop/src/app/state.ts",
+      "local provider: apps/desktop/src/app/stateQueries.ts"
+    ],
+    "sha256": "2e340120978a42583d825f5880431fdf5f536b0d8960df85040451e0d7eae02d"
+  },
   "apps/desktop/src/appearance/diskUse.ts": {
     "ownership": "client policy: Disk use counts this computer's agent folder only; a Host's disk use needs a Host op (v2 follow-up)",
     "reasons": [
@@ -503,7 +512,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "ac7b4501d4be4438e33336b929846a338b6c0741affc70e0c1ad95d2cf248440"
+    "sha256": "7aca18e1f3ea185127e007cf85116922a921092404e1bb58744c3ba1512eea17"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6; Show in file manager only on This Mac (#166)",
