@@ -18,7 +18,7 @@
   {"cmd": "group_delete", "group": "g1"}
  ],
  "replies": [
-  {"type": "reply", "id": 1, "result": {"Ok": {"kind": "session", "session": {"id": "s1", "label": "sh", "role": "shell", "cwd": "/", "command": "/bin/sh", "foreground_program": null, "args": [], "state": "idle", "cols": 80, "rows": 24, "pid": 7, "exit_code": null, "theme": null, "name": null, "title": null, "started_at": 0, "last_output_at": 0, "away": [], "was": null, "resume": null, "unread": false, "agent_exit": null, "peek": false, "interactive": false, "input_gen": 0}}}},
+  {"type": "reply", "id": 1, "result": {"Ok": {"kind": "session", "session": {"id": "s1", "label": "sh", "role": "shell", "cwd": "/", "command": "/bin/sh", "foreground_program": null, "args": [], "state": "idle", "cols": 80, "rows": 24, "pid": 7, "exit_code": null, "theme": null, "name": null, "title": null, "started_at": 0, "last_output_at": 0, "output_bytes": 0, "away": [], "was": null, "resume": null, "unread": false, "agent_exit": null, "peek": false, "interactive": false, "input_gen": 0}}}},
   {"type": "reply", "id": 2, "result": {"Ok": {"kind": "groups", "groups": [{"id": "g1", "name": "One", "layout": {"type": "pane", "session": "s1"}, "focus": null}]}}},
   {"type": "reply", "id": 3, "result": {"Ok": {"kind": "group", "group": {"id": "g2", "name": "Two", "layout": {"type": "pane", "session": "s1"}, "focus": "s1", "cwd": "/"}}}},
   {"type": "reply", "id": 4, "result": {"Err": {"code": "operation_failed", "message": "no such session"}}}

@@ -31,6 +31,7 @@
         "title": "title\n",
         "started_at": 18446744073709551615,
         "last_output_at": 18446744073709551614,
+        "output_bytes": 18446744073709551613,
         "away": [
           {
             "path": "/other//../x",
@@ -94,6 +95,7 @@
         "title": null,
         "started_at": 0,
         "last_output_at": 0,
+        "output_bytes": 0,
         "away": [],
         "was": null,
         "resume": null,
@@ -134,6 +136,7 @@
     "title": null,
     "started_at": 0,
     "last_output_at": 0,
+    "output_bytes": 0,
     "away": [],
     "was": null,
     "resume": null,
