@@ -28,11 +28,12 @@ fn off(pubkey: &str, debug: bool, kind: Option<&'static str>, exe: &str) -> Opti
     }
 }
 
-fn kind(app: &AppHandle) -> Option<&'static str> {
+/// `appimage`: $APPIMAGE is set. Only Linux has it.
+fn kind(appimage: bool) -> Option<&'static str> {
     use tauri::utils::{config::BundleType, platform::bundle_type};
     match bundle_type() {
         // The updater writes over $APPIMAGE. Without it there is no AppImage file to replace.
-        Some(BundleType::AppImage) => app.env().appimage.as_ref().map(|_| "appimage"),
+        Some(BundleType::AppImage) => appimage.then_some("appimage"),
         Some(BundleType::Deb) => Some("deb"),
         Some(BundleType::Rpm) => Some("rpm"),
         Some(BundleType::App) => Some("app"),
@@ -51,7 +52,11 @@ pub(crate) fn update_off(app: AppHandle) -> Option<&'static str> {
         .and_then(|k| k.as_str())
         .unwrap_or_default();
     let exe = std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-    off(pubkey, cfg!(debug_assertions), kind(&app), &exe)
+    #[cfg(target_os = "linux")]
+    let appimage = app.env().appimage.is_some();
+    #[cfg(not(target_os = "linux"))]
+    let appimage = false;
+    off(pubkey, cfg!(debug_assertions), kind(appimage), &exe)
 }
 
 /// Called after the update is installed and the page's workspace save guard
