@@ -54,6 +54,38 @@ function workspace(s: SessionInfo) {
   return closed ? { text: `closed: ${closed.project.name}`, out: true } : { text: "no project", out: true };
 }
 function stateRank(s: SessionInfo) { return { waiting: 0, working: 1, idle: 2, done: 3 }[s.state]; }
+const program = (s: SessionInfo) => s.foreground_program || [s.command, ...s.args].join(" ");
+
+/** The column heads, in table order. `key` is null for a head that does not sort. */
+type SortKey = "state" | "session" | "program" | "workspace" | "folder" | "out" | "age";
+const COLS: { label: string; key: SortKey | null; cls: string }[] = [
+  { label: "STATE", key: "state", cls: "" }, { label: "SESSION", key: "session", cls: "" }, { label: "PROGRAM", key: "program", cls: "" },
+  { label: "WORKSPACE", key: "workspace", cls: "" }, { label: "FOLDER", key: "folder", cls: "" },
+  { label: "OUT", key: "out", cls: "c-num" }, { label: "AGE", key: "age", cls: "c-num" }, { label: "ACTIONS", key: null, cls: "" },
+];
+/** The chosen sort. It holds while the app runs and comes back to the default on restart. */
+let sort: { key: SortKey; dir: 1 | -1 } | null = null;
+/** A session's value under a head. null is a missing value (shown as a dash); it sorts last both ways. */
+function sortValue(s: SessionInfo, key: SortKey): string | number | null {
+  switch (key) {
+    case "state": return stateRank(s);
+    case "session": return taskTitle(s);
+    case "program": return program(s) || null;
+    case "workspace": return workspace(s).text;
+    case "folder": return s.cwd || null;
+    case "out": return s.output_bytes || null;
+    case "age": return s.started_at ? Date.now() - s.started_at : null;
+  }
+}
+/** Default order: out of the workspace first, then state, then start time. */
+const byDefault = (a: SessionInfo, b: SessionInfo) => Number(workspace(b).out) - Number(workspace(a).out) || stateRank(a) - stateRank(b) || a.started_at - b.started_at || a.id.localeCompare(b.id);
+function compare(a: SessionInfo, b: SessionInfo): number {
+  if (!sort) return byDefault(a, b);
+  const x = sortValue(a, sort.key), y = sortValue(b, sort.key);
+  if (x === null || y === null) return x === y ? byDefault(a, b) : x === null ? 1 : -1;
+  const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), undefined, { sensitivity: "base", numeric: true });
+  return c * sort.dir || byDefault(a, b);
+}
 
 export function daemonActivitySection(s: ActivityState, redraw: () => void, reveal: (id: string, closed: boolean) => void): HTMLElement[] {
   const head = h("div", "set-head"), title = h("div", "set-h", "skiffd activity"); title.id = "set-h-activity";
@@ -69,9 +101,21 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
   table.setAttribute("aria-labelledby", title.id);
   const cols = h("div", "set-row set-cols");
   cols.setAttribute("role", "row");
-  for (const x of ["STATE", "SESSION", "WORKSPACE", "PROGRAM", "FOLDER", "AGE", "OUT", "ACTIONS"]) cols.append(h("span", x === "AGE" || x === "OUT" ? "c-num" : "", x));
+  for (const c of COLS) {
+    // A head that sorts is a button: a click, Enter or Space sorts by it, and again reverses.
+    const el = h(c.key ? "button" : "span", c.key ? `set-sort ${c.cls}` : c.cls, c.label);
+    el.setAttribute("role", "columnheader");
+    if (c.key) {
+      const key = c.key; (el as HTMLButtonElement).type = "button"; el.dataset.key = key;
+      const on = sort?.key === key;
+      el.setAttribute("aria-sort", on ? (sort!.dir > 0 ? "ascending" : "descending") : "none");
+      if (on) el.append(h("span", "set-sort-dir", sort!.dir > 0 ? "\u2191" : "\u2193"));
+      el.addEventListener("click", () => { sort = { key, dir: on ? (sort!.dir > 0 ? -1 : 1) : 1 }; redraw(); });
+    }
+    cols.append(el);
+  }
   table.append(cols);
-  const rows = [...s.list].sort((a, b) => Number(workspace(b).out) - Number(workspace(a).out) || stateRank(a) - stateRank(b) || a.started_at - b.started_at || a.id.localeCompare(b.id));
+  const rows = [...s.list].sort(compare);
   if (!rows.length) { const row = h("div", "set-row set-daemon-row"); row.append(h("span", "c-span", "No sessions")); table.append(row); }
   for (const item of rows) {
     const w = workspace(item), row = h("div", `set-row set-daemon-row${w.out ? " out" : ""}`);
@@ -80,7 +124,7 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
     // The sidebar's state mark, in its state color.
     const state = h("span", "c-state"); state.append(h("span", `dot ${item.state}`), h("span", "", item.state));
     // The name alone, as the sidebar shows it. Hover shows the session id.
-    row.append(state, cell(taskTitle(item), "c-name", `${taskTitle(item)} · ${item.id}`), cell(w.text, w.out ? "bad" : ""), cell(item.foreground_program || [item.command, ...item.args].join(" ")), cell(folder(item.cwd), "", item.cwd), cell(age(item.started_at), "c-num", item.started_at ? new Date(item.started_at).toLocaleString() : ""), cell(item.output_bytes ? bytes(item.output_bytes) : "—", "c-num"));
+    row.append(state, cell(taskTitle(item), "c-name", `${taskTitle(item)} · ${item.id}`), cell(program(item)), cell(w.text, w.out ? "bad" : ""), cell(folder(item.cwd), "", item.cwd), cell(item.output_bytes ? bytes(item.output_bytes) : "—", "c-num"), cell(age(item.started_at), "c-num", item.started_at ? new Date(item.started_at).toLocaleString() : ""));
     const acts = h("span", "c-acts");
     const show = h("button", "set-rm", "Reveal"); show.type = "button"; show.disabled = item.skipper != null && !item.coordinator && w.out; show.addEventListener("click", () => reveal(item.id, !!locate(S.closedProjects, item.cwd))); acts.append(show);
     const end = h("button", `set-rm${item.state === "done" ? "" : " c-remove"}`, item.state === "done" ? "Remove" : "End…"); end.type = "button";

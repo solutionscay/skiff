@@ -253,10 +253,14 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-disk-auto span.c-cmd { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
 
 /* skiffd activity: one grid for the whole table. STATE, SESSION and PROGRAM size to their content; WORKSPACE and FOLDER share the rest. */
-.set-daemon { flex-shrink: 0; display: grid; grid-template-columns: fit-content(calc(120 * var(--u))) fit-content(calc(300 * var(--u))) minmax(calc(112 * var(--u)), 1fr) fit-content(calc(140 * var(--u))) minmax(calc(104 * var(--u)), 1fr) calc(52 * var(--u)) calc(80 * var(--u)) calc(168 * var(--u)); min-width: 0; }
+.set-daemon { flex-shrink: 0; display: grid; grid-template-columns: fit-content(calc(120 * var(--u))) fit-content(calc(300 * var(--u))) fit-content(calc(140 * var(--u))) minmax(calc(112 * var(--u)), 1fr) minmax(calc(104 * var(--u)), 1fr) calc(80 * var(--u)) calc(52 * var(--u)) calc(168 * var(--u)); min-width: 0; }
 .set-daemon .set-row { grid-column: 1 / -1; grid-template-columns: subgrid; }
 .set-daemon .set-row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); }
 .set-daemon .set-cols > * { color: var(--text-3); }
+/* A head that sorts is a button in the head's own type. The arrow marks the active sort. */
+.set-daemon .set-sort { border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; cursor: pointer; gap: calc(4 * var(--u)); }
+.set-daemon .set-sort:hover, .set-daemon .set-sort[aria-sort="ascending"], .set-daemon .set-sort[aria-sort="descending"] { color: var(--text); }
+.set-daemon .set-sort-dir { font-size: calc(11px * var(--zoom, 1)); letter-spacing: 0; }
 .set-daemon .set-row > .c-span { grid-column: 1 / -1; }
 .set-daemon .c-name { font-size: calc(13px * var(--zoom, 1)); color: var(--text); }
 .set-daemon .c-state { gap: calc(8 * var(--u)); }.set-daemon .c-num { justify-content: flex-end; font-variant-numeric: tabular-nums; }

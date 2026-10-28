@@ -464,10 +464,11 @@
     "ownership": "legacy local adapter/caller: migrate behind Host API in M1\u2013M6",
     "reasons": [
       "local provider: apps/desktop/src/app/hostCaps.ts",
+      "local provider: apps/desktop/src/app/skiffAgent.ts",
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/app/stateQueries.ts"
     ],
-    "sha256": "89f10e7fa5e76ca98ad9bd7ff9af45ef9f46b1228748af581f393f34116552cb"
+    "sha256": "c0463673bfc9c00a80a6a07a25b7a3ef2df04e651b8bd2984b1d5057385b6ac8"
   },
   "apps/desktop/src/appearance/diskUse.ts": {
     "ownership": "client policy: Disk use counts this computer's agent folder only; a Host's disk use needs a Host op (v2 follow-up)",
@@ -512,7 +513,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "7aca18e1f3ea185127e007cf85116922a921092404e1bb58744c3ba1512eea17"
+    "sha256": "94bef0dc4b765a67c2199c14b59985933c9e4d0381c26060f8490067306f909a"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6; Show in file manager only on This Mac (#166)",
