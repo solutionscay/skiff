@@ -450,6 +450,8 @@ pub struct SessionPool {
     /// Held while a coordinator request finds or starts one. Holds the
     /// last session a start or resume line went into, and when.
     coordinator: Mutex<Option<(SessionId, Instant)>>,
+    /// The daemon process start, retained through reload handover by its pid.
+    started_at: AtomicU64,
     /// `skiff watch` registrations by connection number. Not saved and not
     /// handed over: a watcher registers again when it connects again.
     /// By connection and the session watched: one watcher process may
@@ -483,6 +485,7 @@ impl Default for SessionPool {
             reload: Mutex::new(()),
             listener: AtomicI32::new(-1),
             coordinator: Mutex::new(None),
+            started_at: AtomicU64::new(now_ms()),
             watchers: Mutex::new(HashMap::new()),
         }
     }
@@ -527,6 +530,19 @@ impl SessionPool {
             .collect();
         v.sort_by(|a, b| a.id.cmp(&b.id));
         v
+    }
+
+    pub fn metrics(&self) -> skiff_core::protocol::DaemonMetrics {
+        let pid = std::process::id();
+        let memory_bytes = std::fs::read_to_string(format!("/proc/{pid}/statm"))
+            .ok()
+            .and_then(|s| s.split_whitespace().nth(1)?.parse::<u64>().ok())
+            .map(|pages| pages * 4096)
+            .unwrap_or(0);
+        skiff_core::protocol::DaemonMetrics {
+            version: skiff_core::VERSION.to_string(), pid, started_at: self.started_at.load(Ordering::Relaxed),
+            memory_bytes, session_count: self.sessions.read().unwrap().len() as u64,
+        }
     }
 
     pub fn get(&self, id: &str) -> Option<Arc<Session>> {
@@ -676,6 +692,7 @@ impl SessionPool {
             title: None,
             started_at: now_ms(),
             last_output_at: now_ms(),
+            output_bytes: 0,
             away: Vec::new(),
             was: None,
             resume: None,
@@ -795,6 +812,10 @@ impl SessionPool {
     /// One read's worth of output: the screen, the bell, the state, the title.
     fn on_output(&self, session: &Arc<Session>, sid: &str, chunk: &[u8]) {
         session.last_output.store(now_ms(), Ordering::Relaxed);
+        {
+            let mut info = session.info.lock().unwrap();
+            info.output_bytes = info.output_bytes.saturating_add(chunk.len() as u64);
+        }
         let (signals, scan, echo) = session.push_output(chunk);
         // A bell that answers a key is no call: the user is at the
         // keys. The BEL that ends a title sequence is not a bell.

@@ -32,6 +32,8 @@ pub mod b64 {
 pub enum Request {
     Ping,
     ListSessions,
+    /// Small process data for Settings › skiffd activity.
+    DaemonMetrics,
     CreateSession {
         spec: SessionSpec,
     },
@@ -217,19 +219,52 @@ pub enum Response {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         debug: Option<bool>,
     },
-    Sessions { sessions: Vec<SessionInfo> },
-    Session { session: SessionInfo },
-    Agents { agents: Vec<AgentInfo> },
-    Output { stdout: String },
-    Screen { lines: Vec<String> },
-    Groups { groups: Vec<Group> },
-    Group { group: Group },
-    Error { message: String },
+    Sessions {
+        sessions: Vec<SessionInfo>,
+    },
+    DaemonMetrics {
+        metrics: DaemonMetrics,
+    },
+    Session {
+        session: SessionInfo,
+    },
+    Agents {
+        agents: Vec<AgentInfo>,
+    },
+    Output {
+        stdout: String,
+    },
+    Screen {
+        lines: Vec<String>,
+    },
+    Groups {
+        groups: Vec<Group>,
+    },
+    Group {
+        group: Group,
+    },
+    Error {
+        message: String,
+    },
     /// The answer to [`Request::Coordinator`]. `created`: it started now.
     /// `typed`: a start or resume line went into its shell now.
-    Coordinator { session: SessionInfo, created: bool, typed: bool },
+    Coordinator {
+        session: SessionInfo,
+        created: bool,
+        typed: bool,
+    },
     /// A [`Request::Submit`] typed nothing: input came after its check.
     Refused,
+}
+
+/// One daemon process, without child-process measurements.
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct DaemonMetrics {
+    pub version: String,
+    pub pid: u32,
+    pub started_at: u64,
+    pub memory_bytes: u64,
+    pub session_count: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -311,6 +346,7 @@ impl Request {
         match self {
             Request::Ping => "ping",
             Request::ListSessions => "list_sessions",
+            Request::DaemonMetrics => "daemon_metrics",
             Request::CreateSession { .. } => "create_session",
             Request::Write { .. } => "write",
             Request::Submit { .. } => "submit",
@@ -361,7 +397,10 @@ mod tests {
         v["watch"] = serde_json::json!({ "since": 1, "pids": [41234], "failure": { "kind": "ledger", "message": "busy", "at": 2 } });
         let s: SessionInfo = serde_json::from_value(v).unwrap();
         let back: SessionInfo = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
-        assert_eq!(back.watch.as_ref().map(|w| w.pids.clone()), Some(vec![41234]));
+        assert_eq!(
+            back.watch.as_ref().map(|w| w.pids.clone()),
+            Some(vec![41234])
+        );
         assert_eq!(back, s);
     }
 }

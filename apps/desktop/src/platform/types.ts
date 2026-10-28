@@ -27,6 +27,8 @@ export interface SessionInfo {
   started_at: number;
   /** Unix ms. */
   last_output_at: number;
+  /** Total bytes read from the PTY. */
+  output_bytes?: number;
   /** Other worktrees its processes ran in during the last minute. Absent from an older daemon. */
   away?: Away[];
   /** The last agent seen in front, and its title. Absent from an older daemon. */
@@ -51,6 +53,14 @@ export interface SessionInfo {
   retiring?: boolean;
   /** The `skiff watch` processes registered for this session. Absent when none is, or from a daemon older than protocol 27. */
   watch?: WatchInfo | null;
+}
+
+export interface DaemonMetrics {
+  version: string;
+  pid: number;
+  started_at: number;
+  memory_bytes: number;
+  session_count: number;
 }
 
 /** The watchers registered for a session. */

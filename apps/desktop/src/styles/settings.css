@@ -174,3 +174,13 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-disk .set-rm:disabled:hover { border-color: var(--rule); color: var(--text-3); }
 .set-disk .set-rm:not(:disabled):is(:hover, :focus-visible) { border-color: var(--error); color: var(--error); }
 .set-disk-auto span.c-cmd { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
+
+/* skiffd activity: inventory rows stay on the Settings 40px grid. */
+.set-daemon { flex-shrink: 0; display: flex; flex-direction: column; }
+.set-daemon .set-row { grid-template-columns: calc(92 * var(--u)) minmax(calc(150 * var(--u)), 1fr) minmax(calc(190 * var(--u)), 1.2fr) minmax(calc(120 * var(--u)), 1fr) minmax(calc(160 * var(--u)), 1.2fr) calc(90 * var(--u)) calc(170 * var(--u)) calc(100 * var(--u)) calc(150 * var(--u)); }
+.set-daemon .set-row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--zoom, 1)); }
+.set-daemon .c-state::before { content: ""; width: calc(8 * var(--u)); height: calc(8 * var(--u)); margin-right: calc(8 * var(--u)); background: var(--text-dim); }
+.set-daemon .c-state.waiting::before { background: var(--state-waiting); }.set-daemon .c-state.working::before { background: var(--state-working); }.set-daemon .c-state.done::before { background: var(--text-dim); }
+.set-daemon-row.out { box-shadow: inset 2px 0 0 var(--error); }.set-daemon .bad { color: var(--error-text); }
+.set-daemon .c-acts { gap: calc(8 * var(--u)); justify-content: flex-end; overflow: visible; }.set-daemon .set-rm { margin-left: 0; }.set-daemon .c-remove { color: var(--error); }
+.set-daemon-band { justify-content: flex-start; font-variant-numeric: tabular-nums; }.set-daemon-band span + span { margin-left: calc(24 * var(--u)); }

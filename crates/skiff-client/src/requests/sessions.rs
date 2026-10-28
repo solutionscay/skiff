@@ -4,6 +4,13 @@ use skiff_core::{protocol::{Envelope, Request, Response}, session::{SessionId, S
 use std::sync::atomic::Ordering;
 
 impl Client {
+    pub async fn daemon_metrics(&self) -> Result<skiff_core::protocol::DaemonMetrics> {
+        match self.request(Request::DaemonMetrics).await? {
+            Response::DaemonMetrics { metrics } => Ok(metrics),
+            Response::Error { message } => bail!(message),
+            other => bail!("unexpected reply: {other:?}"),
+        }
+    }
     pub async fn list_sessions(&self) -> Result<Vec<SessionInfo>> {
         match self.request(Request::ListSessions).await? {
             Response::Sessions { sessions } => Ok(sessions),

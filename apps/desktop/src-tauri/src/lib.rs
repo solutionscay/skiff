@@ -115,6 +115,7 @@ pub fn run() {
             disk::flush_cache,
             disk::flush_done,
             commands::list_sessions,
+            commands::daemon_metrics,
             commands::create_session,
             commands::pty_write,
             commands::pty_resize,
