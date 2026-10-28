@@ -11,7 +11,7 @@ use skiff_core::{
     project::{self, AgentInfo, Project, Worktree},
     session::{SessionInfo, SessionState},
 };
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
 use crate::connection::{App, ensure_client, err};
 
@@ -28,7 +28,7 @@ async fn project_edit<T: Send + 'static>(
     f: impl FnOnce() -> anyhow::Result<T> + Send + 'static,
 ) -> Result<T, String> {
     let out = blocking(f).await?;
-    let _ = handle.emit(PROJECTS_CHANGED, ());
+    crate::projects_watch::changed(handle);
     Ok(out)
 }
 
@@ -190,6 +190,7 @@ pub(crate) async fn get_appearance() -> Result<Appearance, String> {
 pub(crate) async fn set_appearance(theme: Option<String>) -> Result<Appearance, String> {
     blocking(move || {
         config::set_app_theme(theme.as_deref())?;
+        crate::projects_watch::wrote();
         Ok(config::load()?.appearance)
     })
     .await

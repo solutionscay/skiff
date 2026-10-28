@@ -15,12 +15,9 @@ use skiff_core::{
     session::SessionInfo,
     tasks::{self, TaskType},
 };
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
-use crate::{
-    config::PROJECTS_CHANGED,
-    connection::{ensure_client, err, App},
-};
+use crate::connection::{ensure_client, err, App};
 
 /// Runs at app start, off the main thread. Never prompts. Makes the agent's
 /// folder when it is missing, and copies the
@@ -253,7 +250,7 @@ pub async fn set_skiff_agent(app: AppHandle, edit: Edit) -> Result<SkiffAgent, S
         read()
     })
     .await?;
-    let _ = app.emit(PROJECTS_CHANGED, ());
+    crate::projects_watch::changed(&app);
     Ok(out)
 }
 
@@ -355,7 +352,7 @@ pub async fn fleet_takeover(app: State<'_, App>, handle: AppHandle, fleet: Strin
     let (c, _) = ensure_client(&app).await?;
     let socket = skiff_core::socket::socket_path();
     let out = fleet::takeover(&c, &socket, &fleet, Some(&join), true).await.map_err(err);
-    let _ = handle.emit(PROJECTS_CHANGED, ());
+    crate::projects_watch::changed(&handle);
     out.map(|_| ())
 }
 
@@ -364,7 +361,7 @@ pub async fn fleet_takeover(app: State<'_, App>, handle: AppHandle, fleet: Strin
 pub async fn rename_fleet(app: State<'_, App>, handle: AppHandle, old: String, new: String) -> Result<(), String> {
     let (c, _) = ensure_client(&app).await?;
     let out = fleet::rename(&c, &old, new.trim()).await.map_err(err);
-    let _ = handle.emit(PROJECTS_CHANGED, ());
+    crate::projects_watch::changed(&handle);
     out
 }
 
@@ -422,7 +419,7 @@ pub async fn change_skiff_folder(
         panes.remove(&s.id);
     }
     let done = blocking(move || agent_folder::change(&config::load()?, &path, mode, &panes, anyway)).await?;
-    let _ = handle.emit(PROJECTS_CHANGED, ());
+    crate::projects_watch::changed(&handle);
     Ok(done)
 }
 

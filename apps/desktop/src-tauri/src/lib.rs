@@ -10,6 +10,7 @@ mod disk;
 mod drops;
 mod input;
 mod ledger;
+mod projects_watch;
 mod quit;
 mod reload;
 mod skiff_agent;
@@ -61,6 +62,8 @@ pub fn run() {
             std::thread::spawn(disk::auto_flush);
             let handle = app.handle().clone();
             std::thread::spawn(move || ledger::watch(handle));
+            let handle = app.handle().clone();
+            std::thread::spawn(move || projects_watch::watch(handle));
             let Some(window) = app.get_webview_window("main") else { return Ok(()) };
             #[cfg(target_os = "linux")]
             if header_bar::wanted() {

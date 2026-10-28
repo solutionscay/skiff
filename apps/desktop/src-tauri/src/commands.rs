@@ -319,7 +319,9 @@ pub(crate) fn hidden_changes_projects() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 pub(crate) fn set_project_changes(project: String, on: bool) -> Result<(), String> {
-    skiff_core::config::set_project_changes(&project, on).map_err(err)
+    skiff_core::config::set_project_changes(&project, on).map_err(err)?;
+    crate::projects_watch::wrote();
+    Ok(())
 }
 
 /// Each project's own theme id, as `[name, id]`.
@@ -331,12 +333,16 @@ pub(crate) fn project_themes() -> Result<Vec<(String, String)>, String> {
 
 #[tauri::command]
 pub(crate) fn set_project_theme(project: String, theme: Option<String>) -> Result<(), String> {
-    skiff_core::config::set_project_theme(&project, theme.as_deref()).map_err(err)
+    skiff_core::config::set_project_theme(&project, theme.as_deref()).map_err(err)?;
+    crate::projects_watch::wrote();
+    Ok(())
 }
 
 #[tauri::command]
 pub(crate) fn set_project_files(project: String, on: bool) -> Result<(), String> {
-    skiff_core::config::set_project_files(&project, on).map_err(err)
+    skiff_core::config::set_project_files(&project, on).map_err(err)?;
+    crate::projects_watch::wrote();
+    Ok(())
 }
 
 #[tauri::command]
