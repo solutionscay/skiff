@@ -12,6 +12,7 @@ type HostCap =
   | "session_lifecycle"
   | "session_groups"
   | "session_agents"
+  | "daemon_metrics"
   | "projects"
   | "git_status"
   | "git_diff"
@@ -37,6 +38,7 @@ const MAJOR: Record<HostCap, number> = {
   session_lifecycle: 1,
   session_groups: 1,
   session_agents: 1,
+  daemon_metrics: 1,
   projects: 1,
   git_status: 1,
   git_diff: 1,
@@ -66,6 +68,7 @@ const OFFERS: Record<HostCap, string> = {
   session_lifecycle: "new, ended or renamed sessions",
   session_groups: "groups",
   session_agents: "an agent list",
+  daemon_metrics: "daemon metrics",
   projects: "projects",
   git_status: "Git changes",
   git_diff: "diffs",

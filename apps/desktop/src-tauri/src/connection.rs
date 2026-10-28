@@ -424,7 +424,7 @@ pub(crate) async fn host_capabilities(app: State<'_, App>) -> Result<Vec<String>
 /// writes, and their reads, so a change reads back from the same config, and
 /// Skipper's sessions, which it starts with the bundled `skiff`, fleet
 /// Skippers included, and the Skippers' instruction files.
-const LOCAL_ADAPTER: [&str; 7] = ["agent_config@1", "skipper_config@1", "skipper@1", "skipper_file@1", "skipper_run@1", "skipper_run@2", "session_agents@1"];
+const LOCAL_ADAPTER: [&str; 8] = ["agent_config@1", "skipper_config@1", "skipper@1", "skipper_file@1", "skipper_run@1", "skipper_run@2", "session_agents@1", "daemon_metrics@1"];
 
 fn add_local_adapter(names: &mut Vec<String>) {
     for cap in LOCAL_ADAPTER {

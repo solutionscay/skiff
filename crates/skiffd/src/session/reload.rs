@@ -49,7 +49,7 @@ use crate::{
 /// The handover file's format. Raise it when `Meta` or `SessionMeta` change
 /// in a way an older or newer daemon would misread. A change to the terminal
 /// state shows in [`fingerprint`] on its own.
-pub const HANDOVER: u32 = 2;
+pub const HANDOVER: u32 = 3;
 
 /// Handover versions this binary reads.
 const READS: [u32; 1] = [HANDOVER];
@@ -107,6 +107,8 @@ struct Meta {
     #[serde(default)]
     state: Option<PathBuf>,
     aliases: String,
+    #[serde(default)]
+    started_at: u64,
     groups: Vec<Group>,
     sessions: Vec<SessionMeta>,
     /// Killed sessions' children not reaped yet. The new image reaps them.
@@ -306,6 +308,7 @@ impl SessionPool {
             listener,
             state: Some(crate::paths::state()),
             aliases: shellenv::aliases().to_string(),
+            started_at: self.started_at.load(Ordering::Relaxed),
             groups: self.groups.lock().unwrap().clone(),
             sessions: metas,
             orphans,
@@ -330,6 +333,7 @@ impl SessionPool {
     /// adopted is hung up and leaves its groups, as a failed restore does.
     pub fn adopt(self: &Arc<Self>, handover: Handover) {
         let Handover { meta, bytes, screens } = handover;
+        if meta.started_at != 0 { self.started_at.store(meta.started_at, Ordering::Relaxed); }
         shellenv::set_aliases(&meta.aliases);
         let mut groups = meta.groups;
         let mut orphans = meta.orphans;

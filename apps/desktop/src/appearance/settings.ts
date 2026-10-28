@@ -21,6 +21,11 @@ import { hostCan, hostInvoke } from "../app/hostCaps";
 import { countDisk, diskState, diskUseSection } from "./diskUse";
 import { imagesSection, imagesState } from "./imagesPage";
 import { onImagesChanged } from "../terminal/images";
+import { activityState, daemonActivitySection, startActivity, stopActivity } from "./daemonActivity";
+import { revealSession } from "../workspace/view";
+import { locate } from "../workspace/model";
+import { openClosedProject } from "../workspace/projectClose";
+import { S } from "../app/state";
 
 /**
  * Settings over the sidebar and terminal: agents, Skippers, task types,
@@ -45,7 +50,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   document.getElementById("body")!.appendChild(root);
 
   let agents: AgentInfo[] = [];
-  const TABS = ["agents", "skippers", "task-types", "appearance", "open", "images", "disk", "hosts"] as const;
+  const TABS = ["agents", "skippers", "task-types", "appearance", "open", "images", "disk", "activity", "hosts"] as const;
   let tab: (typeof TABS)[number] = "agents";
   const themeFilters: ThemeFilters = { query: "", family: null };
   type OpenKey = "diff" | "text" | "markdown" | "html" | "image";
@@ -76,6 +81,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   const agentCall = (cmd: string, args: Record<string, unknown> = {}) => hostInvoke<AgentInfo[]>("agent_config", cmd, args);
   const disk = diskState();
   const gallery = imagesState();
+  const activity = activityState();
   // A drop, a paste or a delete elsewhere redraws the gallery.
   onImagesChanged(() => {
     if (!root.hidden && tab === "images") render();
@@ -155,15 +161,17 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const nav = h("div", "set-nav");
     const head = h("div", "set-nav-head");
     head.append(h("div", "set-title", "Settings"), h("div", "set-path mono", "~/.config/skiff/projects.toml"));
-    const names = { agents: "Agents", skippers: "Skippers", "task-types": "Task types", appearance: "Appearance", open: "Open with", images: "Images", disk: "Disk use", hosts: "Hosts" };
+    const names = { agents: "Agents", skippers: "Skippers", "task-types": "Task types", appearance: "Appearance", open: "Open with", images: "Images", disk: "Disk use", activity: "skiffd activity", hosts: "Hosts" };
     const tabs = TABS.map((t) => {
       const b = h("button", "set-tab" + (tab === t ? " active" : ""), names[t]);
       b.type = "button";
       b.addEventListener("click", () => {
+        if (tab === "activity") stopActivity(activity);
         tab = t;
         draw();
         if (tab === "skippers") void loadFiles();
         if (tab === "disk") void countDisk(disk, render);
+        if (tab === "activity") startActivity(activity, render);
         if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
       });
       return b;
@@ -203,6 +211,19 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     if (tab === "disk") {
       const main = h("div", "set-main");
       main.append(...diskUseSection(disk, render, (days) => void setCacheDays(days)));
+      root.replaceChildren(nav, pinClose(main));
+      return;
+    }
+    if (tab === "activity") {
+      const main = h("div", "set-main");
+      main.append(...daemonActivitySection(activity, render, async (id, closed) => {
+        if (closed) {
+          const session = activity.list.find((x) => x.id === id);
+          const at = session && locate(S.closedProjects, session.cwd);
+          if (at) await openClosedProject(at.project);
+        }
+        close(); revealSession(id);
+      }));
       root.replaceChildren(nav, pinClose(main));
       return;
     }
@@ -648,6 +669,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     // Leaving a name list saves it.
     if (document.activeElement instanceof HTMLTextAreaElement) document.activeElement.blur();
     root.hidden = true;
+    stopActivity(activity);
     gallery.keys = null;
     onClose();
     onShowChange();
@@ -658,9 +680,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     // Leaving a field saves it, as a click on a tab does.
     (document.activeElement as HTMLElement | null)?.blur();
     tab = TABS[(TABS.indexOf(tab) + dir + TABS.length) % TABS.length];
+    if (tab !== "activity") stopActivity(activity);
     draw();
     if (tab === "skippers") void loadFiles();
     if (tab === "disk") void countDisk(disk, render);
+    if (tab === "activity") startActivity(activity, render);
     document.body.classList.add("kbd");
     root.querySelector<HTMLButtonElement>(".set-tab.active")?.focus();
   }
@@ -792,6 +816,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       if (tab === "hosts") hostsTab.focusServer();
       if (tab === "skippers") void loadFiles();
       if (tab === "disk") void countDisk(disk, render);
+      if (tab === "activity") startActivity(activity, render);
       if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
       else if (tab === "images") root.querySelector<HTMLInputElement>(".img-page .lib-search")?.focus();
       else root.querySelector<HTMLButtonElement>(".set-agent .c-on:not(:disabled)")?.focus();

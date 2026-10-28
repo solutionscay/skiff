@@ -10,6 +10,12 @@ pub(crate) async fn list_sessions(app: State<'_, App>) -> Result<Vec<SessionInfo
 }
 
 #[tauri::command]
+pub(crate) async fn daemon_metrics(app: State<'_, App>) -> Result<skiff_core::protocol::DaemonMetrics, String> {
+    let (c, _) = ensure_client(&app).await?;
+    c.daemon_metrics().await.map_err(err)
+}
+
+#[tauri::command]
 pub(crate) async fn create_session(app: State<'_, App>, mut spec: SessionSpec) -> Result<SessionInfo, String> {
     let c = crate::connection::host_now(&app).await?;
     // The + menu's agent gets the image cache's read flag at the end of its line.

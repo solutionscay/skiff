@@ -117,6 +117,10 @@ pub struct SessionInfo {
     /// Unix ms of the last PTY read.
     #[serde(default)]
     pub last_output_at: u64,
+    /// Total bytes read from this session's PTY. A reload keeps the count;
+    /// a restored shell starts again at zero.
+    #[serde(default)]
+    pub output_bytes: u64,
     /// Other worktrees the session's processes ran in during the last minute.
     #[serde(default)]
     pub away: Vec<Away>,
