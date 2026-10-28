@@ -29,7 +29,7 @@ import { icon } from "../ui/icons";
 import { showError } from "../ui/alerts";
 import { appKey, currentRow, itemKey } from "../app/keyboard";
 import { render } from "../app/renderRequest";
-import type { Action } from "../app/keys";
+import { keyLabel, type Action } from "../app/keys";
 import { S, sessions } from "../app/state";
 import type { SessionInfo } from "../platform/types";
 import { toBytes } from "../platform/ipcBytes";
@@ -160,7 +160,7 @@ export function strayPeek(s: SessionInfo) {
 /** Navigation can leave a tool. Other app keys stay out of its terminal. */
 export function peekBlocksAction(action: Action | number | null): boolean {
   if (!open?.shown || open.exited || !live(open.gen)) return false;
-  return typeof action !== "number" && action !== "session-next" && action !== "session-prev"
+  return typeof action !== "number" && action !== "close-pane" && action !== "session-next" && action !== "session-prev"
     && action !== "list-project" && action !== "list-back" && action !== "list-main"
     && action !== "region-next" && action !== "region-prev";
 }
@@ -389,24 +389,17 @@ function escButton(): HTMLButtonElement {
   return b;
 }
 
-/** The key that quits a terminal tool that keeps Esc. */
-const QUIT_KEYS: Record<string, string> = {
-  micro: "Ctrl+Q", nano: "Ctrl+X", pico: "Ctrl+X", vi: ":q", vim: ":q", nvim: ":q", hx: ":q", helix: ":q",
-  kak: ":q", less: "q", most: "q", emacs: "Ctrl+X Ctrl+C", mg: "Ctrl+X Ctrl+C", ne: "Ctrl+Q",
-};
-
 /**
  * The command took the terminal: Esc is the tool's now. The keycap names the
- * key that quits the tool, which closes the preview. A click still closes it.
+ * close key, which Skiff takes before the tool does. A click still closes.
  */
 function tookTerminal(p: Peek) {
   p.interactive = true;
   const b = p.el.querySelector<HTMLButtonElement>(".peek-esc");
   if (!b) return;
-  const tool = p.program.split("/").pop() ?? p.program;
-  const quit = QUIT_KEYS[tool];
-  b.textContent = quit ?? "Close";
-  b.title = quit ? `Close the preview (${quit} in ${tool})` : "Close the preview";
+  const key = keyLabel("close-pane");
+  b.textContent = key;
+  b.title = `Close the preview (${key})`;
 }
 
 const keysIn = (el: HTMLElement) => el.contains(document.activeElement) || document.activeElement === document.body;
