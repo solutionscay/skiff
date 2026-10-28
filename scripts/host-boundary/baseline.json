@@ -989,13 +989,15 @@
       "local provider: apps/desktop/src/app/hostCaps.ts",
       "local provider: apps/desktop/src/app/hosts.ts",
       "local provider: apps/desktop/src/app/panels.ts",
+      "local provider: apps/desktop/src/app/skiffAgent.ts",
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/app/stateQueries.ts",
       "local provider: apps/desktop/src/appearance/agentIcon.ts",
       "local provider: apps/desktop/src/workspace/menus.ts",
       "local provider: apps/desktop/src/workspace/projectClose.ts",
-      "local provider: apps/desktop/src/workspace/remoteLaunch.ts"
+      "local provider: apps/desktop/src/workspace/remoteLaunch.ts",
+      "local provider: apps/desktop/src/workspace/selection.ts"
     ],
-    "sha256": "2366c15a81f111744563ccb6d36aa2f8c5ab315e9e1e61070736cb14966c8f9f"
+    "sha256": "a1b98190d17478887c9baacecebb8318c21cd0ed949dbf0a47520548f849992c"
   }
 }
