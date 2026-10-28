@@ -105,7 +105,7 @@ pub(crate) async fn add_project(
     agents: Option<Vec<String>>,
 ) -> Result<Project, String> {
     project_edit(&handle, move || {
-        let p = config::add_project(&path, name, short, color, icon, agents.unwrap_or_default())?;
+        let p = config::add_project(&path, name, short, color, icon, agents.unwrap_or_default(), None)?;
         Ok(Project::from_config(&p))
     })
     .await

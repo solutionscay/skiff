@@ -43,6 +43,8 @@ Use the report to show the user what is open. Use the JSON to pick a target or m
 | Task | Command |
 |---|---|
 | List sessions, groups, projects | `skiff ls --json`, `skiff g ls --json`, `skiff projects --json` (`kind`: `git` or `folder`) |
+| Add a project | `skiff projects add PATH [--name N] [--fleet F] [--json]` |
+| Remove a project | `skiff projects remove NAME [--end-sessions]` |
 | Start a shell | `skiff new [--name N] [--cwd DIR]` |
 | Start an agent | `skiff new --agent ID [--name N] [--cwd DIR]` (`skiff agents --json` lists ids) |
 | Start a task type | `skiff new --type T [--model M] [--cwd DIR]` |
@@ -275,4 +277,6 @@ skiff peek "$id" -n 80
 - Only a person answers an approval. On exit 3 from `send` or `wait`, tell the user the pane's name and id. End the turn. Do not answer the prompt. Do not retry until the user says so.
 - Never wait for the session that started you. A send to a busy parent gets exit 4. Then leave the result on screen or in a file and end your turn.
 - If a child's report names another pane that needs a person, pass the report to the user and stop.
+- `skiff projects add PATH` adds the git repository that holds PATH, or the folder itself when it is in no repository, with the app's defaults: the folder's name, a free color, a theme of its own. A folder in a linked worktree adds the main worktree. A folder that is already a project exits 1: `Already added as the project NAME.` A closed project opens again with its own settings: `Opened the closed project NAME again.` `--json` prints the project as one item of `skiff projects --json`. `--fleet F` puts a new project in fleet F. After a clone, add the repository, so that its sessions can take tasks.
+- `skiff projects remove NAME` forgets the project and its settings. The folder and its worktrees stay. While sessions run in the project, it exits 1 and names them. `--end-sessions` ends them first; use it only when the user asks. The app shows an add or a remove within a second or two.
 - Change a project or app theme, or an Open with command, only when the user asks. They change `projects.toml` and apply to every pane.

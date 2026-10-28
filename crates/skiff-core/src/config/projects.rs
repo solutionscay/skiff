@@ -79,9 +79,10 @@ pub fn inspect_folder(dir: &Path) -> FolderInfo {
 }
 
 /// Appends a `[[project]]` for the git repository that contains `dir`, or
-/// for `dir` itself when it is in no repository.
-/// Comments and layout in the file are kept. A closed project for that
-/// repository opens again with its own settings; the arguments do not apply.
+/// for `dir` itself when it is in no repository. `fleet` puts it in that
+/// fleet on the rail. Comments and layout in the file are kept. A closed
+/// project for that repository opens again with its own settings; the
+/// arguments do not apply.
 pub fn add_project(
     dir: &Path,
     name: Option<String>,
@@ -89,21 +90,24 @@ pub fn add_project(
     color: Option<String>,
     icon: Option<String>,
     agents: Vec<String>,
+    fleet: Option<String>,
 ) -> Result<ProjectConfig> {
     let info = inspect_folder(dir);
     if let Some(e) = info.error {
         anyhow::bail!(e);
     }
     let path = info.root.expect("root is set when there is no error");
+    // The checks and the write under one lock: two adds of one folder at
+    // once add it once.
+    let _edit = edit_lock();
     let cfg = load()?;
     if let Some(p) = cfg.projects.iter().find(|p| crate::project::same_path(&p.path, &path)) {
         if !p.closed {
             anyhow::bail!("Already added as the project {}.", p.name);
         }
-        set_project_closed(&p.name, false)?;
+        set_key_locked(&p.name, "closed", None::<bool>)?;
         return Ok(ProjectConfig { closed: false, ..p.clone() });
     }
-    let _edit = edit_lock();
     let name = name
         .map(|n| n.trim().to_string())
         .filter(|n| !n.is_empty())
@@ -119,6 +123,7 @@ pub fn add_project(
         .filter(|s| !s.is_empty() && *s != short_name(&name));
     let color = color.filter(|c| !c.is_empty()).unwrap_or(info.color);
     // A theme of its own, so a new project does not look like the app or the others.
+    let fleet = fleet.map(|f| f.trim().to_string()).filter(|f| !f.is_empty());
     let theme = pick_unused(&crate::theme::builtin_ids(), |t| {
         cfg.appearance.theme.as_deref() == Some(t) || cfg.projects.iter().any(|p| p.theme.as_deref() == Some(t))
     });
@@ -143,6 +148,9 @@ pub fn add_project(
     // No key: detect. "" : no icon. A path: that file.
     if let Some(i) = &icon {
         table["icon"] = toml_edit::value(i.as_str());
+    }
+    if let Some(f) = &fleet {
+        table["fleet"] = toml_edit::value(f.as_str());
     }
     // No list means every installed agent is offered.
     if !agents.is_empty() {
@@ -175,7 +183,7 @@ pub fn add_project(
         changes: None,
         theme: Some(theme),
         closed: false,
-        fleet: None,
+        fleet,
         skipper_agent: None,
     })
 }
@@ -320,6 +328,11 @@ pub fn arrange_projects(order: &[String], fleets: &[(String, String)]) -> Result
 
 fn set_project_key(project: &str, key: &str, value: Option<impl Into<toml_edit::Value>>) -> Result<()> {
     let _edit = edit_lock();
+    set_key_locked(project, key, value)
+}
+
+/// [`set_project_key`] for a caller that holds the edit lock.
+fn set_key_locked(project: &str, key: &str, value: Option<impl Into<toml_edit::Value>>) -> Result<()> {
     let file = config_path();
     let text = std::fs::read_to_string(&file).with_context(|| format!("read {}", file.display()))?;
     let mut doc: toml_edit::DocumentMut = text
