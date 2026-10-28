@@ -3782,7 +3782,7 @@ checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
 name = "skiff-cli"
-version = "1.7.6"
+version = "1.7.7"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -3800,7 +3800,7 @@ dependencies = [
 
 [[package]]
 name = "skiff-client"
-version = "1.7.6"
+version = "1.7.7"
 dependencies = [
  "anyhow",
  "libc",
@@ -3829,7 +3829,7 @@ dependencies = [
 
 [[package]]
 name = "skiff-desktop"
-version = "1.7.6"
+version = "1.7.7"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
