@@ -83,7 +83,7 @@
 /* Settings tables (appearance/rowTable.ts): Agents and Task types. Each cell is a span; a field fills its cell. */
 .set-table { flex-shrink: 0; display: flex; flex-direction: column; }
 .set-table.g-agents .set-row { grid-template-columns: calc(72 * var(--u)) calc(200 * var(--u)) minmax(0, 1fr) calc(320 * var(--u)); }
-.set-table.g-tasks .set-row { grid-template-columns: calc(180 * var(--u)) calc(140 * var(--u)) calc(140 * var(--u)) calc(180 * var(--u)) minmax(0, 1fr) calc(160 * var(--u)); }
+.set-table.g-tasks .set-row { grid-template-columns: calc(180 * var(--u)) calc(140 * var(--u)) calc(140 * var(--u)) minmax(0, 1fr) calc(160 * var(--u)); }
 .set-table.g-tasks .set-row > .c-lead { justify-content: flex-start; padding: 0 calc(12 * var(--u)); }
 .set-table.g-tasks .c-file { display: flex; align-items: center; gap: calc(8 * var(--u)); width: 100%; }
 .set-table.g-tasks .c-state { font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
