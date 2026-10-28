@@ -23,12 +23,8 @@ pub fn agent_name(s: &SessionInfo) -> String {
 
 /// The name the sidebar shows, as the app's `taskTitle`: the user's name;
 /// then for an agent its label before its title, for others the title
-/// first; else the program. The main Skipper named "Skipper" by the old
-/// default shows as Admiral, as in the app.
+/// first; else the program.
 pub fn display_name(s: &SessionInfo) -> Cow<'_, str> {
-    if s.coordinator && s.name.as_deref() == Some(skiff_core::config::SKIPPER) {
-        return Cow::Borrowed(skiff_core::config::ADMIRAL);
-    }
     let title = s.title.as_deref().unwrap_or("");
     let (first, second) = if s.role == Role::Agent { (s.label.as_str(), title) } else { (title, s.label.as_str()) };
     [s.name.as_deref().unwrap_or(""), first, second]
@@ -49,6 +45,23 @@ pub fn session<'a>(all: &'a [SessionInfo], arg: &str) -> Result<&'a SessionInfo>
     }
     if let Some(s) = all.iter().find(|s| s.id == arg) {
         return Ok(s);
+    }
+    // The default spelling is a stable CLI alias. A main Skipper is never
+    // considered: only a session marked for that project or fleet can win.
+    if let Some(scope) = arg.strip_suffix(" Skipper") {
+        let cfg = skiff_core::config::load().unwrap_or_default();
+        let mark = if cfg.projects.iter().any(|p| p.name == scope) {
+            Some(scope.to_string())
+        } else if cfg.projects.iter().any(|p| p.fleet.as_deref() == Some(scope)) {
+            Some(skiff_client::skipper::fleet_scope(scope))
+        } else {
+            None
+        };
+        if let Some(mark) = mark {
+            if let Some(s) = all.iter().find(|s| s.skipper.as_deref() == Some(mark.as_str()) && !s.coordinator) {
+                return Ok(s);
+            }
+        }
     }
     let found: Vec<&SessionInfo> = all
         .iter()

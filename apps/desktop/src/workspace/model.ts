@@ -77,9 +77,6 @@ export function skipperTitle(s: SessionInfo): string {
  *  A project Skipper shows its name and its project. */
 export function taskTitle(s: SessionInfo): string {
   if (isProjectSkipper(s)) return skipperTitle(s);
-  // The main Skipper named by the old default reads as the new one. Keep in
-  // step with DEFAULT_NAME in app/skiffAgent.ts.
-  if (s.coordinator && s.name === "Skipper") return "Admiral";
   return s.name || (s.role === "agent" ? s.label || s.title : s.title || s.label) || agentName(s);
 }
 

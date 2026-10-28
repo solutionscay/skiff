@@ -119,6 +119,7 @@ pub async fn open_skiff_agent(app: State<'_, App>, restore: Option<u64>) -> Resu
 #[derive(Serialize)]
 pub struct SkiffAgent {
     name: Option<String>,
+    skipper_name: Option<String>,
     agent: Option<String>,
     /// The Skipper's model. Absent: the agent's default.
     model: Option<String>,
@@ -165,6 +166,7 @@ fn read() -> anyhow::Result<SkiffAgent> {
     let a = cfg.skiff_agent;
     Ok(SkiffAgent {
         name: a.name,
+        skipper_name: a.skipper_name,
         agent: a.agent,
         model: a.model,
         folder,
@@ -184,6 +186,7 @@ fn read() -> anyhow::Result<SkiffAgent> {
 #[serde(tag = "key", content = "value", rename_all = "snake_case")]
 pub enum Edit {
     Name(Option<String>),
+    SkipperName(Option<String>),
     Agent(Option<String>),
     Model(Option<String>),
     ContinueOnRestore(bool),
@@ -228,6 +231,7 @@ pub async fn set_skiff_agent(app: AppHandle, edit: Edit) -> Result<SkiffAgent, S
     let out = blocking(move || {
         match edit {
             Edit::Name(v) => config::set_skiff_agent(SkiffAgentKey::Name(v.as_deref()))?,
+            Edit::SkipperName(v) => config::set_skiff_agent(SkiffAgentKey::SkipperName(v.as_deref()))?,
             Edit::Agent(v) => config::set_skiff_agent(SkiffAgentKey::Agent(v.as_deref()))?,
             Edit::ContinueOnRestore(on) => config::set_skiff_agent(SkiffAgentKey::ContinueOnRestore(on))?,
             Edit::Model(v) => config::set_skiff_agent(SkiffAgentKey::Model(v.as_deref()))?,
@@ -439,6 +443,7 @@ mod tests {
         assert!(matches!(rename, Edit::RenameTask { from, to } if from == "review" && to == "code-review"));
         assert!(matches!(edit(serde_json::json!({ "key": "remove_task", "value": "review" })), Edit::RemoveTask(t) if t == "review"));
         assert!(matches!(edit(serde_json::json!({ "key": "name", "value": null })), Edit::Name(None)));
+        assert!(matches!(edit(serde_json::json!({ "key": "skipper_name", "value": "Coordinator" })), Edit::SkipperName(Some(n)) if n == "Coordinator"));
         assert!(matches!(edit(serde_json::json!({ "key": "model", "value": "opus" })), Edit::Model(Some(m)) if m == "opus"));
         assert!(matches!(edit(serde_json::json!({ "key": "project_model", "value": null })), Edit::ProjectModel(None)));
         // The keys Skippers dropped.

@@ -72,7 +72,7 @@ pub(crate) fn template(name: &str) -> String {
     TEMPLATE.replace("{{name}}", name)
 }
 
-/// The configured name, or Admiral. A stored "Skipper" is the old default.
+/// The configured main Skipper name, or Admiral.
 pub fn name(cfg: &Config) -> String {
     cfg.skiff_agent.name()
 }
@@ -530,8 +530,9 @@ pub const SKIPPER_FILE: &str = "SKIPPER.md";
 
 /// `SKIPPER.md` for the project `p`, whose Skipper's folder is `dir`, in
 /// the Skiff agent's folder `folder`.
-pub fn project_template(p: &ProjectConfig, dir: &Path, folder: &Path) -> String {
+pub fn project_template(cfg: &Config, p: &ProjectConfig, dir: &Path, folder: &Path) -> String {
     PROJECT_TEMPLATE
+        .replace("{{main}}", &name(cfg))
         .replace("{{project}}", &p.name)
         .replace("{{path}}", &p.path.display().to_string())
         .replace("{{dir}}", &dir.display().to_string())
@@ -573,7 +574,7 @@ fn setup_project(cfg: &Config, p: &ProjectConfig) -> Result<PathBuf> {
     let top = setup_in(&folder(cfg)?, &name(cfg), &sync_skill()?)?;
     let dir = project_folder(cfg, &p.name)?;
     std::fs::create_dir_all(dir.join("results")).with_context(|| format!("create {}", dir.join("results").display()))?;
-    refresh(&top, &Scope::Project(p.name.clone()).file(), &project_template(p, &dir, &top))?;
+    refresh(&top, &Scope::Project(p.name.clone()).file(), &project_template(cfg, p, &dir, &top))?;
     Ok(dir)
 }
 
@@ -592,8 +593,9 @@ pub fn fleet_folder(cfg: &Config, fleet: &str) -> Result<PathBuf> {
 
 /// `SKIPPER.md` for the fleet `fleet`, whose Skipper's folder is `dir`, in
 /// the Skiff agent's folder `folder`.
-pub fn fleet_template(fleet: &str, dir: &Path, folder: &Path) -> String {
+pub fn fleet_template(cfg: &Config, fleet: &str, dir: &Path, folder: &Path) -> String {
     FLEET_TEMPLATE
+        .replace("{{main}}", &name(cfg))
         .replace("{{fleet}}", fleet)
         .replace("{{dir}}", &dir.display().to_string())
         .replace("{{folder}}", &folder.display().to_string())
@@ -618,7 +620,7 @@ pub fn write_fleet(cfg: &Config, fleet: &str) -> Result<PathBuf> {
     let top = folder(cfg)?;
     let dir = fleet_folder(cfg, fleet)?;
     std::fs::create_dir_all(dir.join("results")).with_context(|| format!("create {}", dir.join("results").display()))?;
-    refresh(&top, &Scope::Fleet(fleet.to_string()).file(), &fleet_template(fleet, &dir, &top))?;
+    refresh(&top, &Scope::Fleet(fleet.to_string()).file(), &fleet_template(cfg, fleet, &dir, &top))?;
     Ok(dir)
 }
 
@@ -661,9 +663,9 @@ impl Scope {
                 if !is_fleet(cfg, f) {
                     bail!("no fleet {f:?} in {}", config::config_path().display());
                 }
-                fleet_template(f, &fleet_folder(cfg, f)?, top)
+                fleet_template(cfg, f, &fleet_folder(cfg, f)?, top)
             }
-            Scope::Project(p) => project_template(project(cfg, p)?, &project_folder(cfg, p)?, top),
+            Scope::Project(p) => project_template(cfg, project(cfg, p)?, &project_folder(cfg, p)?, top),
         })
     }
 }
@@ -818,7 +820,9 @@ pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipp
     let _lock = lock()?;
     let all = c.list_sessions().await?;
     if let Some(s) = find_project(&all, &p.name) {
-        return Ok(ProjectSkipper { session: s.clone(), created: false, dir: setup_project(&cfg, p)? });
+        let want = self::project_name(&cfg, &p.name);
+        let session = if s.name.as_deref() == Some(&want) { s.clone() } else { c.rename_session(&s.id, &want).await? };
+        return Ok(ProjectSkipper { session, created: false, dir: setup_project(&cfg, p)? });
     }
     // One Skipper per project: a running fleet Skipper commands this one.
     if let Some(fleet) = commanding_fleet(&cfg, &all, &p.name) {
@@ -851,7 +855,9 @@ pub async fn open_fleet(c: &Client, fleet: &str) -> Result<ProjectSkipper> {
     setup_in(&folder(&cfg)?, &name(&cfg), &sync_skill()?)?;
     let dir = write_fleet(&cfg, fleet)?;
     if let Some(s) = find_fleet(&c.list_sessions().await?, fleet) {
-        return Ok(ProjectSkipper { session: s.clone(), created: false, dir });
+        let want = fleet_name(&cfg, fleet);
+        let session = if s.name.as_deref() == Some(&want) { s.clone() } else { c.rename_session(&s.id, &want).await? };
+        return Ok(ProjectSkipper { session, created: false, dir });
     }
     let agents = c.list_agents().await?;
     let Some((agent, model)) = fleet_agent(&cfg, &agents) else { bail!("No agent is on. Turn one on in Settings › Agents") };
@@ -1579,13 +1585,15 @@ os.execv(exe, ["skiff", "watch"])
     /// name, so no two sessions share a name.
     #[test]
     fn a_project_skipper_takes_its_project_and_the_agents_name() {
-        // A stored "Skipper" is the old default: the main one reads Admiral.
+        // The two stored names stay independent.
         let cfg = skiff_core::config::parse("[skiff_agent]\nname = \"Skipper\"\n").unwrap();
         assert_eq!(project_name(&cfg, "gesher"), "gesher Skipper");
-        assert_eq!(name(&cfg), "Admiral");
+        assert_eq!(name(&cfg), "Skipper");
         let cfg = skiff_core::config::parse("[skiff_agent]\nname = \"Captain\"\n").unwrap();
-        assert_eq!(project_name(&cfg, "skiff"), "skiff Captain");
+        assert_eq!(project_name(&cfg, "skiff"), "skiff Skipper");
         assert_eq!(name(&cfg), "Captain");
+        let cfg = skiff_core::config::parse("[skiff_agent]\nname = \"Captain\"\nskipper_name = \"Mate\"\n").unwrap();
+        assert_eq!(project_name(&cfg, "skiff"), "skiff Mate");
         let cfg = skiff_core::config::parse("").unwrap();
         assert_eq!(project_name(&cfg, "p"), "p Skipper");
         assert_eq!(name(&cfg), "Admiral");

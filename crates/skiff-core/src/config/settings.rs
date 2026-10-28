@@ -248,6 +248,7 @@ pub fn set_open(key: &str, command: Option<&str>) -> Result<()> {
 /// One `[skiff_agent]` key. `None` removes it, so its default applies.
 pub enum SkiffAgentKey<'a> {
     Name(Option<&'a str>),
+    SkipperName(Option<&'a str>),
     Agent(Option<&'a str>),
     /// One word, as a task type's model.
     Model(Option<&'a str>),
@@ -271,6 +272,7 @@ pub fn set_skiff_agent(key: SkiffAgentKey) -> Result<()> {
     edit_table("skiff_agent", |t| {
         let (k, v) = match key {
             SkiffAgentKey::Name(v) => ("name", text(v).map(toml_edit::value)),
+            SkiffAgentKey::SkipperName(v) => ("skipper_name", text(v).map(toml_edit::value)),
             SkiffAgentKey::Agent(v) => ("agent", text(v).map(toml_edit::value)),
             // The full path, never `~` or a relative one: the folder is the same wherever Skiff starts.
             SkiffAgentKey::Folder(v) => ("folder", v.map(|p| toml_edit::value(p.to_string_lossy().into_owned()))),
