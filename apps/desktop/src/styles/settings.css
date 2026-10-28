@@ -177,7 +177,7 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-disk-auto span.c-cmd { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
 
 /* skiffd activity: one grid for the whole table. STATE, SESSION and PROGRAM size to their content; WORKSPACE and FOLDER share the rest. */
-.set-daemon { flex-shrink: 0; display: grid; grid-template-columns: fit-content(calc(120 * var(--u))) fit-content(calc(300 * var(--u))) fit-content(calc(140 * var(--u))) minmax(calc(112 * var(--u)), 1fr) minmax(calc(104 * var(--u)), 1fr) calc(80 * var(--u)) calc(52 * var(--u)) calc(168 * var(--u)); min-width: 0; }
+.set-daemon { flex-shrink: 0; display: grid; grid-template-columns: fit-content(calc(120 * var(--u))) fit-content(calc(300 * var(--u))) fit-content(calc(140 * var(--u))) minmax(calc(112 * var(--u)), 1fr) minmax(calc(104 * var(--u)), 1fr) calc(80 * var(--u)) calc(52 * var(--u)) calc(88 * var(--u)); min-width: 0; }
 .set-daemon .set-row { grid-column: 1 / -1; grid-template-columns: subgrid; }
 .set-daemon .set-row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); }
 .set-daemon .set-cols > * { color: var(--text-3); }
@@ -192,5 +192,14 @@ body.kbd .set-folder input.set-path:focus { box-shadow: inset 0 -1px 0 var(--rul
 .set-daemon .c-acts { gap: calc(8 * var(--u)); justify-content: flex-end; }.set-daemon .set-rm { margin-left: 0; }
 .set-daemon .set-rm:disabled { opacity: 0.5; cursor: default; }
 .set-daemon .set-rm:disabled:hover { border-color: var(--rule); color: var(--text-3); }
-.set-daemon .c-remove:is(:hover, :focus-visible) { border-color: var(--error); color: var(--error); }
+/* A selected row: the current-row tint and bar. A row out of the workspace keeps its red bar. */
+.set-daemon-row[data-id] { cursor: default; }
+.set-daemon-row[data-id]:hover:not(.sel) { background: color-mix(in srgb, var(--text) 6%, var(--bg)); }
+.set-daemon-row.sel { background: color-mix(in srgb, var(--project-default) 22%, var(--bg)); box-shadow: inset 2px 0 0 var(--project-default); }
+.set-daemon-row.out.sel { box-shadow: inset 2px 0 0 var(--error); }
+/* Sink: at the band's right end, red when lit. */
+.set-daemon-band .set-daemon-picked { margin-left: auto; color: var(--text-3); }
+.set-daemon-band .set-sink { height: calc(26 * var(--u)); margin-left: calc(12 * var(--u)); padding: 0 calc(10 * var(--u)); border: 1px solid var(--rule); border-radius: 0; background: transparent; color: var(--text-3); font: calc(12px * var(--zoom, 1)) var(--font); white-space: nowrap; }
+.set-daemon-band .set-sink:not(:disabled):is(:hover, :focus-visible) { border-color: var(--error); color: var(--error); }
+.set-daemon-band .set-sink:disabled { opacity: 0.5; cursor: default; }
 .set-daemon-band { justify-content: flex-start; font-variant-numeric: tabular-nums; }.set-daemon-band span + span { margin-left: calc(24 * var(--u)); }
