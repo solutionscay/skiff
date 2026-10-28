@@ -27,6 +27,10 @@ pub(crate) struct App {
     pub(crate) reload: Mutex<Option<Plan>>,
     /// A reload ran. The app does not start another one on its own.
     pub(crate) reload_tried: AtomicBool,
+    /// Why the daemon cannot move onto the bundled skiffd with its sessions:
+    /// no handover, or a reload it refused. The warning says it on each
+    /// check, including after a reconnect.
+    pub(crate) no_reload: std::sync::Mutex<Option<String>>,
     /// Why the daemon is gone after a reload. No daemon starts on its own
     /// while it is set: only an explicit restart starts one.
     pub(crate) failed: std::sync::Mutex<Option<String>>,
@@ -206,9 +210,13 @@ pub(crate) async fn check_daemon(app: &App, c: &Client, may_replace: bool) -> Ch
                 return Check::Use;
             }
             Err(NoPlan::Stale(bundled)) => old_build = Some(bundled),
-            Err(NoPlan::Other(why)) => eprintln!("skiffd {version} does not reload: {why}"),
+            Err(NoPlan::Other(why)) => {
+                eprintln!("skiffd {version} does not reload: {why}");
+                *app.no_reload.lock().unwrap() = Some(why);
+            }
         }
     }
+    let why = app.no_reload.lock().unwrap().clone().filter(|_| order.is_lt());
     let live = tokio::time::timeout(HELLO_TIMEOUT, c.list_sessions())
         .await
         .ok()
@@ -239,7 +247,7 @@ pub(crate) async fn check_daemon(app: &App, c: &Client, may_replace: bool) -> Ch
             return Check::Replaced;
         }
     }
-    *app.warning.lock().await = Some(restart_warning(&version, info.protocol, live, None));
+    *app.warning.lock().await = Some(restart_warning(&version, info.protocol, live, why.as_deref()));
     Check::Use
 }
 
@@ -265,12 +273,11 @@ pub(crate) fn restart_warning(version: &str, protocol: u32, live: Option<usize>,
             sessions: live,
         }
     } else if !order.is_gt() {
+        // The words `skiff status` uses too.
+        let why = why.unwrap_or("it did not hand over its sessions");
         Warning {
             kind: "outdated",
-            message: format!(
-                "skiffd {version} still runs, so the update to {ours} is not finished. {failed}\
-                 {running}. {ends}"
-            ),
+            message: skiff_client::update::unfinished(version, ours, why, live, "Restart skiffd"),
             sessions: live,
         }
     } else {
@@ -332,6 +339,7 @@ pub(crate) async fn restart_daemon(app: State<'_, App>) -> Result<DaemonStatus, 
         }
         *app.warning.lock().await = None;
         *app.failed.lock().unwrap() = None;
+        *app.no_reload.lock().unwrap() = None;
         *app.reload.lock().await = None;
     }
     for (_, task) in app.subs.lock().await.drain() {
@@ -533,5 +541,37 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(outcome, [("reload", true, true, true, None), ("newer", true, true, false, Some("newer")), ("same", true, true, false, None)]);
+    }
+
+    /// #182: the bundled skiffd cannot read the daemon's handover. No reload
+    /// is planned, and the warning says why and what a restart does, in the
+    /// words `skiff status` uses.
+    #[test]
+    fn a_blocked_handover_says_why() {
+        let _env = crate::reload::tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("skiff-app-blocked-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("skiffd");
+        std::fs::write(&bin, format!("#!/bin/sh\necho '{{\"version\":\"{}\",\"handover\":[3],\"fingerprint\":\"x\"}}'\n", skiff_core::VERSION)).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let old_daemon = std::env::var_os("SKIFF_DAEMON");
+        std::env::set_var("SKIFF_DAEMON", &bin);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let app = super::App::default();
+        rt.block_on(async {
+            let c = fake_daemon(&dir, "0.0.1", skiff_core::PROTOCOL, std::process::id(), true).await;
+            super::check_daemon(&app, &c, false).await
+        });
+        match old_daemon {
+            Some(v) => std::env::set_var("SKIFF_DAEMON", v),
+            None => std::env::remove_var("SKIFF_DAEMON"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(rt.block_on(app.reload.lock()).is_none());
+        let w = rt.block_on(app.warning.lock()).clone().unwrap();
+        assert_eq!(w.kind, "outdated");
+        assert!(w.message.contains("handover 2") && w.message.contains("Restart skiffd stops them"), "{}", w.message);
     }
 }

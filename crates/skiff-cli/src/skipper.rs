@@ -22,7 +22,7 @@ pub async fn run(socket: &Path, no_attach: bool) -> Result<()> {
     let c = connect_or_start(socket).await?;
     let info = c.daemon_info().await?;
     if info.protocol < skiff_core::PROTOCOL {
-        bail!("skiffd {} is too old for this skiff. Run `skiff daemon reload`", info.version);
+        bail!("skiffd {} is too old for this skiff. {}", info.version, crate::daemon::advice(&c, &info).await);
     }
     let Some(found) = skipper::open(&c, skipper::Open::Start).await? else {
         bail!("skiffd did not start the Skiff agent");
