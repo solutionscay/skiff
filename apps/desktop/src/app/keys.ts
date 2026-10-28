@@ -197,7 +197,7 @@ export const DESCRIBE: [string, Action, string][] = [
   ["View", "palette", "Command palette. In mission control, search the sessions on the board"],
   ["View", "split-right", "Add pane right"],
   ["View", "split-down", "Add pane below"],
-  ["View", "close-pane", "Take the session out of its group: the focused pane, or the session row in the list. It stays selected. On a group row, ungroup. Sessions keep running"],
+  ["View", "close-pane", "Take the session out of its group: the focused pane, or the session row in the list. It stays selected. On a group row, ungroup. Sessions keep running. Over a file or diff, close the preview"],
   ["View", "next-waiting", "Next waiting session"],
   ["View", "skiff-agent", "{skiff-agent}, the Skiff agent: show its pane. With none running, start it in its folder"],
   ["View", "ledger", "Show or hide the Ledger beside {skiff-agent}'s pane. Only while its pane is the one pane on screen. Focus mode keeps the Ledger, maximize hides it"],

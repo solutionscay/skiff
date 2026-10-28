@@ -18,6 +18,7 @@ import { currentProject, currentWorktree, shownIds, splitFull } from "./stateQue
 import { paneCenter } from "../terminal/terminal";
 
 import { openFind } from "../terminal/terminalSearch";
+import { closePreview, previewOnScreen } from "../terminal/peek";
 import { copySelection, pasteClipboard } from "../terminal/terminalClipboard";
 import { openImages } from "../terminal/images";
 import { fontTarget, setFontSize, stepPaneFont } from "../terminal/terminalFont";
@@ -106,7 +107,8 @@ export function runAction(a: Action) {
       const [x, y] = paneCenter();
       return splitMenu(S.focused, a === "split-right" ? "row" : "col", x, y);
     }
-    case "close-pane": return closeKey(!!shown);
+    // Over a file or diff, the key closes the preview, even when a terminal tool has the keys.
+    case "close-pane": return previewOnScreen() ? closePreview() : closeKey(!!shown);
     case "next-waiting": return goToSession(nextWaiting());
     case "skiff-agent": {
       const s = skiffAgentSession();
