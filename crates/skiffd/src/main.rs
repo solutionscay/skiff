@@ -1,10 +1,25 @@
 use std::{os::fd::{AsRawFd, FromRawFd}, path::PathBuf};
 
 use anyhow::{bail, Context, Result};
+use clap::Parser;
 use skiff_core::socket::socket_path;
 use skiffd::{paths, pty, server, session::{reload, SessionPool}, shellenv, stop};
 use tokio::net::{UnixListener, UnixStream};
 use tracing_subscriber::filter::LevelFilter;
+
+/// The command line. Parsed before anything else: `--version`, `--help` and
+/// a wrong argument print and exit without starting a daemon.
+#[derive(Parser)]
+#[command(name = "skiffd", version, about = "The Skiff daemon: owns every PTY and serves clients over a Unix socket")]
+struct Args {
+    /// Asked by a reload of a binary it may exec. With a handover file, it
+    /// must also read that file.
+    #[arg(long, hide = true, value_name = "FILE", num_args = 0..=1, conflicts_with = "adopt")]
+    reload_info: Option<Option<PathBuf>>,
+    /// Exec'd by a reload, with the handover file.
+    #[arg(long, hide = true, value_name = "FILE")]
+    adopt: Option<PathBuf>,
+}
 
 /// How this process started.
 enum Start {
@@ -14,19 +29,17 @@ enum Start {
 }
 
 fn main() -> Result<()> {
-    let mut args = std::env::args().skip(1);
-    let start = match args.next().as_deref() {
-        // Before anything else: a reload asks this of a binary it may exec.
-        // With a handover file, it must also read that file.
-        Some("--reload-info") => {
-            println!("{}", serde_json::to_string(&reload::reload_info())?);
-            if let Some(file) = args.next() {
-                reload::load(file.as_ref())?;
-            }
-            return Ok(());
+    let args = Args::parse();
+    if let Some(file) = args.reload_info {
+        println!("{}", serde_json::to_string(&reload::reload_info())?);
+        if let Some(file) = file {
+            reload::load(&file)?;
         }
-        Some("--adopt") => Start::Adopt(args.next().context("--adopt needs the handover file")?.into()),
-        _ => Start::Fresh,
+        return Ok(());
+    }
+    let start = match args.adopt {
+        Some(file) => Start::Adopt(file),
+        None => Start::Fresh,
     };
     // Before the runtime starts any thread: it sets environment variables.
     // A reload kept the environment it set before.
@@ -167,4 +180,41 @@ fn adopt(pool: &std::sync::Arc<SessionPool>, file: &std::path::Path) -> Result<U
     let listener = UnixListener::from_std(listener)?;
     pool.adopt(handover);
     Ok(listener)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Args;
+    use clap::{error::ErrorKind, Parser};
+    use std::path::PathBuf;
+
+    fn parse(args: &[&str]) -> Result<Args, ErrorKind> {
+        Args::try_parse_from(std::iter::once("skiffd").chain(args.iter().copied())).map_err(|e| e.kind())
+    }
+
+    #[test]
+    fn version_and_help_stop_before_the_daemon() {
+        for a in ["--version", "-V"] {
+            assert_eq!(parse(&[a]).err(), Some(ErrorKind::DisplayVersion), "{a}");
+        }
+        for a in ["--help", "-h"] {
+            assert_eq!(parse(&[a]).err(), Some(ErrorKind::DisplayHelp), "{a}");
+        }
+    }
+
+    #[test]
+    fn unknown_flags_and_extra_arguments_are_errors() {
+        assert_eq!(parse(&["--bogus"]).err(), Some(ErrorKind::UnknownArgument));
+        assert_eq!(parse(&["extra"]).err(), Some(ErrorKind::UnknownArgument));
+    }
+
+    #[test]
+    fn reload_forms_still_parse() {
+        let a = parse(&[]).unwrap();
+        assert!(a.reload_info.is_none() && a.adopt.is_none());
+        assert_eq!(parse(&["--reload-info"]).unwrap().reload_info, Some(None));
+        assert_eq!(parse(&["--reload-info", "/tmp/h"]).unwrap().reload_info, Some(Some(PathBuf::from("/tmp/h"))));
+        assert_eq!(parse(&["--adopt", "/tmp/h"]).unwrap().adopt, Some(PathBuf::from("/tmp/h")));
+        assert_eq!(parse(&["--adopt"]).err(), Some(ErrorKind::InvalidValue));
+    }
 }

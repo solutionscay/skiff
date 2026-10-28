@@ -23,6 +23,7 @@ skiff-core.workspace = true
 skiff-client.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
+clap.workspace = true
 dirs.workspace = true
 tauri-plugin-dialog = "2"
 libc = "0.2"
