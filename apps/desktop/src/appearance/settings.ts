@@ -139,7 +139,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const button = tab === "disk" && a instanceof HTMLButtonElement && a.closest(".set-main") ? a.textContent : null;
     draw();
     if (button !== null) {
-      const stops = [...root.querySelectorAll<HTMLButtonElement>(".set-main button:not(:disabled)")];
+      const stops = [...root.querySelectorAll<HTMLButtonElement>(".set-main button:not(:disabled, .set-x)")];
       (stops.find((b) => b.textContent === button) ?? stops[0])?.focus();
     }
     const main = root.querySelector(".set-main");
@@ -170,15 +170,15 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     });
     nav.append(head, ...tabs);
     if (tab === "appearance") {
-      root.replaceChildren(nav, appearance(), closeButton());
+      root.replaceChildren(nav, pinClose(appearance()));
       return;
     }
     if (tab === "open") {
-      root.replaceChildren(nav, openWith(), closeButton());
+      root.replaceChildren(nav, pinClose(openWith()));
       return;
     }
     if (tab === "skippers") {
-      root.replaceChildren(nav, skippers(), closeButton());
+      root.replaceChildren(nav, pinClose(skippers()));
       return;
     }
     if (tab === "task-types") {
@@ -189,21 +189,21 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         main.firstElementChild!.append(h("div", "set-h", "Task types"), h("div", "set-sub mono", hostName()));
         for (const t of agentSet?.tasks ?? []) main.append(h("div", "set-note mono", `${t.type}: ${t.command ?? t.agent}${t.error ? ` (${t.error})` : ""}`));
       } else if (agentSet) main.append(...taskTypesSection(agentSet, agents, tasksTable, saveTask, render, { edit: editTypeFile, errors: typeErrors }));
-      root.replaceChildren(nav, main, closeButton());
+      root.replaceChildren(nav, pinClose(main));
       return;
     }
     if (tab === "hosts") {
-      root.replaceChildren(nav, hostsTab.draw(), closeButton());
+      root.replaceChildren(nav, pinClose(hostsTab.draw()));
       return;
     }
     if (tab === "images") {
-      root.replaceChildren(nav, imagesSection(gallery, close), closeButton());
+      root.replaceChildren(nav, pinClose(imagesSection(gallery, close)));
       return;
     }
     if (tab === "disk") {
       const main = h("div", "set-main");
       main.append(...diskUseSection(disk, render, (days) => void setCacheDays(days)));
-      root.replaceChildren(nav, main, closeButton());
+      root.replaceChildren(nav, pinClose(main));
       return;
     }
 
@@ -217,7 +217,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       const rows = agents.map((a) => h("div", "set-note mono", `${a.id}: ${a.command} (${a.installed ? (a.enabled ? "on" : "off") : "not on PATH"})`));
       main.append(intro, h("div", "set-note", `Skiff on ${hostName()} is older than this app. Its agents are read-only.`), ...(rows.length ? rows : [h("div", "set-note", "No agents.")]));
       if (error) main.appendChild(h("div", "set-error", error));
-      root.replaceChildren(nav, main, closeButton());
+      root.replaceChildren(nav, pinClose(main));
       return;
     }
     // Only a removed default can come back.
@@ -235,7 +235,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       main.appendChild(err);
     }
     main.appendChild(callSigns());
-    root.replaceChildren(nav, main, closeButton());
+    root.replaceChildren(nav, pinClose(main));
   }
 
   /** The agents Skiff ships with. Restore defaults brings back any the user removed. */
@@ -310,9 +310,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     );
   }
 
-  /** Esc, in the top right corner as in the theme picker. A click closes. */
-  function closeButton(): HTMLButtonElement {
-    return escapeButton("set-x", "Close settings", close);
+  /** Esc in the top band of the page's head, which stays at the top as the page scrolls. A click closes. */
+  function pinClose(main: HTMLElement): HTMLElement {
+    (main.querySelector(":scope > .set-head") ?? main).append(escapeButton("set-x", "Close settings", close));
+    return main;
   }
 
   /** The words that make up the names of new agent sessions. */
@@ -669,7 +670,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     document.body.classList.add("kbd");
     if (!into) return root.querySelector<HTMLButtonElement>(".set-tab.active")?.focus();
     if (tab === "appearance") return root.querySelector<HTMLInputElement>(".tc-search")?.focus();
-    root.querySelector<HTMLElement>(".set-main :is(button, input, select, textarea, [tabindex]):not(:disabled)")?.focus();
+    root.querySelector<HTMLElement>(".set-main :is(button, input, select, textarea, [tabindex]):not(:disabled, .set-x)")?.focus();
   }
 
   /**
@@ -703,7 +704,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       const v = el.value;
       if (up ? v.lastIndexOf("\n", el.selectionStart - 1) >= 0 : v.indexOf("\n", el.selectionEnd) >= 0) return;
     }
-    const stops = [...root.querySelectorAll<HTMLElement>(".set-main :is(button, input, select, textarea):not(:disabled)")];
+    const stops = [...root.querySelectorAll<HTMLElement>(".set-main :is(button, input, select, textarea):not(:disabled, .set-x)")];
     const at = stops.indexOf(el);
     if (at < 0) return;
     e.preventDefault();
