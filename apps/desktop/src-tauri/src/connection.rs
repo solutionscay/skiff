@@ -80,10 +80,39 @@ pub(crate) fn daemon_binary() -> PathBuf {
     if let Ok(exe) = std::env::current_exe() {
         let beside = exe.with_file_name("skiffd");
         if beside.exists() {
+            // The AppImage's mount goes when its app quits, while skiffd runs
+            // on. Its binary path then names nothing, and a later reload has
+            // no target. The daemon runs from a copy outside the mount.
+            if std::env::var_os("APPIMAGE").is_some() {
+                if let Some(dir) = dirs::data_dir() {
+                    match copy_out(&beside, &dir.join("skiff/bin")) {
+                        Ok(copy) => return copy,
+                        Err(e) => eprintln!("skiffd not copied out of the AppImage: {e:#}"),
+                    }
+                }
+            }
             return beside;
         }
     }
     PathBuf::from("skiffd")
+}
+
+/// Copies `src` to `dir/skiffd` when that differs. Writes beside it and
+/// renames, so a running skiffd keeps its own file.
+fn copy_out(src: &std::path::Path, dir: &std::path::Path) -> anyhow::Result<PathBuf> {
+    use anyhow::Context;
+    use std::os::unix::fs::PermissionsExt;
+    let dest = dir.join("skiffd");
+    let new = std::fs::read(src).with_context(|| format!("read {}", src.display()))?;
+    if std::fs::read(&dest).is_ok_and(|old| old == new) {
+        return Ok(dest);
+    }
+    std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
+    let tmp = dir.join(".skiffd.new");
+    std::fs::write(&tmp, &new).with_context(|| format!("write {}", tmp.display()))?;
+    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
+    std::fs::rename(&tmp, &dest).with_context(|| format!("replace {}", dest.display()))?;
+    Ok(dest)
 }
 
 fn spawn_daemon() -> anyhow::Result<()> {
@@ -397,8 +426,29 @@ pub(crate) async fn status_now(app: &App) -> DaemonStatus {
 
 #[cfg(test)]
 mod tests {
-    use super::{compare_versions, stop_daemon};
+    use super::{compare_versions, copy_out, stop_daemon};
     use std::cmp::Ordering::*;
+
+    #[test]
+    fn copies_skiffd_out_of_the_appimage_once_per_change() {
+        let dir = std::env::temp_dir().join(format!("skiff-copy-out-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("mount-skiffd");
+        std::fs::write(&src, b"one").unwrap();
+        let out = dir.join("bin");
+        let dest = copy_out(&src, &out).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"one");
+        let first = std::fs::metadata(&dest).unwrap();
+        assert_eq!(copy_out(&src, &out).unwrap(), dest);
+        // The same bytes: the file stays, so a running skiffd's path still names it.
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(std::fs::metadata(&dest).unwrap().ino(), first.ino());
+        std::fs::write(&src, b"two").unwrap();
+        copy_out(&src, &out).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"two");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn orders_versions_by_number() {

@@ -23,9 +23,11 @@ skiff-core.workspace = true
 skiff-client.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
+dirs.workspace = true
 tauri-plugin-dialog = "2"
 libc = "0.2"
 tauri-plugin-clipboard-manager = "2"
+tauri-plugin-updater = "2.10"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"

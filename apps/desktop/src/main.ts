@@ -36,6 +36,7 @@ import { missionOpen, restoreRunning } from "./workspace/missionControl";
 import { startLedger } from "./workspace/ledger";
 import "./terminal/fileDrop";
 import { startWorkspaceQuitGuard, startWorkspaces } from "./workspace/profile";
+import { startUpdates } from "./app/updater";
 
 configureRender(render);
 configurePaneActions({ focusPane, closePane, dragSessions });
@@ -119,6 +120,7 @@ async function boot() {
   await startWorkspaces();
   trackPlace();
   warmPanes();
+  startUpdates();
 
   let refreshing = false;
   setInterval(() => {

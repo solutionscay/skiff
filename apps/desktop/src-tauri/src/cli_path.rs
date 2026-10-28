@@ -270,7 +270,7 @@ mod imp {
         let src = bundled().context("this build has no skiff CLI")?;
         let s = src.to_string_lossy();
         // A link into the disk image or a translocated copy breaks later.
-        if s.starts_with("/Volumes/") || s.contains("/AppTranslocation/") {
+        if crate::updater::in_disk_image(&s) {
             bail!("move Skiff to Applications first, then try again");
         }
         Ok(src)
