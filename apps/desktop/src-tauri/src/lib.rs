@@ -365,7 +365,9 @@ mod tests {
             "workspace_read", "workspace_revision", "workspace_write", "workspace_launch_file", "workspace_took",
             // This computer's Disk use and Images, whichever Host is shown. A drop or an Insert on a remote Host's pane goes to that Host.
             "disk_usage", "flush_cache", "flush_done", "set_cache_days",
-            "drop_files", "clipboard_image", "images", "image_thumb", "image_insert", "image_pin", "image_delete", "open_image", "agent_cache_flags"];
+            "drop_files", "clipboard_image", "images", "image_thumb", "image_insert", "image_pin", "image_delete", "open_image", "agent_cache_flags",
+            // This app's own updater and restart, whichever Host is shown.
+            "update_off", "relaunch_app"];
         for c in &all {
             assert!(super::LOCAL_ONLY.contains(&c.as_str()) || allowed.contains(&c.as_str()), "{c}: decide whether a remote Host may run it");
         }

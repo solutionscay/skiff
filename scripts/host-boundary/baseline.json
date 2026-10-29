@@ -185,7 +185,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "8bb6de86f5ca6d0fcae008a09e8486c363a84dad6866b48c2628b4ce19a193d5"
+    "sha256": "54f478fa71aa72f21395604ab2ac6570e47b3b485c4b1558a711d810e644d15b"
   },
   "apps/desktop/src-tauri/src/main.rs": {
     "ownership": "client policy (#189): this app's own command-line flags; no Host data",
