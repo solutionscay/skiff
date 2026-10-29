@@ -64,7 +64,7 @@ import { revealSession } from "./view";
 import { ledgerAllWork, ledgerScope, setLedgerAllWork, workspaceName, workspaceOpen } from "./profile";
 
 /** A ledger row as `ledger_rows` returns it. */
-interface Entry {
+export interface Entry {
   id: number;
   uid: string;
   kind: "task" | "plan" | "handoff";
@@ -95,7 +95,7 @@ interface Entry {
 }
 
 /** Where a task stands, from its row and its pane. */
-type State = "pending" | "sent" | "approval" | "blocked" | "interrupted" | "gone" | "exited" | "done";
+export type State = "pending" | "sent" | "approval" | "blocked" | "interrupted" | "gone" | "exited" | "done";
 
 /** The states that need the person, and the word that takes the pane name's place. */
 const NEED: Partial<Record<State, string>> = { approval: "asks approval", blocked: "blocked", interrupted: "restarted", gone: "pane gone", exited: "exited" };
@@ -193,6 +193,14 @@ export function shortTitle(text: string): string {
 
 /** The title Skipper gave the row, else the one the task text gives. */
 const titleOf = (r: Entry) => r.title?.trim() || shortTitle(r.task);
+
+/** The rows as the panel holds them, for a surface that draws them its own way: mission control's strings. */
+export const ledgerRows = (): readonly Entry[] => rows;
+/** Where a task stands, for a surface outside the panel. */
+export const taskState = (r: Entry): State => look(r).st;
+/** The word for a state that needs the person, else `null`. */
+export const needWord = (st: State): string | null => NEED[st] ?? null;
+export const ledgerTitle = titleOf;
 
 function look(r: Entry): Look {
   const s = r.pane_id ? sessions.get(r.pane_id) ?? null : null;
