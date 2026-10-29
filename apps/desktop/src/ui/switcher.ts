@@ -62,7 +62,7 @@ export function createSwitcher(items: () => SwitchItem[], onClose: () => void) {
     if (shown.length === 0) {
       const empty = document.createElement("div");
       empty.className = "sw-empty";
-      empty.textContent = "No match";
+      empty.textContent = t("switcher.noMatch");
       list.appendChild(empty);
       input.removeAttribute("aria-activedescendant");
       return;
@@ -78,10 +78,10 @@ export function createSwitcher(items: () => SwitchItem[], onClose: () => void) {
       const kind = row.querySelector(".kind") as HTMLElement;
       if (item.state) {
         kind.innerHTML = `<span class="dot ${item.state}"></span>`;
-        kind.append(item.state);
+        kind.append(t(`state.${item.state}`));
         kind.classList.add("state", item.state);
       } else {
-        kind.textContent = item.kind;
+        kind.textContent = t(`switcher.kind.${item.kind}`);
       }
       (row.querySelector(".primary") as HTMLElement).textContent = item.primary;
       (row.querySelector(".secondary") as HTMLElement).textContent = item.secondary;

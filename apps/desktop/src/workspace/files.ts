@@ -18,6 +18,7 @@ import { showError } from "../ui/alerts";
 import { ctxMenu } from "../ui/contextMenu";
 import { render } from "../app/render";
 import { storedSet } from "../app/stored";
+import { t } from "../i18n";
 
 type Entry = { name: string; dir: boolean };
 type Listing = Entry[] | { error: string };
@@ -123,8 +124,8 @@ export function filesBlock(w: Worktree): HTMLElement {
     e.preventDefault();
     e.stopPropagation();
     ctxMenu.open(e.clientX, e.clientY, "Files", [
-      { icon: "schedule-refresh-cw", label: "Refresh", run: () => refresh(w.path) },
-      { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", run: () => open(w.path) },
+      { icon: "schedule-refresh-cw", label: t("menu.refresh"), run: () => refresh(w.path) },
+      { icon: "indicators-square-arrow-out-up-right", label: t("menu.showInFileManager"), run: () => open(w.path) },
     ]);
   });
   block.appendChild(head);
@@ -190,14 +191,14 @@ function row(e: Entry, path: string, depth: number): HTMLElement {
     m.stopPropagation();
     ctxMenu.open(m.clientX, m.clientY, e.name, e.dir
       ? [
-          { icon: "schedule-refresh-cw", label: "Refresh", run: () => refresh(path) },
-          { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: () => open(path) },
-          { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: () => copy(path) },
+          { icon: "schedule-refresh-cw", label: t("menu.refresh"), run: () => refresh(path) },
+          { icon: "indicators-square-arrow-out-up-right", label: t("menu.showInFileManager"), hint: keyLabel("project-folder"), run: () => open(path) },
+          { icon: "code-copy", label: t("menu.copyPath"), hint: keyLabel("project-copy-path"), run: () => copy(path) },
         ]
       : [
-          { icon: "indicators-square-arrow-out-up-right", label: "Open", hint: "Enter", run: () => open(path) },
-          { icon: "documents-folder-open", label: "Show in file manager", hint: keyLabel("project-folder"), run: () => reveal(path) },
-          { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: () => copy(path) },
+          { icon: "indicators-square-arrow-out-up-right", label: t("menu.open"), hint: "Enter", run: () => open(path) },
+          { icon: "documents-folder-open", label: t("menu.showInFileManager"), hint: keyLabel("project-folder"), run: () => reveal(path) },
+          { icon: "code-copy", label: t("menu.copyPath"), hint: keyLabel("project-copy-path"), run: () => copy(path) },
         ]);
   });
   return r;

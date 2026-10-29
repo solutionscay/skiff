@@ -260,7 +260,7 @@ export const switcher = createSwitcher(() => {
       primary: `${agentName(s)} · ${taskTitle(s)}`,
       secondary: where,
       state: s.state,
-      meta: s.state === "waiting" || s.state === "idle" ? s.state : "",
+      meta: s.state === "waiting" || s.state === "idle" ? t(`state.${s.state}`) : "",
       text: `${where} ${agentName(s)} ${taskTitle(s)} ${s.state}`,
       run: () => revealSession(s.id),
     };
@@ -273,7 +273,7 @@ export const switcher = createSwitcher(() => {
       primary: t("palette.openProject", { name: p.name }),
       secondary: t("palette.closed"),
       meta: "",
-      text: `open closed project ${p.name}`,
+      text: `${t("palette.openProject", { name: p.name })} ${t("palette.closed")}`,
       run: () => void openClosedProject(p),
     });
   }

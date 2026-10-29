@@ -18,6 +18,7 @@ import { collapsed, S, selectedWorktree, sessions } from "../app/state";
 import { worktreeSessions } from "../app/stateQueries";
 
 import { refocusTerminal, selectProject } from "./view";
+import { t } from "../i18n";
 
 /** The project's sessions, and one line per worktree that has any, for a confirmation. */
 function projectSessions(p: Project) {
@@ -127,9 +128,9 @@ export async function openClosedProject(p: Project) {
 /** The project menu's last entries. */
 export function closeEntries(p: Project): MenuEntry[] {
   return [
-    { icon: "indicators-minus", label: "Close project", run: () => void closeProject(p) },
+    { icon: "indicators-minus", label: t("cmd.closeProject"), run: () => void closeProject(p) },
     { sep: true },
-    { icon: "tools-trash-2", label: "Remove project…", danger: true, run: () => void removeProject(p) },
+    { icon: "tools-trash-2", label: t("cmd.removeProject"), danger: true, run: () => void removeProject(p) },
   ];
 }
 
@@ -139,10 +140,10 @@ export function closedProjectsMenu(x: number, y: number) {
     icon: "documents-folder-open",
     label: p.name,
     sub: [
-      { icon: "documents-folder-open", label: "Open", run: () => void openClosedProject(p) },
-      { icon: "tools-trash-2", label: "Remove…", danger: true, run: () => void removeProject(p) },
+      { icon: "documents-folder-open", label: t("menu.open"), run: () => void openClosedProject(p) },
+      { icon: "tools-trash-2", label: t("menu.removeAsk"), danger: true, run: () => void removeProject(p) },
     ],
   }));
-  if (!entries.length) entries.push({ label: "No closed projects", disabled: true });
-  ctxMenu.open(x, y, "Closed projects", entries);
+  if (!entries.length) entries.push({ label: t("closed.none"), disabled: true });
+  ctxMenu.open(x, y, t("closed.title"), entries);
 }

@@ -31,6 +31,7 @@ import { button, h, setHidden } from "../ui/dom";
 import type { MenuEntry } from "../ui/menu";
 import { fleetKey, projectKey, treeSections, useTreeView } from "./tree";
 import { selectProject } from "./view";
+import { t, upper } from "../i18n";
 
 /** The profile as `workspace_read` gives it and `workspace_write` takes it. */
 export interface Profile {
@@ -256,27 +257,27 @@ export function projectsPlus(at: HTMLElement, addProject: () => void) {
   const fleets = fleetNames().filter((f) => !doc!.profile.fleets.includes(f));
   const hidden = S.projects.filter((p) => !shows(p));
   const entries: MenuEntry[] = [];
-  if (fleets.length || hidden.length) entries.push({ head: "ADD TO WORKSPACE" });
-  for (const f of fleets) entries.push({ icon: "code-group", label: `Fleet ${f}`, run: () => setIncluded("fleet", f, true) });
+  if (fleets.length || hidden.length) entries.push({ head: upper(t("workspace.headAdd")) });
+  for (const f of fleets) entries.push({ icon: "code-group", label: t("menu.fleet", { name: f }), run: () => setIncluded("fleet", f, true) });
   for (const p of hidden) entries.push({ label: p.fleet ? `${p.name} (${p.fleet})` : p.name, run: () => setIncluded("project", p.path, true) });
-  if (entries.length) entries.push({ head: "SKIFF" });
-  entries.push({ icon: "indicators-plus", label: "Add project…", run: addProject });
+  if (entries.length) entries.push({ head: upper(t("workspace.headSkiff")) });
+  entries.push({ icon: "indicators-plus", label: t("cmd.addProject"), run: addProject });
   ctxMenu.open(r.left, r.bottom, workspaceName(), entries);
 }
 
 /** The workspace items in a project's menu. None in All projects. */
 export function projectWorkspaceEntries(p: Project): MenuEntry[] {
   if (!doc) return [];
-  if (listed(p)) return [{ icon: "code-ungroup", label: "Remove from workspace", run: () => setIncluded("project", p.path, false) }];
+  if (listed(p)) return [{ icon: "code-ungroup", label: t("workspace.removeProject"), run: () => setIncluded("project", p.path, false) }];
   // In by its fleet only: the fleet's menu takes it out.
-  return [{ icon: "code-ungroup", label: `Remove from workspace (in by fleet ${p.fleet})`, disabled: true }];
+  return [{ icon: "code-ungroup", label: t("workspace.inByFleet", { fleet: p.fleet ?? "" }), disabled: true }];
 }
 
 /** The workspace items in a fleet's menu. None in All projects. */
 export function fleetWorkspaceEntries(name: string): MenuEntry[] {
   if (!doc) return [];
-  if (doc.profile.fleets.includes(name)) return [{ icon: "code-ungroup", label: "Remove fleet from workspace", run: () => setIncluded("fleet", name, false) }];
-  return [{ icon: "indicators-plus", label: "Add whole fleet to workspace", run: () => setIncluded("fleet", name, true) }];
+  if (doc.profile.fleets.includes(name)) return [{ icon: "code-ungroup", label: t("workspace.removeFleet"), run: () => setIncluded("fleet", name, false) }];
+  return [{ icon: "indicators-plus", label: t("workspace.addFleet"), run: () => setIncluded("fleet", name, true) }];
 }
 
 // ── Notices ────────────────────────────────────────────────────────────────

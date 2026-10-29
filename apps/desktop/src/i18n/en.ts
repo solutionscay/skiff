@@ -362,6 +362,39 @@ export const en = {
   "dirtyWorktree.body": "Removing it deletes them. You cannot get them back.\nCommits on the branch stay.",
   "dirtyWorktree.action": "Remove anyway",
 
+  // Palette rows and session states.
+  "switcher.noMatch": "No match",
+  "switcher.kind.command": "command",
+  "switcher.kind.session": "session",
+  "switcher.kind.worktree": "worktree",
+  "state.working": "working",
+  "state.waiting": "waiting",
+  "state.idle": "idle",
+  "state.done": "done",
+
+  // File, change, workspace and closed-project menus.
+  "menu.refresh": "Refresh",
+  "menu.open": "Open",
+  "menu.showDiff": "Show diff",
+  "menu.openFile": "Open file",
+  "menu.removeAsk": "Remove…",
+  "closed.title": "Closed projects",
+  "closed.none": "No closed projects",
+  "workspace.headAdd": "Add to workspace",
+  "workspace.headSkiff": "Skiff",
+  "workspace.removeProject": "Remove from workspace",
+  "workspace.inByFleet": "Remove from workspace (in by fleet {fleet})",
+  "workspace.removeFleet": "Remove fleet from workspace",
+  "workspace.addFleet": "Add whole fleet to workspace",
+
+  // Settings › Appearance › Menu (Linux).
+  "settings.menu": "Menu",
+  "settings.menuLayout": "Menu layout",
+  "settings.menuAutoHeader": "Auto (header bar)",
+  "settings.menuAutoMenu": "Auto (menu bar)",
+  "settings.headerBar": "Header bar",
+  "settings.menuBar": "Menu bar",
+
   // Settings › Appearance.
   "settings.language": "Language",
   "settings.languageAuto": "Auto ({name})",

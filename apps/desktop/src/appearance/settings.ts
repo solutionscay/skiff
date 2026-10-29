@@ -360,48 +360,47 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     return main;
   }
 
-  /** Linux: the GNOME header bar or the menu bar. GTK sets it when the window opens. */
-  function menuLayout(m: MenuLayout): HTMLElement {
+  /**
+   * A row of choices that the window reads when it opens: Menu and Language.
+   * `pending` shows "On restart" until the window opens again.
+   */
+  function segRow<V>(name: string, aria: string, choices: [V, string][], chosen: V, pending: boolean, pick: (v: V) => void): HTMLElement {
     const row = h("div", "set-row set-opacity set-menu");
-    const pick = h("div", "c-cmd set-seg");
-    pick.setAttribute("role", "radiogroup");
-    pick.setAttribute("aria-label", "Menu layout");
-    const auto = m.auto === "header-bar" ? "Auto (header bar)" : "Auto (menu bar)";
-    const choices: [string | null, string][] = [[null, auto], ["header-bar", "Header bar"], ["menu-bar", "Menu bar"]];
+    const seg = h("div", "c-cmd set-seg");
+    seg.setAttribute("role", "radiogroup");
+    seg.setAttribute("aria-label", aria);
     for (const [value, label] of choices) {
-      const b = h("button", "set-seg-item" + (m.chosen === value ? " on" : ""), label);
+      const b = h("button", "set-seg-item" + (chosen === value ? " on" : ""), label);
       b.type = "button";
       b.setAttribute("role", "radio");
-      b.setAttribute("aria-checked", String(m.chosen === value));
-      b.addEventListener("click", () => void setMenuLayout(value));
-      pick.appendChild(b);
+      b.setAttribute("aria-checked", String(chosen === value));
+      b.addEventListener("click", () => pick(value));
+      seg.appendChild(b);
     }
-    const pending = (m.chosen ?? m.auto) !== m.current;
-    row.append(h("span", "c-name", "Menu"), pick, h("span", "c-status", pending ? "On restart" : ""));
+    row.append(h("span", "c-name", name), seg, h("span", "c-status", pending ? t("settings.onRestart") : ""));
     return row;
   }
 
-  /** The app's language. The window reads it when it opens. */
+  /** Linux: the GNOME header bar or the menu bar. GTK sets it when the window opens. */
+  function menuLayout(m: MenuLayout): HTMLElement {
+    const auto = t(m.auto === "header-bar" ? "settings.menuAutoHeader" : "settings.menuAutoMenu");
+    const choices: [string | null, string][] = [[null, auto], ["header-bar", t("settings.headerBar")], ["menu-bar", t("settings.menuBar")]];
+    const pending = (m.chosen ?? m.auto) !== m.current;
+    return segRow(t("settings.menu"), t("settings.menuLayout"), choices, m.chosen, pending, (v) => void setMenuLayout(v));
+  }
+
+  /**
+   * The app's language. The window reads it when it opens. A set code lights
+   * the catalog it picks: "es-MX" lights Español, "fr" lights English.
+   */
   function languagePick(): HTMLElement {
-    const row = h("div", "set-row set-opacity set-menu");
-    const pick = h("div", "c-cmd set-seg");
-    pick.setAttribute("role", "radiogroup");
-    pick.setAttribute("aria-label", t("settings.language"));
     const choices: [string | null, string][] = [
       [null, t("settings.languageAuto", { name: languageName(systemLanguage()) })],
       ...languages().map((code): [string, string] => [code, languageName(code)]),
     ];
-    for (const [value, label] of choices) {
-      const b = h("button", "set-seg-item" + (langSet === value ? " on" : ""), label);
-      b.type = "button";
-      b.setAttribute("role", "radio");
-      b.setAttribute("aria-checked", String(langSet === value));
-      b.addEventListener("click", () => void setLanguageSetting(value));
-      pick.appendChild(b);
-    }
+    const chosen = langSet === null ? null : catalogFor(langSet);
     const pending = catalogFor(langSet ?? navigator.language) !== language();
-    row.append(h("span", "c-name", t("settings.language")), pick, h("span", "c-status", pending ? t("settings.onRestart") : ""));
-    return row;
+    return segRow(t("settings.language"), t("settings.language"), choices, chosen, pending, (v) => void setLanguageSetting(v));
   }
 
   async function setLanguageSetting(code: string | null) {

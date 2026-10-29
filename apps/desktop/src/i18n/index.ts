@@ -15,6 +15,7 @@ const catalogs: Record<string, Partial<Record<MessageKey, string>>> = { en, es, 
 
 let current: Partial<Record<MessageKey, string>> = en;
 let currentLang = "en";
+let plurals = new Intl.PluralRules("en");
 
 /** The languages Skiff has words for. */
 export const languages = () => Object.keys(catalogs);
@@ -22,9 +23,14 @@ export const languages = () => Object.keys(catalogs);
 /** A language's name in that language: "English", "Español". */
 export const languageName = (code: string) => catalogs[code]?.["language.name"] ?? en["language.name"];
 
-/** The catalog a language code picks: "es-MX" gives "es"; one with no catalog gives "en". */
+/**
+ * The catalog a language code picks: "es-MX" gives "es"; one with no catalog
+ * gives "en". `zh` is Simplified Chinese, so Traditional (zh-TW, zh-HK,
+ * zh-MO, zh-Hant) gets English until it has a catalog of its own.
+ */
 export const catalogFor = (lang: string) => {
-  const base = lang.toLowerCase().split(/[-_]/)[0];
+  const [base, ...rest] = lang.toLowerCase().split(/[-_]/);
+  if (base === "zh" && !rest.includes("hans") && rest.some((part) => ["hant", "tw", "hk", "mo"].includes(part))) return "en";
   return catalogs[base] ? base : "en";
 };
 
@@ -35,6 +41,7 @@ export const systemLanguage = () => catalogFor(navigator.language);
 export function setLanguage(lang: string) {
   currentLang = catalogFor(lang);
   current = catalogs[currentLang];
+  plurals = new Intl.PluralRules(currentLang);
   document.documentElement.lang = currentLang;
 }
 
@@ -51,7 +58,7 @@ export type PluralKey = { [K in MessageKey]: K extends `${infer B}#other` ? B : 
 
 /** The form of `key` for `count`, by the language's plural rules. `{count}` is filled in. */
 export function tn(key: PluralKey, count: number, vars?: Vars): string {
-  const form = `${key}#${new Intl.PluralRules(currentLang).select(count)}` as MessageKey;
+  const form = `${key}#${plurals.select(count)}` as MessageKey;
   return t(form in current || form in en ? form : (`${key}#other` as MessageKey), { count, ...vars });
 }
 

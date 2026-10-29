@@ -1,7 +1,6 @@
 import { dialogFrame, dialogHeader } from "./dialogParts";
 import { DESCRIBE, describe, describeText, isMac, keyLabel } from "../app/keys";
 import { type MessageKey, t, upper } from "../i18n";
-import { en } from "../i18n/en";
 
 import type { DaemonStatus } from "../platform/types";
 import { getVersion } from "@tauri-apps/api/app";
@@ -44,11 +43,11 @@ type Shortcut = [section: string, what: string, key: string];
 
 /**
  * A fixed key's F1 line: catalog keys for the section and the words. The key
- * column is a key label, or a catalog key when it names a mouse act or a word.
+ * column is a key label, or `{ words }` when it names a mouse act or a word.
  */
-type FixedShortcut = [section: MessageKey, what: MessageKey, key: string];
+type FixedShortcut = [section: MessageKey, what: MessageKey, key: string | { words: MessageKey }];
 
-const keyWords = (key: string) => (key in en ? t(key as MessageKey) : key);
+const keyWords = (key: FixedShortcut[2]) => (typeof key === "string" ? key : t(key.words));
 
 /** Keyboard controls that do not come from the configurable action keymap. */
 const FIXED_SHORTCUTS: FixedShortcut[] = [
@@ -72,13 +71,13 @@ const FIXED_SHORTCUTS: FixedShortcut[] = [
   ["section.ledger", "fixed.ledger.step", "↑ / ↓"],
   ["section.ledger", "fixed.ledger.open", "Enter"],
   ["section.ledger", "fixed.ledger.back", "Esc"],
-  ["section.images", "fixed.images.search", "fixed.key.type"],
+  ["section.images", "fixed.images.search", { words: "fixed.key.type" }],
   ["section.images", "fixed.images.toList", "↓ / ↑"],
   ["section.images", "fixed.images.step", "↑ / ↓"],
   ["section.images", "fixed.images.actions", "Enter / I / P / C / Delete"],
   ["section.images", "fixed.images.close", "Esc"],
   ["section.imagesGallery", "fixed.gallery.select", isMac ? "⌘+click / Shift+click" : "Ctrl+click / Shift+click"],
-  ["section.imagesGallery", "fixed.gallery.move", "fixed.key.arrows"],
+  ["section.imagesGallery", "fixed.gallery.move", { words: "fixed.key.arrows" }],
   ["section.imagesGallery", "fixed.gallery.toggle", "Space"],
   ["section.imagesGallery", "fixed.gallery.selectAll", isMac ? "⌘+A" : "Ctrl+A"],
   ["section.imagesGallery", "fixed.gallery.actions", "I / P / C / Delete"],
@@ -87,9 +86,9 @@ const FIXED_SHORTCUTS: FixedShortcut[] = [
   ["section.settings", "fixed.settings.move", "↑ / ↓ / ← / →"],
   ["section.settings", "fixed.settings.back", "←"],
   ["section.settings", "fixed.settings.cut", isMac ? "⌘+X / ⌘+A" : "Ctrl+X / Ctrl+A"],
-  ["section.panes", "fixed.panes.buttons", "fixed.key.headerButtons"],
-  ["section.panes", "fixed.panes.doubleClick", "fixed.key.doubleClick"],
-  ["section.panes", "fixed.panes.menu", "fixed.key.rightClick"],
+  ["section.panes", "fixed.panes.buttons", { words: "fixed.key.headerButtons" }],
+  ["section.panes", "fixed.panes.doubleClick", { words: "fixed.key.doubleClick" }],
+  ["section.panes", "fixed.panes.menu", { words: "fixed.key.rightClick" }],
   ["section.palette", "fixed.palette.move", "↑ / ↓"],
   ["section.palette", "fixed.palette.run", "Enter"],
   ["section.palette", "fixed.palette.close", "Esc"],

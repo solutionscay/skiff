@@ -54,8 +54,10 @@ document.addEventListener("contextmenu", (e) => {
 });
 
 async function boot() {
-  // The language comes first: every word after this reads it. A change shows when the window opens again.
-  setLanguage((await invoke<Appearance>("get_appearance").catch(() => null))?.language ?? navigator.language);
+  // One read of `[appearance]`. The language comes first: every word after this reads it.
+  // A change shows when the window opens again.
+  const look = await invoke<Appearance>("get_appearance").catch(() => null);
+  setLanguage(look?.language ?? navigator.language);
   await startWorkspaceQuitGuard();
   // `tauri dev` build: a badge in the status bar tells it apart from an installed Skiff.
   if (import.meta.env.DEV) {
@@ -99,18 +101,16 @@ async function boot() {
   await subscribeEvents();
 
   await refreshSessions();
+  if (look) {
+    S.appTheme = look.theme;
+    restoreRunning(look.mission_filter);
+    // No size in the daemon yet: keep this machine's and hand it over.
+    if (look.font_size) setFontSize(look.font_size, false);
+    else if (S.fontSize !== FONT_DEFAULT) setFontSize(S.fontSize);
+  }
   await Promise.all([
     loadProjects(),
     loadThemes(),
-    invoke<Appearance>("get_appearance")
-      .then((a) => {
-        S.appTheme = a.theme;
-        restoreRunning(a.mission_filter);
-        // No size in the daemon yet: keep this machine's and hand it over.
-        if (a.font_size) setFontSize(a.font_size, false);
-        else if (S.fontSize !== FONT_DEFAULT) setFontSize(S.fontSize);
-      })
-      .catch(() => null),
     invoke<Record<string, string>>("get_keys").then(setKeymap).catch(() => null),
   ]);
   // The top bar's search button is the palette; show its real key.

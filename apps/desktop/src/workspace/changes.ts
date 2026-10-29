@@ -21,6 +21,7 @@ import { render, scheduleRender } from "../app/render";
 import { collapsed } from "../app/state";
 
 import { storedSet } from "../app/stored";
+import { t } from "../i18n";
 
 type Change = { path: string; status: "M" | "A" | "D" | "U"; added: number | null; removed: number | null };
 
@@ -156,8 +157,8 @@ export function changesBlock(w: Worktree): HTMLElement | null {
     e.preventDefault();
     e.stopPropagation();
     ctxMenu.open(e.clientX, e.clientY, "Changes", [
-      { icon: "code-git-branch", label: "Review all changes", run: () => reviewChanges(w) },
-      { icon: "schedule-refresh-cw", label: "Refresh", run: () => load(w.path) },
+      { icon: "code-git-branch", label: t("menu.reviewChanges"), run: () => reviewChanges(w) },
+      { icon: "schedule-refresh-cw", label: t("menu.refresh"), run: () => load(w.path) },
     ]);
   });
   block.appendChild(head);
@@ -198,13 +199,13 @@ function row(w: Worktree, c: Change): HTMLElement {
     m.preventDefault();
     m.stopPropagation();
     const items: MenuEntry[] = [
-      { icon: "code-git-branch", label: "Show diff", hint: "Enter", run: show },
+      { icon: "code-git-branch", label: t("menu.showDiff"), hint: "Enter", run: show },
     ];
     if (!gone) items.push(
-      { icon: "indicators-square-arrow-out-up-right", label: "Open file", hint: "Shift+Enter", run: () => open(path) },
-      { icon: "documents-folder-open", label: "Show in file manager", hint: keyLabel("project-folder"), run: () => reveal(path) },
+      { icon: "indicators-square-arrow-out-up-right", label: t("menu.openFile"), hint: "Shift+Enter", run: () => open(path) },
+      { icon: "documents-folder-open", label: t("menu.showInFileManager"), hint: keyLabel("project-folder"), run: () => reveal(path) },
     );
-    items.push({ icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: () => copy(path) });
+    items.push({ icon: "code-copy", label: t("menu.copyPath"), hint: keyLabel("project-copy-path"), run: () => copy(path) });
     ctxMenu.open(m.clientX, m.clientY, name, items);
   });
   return r;
