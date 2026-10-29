@@ -79,6 +79,12 @@ const canvas = h("div", "mission-canvas");
 const world = h("div", "mission-world");
 const strings = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 strings.setAttribute("class", "mission-strings");
+// Paths stay across draws, so a working string's dashes keep marching (#198). Labels draw over them.
+const strandLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+const labelLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+strings.append(strandLayer, labelLayer);
+/** One path per string, by `from>to`. */
+const strands = new Map<string, SVGPathElement>();
 const items = h("div", "mission-items");
 world.append(strings, items);
 const ticks = h("div", "mission-ticks");
@@ -593,7 +599,7 @@ function draw() {
 /** The strings: one path per link, from the parent's foot to the child's pin. A hand-off carries its label. */
 function drawStrings() {
   const done = new Set<string>();
-  let out = "";
+  let labels = "";
   for (const st of m.strs) {
     const to = G.standIn(m.g, placed, st.to);
     const from = placed.cards.get(st.from);
@@ -608,14 +614,27 @@ function drawStrings() {
     const state = members.some((s) => s.state === "waiting") ? "waiting" : members.some((s) => s.state === "working") ? "working" : stateWord(child);
     const dim = foldedTo ? !members.some(isRunning) && running : dimmed(child);
     const g = G.strand(G.foot(from), G.pin(toRect));
-    out += `<path class="${state}${dim ? " dim" : ""}" d="${g.d}"/>`;
+    let path = strands.get(key);
+    if (!path) {
+      path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      strands.set(key, path);
+      strandLayer.appendChild(path);
+    }
+    const cls = `${state}${dim ? " dim" : ""}`;
+    if (path.getAttribute("class") !== cls) path.setAttribute("class", cls);
+    if (path.getAttribute("d") !== g.d) path.setAttribute("d", g.d);
     if (st.label) {
       const text = st.label.length > 40 ? `${st.label.slice(0, 39)}…` : st.label;
       const w = text.length * 6.2 + 12;
-      out += `<rect class="lblbg" x="${g.lx - w / 2}" y="${g.ly - 10}" width="${w}" height="20"/><text class="lbl${dim ? " dim" : ""}" x="${g.lx}" y="${g.ly + 4}" text-anchor="middle">${text.replace(/[<&]/g, (c) => (c === "<" ? "&lt;" : "&amp;"))}</text>`;
+      labels += `<rect class="lblbg" x="${g.lx - w / 2}" y="${g.ly - 10}" width="${w}" height="20"/><text class="lbl${dim ? " dim" : ""}" x="${g.lx}" y="${g.ly + 4}" text-anchor="middle">${text.replace(/[<&]/g, (c) => (c === "<" ? "&lt;" : "&amp;"))}</text>`;
     }
   }
-  strings.innerHTML = out;
+  for (const [key, path] of strands) {
+    if (done.has(key)) continue;
+    path.remove();
+    strands.delete(key);
+  }
+  labelLayer.innerHTML = labels;
 }
 
 /** The top bar's counts: Running and All, of what the search leaves. */
@@ -1197,7 +1216,9 @@ export const board = {
     cards.clear();
     clusters.clear();
     plans.clear();
-    strings.innerHTML = "";
+    strandLayer.replaceChildren();
+    labelLayer.replaceChildren();
+    strands.clear();
     ticks.replaceChildren();
   },
 };
