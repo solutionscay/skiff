@@ -35,22 +35,22 @@ export function diffLines(text: string): DiffLine[] {
   });
 }
 
-/** What the viewer says above the text, for `file`, or the whole worktree without one. */
-export function diffNotes(d: HostDiff, file?: string): string[] {
+/** What the viewer says above the text, for `file`, or the whole worktree without one. `base`: the branch the diff counts from, else HEAD. */
+export function diffNotes(d: HostDiff, file?: string, base?: string): string[] {
   const notes: string[] = [];
   if (d.untracked) notes.push("Untracked file. It is compared with an empty file.");
   if (d.binary) notes.push("Binary file. There is no text to show.");
-  if (!d.text && !d.binary) notes.push("No change against HEAD.");
+  if (!d.text && !d.binary) notes.push(`No change against ${base ?? "HEAD"}.`);
   if (d.truncated) notes.push(`The diff is longer than ${LIMIT_KIB} KiB. Only its start shows.`);
   if (!file) notes.push("Untracked files are not in this view. Select one to see it.");
   return notes;
 }
 
 /** The viewer's body for a diff. */
-export function diffBody(d: HostDiff, file?: string): HTMLElement {
+export function diffBody(d: HostDiff, file?: string, base?: string): HTMLElement {
   const body = h("div", "diff-view-body");
   body.tabIndex = -1;
-  for (const n of diffNotes(d, file)) body.append(h("div", "diff-view-note", n));
+  for (const n of diffNotes(d, file, base)) body.append(h("div", "diff-view-note", n));
   if (d.text && !d.binary) {
     const pre = h("pre", "diff-text mono");
     for (const l of diffLines(d.text)) pre.append(h("span", l.cls, `${l.text}\n`));

@@ -200,9 +200,10 @@ pub(crate) async fn open_file_copy(app: State<'_, App>, worktree: String, file: 
     blocking(move || skiff_core::open::open_default(&crate::copies::save(&name, &bytes)?)).await
 }
 
-/// The changed files of one worktree, for the sidebar's Changes section.
+/// The changed files of one worktree, for the sidebar's Changes section:
+/// on a branch, since it left the default branch; else the uncommitted ones.
 #[tauri::command]
-pub(crate) async fn git_changes(app: State<'_, App>, path: String) -> Result<Vec<skiff_host_api::HostChange>, String> {
+pub(crate) async fn git_changes(app: State<'_, App>, path: String) -> Result<skiff_host_api::HostChanges, String> {
     crate::connection::data_read(&app, |c| async move { skiff_client::host::data::git_changes(&c, &path).await }).await
 }
 
