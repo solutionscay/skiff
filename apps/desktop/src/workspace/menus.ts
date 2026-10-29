@@ -17,7 +17,7 @@ import { cwdOf } from "./canvas";
 import { filledOf, slotsOf } from "./layoutSlots";
 import type { Group, HostBranches, Project, SessionInfo, SplitDir, Worktree } from "../platform/types";
 import type { Fleet } from "./fleets";
-import { fleetWorkspaceEntries, projectWorkspaceEntries } from "./profile";
+import { fleetWorkspaceEntries, keepInView, projectWorkspaceEntries, renameWorkspaceFleet } from "./profile";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
 import { openPath } from "../platform/os";
@@ -146,7 +146,11 @@ function setFleet(p: Project) {
     action: "Set fleet",
     // A project Skipper that comes under a running fleet Skipper is taken over, after one confirm.
     submit: async (fleet) => {
-      if ((await joinFleet(p.name, fleet.trim())) === false) await hostInvoke("project_config", "set_project_fleet", { project: p.name, fleet });
+      const joined = await joinFleet(p.name, fleet.trim());
+      if (joined === null) return;
+      // A fleet the open workspace does not name, or none, would take the project out of view.
+      keepInView(p, fleet.trim() || null);
+      if (joined === false) await hostInvoke("project_config", "set_project_fleet", { project: p.name, fleet });
     },
     onClose: refocusTerminal,
   });
@@ -155,11 +159,13 @@ function setFleet(p: Project) {
 /** Give the fleet a new name: its projects, and its Skipper's folder, rows and session. */
 function renameFleet(f: Fleet, name: string) {
   renameHidden(f.name, name);
+  renameWorkspaceFleet(f.name, name.trim());
   return renameFleetOn(f.name, name, f.projects.map((p) => p.name));
 }
 
 /** Take every project out of the fleet. Each goes back under Projects. */
 function dissolveFleet(f: Fleet) {
+  for (const p of f.projects) keepInView(p, null);
   return hostInvoke<void>("project_config", "reorder_projects", { order: S.projects.map((x) => x.name), fleets: f.projects.map((p) => [p.name, ""]) });
 }
 

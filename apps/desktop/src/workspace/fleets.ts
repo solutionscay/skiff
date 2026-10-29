@@ -10,6 +10,7 @@ import { render } from "../app/renderRequest";
 
 import { S } from "../app/state";
 import { renameHidden } from "./tree";
+import { keepInView, renameWorkspaceFleet } from "./profile";
 import { fleetSkipperOf, joinFleet, projectSkipperOf, renameFleetOn } from "../app/skiffAgent";
 
 export interface Fleet {
@@ -100,6 +101,7 @@ function place(moving: Project[], d: Drop): string | null {
   for (const f of next.values()) if (f) size.set(f, (size.get(f) ?? 0) + 1);
   for (const [p, f] of next) if (f && size.get(f) === 1 && !fleetSkipperOf(f)) next.set(p, null);
   const fleets = [...next].filter(([p, f]) => (p.fleet ?? null) !== f).map(([p, f]) => [p.name, f ?? ""]);
+  for (const [p, f] of next) if ((p.fleet ?? null) !== f) keepInView(p, f);
   for (const [p, f] of next) p.fleet = f;
   S.projects = order;
   render();
@@ -145,6 +147,7 @@ export function nameFleet(name: string) {
     const members = S.projects.filter((p) => p.fleet === name);
     for (const p of members) p.fleet = next;
     renameHidden(name, next);
+    renameWorkspaceFleet(name, next);
     render();
     renameFleetOn(name, next, members.map((p) => p.name)).catch(showError);
   };
