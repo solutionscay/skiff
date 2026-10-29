@@ -250,12 +250,21 @@ export function bounds(p: Placed): Rect {
   return x0 === Infinity ? { x: 0, y: 0, w: 0, h: 0 } : { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
-/** A string from a parent's foot to a child's pin: a curve that sags with its length. `lx, ly`: where its label sits. */
+/**
+ * A string from a parent's foot to a child's pin: a curve that sags with its
+ * length. `lx, ly`: where its label sits, three quarters of the way to the
+ * child, so it reads beside the card it goes to and stays out of what the
+ * string crosses.
+ */
 export function strand(a: { x: number; y: number }, b: { x: number; y: number }): { d: string; lx: number; ly: number } {
   const mx = (a.x + b.x) / 2;
   const my = (a.y + b.y) / 2;
   const sag = Math.max(8, Math.min(Math.hypot(b.x - a.x, b.y - a.y) * 0.08, 48));
-  return { d: `M${a.x} ${a.y}Q${mx} ${my + sag} ${b.x} ${b.y}`, lx: mx, ly: my + sag / 2 };
+  const cx = mx;
+  const cy = my + sag;
+  const t = 0.75;
+  const u = 1 - t;
+  return { d: `M${a.x} ${a.y}Q${cx} ${cy} ${b.x} ${b.y}`, lx: u * u * a.x + 2 * u * t * cx + t * t * b.x, ly: u * u * a.y + 2 * u * t * cy + t * t * b.y - 14 };
 }
 export const foot = (r: Rect) => ({ x: r.x + r.w / 2, y: r.y + r.h });
 export const pin = (r: Rect) => ({ x: r.x + r.w / 2, y: r.y });
