@@ -42,7 +42,8 @@ function page() {
     "./projectClose": { closeEntries: () => [] },
     // One worktree: its start choices come from the launch menu.
     "./tree": { bareWorktree: (p: any) => p.worktrees[0] },
-    "../app/panels": { launchMenu: { entries: () => [{ label: "Shell" }] } },
+    // The launch menu lists the Skipper first, from menus.skipperStart, then Shell and the agents.
+    "../app/panels": { launchMenu: { entries: (p: any) => [menus.skipperStart(p), { label: "Shell" }].filter(Boolean) } },
     "./profile": { projectWorkspaceEntries: () => [] },
     "./model": { isFolder: (p: any) => p.kind === "folder" },
   }, { ...g, document: { querySelectorAll: () => [] } }, "");

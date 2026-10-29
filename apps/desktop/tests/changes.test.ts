@@ -78,11 +78,11 @@ test("a Git read answered after the data connection changed is dropped and asked
   assert.deepEqual(p.calls, ["git_changes /srv/web"]);
   // skiff-host restarted while the read was out.
   p.bump();
-  p.pending[0]([{ path: "stale.txt", status: "M", added: 1, removed: 0 }]);
+  p.pending[0]({ changes: [{ path: "stale.txt", status: "M", added: 1, removed: 0 }] });
   await flush();
   assert.equal(p.mod.hasChanges(W), false, "the stale list was stored");
   assert.deepEqual(p.calls, ["git_changes /srv/web", "git_changes /srv/web"]);
-  p.pending[1]([{ path: "a.txt", status: "M", added: 1, removed: 0 }]);
+  p.pending[1]({ changes: [{ path: "a.txt", status: "M", added: 1, removed: 0 }] });
   await flush();
   assert.equal(p.mod.hasChanges(W), true);
 });
