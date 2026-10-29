@@ -273,7 +273,7 @@
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "78821bb6061642233fd159a2399883d5fe087a2234b99f4e1168b3fef4a5d3bb"
+    "sha256": "a4229b93bfdf832fb703597fb6a1281bfc61d755ef47688b5e6009f74277f1f2"
   },
   "apps/desktop/src/app/commands.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -765,7 +765,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "5ce4aa2dcaeb8372aad3586a48470f7d5c8a69bceaf74e7f291cba548837c7d8"
+    "sha256": "499d6a52e4d4f0cab8219a8106fb972132e25848df6d0b632c64a87d6ee2f9dc"
   },
   "apps/desktop/src/ui/launchMenu.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -844,7 +844,7 @@
     "reasons": [
       "@tauri-apps/api/event"
     ],
-    "sha256": "a1d910239575928f4d40b57ff627f07b04a4778be316f6d868d2271f8fb0a4cd"
+    "sha256": "d92d145d62ed04c7270c3474d9321a8ca872ea6d6e606d7a86c8a204d4689d55"
   },
   "apps/desktop/src/workspace/menus.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -862,7 +862,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "a2e4d65a945f8c3aec0170cf473fa668331ae4145d2336343ab9bf9d6de0187c"
+    "sha256": "d33601ea9f7efab4db7b7c93308b48927b91aab42484cb01d95da5ca3bb48a4d"
   },
   "apps/desktop/src/workspace/missionMotion.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -872,7 +872,7 @@
       "local provider: apps/desktop/src/workspace/missionControl.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "777b0b7e0e9f885123db08567523fef4d97d70260ff0cc6b575b118e711d802d"
+    "sha256": "8bca69a280d53304f05227fc1a5e561db5b89ce74c65c6195189249ed8567a2a"
   },
   "apps/desktop/src/workspace/profile.ts": {
     "ownership": "client policy: exact existing adapter only",

@@ -59,8 +59,10 @@ function openNewSession() {
 
 export function runAction(a: Action) {
   const shown = S.focused && shownIds().includes(S.focused);
-  // Mission control holds the keys as a dialog does. Its own key closes it; maximize opens the lit session;
-  // the palette key searches its sessions; the list keys step its screens.
+  // Mission control holds the keys as a dialog does. Its own key closes it; maximize goes to the lit session;
+  // the palette key searches the board; the focus mode key switches Running / All; the list keys move
+  // through the graph; Next waiting lights the next waiting card; the Ledger key folds the panel; the
+  // menu key opens the board menu. Settings and the Skiff agent close the board first.
   if (missionOpen() && a === "maximize") return maximizeLit();
   if (missionOpen() && a === "palette") return toggleSearch();
   // The focus mode key toggles Running / All. The menu bar sends it here.
