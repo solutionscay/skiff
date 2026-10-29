@@ -406,7 +406,7 @@ fn m4_projects_and_git_status_are_read_only_data_plane_families() {
     assert_eq!(serde_json::to_value(&git).unwrap(), fixture["capabilities"]["git_status"]);
     assert_eq!(serde_json::to_value(&diff_cap).unwrap(), fixture["capabilities"]["git_diff"]);
     let list = Response::Projects { projects: vec![], revision: None };
-    let changes = Response::Changes { changes: vec![] };
+    let changes = Response::Changes { changes: vec![], base: None };
     let diff = Response::Diff {
         diff: skiff_host_api::HostDiff { text: String::new(), truncated: false, binary: false, untracked: false },
     };
