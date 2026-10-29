@@ -7,6 +7,7 @@ import { confirmAction, promptAction } from "../ui/confirm";
 import { pickColor } from "../appearance/colorPicker";
 import { pickBackgroundOpacity } from "../appearance/backdropOpacity";
 import { keyLabel } from "../app/keys";
+import { t, tn, upper } from "../i18n";
 import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { type MenuEntry } from "../ui/menu";
 import { agentName, basename, branchName, isFolder, locate, taskTitle, isProjectSkipper } from "./model";
@@ -52,9 +53,9 @@ const DEFAULT_COLOR = "#b69cff";
 /** The color picker for a project's accent. */
 function pickProjectColor(p: Project) {
   pickColor({
-    title: `Color for ${p.name}`,
+    title: t("color.title", { name: p.name }),
     start: p.color ?? DEFAULT_COLOR,
-    action: "Set color",
+    action: t("color.action"),
     submit: (hex) => invoke("set_project_color", { project: p.name, color: hex }),
     onClose: refocusTerminal,
   });
@@ -73,19 +74,19 @@ function backgroundEntries(p: Project): MenuEntry[] {
   return [
     {
       icon: "playback-image-plus",
-      label: "Choose image…",
+      label: t("menu.chooseImage"),
       run: async () => {
         const file = await openFile({
-          title: `Background for ${p.name}`,
+          title: t("background.title", { name: p.name }),
           defaultPath: p.path,
-          filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "svg"] }],
+          filters: [{ name: t("dialog.imageFiles"), extensions: ["png", "jpg", "jpeg", "webp", "gif", "svg"] }],
         }).catch(() => null);
         if (typeof file === "string") await setBackground(p, file);
       },
     },
     // Only an image shows through the panes, so the opacity waits for one.
-    ...(p.background ? [{ icon: "playback-image", label: "Opacity…", run: () => pickBackgroundOpacity(p) }] : []),
-    { icon: "indicators-minus", label: "None", disabled: !p.background, run: () => void setBackground(p, null) },
+    ...(p.background ? [{ icon: "playback-image", label: t("menu.opacity"), run: () => pickBackgroundOpacity(p) }] : []),
+    { icon: "indicators-minus", label: t("menu.none"), disabled: !p.background, run: () => void setBackground(p, null) },
   ];
 }
 
@@ -94,33 +95,33 @@ function iconEntries(p: Project): MenuEntry[] {
   return [
     {
       icon: "documents-folder-open",
-      label: "Choose file…",
+      label: t("menu.chooseFile"),
       run: async () => {
         const file = await openFile({
-          title: `Icon for ${p.name}`,
+          title: t("icon.title", { name: p.name }),
           defaultPath: p.path,
-          filters: [{ name: "Images", extensions: ["png", "svg", "ico", "jpg", "jpeg", "webp", "gif"] }],
+          filters: [{ name: t("dialog.imageFiles"), extensions: ["png", "svg", "ico", "jpg", "jpeg", "webp", "gif"] }],
         }).catch(() => null);
         if (typeof file !== "string") return;
         const rel = file.startsWith(p.path + "/") ? file.slice(p.path.length + 1) : file;
         await setIcon(p, rel);
       },
     },
-    { icon: "schedule-refresh-cw", label: "Detect", run: () => void setIcon(p, null) },
-    { icon: "indicators-minus", label: "Letters only", run: () => void setIcon(p, "") },
+    { icon: "schedule-refresh-cw", label: t("menu.detect"), run: () => void setIcon(p, null) },
+    { icon: "indicators-minus", label: t("menu.lettersOnly"), run: () => void setIcon(p, "") },
   ];
 }
 
 /** Ask for the letters on the project's row. An empty field goes back to the first three letters of the name. */
 function setInitials(p: Project) {
   promptAction({
-    title: `Initials for ${p.name}`,
-    body: "Up to 3 characters on the project's row in the side panel. Leave the field empty to use the first 3 letters of the name. A project icon replaces the letters.",
-    placeholder: "the initials",
+    title: t("initials.title", { name: p.name }),
+    body: t("initials.body"),
+    placeholder: t("initials.placeholder"),
     value: p.short,
     allowEmpty: true,
     maxLength: 3,
-    action: "Set initials",
+    action: t("initials.action"),
     submit: (short) => invoke("set_project_short", { project: p.name, short }),
     onClose: refocusTerminal,
   });
@@ -132,14 +133,14 @@ const fleetNames = () => [...new Set(S.projects.map((x) => x.fleet).filter((f): 
 /** Pick the fleet the project sits in. Projects with the same fleet go under one fleet head in the tree. */
 function setFleet(p: Project) {
   promptAction({
-    title: `Fleet for ${p.name}`,
-    body: "Projects with the same fleet go under one fleet head in the side panel. Pick a fleet or type a new name.",
-    placeholder: "a fleet name",
+    title: t("fleet.title", { name: p.name }),
+    body: t("fleet.body"),
+    placeholder: t("fleet.placeholder"),
     value: p.fleet ?? "",
     allowEmpty: true,
     options: fleetNames(),
-    clearLabel: p.fleet ? "No fleet: back under Projects" : undefined,
-    action: "Set fleet",
+    clearLabel: p.fleet ? t("fleet.clear") : undefined,
+    action: t("fleet.action"),
     // A project Skipper that comes under a running fleet Skipper is taken over, after one confirm.
     submit: async (fleet) => {
       if ((await joinFleet(p.name, fleet.trim())) === false) await invoke("set_project_fleet", { project: p.name, fleet });
@@ -167,16 +168,16 @@ function fleetSkipperEntries(f: Fleet): MenuEntry[] {
   const s = fleetSkipperOf(f.name);
   if (!s) {
     if (!skiffAgentFolder()) return [];
-    return [{ icon: "tools-sparkles", label: "Start fleet Skipper", run: () => void startFleetSkipper(f.name) }];
+    return [{ icon: "tools-sparkles", label: t("menu.startFleetSkipper"), run: () => void startFleetSkipper(f.name) }];
   }
   return [
-    { icon: "tools-sparkles", label: "Open fleet Skipper", run: () => void startFleetSkipper(f.name) },
+    { icon: "tools-sparkles", label: t("menu.openFleetSkipper"), run: () => void startFleetSkipper(f.name) },
     {
       icon: "indicators-square-stop",
-      label: "Stop fleet Skipper…",
+      label: t("menu.stopFleetSkipper"),
       danger: true,
       run: async () => {
-        if (await confirmAction({ title: `Stop the ${f.name} Skipper?`, body: "", action: "Stop fleet Skipper" })) void endSession(s.id);
+        if (await confirmAction({ title: t("stopSkipper.title", { name: f.name }), body: "", action: t("stopFleetSkipper.action") })) void endSession(s.id);
         else refocusTerminal();
       },
     },
@@ -186,13 +187,13 @@ function fleetSkipperEntries(f: Fleet): MenuEntry[] {
 /** A right-click on a fleet tile. */
 export function fleetMenu(f: Fleet, x: number, y: number) {
   const skipper = fleetSkipperEntries(f);
-  ctxMenu.open(x, y, `Fleet ${f.name}`, [
+  ctxMenu.open(x, y, t("menu.fleet", { name: f.name }), [
     ...skipper,
     ...(skipper.length ? [{ sep: true as const }] : []),
     // The label says what a click does. Hidden, the head keeps its Skipper and the sessions that need a look.
     {
       icon: projectsHidden(f.name) ? "senses-eye" : "senses-eye-off",
-      label: projectsHidden(f.name) ? "Show projects" : "Hide projects",
+      label: t(projectsHidden(f.name) ? "menu.showProjects" : "menu.hideProjects"),
       run: () => {
         setProjectsHidden(f.name, !projectsHidden(f.name));
         render();
@@ -201,25 +202,25 @@ export function fleetMenu(f: Fleet, x: number, y: number) {
     { sep: true },
     {
       icon: "tools-pencil",
-      label: "Rename fleet…",
+      label: t("menu.renameFleet"),
       run: () =>
         promptAction({
-          title: `Rename fleet ${f.name}`,
-          body: `The ${f.projects.length} projects in it keep the new name.`,
-          placeholder: "a fleet name",
+          title: t("renameFleet.title", { name: f.name }),
+          body: tn("renameFleet.body", f.projects.length),
+          placeholder: t("fleet.placeholder"),
           value: f.name,
-          action: "Rename",
+          action: t("renameFleet.action"),
           submit: (name) => renameFleet(f, name),
           onClose: refocusTerminal,
         }),
     },
     {
       icon: "code-ungroup",
-      label: fleetSkipperOf(f.name) ? "Remove fleet…" : "Remove fleet",
+      label: t(fleetSkipperOf(f.name) ? "menu.removeFleetAsk" : "menu.removeFleet"),
       run: async () => {
         // The fleet is gone, so its Skipper stops: one confirm.
         const s = fleetSkipperOf(f.name);
-        if (s && !(await confirmAction({ title: `Remove fleet ${f.name}?`, body: `${f.projects.map((p) => p.name).join(", ")}. The ${f.name} Skipper stops.`, action: "Remove fleet" }))) return refocusTerminal();
+        if (s && !(await confirmAction({ title: t("removeFleet.title", { name: f.name }), body: t("removeFleet.body", { projects: f.projects.map((p) => p.name).join(", "), name: f.name }), action: t("removeFleet.action") }))) return refocusTerminal();
         if (s) await endSession(s.id);
         await dissolveFleet(f).catch(showError);
       },
@@ -232,10 +233,10 @@ export function fleetMenu(f: Fleet, x: number, y: number) {
 export function newWorktree(p: Project) {
   S.justAdded = null;
   promptAction({
-    title: `New worktree in ${p.name}`,
-    body: "Git makes a new branch and checks it out in its own folder next to the project.",
-    placeholder: "a branch name",
-    action: "Create",
+    title: t("newWorktree.title", { name: p.name }),
+    body: t("newWorktree.body"),
+    placeholder: t("newWorktree.placeholder"),
+    action: t("newWorktree.action"),
     submit: async (branch) => {
       const w = await invoke<Worktree>("add_worktree", { project: p.name, branch, base: null });
       selectedWorktree.set(p.name, w.path);
@@ -263,7 +264,7 @@ export function projectMenu(p: Project, x: number, y: number) {
   const bare = bareWorktree(p);
   const start: MenuEntry[] = bare && !p.error
     ? launchMenu.entries(p, bare)
-    : [{ icon: "indicators-plus", label: "New session", disabled: !!p.error || !p.worktrees.length, sub: p.worktrees.map((w) => ({
+    : [{ icon: "indicators-plus", label: t("menu.newSessionIn"), disabled: !!p.error || !p.worktrees.length, sub: p.worktrees.map((w) => ({
         icon: "code-git-branch",
         label: branchName(w),
         run: () => {
@@ -275,29 +276,29 @@ export function projectMenu(p: Project, x: number, y: number) {
     ...start,
     ...(bare ? [{ sep: true } as const] : []),
     // A plain folder has no git: no worktrees.
-    ...(isFolder(p) ? [] : [{ icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) }]),
+    ...(isFolder(p) ? [] : [{ icon: "code-git-branch", label: t("cmd.newWorktree"), hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) }]),
     ...projectSkipperEntries(p),
     { sep: true },
-    { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: run["project-folder"] },
-    { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
+    { icon: "indicators-square-arrow-out-up-right", label: t("menu.showInFileManager"), hint: keyLabel("project-folder"), run: run["project-folder"] },
+    { icon: "code-copy", label: t("menu.copyPath"), hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
     // How the project looks. Icon and Background are sections: a flyout goes one level deep.
-    { icon: "tools-sparkles", label: "Appearance", sub: [
-      { icon: "tools-sparkles", label: "Color…", hint: keyLabel("project-color"), run: run["project-color"] },
-      { icon: "tools-sparkles", label: "Project theme…", hint: keyLabel("theme"), run: () => void projectThemeMenu(p) },
-      { icon: "tools-pencil", label: "Initials…", run: () => setInitials(p) },
-      { head: "ICON" },
+    { icon: "tools-sparkles", label: t("menu.appearance"), sub: [
+      { icon: "tools-sparkles", label: t("menu.color"), hint: keyLabel("project-color"), run: run["project-color"] },
+      { icon: "tools-sparkles", label: t("menu.projectTheme"), hint: keyLabel("theme"), run: () => void projectThemeMenu(p) },
+      { icon: "tools-pencil", label: t("menu.initials"), run: () => setInitials(p) },
+      { head: upper(t("menu.headIcon")) },
       ...iconEntries(p),
-      { head: "BACKGROUND" },
+      { head: upper(t("menu.headBackground")) },
       ...backgroundEntries(p),
     ] },
     // What the project's row shows in the sidebar. A check marks what shows.
-    { icon: "layouts-panel-left", label: "Sidebar", sub: [
-      ...(isFolder(p) ? [] : [{ icon: showsChanges(p) ? "indicators-check" : "", label: "Changes", hint: keyLabel("project-changes"), run: run["project-changes"] }]),
-      { icon: showsFiles(p) ? "indicators-check" : "", label: "Files", hint: keyLabel("project-files"), run: run["project-files"] },
+    { icon: "layouts-panel-left", label: t("menu.sidebar"), sub: [
+      ...(isFolder(p) ? [] : [{ icon: showsChanges(p) ? "indicators-check" : "", label: t("menu.changes"), hint: keyLabel("project-changes"), run: run["project-changes"] }]),
+      { icon: showsFiles(p) ? "indicators-check" : "", label: t("menu.files"), hint: keyLabel("project-files"), run: run["project-files"] },
     ] },
     { sep: true },
     // Where the project sits: its fleet, then the workspace.
-    { icon: "code-group", label: p.fleet ? "Move to fleet…" : "Add to fleet…", run: () => setFleet(p) },
+    { icon: "code-group", label: t(p.fleet ? "menu.moveToFleet" : "menu.addToFleet"), run: () => setFleet(p) },
     ...projectWorkspaceEntries(p),
     ...closeEntries(p),
   ]);
@@ -307,13 +308,13 @@ export function projectMenu(p: Project, x: number, y: number) {
 export function worktreeMenu(p: Project, w: Worktree, x: number, y: number) {
   const plus = [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === w.path);
   const entries: MenuEntry[] = [
-    { icon: "indicators-plus", label: "New session…", hint: keyLabel("new-session"), disabled: !!p.error, run: () => launchMenu.open(plus ?? { x, y }, p, w) },
-    ...(showsChanges(p) && hasChanges(w) ? [{ icon: "code-git-branch", label: "Review all changes", run: () => reviewChanges(w) }] : []),
-    { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", run: () => void openPath(w.path).catch(showError) },
-    { icon: "code-copy", label: "Copy path", run: () => void navigator.clipboard.writeText(w.path).catch(showError) },
+    { icon: "indicators-plus", label: t("cmd.newSession"), hint: keyLabel("new-session"), disabled: !!p.error, run: () => launchMenu.open(plus ?? { x, y }, p, w) },
+    ...(showsChanges(p) && hasChanges(w) ? [{ icon: "code-git-branch", label: t("menu.reviewChanges"), run: () => reviewChanges(w) }] : []),
+    { icon: "indicators-square-arrow-out-up-right", label: t("menu.showInFileManager"), run: () => void openPath(w.path).catch(showError) },
+    { icon: "code-copy", label: t("menu.copyPath"), run: () => void navigator.clipboard.writeText(w.path).catch(showError) },
   ];
   if (!w.is_main) {
-    entries.push({ icon: "tools-trash-2", label: "Remove worktree…", danger: true, disabled: removing.has(w.path), run: () => void removeWorktree(p, w) });
+    entries.push({ icon: "tools-trash-2", label: t("menu.removeWorktree"), danger: true, disabled: removing.has(w.path), run: () => void removeWorktree(p, w) });
   }
   ctxMenu.open(x, y, branchName(w), entries);
 }
@@ -328,10 +329,10 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
   if (ids.length > 1 && ids.includes(s.id)) return selectionMenu(ids, x, y);
   ctxMenu.open(x, y, sessionLabel(s), [
     ...(groupOf(s.id)
-      ? [{ icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), run: () => removeFromGroup(s.id) }]
+      ? [{ icon: "code-ungroup", label: t("cmd.removeFromGroup"), hint: keyLabel("close-pane"), run: () => removeFromGroup(s.id) }]
       : []),
     // A project Skipper's name is derived from the Skiff agent's name and its project: nothing to type.
-    ...(isProjectSkipper(s) ? [] : [{ icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(s.id) }]),
+    ...(isProjectSkipper(s) ? [] : [{ icon: "tools-pencil", label: t("menu.rename"), hint: keyLabel("rename"), run: () => startSessionRename(s.id) }]),
     themeEntry(s),
     endEntry(s),
   ]);
@@ -344,11 +345,11 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
 function selectionMenu(ids: string[], x: number, y: number) {
   const plan = selectionPlan();
   const grouped = ids.filter((id) => groupOf(id));
-  ctxMenu.open(x, y, `${ids.length} sessions selected`, [
+  ctxMenu.open(x, y, tn("menu.selected", ids.length), [
     ...(plan
       ? [{
           icon: "code-group",
-          label: plan.label === "New group" ? `Group ${ids.length} sessions` : plan.label,
+          label: plan.kind === "new" ? tn("menu.groupSelected", ids.length) : plan.label,
           disabled: plan.size > MAX_PANES,
           run: splitSelection,
         }]
@@ -356,7 +357,7 @@ function selectionMenu(ids: string[], x: number, y: number) {
     ...(grouped.length
       ? [{
           icon: "code-ungroup",
-          label: grouped.length === 1 ? "Remove 1 from its group" : `Remove ${grouped.length} from their groups`,
+          label: tn("menu.ungroupSelected", grouped.length),
           run: () => {
             clearSelection();
             for (const id of grouped) removeFromGroup(id);
@@ -379,20 +380,20 @@ export function deleteKeyMenu(el: HTMLElement) {
   const r = el.getBoundingClientRect();
   const [x, y] = [r.left + 24, r.bottom];
   const g = S.groups.find((x) => x.id === el.dataset.group);
-  if (g && !el.dataset.session) return ctxMenu.open(x, y, `Group: ${g.name}`, groupCloseEntries(g));
+  if (g && !el.dataset.session) return ctxMenu.open(x, y, t("menu.group", { name: g.name }), groupCloseEntries(g));
   const s = sessions.get(el.dataset.session ?? "");
   if (!s) return;
   const ids = S.selection.filter((id) => sessions.has(id));
   if (ids.length > 1 && ids.includes(s.id)) return pick(endSelectedEntry(ids));
   if (!groupOf(s.id)) return pick(endEntry(s));
   ctxMenu.open(x, y, sessionLabel(s), [
-    { icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), run: () => removeFromGroup(s.id) },
+    { icon: "code-ungroup", label: t("cmd.removeFromGroup"), hint: keyLabel("close-pane"), run: () => removeFromGroup(s.id) },
     endEntry(s),
   ]);
 }
 
 function themeEntry(s: SessionInfo): MenuEntry {
-  return { icon: "tools-sparkles", label: "Session theme…", hint: keyLabel("theme"), run: () => void sessionThemeMenu(s) };
+  return { icon: "tools-sparkles", label: t("cmd.sessionTheme"), hint: keyLabel("theme"), run: () => void sessionThemeMenu(s) };
 }
 
 /** Right-click, End session: stops the process and drops it from the list. */
@@ -400,14 +401,14 @@ export function endEntry(s: SessionInfo): MenuEntry {
   if (s.state === "done") {
     return {
       icon: "tools-trash-2",
-      label: "Remove from list…",
+      label: t("menu.removeFromList"),
       hint: keyLabel("end-session"),
       danger: true,
       run: async () => {
         const ok = await confirmAction({
-          title: `Remove ${taskTitle(s)}?`,
-          body: "This session has already exited. Removing it clears it from the session list.",
-          action: "Remove session",
+          title: t("removeSession.title", { name: taskTitle(s) }),
+          body: t("removeSession.body"),
+          action: t("removeSession.action"),
         });
         if (ok) void endSession(s.id);
         else refocusTerminal();
@@ -416,15 +417,15 @@ export function endEntry(s: SessionInfo): MenuEntry {
   }
   return {
     icon: "indicators-square-stop",
-    label: "End session…",
+    label: t("cmd.endSession"),
     hint: keyLabel("end-session"),
     danger: true,
     // A running agent loses its work: ask once more.
     run: async () => {
       const ok = await confirmAction({
-        title: `End ${taskTitle(s)}?`,
-        body: `Stops ${agentName(s)} and removes the session. Its unsaved work in the terminal is lost.`,
-        action: "End session",
+        title: t("endSession.title", { name: taskTitle(s) }),
+        body: t("endSession.body", { agent: agentName(s) }),
+        action: t("endSession.action"),
       });
       if (ok) void endSession(s.id);
       else refocusTerminal();
@@ -434,7 +435,7 @@ export function endEntry(s: SessionInfo): MenuEntry {
 
 /** Right-click on a multi-selection: ends every selected session, with one confirm. */
 function endSelectedEntry(ids: string[]): MenuEntry {
-  return endManyEntry(ids, `End ${ids.length} sessions…`, `End ${ids.length} sessions?`);
+  return endManyEntry(ids, tn("menu.endSelected", ids.length), tn("endSessions.title", ids.length));
 }
 
 /** Ends several sessions after one confirm. Sessions that already exited go without asking. */
@@ -446,7 +447,7 @@ function endManyEntry(ids: string[], label: string, title: string): MenuEntry {
     for (const id of ids) void endSession(id);
   };
   if (!running.length) {
-    return { icon: "tools-trash-2", label: `Remove ${ids.length} from list`, danger: true, run: end };
+    return { icon: "tools-trash-2", label: tn("menu.removeSelected", ids.length), danger: true, run: end };
   }
   return {
     icon: "indicators-square-stop",
@@ -455,8 +456,8 @@ function endManyEntry(ids: string[], label: string, title: string): MenuEntry {
     run: async () => {
       const ok = await confirmAction({
         title,
-        body: `Stops ${running.length} running ${running.length === 1 ? "process" : "processes"} and removes the sessions. Their unsaved work in the terminal is lost.`,
-        action: "End sessions",
+        body: tn("endSessions.body", running.length),
+        action: t("endSessions.action"),
       });
       if (ok) end();
       else refocusTerminal();
@@ -473,23 +474,23 @@ function projectSkipperEntries(p: Project): MenuEntry[] {
   const s = projectSkipperOf(p.name);
   // One Skipper per project: the fleet's Skipper commands it while it runs.
   const fleet = p.fleet && !s ? fleetSkipperOf(p.fleet) : null;
-  if (fleet) return [{ icon: "tools-sparkles", label: "Open fleet Skipper", run: () => void startFleetSkipper(p.fleet!) }];
+  if (fleet) return [{ icon: "tools-sparkles", label: t("menu.openFleetSkipper"), run: () => void startFleetSkipper(p.fleet!) }];
   if (!s) {
     if (!skiffAgentFolder()) return [];
-    return [{ icon: "tools-sparkles", label: "Start project Skipper", disabled: !!p.error, run: () => startProjectSkipper(p.name) }];
+    return [{ icon: "tools-sparkles", label: t("menu.startProjectSkipper"), disabled: !!p.error, run: () => startProjectSkipper(p.name) }];
   }
   return [
     // startProjectSkipper shows the one that runs.
-    { icon: "tools-sparkles", label: "Open project Skipper", run: () => startProjectSkipper(p.name) },
+    { icon: "tools-sparkles", label: t("menu.openProjectSkipper"), run: () => startProjectSkipper(p.name) },
     {
       icon: "indicators-square-stop",
-      label: "Stop project Skipper…",
+      label: t("menu.stopProjectSkipper"),
       danger: true,
       run: async () => {
         const ok = await confirmAction({
-          title: `Stop the ${p.name} Skipper?`,
-          body: `Stops ${agentName(s)} and removes its session. The panes it started keep running, and its ledger rows stay.`,
-          action: "Stop project Skipper",
+          title: t("stopSkipper.title", { name: p.name }),
+          body: t("stopProjectSkipper.body", { agent: agentName(s) }),
+          action: t("stopProjectSkipper.action"),
         });
         if (ok) void endSession(s.id);
         else refocusTerminal();
@@ -513,21 +514,21 @@ export function paneMenu(id: string, x: number, y: number) {
   if (isSkiffAgent(id)) return skiffAgentMenu(s, x, y);
   const full = splitFull();
   const entries: MenuEntry[] = [
-    { icon: "layouts-panel-left:flip", label: "Add pane right…", hint: keyLabel("split-right"), disabled: full, run: () => splitMenu(id, "row", x, y) },
-    { icon: "layouts-panel-bottom", label: "Add pane below…", hint: keyLabel("split-down"), disabled: full, run: () => splitMenu(id, "col", x, y) },
-    ...(isProjectSkipper(s) ? [] : [{ icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startSessionRename(id) }]),
+    { icon: "layouts-panel-left:flip", label: t("cmd.splitRight"), hint: keyLabel("split-right"), disabled: full, run: () => splitMenu(id, "row", x, y) },
+    { icon: "layouts-panel-bottom", label: t("cmd.splitDown"), hint: keyLabel("split-down"), disabled: full, run: () => splitMenu(id, "col", x, y) },
+    ...(isProjectSkipper(s) ? [] : [{ icon: "tools-pencil", label: t("menu.rename"), hint: keyLabel("rename"), run: () => startSessionRename(id) }]),
   ];
   const offer = resumeOffer(s);
-  if (offer) entries.unshift({ icon: "schedule-refresh-cw", label: `Resume ${offer.agent}`, run: () => resumePane(id, { x, y }) });
+  if (offer) entries.unshift({ icon: "schedule-refresh-cw", label: t("menu.resume", { agent: offer.agent }), run: () => resumePane(id, { x, y }) });
   // These act on the pane you right-clicked, which the line above just focused.
   if (shownIds().length > 1) {
-    entries.push({ icon: S.maximized ? "view-restore" : "view-maximize", label: S.maximized ? "Restore pane" : "Maximize pane", hint: keyLabel("maximize"), run: toggleMaximize });
+    entries.push({ icon: S.maximized ? "view-restore" : "view-maximize", label: t(S.maximized ? "cmd.restore" : "cmd.maximize"), hint: keyLabel("maximize"), run: toggleMaximize });
   }
-  entries.push({ icon: "view-focus", label: S.focusMode ? "Leave focus mode" : "Focus mode", hint: keyLabel("focus-mode"), run: toggleFocusMode });
+  entries.push({ icon: "view-focus", label: t(S.focusMode ? "cmd.leaveFocusMode" : "cmd.focusMode"), hint: keyLabel("focus-mode"), run: toggleFocusMode });
   entries.push(themeEntry(s));
-  entries.push({ icon: "playback-image", label: "Images…", hint: keyLabel("images"), disabled: !imageCount(), run: openImages });
+  entries.push({ icon: "playback-image", label: t("cmd.images"), hint: keyLabel("images"), disabled: !imageCount(), run: openImages });
   if (shownIds().length > 1) {
-    entries.push({ icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), run: () => removeFromGroup(id) });
+    entries.push({ icon: "code-ungroup", label: t("cmd.removeFromGroup"), hint: keyLabel("close-pane"), run: () => removeFromGroup(id) });
   }
   entries.push(endEntry(s));
   ctxMenu.open(x, y, sessionLabel(s), entries);
@@ -540,17 +541,17 @@ export function paneMenu(id: string, x: number, y: number) {
 export function skiffAgentMenu(s: SessionInfo | null, x: number, y: number) {
   const folder = skiffAgentFolder();
   const entries: MenuEntry[] = folder
-    ? [{ icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", run: () => void openPath(folder).catch(showError) }]
+    ? [{ icon: "indicators-square-arrow-out-up-right", label: t("menu.showInFileManager"), run: () => void openPath(folder).catch(showError) }]
     : [];
   if (s) {
     // Only while the row's icon is red: no watcher runs, or its last line failed.
     const watch = skiffWatch(s).state;
-    if (watch === "missing") entries.push({ icon: "schedule-refresh-cw", label: "Start watcher", run: startSkiffWatch });
-    if (watch === "missing" || watch === "failed") entries.push({ icon: "indicators-square-arrow-out-up-right", label: "Open watch log", run: openWatchLog });
+    if (watch === "missing") entries.push({ icon: "schedule-refresh-cw", label: t("menu.startWatcher"), run: startSkiffWatch });
+    if (watch === "missing" || watch === "failed") entries.push({ icon: "indicators-square-arrow-out-up-right", label: t("menu.openWatchLog"), run: openWatchLog });
     entries.push(
-      { icon: "view-focus", label: S.focusMode ? "Leave focus mode" : "Focus mode", hint: keyLabel("focus-mode"), run: toggleFocusMode },
+      { icon: "view-focus", label: t(S.focusMode ? "cmd.leaveFocusMode" : "cmd.focusMode"), hint: keyLabel("focus-mode"), run: toggleFocusMode },
     );
-    if (ledgerShown()) entries.push({ icon: "layouts-panel-left:flip", label: ledgerFolded() ? "Show Ledger" : "Hide Ledger", hint: keyLabel("ledger"), run: toggleLedger });
+    if (ledgerShown()) entries.push({ icon: "layouts-panel-left:flip", label: t(ledgerFolded() ? "cmd.showLedger" : "cmd.hideLedger"), hint: keyLabel("ledger"), run: toggleLedger });
     entries.push(
       themeEntry(s),
       endEntry(s),
@@ -566,26 +567,26 @@ export function splitMenu(id: string, dir: SplitDir, x: number, y: number) {
   const at = place(s);
   const cwd = at ? at.worktree.path : s.cwd;
   const where = at ? branchName(at.worktree) : basename(s.cwd);
-  const entries: MenuEntry[] = [{ head: `NEW IN ${where.toUpperCase()}` }];
+  const entries: MenuEntry[] = [{ head: upper(t("menu.newIn", { where })) }];
   launchChoices().forEach((a, i) => {
     entries.push({
       glyph: launchIcon(a),
-      label: a?.id ?? "Shell",
+      label: a?.id ?? t("menu.shell"),
       hint: launchDigit(i),
       run: () => void newSession(cwd, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell", { target: id, dir }).catch(showError),
     });
   });
-  ctxMenu.open(x, y, `${dir === "row" ? "Add pane right" : "Add pane below"}:`, entries);
+  ctxMenu.open(x, y, t(dir === "row" ? "menu.addPaneRightTitle" : "menu.addPaneBelowTitle"), entries);
 }
 
 export function groupMenu(g: Group, x: number, y: number) {
   const resume = resumeAllEntry(sessionsOf(g.layout));
-  ctxMenu.open(x, y, `Group: ${g.name}`, [
+  ctxMenu.open(x, y, t("menu.group", { name: g.name }), [
     ...(resume ? [resume] : []),
     ...groupStartEntries(g),
-    { head: "GROUP" },
-    { icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), run: () => startRename(g) },
-    { icon: "tools-sparkles", label: "Group theme…", hint: keyLabel("theme"), run: () => void groupThemeMenu(g) },
+    { head: upper(t("menu.headGroup")) },
+    { icon: "tools-pencil", label: t("menu.rename"), hint: keyLabel("rename"), run: () => startRename(g) },
+    { icon: "tools-sparkles", label: t("menu.groupTheme"), hint: keyLabel("theme"), run: () => void groupThemeMenu(g) },
     ...groupCloseEntries(g),
   ]);
 }
@@ -594,15 +595,15 @@ export function groupMenu(g: Group, x: number, y: number) {
 function groupStartEntries(g: Group): MenuEntry[] {
   const cwd = cwdOf(g);
   const at = cwd ? locate(S.projects, cwd) : null;
-  const where = at ? branchName(at.worktree) : cwd ? basename(cwd) : "home";
+  const where = at ? branchName(at.worktree) : cwd ? basename(cwd) : t("menu.home");
   const empty = slotsOf(g.layout)[0];
   const filled = filledOf(g.layout).filter((id) => sessions.has(id));
   const full = !empty && filled.length >= MAX_PANES;
-  const entries: MenuEntry[] = [{ head: `NEW IN ${where.toUpperCase()}` }];
+  const entries: MenuEntry[] = [{ head: upper(t("menu.newIn", { where })) }];
   launchChoices().forEach((a, i) => {
     entries.push({
       glyph: launchIcon(a),
-      label: a?.id ?? "Shell",
+      label: a?.id ?? t("menu.shell"),
       hint: launchDigit(i),
       disabled: full,
       run: () => {
@@ -635,9 +636,9 @@ export async function killGroup(id: string) {
   if (running.length) {
     const ok = await confirmAction({
       // Not the group's name: an unnamed group is called "1 over 2", which reads as noise here.
-      title: "Kill all sessions in this group?",
-      body: `This stops ${running.length} running ${running.length === 1 ? "process" : "processes"} and deletes ${running.length === 1 ? "its session" : "their sessions"}. Unsaved work in ${running.length === 1 ? "it" : "them"} is lost.\nThe group goes when its last session ends.`,
-      action: "Kill all sessions",
+      title: t("killGroup.title"),
+      body: tn("killGroup.body", running.length),
+      action: t("killGroup.action"),
     });
     if (!ok) return refocusTerminal();
   }
@@ -662,10 +663,10 @@ export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: s
     if (group) ungroup(group);
   };
   const entries: Exclude<MenuEntry, { head: string } | { sep: true }>[] = [
-    { icon: "code-ungroup", label: "Ungroup", hint: keyLabel("close-pane"), disabled: !g, run: drop },
+    { icon: "code-ungroup", label: t("menu.ungroup"), hint: keyLabel("close-pane"), disabled: !g, run: drop },
   ];
   if (hasSessions) entries.push(
-    { icon: "indicators-square-stop", label: "Kill all sessions…", hint: keyLabel("end-session"), danger: true, run: () => void killGroup(g!.id) },
+    { icon: "indicators-square-stop", label: t("menu.killGroup"), hint: keyLabel("end-session"), danger: true, run: () => void killGroup(g!.id) },
   );
   return entries;
 }
@@ -673,9 +674,9 @@ export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: s
 export async function removeWorktree(p: Project, w: Worktree) {
   if (removing.has(w.path)) return;
   const ok = await confirmAction({
-    title: `Remove worktree ${branchName(w)}?`,
-    body: `Deletes the folder ${w.path}.\nThe branch stays. Git also deletes ignored files in it, such as .env and build output.`,
-    action: "Remove worktree",
+    title: t("removeWorktree.title", { name: branchName(w) }),
+    body: t("removeWorktree.body", { path: w.path }),
+    action: t("removeWorktree.action"),
   });
   if (!ok) return refocusTerminal();
   removing.add(w.path);
@@ -688,9 +689,9 @@ export async function removeWorktree(p: Project, w: Worktree) {
       // skiffd refuses uncommitted changes. Ask again, and force only on a yes.
       if (!String(e).includes("uncommitted changes")) throw e;
       const force = await confirmAction({
-        title: `Worktree ${branchName(w)} has uncommitted changes`,
-        body: "Removing it deletes them. You cannot get them back.\nCommits on the branch stay.",
-        action: "Remove anyway",
+        title: t("dirtyWorktree.title", { name: branchName(w) }),
+        body: t("dirtyWorktree.body"),
+        action: t("dirtyWorktree.action"),
       });
       if (!force) return refocusTerminal();
       await invoke("remove_worktree", { project: p.name, path: w.path, force: true });

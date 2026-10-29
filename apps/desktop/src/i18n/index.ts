@@ -32,3 +32,15 @@ export function t(key: MessageKey, vars?: Vars): string {
   const text = current[key] ?? en[key];
   return vars ? text.replace(/\{([\w-]+)\}/g, (all, name: string) => (name in vars ? String(vars[name]) : all)) : text;
 }
+
+/** A key with plural forms: `x#one`, `x#other` and any form the language adds (`x#few`, `x#many`). */
+export type PluralKey = { [K in MessageKey]: K extends `${infer B}#other` ? B : never }[MessageKey];
+
+/** The form of `key` for `count`, by the language's plural rules. `{count}` is filled in. */
+export function tn(key: PluralKey, count: number, vars?: Vars): string {
+  const form = `${key}#${new Intl.PluralRules(currentLang).select(count)}` as MessageKey;
+  return t(form in current || form in en ? form : (`${key}#other` as MessageKey), { count, ...vars });
+}
+
+/** Capitals by the language's rules, for menu and sheet heads. */
+export const upper = (text: string) => text.toLocaleUpperCase(currentLang);

@@ -1,6 +1,6 @@
 import { dialogFrame, dialogHeader } from "./dialogParts";
 import { DESCRIBE, describe, describeText, isMac, keyLabel } from "../app/keys";
-import { type MessageKey, language, t } from "../i18n";
+import { type MessageKey, t, upper } from "../i18n";
 import { en } from "../i18n/en";
 
 import type { DaemonStatus } from "../platform/types";
@@ -133,7 +133,7 @@ export function showShortcuts() {
     let section = "";
     for (const [sec, what, key] of shown) {
       if (sec !== section) {
-        table.appendChild(h("div", "keys-head", sec.toLocaleUpperCase(language())));
+        table.appendChild(h("div", "keys-head", upper(sec)));
         section = sec;
       }
       const row = h("div", "keys-row");
