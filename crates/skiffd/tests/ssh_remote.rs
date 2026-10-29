@@ -475,7 +475,7 @@ async fn remote_projects_and_git_status_come_from_the_hosts_data_plane_over_a_re
     let diff = data::git_diff(&c, &worktree, Some("a.txt")).await.unwrap();
     assert!(diff.text.contains("a/a.txt") && !diff.truncated && !diff.binary, "{diff:?}");
     // M5: its files, listed and read on the Host over the same forward.
-    let listing = data::file_list(&c, &worktree, "").await.unwrap();
+    let listing = data::file_list(&c, &worktree, "", false).await.unwrap();
     assert_eq!(listing.entries.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), ["a.txt"]);
     let read = data::file_read(&c, &worktree, "a.txt", skiff_host_api::ReadPurpose::Copy).await.unwrap();
     assert_eq!(read.bytes.as_deref(), Some(b"one\ntwo\n".as_slice()));

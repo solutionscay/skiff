@@ -36,7 +36,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "103c2241dead2f16affdfe23ff5c7183f212f1fb97ed85adb0e026cbe51a4c31"
+    "sha256": "00a8b04162f2a82c2d25cedeb47cabc338faf070d4bfa79a2d763c15a2a1f181"
   },
   "apps/desktop/src-tauri/src/config.rs": {
     "ownership": "agent settings (#166 R8): a remote Host's through HostConnection (agent_config@1); This Mac's [agents] stays the legacy local adapter, read back from the config it writes (installed state from skiffd): migrate in M1\u2013M6",
@@ -686,7 +686,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "8c3f4742082ee64f423387ed981a9bd5d2e661fa8e069443594b20472ced3e9a"
+    "sha256": "a98b1f97e7c23f634fc87296462f4e784f82ef4c49f3c9043c1e6da2ec87018b"
   },
   "apps/desktop/src/terminal/resume.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

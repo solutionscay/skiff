@@ -609,10 +609,14 @@ pub enum Request {
     /// Answers `files`: the folder `dir` (relative; empty for the worktree
     /// itself) of `worktree`, checked as for `git_changes`. A path that
     /// leaves the worktree, or passes through a link, is `not_found`.
+    /// With `follow_links`, links are followed: a link to a folder lists as
+    /// a folder and can be listed. A client sets it for This Mac only.
     FileList {
         worktree: String,
         #[serde(default)]
         dir: String,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        follow_links: bool,
     },
     /// Answers `file`: `file` (relative) of `worktree`, read for `purpose`.
     FileRead {

@@ -173,9 +173,12 @@ pub(crate) async fn project_background(app: State<'_, App>, project: String) -> 
 
 /// One folder of a worktree for the sidebar's file tree, from the selected
 /// Host (`files@1`). `worktree` is the Host's; `dir` is relative to it.
+/// On This Mac links are followed, so a linked folder expands; on a remote
+/// Host they are not.
 #[tauri::command]
 pub(crate) async fn list_files(app: State<'_, App>, worktree: String, dir: String) -> Result<skiff_host_api::HostListing, String> {
-    crate::connection::data_read(&app, |c| async move { skiff_client::host::data::file_list(&c, &worktree, &dir).await }).await
+    let follow = !app.remote();
+    crate::connection::data_read(&app, |c| async move { skiff_client::host::data::file_list(&c, &worktree, &dir, follow).await }).await
 }
 
 /// A file's preview from the selected Host: bounded text, an image's bytes,
@@ -187,17 +190,23 @@ pub(crate) async fn read_file(app: State<'_, App>, worktree: String, file: Strin
 }
 
 /// Open with for a Host's file: its bytes (5 MiB at most, checked by the
-/// Host) become a read-only copy that this app manages, and the copy opens
-/// in this Mac's default app. The Host's path never reaches an opener.
+/// Host) become a read-only copy that this app manages. The copy opens as
+/// Settings › Open with says (a configured command, or a peek tool run by
+/// the page), else in this Mac's default app. Only the copy's path reaches
+/// an opener; the Host's path never does.
 #[tauri::command]
-pub(crate) async fn open_file_copy(app: State<'_, App>, worktree: String, file: String) -> Result<(), String> {
+pub(crate) async fn open_file_copy(app: State<'_, App>, worktree: String, file: String) -> Result<Opened, String> {
     use skiff_host_api::ReadPurpose;
     // Refused before anything is fetched.
     crate::copies::copy_name(&file).map_err(err)?;
     let name = file.clone();
     let read = crate::connection::data_read(&app, |c| async move { skiff_client::host::data::file_read(&c, &worktree, &file, ReadPurpose::Copy).await }).await?;
     let bytes = read.bytes.ok_or("The Host sent no bytes for this file.")?;
-    blocking(move || skiff_core::open::open_default(&crate::copies::save(&name, &bytes)?)).await
+    let copy = blocking(move || crate::copies::save(&name, &bytes)).await?;
+    let open = skiff_core::config::client::load().map(|c| c.open).unwrap_or_default();
+    let cwd = copy.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
+    let plan = skiff_core::open::plan_file(&copy, &open);
+    run_plan(plan, cwd, copy).await
 }
 
 /// The changed files of one worktree, for the sidebar's Changes section:

@@ -1892,6 +1892,8 @@ Host.
 - **`files@1`**:
   - `file_list { worktree, dir? }` answers `files { listing }`. `dir` is
     relative to the worktree; empty or absent is the worktree itself.
+    `follow_links` (default false) follows links: a link to a folder is
+    listed as `dir` and can be listed. The app sets it on This Mac only.
     `HostListing`: `entries` (`name`, `kind`: `dir`, `file`, `link` or
     `other`), folders first, then by name, without `.git` and what the
     Host's git ignores; `truncated` past 2000 entries that git does not
@@ -1918,7 +1920,8 @@ Host.
   comes before any open (`git::open_beneath`). `..`, `.`, an absolute path
   and a path through a link are `not_found`.
 - **Types.** A link is listed as `link` and previewed as its target. It is
-  never followed, and a copy of one is `invalid`. A FIFO, device or socket
+  never followed (except for a listing with `follow_links`), and a copy
+  of one is `invalid`. A FIFO, device or socket
   is listed as `other` and never opened (`not_found` to read). Every open
   is non-blocking.
 - **Content** is decided from the first bytes, never the name. A PNG, JPEG,
@@ -1939,8 +1942,9 @@ Host.
   Each reply fits in one 8 MiB frame.
 - **Ignored files.** `git check-ignore` runs in the held folder in batches,
   with each path given as `./<path>`, so a name that starts with `:` is not
-  pathspec magic. If git fails, nothing is hidden, as before. A name that
-  git quotes (a control character, `"` or `\`) is shown.
+  pathspec magic. If git fails, nothing is hidden, as before. Git
+  quotes a name with a control character, `"` or `\`; the Host decodes it,
+  so such an ignored name is hidden like any other.
 - **Backgrounds.** The Host reads the configured file (`background_file`).
   It must be a regular file of at most 5 MiB whose bytes are an image, else
   `invalid`. With no background set, the answer is `not_found`.
@@ -1969,15 +1973,16 @@ Host.
     `$TMPDIR/skiff-copies-<uid>/<pid>/<stamp>/<name>`. Every folder is
     `0700`. A shared or linked base folder is refused. On macOS the copy
     carries the quarantine flag.
-  - Only the copy opens, in this computer's default app.
+  - Only the copy opens. It opens as Settings › Open with says: a
+    configured `[open]` command (a terminal tool in the peek, an app
+    started here), else the default app. The command gets the copy's
+    path, never the Host's.
   - Types that run or install something when opened (`.app`, `.command`,
     `.pkg`, `.webloc`, `.desktop`, shell scripts and others) are refused
     before anything is fetched.
   - Each process keeps at most 32 copies. Its folder is removed when the
     app exits. Folders of processes that no longer run are removed at
     start.
-  - Configured `[open]` commands and peek terminal tools are not used for
-    copies: they need a path on this computer and a terminal.
   - Edits to a copy stay local. There is no sync and no remote editor.
 - **Background** (`appearance/backdrop.ts`): `project_background` through
   the Host, on This Mac too. A failed read is tried again after 30 s.
@@ -2030,13 +2035,6 @@ Host.
   remote Host needs an upload or a Host path chooser, kept Host-side.
 - **Reveal on a remote Host:** there is no file manager here for a Host
   path. Copy path copies the Host path as text.
-- **`[open]` commands for remote copies.** These are copies opened with
-  the default app only. Running a configured app or a peek tool on a copy
-  needs a decision on terminal tools.
-- **Behavior changes on This Mac:**
-  - a linked folder in the tree no longer expands, since links are not
-    followed
-  - an ignored name that git quotes is now shown
 - Data-plane events: folders are read again on open, Refresh and recovery,
   not pushed.
 - The M4 diff/recovery fixes (`c1f8f8b`) still have no completed

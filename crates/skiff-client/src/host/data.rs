@@ -213,8 +213,9 @@ pub async fn git_diff(c: &HostConnection, worktree: &str, file: Option<&str>) ->
 }
 
 /// The folder `dir` (relative; empty for the worktree itself) of `worktree`.
-pub async fn file_list(c: &HostConnection, worktree: &str, dir: &str) -> Result<HostListing, Error> {
-    match c.request(Request::FileList { worktree: worktree.into(), dir: dir.into() }).await? {
+/// `follow_links`: This Mac only; a remote Host never gets it.
+pub async fn file_list(c: &HostConnection, worktree: &str, dir: &str, follow_links: bool) -> Result<HostListing, Error> {
+    match c.request(Request::FileList { worktree: worktree.into(), dir: dir.into(), follow_links }).await? {
         Response::Files { listing } => Ok(listing),
         _ => unreachable!("checked by Request::accepts"),
     }

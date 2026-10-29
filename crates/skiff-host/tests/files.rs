@@ -127,10 +127,10 @@ async fn files_and_backgrounds_come_from_the_host_bounded_and_inside_its_worktre
     // listed by type, ignored folders are not.
     for rel in ["", "src"] {
         let core = skiff_host::host_listing(files::list_in(&root, &app, rel).unwrap());
-        assert_eq!(data::file_list(&l, &wt, rel).await.unwrap(), core, "{rel}");
-        assert_eq!(data::file_list(&r, &wt, rel).await.unwrap(), core, "{rel}");
+        assert_eq!(data::file_list(&l, &wt, rel, false).await.unwrap(), core, "{rel}");
+        assert_eq!(data::file_list(&r, &wt, rel, false).await.unwrap(), core, "{rel}");
     }
-    let top = data::file_list(&r, &wt, "").await.unwrap();
+    let top = data::file_list(&r, &wt, "", false).await.unwrap();
     let kind = |n: &str| top.entries.iter().find(|e| e.name == n).map(|e| e.kind);
     assert_eq!((kind("src"), kind("link"), kind("dirlink"), kind("pipe"), kind("target")), (Some(EntryKind::Dir), Some(EntryKind::Link), Some(EntryKind::Link), Some(EntryKind::Other), None));
 
@@ -165,7 +165,7 @@ async fn files_and_backgrounds_come_from_the_host_bounded_and_inside_its_worktre
         assert!(matches!(got, Err(Error::NotFound { .. })), "{rel}: {got:?}");
     }
     for rel in ["dirlink", "../outside", "/", "logo.png", "nope"] {
-        let got = data::file_list(&r, &wt, rel).await;
+        let got = data::file_list(&r, &wt, rel, false).await;
         assert!(matches!(got, Err(Error::NotFound { .. })), "{rel}: {got:?}");
     }
     assert!(started.elapsed() < Duration::from_secs(10), "a refusal waited");
@@ -175,7 +175,7 @@ async fn files_and_backgrounds_come_from_the_host_bounded_and_inside_its_worktre
     }
     // Only open projects' worktrees: never a closed one, a parent or `/`.
     for w in [closed.to_string_lossy().into_owned(), dir.to_string_lossy().into_owned(), "/".into(), "app".into()] {
-        assert!(matches!(data::file_list(&r, &w, "").await, Err(Error::NotFound { .. })), "{w}");
+        assert!(matches!(data::file_list(&r, &w, "", false).await, Err(Error::NotFound { .. })), "{w}");
         assert!(matches!(data::file_read(&r, &w, "a.txt", ReadPurpose::Copy).await, Err(Error::NotFound { .. })), "{w}");
     }
 

@@ -936,23 +936,75 @@ pub(crate) fn ignored_in(root: &Root, dir: &Path, paths: &[String], deadline: De
     // In batches, so no command line grows past the system's limit.
     for batch in paths.chunks(256) {
         let mut cmd = git_in(root, dir);
-        // `-z` needs stdin, which a bounded run closes: one path per line,
-        // unquoted. A name git still quotes (a control character, `"` or
-        // `\\`) does not match, so it is shown rather than hidden.
+        // `-z` needs stdin, which a bounded run closes: one path per line.
+        // A name with a control character, `"` or `\\` comes back quoted;
+        // `unquote` gives the real name back.
         // `./` first, so a name that starts with `:` is not pathspec magic.
         cmd.args(["-c", "core.quotePath=false", "check-ignore", "--"])
             .args(batch.iter().map(|p| format!("./{p}")))
             .env("GIT_OPTIONAL_LOCKS", "0");
         // git exits 1 when nothing is ignored, and says nothing: no batch is lost to it.
         let Ok((out, _)) = bounded(cmd, PREFLIGHT_LIMIT * 4, deadline) else { continue };
-        found.extend(String::from_utf8_lossy(&out).lines().filter_map(|s| s.strip_prefix("./")).map(str::to_string));
+        found.extend(out.split(|b| *b == b'\n').filter_map(|l| unquote(l).strip_prefix("./").map(str::to_string)));
     }
     found
+}
+
+/// A line of git's path output as the real name. Git wraps a name with a
+/// control character, `"` or `\` in double quotes and escapes it like C
+/// (`\t`, `\"`, `\\`, `\ooo` for a byte); any other line is the name.
+fn unquote(line: &[u8]) -> String {
+    let Some(inner) = line.strip_prefix(b"\"").and_then(|l| l.strip_suffix(b"\"")) else {
+        return String::from_utf8_lossy(line).into_owned();
+    };
+    let mut out = Vec::with_capacity(inner.len());
+    let mut i = 0;
+    while i < inner.len() {
+        if inner[i] != b'\\' || i + 1 == inner.len() {
+            out.push(inner[i]);
+            i += 1;
+            continue;
+        }
+        i += 1;
+        let c = inner[i];
+        i += 1;
+        out.push(match c {
+            b'a' => 7,
+            b'b' => 8,
+            b't' => b'\t',
+            b'n' => b'\n',
+            b'v' => 11,
+            b'f' => 12,
+            b'r' => b'\r',
+            b'0'..=b'7' => {
+                let mut v = u32::from(c - b'0');
+                for _ in 0..2 {
+                    match inner.get(i) {
+                        Some(d @ b'0'..=b'7') => {
+                            v = v * 8 + u32::from(d - b'0');
+                            i += 1;
+                        }
+                        _ => break,
+                    }
+                }
+                v as u8
+            }
+            other => other,
+        });
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn git_quoted_names_come_back_real() {
+        assert_eq!(unquote(b"./plain.txt"), "./plain.txt");
+        assert_eq!(unquote(br#""./a\tb\"c\\d""#), "./a\tb\"c\\d");
+        assert_eq!(unquote(br#""./\303\251""#), "./é");
+    }
 
     #[test]
     fn only_git_saying_not_a_repository_makes_a_plain_folder() {

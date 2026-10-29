@@ -89,9 +89,16 @@ fn below(rel: &str) -> Result<()> {
 /// The folder `rel` under `root` (empty: `root` itself), listed. `dir` must
 /// name `root` before and after. Outside a repository nothing is ignored.
 pub fn list_in(root: &Root, dir: &Path, rel: &str) -> Result<Listing> {
+    list_with(root, dir, rel, false)
+}
+
+/// [`list_in`], and with `follow` a link is followed: a link to a folder is
+/// listed as a folder and can be listed. For the Host that is this Mac only;
+/// the client never asks for it on a remote Host.
+pub fn list_with(root: &Root, dir: &Path, rel: &str, follow: bool) -> Result<Listing> {
     below(rel)?;
     root.check(dir)?;
-    let (read, mut truncated) = read_folder(root, rel)?;
+    let (read, mut truncated, linked) = read_folder(root, rel, follow)?;
     let deadline = git::Deadline::after(IGNORE_TIMEOUT);
     let mut entries = Vec::new();
     // In batches, after git's answer: an ignored entry takes no place in the listing.
@@ -100,7 +107,8 @@ pub fn list_in(root: &Root, dir: &Path, rel: &str) -> Result<Listing> {
             .iter()
             .map(|e| {
                 let path = if rel.is_empty() { e.name.clone() } else { format!("{rel}/{}", e.name) };
-                if e.kind == Kind::Dir { format!("{path}/") } else { path }
+                // A followed link is no folder to git: `path/` would fail the batch.
+                if e.kind == Kind::Dir && !linked.contains(&e.name) { format!("{path}/") } else { path }
             })
             .collect();
         let ignored = git::ignored_in(root, dir, &asked, deadline);
@@ -130,7 +138,7 @@ pub fn list_in(root: &Root, dir: &Path, rel: &str) -> Result<Listing> {
 /// The entries of `rel`, opened under `root` one component at a time, each
 /// typed without following it. Names that are not UTF-8 are left out.
 #[cfg(unix)]
-fn read_folder(root: &Root, rel: &str) -> Result<(Vec<Entry>, bool)> {
+fn read_folder(root: &Root, rel: &str, follow: bool) -> Result<(Vec<Entry>, bool, std::collections::HashSet<String>)> {
     use std::{ffi::{CStr, CString}, os::fd::AsRawFd, os::unix::ffi::OsStrExt};
     let gone = || missing!("{} is not a folder in this worktree", if rel.is_empty() { "." } else { rel });
     // SAFETY: open(2), readdir(3) and fstatat(2) on fds made and closed here;
@@ -142,8 +150,10 @@ fn read_folder(root: &Root, rel: &str) -> Result<(Vec<Entry>, bool)> {
         }
         for part in Path::new(rel).components() {
             let name = CString::new(part.as_os_str().as_bytes()).map_err(|_| gone())?;
-            // A link, or a FIFO swapped in, fails here: never followed, never waited on.
-            let next = libc::openat(fd, name.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC);
+            // A link, or a FIFO swapped in, fails here: never followed (unless
+            // `follow`), never waited on.
+            let nofollow = if follow { 0 } else { libc::O_NOFOLLOW };
+            let next = libc::openat(fd, name.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY | nofollow | libc::O_NONBLOCK | libc::O_CLOEXEC);
             libc::close(fd);
             if next < 0 {
                 return Err(gone());
@@ -156,6 +166,7 @@ fn read_folder(root: &Root, rel: &str) -> Result<(Vec<Entry>, bool)> {
             return Err(gone());
         }
         let mut entries = Vec::new();
+        let mut linked = std::collections::HashSet::new();
         let mut truncated = false;
         loop {
             let e = libc::readdir(stream);
@@ -175,7 +186,16 @@ fn read_folder(root: &Root, rel: &str) -> Result<(Vec<Entry>, bool)> {
             if libc::fstatat(libc::dirfd(stream), raw.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) != 0 {
                 continue;
             }
-            let kind = match st.st_mode & libc::S_IFMT {
+            let mut mode = st.st_mode & libc::S_IFMT;
+            // A link to a folder is a folder when links are followed.
+            if follow && mode == libc::S_IFLNK {
+                let mut target: libc::stat = std::mem::zeroed();
+                if libc::fstatat(libc::dirfd(stream), raw.as_ptr(), &mut target, 0) == 0 && target.st_mode & libc::S_IFMT == libc::S_IFDIR {
+                    mode = libc::S_IFDIR;
+                    linked.insert(name.to_string());
+                }
+            }
+            let kind = match mode {
                 libc::S_IFDIR => Kind::Dir,
                 libc::S_IFREG => Kind::File,
                 libc::S_IFLNK => Kind::Link,
@@ -184,12 +204,12 @@ fn read_folder(root: &Root, rel: &str) -> Result<(Vec<Entry>, bool)> {
             entries.push(Entry { name: name.to_string(), kind });
         }
         libc::closedir(stream);
-        Ok((entries, truncated))
+        Ok((entries, truncated, linked))
     }
 }
 
 #[cfg(not(unix))]
-fn read_folder(root: &Root, rel: &str) -> Result<(Vec<Entry>, bool)> {
+fn read_folder(root: &Root, rel: &str, follow: bool) -> Result<(Vec<Entry>, bool, std::collections::HashSet<String>)> {
     let mut entries = Vec::new();
     let mut truncated = false;
     for e in std::fs::read_dir(root.path.join(rel))? {
@@ -206,7 +226,7 @@ fn read_folder(root: &Root, rel: &str) -> Result<(Vec<Entry>, bool)> {
         let kind = if t.is_symlink() { Kind::Link } else if t.is_dir() { Kind::Dir } else if t.is_file() { Kind::File } else { Kind::Other };
         entries.push(Entry { name, kind });
     }
-    Ok((entries, truncated))
+    Ok((entries, truncated, Default::default()))
 }
 
 /// Why a file is read: to show it, or to hand a copy to an app on the client.
@@ -453,6 +473,8 @@ mod tests {
         fs::write(root.join(".gitignore"), "target/\n*.log\n").unwrap();
         fs::write(root.join("README.md"), "").unwrap();
         fs::write(root.join("build.log"), "").unwrap();
+        // Git quotes this name; it is still ignored, so it stays out.
+        fs::write(root.join("tab\there.log"), "").unwrap();
         fs::write(root.join("b.txt"), "").unwrap();
         fs::write(root.join("src/deep/:(glob)*"), "").unwrap();
         fs::write(root.join(":(glob)x.log"), "").unwrap();
@@ -468,6 +490,11 @@ mod tests {
         let through = list_in(&held, &root, "out");
         let up = list_in(&held, &root, "../x");
         let file = list_in(&held, &root, "b.txt");
+        // This Mac asks to follow: the link lists as a folder and opens.
+        // (A held root is read once: a fresh one for each listing.)
+        let followed = list_with(&Root::open(&root).unwrap(), &root, "", true).unwrap();
+        assert!(followed.entries.iter().any(|e| e.name == "out" && e.kind == Kind::Dir));
+        assert_eq!(list_with(&Root::open(&root).unwrap(), &root, "out", true).unwrap().entries[0].name, "secret");
         fs::remove_dir_all(&root).unwrap();
         fs::remove_dir_all(&outside).unwrap();
         assert_eq!(
