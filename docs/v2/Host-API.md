@@ -1409,8 +1409,14 @@ Tracking: [M4 #160](https://github.com/solutionscay/skiff/issues/160), [epic #15
     (bytes). `background` is a Host path that only that Host reads; M5 serves
     its bytes.
 - `git_status@1`:
-  - `git_changes { worktree }` answers `changes { changes: [HostChange] }`.
-    `status` is one of `M`, `A`, `D` or `U`.
+  - `git_changes { worktree }` answers `changes { changes: [HostChange], base? }`.
+    `status` is one of `M`, `A`, `D` or `U`. On a branch, the files count
+    from the fork point with the project's default branch, committed or not,
+    and `base` names that branch; `committed` is true for a file the working
+    tree has as HEAD does. On the default branch, `base` is absent and the
+    rows are the uncommitted files, as before. A Host without these fields
+    reads as `base` absent and `committed` false.
+  - `git_diff { worktree, file? }` compares against the same base.
   - `worktree` must be a worktree of one of the Host's open projects. Any
     other path is `not_found`, and git does not run there.
 - Golden fixture: `tests/fixtures/m4.json`. Neither family grants a session

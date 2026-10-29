@@ -4,7 +4,7 @@
 use crate::shell::shell_quote;
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     time::{Duration, Instant},
@@ -211,7 +211,8 @@ pub fn is_dirty(dir: &Path) -> Result<bool> {
     Ok(!git(dir, &["status", "--porcelain"])?.trim().is_empty())
 }
 
-/// One changed file in a worktree, against HEAD: staged and unstaged together.
+/// One changed file in a worktree, against its base: the branch's fork
+/// point, else HEAD. Staged and unstaged edits count together.
 #[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct Change {
     /// Relative to the worktree root.
@@ -221,6 +222,54 @@ pub struct Change {
     /// Lines added and removed. `None` for a binary file.
     pub added: Option<u32>,
     pub removed: Option<u32>,
+    /// The file is the same in the working tree and HEAD: the change sits in
+    /// the branch's commits. False for every uncommitted edit.
+    pub committed: bool,
+}
+
+/// What a worktree changed: its files, and the branch they count from.
+#[derive(serde::Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct Changes {
+    /// The project's default branch, when the worktree is on another branch
+    /// and the files count from where it left that one. `None`: against HEAD.
+    pub base: Option<String>,
+    /// Sorted by path.
+    pub files: Vec<Change>,
+}
+
+/// Where a branch worktree's changes count from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Base {
+    /// The project's default branch.
+    pub branch: String,
+    /// The commit where HEAD left it.
+    pub sha: String,
+}
+
+/// The fork point of the worktree at `dir`: where HEAD left the project's
+/// default branch. `None` on the default branch itself, detached, with no
+/// default branch, or with no commit in common; the changes then count
+/// from HEAD.
+pub fn branch_base(dir: &Path) -> Option<Base> {
+    branch_base_with(|args| git(dir, args))
+}
+
+/// [`branch_base`] through `run`, so a bounded read shares its deadline.
+fn branch_base_with(run: impl Fn(&[&str]) -> Result<String>) -> Option<Base> {
+    let branch = run(&["symbolic-ref", "--quiet", "--short", "HEAD"]).ok()?;
+    let branch = branch.trim();
+    let default = run(&["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])
+        .ok()
+        .and_then(|r| r.trim().strip_prefix("origin/").map(String::from))
+        .or_else(|| ["main", "master"].into_iter().find(|b| run(&["rev-parse", "--verify", "--quiet", &format!("refs/heads/{b}")]).is_ok()).map(String::from))?;
+    if branch == default {
+        return None;
+    }
+    // The local branch, else origin's: a clone may track main without a local one.
+    let sha = [format!("refs/heads/{default}"), format!("refs/remotes/origin/{default}")]
+        .iter()
+        .find_map(|r| run(&["merge-base", r, "HEAD"]).ok())?;
+    Some(Base { branch: default, sha: sha.trim().to_string() })
 }
 
 /// Untracked files larger than this show no line count.
@@ -273,38 +322,61 @@ fn same_file(_: &std::fs::Metadata, b: &std::fs::Metadata) -> bool {
     b.is_dir()
 }
 
-/// The changed files of the worktree at `dir`, sorted by path.
-pub fn changes(dir: &Path) -> Result<Vec<Change>> {
+/// The changed files of the worktree at `dir`. On a branch, every file that
+/// differs between the fork point and the working tree, committed or not;
+/// on the default branch, the uncommitted files.
+pub fn changes(dir: &Path) -> Result<Changes> {
     changes_in(&Root::open(dir)?, dir)
 }
 
 /// [`changes`] of `root`, opened before `dir` was checked as a worktree.
 /// Git runs in `root` itself, and `dir` must name `root` before and after;
-/// untracked files are counted under `root` itself.
-pub fn changes_in(root: &Root, dir: &Path) -> Result<Vec<Change>> {
+/// untracked files are counted under `root` itself. Every git run together
+/// takes at most [`GIT_TIMEOUT`].
+pub fn changes_in(root: &Root, dir: &Path) -> Result<Changes> {
     root.check(dir)?;
     // Bounded, with no optional lock: a read never holds the index against
     // the person's own git, and a hung git does not keep a request slot.
     let deadline = Deadline::after(GIT_TIMEOUT);
-    let run = |args: &[&str]| -> Result<String> {
-        let (out, cut) = git_bounded(root, dir, args, STATUS_LIMIT, deadline)?;
+    let run = |args: &[&str], limit: usize| -> Result<String> {
+        let (out, cut) = git_bounded(root, dir, args, limit, deadline)?;
         if cut {
             bail!("git {} printed more than Skiff reads", args.join(" "));
         }
         Ok(String::from_utf8_lossy(&out).into_owned())
     };
-    let status = run(&["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"])?;
+    let base = branch_base_with(|args| run(args, PREFLIGHT_LIMIT));
+    let against = base.as_ref().map_or("HEAD", |b| b.sha.as_str());
+    let status = run(&["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all"], STATUS_LIMIT)?;
     // Fails in a repository with no commit yet: every file then shows no count.
-    let numstat = run(&["diff", "HEAD", "--numstat", "-z", "--no-renames"]).unwrap_or_default();
-    let mut counts = std::collections::HashMap::new();
+    let numstat = run(&["diff", against, "--numstat", "-z", "--no-renames"], STATUS_LIMIT).unwrap_or_default();
+    let mut counts = HashMap::new();
     for rec in numstat.split('\0').filter(|r| !r.is_empty()) {
         let mut f = rec.splitn(3, '\t');
         let (Some(a), Some(r), Some(p)) = (f.next(), f.next(), f.next()) else { continue };
         counts.insert(p.to_string(), (a.parse().ok(), r.parse().ok()));
     }
+    // What the branch did to each tracked file, from its fork point. Empty
+    // on the default branch: there the status letters tell.
+    let mut branch: Vec<(char, String)> = Vec::new();
+    if base.is_some() {
+        let names = run(&["diff", against, "--name-status", "-z", "--no-renames"], STATUS_LIMIT)?;
+        let mut f = names.split('\0');
+        while let (Some(st), Some(path)) = (f.next(), f.next()) {
+            let status = match st.as_bytes().first() {
+                Some(b'A') => 'A',
+                Some(b'D') => 'D',
+                Some(b'U') => 'U',
+                _ => 'M',
+            };
+            branch.push((status, path.to_string()));
+        }
+    }
     // Swapped while git ran: its output may be another folder's.
     root.check(dir)?;
+    let did: HashMap<&str, char> = branch.iter().map(|(s, p)| (p.as_str(), *s)).collect();
     let mut list = Vec::new();
+    let mut live = HashSet::new();
     for rec in status.split('\0').filter(|r| r.len() > 3) {
         let (xy, path) = rec.split_at(3);
         let (x, y) = (xy.as_bytes()[0], xy.as_bytes()[1]);
@@ -313,27 +385,36 @@ pub fn changes_in(root: &Root, dir: &Path) -> Result<Vec<Change>> {
             (b'U', _) | (_, b'U') | (b'A', b'A') | (b'D', b'D') => 'U',
             (b'D', _) | (_, b'D') => 'D',
             (b'A', _) => 'A',
-            _ => 'M',
+            _ => did.get(path).copied().unwrap_or('M'),
         };
         let (added, removed) = match counts.get(path) {
             Some(&c) => c,
             None if x == b'?' => (count_lines(root, path), Some(0)),
             None => (None, None),
         };
-        list.push(Change { path: path.to_string(), status, added, removed });
+        live.insert(path.to_string());
+        list.push(Change { path: path.to_string(), status, added, removed, committed: false });
+    }
+    for (status, path) in branch {
+        if live.contains(&path) {
+            continue;
+        }
+        let (added, removed) = counts.get(&path).copied().unwrap_or((None, None));
+        list.push(Change { path, status, added, removed, committed: true });
     }
     list.sort_by(|a, b| a.path.cmp(&b.path));
-    Ok(list)
+    Ok(Changes { base: base.map(|b| b.branch), files: list })
 }
 
 /// The diff command when `[open] diff` sets none.
 pub const DEFAULT_DIFF: &str = "git diff --color=always";
 
-/// A changed file's diff against HEAD, or the whole worktree's, printed by
-/// `command` in the worktree at `width` columns. `{target}` in the command
-/// becomes what to compare; without it, the target goes at the end. An
-/// untracked file compares with an empty file. The whole-worktree view leaves
-/// untracked files out.
+/// A changed file's diff against the worktree's base, or the whole
+/// worktree's, printed by `command` in the worktree at `width` columns. The
+/// base is the branch's fork point, else HEAD: see [`branch_base`].
+/// `{target}` in the command becomes what to compare; without it, the target
+/// goes at the end. An untracked file compares with an empty file. The
+/// whole-worktree view leaves untracked files out.
 pub fn diff_text(dir: &Path, file: Option<&str>, command: Option<&str>, width: u16) -> Result<String> {
     let script = diff_script(dir, file, command);
     let out = Command::new("sh")
@@ -357,14 +438,22 @@ pub fn diff_text(dir: &Path, file: Option<&str>, command: Option<&str>, width: u
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// The shell script that shows a changed file's diff against HEAD, or the
-/// whole worktree's, with `command`, else `git diff`. `{target}` in the
-/// command becomes what to compare; without it, the target goes at the end.
-/// An untracked file compares with an empty file.
+/// The shell script that shows a changed file's diff against the worktree's
+/// base, or the whole worktree's, with `command`, else `git diff`. The base
+/// is the branch's fork point, else HEAD: see [`branch_base`]. `{target}` in
+/// the command becomes what to compare; without it, the target goes at the
+/// end. An untracked file compares with an empty file.
 pub fn diff_script(dir: &Path, file: Option<&str>, command: Option<&str>) -> String {
+    let base = branch_base(dir).map(|b| b.sha);
+    let against = base.as_deref().unwrap_or("HEAD");
+    // Known to git in the index, or at the base: a file a commit deleted is still a diff.
+    let known = |f: &str| {
+        git(dir, &["ls-files", "--error-unmatch", "--", f]).is_ok()
+            || base.as_ref().is_some_and(|b| git(dir, &["cat-file", "-e", &format!("{b}:{f}")]).is_ok())
+    };
     let target = match file {
-        None => "HEAD".to_string(),
-        Some(f) if git(dir, &["ls-files", "--error-unmatch", "--", f]).is_ok() => format!("HEAD -- {}", shell_quote(f)),
+        None => against.to_string(),
+        Some(f) if known(f) => format!("{against} -- {}", shell_quote(f)),
         Some(f) => format!("--no-index -- /dev/null {}", shell_quote(f)),
     };
     let command = command.map(str::trim).filter(|c| !c.is_empty()).unwrap_or(DEFAULT_DIFF);
@@ -406,12 +495,13 @@ pub fn is_relative_file(rel: &str) -> bool {
     !parts.is_empty() && parts.iter().all(|c| matches!(c, Component::Normal(_)))
 }
 
-/// One changed file's diff against HEAD, or the whole worktree's, as
-/// [`changes_in`] reads it: git runs in `root` itself, `dir` must name `root`
-/// before and after, and an untracked file is read under `root` itself, never
-/// followed if it is a link, never opened if it is not a regular file. The
-/// whole-worktree diff leaves untracked files out, as `git diff` does. Every
-/// git run together takes at most [`GIT_TIMEOUT`].
+/// One changed file's diff against the worktree's base, or the whole
+/// worktree's, as [`changes_in`] reads it: the branch's fork point, else
+/// HEAD. Git runs in `root` itself, `dir` must name `root` before and after,
+/// and an untracked file is read under `root` itself, never followed if it
+/// is a link, never opened if it is not a regular file. The whole-worktree
+/// diff leaves untracked files out, as `git diff` does. Every git run
+/// together takes at most [`GIT_TIMEOUT`].
 pub fn diff_in(root: &Root, dir: &Path, file: Option<&str>) -> Result<Diff> {
     diff_within(root, dir, file, Deadline::after(GIT_TIMEOUT))
 }
@@ -419,8 +509,10 @@ pub fn diff_in(root: &Root, dir: &Path, file: Option<&str>) -> Result<Diff> {
 fn diff_within(root: &Root, dir: &Path, file: Option<&str>, deadline: Deadline) -> Result<Diff> {
     root.check(dir)?;
     let git = |args: &[&str], limit| git_bounded(root, dir, args, limit, deadline);
+    // The fork point shares the deadline: its runs are small.
+    let base = branch_base_with(|args| preflight(git, args)).map(|b| b.sha);
     let diff = match file {
-        None => tracked_diff(git, None)?,
+        None => tracked_diff(git, None, base.as_deref())?,
         Some(f) => {
             if !is_relative_file(f) {
                 bail!("{f} is not a file path in this worktree");
@@ -429,9 +521,11 @@ fn diff_within(root: &Root, dir: &Path, file: Option<&str>, deadline: Deadline) 
             let spec = format!(":(literal){f}");
             let status = preflight(git, &["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", "--", &spec])?;
             match status.split('\0').find(|r| r.len() > 3 && &r[3..] == f) {
+                // Clean against HEAD. On a branch, a commit may still have changed it.
+                None if base.is_some() => tracked_diff(git, Some(&spec), base.as_deref())?,
                 None => Diff::default(),
                 Some(r) if r.starts_with("??") => untracked_diff(root, f)?,
-                Some(_) => tracked_diff(git, Some(&spec))?,
+                Some(_) => tracked_diff(git, Some(&spec), base.as_deref())?,
             }
         }
     };
@@ -449,11 +543,16 @@ fn preflight(git: impl Fn(&[&str], usize) -> Result<(Vec<u8>, bool)>, args: &[&s
     Ok(String::from_utf8_lossy(&out).into_owned())
 }
 
-fn tracked_diff(git: impl Fn(&[&str], usize) -> Result<(Vec<u8>, bool)>, spec: Option<&str>) -> Result<Diff> {
-    // No commit yet: everything is compared with the empty tree.
-    let base = match preflight(&git, &["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]) {
-        Ok(head) => head,
-        Err(_) => preflight(&git, &["hash-object", "-t", "tree", "/dev/null"])?,
+/// The diff of the working tree against `base`, the branch's fork point,
+/// else against HEAD.
+fn tracked_diff(git: impl Fn(&[&str], usize) -> Result<(Vec<u8>, bool)>, spec: Option<&str>, base: Option<&str>) -> Result<Diff> {
+    let base = match base {
+        Some(b) => b.to_string(),
+        // No commit yet: everything is compared with the empty tree.
+        None => match preflight(&git, &["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]) {
+            Ok(head) => head,
+            Err(_) => preflight(&git, &["hash-object", "-t", "tree", "/dev/null"])?,
+        },
     };
     let base = base.trim();
     let mut args = vec!["-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", base];
@@ -907,9 +1006,10 @@ mod tests {
 
         let got = changes(&root).unwrap();
         std::fs::remove_dir_all(&root).unwrap();
-        let c = |path: &str, status, added, removed| Change { path: path.into(), status, added, removed };
+        let c = |path: &str, status, added, removed| Change { path: path.into(), status, added, removed, committed: false };
+        assert_eq!(got.base, None);
         assert_eq!(
-            got,
+            got.files,
             [
                 c("a.txt", 'M', Some(2), Some(1)),
                 c("blob.bin", 'A', None, Some(0)),
@@ -917,6 +1017,71 @@ mod tests {
                 c("src/new.rs", 'A', Some(2), Some(0)),
             ]
         );
+    }
+
+    #[test]
+    fn a_branch_counts_its_commits_from_the_fork_point() {
+        let root = std::env::temp_dir().join(format!("skiff-branch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let run = |args: &[&str]| assert!(Command::new("git").arg("-C").arg(&root).args(args).status().unwrap().success());
+        run(&["init", "-q", "-b", "main"]);
+        run(&["config", "user.email", "t@t"]);
+        run(&["config", "user.name", "t"]);
+        std::fs::write(root.join("a.txt"), "1\n2\n3\n").unwrap();
+        std::fs::write(root.join("gone.txt"), "x\n").unwrap();
+        std::fs::write(root.join("same.txt"), "s\n").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-qm", "init"]);
+        run(&["checkout", "-qb", "feat/x"]);
+        std::fs::write(root.join("a.txt"), "1\ntwo\n3\n").unwrap();
+        std::fs::write(root.join("b.txt"), "b\n").unwrap();
+        std::fs::remove_file(root.join("gone.txt")).unwrap();
+        run(&["add", "-A"]);
+        run(&["commit", "-qm", "work"]);
+        // Main moves on: its own edit must not show on the branch.
+        run(&["checkout", "-q", "main"]);
+        std::fs::write(root.join("same.txt"), "s\nmain\n").unwrap();
+        run(&["commit", "-qam", "main moves"]);
+        run(&["checkout", "-q", "feat/x"]);
+        // A committed file edited again is live, and a new file is untracked.
+        std::fs::write(root.join("b.txt"), "b\nmore\n").unwrap();
+        std::fs::write(root.join("c.txt"), "c\n").unwrap();
+
+        let got = changes(&root).unwrap();
+        let base = branch_base(&root).unwrap();
+        let script = diff_script(&root, Some("gone.txt"), Some("git diff"));
+        let held = Root::open(&root).unwrap();
+        // A file only a commit changed, one a commit deleted, and the whole branch.
+        let a = diff_in(&held, &root, Some("a.txt")).unwrap();
+        let gone = diff_in(&held, &root, Some("gone.txt")).unwrap();
+        let same = diff_in(&held, &root, Some("same.txt")).unwrap();
+        let all = diff_in(&held, &root, None).unwrap();
+        // Main has no b.txt: its edit goes back before the checkout.
+        run(&["checkout", "-q", "--", "b.txt"]);
+        run(&["checkout", "-q", "main"]);
+        let on_main = changes(&root).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        let c = |path: &str, status, added, removed, committed| Change { path: path.into(), status, added, removed, committed };
+        assert_eq!(got.base.as_deref(), Some("main"));
+        assert_eq!(
+            got.files,
+            [
+                c("a.txt", 'M', Some(1), Some(1), true),
+                c("b.txt", 'A', Some(2), Some(0), false),
+                c("c.txt", 'A', Some(1), Some(0), false),
+                c("gone.txt", 'D', Some(0), Some(1), true),
+            ]
+        );
+        assert_eq!(base.branch, "main");
+        assert_eq!(script, format!("git diff {} -- {}", base.sha, shell_quote("gone.txt")));
+        assert!(a.text.contains("-2\n+two\n") && !a.untracked, "{a:?}");
+        assert!(gone.text.contains("deleted file mode") && gone.text.contains("-x\n"), "{gone:?}");
+        assert_eq!(same, Diff::default());
+        assert!(all.text.contains("a/a.txt") && all.text.contains("a/gone.txt") && all.text.contains("b/b.txt") && !all.text.contains("same.txt") && !all.text.contains("c.txt"), "{}", all.text);
+        // The default branch keeps its own view: uncommitted files only.
+        assert_eq!(on_main.base, None);
+        assert_eq!(on_main.files, [c("c.txt", 'A', Some(1), Some(0), false)]);
     }
 
     /// Review M4 P2: an untracked link to a FIFO outside the worktree once
@@ -960,7 +1125,7 @@ mod tests {
         let dir = root.clone();
         std::thread::spawn(move || tx.send(changes(&dir)).unwrap());
         let got = rx.recv_timeout(std::time::Duration::from_secs(10)).expect("changes blocked").unwrap();
-        let count = |p: &str| got.iter().find(|c| c.path == p).map(|c| c.added);
+        let count = |p: &str| got.files.iter().find(|c| c.path == p).map(|c| c.added);
         // git's own count for a new link is one line: its target.
         let out = Command::new("git").arg("-C").arg(&root).args(["diff", "--no-index", "--numstat", "--", "/dev/null", "link-out"]).output().unwrap();
         let git_count = String::from_utf8_lossy(&out.stdout);

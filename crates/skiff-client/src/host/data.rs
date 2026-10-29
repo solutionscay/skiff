@@ -16,7 +16,7 @@ use std::{
 };
 
 use skiff_host_api::{
-    AgentEdit, Error, FolderListing, FolderPlaces, Hello, HostBranches, HostAgent, HostChange, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
+    AgentEdit, Error, FolderListing, FolderPlaces, Hello, HostBranches, HostAgent, HostChanges, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
     HostFileScope, HostListing, HostProject, HostSkipper, HostSkipperFile, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response, SkipperEdit, SkipperFolderDone,
     SkipperFolderMode, SkipperFolderPreview, SkipperOpened, InventorySession, TakenSkipper,
 };
@@ -194,10 +194,11 @@ pub async fn project_get(c: &HostConnection, name: &str) -> Result<HostProject, 
     }
 }
 
-/// The changed files of `worktree`, a path on the Host.
-pub async fn git_changes(c: &HostConnection, worktree: &str) -> Result<Vec<HostChange>, Error> {
+/// The changed files of `worktree`, a path on the Host, and the branch they
+/// count from.
+pub async fn git_changes(c: &HostConnection, worktree: &str) -> Result<HostChanges, Error> {
     match c.request(Request::GitChanges { worktree: worktree.into() }).await? {
-        Response::Changes { changes } => Ok(changes),
+        Response::Changes { changes, base } => Ok(HostChanges { base, changes }),
         _ => unreachable!("checked by Request::accepts"),
     }
 }

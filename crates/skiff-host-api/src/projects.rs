@@ -130,7 +130,9 @@ pub struct ProjectFleet {
     pub fleet: String,
 }
 
-/// One changed file in a worktree against HEAD, staged and unstaged together.
+/// One changed file in a worktree against its base: on a branch, the fork
+/// point from the project's default branch; else HEAD. Staged and unstaged
+/// edits count together.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostChange {
     /// Relative to the worktree root.
@@ -140,6 +142,23 @@ pub struct HostChange {
     /// Lines added and removed. `None` for a binary file.
     pub added: Option<u32>,
     pub removed: Option<u32>,
+    /// The file is the same in the working tree and HEAD: the change sits
+    /// in the branch's commits. False for every uncommitted edit, and from
+    /// a Host that does not say.
+    #[serde(default)]
+    pub committed: bool,
+}
+
+/// A worktree's changed files, and the branch they count from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostChanges {
+    /// The project's default branch, when the worktree is on another branch
+    /// and its files count from where it left that one. Absent: against HEAD,
+    /// as on the default branch, or from a Host that does not say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
+    /// Sorted by path.
+    pub changes: Vec<HostChange>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
