@@ -328,13 +328,8 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             // is refused rather than read.
             let root = git::Root::open(Path::new(&worktree));
             let worktree = known_worktree(&worktree)?;
-            Ok(Response::Changes {
-                changes: git::changes_in(&root.map_err(failed)?, &worktree)
-                    .map_err(failed)?
-                    .into_iter()
-                    .map(host_change)
-                    .collect(),
-            })
+            let read = git::changes_in(&root.map_err(failed)?, &worktree).map_err(failed)?;
+            Ok(Response::Changes { changes: read.files.into_iter().map(host_change).collect(), base: read.base })
         }
         Request::GitDiff { worktree, file } => {
             // As for GitChanges: the folder held open before the check is
@@ -696,6 +691,7 @@ pub fn host_change(c: git::Change) -> HostChange {
         },
         added: c.added,
         removed: c.removed,
+        committed: c.committed,
     }
 }
 

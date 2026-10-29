@@ -60,7 +60,7 @@ async fn a_worktree_replaced_while_git_runs_is_refused_not_read() {
     let ask = || skiff_host::answer(Request::GitChanges { worktree: root.to_str().unwrap().into() }, &hello);
 
     // Left alone: the root's own file, one line.
-    let Ok(Response::Changes { changes }) = ask().await else { panic!("no changes") };
+    let Ok(Response::Changes { changes, .. }) = ask().await else { panic!("no changes") };
     let one: Vec<_> = changes.iter().map(|c| (c.path.as_str(), c.status, c.added, c.removed)).collect();
     assert_eq!(one, [("victim.txt", ChangeStatus::A, Some(1), Some(0))]);
 

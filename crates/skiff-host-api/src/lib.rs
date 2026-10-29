@@ -24,7 +24,7 @@ pub use coordinator::{
     SkipperOpened, SkipperRunningTask, TakenSkipper, TakenTask, TaskEdit,
 };
 pub use lifecycle::SessionSpec;
-pub use projects::{ChangeStatus, HostBranch, HostBranches, HostChange, HostDiff, HostFolder, HostProject, HostWorktree, ProjectEdit, ProjectFleet};
+pub use projects::{ChangeStatus, HostBranch, HostBranches, HostChange, HostChanges, HostDiff, HostFolder, HostProject, HostWorktree, ProjectEdit, ProjectFleet};
 pub use terminal::{EchoTimes, TerminalFrame};
 pub use updates::SessionUpdate;
 
@@ -945,7 +945,12 @@ pub enum Response {
     },
     /// Boxed, as `Session`. Same JSON.
     Project { project: Box<HostProject> },
-    Changes { changes: Vec<HostChange> },
+    /// Same JSON as `HostChanges`: `changes`, and `base` when there is one.
+    Changes {
+        changes: Vec<HostChange>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<String>,
+    },
     Diff { diff: HostDiff },
     Folder { folder: HostFolder },
     /// The `[[project]]` tables' revision after a change.

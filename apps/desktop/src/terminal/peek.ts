@@ -199,7 +199,7 @@ function begin(mine: number, t: Preview, fresh = false) {
     else showCard(mine, "folder", t.path, "Show in file manager", () => openPath(t.path));
   } else if (t.kind === "host-diff" && t.wait && !fresh) {
     const key = active!.key;
-    showCard(mine, "diff", `${t.wt}/${t.file ?? "All changes"}`, "Review all changes", () => startPreview(key, true, true));
+    showCard(mine, "diff", `${t.wt}/${t.file ?? allChanges(t.base)}`, "Review all changes", () => startPreview(key, true, true));
   } else if (t.kind === "host-diff") {
     showHostDiff(mine, t);
   } else if (t.kind === "host-file") {
@@ -207,11 +207,11 @@ function begin(mine: number, t: Preview, fresh = false) {
   } else if (t.kind === "diff" && t.wait && !fresh) {
     // Landing on the row shows the card. Enter, or Review all changes, runs the diff.
     const key = active!.key;
-    showCard(mine, "diff", `${t.wt}/${t.file ?? "All changes"}`, "Review all changes", () => startPreview(key, true, true));
+    showCard(mine, "diff", `${t.wt}/${t.file ?? allChanges(t.base)}`, "Review all changes", () => startPreview(key, true, true));
   } else if (t.kind === "diff") {
-    showCard(mine, "diff", `${t.wt}/${t.file ?? "All changes"}`);
+    showCard(mine, "diff", `${t.wt}/${t.file ?? allChanges(t.base)}`);
     void invoke<Opened>("open_diff", { path: t.wt, file: t.file ?? null })
-      .then((o) => { if (live(mine)) handle(o, "diff", t.file ?? "All changes", t.branch); })
+      .then((o) => { if (live(mine)) handle(o, "diff", t.file ?? allChanges(t.base), t.branch); })
       .catch(failed(mine));
   } else {
     const { path } = t;
@@ -340,7 +340,7 @@ export function closePeek(hold = false) {
   const t = active && !active.closed ? rowActs(active.key)?.preview : undefined;
   if (active && t?.kind === "diff" && !cardAction()) {
     const key = active.key;
-    showCard(active.gen, "diff", `${t.wt}/${t.file ?? "All changes"}`, t.file ? "Show diff" : "Review all changes", () => startPreview(key, true, true));
+    showCard(active.gen, "diff", `${t.wt}/${t.file ?? allChanges(t.base)}`, t.file ? "Show diff" : "Review all changes", () => startPreview(key, true, true));
   }
   // A card with an action stays: the app opened from it runs on.
   if (card && cardAction()) {
@@ -476,6 +476,9 @@ function mountCard(el: HTMLElement) {
   else if (hadKeys || active?.keys) giveKeys();
 }
 
+/** The whole-worktree diff's title: what it counts from, when not HEAD. */
+const allChanges = (base?: string) => (base ? `All changes since ${base}` : "All changes");
+
 type HostDiffPreview = Extract<Preview, { kind: "host-diff" }>;
 
 /**
@@ -484,13 +487,13 @@ type HostDiffPreview = Extract<Preview, { kind: "host-diff" }>;
  * from an older data connection, shows nothing; the latter is asked again.
  */
 function showHostDiff(mine: number, t: HostDiffPreview) {
-  const el = cardFrame("diff", `${t.wt}/${t.file ?? "All changes"}`, "peek diff-view");
+  const el = cardFrame("diff", `${t.wt}/${t.file ?? allChanges(t.base)}`, "peek diff-view");
   showHostView(
     mine,
     el,
     `Loading the diff from ${hostName()}…`,
     () => hostInvoke<HostDiff>("git_diff", "git_diff", { path: t.wt, file: t.file ?? null }),
-    (d) => diffBody(d, t.file),
+    (d) => diffBody(d, t.file, t.base),
     "No diff",
   );
 }

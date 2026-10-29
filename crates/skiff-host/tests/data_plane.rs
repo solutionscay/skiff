@@ -93,8 +93,9 @@ async fn the_data_plane_serves_this_hosts_projects_and_git_only() {
     let feat = listed[0].worktrees.iter().find(|w| w.branch.as_deref() == Some("feat")).unwrap().path.clone();
     let changes = data::git_changes(&c, &feat).await.unwrap();
     let local = skiff_core::git::changes(Path::new(&feat)).unwrap();
-    assert_eq!(serde_json::to_value(&changes).unwrap(), serde_json::to_value(&local).unwrap());
-    assert_eq!(changes.iter().map(|c| (c.path.as_str(), c.status)).collect::<Vec<_>>(), [("a.txt", ChangeStatus::M), ("new.txt", ChangeStatus::A)]);
+    assert_eq!(serde_json::to_value(&changes.changes).unwrap(), serde_json::to_value(&local.files).unwrap());
+    assert_eq!(changes.base, local.base);
+    assert_eq!(changes.changes.iter().map(|c| (c.path.as_str(), c.status, c.committed)).collect::<Vec<_>>(), [("a.txt", ChangeStatus::M, false), ("new.txt", ChangeStatus::A, false)]);
     // Review M4 P2: an allowed worktree's untracked link to a FIFO outside
     // it once blocked the request and read the outside data. Now the link
     // counts as git counts it, one line, and the FIFO is never opened.
@@ -110,7 +111,7 @@ async fn the_data_plane_serves_this_hosts_projects_and_git_only() {
         let _ = std::thread::spawn(move || std::fs::write(&fifo, "1\n2\n"));
         panic!("git_changes blocked on a FIFO outside the worktree");
     };
-    let link = read.unwrap().into_iter().find(|c| c.path == "link-fifo").unwrap();
+    let link = read.unwrap().changes.into_iter().find(|c| c.path == "link-fifo").unwrap();
     assert_eq!((link.status, link.added, link.removed), (ChangeStatus::A, Some(1), Some(0)));
     std::fs::remove_file(app.join("link-fifo")).unwrap();
 
@@ -245,7 +246,7 @@ async fn remote(dir: &Path, host: &HostId, hello: &Hello) {
 #[test]
 fn every_data_request_has_one_reply_kind() {
     let list = Response::Projects { projects: vec![], revision: None };
-    let changes = Response::Changes { changes: vec![] };
+    let changes = Response::Changes { changes: vec![], base: None };
     assert!(Request::ProjectList.accepts(&list));
     assert!(!Request::ProjectList.accepts(&Response::Ok));
     assert!(!Request::ProjectGet { name: "x".into() }.accepts(&list));
