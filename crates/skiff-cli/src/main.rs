@@ -685,6 +685,18 @@ async fn run(cli: Cli) -> Result<i32> {
     let socket = cli.socket.unwrap_or_else(skiff_core::socket::socket_path);
     // The state follows the socket: only the live one uses the person's files.
     skiff_core::state::set_socket(socket.clone());
+    // Check before command-specific settings or ledger work. Local settings
+    // and recovery commands remain available with a different daemon.
+    if !matches!(&cli.cmd,
+        Cmd::Status { .. } | Cmd::Daemon(_) | Cmd::Projects { cmd: None, .. }
+        | Cmd::Projects { cmd: Some(ProjectsCmd::Add { .. }), .. }
+        | Cmd::Theme { cmd: ThemeCmd::Ls { .. } | ThemeCmd::App { .. } | ThemeCmd::Project { .. } }
+        | Cmd::OpenWith { .. }
+    ) {
+        if let Ok(c) = Client::connect(&socket).await {
+            check_daemon(c).await?;
+        }
+    }
     match cli.cmd {
         // Read locally: no daemon needed.
         Cmd::Projects { json, cmd: None } => return info::projects(json).map(|_| 0),
@@ -778,4 +790,27 @@ pub async fn connect(socket: &std::path::Path) -> Result<Client> {
     Client::connect(socket)
         .await
         .with_context(|| format!("skiffd is not running at {}", socket.display()))
+}
+
+/// Refuse a different protocol; warn once when only the daemon version differs.
+async fn check_daemon(c: Client) -> Result<Client> {
+    let info = c.daemon_info().await?;
+    if info.protocol != skiff_core::PROTOCOL {
+        let cli = c.daemon_pid
+            .and_then(|pid| std::fs::read_link(format!("/proc/{pid}/exe")).ok())
+            .map(|p| p.with_file_name("skiff"));
+        let matching = cli.map_or_else(|| "unknown".to_string(), |p| p.display().to_string());
+        anyhow::bail!(
+            "skiffd is {} (protocol {}), and this skiff was built for skiffd {} (protocol {}). Use the matching CLI: {}",
+            info.version, info.protocol, skiff_core::VERSION, skiff_core::PROTOCOL, matching
+        );
+    }
+    if info.version != skiff_core::VERSION {
+        static WARNING: std::sync::Once = std::sync::Once::new();
+        WARNING.call_once(|| eprintln!(
+            "skiff: warning: skiffd is {}, and this skiff was built for skiffd {}",
+            info.version, skiff_core::VERSION
+        ));
+    }
+    Ok(c)
 }

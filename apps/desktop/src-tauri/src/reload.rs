@@ -9,20 +9,17 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    process::Stdio,
     sync::{atomic::Ordering, Arc},
     time::{Duration, Instant},
 };
 use serde::Serialize;
-use skiff_client::{host::local::ProcessControl, DaemonInfo, Refused};
+use skiff_client::{host::local::ProcessControl, update::{self, Handover}, DaemonInfo, Refused};
 #[cfg(test)]
 use skiff_client::Client;
 use skiff_core::session::{SessionInfo, SessionState};
 use tauri::State;
 use crate::connection::{check_daemon, compare_versions, daemon_binary, restart_warning, status_now, App, DaemonStatus, Warning, HELLO_TIMEOUT};
 
-/// The bundled skiffd answers `--reload-info` within this.
-const INFO_TIMEOUT: Duration = Duration::from_secs(5);
 /// The new image adopts the sessions and answers within this.
 const RECONNECT: Duration = Duration::from_secs(15);
 /// While the daemon's pid lives, the app waits this long for it to answer.
@@ -61,36 +58,27 @@ impl From<String> for NoPlan {
 }
 
 /// A reload onto the bundled skiffd, or why there is none. The bundled
-/// skiffd must be newer than the daemon: the same version stays. It runs
+/// skiffd must be newer than the daemon: the same version stays. The
+/// verdict is [`update::handover`], the one `skiff status` uses. It runs
 /// the bundled binary, so only a local endpoint may: `_local` proves it.
 pub(crate) async fn plan(_local: &ProcessControl, info: &DaemonInfo) -> Result<Plan, NoPlan> {
     plan_with(info, &daemon_binary()).await
 }
 
 async fn plan_with(info: &DaemonInfo, binary: &Path) -> Result<Plan, NoPlan> {
-    let (Some(state), Some(pid)) = (info.reload_state, info.pid) else {
-        return Err(NoPlan::Other("it predates reload".into()));
-    };
     let binary = resolve(binary).ok_or_else(|| NoPlan::Other("the bundled skiffd is missing".into()))?;
-    let mut cmd = tokio::process::Command::new(&binary);
-    cmd.arg("--reload-info").stdin(Stdio::null()).stderr(Stdio::null()).kill_on_drop(true);
-    let out = tokio::time::timeout(INFO_TIMEOUT, cmd.output())
-        .await
-        .map_err(|_| format!("{} did not answer --reload-info", binary.display()))?
-        .map_err(|e| format!("run {}: {e}", binary.display()))?;
-    let target: serde_json::Value = serde_json::from_slice(&out.stdout)
-        .ok()
-        .filter(|_| out.status.success())
-        .ok_or_else(|| format!("{} does not support reload", binary.display()))?;
-    let version = target["version"].as_str().unwrap_or_default().to_string();
-    if !compare_versions(&version, &info.version).is_gt() {
-        return Err(NoPlan::Stale(version));
+    let target = update::reload_info(&binary).await?;
+    match update::handover(info, &target) {
+        Handover::NotNewer => Err(NoPlan::Stale(target.version)),
+        Handover::Blocked(why) => Err(NoPlan::Other(why)),
+        Handover::Ready => Ok(Plan {
+            binary,
+            version: target.version,
+            from: info.version.clone(),
+            protocol: info.protocol,
+            pid: info.pid.unwrap_or_default(),
+        }),
     }
-    let reads = target["handover"].as_array().is_some_and(|v| v.iter().any(|h| h.as_u64() == Some(state as u64)));
-    if !reads {
-        return Err(format!("skiffd {version} cannot adopt its sessions (handover {state})").into());
-    }
-    Ok(Plan { binary, version, from: info.version.clone(), protocol: info.protocol, pid })
 }
 
 /// An absolute path for `p`, from `PATH` for a bare name. A reload needs one.
@@ -213,7 +201,10 @@ async fn run(app: &App, plan: &Plan) -> Outcome {
     // No other call connects, or starts a daemon, until the reload ends.
     let mut guard = app.host.lock().await;
     // A reload that ends before the request keeps the restart of #27.
-    let keep = |why: &str, live: Option<usize>| restart_warning(&plan.from, plan.protocol, live, Some(why));
+    let keep = |why: &str, live: Option<usize>| {
+        *app.no_reload.lock().unwrap() = Some(why.to_string());
+        restart_warning(&plan.from, plan.protocol, live, Some(why))
+    };
     // Reload is endpoint-local lifecycle: only a local endpoint may run it.
     if guard.as_ref().is_some_and(|host| host.process_control().is_none()) {
         return Outcome { error: Some("skiffd on this Host is not managed by this app".into()), ..Default::default() };
@@ -261,7 +252,7 @@ async fn run(app: &App, plan: &Plan) -> Outcome {
             let why = format!("{e:#}");
             let now = old.list_sessions().await.map(|l| listed(&l)).unwrap_or_default();
             let lost = name(app.input.open_gate(Some(&old_terminal), |id| same(&before, &now, id)));
-            *app.warning.lock().await = Some(restart_warning(&plan.from, plan.protocol, Some(live), Some(&why)));
+            *app.warning.lock().await = Some(keep(&why, Some(live)));
             return Outcome { error: Some(format!("skiffd {} did not reload: {why}", plan.from)), lost, ..Default::default() };
         }
         // The connection closed, as exec closes it, or the outcome is open.
@@ -392,6 +383,7 @@ pub(crate) mod tests {
     use crate::connection::ensure_client;
     use skiff_client::skipper;
     use skiff_core::session::SessionSpec;
+    use std::process::Stdio;
 
     /// The tests that set `SKIFF_SOCKET` or `SKIFF_DAEMON` run one at a time.
     pub(crate) static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());

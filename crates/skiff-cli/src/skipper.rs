@@ -22,7 +22,7 @@ pub async fn run(socket: &Path, no_attach: bool) -> Result<()> {
     let c = connect_or_start(socket).await?;
     let info = c.daemon_info().await?;
     if info.protocol < skiff_core::PROTOCOL {
-        bail!("skiffd {} is too old for this skiff. Run `skiff daemon reload`", info.version);
+        bail!("skiffd {} is too old for this skiff. {}", info.version, crate::daemon::advice(&c, &info).await);
     }
     let Some(found) = skipper::open(&c, skipper::Open::Start).await? else {
         bail!("skiffd did not start the Skiff agent");
@@ -194,20 +194,20 @@ pub async fn ready(c: &Client, id: &str) -> Result<skiff_core::session::SessionI
 /// Connects. With no daemon at the socket, starts one, as the app does.
 async fn connect_or_start(socket: &Path) -> Result<Client> {
     if let Ok(c) = Client::connect(socket).await {
-        return Ok(c);
+        return crate::check_daemon(c).await;
     }
     // One start at a time: a second `skiff skipper` waits here, then finds
     // the daemon the first one started.
     let _lock = start_lock(socket).await?;
     if let Ok(c) = Client::connect(socket).await {
-        return Ok(c);
+        return crate::check_daemon(c).await;
     }
     start_daemon(socket)?;
     let since = Instant::now();
     loop {
         if let Ok(c) = Client::connect(socket).await {
             if c.daemon_info().await.is_ok() {
-                return Ok(c);
+                return crate::check_daemon(c).await;
             }
         }
         if since.elapsed() > START {

@@ -17,12 +17,9 @@ pub async fn status(socket: &Path) -> Result<()> {
     }
     let c = crate::connect(socket).await?;
     let info = c.daemon_info().await?;
-    let (version, protocol) = (info.version, info.protocol);
+    let (version, protocol) = (info.version.clone(), info.protocol);
     if version != skiff_core::VERSION {
-        eprintln!(
-            "skiff: warning: skiffd is {version}, and this skiff was built for skiffd {}. Update Skiff, or run `skiff daemon reload`.",
-            skiff_core::VERSION
-        );
+        eprintln!("skiff: warning: {}", crate::daemon::advice(&c, &info).await);
     }
     let pid = info.pid.map(|p| p as i32).or(c.daemon_pid).map_or("?".to_string(), |p| p.to_string());
     println!("skiffd    {version}");

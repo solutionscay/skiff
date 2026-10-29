@@ -162,6 +162,34 @@ pub fn move_rows(file: &Path, socket: &Path, fleet: &str, fs: &SessionInfo, t: &
     Ok(())
 }
 
+/// A restarted project or fleet Skipper takes its interrupted hand-offs
+/// back as pending. Keep their owner, and leave one resend note per owner.
+pub fn restart_rows(file: &Path, scope: &str, skipper: &SessionInfo, all: &[SessionInfo]) -> Result<()> {
+    if !file.exists() {
+        return Ok(());
+    }
+    let mut db = ledger::open_write(file)?;
+    let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let mut owners = std::collections::BTreeMap::<String, Vec<String>>::new();
+    for r in ledger::rows(&tx, "WHERE kind = 'handoff' AND project = ?1 AND state IN ('sent', 'blocked')", Some(&scope))? {
+        let old = all.iter().find(|s| Some(s.id.as_str()) == r.pane_id.as_deref());
+        if !r.interrupted_in(old) {
+            continue;
+        }
+        tx.execute(
+            "UPDATE tasks SET pane_id = ?2, pane_gen = ?3, state = 'pending', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE uid = ?1",
+            params![r.uid, skipper.id, ledger::gen(skipper)],
+        )?;
+        owners.entry(r.owner).or_default().push(r.uid);
+    }
+    for (owner, uids) in owners {
+        let text = format!("The {scope} Skipper restarted. Hand-offs {} moved to pane {} and are pending. Resend them with skiff ledger send <uid> --enter.", uids.join(", "), skipper.id);
+        tx.execute("INSERT INTO notes (owner, text, at) VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))", params![owner, text])?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 /// The takeover: the fleet Skipper of `fleet` takes over each project
 /// Skipper of its projects, and of `join`, which joins the fleet last.
 /// The fleet Skipper must run. Returns what it took over. With nothing to

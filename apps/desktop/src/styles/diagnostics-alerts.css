@@ -14,7 +14,13 @@
   background: transparent; color: var(--state-waiting-text); font-size: calc(12px * var(--zoom, 1)); font-weight: 500;
 }
 #topbar .daemon-badge:hover, #topbar .daemon-badge[aria-expanded="true"] { background: var(--state-waiting-bg); }
-#daemon-pop {
+/* A downloaded app update: neutral, not a session state color. */
+#topbar .update-badge {
+  border: 0; background: transparent; color: var(--text-2); font-size: calc(12px * var(--zoom, 1)); font-weight: 500;
+}
+#topbar .update-badge:hover:enabled, #topbar .update-badge[aria-expanded="true"] { background: var(--bg-raised); color: var(--text); }
+#topbar .update-badge:disabled { color: var(--text-3); }
+#daemon-pop, #update-pop {
   transform: translateZ(0); isolation: isolate; position: fixed; z-index: 50; width: calc(360 * var(--u));
   background: var(--bg-panel); border: 1px solid var(--rule-strong); box-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
 }

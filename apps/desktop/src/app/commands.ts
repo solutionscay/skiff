@@ -1,6 +1,7 @@
 import { runAction, openProjectMenu } from "./actions";
 import { settings } from "./panels";
 import { showAbout } from "../ui/infoDialogs";
+import { checkForUpdates } from "./updater";
 import { isSkiffAgent, skiffAgentFolder, skiffAgentName, skiffAgentSession } from "./skiffAgent";
 
 /** One command list for the menu bar and the palette; key actions. */
@@ -130,6 +131,7 @@ function commands(): Cmd[] {
     },
     { section: "Help", label: "Copy latency report", key: "", run: () => void copyReport(), off: !hasReport() },
     { section: "Help", label: "Report an issue", key: "", run: () => void openUrl(ISSUES_URL).catch(showError) },
+    { section: "Help", label: "Check for updates…", key: "", run: checkForUpdates },
     { section: "Help", label: "About Skiff", key: "", run: () => void showAbout() },
   ];
 }
@@ -137,7 +139,7 @@ function commands(): Cmd[] {
 const ISSUES_URL = "https://github.com/solutionscay/skiff/issues/new";
 
 /** Where a group of commands starts a new block in its menu. */
-const BREAK_BEFORE = new Set(["Project menu…", "New workspace…", "Settings", "Copy", "Rename session", "Command palette", "Add pane right…", "Next waiting", "Focus mode", "Leave focus mode", "Bigger text", "Open projects.toml", "About Skiff"]);
+const BREAK_BEFORE = new Set(["Project menu…", "New workspace…", "Settings", "Copy", "Rename session", "Command palette", "Add pane right…", "Next waiting", "Focus mode", "Leave focus mode", "Bigger text", "Open projects.toml", "Check for updates…"]);
 
 interface MenuItem { id?: string; label?: string; accel?: string; enabled?: boolean; native?: string }
 

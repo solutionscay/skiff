@@ -864,6 +864,7 @@ pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipp
     if let Some(s) = find_project(&all, &p.name) {
         let want = self::project_name(&cfg, &p.name);
         let session = if s.name.as_deref() == Some(&want) { s.clone() } else { c.rename_session(&s.id, &want).await? };
+        crate::fleet::restart_rows(&crate::ledger::path()?, &p.name, &session, &all)?;
         return Ok(ProjectSkipper { session, created: false, dir: setup_project(&cfg, p)? });
     }
     // One Skipper per project: a running fleet Skipper commands this one.
@@ -885,6 +886,7 @@ pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipp
         let _ = c.kill(&info.id).await;
         bail!("skiffd did not mark the project Skipper. Nothing started. Update skiffd first");
     }
+    crate::fleet::restart_rows(&crate::ledger::path()?, &p.name, &info, &all)?;
     Ok(ProjectSkipper { session: info, created: true, dir })
 }
 
@@ -957,9 +959,11 @@ pub async fn open_fleet(c: &Client, fleet: &str) -> Result<ProjectSkipper> {
     let _lock = lock()?;
     setup_in(&folder(&cfg)?, &name(&cfg), &sync_skill()?)?;
     let dir = write_fleet(&cfg, fleet)?;
-    if let Some(s) = find_fleet(&c.list_sessions().await?, fleet) {
+    let all = c.list_sessions().await?;
+    if let Some(s) = find_fleet(&all, fleet) {
         let want = fleet_name(&cfg, fleet);
         let session = if s.name.as_deref() == Some(&want) { s.clone() } else { c.rename_session(&s.id, &want).await? };
+        crate::fleet::restart_rows(&crate::ledger::path()?, &fleet_scope(fleet), &session, &all)?;
         return Ok(ProjectSkipper { session, created: false, dir });
     }
     let agents = c.list_agents().await?;
@@ -973,6 +977,7 @@ pub async fn open_fleet(c: &Client, fleet: &str) -> Result<ProjectSkipper> {
     if info.skipper.as_deref() != Some(fleet_scope(fleet).as_str()) {
         bail!("skiffd is too old to mark a fleet Skipper. Run `skiff daemon reload`. Session {} runs as a plain agent", info.id);
     }
+    crate::fleet::restart_rows(&crate::ledger::path()?, &fleet_scope(fleet), &info, &all)?;
     Ok(ProjectSkipper { session: info, created: true, dir })
 }
 

@@ -29,6 +29,7 @@ pub mod ledger;
 mod requests;
 pub mod skipper;
 pub mod transport;
+pub mod update;
 pub use requests::{Coordinated, Coordinator, DaemonInfo, Refused};
 
 type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Response, ReplyDecodeError>>>>>;

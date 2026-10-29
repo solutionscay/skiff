@@ -13,7 +13,9 @@ import { place } from "./stateQueries";
 
 /** Badge text and panel title per warning. */
 const WARNINGS: Record<DaemonWarning["kind"], [string, string]> = {
-  outdated: ["Update pending", "The skiffd update is not finished"],
+  // The app hands an older skiffd over on its own. This shows only when a
+  // handover cannot work, and the message says why.
+  outdated: ["Update needs a restart", "Finish the skiffd update"],
   protocol: ["skiffd incompatible", "skiffd does not match this app"],
   newer: ["skiffd newer", "skiffd is newer than this app"],
   hung: ["skiffd not responding", "skiffd is not responding"],

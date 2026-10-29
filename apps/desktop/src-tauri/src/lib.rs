@@ -17,6 +17,7 @@ mod quit;
 mod reload;
 mod skiff_agent;
 mod streaming;
+mod updater;
 mod workspace_file;
 mod native_menu;
 #[cfg(target_os = "linux")]
@@ -71,6 +72,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(App::default())
         .manage(quit::Guard::default())
         // The window starts hidden: GTK takes a header bar only before it shows.
@@ -122,6 +124,8 @@ pub fn run() {
             native_menu::set_menu,
             quit::quit_app,
             quit::guard_quit,
+            updater::update_off,
+            updater::relaunch_app,
             native_menu::menu_layout,
             native_menu::set_menu_layout,
             native_menu::set_window_dark,

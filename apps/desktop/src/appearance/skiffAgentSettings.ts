@@ -53,8 +53,8 @@ export function skiffAgentSection(
   const choices = agents.filter((a) => a.enabled || a.custom);
   const chosen = skiffAgentChoice(agents, set.agent);
 
-  const name = textRow("Name", set.name ?? "", DEFAULT_NAME, (v) => save({ key: "name", value: v || null }));
-  const skipperName = textRow("Project and fleet Skippers' name", set.skipper_name ?? "", "Skipper", (v) => save({ key: "skipper_name", value: v || null }));
+  const name = textRow("Main", set.name ?? "", DEFAULT_NAME, (v) => save({ key: "name", value: v || null }));
+  const skipperName = textRow("Project/Fleet", set.skipper_name ?? "", "Skipper", (v) => save({ key: "skipper_name", value: v || null }));
   skipperName.classList.add("set-skipper-name");
 
   const main = mainName(set.name);

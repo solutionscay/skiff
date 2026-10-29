@@ -10,7 +10,7 @@ pub(crate) struct Guard {
 }
 
 impl Guard {
-    fn approve(&self) {
+    pub(crate) fn approve(&self) {
         self.approved.store(true, Ordering::SeqCst);
     }
 

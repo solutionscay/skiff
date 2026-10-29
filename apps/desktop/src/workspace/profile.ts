@@ -475,11 +475,12 @@ async function exclusive(f: () => Promise<boolean>): Promise<boolean> {
 }
 
 /**
- * Leaves the document: asks first when it is Edited. `go` does the
- * transition and reports success. Save runs first and must succeed; Cancel,
- * a closed dialog or a failed write stops here and the keys go back.
+ * Leaves the document: asks first when it is Edited. Quit and the restart
+ * after an update use it too. `go` does the transition and reports success.
+ * Save runs first and must succeed; Cancel, a closed dialog or a failed
+ * write stops here and the keys go back.
  */
-function leave(what: string, go: () => Promise<boolean>): Promise<boolean> {
+export function leave(what: string, go: () => Promise<boolean>): Promise<boolean> {
   const back = document.activeElement as HTMLElement | null;
   const restore = () => requestAnimationFrame(() => (back?.isConnected ? back : home())?.focus());
   return exclusive(async () => {

@@ -1,4 +1,5 @@
 import { hostCan, hostInvoke } from "../app/hostCaps";
+import { isMac } from "../app/keys";
 import { confirmAction } from "../ui/confirm";
 import { h } from "../ui/dom";
 import { S } from "../app/state";
@@ -6,9 +7,10 @@ import { place } from "../app/stateQueries";
 import { projectSkipperOf, skiffAgentSession } from "../app/skiffAgent";
 import { branchName, locate, scopeFleet, scopeName, taskTitle } from "../workspace/model";
 import type { DaemonMetrics, DaemonStatus, SessionInfo } from "../platform/types";
+import { abandonShip, emptyPick, keepLive, moveTo, type Pick, pickAll, picked, pickedText, pickRow, sinkLabel } from "./sessionPick";
 
-export interface ActivityState { list: SessionInfo[]; metrics: DaemonMetrics | null; version: string | null; error: string | null; timer: number | null; }
-export const activityState = (): ActivityState => ({ list: [], metrics: null, version: null, error: null, timer: null });
+export interface ActivityState { list: SessionInfo[]; metrics: DaemonMetrics | null; version: string | null; error: string | null; timer: number | null; pick: Pick; }
+export const activityState = (): ActivityState => ({ list: [], metrics: null, version: null, error: null, timer: null, pick: emptyPick() });
 const bytes = (n: number) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
 const folder = (path: string) => {
   const parts = path.split("/").filter(Boolean);
@@ -32,6 +34,7 @@ export async function refreshActivity(s: ActivityState, redraw: () => void) {
       hostInvoke<DaemonStatus>("session_inventory", "daemon_status").catch(() => null),
     ]);
     s.list = list.filter((x) => !x.peek); s.metrics = metrics; s.version = status?.version ?? null; s.error = null;
+    keepLive(s.pick, s.list.map((x) => x.id));
   } catch (e) { s.error = String(e); }
   redraw();
 }
@@ -95,9 +98,16 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
   const version = m?.version ?? s.version;
   // A value the daemon did not report shows a dash, never a zero.
   const up = m?.started_at ? age(m.started_at).replace(/^now$/, "0m") : "—";
-  band.append(h("span", "", version ? `skiffd ${version}` : "skiffd"), h("span", "", `Up ${up}`), h("span", "", `${s.list.length} sessions`), h("span", "", `Memory ${m?.memory_bytes ? bytes(m.memory_bytes) : "—"}`));
+  // The selection count is a live status: a screen reader reads each change.
+  const count = h("span", "set-daemon-picked"); count.setAttribute("role", "status");
+  // Sink kills the selected sessions. It asks first.
+  const sink = h("button", "set-rm set-sink"); sink.type = "button"; sink.dataset.key = "sink";
+  sink.addEventListener("click", () => void sinkPicked());
+  band.append(h("span", "", version ? `skiffd ${version}` : "skiffd"), h("span", "", `Up ${up}`), h("span", "", `${s.list.length} sessions`), h("span", "", `Memory ${m?.memory_bytes ? bytes(m.memory_bytes) : "—"}`), count, sink);
   const table = h("div", "set-daemon");
-  table.setAttribute("role", "table");
+  // A grid of rows to select: click, Shift+click, Ctrl+click (⌘ on macOS), and the keys in onKey below.
+  table.setAttribute("role", "grid");
+  table.setAttribute("aria-multiselectable", "true");
   table.setAttribute("aria-labelledby", title.id);
   const cols = h("div", "set-row set-cols");
   cols.setAttribute("role", "row");
@@ -115,20 +125,86 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
     cols.append(el);
   }
   table.append(cols);
-  const rows = [...s.list].sort(compare);
-  if (!rows.length) { const row = h("div", "set-row set-daemon-row"); row.append(h("span", "c-span", "No sessions")); table.append(row); }
+  const rows = [...s.list].sort(compare), order = rows.map((x) => x.id), p = s.pick;
+  const els = new Map<string, HTMLElement>();
+  if (!rows.length) { const row = h("div", "set-row set-daemon-row"); row.setAttribute("role", "row"); const none = h("span", "c-span", "No sessions"); none.setAttribute("role", "gridcell"); row.append(none); table.append(row); }
   for (const item of rows) {
     const w = workspace(item), row = h("div", `set-row set-daemon-row${w.out ? " out" : ""}`);
-    row.setAttribute("role", "row");
-    const cell = (text: string, cls = "", title = text) => { const el = h("span", cls, text); el.title = title; return el; };
+    row.setAttribute("role", "row"); row.dataset.id = item.id; els.set(item.id, row);
+    // Click selects. Shift+click adds the range, Ctrl+click (⌘ on macOS) adds or drops the row. Reveal keeps its own click.
+    row.addEventListener("mousedown", (e) => { if (e.shiftKey) e.preventDefault(); });
+    row.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest("button")) return;
+      pickRow(p, order, item.id, { toggle: isMac ? e.metaKey : e.ctrlKey, range: e.shiftKey });
+      paint(); row.focus();
+    });
+    const cell = (text: string, cls = "", title = text) => { const el = h("span", cls, text); el.title = title; el.setAttribute("role", "gridcell"); return el; };
     // The sidebar's state mark, in its state color.
-    const state = h("span", "c-state"); state.append(h("span", `dot ${item.state}`), h("span", "", item.state));
+    const state = h("span", "c-state"); state.setAttribute("role", "gridcell"); state.append(h("span", `dot ${item.state}`), h("span", "", item.state));
     // The name alone, as the sidebar shows it. Hover shows the session id.
     row.append(state, cell(taskTitle(item), "c-name", `${taskTitle(item)} · ${item.id}`), cell(program(item)), cell(w.text, w.out ? "bad" : ""), cell(folder(item.cwd), "", item.cwd), cell(item.output_bytes ? bytes(item.output_bytes) : "—", "c-num"), cell(age(item.started_at), "c-num", item.started_at ? new Date(item.started_at).toLocaleString() : ""));
-    const acts = h("span", "c-acts");
+    const acts = h("span", "c-acts"); acts.setAttribute("role", "gridcell");
     const show = h("button", "set-rm", "Reveal"); show.type = "button"; show.disabled = item.skipper != null && !item.coordinator && w.out; show.addEventListener("click", () => reveal(item.id, !!locate(S.closedProjects, item.cwd))); acts.append(show);
-    const end = h("button", `set-rm${item.state === "done" ? "" : " c-remove"}`, item.state === "done" ? "Remove" : "End…"); end.type = "button";
-    end.addEventListener("click", async () => { if (item.state !== "done" && !(await confirmAction({ title: `End ${taskTitle(item)}?`, body: "Ends this session. Unsaved work in the terminal is lost.", action: "End session" }))) return; await hostInvoke("session_lifecycle", "kill_session", { session: item.id }); void refreshActivity(s, redraw); }); acts.append(end); row.append(acts); table.append(row);
+    row.append(acts); table.append(row);
   }
+
+  /** Selection, the current row and the Sink button; no rebuild, so the keys stay on the row. */
+  function paint() {
+    const now = p.now !== null && els.has(p.now) ? p.now : order[0];
+    for (const [id, row] of els) {
+      const on = p.sel.has(id);
+      row.classList.toggle("sel", on);
+      row.setAttribute("aria-selected", String(on));
+      row.tabIndex = id === now ? 0 : -1;
+    }
+    const n = picked(p, order).length;
+    count.textContent = pickedText(n);
+    sink.textContent = sinkLabel(n);
+    // A Host without session lifecycle lists its sessions and sinks none.
+    sink.disabled = !n || !hostCan("session_lifecycle");
+  }
+  paint();
+
+  /**
+   * The list keys on a row. Up/Down, Home/End: select that row; with Shift, the range;
+   * with Ctrl (⌘ on macOS), move only. Space selects, Ctrl+Space adds or drops.
+   * Ctrl+A (⌘A) selects all, anywhere in the grid. Esc clears the selection, else Settings closes.
+   */
+  table.addEventListener("keydown", (e) => {
+    const mod = isMac ? e.metaKey : e.ctrlKey;
+    const done = () => { e.preventDefault(); e.stopPropagation(); };
+    if (mod && !e.shiftKey && !e.altKey && e.code === "KeyA" && order.length) {
+      pickAll(p, order); paint(); return done();
+    }
+    if (e.key === "Escape" && p.sel.size) { p.sel.clear(); paint(); return done(); }
+    const row = (e.target as HTMLElement).closest<HTMLElement>(".set-daemon-row");
+    // Ctrl+Shift with an arrow is the app's list key: Settings steps its sections.
+    if (e.target !== row || !row?.dataset.id || e.altKey || (mod && e.shiftKey)) return;
+    const at = order.indexOf(row.dataset.id);
+    const to = e.key === "ArrowDown" ? at + 1 : e.key === "ArrowUp" ? at - 1 : e.key === "Home" ? 0 : e.key === "End" ? order.length - 1 : null;
+    if (to !== null) {
+      if (to >= 0 && to < order.length) { moveTo(p, order, order[to], { range: e.shiftKey, keep: mod && !e.shiftKey }); paint(); els.get(order[to])?.focus(); }
+      return done();
+    }
+    if (e.key === " ") { pickRow(p, order, row.dataset.id, { toggle: mod, range: e.shiftKey }); paint(); return done(); }
+  });
+
+  /** Asks with the Abandon Ship dialog, then kills the selected sessions. Cancel kills nothing. */
+  async function sinkPicked() {
+    const ids = picked(p, order);
+    if (!ids.length) return;
+    const names = ids.map((id) => taskTitle(rows.find((x) => x.id === id)!));
+    const ok = await confirmAction(abandonShip(names));
+    // A refresh can rebuild the list while the dialog is open: the keys go to the new copy.
+    const back = (sel: string) => document.querySelector<HTMLElement>(sel)?.focus();
+    if (!ok) return back(".set-daemon-band .set-sink");
+    const results = await Promise.allSettled(ids.map((id) => hostInvoke("session_lifecycle", "kill_session", { session: id })));
+    const failed = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    p.sel.clear();
+    await refreshActivity(s, redraw);
+    if (failed.length) { s.error = String(failed[0].reason); redraw(); }
+    back(`.set-daemon-row[tabindex="0"]`);
+  }
+
   const out = [head, band, table]; if (s.error) out.push(h("div", "set-error", s.error)); return out;
 }

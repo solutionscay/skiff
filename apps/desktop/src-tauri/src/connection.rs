@@ -56,6 +56,10 @@ pub(crate) struct App {
     pub(crate) reload: Mutex<Option<Plan>>,
     /// A reload ran. The app does not start another one on its own.
     pub(crate) reload_tried: AtomicBool,
+    /// Why the daemon cannot move onto the bundled skiffd with its sessions:
+    /// no handover, or a reload it refused. The warning says it on each
+    /// check, including after a reconnect.
+    pub(crate) no_reload: std::sync::Mutex<Option<String>>,
     /// Why the daemon is gone after a reload. No daemon starts on its own
     /// while it is set: only an explicit restart starts one.
     pub(crate) failed: std::sync::Mutex<Option<String>>,
@@ -326,6 +330,17 @@ pub(crate) fn bundled(name: &str, env: Option<&str>) -> PathBuf {
     if let Ok(exe) = std::env::current_exe() {
         let beside = exe.with_file_name(name);
         if beside.exists() {
+            // The AppImage's mount goes when its app quits, while skiffd and
+            // skiff-host run on. Their binary paths then name nothing, and a
+            // later reload has no target. They run from a copy outside the mount.
+            if matches!(name, "skiffd" | "skiff-host") && std::env::var_os("APPIMAGE").is_some() {
+                if let Some(dir) = dirs::data_dir() {
+                    match copy_out(&beside, &dir.join("skiff/bin")) {
+                        Ok(copy) => return copy,
+                        Err(e) => eprintln!("{name} not copied out of the AppImage: {e:#}"),
+                    }
+                }
+            }
             return beside;
         }
     }
@@ -334,6 +349,25 @@ pub(crate) fn bundled(name: &str, env: Option<&str>) -> PathBuf {
 
 pub(crate) fn daemon_binary() -> PathBuf {
     bundled("skiffd", Some("SKIFF_DAEMON"))
+}
+
+/// Copies `src` to `dir` under its own name when that differs. Writes beside
+/// it and renames, so a running copy keeps its own file.
+fn copy_out(src: &std::path::Path, dir: &std::path::Path) -> anyhow::Result<PathBuf> {
+    use anyhow::Context;
+    use std::os::unix::fs::PermissionsExt;
+    let name = src.file_name().context("no file name")?.to_string_lossy();
+    let dest = dir.join(&*name);
+    let new = std::fs::read(src).with_context(|| format!("read {}", src.display()))?;
+    if std::fs::read(&dest).is_ok_and(|old| old == new) {
+        return Ok(dest);
+    }
+    std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
+    let tmp = dir.join(format!(".{name}.new"));
+    std::fs::write(&tmp, &new).with_context(|| format!("write {}", tmp.display()))?;
+    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
+    std::fs::rename(&tmp, &dest).with_context(|| format!("replace {}", dest.display()))?;
+    Ok(dest)
 }
 
 /// Starts `cmd` apart from this app: its own process group, no stdin, and
@@ -901,9 +935,13 @@ async fn check_info(app: &App, c: &Client, info: Option<skiff_client::DaemonInfo
                 return Check::Use;
             }
             Err(NoPlan::Stale(bundled)) => old_build = Some(bundled),
-            Err(NoPlan::Other(why)) => eprintln!("skiffd {version} does not reload: {why}"),
+            Err(NoPlan::Other(why)) => {
+                eprintln!("skiffd {version} does not reload: {why}");
+                *app.no_reload.lock().unwrap() = Some(why);
+            }
         }
     }
+    let why = app.no_reload.lock().unwrap().clone().filter(|_| order.is_lt());
     let live = tokio::time::timeout(HELLO_TIMEOUT, c.list_sessions())
         .await
         .ok()
@@ -934,7 +972,7 @@ async fn check_info(app: &App, c: &Client, info: Option<skiff_client::DaemonInfo
             return Check::Replaced;
         }
     }
-    *app.warning.lock().await = Some(restart_warning(&version, info.protocol, live, None));
+    *app.warning.lock().await = Some(restart_warning(&version, info.protocol, live, why.as_deref()));
     Check::Use
 }
 
@@ -960,12 +998,11 @@ pub(crate) fn restart_warning(version: &str, protocol: u32, live: Option<usize>,
             sessions: live,
         }
     } else if !order.is_gt() {
+        // The words `skiff status` uses too.
+        let why = why.unwrap_or("it did not hand over its sessions");
         Warning {
             kind: "outdated",
-            message: format!(
-                "skiffd {version} still runs, so the update to {ours} is not finished. {failed}\
-                 {running}. {ends}"
-            ),
+            message: skiff_client::update::unfinished(version, ours, why, live, "Restart skiffd"),
             sessions: live,
         }
     } else {
@@ -1030,6 +1067,7 @@ pub(crate) async fn restart_daemon(app: State<'_, App>) -> Result<DaemonStatus, 
         }
         *app.warning.lock().await = None;
         *app.failed.lock().unwrap() = None;
+        *app.no_reload.lock().unwrap() = None;
         *app.reload.lock().await = None;
     }
     for (_, task) in app.subs.lock().await.drain() {
@@ -1093,7 +1131,7 @@ pub(crate) async fn status_now(app: &App) -> DaemonStatus {
 
 #[cfg(test)]
 mod tests {
-    use super::{compare_versions, spawn_data_service, stop_daemon, App, ProcessControl};
+    use super::{compare_versions, copy_out, spawn_data_service, stop_daemon, App, ProcessControl};
     use std::{path::PathBuf, time::Duration};
     use std::cmp::Ordering::*;
 
@@ -1103,10 +1141,10 @@ mod tests {
     fn this_mac_offers_its_own_settings_writes() {
         let mut none = vec!["session_inventory@1".to_string()];
         super::add_local_adapter(&mut none);
-        assert_eq!(none, ["session_inventory@1", "agent_config@1", "skipper_config@1", "skipper@1", "skipper_file@1", "skipper_run@1", "skipper_run@2", "session_agents@1"]);
-        let mut current = ["skipper_config@1", "agent_config@1", "skipper@1", "skipper_file@1", "skipper_run@1", "skipper_run@2", "session_agents@1"].map(String::from).to_vec();
+        assert_eq!(none, ["session_inventory@1", "agent_config@1", "skipper_config@1", "skipper@1", "skipper_file@1", "skipper_run@1", "skipper_run@2", "session_agents@1", "daemon_metrics@1"]);
+        let mut current = ["skipper_config@1", "agent_config@1", "skipper@1", "skipper_file@1", "skipper_run@1", "skipper_run@2", "session_agents@1", "daemon_metrics@1"].map(String::from).to_vec();
         super::add_local_adapter(&mut current);
-        assert_eq!(current.len(), 7);
+        assert_eq!(current.len(), 8);
     }
 
     #[tokio::test]
@@ -1391,6 +1429,28 @@ mod tests {
 
     fn local_control() -> ProcessControl {
         App::default().selection().process_control().unwrap()
+    }
+
+    #[test]
+    fn copies_skiffd_out_of_the_appimage_once_per_change() {
+        let dir = std::env::temp_dir().join(format!("skiff-copy-out-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("mount")).unwrap();
+        let src = dir.join("mount/skiffd");
+        std::fs::write(&src, b"one").unwrap();
+        let out = dir.join("bin");
+        let dest = copy_out(&src, &out).unwrap();
+        assert_eq!(dest, out.join("skiffd"));
+        assert_eq!(std::fs::read(&dest).unwrap(), b"one");
+        let first = std::fs::metadata(&dest).unwrap();
+        assert_eq!(copy_out(&src, &out).unwrap(), dest);
+        // The same bytes: the file stays, so a running skiffd's path still names it.
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(std::fs::metadata(&dest).unwrap().ino(), first.ino());
+        std::fs::write(&src, b"two").unwrap();
+        copy_out(&src, &out).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"two");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -1774,5 +1834,37 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(outcome, [("reload", true, true, true, None), ("newer", true, true, false, Some("newer")), ("same", true, true, false, None)]);
+    }
+
+    /// #182: the bundled skiffd cannot read the daemon's handover. No reload
+    /// is planned, and the warning says why and what a restart does, in the
+    /// words `skiff status` uses.
+    #[test]
+    fn a_blocked_handover_says_why() {
+        let _env = crate::reload::tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("skiff-app-blocked-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("skiffd");
+        std::fs::write(&bin, format!("#!/bin/sh\necho '{{\"version\":\"{}\",\"handover\":[3],\"fingerprint\":\"x\"}}'\n", skiff_core::VERSION)).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let old_daemon = std::env::var_os("SKIFF_DAEMON");
+        std::env::set_var("SKIFF_DAEMON", &bin);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let app = super::App::default();
+        rt.block_on(async {
+            let c = fake_daemon(&dir, "0.0.1", skiff_core::PROTOCOL, std::process::id(), true).await;
+            super::check_daemon(&app, &c, false).await
+        });
+        match old_daemon {
+            Some(v) => std::env::set_var("SKIFF_DAEMON", v),
+            None => std::env::remove_var("SKIFF_DAEMON"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(rt.block_on(app.reload.lock()).is_none());
+        let w = rt.block_on(app.warning.lock()).clone().unwrap();
+        assert_eq!(w.kind, "outdated");
+        assert!(w.message.contains("handover 2") && w.message.contains("Restart skiffd stops them"), "{}", w.message);
     }
 }

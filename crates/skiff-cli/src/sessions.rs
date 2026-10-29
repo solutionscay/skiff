@@ -185,7 +185,7 @@ async fn needs_env(c: &Client, a: &AgentInfo) -> Result<()> {
     let info = c.daemon_info().await?;
     let v: Vec<u64> = info.version.split(['.', '-', '+']).take(3).map(|n| n.parse().unwrap_or(0)).collect();
     if (v.first().copied().unwrap_or(0), v.get(1).copied().unwrap_or(0), v.get(2).copied().unwrap_or(0)) < ENV_SINCE {
-        bail!("skiffd {} cannot give {} its instruction file. Run `skiff daemon reload`", info.version, a.id);
+        bail!("skiffd {} cannot give {} its instruction file. {}", info.version, a.id, crate::daemon::advice(c, &info).await);
     }
     Ok(())
 }

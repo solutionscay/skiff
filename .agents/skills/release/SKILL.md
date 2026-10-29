@@ -35,6 +35,10 @@ A `v*` tag triggers `.github/workflows/release.yml`. CI builds the Linux package
    Expect `.AppImage`, `.deb`, `.rpm` and `.dmg`, each twice: once with the version in
    the name, and once as `Skiff_amd64.deb`, `Skiff_x86_64.rpm`, `Skiff_amd64.AppImage`,
    `Skiff_aarch64.dmg`. The website links to the second set.
+   Also expect the updater's assets: `Skiff.app.tar.gz`, a `.sig` for it and for each
+   versioned `.AppImage`, `.deb` and `.rpm`, and `latest.json`. Check that each URL in
+   `latest.json` names an asset of this release. Without them, installed apps do not see
+   the update.
 10. Publish only when the operator says so: `gh release edit vX.Y.Z --draft=false --latest`.
 
 ## Rules

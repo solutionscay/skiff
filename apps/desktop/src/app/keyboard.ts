@@ -1,6 +1,6 @@
 /** App keys, Tab order, F6 regions, arrows in the lists. */
 import { isSkiffAgent } from "./skiffAgent";
-import { type Action, actionFor } from "./keys";
+import { type Action, actionFor, isMac } from "./keys";
 import { runAction } from "./actionDispatch";
 import { switcher } from "./commandUi";
 import { modeKeyBlocked } from "./modes";
@@ -25,10 +25,9 @@ import { animateFold } from "../ui/fold";
 import { fleetKey, isOpen, projectKey as projectRowKey, toggleRow, visibleProjects } from "../workspace/tree";
 import { scopeFleet } from "../workspace/model";
 
-/** Ctrl+Shift+1..9 picks a project row the tree shows (Command+Shift+1..9 on macOS). Not in the keymap: it is a range, not one key. */
+/** Ctrl+Shift+1..9 picks a project row the tree shows (Command+Option+1..9 on macOS). Not in the keymap: it is a range, not one key. */
 function projectKey(e: KeyboardEvent): number | null {
-  const primary = navigator.userAgent.includes("Macintosh") ? e.metaKey : e.ctrlKey;
-  if (!primary || !e.shiftKey || e.altKey || (navigator.userAgent.includes("Macintosh") ? e.ctrlKey : e.metaKey)) return null;
+  if (isMac ? !e.metaKey || !e.altKey || e.shiftKey || e.ctrlKey : !e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey) return null;
   const m = /^Digit([1-9])$/.exec(e.code);
   return m ? Number(m[1]) : null;
 }

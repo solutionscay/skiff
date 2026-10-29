@@ -143,8 +143,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const field = a instanceof HTMLInputElement && root.contains(a) ? { label: a.getAttribute("aria-label"), at: a.selectionStart, to: a.selectionEnd } : null;
     // Disk use redraws under its buttons after a count, and skiffd activity under a sort head on a sort or
     // a refresh. The keys stay on the same button, else the first one on.
-    const button = a instanceof HTMLButtonElement && a.closest(".set-main") && (tab === "disk" || a.classList.contains("set-sort")) ? a.dataset.key ?? a.textContent : null;
+    const button = a instanceof HTMLButtonElement && a.closest(".set-main") && (tab === "disk" || a.classList.contains("set-sort") || a.classList.contains("set-sink")) ? a.dataset.key ?? a.textContent : null;
+    // A selected skiffd session row keeps the keys too; an ended one hands them to the current row.
+    const row = a instanceof HTMLElement && a.classList.contains("set-daemon-row") ? a.dataset.id ?? null : null;
     draw();
+    if (row !== null) (root.querySelector<HTMLElement>(`.set-daemon-row[data-id="${CSS.escape(row)}"]`) ?? root.querySelector<HTMLElement>(`.set-daemon-row[tabindex="0"]`))?.focus();
     if (button !== null) {
       const stops = [...root.querySelectorAll<HTMLButtonElement>(".set-main button:not(:disabled, .set-x)")];
       (stops.find((b) => (b.dataset.key ?? b.textContent) === button) ?? stops[0])?.focus();
@@ -729,7 +732,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       const v = el.value;
       if (up ? v.lastIndexOf("\n", el.selectionStart - 1) >= 0 : v.indexOf("\n", el.selectionEnd) >= 0) return;
     }
-    const stops = [...root.querySelectorAll<HTMLElement>(".set-main :is(button, input, select, textarea):not(:disabled, .set-x)")];
+    // The current skiffd session row is a stop too: Left/Right go between it and its Reveal.
+    const stops = [...root.querySelectorAll<HTMLElement>(".set-main :is(button, input, select, textarea, .set-daemon-row[tabindex='0']):not(:disabled, .set-x)")];
     const at = stops.indexOf(el);
     if (at < 0) return;
     e.preventDefault();
@@ -765,9 +769,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     return true;
   }
 
-  // On the document, so Escape works wherever focus is. Menus and dialogs
-  // over settings stop the key first.
-  document.addEventListener("keydown", (e) => {
+  // Capture on the window so a terminal that still has focus while Settings
+  // loads cannot stop Escape before Settings sees it. Menus and dialogs over
+  // settings stop the key first.
+  window.addEventListener("keydown", (e) => {
     if (root.hidden || e.defaultPrevented || document.querySelector("#ctx-menu:not([hidden]), #launch-menu:not([hidden]), .confirm-overlay")) return;
     if (runKey(actionFor(e))) return e.preventDefault();
     // Cut and select all on macOS. The webview does them only through an Edit menu item.
@@ -780,7 +785,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     if (e.key !== "Escape") return;
     e.preventDefault();
     close();
-  });
+  }, true);
 
   // An external app saved a file: its status shows when the window has the keys again.
   window.addEventListener("focus", () => {
