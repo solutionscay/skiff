@@ -29,10 +29,10 @@
    {"name": "shut", "short": "shu", "path": "/srv/shut", "color": null, "agents": [], "icon": null, "background": null, "background_opacity": null,
     "worktrees": [], "default_branch": null, "error": null, "closed": true, "fleet": null, "changes": true}}}},
   {"type": "reply", "id": 3, "result": {"Ok": {"kind": "changes", "changes": [
-   {"path": "a.txt", "status": "M", "added": 1, "removed": 0},
-   {"path": "img.png", "status": "A", "added": null, "removed": null},
-   {"path": "old.txt", "status": "D", "added": 0, "removed": 3},
-   {"path": "x", "status": "U", "added": null, "removed": null}
+   {"path": "a.txt", "status": "M", "added": 1, "removed": 0, "committed": false},
+   {"path": "img.png", "status": "A", "added": null, "removed": null, "committed": false},
+   {"path": "old.txt", "status": "D", "added": 0, "removed": 3, "committed": false},
+   {"path": "x", "status": "U", "added": null, "removed": null, "committed": false}
   ]}}},
   {"type": "reply", "id": 4, "result": {"Err": {"code": "not_found", "message": "/etc is not a worktree of a project on this Host"}}},
   {"type": "reply", "id": 5, "result": {"Ok": {"kind": "diff", "diff": {"text": "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-1\n+one\n", "truncated": false, "binary": false, "untracked": false}}}},
