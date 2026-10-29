@@ -186,6 +186,16 @@ pub fn admitted() -> usize {
 }
 static ADMITTED: AtomicUsize = AtomicUsize::new(0);
 
+/// Set when the app started this service for This Mac. Then a ledger result
+/// may also sit anywhere under the person's home folder. A service reached
+/// over SSH keeps the ledger folder only.
+static THIS_MAC: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Says whether this service is This Mac's own. Off by default.
+pub fn set_this_mac(on: bool) {
+    THIS_MAC.store(on, Ordering::Relaxed);
+}
+
 /// One admitted request, from its frame until its reply is written. Its
 /// permit bounds what a connection holds: work, encoded replies and the
 /// reply being written, together.
@@ -342,11 +352,11 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             let diff = git::diff_in(&root.map_err(failed)?, &worktree, file.as_deref()).map_err(failed)?;
             Ok(Response::Diff { diff: host_diff(diff) })
         }
-        Request::FileList { worktree, dir } => {
+        Request::FileList { worktree, dir, follow_links } => {
             // As for GitChanges: held before the check, named after it.
             let root = git::Root::open(Path::new(&worktree));
             let worktree = known_worktree(&worktree)?;
-            let listing = files::list_in(&root.map_err(failed)?, &worktree, &dir).map_err(unread)?;
+            let listing = files::list_with(&root.map_err(failed)?, &worktree, &dir, follow_links).map_err(unread)?;
             Ok(Response::Files { listing: host_listing(listing) })
         }
         Request::FileRead { worktree, file, purpose } => {
@@ -547,7 +557,9 @@ fn ledger_result(uid: &str) -> Result<files::FileRead, Error> {
 }
 
 /// Where a result may be read: below the folder that holds `ledger`, where
-/// `skiff ledger` puts results, as [`files::hold_beneath`] allows. Answers
+/// `skiff ledger` puts results, as [`files::hold_beneath`] allows. On This
+/// Mac it may also be anywhere under the person's home folder: a Skipper
+/// records a repo path when its pane cannot write outside its repo. Answers
 /// the held folder, its path and the result relative to it. A ledger with
 /// no folder of its own serves no result: never the root in its place.
 fn result_file(ledger: &Path, result: &str) -> Result<(git::Root, std::path::PathBuf, String), Error> {
@@ -556,7 +568,16 @@ fn result_file(ledger: &Path, result: &str) -> Result<(git::Root, std::path::Pat
         .filter(|f| f.is_absolute() && f.parent().is_some())
         .ok_or_else(|| Error::NotFound { message: format!("{} has no folder to hold results", ledger.display()) })?
         .to_path_buf();
-    let (root, rel) = files::hold_beneath(&folder, Path::new(result)).map_err(unread)?;
+    let beneath = files::hold_beneath(&folder, Path::new(result));
+    let (root, folder, rel) = match beneath {
+        Ok((root, rel)) => (root, folder, rel),
+        Err(e) => {
+            let home = dirs::home_dir().filter(|h| THIS_MAC.load(Ordering::Relaxed) && h.is_absolute() && h.parent().is_some());
+            let Some(home) = home else { return Err(unread(e)) };
+            let (root, rel) = files::hold_beneath(&home, Path::new(result)).map_err(unread)?;
+            (root, home, rel)
+        }
+    };
     Ok((root, folder, rel))
 }
 

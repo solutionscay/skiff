@@ -802,7 +802,7 @@ const DATA_START_WAIT: Duration = Duration::from_secs(10);
 /// A second start finds the first one listening and exits.
 fn spawn_data_service(_local: &ProcessControl, session: &std::path::Path) -> anyhow::Result<()> {
     let mut cmd = std::process::Command::new(data_binary());
-    cmd.arg("--session-socket").arg(session);
+    cmd.arg("--session-socket").arg(session).arg("--this-mac");
     reap(spawn_detached(cmd, skiff_core::socket::data_socket(session).with_extension("log"))?);
     Ok(())
 }
