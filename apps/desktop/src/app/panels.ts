@@ -17,6 +17,7 @@ import { launchChoices } from "./stateQueries";
 import { loadThemes, themeOverrides } from "../appearance/themes";
 import { refocusTerminal, selectProject } from "../workspace/view";
 import { includeAdded } from "../workspace/profile";
+import { skipperStart } from "../workspace/menus";
 
 export const settings = createSettings(
   (a) => {
@@ -44,6 +45,7 @@ export const settings = createSettings(
 
 export const launchMenu = createLaunchMenu({
   choices: launchChoices,
+  skipper: (p) => skipperStart(p),
   start: (p, w, agent) => {
     S.selectedProject = p.name;
     selectedWorktree.set(p.name, w.path);
