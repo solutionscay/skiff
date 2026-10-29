@@ -335,14 +335,18 @@ export function projectMenu(p: Project, x: number, y: number) {
     edits && !isFolder(p) && { icon: showsChanges(p) ? "indicators-check" : "", label: "Changes", hint: keyLabel("project-changes"), run: run["project-changes"] },
     edits && hostCan("files") && { icon: showsFiles(p) ? "indicators-check" : "", label: "Files", hint: keyLabel("project-files"), run: run["project-files"] },
   ]);
+  // This Mac starts them itself; a remote Host, through its skiff-host.
+  // The start choices carry the Skipper first when they show; else its items lead the menu.
+  const carried = !!bare && !p.error && starts;
+  const skipper = local || hostCan("skipper_run") ? projectSkipperEntries(p, !carried) : [];
   ctxMenu.open(x, y, p.path, tidy([
+    ...(carried ? [] : skipper),
+    { sep: true },
     ...start,
     !!bare && { sep: true },
     // A plain folder has no git: no worktrees.
     hostCan("worktrees") && !isFolder(p) && { icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
-    // This Mac starts them itself; a remote Host, through its skiff-host.
-    // The start choices above carry the Skipper when they show.
-    ...(local || hostCan("skipper_run") ? projectSkipperEntries(p, !(bare && !p.error && starts)) : []),
+    ...(carried ? skipper : []),
     { sep: true },
     local && { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: run["project-folder"] },
     { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
