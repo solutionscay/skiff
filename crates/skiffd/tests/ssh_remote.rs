@@ -468,7 +468,7 @@ async fn remote_projects_and_git_status_come_from_the_hosts_data_plane_over_a_re
     assert_eq!((projects[0].name.as_str(), projects[0].fleet.as_deref()), ("on the Host", Some("far")));
     let worktree = projects[0].worktrees[0].path.clone();
     assert_eq!(Path::new(&worktree).canonicalize().unwrap(), repo.canonicalize().unwrap());
-    let changes = data::git_changes(&c, &worktree).await.unwrap();
+    let changes = data::git_changes(&c, &worktree).await.unwrap().changes;
     assert_eq!(changes.len(), 1);
     assert_eq!((changes[0].path.as_str(), changes[0].added, changes[0].removed), ("a.txt", Some(1), Some(0)));
     // Its diff text comes from the Host's git over the same forward.
