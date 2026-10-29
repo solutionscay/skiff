@@ -5,12 +5,13 @@
  */
 import { en } from "./en";
 import { es } from "./es";
+import { zh } from "./zh";
 
 export type Messages = typeof en;
 export type MessageKey = keyof Messages;
 export type Vars = Record<string, string | number>;
 
-const catalogs: Record<string, Partial<Record<MessageKey, string>>> = { en, es };
+const catalogs: Record<string, Partial<Record<MessageKey, string>>> = { en, es, zh };
 
 let current: Partial<Record<MessageKey, string>> = en;
 let currentLang = "en";

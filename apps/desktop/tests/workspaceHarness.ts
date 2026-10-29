@@ -64,7 +64,8 @@ function words(name: string) {
   if (!catalog) {
     const en = moduleFromSource("../src/i18n/en.ts", {}, {}, "");
     const es = moduleFromSource("../src/i18n/es.ts", {}, {}, "");
-    catalog = { en, i18n: moduleFromSource("../src/i18n/index.ts", { "./en": en, "./es": es }, {}, "") };
+    const zh = moduleFromSource("../src/i18n/zh.ts", {}, {}, "");
+    catalog = { en, i18n: moduleFromSource("../src/i18n/index.ts", { "./en": en, "./es": es, "./zh": zh }, {}, "") };
   }
   return name.endsWith("/en") ? catalog.en : catalog.i18n;
 }
