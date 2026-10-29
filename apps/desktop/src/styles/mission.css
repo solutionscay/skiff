@@ -87,6 +87,10 @@
 .mission-card.folder { background: var(--bg-raised); }
 .mission-card.folder .body { gap: 10px; }
 .mission-card.folder .t { font-weight: 600; }
+/* A card on the move follows the pointer over the others. While one moves, the others make room in 120ms, and the dropped card settles into its slot the same way. */
+.mission-items.reorder .mission-card { transition: left 120ms, top 120ms; }
+.mission-card.dragging { transition: none; z-index: 6; cursor: grabbing; }
+@media (prefers-reduced-motion: reduce) { .mission-items.reorder .mission-card { transition: none; } }
 /* The pin a string ties to: a round dot in the card's state color. */
 .mission-pin { position: absolute; left: 50%; top: -4px; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%; background: var(--rule-strong); }
 .mission-pin.working { background: var(--state-working); }

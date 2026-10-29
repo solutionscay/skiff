@@ -14,9 +14,14 @@
  * one column up to two cards, two up to six, three past that. A plan is a
  * 20px caption above its cards. A folded cluster is one card.
  *
- * A moved card or cluster keeps an offset from its automatic place, so a new
- * session or a fold never undoes a hand move. All lengths are in unzoomed px:
- * the board scales the whole world by the app zoom.
+ * A thing moves only inside its parent. A card has no offset: it has a place
+ * in its cluster's order, and a drag reorders the cluster (`slotAt`,
+ * `reorder`). A project in a fleet keeps an offset from its grid place, but
+ * never goes above or left of the frame's inside, and the frame grows right
+ * and down to hold it. A fleet, a project in no fleet, Other and Admiral keep
+ * a free offset on the canvas. So a new session or a fold never undoes a hand
+ * move, and nothing leaves its frame. All lengths are in unzoomed px: the
+ * board scales the whole world by the app zoom.
  */
 
 export const CARD_W = 224;
@@ -74,7 +79,10 @@ export interface Graph {
   /** The projects in no fleet, then Other when it has sessions. */
   projects: GProject[];
 }
+/** Hand moves: the offset of a fleet, a project or Admiral from its automatic place. A card's id here is ignored. */
 export type Offsets = Record<string, { dx: number; dy: number }>;
+/** The hand order of each cluster's cards, by cluster key. */
+export type Order = Record<string, string[]>;
 export interface Rect {
   x: number;
   y: number;
@@ -94,6 +102,10 @@ export interface Placed {
   cards: Map<string, Rect>;
   clusters: Map<string, Cluster>;
   plans: PlanBox[];
+  /** Each open cluster's cards in the order they show: plan by plan, then the loose ones. */
+  order: Map<string, string[]>;
+  /** The offsets as applied, after the clamp to the parent, for every fleet, project and Admiral placed. */
+  offs: Offsets;
 }
 
 const off = (offs: Offsets, id: string) => offs[id] ?? { dx: 0, dy: 0 };
@@ -177,23 +189,15 @@ export function gridPlace(blocks: { w: number; h: number }[], gap: number, rowGa
 
 /** Lays the graph out and applies the hand offsets. */
 export function placeGraph(g: Graph, offs: Offsets): Placed {
-  const out: Placed = { cards: new Map(), clusters: new Map(), plans: [] };
-  const putBlock = (b: Block, ox: number, oy: number) => {
-    const o = off(offs, b.p.key);
-    const bx = ox + o.dx;
-    const by = oy + o.dy;
-    if (b.skipper && b.p.skipper) {
-      const so = off(offs, b.p.skipper);
-      out.cards.set(b.p.skipper, { x: bx + b.skipper.x + so.dx, y: by + b.skipper.y + so.dy, w: CARD_W, h: CARD_H });
-    }
+  const out: Placed = { cards: new Map(), clusters: new Map(), plans: [], order: new Map(), offs: {} };
+  const putBlock = (b: Block, bx: number, by: number) => {
+    if (b.skipper && b.p.skipper) out.cards.set(b.p.skipper, { x: bx + b.skipper.x, y: by + b.skipper.y, w: CARD_W, h: CARD_H });
     const cx = bx + b.cluster.x;
     const cy = by + b.cluster.y;
     out.clusters.set(b.p.key, { x: cx, y: cy, w: b.cluster.box.w, h: b.cluster.box.h, fleet: false, folded: b.p.folded });
     for (const pl of b.cluster.box.plans) out.plans.push({ key: `${b.p.key}:${pl.plan.uid}`, plan: pl.plan, x: cx + pl.x, y: cy + pl.y, w: pl.w, h: PLAN_H });
-    for (const c of b.cluster.box.cards) {
-      const co = off(offs, c.id);
-      out.cards.set(c.id, { x: cx + c.x + co.dx, y: cy + c.y + co.dy, w: CARD_W, h: CARD_H });
-    }
+    for (const c of b.cluster.box.cards) out.cards.set(c.id, { x: cx + c.x, y: cy + c.y, w: CARD_W, h: CARD_H });
+    out.order.set(b.p.key, b.cluster.box.cards.map((c) => c.id));
   };
   type Top = { w: number; h: number; draw: (x: number, y: number) => void };
   const tops: Top[] = [];
@@ -201,28 +205,45 @@ export function placeGraph(g: Graph, offs: Offsets): Placed {
     const blocks = f.projects.map(block);
     // The fleet's own grid: three projects per row, under its Skipper.
     const grid = gridPlace(blocks, FLEET_GAP, FLEET_GAP);
-    const by = HEAD + FP + (f.skipper ? CARD_H + DROP : 0);
-    const w = Math.max(grid.w + FP * 2, f.skipper ? CARD_W + FP * 2 : 0);
-    const h = by + grid.h + FP;
+    const top = HEAD + FP;
+    const by = top + (f.skipper ? CARD_H + DROP : 0);
+    // Each project moves inside the frame by its offset, but never above or left of the frame's inside.
+    const at = blocks.map((b, i) => {
+      const o = off(offs, b.p.key);
+      const x = Math.max(FP, FP + grid.at[i].x + o.dx);
+      const y = Math.max(top, by + grid.at[i].y + o.dy);
+      out.offs[b.p.key] = { dx: x - FP - grid.at[i].x, dy: y - by - grid.at[i].y };
+      return { x, y };
+    });
+    // The frame: as wide and tall as its grid, and grown right and down to hold a moved project.
+    const w0 = Math.max(grid.w, f.skipper ? CARD_W : 0) + FP * 2;
+    const w = Math.max(w0, ...blocks.map((b, i) => at[i].x + b.w + FP));
+    const h = Math.max(by + grid.h + FP, ...blocks.map((b, i) => at[i].y + b.h + FP));
     tops.push({
       w,
       h,
       draw: (fx, fy) => {
         const o = off(offs, f.key);
+        out.offs[f.key] = o;
         const tx = fx + o.dx;
         const ty = fy + o.dy;
         out.clusters.set(f.key, { x: tx, y: ty, w, h, fleet: true, folded: false });
-        if (f.skipper) {
-          const so = off(offs, f.skipper);
-          out.cards.set(f.skipper, { x: tx + w / 2 - CARD_W / 2 + so.dx, y: ty + HEAD + FP + so.dy, w: CARD_W, h: CARD_H });
-        }
-        blocks.forEach((b, i) => putBlock(b, tx + FP + grid.at[i].x, ty + by + grid.at[i].y));
+        if (f.skipper) out.cards.set(f.skipper, { x: tx + w0 / 2 - CARD_W / 2, y: ty + top, w: CARD_W, h: CARD_H });
+        blocks.forEach((b, i) => putBlock(b, tx + at[i].x, ty + at[i].y));
       },
     });
   }
   for (const p of g.projects) {
     const b = block(p);
-    tops.push({ w: b.w, h: b.h, draw: (x, y) => putBlock(b, x, y) });
+    tops.push({
+      w: b.w,
+      h: b.h,
+      draw: (x, y) => {
+        const o = off(offs, p.key);
+        out.offs[p.key] = o;
+        putBlock(b, x + o.dx, y + o.dy);
+      },
+    });
   }
   // The outer grid, under Admiral.
   const y0 = g.admiral ? CARD_H + ADMIRAL_DROP : 0;
@@ -230,9 +251,73 @@ export function placeGraph(g: Graph, offs: Offsets): Placed {
   tops.forEach((t, i) => t.draw(grid.at[i].x, y0 + grid.at[i].y));
   if (g.admiral) {
     const o = off(offs, g.admiral);
+    out.offs[g.admiral] = o;
     out.cards.set(g.admiral, { x: GRID_W / 2 - CARD_W / 2 + o.dx, y: o.dy, w: CARD_W, h: CARD_H });
   }
   return out;
+}
+
+// ---- Hand moves ----
+
+const allProjects = (g: Graph) => [...g.fleets.flatMap((f) => f.projects), ...g.projects];
+
+/** `cards` in the kept order: the ones `kept` names first, in its order, then the rest as they come. */
+export function orderCards(cards: string[], kept: string[] | undefined): string[] {
+  if (!kept?.length) return cards;
+  const have = new Set(cards);
+  const first = kept.filter((id) => have.has(id));
+  const seen = new Set(first);
+  return [...first, ...cards.filter((id) => !seen.has(id))];
+}
+
+/** `list` with `id` at `index`: the others make room. */
+export function reorder(list: string[], id: string, index: number): string[] {
+  const rest = list.filter((x) => x !== id);
+  rest.splice(Math.max(0, Math.min(rest.length, index)), 0, id);
+  return rest;
+}
+
+/**
+ * The slot under `at` in cluster `key`: the index, in the cluster's shown
+ * order, of the card slot nearest to `at`. `null` when `at` is outside the
+ * frame: a drop there changes nothing, and the card springs back.
+ */
+export function slotAt(p: Placed, key: string, at: { x: number; y: number }): number | null {
+  const c = p.clusters.get(key);
+  const ids = p.order.get(key);
+  if (!c || !ids?.length || at.x < c.x || at.y < c.y || at.x > c.x + c.w || at.y > c.y + c.h) return null;
+  let best = 0;
+  let near = Infinity;
+  ids.forEach((id, i) => {
+    const r = p.cards.get(id);
+    if (!r) return;
+    const d = Math.hypot(at.x - (r.x + r.w / 2), at.y - (r.y + r.h / 2));
+    if (d < near) {
+      near = d;
+      best = i;
+    }
+  });
+  return best;
+}
+
+/**
+ * What a drag of `id` moves: Admiral itself, a fleet or project by its frame,
+ * its Skipper's card or its folded card. `null` for a session card: it
+ * reorders in its cluster instead (`clusterOf`).
+ */
+export function moveKey(g: Graph, id: string): string | null {
+  if (id === g.admiral) return id;
+  for (const f of g.fleets) {
+    if (id === f.key || id === f.skipper) return f.key;
+    for (const p of f.projects) if (id === p.key || id === p.skipper) return p.key;
+  }
+  for (const p of g.projects) if (id === p.key || id === p.skipper) return p.key;
+  return null;
+}
+
+/** The cluster that holds the session card `id`. `null` for a Skipper, Admiral or a stranger. */
+export function clusterOf(g: Graph, id: string): string | null {
+  return allProjects(g).find((p) => p.cards.includes(id))?.key ?? null;
 }
 
 /** The box around everything placed. Empty: a zero box at the origin. */
@@ -316,7 +401,6 @@ export function edgeTick(v: View, r: Rect, vw: number, vh: number, size = 10): {
 
 // ---- The keys' moves through the graph ----
 
-const allProjects = (g: Graph) => [...g.fleets.flatMap((f) => f.projects), ...g.projects];
 /** The node that stands for a fleet in the graph: its Skipper's card, else its frame. */
 const fleetNode = (f: GFleet) => f.skipper ?? f.key;
 const projectNode = (p: GProject) => p.skipper ?? p.key;

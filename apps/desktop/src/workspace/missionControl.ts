@@ -16,10 +16,14 @@
  * Esc clears it, so a close and an open keep it.
  *
  * Drag empty space or use the wheel to pan. Ctrl+wheel and pinch zoom at the
- * pointer. Home fits the graph. Drag a card or a cluster head to move it: it
- * keeps an offset from its automatic place, so a new session or a fold never
- * undoes a hand move. Offsets, folds and the panel's fold persist on this
- * computer, per Host.
+ * pointer. Home fits the graph. A thing moves only inside its parent. Drag a
+ * card to reorder it in its cluster: the others make room, and it snaps into
+ * a slot. Drag a cluster by its head, or by its Skipper's card: a project in
+ * a fleet moves inside the frame, which grows to hold it; a fleet, a project
+ * in no fleet, Other and Admiral move on the canvas. A drop outside the
+ * parent springs back. A drop never changes a session's project or fleet.
+ * The order of each cluster, the offsets, the folds and the panel's fold
+ * persist on this computer, per Host.
  *
  * The panel under the canvas shows the lit card: its last 12 screen lines,
  * read-only text from skiffd, its task, or a Skipper's hand-offs. One read a
@@ -109,11 +113,13 @@ const appZoom = () => parseFloat(getComputedStyle(document.documentElement).getP
 
 interface Kept {
   offs: G.Offsets;
+  order: G.Order;
   folded: string[];
   opened: string[];
   panel: boolean;
 }
 let offs: G.Offsets = {};
+let order: G.Order = {};
 /** Folded by hand, and opened by hand against the Running rule. */
 let folded = new Set<string>();
 let opened = new Set<string>();
@@ -133,14 +139,19 @@ function loadKept() {
     /* start as laid out */
   }
   offs = k.offs && typeof k.offs === "object" ? k.offs : {};
+  order = k.order && typeof k.order === "object" ? k.order : {};
   folded = new Set(Array.isArray(k.folded) ? k.folded : []);
   opened = new Set(Array.isArray(k.opened) ? k.opened : []);
   panelOpen = k.panel !== false;
 }
 
 function saveKept() {
+  // Only a fleet, a project and Admiral keep an offset; a cluster keeps an order. A card's old offset goes.
+  const keep = new Set([...placed.clusters.keys(), ...(m.g.admiral ? [m.g.admiral] : [])]);
+  for (const k of Object.keys(offs)) if (!keep.has(k)) delete offs[k];
+  for (const k of Object.keys(order)) if (!keep.has(k)) delete order[k];
   try {
-    localStorage.setItem(keptKey(), JSON.stringify({ offs, folded: [...folded], opened: [...opened], panel: panelOpen } satisfies Kept));
+    localStorage.setItem(keptKey(), JSON.stringify({ offs, order, folded: [...folded], opened: [...opened], panel: panelOpen } satisfies Kept));
   } catch {
     /* the layout lasts for this run */
   }
@@ -277,7 +288,9 @@ function model(): Model {
 
   const cluster = (p: Project | null, skipper: SessionInfo | null): G.GProject => {
     const key = p ? `project:${p.name}` : OTHER;
-    const list = projectSessions(p);
+    // The cards in the hand order, then the new ones in tree order.
+    const byId = new Map(projectSessions(p).map((s) => [s.id, s]));
+    const list = G.orderCards([...byId.keys()], order[key]).map((id) => byId.get(id)!);
     projects.set(key, p);
     members.set(key, list);
     for (const s of list) {
@@ -324,7 +337,7 @@ function model(): Model {
 }
 
 let m: Model = { g: { admiral: null, fleets: [], projects: [] }, sess: new Map(), projects: new Map(), members: new Map(), rows: new Map(), strs: [], found: null };
-let placed: G.Placed = { cards: new Map(), clusters: new Map(), plans: [] };
+let placed: G.Placed = { cards: new Map(), clusters: new Map(), plans: [], order: new Map(), offs: {} };
 
 // ---- Time in state ----
 
@@ -485,9 +498,13 @@ function draw() {
     el.className = `mission-card ${cls}`;
     setClass(el, "lit", id === lit);
     setClass(el, "dim", dim);
+    setClass(el, "dragging", drag?.card?.id === id);
     el.style.setProperty("--pc", pc);
-    el.style.left = `${r.x}px`;
-    el.style.top = `${r.y}px`;
+    // A card on the move stays under the pointer; its slot waits for it.
+    if (drag?.card?.id !== id) {
+      el.style.left = `${r.x}px`;
+      el.style.top = `${r.y}px`;
+    }
     refill(el, parts);
   };
   for (const [id, r] of placed.cards) {
@@ -752,7 +769,7 @@ function openMenu() {
     at ? r.bottom : r.top,
     "MISSION CONTROL",
     [
-      { label: "Arrange", run: () => (offs = {}, saveKept(), draw(), fit(), back()) },
+      { label: "Arrange", run: () => (offs = {}, order = {}, saveKept(), draw(), fit(), back()) },
       { label: "Fit", hint: "Home", run: () => (fit(), back()) },
       { sep: true },
       { label: "Fold all", run: () => (foldAll(true), back()) },
@@ -897,16 +914,20 @@ function tick() {
 interface Drag {
   x: number;
   y: number;
-  /** The card or cluster under the pointer; none pans. */
+  /** The card or cluster under the pointer, for the click. */
   id: string | null;
+  /** A fleet, a project or Admiral on the move, with its offset at the start. */
+  move: { key: string; o: { dx: number; dy: number } } | null;
+  /** A session card on the move in its cluster, from its place at the start. */
+  card: { id: string; cluster: string; x: number; y: number } | null;
   chev: boolean;
   moved: boolean;
   vx: number;
   vy: number;
-  o: { dx: number; dy: number };
 }
 let drag: Drag | null = null;
 let dragFrame = 0;
+let settleTimer: number | undefined;
 
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
@@ -918,12 +939,25 @@ canvas.addEventListener("pointerdown", (e) => {
   }
   const el = t.closest<HTMLElement>(".mission-card, .mission-cluster");
   const head = t.closest(".mission-cluster-head");
-  const id = el?.dataset.id ?? null;
   // A cluster moves by its head only. Its inside is the canvas.
-  const grab = el && (el.classList.contains("mission-card") || head) ? id : null;
-  drag = { x: e.clientX, y: e.clientY, id: grab, chev: !!t.closest(".mission-chev"), moved: false, vx: view.x, vy: view.y, o: { ...(offs[grab ?? ""] ?? { dx: 0, dy: 0 }) } };
+  const id = (el && (el.classList.contains("mission-card") || head) ? el.dataset.id : null) ?? null;
+  // A Skipper's card, a folded cluster and a cluster head move their block; a session card reorders in its cluster.
+  const key = id ? G.moveKey(m.g, id) : null;
+  const cluster = id && !key ? G.clusterOf(m.g, id) : null;
+  const at = cluster ? placed.cards.get(id!) : null;
+  drag = {
+    x: e.clientX,
+    y: e.clientY,
+    id,
+    move: key ? { key, o: { ...(placed.offs[key] ?? { dx: 0, dy: 0 }) } } : null,
+    card: cluster && at ? { id: id!, cluster, x: at.x, y: at.y } : null,
+    chev: !!t.closest(".mission-chev"),
+    moved: false,
+    vx: view.x,
+    vy: view.y,
+  };
   canvas.setPointerCapture(e.pointerId);
-  if (!grab) canvas.classList.add("panning");
+  if (!drag.move && !drag.card) canvas.classList.add("panning");
   e.preventDefault();
 });
 canvas.addEventListener("pointermove", (e) => {
@@ -932,26 +966,65 @@ canvas.addEventListener("pointermove", (e) => {
   const dy = e.clientY - drag.y;
   if (!drag.moved && Math.hypot(dx, dy) < 4) return;
   drag.moved = true;
-  if (drag.id) {
-    offs[drag.id] = { dx: drag.o.dx + dx / view.z, dy: drag.o.dy + dy / view.z };
+  if (drag.move) {
+    // The layout clamps it to its parent; the stored offset follows at the drop.
+    offs[drag.move.key] = { dx: drag.move.o.dx + dx / view.z, dy: drag.move.o.dy + dy / view.z };
     // One draw per frame while the pointer moves.
     if (!dragFrame) dragFrame = requestAnimationFrame(() => (dragFrame = 0, draw()));
+  } else if (drag.card) {
+    const c = drag.card;
+    const el = cards.get(c.id);
+    const x = c.x + dx / view.z;
+    const y = c.y + dy / view.z;
+    if (el) {
+      window.clearTimeout(settleTimer);
+      items.classList.add("reorder");
+      el.classList.add("dragging");
+      el.style.left = `${x}px`;
+      el.style.top = `${y}px`;
+    }
+    // The slot under the card's middle: the others make room. Outside the frame, the order stays.
+    const slot = G.slotAt(placed, c.cluster, { x: x + G.CARD_W / 2, y: y + G.CARD_H / 2 });
+    const shown = placed.order.get(c.cluster) ?? [];
+    if (slot !== null && shown[slot] !== c.id) {
+      order[c.cluster] = G.reorder(shown, c.id, slot);
+      if (!dragFrame) dragFrame = requestAnimationFrame(() => (dragFrame = 0, draw()));
+    }
   } else {
     view.x = drag.vx + dx;
     view.y = drag.vy + dy;
     applyView();
   }
 });
+/** The dropped card goes to its slot: the last valid place. */
+function settle(id: string) {
+  const el = cards.get(id);
+  const r = placed.cards.get(id);
+  el?.classList.remove("dragging");
+  if (el && r) {
+    el.style.left = `${r.x}px`;
+    el.style.top = `${r.y}px`;
+  }
+  settleTimer = window.setTimeout(() => items.classList.remove("reorder"), 150);
+}
 const endDrag = (e: PointerEvent) => {
   if (!drag) return;
   canvas.classList.remove("panning");
   const d = drag;
   drag = null;
-  if (e.type === "pointercancel") return;
   if (d.moved) {
-    if (d.id) saveKept();
+    if (dragFrame) {
+      cancelAnimationFrame(dragFrame);
+      dragFrame = 0;
+      draw();
+    }
+    // The offset as the layout applied it: inside the parent.
+    if (d.move && placed.offs[d.move.key]) offs[d.move.key] = placed.offs[d.move.key];
+    if (d.card) settle(d.card.id);
+    saveKept();
     return;
   }
+  if (e.type === "pointercancel") return;
   root.focus();
   if (!d.id) return;
   if (d.chev && (isCluster(d.id) || cards.get(d.id)?.classList.contains("folder"))) {
@@ -1118,6 +1191,7 @@ export const board = {
     topbar()?.toggleAttribute("inert", document.body.classList.contains("focus-mode"));
     root.hidden = true;
     drag = null;
+    items.classList.remove("reorder");
     screenFor = null;
     for (const el of [...cards.values(), ...clusters.values(), ...plans.values()]) el.remove();
     cards.clear();

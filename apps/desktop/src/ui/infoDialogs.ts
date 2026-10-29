@@ -66,7 +66,7 @@ const FIXED_SHORTCUTS: Shortcut[] = [
   ["Mission control", "Go to the lit session. A cluster: its first session", "Enter"],
   ["Mission control", "Fold or open the lit cluster", "Space"],
   ["Mission control", "Fit the graph, zoom in, zoom out", "Home / = / -"],
-  ["Mission control", "Pan, or zoom at the pointer. Drag a card or a cluster head to move it", isMac ? "Drag / wheel / ⌘+wheel" : "Drag / wheel / Ctrl+wheel"],
+  ["Mission control", "Pan, or zoom at the pointer. Drag a card to reorder it in its cluster, or a cluster head to move the cluster inside its fleet or on the canvas", isMac ? "Drag / wheel / ⌘+wheel" : "Drag / wheel / Ctrl+wheel"],
   ["Mission control", "Close. With text in the search, the first Esc clears it", "Esc"],
   ["Images", "Search images", "Type"],
   ["Images", "Go from the search to the list, and back", "↓ / ↑"],

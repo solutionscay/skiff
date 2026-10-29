@@ -110,7 +110,7 @@ test("a folded cluster is one card, and its sessions stand in by it", () => {
   assert.equal(G.navChildren(g, "project:gesher").length, 0, "a folded cluster has nothing under it");
 });
 
-test("a hand offset moves a card or a cluster with its contents, and nothing else", () => {
+test("a hand offset moves a cluster with its contents, and nothing else; a card has no offset", () => {
   const base = G.placeGraph(graph(), {});
   const moved = G.placeGraph(graph(), { "project:skiff": { dx: 100, dy: -30 }, s4: { dx: 7, dy: 7 } });
   for (const id of ["sk-skiff", "s6", "s7", "s8"]) {
@@ -118,8 +118,82 @@ test("a hand offset moves a card or a cluster with its contents, and nothing els
     assert.equal(moved.cards.get(id)!.y, base.cards.get(id)!.y - 30, id);
   }
   assert.equal(moved.clusters.get("project:skiff")!.x, base.clusters.get("project:skiff")!.x + 100);
-  assert.deepEqual(moved.cards.get("s4"), { ...base.cards.get("s4")!, x: base.cards.get("s4")!.x + 7, y: base.cards.get("s4")!.y + 7 });
+  assert.deepEqual(moved.cards.get("s4"), base.cards.get("s4"), "a card's offset is ignored: it never leaves its frame");
   for (const id of ["ad", "sk-web", "s1", "s5", "s9", "s11"]) assert.deepEqual(moved.cards.get(id), base.cards.get(id), `${id} stays`);
+  // A drag of Admiral moves Admiral; of a Skipper's card or a folded card, its block; a session card reorders instead.
+  const g = graph();
+  assert.equal(G.moveKey(g, "ad"), "ad");
+  assert.equal(G.moveKey(g, "sk-web"), "fleet:Web");
+  assert.equal(G.moveKey(g, "fleet:Web"), "fleet:Web");
+  assert.equal(G.moveKey(g, "sk-skiff"), "project:skiff");
+  assert.equal(G.moveKey(g, "project:checkout"), "project:checkout");
+  assert.equal(G.moveKey(g, "s4"), null);
+  assert.equal(G.clusterOf(g, "s4"), "project:checkout");
+  assert.equal(G.clusterOf(g, "sk-web"), null);
+});
+
+test("a card reorders inside its cluster: the slot under it, the others make room, and a drop outside springs back", () => {
+  const g = graph();
+  const p = G.placeGraph(g, {});
+  const c = p.clusters.get("project:checkout")!;
+  assert.deepEqual(p.order.get("project:checkout"), ["s4", "s5"]);
+  const s4 = p.cards.get("s4")!;
+  const s5 = p.cards.get("s5")!;
+  const mid = (r: G.Rect) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+  // Two cards sit side by side. The slot nearest the card's middle: its own, then the other's once it is past the midpoint between them.
+  assert.equal(s4.y, s5.y);
+  assert.equal(G.slotAt(p, "project:checkout", mid(s4)), 0);
+  assert.equal(G.slotAt(p, "project:checkout", { x: (mid(s4).x + mid(s5).x) / 2 - 10, y: mid(s4).y + 20 }), 0);
+  assert.equal(G.slotAt(p, "project:checkout", { x: (mid(s4).x + mid(s5).x) / 2 + 10, y: mid(s4).y - 20 }), 1);
+  // Outside the frame: no slot, so the order stays and the card springs back to its last place.
+  assert.equal(G.slotAt(p, "project:checkout", { x: c.x - 1, y: mid(s4).y }), null);
+  assert.equal(G.slotAt(p, "project:checkout", { x: mid(s4).x, y: c.y + c.h + 1 }), null);
+  // The others make room: s4 to slot 1 puts s5 first.
+  assert.deepEqual(G.reorder(["s4", "s5"], "s4", 1), ["s5", "s4"]);
+  assert.deepEqual(G.reorder(["a", "b", "c", "d"], "d", 0), ["d", "a", "b", "c"]);
+  assert.deepEqual(G.reorder(["a", "b", "c"], "a", 9), ["b", "c", "a"], "past the end: last");
+  // The kept order leads; a new session follows in tree order; a gone one is dropped.
+  assert.deepEqual(G.orderCards(["s4", "s5", "s6"], ["s5", "gone", "s4"]), ["s5", "s4", "s6"]);
+  assert.deepEqual(G.orderCards(["s4", "s5"], undefined), ["s4", "s5"]);
+  // The reordered cluster places the cards in the new order, in the same slots.
+  g.fleets[0].projects[1].cards = G.reorder(["s4", "s5"], "s4", 1);
+  const q = G.placeGraph(g, {});
+  assert.deepEqual(q.order.get("project:checkout"), ["s5", "s4"]);
+  assert.deepEqual(q.cards.get("s5"), s4);
+  assert.deepEqual(q.cards.get("s4"), s5);
+  assert.deepEqual(q.clusters.get("project:checkout"), c, "the frame does not change");
+});
+
+test("a project in a fleet stays inside the frame: clamped above and left, and the frame grows right and down to hold it", () => {
+  const g = graph();
+  const base = G.placeGraph(g, {});
+  const frame = base.clusters.get("fleet:Web")!;
+  const sf = base.clusters.get("project:storefront")!;
+  // Left and up past the inside of the frame: the project stops at the frame's padding, under its head; the applied offset says so.
+  const up = G.placeGraph(g, { "project:storefront": { dx: -500, dy: -500 } });
+  const c = up.clusters.get("project:storefront")!;
+  assert.equal(c.x, frame.x + 16);
+  assert.equal(c.y, frame.y + 20 + 16);
+  assert.deepEqual(up.offs["project:storefront"], { dx: c.x - sf.x, dy: c.y - sf.y });
+  assert.deepEqual(up.clusters.get("fleet:Web"), frame, "the frame keeps its size");
+  assert.ok(inside(c, up.clusters.get("fleet:Web")!));
+  for (const id of ["s1", "s2", "s3"]) assert.ok(inside(up.cards.get(id)!, c), `${id} inside its moved cluster`);
+  // Right and down: the frame grows to hold the project, with its padding, and the blocks after it move down with the taller frame.
+  const grown = G.placeGraph(g, { "project:checkout": { dx: 300, dy: 200 } });
+  const ck = grown.clusters.get("project:checkout")!;
+  const f2 = grown.clusters.get("fleet:Web")!;
+  assert.deepEqual(grown.offs["project:checkout"], { dx: 300, dy: 200 }, "an offset inside the frame applies as given");
+  assert.ok(inside(ck, f2));
+  assert.equal(f2.x + f2.w, ck.x + ck.w + 16);
+  assert.equal(f2.y + f2.h, ck.y + ck.h + 16);
+  assert.ok(f2.w > frame.w && f2.h > frame.h);
+  assert.equal(grown.cards.get("sk-web")!.x, base.cards.get("sk-web")!.x, "the fleet Skipper stays put");
+  assert.ok(!overlap(f2, grown.clusters.get("project:skiff")!), "the wider frame takes its row alone");
+  // The free blocks and Admiral go where they are put, with no clamp.
+  const free = G.placeGraph(g, { "fleet:Web": { dx: -300, dy: -100 }, "project:gesher": { dx: 0, dy: -900 }, ad: { dx: 50, dy: -50 } });
+  assert.equal(free.clusters.get("fleet:Web")!.x, frame.x - 300);
+  assert.equal(free.clusters.get("project:gesher")!.y, base.clusters.get("project:gesher")!.y - 900);
+  assert.deepEqual(free.cards.get("ad"), { ...base.cards.get("ad")!, x: base.cards.get("ad")!.x + 50, y: base.cards.get("ad")!.y - 50 });
 });
 
 test("the keys move along the tree: parent, children, siblings", () => {
