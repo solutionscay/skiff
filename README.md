@@ -8,12 +8,18 @@
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey" alt="Platforms: Linux and macOS">
 </p>
 
+<!-- hero: keep in step with the skiff-web home hero; check with scripts/hero-sync.py -->
+<h3 align="center">A small workspace for coding agents.</h3>
+
+<p align="center">Skiff keeps agent sessions organized across projects and Git worktrees.</p>
+
+<p align="center"><a href="https://skiff.solutionscay.com/"><img src="https://skiff.solutionscay.com/shots/skiff-mission-control-hero-poster.webp" width="1600" alt="Skiff Mission control: Admiral at the top, the Skippers under it, each project a cluster of session cards, and a string from each owner to each pane. Click to play the video on the website."></a></p>
+<!-- /hero -->
+
 Skiff is a desktop app for running many coding-agent sessions at once, on Linux and
 macOS. It keeps them in order across projects and Git worktrees. It shows where each
 session is and what it needs: a bell when an agent asks for approval, a flag when it
 finished a turn out of sight.
-
-<p align="center"><img src=".github/screenshot.webp" alt="Skiff on Linux: the Skiff agent, Admiral, at the top of the side panel, the skiff project with its worktrees below it, and four agent sessions that Admiral started, shown side by side in one group"></p>
 
 ## Philosophy
 
