@@ -9,6 +9,7 @@ import "./styles/fonts.css";
 import "./styles.css";
 
 import { keyLabel, setKeymap } from "./app/keys";
+import { setLanguage, t } from "./i18n";
 import { bySessionPriority } from "./workspace/model";
 import type { Appearance, DaemonStatus } from "./platform/types";
 import { invoke } from "@tauri-apps/api/core";
@@ -53,6 +54,8 @@ document.addEventListener("contextmenu", (e) => {
 });
 
 async function boot() {
+  // The language comes first: every word after this reads it. A change shows when the window opens again.
+  setLanguage((await invoke<Appearance>("get_appearance").catch(() => null))?.language ?? navigator.language);
   await startWorkspaceQuitGuard();
   // `tauri dev` build: a badge in the status bar tells it apart from an installed Skiff.
   if (import.meta.env.DEV) {
@@ -114,7 +117,7 @@ async function boot() {
   const kbd = document.querySelector("#open-switcher kbd");
   if (kbd) kbd.textContent = keyLabel("palette").replace(/\+/g, " ");
   const hint = document.querySelector("#open-switcher .spacer");
-  if (hint) hint.textContent = "Commands, sessions, worktrees";
+  if (hint) hint.textContent = t("switcher.hint");
   await loadGroups();
   restorePlace();
   await startWorkspaces();

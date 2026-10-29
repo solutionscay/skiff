@@ -63,7 +63,8 @@ function words(name: string) {
   if (!/(^|\/)i18n(\/en)?$/.test(name)) return undefined;
   if (!catalog) {
     const en = moduleFromSource("../src/i18n/en.ts", {}, {}, "");
-    catalog = { en, i18n: moduleFromSource("../src/i18n/index.ts", { "./en": en }, {}, "") };
+    const es = moduleFromSource("../src/i18n/es.ts", {}, {}, "");
+    catalog = { en, i18n: moduleFromSource("../src/i18n/index.ts", { "./en": en, "./es": es }, {}, "") };
   }
   return name.endsWith("/en") ? catalog.en : catalog.i18n;
 }

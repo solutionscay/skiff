@@ -2,7 +2,8 @@ import { DEFAULT_THEME } from "./colors";
 import { escapeButton } from "../ui/dialogParts";
 import { h } from "../ui/dom";
 import { invoke } from "@tauri-apps/api/core";
-import type { AgentInfo, TerminalTheme } from "../platform/types";
+import type { AgentInfo, Appearance, TerminalTheme } from "../platform/types";
+import { catalogFor, language, languageName, languages, systemLanguage, t } from "../i18n";
 import { agentNameList, setAgentNameList } from "./agentNames";
 import { nextCard, themeGrid, type ThemeFilters } from "./themeCards";
 import { type Action, actionFor, isMac } from "../app/keys";
@@ -54,6 +55,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   let openSet: OpenSettings | null = null;
   type MenuLayout = { available: boolean; chosen: string | null; auto: string; current: string };
   let menuSet: MenuLayout | null = null;
+  /** `[appearance] language`: a code, or null for the system language. */
+  let langSet: string | null = null;
   let agentSet: SkiffAgentSettings | null = null;
   // Settings › Skippers › Instructions, and one error line per row.
   let files: InstructionFile[] = [];
@@ -351,6 +354,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       }),
     );
     main.append(intro);
+    main.appendChild(languagePick());
     if (menuSet?.available) main.appendChild(menuLayout(menuSet));
     main.appendChild(cards);
     return main;
@@ -375,6 +379,40 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const pending = (m.chosen ?? m.auto) !== m.current;
     row.append(h("span", "c-name", "Menu"), pick, h("span", "c-status", pending ? "On restart" : ""));
     return row;
+  }
+
+  /** The app's language. The window reads it when it opens. */
+  function languagePick(): HTMLElement {
+    const row = h("div", "set-row set-opacity set-menu");
+    const pick = h("div", "c-cmd set-seg");
+    pick.setAttribute("role", "radiogroup");
+    pick.setAttribute("aria-label", t("settings.language"));
+    const choices: [string | null, string][] = [
+      [null, t("settings.languageAuto", { name: languageName(systemLanguage()) })],
+      ...languages().map((code): [string, string] => [code, languageName(code)]),
+    ];
+    for (const [value, label] of choices) {
+      const b = h("button", "set-seg-item" + (langSet === value ? " on" : ""), label);
+      b.type = "button";
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", String(langSet === value));
+      b.addEventListener("click", () => void setLanguageSetting(value));
+      pick.appendChild(b);
+    }
+    const pending = catalogFor(langSet ?? navigator.language) !== language();
+    row.append(h("span", "c-name", t("settings.language")), pick, h("span", "c-status", pending ? t("settings.onRestart") : ""));
+    return row;
+  }
+
+  async function setLanguageSetting(code: string | null) {
+    error = null;
+    try {
+      await invoke("set_language", { language: code });
+      langSet = code;
+    } catch (e) {
+      error = String(e);
+    }
+    render();
   }
 
   async function setMenuLayout(layout: string | null) {
@@ -744,6 +782,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       await look.load();
       openSet = await invoke<OpenSettings>("open_settings").catch(() => null);
       menuSet = await invoke<MenuLayout>("menu_layout").catch(() => null);
+      langSet = (await invoke<Appearance>("get_appearance").catch(() => null))?.language ?? null;
       agentSet = await invoke<SkiffAgentSettings>("get_skiff_agent").catch(() => null);
       agents = await invoke<AgentInfo[]>("list_agents").catch((e) => {
         error = String(e);

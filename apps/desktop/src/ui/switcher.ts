@@ -1,5 +1,6 @@
 import { fuzzy } from "../workspace/model";
 import type { SessionState } from "../platform/types";
+import { t } from "../i18n";
 
 export interface SwitchItem {
   kind: "command" | "session" | "worktree";
@@ -22,16 +23,15 @@ export function createSwitcher(items: () => SwitchItem[], onClose: () => void) {
   overlay.id = "switcher";
   overlay.hidden = true;
   overlay.innerHTML = `
-    <div class="sw-panel" role="dialog" aria-label="Switch to session or worktree">
+    <div class="sw-panel" role="dialog">
       <div class="sw-input">
-        <label for="sw-q" class="visually-hidden">Jump to project, worktree, or session</label>
+        <label for="sw-q" class="visually-hidden"></label>
         <input id="sw-q" type="text" autocomplete="off" spellcheck="false"
-          role="combobox" aria-expanded="true" aria-controls="sw-list" aria-autocomplete="list"
-          placeholder="Jump to project, worktree, or session" />
+          role="combobox" aria-expanded="true" aria-controls="sw-list" aria-autocomplete="list" />
         <kbd>Esc</kbd>
       </div>
-      <div id="sw-list" role="listbox" aria-label="Matches"></div>
-      <div class="sw-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> move</span><span><kbd>Enter</kbd> focus</span><span><kbd>Esc</kbd> close</span></div>
+      <div id="sw-list" role="listbox"></div>
+      <div class="sw-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> <span data-w="move"></span></span><span><kbd>Enter</kbd> <span data-w="focus"></span></span><span><kbd>Esc</kbd> <span data-w="close"></span></span></div>
     </div>`;
   document.body.appendChild(overlay);
 
@@ -106,7 +106,17 @@ export function createSwitcher(items: () => SwitchItem[], onClose: () => void) {
     item?.run();
   }
 
+  /** The words: set on each open, since the palette is built before the language is known. */
+  function words() {
+    overlay.querySelector(".sw-panel")!.setAttribute("aria-label", t("switcher.title"));
+    overlay.querySelector("label")!.textContent = t("switcher.search");
+    input.placeholder = t("switcher.search");
+    list.setAttribute("aria-label", t("switcher.matches"));
+    for (const w of ["move", "focus", "close"] as const) overlay.querySelector(`[data-w=${w}]`)!.textContent = t(`switcher.${w}`);
+  }
+
   function open() {
+    words();
     overlay.hidden = false;
     input.value = "";
     filter();

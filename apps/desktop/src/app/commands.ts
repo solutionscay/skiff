@@ -8,7 +8,7 @@ import { isSkiffAgent, skiffAgentFolder, skiffAgentName, skiffAgentSession } fro
 import { type Action, isMac, keyLabel, menuAccel } from "./keys";
 import { agentName, branchName, bySessionPriority, isFolder, taskTitle, isProjectSkipper } from "../workspace/model";
 import { createSwitcher, type SwitchItem } from "../ui/switcher";
-import { type MessageKey, t } from "../i18n";
+import { type MessageKey, t, tn } from "../i18n";
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -285,7 +285,7 @@ export const switcher = createSwitcher(() => {
         color: accent(p),
         primary: branchName(w),
         secondary: p.name,
-        meta: t("palette.sessions", { count: worktreeSessions(w).length }),
+        meta: tn("palette.sessions", worktreeSessions(w).length),
         text: `${p.name} / ${branchName(w)} worktree`,
         run: () => selectWorktree(p, w),
       });

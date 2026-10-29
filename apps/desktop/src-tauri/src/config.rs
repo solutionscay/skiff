@@ -212,6 +212,12 @@ pub(crate) async fn set_mission_filter(running: bool) -> Result<(), String> {
     blocking(move || config::set_mission_filter(running)).await
 }
 
+/// Sets the app's language: a code such as `es`, or `null` for the system language.
+#[tauri::command]
+pub(crate) async fn set_language(language: Option<String>) -> Result<(), String> {
+    blocking(move || config::set_language(language.as_deref())).await
+}
+
 /// Runs an agent config edit, then answers with the agent list. The list
 /// comes from skiffd: whether an agent is installed depends on the sessions'
 /// PATH and aliases, which the app does not have.

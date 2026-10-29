@@ -5,6 +5,9 @@
  * fixed keys. `{name}` marks a value the code fills in.
  */
 export const en = {
+  // The language's own name, for the picker in Settings.
+  "language.name": "English",
+
   // Menu bar menus; also the F1 sections of the keymap actions.
   "section.file": "File",
   "section.edit": "Edit",
@@ -93,10 +96,20 @@ export const en = {
   "cmd.checkUpdates": "Check for updates…",
   "cmd.about": "About Skiff",
 
+  // The palette's own words.
+  "switcher.title": "Switch to session or worktree",
+  "switcher.search": "Jump to project, worktree, or session",
+  "switcher.matches": "Matches",
+  "switcher.move": "move",
+  "switcher.focus": "focus",
+  "switcher.close": "close",
+  "switcher.hint": "Commands, sessions, worktrees",
+
   // Palette entries that are not commands.
   "palette.openProject": "Open project: {name}",
   "palette.closed": "closed",
-  "palette.sessions": "{count} sessions",
+  "palette.sessions#one": "{count} session",
+  "palette.sessions#other": "{count} sessions",
 
   // Install skiff command.
   "installCli.title": "Install skiff command",
@@ -348,6 +361,11 @@ export const en = {
   "dirtyWorktree.title": "Worktree {name} has uncommitted changes",
   "dirtyWorktree.body": "Removing it deletes them. You cannot get them back.\nCommits on the branch stay.",
   "dirtyWorktree.action": "Remove anyway",
+
+  // Settings › Appearance.
+  "settings.language": "Language",
+  "settings.languageAuto": "Auto ({name})",
+  "settings.onRestart": "On restart",
 
   // The selection bar (workspace/selection.ts).
   "select.addTo": "Add to {name}",
