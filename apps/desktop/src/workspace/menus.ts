@@ -11,6 +11,7 @@ import { keyLabel } from "../app/keys";
 import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { type MenuEntry } from "../ui/menu";
 import { isRemote } from "../app/hosts";
+import type { SkipperStart } from "../ui/launchMenu";
 import { agentName, basename, branchName, isFolder, locate, taskTitle, isProjectSkipper } from "./model";
 import { cwdOf } from "./canvas";
 import { filledOf, slotsOf } from "./layoutSlots";
@@ -340,7 +341,8 @@ export function projectMenu(p: Project, x: number, y: number) {
     // A plain folder has no git: no worktrees.
     hostCan("worktrees") && !isFolder(p) && { icon: "code-git-branch", label: "New worktree…", hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
     // This Mac starts them itself; a remote Host, through its skiff-host.
-    ...(local || hostCan("skipper_run") ? projectSkipperEntries(p) : []),
+    // The start choices above carry the Skipper when they show.
+    ...(local || hostCan("skipper_run") ? projectSkipperEntries(p, !(bare && !p.error && starts)) : []),
     { sep: true },
     local && { icon: "indicators-square-arrow-out-up-right", label: "Show in file manager", hint: keyLabel("project-folder"), run: run["project-folder"] },
     { icon: "code-copy", label: "Copy path", hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
@@ -533,37 +535,46 @@ function endManyEntry(ids: string[], label: string, title: string): MenuEntry {
 }
 
 /**
- * Start project Skipper. It opens no dialog. While one runs: Open project
- * Skipper, which shows its pane, and Stop project Skipper…, which asks
- * first, as End does. Its panes keep running.
+ * The Skipper the start menus offer first: Open fleet Skipper while the
+ * fleet's runs, Open project Skipper while the project's runs, else Start
+ * project Skipper. Start opens no dialog.
  */
-function projectSkipperEntries(p: Project): MenuEntry[] {
+export function skipperStart(p: Project): SkipperStart | null {
+  // This Mac starts them itself; a remote Host, through its skiff-host.
+  if (isRemote() && !hostCan("skipper_run")) return null;
   const s = projectSkipperOf(p.name);
   // One Skipper per project: the fleet's Skipper commands it while it runs.
-  const fleet = p.fleet && !s ? fleetSkipperOf(p.fleet) : null;
-  if (fleet) return [{ icon: "tools-sparkles", label: "Open fleet Skipper", run: () => void startFleetSkipper(p.fleet!) }];
-  if (!s) {
-    if (!skiffAgentFolder()) return [];
-    return [{ icon: "tools-sparkles", label: "Start project Skipper", disabled: !!p.error, run: () => startProjectSkipper(p.name) }];
-  }
-  return [
-    // startProjectSkipper shows the one that runs.
-    { icon: "tools-sparkles", label: "Open project Skipper", run: () => startProjectSkipper(p.name) },
-    {
-      icon: "indicators-square-stop",
-      label: "Stop project Skipper…",
-      danger: true,
-      run: async () => {
-        const ok = await confirmAction({
-          title: `Stop the ${p.name} Skipper?`,
-          body: `Stops ${agentName(s)} and removes its session. The panes it started keep running, and its ledger rows stay.`,
-          action: "Stop project Skipper",
-        });
-        if (ok) void endSession(s.id);
-        else refocusTerminal();
-      },
+  if (p.fleet && !s && fleetSkipperOf(p.fleet)) return { label: "Open fleet Skipper", run: () => void startFleetSkipper(p.fleet!) };
+  // startProjectSkipper shows the one that runs.
+  if (s) return { label: "Open project Skipper", run: () => startProjectSkipper(p.name) };
+  if (!skiffAgentFolder()) return null;
+  return { label: "Start project Skipper", disabled: !!p.error, run: () => startProjectSkipper(p.name) };
+}
+
+/**
+ * The project menu's Skipper entries. While one runs, Stop project Skipper…
+ * asks first, as End does. Its panes keep running. `start` false leaves out
+ * the skipperStart entry: the start choices above carry it.
+ */
+function projectSkipperEntries(p: Project, start = true): MenuEntry[] {
+  const s = projectSkipperOf(p.name);
+  const go = start ? skipperStart(p) : null;
+  const entries: MenuEntry[] = go ? [{ icon: "tools-sparkles", ...go }] : [];
+  if (s) entries.push({
+    icon: "indicators-square-stop",
+    label: "Stop project Skipper…",
+    danger: true,
+    run: async () => {
+      const ok = await confirmAction({
+        title: `Stop the ${p.name} Skipper?`,
+        body: `Stops ${agentName(s)} and removes its session. The panes it started keep running, and its ledger rows stay.`,
+        action: "Stop project Skipper",
+      });
+      if (ok) void endSession(s.id);
+      else refocusTerminal();
     },
-  ];
+  });
+  return entries;
 }
 
 async function endSession(id: string) {
