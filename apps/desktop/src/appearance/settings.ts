@@ -712,9 +712,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     return true;
   }
 
-  // On the document, so Escape works wherever focus is. Menus and dialogs
-  // over settings stop the key first.
-  document.addEventListener("keydown", (e) => {
+  // Capture on the window so a terminal that still has focus while Settings
+  // loads cannot stop Escape before Settings sees it. Menus and dialogs over
+  // settings stop the key first.
+  window.addEventListener("keydown", (e) => {
     if (root.hidden || e.defaultPrevented || document.querySelector("#ctx-menu:not([hidden]), #launch-menu:not([hidden]), .confirm-overlay")) return;
     if (runKey(actionFor(e))) return e.preventDefault();
     // Cut and select all on macOS. The webview does them only through an Edit menu item.
@@ -727,7 +728,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     if (e.key !== "Escape") return;
     e.preventDefault();
     close();
-  });
+  }, true);
 
   // An external app saved a file: its status shows when the window has the keys again.
   window.addEventListener("focus", () => {
