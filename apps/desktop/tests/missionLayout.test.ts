@@ -41,6 +41,62 @@ test("the layout keeps cards apart, inside their clusters, under their Skippers"
   assert.ok(inside(plan, p.clusters.get("project:storefront")!));
 });
 
+test("the outer grid wraps at three blocks a row, rows top-align, and a wide block takes a row alone", () => {
+  // Six small projects: two rows of three, the second row under the tallest of the first.
+  const g: G.Graph = { admiral: "ad", fleets: [], projects: [project("a", ["a1"]), project("b", ["b1", "b2", "b3"]), project("c", ["c1"]), project("d", ["d1"]), project("e", ["e1"]), project("f", ["f1"])] };
+  const p = G.placeGraph(g, {});
+  const c = (n: string) => p.clusters.get(`project:${n}`)!;
+  assert.deepEqual([c("a").x, c("b").x, c("c").x], [0, G.SLOT_W + 48, 2 * (G.SLOT_W + 48)], "three slots across");
+  assert.equal(c("a").y, c("b").y, "a row top-aligns");
+  assert.equal(c("d").x, 0, "the fourth block starts the next row");
+  assert.equal(c("d").y, c("a").y + c("b").h + 48, "the next row sits under the tallest block of the row above");
+  assert.deepEqual([c("e").x, c("f").x], [c("b").x, c("c").x]);
+  assert.ok(c("b").h > c("a").h, "b is the tallest: three cards in two columns");
+  // Admiral centers on the grid, not on the content, so it stays put when blocks come and go.
+  assert.equal(p.cards.get("ad")!.x, G.GRID_W / 2 - G.CARD_W / 2);
+  assert.equal(G.placeGraph({ ...g, projects: g.projects.slice(0, 1) }, {}).cards.get("ad")!.x, p.cards.get("ad")!.x);
+  // A project with seven cards is three columns wide: wider than a slot, so it takes a row by itself.
+  const big = project("big", ["g1", "g2", "g3", "g4", "g5", "g6", "g7"]);
+  const q = G.placeGraph({ admiral: null, fleets: [], projects: [project("a", ["a1"]), big, project("c", ["c1"])] }, {});
+  const r = (n: string) => q.clusters.get(`project:${n}`)!;
+  assert.ok(r("big").w > G.SLOT_W);
+  assert.equal(r("big").x, 0);
+  assert.ok(r("big").y > r("a").y, "big starts a new row");
+  assert.ok(r("c").y > r("big").y, "the block after it starts another");
+  assert.equal(r("c").x, 0);
+});
+
+test("a fleet lays its projects out three a row inside its frame, and a wide fleet takes a row alone", () => {
+  const five = ["p1", "p2", "p3", "p4", "p5"].map((n) => project(n, [`${n}a`]));
+  const g: G.Graph = { admiral: "ad", fleets: [{ key: "fleet:F", name: "F", skipper: "sk", projects: five }, { key: "fleet:G", name: "G", skipper: null, projects: [project("g1", ["x1"])] }], projects: [project("solo", ["s1"]), project("other", ["o1"])] };
+  const p = G.placeGraph(g, {});
+  const frame = p.clusters.get("fleet:F")!;
+  const c = (n: string) => p.clusters.get(`project:${n}`)!;
+  for (const n of ["p1", "p2", "p3", "p4", "p5"]) assert.ok(inside(c(n), frame), `${n} inside the frame`);
+  assert.equal(c("p1").y, c("p3").y, "the first three share a row");
+  assert.equal(c("p4").y, c("p1").y + c("p1").h + 24, "the fourth starts a second row inside the frame");
+  assert.equal(c("p4").x, c("p1").x);
+  assert.equal(c("p5").x, c("p2").x);
+  assert.ok(c("p5").y + c("p5").h <= frame.y + frame.h, "the frame holds the second row");
+  assert.ok(p.cards.get("sk")!.y + G.CARD_H <= c("p1").y, "the Skipper sits above the rows");
+  // The wide fleet took the first row alone; the one-project fleet and the two projects share the next.
+  assert.ok(frame.w > G.SLOT_W);
+  assert.equal(frame.x, 0);
+  const small = p.clusters.get("fleet:G")!;
+  assert.ok(small.w <= G.SLOT_W, "a fleet with one small project fits a slot");
+  assert.equal(small.y, frame.y + frame.h + 48, "it starts the row under the wide fleet");
+  assert.deepEqual([small.x, c("solo").x, c("other").x], [0, G.SLOT_W + 48, 2 * (G.SLOT_W + 48)], "three blocks share that row");
+  assert.equal(c("solo").y, small.y);
+  // The hand offsets of the first test still move only what they name.
+  const moved = G.placeGraph(g, { "fleet:F": { dx: 10, dy: 20 }, "project:solo": { dx: -5, dy: 0 } });
+  assert.equal(moved.clusters.get("project:p5")!.x, c("p5").x + 10);
+  assert.equal(moved.clusters.get("project:p5")!.y, c("p5").y + 20);
+  assert.equal(moved.cards.get("sk")!.y, p.cards.get("sk")!.y + 20);
+  assert.equal(moved.clusters.get("project:solo")!.x, c("solo").x - 5);
+  assert.deepEqual(moved.clusters.get("project:other"), c("other"));
+  assert.deepEqual(moved.clusters.get("fleet:G"), small);
+});
+
 test("a folded cluster is one card, and its sessions stand in by it", () => {
   const g = graph();
   g.projects[1].folded = true;

@@ -3,12 +3,16 @@
  * clusters, the strings between them, the keys' moves through the graph, and
  * the view math. No DOM, no state, no imports, so tests run it as it is.
  *
- * The graph is a tree. Admiral is at the top. Each fleet is a frame with its
- * Skipper card at the top and its project clusters in a row under it. A
- * project in no fleet is a cluster with its Skipper card above it. Other is
- * the last cluster. In a cluster, cards sit in a grid: one column up to two
- * cards, two up to six, three past that. A plan is a 20px caption above its
- * cards. A folded cluster is one card.
+ * The graph is a tree. Admiral is at the top. Under it, the blocks sit in a
+ * fixed grid of three slots per row that grows down: each fleet frame, each
+ * project in no fleet with its Skipper card above its cluster, and Other
+ * last. A block wider than a slot takes a full row by itself. Rows top-align,
+ * and each row is as tall as its tallest block. Inside a fleet frame, its
+ * Skipper card sits at the top and its projects follow the same rule: three
+ * per row, growing down. The grid never fits the window, so a resize moves
+ * nothing and a hand offset stays valid. In a cluster, cards sit in a grid:
+ * one column up to two cards, two up to six, three past that. A plan is a
+ * 20px caption above its cards. A folded cluster is one card.
  *
  * A moved card or cluster keeps an offset from its automatic place, so a new
  * session or a fold never undoes a hand move. All lengths are in unzoomed px:
@@ -26,9 +30,15 @@ const VGAP = 16;
 const FP = 16;
 /** Between a Skipper card and what hangs from it. */
 const DROP = 48;
-/** Between the top-level blocks, and between the projects of a fleet. */
+/** Between the blocks of the outer grid, across and down; and between the projects of a fleet. */
 const BLOCK_GAP = 48;
 const FLEET_GAP = 24;
+/** A slot of the grid: as wide as a two-column cluster. */
+export const SLOT_W = PAD * 2 + 2 * CARD_W + GAP;
+/** Slots in a row. */
+export const GRID_COLS = 3;
+/** The outer grid's width: Admiral centers on it, so it stays put when blocks come and go. */
+export const GRID_W = GRID_COLS * SLOT_W + (GRID_COLS - 1) * BLOCK_GAP;
 /** Between Admiral and the blocks. */
 const ADMIRAL_DROP = 96;
 export const PLAN_H = 20;
@@ -133,6 +143,38 @@ function block(p: GProject): Block {
   return { p, w, h: cy + box.h, skipper: p.skipper ? { x: w / 2 - CARD_W / 2, y: 0 } : null, cluster: { x: w / 2 - box.w / 2, y: cy, box } };
 }
 
+/**
+ * Places blocks in a grid of `GRID_COLS` slots per row: left to right, then
+ * the next row. A block wider than a slot takes a full row by itself. Rows
+ * top-align, and each row is as tall as its tallest block.
+ */
+export function gridPlace(blocks: { w: number; h: number }[], gap: number, rowGap: number): { at: { x: number; y: number }[]; w: number; h: number } {
+  const at: { x: number; y: number }[] = [];
+  let y = 0;
+  let rowH = 0;
+  let col = 0;
+  let w = 0;
+  let open = false;
+  const endRow = () => {
+    y += rowH + rowGap;
+    rowH = 0;
+    col = 0;
+    open = false;
+  };
+  for (const b of blocks) {
+    const wide = b.w > SLOT_W;
+    if ((wide && col > 0) || col >= GRID_COLS) endRow();
+    const x = col * (SLOT_W + gap);
+    at.push({ x, y });
+    rowH = Math.max(rowH, b.h);
+    w = Math.max(w, x + b.w);
+    open = true;
+    if (wide) endRow();
+    else col++;
+  }
+  return { at, w, h: open ? y + rowH : Math.max(0, y - rowGap) };
+}
+
 /** Lays the graph out and applies the hand offsets. */
 export function placeGraph(g: Graph, offs: Offsets): Placed {
   const out: Placed = { cards: new Map(), clusters: new Map(), plans: [] };
@@ -157,15 +199,11 @@ export function placeGraph(g: Graph, offs: Offsets): Placed {
   const tops: Top[] = [];
   for (const f of g.fleets) {
     const blocks = f.projects.map(block);
+    // The fleet's own grid: three projects per row, under its Skipper.
+    const grid = gridPlace(blocks, FLEET_GAP, FLEET_GAP);
     const by = HEAD + FP + (f.skipper ? CARD_H + DROP : 0);
-    let x = FP;
-    const xs = blocks.map((b) => {
-      const at = x;
-      x += b.w + FLEET_GAP;
-      return at;
-    });
-    const w = Math.max(x - FLEET_GAP + FP, f.skipper ? CARD_W + FP * 2 : 0);
-    const h = by + Math.max(0, ...blocks.map((b) => b.h)) + FP;
+    const w = Math.max(grid.w + FP * 2, f.skipper ? CARD_W + FP * 2 : 0);
+    const h = by + grid.h + FP;
     tops.push({
       w,
       h,
@@ -178,7 +216,7 @@ export function placeGraph(g: Graph, offs: Offsets): Placed {
           const so = off(offs, f.skipper);
           out.cards.set(f.skipper, { x: tx + w / 2 - CARD_W / 2 + so.dx, y: ty + HEAD + FP + so.dy, w: CARD_W, h: CARD_H });
         }
-        blocks.forEach((b, i) => putBlock(b, tx + xs[i], ty + by));
+        blocks.forEach((b, i) => putBlock(b, tx + FP + grid.at[i].x, ty + by + grid.at[i].y));
       },
     });
   }
@@ -186,16 +224,13 @@ export function placeGraph(g: Graph, offs: Offsets): Placed {
     const b = block(p);
     tops.push({ w: b.w, h: b.h, draw: (x, y) => putBlock(b, x, y) });
   }
-  let x = 0;
-  const y = g.admiral ? CARD_H + ADMIRAL_DROP : 0;
-  for (const t of tops) {
-    t.draw(x, y);
-    x += t.w + BLOCK_GAP;
-  }
+  // The outer grid, under Admiral.
+  const y0 = g.admiral ? CARD_H + ADMIRAL_DROP : 0;
+  const grid = gridPlace(tops, BLOCK_GAP, BLOCK_GAP);
+  tops.forEach((t, i) => t.draw(grid.at[i].x, y0 + grid.at[i].y));
   if (g.admiral) {
-    const total = Math.max(x - BLOCK_GAP, CARD_W);
     const o = off(offs, g.admiral);
-    out.cards.set(g.admiral, { x: total / 2 - CARD_W / 2 + o.dx, y: o.dy, w: CARD_W, h: CARD_H });
+    out.cards.set(g.admiral, { x: GRID_W / 2 - CARD_W / 2 + o.dx, y: o.dy, w: CARD_W, h: CARD_H });
   }
   return out;
 }
