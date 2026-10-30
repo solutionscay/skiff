@@ -1,6 +1,4 @@
-<p align="center"><img src=".github/skiff.png" width="160" alt="Skiff mascot: a small boat with a robot at the helm"></p>
-
-<h1 align="center">Skiff</h1>
+<h1 align="center"><img src="docs/crew.svg" width="880" alt="Skiff, with the crew: Admiral and five Skippers"></h1>
 
 <p align="center">
   <a href="https://github.com/solutionscay/skiff/releases/latest"><img src="https://img.shields.io/github/v/release/solutionscay/skiff?include_prereleases&label=release" alt="Latest release"></a>
