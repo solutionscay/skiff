@@ -863,7 +863,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "69765ca94873d0d74b80b59e4b76d9603af0a42e911f5d12760eb9e0cac60b67"
+    "sha256": "cdc1c7c6a9289df1392234573e086f59f397db151df54e26ff2c052b117e3110"
   },
   "apps/desktop/src/workspace/missionMotion.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

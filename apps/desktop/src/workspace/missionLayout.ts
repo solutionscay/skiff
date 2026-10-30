@@ -339,18 +339,28 @@ export function bounds(p: Placed): Rect {
  * A string from a parent's foot to a child's pin: a curve that sags with its
  * length. `lx, ly`: where its label sits, three quarters of the way to the
  * child, so it reads beside the card it goes to and stays out of what the
- * string crosses.
+ * string crosses. `tuck`: the string's first and last TUCK px, solid, so it
+ * meets the foot and the pin wherever its dashes are.
  */
-export function strand(a: { x: number; y: number }, b: { x: number; y: number }): { d: string; lx: number; ly: number } {
+export function strand(a: { x: number; y: number }, b: { x: number; y: number }): { d: string; tuck: string; lx: number; ly: number } {
   const mx = (a.x + b.x) / 2;
   const my = (a.y + b.y) / 2;
-  const sag = Math.max(8, Math.min(Math.hypot(b.x - a.x, b.y - a.y) * 0.08, 48));
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  const sag = Math.max(8, Math.min(len * 0.08, 48));
   const cx = mx;
   const cy = my + sag;
-  const t = 0.75;
-  const u = 1 - t;
-  return { d: `M${a.x} ${a.y}Q${cx} ${cy} ${b.x} ${b.y}`, lx: u * u * a.x + 2 * u * t * cx + t * t * b.x, ly: u * u * a.y + 2 * u * t * cy + t * t * b.y - 14 };
+  const at = (t: number) => {
+    const u = 1 - t;
+    return { x: u * u * a.x + 2 * u * t * cx + t * t * b.x, y: u * u * a.y + 2 * u * t * cy + t * t * b.y };
+  };
+  const k = Math.min(0.25, TUCK / Math.max(len, 1));
+  const s = at(k);
+  const e = at(1 - k);
+  const l = at(0.75);
+  return { d: `M${a.x} ${a.y}Q${cx} ${cy} ${b.x} ${b.y}`, tuck: `M${a.x} ${a.y}L${s.x} ${s.y}M${e.x} ${e.y}L${b.x} ${b.y}`, lx: l.x, ly: l.y - 14 };
 }
+/** A string's solid length at each end: one dash gap, so no gap shows at the foot or the pin. */
+export const TUCK = 10;
 export const foot = (r: Rect) => ({ x: r.x + r.w / 2, y: r.y + r.h });
 export const pin = (r: Rect) => ({ x: r.x + r.w / 2, y: r.y });
 
