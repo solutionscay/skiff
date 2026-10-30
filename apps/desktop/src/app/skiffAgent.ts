@@ -12,6 +12,7 @@ import { openPath } from "../terminal/peek";
 import { actionDialog } from "../ui/dialogParts";
 import { h } from "../ui/dom";
 import { scopeName } from "../workspace/model";
+import { language, t, tn } from "../i18n";
 
 /** The main Skipper's name until Settings has one. skiffd's setup keeps the same default. */
 export const DEFAULT_NAME = "Admiral";
@@ -239,17 +240,15 @@ export interface Taken {
   handoffs: string[];
 }
 
-const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
 /** The confirm's body: one line per project Skipper, with its open tasks by title and its hand-offs. */
 function takenLines(taken: Taken[]): HTMLElement[] {
   const body = h("div", "confirm-body");
-  body.append(...taken.map((t) => {
-    let line = `${t.project} Skipper: ${count(t.tasks.length, "open task", "open tasks")}`;
-    if (t.tasks.length) line += ` (${t.tasks.map((x) => x.title).join(", ")})`;
-    if (t.handoffs.length) line += `, ${count(t.handoffs.length, "hand-off", "hand-offs")}`;
-    return h("div", "", `${line}.`);
-  }));
+  body.append(...taken.map((sk) => h("div", "", t("skiffAgent.takenLine", {
+    project: sk.project,
+    tasks: tn("skiffAgent.openTasks", sk.tasks.length),
+    titles: sk.tasks.length ? t("skiffAgent.takenTitles", { titles: sk.tasks.map((x) => x.title).join(", ") }) : "",
+    handoffs: sk.handoffs.length ? t("skiffAgent.takenHandoffs", { handoffs: tn("skiffAgent.handoffs", sk.handoffs.length) }) : "",
+  }))));
   return [body];
 }
 
@@ -268,7 +267,7 @@ export async function startFleetSkipper(fleet: string) {
   if (s) return show(s.id);
   try {
     const taken = await invoke<Taken[]>("fleet_takeover_preview", { fleet, join: null });
-    if (!(await confirmTakeover(`Start the ${fleet} Skipper?`, "Start fleet Skipper", taken))) return;
+    if (!(await confirmTakeover(t("skiffAgent.startFleetTitle", { fleet }), t("menu.startFleetSkipper"), taken))) return;
     handOver(fleet, taken);
     await starting(fleetScope(fleet), () => invoke<string>("start_fleet_skipper", { fleet }));
   } catch (e) {
@@ -286,7 +285,7 @@ export async function joinFleet(project: string, fleet: string): Promise<boolean
   if (!fleet || !fleetSkipperOf(fleet) || !projectSkipperOf(project)) return false;
   const taken = await invoke<Taken[]>("fleet_takeover_preview", { fleet, join: project });
   if (!taken.length) return false;
-  if (!(await confirmTakeover(`Add ${project} to ${fleet}?`, "Add to fleet", taken))) return null;
+  if (!(await confirmTakeover(t("skiffAgent.joinTitle", { project, fleet }), t("skiffAgent.joinAction"), taken))) return null;
   handOver(fleet, taken);
   await invoke("fleet_takeover", { fleet, join: project });
   const s = fleetSkipperOf(fleet);
@@ -313,7 +312,7 @@ export function openSkiffAgent() {
   const s = skiffAgentSession();
   if (s) show(s.id);
   if (s && agentKind(s) !== "shell") return;
-  if (!s && !skiffAgentChoice()) return showError("No agent is on. Turn one on in Settings › Agents.");
+  if (!s && !skiffAgentChoice()) return showError(t("skiffAgent.noAgent"));
   invoke<Opened | null>("open_skiff_agent", { restore: null })
     .then((o) => {
       if (!o) return;
@@ -411,21 +410,20 @@ export function watchMark(s: SessionInfo | null, protocol: number | null, lastAs
 }
 
 /** Local `HH:MM`. */
-const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+const clock = (ms: number) => new Date(ms).toLocaleTimeString(language(), { hour: "2-digit", minute: "2-digit", hour12: false });
 
 /** The tooltip text for a state. Empty for starting and unknown. */
 export function watchText(state: WatchState, s: SessionInfo, name: string, error: string | null): string {
   const f = s.watch?.failure;
   switch (state) {
     case "runs":
-      return `skiff watch runs for ${name} since ${clock(s.watch!.since)}.`;
+      return t("skiffAgent.watchRuns", { name, time: clock(s.watch!.since) });
     case "missing":
-      return `No watcher runs for ${name}. ${name} does not hear when its panes finish. Skiff tries to start it every 30 seconds.` +
-        (error ? ` Last start failed: ${error}.` : "");
+      return error ? t("skiffAgent.watchMissingError", { name, error }) : t("skiffAgent.watchMissing", { name });
     case "failed":
       return f?.kind === "ledger"
-        ? `The watcher cannot read the ledger: ${f.message}.`
-        : `At ${clock(f?.at ?? 0)} a watcher line did not start a turn. It can be in ${name}'s input box.`;
+        ? t("skiffAgent.watchLedger", { message: f.message })
+        : t("skiffAgent.watchLine", { time: clock(f?.at ?? 0), name });
     default:
       return "";
   }

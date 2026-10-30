@@ -31,6 +31,7 @@ import { bareWorktree, projectBadge, rollup, treeSections } from "./tree";
 import { closeMission, goToSession, maximizeLit } from "./missionMotion";
 import { nextWaiting } from "./view";
 import { settings } from "../app/panels";
+import { t } from "../i18n";
 
 /** Rows of text per screen. */
 const ROWS = 12;
@@ -48,7 +49,7 @@ root.id = "mission-control";
 root.hidden = true;
 root.tabIndex = -1;
 root.setAttribute("role", "dialog");
-root.setAttribute("aria-label", "Mission control");
+root.setAttribute("aria-label", t("cmd.missionControl"));
 document.body.appendChild(root);
 
 let lit: string | null = null;
@@ -68,25 +69,25 @@ const search = h("input", "mission-search");
 search.type = "text";
 search.autocomplete = "off";
 search.spellcheck = false;
-search.placeholder = "Search sessions";
-search.setAttribute("aria-label", "Search sessions");
+search.placeholder = t("mission.search");
+search.setAttribute("aria-label", t("mission.search"));
 const find = h("label", "tb-cell mission-find");
 find.appendChild(search);
 document.getElementById("open-switcher")?.after(find);
-const noMatch = h("div", "mission-empty", "No match");
+const noMatch = h("div", "mission-empty", t("switcher.noMatch"));
 let found: Set<string> | null = null;
 
 /** Running / All, at the right of the search. `running`: only sessions that work or wait. */
 let running = true;
 const scope = h("div", "mission-scope");
 scope.setAttribute("role", "group");
-scope.setAttribute("aria-label", "Sessions to show");
+scope.setAttribute("aria-label", t("mission.scopeAria"));
 const allCount = h("span", "mission-scope-n");
 const runningCount = h("span", "mission-scope-n");
 const scopeAll = h("button", "mission-scope-btn");
-scopeAll.append("All", allCount);
+scopeAll.append(t("mission.all"), allCount);
 const scopeRunning = h("button", "mission-scope-btn");
-scopeRunning.append(h("span", "mission-scope-dot"), "Running", runningCount);
+scopeRunning.append(h("span", "mission-scope-dot"), t("mission.running"), runningCount);
 for (const [b, on] of [[scopeRunning, true], [scopeAll, false]] as const) {
   b.type = "button";
   b.tabIndex = -1;
@@ -197,7 +198,7 @@ function lanes(): Lane[] {
       // A fleet's Skipper is the first tile in its lane.
       const skipper = sec.fleet ? fleetSkipperOf(sec.fleet) : null;
       return {
-        name: sec.fleet ?? "Projects",
+        name: sec.fleet ?? t("sidebar.projects"),
         projects: [
           ...(skipper ? [{ p: null, list: [skipper] }] : []),
           ...sec.projects.map((p) => ({ p: p as Project | null, list: projectSessions(p) })).filter((x) => x.list.length),
@@ -206,7 +207,7 @@ function lanes(): Lane[] {
     })
     .filter((l) => l.projects.length);
   const other = projectSessions(null);
-  if (other.length) out.push({ name: "Other", projects: [{ p: null, list: other }] });
+  if (other.length) out.push({ name: t("sidebar.other"), projects: [{ p: null, list: other }] });
   return out;
 }
 
@@ -235,7 +236,7 @@ function paint(pre: HTMLElement, s: SessionInfo) {
 /** Brings a tile up to date in place. The tile stays, so its light does not flicker. */
 function fresh(b: HTMLElement, s: SessionInfo, p: Project | null) {
   b.style.setProperty("--pc", accent(p));
-  const label = `${taskTitle(s)}, ${s.state}`;
+  const label = t("mission.tileLabel", { title: taskTitle(s), state: t(`state.${s.state}`) });
   if (b.getAttribute("aria-label") !== label) b.setAttribute("aria-label", label);
   const head = b.querySelector<HTMLElement>(".mission-head");
   if (head) {
@@ -359,8 +360,8 @@ function build(all = lanes()) {
   const tops = new Map<string, number>();
   for (const el of old?.querySelectorAll<HTMLElement>(".mission-lane") ?? []) tops.set(el.getAttribute("aria-label") ?? "", el.scrollTop);
 
-  search.title = `Search sessions: ${keyLabel("palette")}`;
-  scope.title = `Only the running sessions, or all: ${keyLabel("focus-mode")}`;
+  search.title = t("mission.searchTip", { key: keyLabel("palette") });
+  scope.title = t("mission.scopeTip", { key: keyLabel("focus-mode") });
 
   const board = h("div", "mission-lanes");
   for (const l of all) {
@@ -386,7 +387,7 @@ function build(all = lanes()) {
     }
     board.appendChild(lane);
   }
-  if (!all.length) board.appendChild(h("div", "mission-empty", "No sessions"));
+  if (!all.length) board.appendChild(h("div", "mission-empty", t("mission.none")));
   themed(root, null);
   root.replaceChildren(board, scrollbar(board));
   filter(all);
@@ -435,7 +436,7 @@ async function read() {
       } catch (e) {
         if (paused) return;
         // An older skiffd does not know the request.
-        pre.textContent = /unknown variant|bad request/.test(String(e)) ? "Update skiffd to see screens." : String(e);
+        pre.textContent = /unknown variant|bad request/.test(String(e)) ? t("mission.updateDaemon") : String(e);
         pre.classList.add("note");
       }
     }),

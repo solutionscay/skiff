@@ -60,6 +60,7 @@ import { skipperWord } from "../app/skiffAgent";
 import { keepRow } from "./selection";
 import { revealSession } from "./view";
 import { ledgerAllWork, ledgerScope, setLedgerAllWork, workspaceName, workspaceOpen } from "./profile";
+import { t, tn, upper, type MessageKey } from "../i18n";
 
 /** A ledger row as `ledger_rows` returns it. */
 interface Entry {
@@ -95,7 +96,9 @@ interface Entry {
 type State = "pending" | "sent" | "approval" | "blocked" | "interrupted" | "gone" | "exited" | "done";
 
 /** The states that need the person, and the word that takes the pane name's place. */
-const NEED: Partial<Record<State, string>> = { approval: "asks approval", blocked: "blocked", interrupted: "restarted", gone: "pane gone", exited: "exited" };
+const NEED: Partial<Record<State, MessageKey>> = { approval: "ledger.needApproval", blocked: "ledger.needBlocked", interrupted: "ledger.needRestarted", gone: "ledger.needGone", exited: "ledger.needExited" };
+/** The word for a state that needs the person, else "". */
+const needWord = (st: State) => (NEED[st] ? t(NEED[st]!) : "");
 /** The order of the needs, most urgent first: a plan shows the first its tasks have. */
 const URGENT: State[] = ["approval", "blocked", "interrupted", "gone", "exited"];
 
@@ -187,7 +190,7 @@ function look(r: Entry): Look {
   // A hand-off's pane is the project Skipper.
   const name = r.kind === "handoff" ? `${scopeName(r.project)} ${skipperWord()}` : s ? taskTitle(s) : r.pane_id?.slice(0, 8) ?? "";
   const base = { r, pane: s, where: name };
-  if (r.elsewhere) return { ...base, st: r.state === "done" || r.state === "pending" ? r.state : "sent", pane: null, where: "elsewhere" };
+  if (r.elsewhere) return { ...base, st: r.state === "done" || r.state === "pending" ? r.state : "sent", pane: null, where: t("ledger.elsewhere") };
   // Done because the pane went: it has no result to show for it.
   if (r.state === "done") return { ...base, st: r.gone_at ? "gone" : "done" };
   if (!s) return { ...base, st: "gone" };
@@ -356,8 +359,8 @@ function filter(): string | null {
 
 /** The panel shows while a Skipper's pane is the one pane on screen. A preview a row opened keeps it; any other preview hides it. */
 function wanted(): boolean {
-  const t = previewToken();
-  return !!owner() && !(t && t !== ours);
+  const token = previewToken();
+  return !!owner() && !(token && token !== ours);
 }
 
 /** The panel is on screen: focus mode keeps it, maximize hides it. The fold acts only then. */
@@ -474,14 +477,14 @@ function taskActs(l: Look, fin: boolean): Acts {
   if (fin) return { click: res, icons: [] };
   if (l.st === "done") {
     const icons: Acts["icons"] = [];
-    if (pane) icons.push(["pane", "Open pane", pane]);
+    if (pane) icons.push(["pane", t("ledger.openPane"), pane]);
     return { click: res, icons };
   }
   if (l.st === "gone") {
     const skipper = r.owner === "grand" ? skiffAgentSession() : projectSkipperOf(r.owner);
     return { click: res ?? (skipper ? () => openPane(skipper) : null), icons: [] };
   }
-  const icons: Acts["icons"] = l.st === "interrupted" && res ? [["result", "Open result", res]] : [];
+  const icons: Acts["icons"] = l.st === "interrupted" && res ? [["result", t("ledger.openResult"), res]] : [];
   return { click: pane, icons };
 }
 
@@ -538,8 +541,8 @@ const progress = (kids: Look[]) => (kids.length ? `${kids.filter((k) => k.st ===
 
 /** A task, or a hand-off with its tasks one step under it. `depth`: 0 at the top, 1 under a plan. */
 function taskRows(l: Look, depth: 0 | 1, fin: boolean): HTMLElement[] {
-  const row = line(l.r, l.st, (!fin && NEED[l.st]) || l.where, taskActs(l, fin), { kid: depth === 1, fin, count: l.kids ? progress(l.kids) : undefined });
-  const kids = (l.kids ?? []).map((k) => line(k.r, k.st, (!fin && NEED[k.st]) || k.where, taskActs(k, fin), { kid: depth === 0, kid2: depth === 1, fin }));
+  const row = line(l.r, l.st, (!fin && needWord(l.st)) || l.where, taskActs(l, fin), { kid: depth === 1, fin, count: l.kids ? progress(l.kids) : undefined });
+  const kids = (l.kids ?? []).map((k) => line(k.r, k.st, (!fin && needWord(k.st)) || k.where, taskActs(k, fin), { kid: depth === 0, kid2: depth === 1, fin }));
   return [row, ...kids];
 }
 
@@ -643,17 +646,17 @@ function renderRail(panel: HTMLElement) {
     rail.append(foldButton("unfold"), count);
     panel.replaceChildren(rail);
   }
-  foldTip(rail.querySelector(".lg-fold")!, "Show the Ledger");
+  foldTip(rail.querySelector(".lg-fold")!, t("ledger.show"));
   const count = rail.querySelector<HTMLElement>(".lg-rail-need")!;
   const n = needing(units());
   count.hidden = !n;
   count.textContent = String(n);
-  count.title = `${n} ledger ${n === 1 ? "task needs" : "tasks need"} you`;
+  count.title = tn("ledger.tasksNeedYou", n);
   count.setAttribute("aria-label", count.title);
 }
 
 /** What the head's scope button says, or null with no workspace open. */
-const scopeLabel = () => (workspaceOpen() ? (ledgerAllWork() ? "All work" : workspaceName()) : null);
+const scopeLabel = () => (workspaceOpen() ? (ledgerAllWork() ? t("ledger.allWork") : workspaceName()) : null);
 
 /** The head's scope button: the workspace's work, or All work. A click switches. */
 function scopeButton(b: HTMLElement) {
@@ -663,14 +666,15 @@ function scopeButton(b: HTMLElement) {
   const all = ledgerAllWork();
   setText(b, label);
   setAttr(b, "aria-pressed", String(all));
-  setAttr(b, "title", all ? `Every row shows. Show only ${workspaceName()} work.` : `Only ${workspaceName()} work shows. Show all work.`);
-  setAttr(b, "aria-label", all ? `All work. Show only ${workspaceName()} work` : `${workspaceName()} work. Show all work`);
+  const name = workspaceName();
+  setAttr(b, "title", all ? t("ledger.allWorkTip", { name }) : t("ledger.workspaceTip", { name }));
+  setAttr(b, "aria-label", all ? t("ledger.allWorkAria", { name }) : t("ledger.workspaceAria", { name }));
 }
 
 /** What the head's filter says: All projects, the fleet, or the project. */
 const filterLabel = () => {
   const f = filter();
-  return f === null ? "All projects" : scopeName(f);
+  return f === null ? t("ledger.allProjects") : scopeName(f);
 };
 
 /** The head's filter: a quiet text button with a chevron. A click lists All projects and each project. */
@@ -682,7 +686,7 @@ function filterButton(b: HTMLElement) {
   const chev = h("span", "lg-filter-chev");
   chev.innerHTML = ICON.down;
   b.append(chev);
-  b.setAttribute("aria-label", `Ledger filter: ${filterLabel()}. Change it`);
+  b.setAttribute("aria-label", t("ledger.filterAria", { name: filterLabel() }));
 }
 
 function filterMenu(b: HTMLElement) {
@@ -695,8 +699,8 @@ function filterMenu(b: HTMLElement) {
     render();
   };
   const r = b.getBoundingClientRect();
-  ctxMenu.open(r.left, r.bottom, "LEDGER", [
-    { icon: now === null ? "indicators-check" : "", label: "All projects", run: pick(null) },
+  ctxMenu.open(r.left, r.bottom, upper(t("section.ledger")), [
+    { icon: now === null ? "indicators-check" : "", label: t("ledger.allProjects"), run: pick(null) },
     { sep: true },
     // The fleets, then the projects.
     ...fleets.map((f) => ({ icon: now === `fleet:${f}` ? "indicators-check" : "", label: f, run: pick(`fleet:${f}`) })),
@@ -729,7 +733,7 @@ export function renderLedger() {
   let list = panel.querySelector<HTMLElement>(".lg-list");
   let need = panel.querySelector<HTMLElement>(".lg-need");
   const fold = panel.querySelector<HTMLElement>(".lg-head .lg-fold");
-  if (fold) foldTip(fold, "Hide the Ledger");
+  if (fold) foldTip(fold, t("ledger.hide"));
   const scope = panel.querySelector<HTMLElement>(".lg-head .lg-scope");
   if (scope) scopeButton(scope);
   const pick = panel.querySelector<HTMLElement>(".lg-head .lg-filter");
@@ -740,11 +744,11 @@ export function renderLedger() {
   if (!list || !need) {
     need = h("button", "lg-need");
     (need as HTMLButtonElement).type = "button";
-    need.title = "Go to the first row that needs you";
+    need.title = t("ledger.firstNeed");
     need.addEventListener("click", () => flashNeed(panel));
     const head = h("div", "lg-head");
     const fold = foldButton("fold");
-    foldTip(fold, "Hide the Ledger");
+    foldTip(fold, t("ledger.hide"));
     const scope = h("button", "lg-scope");
     (scope as HTMLButtonElement).type = "button";
     keepKeys(scope);
@@ -762,7 +766,7 @@ export function renderLedger() {
   }
   const n = needing(us);
   setHidden(need, !n);
-  setText(need, `${n} need${n === 1 ? "s" : ""} you`);
+  setText(need, tn("ledger.needsYou", n));
 
   const move = drawn && loaded && !still();
   const before = new Map<string, { top: number; el: HTMLElement }>();
@@ -771,11 +775,11 @@ export function renderLedger() {
   const out: HTMLElement[] = [];
   if (error) out.push(h("div", "lg-empty", error));
   else if (!x.working.length && !x.open.length && !x.finished.length && filter() !== null) {
-    out.push(h("div", "lg-empty", `No work in ${filterLabel()}.`));
+    out.push(h("div", "lg-empty", t("ledger.noWorkIn", { name: filterLabel() })));
   } else if (!x.working.length && !x.open.length && !x.finished.length && scopeLabel() && !ledgerAllWork()) {
-    out.push(h("div", "lg-empty", "No work in this workspace."));
+    out.push(h("div", "lg-empty", t("ledger.noWorkHere")));
   }
-  for (const [label, part, fin] of [["Working", x.working, false], ["Open", x.open, false], ["Finished", x.finished, true]] as const) {
+  for (const [label, part, fin] of [[t("ledger.working"), x.working, false], [t("ledger.open"), x.open, false], [t("ledger.finished"), x.finished, true]] as const) {
     if (!part.length) continue;
     out.push(h("div", "lg-sec", label));
     for (const u of part) out.push(...unitRows(u, fin));
