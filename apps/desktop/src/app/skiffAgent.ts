@@ -12,7 +12,7 @@ import { openPath } from "../terminal/peek";
 import { actionDialog } from "../ui/dialogParts";
 import { h } from "../ui/dom";
 import { scopeName } from "../workspace/model";
-import { language, t, tn } from "../i18n";
+import { locale, t, tn } from "../i18n";
 
 /** The main Skipper's name until Settings has one. skiffd's setup keeps the same default. */
 export const DEFAULT_NAME = "Admiral";
@@ -410,7 +410,7 @@ export function watchMark(s: SessionInfo | null, protocol: number | null, lastAs
 }
 
 /** Local `HH:MM`. */
-const clock = (ms: number) => new Date(ms).toLocaleTimeString(language(), { hour: "2-digit", minute: "2-digit", hour12: false });
+const clock = (ms: number) => new Date(ms).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit", hour12: false });
 
 /** The tooltip text for a state. Empty for starting and unknown. */
 export function watchText(state: WatchState, s: SessionInfo, name: string, error: string | null): string {

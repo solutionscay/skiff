@@ -553,6 +553,12 @@ export const en = {
   "topbar.nextWaiting": "Go to the next waiting session",
   "topbar.nextUnread": "Go to the next unread session",
   "topbar.keysGoTo": "keys go to",
+  "topbar.pickAgents": "pick an agent for each empty pane",
+  "topbar.noSession": "no session to type into",
+  "topbar.emptyOf": "{empty} of {n} empty",
+  "topbar.panes#one": "{count} pane",
+  "topbar.panes#other": "{count} panes",
+  "view.fullHint": "group is full ({max})",
   "status.connecting": "connecting to skiffd",
 
   // Dialogs that the menus open.

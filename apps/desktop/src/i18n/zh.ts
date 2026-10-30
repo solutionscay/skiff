@@ -522,6 +522,11 @@ export const zh = {
   "topbar.nextWaiting": "转到下一个等待中的会话",
   "topbar.nextUnread": "转到下一个未读会话",
   "topbar.keysGoTo": "按键发送到",
+  "topbar.pickAgents": "为每个空窗格选择代理",
+  "topbar.noSession": "没有接收输入的会话",
+  "topbar.emptyOf": "{n} 个中 {empty} 个为空",
+  "topbar.panes#other": "{count} 个窗格",
+  "view.fullHint": "组已满（{max}）",
   "status.connecting": "正在连接 skiffd",
 
   "dialog.imageFiles": "图片",

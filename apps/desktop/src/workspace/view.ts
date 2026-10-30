@@ -14,7 +14,7 @@ import { showError } from "../ui/alerts";
 import { autoName, deleteGroup, moveGroup, saveGroup } from "../app/groups";
 import { render } from "../app/render";
 import { clearSelection } from "./selection";
-import { FULL_HINT, MAX_PANES, OTHER, S, selectedWorktree, sessions } from "../app/state";
+import { fullHint, MAX_PANES, OTHER, S, selectedWorktree, sessions } from "../app/state";
 import { activeGroupObj, currentLayout, groupOf, inShownGroup, place, shownIds, splitFull, worktreeSessions } from "../app/stateQueries";
 import { panes } from "../terminal/terminalState";
 import { previewOnScreen } from "../terminal/peek";
@@ -542,7 +542,7 @@ export function dragSessions(e: MouseEvent, ids: string[]) {
     return m;
   };
   beginDrag(e, {
-    label: blocked ? `${label}: ${FULL_HINT}` : label,
+    label: blocked ? `${label}: ${fullHint()}` : label,
     cells,
     area: blocked || alone ? null : host,
     rows: () => sessionRows(ids),

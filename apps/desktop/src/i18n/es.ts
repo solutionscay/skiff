@@ -539,6 +539,12 @@ export const es = {
   "topbar.nextWaiting": "Ir a la siguiente sesión que espera",
   "topbar.nextUnread": "Ir a la siguiente sesión sin leer",
   "topbar.keysGoTo": "las teclas van a",
+  "topbar.pickAgents": "elige un agente para cada panel vacío",
+  "topbar.noSession": "ninguna sesión recibe el texto",
+  "topbar.emptyOf": "{empty} de {n} vacíos",
+  "topbar.panes#one": "{count} panel",
+  "topbar.panes#other": "{count} paneles",
+  "view.fullHint": "el grupo está lleno ({max})",
   "status.connecting": "conectando con skiffd",
 
   "dialog.imageFiles": "Imágenes",
