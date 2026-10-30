@@ -4,7 +4,7 @@
     "reasons": [
       "dependency surface"
     ],
-    "sha256": "2d510e908a25fff1d578eda914c296cf4d239265571593876cdc62d913ef07f6"
+    "sha256": "1014b09afe227dbde3f74f628e7b4c824c0dca5320b92ef17647d4904fce4158"
   },
   "apps/desktop/src-tauri/Cargo.toml": {
     "ownership": "dependency surface: review new I/O providers and package aliases",
@@ -39,12 +39,18 @@
     "sha256": "00a8b04162f2a82c2d25cedeb47cabc338faf070d4bfa79a2d763c15a2a1f181"
   },
   "apps/desktop/src-tauri/src/config.rs": {
-    "ownership": "agent settings (#166 R8): a remote Host's through HostConnection (agent_config@1); This Mac's [agents] stays the legacy local adapter, read back from the config it writes (installed state from skiffd): migrate in M1\u2013M6",
+    "ownership": "agent settings (#166 R8): a remote Host's through HostConnection (agent_config@1); This Mac's [agents] stays the legacy local adapter, read back from the config it writes (installed state from skiffd): migrate in M1\u2013M6; Skipper avatars (skipper_avatars, set_skipper_avatar) read and write avatar.toml in This Mac's Skipper folders: LOCAL_ONLY",
     "reasons": [
       "config",
-      "skiff_core"
+      "exists",
+      "fs",
+      "is_dir",
+      "read_to_string",
+      "skiff_client",
+      "skiff_core",
+      "skipper"
     ],
-    "sha256": "695713e47639e8671e5f3386cf33ff4739a7d7f20b2aa4d49069cd6dc9f3a3fb"
+    "sha256": "6d9b8714c7114dde4d0c8e1ac5ed9a3bfb3bd8e25bc89da1e6adadd24928946f"
   },
   "apps/desktop/src-tauri/src/config_tests.rs": {
     "ownership": "test only: an in-process skiff-host on private state, never the live config",
@@ -176,7 +182,7 @@
     "sha256": "92fd8b4f030b200e667213d538bb2cf9605d91fbf4119f3bf0a7e8ef379953cc"
   },
   "apps/desktop/src-tauri/src/lib.rs": {
-    "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6; LOCAL_ONLY no longer holds Skipper and agent commands, which route per Host (#166 R7, R8)",
+    "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6; LOCAL_ONLY no longer holds Skipper and agent commands, which route per Host (#166 R7, R8); skipper_avatars and set_skipper_avatar are LOCAL_ONLY",
     "reasons": [
       "config",
       "env",
@@ -185,7 +191,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "54f478fa71aa72f21395604ab2ac6570e47b3b485c4b1558a711d810e644d15b"
+    "sha256": "fd6d77c61fbbf9292fe016f86fcf649fc6a4367400f96db62b396f32eda3f006"
   },
   "apps/desktop/src-tauri/src/main.rs": {
     "ownership": "client policy (#189): this app's own command-line flags; no Host data",
@@ -273,7 +279,7 @@
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "f52b9a301626ffa4873d152f93575d184479c347bb0e1e987d6960a3b71f9c29"
+    "sha256": "a9a5676384c78fb865482b6c26d346192b2a83bdc430d1088d00e63e0d899da4"
   },
   "apps/desktop/src/app/commands.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -299,7 +305,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "dd237c6d17f7af2d9ef8ffccd10cff4c84da9615bc73978abe56c4fc2269dca3"
+    "sha256": "52554f87945947d71b008f5140d011e2629fccc2ecc9d5d006611e19e5e3040c"
   },
   "apps/desktop/src/app/daemonRestart.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -357,6 +363,7 @@
       "local provider: apps/desktop/src/ui/contextMenu.ts",
       "local provider: apps/desktop/src/workspace/ledger.ts",
       "local provider: apps/desktop/src/workspace/menus.ts",
+      "local provider: apps/desktop/src/workspace/missionControl.ts",
       "local provider: apps/desktop/src/workspace/projectClose.ts",
       "local provider: apps/desktop/src/workspace/rename.ts",
       "local provider: apps/desktop/src/workspace/selection.ts",
@@ -365,7 +372,7 @@
       "local provider: apps/desktop/src/workspace/tree.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "6505a169201a382e4dacf7835f7d6bbad051ae5a3b4942bd4ceac241938a8b84"
+    "sha256": "9d84c8cfe092a8f874fbea369b223cc11bb0d188114cc5b81f8f29ca61784638"
   },
   "apps/desktop/src/app/modes.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -452,7 +459,7 @@
       "@tauri-apps/plugin-updater",
       "invoke"
     ],
-    "sha256": "88ff4920f6abcd9344883219905d129d5c62421d12eec49f09f2e8faf91a87ef"
+    "sha256": "efd5cea977b2e7a6b8a7aedab61afa7810b45174fa0a9b387b33869ad20168c2"
   },
   "apps/desktop/src/appearance/agentIcon.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -542,14 +549,14 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "2c90a7ebd55b72f154253769e9ef87b7577ea3a26d71e28f8ef58a94c37b0727"
+    "sha256": "6762a2a87a242dbc0ef8691f3b12ad51c7d5b75e0c96b1167ab165ae5b77c03b"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6; Show in file manager only on This Mac (#166)",
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "125feeda55b123e256c2ad5a44994aadcb4f03209b78ec6a4288ee8b15d4f2cc"
+    "sha256": "a246012328eab648b286570aacfb8e909efbb9106773246b591032b5542d9d40"
   },
   "apps/desktop/src/appearance/skiffFolderDialog.ts": {
     "ownership": "Host caller (#166 R7): folder preview and change through hostInvoke(skipper_config); the system picker and reveal are this client's own, used only on This Mac",
@@ -574,7 +581,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "5ca3cfc59ceb0ae1b76703d8146e1cee8aa48918300aa846b880acf39648124d"
+    "sha256": "5a3e5ea4c6bbe98d952b2eedd52efe7be97c2ba19e66d6290f9d8d2167420278"
   },
   "apps/desktop/src/diagnostics/latency.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -676,9 +683,10 @@
       "local provider: apps/desktop/src/terminal/insertSignal.ts",
       "local provider: apps/desktop/src/terminal/paneActions.ts",
       "local provider: apps/desktop/src/terminal/resume.ts",
-      "local provider: apps/desktop/src/workspace/canvas.ts"
+      "local provider: apps/desktop/src/workspace/canvas.ts",
+      "local provider: apps/desktop/src/workspace/skipperFace.ts"
     ],
-    "sha256": "70cb381656899c45356c2b180b6a525cde1b5e437468b2d96feab020cd9a52c7"
+    "sha256": "ff30f9e01942c35f06171f9d5a4cf59755af33f05c941977c9b1235fdf05abf3"
   },
   "apps/desktop/src/terminal/peek.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -766,7 +774,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "e9a053cd9a8cb2893f6e85de6737ff8a2f6c3d4760490c841f42f6b3136d6f66"
+    "sha256": "5d0258bd91dd034c78e2d6ec6a212d68a0d4cbac5031dbca8ade2565e3790b03"
   },
   "apps/desktop/src/ui/launchMenu.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -856,7 +864,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "dd9a32ba16c07ee14586b4d8213327203f8347801ee78c9d70cd431b574f4629"
+    "sha256": "d5dea1083a89c844a67fe82986f5552f9324ad3c2a1f5067fc1bc01ed7ebb2e8"
   },
   "apps/desktop/src/workspace/missionControl.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -864,7 +872,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "cdc1c7c6a9289df1392234573e086f59f397db151df54e26ff2c052b117e3110"
+    "sha256": "038be7a31638cfe4ec5bbc2902e992608d79ab45d9b5cb93a9d8288be1a4f876"
   },
   "apps/desktop/src/workspace/missionMotion.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -962,12 +970,13 @@
       "local provider: apps/desktop/src/workspace/rename.ts",
       "local provider: apps/desktop/src/workspace/selection.ts",
       "local provider: apps/desktop/src/workspace/sidebarLines.ts",
+      "local provider: apps/desktop/src/workspace/skipperFace.ts",
       "local provider: apps/desktop/src/workspace/skippersView.ts",
       "local provider: apps/desktop/src/workspace/tree.ts",
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "097a7b01f204003f657fa55f6b9b4fe1a7fedcf70b418176f58b0a8c79b5ce9a"
+    "sha256": "3fcf3c63305488f4ac9b32ebdcf833229762755fd160c6f81efdb0082999ce41"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -979,6 +988,14 @@
     ],
     "sha256": "dff92979d8661a01c2cf368dc898d62140d41eac8c72519f5ec33669e8b2e583"
   },
+  "apps/desktop/src/workspace/skipperFace.ts": {
+    "ownership": "local only by design: a Skipper's avatar (avatar.toml in its folder on This Mac) through skipper_avatars and set_skipper_avatar, both in LOCAL_ONLY and refused on a remote Host; the avatar menu and Settings rows are off on a remote Host",
+    "reasons": [
+      "@tauri-apps/api/core",
+      "invoke"
+    ],
+    "sha256": "a8971576881dc7af88fdcc5737269cd7c4ac42518ecab462eae3bced75401163"
+  },
   "apps/desktop/src/workspace/skippersView.ts": {
     "ownership": "legacy local adapter/caller: migrate behind Host API in M1\u2013M6",
     "reasons": [
@@ -989,10 +1006,11 @@
       "local provider: apps/desktop/src/workspace/ledger.ts",
       "local provider: apps/desktop/src/workspace/menus.ts",
       "local provider: apps/desktop/src/workspace/selection.ts",
+      "local provider: apps/desktop/src/workspace/skipperFace.ts",
       "local provider: apps/desktop/src/workspace/tree.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "ef36f989ce8809b528f7341a91d5541e7a60a02980821c7a5bc38411f7fc0931"
+    "sha256": "c9f86e87809c1bbfaa8c262928dfafe61452d98e20f5848ccfcecde67f147eee"
   },
   "apps/desktop/src/workspace/status.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
