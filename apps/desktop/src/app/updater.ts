@@ -12,6 +12,7 @@ import { showError, showNotice } from "../ui/alerts";
 import { $, button, h } from "../ui/dom";
 import { leave } from "../workspace/profile";
 import { failLine, releasePage } from "./updateNotice";
+import { t } from "../i18n";
 
 /** The quiet check waits for the launch to settle. */
 const QUIET_MS = 10_000;
@@ -47,7 +48,7 @@ async function find(asked: boolean) {
   }
   if (!found) {
     state = "idle";
-    return asked ? showNotice(`Skiff ${await getVersion()} is the latest version.`) : undefined;
+    return asked ? showNotice(t("update.latest", { version: await getVersion() })) : undefined;
   }
   state = "downloading";
   badge();
@@ -67,7 +68,7 @@ async function find(asked: boolean) {
 }
 
 /** The release page, for an install that cannot run here. */
-const retry = (version: string) => ({ label: "Release page", run: () => openUrl(releasePage(version)) });
+const retry = (version: string) => ({ label: t("update.releasePage"), run: () => openUrl(releasePage(version)) });
 
 /**
  * Restart to update: the workspace save guard first, then the install, then
@@ -77,7 +78,7 @@ const retry = (version: string) => ({ label: "Release page", run: () => openUrl(
 function restart() {
   const u = update;
   if (!u) return;
-  void leave("Skiff restarts to finish the update. Sessions keep running.", async () => {
+  void leave(t("update.restartsLeave"), async () => {
     try {
       await u.install();
     } catch (e) {
@@ -98,7 +99,7 @@ function badge() {
   document.getElementById("update-badge")?.remove();
   document.getElementById("update-pop")?.remove();
   if (state !== "downloading" && state !== "ready") return;
-  const b = button("tb-cell update-badge", state === "ready" ? "Update ready" : "Downloading update", () => {
+  const b = button("tb-cell update-badge", state === "ready" ? t("update.ready") : t("update.downloading"), () => {
     if (state !== "ready") return;
     document.getElementById("update-pop") ? closePop() : openPop();
   });
@@ -122,16 +123,16 @@ function openPop() {
   const pop = h("div", "");
   pop.id = "update-pop";
   pop.setAttribute("role", "dialog");
-  const title = `Update to Skiff ${update.version}`;
+  const title = t("update.title", { version: update.version });
   pop.setAttribute("aria-label", title);
-  const later = button("confirm-cancel", "Not now", () => closePop(back));
-  const go = button("confirm-act", "Restart to update", () => {
+  const later = button("confirm-cancel", t("update.notNow"), () => closePop(back));
+  const go = button("confirm-act", t("update.restart"), () => {
     closePop(back);
     restart();
   });
   const foot = h("div", "confirm-foot");
   foot.append(later, go);
-  pop.append(h("div", "confirm-title", title), h("div", "confirm-body", "Skiff restarts. Sessions keep running."), foot);
+  pop.append(h("div", "confirm-title", title), h("div", "confirm-body", t("update.restarts")), foot);
   pop.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     e.preventDefault();
