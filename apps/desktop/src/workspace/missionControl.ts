@@ -469,7 +469,7 @@ function clusterHeadParts(key: string, fleet: boolean): HTMLElement[] {
 }
 
 /** Markup to compare, less the busy icon's phase, which is new on each call. */
-const strip = (html: string) => html.replace(/--(water|skiff)-delay:[^;"]*;?\s*/g, "");
+const strip = (html: string) => html.replace(/--(water|skiff|blink|face-turn)-delay:[^;"]*;?\s*/g, "");
 
 /** Puts `parts` in `el` when they differ from what is there. The element stays, so its light does not flicker. */
 function refill(el: HTMLElement, parts: HTMLElement[]) {

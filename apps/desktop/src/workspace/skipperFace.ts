@@ -11,7 +11,7 @@
  * generated faces.
  */
 import { invoke } from "@tauri-apps/api/core";
-import { ADMIRAL_AVATAR, skipperAvatar } from "../appearance/skipperAvatar";
+import { admiralAvatar, skipperAvatar } from "../appearance/skipperAvatar";
 import { place } from "../app/stateQueries";
 import { S } from "../app/state";
 import { projectSkipperOf, skiffAgentSession } from "../app/skiffAgent";
@@ -81,7 +81,7 @@ export function skipperFace(scope: string | null, px: number, seed?: number): HT
       queueMicrotask(() => void loadSkipperAvatars().finally(() => (reading = false)));
     }
   }
-  face.innerHTML = scope === null ? ADMIRAL_AVATAR : skipperAvatar(scope, n ?? 0);
+  face.innerHTML = scope === null ? admiralAvatar() : skipperAvatar(scope, n ?? 0);
   return face;
 }
 

@@ -60,8 +60,13 @@ function hash(text: string): number {
 function rhythm(h: number): string {
   const blink = 4 + ((h >>> 16) % 31) / 10;
   const turn = 3 * (10 + ((h >>> 21) % 9));
-  return `--blink:${blink}s;--blink-delay:-${((h >>> 4) % 70) / 10}s;--blink-anim:${(h >>> 25) % 5 ? "sk-blink" : "sk-blink2"};`
-    + `--turn:${turn}s;--turn-delay:-${(h >>> 9) % turn}s;--dir:${(h >>> 29) & 1 ? 1 : -1}`;
+  // The delays count from the page clock, not from when this face was drawn: a
+  // row drawn again (the Admiral's, on every state change) picks up its
+  // rhythm where it was, instead of starting over and never reaching a turn.
+  const now = performance.now() / 1000;
+  const phase = (period: number, offset: number) => (-((now + offset) % period)).toFixed(2);
+  return `--blink:${blink}s;--blink-delay:${phase(blink, ((h >>> 4) % 70) / 10)}s;--blink-anim:${(h >>> 25) % 5 ? "sk-blink" : "sk-blink2"};`
+    + `--face-turn:${turn}s;--face-turn-delay:${phase(turn, (h >>> 9) % turn)}s;--dir:${(h >>> 29) & 1 ? 1 : -1}`;
 }
 
 export function skipperAvatar(name: string, seed = 0): string {
@@ -85,7 +90,7 @@ export function skipperAvatar(name: string, seed = 0): string {
  * edge keeps the white on a light theme.
  */
 const EDGE = `stroke="${VISOR}" stroke-width="1.6" stroke-linejoin="round"`;
-export const ADMIRAL_AVATAR = `<svg viewBox="0 0 32 32" aria-hidden="true" style="${rhythm(hash("Admiral"))}"><g class="sk-turn">`
+export const admiralAvatar = () => `<svg viewBox="0 0 32 32" aria-hidden="true" style="${rhythm(hash("Admiral"))}"><g class="sk-turn">`
   + `<rect x="2.4" y="10.6" width="27.2" height="19.4" rx="8" fill="#fff" ${EDGE}/>`
   + `<path d="M4.6 9.4C5.4 4.6 10 2 16 2s10.6 2.6 11.4 7.4z" fill="#fff" ${EDGE}/>`
   + `<rect x="4.2" y="8" width="23.6" height="4.4" rx="1.8" style="fill:${FILL}" ${EDGE}/>`

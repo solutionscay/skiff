@@ -46,7 +46,7 @@
    (skipperAvatar.ts). Done and no-session faces sleep, and reduced motion
    stops all of it. */
 .skipper-face .sk-eyes { transform-box: fill-box; transform-origin: center; animation: var(--blink-anim, sk-blink) var(--blink, 5s) var(--blink-delay, 0s) infinite steps(1, end); }
-.skipper-face :is(.sk-turn, .sk-front, .sk-look) { animation-duration: var(--turn, 42s); animation-delay: var(--turn-delay, 0s); animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+.skipper-face :is(.sk-turn, .sk-front, .sk-look) { animation-duration: var(--face-turn, 42s); animation-delay: var(--face-turn-delay, 0s); animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
 .skipper-face .sk-turn { transform-origin: 16px 16px; animation-name: sk-lean; }
 .skipper-face .sk-front { animation-name: sk-slide; }
 .skipper-face .sk-look { animation-name: sk-peer; }
