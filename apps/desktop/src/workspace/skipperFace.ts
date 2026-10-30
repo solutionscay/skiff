@@ -17,6 +17,7 @@ import { S } from "../app/state";
 import { projectSkipperOf, skiffAgentSession } from "../app/skiffAgent";
 import { appThemeOf, themeIdFor } from "../appearance/themes";
 import { themeAccent } from "../appearance/appTheme";
+import { DEFAULT_THEME } from "../appearance/colors";
 import { render } from "../app/renderRequest";
 import { dialogFrame, dialogHeader } from "../ui/dialogParts";
 import { button, h } from "../ui/dom";
@@ -46,12 +47,19 @@ const projectOf = (scope: string) => S.projects.find((p) => p.name === scope) ??
  * session theme, else its project's, else the app's, as `themeIdFor` gives
  * the pane. With no session, or a session in no project, the scope's
  * project theme, else the app theme. The Admiral follows its own the same way.
+ * Each face resolves its own Skipper and sets --pc on itself, so it never
+ * takes the focused pane's theme or a color an ancestor sets.
  */
 export function faceColor(scope: string | null): string {
   const s = scope === null ? skiffAgentSession() : projectSkipperOf(scope);
   const t = s && (s.theme || place(s)) ? S.themes.find((x) => x.id === themeIdFor(s)) : appThemeOf(scope === null ? null : projectOf(scope));
-  return t ? themeAccent(t) : "var(--accent)";
+  const own = t ?? S.themes.find((x) => x.id === DEFAULT_THEME);
+  // A literal, never var(--accent): an ancestor (a Mission control lane, the app in a pane's theme) may set that.
+  return own ? themeAccent(own) : STYLESHEET_ACCENT;
 }
+
+/** The stylesheet's accent, before any theme loads. */
+const STYLESHEET_ACCENT = "#b69cff";
 
 /** What a face shows, for the row signatures. */
 export const faceSig = (scope: string | null) => [chosen.get(scope ?? "") ?? null, faceColor(scope)];
