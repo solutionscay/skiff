@@ -364,7 +364,7 @@
       "local provider: apps/desktop/src/workspace/tree.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "0c635e09c3f32c52953966f910343f8c177edbf6e8d4918340d0ef26a1575f50"
+    "sha256": "88d134289c8eac14b7c6200f367893670006253ee229d22868be1c9ca1ed6e47"
   },
   "apps/desktop/src/app/modes.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -765,7 +765,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "ad43d299c48892b43663c51687f43433dfae101d75a875ca588708d1082f6dc8"
+    "sha256": "e9a053cd9a8cb2893f6e85de6737ff8a2f6c3d4760490c841f42f6b3136d6f66"
   },
   "apps/desktop/src/ui/launchMenu.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -965,7 +965,7 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "f71b39993f99d802e16e38e4f55ddee39027e54ad47aff06ad14afd787f9fae7"
+    "sha256": "752088297213694150483394c1303933e4dd4cb719ed0e63657b7a41bb82cf42"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -993,7 +993,7 @@
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/app/stateQueries.ts"
     ],
-    "sha256": "eae011584d8834e2f12ab09e8c6de607bbbb0320190500abd917cebd976bf381"
+    "sha256": "b8d2e8c67348eeaf9acf82b451c0148faf46e014d5fae9f0648b4c67d703df10"
   },
   "apps/desktop/src/workspace/treeDrag.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -1003,7 +1003,7 @@
       "local provider: apps/desktop/src/workspace/fleets.ts",
       "local provider: apps/desktop/src/workspace/tree.ts"
     ],
-    "sha256": "7285f7112650a4d785a759b995ed629ca11ffb11b8301025b11d1814fa951ee8"
+    "sha256": "e10f34297cfdc2e7073fd4935c2aaed4a5bf12f17d34eccd3c03e1ec9667c702"
   },
   "apps/desktop/src/workspace/view.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

@@ -8,6 +8,6 @@ body.kbd #sidebar-scroll .current:focus {
   box-shadow: inset 2px 0 0 var(--pc), inset 0 1px 0 var(--pc), inset 0 -1px 0 var(--pc);
 }
 /* The pane on screen while the keys are on another row, as after Ctrl+Shift+1 or Ctrl+Shift+Left:
-   its row, or the Skipper line of its block, keeps the bar without the tint. */
+   its row keeps the bar without the tint. */
 #sidebar-scroll .shown { box-shadow: inset 2px 0 0 var(--pc); color: var(--text); }
-#sidebar-scroll .shown :is(.title, .skiff-agent-name) { color: var(--text); }
+#sidebar-scroll .shown .title { color: var(--text); }

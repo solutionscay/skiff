@@ -143,73 +143,47 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 /* The rows still under a fleet that hides its projects line up with its Skipper. */
 .tree-kids > .fleet-shown > .session-row { padding-left: calc(30 * var(--u)); }
 
-/* The Skiff agent (#95): one fixed 40px block above the projects, the first command block. Line 1
-   its glyph as the badge and its name; line 2 its state word, its title, the ledger count and its mark.
-   The Projects divider's rule closes it, in line with the pane header. */
-.session-row.skiff-agent-row {
-  height: var(--row); flex-wrap: wrap; align-content: stretch; gap: 0;
-  padding: 0 calc(16 * var(--u)) 0 calc(30 * var(--u));
-  background: color-mix(in srgb, var(--pc) 10%, transparent);
-}
-.skiff-agent-row .l1, .skiff-agent-row .l2 { width: 100%; height: calc(20 * var(--u)); min-width: 0; display: flex; align-items: center; gap: calc(8 * var(--u)); }
-/* Line 2 starts under the name: the badge and its gap. */
-.skiff-agent-row .l2 { padding-left: calc(28 * var(--u)); }
-.skiff-agent-row .skiff-agent-name { flex-shrink: 0; font-size: calc(13px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
+/* The Skiff agent (#95): one session row above the projects, in line with the section heads. */
+/* The Skiff agent: a full 40px row, flush at the top. The Projects divider's rule closes it, in line with the pane header. */
+.session-row.skiff-agent-row { height: var(--row); padding-left: calc(16 * var(--u)); }
+.skiff-agent-row .skiff-agent-name { flex-shrink: 0; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
 .skiff-agent-row:not([data-session]) .title { color: var(--text-dim); }
-/* A badge for a Skipper's glyph, the size and tint of a project badge, in its column. */
-.badge {
-  width: calc(20 * var(--u)); height: calc(20 * var(--u)); flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--pc) 14%, transparent);
-}
-/* One word for the state, in the state's color. */
-.st-word { flex-shrink: 0; font-size: calc(11px * var(--zoom, 1)); }
-.st-word.st-working { color: var(--state-working); }
-.st-word.st-waiting { color: var(--state-waiting-text); }
-.st-word.st-idle { color: var(--text-dim); }
-.st-word.st-done { color: var(--state-done); }
-
-/* A command block: a project with a Skipper, or a fleet with a running fleet Skipper, fuses the head
-   and its Skipper into one 40px row on a band of its color. Line 1: chevron, badge, name, menu.
-   Line 2: the Skipper's agent icon, its word, its state, the title of its work and its counts.
-   Enter on the block goes into the Skipper; Space folds. A click on the line opens the Skipper. */
-.project-row.command { flex-wrap: wrap; align-content: stretch; background: color-mix(in srgb, var(--pc) 10%, transparent); }
-.project-row.command > .project-pick, .project-row.command > .wt-plus { height: calc(20 * var(--u)); }
-.skipper-line {
-  width: 100%; height: calc(20 * var(--u)); flex-shrink: 0;
-  display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(16 * var(--u)) 0 calc(36 * var(--u));
-  border: 0; background: transparent; text-align: left; color: var(--text); font: inherit; letter-spacing: 0; text-transform: none;
-}
-.skipper-line .skiff-agent-name { flex-shrink: 0; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
-.skipper-line .title { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.skipper-line.unread-row .title { font-weight: 600; }
-/* With a Skipper and nothing under it, the name does not fold, but the line still opens the Skipper. */
-.project-row.empty.command:hover { background-image: linear-gradient(var(--hover), var(--hover)); }
-/* A fleet's block: the head's rule stays on top; the name line and the Skipper line share the 40px.
-   A fleet has no color: its block takes the default one, as the Skiff agent's does. */
-#sidebar-scroll > .fleet-head.command { --pc: var(--project-default); height: var(--row); flex-wrap: wrap; align-content: stretch; background: color-mix(in srgb, var(--pc) 10%, transparent); }
-#sidebar-scroll > .fleet-head.command > .fleet-pick { height: calc(20 * var(--u)); align-items: center; padding-bottom: 0; }
-#sidebar-scroll > .fleet-head.command > .fleet-hidden { height: calc(20 * var(--u)); align-items: center; padding-bottom: 0; }
-#sidebar-scroll > .fleet-head.command > .tree-head-add { height: calc(20 * var(--u)); align-self: auto; }
-#sidebar-scroll > .fleet-head.command:has(> .fleet-pick.current) { background: color-mix(in srgb, var(--pc) 22%, var(--bg-panel)); box-shadow: inset 2px 0 0 var(--pc); }
-#sidebar-scroll > .fleet-head.command .fleet-pick.current, body.kbd #sidebar-scroll > .fleet-head.command .fleet-pick.current:focus { background: transparent; box-shadow: none; }
-body.kbd #sidebar-scroll > .fleet-head.command:has(> .fleet-pick.current:focus) { outline: 1px solid var(--rule-strong); outline-offset: -1px; }
-#sidebar-scroll > .fleet-head.command:has(> .fleet-pick.current) .tree-head-more { visibility: visible; }
-
-/* The watcher, on the agent icon of the Skiff agent's block and of each Skipper line. Runs: teal.
-   The icon turns once every 8 s only while the agent is idle and the watcher follows a pane with
-   an open ledger task, in place, like a ship's wheel at rest: the turn means "watching work".
-   Nothing to follow, or an older watcher that does not say: teal, still. None runs, or a line
-   failed: red, still. The box keeps its size, so the row does not move. */
-:is(.skiff-agent-row, .skipper-line) .agent-icon { position: relative; }
-:is(.skiff-agent-row, .skipper-line).watch-on .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--watch); }
-:is(.skiff-agent-row, .skipper-line).watch-on .agent-icon svg [fill]:not([fill="none"]) { fill: var(--watch); }
-:is(.skiff-agent-row, .skipper-line).watch-error .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--error); }
-:is(.skiff-agent-row, .skipper-line).watch-error .agent-icon svg [fill]:not([fill="none"]) { fill: var(--error); }
-:is(.skiff-agent-row, .skipper-line).watch-turn .agent-icon {
+/* The Skiff agent's watcher, on its agent icon. Runs: teal. The icon turns
+   once every 8 s only while the agent is idle and the watcher follows a pane
+   with an open ledger task, in place, like a ship's wheel at rest: the turn
+   means "watching work". Nothing to follow, or an older watcher that does
+   not say: teal, still. The box keeps its size, so the row
+   does not move. None runs, or a line failed: red, still. */
+.skiff-agent-row .agent-icon { position: relative; }
+.skiff-agent-row.watch-on .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--watch); }
+.skiff-agent-row.watch-on .agent-icon svg [fill]:not([fill="none"]) { fill: var(--watch); }
+.skiff-agent-row.watch-error .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--error); }
+.skiff-agent-row.watch-error .agent-icon svg [fill]:not([fill="none"]) { fill: var(--error); }
+.skiff-agent-row.watch-turn .agent-icon {
   transform-origin: center; transform-box: fill-box;
   /* Stepped, as the other icons: a smooth turn makes the webview draw a frame on every refresh for as long as Skipper idles. */
   animation: sk-turn 8s steps(48) var(--turn-delay, 0ms) infinite;
 }
 @keyframes sk-turn { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { :is(.skiff-agent-row, .skipper-line).watch-turn .agent-icon { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .skiff-agent-row.watch-turn .agent-icon { animation: none; } }
+
+/* A project Skipper: the first row of its project block, on the worktree line. The icon sits where a worktree's branch icon does. */
+.tree-project .session-row.project-skipper-row { padding-left: calc(10 * var(--u)); }
+/* A fleet's Skipper: the first row under its fleet head, in line with the project rows' chevrons.
+   A fleet has no color: its Skipper takes the default one, as the Skiff agent's row does. */
+.tree-kids > .session-row.project-skipper-row { padding-left: calc(10 * var(--u)); --pc: var(--project-default); }
+.project-skipper-row .skiff-agent-name { flex-shrink: 0; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
+.project-skipper-row .title { color: var(--text-3); }
+/* Its own watcher, with the Skiff agent row's states: teal while it runs,
+   turning while idle with a followed pane, red when a line failed. */
+.project-skipper-row .agent-icon { position: relative; }
+.project-skipper-row.watch-on .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--watch); }
+.project-skipper-row.watch-on .agent-icon svg [fill]:not([fill="none"]) { fill: var(--watch); }
+.project-skipper-row.watch-error .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--error); }
+.project-skipper-row.watch-error .agent-icon svg [fill]:not([fill="none"]) { fill: var(--error); }
+.project-skipper-row.watch-turn .agent-icon {
+  transform-origin: center; transform-box: fill-box;
+  /* Stepped, as on the Skiff agent's row. */
+  animation: sk-turn 8s steps(48) var(--turn-delay, 0ms) infinite;
+}
+@media (prefers-reduced-motion: reduce) { .project-skipper-row.watch-turn .agent-icon { animation: none; } }

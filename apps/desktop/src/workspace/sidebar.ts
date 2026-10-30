@@ -361,15 +361,15 @@ export function renderSidebar() {
     const fleetSkipper = sec.fleet ? fleetSkipperOf(sec.fleet) : null;
     // A fleet that hides its projects keeps its Skipper and the sessions that need a look.
     const split = sec.fleet && projectsHidden(sec.fleet) ? hiddenSplit(sec.projects) : null;
-    // With none of them, the head is alone: no chevron and no fold. Its Skipper lives in the head.
-    const alone = !!split && !split.shown.length;
+    // With none of them, the head is alone: no chevron and no fold.
+    const alone = !!split && !fleetSkipper && !split.shown.length;
     const open = !sec.fleet || (!alone && isOpen(fleetKey(sec.fleet)));
     const headSig = JSON.stringify([
       listGen, sec.fleet, open, workspaceOpen(), sec.projects.map((p) => p.name), split?.hidden ?? null, alone,
       open ? null : sec.projects.map((p) => [sig.parts.get(projectBlockKey(p.name)), sig.looks.get(projectBlockKey(p.name)) ?? null]),
-      fleetSkipper ? skipperSig(fleetScope(sec.fleet!)) : null,
+      open || !sec.fleet ? null : [fleetSkipperOf(sec.fleet)?.state ?? null, fleetSkipperOf(sec.fleet)?.unread ?? false],
     ]);
-    nodes.push(keep(`head:${sec.fleet ?? ""}`, headSig, () => sectionHead(sec, split?.hidden ?? null, alone, fleetSkipper)));
+    nodes.push(keep(`head:${sec.fleet ?? ""}`, headSig, () => sectionHead(sec, split?.hidden ?? null, alone)));
     if (!open) continue;
     const sk = sec.fleet ?? "";
     kidsNow.add(sk);
@@ -379,13 +379,17 @@ export function renderSidebar() {
       if (sec.fleet) kids.dataset.kids = fleetKey(sec.fleet);
       sectionKids.set(sk, kids);
     }
+    // A fleet's Skipper is the first row under its head.
+    const skipperRow = sec.fleet && fleetSkipper
+      ? [keep(`skipper:${sec.fleet}`, JSON.stringify([listGen, skipperSig(fleetScope(sec.fleet))]), () => projectSkipperRow(fleetScope(sec.fleet!), fleetSkipper))]
+      : [];
     const shownSig = split ? JSON.stringify([listGen, appliedTheme(), S.selection, S.renamingSession, split.shown.map((x) => [x.id, x.state, x.unread, x.exit_code, x.agent_exit, taskTitle(x), agentName(x), agentKind(x), place(x)?.project.name])]) : "";
-    setChildren(kids, split
+    setChildren(kids, [...skipperRow, ...(split
       ? split.shown.length ? [keep(`shown:${sec.fleet}`, shownSig, () => shownBlock(split.shown))] : []
       : sec.projects.map((p) => {
         const k = projectBlockKey(p.name);
         return syncSkipperRow(keep(k, sig.parts.get(k)!, () => projectBlock(p)), p);
-      }), takeAnchor);
+      }))], takeAnchor);
     nodes.push(kids);
   }
   // A folded fleet's rows start over when it opens: the fold left them shrunk.
@@ -441,24 +445,10 @@ function otherHead(): HTMLElement {
   return head;
 }
 
-/** The one word a session's state reads as, in the state's color. */
-function stateWord(s: SessionInfo): HTMLElement {
-  return h("span", `st-word st-${s.state}`, s.state);
-}
-
-/** A badge for a Skipper's or the Skiff agent's glyph, in the project badge column. */
-function agentBadge(glyph: HTMLElement): HTMLElement {
-  const box = h("span", "badge");
-  box.appendChild(glyph);
-  return box;
-}
-
 /**
- * The Skiff agent: one fixed 40px block above the projects, as a project
- * with a Skipper has. Line 1: its agent's glyph as the badge and its name
- * from Settings. Line 2: its state word, its title, the amber count of
- * ledger tasks that need the person, and its mark. Its session is left out
- * of the tree below. With no session, a click or Enter starts one.
+ * The Skiff agent: one fixed row above the projects, with its name from
+ * Settings, its agent's glyph and title, and its state mark. Its session is
+ * left out of the tree below. With no session, a click or Enter starts one.
  */
 function skiffAgentRow(): HTMLElement {
   const s = skiffAgentSession();
@@ -466,15 +456,11 @@ function skiffAgentRow(): HTMLElement {
   const row = h("button", "session-row skiff-agent-row" + (s ? ` st-${s.state}` : "") + (s && S.selection.includes(s.id) ? " selected" : ""));
   row.type = "button";
   row.style.setProperty("--pc", DEFAULT_ACCENT);
-  const l1 = h("span", "l1");
-  const l2 = h("span", "l2");
-  row.append(l1, l2);
   if (!s) {
     const a = skiffAgentChoice();
     row.dataset.key = SKIFF_AGENT_KEY;
     row.setAttribute("aria-label", `${name}, the Skiff agent, not running`);
-    l1.append(agentBadge(launchIcon(a)), h("span", "skiff-agent-name", name));
-    l2.append(h("span", "title", a ? `start ${a.id}` : "no agent on"));
+    row.append(launchIcon(a), h("span", "skiff-agent-name", name), h("span", "title", a ? `start ${a.id}` : "no agent on"));
     row.addEventListener("click", () => {
       // The row is current before the start: newSession shows the pane only if
       // the current row has not moved while the agent starts.
@@ -502,16 +488,15 @@ function skiffAgentRow(): HTMLElement {
   if (watch.state === "missing" || watch.state === "failed") row.classList.add("watch-error");
   if (watch.text) row.title = watch.text;
   row.setAttribute("aria-label", `${name}, the Skiff agent, ${s.title ?? agentName(s)}, ${s.state}${watch.text ? `. ${watch.text}` : ""}`);
-  l1.append(agentBadge(agentIcon(s)), h("span", "skiff-agent-name", name));
-  l2.append(stateWord(s), h("span", "title", s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? ""));
+  row.append(agentIcon(s), h("span", "skiff-agent-name", name), h("span", "title", s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? ""));
   // One amber count, only while ledger tasks need the person.
   const needs = ledgerNeeds();
   if (needs) {
     const c = h("span", "ledger-count", String(needs));
     c.title = `${needs} ledger ${needs === 1 ? "task needs" : "tasks need"} you`;
-    l2.append(c);
+    row.append(c);
   }
-  l2.append(unreadMark(row, s));
+  row.append(unreadMark(row, s));
   row.addEventListener("mousedown", (e) => {
     if (e.button === 0) row.focus();
   });
@@ -534,34 +519,31 @@ function skipperSig(scope: string) {
 }
 
 /**
- * An open project's Skipper line changes with its state, its watcher and its
- * Ledger counts. A kept block rebuilds that line alone.
+ * An open project's Skipper row changes with its state, its watcher and its
+ * Ledger counts. A kept block rebuilds that row alone.
  */
 function syncSkipperRow(block: HTMLElement, p: Project): HTMLElement {
   const s = projectSkipperOf(p.name);
-  const old = block.querySelector<HTMLElement>(":scope > .project-row > .skipper-line");
+  const old = block.querySelector<HTMLElement>(":scope > .tree-kids > .project-skipper-row");
   if (!s || !old) return block;
   const sig = JSON.stringify(skipperSig(p.name));
   if (block.dataset.skipper === sig) return block;
   block.dataset.skipper = sig;
   tally("sidebar.row");
-  old.replaceWith(skipperLine(p.name, s, projectKey(p.name)));
+  old.replaceWith(projectSkipperRow(p.name, s));
   return block;
 }
 
 /**
- * The Skipper line of a command block: the second line of its project row
- * or fleet head. Its agent icon, "Skipper", its state word, the title of its
- * work, and the amber and blue counts of the tasks it owns. A click opens
- * its pane and leaves the keys on the block (`rowKey`): the line is not a
- * row of the list, so Enter on the block opens it. Its session is left out
- * of the tree below.
+ * A project or fleet Skipper: the first row of its project block, or the
+ * first row under its fleet head. Its agent icon, "Skipper", the title of
+ * its work, and the amber and blue counts of the tasks it owns. Its session
+ * is left out of the tree below.
  */
-function skipperLine(scope: string, s: SessionInfo, rowKey: string): HTMLElement {
+function projectSkipperRow(scope: string, s: SessionInfo): HTMLElement {
   const name = skipperWord();
-  const row = h("button", "skipper-line" + ` st-${s.state}`);
+  const row = h("button", "session-row project-skipper-row" + ` st-${s.state}` + (S.selection.includes(s.id) ? " selected" : ""));
   row.type = "button";
-  row.tabIndex = -1;
   row.dataset.session = s.id;
   // Its own watcher, as on the Skiff agent's row: teal while it runs, turning
   // while the Skipper is idle and the watcher follows a pane with an open
@@ -576,15 +558,18 @@ function skipperLine(scope: string, s: SessionInfo, rowKey: string): HTMLElement
   if (watch.text) row.title = watch.text;
   const title = ledgerWorkTitle(scope) ?? s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? "";
   const { need, working } = ledgerCounts(scope);
-  row.setAttribute("aria-label", `${scopeName(scope)} ${name}, ${s.state}${title ? `, ${title}` : ""}${watch.text ? `. ${watch.text}` : ""}`);
-  row.append(agentIcon(s), h("span", "skiff-agent-name", name), stateWord(s), h("span", "title", title));
+  row.setAttribute("aria-label", `${scopeName(scope)} ${name}, ${title || s.state}${watch.text ? `. ${watch.text}` : ""}`);
+  row.append(h("span", "chev-space"), agentIcon(s), h("span", "skiff-agent-name", name), h("span", "title", title));
   const roll = rollCounts(need, working);
   if (roll) row.append(roll);
   row.append(unreadMark(row, s));
+  row.addEventListener("mousedown", (e) => {
+    if (e.button === 0) row.focus();
+  });
   row.addEventListener("click", () => {
     clearSelection();
     revealSession(s.id);
-    requestAnimationFrame(() => keepRow(rowKey));
+    requestAnimationFrame(() => keepRow(s.id));
   });
   row.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -612,7 +597,7 @@ function shownBlock(shown: SessionInfo[]): HTMLElement {
  * A fleet that hides its projects counts its hidden sessions (`hidden`); a
  * click on the count shows the projects. `alone`: nothing under the head.
  */
-function sectionHead(sec: Section, hidden: number | null = null, alone = false, fleetSkipper: SessionInfo | null = null): HTMLElement {
+function sectionHead(sec: Section, hidden: number | null = null, alone = false): HTMLElement {
   if (!sec.fleet) {
     const head = h("div", "tree-head");
     head.append(h("span", "tree-head-name", "Projects"));
@@ -628,13 +613,11 @@ function sectionHead(sec: Section, hidden: number | null = null, alone = false, 
   const name = sec.fleet;
   const key = fleetKey(name);
   const open = !alone && isOpen(key);
-  // A running fleet Skipper makes the head a command block: the Skipper's line under the name.
-  const head = h("div", "tree-head fleet-head" + (alone ? " alone" : "") + (fleetSkipper ? " command" : ""));
+  const head = h("div", "tree-head fleet-head" + (alone ? " alone" : ""));
   const pick = button("fleet-pick", "", () => {
     if (!alone) toggleRow(key, render);
   });
   pick.dataset.key = key;
-  if (fleetSkipper) pick.dataset.skipper = fleetSkipper.id;
   if (!alone) {
     pick.dataset.fold = key;
     pick.setAttribute("aria-expanded", String(open));
@@ -662,8 +645,7 @@ function sectionHead(sec: Section, hidden: number | null = null, alone = false, 
     head.append(count);
   }
   head.append(more, add);
-  if (fleetSkipper) head.appendChild(skipperLine(fleetScope(name), fleetSkipper, key));
-  const roll = open || alone ? null : rollup(sec.projects);
+  const roll = open || alone ? null : rollup(sec.projects, name);
   if (roll) pick.appendChild(roll);
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -673,31 +655,26 @@ function sectionHead(sec: Section, hidden: number | null = null, alone = false, 
   return head;
 }
 
-/**
- * A project: one 40px row, then its worktrees, groups and sessions while it
- * is open. With a Skipper, the row is a command block: line 1 the project,
- * line 2 its Skipper. Enter on the block opens the Skipper; Space folds.
- */
+/** A project: one 40px row, then its worktrees, groups and sessions while it is open. */
 function projectBlock(p: Project): HTMLElement {
   const color = accent(p);
   const key = projectKey(p.name);
   const open = isOpen(key);
   const bare = bareWorktree(p);
-  // Nothing under the project: no chevron, no fold, no hover. The Skipper is in the row, not under it.
+  // Nothing under the project: no chevron, no fold, no hover.
   // changesBlock reads the worktree's changes the first time, so a project folded since the start still learns of them.
   const changes = bare && showsChanges(p) ? changesBlock(bare) : null;
   const skipper = projectSkipperOf(p.name);
-  const empty = !!bare && !p.error && !worktreeLines(bare).length && !changes && !showsFiles(p);
+  const empty = !!bare && !p.error && !worktreeLines(bare).length && !changes && !showsFiles(p) && !skipper;
   const block = h("div", "tree-project" + (p.name === S.selectedProject ? " selected" : ""));
   block.style.setProperty("--pc", color);
 
-  const head = h("div", "project-row" + (empty ? " empty" : "") + (skipper ? " command" : ""));
+  const head = h("div", "project-row" + (empty ? " empty" : ""));
   head.dataset.project = p.name;
   head.addEventListener("mousedown", (e) => dragTree(e, block, [p], null));
   const pick = h("button", "project-pick");
   pick.type = "button";
   pick.dataset.key = pick.dataset.fold = key;
-  if (skipper) pick.dataset.skipper = skipper.id;
   pick.tabIndex = -1;
   if (!empty) pick.setAttribute("aria-expanded", String(open));
   const fold = h("span", "tree-fold");
@@ -719,10 +696,6 @@ function projectBlock(p: Project): HTMLElement {
   more.setAttribute("aria-haspopup", "menu");
   more.appendChild(icon('<circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle>'));
   head.appendChild(more);
-  if (skipper) {
-    head.appendChild(skipperLine(p.name, skipper, key));
-    block.dataset.skipper = JSON.stringify(skipperSig(p.name));
-  }
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     projectMenu(p, e.clientX, e.clientY);
@@ -733,6 +706,10 @@ function projectBlock(p: Project): HTMLElement {
   const kids = h("div", "tree-kids");
   kids.dataset.kids = key;
   block.appendChild(kids);
+  if (skipper) {
+    kids.appendChild(projectSkipperRow(p.name, skipper));
+    block.dataset.skipper = JSON.stringify(skipperSig(p.name));
+  }
   if (p.error) kids.appendChild(errorRow(p.error));
   else if (p.worktrees.length === 0) kids.appendChild(h("div", "note-row", "No worktrees"));
   else if (bare) {
@@ -752,7 +729,7 @@ type Caret = [start: number, end: number, dir: "forward" | "backward" | "none"];
 
 /** Where the pointer last was over the list, or null when it left. */
 let pointer: [number, number] | null = null;
-const HOVERABLE = ".session-row, .skipper-line, .wt-pick, .wt-plus, .wt-count, .group-pick, .file-row";
+const HOVERABLE = ".session-row, .wt-pick, .wt-plus, .wt-count, .group-pick, .file-row";
 {
   const side = $<HTMLElement>("sidebar-scroll");
   side.addEventListener("mousemove", (e) => (pointer = [e.clientX, e.clientY]));

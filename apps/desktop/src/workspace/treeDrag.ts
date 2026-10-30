@@ -20,7 +20,7 @@ const fleetOf = (name: string) => S.projects.filter((p) => p.fleet === name);
 
 export function dragTree(down: MouseEvent, source: HTMLElement, moving: Project[], fleet: string | null) {
   if (down.button !== 0 || S.projects.length < 2) return;
-  if ((down.target as Element).closest(".wt-plus, .tree-head-add, .skipper-line")) return;
+  if ((down.target as Element).closest(".wt-plus, .tree-head-add")) return;
   const sy = down.clientY;
   const p = fleet ? null : moving[0];
   let drop: Drop | null = null;
