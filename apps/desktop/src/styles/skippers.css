@@ -55,7 +55,7 @@
   75% { top: calc(-1 * var(--u)); right: calc(12 * var(--u)); }
 }
 
-/* Set avatar…: the preview at each size, six faces, then Shuffle, Image file… and From name. */
+/* Avatar Change…: the preview at each size, six faces, then Shuffle and Image file…. */
 .av-preview { display: grid; grid-template-columns: calc(120 * var(--u)) minmax(0, 1fr); border-bottom: 1px solid var(--rule); }
 .av-big { height: calc(120 * var(--u)); display: grid; place-items: center; border-right: 1px solid var(--rule); background: var(--bg-deep); }
 .av-sizes { display: flex; flex-direction: column; justify-content: center; }
@@ -67,7 +67,7 @@
 .av-opt:first-child { border-left: 0; }
 .av-opt:hover { background: var(--bg-raised); }
 .av-opt[aria-pressed="true"] { background: color-mix(in srgb, var(--pc) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc); }
-.av-acts { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--rule); }
+.av-acts { display: grid; grid-template-columns: repeat(2, 1fr); border-bottom: 1px solid var(--rule); }
 .av-act { height: var(--row); border: 0; border-left: 1px solid var(--rule); background: transparent; color: var(--text-2); font-size: calc(13px * var(--zoom, 1)); }
 .av-act:first-child { border-left: 0; }
 .av-act:hover { background: var(--bg-raised); color: var(--text); }

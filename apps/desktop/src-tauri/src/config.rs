@@ -223,7 +223,16 @@ fn read_avatar(scope: String, dir: &Path) -> Option<SkipperAvatar> {
     Some(SkipperAvatar { scope, seed, image })
 }
 
-/// This Mac only, as the icon: each Skipper's avatar from its own folder.
+/// A random generated avatar, `gen:1` to `gen:9999`, for a Skipper's first face.
+fn random_avatar(scope: &str) -> String {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write(scope.as_bytes());
+    format!("gen:{}", 1 + h.finish() % 9999)
+}
+
+/// This Mac only, as the icon: each Skipper's avatar from its own folder. A
+/// folder with none gets a random generated one, so its face stays.
 #[tauri::command]
 pub(crate) async fn skipper_avatars() -> Result<Vec<SkipperAvatar>, String> {
     blocking(|| {
@@ -238,7 +247,17 @@ pub(crate) async fn skipper_avatars() -> Result<Vec<SkipperAvatar>, String> {
                 }
             }
         }
-        Ok(scopes.into_iter().filter_map(|s| read_avatar(s.clone(), &skipper_dir(&cfg, &s).ok()?)).collect())
+        Ok(scopes
+            .into_iter()
+            .filter_map(|s| {
+                let dir = skipper_dir(&cfg, &s).ok().filter(|d| d.is_dir())?;
+                let file = dir.join(AVATAR_FILE);
+                if !file.exists() {
+                    std::fs::write(&file, format!("avatar = {}\n", toml::Value::from(random_avatar(&s)))).ok()?;
+                }
+                read_avatar(s, &dir)
+            })
+            .collect())
     })
     .await
 }

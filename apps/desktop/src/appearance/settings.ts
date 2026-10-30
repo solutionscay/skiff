@@ -8,7 +8,7 @@ import { nextCard, themeGrid, type ThemeFilters } from "./themeCards";
 import { type Action, actionFor, isMac } from "../app/keys";
 import { editField, fieldEditKey, textField } from "../ui/fieldClipboard";
 import { mainName, type InstructionFile, type SkiffAgentSettings, type TaskType } from "../app/skiffAgent";
-import { instructionsSection, type SkiffAgentEdit, projectSkippersSection, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
+import { avatarsSection, instructionsSection, type SkiffAgentEdit, projectSkippersSection, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
 import { peekText } from "../terminal/peek";
 import { fileSize } from "./taskTypes";
 import { confirmAction } from "../ui/confirm";
@@ -612,6 +612,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       main.appendChild(err);
     }
     if (agentSet) main.append(...projectSkippersSection(agentSet, agents, (e) => void setSkiffAgent(e)));
+    if (agentSet?.folder) main.append(...avatarsSection(agentSet, draw));
     if (agentSet?.folder) main.append(...instructionsSection(agentSet, { files, errors: fileErrors, editable: hostCan("skipper_file"), edit: (f) => void editFile(f), reset: (f) => void resetFile(f) }));
     return main;
   }

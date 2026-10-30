@@ -10,8 +10,9 @@ import { pickBackgroundOpacity } from "../appearance/backdropOpacity";
 import { keyLabel } from "../app/keys";
 import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { type MenuEntry } from "../ui/menu";
+import { isRemote } from "../app/hosts";
 import type { SkipperStart } from "../ui/launchMenu";
-import { agentName, basename, branchName, isFolder, locate, taskTitle, isProjectSkipper, scopeName } from "./model";
+import { agentName, basename, branchName, isFolder, locate, taskTitle, isProjectSkipper } from "./model";
 import { cwdOf } from "./canvas";
 import { filledOf, slotsOf } from "./layoutSlots";
 import type { Group, HostBranches, Project, SessionInfo, SplitDir, Worktree } from "../platform/types";
@@ -23,8 +24,6 @@ import { openPath } from "../platform/os";
 import { loadProjects, newSession } from "../app/daemon";
 import { launchMenu } from "../app/panels";
 import { showError } from "../ui/alerts";
-import { setAvatarDialog } from "./skipperFace";
-import { isRemote } from "../app/hosts";
 import { hasChanges, reviewChanges, setShowChanges, showsChanges } from "./changes";
 import { setShowFiles, showsFiles } from "./files";
 import { deleteGroup } from "../app/groups";
@@ -334,7 +333,6 @@ export function projectMenu(p: Project, x: number, y: number) {
     edits && { icon: "tools-sparkles", label: "Color…", hint: keyLabel("project-color"), run: run["project-color"] },
     edits && { icon: "tools-sparkles", label: "Project theme…", hint: keyLabel("theme"), run: () => void projectThemeMenu(p) },
     edits && { icon: "tools-pencil", label: "Initials…", run: () => setInitials(p) },
-    local && { icon: "playback-image", label: "Skipper avatar…", run: () => setAvatarDialog(p.name, `Skipper avatar: ${p.name}`, p.path) },
     ...(local ? [{ head: "ICON" }, ...iconEntries(p), { head: "BACKGROUND" }, ...backgroundEntries(p)] : []),
   ]);
   // What the project's row shows in the sidebar. A check marks what shows.
@@ -411,7 +409,7 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
       : []),
     // A project Skipper's name is derived from the Skiff agent's name and its project: nothing to type.
     ...(isProjectSkipper(s) ? [] : [{ icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), disabled: !hostCan("session_lifecycle"), run: () => startSessionRename(s.id) }]),
-    appearanceEntry(s, isProjectSkipper(s) && s.skipper ? s.skipper : undefined),
+    themeEntry(s),
     endEntry(s),
   ]);
 }
@@ -468,24 +466,6 @@ export function deleteKeyMenu(el: HTMLElement) {
     { icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), disabled: !hostCan("session_groups"), run: () => removeFromGroup(s.id) },
     endEntry(s),
   ]);
-}
-
-/**
- * Appearance: the session's theme, and a Skipper's face. `scope`: the
- * Skipper's, null for the Skiff agent, absent for a plain session. The face
- * is kept in the Skipper's folder on this Mac, as the project icon is.
- */
-function appearanceEntry(s: SessionInfo | null, scope?: string | null): MenuEntry {
-  const title = scope === null ? `Avatar: ${skiffAgentName()}` : `Skipper avatar: ${scopeName(scope ?? "")}`;
-  const project = scope ? S.projects.find((p) => p.name === scope) : undefined;
-  return {
-    icon: "tools-sparkles",
-    label: "Appearance",
-    sub: [
-      ...(s ? [themeEntry(s)] : []),
-      ...(scope !== undefined ? [{ icon: "playback-image", label: "Avatar…", disabled: isRemote(), run: () => setAvatarDialog(scope, title, project?.path) }] : []),
-    ],
-  };
 }
 
 function themeEntry(s: SessionInfo): MenuEntry {
@@ -663,8 +643,11 @@ export function skiffAgentMenu(s: SessionInfo | null, x: number, y: number) {
       { icon: "view-focus", label: S.focusMode ? "Leave focus mode" : "Focus mode", hint: keyLabel("focus-mode"), run: toggleFocusMode },
     );
     if (ledgerShown()) entries.push({ icon: "layouts-panel-left:flip", label: ledgerFolded() ? "Show Ledger" : "Hide Ledger", hint: keyLabel("ledger"), run: toggleLedger });
-    entries.push(appearanceEntry(s, null), endEntry(s));
-  } else entries.push(appearanceEntry(null, null));
+    entries.push(
+      themeEntry(s),
+      endEntry(s),
+    );
+  }
   if (entries.length) ctxMenu.open(x, y, s ? sessionLabel(s) : skiffAgentName(), entries);
 }
 
