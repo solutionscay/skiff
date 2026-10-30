@@ -273,7 +273,7 @@
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "a4229b93bfdf832fb703597fb6a1281bfc61d755ef47688b5e6009f74277f1f2"
+    "sha256": "f52b9a301626ffa4873d152f93575d184479c347bb0e1e987d6960a3b71f9c29"
   },
   "apps/desktop/src/app/commands.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -283,7 +283,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "dc76d74fdcb1b2ec0a39909ae72c03ff2da4977f80f9f25a2941ec795c9d46e8"
+    "sha256": "6d491fe13042430e4c8c4214589a63bd478a0029f33035d118470f78685eb835"
   },
   "apps/desktop/src/app/connectPanel.ts": {
     "ownership": "client policy (#166): the connecting panel; listens only to this client's own SSH connect lines (skiff:connect-line), before any Host answers; no Host data",
@@ -361,10 +361,11 @@
       "local provider: apps/desktop/src/workspace/rename.ts",
       "local provider: apps/desktop/src/workspace/selection.ts",
       "local provider: apps/desktop/src/workspace/sidebarLines.ts",
+      "local provider: apps/desktop/src/workspace/skippersView.ts",
       "local provider: apps/desktop/src/workspace/tree.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "88d134289c8eac14b7c6200f367893670006253ee229d22868be1c9ca1ed6e47"
+    "sha256": "6505a169201a382e4dacf7835f7d6bbad051ae5a3b4942bd4ceac241938a8b84"
   },
   "apps/desktop/src/app/modes.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -467,7 +468,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "e52f60d3c88568ca46ca52442b3adfa53f4d64efab4b9f46ab3918bd1f66a2e6"
+    "sha256": "be841d33e53fc880ee331c39f6a1ab7dedce06b774137f13f124b3b1cb3f3db0"
   },
   "apps/desktop/src/appearance/backdrop.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6",
@@ -961,11 +962,12 @@
       "local provider: apps/desktop/src/workspace/rename.ts",
       "local provider: apps/desktop/src/workspace/selection.ts",
       "local provider: apps/desktop/src/workspace/sidebarLines.ts",
+      "local provider: apps/desktop/src/workspace/skippersView.ts",
       "local provider: apps/desktop/src/workspace/tree.ts",
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "752088297213694150483394c1303933e4dd4cb719ed0e63657b7a41bb82cf42"
+    "sha256": "097a7b01f204003f657fa55f6b9b4fe1a7fedcf70b418176f58b0a8c79b5ce9a"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -976,6 +978,21 @@
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
     "sha256": "dff92979d8661a01c2cf368dc898d62140d41eac8c72519f5ec33669e8b2e583"
+  },
+  "apps/desktop/src/workspace/skippersView.ts": {
+    "ownership": "legacy local adapter/caller: migrate behind Host API in M1\u2013M6",
+    "reasons": [
+      "local provider: apps/desktop/src/app/skiffAgent.ts",
+      "local provider: apps/desktop/src/app/state.ts",
+      "local provider: apps/desktop/src/app/stateQueries.ts",
+      "local provider: apps/desktop/src/appearance/agentIcon.ts",
+      "local provider: apps/desktop/src/workspace/ledger.ts",
+      "local provider: apps/desktop/src/workspace/menus.ts",
+      "local provider: apps/desktop/src/workspace/selection.ts",
+      "local provider: apps/desktop/src/workspace/tree.ts",
+      "local provider: apps/desktop/src/workspace/view.ts"
+    ],
+    "sha256": "ef36f989ce8809b528f7341a91d5541e7a60a02980821c7a5bc38411f7fc0931"
   },
   "apps/desktop/src/workspace/status.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

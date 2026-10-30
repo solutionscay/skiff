@@ -45,9 +45,10 @@ Test every change with three questions:
   - Project color (`--pc`) shows location: the project's icon or letters, the current row and the lit menu item.
   - State colors show session state: amber for waiting, blue for working, grey for done and idle. Project colors stay away from state colors.
   - Red shows errors, destructive items and deleted lines in diffs. Green marks added lines and unread output. A destructive item stays red when lit.
+  - Gold (`--rank`) marks the Skiff agent's rank stripes in the Skippers list.
 - **Highlight, do not outline.** The current row and the lit menu item get a 22% project-color tint and a 2px inset bar on the left. A focus ring shows only after keyboard use (`body.kbd`), as a quiet 1px line. A selected pane gets a 2px frame in the working blue. The focused pane gets one in its project color. While the keys are on another row, the row of the pane on screen keeps the 2px bar without the tint.
 - **Shadows on floating surfaces only.** Menus and dialogs have shadows. Menus are solid, never translucent.
-- **Little motion.** Small transitions take 120ms. Focus mode and maximize take 180ms and obey reduced-motion settings. The working skiff loops with `steps()`. Bells and flags stay still. Smooth loops cost frames on WebKit and in power-saver mode.
+- **Little motion.** Small transitions take 120ms. Focus mode and maximize take 180ms and obey reduced-motion settings. The working skiff loops with `steps()`. In the Skippers list, a working Skipper's badge rocks in two steps and a watcher that follows work steps round the avatar's corners in 8 s. Bells and flags stay still. Smooth loops cost frames on WebKit and in power-saver mode.
 - **Icons.** The Rune Icons outline set, stroke `currentColor`, 14px in menus. Add only the icons that the code uses.
 
 ## Theme scope
@@ -66,6 +67,7 @@ Themes are location cues. One look tells you which project or session you are in
 - **Keys act on what is highlighted.** The menu and theme keys use the highlighted scope. New session uses the row's worktree, else the focused pane's worktree. End session uses a highlighted session row, else the focused session. Close pane follows the row with DOM focus, else the focused pane or picked group. File-manager and copy-path keys use the highlighted file when there is one. See the [Glossary](https://github.com/solutionscay/skiff/wiki/Glossary).
 - **Menus show their keys, and the keys work.** An item's hint key picks that item while the menu is open. Enter always picks the lit item.
 - **Only a row with children folds.** A row with nothing under it has no chevron, no fold, and no fold key. A row whose click does nothing does not light on hover.
+- **Two views of the side panel.** The tree, or the Skippers list: the Skiff agent and every Skipper, one row each. TREE | SKIPPERS at the top and Ctrl+Shift+Alt+S switch them, and the choice lasts across restarts. In the list, the avatar alone shows the state: its frame takes the state color, its stripes the rank, its corner the watcher.
 - **One highlight.** The list has one current row at most. The focused pane's frame hides when the keys are elsewhere, such as on a group row.
 - **Focus goes back.** A menu or dialog gives the keys back to the row or terminal that opened it. It does not change the selection.
 - **Two regions.** The list and the terminal have one tab stop each. F6 steps between them.

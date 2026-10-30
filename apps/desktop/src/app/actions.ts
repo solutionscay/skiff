@@ -36,6 +36,7 @@ import { showShortcuts } from "../ui/infoDialogs";
 import { isSkiffAgent, openSkiffAgent, skiffAgentSession } from "./skiffAgent";
 import { groupThemeMenu, projectThemeMenu, sessionThemeMenu } from "../appearance/themes";
 import { toggleLedger } from "../workspace/ledger";
+import { setSidebarView, skippersOn } from "../workspace/skippersView";
 import { quitApp } from "../workspace/profile";
 function openNewSession() {
   // Its key works from inside a menu, such as the worktree menu that shows it: that menu goes.
@@ -133,6 +134,7 @@ export function runAction(a: Action) {
       return s && missionOpen() ? goToSession(s.id) : openSkiffAgent();
     }
     case "ledger": return toggleLedger();
+    case "sidebar-view": return setSidebarView(skippersOn() ? "tree" : "skippers");
     case "mission-control": return toggleMission();
     case "back": return goBack();
     case "rename": {

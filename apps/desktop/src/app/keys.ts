@@ -19,7 +19,7 @@ export type Action =
   | "focus-left" | "focus-right" | "focus-up" | "focus-down"
   | "project-menu" | "project-folder" | "project-copy-path" | "project-color" | "project-changes" | "project-files"
   | "region-next" | "region-prev" | "session-next" | "session-prev" | "list-project" | "list-back" | "list-main" | "shortcuts"
-  | "focus-mode" | "maximize" | "mission-control" | "skiff-agent" | "ledger" | "images" | "images-gallery";
+  | "focus-mode" | "maximize" | "mission-control" | "skiff-agent" | "ledger" | "sidebar-view" | "images" | "images-gallery";
 
 export const isMac = navigator.userAgent.includes("Macintosh");
 
@@ -70,6 +70,7 @@ export const DEFAULTS: Record<Action, string> = {
   "mission-control": "ctrl+shift+a",
   "skiff-agent": "ctrl+shift+l",
   ledger: "ctrl+shift+alt+l",
+  "sidebar-view": "ctrl+shift+alt+s",
   // No default key: the palette and the pane menu have it. `[keys]` can set one.
   images: "",
   "images-gallery": "",
@@ -201,6 +202,7 @@ export const DESCRIBE: [string, Action, string][] = [
   ["View", "next-waiting", "Next waiting session. In mission control, light the next waiting card"],
   ["View", "skiff-agent", "{skiff-agent}, the Skiff agent: show its pane. With none running, start it in its folder"],
   ["View", "ledger", "Show or hide the Ledger beside {skiff-agent}'s pane. Only while its pane is the one pane on screen. Focus mode keeps the Ledger, maximize hides it. In mission control, fold or open the panel under the canvas"],
+  ["View", "sidebar-view", "Switch the side panel between the tree and the Skippers list. The list shows {skiff-agent} and every Skipper"],
   ["View", "back", "Back to the last session"],
   ["View", "session-next", "Next row in the list: worktree, group, session, Changes or Files. A change or file shows its preview, which takes the keys. Changes, Files and folders keep the keys: Space opens or closes them. In Settings, the next section. In mission control, the first card under the lit one. In the Ledger, the next row"],
   ["View", "session-prev", "Previous row in the list. In Settings, the previous section. In mission control, the card above the lit one. In the Ledger, the previous row"],

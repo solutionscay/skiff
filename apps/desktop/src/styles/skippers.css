@@ -1,0 +1,95 @@
+/* The side panel's two views: the tree and the Skippers list. The toggle sits
+   over both, 32px like a section head. The view on is lit, the other plain. */
+#sidebar-view {
+  height: calc(32 * var(--u)); flex-shrink: 0;
+  display: grid; grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid var(--rule);
+}
+.sv-tab {
+  display: flex; align-items: center; justify-content: center; gap: calc(6 * var(--u));
+  border: 0; border-radius: 0; background: transparent; color: var(--text-dim);
+  font: 600 calc(11px * var(--zoom, 1)) var(--font); letter-spacing: 0.06em; text-transform: uppercase;
+}
+.sv-tab + .sv-tab { border-left: 1px solid var(--rule); }
+.sv-tab:hover { color: var(--text-2); }
+.sv-tab.on { color: var(--text); background: var(--bg-raised); }
+.sv-count { color: var(--state-waiting-text); font-family: var(--mono); letter-spacing: 0; }
+
+/* A Skipper: 60px, three lines of the row grid. The avatar, then the name
+   with the time, and the latest line of its work. */
+.session-row.sk-row {
+  height: calc(60 * var(--u)); gap: calc(10 * var(--u));
+  padding: 0 calc(16 * var(--u)) 0 calc(12 * var(--u));
+  border-bottom: 1px solid var(--rule);
+}
+.sk-text { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: calc(3 * var(--u)); }
+.sk-top, .sk-line { display: flex; align-items: baseline; gap: calc(8 * var(--u)); min-width: 0; }
+.sk-name { font-size: calc(13px * var(--zoom, 1)); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sk-tag { font: calc(10px * var(--zoom, 1)) var(--mono); color: var(--text-dim); flex-shrink: 0; }
+.sk-time { margin-left: auto; flex-shrink: 0; font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.sk-row.st-waiting .sk-time { color: var(--state-waiting-text); }
+.sk-row .sk-line .title { color: var(--text-3); }
+.sk-row .sk-line .unread { align-self: center; height: calc(12 * var(--u)); }
+.sk-row.unread-row .sk-line .title { color: var(--text-2); font-weight: 600; }
+#sidebar-scroll .sk-row.current .sk-line .title { color: var(--text-2); }
+
+/* The avatar: the project's badge in a square frame. The frame shows the
+   state: blue working, amber waiting, green unread, red failed, plain idle,
+   faded done. Working rocks the badge in two steps, as the working skiff
+   does; the rest stay still. */
+.sk-av {
+  --fc: var(--rule-strong);
+  position: relative; flex-shrink: 0; align-self: center;
+  width: calc(40 * var(--u)); height: calc(40 * var(--u));
+  display: grid; place-items: center;
+  background: var(--bg-deep); box-shadow: inset 0 0 0 2px var(--fc);
+}
+.sk-face {
+  width: calc(26 * var(--u)); height: calc(26 * var(--u));
+  display: grid; place-items: center; overflow: hidden;
+  background: var(--pc); color: var(--bg);
+  font: 600 calc(10px * var(--zoom, 1)) var(--mono);
+}
+.sk-face.sk-img { background: transparent; }
+.sk-face img { width: calc(26 * var(--u)); height: calc(26 * var(--u)); object-fit: contain; }
+.sk-face.sk-mascot { width: calc(30 * var(--u)); height: calc(30 * var(--u)); background: url("../assets/skiff-mascot.png") center / contain no-repeat; }
+.sk-working { --fc: var(--state-working); }
+.sk-working .sk-face { animation: sk-rock 1.2s steps(2) var(--rock-delay, 0ms) infinite; }
+@keyframes sk-rock { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(calc(-2 * var(--u))); } }
+.sk-waiting { --fc: var(--state-waiting); background: var(--state-waiting-bg); }
+.sk-unread { --fc: var(--diff-add); }
+.sk-failed { --fc: var(--error); }
+.sk-failed .sk-face { opacity: 0.6; }
+.sk-done { --fc: var(--rule); }
+.sk-done .sk-face, .sk-off .sk-face { filter: grayscale(1); opacity: 0.45; }
+.sk-off { --fc: var(--rule); }
+.sk-start { position: absolute; right: calc(2 * var(--u)); bottom: calc(2 * var(--u)); }
+
+/* Sleeve stripes for the rank, on the frame's lower edge: one for a project
+   Skipper, two for a fleet Skipper, three in gold for the Skiff agent. */
+.sk-rank {
+  position: absolute; left: 50%; bottom: calc(1 * var(--u)); transform: translateX(-50%);
+  display: flex; flex-direction: column-reverse; gap: 1px;
+}
+.sk-rank i { display: block; width: calc(12 * var(--u)); height: 2px; background: var(--text-2); box-shadow: 0 0 0 1px var(--bg-deep); }
+.sk-admiral .sk-rank i { background: var(--rank); }
+
+/* The watcher, a square on the frame's corner, as the tree's watcher icon:
+   teal while it runs, red when none runs or a line failed. While the Skipper
+   idles and the watcher follows open work, the square steps round the four
+   corners every 8 s: a lookout's sweep. */
+.sk-watch {
+  position: absolute; top: 0; right: 0;
+  width: calc(7 * var(--u)); height: calc(7 * var(--u));
+  background: var(--watch);
+}
+.sk-watch-error { background: var(--error); }
+.sk-watch-turn { animation: sk-sweep 8s var(--turn-delay, 0ms) infinite; animation-timing-function: steps(1, end); }
+@keyframes sk-sweep {
+  0% { top: 0; right: 0; bottom: auto; left: auto; }
+  25% { top: calc(100% - 7 * var(--u)); right: 0; }
+  50% { top: calc(100% - 7 * var(--u)); right: calc(100% - 7 * var(--u)); }
+  75% { top: 0; right: calc(100% - 7 * var(--u)); }
+}
+
+@media (prefers-reduced-motion: reduce) { .sk-working .sk-face, .sk-watch-turn { animation: none; } }

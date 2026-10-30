@@ -39,6 +39,7 @@ import { ledgerCounts, ledgerNeeds, ledgerWorkTitle } from "./ledger";
 import { fleetScope, fleetSkipperOf, projectSkipperOf, projectWatch, openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, skipperWord, syncSkiffAgent } from "../app/skiffAgent";
 import { hostConnected, hostName, isRemote } from "../app/hosts";
 import { step, tally } from "../diagnostics/stalls";
+import { renderSkippers, renderViewToggle, skippersOn } from "./skippersView";
 
 /** 20px lines, flush against whatever follows. */
 function sessionBlock(lines: Line[], color: string): HTMLElement {
@@ -315,6 +316,16 @@ export function renderSidebar() {
   if (treeDrag.active) return;
   renderWorkspaceStatus();
   syncSkiffAgent();
+  renderViewToggle();
+  if (skippersOn()) {
+    // The tree draws whole again when it comes back.
+    lastSig = "";
+    const active = document.activeElement as HTMLElement | null;
+    const key = active?.closest("#sidebar-scroll") ? active.dataset.session ?? active.dataset.key : undefined;
+    renderSkippers(side);
+    restoreFocus(side, key, null, []);
+    return;
+  }
   openToFocused();
   const sig = step("render.sidebar.sig", sidebarSig);
   if (lastSig === sig.all) return tally("sidebar.same");
