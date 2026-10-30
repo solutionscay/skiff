@@ -8,7 +8,6 @@ import { ink } from "../appearance/appTheme";
 import { appliedTheme, ownTheme, signatureColor } from "../appearance/themes";
 import { glyph } from "./layoutIcon";
 import { agentName, basename, branchName, scopeName, taskTitle } from "./model";
-import { faceSig, skipperFace } from "./skipperFace";
 import type { Group, Project, SessionInfo, Worktree } from "../platform/types";
 
 import { changeCounts, changesBlock, changesSig, showsChanges } from "./changes";
@@ -527,7 +526,7 @@ function skiffAgentRow(): HTMLElement {
 function skipperSig(scope: string) {
   const s = projectSkipperOf(scope);
   if (!s) return null;
-  return [s.id, s.state, S.selection.includes(s.id), ledgerCounts(scope), ledgerWorkTitle(scope), s.watch ?? null, s.title ?? null, s.unread ?? false, faceSig(scope)];
+  return [s.id, s.state, S.selection.includes(s.id), ledgerCounts(scope), ledgerWorkTitle(scope), s.watch ?? null, s.title ?? null, s.unread ?? false];
 }
 
 /**
@@ -548,7 +547,7 @@ function syncSkipperRow(block: HTMLElement, p: Project): HTMLElement {
 
 /**
  * A project or fleet Skipper: the first row of its project block, or the
- * first row under its fleet head. Its face, "Skipper", the title of
+ * first row under its fleet head. Its agent icon, "Skipper", the title of
  * its work, and the amber and blue counts of the tasks it owns. Its session
  * is left out of the tree below.
  */
@@ -571,10 +570,7 @@ function projectSkipperRow(scope: string, s: SessionInfo): HTMLElement {
   const title = ledgerWorkTitle(scope) ?? s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? "";
   const { need, working } = ledgerCounts(scope);
   row.setAttribute("aria-label", `${scopeName(scope)} ${name}, ${title || s.state}${watch.text ? `. ${watch.text}` : ""}`);
-  // The watcher is a corner square on the face, as in the Skippers list.
-  const face = h("span", "skipper-av");
-  face.append(skipperFace(scope, 16), h("span", "tw"));
-  row.append(h("span", "chev-space"), face, h("span", "skiff-agent-name", name), h("span", "title", title));
+  row.append(h("span", "chev-space"), agentIcon(s), h("span", "skiff-agent-name", name), h("span", "title", title));
   const roll = rollCounts(need, working);
   if (roll) row.append(roll);
   row.append(unreadMark(row, s));

@@ -40,22 +40,6 @@
 .mission-card .skipper-face { width: calc(var(--face) * 1px); height: calc(var(--face) * 1px); }
 .cell-head .title .skipper-face { vertical-align: calc(-3 * var(--u)); margin-right: calc(4 * var(--u)); }
 
-/* The tree's Skipper row: the face, and the watcher as a corner square, as
-   in the list: teal while it runs, red when a line failed. While the
-   Skipper idles and the watcher follows open work, it steps round the
-   corners every 8 s. */
-.skipper-av { position: relative; width: calc(16 * var(--u)); height: calc(16 * var(--u)); flex-shrink: 0; }
-.skipper-av .tw { display: none; position: absolute; top: calc(-1 * var(--u)); right: calc(-1 * var(--u)); width: calc(5 * var(--u)); height: calc(5 * var(--u)); background: var(--watch); }
-.project-skipper-row.watch-on .skipper-av .tw { display: block; }
-.project-skipper-row.watch-error .skipper-av .tw { display: block; background: var(--error); }
-.project-skipper-row.watch-turn .skipper-av .tw { animation: sk-tree-sweep 8s var(--turn-delay, 0ms) infinite; animation-timing-function: steps(1, end); }
-@keyframes sk-tree-sweep {
-  0% { top: calc(-1 * var(--u)); right: calc(-1 * var(--u)); }
-  25% { top: calc(12 * var(--u)); right: calc(-1 * var(--u)); }
-  50% { top: calc(12 * var(--u)); right: calc(12 * var(--u)); }
-  75% { top: calc(-1 * var(--u)); right: calc(12 * var(--u)); }
-}
-
 /* Avatar Change…: the preview at each size, six faces, then Shuffle and Image file…. */
 .av-preview { display: grid; grid-template-columns: calc(120 * var(--u)) minmax(0, 1fr); border-bottom: 1px solid var(--rule); }
 .av-big { height: calc(120 * var(--u)); display: grid; place-items: center; border-right: 1px solid var(--rule); background: var(--bg-deep); }
@@ -75,8 +59,8 @@
 
 /* The avatar: the Skipper's face in a square frame. The frame shows the
    state: blue working, amber waiting, green unread, red failed, plain idle,
-   faded done. Working rocks the badge in two steps, as the working skiff
-   does; the rest stay still. */
+   faded done. Working also shows the tree's skiff under way in the row; the
+   face stays still. */
 .sk-av {
   --fc: var(--rule-strong);
   position: relative; flex-shrink: 0; align-self: center;
@@ -93,8 +77,6 @@
 .sk-face.skipper-face { background: transparent; }
 .sk-face img { width: calc(26 * var(--u)); height: calc(26 * var(--u)); object-fit: contain; }
 .sk-working { --fc: var(--state-working); }
-.sk-working .sk-face { animation: sk-rock 1.2s steps(2) var(--rock-delay, 0ms) infinite; }
-@keyframes sk-rock { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(calc(-2 * var(--u))); } }
 .sk-waiting { --fc: var(--state-waiting); background: var(--state-waiting-bg); }
 .sk-unread { --fc: var(--diff-add); }
 .sk-failed { --fc: var(--error); }
@@ -113,10 +95,10 @@
 .sk-rank i { display: block; width: calc(12 * var(--u)); height: 2px; background: var(--text-2); box-shadow: 0 0 0 1px var(--bg-deep); }
 .sk-admiral .sk-rank i { background: var(--rank); }
 
-/* The watcher, a square on the frame's corner, as the tree's watcher icon:
-   teal while it runs, red when none runs or a line failed. While the Skipper
-   idles and the watcher follows open work, the square steps round the four
-   corners every 8 s: a lookout's sweep. */
+/* The watcher shows only in motion: while the Skipper idles and the watcher
+   follows open work, a teal square steps round the frame's four corners
+   every 8 s, a lookout's sweep. Red and still when none runs or a line
+   failed. Nothing when it only runs. */
 .sk-watch {
   position: absolute; top: 0; right: 0;
   width: calc(7 * var(--u)); height: calc(7 * var(--u));
@@ -131,4 +113,4 @@
   75% { top: 0; right: calc(100% - 7 * var(--u)); }
 }
 
-@media (prefers-reduced-motion: reduce) { .sk-working .sk-face, .sk-watch-turn, .project-skipper-row.watch-turn .skipper-av .tw { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .sk-watch-turn { animation: none; } }

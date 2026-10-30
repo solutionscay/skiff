@@ -9,12 +9,13 @@
  * The avatar is the Skipper's face in a square frame: its project's chosen
  * or generated one, the fixed bicorne for the Skiff agent. Sleeve stripes show the rank: one for a project Skipper,
  * two for a fleet Skipper, three in gold for the Skiff agent. The frame shows
- * the state, and a corner square shows the watcher. Nothing else in the row
- * moves.
+ * the state. A working Skipper shows the tree's skiff under way. A corner
+ * square sweeps while the watcher follows open work, and stays red when the
+ * watcher fails.
  */
 import { agentFailed, agentName, scopeName } from "./model";
 import { faceSig, skipperFace } from "./skipperFace";
-import { FLAG } from "../appearance/stateIcon";
+import { FLAG, stateIcon } from "../appearance/stateIcon";
 import { icon } from "../ui/icons";
 import { launchIcon } from "../appearance/agentIcon";
 import { ledgerWorkTitle } from "./ledger";
@@ -124,14 +125,13 @@ function avatar(e: Entry, watch: WatchState | null, turning: boolean): HTMLEleme
   const rank = h("span", "sk-rank");
   for (let i = 0; i < RANK[e.kind]; i++) rank.appendChild(h("i"));
   av.append(face, rank);
-  if (watch === "runs" || watch === "failed" || watch === "missing") {
-    const w = h("span", "sk-watch" + (watch === "runs" ? "" : " sk-watch-error") + (turning ? " sk-watch-turn" : ""));
-    av.appendChild(w);
+  // The watcher shows only in motion: the square sweeps while it follows open
+  // work. Red and still when none runs or its last line failed.
+  if ((watch === "runs" && turning) || watch === "failed" || watch === "missing") {
+    av.appendChild(h("span", watch === "runs" ? "sk-watch sk-watch-turn" : "sk-watch sk-watch-error"));
   }
-  // The row is rebuilt when its state changes. Loops start at the elapsed phase, not at their first frame.
-  const now = performance.now();
-  av.style.setProperty("--rock-delay", `${-(now % 1200)}ms`);
-  av.style.setProperty("--turn-delay", `${-(now % 8000)}ms`);
+  // The row is rebuilt when its state changes. The sweep starts at the elapsed phase, not at its first frame.
+  av.style.setProperty("--turn-delay", `${-(performance.now() % 8000)}ms`);
   return av;
 }
 
@@ -208,6 +208,8 @@ function skipperRow(e: Entry, watch: { state: WatchState; text: string } | null,
   if (num) top.appendChild(h("span", "sk-num", String(num)));
   top.appendChild(name);
   if (e.kind === "fleet") top.appendChild(h("span", "sk-tag", "fleet"));
+  // Working: the tree's skiff under way, before the time.
+  if (s?.state === "working") top.appendChild(stateIcon(s));
   top.appendChild(h("span", "sk-time", when(s?.last_output_at ?? 0)));
   const line = h("span", "sk-line");
   line.appendChild(h("span", "title", latestLine(e)));
