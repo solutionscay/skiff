@@ -470,8 +470,8 @@ export function deleteKeyMenu(el: HTMLElement) {
   ]);
 }
 
-/** A Skipper's face: `scope` "fleet:<name>" or a project, null for the Admiral. Kept in its folder on this Mac. */
-function avatarEntry(scope: string | null, title: string): MenuEntry {
+/** A Skipper's face: `scope` "fleet:<name>" or a project. Kept in its folder on this Mac. The Admiral wears the mascot's head. */
+function avatarEntry(scope: string, title: string): MenuEntry {
   return { icon: "playback-image", label: "Avatar…", disabled: isRemote(), run: () => setAvatarDialog(scope, title, () => {}) };
 }
 
@@ -652,10 +652,9 @@ export function skiffAgentMenu(s: SessionInfo | null, x: number, y: number) {
     if (ledgerShown()) entries.push({ icon: "layouts-panel-left:flip", label: ledgerFolded() ? "Show Ledger" : "Hide Ledger", hint: keyLabel("ledger"), run: toggleLedger });
     entries.push(
       themeEntry(s),
-      avatarEntry(null, `Avatar: ${skiffAgentName()}`),
       endEntry(s),
     );
-  } else entries.push(avatarEntry(null, `Avatar: ${skiffAgentName()}`));
+  }
   if (entries.length) ctxMenu.open(x, y, s ? sessionLabel(s) : skiffAgentName(), entries);
 }
 

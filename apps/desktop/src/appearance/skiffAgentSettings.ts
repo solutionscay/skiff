@@ -102,12 +102,13 @@ export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInf
 }
 
 /**
- * Settings › Skippers › Avatars: the Admiral and each fleet and project
+ * Settings › Skippers › Avatars: each fleet and project
  * Skipper with a folder on this Mac, its face, and Change… for the picker.
  * The faces are kept in those folders: a remote Host shows none here.
  */
 export function avatarsSection(set: SkiffAgentSettings, redraw: () => void): HTMLElement[] {
-  const scopes = isRemote() ? [] : avatarScopes();
+  // The Admiral wears the mascot's head: nothing to change.
+  const scopes = isRemote() ? [] : avatarScopes().filter((s) => s);
   if (!scopes.length) return [];
   const word = set.skipper_name || "Skipper";
   const rows = scopes.map((scope) => {

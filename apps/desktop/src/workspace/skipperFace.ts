@@ -81,7 +81,7 @@ export function skipperFace(scope: string | null, px: number, seed?: number): HT
       queueMicrotask(() => void loadSkipperAvatars().finally(() => (reading = false)));
     }
   }
-  face.innerHTML = scope === null && !n ? ADMIRAL_AVATAR : skipperAvatar(scope ?? "Admiral", n ?? 0);
+  face.innerHTML = scope === null ? ADMIRAL_AVATAR : skipperAvatar(scope, n ?? 0);
   return face;
 }
 

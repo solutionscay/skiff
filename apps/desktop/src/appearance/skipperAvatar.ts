@@ -70,5 +70,17 @@ export function skipperAvatar(name: string, seed = 0): string {
   return `<svg viewBox="0 0 32 32" aria-hidden="true" style="${rhythm(h)}"><g transform="rotate(${tilt} 16 16)"><path d="${d}" style="fill:${FILL};stroke:${FILL}" stroke-width="3" stroke-linejoin="round"/>${visor(16 + look, y, gap, eye)}<g class="sk-look"><g class="sk-eyes" fill="#fff">${at(-1)}${at(1)}</g></g></g></svg>`;
 }
 
-/** The Admiral: one fixed avatar, a bicorne hat with level eyes, in the --pc color as the others are. */
-export const ADMIRAL_AVATAR = `<svg viewBox="0 0 32 32" aria-hidden="true" style="${rhythm(hash("Admiral"))}"><path d="M3 22c3-9 8-13 13-13s10 4 13 13c-4-2-8.5-3-13-3s-9 1-13 3z" style="fill:${FILL};stroke:${FILL}" stroke-width="3" stroke-linejoin="round"/><rect x="8.8" y="12.4" width="14.4" height="7.8" rx="3.5" fill="${VISOR}"/><g class="sk-look"><g class="sk-eyes" fill="#fff"><rect x="10.4" y="14" width="3.2" height="4.6" rx="1.6"/><rect x="18.4" y="14" width="3.2" height="4.6" rx="1.6"/></g></g></svg>`;
+/**
+ * The Admiral: the Skiff mascot's head. A white sailor cap with a band in the
+ * --pc color and a gold button, a round white head, the Skiff-black visor and
+ * two white eyes, which blink and glance as the crew's do. A thin Skiff-black
+ * edge keeps the white on a light theme.
+ */
+const EDGE = `stroke="${VISOR}" stroke-width="1.6" stroke-linejoin="round"`;
+export const ADMIRAL_AVATAR = `<svg viewBox="0 0 32 32" aria-hidden="true" style="${rhythm(hash("Admiral"))}">`
+  + `<circle cx="16" cy="19" r="9.6" fill="#fff" ${EDGE}/>`
+  + `<ellipse cx="16" cy="9.4" rx="10.2" ry="4.2" fill="#fff" ${EDGE}/>`
+  + `<rect x="7.4" y="9.6" width="17.2" height="3.8" rx="1.4" style="fill:${FILL}" ${EDGE}/>`
+  + `<circle cx="16" cy="11.5" r="1.6" fill="#f4c430" ${EDGE}/>`
+  + `<rect x="9.4" y="15.4" width="13.2" height="8.2" rx="3.6" fill="${VISOR}"/>`
+  + `<g class="sk-look"><g class="sk-eyes" fill="#fff"><rect x="12" y="17.2" width="2.4" height="4.6" rx="1.2"/><rect x="17.6" y="17.2" width="2.4" height="4.6" rx="1.2"/></g></g></svg>`;
