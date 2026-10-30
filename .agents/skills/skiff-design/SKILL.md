@@ -45,7 +45,7 @@ Test every change with three questions:
   - Project color (`--pc`) shows location: the project's icon or letters, the current row and the lit menu item.
   - State colors show session state: amber for waiting, blue for working, grey for done and idle. Project colors stay away from state colors.
   - Red shows errors, destructive items and deleted lines in diffs. Green marks added lines and unread output. A destructive item stays red when lit.
-- **Highlight, do not outline.** The current row and the lit menu item get a 22% project-color tint and a 2px inset bar on the left. A focus ring shows only after keyboard use (`body.kbd`), as a quiet 1px line. A selected pane gets a 2px frame in the working blue. The focused pane gets one in its project color.
+- **Highlight, do not outline.** The current row and the lit menu item get a 22% project-color tint and a 2px inset bar on the left. A focus ring shows only after keyboard use (`body.kbd`), as a quiet 1px line. A selected pane gets a 2px frame in the working blue. The focused pane gets one in its project color. While the keys are on another row, the row of the pane on screen keeps the 2px bar without the tint.
 - **Shadows on floating surfaces only.** Menus and dialogs have shadows. Menus are solid, never translucent.
 - **Little motion.** Small transitions take 120ms. Focus mode and maximize take 180ms and obey reduced-motion settings. The working skiff loops with `steps()`. Bells and flags stay still. Smooth loops cost frames on WebKit and in power-saver mode.
 - **Icons.** The Rune Icons outline set, stroke `currentColor`, 14px in menus. Add only the icons that the code uses.

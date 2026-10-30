@@ -1,5 +1,5 @@
 /** App keys, Tab order, F6 regions, arrows in the lists. */
-import { isSkiffAgent } from "./skiffAgent";
+import { isSkiffAgent, projectSkipperOf } from "./skiffAgent";
 import { type Action, actionFor, isMac } from "./keys";
 import { runAction } from "./actionDispatch";
 import { switcher } from "./commandUi";
@@ -84,12 +84,13 @@ export function listItems(): HTMLElement[] {
 }
 
 /** Where we are in the list: the last-roved row, else the picked group, else the
- *  session on screen. One row at most, whatever its kind. */
+ *  session on screen, or the block of the Skipper on screen. One row at most, whatever its kind. */
 export function currentRow(items = listItems()): HTMLElement | undefined {
   const roved = S.roveKey ? items.find((x) => itemKey(x) === S.roveKey) : undefined;
   if (roved) return roved;
   if (S.groupPicked) return items.find((x) => x.dataset.group === S.groupPicked);
-  return S.focused ? items.find((x) => x.dataset.session === S.focused) : undefined;
+  if (!S.focused) return undefined;
+  return items.find((x) => x.dataset.session === S.focused) ?? items.find((x) => x.dataset.skipper === S.focused);
 }
 
 /** The roving tab stop: the current row, else the first row. */
@@ -97,11 +98,12 @@ function roveTarget(): HTMLElement | undefined {
   return currentRow() ?? listItems()[0];
 }
 
-/** Moves the one highlight to the current row. */
+/** Moves the one highlight to the current row. The row of the pane on screen, when it is another one, carries `shown`. */
 export function markCurrent() {
   const items = listItems();
   const cur = currentRow(items);
   for (const x of items) x.classList.toggle("current", x === cur);
+  for (const x of document.querySelectorAll<HTMLElement>("#sidebar-scroll [data-session]")) x.classList.toggle("shown", !!S.focused && x.dataset.session === S.focused && x !== cur);
   // The worktree marker goes with it: on the project row, no worktree is marked.
   if (cur) for (const w of document.querySelectorAll("#sidebar-scroll .wt")) w.classList.toggle("selected", !!cur && w.contains(cur));
 }
@@ -233,16 +235,19 @@ function landOn(next: HTMLElement) {
 
 /**
  * Ctrl+Shift+1..9: the project row with that number, counted down the tree.
- * The panes show the first line under it (its first group, else its first
- * session), not the last one in use there. The keys go to the project row.
+ * The panes show its Skipper, else the first line under it (its first group,
+ * else its first session), not the last one in use there. The keys go to the
+ * project row, which carries its Skipper's line.
  */
 function pickProject(n: number) {
   const p = visibleProjects()[n - 1];
   if (!p) return;
   selectProject(p.name);
+  const skipper = projectSkipperOf(p.name);
   const w = p.worktrees.find((x) => x.path === selectedWorktree.get(p.name));
   const first = w ? worktreeLines(w).find((l) => !l.pointer) : undefined;
-  if (first?.group) showGroup(first.group.id);
+  if (skipper) revealSession(skipper.id);
+  else if (first?.group) showGroup(first.group.id);
   else if (first?.session) revealSession(first.session.id);
   toProject();
   listItems().find((el) => el.dataset.key === projectRowKey(p.name))?.scrollIntoView({ block: "nearest" });
@@ -294,7 +299,15 @@ $("sidebar-scroll").addEventListener("keydown", (e) => {
     render();
     keepRow(key);
   } else if (e.key === "Escape" && !e.shiftKey && previewOnScreen()) closePreview();
-  else if ((el.classList.contains("project-pick") || el.classList.contains("fleet-pick")) && (e.key === "Enter" || e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+  else if ((el.classList.contains("project-pick") || el.classList.contains("fleet-pick")) && e.key === "Enter" && el.dataset.skipper) {
+    // A command block: Enter goes into its Skipper's pane. The keys stay on the block, as after a click on the line.
+    const key = el.dataset.key!;
+    const sid = el.dataset.skipper;
+    clearSelection();
+    S.roveKey = key;
+    revealSession(sid);
+    requestAnimationFrame(() => keepRow(key));
+  } else if ((el.classList.contains("project-pick") || el.classList.contains("fleet-pick")) && (e.key === "Enter" || e.key === " " || e.key === "ArrowLeft" || e.key === "ArrowRight")) {
     // A project with nothing under it does not open or fold.
     if (!el.hasAttribute("aria-expanded")) return e.preventDefault();
     // A project or fleet row: Enter or Space opens or folds it, Right opens, Left folds.
