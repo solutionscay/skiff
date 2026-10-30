@@ -424,7 +424,7 @@ function cardParts(s: SessionInfo, label: string | null, now: number, num = 0): 
   const head = h("span", "head");
   if (num) head.appendChild(h("span", "num", String(num)));
   // A Skipper's card: its face with its model beside it, as the Skippers list shows them.
-  if (label !== null) head.append(skipperFace(s.coordinator ? null : (s.skipper ?? ""), 16), agentIcon(s), h("span", "name", label));
+  if (label !== null) head.append(skipperFace(s.coordinator ? null : (s.skipper ?? ""), 18), agentIcon(s), h("span", "name", label));
   head.appendChild(h("span", "at", sinceText(s, now)));
   const body = h("span", "body");
   const tx = h("span", "tx");

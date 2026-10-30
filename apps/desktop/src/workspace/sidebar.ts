@@ -8,6 +8,7 @@ import { ink } from "../appearance/appTheme";
 import { appliedTheme, ownTheme, signatureColor } from "../appearance/themes";
 import { glyph } from "./layoutIcon";
 import { agentName, basename, branchName, scopeName, taskTitle } from "./model";
+import { faceSig, skipperFace } from "./skipperFace";
 import type { Group, Project, SessionInfo, Worktree } from "../platform/types";
 
 import { changeCounts, changesBlock, changesSig, showsChanges } from "./changes";
@@ -39,8 +40,7 @@ import { ledgerCounts, ledgerNeeds, ledgerWorkTitle } from "./ledger";
 import { fleetScope, fleetSkipperOf, projectSkipperOf, projectWatch, openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, skipperWord, syncSkiffAgent } from "../app/skiffAgent";
 import { hostConnected, hostName, isRemote } from "../app/hosts";
 import { step, tally } from "../diagnostics/stalls";
-import { faceFrame, renderSkippers, renderViewToggle, skippersOn } from "./skippersView";
-import { faceSig } from "./skipperFace";
+import { renderSkippers, renderViewToggle, skippersOn } from "./skippersView";
 
 /** 20px lines, flush against whatever follows. */
 function sessionBlock(lines: Line[], color: string): HTMLElement {
@@ -472,7 +472,7 @@ function skiffAgentRow(): HTMLElement {
     const a = skiffAgentChoice();
     row.dataset.key = SKIFF_AGENT_KEY;
     row.setAttribute("aria-label", `${name}, the Skiff agent, not running`);
-    row.append(faceFrame(null, null, null, false, true), launchIcon(a), h("span", "skiff-agent-name", name), h("span", "title", a ? `start ${a.id}` : "no agent on"));
+    row.append(skipperFace(null, 40), launchIcon(a), h("span", "skiff-agent-name", name), h("span", "title", a ? `start ${a.id}` : "no agent on"));
     row.addEventListener("click", () => {
       // The row is current before the start: newSession shows the pane only if
       // the current row has not moved while the agent starts.
@@ -486,15 +486,22 @@ function skiffAgentRow(): HTMLElement {
     return row;
   }
   row.dataset.session = s.id;
-  // The face's frame shows the state and the watcher, as in the Skippers
-  // list: blue running while it works, teal breathing while the watcher
-  // follows a pane with an open ledger task, red when none runs or the last
-  // line failed. The agent icon beside it names the model.
+  // The agent icon shows the watcher: teal while it runs, and slowly turning
+  // while the agent is idle and the watcher follows a pane with an open ledger
+  // task, so the turn means "watching work". An older watcher does not say
+  // what it follows: still. Red while none runs or the last line failed.
   const watch = skiffWatch(s);
-  const turning = watch.state === "runs" && s.state === "idle" && (s.watch?.follows?.length ?? 0) > 0;
+  if (watch.state === "runs") row.classList.add("watch-on");
+  if (watch.state === "runs" && s.state === "idle" && (s.watch?.follows?.length ?? 0) > 0) {
+    row.classList.add("watch-turn");
+    // The row is rebuilt often. Start the turn at the elapsed phase, not at its first frame.
+    row.style.setProperty("--turn-delay", `${-(performance.now() % 8000)}ms`);
+  }
+  if (watch.state === "missing" || watch.state === "failed") row.classList.add("watch-error");
   if (watch.text) row.title = watch.text;
   row.setAttribute("aria-label", `${name}, the Skiff agent, ${s.title ?? agentName(s)}, ${s.state}${watch.text ? `. ${watch.text}` : ""}`);
-  row.append(faceFrame(null, s, watch.state, turning, true), agentIcon(s), h("span", "skiff-agent-name", name), h("span", "title", s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? ""));
+  // Its face at the row's full height, then the agent icon with the watcher, and the skiff under way while it works.
+  row.append(skipperFace(null, 40), agentIcon(s), ...underWay(s), h("span", "skiff-agent-name", name), h("span", "title", s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? ""));
   // One amber count, only while ledger tasks need the person.
   const needs = ledgerNeeds();
   if (needs) {
@@ -516,6 +523,9 @@ function skiffAgentRow(): HTMLElement {
   });
   return row;
 }
+
+/** A Skipper row's skiff under way, the tree's working mark, while it works. */
+const underWay = (s: SessionInfo) => (s.state === "working" ? [stateIcon(s)] : []);
 
 /** What a project's or a fleet's Skipper row shows, for the block's signature. */
 function skipperSig(scope: string) {
@@ -551,14 +561,21 @@ function projectSkipperRow(scope: string, s: SessionInfo): HTMLElement {
   const row = h("button", "session-row project-skipper-row" + ` st-${s.state}` + (S.selection.includes(s.id) ? " selected" : ""));
   row.type = "button";
   row.dataset.session = s.id;
-  // Its face's frame shows the state and its own watcher, as on the Skiff agent's row.
+  // Its own watcher, as on the Skiff agent's row: teal while it runs, turning
+  // while the Skipper is idle and the watcher follows a pane with an open
+  // task of this project, red when its last line failed.
   const watch = projectWatch(s);
-  const turning = watch.state === "runs" && s.state === "idle" && (s.watch?.follows?.length ?? 0) > 0;
+  if (watch.state === "runs") row.classList.add("watch-on");
+  if (watch.state === "runs" && s.state === "idle" && (s.watch?.follows?.length ?? 0) > 0) {
+    row.classList.add("watch-turn");
+    row.style.setProperty("--turn-delay", `${-(performance.now() % 8000)}ms`);
+  }
+  if (watch.state === "failed") row.classList.add("watch-error");
   if (watch.text) row.title = watch.text;
   const title = ledgerWorkTitle(scope) ?? s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? "";
   const { need, working } = ledgerCounts(scope);
   row.setAttribute("aria-label", `${scopeName(scope)} ${name}, ${title || s.state}${watch.text ? `. ${watch.text}` : ""}`);
-  row.append(h("span", "chev-space"), faceFrame(scope, s, watch.state, turning, true), agentIcon(s), h("span", "skiff-agent-name", name), h("span", "title", title));
+  row.append(h("span", "chev-space"), skipperFace(scope, 20), agentIcon(s), ...underWay(s), h("span", "skiff-agent-name", name), h("span", "title", title));
   const roll = rollCounts(need, working);
   if (roll) row.append(roll);
   row.append(unreadMark(row, s));
