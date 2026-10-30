@@ -25,8 +25,9 @@ import { ledgerKey } from "../workspace/ledger";
 import { animateFold } from "../ui/fold";
 import { fleetKey, isOpen, projectKey as projectRowKey, toggleRow, visibleProjects } from "../workspace/tree";
 import { scopeFleet } from "../workspace/model";
+import { missionOpen, pickSkipper } from "../workspace/missionControl";
 
-/** Ctrl+Shift+1..9 picks a project row the tree shows (Command+Option+1..9 on macOS). Not in the keymap: it is a range, not one key. */
+/** Ctrl+Shift+1..9 picks a project row the tree shows (Command+Option+1..9 on macOS); in Mission control, a Skipper card. Not in the keymap: it is a range, not one key. */
 function projectKey(e: KeyboardEvent): number | null {
   if (isMac ? !e.metaKey || !e.altKey || e.shiftKey || e.ctrlKey : !e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey) return null;
   const m = /^Digit([1-9])$/.exec(e.code);
@@ -50,6 +51,16 @@ window.addEventListener("keydown", (e) => {
       runAction(key);
     }
     return;
+  }
+  // Mission control gives the number keys to its Skipper cards. The tree's projects wait until it closes.
+  if (missionOpen()) {
+    const n = projectKey(e);
+    if (n !== null) {
+      e.preventDefault();
+      e.stopPropagation();
+      pickSkipper(n);
+      return;
+    }
   }
   // An open menu or dialog keeps the keys until it closes. Holding Ctrl+Shift
   // from the shortcut that opened it, then pressing Enter, picks the item

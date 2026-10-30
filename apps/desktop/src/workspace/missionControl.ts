@@ -418,10 +418,11 @@ function metaOf(s: SessionInfo): HTMLElement {
   return el;
 }
 
-/** The card's inside: the pin, the head and the body. `label`: the head's name; none inside a cluster. */
-function cardParts(s: SessionInfo, label: string | null, now: number): HTMLElement[] {
+/** The card's inside: the pin, the head and the body. `label`: the head's name; none inside a cluster. `num`: a Skipper's number key. */
+function cardParts(s: SessionInfo, label: string | null, now: number, num = 0): HTMLElement[] {
   const pin = h("span", `mission-pin ${s.coordinator || !!s.skipper ? "accent" : s.state === "working" || s.state === "waiting" || s.state === "done" ? s.state : ""}`);
   const head = h("span", "head");
+  if (num) head.appendChild(h("span", "num", String(num)));
   if (label !== null) head.append(skipperFace(s.coordinator ? null : (s.skipper ?? ""), 16), h("span", "name", label));
   head.appendChild(h("span", "at", sinceText(s, now)));
   const body = h("span", "body");
@@ -478,6 +479,8 @@ function refill(el: HTMLElement, parts: HTMLElement[]) {
 }
 
 const cards = new Map<string, HTMLElement>();
+/** The Skippers' cards in number-key order: Ctrl+Shift+1 opens the first. */
+let numbered: string[] = [];
 const clusters = new Map<string, HTMLElement>();
 const plans = new Map<string, HTMLElement>();
 
@@ -495,6 +498,7 @@ function draw() {
   if (lit && !G.standIn(m.g, placed, lit) && !placed.clusters.has(lit)) lit = G.navParent(m.g, lit) ?? G.navFirst(m.g);
   if (!lit) lit = G.navFirst(m.g);
 
+  numbered = G.skipperOrder(m.g).filter((id) => placed.cards.has(id)).slice(0, 9);
   const seen = new Set<string>();
   // Cards: sessions, Skippers and Admiral; and folded clusters as cards.
   const putCard = (id: string, r: G.Rect, parts: HTMLElement[], cls: string, pc: string, dim: boolean) => {
@@ -526,7 +530,7 @@ function draw() {
     const cls = [s.coordinator ? "admiral" : !!s.skipper ? "skipper" : "", s.state === "waiting" ? "waiting" : ""].join(" ");
     const pc = inCluster ? accent(p) : "var(--accent)";
     const label = inCluster ? null : cardName(s);
-    putCard(id, r, cardParts(s, label, now), cls, pc, dimmed(s));
+    putCard(id, r, cardParts(s, label, now, numbered.indexOf(id) + 1), cls, pc, dimmed(s));
     const label2 = `${cardName(s)}, ${s.state}`;
     if (cards.get(id)!.getAttribute("aria-label") !== label2) cards.get(id)!.setAttribute("aria-label", label2);
   }
@@ -1189,6 +1193,14 @@ const BOARD_ACTIONS = new Set<Action>(["session-next", "session-prev", "list-pro
 export function missionKey(a: Action | null): boolean {
   if (!a || !missionOpen() || !BOARD_ACTIONS.has(a)) return false;
   return run(G.boardCommand("", a, false, false, { ctrl: false, shift: false, alt: false, meta: false }));
+}
+
+/** Ctrl+Shift+1..9 here: the Skipper card with that number, as a click on it. */
+export function pickSkipper(n: number) {
+  const id = numbered[n - 1];
+  if (!id) return;
+  light(id, false);
+  go();
 }
 
 /** Ctrl+Shift+P here: into the search, or back out to the board. The search stays. */
