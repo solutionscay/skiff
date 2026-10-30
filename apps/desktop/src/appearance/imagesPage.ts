@@ -165,7 +165,7 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
     }
     const sel = picked();
     const words = queryWords(st.query);
-    count.textContent = st.copied ? t("images.copied") : countText(shown.length, words) + (sel.length ? ` · ${t("sink.picked", { n: sel.length })}` : "");
+    count.textContent = st.copied ? t("images.copied") : countText(shown.length, words) + (sel.length ? ` · ${t("images.selected", { n: sel.length })}` : "");
     const none = !sel.length;
     openB.disabled = none;
     pinB.disabled = none;

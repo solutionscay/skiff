@@ -118,12 +118,12 @@ export function filesBlock(w: Worktree): HTMLElement {
   const glyph = icon('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path>');
   const key = `files:${w.path}`;
   // A click selects the row on mousedown (keyboard.ts), then opens or closes it.
-  const head = sectionHeader(key, "Files", isOpen, glyph, () => toggle(w.path, shown));
+  const head = sectionHeader(key, t("menu.files"), isOpen, glyph, () => toggle(w.path, shown));
   setRowActs(key, { preview: { kind: "folder", path: w.path }, fold: folds(w.path, shown) });
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    ctxMenu.open(e.clientX, e.clientY, "Files", [
+    ctxMenu.open(e.clientX, e.clientY, t("menu.files"), [
       { icon: "schedule-refresh-cw", label: t("menu.refresh"), run: () => refresh(w.path) },
       { icon: "indicators-square-arrow-out-up-right", label: t("menu.showInFileManager"), run: () => open(w.path) },
     ]);

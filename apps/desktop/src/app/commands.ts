@@ -261,19 +261,22 @@ export const switcher = createSwitcher(() => {
       secondary: where,
       state: s.state,
       meta: s.state === "waiting" || s.state === "idle" ? t(`state.${s.state}`) : "",
-      text: `${where} ${agentName(s)} ${taskTitle(s)} ${s.state}`,
+      // The state matches by its shown word and by its English id.
+      text: `${where} ${agentName(s)} ${taskTitle(s)} ${t(`state.${s.state}`)} ${s.state}`,
       run: () => revealSession(s.id),
     };
   });
   items.push(...found);
   for (const p of S.closedProjects) {
+    const primary = t("palette.openProject", { name: p.name });
+    const secondary = t("palette.closed");
     items.push({
       kind: "command",
       color: accent(p),
-      primary: t("palette.openProject", { name: p.name }),
-      secondary: t("palette.closed"),
+      primary,
+      secondary,
       meta: "",
-      text: `${t("palette.openProject", { name: p.name })} ${t("palette.closed")}`,
+      text: `${primary} ${secondary}`,
       run: () => void openClosedProject(p),
     });
   }
@@ -286,7 +289,7 @@ export const switcher = createSwitcher(() => {
         primary: branchName(w),
         secondary: p.name,
         meta: tn("palette.sessions", worktreeSessions(w).length),
-        text: `${p.name} / ${branchName(w)} worktree`,
+        text: `${p.name} / ${branchName(w)} ${t("switcher.kind.worktree")} worktree`,
         run: () => selectWorktree(p, w),
       });
     }

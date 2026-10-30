@@ -154,7 +154,6 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   function draw() {
     const nav = h("div", "set-nav");
     const head = h("div", "set-nav-head");
-    root.setAttribute("aria-label", t("cmd.settings"));
     head.append(h("div", "set-title", t("cmd.settings")), h("div", "set-path mono", "~/.config/skiff/projects.toml"));
     const tabs = TABS.map((id) => {
       const b = h("button", "set-tab" + (tab === id ? " active" : ""), t(TAB_NAMES[id]));

@@ -130,6 +130,7 @@ void listen("skiff:images-changed", () => void load());
 const lib = h("div");
 lib.id = "images-lib";
 lib.setAttribute("role", "menu");
+lib.setAttribute("aria-label", t("images.title"));
 lib.tabIndex = -1;
 lib.hidden = true;
 const libCount = h("span", "lib-count");
@@ -489,10 +490,6 @@ function expanded(on: boolean) {
 function openAt(at: DOMRect) {
   if (!list.length) return;
   menuOpened();
-  // Built before the language is known: the words go on at each open.
-  lib.setAttribute("aria-label", t("images.title"));
-  field.placeholder = t("images.search");
-  field.setAttribute("aria-label", t("images.search"));
   field.value = "";
   keysIn = "field";
   lit = null;

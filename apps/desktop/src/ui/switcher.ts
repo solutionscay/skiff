@@ -33,10 +33,16 @@ export function createSwitcher(items: () => SwitchItem[], onClose: () => void) {
       <div id="sw-list" role="listbox"></div>
       <div class="sw-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> <span data-w="move"></span></span><span><kbd>Enter</kbd> <span data-w="focus"></span></span><span><kbd>Esc</kbd> <span data-w="close"></span></span></div>
     </div>`;
+  // Words as text, never as markup: a catalog line cannot add HTML.
+  overlay.querySelector(".sw-panel")!.setAttribute("aria-label", t("switcher.title"));
+  overlay.querySelector("label")!.textContent = t("switcher.search");
   document.body.appendChild(overlay);
 
   const input = overlay.querySelector("input") as HTMLInputElement;
   const list = overlay.querySelector("#sw-list") as HTMLDivElement;
+  input.placeholder = t("switcher.search");
+  list.setAttribute("aria-label", t("switcher.matches"));
+  for (const w of ["move", "focus", "close"] as const) overlay.querySelector(`[data-w=${w}]`)!.textContent = t(`switcher.${w}`);
   let shown: SwitchItem[] = [];
   let active = 0;
 
@@ -106,17 +112,7 @@ export function createSwitcher(items: () => SwitchItem[], onClose: () => void) {
     item?.run();
   }
 
-  /** The words: set on each open, since the palette is built before the language is known. */
-  function words() {
-    overlay.querySelector(".sw-panel")!.setAttribute("aria-label", t("switcher.title"));
-    overlay.querySelector("label")!.textContent = t("switcher.search");
-    input.placeholder = t("switcher.search");
-    list.setAttribute("aria-label", t("switcher.matches"));
-    for (const w of ["move", "focus", "close"] as const) overlay.querySelector(`[data-w=${w}]`)!.textContent = t(`switcher.${w}`);
-  }
-
   function open() {
-    words();
     overlay.hidden = false;
     input.value = "";
     filter();

@@ -435,8 +435,8 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
 
   async function remove(r: R, at: number) {
     settle(await spec.remove!(r));
-    const t = document.querySelector(`[data-row-table="${spec.grid}"]`);
-    const rms = t ? [...t.querySelectorAll<HTMLButtonElement>(".c-remove:not(:disabled)")] : [];
+    const table = document.querySelector(`[data-row-table="${spec.grid}"]`);
+    const rms = table ? [...table.querySelectorAll<HTMLButtonElement>(".c-remove:not(:disabled)")] : [];
     const next = rms[Math.min(at, rms.length - 1)];
     if (next) next.focus();
     else focusDraft();

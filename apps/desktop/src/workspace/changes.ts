@@ -146,7 +146,7 @@ export function changesBlock(w: Worktree): HTMLElement | null {
   const glyph = icon('<path d="M12 3v12"></path><path d="M6 9h12"></path><path d="M6 21h12"></path>');
   const key = `changes:${w.path}`;
   // A click selects the row on mousedown (keyboard.ts), then opens or closes it.
-  const head = sectionHeader(key, "Changes", isOpen, glyph, () => toggle(w.path));
+  const head = sectionHeader(key, t("menu.changes"), isOpen, glyph, () => toggle(w.path));
   setRowActs(key, {
     preview: { kind: "diff", wt: w.path, branch: branchName(w), wait: true },
     fold: (open) => { if (open === undefined || open !== shown.has(w.path)) toggle(w.path); },
@@ -156,7 +156,7 @@ export function changesBlock(w: Worktree): HTMLElement | null {
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    ctxMenu.open(e.clientX, e.clientY, "Changes", [
+    ctxMenu.open(e.clientX, e.clientY, t("menu.changes"), [
       { icon: "code-git-branch", label: t("menu.reviewChanges"), run: () => reviewChanges(w) },
       { icon: "schedule-refresh-cw", label: t("menu.refresh"), run: () => load(w.path) },
     ]);

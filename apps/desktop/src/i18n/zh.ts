@@ -613,6 +613,7 @@ export const zh = {
   "images.unpin": "取消固定",
   "images.copyPaths": "复制路径",
   "images.copied": "已复制",
+  "images.selected": "已选择 {n} 张",
   "images.inserted": "已插入",
   "images.countOf": "{n} / {total}",
   "images.none": "没有图片",

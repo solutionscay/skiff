@@ -631,6 +631,7 @@ export const es = {
   "images.unpin": "Desfijar",
   "images.copyPaths": "Copiar rutas",
   "images.copied": "Copiado",
+  "images.selected": "{n} seleccionadas",
   "images.inserted": "Insertado",
   "images.countOf": "{n} de {total}",
   "images.none": "No hay imágenes",

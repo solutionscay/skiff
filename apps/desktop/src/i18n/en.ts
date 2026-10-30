@@ -634,6 +634,7 @@ export const en = {
   "images.unpin": "Unpin",
   "images.copyPaths": "Copy paths",
   "images.copied": "Copied",
+  "images.selected": "{n} selected",
   "images.inserted": "Inserted",
   "images.countOf": "{n} of {total}",
   "images.none": "No images",

@@ -17,10 +17,11 @@ const folder = (path: string) => {
   const parts = path.split("/").filter(Boolean);
   return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : path;
 };
-const age = (at: number) => {
+/** "now", "5m", "3h", "2d". `zero`: under a minute reads "0m", as an uptime does. */
+const age = (at: number, zero = false) => {
   if (!at) return "—";
   const seconds = Math.max(0, Math.floor((Date.now() - at) / 1000));
-  if (seconds < 60) return t("activity.now");
+  if (seconds < 60) return zero ? t("activity.minutes", { n: 0 }) : t("activity.now");
   if (seconds < 3600) return t("activity.minutes", { n: Math.floor(seconds / 60) });
   if (seconds < 86400) return t("activity.hours", { n: Math.floor(seconds / 3600) });
   return t("activity.days", { n: Math.floor(seconds / 86400) });
@@ -98,7 +99,7 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
   const m = s.metrics;
   const version = m?.version ?? s.version;
   // A value the daemon did not report shows a dash, never a zero.
-  const up = !m?.started_at ? "—" : Date.now() - m.started_at < 60_000 ? t("activity.minutes", { n: 0 }) : age(m.started_at);
+  const up = m?.started_at ? age(m.started_at, true) : "—";
   // The selection count is a live status: a screen reader reads each change.
   const count = h("span", "set-daemon-picked"); count.setAttribute("role", "status");
   // Sink kills the selected sessions. It asks first.
