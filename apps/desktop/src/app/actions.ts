@@ -36,7 +36,7 @@ import { showShortcuts } from "../ui/infoDialogs";
 import { isSkiffAgent, openSkiffAgent, skiffAgentSession } from "./skiffAgent";
 import { groupThemeMenu, projectThemeMenu, sessionThemeMenu } from "../appearance/themes";
 import { toggleLedger } from "../workspace/ledger";
-import { setSidebarView, skippersOn } from "../workspace/skippersView";
+import { nextSkipper, setSidebarView, skippersOn } from "../workspace/skippersView";
 import { quitApp } from "../workspace/profile";
 function openNewSession() {
   // Its key works from inside a menu, such as the worktree menu that shows it: that menu goes.
@@ -131,7 +131,8 @@ export function runAction(a: Action) {
     case "next-waiting": return goToSession(nextWaiting());
     case "skiff-agent": {
       const s = skiffAgentSession();
-      return s && missionOpen() ? goToSession(s.id) : openSkiffAgent();
+      if (s && missionOpen()) return goToSession(s.id);
+      return nextSkipper(S.focused) || openSkiffAgent();
     }
     case "ledger": return toggleLedger();
     case "sidebar-view": return setSidebarView(skippersOn() ? "tree" : "skippers");

@@ -165,8 +165,32 @@ export function pickSkipperRow(n: number) {
   const e = numbered()[n - 1];
   if (!e) return;
   openEntry(e);
-  // A key can pick a row below the fold; a click cannot.
-  requestAnimationFrame(() => document.querySelector(`.sk-row[data-session="${e.s!.id}"]`)?.scrollIntoView({ block: "nearest" }));
+  lightRow(e.s!.id);
+}
+
+/** Lights a Skipper's row after a key opened it. A key can pick a row below the fold; a click cannot. */
+function lightRow(id: string) {
+  requestAnimationFrame(() => {
+    keepRow(id);
+    document.querySelector(`.sk-row[data-session="${id}"]`)?.scrollIntoView({ block: "nearest" });
+  });
+}
+
+/**
+ * The skiff-agent key again, from Admiral's or a Skipper's pane: the next
+ * Skipper in the list, and Admiral again after the last. The side panel
+ * switches to the list and stays there. `false`: the focused pane is no
+ * Skipper's, so the key goes to Admiral as on the first press.
+ */
+export function nextSkipper(from: string | null): boolean {
+  const list = skipperEntries();
+  const at = from ? list.findIndex((e) => e.s?.id === from) : -1;
+  if (at < 0) return false;
+  setSidebarView("skippers");
+  const e = list[(at + 1) % list.length];
+  openEntry(e);
+  if (e.s) lightRow(e.s.id);
+  return true;
 }
 
 /** `num`: the row's number key, 0 for none. */
