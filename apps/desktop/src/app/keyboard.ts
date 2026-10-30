@@ -1,6 +1,6 @@
 /** App keys, Tab order, F6 regions, arrows in the lists. */
 import { isSkiffAgent, projectSkipperOf } from "./skiffAgent";
-import { setSidebarView, skippersOn } from "../workspace/skippersView";
+import { pickSkipperRow, skippersOn } from "../workspace/skippersView";
 import { type Action, actionFor, isMac } from "./keys";
 import { runAction } from "./actionDispatch";
 import { switcher } from "./commandUi";
@@ -248,25 +248,15 @@ function landOn(next: HTMLElement) {
  * Ctrl+Shift+1..9: the project row with that number, counted down the tree.
  * The panes show its Skipper, else the first line under it (its first group,
  * else its first session), not the last one in use there. The keys go to the
- * project row. In the Skippers list they go to the Skipper's row; a project
- * with no Skipper brings the tree back.
+ * project row. In the Skippers list the number counts the fleet and project
+ * Skippers there, not Admiral, and opens that Skipper as a click does.
  */
 function pickProject(n: number) {
+  if (skippersOn()) return pickSkipperRow(n);
   const p = visibleProjects()[n - 1];
   if (!p) return;
   selectProject(p.name);
   const skipper = projectSkipperOf(p.name);
-  if (skippersOn() && skipper) {
-    clearSelection();
-    S.groupPicked = null;
-    revealSession(skipper.id);
-    requestAnimationFrame(() => {
-      keepRow(skipper.id);
-      listItems().find((el) => el.dataset.session === skipper.id)?.scrollIntoView({ block: "nearest" });
-    });
-    return;
-  }
-  if (skippersOn()) setSidebarView("tree");
   const w = p.worktrees.find((x) => x.path === selectedWorktree.get(p.name));
   const first = w ? worktreeLines(w).find((l) => !l.pointer) : undefined;
   if (skipper) revealSession(skipper.id);

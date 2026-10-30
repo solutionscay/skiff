@@ -136,16 +136,41 @@ function avatar(e: Entry, watch: WatchState | null, turning: boolean): HTMLEleme
 }
 
 /** What a row shows, so an unchanged row is kept and its loops keep their phase. */
-function rowSig(e: Entry, watch: { state: WatchState; text: string } | null): string {
+function rowSig(e: Entry, watch: { state: WatchState; text: string } | null, num: number): string {
   const s = e.s;
   return JSON.stringify([
     e.kind, e.name, s?.id ?? null, s?.state ?? null, s?.unread ?? false, s?.exit_code ?? null, s?.agent_exit ?? null,
     latestLine(e), when(s?.last_output_at ?? 0), watch, s?.watch?.follows?.length ?? 0, s ? S.selection.includes(s.id) : false,
-    faceSig(e.kind === "admiral" ? null : e.scope),
+    faceSig(e.kind === "admiral" ? null : e.scope), num,
   ]);
 }
 
-function skipperRow(e: Entry, watch: { state: WatchState; text: string } | null): HTMLElement {
+/** Opens a Skipper's pane, as a click on its row does. */
+function openEntry(e: Entry) {
+  const s = e.s;
+  clearSelection();
+  if (e.kind === "admiral") {
+    if (!s) keepRow(SKIFF_AGENT_KEY);
+    return openSkiffAgent();
+  }
+  revealSession(s!.id);
+  requestAnimationFrame(() => keepRow(s!.id));
+}
+
+/** The fleet and project Skippers, less the Skiff agent, in list order: Ctrl+Shift+1 opens the first. */
+const numbered = () => skipperEntries().filter((e) => e.kind !== "admiral").slice(0, 9);
+
+/** Ctrl+Shift+1..9 in the Skippers list: the Skipper with that number. */
+export function pickSkipperRow(n: number) {
+  const e = numbered()[n - 1];
+  if (!e) return;
+  openEntry(e);
+  // A key can pick a row below the fold; a click cannot.
+  requestAnimationFrame(() => document.querySelector(`.sk-row[data-session="${e.s!.id}"]`)?.scrollIntoView({ block: "nearest" }));
+}
+
+/** `num`: the row's number key, 0 for none. */
+function skipperRow(e: Entry, watch: { state: WatchState; text: string } | null, num: number): HTMLElement {
   const s = e.s;
   const color = e.project ? accent(e.project) : DEFAULT_ACCENT;
   const row = h("button", "session-row sk-row" + (s ? ` st-${s.state}` : "") + (s && S.selection.includes(s.id) ? " selected" : ""));
@@ -156,6 +181,7 @@ function skipperRow(e: Entry, watch: { state: WatchState; text: string } | null)
   const turning = watch?.state === "runs" && s?.state === "idle" && (s.watch?.follows?.length ?? 0) > 0;
   const name = h("span", "sk-name", e.kind === "fleet" ? scopeName(e.scope!) : e.name);
   const top = h("span", "sk-top");
+  if (num) top.appendChild(h("span", "sk-num", String(num)));
   top.appendChild(name);
   if (e.kind === "fleet") top.appendChild(h("span", "sk-tag", "fleet"));
   top.appendChild(h("span", "sk-time", when(s?.last_output_at ?? 0)));
@@ -177,15 +203,7 @@ function skipperRow(e: Entry, watch: { state: WatchState; text: string } | null)
   row.addEventListener("mousedown", (ev) => {
     if (ev.button === 0) row.focus();
   });
-  row.addEventListener("click", () => {
-    clearSelection();
-    if (e.kind === "admiral") {
-      if (!s) keepRow(SKIFF_AGENT_KEY);
-      return openSkiffAgent();
-    }
-    revealSession(s!.id);
-    requestAnimationFrame(() => keepRow(s!.id));
-  });
+  row.addEventListener("click", () => openEntry(e));
   row.addEventListener("contextmenu", (ev) => {
     ev.preventDefault();
     if (s) rowMenu(s, ev.clientX, ev.clientY);
@@ -211,12 +229,14 @@ let kept = new Map<string, [sig: string, row: HTMLElement]>();
 export function renderSkippers(side: HTMLElement) {
   const next = new Map<string, [string, HTMLElement]>();
   const rows: HTMLElement[] = [];
+  const nums = numbered();
   for (const e of skipperEntries()) {
     const key = e.s?.id ?? SKIFF_AGENT_KEY;
     const watch = watchOf(e);
-    const sig = rowSig(e, watch);
+    const num = nums.indexOf(e) + 1;
+    const sig = rowSig(e, watch, num);
     const old = kept.get(key);
-    const row = old && old[0] === sig ? old[1] : (tally("sidebar.row"), skipperRow(e, watch));
+    const row = old && old[0] === sig ? old[1] : (tally("sidebar.row"), skipperRow(e, watch, num));
     next.set(key, [sig, row]);
     rows.push(row);
   }

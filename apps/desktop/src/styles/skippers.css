@@ -26,6 +26,7 @@
 .sk-top, .sk-line { display: flex; align-items: baseline; gap: calc(8 * var(--u)); min-width: 0; }
 .sk-name { font-size: calc(13px * var(--zoom, 1)); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sk-tag { font: calc(10px * var(--zoom, 1)) var(--mono); color: var(--text-dim); flex-shrink: 0; }
+.sk-num { flex-shrink: 0; font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .sk-time { margin-left: auto; flex-shrink: 0; font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .sk-row.st-waiting .sk-time { color: var(--state-waiting-text); }
 .sk-row .sk-line .title { color: var(--text-3); }
