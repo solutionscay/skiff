@@ -86,6 +86,18 @@ export function appThemeVars(t: TerminalTheme): Record<string, string> {
   return set;
 }
 
+const accents = new WeakMap<TerminalTheme, string>();
+
+/** The accent a theme gives the app, as `appThemeVars` has it. Kept for each theme, since faces ask on every draw. */
+export function themeAccent(t: TerminalTheme): string {
+  let c = accents.get(t);
+  if (c === undefined) {
+    c = appThemeVars(t)["--accent"];
+    accents.set(t, c);
+  }
+  return c;
+}
+
 /** The theme's app colors. Sets the surfaces the contrast checks use. */
 function themeVars(t: TerminalTheme): Record<string, string> {
   const bg = t.background;

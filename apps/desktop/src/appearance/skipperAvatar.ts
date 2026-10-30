@@ -3,7 +3,7 @@
  * `seed` picks another one for Shuffle. Returns an SVG on a 32×32 grid with
  * no size, so the CSS sets it.
  *
- * The body is the element's --pc, the project color, else --project-default,
+ * The body is the element's --pc, the accent of the Skipper's theme, else --project-default,
  * so a color or theme change repaints it. Black mixed in keeps the white eyes
  * readable on a pale color.
  */
@@ -49,6 +49,5 @@ export function skipperAvatar(name: string, seed = 0): string {
   return `<svg viewBox="0 0 32 32" aria-hidden="true"><g transform="rotate(${tilt} 16 16)"><path d="${d}" style="fill:${FILL};stroke:${FILL}" stroke-width="3" stroke-linejoin="round"/><g fill="#fff">${at(-1)}${at(1)}</g></g></svg>`;
 }
 
-/** The Admiral: one fixed avatar, a bicorne hat with level eyes, in rank gold. */
-const GOLD = "color-mix(in srgb, var(--rank) 72%, #000)";
-export const ADMIRAL_AVATAR = `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 22c3-9 8-13 13-13s10 4 13 13c-4-2-8.5-3-13-3s-9 1-13 3z" style="fill:${GOLD};stroke:${GOLD}" stroke-width="3" stroke-linejoin="round"/><g fill="#fff"><rect x="10.4" y="14" width="3.2" height="4.6" rx="1.6"/><rect x="18.4" y="14" width="3.2" height="4.6" rx="1.6"/></g></svg>`;
+/** The Admiral: one fixed avatar, a bicorne hat with level eyes, in the --pc color as the others are. */
+export const ADMIRAL_AVATAR = `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 22c3-9 8-13 13-13s10 4 13 13c-4-2-8.5-3-13-3s-9 1-13 3z" style="fill:${FILL};stroke:${FILL}" stroke-width="3" stroke-linejoin="round"/><g fill="#fff"><rect x="10.4" y="14" width="3.2" height="4.6" rx="1.6"/><rect x="18.4" y="14" width="3.2" height="4.6" rx="1.6"/></g></svg>`;
