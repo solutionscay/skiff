@@ -40,8 +40,8 @@
 .skipper-face svg { display: block; width: 100%; height: 100%; }
 /* Living faces. The eyes blink: they squash flat for about 150 ms, in
    steps. Now and then the head turns. The front moves as one, on one
-   centerline: the visor, the eyes centered in it, and the Admiral's brim
-   and button slide 1.5 units and narrow a little (92 %) as their far side
+   centerline: the visor, the eyes centered in it, and the Admiral's
+   button slide 1.5 units and narrow a little (92 %) as their far side
    goes back. The depth comes from what stays back: the whole face narrows
    to 97 % toward the near side, with no rotation, so the centerline stays
    upright, and the Admiral's crown and band slide only 0.5 and narrow to 97 %.
