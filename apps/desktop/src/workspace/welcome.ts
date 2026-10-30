@@ -18,6 +18,14 @@ import { openClosedProject } from "./projectClose";
 
 import { S } from "../app/state";
 import { accent, currentProject, launchChoices, shownIds } from "../app/stateQueries";
+import { t } from "../i18n";
+
+/** Puts `node` where `{name}` stands in `text`, so a language can move it. */
+function around(el: HTMLElement, text: string, name: string, node: Node) {
+  const at = text.indexOf(`{${name}}`);
+  if (at < 0) return el.append(text);
+  el.append(text.slice(0, at), node, text.slice(at + name.length + 2));
+}
 
 let welcomeSig = "";
 let welcomeBox: HTMLElement | null = null;
@@ -65,23 +73,23 @@ export function renderWelcome() {
       b.style.color = accent(c);
       actions.appendChild(b);
     }
-    const add = button("", "add project…", () => void addProject.open());
+    const add = button("", t("welcome.addProjectLower"), () => void addProject.open());
     actions.appendChild(add);
     const sa = skiffAgentButton();
     if (sa) actions.appendChild(sa);
     box.append(
-      h("div", "welcome-title", "No open project"),
-      h("div", "welcome-text", "Open a closed project again, with its settings, or add another."),
+      h("div", "welcome-title", t("welcome.noOpenTitle")),
+      h("div", "welcome-text", t("welcome.noOpenText")),
       actions,
     );
   } else if (none) {
-    const add = button("welcome-primary", "Add project", () => void addProject.open());
-    const hint = h("div", "welcome-hint", "or edit ");
+    const add = button("welcome-primary", t("welcome.addProject"), () => void addProject.open());
+    const hint = h("div", "welcome-hint", t("welcome.orEdit"));
     hint.appendChild(h("span", "mono", "~/.config/skiff/projects.toml"));
     const sa = skiffAgentButton();
     box.append(
-      h("div", "welcome-title", "Add your first project"),
-      h("div", "welcome-text", "Pick a folder. Skiff runs agents in it. In a git repository, it also lists the worktrees."),
+      h("div", "welcome-title", t("welcome.firstTitle")),
+      h("div", "welcome-text", t("welcome.firstText")),
       sa ? first(add, sa) : add,
       hint,
     );
@@ -92,26 +100,27 @@ export function renderWelcome() {
     const title = h("div", "welcome-title");
     const name = h("span", "", p.name);
     name.style.color = accent(p);
-    title.append(name, S.justAdded === p.name ? " is ready" : "");
-    const text = h("div", "welcome-text", "Start an agent in ");
-    text.append(h("span", "mono", branchName(w)), isFolder(p) ? "." : ", or make a worktree for a task first.");
+    if (S.justAdded === p.name) around(title, t("welcome.ready"), "name", name);
+    else title.append(name);
+    const text = h("div", "welcome-text");
+    around(text, t(isFolder(p) ? "welcome.startIn" : "welcome.startInRepo"), "branch", h("span", "mono", branchName(w)));
     const actions = h("div", "welcome-actions");
     for (const a of launchChoices()) {
       const b = button("", "", () => {
         S.justAdded = null;
         newSession(w.path, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell").catch(showError);
       });
-      b.append(launchIcon(a), a ? a.id : "shell");
+      b.append(launchIcon(a), a ? a.id : t("welcome.shell"));
       actions.appendChild(b);
     }
     if (!isFolder(p)) {
       const wt = button("", "", () => newWorktree(p));
-      wt.append(branchIcon(), "worktree…");
+      wt.append(branchIcon(), t("welcome.worktree"));
       actions.appendChild(wt);
     }
     box.append(title, text, actions);
   } else if (!S.focused && !shownIds().length) {
-    box.append(h("div", "welcome-text", "No session. Press + on a worktree to start one."));
+    box.append(h("div", "welcome-text", t("welcome.noSession")));
   } else {
     return;
   }

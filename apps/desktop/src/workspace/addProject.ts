@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open as openFolder } from "@tauri-apps/plugin-dialog";
 import { showError } from "../ui/alerts";
 import type { FolderInfo, Project } from "../platform/types";
+import { t } from "../i18n";
 
 /**
  * Pick a folder, check it with the daemon, and add it with the defaults: the
@@ -14,7 +15,7 @@ export function createAddProject(onAdded: (p: Project, fleet: string | null) => 
   let busy = false;
   let fleet: string | null = null;
   async function add(folder: FolderInfo) {
-    if (!folder.root || folder.error) throw new Error(folder.error ?? "Pick a folder.");
+    if (!folder.root || folder.error) throw new Error(folder.error ?? t("project.pickFolder"));
     const p = await invoke<Project>("add_project", {
       path: folder.root,
       name: folder.name,
@@ -30,7 +31,7 @@ export function createAddProject(onAdded: (p: Project, fleet: string | null) => 
       busy = true;
       fleet = into;
       try {
-        const dir = await openFolder({ directory: true, title: "Pick a project folder" });
+        const dir = await openFolder({ directory: true, title: t("project.pickFolderTitle") });
         if (typeof dir !== "string") return onClose();
         const folder = await invoke<FolderInfo>("inspect_folder", { path: dir });
         await add(folder);
