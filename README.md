@@ -11,7 +11,7 @@
 <!-- hero: keep in step with the skiff-web home hero; check with scripts/hero-sync.py -->
 <h3 align="center">A small workspace for coding agents.</h3>
 
-<p align="center">Skiff keeps agent sessions organized across projects and Git worktrees.</p>
+<p align="center">Run Claude Code, Codex and other agents in Skiff in place of your terminal. Each session stays with its project and worktree, and Skiff shows which agent waits for you.</p>
 
 <p align="center"><a href="https://skiff.solutionscay.com/"><img src="https://skiff.solutionscay.com/shots/skiff-mission-control-hero-poster.webp" width="1600" alt="Skiff Mission control: Admiral at the top, the Skippers under it, each project a cluster of session cards, and a string from each owner to each pane. Click to play the video on the website."></a></p>
 <!-- /hero -->
