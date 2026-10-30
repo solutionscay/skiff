@@ -72,7 +72,7 @@ jobs:
           path: dist/*.tar.gz
 
   server-macos:
-    runs-on: macos-14
+    runs-on: macos-15
     strategy:
       matrix:
         arch: [aarch64, x86_64]
@@ -197,7 +197,7 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" --clobber stable/*
 
   macos:
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
     steps:
