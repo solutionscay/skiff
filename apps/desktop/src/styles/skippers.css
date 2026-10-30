@@ -38,19 +38,40 @@
 /* A Skipper's face (skipperFace.ts): the SVG or a picture, --face px at zoom 1. */
 .skipper-face { width: calc(var(--face) * var(--u)); height: calc(var(--face) * var(--u)); flex-shrink: 0; display: inline-block; line-height: 0; }
 .skipper-face svg { display: block; width: 100%; height: 100%; }
-/* Living eyes: a blink (the eyes squash flat for about 150 ms) and, now and
-   then, a 1-unit glance aside for about 0.8 s. The visor stays still. Each
-   face's rhythm comes in its SVG's variables (skipperAvatar.ts). Steps, not
-   tweens: the values only jump, as the other loops do, so WebKit does no
-   per-frame interpolation. Done and exited Skippers sleep, and reduced
-   motion stops both. */
+/* Living faces. The eyes blink: they squash flat for about 150 ms, in
+   steps. Now and then the head turns: the face leans 5 degrees, the visor
+   slides 1.5 units and the eyes 2.5 (1 more), eased in and out over about
+   250 ms, held about 1.2 s, then back. A cycle holds three turns: one side,
+   the other side, then up. Each face's rhythm comes in its SVG's variables
+   (skipperAvatar.ts). Done and no-session faces sleep, and reduced motion
+   stops all of it. */
 .skipper-face .sk-eyes { transform-box: fill-box; transform-origin: center; animation: var(--blink-anim, sk-blink) var(--blink, 5s) var(--blink-delay, 0s) infinite steps(1, end); }
-.skipper-face .sk-look { animation: sk-glance var(--glance, 16s) var(--glance-delay, 0s) infinite steps(1, end); }
+.skipper-face :is(.sk-turn, .sk-front, .sk-look) { animation-duration: var(--turn, 42s); animation-delay: var(--turn-delay, 0s); animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+.skipper-face .sk-turn { transform-origin: 16px 16px; animation-name: sk-lean; }
+.skipper-face .sk-front { animation-name: sk-slide; }
+.skipper-face .sk-look { animation-name: sk-peer; }
 @keyframes sk-blink { 0% { transform: scaleY(1); } 97.4% { transform: scaleY(0.1); } 100% { transform: scaleY(1); } }
 @keyframes sk-blink2 { 0% { transform: scaleY(1); } 93.6% { transform: scaleY(0.1); } 95.4% { transform: scaleY(1); } 97.4% { transform: scaleY(0.1); } 100% { transform: scaleY(1); } }
-@keyframes sk-glance { 0% { transform: translateX(0); } 93% { transform: translateX(var(--glance-dx, 1px)); } 98% { transform: translateX(0); } }
-:is(.st-done, .sk-row:not([data-session]), .skiff-agent-row:not([data-session])) .skipper-face :is(.sk-eyes, .sk-look) { animation: none; }
-@media (prefers-reduced-motion: reduce) { .skipper-face :is(.sk-eyes, .sk-look) { animation: none; } }
+/* the three turns, at 30 %, 63 % and 96 % of the cycle: 0.6 % in, 2.9 % held, 0.6 % back */
+@keyframes sk-lean {
+  0%, 30%, 34.1%, 63%, 67.1%, 100% { transform: rotate(0deg); }
+  30.6%, 33.5% { transform: rotate(calc(var(--dir, 1) * 5deg)); }
+  63.6%, 66.5% { transform: rotate(calc(var(--dir, 1) * -5deg)); }
+}
+@keyframes sk-slide {
+  0%, 30%, 34.1%, 63%, 67.1%, 95%, 99.1%, 100% { transform: translate(0, 0); }
+  30.6%, 33.5% { transform: translate(calc(var(--dir, 1) * 1.5px), 0); }
+  63.6%, 66.5% { transform: translate(calc(var(--dir, 1) * -1.5px), 0); }
+  95.6%, 98.5% { transform: translate(0, -1px); }
+}
+@keyframes sk-peer {
+  0%, 30%, 34.1%, 63%, 67.1%, 95%, 99.1%, 100% { transform: translate(0, 0); }
+  30.6%, 33.5% { transform: translate(calc(var(--dir, 1) * 1px), 0); }
+  63.6%, 66.5% { transform: translate(calc(var(--dir, 1) * -1px), 0); }
+  95.6%, 98.5% { transform: translate(0, -0.6px); }
+}
+:is(.st-done, .sk-row:not([data-session]), .skiff-agent-row:not([data-session])) .skipper-face :is(.sk-eyes, .sk-look, .sk-front, .sk-turn) { animation: none; }
+@media (prefers-reduced-motion: reduce) { .skipper-face :is(.sk-eyes, .sk-look, .sk-front, .sk-turn) { animation: none; } }
 .mission-card .skipper-face { width: calc(var(--face) * 1px); height: calc(var(--face) * 1px); }
 .cell-head .title .skipper-face { vertical-align: calc(-3 * var(--u)); margin-right: calc(4 * var(--u)); }
 

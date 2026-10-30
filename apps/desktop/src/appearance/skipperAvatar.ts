@@ -8,7 +8,8 @@
  * readable on a pale color. The eyes sit on a visor in the Skiff black, the
  * mascot's visor color, which follows the eye style and the face's tilt.
  *
- * The eyes live: they blink, and now and then glance aside, in CSS
+ * The faces live: the eyes blink, and now and then the head turns (the face
+ * leans, the visor and the eyes slide aside, the eyes further), in CSS
  * (styles/skippers.css). Each face carries its own rhythm as variables on
  * its root, from the same hash, so no two faces blink in step.
  */
@@ -50,12 +51,17 @@ function hash(text: string): number {
   return h >>> 0;
 }
 
-/** The face's rhythm: a blink every 4 to 7 s, a double blink for one face in five, a glance every 12 to 20 s, each at its own phase. */
+/**
+ * The face's rhythm: a blink every 4 to 7 s, a double blink for one face in
+ * five, and a head turn every 10 to 18 s. The turns go one way, the other
+ * way, then up, so a cycle holds three; `--dir` picks the first side. Each
+ * at its own phase.
+ */
 function rhythm(h: number): string {
   const blink = 4 + ((h >>> 16) % 31) / 10;
-  const glance = 12 + ((h >>> 21) % 9);
+  const turn = 3 * (10 + ((h >>> 21) % 9));
   return `--blink:${blink}s;--blink-delay:-${((h >>> 4) % 70) / 10}s;--blink-anim:${(h >>> 25) % 5 ? "sk-blink" : "sk-blink2"};`
-    + `--glance:${glance}s;--glance-delay:-${(h >>> 9) % 200 / 10}s;--glance-dx:${(h >>> 29) & 1 ? 1 : -1}px`;
+    + `--turn:${turn}s;--turn-delay:-${(h >>> 9) % turn}s;--dir:${(h >>> 29) & 1 ? 1 : -1}`;
 }
 
 export function skipperAvatar(name: string, seed = 0): string {
@@ -67,23 +73,23 @@ export function skipperAvatar(name: string, seed = 0): string {
   const gap = 4.5 + ((h >>> 10) % 3);
   const look = ((h >>> 12) % 3) - 1;
   const at = (s: number) => `<g transform="translate(${16 + look + s * gap} ${y})">${draw(s)}</g>`;
-  return `<svg viewBox="0 0 32 32" aria-hidden="true" style="${rhythm(h)}"><g transform="rotate(${tilt} 16 16)"><path d="${d}" style="fill:${FILL};stroke:${FILL}" stroke-width="3" stroke-linejoin="round"/>${visor(16 + look, y, gap, eye)}<g class="sk-look"><g class="sk-eyes" fill="#fff">${at(-1)}${at(1)}</g></g></g></svg>`;
+  return `<svg viewBox="0 0 32 32" aria-hidden="true" style="${rhythm(h)}"><g class="sk-turn"><g transform="rotate(${tilt} 16 16)"><path d="${d}" style="fill:${FILL};stroke:${FILL}" stroke-width="3" stroke-linejoin="round"/><g class="sk-front">${visor(16 + look, y, gap, eye)}<g class="sk-look"><g class="sk-eyes" fill="#fff">${at(-1)}${at(1)}</g></g></g></g></g></svg>`;
 }
 
 /**
  * The Admiral: the Skiff mascot's head, filling the grid as the crew's bodies
  * do. A wide rounded-square white head; the Skiff-black visor across most of
- * its front, with two tall white eyes set wide, which blink and glance as the
+ * its front, with two tall white eyes set wide, which blink and turn as the
  * crew's do; a sailor cap sitting low and wide: a white crown, a band in the
  * --pc color with a gold button, and a short dark brim. A thin Skiff-black
  * edge keeps the white on a light theme.
  */
 const EDGE = `stroke="${VISOR}" stroke-width="1.6" stroke-linejoin="round"`;
-export const ADMIRAL_AVATAR = `<svg viewBox="0 0 32 32" aria-hidden="true" style="${rhythm(hash("Admiral"))}">`
+export const ADMIRAL_AVATAR = `<svg viewBox="0 0 32 32" aria-hidden="true" style="${rhythm(hash("Admiral"))}"><g class="sk-turn">`
   + `<rect x="2.4" y="10.6" width="27.2" height="19.4" rx="8" fill="#fff" ${EDGE}/>`
   + `<path d="M4.6 9.4C5.4 4.6 10 2 16 2s10.6 2.6 11.4 7.4z" fill="#fff" ${EDGE}/>`
   + `<rect x="4.2" y="8" width="23.6" height="4.4" rx="1.8" style="fill:${FILL}" ${EDGE}/>`
   + `<path d="M9.5 12.4h13l-1.6 1.8h-9.8z" fill="${VISOR}"/>`
   + `<circle cx="16" cy="8.2" r="1.9" fill="#f4c430" ${EDGE}/>`
-  + `<rect x="5.6" y="15.2" width="20.8" height="11.6" rx="4.8" fill="${VISOR}"/>`
-  + `<g class="sk-look"><g class="sk-eyes" fill="#fff"><rect x="9.2" y="17.6" width="3.4" height="6.6" rx="1.7"/><rect x="19.4" y="17.6" width="3.4" height="6.6" rx="1.7"/></g></g></svg>`;
+  + `<g class="sk-front"><rect x="5.6" y="15.2" width="20.8" height="11.6" rx="4.8" fill="${VISOR}"/>`
+  + `<g class="sk-look"><g class="sk-eyes" fill="#fff"><rect x="9.2" y="17.6" width="3.4" height="6.6" rx="1.7"/><rect x="19.4" y="17.6" width="3.4" height="6.6" rx="1.7"/></g></g></g></g></svg>`;
