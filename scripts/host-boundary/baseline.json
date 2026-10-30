@@ -78,7 +78,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "426c692bc785ef51dd81468ffc9810e3bc83371ef8c0bf11a1baed2638d14992"
+    "sha256": "d7c8a026b424b85e474d68e30598865a19cbb31605c88dcb66b6a5c6be4a437c"
   },
   "apps/desktop/src-tauri/src/copies.rs": {
     "ownership": "client-owned (M5 reviewed): local copies of bytes the Host sent, for this computer's Open with; never reads or opens a Host path",

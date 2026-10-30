@@ -1735,7 +1735,7 @@ mod tests {
             let c = data_now(&app).await.unwrap();
             assert_eq!(c.hello().host.host_id.as_str(), "A");
             let started = std::fs::read_to_string(dir.join("started")).unwrap();
-            assert_eq!(started.trim(), format!("--session-socket {}", session.display()));
+            assert_eq!(started.trim(), format!("--session-socket {} --this-mac", session.display()));
             assert!(skiff_client::host::data::project_list(&c).await.unwrap().is_empty());
             // Reused while open: no second start.
             assert!(Arc::ptr_eq(&c, &data_now(&app).await.unwrap()));
