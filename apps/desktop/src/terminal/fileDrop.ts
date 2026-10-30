@@ -17,6 +17,7 @@ import { previewOnScreen } from "./peek";
 import { type Typed, typeFiles, whoOf } from "./terminalClipboard";
 import { panes } from "./terminalState";
 import { view } from "./terminal";
+import { t, tn } from "../i18n";
 
 const overlay = document.createElement("div");
 overlay.className = "drop-preview file-drop";
@@ -56,7 +57,7 @@ function show(id: string | null, n = dragged.length, thumb: string | null = null
   }
   const r = body.getBoundingClientRect();
   Object.assign(overlay.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
-  words.textContent = thumb !== null ? "Insert the path" : n === 1 ? "Type the path" : `Type ${n} paths`;
+  words.textContent = thumb !== null ? t("drop.insert") : tn("drop.type", n);
   mini.hidden = thumb === null;
   if (thumb !== null && mini.dataset.src !== thumb) {
     mini.dataset.src = thumb;
@@ -79,8 +80,8 @@ export function endImageDrag(x: number, y: number): string | null {
 async function drop(id: string, paths: string[]) {
   if (id !== S.focused) focusPane(id);
   try {
-    const t = await invoke<Typed>("drop_files", { who: whoOf(id), paths });
-    typeFiles(id, t);
+    const typed = await invoke<Typed>("drop_files", { who: whoOf(id), paths });
+    typeFiles(id, typed);
   } catch (e) {
     showError(e);
   }

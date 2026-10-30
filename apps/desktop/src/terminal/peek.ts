@@ -39,6 +39,7 @@ import { rowActs } from "../workspace/rowActs";
 import { panes } from "./terminalState";
 import { fitShown } from "./terminal";
 import { FONT, TERM_THEME } from "./terminalRuntime";
+import { t, type MessageKey } from "../i18n";
 
 /** Where to find tools for a row that has none. */
 export const TOOLS_URL = "https://github.com/solutionscay/skiff/wiki/Open-with";
@@ -180,20 +181,20 @@ export function syncPreview() {
   if (currentKey() !== active.key) endPreview();
 }
 
-function begin(mine: number, t: Preview, fresh = false) {
-  if (t.kind === "folder") {
-    showCard(mine, "folder", t.path, "Show in file manager", () => openPath(t.path));
-  } else if (t.kind === "diff" && t.wait && !fresh) {
+function begin(mine: number, preview: Preview, fresh = false) {
+  if (preview.kind === "folder") {
+    showCard(mine, "folder", preview.path, t("menu.showInFileManager"), () => openPath(preview.path));
+  } else if (preview.kind === "diff" && preview.wait && !fresh) {
     // Landing on the row shows the card. Enter, or Review all changes, runs the diff.
     const key = active!.key;
-    showCard(mine, "diff", `${t.wt}/${t.file ?? "All changes"}`, "Review all changes", () => startPreview(key, true, true));
-  } else if (t.kind === "diff") {
-    showCard(mine, "diff", `${t.wt}/${t.file ?? "All changes"}`);
-    void invoke<Opened>("open_diff", { path: t.wt, file: t.file ?? null })
-      .then((o) => { if (live(mine)) handle(o, "diff", t.file ?? "All changes", t.branch); })
+    showCard(mine, "diff", `${preview.wt}/${preview.file ?? t("peek.allChanges")}`, t("menu.reviewChanges"), () => startPreview(key, true, true));
+  } else if (preview.kind === "diff") {
+    showCard(mine, "diff", `${preview.wt}/${preview.file ?? t("peek.allChanges")}`);
+    void invoke<Opened>("open_diff", { path: preview.wt, file: preview.file ?? null })
+      .then((o) => { if (live(mine)) handle(o, "diff", preview.file ?? t("peek.allChanges"), preview.branch); })
       .catch(failed(mine));
   } else {
-    const { path } = t;
+    const { path } = preview;
     const name = path.split("/").pop() ?? path;
     const dir = path.slice(0, path.length - name.length - 1);
     // Cover the panes before the setting is known, without an action yet.
@@ -202,7 +203,7 @@ function begin(mine: number, t: Preview, fresh = false) {
       if (!live(mine)) return;
       if (p.peek && p.script) return void run("file", name, dir, p.script, p.cwd);
       // Selection starts terminal tools only. An app waits for an explicit open.
-      showCard(mine, "file", path, `Open in ${p.app}`, () => openPath(path));
+      showCard(mine, "file", path, t("peek.openIn", { app: p.app }), () => openPath(path));
     }).catch(failed(mine));
   }
 }
@@ -315,10 +316,10 @@ export function closePeek(hold = false) {
     held = { p, key: active?.key ?? "" };
   } else drop(p, p.shown);
   // A diff leaves its card when it closes, so its row still owns the main area. Enter shows it again.
-  const t = active && !active.closed ? rowActs(active.key)?.preview : undefined;
-  if (active && t?.kind === "diff" && !card?.querySelector("button")) {
+  const preview = active && !active.closed ? rowActs(active.key)?.preview : undefined;
+  if (active && preview?.kind === "diff" && !card?.querySelector("button")) {
     const key = active.key;
-    showCard(active.gen, "diff", `${t.wt}/${t.file ?? "All changes"}`, t.file ? "Show diff" : "Review all changes", () => startPreview(key, true, true));
+    showCard(active.gen, "diff", `${preview.wt}/${preview.file ?? t("peek.allChanges")}`, preview.file ? t("menu.showDiff") : t("menu.reviewChanges"), () => startPreview(key, true, true));
   }
   // A card with an action stays: the app opened from it runs on.
   if (card?.querySelector("button")) {
@@ -362,8 +363,8 @@ export function closePreview() {
 /** The Esc keycap at the right of a preview's header. */
 function escButton(): HTMLButtonElement {
   const b = button("peek-esc", "Esc", closePreview);
-  b.title = "Close the preview (Esc)";
-  b.setAttribute("aria-label", "Close the preview");
+  b.title = t("peek.closeKey", { key: "Esc" });
+  b.setAttribute("aria-label", t("peek.close"));
   return b;
 }
 
@@ -377,8 +378,12 @@ function tookTerminal(p: Peek) {
   if (!b) return;
   const key = keyLabel("close-pane");
   b.textContent = key;
-  b.title = `Close the preview (${key})`;
+  b.title = t("peek.closeKey", { key });
 }
+
+/** The word in a preview's header for its kind: file, folder or diff. */
+const KIND_NAMES: Record<string, MessageKey> = { file: "peek.kindFile", folder: "peek.kindFolder", diff: "peek.kindDiff" };
+const kindName = (kind: string) => (KIND_NAMES[kind] ? t(KIND_NAMES[kind]) : kind);
 
 const keysIn = (el: HTMLElement) => el.contains(document.activeElement) || document.activeElement === document.body;
 
@@ -405,12 +410,12 @@ function showCard(mine: number, kind: string, path: string, label?: string, act?
   el.tabIndex = -1;
   el.setAttribute("aria-label", name);
   const head = h("div", "peek-head");
-  head.append(h("span", "peek-kind", kind), h("span", "peek-title mono", name), h("span", "peek-where mono", dir), escButton());
+  head.append(h("span", "peek-kind", kindName(kind)), h("span", "peek-title mono", name), h("span", "peek-where mono", dir), escButton());
   const body = h("div", "file-preview-body");
   if (label && act) {
     // A keycap you can click, with the action under it: the hint and the button in one.
     const cap = button("file-preview-key", "", act);
-    cap.title = `${label} (Enter)`;
+    cap.title = t("peek.actKey", { label });
     cap.setAttribute("aria-label", label);
     const arrow = icon(`<path d="M19 5v8H6m0 0 4-4m-4 4 4 4"></path>`);
     arrow.classList.add("file-preview-key-arrow");
@@ -471,7 +476,7 @@ function frame(mine: number, kind: string, title: string, where: string, program
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-label", title);
   const head = h("div", "peek-head");
-  head.append(h("span", "peek-kind", kind), h("span", "peek-title mono", title), h("span", "peek-where mono", where), escButton());
+  head.append(h("span", "peek-kind", kindName(kind)), h("span", "peek-title mono", title), h("span", "peek-where mono", where), escButton());
   const box = h("div", "peek-body");
   el.append(head, box);
   // Laid out but not visible, so the terminal has its real size from the start.
@@ -514,7 +519,7 @@ function frame(mine: number, kind: string, title: string, where: string, program
     if (key === "copy" || key === "paste") {
       e.preventDefault();
       if (key === "copy") void copyText(term.getSelection()).catch(showError);
-      else void pasteText().then((t) => t && term.paste(t), showError);
+      else void pasteText().then((text) => text && term.paste(text), showError);
       return false;
     }
     return key === null;
@@ -587,7 +592,7 @@ async function run(kind: string, title: string, where: string, script: string, c
   if (!info.peek) {
     invoke("kill_session", { session: info.id }).catch(console.error);
     closePeek();
-    return showError("This skiffd is older than the app. Restart skiffd to open files and diffs.");
+    return showError(t("peek.oldDaemon"));
   }
   p.session = info.id;
   // Still hidden and still running: an app with its own window. Let it go, but keep watching.
@@ -698,10 +703,10 @@ export function peekExited(id: string, code: number | null): boolean {
     if (code === 127) {
       const name = notFound(p.term) ?? p.program;
       closePeek();
-      return showError(`${name} not found`, { label: "Find a tool", run: () => openUrl(TOOLS_URL) });
+      return showError(t("peek.notFound", { name }), { label: t("peek.findTool"), run: () => openUrl(TOOLS_URL) });
     }
     show(p);
-    if (p.shown) p.term.write(`\r\n\x1b[2m${code ? `${p.program} exited with code ${code}. ` : ""}Press any key to close.\x1b[0m`);
+    if (p.shown) p.term.write(`\r\n\x1b[2m${code ? t("peek.exited", { program: p.program, code }) : t("peek.pressKey")}\x1b[0m`);
   }, 150);
   return true;
 }
@@ -712,6 +717,6 @@ function handle(o: Opened, kind: string, title: string, where: string) {
     return;
   }
   if (o.kind === "no_app") {
-    showError(`No app opens ${title}. Set one in Settings › Open with.`, { label: "Find a tool", run: () => openUrl(TOOLS_URL) });
+    showError(t("peek.noApp", { title }), { label: t("peek.findTool"), run: () => openUrl(TOOLS_URL) });
   }
 }

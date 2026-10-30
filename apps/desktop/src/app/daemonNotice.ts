@@ -5,6 +5,7 @@
  * step the user asked for, such as Restart skiffd, opens anything.
  */
 import type { DaemonWarning, Reloaded } from "../platform/types";
+import { t } from "../i18n";
 
 /** The warning panel opens at once only after a step the user asked for. */
 export function opensAtOnce(kind: DaemonWarning["kind"], requested: boolean): boolean {
@@ -13,9 +14,9 @@ export function opensAtOnce(kind: DaemonWarning["kind"], requested: boolean): bo
 
 /** What a reload left undone, in one line for the status bar. `null`: it finished. */
 export function reloadNote(r: Pick<Reloaded, "error" | "missing" | "lost">): string | null {
-  const end = (t: string) => (t.endsWith(".") ? t : `${t}.`);
+  const end = (line: string) => (line.endsWith(".") ? line : `${line}.`);
   const lines: string[] = [];
-  if (r.error) lines.push(end(r.missing.length ? `${r.error}: ${r.missing.join(", ")}` : r.error));
-  if (r.lost.length) lines.push(`Input typed during the reload did not reach ${r.lost.join(", ")}.`);
+  if (r.error) lines.push(end(r.missing.length ? t("daemon.reloadMissing", { error: r.error, names: r.missing.join(", ") }) : r.error));
+  if (r.lost.length) lines.push(t("daemon.inputLost", { names: r.lost.join(", ") }));
   return lines.length ? lines.join(" ") : null;
 }
