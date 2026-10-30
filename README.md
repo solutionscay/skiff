@@ -9,17 +9,19 @@
 </p>
 
 <!-- hero: keep in step with the skiff-web home hero; check with scripts/hero-sync.py -->
-<h3 align="center">A small workspace for coding agents.</h3>
+<h3 align="center">The multi-agent coding terminal.</h3>
 
-<p align="center">Run Claude Code, Codex and other agents in Skiff in place of your terminal. Each session stays with its project and worktree, and Skiff shows which agent waits for you.</p>
+<p align="center">Code with Claude Code, Codex and other agents in parallel, each in its own project or Git worktree. Your agents send each other tasks and report back.</p>
 
 <p align="center"><a href="https://skiff.solutionscay.com/"><img src="https://skiff.solutionscay.com/shots/skiff-mission-control-hero-poster.webp" width="1600" alt="Skiff Mission control: Admiral at the top, the Skippers under it, each project a cluster of session cards, and a string from each owner to each pane. Click to play the video on the website."></a></p>
 <!-- /hero -->
 
-Skiff is a desktop app for running many coding-agent sessions at once, on Linux and
-macOS. It keeps them in order across projects and Git worktrees. It shows where each
-session is and what it needs: a bell when an agent asks for approval, a flag when it
-finished a turn out of sight.
+Skiff is a terminal app for coding agents, on Linux and macOS. You code with Claude Code,
+Codex and other agents in its panes, many at once, across projects and Git worktrees.
+Each pane shows what its agent needs: a bell when it asks for approval, a flag when it
+finished a turn out of sight. Admiral, the Skiff agent, hands tasks to your other agents
+and to project Skippers, and collects their results in a ledger. Any agent can do the
+same with the `skiff` command.
 
 ## Philosophy
 
