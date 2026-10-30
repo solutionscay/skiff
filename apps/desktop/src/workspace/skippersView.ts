@@ -6,14 +6,14 @@
  * Enter opens its pane. The rows are session rows, so the list keys work as
  * in the tree.
  *
- * The avatar is the project's badge in a square frame, the boat mascot for
- * the Skiff agent. Sleeve stripes show the rank: one for a project Skipper,
+ * The avatar is the Skipper's face in a square frame: its project's chosen
+ * or generated one, the fixed bicorne for the Skiff agent. Sleeve stripes show the rank: one for a project Skipper,
  * two for a fleet Skipper, three in gold for the Skiff agent. The frame shows
  * the state, and a corner square shows the watcher. Nothing else in the row
  * moves.
  */
 import { agentFailed, agentName, scopeName } from "./model";
-import { projectIcon } from "../appearance/projectIcon";
+import { faceSig, skipperFace } from "./skipperFace";
 import { FLAG } from "../appearance/stateIcon";
 import { icon } from "../ui/icons";
 import { launchIcon } from "../appearance/agentIcon";
@@ -119,13 +119,8 @@ const RANK = { project: 1, fleet: 2, admiral: 3 } as const;
 /** The avatar: the badge in its frame, the rank stripes and the watcher corner. */
 function avatar(e: Entry, watch: WatchState | null, turning: boolean): HTMLElement {
   const av = h("span", `sk-av sk-${frameState(e.s)} sk-${e.kind}`);
-  const face = h("span", "sk-face");
-  if (e.kind === "admiral") face.classList.add("sk-mascot");
-  else if (e.project?.icon) {
-    face.classList.add("sk-img");
-    face.appendChild(projectIcon(e.project, 26));
-  }
-  else face.textContent = e.project ? e.project.short : e.name.slice(0, 3);
+  const face = skipperFace(e.kind === "admiral" ? null : e.scope, 26);
+  face.classList.add("sk-face");
   const rank = h("span", "sk-rank");
   for (let i = 0; i < RANK[e.kind]; i++) rank.appendChild(h("i"));
   av.append(face, rank);
@@ -143,11 +138,10 @@ function avatar(e: Entry, watch: WatchState | null, turning: boolean): HTMLEleme
 /** What a row shows, so an unchanged row is kept and its loops keep their phase. */
 function rowSig(e: Entry, watch: { state: WatchState; text: string } | null): string {
   const s = e.s;
-  const p = e.project;
   return JSON.stringify([
     e.kind, e.name, s?.id ?? null, s?.state ?? null, s?.unread ?? false, s?.exit_code ?? null, s?.agent_exit ?? null,
     latestLine(e), when(s?.last_output_at ?? 0), watch, s?.watch?.follows?.length ?? 0, s ? S.selection.includes(s.id) : false,
-    p ? [p.icon ?? null, p.short, p.color ?? null] : null,
+    faceSig(e.kind === "admiral" ? null : e.scope),
   ]);
 }
 

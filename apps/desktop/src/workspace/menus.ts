@@ -10,7 +10,6 @@ import { pickBackgroundOpacity } from "../appearance/backdropOpacity";
 import { keyLabel } from "../app/keys";
 import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { type MenuEntry } from "../ui/menu";
-import { isRemote } from "../app/hosts";
 import type { SkipperStart } from "../ui/launchMenu";
 import { agentName, basename, branchName, isFolder, locate, taskTitle, isProjectSkipper } from "./model";
 import { cwdOf } from "./canvas";
@@ -24,6 +23,8 @@ import { openPath } from "../platform/os";
 import { loadProjects, newSession } from "../app/daemon";
 import { launchMenu } from "../app/panels";
 import { showError } from "../ui/alerts";
+import { setAvatarDialog } from "./skipperFace";
+import { isRemote } from "../app/hosts";
 import { hasChanges, reviewChanges, setShowChanges, showsChanges } from "./changes";
 import { setShowFiles, showsFiles } from "./files";
 import { deleteGroup } from "../app/groups";
@@ -403,12 +404,15 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
   if (isSkiffAgent(s.id)) return skiffAgentMenu(s, x, y);
   const ids = S.selection.filter((id) => sessions.has(id));
   if (ids.length > 1 && ids.includes(s.id)) return selectionMenu(ids, x, y);
+  const skipperProject = isProjectSkipper(s) ? (S.projects.find((p) => p.name === s.skipper) ?? null) : null;
   ctxMenu.open(x, y, sessionLabel(s), [
     ...(groupOf(s.id)
       ? [{ icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), disabled: !hostCan("session_groups"), run: () => removeFromGroup(s.id) }]
       : []),
     // A project Skipper's name is derived from the Skiff agent's name and its project: nothing to type.
     ...(isProjectSkipper(s) ? [] : [{ icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), disabled: !hostCan("session_lifecycle"), run: () => startSessionRename(s.id) }]),
+    // A project Skipper's face; a fleet has no project to keep it in. This Mac's projects.toml, as the icon.
+    ...(skipperProject ? [{ icon: "playback-image", label: "Set avatar…", disabled: isRemote(), run: () => setAvatarDialog(skipperProject) }] : []),
     themeEntry(s),
     endEntry(s),
   ]);

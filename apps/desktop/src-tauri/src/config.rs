@@ -187,6 +187,40 @@ pub(crate) async fn set_project_icon(handle: AppHandle, project: String, icon: O
     local_edit(&handle, move || config::set_project_icon(&project, icon.as_deref())).await
 }
 
+/// A project Skipper's chosen avatar: `seed` for a generated one, `image` as a data URL.
+#[derive(serde::Serialize)]
+pub(crate) struct SkipperAvatar {
+    project: String,
+    seed: Option<u32>,
+    image: Option<String>,
+}
+
+/// This Mac only, as the icon: each project Skipper's avatar from projects.toml.
+#[tauri::command]
+pub(crate) async fn skipper_avatars() -> Result<Vec<SkipperAvatar>, String> {
+    blocking(|| {
+        Ok(config::load()?
+            .projects
+            .into_iter()
+            .filter_map(|p| {
+                let a = p.skipper_avatar.as_deref()?.trim();
+                let (seed, image) = match a.strip_prefix("gen:") {
+                    Some(n) => (Some(n.parse().ok()?), None),
+                    None => (None, Some(skiff_core::project::data_url(&PathBuf::from(a))?)),
+                };
+                Some(SkipperAvatar { project: p.name, seed, image })
+            })
+            .collect())
+    })
+    .await
+}
+
+/// This Mac only, as the icon. `None`: generated from the name again.
+#[tauri::command]
+pub(crate) async fn set_skipper_avatar(handle: AppHandle, project: String, avatar: Option<String>) -> Result<(), String> {
+    local_edit(&handle, move || config::set_skipper_avatar(&project, avatar.as_deref())).await
+}
+
 /// This Mac only, as the icon.
 #[tauri::command]
 pub(crate) async fn set_project_background(

@@ -33,7 +33,46 @@
 .sk-row.unread-row .sk-line .title { color: var(--text-2); font-weight: 600; }
 #sidebar-scroll .sk-row.current .sk-line .title { color: var(--text-2); }
 
-/* The avatar: the project's badge in a square frame. The frame shows the
+/* A Skipper's face (skipperFace.ts): the SVG or a picture, --face px at zoom 1. */
+.skipper-face { width: calc(var(--face) * var(--u)); height: calc(var(--face) * var(--u)); flex-shrink: 0; display: inline-block; line-height: 0; }
+.skipper-face svg, .skipper-face img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.mission-card .skipper-face { width: calc(var(--face) * 1px); height: calc(var(--face) * 1px); }
+.cell-head .title .skipper-face { vertical-align: calc(-3 * var(--u)); margin-right: calc(4 * var(--u)); }
+
+/* The tree's Skipper row: the face, and the watcher as a corner square, as
+   in the list: teal while it runs, red when a line failed. While the
+   Skipper idles and the watcher follows open work, it steps round the
+   corners every 8 s. */
+.skipper-av { position: relative; width: calc(16 * var(--u)); height: calc(16 * var(--u)); flex-shrink: 0; }
+.skipper-av .tw { display: none; position: absolute; top: calc(-1 * var(--u)); right: calc(-1 * var(--u)); width: calc(5 * var(--u)); height: calc(5 * var(--u)); background: var(--watch); }
+.project-skipper-row.watch-on .skipper-av .tw { display: block; }
+.project-skipper-row.watch-error .skipper-av .tw { display: block; background: var(--error); }
+.project-skipper-row.watch-turn .skipper-av .tw { animation: sk-tree-sweep 8s var(--turn-delay, 0ms) infinite; animation-timing-function: steps(1, end); }
+@keyframes sk-tree-sweep {
+  0% { top: calc(-1 * var(--u)); right: calc(-1 * var(--u)); }
+  25% { top: calc(12 * var(--u)); right: calc(-1 * var(--u)); }
+  50% { top: calc(12 * var(--u)); right: calc(12 * var(--u)); }
+  75% { top: calc(-1 * var(--u)); right: calc(12 * var(--u)); }
+}
+
+/* Set avatar…: the preview at each size, six faces, then Shuffle, Image file… and From name. */
+.av-preview { display: grid; grid-template-columns: calc(120 * var(--u)) minmax(0, 1fr); border-bottom: 1px solid var(--rule); }
+.av-big { height: calc(120 * var(--u)); display: grid; place-items: center; border-right: 1px solid var(--rule); background: var(--bg-deep); }
+.av-sizes { display: flex; flex-direction: column; justify-content: center; }
+.av-at { height: var(--row); display: flex; align-items: center; gap: calc(10 * var(--u)); padding: 0 calc(16 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
+.av-at + .av-at { border-top: 1px solid var(--rule); }
+.av-px { margin-left: auto; font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); }
+.av-grid { display: grid; grid-template-columns: repeat(6, 1fr); border-bottom: 1px solid var(--rule); }
+.av-opt { height: calc(64 * var(--u)); display: grid; place-items: center; padding: 0; border: 0; border-left: 1px solid var(--rule); background: transparent; }
+.av-opt:first-child { border-left: 0; }
+.av-opt:hover { background: var(--bg-raised); }
+.av-opt[aria-pressed="true"] { background: color-mix(in srgb, var(--pc) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc); }
+.av-acts { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--rule); }
+.av-act { height: var(--row); border: 0; border-left: 1px solid var(--rule); background: transparent; color: var(--text-2); font-size: calc(13px * var(--zoom, 1)); }
+.av-act:first-child { border-left: 0; }
+.av-act:hover { background: var(--bg-raised); color: var(--text); }
+
+/* The avatar: the Skipper's face in a square frame. The frame shows the
    state: blue working, amber waiting, green unread, red failed, plain idle,
    faded done. Working rocks the badge in two steps, as the working skiff
    does; the rest stay still. */
@@ -50,9 +89,8 @@
   background: var(--pc); color: var(--bg);
   font: 600 calc(10px * var(--zoom, 1)) var(--mono);
 }
-.sk-face.sk-img { background: transparent; }
+.sk-face.skipper-face { background: transparent; }
 .sk-face img { width: calc(26 * var(--u)); height: calc(26 * var(--u)); object-fit: contain; }
-.sk-face.sk-mascot { width: calc(30 * var(--u)); height: calc(30 * var(--u)); background: url("../assets/skiff-mascot.png") center / contain no-repeat; }
 .sk-working { --fc: var(--state-working); }
 .sk-working .sk-face { animation: sk-rock 1.2s steps(2) var(--rock-delay, 0ms) infinite; }
 @keyframes sk-rock { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(calc(-2 * var(--u))); } }
@@ -92,4 +130,4 @@
   75% { top: 0; right: calc(100% - 7 * var(--u)); }
 }
 
-@media (prefers-reduced-motion: reduce) { .sk-working .sk-face, .sk-watch-turn { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .sk-working .sk-face, .sk-watch-turn, .project-skipper-row.watch-turn .skipper-av .tw { animation: none; } }

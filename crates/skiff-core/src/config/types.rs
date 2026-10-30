@@ -221,6 +221,9 @@ pub struct ProjectConfig {
     /// The agent id this project's Skipper starts, in place of
     /// `[skiff_agent] project_agent`. Only by hand: Settings has no row for it.
     pub skipper_agent: Option<String>,
+    /// This project's Skipper's avatar: `gen:N` for a generated one, else an
+    /// image path. Absent: generated from the project's name.
+    pub skipper_avatar: Option<String>,
 }
 
 impl ProjectConfig {

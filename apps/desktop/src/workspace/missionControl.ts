@@ -53,6 +53,7 @@ import { ctxMenu } from "../ui/contextMenu";
 import { h } from "../ui/dom";
 import { type Entry, ledgerRows, ledgerTitle, needWord, taskState } from "./ledger";
 import { agentName, fuzzy, taskTitle } from "./model";
+import { skipperFace } from "./skipperFace";
 import { closeMission, goToSession } from "./missionMotion";
 import * as G from "./missionLayout";
 import { worktreeLines } from "./sidebarLines";
@@ -421,7 +422,7 @@ function metaOf(s: SessionInfo): HTMLElement {
 function cardParts(s: SessionInfo, label: string | null, now: number): HTMLElement[] {
   const pin = h("span", `mission-pin ${s.coordinator || !!s.skipper ? "accent" : s.state === "working" || s.state === "waiting" || s.state === "done" ? s.state : ""}`);
   const head = h("span", "head");
-  if (label !== null) head.appendChild(h("span", "name", label));
+  if (label !== null) head.append(skipperFace(s.coordinator ? null : (s.skipper ?? ""), 16), h("span", "name", label));
   head.appendChild(h("span", "at", sinceText(s, now)));
   const body = h("span", "body");
   const tx = h("span", "tx");

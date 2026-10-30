@@ -25,6 +25,7 @@ import { activeGroupObj, awayPlaces, currentWorktree, place, shownIds } from "./
 import { agentKind } from "../appearance/agentIcon";
 import { heirOf, loadSkiffAgent, noteDaemon, skipperCreated } from "./skiffAgent";
 import { isFolder, taskTitle } from "../workspace/model";
+import { loadSkipperAvatars } from "../workspace/skipperFace";
 import { panes } from "../terminal/terminalState";
 import { ptySized } from "../terminal/terminal";
 import { reattachPanes } from "../terminal/terminalRuntime";
@@ -261,6 +262,7 @@ async function loadAppTheme() {
 
 export async function loadProjects() {
   const seq = ++projectsSeq;
+  void loadSkipperAvatars();
   // The agents are the selected Host's own, from its account: a remote
   // Host's never come from this Mac.
   if (!S.agents.length) S.agents = await hostInvoke<AgentInfo[]>("session_agents", "list_agents").catch(() => []);
