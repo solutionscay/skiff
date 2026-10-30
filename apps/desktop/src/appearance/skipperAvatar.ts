@@ -92,9 +92,10 @@ export function skipperAvatar(name: string, seed = 0): string {
 const EDGE = `stroke="${VISOR}" stroke-width="1.6" stroke-linejoin="round"`;
 export const admiralAvatar = () => `<svg viewBox="0 0 32 32" aria-hidden="true" style="${rhythm(hash("Admiral"))}"><g class="sk-turn">`
   + `<rect x="2.4" y="10.6" width="27.2" height="19.4" rx="8" fill="#fff" ${EDGE}/>`
-  + `<path d="M4.6 9.4C5.4 4.6 10 2 16 2s10.6 2.6 11.4 7.4z" fill="#fff" ${EDGE}/>`
+  // The cap, one piece: crown, band, brim and button turn together.
+  + `<g class="sk-cap"><path d="M4.6 9.4C5.4 4.6 10 2 16 2s10.6 2.6 11.4 7.4z" fill="#fff" ${EDGE}/>`
   + `<rect x="4.2" y="8" width="23.6" height="4.4" rx="1.8" style="fill:${FILL}" ${EDGE}/>`
   + `<path d="M9.5 12.4h13l-1.6 1.8h-9.8z" fill="${VISOR}"/>`
-  + `<circle cx="16" cy="8.2" r="1.9" fill="#f4c430" ${EDGE}/>`
+  + `<circle cx="16" cy="8.2" r="1.9" fill="#f4c430" ${EDGE}/></g>`
   + `<g class="sk-front"><rect x="5.6" y="15.2" width="20.8" height="11.6" rx="4.8" fill="${VISOR}"/>`
   + `<g class="sk-look"><g class="sk-eyes" fill="#fff"><rect x="9.2" y="17.6" width="3.4" height="6.6" rx="1.7"/><rect x="19.4" y="17.6" width="3.4" height="6.6" rx="1.7"/></g></g></g></g></svg>`;
