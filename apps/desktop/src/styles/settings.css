@@ -85,9 +85,12 @@
 /* Settings tables (appearance/rowTable.ts): Agents and Task types. Each cell is a span; a field fills its cell. */
 .set-table { flex-shrink: 0; display: flex; flex-direction: column; }
 .set-table.g-agents .set-row { grid-template-columns: calc(72 * var(--u)) calc(200 * var(--u)) minmax(0, 1fr) calc(320 * var(--u)); }
-.set-table.g-tasks .set-row { grid-template-columns: calc(180 * var(--u)) calc(140 * var(--u)) calc(140 * var(--u)) minmax(0, 1fr) calc(160 * var(--u)); }
+/* Model fits a full id; Instructions holds the size and Edit; the width left over goes after the last column. */
+.set-table.g-tasks .set-row { grid-template-columns: calc(180 * var(--u)) calc(140 * var(--u)) calc(200 * var(--u)) calc(160 * var(--u)) calc(160 * var(--u)) minmax(0, 1fr); }
+.set-table.g-tasks .set-row > .c-end { border-right: 1px solid var(--rule); }
 .set-table.g-tasks .set-row > .c-lead { justify-content: flex-start; padding: 0 calc(12 * var(--u)); }
 .set-table.g-tasks .c-file { display: flex; align-items: center; gap: calc(8 * var(--u)); width: 100%; }
+.set-table.g-tasks .c-file .set-rm { margin-left: 0; }
 .set-table.g-tasks .c-state { font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
 .set-table.g-tasks .c-state .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--ok); }
 .set-table.g-tasks .c-state.none { color: var(--text-dim); }
@@ -102,6 +105,8 @@
 .set-table .set-row .c-field > select { width: 100%; height: 100%; font-size: calc(13px * var(--zoom, 1)); }
 .set-table .set-row .c-field > [aria-invalid="true"], .set-table .set-row .c-field > [aria-invalid="true"]:focus { box-shadow: inset 0 -2px 0 var(--error); }
 .set-table .set-row > .c-note { padding: 0 calc(12 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); }
+/* A note in a mono field's place reads as its placeholder. */
+.set-table .set-row > .c-note.mono { font-size: calc(13px * var(--zoom, 1)); }
 .set-table .set-row > .c-preview { min-width: 0; }
 .set-table .c-preview > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); user-select: text; -webkit-user-select: text; }
 .set-table .c-preview > span.bad { font-family: var(--font); color: var(--error-text); }
