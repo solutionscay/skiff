@@ -192,22 +192,12 @@ pub fn add_project(
         closed: false,
         fleet,
         skipper_agent: None,
-        skipper_avatar: None,
     })
 }
 
 /// Skiff detects an icon again; `Some("")` means no icon.
 pub fn set_project_icon(project: &str, icon: Option<&str>) -> Result<()> {
     set_project_key(project, "icon", icon)
-}
-
-/// Sets or removes `skipper_avatar` on the named project: `gen:N` for a
-/// generated avatar, else an image path.
-pub fn set_skipper_avatar(project: &str, avatar: Option<&str>) -> Result<()> {
-    if let Some(n) = avatar.and_then(|a| a.strip_prefix("gen:")) {
-        n.parse::<u32>().map_err(|_| Refused::Invalid(format!("gen:{n} is not a generated avatar")))?;
-    }
-    set_project_key(project, "skipper_avatar", avatar)
 }
 
 /// Longest rail label, in characters. The rail chip has room for three.

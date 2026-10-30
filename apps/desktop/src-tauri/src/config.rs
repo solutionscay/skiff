@@ -4,7 +4,7 @@
 //! own settings (keys, appearance) are this computer's `client.toml`; the
 //! agent settings below are still this Mac's `projects.toml` (M6).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use skiff_core::{
     config::{self, client, Appearance},
@@ -187,38 +187,114 @@ pub(crate) async fn set_project_icon(handle: AppHandle, project: String, icon: O
     local_edit(&handle, move || config::set_project_icon(&project, icon.as_deref())).await
 }
 
-/// A project Skipper's chosen avatar: `seed` for a generated one, `image` as a data URL.
+/// A Skipper's chosen avatar: `seed` for a generated one, `image` as a data
+/// URL. `scope`: "" for the Skiff agent, `fleet:<name>`, or a project's name.
 #[derive(serde::Serialize)]
 pub(crate) struct SkipperAvatar {
-    project: String,
+    scope: String,
     seed: Option<u32>,
     image: Option<String>,
 }
 
-/// This Mac only, as the icon: each project Skipper's avatar from projects.toml.
+/// In each Skipper's own folder: `avatar = "gen:N"`, or the file name of the
+/// picture copied beside it.
+const AVATAR_FILE: &str = "avatar.toml";
+
+/// The size `data_url` still reads, as for project icons.
+const AVATAR_MAX: u64 = 512 * 1024;
+
+/// The Skipper's own folder: the Skiff agent's folder, `fleets/<fleet>/` or `projects/<project>/` in it.
+fn skipper_dir(cfg: &config::Config, scope: &str) -> anyhow::Result<PathBuf> {
+    use skiff_client::skipper;
+    match (scope, scope.strip_prefix("fleet:")) {
+        ("", _) => skipper::folder(cfg),
+        (_, Some(fleet)) => skipper::fleet_folder(cfg, fleet),
+        (project, None) => skipper::project_folder(cfg, project),
+    }
+}
+
+fn read_avatar(scope: String, dir: &Path) -> Option<SkipperAvatar> {
+    let table: toml::Table = std::fs::read_to_string(dir.join(AVATAR_FILE)).ok()?.parse().ok()?;
+    let avatar = table.get("avatar")?.as_str()?;
+    let (seed, image) = match avatar.strip_prefix("gen:") {
+        Some(n) => (Some(n.parse().ok()?), None),
+        None => (None, Some(skiff_core::project::data_url(&dir.join(Path::new(avatar).file_name()?))?)),
+    };
+    Some(SkipperAvatar { scope, seed, image })
+}
+
+/// This Mac only, as the icon: each Skipper's avatar from its own folder.
 #[tauri::command]
 pub(crate) async fn skipper_avatars() -> Result<Vec<SkipperAvatar>, String> {
     blocking(|| {
-        Ok(config::load()?
-            .projects
-            .into_iter()
-            .filter_map(|p| {
-                let a = p.skipper_avatar.as_deref()?.trim();
-                let (seed, image) = match a.strip_prefix("gen:") {
-                    Some(n) => (Some(n.parse().ok()?), None),
-                    None => (None, Some(skiff_core::project::data_url(&PathBuf::from(a))?)),
-                };
-                Some(SkipperAvatar { project: p.name, seed, image })
-            })
-            .collect())
+        let cfg = config::load()?;
+        let mut scopes = vec![String::new()];
+        for p in &cfg.projects {
+            scopes.push(p.name.clone());
+            if let Some(f) = &p.fleet {
+                let fleet = format!("fleet:{f}");
+                if !scopes.contains(&fleet) {
+                    scopes.push(fleet);
+                }
+            }
+        }
+        Ok(scopes.into_iter().filter_map(|s| read_avatar(s.clone(), &skipper_dir(&cfg, &s).ok()?)).collect())
     })
     .await
 }
 
-/// This Mac only, as the icon. `None`: generated from the name again.
+/// This Mac only, as the icon. `avatar`: `gen:N`, or a picture's path, which
+/// is copied into the Skipper's folder. `None`: generated from the name again.
 #[tauri::command]
-pub(crate) async fn set_skipper_avatar(handle: AppHandle, project: String, avatar: Option<String>) -> Result<(), String> {
-    local_edit(&handle, move || config::set_skipper_avatar(&project, avatar.as_deref())).await
+pub(crate) async fn set_skipper_avatar(handle: AppHandle, scope: String, avatar: Option<String>) -> Result<(), String> {
+    local_edit(&handle, move || {
+        use anyhow::{anyhow, Context};
+        let dir = skipper_dir(&config::load()?, &scope)?;
+        std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+        let keep = match avatar.as_deref() {
+            None => None,
+            Some(a) if a.starts_with("gen:") => {
+                a[4..].parse::<u32>().map_err(|_| anyhow!("{a} is not a generated avatar"))?;
+                Some(a.to_string())
+            }
+            Some(path) => {
+                let src = Path::new(path);
+                let ext = src
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(str::to_ascii_lowercase)
+                    .filter(|e| ["png", "svg", "jpg", "jpeg", "webp", "gif"].contains(&e.as_str()))
+                    .ok_or_else(|| anyhow!("{path} is not a PNG, SVG, JPEG, WebP or GIF picture"))?;
+                if std::fs::metadata(src).with_context(|| format!("read {path}"))?.len() > AVATAR_MAX {
+                    return Err(anyhow!("{path} is larger than 512 KB"));
+                }
+                let name = format!("avatar.{ext}");
+                let to = dir.join(&name);
+                // A copy onto itself would empty the file.
+                if src.canonicalize().ok() != to.canonicalize().ok() {
+                    std::fs::copy(src, &to).with_context(|| format!("copy {path} to {}", to.display()))?;
+                }
+                Some(name)
+            }
+        };
+        // One picture at most: an older one goes.
+        for e in std::fs::read_dir(&dir)?.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.starts_with("avatar.") && name != AVATAR_FILE && Some(&name) != keep.as_ref() {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+        let file = dir.join(AVATAR_FILE);
+        match keep {
+            Some(v) => std::fs::write(&file, format!("avatar = {}\n", toml::Value::from(v))).with_context(|| format!("write {}", file.display()))?,
+            None => match std::fs::remove_file(&file) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+                _ => {}
+            },
+        }
+        Ok(())
+    })
+    .await
 }
 
 /// This Mac only, as the icon.
