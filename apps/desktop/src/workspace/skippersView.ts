@@ -118,13 +118,24 @@ const RANK = { project: 1, fleet: 2, admiral: 3 } as const;
 
 /** The avatar: the badge in its frame, the rank stripes and the watcher corner. */
 function avatar(e: Entry, watch: WatchState | null, turning: boolean): HTMLElement {
-  const av = h("span", `sk-av sk-${frameOf(e.s, watch, turning)} sk-${e.kind}`);
-  const face = skipperFace(e.kind === "admiral" ? null : e.scope, 26);
-  face.classList.add("sk-face");
+  const av = faceFrame(e.kind === "admiral" ? null : e.scope, e.s, watch, turning, false);
+  av.classList.add(`sk-${e.kind}`);
   const rank = h("span", "sk-rank");
   for (let i = 0; i < RANK[e.kind]; i++) rank.appendChild(h("i"));
-  av.append(face, rank);
-  // The row is rebuilt when its state changes. Loops start at the elapsed phase, not at their first frame.
+  av.appendChild(rank);
+  return av;
+}
+
+/**
+ * A face in its state frame: 40 px in the Skippers list, 20 px (`mini`) on
+ * the tree's Admiral and Skipper rows. `scope`: null for the Admiral.
+ */
+export function faceFrame(scope: string | null, s: SessionInfo | null, watch: WatchState | null, turning: boolean, mini: boolean): HTMLElement {
+  const av = h("span", `sk-av sk-${frameOf(s, watch, turning)}${mini ? " sk-mini" : ""}`);
+  const face = skipperFace(scope, mini ? 14 : 26);
+  face.classList.add("sk-face");
+  av.appendChild(face);
+  // Rows are rebuilt when their state changes. Loops start at the elapsed phase, not at their first frame.
   const now = performance.now();
   av.style.setProperty("--run-delay", `${-(now % 600)}ms`);
   av.style.setProperty("--breathe-delay", `${-(now % 3200)}ms`);

@@ -148,25 +148,6 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 .session-row.skiff-agent-row { height: var(--row); padding-left: calc(16 * var(--u)); }
 .skiff-agent-row .skiff-agent-name { flex-shrink: 0; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
 .skiff-agent-row:not([data-session]) .title { color: var(--text-dim); }
-/* The Skiff agent's watcher, on its agent icon. Runs: teal. The icon turns
-   once every 8 s only while the agent is idle and the watcher follows a pane
-   with an open ledger task, in place, like a ship's wheel at rest: the turn
-   means "watching work". Nothing to follow, or an older watcher that does
-   not say: teal, still. The box keeps its size, so the row
-   does not move. None runs, or a line failed: red, still. */
-.skiff-agent-row .agent-icon { position: relative; }
-.skiff-agent-row.watch-on .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--watch); }
-.skiff-agent-row.watch-on .agent-icon svg [fill]:not([fill="none"]) { fill: var(--watch); }
-.skiff-agent-row.watch-error .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--error); }
-.skiff-agent-row.watch-error .agent-icon svg [fill]:not([fill="none"]) { fill: var(--error); }
-.skiff-agent-row.watch-turn .agent-icon {
-  transform-origin: center; transform-box: fill-box;
-  /* Stepped, as the other icons: a smooth turn makes the webview draw a frame on every refresh for as long as Skipper idles. */
-  animation: sk-turn 8s steps(48) var(--turn-delay, 0ms) infinite;
-}
-@keyframes sk-turn { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .skiff-agent-row.watch-turn .agent-icon { animation: none; } }
-
 /* A project Skipper: the first row of its project block, on the worktree line. The icon sits where a worktree's branch icon does. */
 .tree-project .session-row.project-skipper-row { padding-left: calc(10 * var(--u)); }
 /* A fleet's Skipper: the first row under its fleet head, in line with the project rows' chevrons.
@@ -174,16 +155,4 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 .tree-kids > .session-row.project-skipper-row { padding-left: calc(10 * var(--u)); --pc: var(--project-default); }
 .project-skipper-row .skiff-agent-name { flex-shrink: 0; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
 .project-skipper-row .title { color: var(--text-3); }
-/* Its own watcher, with the Skiff agent row's states: teal while it runs,
-   turning while idle with a followed pane, red when a line failed. */
-.project-skipper-row .agent-icon { position: relative; }
-.project-skipper-row.watch-on .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--watch); }
-.project-skipper-row.watch-on .agent-icon svg [fill]:not([fill="none"]) { fill: var(--watch); }
-.project-skipper-row.watch-error .agent-icon svg [stroke]:not([stroke="none"]) { stroke: var(--error); }
-.project-skipper-row.watch-error .agent-icon svg [fill]:not([fill="none"]) { fill: var(--error); }
-.project-skipper-row.watch-turn .agent-icon {
-  transform-origin: center; transform-box: fill-box;
-  /* Stepped, as on the Skiff agent's row. */
-  animation: sk-turn 8s steps(48) var(--turn-delay, 0ms) infinite;
-}
-@media (prefers-reduced-motion: reduce) { .project-skipper-row.watch-turn .agent-icon { animation: none; } }
+

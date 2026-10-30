@@ -187,21 +187,16 @@ pub(crate) async fn set_project_icon(handle: AppHandle, project: String, icon: O
     local_edit(&handle, move || config::set_project_icon(&project, icon.as_deref())).await
 }
 
-/// A Skipper's chosen avatar: `seed` for a generated one, `image` as a data
-/// URL. `scope`: "" for the Skiff agent, `fleet:<name>`, or a project's name.
+/// A Skipper's generated avatar. `scope`: "" for the Skiff agent,
+/// `fleet:<name>`, or a project's name.
 #[derive(serde::Serialize)]
 pub(crate) struct SkipperAvatar {
     scope: String,
-    seed: Option<u32>,
-    image: Option<String>,
+    seed: u32,
 }
 
-/// In each Skipper's own folder: `avatar = "gen:N"`, or the file name of the
-/// picture copied beside it.
+/// In each Skipper's own folder: `avatar = "gen:N"`.
 const AVATAR_FILE: &str = "avatar.toml";
-
-/// The size `data_url` still reads, as for project icons.
-const AVATAR_MAX: u64 = 512 * 1024;
 
 /// The Skipper's own folder: the Skiff agent's folder, `fleets/<fleet>/` or `projects/<project>/` in it.
 fn skipper_dir(cfg: &config::Config, scope: &str) -> anyhow::Result<PathBuf> {
@@ -213,26 +208,25 @@ fn skipper_dir(cfg: &config::Config, scope: &str) -> anyhow::Result<PathBuf> {
     }
 }
 
-fn read_avatar(scope: String, dir: &Path) -> Option<SkipperAvatar> {
-    let table: toml::Table = std::fs::read_to_string(dir.join(AVATAR_FILE)).ok()?.parse().ok()?;
-    let avatar = table.get("avatar")?.as_str()?;
-    let (seed, image) = match avatar.strip_prefix("gen:") {
-        Some(n) => (Some(n.parse().ok()?), None),
-        None => (None, Some(skiff_core::project::data_url(&dir.join(Path::new(avatar).file_name()?))?)),
-    };
-    Some(SkipperAvatar { scope, seed, image })
+fn write_avatar(dir: &Path, seed: u32) -> std::io::Result<()> {
+    std::fs::write(dir.join(AVATAR_FILE), format!("avatar = \"gen:{seed}\"\n"))
 }
 
-/// A random generated avatar, `gen:1` to `gen:9999`, for a Skipper's first face.
-fn random_avatar(scope: &str) -> String {
+fn read_avatar(dir: &Path) -> Option<u32> {
+    let table: toml::Table = std::fs::read_to_string(dir.join(AVATAR_FILE)).ok()?.parse().ok()?;
+    table.get("avatar")?.as_str()?.strip_prefix("gen:")?.parse().ok()
+}
+
+/// A random generated avatar, 1 to 9999, for a Skipper's first face.
+fn random_seed(scope: &str) -> u32 {
     use std::hash::{BuildHasher, Hasher};
     let mut h = std::collections::hash_map::RandomState::new().build_hasher();
     h.write(scope.as_bytes());
-    format!("gen:{}", 1 + h.finish() % 9999)
+    1 + (h.finish() % 9999) as u32
 }
 
 /// This Mac only, as the icon: each Skipper's avatar from its own folder. A
-/// folder with none gets a random generated one, so its face stays.
+/// folder with none gets a random one, so its face stays.
 #[tauri::command]
 pub(crate) async fn skipper_avatars() -> Result<Vec<SkipperAvatar>, String> {
     blocking(|| {
@@ -249,69 +243,26 @@ pub(crate) async fn skipper_avatars() -> Result<Vec<SkipperAvatar>, String> {
         }
         Ok(scopes
             .into_iter()
-            .filter_map(|s| {
-                let dir = skipper_dir(&cfg, &s).ok().filter(|d| d.is_dir())?;
-                let file = dir.join(AVATAR_FILE);
-                if !file.exists() {
-                    std::fs::write(&file, format!("avatar = {}\n", toml::Value::from(random_avatar(&s)))).ok()?;
+            .filter_map(|scope| {
+                let dir = skipper_dir(&cfg, &scope).ok().filter(|d| d.is_dir())?;
+                if !dir.join(AVATAR_FILE).exists() {
+                    write_avatar(&dir, random_seed(&scope)).ok()?;
                 }
-                read_avatar(s, &dir)
+                Some(SkipperAvatar { seed: read_avatar(&dir)?, scope })
             })
             .collect())
     })
     .await
 }
 
-/// This Mac only, as the icon. `avatar`: `gen:N`, or a picture's path, which
-/// is copied into the Skipper's folder. `None`: generated from the name again.
+/// This Mac only, as the icon: the generated avatar `seed` for the Skipper.
 #[tauri::command]
-pub(crate) async fn set_skipper_avatar(handle: AppHandle, scope: String, avatar: Option<String>) -> Result<(), String> {
+pub(crate) async fn set_skipper_avatar(handle: AppHandle, scope: String, seed: u32) -> Result<(), String> {
     local_edit(&handle, move || {
-        use anyhow::{anyhow, Context};
+        use anyhow::Context;
         let dir = skipper_dir(&config::load()?, &scope)?;
         std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
-        let keep = match avatar.as_deref() {
-            None => None,
-            Some(a) if a.starts_with("gen:") => {
-                a[4..].parse::<u32>().map_err(|_| anyhow!("{a} is not a generated avatar"))?;
-                Some(a.to_string())
-            }
-            Some(path) => {
-                let src = Path::new(path);
-                let ext = src
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map(str::to_ascii_lowercase)
-                    .filter(|e| ["png", "svg", "jpg", "jpeg", "webp", "gif"].contains(&e.as_str()))
-                    .ok_or_else(|| anyhow!("{path} is not a PNG, SVG, JPEG, WebP or GIF picture"))?;
-                if std::fs::metadata(src).with_context(|| format!("read {path}"))?.len() > AVATAR_MAX {
-                    return Err(anyhow!("{path} is larger than 512 KB"));
-                }
-                let name = format!("avatar.{ext}");
-                let to = dir.join(&name);
-                // A copy onto itself would empty the file.
-                if src.canonicalize().ok() != to.canonicalize().ok() {
-                    std::fs::copy(src, &to).with_context(|| format!("copy {path} to {}", to.display()))?;
-                }
-                Some(name)
-            }
-        };
-        // One picture at most: an older one goes.
-        for e in std::fs::read_dir(&dir)?.flatten() {
-            let name = e.file_name().to_string_lossy().into_owned();
-            if name.starts_with("avatar.") && name != AVATAR_FILE && Some(&name) != keep.as_ref() {
-                let _ = std::fs::remove_file(e.path());
-            }
-        }
-        let file = dir.join(AVATAR_FILE);
-        match keep {
-            Some(v) => std::fs::write(&file, format!("avatar = {}\n", toml::Value::from(v))).with_context(|| format!("write {}", file.display()))?,
-            None => match std::fs::remove_file(&file) {
-                Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
-                _ => {}
-            },
-        }
-        Ok(())
+        write_avatar(&dir, seed).with_context(|| format!("write {}", dir.join(AVATAR_FILE).display()))
     })
     .await
 }
