@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { h } from "../ui/dom";
 import { confirmAction } from "../ui/confirm";
 import { size } from "./skiffFolderDialog";
+import { t, tn, upper } from "../i18n";
 
 /** A count of files and their bytes. */
 interface Line {
@@ -46,7 +47,6 @@ export interface DiskState {
 
 export const diskState = (): DiskState => ({ usage: null, counting: false, removed: null, error: null });
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** Counts the folder. The cells show "…" until the answer comes. */
 export async function countDisk(s: DiskState, redraw: () => void) {
@@ -66,7 +66,7 @@ export async function countDisk(s: DiskState, redraw: () => void) {
 async function flush(s: DiskState, redraw: () => void, run: () => Promise<{ files: number; bytes: number }>) {
   try {
     const out = await run();
-    s.removed = `Removed ${plural(out.files, "file")}, ${size(out.bytes)}.`;
+    s.removed = t("disk.removed", { files: tn("disk.files", out.files), size: size(out.bytes) });
     s.error = null;
   } catch (e) {
     s.error = String(e);
@@ -78,11 +78,11 @@ async function flush(s: DiskState, redraw: () => void, run: () => Promise<{ file
 async function flushDone(s: DiskState, u: DiskUsage, redraw: () => void) {
   const lines: string[] = [];
   if (u.closed.files || u.plans)
-    lines.push(`Remove ${plural(u.closed.files, "result file")} (${size(u.closed.bytes)}) of ${plural(u.items, "closed work item")}, and ${plural(u.plans, "plan folder")}.`);
+    lines.push(t("disk.flushClosed", { files: tn("disk.resultFiles", u.closed.files), size: size(u.closed.bytes), items: tn("disk.closedItems", u.items), plans: tn("disk.plans", u.plans) }));
   const loose = { files: u.cache.files - u.pinned.files, bytes: u.cache.bytes - u.pinned.bytes };
-  if (loose.files) lines.push(`Remove ${plural(loose.files, "image")} (${size(loose.bytes)}). Pinned images stay.`);
-  lines.push("Open and working work stays. The ledger, SKIPPER.md and AGENTS.md stay.");
-  const ok = await confirmAction({ title: "Flush done work?", body: lines.join("\n"), action: "Flush" });
+  if (loose.files) lines.push(t("disk.flushImages", { images: tn("disk.images", loose.files), size: size(loose.bytes) }));
+  lines.push(t("disk.flushStays"));
+  const ok = await confirmAction({ title: t("disk.flushTitle"), body: lines.join("\n"), action: t("disk.flush") });
   if (ok) await flush(s, redraw, () => invoke("flush_done", { expected: u.removable }));
 }
 
@@ -94,7 +94,7 @@ async function flushDone(s: DiskState, u: DiskUsage, redraw: () => void) {
 export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days: number) => void): HTMLElement[] {
   const u = s.usage;
   const head = h("div", "set-head");
-  const title = h("div", "set-h", "Disk use");
+  const title = h("div", "set-h", t("settings.tab.disk"));
   title.id = "set-h-disk";
   head.append(title, h("div", "set-sub mono", u?.shown ?? ""));
 
@@ -103,7 +103,7 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
   table.setAttribute("aria-labelledby", title.id);
   const cols = h("div", "set-row set-cols");
   cols.setAttribute("role", "row");
-  cols.append(h("span", "", "TYPE"), h("span", "c-num", "FILES"), h("span", "c-num", "SIZE"), h("span", "", "FOLDER"), h("span"));
+  cols.append(h("span", "", upper(t("disk.colType"))), h("span", "c-num", upper(t("disk.colFiles"))), h("span", "c-num", upper(t("disk.colSize"))), h("span", "", upper(t("disk.colFolder"))), h("span"));
   table.append(cols);
 
   const counted = (l: Line | null | undefined, known = true) =>
@@ -135,23 +135,23 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
   const loose = u ? u.cache.files - u.pinned.files : 0;
   const doneOff = !u || !known || !u.daemon || (!u.closed.files && !u.plans && !loose);
   table.append(
-    row("Images", u?.cache, {
+    row(t("disk.rowImages"), u?.cache, {
       folder: "cache/",
-      act: button("Flush images", !loose, () => void flush(s, redraw, () => invoke("flush_cache"))),
+      act: button(t("disk.flushImagesButton"), !loose, () => void flush(s, redraw, () => invoke("flush_cache"))),
     }),
-    row("Pinned", u?.pinned, { sub: true }),
-    row("Results", u?.results, { known }),
+    row(t("disk.rowPinned"), u?.pinned, { sub: true }),
+    row(t("disk.rowResults"), u?.results, { known }),
     ...(u?.skippers ?? []).map((k) => row(k.name, k.line, { sub: true, folder: k.folder, known })),
-    row("Closed work", u?.closed, {
+    row(t("disk.rowClosed"), u?.closed, {
       sub: true,
       known,
       plain: true,
-      folder: u && known && !s.counting && (u.items || u.plans) ? `${plural(u.items, "item")} · ${plural(u.plans, "plan folder")}` : "",
-      act: button("Flush done work…", doneOff, () => u && void flushDone(s, u, redraw)),
+      folder: u && known && !s.counting && (u.items || u.plans) ? `${tn("disk.items", u.items)} · ${tn("disk.plans", u.plans)}` : "",
+      act: button(t("disk.flushDoneButton"), doneOff, () => u && void flushDone(s, u, redraw)),
     }),
-    row("Logs", u?.logs),
-    row("Other", u?.other),
-    row("Total", u?.total, { total: true }),
+    row(t("disk.rowLogs"), u?.logs),
+    row(t("disk.rowOther"), u?.other),
+    row(t("disk.rowTotal"), u?.total, { total: true }),
   );
 
   const status = h("div", "set-hint", s.removed ?? "");
@@ -160,8 +160,8 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
   const errors = [
     s.error,
     u?.ledger_error,
-    u && !u.daemon ? "Skiff cannot reach skiffd. Flush done work needs the session list." : null,
-    u?.unreadable ? `Skiff could not read ${plural(u.unreadable, "file")}.` : null,
+    u && !u.daemon ? t("disk.noDaemon") : null,
+    u?.unreadable ? t("disk.unreadable", { files: tn("disk.files", u.unreadable) }) : null,
   ]
     .filter((e): e is string => !!e)
     .map((e) => {
@@ -178,10 +178,10 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
   sw.disabled = !u;
   sw.setAttribute("role", "switch");
   sw.setAttribute("aria-checked", String(on));
-  sw.setAttribute("aria-label", `Auto flush ${on ? "on" : "off"}`);
+  sw.setAttribute("aria-label", t(on ? "disk.autoOn" : "disk.autoOff"));
   sw.appendChild(h("span", "switch"));
   sw.addEventListener("click", () => setDays(on ? 0 : 30));
-  auto.append(h("span", "c-name", "Auto flush"), h("span", "c-cmd", on ? plural(days, "day") : ""), sw);
+  auto.append(h("span", "c-name", t("disk.auto")), h("span", "c-cmd", on ? tn("disk.days", days) : ""), sw);
 
   return [head, table, status, ...errors, auto];
 }
