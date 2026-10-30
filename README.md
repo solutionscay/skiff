@@ -32,10 +32,9 @@ Settings › Open with.
 Sessions outlive the window. `skiffd`, a daemon, owns every terminal. Close the window
 and the agents keep running.
 
-Skiff stays out of your agents' setup. It installs no hooks or plugins and runs no
-automations. It reads a session's state from its screen and from the program in front
-of the terminal. All settings live in one file,
-`projects.toml`.
+Skiff stays out of your agents' setup. It installs no hooks or plugins. It reads a
+session's state from its screen and from the program in front of the terminal. All
+settings live in one file, `projects.toml`.
 
 ## Install
 
