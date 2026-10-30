@@ -7,6 +7,8 @@ import type { MessageKey } from "./index";
 
 export const zh = {
   "language.name": "简体中文",
+  // Between two whole sentences on one line.
+  "sentence.join": "",
 
   "section.file": "文件",
   "section.edit": "编辑",

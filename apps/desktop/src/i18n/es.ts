@@ -6,6 +6,8 @@ import type { MessageKey } from "./index";
 
 export const es = {
   "language.name": "Español",
+  // Between two whole sentences on one line.
+  "sentence.join": " ",
 
   "section.file": "Archivo",
   "section.edit": "Editar",

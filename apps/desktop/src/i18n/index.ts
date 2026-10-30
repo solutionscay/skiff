@@ -47,6 +47,12 @@ export function setLanguage(lang: string) {
 
 export const language = () => currentLang;
 
+/**
+ * The locale for dates, times and numbers: the system's own ("en-GB", "es-MX")
+ * when it speaks the current language, else the language itself.
+ */
+export const locale = () => (catalogFor(navigator.language) === currentLang ? navigator.language : currentLang);
+
 /** The words for `key` in the current language, with each `{name}` filled from `vars`. */
 export function t(key: MessageKey, vars?: Vars): string {
   const text = current[key] ?? en[key];
@@ -61,6 +67,9 @@ export function tn(key: PluralKey, count: number, vars?: Vars): string {
   const form = `${key}#${plurals.select(count)}` as MessageKey;
   return t(form in current || form in en ? form : (`${key}#other` as MessageKey), { count, ...vars });
 }
+
+/** Whole sentences in one line: a space between them, or none where the language puts none (Chinese). */
+export const sentences = (parts: string[]) => parts.join(t("sentence.join"));
 
 /** Capitals by the language's rules, for menu and sheet heads. */
 export const upper = (text: string) => text.toLocaleUpperCase(currentLang);

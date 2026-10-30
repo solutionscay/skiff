@@ -9,7 +9,7 @@ import { opensAtOnce } from "./daemonNotice";
 import { branchName, taskTitle } from "../workspace/model";
 import { sessions } from "./state";
 import { place } from "./stateQueries";
-import { t, tn, type MessageKey } from "../i18n";
+import { sentences, t, tn, type MessageKey } from "../i18n";
 
 /** Badge text and panel title per warning. */
 const WARNINGS: Record<DaemonWarning["kind"], [MessageKey, MessageKey]> = {
@@ -160,7 +160,7 @@ function restartDialog() {
   idle.title = t("daemon.whenIdleTitle");
   const foot = h("div", "confirm-foot");
   foot.append(cancel, ...(busy ? [idle] : []), now);
-  panel.append(h("div", "confirm-title", t("daemon.restart")), h("div", "confirm-body", lines.join(" ")), sessionList(list), foot);
+  panel.append(h("div", "confirm-title", t("daemon.restart")), h("div", "confirm-body", sentences(lines)), sessionList(list), foot);
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
 

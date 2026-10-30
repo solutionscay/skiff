@@ -8,7 +8,7 @@ import { showError } from "../ui/alerts";
 import { ctxMenu } from "../ui/contextMenu";
 import type { MenuEntry } from "../ui/menu";
 import { basename, branchName, samePath } from "../workspace/model";
-import { language, t, tn } from "../i18n";
+import { locale, t, tn } from "../i18n";
 
 /**
  * Resume after a restart. A restored pane remembers the agent it ran and that
@@ -146,8 +146,8 @@ function uuidTime(id: string): number | null {
 }
 
 // English keeps "3:42 PM"; other languages take their own clock.
-const clock = new Intl.DateTimeFormat(language(), { hour: "numeric", minute: "2-digit", hour12: language() === "en" ? true : undefined });
-const date = new Intl.DateTimeFormat(language(), { month: "short", day: "numeric" });
+const clock = new Intl.DateTimeFormat(locale(), { hour: "numeric", minute: "2-digit" });
+const date = new Intl.DateTimeFormat(locale(), { month: "short", day: "numeric" });
 
 /** "3:42 PM" today, "Yesterday 3:42 PM", else "Sep 30, 3:42 PM". */
 function when(r: Recent): string {

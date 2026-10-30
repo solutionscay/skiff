@@ -7,6 +7,8 @@
 export const en = {
   // The language's own name, for the picker in Settings.
   "language.name": "English",
+  // Between two whole sentences on one line.
+  "sentence.join": " ",
 
   // Menu bar menus; also the F1 sections of the keymap actions.
   "section.file": "File",

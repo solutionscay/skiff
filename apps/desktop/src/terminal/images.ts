@@ -24,7 +24,7 @@ import { insertShown } from "./insertSignal";
 import { focusPane } from "./paneActions";
 import { type Typed, typeFiles, whoOf } from "./terminalClipboard";
 import { panes } from "./terminalState";
-import { language, t, upper } from "../i18n";
+import { locale, t, upper } from "../i18n";
 
 /** One library image, as `images` answers. */
 export interface Image {
@@ -228,7 +228,7 @@ export function when(at: number): string {
   const d = new Date(at);
   const now = new Date();
   if (d.toDateString() === now.toDateString()) return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  return d.toLocaleDateString(language(), { month: "short", day: "numeric" });
+  return d.toLocaleDateString(locale(), { month: "short", day: "numeric" });
 }
 
 /** Line 2: the project letters in its color and the session title. Dim once that session ended. */
