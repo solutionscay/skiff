@@ -3,7 +3,7 @@
  * `seed` picks another one for Shuffle. Returns an SVG on a 32×32 grid with
  * no size, so the CSS sets it.
  *
- * The body is the element's --pc, the accent of the Skipper's theme, else --project-default,
+ * The body is the element's --pc, the signature color of the Skipper's theme, else --project-default,
  * so a color or theme change repaints it. Black mixed in keeps the white eyes
  * readable on a pale color.
  */

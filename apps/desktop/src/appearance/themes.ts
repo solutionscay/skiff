@@ -20,6 +20,8 @@ const knownTheme = (id: string | null) => (S.themes.some((t) => t.id === id) ? i
 export async function loadThemes() {
   const list = await invoke<TerminalTheme[]>("list_themes").catch(() => S.themes);
   S.themes = list.map((t) => ({ ...t, source: t.source === "file" ? "file" : "built-in" }));
+  // Skipper faces drawn before the themes came in take their colors now.
+  render("themes");
 }
 
 /** Projects with a `theme` in projects.toml: name to theme id. */

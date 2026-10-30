@@ -4,7 +4,7 @@
  * `projects/<project>/`). Skiff writes a random one there the first time it
  * reads a Skipper's folder, so each face stays. Until then, and on a remote
  * Host, the face is generated from the name, and the Admiral's is the
- * bicorne. The face sets --pc to the accent of the theme its Skipper's pane
+ * bicorne. The face sets --pc to the signature color of the theme its Skipper's pane
  * wears, so the body follows a theme change.
  *
  * The choices are this Mac's, as project icons are: a remote Host shows the
@@ -15,8 +15,7 @@ import { ADMIRAL_AVATAR, skipperAvatar } from "../appearance/skipperAvatar";
 import { place } from "../app/stateQueries";
 import { S } from "../app/state";
 import { projectSkipperOf, skiffAgentSession } from "../app/skiffAgent";
-import { appThemeOf, themeIdFor } from "../appearance/themes";
-import { themeAccent } from "../appearance/appTheme";
+import { appThemeOf, signatureColor, themeIdFor } from "../appearance/themes";
 import { DEFAULT_THEME } from "../appearance/colors";
 import { render } from "../app/renderRequest";
 import { dialogFrame, dialogHeader } from "../ui/dialogParts";
@@ -43,7 +42,10 @@ export async function loadSkipperAvatars() {
 const projectOf = (scope: string) => S.projects.find((p) => p.name === scope) ?? null;
 
 /**
- * The face's color: the accent of the theme the Skipper's pane wears. Its
+ * The face's color: the signature color (its main color, else its
+ * foreground) of the theme the Skipper's pane wears, as a themed session's
+ * agent icon shows it. Not the theme's --accent: a theme with no `ui`
+ * block gives its magenta there, the same purple for nearly every theme. Its
  * session theme, else its project's, else the app's, as `themeIdFor` gives
  * the pane. With no session, or a session in no project, the scope's
  * project theme, else the app theme. The Admiral follows its own the same way.
@@ -55,7 +57,7 @@ export function faceColor(scope: string | null): string {
   const t = s && (s.theme || place(s)) ? S.themes.find((x) => x.id === themeIdFor(s)) : appThemeOf(scope === null ? null : projectOf(scope));
   const own = t ?? S.themes.find((x) => x.id === DEFAULT_THEME);
   // A literal, never var(--accent): an ancestor (a Mission control lane, the app in a pane's theme) may set that.
-  return own ? themeAccent(own) : STYLESHEET_ACCENT;
+  return own ? signatureColor(own) : STYLESHEET_ACCENT;
 }
 
 /** The stylesheet's accent, before any theme loads. */
