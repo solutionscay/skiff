@@ -7,6 +7,10 @@
  * so a color or theme change repaints it. Black mixed in keeps the white eyes
  * readable on a pale color. The eyes sit on a visor in the Skiff black, the
  * mascot's visor color, which follows the eye style and the face's tilt.
+ *
+ * The eyes live: they blink, and now and then glance aside, in CSS
+ * (styles/skippers.css). Each face carries its own rhythm as variables on
+ * its root, from the same hash, so no two faces blink in step.
  */
 const FILL = "color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000)";
 const VISOR = "#192230";
@@ -46,6 +50,14 @@ function hash(text: string): number {
   return h >>> 0;
 }
 
+/** The face's rhythm: a blink every 4 to 7 s, a double blink for one face in five, a glance every 12 to 20 s, each at its own phase. */
+function rhythm(h: number): string {
+  const blink = 4 + ((h >>> 16) % 31) / 10;
+  const glance = 12 + ((h >>> 21) % 9);
+  return `--blink:${blink}s;--blink-delay:-${((h >>> 4) % 70) / 10}s;--blink-anim:${(h >>> 25) % 5 ? "sk-blink" : "sk-blink2"};`
+    + `--glance:${glance}s;--glance-delay:-${(h >>> 9) % 200 / 10}s;--glance-dx:${(h >>> 29) & 1 ? 1 : -1}px`;
+}
+
 export function skipperAvatar(name: string, seed = 0): string {
   const h = hash(seed ? `${name}#${seed}` : name);
   const [d, y] = BODIES[h % 8];
@@ -55,8 +67,8 @@ export function skipperAvatar(name: string, seed = 0): string {
   const gap = 4.5 + ((h >>> 10) % 3);
   const look = ((h >>> 12) % 3) - 1;
   const at = (s: number) => `<g transform="translate(${16 + look + s * gap} ${y})">${draw(s)}</g>`;
-  return `<svg viewBox="0 0 32 32" aria-hidden="true"><g transform="rotate(${tilt} 16 16)"><path d="${d}" style="fill:${FILL};stroke:${FILL}" stroke-width="3" stroke-linejoin="round"/>${visor(16 + look, y, gap, eye)}<g fill="#fff">${at(-1)}${at(1)}</g></g></svg>`;
+  return `<svg viewBox="0 0 32 32" aria-hidden="true" style="${rhythm(h)}"><g transform="rotate(${tilt} 16 16)"><path d="${d}" style="fill:${FILL};stroke:${FILL}" stroke-width="3" stroke-linejoin="round"/>${visor(16 + look, y, gap, eye)}<g class="sk-look"><g class="sk-eyes" fill="#fff">${at(-1)}${at(1)}</g></g></g></svg>`;
 }
 
 /** The Admiral: one fixed avatar, a bicorne hat with level eyes, in the --pc color as the others are. */
-export const ADMIRAL_AVATAR = `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 22c3-9 8-13 13-13s10 4 13 13c-4-2-8.5-3-13-3s-9 1-13 3z" style="fill:${FILL};stroke:${FILL}" stroke-width="3" stroke-linejoin="round"/><rect x="8.8" y="12.4" width="14.4" height="7.8" rx="3.5" fill="${VISOR}"/><g fill="#fff"><rect x="10.4" y="14" width="3.2" height="4.6" rx="1.6"/><rect x="18.4" y="14" width="3.2" height="4.6" rx="1.6"/></g></svg>`;
+export const ADMIRAL_AVATAR = `<svg viewBox="0 0 32 32" aria-hidden="true" style="${rhythm(hash("Admiral"))}"><path d="M3 22c3-9 8-13 13-13s10 4 13 13c-4-2-8.5-3-13-3s-9 1-13 3z" style="fill:${FILL};stroke:${FILL}" stroke-width="3" stroke-linejoin="round"/><rect x="8.8" y="12.4" width="14.4" height="7.8" rx="3.5" fill="${VISOR}"/><g class="sk-look"><g class="sk-eyes" fill="#fff"><rect x="10.4" y="14" width="3.2" height="4.6" rx="1.6"/><rect x="18.4" y="14" width="3.2" height="4.6" rx="1.6"/></g></g></svg>`;
