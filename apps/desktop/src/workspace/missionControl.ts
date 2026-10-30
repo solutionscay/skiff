@@ -423,12 +423,13 @@ function cardParts(s: SessionInfo, label: string | null, now: number, num = 0): 
   const pin = h("span", `mission-pin ${s.coordinator || !!s.skipper ? "accent" : s.state === "working" || s.state === "waiting" || s.state === "done" ? s.state : ""}`);
   const head = h("span", "head");
   if (num) head.appendChild(h("span", "num", String(num)));
-  if (label !== null) head.append(skipperFace(s.coordinator ? null : (s.skipper ?? ""), 16), h("span", "name", label));
+  // A Skipper's card: its face with its model beside it, as the Skippers list shows them.
+  if (label !== null) head.append(skipperFace(s.coordinator ? null : (s.skipper ?? ""), 16), agentIcon(s), h("span", "name", label));
   head.appendChild(h("span", "at", sinceText(s, now)));
   const body = h("span", "body");
   const tx = h("span", "tx");
   tx.append(h("span", "t", cardName(s)), metaOf(s));
-  body.append(stateIcon(s), agentIcon(s), tx);
+  body.append(...(label !== null ? [stateIcon(s)] : [stateIcon(s), agentIcon(s)]), tx);
   return [pin, head, body];
 }
 

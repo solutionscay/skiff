@@ -6,18 +6,17 @@
  * Enter opens its pane. The rows are session rows, so the list keys work as
  * in the tree.
  *
- * The avatar is the Skipper's face in a square frame: its project's chosen
- * or generated one, the fixed bicorne for the Skiff agent. Sleeve stripes show the rank: one for a project Skipper,
- * two for a fleet Skipper, three in gold for the Skiff agent. The frame shows
- * the state. A working Skipper shows the tree's skiff under way. A corner
- * square sweeps while the watcher follows open work, and stays red when the
- * watcher fails.
+ * The avatar is the Skipper's face in a square frame, with its model's
+ * icon beside it. Sleeve stripes show the rank: one for a project Skipper,
+ * two for a fleet Skipper, three in gold for the Skiff agent. The frame
+ * shows the state: its border runs blue while the Skipper works, breathes
+ * teal while the watcher follows open work, and stays red on a fault.
  */
 import { agentFailed, agentName, scopeName } from "./model";
 import { faceSig, skipperFace } from "./skipperFace";
-import { FLAG, stateIcon } from "../appearance/stateIcon";
+import { FLAG } from "../appearance/stateIcon";
 import { icon } from "../ui/icons";
-import { launchIcon } from "../appearance/agentIcon";
+import { agentIcon, launchIcon } from "../appearance/agentIcon";
 import { ledgerWorkTitle } from "./ledger";
 import { rowMenu, skiffAgentMenu } from "./menus";
 import { revealSession } from "./view";
@@ -119,20 +118,30 @@ const RANK = { project: 1, fleet: 2, admiral: 3 } as const;
 
 /** The avatar: the badge in its frame, the rank stripes and the watcher corner. */
 function avatar(e: Entry, watch: WatchState | null, turning: boolean): HTMLElement {
-  const av = h("span", `sk-av sk-${frameState(e.s)} sk-${e.kind}`);
+  const av = h("span", `sk-av sk-${frameOf(e.s, watch, turning)} sk-${e.kind}`);
   const face = skipperFace(e.kind === "admiral" ? null : e.scope, 26);
   face.classList.add("sk-face");
   const rank = h("span", "sk-rank");
   for (let i = 0; i < RANK[e.kind]; i++) rank.appendChild(h("i"));
   av.append(face, rank);
-  // The watcher shows only in motion: the square sweeps while it follows open
-  // work. Red and still when none runs or its last line failed.
-  if ((watch === "runs" && turning) || watch === "failed" || watch === "missing") {
-    av.appendChild(h("span", watch === "runs" ? "sk-watch sk-watch-turn" : "sk-watch sk-watch-error"));
-  }
-  // The row is rebuilt when its state changes. The sweep starts at the elapsed phase, not at its first frame.
-  av.style.setProperty("--turn-delay", `${-(performance.now() % 8000)}ms`);
+  // The row is rebuilt when its state changes. Loops start at the elapsed phase, not at their first frame.
+  const now = performance.now();
+  av.style.setProperty("--run-delay", `${-(now % 600)}ms`);
+  av.style.setProperty("--breathe-delay", `${-(now % 3200)}ms`);
   return av;
+}
+
+/**
+ * The frame's one state, most urgent first: failed, a watcher fault, waiting,
+ * working, watching open work, unread, then the session's own (idle, done).
+ */
+function frameOf(s: SessionInfo | null, watch: WatchState | null, turning: boolean): string {
+  const st = frameState(s);
+  if (st === "failed") return st;
+  if (watch === "failed" || watch === "missing") return "watch-error";
+  if (st === "waiting" || st === "working") return st;
+  if (watch === "runs" && turning) return "watching";
+  return st;
 }
 
 /** What a row shows, so an unchanged row is kept and its loops keep their phase. */
@@ -189,10 +198,10 @@ function skipperRow(e: Entry, watch: { state: WatchState; text: string } | null,
   const name = h("span", "sk-name", e.kind === "fleet" ? scopeName(e.scope!) : e.name);
   const top = h("span", "sk-top");
   if (num) top.appendChild(h("span", "sk-num", String(num)));
-  top.appendChild(name);
+  // The model beside the face, as the tree shows it: the running agent, or the one a start runs.
+  const model = s ? agentIcon(s) : launchIcon(skiffAgentChoice());
+  top.append(model, name);
   if (e.kind === "fleet") top.appendChild(h("span", "sk-tag", "fleet"));
-  // Working: the tree's skiff under way, before the time.
-  if (s?.state === "working") top.appendChild(stateIcon(s));
   top.appendChild(h("span", "sk-time", when(s?.last_output_at ?? 0)));
   const line = h("span", "sk-line");
   line.appendChild(h("span", "title", latestLine(e)));
@@ -205,7 +214,7 @@ function skipperRow(e: Entry, watch: { state: WatchState; text: string } | null,
   }
   const text = h("span", "sk-text");
   text.append(top, line);
-  row.append(s ? avatar(e, watch?.state ?? null, turning) : avatarOff(e), text);
+  row.append(avatar(e, watch?.state ?? null, turning), text);
   const what = e.kind === "admiral" ? `${e.name}, the Skiff agent` : `${scopeName(e.scope!)} ${e.kind === "fleet" ? "fleet " : ""}Skipper`;
   row.setAttribute("aria-label", `${what}, ${latestLine(e)}, ${s ? frameState(s) : "not running"}${watch?.text ? `. ${watch.text}` : ""}`);
   if (watch?.text) row.title = watch.text;
@@ -219,17 +228,6 @@ function skipperRow(e: Entry, watch: { state: WatchState; text: string } | null,
     else skiffAgentMenu(null, ev.clientX, ev.clientY);
   });
   return row;
-}
-
-/** The Skiff agent with no session: the mascot in a plain frame, the agent it starts. */
-function avatarOff(e: Entry): HTMLElement {
-  const av = avatar(e, null, false);
-  const a = skiffAgentChoice();
-  if (!a) return av;
-  const glyph = launchIcon(a);
-  glyph.classList.add("sk-start");
-  av.appendChild(glyph);
-  return av;
 }
 
 let kept = new Map<string, [sig: string, row: HTMLElement]>();
