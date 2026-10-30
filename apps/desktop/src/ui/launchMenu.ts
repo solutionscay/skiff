@@ -4,6 +4,7 @@ import { launchIcon } from "../appearance/agentIcon";
 import { followPointer, menuOpened, type MenuEntry } from "./menu";
 import { launchDigit } from "../app/stateQueries";
 import { branchName } from "../workspace/model";
+import { t, upper } from "../i18n";
 
 interface Opts {
   /** Shell (null), then enabled agents. */
@@ -19,7 +20,7 @@ interface Opts {
 
 /** The menu's title: the branch, "detached" with no branch, or a plain folder's name. */
 export function startIn(w: Worktree): string {
-  return "START IN " + (w.branch ?? (w.head ? "detached" : branchName(w))).toUpperCase();
+  return upper(t("launch.startIn", { name: w.branch ?? (w.head ? t("launch.detached") : branchName(w)) }));
 }
 
 /** The + menu on a worktree: Shell, then enabled agents. Digits pick, Esc closes. */
@@ -69,18 +70,18 @@ export function createLaunchMenu(o: Opts) {
     title.className = "lm-title";
     title.textContent = startIn(w);
     const rows = o.choices().map((a, i) =>
-      item(launchDigit(i), a?.id ?? "Shell", "", () => o.start(p, w, a), "", launchIcon(a)),
+      item(launchDigit(i), a?.id ?? t("menu.shell"), "", () => o.start(p, w, a), "", launchIcon(a)),
     );
     const head = document.createElement("div");
     head.className = "lm-head";
-    head.textContent = "NEW GROUP, THEN A SESSION PER PANE";
+    head.textContent = upper(t("launch.newGroupHead"));
     const splits = o.splits().map((s, i) => {
       const g = document.createElement("span");
       g.className = "lm-glyph";
       g.append(s.glyph);
       return item("", s.name, "", () => o.split(p, w, i), "", g);
     });
-    const settings = item("", "Agent settings…", "", () => o.openSettings(), "lm-settings");
+    const settings = item("", t("launch.agentSettings"), "", () => o.openSettings(), "lm-settings");
     menu.replaceChildren(title, ...rows, head, ...splits, settings);
 
     menu.hidden = false;
@@ -112,10 +113,10 @@ export function createLaunchMenu(o: Opts) {
   function entries(p: Project, w: Worktree): MenuEntry[] {
     return [
       { head: startIn(w) },
-      ...o.choices().map((a, i) => ({ glyph: launchIcon(a), label: a?.id ?? "Shell", hint: launchDigit(i), run: () => o.start(p, w, a) })),
+      ...o.choices().map((a, i) => ({ glyph: launchIcon(a), label: a?.id ?? t("menu.shell"), hint: launchDigit(i), run: () => o.start(p, w, a) })),
       {
         icon: "code-group",
-        label: "New group",
+        label: t("select.newGroup"),
         sub: o.splits().map((s, i) => {
           const g = document.createElement("span");
           g.className = "lm-glyph";

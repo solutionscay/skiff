@@ -53,7 +53,28 @@ document.addEventListener("contextmenu", (e) => {
   if (!field) e.preventDefault();
 });
 
+/** The page's static words, in the current language. index.html keeps the English for the first paint. */
+function staticText() {
+  const set = (sel: string, text: string) => {
+    const el = document.querySelector(sel);
+    if (el) el.textContent = text;
+  };
+  // The palette's real hint replaces the search line once skiffd answers.
+  set("#open-switcher .spacer", t("switcher.search"));
+  set("#next-waiting .label", t("topbar.waiting"));
+  set("#next-unread .label", t("topbar.unread"));
+  $("next-waiting").title = t("topbar.nextWaiting");
+  $("next-unread").title = t("topbar.nextUnread");
+  $("open-settings").title = t("cmd.settings");
+  $("open-settings").setAttribute("aria-label", t("cmd.settings"));
+  // header.ts and daemon.ts write these again later.
+  set("#keys-to", t("topbar.keysGoTo"));
+  set("#daemon-label", t("status.connecting"));
+  $("ledger").setAttribute("aria-label", t("section.ledger"));
+}
+
 async function boot() {
+  staticText();
   await startWorkspaceQuitGuard();
   // `tauri dev` build: a badge in the status bar tells it apart from an installed Skiff.
   if (import.meta.env.DEV) {
