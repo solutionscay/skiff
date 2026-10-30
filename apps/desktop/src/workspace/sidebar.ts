@@ -472,7 +472,7 @@ function skiffAgentRow(): HTMLElement {
     const a = skiffAgentChoice();
     row.dataset.key = SKIFF_AGENT_KEY;
     row.setAttribute("aria-label", `${name}, the Skiff agent, not running`);
-    row.append(skipperFace(null, 40), launchIcon(a), h("span", "skiff-agent-name", name), h("span", "title", a ? `start ${a.id}` : "no agent on"));
+    row.append(skipperFace(null, 24), launchIcon(a), h("span", "skiff-agent-name", name), h("span", "title", a ? `start ${a.id}` : "no agent on"));
     row.addEventListener("click", () => {
       // The row is current before the start: newSession shows the pane only if
       // the current row has not moved while the agent starts.
@@ -500,8 +500,8 @@ function skiffAgentRow(): HTMLElement {
   if (watch.state === "missing" || watch.state === "failed") row.classList.add("watch-error");
   if (watch.text) row.title = watch.text;
   row.setAttribute("aria-label", `${name}, the Skiff agent, ${s.title ?? agentName(s)}, ${s.state}${watch.text ? `. ${watch.text}` : ""}`);
-  // Its face at the row's full height, then the agent icon with the watcher, and the skiff under way while it works.
-  row.append(skipperFace(null, 40), agentIcon(s), ...underWay(s), h("span", "skiff-agent-name", name), h("span", "title", s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? ""));
+  // Its face, 24 px and centered on the row, then the agent icon with the watcher, and the skiff under way while it works.
+  row.append(skipperFace(null, 24), agentIcon(s), ...underWay(s), h("span", "skiff-agent-name", name), h("span", "title", s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? ""));
   // One amber count, only while ledger tasks need the person.
   const needs = ledgerNeeds();
   if (needs) {
