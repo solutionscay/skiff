@@ -176,23 +176,6 @@ function lightRow(id: string) {
   });
 }
 
-/**
- * The skiff-agent key again, from Admiral's or a Skipper's pane: the next
- * Skipper in the list, and Admiral again after the last. The side panel
- * switches to the list and stays there. `false`: the focused pane is no
- * Skipper's, so the key goes to Admiral as on the first press.
- */
-export function nextSkipper(from: string | null): boolean {
-  const list = skipperEntries();
-  const at = from ? list.findIndex((e) => e.s?.id === from) : -1;
-  if (at < 0) return false;
-  setSidebarView("skippers");
-  const e = list[(at + 1) % list.length];
-  openEntry(e);
-  if (e.s) lightRow(e.s.id);
-  return true;
-}
-
 /** `num`: the row's number key, 0 for none. */
 function skipperRow(e: Entry, watch: { state: WatchState; text: string } | null, num: number): HTMLElement {
   const s = e.s;

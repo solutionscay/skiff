@@ -200,7 +200,7 @@ export const DESCRIBE: [string, Action, string][] = [
   ["View", "split-down", "Add pane below"],
   ["View", "close-pane", "Take the session out of its group: the focused pane, or the session row in the list. It stays selected. On a group row, ungroup. Sessions keep running. Over a file or diff, close the preview"],
   ["View", "next-waiting", "Next waiting session. In mission control, light the next waiting card"],
-  ["View", "skiff-agent", "{skiff-agent}, the Skiff agent: show its pane. With none running, start it in its folder. Press again for the next Skipper in the Skippers list, then {skiff-agent} again. The side panel shows the Skippers list"],
+  ["View", "skiff-agent", "{skiff-agent}, the Skiff agent: show its pane. With none running, start it in its folder. From its pane, switch the side panel between the tree and the Skippers list"],
   ["View", "ledger", "Show or hide the Ledger beside {skiff-agent}'s pane. Only while its pane is the one pane on screen. Focus mode keeps the Ledger, maximize hides it. In mission control, fold or open the panel under the canvas"],
   ["View", "sidebar-view", "Switch the side panel between the tree and the Skippers list. The list shows {skiff-agent} and every Skipper"],
   ["View", "back", "Back to the last session"],
