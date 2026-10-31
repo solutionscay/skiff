@@ -95,13 +95,33 @@ export function listItems(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .fleet-pick, #sidebar-scroll .project-pick, #sidebar-scroll .wt-pick, #sidebar-scroll .group-pick, #sidebar-scroll button.session-row, #sidebar-scroll .files-head, #sidebar-scroll .file-row")];
 }
 
+/**
+ * The row with this key. A Skipper (or the Skiff agent) in a group has two
+ * rows with one key, its own row and its line in the group: the one in the
+ * group `S.roveAt` names, else its own row.
+ */
+export function findRow(items: HTMLElement[], key: string | null | undefined): HTMLElement | undefined {
+  if (!key) return undefined;
+  const rows = items.filter((x) => itemKey(x) === key);
+  if (rows.length < 2) return rows[0];
+  const group = S.roveAt?.key === key ? S.roveAt.group : null;
+  return rows.find((x) => (x.dataset.inGroup ?? null) === group) ?? rows[0];
+}
+
+/** Makes this row the current one: its key, and which of its rows when it has two. */
+export function roveTo(el: HTMLElement) {
+  const key = itemKey(el);
+  S.roveKey = key;
+  S.roveAt = { key, group: el.dataset.inGroup ?? null };
+}
+
 /** Where we are in the list: the last-roved row, else the picked group, else the
  *  session on screen. One row at most, whatever its kind. */
 export function currentRow(items = listItems()): HTMLElement | undefined {
-  const roved = S.roveKey ? items.find((x) => itemKey(x) === S.roveKey) : undefined;
+  const roved = findRow(items, S.roveKey);
   if (roved) return roved;
   if (S.groupPicked) return items.find((x) => x.dataset.group === S.groupPicked);
-  return S.focused ? items.find((x) => x.dataset.session === S.focused) : undefined;
+  return findRow(items, S.focused);
 }
 
 /** The roving tab stop: the current row, else the first row. */
@@ -229,10 +249,10 @@ function landOn(next: HTMLElement) {
   const key = itemKey(next);
   document.body.classList.add("kbd");
   if (next.dataset.session) {
-    S.roveKey = key;
+    roveTo(next);
     revealSession(next.dataset.session);
   } else if (next.dataset.group) {
-    S.roveKey = key;
+    roveTo(next);
     showGroup(next.dataset.group, true);
   } else if (rowActs(key)?.preview && !rowActs(key)?.fold) {
     select(key, true);
