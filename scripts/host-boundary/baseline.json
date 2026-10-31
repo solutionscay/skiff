@@ -372,7 +372,7 @@
       "local provider: apps/desktop/src/workspace/tree.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "9d84c8cfe092a8f874fbea369b223cc11bb0d188114cc5b81f8f29ca61784638"
+    "sha256": "80e544a57d40026ac3c99bb2e9745cc53af4fabb113baa8c90f3d8872a26ab1d"
   },
   "apps/desktop/src/app/modes.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -440,7 +440,7 @@
     "reasons": [
       "local provider: apps/desktop/src/app/skiffAgent.ts"
     ],
-    "sha256": "58eab62641019788a7a4be9bf3aa1c7b57a5b19b017d269588e7bdc8142632ef"
+    "sha256": "dd4e3d99df9a296a85adebda14c2afed6da6d6b39fa93a7c73341bcd56ebc2c8"
   },
   "apps/desktop/src/app/stateQueries.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -947,7 +947,7 @@
       "local provider: apps/desktop/src/app/stateQueries.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "d507d1ae4c6729a960b1a10d1fa4d173d9154ef5babae455774a3749ade7d65a"
+    "sha256": "bab9c268497d9871cb28a7152f6c86f07984ec11604075b4635481ac313a4fea"
   },
   "apps/desktop/src/workspace/sidebar.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -976,7 +976,7 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "3fcf3c63305488f4ac9b32ebdcf833229762755fd160c6f81efdb0082999ce41"
+    "sha256": "ad6a4419692c06b54459bf25f994b1cdea795d8ebf7d550da1ac62f2f5081d31"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
