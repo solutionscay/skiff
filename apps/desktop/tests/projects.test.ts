@@ -48,6 +48,7 @@ function page(o: { remote: boolean; caps: string[]; fail?: string; capsFail?: st
       "./skiffAgent": o.skiffAgent ?? { loadSkiffAgent: async () => void calls.push("get_skiff_agent") },
       "../workspace/ledger": o.ledger ?? { loadLedger: async () => void calls.push("ledger_rows") },
       "./stateQueries": { place: () => null },
+      "../workspace/skipperFace": { loadSkipperAvatars: async () => {} },
     },
     { window: { addEventListener() {} }, document: { hasFocus: () => true }, Promise, Map, Set, console, JSON, performance },
     "",

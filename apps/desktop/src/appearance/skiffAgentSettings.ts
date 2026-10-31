@@ -9,6 +9,8 @@ import { reveal } from "../platform/fileActions";
 import { copyText } from "../platform/clipboard";
 import { showError } from "../ui/alerts";
 import { isRemote } from "../app/hosts";
+import { avatarScopes, setAvatarDialog, skipperFace } from "../workspace/skipperFace";
+import { scopeName } from "../workspace/model";
 
 /** A task type row as `set_skiff_agent` takes it. Null model: the agent's default. */
 export interface TaskEdit {
@@ -97,6 +99,30 @@ export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInf
   const agent = own ?? skiffAgentChoice(agents, set.agent) ?? undefined;
   const row = agentModelRow(pick, agent, set.project_model, "Project and fleet Skippers' model", (v) => save({ key: "project_model", value: v }));
   return [head, row];
+}
+
+/**
+ * Settings › Skippers › Avatars: each fleet and project
+ * Skipper with a folder on this Mac, its face, and Change… for the picker.
+ * The faces are kept in those folders: a remote Host shows none here.
+ */
+export function avatarsSection(set: SkiffAgentSettings, redraw: () => void): HTMLElement[] {
+  // The Admiral wears the mascot's head: nothing to change.
+  const scopes = isRemote() ? [] : avatarScopes().filter((s) => s);
+  if (!scopes.length) return [];
+  const word = set.skipper_name || "Skipper";
+  const rows = scopes.map((scope) => {
+    const label = scope ? `${scopeName(scope)} ${scope.startsWith("fleet:") ? "fleet " : ""}${word}` : mainName(set.name);
+    const row = h("div", "set-row set-open set-agent set-avatar on");
+    const face = h("span", "c-cmd");
+    face.appendChild(skipperFace(scope || null, 26));
+    const change = h("button", "set-rm", "Change…");
+    change.type = "button";
+    change.addEventListener("click", () => setAvatarDialog(scope || null, `Avatar: ${label}`, redraw));
+    row.append(h("span", "c-name", label), face, change);
+    return row;
+  });
+  return [sectionHead("Avatars", undefined, String(scopes.length)), ...rows];
 }
 
 /**

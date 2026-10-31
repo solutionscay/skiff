@@ -1,4 +1,4 @@
-//! `skiff-host [--session-socket <skiffd socket>]`
+//! `skiff-host [--session-socket <skiffd socket>] [--this-mac]`
 //!
 //! Serves the Host's data plane at `<skiffd socket stem>-host.sock`, beside
 //! the skiffd it pairs with, and uses that socket's state: a private test
@@ -14,16 +14,20 @@ use tokio::signal::unix::{signal, SignalKind};
 fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let mut session = None;
+    let mut this_mac = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--session-socket" => session = Some(PathBuf::from(args.next().context("--session-socket needs a path")?)),
+            "--this-mac" => this_mac = true,
             "--version" => {
                 println!("skiff-host {}", skiff_core::VERSION);
                 return Ok(());
             }
-            other => bail!("unknown argument {other}; usage: skiff-host [--session-socket <skiffd socket>]"),
+            other => bail!("unknown argument {other}; usage: skiff-host [--session-socket <skiffd socket>] [--this-mac]"),
         }
     }
+    // The app sets it for This Mac's own service: results under home show.
+    skiff_host::set_this_mac(this_mac);
     let session = session.unwrap_or_else(skiff_core::socket::socket_path);
     // Before anything reads config or identity: the state follows skiffd's socket.
     skiff_core::state::set_socket(session.clone());

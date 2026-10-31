@@ -1,6 +1,4 @@
-<p align="center"><img src=".github/skiff.png" width="160" alt="Skiff mascot: a small boat with a robot at the helm"></p>
-
-<h1 align="center">Skiff</h1>
+<h1 align="center"><img src="docs/crew.svg" width="880" alt="Skiff, with the crew: Admiral and five Skippers"></h1>
 
 <p align="center">
   <a href="https://github.com/solutionscay/skiff/releases/latest"><img src="https://img.shields.io/github/v/release/solutionscay/skiff?include_prereleases&label=release" alt="Latest release"></a>
@@ -11,7 +9,7 @@
 <!-- hero: keep in step with the skiff-web home hero; check with scripts/hero-sync.py -->
 <h3 align="center">The multi-agent coding terminal.</h3>
 
-<p align="center">Code with Claude Code, Codex and other agents in parallel, each in its own project or Git worktree. Your agents send each other tasks and report back.</p>
+<p align="center">Run Claude Code, Codex and other agents in parallel. They send each other tasks and report back.</p>
 
 <p align="center"><a href="https://skiff.solutionscay.com/"><img src="https://skiff.solutionscay.com/shots/skiff-mission-control-hero-poster.webp" width="1600" alt="Skiff Mission control: Admiral at the top, the Skippers under it, each project a cluster of session cards, and a string from each owner to each pane. Click to play the video on the website."></a></p>
 <!-- /hero -->

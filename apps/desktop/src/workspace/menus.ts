@@ -1,7 +1,7 @@
 import { ctxMenu } from "../ui/contextMenu";
 /** Right-click menus for projects, sessions, panes and groups. */
 import { imageCount, openImages } from "../terminal/images";
-import { fleetSkipperOf, fleetSkippersHere, isSkiffAgent, joinFleet, renameFleetOn, openWatchLog, projectSkipperOf, startFleetSkipper, startProjectSkipper, skiffAgentFolder, skiffAgentName, skiffWatch, startSkiffWatch } from "../app/skiffAgent";
+import { fleetSkipperOf, fleetSkippersHere, isSkiffAgent, joinFleet, renameFleetOn, openWatchLog, projectSkipperOf, startFleetSkipper, startProjectSkipper, skiffAgentFolder, skiffAgentName, skiffWatch, skipperWord, startSkiffWatch } from "../app/skiffAgent";
 import { launchIcon } from "../appearance/agentIcon";
 import { confirmAction, promptAction } from "../ui/confirm";
 import { h } from "../ui/dom";
@@ -12,7 +12,8 @@ import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { type MenuEntry } from "../ui/menu";
 import { isRemote } from "../app/hosts";
 import type { SkipperStart } from "../ui/launchMenu";
-import { agentName, basename, branchName, isFolder, locate, taskTitle, isProjectSkipper } from "./model";
+import { agentName, basename, branchName, isFolder, locate, taskTitle, isProjectSkipper, scopeName } from "./model";
+import { setAvatarDialog } from "./skipperFace";
 import { cwdOf } from "./canvas";
 import { filledOf, slotsOf } from "./layoutSlots";
 import type { Group, HostBranches, Project, SessionInfo, SplitDir, Worktree } from "../platform/types";
@@ -410,6 +411,7 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
     // A project Skipper's name is derived from the Skiff agent's name and its project: nothing to type.
     ...(isProjectSkipper(s) ? [] : [{ icon: "tools-pencil", label: "Rename", hint: keyLabel("rename"), disabled: !hostCan("session_lifecycle"), run: () => startSessionRename(s.id) }]),
     themeEntry(s),
+    ...(isProjectSkipper(s) && s.skipper ? [avatarEntry(s.skipper, `Avatar: ${scopeName(s.skipper)} ${s.skipper.startsWith("fleet:") ? "fleet " : ""}${skipperWord()}`)] : []),
     endEntry(s),
   ]);
 }
@@ -466,6 +468,11 @@ export function deleteKeyMenu(el: HTMLElement) {
     { icon: "code-ungroup", label: "Remove from group", hint: keyLabel("close-pane"), disabled: !hostCan("session_groups"), run: () => removeFromGroup(s.id) },
     endEntry(s),
   ]);
+}
+
+/** A Skipper's face: `scope` "fleet:<name>" or a project. Kept in its folder on this Mac. The Admiral wears the mascot's head. */
+function avatarEntry(scope: string, title: string): MenuEntry {
+  return { icon: "playback-image", label: "Avatar…", disabled: isRemote(), run: () => setAvatarDialog(scope, title, () => {}) };
 }
 
 function themeEntry(s: SessionInfo): MenuEntry {

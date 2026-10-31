@@ -1892,6 +1892,8 @@ Host.
 - **`files@1`**:
   - `file_list { worktree, dir? }` answers `files { listing }`. `dir` is
     relative to the worktree; empty or absent is the worktree itself.
+    `follow_links` (default false) follows links: a link to a folder is
+    listed as `dir` and can be listed. The app sets it on This Mac only.
     `HostListing`: `entries` (`name`, `kind`: `dir`, `file`, `link` or
     `other`), folders first, then by name, without `.git` and what the
     Host's git ignores; `truncated` past 2000 entries that git does not
@@ -1918,7 +1920,8 @@ Host.
   comes before any open (`git::open_beneath`). `..`, `.`, an absolute path
   and a path through a link are `not_found`.
 - **Types.** A link is listed as `link` and previewed as its target. It is
-  never followed, and a copy of one is `invalid`. A FIFO, device or socket
+  never followed (except for a listing with `follow_links`), and a copy
+  of one is `invalid`. A FIFO, device or socket
   is listed as `other` and never opened (`not_found` to read). Every open
   is non-blocking.
 - **Content** is decided from the first bytes, never the name. A PNG, JPEG,
@@ -1939,8 +1942,9 @@ Host.
   Each reply fits in one 8 MiB frame.
 - **Ignored files.** `git check-ignore` runs in the held folder in batches,
   with each path given as `./<path>`, so a name that starts with `:` is not
-  pathspec magic. If git fails, nothing is hidden, as before. A name that
-  git quotes (a control character, `"` or `\`) is shown.
+  pathspec magic. If git fails, nothing is hidden, as before. Git
+  quotes a name with a control character, `"` or `\`; the Host decodes it,
+  so such an ignored name is hidden like any other.
 - **Backgrounds.** The Host reads the configured file (`background_file`).
   It must be a regular file of at most 5 MiB whose bytes are an image, else
   `invalid`. With no background set, the answer is `not_found`.
@@ -1969,15 +1973,16 @@ Host.
     `$TMPDIR/skiff-copies-<uid>/<pid>/<stamp>/<name>`. Every folder is
     `0700`. A shared or linked base folder is refused. On macOS the copy
     carries the quarantine flag.
-  - Only the copy opens, in this computer's default app.
+  - Only the copy opens. It opens as Settings › Open with says: a
+    configured `[open]` command (a terminal tool in the peek, an app
+    started here), else the default app. The command gets the copy's
+    path, never the Host's.
   - Types that run or install something when opened (`.app`, `.command`,
     `.pkg`, `.webloc`, `.desktop`, shell scripts and others) are refused
     before anything is fetched.
   - Each process keeps at most 32 copies. Its folder is removed when the
     app exits. Folders of processes that no longer run are removed at
     start.
-  - Configured `[open]` commands and peek terminal tools are not used for
-    copies: they need a path on this computer and a terminal.
   - Edits to a copy stay local. There is no sync and no remote editor.
 - **Background** (`appearance/backdrop.ts`): `project_background` through
   the Host, on This Mac too. A failed read is tried again after 30 s.
@@ -2030,13 +2035,6 @@ Host.
   remote Host needs an upload or a Host path chooser, kept Host-side.
 - **Reveal on a remote Host:** there is no file manager here for a Host
   path. Copy path copies the Host path as text.
-- **`[open]` commands for remote copies.** These are copies opened with
-  the default app only. Running a configured app or a peek tool on a copy
-  needs a decision on terminal tools.
-- **Behavior changes on This Mac:**
-  - a linked folder in the tree no longer expands, since links are not
-    followed
-  - an ignored name that git quotes is now shown
 - Data-plane events: folders are read again on open, Refresh and recovery,
   not pushed.
 - The M4 diff/recovery fixes (`c1f8f8b`) still have no completed
@@ -2084,14 +2082,18 @@ the Host stay the only ledger writers. No schema or ledger semantics change.
   ran before. `elsewhere` compares each row's socket with the Host's own
   skiffd socket.
 - **Results.** The Host reads the row by its uid and takes the
-  `result_path` the row records. It serves that file only when it is below
-  the folder that holds `ledger.db` (where `skiff ledger` puts results).
-  `skiff_core::files::hold_beneath` holds that folder and opens each
-  component with `O_NOFOLLOW`. A path outside the folder, with `..`,
-  relative, through a link, a link itself, a FIFO, a folder or missing is
-  `not_found`, and `result_exists` is false for it. The read is a preview:
-  512 KiB of text at most, cut at a line end, an image up to 5 MiB as
-  bytes, and no bytes for a binary file.
+  `result_path` the row records. It serves that file when it is below the
+  folder that holds `ledger.db` (where `skiff ledger` puts results). On
+  This Mac it also serves a file anywhere under the person's home folder:
+  a Skipper records a repo path when its pane cannot write outside its
+  repo. An SSH Host keeps the ledger folder only. The app starts This
+  Mac's `skiff-host` with `--this-mac`; a service started any other way
+  has the ledger-folder rule. `skiff_core::files::hold_beneath` holds the
+  folder and opens each component with `O_NOFOLLOW`. A path outside the
+  allowed folders, with `..`, relative, through a link, a link itself, a
+  FIFO, a folder or missing is `not_found`, and `result_exists` is false
+  for it. The read is a preview: 512 KiB of text at most, cut at a line
+  end, an image up to 5 MiB as bytes, and no bytes for a binary file.
 - **Settings** come from `skiff_client::skipper::settings`, the code the
   app ran before, on the Host's config and agent list.
 
@@ -2149,7 +2151,8 @@ the loopback `ssh_remote` data-plane test (below).
   - no ledger: no rows, nothing made
   - rows equal the CLI read code: plan roll-up, `elsewhere`, Finished
     capped at 100
-  - results: inside, a plan's, cut at 512 KiB; and refused at once: a link,
+  - results: inside, a plan's, cut at 512 KiB; a result under home only
+    with `--this-mac` (`ledger_home.rs`); and refused at once: a link,
     through a folder link, a FIFO, outside, `..`, relative, missing, a
     folder, and an unknown or injected uid
   - reads leave `ledger.db` and its WAL byte for byte
@@ -2171,26 +2174,19 @@ the loopback `ssh_remote` data-plane test (below).
 
 ### Not yet: requirements before M6 is complete
 
-- **Settings writes:** `set_skiff_agent` (name, agent, on/off, continue on
-  restore, task type rows) and the folder change (`preview_skiff_folder`,
-  `change_skiff_folder`) still write This Mac's `projects.toml` and folder,
-  and are refused on a remote Host. They need `skipper_config` writes with
-  a revision, as `project_config` has.
-- **Skipper launch and restore** (`open_skiff_agent`) on a remote Host.
-- **Watcher service ownership:** there is no Host-side watcher supervisor.
-  On This Mac the app still starts and replaces `skiff watch` (endpoint-
-  local `ProcessControl`). Before M6 is complete, the Host must own the
-  watcher's lifecycle (a supervised service or `skiff-host` itself), and
-  the app must only read its status.
-- **Watch log** through the Host (today This Mac only).
-- **The skill sync** (`skipper::sync_skill`) stays a This Mac start step.
-- **Results outside the ledger's folder** (set with `--result` elsewhere)
-  are no longer viewable from the app, on This Mac too. `skiff ledger` on
-  the Host still shows the path. This is a behavior change.
+Skipper settings writes, the folder change, Skipper launch and restore, and
+the watcher on the Host are done (`skipper_config@1`, `skipper_run@1` and
+`skipper_run@2`, in #166 R7). Agent settings are `agent_config@1` (R8).
+What is left:
+
+- **Watch log** through the Host (today `openWatchLog` calls the local
+  `skiff_watch_log`).
+- **The skill sync** (`skipper::sync_skill`) on a remote Host. It stays a
+  This Mac start step.
 - **Change events** are polled stamps, not pushed.
-- Manual two-machine and CI acceptance for M2–M6 is pending. The
-  interrupted independent verification of the M4 diff/recovery fixes
-  (`c1f8f8b`) is still incomplete.
+
+The operator closed the manual two-machine runs on 2026-10-29. They are not
+a requirement.
 
 ## M0 demo and handoff
 

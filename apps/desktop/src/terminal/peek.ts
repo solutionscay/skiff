@@ -531,14 +531,34 @@ function showHostView<T>(mine: number, el: HTMLElement, loading: string, read: (
 
 type HostFilePreview = Extract<Preview, { kind: "host-file" }>;
 
-/** Opens a local copy of a Host's file in this Mac's default app. The Host's path never reaches an opener. */
+/**
+ * Opens a local copy of a Host's file as Settings › Open with says: a
+ * configured command (a peek tool runs here, over the row), else the
+ * default app. Only the copy's path reaches an opener, never the Host's.
+ */
 export function openHostCopy(wt: string, file: string) {
-  hostInvoke("files", "open_file_copy", { worktree: wt, file }).catch(showError);
+  // An Open from a row with no preview, or a closed one, still shows its tool there.
+  if (!active || active.closed) {
+    endPreview();
+    active = { key: currentKey(), gen: 0, keys: true, closed: false };
+  }
+  active.gen = ++gen;
+  active.keys = true;
+  active.result = undefined;
+  const mine = active.gen;
+  if (open) open.gen = mine;
+  const name = file.split("/").pop() ?? file;
+  hostInvoke<Opened>("files", "open_file_copy", { worktree: wt, file })
+    .then((o) => {
+      if (!live(mine)) return;
+      handle(o, "file", name, wt);
+    })
+    .catch((e) => (live(mine) ? showError(e) : console.error(e)));
 }
 
 /**
  * A Host's file: the viewer shows at once, says it loads, then shows the
- * Host's bounded preview or why there is none. Enter opens a local copy.
+ * Host's bounded preview or why there is none. Enter opens a local copy as Open with says.
  * A reply for a row the user left shows nothing; one from an older data
  * connection is asked again.
  */
@@ -552,7 +572,7 @@ function showHostRead(mine: number, title: string, read: () => Promise<HostFile>
   const el = cardFrame("file", title, "peek diff-view file-view");
   if (copy) {
     const open = button("peek-open", "", copy);
-    open.title = "Open a copy in this computer's default app (Enter)";
+    open.title = "Open a copy on this computer (Enter)";
     open.setAttribute("aria-label", "Open a copy");
     open.append(h("span", "peek-open-key", "Enter"), " Open a copy");
     el.querySelector(".peek-esc")?.before(open);

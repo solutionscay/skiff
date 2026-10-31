@@ -53,6 +53,7 @@ import { ctxMenu } from "../ui/contextMenu";
 import { h } from "../ui/dom";
 import { type Entry, ledgerRows, ledgerTitle, needWord, taskState } from "./ledger";
 import { agentName, fuzzy, taskTitle } from "./model";
+import { skipperFace } from "./skipperFace";
 import { closeMission, goToSession } from "./missionMotion";
 import * as G from "./missionLayout";
 import { worktreeLines } from "./sidebarLines";
@@ -83,8 +84,12 @@ strings.setAttribute("class", "mission-strings");
 const strandLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
 const labelLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
 strings.append(strandLayer, labelLayer);
-/** One path per string, by `from>to`. */
-const strands = new Map<string, SVGPathElement>();
+/** One group per string, by `from>to`: its line and its tucks. */
+const strands = new Map<string, { g: SVGGElement; line: SVGPathElement; tuck: SVGPathElement }>();
+/** The labels as last drawn, so a draw that changes none leaves them be. */
+let labelsDrawn = "";
+/** One march of a working string, in ms: one dash period. All strings march in one phase. */
+const MARCH = 1600;
 const items = h("div", "mission-items");
 world.append(strings, items);
 const ticks = h("div", "mission-ticks");
@@ -413,16 +418,18 @@ function metaOf(s: SessionInfo): HTMLElement {
   return el;
 }
 
-/** The card's inside: the pin, the head and the body. `label`: the head's name; none inside a cluster. */
-function cardParts(s: SessionInfo, label: string | null, now: number): HTMLElement[] {
+/** The card's inside: the pin, the head and the body. `label`: the head's name; none inside a cluster. `num`: a Skipper's number key. */
+function cardParts(s: SessionInfo, label: string | null, now: number, num = 0): HTMLElement[] {
   const pin = h("span", `mission-pin ${s.coordinator || !!s.skipper ? "accent" : s.state === "working" || s.state === "waiting" || s.state === "done" ? s.state : ""}`);
   const head = h("span", "head");
-  if (label !== null) head.appendChild(h("span", "name", label));
+  if (num) head.appendChild(h("span", "num", String(num)));
+  // A Skipper's card: its face with its model beside it, as the Skippers list shows them.
+  if (label !== null) head.append(skipperFace(s.coordinator ? null : (s.skipper ?? ""), 18), agentIcon(s), h("span", "name", label));
   head.appendChild(h("span", "at", sinceText(s, now)));
   const body = h("span", "body");
   const tx = h("span", "tx");
   tx.append(h("span", "t", cardName(s)), metaOf(s));
-  body.append(stateIcon(s), agentIcon(s), tx);
+  body.append(...(label !== null ? [stateIcon(s)] : [stateIcon(s), agentIcon(s)]), tx);
   return [pin, head, body];
 }
 
@@ -462,7 +469,7 @@ function clusterHeadParts(key: string, fleet: boolean): HTMLElement[] {
 }
 
 /** Markup to compare, less the busy icon's phase, which is new on each call. */
-const strip = (html: string) => html.replace(/--(water|skiff)-delay:[^;"]*;?\s*/g, "");
+const strip = (html: string) => html.replace(/--(water|skiff|blink|face-turn)-delay:[^;"]*;?\s*/g, "");
 
 /** Puts `parts` in `el` when they differ from what is there. The element stays, so its light does not flicker. */
 function refill(el: HTMLElement, parts: HTMLElement[]) {
@@ -473,6 +480,8 @@ function refill(el: HTMLElement, parts: HTMLElement[]) {
 }
 
 const cards = new Map<string, HTMLElement>();
+/** The Skippers' cards in number-key order: Ctrl+Shift+1 opens the first. */
+let numbered: string[] = [];
 const clusters = new Map<string, HTMLElement>();
 const plans = new Map<string, HTMLElement>();
 
@@ -490,6 +499,7 @@ function draw() {
   if (lit && !G.standIn(m.g, placed, lit) && !placed.clusters.has(lit)) lit = G.navParent(m.g, lit) ?? G.navFirst(m.g);
   if (!lit) lit = G.navFirst(m.g);
 
+  numbered = G.skipperOrder(m.g).filter((id) => placed.cards.has(id)).slice(0, 9);
   const seen = new Set<string>();
   // Cards: sessions, Skippers and Admiral; and folded clusters as cards.
   const putCard = (id: string, r: G.Rect, parts: HTMLElement[], cls: string, pc: string, dim: boolean) => {
@@ -521,7 +531,7 @@ function draw() {
     const cls = [s.coordinator ? "admiral" : !!s.skipper ? "skipper" : "", s.state === "waiting" ? "waiting" : ""].join(" ");
     const pc = inCluster ? accent(p) : "var(--accent)";
     const label = inCluster ? null : cardName(s);
-    putCard(id, r, cardParts(s, label, now), cls, pc, dimmed(s));
+    putCard(id, r, cardParts(s, label, now, numbered.indexOf(id) + 1), cls, pc, dimmed(s));
     const label2 = `${cardName(s)}, ${s.state}`;
     if (cards.get(id)!.getAttribute("aria-label") !== label2) cards.get(id)!.setAttribute("aria-label", label2);
   }
@@ -614,27 +624,66 @@ function drawStrings() {
     const state = members.some((s) => s.state === "waiting") ? "waiting" : members.some((s) => s.state === "working") ? "working" : stateWord(child);
     const dim = foldedTo ? !members.some(isRunning) && running : dimmed(child);
     const g = G.strand(G.foot(from), G.pin(toRect));
-    let path = strands.get(key);
-    if (!path) {
-      path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      strands.set(key, path);
-      strandLayer.appendChild(path);
+    let sd = strands.get(key);
+    if (!sd) {
+      const svg = "http://www.w3.org/2000/svg";
+      sd = { g: document.createElementNS(svg, "g"), line: document.createElementNS(svg, "path"), tuck: document.createElementNS(svg, "path") };
+      sd.line.setAttribute("class", "line");
+      sd.g.append(sd.line, sd.tuck);
+      strands.set(key, sd);
+      strandLayer.appendChild(sd.g);
     }
     const cls = `${state}${dim ? " dim" : ""}`;
-    if (path.getAttribute("class") !== cls) path.setAttribute("class", cls);
-    if (path.getAttribute("d") !== g.d) path.setAttribute("d", g.d);
+    if (sd.g.getAttribute("class") !== cls) {
+      // A string that starts to work joins the others' phase.
+      if (state === "working" && !sd.g.classList.contains("working")) sd.line.style.animationDelay = `${-(performance.now() % MARCH)}ms`;
+      sd.g.setAttribute("class", cls);
+    }
+    if (sd.line.getAttribute("d") !== g.d) {
+      sd.line.setAttribute("d", g.d);
+      sd.tuck.setAttribute("d", g.tuck);
+    }
     if (st.label) {
       const text = st.label.length > 40 ? `${st.label.slice(0, 39)}…` : st.label;
       const w = text.length * 6.2 + 12;
       labels += `<rect class="lblbg" x="${g.lx - w / 2}" y="${g.ly - 10}" width="${w}" height="20"/><text class="lbl${dim ? " dim" : ""}" x="${g.lx}" y="${g.ly + 4}" text-anchor="middle">${text.replace(/[<&]/g, (c) => (c === "<" ? "&lt;" : "&amp;"))}</text>`;
     }
   }
-  for (const [key, path] of strands) {
+  for (const [key, sd] of strands) {
     if (done.has(key)) continue;
-    path.remove();
+    sd.g.remove();
     strands.delete(key);
   }
-  labelLayer.innerHTML = labels;
+  if (labels !== labelsDrawn) labelLayer.innerHTML = labelsDrawn = labels;
+  // The box holds every string, so WebKit repaints them as its own content. The margin takes the sag and the labels.
+  const b = G.bounds(placed);
+  const w = String(Math.max(0, Math.ceil(b.x + b.w + 64)));
+  const h = String(Math.max(0, Math.ceil(b.y + b.h + 64)));
+  if (strings.getAttribute("width") !== w) strings.setAttribute("width", w);
+  if (strings.getAttribute("height") !== h) strings.setAttribute("height", h);
+}
+
+/** A drag frame: the new places and the strings that moved. The drop draws the rest. */
+function drawMoved() {
+  placed = G.placeGraph(m.g, offs);
+  for (const [id, r] of placed.cards) {
+    const el = cards.get(id);
+    if (!el || drag?.card?.id === id) continue;
+    el.style.left = `${r.x}px`;
+    el.style.top = `${r.y}px`;
+  }
+  for (const [key, c] of placed.clusters) {
+    const el = c.folded ? cards.get(key) : clusters.get(key);
+    if (!el) continue;
+    el.style.left = `${c.x}px`;
+    el.style.top = `${c.y}px`;
+    if (!c.folded) Object.assign(el.style, { width: `${c.w}px`, height: `${c.h}px` });
+  }
+  for (const pl of placed.plans) {
+    const el = plans.get(pl.key);
+    if (el) Object.assign(el.style, { left: `${pl.x}px`, top: `${pl.y}px`, width: `${pl.w}px` });
+  }
+  drawStrings();
 }
 
 /** The top bar's counts: Running and All, of what the search leaves. */
@@ -924,7 +973,8 @@ async function read() {
 
 function tick() {
   if (paused) return;
-  draw();
+  // A drag draws its own frames; the drop draws the whole board.
+  if (!drag?.moved) draw();
   void read();
 }
 
@@ -984,12 +1034,13 @@ canvas.addEventListener("pointermove", (e) => {
   const dx = e.clientX - drag.x;
   const dy = e.clientY - drag.y;
   if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+  if (!drag.moved) canvas.classList.add("moving");
   drag.moved = true;
   if (drag.move) {
     // The layout clamps it to its parent; the stored offset follows at the drop.
     offs[drag.move.key] = { dx: drag.move.o.dx + dx / view.z, dy: drag.move.o.dy + dy / view.z };
     // One draw per frame while the pointer moves.
-    if (!dragFrame) dragFrame = requestAnimationFrame(() => (dragFrame = 0, draw()));
+    if (!dragFrame) dragFrame = requestAnimationFrame(() => (dragFrame = 0, drawMoved()));
   } else if (drag.card) {
     const c = drag.card;
     const el = cards.get(c.id);
@@ -1007,7 +1058,7 @@ canvas.addEventListener("pointermove", (e) => {
     const shown = placed.order.get(c.cluster) ?? [];
     if (slot !== null && shown[slot] !== c.id) {
       order[c.cluster] = G.reorder(shown, c.id, slot);
-      if (!dragFrame) dragFrame = requestAnimationFrame(() => (dragFrame = 0, draw()));
+      if (!dragFrame) dragFrame = requestAnimationFrame(() => (dragFrame = 0, drawMoved()));
     }
   } else {
     view.x = drag.vx + dx;
@@ -1028,15 +1079,13 @@ function settle(id: string) {
 }
 const endDrag = (e: PointerEvent) => {
   if (!drag) return;
-  canvas.classList.remove("panning");
+  canvas.classList.remove("panning", "moving");
   const d = drag;
   drag = null;
   if (d.moved) {
-    if (dragFrame) {
-      cancelAnimationFrame(dragFrame);
-      dragFrame = 0;
-      draw();
-    }
+    cancelAnimationFrame(dragFrame);
+    dragFrame = 0;
+    draw();
     // The offset as the layout applied it: inside the parent.
     if (d.move && placed.offs[d.move.key]) offs[d.move.key] = placed.offs[d.move.key];
     if (d.card) settle(d.card.id);
@@ -1147,6 +1196,14 @@ export function missionKey(a: Action | null): boolean {
   return run(G.boardCommand("", a, false, false, { ctrl: false, shift: false, alt: false, meta: false }));
 }
 
+/** Ctrl+Shift+1..9 here: the Skipper card with that number, as a click on it. */
+export function pickSkipper(n: number) {
+  const id = numbered[n - 1];
+  if (!id) return;
+  light(id, false);
+  go();
+}
+
 /** Ctrl+Shift+P here: into the search, or back out to the board. The search stays. */
 export function toggleSearch() {
   if (document.activeElement === search) root.focus();
@@ -1210,6 +1267,7 @@ export const board = {
     topbar()?.toggleAttribute("inert", document.body.classList.contains("focus-mode"));
     root.hidden = true;
     drag = null;
+    canvas.classList.remove("panning", "moving");
     items.classList.remove("reorder");
     screenFor = null;
     for (const el of [...cards.values(), ...clusters.values(), ...plans.values()]) el.remove();
@@ -1218,6 +1276,7 @@ export const board = {
     plans.clear();
     strandLayer.replaceChildren();
     labelLayer.replaceChildren();
+    labelsDrawn = "";
     strands.clear();
     ticks.replaceChildren();
   },

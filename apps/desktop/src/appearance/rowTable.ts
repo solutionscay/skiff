@@ -186,7 +186,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
       const note = c.note?.(r, {});
       if (c.kind === "lead") cell.appendChild(c.draw!(r));
       else if (c.kind === "preview") fillPreview(cell, c.get?.(r) ?? "", !!c.bad?.(r));
-      else if (note !== null && note !== undefined) fillNote(cell, note);
+      else if (note !== null && note !== undefined) fillNote(cell, note, !!c.mono);
       else if (c.kind === "select") {
         const old = c.get?.(r) ?? "";
         const pick = select(c, c.options?.(r) ?? [], old, label);
@@ -255,7 +255,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
     } else if (c.kind === "preview") {
       preview = fillPreview(cell, spec.preview?.(values) ?? "", false);
     } else if (note !== null && note !== undefined) {
-      fillNote(cell, note);
+      fillNote(cell, note, !!c.mono);
     } else {
       const el =
         c.kind === "select"
@@ -511,8 +511,9 @@ function fillPreview(cell: HTMLElement, text: string, bad: boolean): HTMLElement
   return span;
 }
 
-function fillNote(cell: HTMLElement, text: string) {
+function fillNote(cell: HTMLElement, text: string, mono: boolean) {
   cell.classList.add("c-note");
+  if (mono) cell.classList.add("mono");
   cell.textContent = text;
 }
 

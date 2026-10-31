@@ -30,6 +30,7 @@ import { accent, activeGroupObj, currentProject, currentWorktree, inShownGroup, 
 import { sessionThemeMenu } from "../appearance/themes";
 import { modeKeyBlocked } from "./modes";
 import { ledgerFolded, ledgerShown } from "../workspace/ledger";
+import { skippersOn } from "../workspace/skippersView";
 import { imageCount } from "../terminal/images";
 import {
   closeWorkspace, editWorkspace, keepWorkspace, ledgerAllWork, newWorkspace, openWorkspace, recentWorkspacesMenu, reloadWorkspace,
@@ -105,6 +106,7 @@ function commands(): Cmd[] {
       section: "View", label: `${skiffAgentSession() ? "Show" : "Start"} ${skiffAgentName()}`, key: k("skiff-agent"), action: "skiff-agent",
       run: act("skiff-agent"), off: !skiffAgentFolder(),
     },
+    { section: "View", label: skippersOn() ? "Show tree" : "Show Skippers", key: k("sidebar-view"), action: "sidebar-view", run: act("sidebar-view") },
     { section: "View", label: ledgerFolded() ? "Show Ledger" : "Hide Ledger", key: k("ledger"), action: "ledger", run: act("ledger"), off: !ledgerShown() },
     {
       section: "View", label: ledgerAllWork() ? "Ledger: show workspace work" : "Ledger: show all work", key: "",

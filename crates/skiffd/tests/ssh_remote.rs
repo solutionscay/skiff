@@ -475,7 +475,7 @@ async fn remote_projects_and_git_status_come_from_the_hosts_data_plane_over_a_re
     let diff = data::git_diff(&c, &worktree, Some("a.txt")).await.unwrap();
     assert!(diff.text.contains("a/a.txt") && !diff.truncated && !diff.binary, "{diff:?}");
     // M5: its files, listed and read on the Host over the same forward.
-    let listing = data::file_list(&c, &worktree, "").await.unwrap();
+    let listing = data::file_list(&c, &worktree, "", false).await.unwrap();
     assert_eq!(listing.entries.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), ["a.txt"]);
     let read = data::file_read(&c, &worktree, "a.txt", skiff_host_api::ReadPurpose::Copy).await.unwrap();
     assert_eq!(read.bytes.as_deref(), Some(b"one\ntwo\n".as_slice()));
@@ -603,13 +603,17 @@ async fn skiff_installs_once_into_the_home_and_its_skiffd_answers() {
     use skiff_client::host::{check, install};
     let Some(mut f) = fixture("n") else { return };
     let d = f.dir.clone();
-    for sub in ["home", "run", "beside"] {
+    for sub in ["home", "run", "beside", "path"] {
         std::fs::create_dir_all(d.join(sub)).unwrap();
     }
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(d.join("run"), std::fs::Permissions::from_mode(0o700)).unwrap();
     let text = std::fs::read_to_string(d.join("sshd_config")).unwrap();
-    f.write("sshd_install", &format!("{text}SetEnv HOME={0}/home XDG_RUNTIME_DIR={0}/run\n", d.display()));
+    // A skiff installed on this computer must not answer for the stand-ins:
+    // a silent one heads PATH.
+    std::fs::write(d.join("path/skiff"), "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(d.join("path/skiff"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    f.write("sshd_install", &format!("{text}SetEnv HOME={0}/home XDG_RUNTIME_DIR={0}/run PATH={0}/path:/usr/bin:/bin\n", d.display()));
     assert!(f.start_sshd("sshd_install"));
     let linger = || Command::new("loginctl").args(["show-user", &std::env::var("USER").unwrap_or_default(), "-p", "Linger", "--value"]).output().map(|o| o.stdout).unwrap_or_default();
     let linger_before = linger();

@@ -4,7 +4,7 @@
 //! own settings (keys, appearance) are this computer's `client.toml`; the
 //! agent settings below are still this Mac's `projects.toml` (M6).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use skiff_core::{
     config::{self, client, Appearance},
@@ -185,6 +185,86 @@ pub(crate) async fn folder_create(app: State<'_, App>, parent: String, name: Str
 #[tauri::command]
 pub(crate) async fn set_project_icon(handle: AppHandle, project: String, icon: Option<String>) -> Result<(), String> {
     local_edit(&handle, move || config::set_project_icon(&project, icon.as_deref())).await
+}
+
+/// A Skipper's generated avatar. `scope`: "" for the Skiff agent,
+/// `fleet:<name>`, or a project's name.
+#[derive(serde::Serialize)]
+pub(crate) struct SkipperAvatar {
+    scope: String,
+    seed: u32,
+}
+
+/// In each Skipper's own folder: `avatar = "gen:N"`.
+const AVATAR_FILE: &str = "avatar.toml";
+
+/// The Skipper's own folder: the Skiff agent's folder, `fleets/<fleet>/` or `projects/<project>/` in it.
+fn skipper_dir(cfg: &config::Config, scope: &str) -> anyhow::Result<PathBuf> {
+    use skiff_client::skipper;
+    match (scope, scope.strip_prefix("fleet:")) {
+        ("", _) => skipper::folder(cfg),
+        (_, Some(fleet)) => skipper::fleet_folder(cfg, fleet),
+        (project, None) => skipper::project_folder(cfg, project),
+    }
+}
+
+fn write_avatar(dir: &Path, seed: u32) -> std::io::Result<()> {
+    std::fs::write(dir.join(AVATAR_FILE), format!("avatar = \"gen:{seed}\"\n"))
+}
+
+fn read_avatar(dir: &Path) -> Option<u32> {
+    let table: toml::Table = std::fs::read_to_string(dir.join(AVATAR_FILE)).ok()?.parse().ok()?;
+    table.get("avatar")?.as_str()?.strip_prefix("gen:")?.parse().ok()
+}
+
+/// A random generated avatar, 1 to 9999, for a Skipper's first face.
+fn random_seed(scope: &str) -> u32 {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write(scope.as_bytes());
+    1 + (h.finish() % 9999) as u32
+}
+
+/// This Mac only, as the icon: each Skipper's avatar from its own folder. A
+/// folder with none gets a random one, so its face stays.
+#[tauri::command]
+pub(crate) async fn skipper_avatars() -> Result<Vec<SkipperAvatar>, String> {
+    blocking(|| {
+        let cfg = config::load()?;
+        let mut scopes = vec![String::new()];
+        for p in &cfg.projects {
+            scopes.push(p.name.clone());
+            if let Some(f) = &p.fleet {
+                let fleet = format!("fleet:{f}");
+                if !scopes.contains(&fleet) {
+                    scopes.push(fleet);
+                }
+            }
+        }
+        Ok(scopes
+            .into_iter()
+            .filter_map(|scope| {
+                let dir = skipper_dir(&cfg, &scope).ok().filter(|d| d.is_dir())?;
+                if !dir.join(AVATAR_FILE).exists() {
+                    write_avatar(&dir, random_seed(&scope)).ok()?;
+                }
+                Some(SkipperAvatar { seed: read_avatar(&dir)?, scope })
+            })
+            .collect())
+    })
+    .await
+}
+
+/// This Mac only, as the icon: the generated avatar `seed` for the Skipper.
+#[tauri::command]
+pub(crate) async fn set_skipper_avatar(handle: AppHandle, scope: String, seed: u32) -> Result<(), String> {
+    local_edit(&handle, move || {
+        use anyhow::Context;
+        let dir = skipper_dir(&config::load()?, &scope)?;
+        std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+        write_avatar(&dir, seed).with_context(|| format!("write {}", dir.join(AVATAR_FILE).display()))
+    })
+    .await
 }
 
 /// This Mac only, as the icon.

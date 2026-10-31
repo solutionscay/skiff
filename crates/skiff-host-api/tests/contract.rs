@@ -539,7 +539,7 @@ fn m5_files_and_assets_are_read_only_families_of_their_own() {
     assert_ne!(files, assets);
     // Without `dir` the worktree itself; without `purpose`, a preview.
     let top: Request = serde_json::from_value(json!({"cmd":"file_list","worktree":"/w"})).unwrap();
-    assert_eq!(top, Request::FileList { worktree: "/w".into(), dir: String::new() });
+    assert_eq!(top, Request::FileList { worktree: "/w".into(), dir: String::new(), follow_links: false });
     let read: Request = serde_json::from_value(json!({"cmd":"file_read","worktree":"/w","file":"a"})).unwrap();
     assert_eq!(read, Request::FileRead { worktree: "/w".into(), file: "a".into(), purpose: skiff_host_api::ReadPurpose::Preview });
     for bad in [

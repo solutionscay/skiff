@@ -56,7 +56,7 @@ fn disable_dmabuf_where_broken() {
 /// this Mac's data under a remote Host's name. M4–M6 move them behind Host APIs.
 const LOCAL_ONLY: &[&str] = &[
     "skiff_watch_log",
-    "init_repository", "set_project_icon", "set_project_background",
+    "init_repository", "set_project_icon", "set_project_background", "skipper_avatars", "set_skipper_avatar",
     "open_diff", "preview_file", "open_file", "reveal_file", "open_path",
     "list_agent_sessions", "config_path", "open_config", "install_cli", "restart_daemon", "reload_daemon", "update_daemon",
 ];
@@ -218,6 +218,8 @@ pub fn run() {
             config::folder_create,
             config::folder_places,
             config::set_project_icon,
+            config::skipper_avatars,
+            config::set_skipper_avatar,
             config::set_project_short,
             config::set_project_fleet,
             config::set_project_color,

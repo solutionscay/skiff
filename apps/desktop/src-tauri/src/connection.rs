@@ -802,7 +802,7 @@ const DATA_START_WAIT: Duration = Duration::from_secs(10);
 /// A second start finds the first one listening and exits.
 fn spawn_data_service(_local: &ProcessControl, session: &std::path::Path) -> anyhow::Result<()> {
     let mut cmd = std::process::Command::new(data_binary());
-    cmd.arg("--session-socket").arg(session);
+    cmd.arg("--session-socket").arg(session).arg("--this-mac");
     reap(spawn_detached(cmd, skiff_core::socket::data_socket(session).with_extension("log"))?);
     Ok(())
 }
@@ -1735,7 +1735,7 @@ mod tests {
             let c = data_now(&app).await.unwrap();
             assert_eq!(c.hello().host.host_id.as_str(), "A");
             let started = std::fs::read_to_string(dir.join("started")).unwrap();
-            assert_eq!(started.trim(), format!("--session-socket {}", session.display()));
+            assert_eq!(started.trim(), format!("--session-socket {} --this-mac", session.display()));
             assert!(skiff_client::host::data::project_list(&c).await.unwrap().is_empty());
             // Reused while open: no second start.
             assert!(Arc::ptr_eq(&c, &data_now(&app).await.unwrap()));
