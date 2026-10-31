@@ -22,7 +22,7 @@ import { launchMenu } from "../app/panels";
 
 import { renameRow, startRename, startSessionRename } from "./rename";
 
-import { itemKey, listItems } from "../app/keyboard";
+import { findRow, itemKey, listItems } from "../app/keyboard";
 import { clearSelection, keepRow, selectRange, toggleSelect, toggleSelectGroup } from "./selection";
 import { startPreview } from "../terminal/peek";
 import { stateIcon } from "../appearance/stateIcon";
@@ -83,7 +83,7 @@ function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: G
       revealSession(s.id);
       // The keys stay on the row, as on a picked group's, so Delete can end it.
       // Typing still reaches the terminal: see passToTerminal in keyboard.ts.
-      requestAnimationFrame(() => keepRow(s.id));
+      requestAnimationFrame(() => keepRow(s.id, o.in?.id ?? null));
     }
   });
   row.addEventListener("contextmenu", (e) => {
@@ -585,7 +585,7 @@ function projectSkipperRow(scope: string, s: SessionInfo): HTMLElement {
   row.addEventListener("click", () => {
     clearSelection();
     revealSession(s.id);
-    requestAnimationFrame(() => keepRow(s.id));
+    requestAnimationFrame(() => keepRow(s.id, null));
   });
   row.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -765,8 +765,10 @@ function restoreHover() {
 function restoreFocus(side: HTMLElement, activeKey: string | undefined, caret: Caret | null, near: string[]) {
   restoreHover();
   if (activeKey) {
-    const again = [...side.querySelectorAll<HTMLElement>("[data-key], [data-session], [data-wt], [data-group]")]
+    const first = [...side.querySelectorAll<HTMLElement>("[data-key], [data-session], [data-wt], [data-group]")]
       .find((el) => (el.dataset.key ?? el.dataset.session ?? el.dataset.wt ?? el.dataset.group) === activeKey);
+    // A Skipper in a group has two rows: the keys go back to the one they were on.
+    const again = first?.dataset.session ? findRow(listItems(), activeKey) ?? first : first;
     const disabled = again instanceof HTMLButtonElement || again instanceof HTMLInputElement || again instanceof HTMLSelectElement
       ? again.disabled
       : false;
