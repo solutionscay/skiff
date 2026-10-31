@@ -92,7 +92,7 @@ States: `working`, `waiting`, `idle`, `done`.
 ## Send a task
 
 1. Find the pane in the JSON. Use its id. Confirm its working directory.
-2. Run `skiff peek S -n 40`. Check the current result and the input box. If the task already runs or is complete, report that. Do not send it again. Claude Code shows a prompt suggestion in gray in an empty input box. `peek` shows no color, so the suggestion looks like typed text after `❯`. It is not a draft, and the person did not type it. Do not report a draft from `peek`. Send: only exit 9 tells you that the box holds a real draft.
+2. Run `skiff peek S -n 40`. Check the current result and the input box. If the task already runs or is complete, report that. Do not send it again. A known agent can show a prompt suggestion in gray in an empty input box. `peek` does not print that gray text, so text in the box was typed. Do not report a draft from `peek` alone. Send: only exit 9 tells you that the box holds a real draft.
 3. Write a clear task: the result, the scope, the context, the permitted actions, and what to report. An investigation request permits an investigation only. Pass on a permission to fix or deploy only when the user gave it.
 4. For a long prompt, write a file and send it with `skiff send S - --enter < file`. Keep shell syntax and user text apart.
 
