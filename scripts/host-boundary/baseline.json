@@ -623,7 +623,7 @@
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "7e99353cef87269f1b9df518dc3d9497c715ed7013d6bd40d8ea55e7ae8c3837"
+    "sha256": "b003acae2274fe86df9f4be1b871b801354631b64cd051d35fd39cd5d7c1e5da"
   },
   "apps/desktop/src/appearance/skiffFolderDialog.ts": {
     "ownership": "Host caller (#166 R7): folder preview and change through hostInvoke(skipper_config); the system picker and reveal are this client's own, used only on This Mac",

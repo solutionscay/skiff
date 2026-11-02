@@ -13,6 +13,7 @@ import { isRemote } from "../app/hosts";
 import { avatarFinish, avatarScopes, setAvatarDialog, setAvatarFinish, skipperFace } from "../workspace/skipperFace";
 import { FINISHES, parseFinish } from "./skipperAvatar";
 import { scopeName } from "../workspace/model";
+import { vividPalette } from "./colors";
 
 /** A task type row as `set_skiff_agent` takes it. Null model: the agent's default. */
 export interface TaskEdit {
@@ -162,7 +163,7 @@ function finishRow(redraw: () => void): HTMLElement {
  * The sample strip: the Admiral, then random crew faces, in the finish, at
  * the Skippers view's size. As many faces as fit the strip's width, on one
  * line; a resize or a zoom adds or drops faces. Each crew face wears another
- * of `colors`, in an order the first seed shuffles.
+ * vivid one of `colors`, in an order the first seed shuffles.
  */
 const SAMPLE_PX = 40;
 function finishSamples(seeds: number[], colors: string[]): HTMLElement {
@@ -178,7 +179,7 @@ function finishSamples(seeds: number[], colors: string[]): HTMLElement {
     if (!face) return;
     const crew = Math.max(0, Math.floor((room + gap) / (face + gap)) - 1);
     while (seeds.length < Math.max(crew, 1)) seeds.push(1 + Math.floor(Math.random() * 0xffffff));
-    const order = shuffled(colors, seeds[0]);
+    const order = shuffled(vividPalette(colors), seeds[0]);
     while (strip.children.length > crew + 1) strip.lastElementChild!.remove();
     for (let i = strip.children.length - 1; i < crew; i++) {
       const f = skipperFace("", SAMPLE_PX, seeds[i]);
