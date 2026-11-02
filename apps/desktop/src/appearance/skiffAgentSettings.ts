@@ -10,7 +10,8 @@ import { reveal } from "../platform/fileActions";
 import { copyText } from "../platform/clipboard";
 import { showError } from "../ui/alerts";
 import { isRemote } from "../app/hosts";
-import { avatarScopes, setAvatarDialog, skipperFace } from "../workspace/skipperFace";
+import { avatarFinish, avatarScopes, setAvatarDialog, setAvatarFinish, skipperFace } from "../workspace/skipperFace";
+import { FINISHES, parseFinish } from "./skipperAvatar";
 import { scopeName } from "../workspace/model";
 
 /** A task type row as `set_skiff_agent` takes it. Null model: the agent's default. */
@@ -102,15 +103,17 @@ export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInf
 }
 
 /**
- * Settings › Skippers › Avatars: each fleet and project
- * Skipper with a folder on this computer, as a tile with its face. A click opens the picker.
- * The faces are kept in those folders: a remote Host shows none here.
+ * Settings › Skippers › Avatars: the Finish of every face (flat, gummy or
+ * plush), then each fleet and project Skipper with a folder on this
+ * computer, as a tile with its face. A click opens the picker.
+ * The faces are kept in those folders: a remote Host shows no tiles here.
  */
 export function avatarsSection(set: SkiffAgentSettings, redraw: () => void): HTMLElement[] {
   // The Admiral wears the mascot's head: nothing to change.
   const scopes = isRemote() ? [] : avatarScopes().filter((s) => s);
-  if (!scopes.length) return [];
   const word = set.skipper_name || "Skipper";
+  const out: HTMLElement[] = [sectionHead(t("skipper.avatars"), undefined, scopes.length ? String(scopes.length) : undefined), finishRow(redraw)];
+  if (!scopes.length) return out;
   // A grid of tiles, as many across as fit: the face and the name. A click opens the picker.
   const grid = h("div", "set-avatars");
   for (const scope of scopes) {
@@ -124,7 +127,29 @@ export function avatarsSection(set: SkiffAgentSettings, redraw: () => void): HTM
     tile.addEventListener("click", () => setAvatarDialog(scope || null, title, redraw));
     grid.append(tile);
   }
-  return [sectionHead(t("skipper.avatars"), undefined, String(scopes.length)), grid];
+  return [...out, grid];
+}
+
+/** The Finish row: the Admiral's face as it looks now, then the pick. It changes every face at once. */
+function finishRow(redraw: () => void): HTMLElement {
+  const row = h("div", "set-row set-open set-agent set-finish on");
+  const pick = h("select", "c-cmd");
+  pick.setAttribute("aria-label", t("skipper.finish"));
+  for (const f of FINISHES) {
+    const o = h("option", "", t(`skipper.finish.${f}`));
+    o.value = f;
+    pick.append(o);
+  }
+  pick.value = avatarFinish();
+  pick.addEventListener("change", () => {
+    setAvatarFinish(parseFinish(pick.value));
+    redraw();
+    document.querySelector<HTMLSelectElement>(".set-finish select")?.focus();
+  });
+  const face = h("span", "c-mode");
+  face.append(skipperFace(null, 26));
+  row.append(h("span", "c-name", t("skipper.finish")), pick, face);
+  return row;
 }
 
 /**
