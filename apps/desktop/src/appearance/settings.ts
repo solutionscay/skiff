@@ -66,6 +66,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   /** `[appearance] language`: a code, or null for the system language. */
   let langSet: string | null = null;
   let agentSet: SkiffAgentSettings | null = null;
+  /** The random faces of Settings › Skippers › Avatars › Finish: one set per open. */
+  let sampleSeeds: number[] = [];
   // Settings › Skippers › Instructions, and one error line per row.
   let files: InstructionFile[] = [];
   const fileErrors = new Map<string, string>();
@@ -706,7 +708,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       main.appendChild(err);
     }
     if (agentSet) main.append(...projectSkippersSection(agentSet, agents, (e) => void setSkiffAgent(e)));
-    if (agentSet?.folder) main.append(...avatarsSection(agentSet, draw));
+    if (agentSet?.folder) main.append(...avatarsSection(agentSet, draw, sampleSeeds));
     if (agentSet?.folder) main.append(...instructionsSection(agentSet, { files, errors: fileErrors, editable: hostCan("skipper_file"), edit: (f) => void editFile(f), reset: (f) => void resetFile(f) }));
     return main;
   }
@@ -904,6 +906,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         hostsTab.open(at);
       }
       root.hidden = false;
+      // New random faces for the Finish samples on each open; a redraw keeps them.
+      sampleSeeds = Array.from({ length: 4 }, () => 1 + Math.floor(Math.random() * 0xffffff));
       onShowChange();
       await look.load();
       openSet = await invoke<OpenSettings>("open_settings").catch(() => null);
