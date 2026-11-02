@@ -104,15 +104,16 @@ export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInf
 
 /**
  * Settings › Skippers › Avatars: the Finish of every face (flat, gummy or
- * plush), then each fleet and project Skipper with a folder on this
- * computer, as a tile with its face. A click opens the picker.
+ * plush) and a strip of sample faces in it, then each fleet and project
+ * Skipper with a folder on this computer, as a tile with its face. A click
+ * opens the picker. `seeds`: the sample strip's random faces.
  * The faces are kept in those folders: a remote Host shows no tiles here.
  */
-export function avatarsSection(set: SkiffAgentSettings, redraw: () => void): HTMLElement[] {
+export function avatarsSection(set: SkiffAgentSettings, redraw: () => void, seeds: number[]): HTMLElement[] {
   // The Admiral wears the mascot's head: nothing to change.
   const scopes = isRemote() ? [] : avatarScopes().filter((s) => s);
   const word = set.skipper_name || "Skipper";
-  const out: HTMLElement[] = [sectionHead(t("skipper.avatars"), undefined, scopes.length ? String(scopes.length) : undefined), finishRow(redraw)];
+  const out: HTMLElement[] = [sectionHead(t("skipper.avatars"), undefined, scopes.length ? String(scopes.length) : undefined), finishRow(redraw), finishSamples(seeds)];
   if (!scopes.length) return out;
   // A grid of tiles, as many across as fit: the face and the name. A click opens the picker.
   const grid = h("div", "set-avatars");
@@ -130,7 +131,7 @@ export function avatarsSection(set: SkiffAgentSettings, redraw: () => void): HTM
   return [...out, grid];
 }
 
-/** The Finish row: the Admiral's face as it looks now, then the pick. It changes every face at once. */
+/** The Finish row: the pick. It changes every face at once. */
 function finishRow(redraw: () => void): HTMLElement {
   const row = h("div", "set-row set-open set-agent set-finish on");
   const pick = h("select", "c-cmd");
@@ -146,10 +147,16 @@ function finishRow(redraw: () => void): HTMLElement {
     redraw();
     document.querySelector<HTMLSelectElement>(".set-finish select")?.focus();
   });
-  const face = h("span", "c-mode");
-  face.append(skipperFace(null, 26));
-  row.append(h("span", "c-name", t("skipper.finish")), pick, face);
+  row.append(h("span", "c-name", t("skipper.finish")), pick, h("span"));
   return row;
+}
+
+/** The sample strip: the Admiral, then a crew face per seed, in the finish, at the Skippers view's size. */
+const SAMPLE_PX = 40;
+function finishSamples(seeds: number[]): HTMLElement {
+  const strip = h("div", "set-finish-faces");
+  strip.append(skipperFace(null, SAMPLE_PX), ...seeds.map((seed) => skipperFace("", SAMPLE_PX, seed)));
+  return strip;
 }
 
 /**
