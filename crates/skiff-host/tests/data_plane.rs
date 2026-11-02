@@ -89,6 +89,20 @@ async fn the_data_plane_serves_this_hosts_projects_and_git_only() {
     assert_eq!(one, listed[0]);
     assert!(matches!(data::project_get(&c, "nope").await, Err(Error::NotFound { .. })));
 
+    // #223: the stamp the app's projects watcher asks for (`projects@2`)
+    // stays put while nothing changes, and moves with an edit from outside
+    // the app: a write-then-rename as `skiff projects add` does, a hand edit.
+    assert!(hello.capabilities.contains(&Capability::projects_watch()));
+    let stamp = data::projects_stamp(&c).await.unwrap();
+    assert_eq!(data::projects_stamp(&c).await.unwrap(), stamp, "nothing changed");
+    let text = std::fs::read_to_string(&config).unwrap();
+    let added = format!("{text}\n[[project]]\nname = \"sage\"\npath = \"{}\"\n", dir.join("sage").display());
+    skiff_core::config::write_atomic(&config, &added).unwrap();
+    let after_add = data::projects_stamp(&c).await.unwrap();
+    assert_ne!(after_add, stamp, "a project added from outside the app");
+    std::fs::write(&config, &text).unwrap();
+    assert_eq!(data::projects_stamp(&c).await.unwrap(), stamp, "a hand edit back to the same bytes");
+
     // Git status, the same as the app's own read, for a known worktree.
     let feat = listed[0].worktrees.iter().find(|w| w.branch.as_deref() == Some("feat")).unwrap().path.clone();
     let changes = data::git_changes(&c, &feat).await.unwrap();

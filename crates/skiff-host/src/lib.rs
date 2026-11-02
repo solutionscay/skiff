@@ -48,6 +48,7 @@ pub const MAX_IN_FLIGHT: usize = 16;
 pub fn capabilities() -> Vec<Capability> {
     vec![
         Capability::projects(),
+        Capability::projects_watch(),
         Capability::git_status(),
         Capability::git_diff(),
         Capability::project_config(),
@@ -391,6 +392,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             let file = skiff_client::ledger::path().map_err(failed)?;
             Ok(Response::LedgerStamp { stamp: skiff_client::ledger::stamp(&file) })
         }
+        Request::ProjectsStamp => Ok(Response::ProjectsStamp { stamp: config::file_stamp(&config::config_path()) }),
         Request::LedgerResult { uid } => Ok(Response::File { file: Box::new(host_file(ledger_result(&uid)?)) }),
         Request::SkipperSettings => {
             let cfg = config::load().map_err(failed)?;
