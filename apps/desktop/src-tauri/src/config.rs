@@ -11,35 +11,35 @@ use skiff_core::{
     git,
     project::AgentInfo,
 };
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
 use skiff_client::host::data;
 use skiff_host_api::{AgentEdit, HostFolder, HostProject, HostWorktree, ProjectEdit, ProjectFleet};
 
-use crate::connection::{blocking, data_read, data_write, keep_revision, project_write, App};
+use crate::{
+    connection::{blocking, data_read, data_write, keep_revision, project_write, App},
+    projects_watch::OwnEdit,
+};
 
-/// The page reloads projects on this event.
-pub(crate) const PROJECTS_CHANGED: &str = "skiff:projects-changed";
-
-/// Tells the page after a change was tried: done, refused or unknown, it
-/// reads the projects again.
-fn changed<T>(handle: &AppHandle, out: Result<T, String>) -> Result<T, String> {
-    let _ = handle.emit(PROJECTS_CHANGED, ());
-    out
+/// Runs a project change as the app's own edit: once it was tried (done,
+/// refused or unknown), the page reads the projects again, and the projects
+/// watcher does not count it as an edit from outside the app.
+async fn changed<T>(handle: &AppHandle, change: impl std::future::Future<Output = Result<T, String>>) -> Result<T, String> {
+    let _own = OwnEdit::begin(handle);
+    change.await
 }
 
 /// Runs a local projects.toml edit (images only), then tells the page.
 async fn local_edit(handle: &AppHandle, f: impl FnOnce() -> anyhow::Result<()> + Send + 'static) -> Result<(), String> {
-    changed(handle, blocking(f).await)
+    changed(handle, blocking(f)).await
 }
 
 /// One key of one Host project (`project_config@1`).
 async fn edit(handle: &AppHandle, app: &App, project: String, edit: ProjectEdit) -> Result<(), String> {
-    let out = project_write(app, |c, revision| async move {
+    changed(handle, project_write(app, |c, revision| async move {
         data::project_edit(&c, &revision, &project, edit).await.map(|r| ((), r))
-    })
-    .await;
-    changed(handle, out)
+    }))
+    .await
 }
 
 /// The selected Host's projects, from its data-plane service (`projects@1`):
@@ -77,8 +77,7 @@ pub(crate) async fn add_worktree(
     checkout: Option<bool>,
 ) -> Result<HostWorktree, String> {
     let checkout = checkout.unwrap_or(false);
-    let out = data_write(&app, |c| async move { data::worktree_add(&c, &project, &branch, base.as_deref(), checkout).await }).await;
-    changed(&handle, out)
+    changed(&handle, data_write(&app, |c| async move { data::worktree_add(&c, &project, &branch, base.as_deref(), checkout).await })).await
 }
 
 /// The project's branches for New worktree, from the Host's git.
@@ -97,8 +96,7 @@ pub(crate) async fn remove_worktree(
     path: String,
     force: bool,
 ) -> Result<(), String> {
-    let out = data_write(&app, |c| async move { data::worktree_remove(&c, &project, &path, force).await }).await;
-    changed(&handle, out)
+    changed(&handle, data_write(&app, |c| async move { data::worktree_remove(&c, &project, &path, force).await })).await
 }
 
 /// Adds the git repository that contains `path`, or the plain folder, a folder on the Host.
@@ -111,11 +109,10 @@ pub(crate) async fn add_project(
     short: Option<String>,
     color: Option<String>,
 ) -> Result<HostProject, String> {
-    let out = project_write(&app, |c, revision| async move {
+    changed(&handle, project_write(&app, |c, revision| async move {
         data::project_add(&c, &revision, &path, name, short, color).await
-    })
-    .await;
-    changed(&handle, out)
+    }))
+    .await
 }
 
 /// Initializes the selected folder without staging files or creating a
@@ -325,11 +322,10 @@ pub(crate) async fn reorder_projects(
     fleets: Option<Vec<(String, String)>>,
 ) -> Result<(), String> {
     let fleets = fleets.unwrap_or_default().into_iter().map(|(project, fleet)| ProjectFleet { project, fleet }).collect();
-    let out = project_write(&app, |c, revision| async move {
+    changed(&handle, project_write(&app, |c, revision| async move {
         data::project_arrange(&c, &revision, order, fleets).await.map(|r| ((), r))
-    })
-    .await;
-    changed(&handle, out)
+    }))
+    .await
 }
 
 #[tauri::command]
@@ -340,11 +336,10 @@ pub(crate) async fn set_project_closed(handle: AppHandle, app: State<'_, App>, p
 /// Drops the project and its settings from the Host's config. The folder stays.
 #[tauri::command]
 pub(crate) async fn remove_project(handle: AppHandle, app: State<'_, App>, project: String) -> Result<(), String> {
-    let out = project_write(&app, |c, revision| async move {
+    changed(&handle, project_write(&app, |c, revision| async move {
         data::project_remove(&c, &revision, &project).await.map(|r| ((), r))
-    })
-    .await;
-    changed(&handle, out)
+    }))
+    .await
 }
 
 #[tauri::command]
@@ -386,6 +381,8 @@ pub(crate) async fn set_mission_filter(running: bool) -> Result<(), String> {
 /// Sets the app's language: a code such as `es`, or `null` for the system language.
 #[tauri::command]
 pub(crate) async fn set_language(language: Option<String>) -> Result<(), String> {
+    // `[appearance] language` is in projects.toml: the watcher keeps still.
+    let _own = OwnEdit::quiet();
     blocking(move || config::set_language(language.as_deref())).await
 }
 
@@ -418,6 +415,8 @@ async fn agents_after(
     edit: AgentEdit,
     f: impl FnOnce() -> anyhow::Result<()> + Send + 'static,
 ) -> Result<Vec<AgentInfo>, String> {
+    // The agents are in projects.toml: the watcher keeps still for this edit.
+    let _own = OwnEdit::quiet();
     if app.remote() {
         return agent_write(app, edit).await;
     }

@@ -13,11 +13,11 @@ use skiff_client::{
 };
 use skiff_core::{config, session::SessionInfo};
 use skiff_host_api::{HostSkipper, SkipperEdit, SkipperFolderDone, SkipperFolderPreview, TakenSkipper};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
 use crate::{
-    config::PROJECTS_CHANGED,
     connection::{blocking, bundled, data_write, ensure_client, err, App},
+    projects_watch::OwnEdit,
 };
 use skiff_client::host::local::ProcessControl;
 
@@ -196,9 +196,9 @@ fn local() -> anyhow::Result<HostSkipper> {
 /// The page reloads its projects on the event, so the row follows at once.
 #[tauri::command]
 pub async fn set_skiff_agent(app: State<'_, App>, handle: AppHandle, edit: SkipperEdit) -> Result<HostSkipper, String> {
+    let _own = OwnEdit::begin(&handle);
     if app.remote() {
         let settings = data_write(&app, |c| async move { data::skipper_edit(&c, edit).await }).await?;
-        let _ = handle.emit(PROJECTS_CHANGED, ());
         return Ok(settings);
     }
     let settings = blocking(move || {
@@ -206,7 +206,6 @@ pub async fn set_skiff_agent(app: State<'_, App>, handle: AppHandle, edit: Skipp
         local()
     })
     .await?;
-    let _ = handle.emit(PROJECTS_CHANGED, ());
     Ok(settings)
 }
 
@@ -297,29 +296,27 @@ pub async fn fleet_takeover_preview(app: State<'_, App>, fleet: String, join: Op
 /// then `join` joins the fleet. A remote Host does it there.
 #[tauri::command]
 pub async fn fleet_takeover(app: State<'_, App>, handle: AppHandle, fleet: String, join: String) -> Result<(), String> {
-    let out = if app.remote() {
+    let _own = OwnEdit::begin(&handle);
+    if app.remote() {
         data_write(&app, |c| async move { data::fleet_takeover(&c, &fleet, &join).await }).await.map(|_| ())
     } else {
         let (c, _) = ensure_client(&app).await?;
         let socket = app.selection().socket().to_path_buf();
         fleet::takeover(&c, &socket, &fleet, Some(&join), true).await.map(|_| ()).map_err(err)
-    };
-    let _ = handle.emit(PROJECTS_CHANGED, ());
-    out
+    }
 }
 
 /// Rename fleet…: the fleet, its Skipper's folder, rows, session and mark.
 /// A remote Host does it there.
 #[tauri::command]
 pub async fn rename_fleet(app: State<'_, App>, handle: AppHandle, old: String, new: String) -> Result<(), String> {
-    let out = if app.remote() {
+    let _own = OwnEdit::begin(&handle);
+    if app.remote() {
         data_write(&app, |c| async move { data::fleet_rename(&c, &old, &new).await }).await
     } else {
         let (c, _) = ensure_client(&app).await?;
         fleet::rename(&c, &old, new.trim()).await.map_err(err)
-    };
-    let _ = handle.emit(PROJECTS_CHANGED, ());
-    out
+    }
 }
 
 /// The chosen folder, resolved and read on the selected Host. A relative
@@ -360,10 +357,10 @@ pub async fn change_skiff_folder(
     end_skipper: bool,
     anyway: bool,
 ) -> Result<SkipperFolderDone, String> {
+    let _own = OwnEdit::begin(&handle);
     if app.remote() {
         let path = path.to_string_lossy().into_owned();
         let done = data_write(&app, |c| async move { data::skipper_folder_change(&c, &path, mode.into(), end_skipper, anyway).await }).await?;
-        let _ = handle.emit(PROJECTS_CHANGED, ());
         return Ok(done);
     }
     let (mut panes, skipper) = live(&app).await;
@@ -376,7 +373,6 @@ pub async fn change_skiff_folder(
         panes.remove(&s.id);
     }
     let done = blocking(move || agent_folder::change(&config::load()?, &path, mode, &panes, anyway)).await?;
-    let _ = handle.emit(PROJECTS_CHANGED, ());
     Ok(done.to_host())
 }
 

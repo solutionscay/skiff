@@ -403,6 +403,40 @@ async function reloadProjectsOf(paths: Set<string>) {
   render();
 }
 
+/** Between two full reads asked for by sessions outside every project. */
+export const UNPLACED_EVERY_MS = 10_000;
+/** Folders outside every project whose session asked for a full read once. */
+const unplacedAsked = new Set<string>();
+/** A full read for such a session ran less than UNPLACED_EVERY_MS ago. */
+let unplacedCooling = false;
+/** A folder asked meanwhile: one more full read when the wait ends. */
+let unplacedPending = false;
+
+/**
+ * A new session in a folder no known project holds. The folder may be a
+ * project added outside the app (`skiff projects add`), which a read of the
+ * known projects never finds (reloadProjectsOf): the projects are read in
+ * full, once per folder and at most once per UNPLACED_EVERY_MS. A folder
+ * asked within the wait is read when it ends. Still outside every project,
+ * the session stays under Other.
+ */
+export function unplaced(s: SessionInfo) {
+  if (S.dataState !== "ready" || place(s) || unplacedAsked.has(s.cwd)) return;
+  unplacedAsked.add(s.cwd);
+  if (unplacedCooling) unplacedPending = true;
+  else unplacedRead();
+}
+
+function unplacedRead() {
+  unplacedCooling = true;
+  unplacedPending = false;
+  void loadProjects();
+  window.setTimeout(() => {
+    unplacedCooling = false;
+    if (unplacedPending) unplacedRead();
+  }, UNPLACED_EVERY_MS);
+}
+
 /** The worktrees the session works in: its own, and the ones its processes ran in. */
 function worktreesOf(s: SessionInfo): string[] {
   const at = place(s);
@@ -413,7 +447,8 @@ function worktreesOf(s: SessionInfo): string[] {
 const workedAway = new Set<string>();
 let windowAway = !document.hasFocus();
 
-// The app edited projects.toml or a worktree.
+// projects.toml or a worktree changed: an edit of the app's, or one from
+// outside it that the projects watcher saw (`skiff projects add`, a hand edit).
 void listen("skiff:projects-changed", () => void loadProjects());
 window.addEventListener("blur", () => {
   windowAway = true;
@@ -521,6 +556,7 @@ export function onEvent(e: DaemonEvent) {
       // A restore brings the id back with the size the daemon saved.
       ptySized(e.session);
       skipperCreated(e.session);
+      unplaced(e.session);
       break;
     case "session_updated": {
       if (e.session.peek) return peekUpdated(e.session);

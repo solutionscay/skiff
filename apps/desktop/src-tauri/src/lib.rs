@@ -13,6 +13,7 @@ mod host_files;
 mod hosts;
 mod input;
 mod ledger;
+mod projects_watch;
 mod quit;
 mod reload;
 mod skiff_agent;
@@ -95,6 +96,8 @@ pub fn run() {
             std::thread::spawn(move || skiff_agent::sync(&handle.state::<App>()));
             let handle = app.handle().clone();
             ledger::watch(handle);
+            // Edits to the Host's projects.toml from outside the app.
+            projects_watch::watch(app.handle().clone());
             hosts::watch(app.handle().clone());
             // A remote connect's live lines, for the connecting panel.
             let handle = app.handle().clone();
