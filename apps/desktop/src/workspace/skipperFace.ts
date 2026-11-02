@@ -11,7 +11,7 @@
  * generated faces.
  */
 import { invoke } from "@tauri-apps/api/core";
-import { admiralAvatar, FINISH_DEFS_ID, finishDefs, parseFinish, skipperAvatar, type Finish } from "../appearance/skipperAvatar";
+import { admiralAvatar, DEFAULT_FINISH, FINISH_DEFS_ID, finishDefs, parseFinish, skipperAvatar, type Finish } from "../appearance/skipperAvatar";
 import { place } from "../app/stateQueries";
 import { S } from "../app/state";
 import { projectSkipperOf, skiffAgentSession } from "../app/skiffAgent";
@@ -65,16 +65,17 @@ export function faceColor(scope: string | null): string {
 const STYLESHEET_ACCENT = "#b69cff";
 
 /**
- * The faces' finish: flat, gummy or plush (Settings › Skippers › Avatars).
- * A look of this app, as the font size is: kept in localStorage, not in
- * projects.toml, so it changes nothing a daemon or a Host reads.
+ * The faces' finish: plush (the default), gummy or flat (Settings ›
+ * Appearance › Avatar finish). A look of this app, as the font size is: kept
+ * in localStorage, not in projects.toml, so it changes nothing a daemon or a
+ * Host reads. A pick is kept as it is, the default too.
  */
 const FINISH_KEY = "skiff.avatarFinish";
 let finish: Finish = (() => {
   try {
     return parseFinish(localStorage.getItem(FINISH_KEY));
   } catch {
-    return "flat";
+    return DEFAULT_FINISH;
   }
 })();
 
@@ -85,8 +86,7 @@ export function setAvatarFinish(f: Finish) {
   if (f === finish) return;
   finish = f;
   try {
-    if (f === "flat") localStorage.removeItem(FINISH_KEY);
-    else localStorage.setItem(FINISH_KEY, f);
+    localStorage.setItem(FINISH_KEY, f);
   } catch {
     /* the finish lasts for this run */
   }

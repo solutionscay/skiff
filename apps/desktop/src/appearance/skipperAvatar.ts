@@ -13,22 +13,25 @@
  * (styles/skippers.css). Each face carries its own rhythm as variables on
  * its root, from the same hash, so no two faces blink in step.
  *
- * A finish (Settings › Skippers › Avatars) dresses the same face:
- * - "flat": the plain body. The default.
+ * A finish (Settings › Appearance › Avatar finish) dresses the same face:
+ * - "plush": a toy. Three fur layers (a faint halo, long fur, a short core),
+ *   a low-contrast grain and a soft contact shadow. The default.
  * - "gummy": candy. A shade over the body, a lit inner rim at the bottom, a
  *   dark inner rim at the top, a specular gloss and a soft drop shadow.
- * - "plush": a toy. Three fur layers (a faint halo, long fur, a short core),
- *   a low-contrast grain and a soft contact shadow.
+ * - "flat": the plain body. The draw functions' default: no filters.
  * The visor and the eyes stay out of the filters, so they stay crisp and the
  * blinks and turns move as before. The gradients and filters live once per
  * document (`finishDefs`), in the face's own 32-unit grid, so the finish is
  * the same fraction of the face at every size.
  */
 export type Finish = "flat" | "gummy" | "plush";
-export const FINISHES: readonly Finish[] = ["flat", "gummy", "plush"];
+export const FINISHES: readonly Finish[] = ["plush", "gummy", "flat"];
 
-/** A stored finish, else flat. */
-export const parseFinish = (v: unknown): Finish => (FINISHES.includes(v as Finish) ? (v as Finish) : "flat");
+/** The finish when none is stored. */
+export const DEFAULT_FINISH: Finish = "plush";
+
+/** A stored finish, else the default. */
+export const parseFinish = (v: unknown): Finish => (FINISHES.includes(v as Finish) ? (v as Finish) : DEFAULT_FINISH);
 
 const FILL = "color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000)";
 const VISOR = "#192230";

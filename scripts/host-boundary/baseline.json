@@ -623,7 +623,7 @@
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "b003acae2274fe86df9f4be1b871b801354631b64cd051d35fd39cd5d7c1e5da"
+    "sha256": "463b4f5bed28dfce5f8ffa5355ba6118a9ed586efd858c305f924a20cf635b79"
   },
   "apps/desktop/src/appearance/skiffFolderDialog.ts": {
     "ownership": "Host caller (#166 R7): folder preview and change through hostInvoke(skipper_config); the system picker and reveal are this client's own, used only on This Mac",
@@ -1101,7 +1101,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "35ee5183ea6d54fd87208a7763dc71348d86edae462d0b6879f1d16188ac77fc"
+    "sha256": "e09165d1bf10220ea1218ffb0bcd2f47e5ccc54db854606c1cdcc4aabae4eec2"
   },
   "apps/desktop/src/workspace/skippersView.ts": {
     "ownership": "legacy local adapter/caller: migrate behind Host API in M1\u2013M6",

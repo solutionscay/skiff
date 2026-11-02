@@ -130,7 +130,7 @@ export function avatarsSection(set: SkiffAgentSettings, redraw: () => void): HTM
 }
 
 /**
- * Settings › Appearance: the Finish of every face (flat, gummy or plush), an
+ * Settings › Appearance: the Finish of every face (plush, gummy or flat), an
  * app look kept in localStorage, then a strip of sample faces in it.
  * `seeds`: the strip's random faces, one per face; the strip adds seeds as it
  * needs more. `colors`: the theme colors the faces wear.
