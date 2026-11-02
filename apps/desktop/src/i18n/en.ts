@@ -898,6 +898,10 @@ export const en = {
   "skipper.avatarProject": "{scope} {skipper}",
   "skipper.avatarFleet": "{scope} fleet {skipper}",
   "skipper.avatarTitle": "Avatar: {name}",
+  "skipper.finish": "Finish",
+  "skipper.finish.flat": "Flat",
+  "skipper.finish.gummy": "Gummy",
+  "skipper.finish.plush": "Plush",
 
   // Settings › Task types.
   "tasks.colType": "Type",

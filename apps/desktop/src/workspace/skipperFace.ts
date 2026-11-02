@@ -11,7 +11,7 @@
  * generated faces.
  */
 import { invoke } from "@tauri-apps/api/core";
-import { admiralAvatar, skipperAvatar } from "../appearance/skipperAvatar";
+import { admiralAvatar, FINISH_DEFS_ID, finishDefs, parseFinish, skipperAvatar, type Finish } from "../appearance/skipperAvatar";
 import { place } from "../app/stateQueries";
 import { S } from "../app/state";
 import { projectSkipperOf, skiffAgentSession } from "../app/skiffAgent";
@@ -64,8 +64,43 @@ export function faceColor(scope: string | null): string {
 /** The stylesheet's accent, before any theme loads. */
 const STYLESHEET_ACCENT = "#b69cff";
 
+/**
+ * The faces' finish: flat, gummy or plush (Settings › Skippers › Avatars).
+ * A look of this app, as the font size is: kept in localStorage, not in
+ * projects.toml, so it changes nothing a daemon or a Host reads.
+ */
+const FINISH_KEY = "skiff.avatarFinish";
+let finish: Finish = (() => {
+  try {
+    return parseFinish(localStorage.getItem(FINISH_KEY));
+  } catch {
+    return "flat";
+  }
+})();
+
+export const avatarFinish = () => finish;
+
+/** Sets the finish and draws every face again. */
+export function setAvatarFinish(f: Finish) {
+  if (f === finish) return;
+  finish = f;
+  try {
+    if (f === "flat") localStorage.removeItem(FINISH_KEY);
+    else localStorage.setItem(FINISH_KEY, f);
+  } catch {
+    /* the finish lasts for this run */
+  }
+  render("skipper-avatars");
+}
+
+/** The finishes' filters, once per document, before the first face that uses them. */
+function ensureDefs() {
+  if (finish === "flat" || document.getElementById(FINISH_DEFS_ID)) return;
+  document.body.insertAdjacentHTML("beforeend", finishDefs());
+}
+
 /** What a face shows, for the row signatures. */
-export const faceSig = (scope: string | null) => [chosen.get(scope ?? "") ?? null, faceColor(scope)];
+export const faceSig = (scope: string | null) => [chosen.get(scope ?? "") ?? null, faceColor(scope), finish];
 
 /** `scope`: a project's name, `fleet:<name>`, or null for the Admiral. `px` at zoom 1. `seed`: a face to show in place of the chosen one. */
 export function skipperFace(scope: string | null, px: number, seed?: number): HTMLElement {
@@ -82,7 +117,8 @@ export function skipperFace(scope: string | null, px: number, seed?: number): HT
       queueMicrotask(() => void loadSkipperAvatars().finally(() => (reading = false)));
     }
   }
-  face.innerHTML = scope === null ? admiralAvatar() : skipperAvatar(scope, n ?? 0);
+  ensureDefs();
+  face.innerHTML = scope === null ? admiralAvatar(finish) : skipperAvatar(scope, n ?? 0, finish);
   return face;
 }
 
