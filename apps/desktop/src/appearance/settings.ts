@@ -409,7 +409,9 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     );
     main.append(intro);
     if (menuSet?.available) main.appendChild(menuLayout(menuSet));
-    main.append(...finishSection(draw, sampleSeeds), cards);
+    // The sample faces wear the theme colors Skippers get: each theme's main color.
+    const colors = look.themes().flatMap((t) => (t.main_color ? [t.main_color] : []));
+    main.append(...finishSection(draw, sampleSeeds, colors), cards);
     return main;
   }
 
@@ -906,8 +908,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         hostsTab.open(at);
       }
       root.hidden = false;
-      // New random faces for the Finish samples on each open; a redraw keeps them.
-      sampleSeeds = Array.from({ length: 4 }, () => 1 + Math.floor(Math.random() * 0xffffff));
+      // New random faces and colors for the Finish samples on each open; a redraw keeps them.
+      sampleSeeds = [];
       onShowChange();
       await look.load();
       openSet = await invoke<OpenSettings>("open_settings").catch(() => null);
