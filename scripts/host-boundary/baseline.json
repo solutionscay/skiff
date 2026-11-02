@@ -36,7 +36,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "323d2509315126157ac71ffcc07f6a9162f14b13f89e0ee1236f0f9283f01808"
+    "sha256": "e3cc9355eca7a2fb59336d45e0f874a538b26758d227cc2c83a9307aefd7dd01"
   },
   "apps/desktop/src-tauri/src/config.rs": {
     "ownership": "agent settings (#166 R8): a remote Host's through HostConnection (agent_config@1); This Mac's [agents] stays the legacy local adapter, read back from the config it writes (installed state from skiffd): migrate in M1\u2013M6; Skipper avatars (skipper_avatars, set_skipper_avatar) read and write avatar.toml in This Mac's Skipper folders: LOCAL_ONLY",
@@ -50,7 +50,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "b6730dec7880c2718c661ecbcbd700a383271618828c41b4fc2cdcc69433f2a5"
+    "sha256": "f784225600d5a0e28b24a7e4f82c386a00847f5c36a0e49bf88d2245a73399b3"
   },
   "apps/desktop/src-tauri/src/config_tests.rs": {
     "ownership": "test only: an in-process skiff-host on private state, never the live config",
@@ -158,7 +158,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "0f4155ede71100f717595a23dcec96a86d91fad7ec3a2cf3c779d52aaaab1c07"
+    "sha256": "9e4b8d5cefe016251d27ed0c821adbffb863cb062fba8a2528c1c54cda9bf5e8"
   },
   "apps/desktop/src-tauri/src/drops.rs": {
     "ownership": "client policy: reads dropped files and this computer's clipboard and cache; a remote Host gets each file through drops@1",
@@ -257,7 +257,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "a35c76f75d2d12225cf56f6609c9c734b4a3f44cacaf3ba6a191eefb204e7d36"
+    "sha256": "1eebf97f4c530357c834ed21be21baa6afe82c3e49dd4817fc7ecedb8de2754c"
   },
   "apps/desktop/src-tauri/src/main.rs": {
     "ownership": "client policy (#189): this app's own command-line flags; no Host data",
@@ -273,6 +273,15 @@
       "skiff_core"
     ],
     "sha256": "fada51b58e5cecc9d4ffdc07f371fd412d0c155672a2bdc0210670b4ae581a92"
+  },
+  "apps/desktop/src-tauri/src/projects_watch.rs": {
+    "ownership": "#223 projects.toml watch via selected Host projects@2 (projects_stamp); no projects.toml or path access here",
+    "reasons": [
+      "local provider: apps/desktop/src-tauri/src/connection.rs",
+      "local provider: apps/desktop/src-tauri/src/connection/remote.rs",
+      "local provider: apps/desktop/src-tauri/src/lib.rs"
+    ],
+    "sha256": "cfdc2dd62eae974c1deeadf930840f418d67463751825ae13243d3b39d9b46c3"
   },
   "apps/desktop/src-tauri/src/quit.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -313,7 +322,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "0b9f0bb0961ca05c9b2b2c6543e7043d975873538bc669cab3725edf8f0e9aa5"
+    "sha256": "e9d399612bb7e3c0db6de1515fd710f6f8fa6b123a0da48d063022a2d1d49e15"
   },
   "apps/desktop/src-tauri/src/streaming.rs": {
     "ownership": "M1e terminal output via selected Host session_terminal@1; M1d page session events via selected Host; core Event only for the page channel type",
@@ -371,7 +380,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "7794ad8682800f05248319b78c59b784e7f63bfbb71997907d4aa8fb4d97d237"
+    "sha256": "b6f1f4eabd48a572a8a33117d4c00b66b1f7a974cd40e181ac86a376f9e4a569"
   },
   "apps/desktop/src/app/daemonRestart.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

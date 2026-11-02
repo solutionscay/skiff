@@ -5,7 +5,7 @@ import { flush, moduleFromSource } from "./workspaceHarness.ts";
 /** The real `loadProjects`: which calls it makes for each Host and what it
  *  shows. The Tauri side is a fake that answers as the selected Host's data
  *  plane would, or fails as it does when no skiff-host answers. */
-function page(o: { remote: boolean; caps: string[]; fail?: string; capsFail?: string; dataPlane?: unknown; skiffAgent?: unknown; ledger?: unknown; S?: any }) {
+function page(o: { remote: boolean; caps: string[]; fail?: string; capsFail?: string; dataPlane?: unknown; skiffAgent?: unknown; ledger?: unknown; S?: any; window?: unknown; imports?: Record<string, unknown>; place?: (s: any) => unknown }) {
   const S: any = o.S ?? { agents: [{ id: "a" }], projects: [], closedProjects: [], projectsError: null, selectedProject: null, dataState: "loading", dataNote: null };
   const calls: string[] = [];
   const projects = [
@@ -47,10 +47,11 @@ function page(o: { remote: boolean; caps: string[]; fail?: string; capsFail?: st
       "../appearance/themes": { projectThemesFrom: (l: any[]) => void calls.push(`themes ${l.filter((p) => p.theme).map((p) => `${p.name}=${p.theme}`)}`) },
       "./skiffAgent": o.skiffAgent ?? { loadSkiffAgent: async () => void calls.push("get_skiff_agent") },
       "../workspace/ledger": o.ledger ?? { loadLedger: async () => void calls.push("ledger_rows") },
-      "./stateQueries": { place: () => null },
+      "./stateQueries": { place: o.place ?? (() => null) },
       "../workspace/skipperFace": { loadSkipperAvatars: async () => {} },
+      ...o.imports,
     },
-    { window: { addEventListener() {} }, document: { hasFocus: () => true }, Promise, Map, Set, console, JSON, performance },
+    { window: o.window ?? { addEventListener() {} }, document: { hasFocus: () => true }, Promise, Map, Set, console, JSON, performance },
     "",
   );
   return { mod, S, calls };
@@ -216,4 +217,60 @@ test("review M6 P2: a ledger refused at startup is read again when the capabilit
   assert.equal(m.asked.filter((c) => c === "ledger_rows").length, 1, "the ledger read again");
   assert.equal(m.ledger.errorNow(), null, "the startup error is gone");
   assert.equal(m.ledger.rowsNow().length, 1);
+});
+
+/** #223: a session in a folder no known project holds, such as a project
+ *  `skiff projects add` made while the app ran, reads the projects in full:
+ *  once per folder, at most once per UNPLACED_EVERY_MS. */
+test("a new session outside every project reads the projects in full, once per folder and rate-limited", async () => {
+  const timers: { ms: number; run: () => void }[] = [];
+  const S: any = { agents: [{ id: "a" }], projects: [], closedProjects: [], projectsError: null, selectedProject: null, dataState: "ready", dataNote: null };
+  const known = new Set(["/srv/web"]);
+  const p = page({
+    remote: false,
+    caps: ["projects"],
+    S,
+    window: { addEventListener() {}, setTimeout: (run: () => void, ms: number) => timers.push({ ms, run }), clearTimeout() {} },
+    place: (s: any) => (known.has(s.cwd) ? { project: { name: "web" } } : null),
+    imports: {
+      "./state": { S, sessions: new Map(), removeErrors: new Map(), OTHER: "\u0000other", born: new Set(), gone: new Set(), upsert() {} },
+      "../terminal/terminal": { ptySized() {} },
+      "./skiffAgent": { loadSkiffAgent: async () => {}, skipperCreated() {} },
+    },
+  });
+  const created = (id: string, cwd: string) => p.mod.onEvent({ event: "session_created", session: { id, cwd, role: "shell" } });
+  const reads = () => p.calls.filter((c) => c === "list_projects").length;
+
+  created("s1", "/srv/web");
+  await flush();
+  assert.equal(reads(), 0, "a session in a known project reads nothing");
+
+  created("s2", "/srv/sage");
+  await flush();
+  assert.equal(reads(), 1, "a folder in no known project reads them all");
+  assert.equal(timers.at(-1)?.ms, p.mod.UNPLACED_EVERY_MS);
+
+  created("s3", "/srv/sage");
+  created("s4", "/srv/other");
+  created("s5", "/srv/third");
+  await flush();
+  assert.equal(reads(), 1, "within the wait: no read yet");
+
+  // The wait ends: one read for the folders asked meanwhile, then a new wait.
+  timers.shift()!.run();
+  await flush();
+  assert.equal(reads(), 2);
+  timers.shift()!.run();
+  await flush();
+  assert.equal(reads(), 2, "nothing asked during the second wait");
+
+  created("s6", "/srv/sage");
+  await flush();
+  assert.equal(reads(), 2, "a folder that asked once does not ask again");
+
+  // Not while the projects are out of reach: the data plane check reads them when it answers.
+  S.dataState = "unavailable";
+  created("s7", "/srv/fresh");
+  await flush();
+  assert.equal(reads(), 2);
 });

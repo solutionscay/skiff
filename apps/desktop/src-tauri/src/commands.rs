@@ -295,12 +295,14 @@ pub(crate) fn open_settings() -> Result<OpenSettings, String> {
 #[tauri::command]
 pub(crate) fn set_open(key: String, command: String) -> Result<OpenSettings, String> {
     let c = command.trim();
+    let _own = crate::projects_watch::OwnEdit::quiet();
     skiff_core::config::set_open(&key, (!c.is_empty()).then_some(c)).map_err(err)?;
     open_settings_now()
 }
 
 #[tauri::command]
 pub(crate) fn set_open_peek(key: String, peek: bool) -> Result<OpenSettings, String> {
+    let _own = crate::projects_watch::OwnEdit::quiet();
     skiff_core::config::set_open_peek(&key, peek).map_err(err)?;
     open_settings_now()
 }

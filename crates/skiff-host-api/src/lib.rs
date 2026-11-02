@@ -155,6 +155,17 @@ impl Capability {
             version: 1,
         }
     }
+    /// What `projects@1` grants, and `projects_stamp`: a value that changes
+    /// with the Host's `projects.toml`, so a client can show an edit made
+    /// outside it (`skiff projects add`, a hand edit) without reading the
+    /// projects every second. Read-only. A Host that offers it offers
+    /// `projects@1` too.
+    pub fn projects_watch() -> Self {
+        Self {
+            name: PROJECTS.into(),
+            version: 2,
+        }
+    }
     /// Read the changed files of one of the Host's project worktrees. Data
     /// plane; grants no diff text, file read or Git write.
     pub fn git_status() -> Self {
@@ -679,6 +690,9 @@ pub enum Request {
     LedgerRows,
     /// Answers `ledger_stamp`: a value that changes when the ledger does.
     LedgerStamp,
+    /// Answers `projects_stamp`: a value that changes with any change to
+    /// the Host's `projects.toml` (`projects@2`).
+    ProjectsStamp,
     /// Answers `file`: the result of the row `uid`, read as a preview. A
     /// row with no result, or one outside the ledger's folder, through a
     /// link or not a regular file, is `not_found`.
@@ -807,6 +821,7 @@ impl Request {
             }
             Self::AgentList => Some(Capability::session_agents()),
             Self::ProjectList | Self::ProjectGet { .. } => Some(Capability::projects()),
+            Self::ProjectsStamp => Some(Capability::projects_watch()),
             Self::GitChanges { .. } => Some(Capability::git_status()),
             Self::GitDiff { .. } => Some(Capability::git_diff()),
             Self::FileList { .. } | Self::FileRead { .. } => Some(Capability::files()),
@@ -873,6 +888,7 @@ impl Request {
                 | (Self::FolderPlaces, Response::Places { .. })
                 | (Self::LedgerRows, Response::Ledger { .. })
                 | (Self::LedgerStamp, Response::LedgerStamp { .. })
+                | (Self::ProjectsStamp, Response::ProjectsStamp { .. })
                 | (Self::LedgerResult { .. }, Response::File { .. })
                 | (Self::SkipperSettings | Self::SkipperEdit { .. } | Self::SkipperFileReset { .. }, Response::Skipper { .. })
                 | (Self::SkipperFileRead { .. } | Self::SkipperFileWrite { .. }, Response::SkipperFile { .. })
@@ -917,6 +933,7 @@ impl Request {
                 | Self::DropPut { .. }
                 | Self::LedgerRows
                 | Self::LedgerStamp
+                | Self::ProjectsStamp
                 | Self::LedgerResult { .. }
                 | Self::SkipperSettings
                 | Self::SkipperEdit { .. }
@@ -982,6 +999,7 @@ pub enum Response {
     Places { places: FolderPlaces },
     Ledger { rows: Vec<HostLedgerRow> },
     LedgerStamp { stamp: String },
+    ProjectsStamp { stamp: String },
     /// Boxed, as `Project`. Same JSON.
     Skipper {
         #[serde(rename = "skipper")]

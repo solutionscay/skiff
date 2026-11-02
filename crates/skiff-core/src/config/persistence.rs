@@ -149,10 +149,27 @@ pub fn agents_revision(agents: &super::types::Agents) -> String {
 }
 
 fn revision_of<T: serde::Serialize + ?Sized>(value: &T) -> String {
-    // FNV-1a: the same token from every build, so a restarted service agrees.
-    let bytes = serde_json::to_vec(value).unwrap_or_default();
+    fnv(&serde_json::to_vec(value).unwrap_or_default())
+}
+
+/// FNV-1a: the same token from every build, so a restarted service agrees.
+fn fnv(bytes: &[u8]) -> String {
     let hash = bytes.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3));
     format!("{hash:016x}")
+}
+
+/// The file at `file` as a short token that changes with any change to its
+/// bytes: a project added or removed, a theme, a hand edit, a file that no
+/// longer parses. It reads the path each time, so a write-then-rename is
+/// seen as any other write. A missing file is `none`; one that cannot be
+/// read is `unread`. The file is small: reading it is cheap enough to ask
+/// for once a second.
+pub fn file_stamp(file: &Path) -> String {
+    match std::fs::read(file) {
+        Ok(bytes) => fnv(&bytes),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => "none".into(),
+        Err(_) => "unread".into(),
+    }
 }
 
 /// Longest name, fleet or theme id a project takes, in characters.
@@ -350,6 +367,32 @@ mod tests {
         std::fs::create_dir_all(d.join("blocked.toml.lock")).unwrap();
         assert!(edit_lock_for(&blocked).is_err());
         HELD.with(|h| assert!(h.borrow().is_empty()));
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    /// #223: the stamp the desktop watches for edits from outside the app.
+    /// A same-length hand edit within one mtime tick and a write-then-rename
+    /// change it; a rewrite of the same bytes does not.
+    #[test]
+    fn the_file_stamp_follows_the_bytes_through_a_rename() {
+        let d = std::env::temp_dir().join(format!("skiff-stamp-unit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let file = d.join("projects.toml");
+        assert_eq!(file_stamp(&file), "none");
+        std::fs::write(&file, "[[project]]\nname = \"a\"\n").unwrap();
+        let first = file_stamp(&file);
+        assert_eq!(file_stamp(&file), first, "stable while nothing changes");
+        std::fs::write(&file, "[[project]]\nname = \"b\"\n").unwrap();
+        let hand = file_stamp(&file);
+        assert_ne!(hand, first, "a same-length hand edit");
+        write_atomic(&file, "[[project]]\nname = \"b\"\n\n[[project]]\nname = \"c\"\n").unwrap();
+        let renamed = file_stamp(&file);
+        assert_ne!(renamed, hand, "a write-then-rename, as `skiff projects add` does");
+        write_atomic(&file, "[[project]]\nname = \"b\"\n\n[[project]]\nname = \"c\"\n").unwrap();
+        assert_eq!(file_stamp(&file), renamed, "the same bytes again: no change to show");
+        std::fs::remove_file(&file).unwrap();
+        assert_eq!(file_stamp(&file), "none");
         std::fs::remove_dir_all(&d).unwrap();
     }
 }

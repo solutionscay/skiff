@@ -2188,6 +2188,60 @@ What is left:
 The operator closed the manual two-machine runs on 2026-10-29. They are not
 a requirement.
 
+## Projects watch (#223): `projects@2`
+
+Before v1.8.0 the app watched this Mac's `projects.toml` itself (#178). The
+data plane had no cheap value to poll, so v2 dropped that watcher, and an
+edit from outside the app (`skiff projects add` or `remove`, `skiff theme
+project`, a hand edit) showed only after a restart or reconnect.
+
+### Contract (additive, API major 1)
+
+- **`projects@2`**: what `projects@1` grants, and `projects_stamp`, which
+  answers `projects_stamp { stamp }`. The stamp is opaque: FNV-1a over the
+  bytes of the Host's `projects.toml`, `none` for a missing file and
+  `unread` for one it cannot read (`skiff_core::config::file_stamp`). The
+  Host reads the path each time, so a write-then-rename shows as any other
+  write. It is read-only. A Host that offers it offers `projects@1` too.
+- An older Host does not offer `projects@2`. The client refuses
+  `projects_stamp` before it sends anything (`unsupported_capability`).
+
+### The app
+
+- **Watch** (`src-tauri/src/projects_watch.rs`): the app asks the selected
+  Host for `projects_stamp` every 1 s (This Mac) or 2 s (a remote Host),
+  only over a live session plane. When the stamp changes, it emits
+  `skiff:projects-changed` and the page runs `loadProjects()`. The first
+  stamp, and the first one on a new data connection, are only noted: the
+  data-plane check already reads the projects for a new connection.
+- **Own edits:** each edit the app makes of `projects.toml` holds a
+  `projects_watch::OwnEdit` from before it is sent until it ends (done,
+  refused, unknown or dropped). When it ends it counts the edit and emits
+  the event once. The Host may write the file before the edit ends, so a
+  stamp asked for while an edit runs, or one that began or ended during
+  the ask, is not taken; the next tick notes it without a second reload.
+  Edits of the file that the projects do not show (agents, `[open]`,
+  cache days, language) use `OwnEdit::quiet`: no reload at all.
+- **A session outside every project** (`unplaced` in `app/daemon.ts`): a
+  new session whose folder is in no known project reads the projects in
+  full. This is once per folder, and at most once per 10 s. It covers a
+  Host without `projects@2`, where a read of the known projects alone
+  (`reloadProjectsOf`) never finds the new one.
+
+### Tests
+
+- `skiff-core`: `the_file_stamp_follows_the_bytes_through_a_rename`.
+- `skiff-host-api`: `projects_stamp_is_projects_major_2_apart_from_major_1`.
+- `skiff-host` (`tests/data_plane.rs`): the stamp over the real service
+  stays the same while nothing changes and changes after an outside
+  write-then-rename.
+- `skiff-desktop` (`projects_watch`): one reload for an outside edit, none
+  for an own edit, none for a stamp read while an own edit runs or begins
+  or ends, none for a new connection; `OwnEdit` counts from begin to drop.
+- Page (`tests/projects.test.ts`): a session outside every project reads
+  the projects in full, once per folder, rate-limited, and not while the
+  data plane is out of reach.
+
 ## OSC 7501 program status (#209): `program_status@1`
 
 A program reports its own state to the terminal with OSC 7501, the Program

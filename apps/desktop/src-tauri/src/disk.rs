@@ -69,6 +69,7 @@ pub async fn disk_usage(app: State<'_, App>) -> Result<Usage, String> {
 /// Auto flush's age in days, in this computer's projects.toml. `0`: off.
 #[tauri::command]
 pub async fn set_cache_days(days: u32) -> Result<(), String> {
+    let _own = crate::projects_watch::OwnEdit::quiet();
     blocking(move || config::set_skiff_agent(config::SkiffAgentKey::CacheDays(days))).await
 }
 

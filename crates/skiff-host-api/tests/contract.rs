@@ -778,3 +778,26 @@ fn fleet_skippers_are_skipper_run_major_2_apart_from_major_1() {
     plain.retiring = true;
     assert_eq!(serde_json::to_value(&plain).unwrap()["retiring"], json!(true));
 }
+
+/// #223: the desktop's projects watcher asks `projects_stamp`, which only a
+/// Host with `projects@2` answers. An older Host refuses it on the client
+/// side, before anything is sent, so the watcher just keeps still there.
+#[test]
+fn projects_stamp_is_projects_major_2_apart_from_major_1() {
+    let watch = Capability::projects_watch();
+    assert_eq!((watch.name.as_str(), watch.version), ("projects", 2));
+    assert_ne!(watch, Capability::projects());
+    let value = json!({"cmd":"projects_stamp"});
+    let request: Request = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(request, Request::ProjectsStamp);
+    assert_eq!(serde_json::to_value(&request).unwrap(), value);
+    assert_eq!(request.capability(), Some(watch));
+    let stamp = Response::ProjectsStamp { stamp: "9c1e".into() };
+    assert_eq!(serde_json::to_value(&stamp).unwrap(), json!({"kind":"projects_stamp","stamp":"9c1e"}));
+    // Exactly one reply kind, never Ok, never the ledger's stamp.
+    assert!(request.accepts(&stamp));
+    assert!(!request.accepts(&Response::Ok));
+    assert!(!request.accepts(&Response::LedgerStamp { stamp: "9c1e".into() }));
+    assert!(!Request::LedgerStamp.accepts(&stamp));
+    assert!(!Request::ProjectList.accepts(&stamp));
+}

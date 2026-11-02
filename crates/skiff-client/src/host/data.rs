@@ -253,6 +253,14 @@ pub async fn ledger_stamp(c: &HostConnection) -> Result<String, Error> {
     }
 }
 
+/// A value that changes with the Host's `projects.toml` (`projects@2`).
+pub async fn projects_stamp(c: &HostConnection) -> Result<String, Error> {
+    match c.request(Request::ProjectsStamp).await? {
+        Response::ProjectsStamp { stamp } => Ok(stamp),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
 /// The result of the row `uid`, read on the Host as a bounded preview. The
 /// Host reads the path its row records; this side never names one.
 pub async fn ledger_result(c: &HostConnection, uid: &str) -> Result<HostFile, Error> {
