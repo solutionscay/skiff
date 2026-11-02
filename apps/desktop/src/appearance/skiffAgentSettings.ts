@@ -131,10 +131,11 @@ export function avatarsSection(set: SkiffAgentSettings, redraw: () => void): HTM
 /**
  * Settings › Appearance: the Finish of every face (flat, gummy or plush), an
  * app look kept in localStorage, then a strip of sample faces in it.
- * `seeds`: the strip's random faces.
+ * `seeds`: the strip's random faces, one per face; the strip adds seeds as it
+ * needs more. `colors`: the theme colors the faces wear.
  */
-export function finishSection(redraw: () => void, seeds: number[]): HTMLElement[] {
-  return [finishRow(redraw), finishSamples(seeds)];
+export function finishSection(redraw: () => void, seeds: number[], colors: string[]): HTMLElement[] {
+  return [finishRow(redraw), finishSamples(seeds, colors)];
 }
 
 /** The Finish row: the pick. It changes every face at once. */
@@ -157,12 +158,51 @@ function finishRow(redraw: () => void): HTMLElement {
   return row;
 }
 
-/** The sample strip: the Admiral, then a crew face per seed, in the finish, at the Skippers view's size. */
+/**
+ * The sample strip: the Admiral, then random crew faces, in the finish, at
+ * the Skippers view's size. As many faces as fit the strip's width, on one
+ * line; a resize or a zoom adds or drops faces. Each crew face wears another
+ * of `colors`, in an order the first seed shuffles.
+ */
 const SAMPLE_PX = 40;
-function finishSamples(seeds: number[]): HTMLElement {
+function finishSamples(seeds: number[], colors: string[]): HTMLElement {
   const strip = h("div", "set-finish-faces");
-  strip.append(skipperFace(null, SAMPLE_PX), ...seeds.map((seed) => skipperFace("", SAMPLE_PX, seed)));
+  const admiral = skipperFace(null, SAMPLE_PX);
+  strip.append(admiral);
+  const fill = () => {
+    if (!strip.isConnected) return seen.disconnect();
+    const css = getComputedStyle(strip);
+    const face = admiral.getBoundingClientRect().width;
+    const gap = parseFloat(css.columnGap) || 0;
+    const room = strip.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight);
+    if (!face) return;
+    const crew = Math.max(0, Math.floor((room + gap) / (face + gap)) - 1);
+    while (seeds.length < Math.max(crew, 1)) seeds.push(1 + Math.floor(Math.random() * 0xffffff));
+    const order = shuffled(colors, seeds[0]);
+    while (strip.children.length > crew + 1) strip.lastElementChild!.remove();
+    for (let i = strip.children.length - 1; i < crew; i++) {
+      const f = skipperFace("", SAMPLE_PX, seeds[i]);
+      if (order.length) f.style.setProperty("--pc", order[i % order.length]);
+      strip.append(f);
+    }
+  };
+  // The strip for its width, the Admiral for the zoom.
+  const seen = new ResizeObserver(fill);
+  seen.observe(strip);
+  seen.observe(admiral);
   return strip;
+}
+
+/** `colors` without repeats, in an order that `seed` picks. */
+function shuffled(colors: string[], seed: number): string[] {
+  const out = [...new Set(colors.map((c) => c.toLowerCase()))];
+  let x = seed | 0 || 1;
+  for (let i = out.length - 1; i > 0; i--) {
+    x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
+    const j = (x >>> 0) % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
 /**
