@@ -616,14 +616,14 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "314629d3216f52009f0aae312eb2d4078be09fcea0ac2acd59ae176f1c78cc97"
+    "sha256": "c7acdce646139d93794a14be15dd8ef45068bd1b97969c725044ff2b80417a21"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6; Show in file manager only on This Mac (#166)",
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "35b0151e98136c390cc6668003edd5bb944d0c7729bcf88535ebded8d12f8f6e"
+    "sha256": "3bdc77efca5108cac4e0a27cc98d67065e36d2a2e4a38b1d093d00995e03112e"
   },
   "apps/desktop/src/appearance/skiffFolderDialog.ts": {
     "ownership": "Host caller (#166 R7): folder preview and change through hostInvoke(skipper_config); the system picker and reveal are this client's own, used only on This Mac",

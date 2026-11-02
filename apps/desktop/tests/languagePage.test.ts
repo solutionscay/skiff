@@ -43,6 +43,7 @@ function settingsPage() {
     "./imagesPage": { imagesState: () => ({}) },
     "./daemonActivity": { activityState: () => ({}), stopActivity() {} },
     "./rowTable": { tableState: () => ({}) },
+    "./skiffAgentSettings": { finishSection: () => [h("div", "set-finish")] },
     "../terminal/images": { onImagesChanged() {} },
     "../app/hosts": { isRemote: () => false },
     "../app/hostCaps": { hostCan: () => true, hostInvoke: async () => null },

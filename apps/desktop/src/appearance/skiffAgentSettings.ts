@@ -103,18 +103,15 @@ export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInf
 }
 
 /**
- * Settings › Skippers › Avatars: the Finish of every face (flat, gummy or
- * plush) and a strip of sample faces in it, then each fleet and project
- * Skipper with a folder on this computer, as a tile with its face. A click
- * opens the picker. `seeds`: the sample strip's random faces.
- * The faces are kept in those folders: a remote Host shows no tiles here.
+ * Settings › Skippers › Avatars: each fleet and project
+ * Skipper with a folder on this computer, as a tile with its face. A click opens the picker.
+ * The faces are kept in those folders: a remote Host shows none here.
  */
-export function avatarsSection(set: SkiffAgentSettings, redraw: () => void, seeds: number[]): HTMLElement[] {
+export function avatarsSection(set: SkiffAgentSettings, redraw: () => void): HTMLElement[] {
   // The Admiral wears the mascot's head: nothing to change.
   const scopes = isRemote() ? [] : avatarScopes().filter((s) => s);
   const word = set.skipper_name || "Skipper";
-  const out: HTMLElement[] = [sectionHead(t("skipper.avatars"), undefined, scopes.length ? String(scopes.length) : undefined), finishRow(redraw), finishSamples(seeds)];
-  if (!scopes.length) return out;
+  if (!scopes.length) return [];
   // A grid of tiles, as many across as fit: the face and the name. A click opens the picker.
   const grid = h("div", "set-avatars");
   for (const scope of scopes) {
@@ -128,12 +125,21 @@ export function avatarsSection(set: SkiffAgentSettings, redraw: () => void, seed
     tile.addEventListener("click", () => setAvatarDialog(scope || null, title, redraw));
     grid.append(tile);
   }
-  return [...out, grid];
+  return [sectionHead(t("skipper.avatars"), undefined, String(scopes.length)), grid];
+}
+
+/**
+ * Settings › Appearance: the Finish of every face (flat, gummy or plush), an
+ * app look kept in localStorage, then a strip of sample faces in it.
+ * `seeds`: the strip's random faces.
+ */
+export function finishSection(redraw: () => void, seeds: number[]): HTMLElement[] {
+  return [finishRow(redraw), finishSamples(seeds)];
 }
 
 /** The Finish row: the pick. It changes every face at once. */
 function finishRow(redraw: () => void): HTMLElement {
-  const row = h("div", "set-row set-open set-agent set-finish on");
+  const row = h("div", "set-row set-open set-opacity set-finish");
   const pick = h("select", "c-cmd");
   pick.setAttribute("aria-label", t("skipper.finish"));
   for (const f of FINISHES) {

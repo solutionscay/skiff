@@ -1002,7 +1002,7 @@ export const zh = {
   "skipper.avatarProject": "{scope} {skipper}",
   "skipper.avatarFleet": "{scope} 舰队 {skipper}",
   "skipper.avatarTitle": "头像：{name}",
-  "skipper.finish": "质感",
+  "skipper.finish": "头像质感",
   "skipper.finish.flat": "扁平",
   "skipper.finish.gummy": "软糖",
   "skipper.finish.plush": "毛绒",
