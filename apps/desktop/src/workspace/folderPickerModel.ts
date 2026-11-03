@@ -1,6 +1,7 @@
 /** The folder picker's pure parts: crumbs, names, times and filtering. */
 import type { FolderEntry, FolderRepo } from "../platform/types";
 import { t, tn } from "../i18n";
+import { basename } from "./paths";
 
 /** One row of the picker's main list. `path` is the Host's. */
 export interface PickRow {
@@ -25,7 +26,7 @@ export function crumbs(real: string, host: string): { label: string; path: strin
 
 /** The last name of a Host path; `/` for the root. */
 export function folderName(path: string): string {
-  return path.split("/").filter(Boolean).pop() ?? "/";
+  return basename(path) || "/";
 }
 
 /** The folder above a Host path. `null` at the root. */

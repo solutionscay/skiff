@@ -119,7 +119,7 @@ function words(name: string) {
 // Pure modules with no Host or DOM access: the real one, unless a test passes its own.
 const reports = new Map<string, unknown>();
 function pure(name: string) {
-  const found = /(^|\/)(programStatus|fileMenu)$/.exec(name)?.[2];
+  const found = /(^|\/)(programStatus|fileMenu|paths)$/.exec(name)?.[2];
   if (!found) return undefined;
   if (!reports.has(found)) reports.set(found, moduleFromSource(`../src/workspace/${found}.ts`, {}, {}, ""));
   return reports.get(found);

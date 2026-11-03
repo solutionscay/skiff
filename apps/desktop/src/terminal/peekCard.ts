@@ -6,6 +6,7 @@
 import { $, button, h } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { t, type MessageKey } from "../i18n";
+import { splitPath } from "../workspace/paths";
 
 /** The card over the panes, and the blob URL of a Host image on it, revoked when the card goes. */
 export const slot: { el: HTMLElement | null; url: string | null } = { el: null, url: null };
@@ -40,8 +41,7 @@ export function peekHead(kind: string, title: string, where: string, close: () =
 
 /** A card's frame: its head, with the kind, the name, its folder and Esc. */
 export function cardFrame(kind: string, path: string, close: () => void, cls = "peek file-preview"): HTMLElement {
-  const name = path.split("/").pop() ?? path;
-  const dir = path.slice(0, path.length - name.length - 1);
+  const { name, dir } = splitPath(path);
   const el = h("div", cls);
   el.tabIndex = -1;
   el.setAttribute("aria-label", name);

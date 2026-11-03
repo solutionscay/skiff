@@ -27,6 +27,7 @@ import { hostCan, hostInvoke } from "../app/hostCaps";
 import { isRemote } from "../app/hosts";
 import { dataEpoch } from "../app/dataPlane";
 import { openHostCopy } from "../terminal/peek";
+import { dirname } from "./paths";
 
 type Entry = HostEntry;
 type Listing = HostListing | { error: string };
@@ -98,7 +99,7 @@ function load(root: string, dir: string) {
       const msg = String(e);
       // Deleted since its parent was read: forget it and read the parent
       // again, so its row goes. No note.
-      const parent = dir.slice(0, dir.lastIndexOf("/"));
+      const parent = dirname(dir);
       if (/is not a folder in this worktree/.test(msg) && dir !== root && listings.has(parent)) {
         for (const d of [...listings.keys()]) if (d === dir || d.startsWith(dir + "/")) listings.delete(d);
         for (const d of [...expanded]) if (d === dir || d.startsWith(dir + "/")) expanded.delete(d);

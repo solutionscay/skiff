@@ -1,12 +1,10 @@
 import type { Project, SessionInfo, Worktree } from "../platform/types";
+import { basename, samePath, trimSlash } from "./paths";
+export { basename, samePath };
 
 export interface Place {
   project: Project;
   worktree: Worktree;
-}
-
-function trimSlash(p: string): string {
-  return p.length > 1 ? p.replace(/\/+$/, "") : p;
 }
 
 function within(cwd: string, root: string): boolean {
@@ -29,15 +27,6 @@ export function locate(projects: Project[], cwd: string): Place | null {
     }
   }
   return best;
-}
-
-export function samePath(a: string, b: string): boolean {
-  return trimSlash(a) === trimSlash(b);
-}
-
-export function basename(p: string): string {
-  const t = trimSlash(p);
-  return t.slice(t.lastIndexOf("/") + 1) || t;
 }
 
 export function agentName(s: SessionInfo): string {

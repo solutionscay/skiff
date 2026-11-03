@@ -5,6 +5,7 @@ import { rune } from "../ui/runes";
 import { size } from "./skiffFolderDialog";
 import { canFlush, expected, find, groups, idleReason, plan, rowState, visibleRows, type DiskNode, type Expected } from "./diskTree";
 import { locale, type PluralKey, sentences, t, tn, upper } from "../i18n";
+import { dirname } from "../workspace/paths";
 
 /** `disk_usage`: the Skiff agent's folder as a tree, each file with the rule's verdict. */
 interface DiskUsage {
@@ -287,7 +288,7 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
         if (s.open!.has(n.path) && n.children?.length) {
           e.preventDefault();
           toggle(n);
-        } else if (n.path) go(n.path.includes("/") ? n.path.slice(0, n.path.lastIndexOf("/")) : "");
+        } else if (n.path) go(dirname(n.path));
       } else if (e.key === " " && n.children?.length) {
         e.preventDefault();
         toggle(n);

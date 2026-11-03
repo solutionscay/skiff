@@ -48,6 +48,7 @@ import { allChanges, buildCard, cardAction, cardFrame, clearCard, mountCard, pee
 import { diffBody } from "./diffView";
 import { exitAction, tookTerminal, type Peek } from "./peekTerminal";
 import { hostFileFrame, renderHostFile, showHostView, type Gate } from "./peekHostView";
+import { splitPath } from "../workspace/paths";
 
 /** Where to find tools for a row that has none. */
 const TOOLS_URL = "https://github.com/solutionscay/skiff/wiki/Open-with";
@@ -188,8 +189,7 @@ function begin(mine: number, preview: Preview, fresh = false) {
       .catch(failed(mine));
   } else {
     const { path } = preview;
-    const name = path.split("/").pop() ?? path;
-    const dir = path.slice(0, path.length - name.length - 1);
+    const { name, dir } = splitPath(path);
     // Cover the panes before the setting is known, without an action yet.
     showCard(mine, "file", path);
     void invoke<FilePreview>("preview_file", { path }).then((p) => {
@@ -262,8 +262,8 @@ export function peekText(script: string, cwd: string, path: string, ended: () =>
   const a = claim();
   if (open) open.gen = a.gen;
   afterPeek = ended;
-  const name = path.split("/").pop() ?? path;
-  handle({ kind: "run", script, cwd }, "file", name, path.slice(0, path.length - name.length - 1));
+  const { name, dir } = splitPath(path);
+  handle({ kind: "run", script, cwd }, "file", name, dir);
 }
 
 /** Shift+Enter, double-click, the card's button, a menu's Open: opens the path over the current row. */
@@ -274,8 +274,7 @@ export function openPath(path: string) {
   const mine = a.gen;
   // The command on screen, or still starting, belongs to the Open now: it may be the same tool.
   if (open) open.gen = mine;
-  const name = path.split("/").pop() ?? path;
-  const dir = path.slice(0, path.length - name.length - 1);
+  const { name, dir } = splitPath(path);
   void invoke<Opened>("open_file", { path })
     .then((o) => {
       if (!live(mine)) return;
@@ -414,7 +413,7 @@ export function openHostCopy(wt: string, file: string) {
   a.result = undefined;
   const mine = a.gen;
   if (open) open.gen = mine;
-  const name = file.split("/").pop() ?? file;
+  const { name } = splitPath(file);
   hostInvoke<Opened>("files", "open_file_copy", { worktree: wt, file })
     .then((o) => {
       if (!live(mine)) return;

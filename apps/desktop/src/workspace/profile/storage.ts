@@ -1,6 +1,7 @@
 /** The workspace file on disk (read, write, revision) and the recent list in localStorage. */
 import { invoke } from "@tauri-apps/api/core";
 import type { Profile } from "./state";
+import { basename } from "../paths";
 
 const LAST_KEY = "skiff.workspace.last";
 const RECENT_KEY = "skiff.workspace.recent";
@@ -42,7 +43,7 @@ export function forget(path: string, render: () => void) {
   render();
 }
 
-export const fileName = (path: string) => path.split("/").pop() ?? path;
+export const fileName = basename;
 
 export async function read(path: string): Promise<Loaded> {
   return invoke<Loaded>("workspace_read", { path });

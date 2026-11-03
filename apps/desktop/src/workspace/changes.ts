@@ -30,6 +30,7 @@ import { isRemote } from "../app/hosts";
 import { hostCan, hostInvoke } from "../app/hostCaps";
 import { dataEpoch } from "../app/dataPlane";
 import type { Preview } from "./rowActs";
+import { splitPath } from "./paths";
 
 /** `committed`: the file is the same in the working tree and HEAD; the change sits in the branch's commits. */
 type Change = { path: string; status: "M" | "A" | "D" | "U"; added: number | null; removed: number | null; committed?: boolean };
@@ -197,9 +198,7 @@ function row(w: Worktree, c: Change): HTMLElement {
   const preview = diffPreview(w, c.path);
   setRowActs(key, { preview, open: gone || remote ? undefined : () => open(path) });
   const show = () => select(key, true, true);
-  const slash = c.path.lastIndexOf("/");
-  const name = c.path.slice(slash + 1);
-  const dir = slash < 0 ? "" : c.path.slice(0, slash);
+  const { name, dir } = splitPath(c.path);
   const r = h("button", "file-row change-row" + (gone ? " st-gone" : "") );
   r.type = "button";
   r.dataset.key = key;

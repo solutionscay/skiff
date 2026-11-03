@@ -598,7 +598,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "54f85e8e1f4064a0009f174a16207a364bac0706a595f9bcf7d80b8169dbf103"
+    "sha256": "acc410a75dfa807b1d90f9d6af8887a47a3ed25b5b69fb6d54a5b535865fe54f"
   },
   "apps/desktop/src/appearance/hostProgress.ts": {
     "ownership": "client policy (#166): progress of this client's own SSH install/update job (skiff:host-step) and its cancel_install; the Host is not there yet, so no HostConnection",
@@ -635,7 +635,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "9d807360e9d1040ea98f948a492c23734050b8d748b68c8754aa4e8a943fa79c"
+    "sha256": "512ea288fad8f78d56bc2de6c6f285819fd2335ce6ed1ffdc2f0c9d516f8c467"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6; Show in file manager only on This Mac (#166)",
@@ -789,7 +789,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "21c26b6db4b724355eee5894fbfc4f6ae29a9765d702f5a468016ec09a1bcb9c"
+    "sha256": "447ea09403309b665bbd5f1584f683291b1b303a1415673c1272f3510036572f"
   },
   "apps/desktop/src/terminal/resume.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -906,14 +906,14 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "9e45a922ce84e208e7a40dbd8fe17326f4dbbe0e87dde9d5b763e530bebd600f"
+    "sha256": "2c9d8a257f112528170dedd86351a2550ed8b9a86af75583a871702a5a9466eb"
   },
   "apps/desktop/src/workspace/files.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "039217652650008d0f46bb3c05100b368cbcd96e2a0b40fbb6f5b672b2c42eda"
+    "sha256": "45ac89ea518e6770a1869404bab8b16f9907257980734575e631236d9633ac8d"
   },
   "apps/desktop/src/workspace/fleets.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -1211,7 +1211,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "1d12a6b7e61a4830015f083b8c9175caac5bb0b202313e23a02c0b62655f8ac5"
+    "sha256": "9e077009dfbfc10d67cfb7c9f4d80450cc53407e11ac97bc39be01511a0cc977"
   },
   "apps/desktop/src/workspace/profile/transitions.ts": {
     "ownership": "reviewed desktop refactor: existing Host and UI dependencies",

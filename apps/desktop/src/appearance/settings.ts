@@ -28,6 +28,7 @@ import { revealSession } from "../workspace/view";
 import { locate } from "../workspace/model";
 import { openClosedProject } from "../workspace/projectClose";
 import { S } from "../app/state";
+import { basename } from "../workspace/paths";
 
 /**
  * Settings over the sidebar and terminal: agents, Skippers, task types,
@@ -606,7 +607,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     }
     if (o.kind === "run") {
       close();
-      return peekText(o.script, o.cwd, `${o.cwd}/${f.file.split("/").pop()}`, () => void settings.open("skippers"));
+      return peekText(o.script, o.cwd, `${o.cwd}/${basename(f.file)}`, () => void settings.open("skippers"));
     }
     if (o.kind === "no_app") fileErrors.set(f.file, t("settings.noApp", { file: f.file }));
     void loadFiles();
@@ -643,7 +644,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
 
   /** Reset…: asks, with the file's date and size, then writes the template again. */
   async function resetFile(f: InstructionFile) {
-    const base = f.file.split("/").pop()!;
+    const base = basename(f.file);
     const date = f.modified ? new Date(f.modified).toISOString().slice(0, 10) : "";
     const who = f.scope.kind === "skipper" ? t("settings.reset.everySkipper") : t("settings.reset.oneSkipper", { name: f.scope.name });
     const ok = await confirmAction({
