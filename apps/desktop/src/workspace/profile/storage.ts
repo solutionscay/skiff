@@ -2,6 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Profile } from "./state";
 import { basename } from "../paths";
+import { shownHost } from "../../app/hosts";
 
 const LAST_KEY = "skiff.workspace.last";
 const RECENT_KEY = "skiff.workspace.recent";
@@ -31,15 +32,21 @@ function store(key: string, value: string | null) {
   }
 }
 
-export const recents = () => storedList(RECENT_KEY);
+/** Workspace files are local, but their project paths belong to one Host. */
+const hostKey = (key: string) => {
+  const host = shownHost();
+  return host ? `${key}.${host}` : key;
+};
+
+export const recents = () => storedList(hostKey(RECENT_KEY));
 
 export function remember(path: string) {
-  store(RECENT_KEY, JSON.stringify([path, ...recents().filter((x) => x !== path)].slice(0, RECENT_MAX)));
-  store(LAST_KEY, path);
+  store(hostKey(RECENT_KEY), JSON.stringify([path, ...recents().filter((x) => x !== path)].slice(0, RECENT_MAX)));
+  store(hostKey(LAST_KEY), path);
 }
 
 export function forget(path: string, render: () => void) {
-  store(RECENT_KEY, JSON.stringify(recents().filter((x) => x !== path)));
+  store(hostKey(RECENT_KEY), JSON.stringify(recents().filter((x) => x !== path)));
   render();
 }
 
@@ -57,5 +64,5 @@ export async function write(path: string, profile: Profile, expect: string | nul
   return invoke<string>("workspace_write", { path, profile, expect });
 }
 
-export const last = () => localStorage.getItem(LAST_KEY);
-export const forgetLast = () => store(LAST_KEY, null);
+export const last = () => localStorage.getItem(hostKey(LAST_KEY));
+export const forgetLast = () => store(hostKey(LAST_KEY), null);
