@@ -345,11 +345,6 @@ export function ledgerCounts(project: string): { need: number; working: number }
   return { need: mine.filter((l) => NEED[l.st]).length, working: mine.filter((l) => l.st === "sent").length };
 }
 
-/** The live panes of a project Skipper's open tasks, for its watcher mark. */
-export function ledgerPanes(project: string): string[] {
-  return rows.filter((r) => r.owner === project && r.state !== "done" && r.pane_id).map((r) => r.pane_id!);
-}
-
 /** The title of a project Skipper's newest open work: a hand-off it was given, or its own. */
 export function ledgerWorkTitle(project: string): string | null {
   const r = [...rows].reverse().find((r) => r.bucket !== "finished" && r.state !== "done" && !r.parent && (r.owner === project || (r.kind === "handoff" && r.project === project)))

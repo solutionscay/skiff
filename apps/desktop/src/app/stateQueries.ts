@@ -79,11 +79,6 @@ export function visitors(w: Worktree): SessionInfo[] {
 
 export const currentProject = () => S.projects.find((p) => p.name === S.selectedProject) ?? null;
 
-/** Sessions that sit under a group in the sidebar, not under their worktree. */
-export function groupedIds(): Set<string> {
-  return new Set(S.groups.flatMap((g) => sessionsOf(g.layout)));
-}
-
 export function worktreeSessions(w: Worktree): SessionInfo[] {
   return [...sessions.values()]
     .filter((s) => place(s)?.worktree === w)

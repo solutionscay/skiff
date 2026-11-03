@@ -19,15 +19,6 @@ export function modelFlag(agent: AgentInfo | undefined): string | null {
   return agent && !agent.custom ? (MODEL_FLAGS[agent.id] ?? null) : null;
 }
 
-/** The command line a task type starts, as skiffd builds it. An empty model is the agent's default. */
-export function taskCommand(agent: AgentInfo | undefined, model: string): string {
-  if (!agent) return "";
-  const cmd = agent.command.trim();
-  const flag = modelFlag(agent);
-  const m = model.trim();
-  return flag && m ? `${cmd} ${flag} ${m}` : cmd;
-}
-
 /** Why a model cannot be saved, or null. */
 export function modelError(model: string): string | null {
   return /\s/.test(model.trim()) ? t("tasks.badModel") : null;
