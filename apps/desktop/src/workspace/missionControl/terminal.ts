@@ -19,11 +19,12 @@ import { h } from "../../ui/dom";
 import { faceSig, skipperFace } from "../skipperFace";
 import { statusNote } from "../programStatus";
 import * as G from "../missionLayout";
+import { paintWindow } from "./theme";
 
 const scopeOf = (s: SessionInfo) => (s.coordinator ? null : (s.skipper ?? ""));
 
-/** A window's two parts: the header to fill, and the state's column. Built once per card. */
-export function windowOf(card: HTMLElement, rung: G.Rung): { head: HTMLElement; state: HTMLElement } {
+/** A window's two parts: the header to fill, and the state's column. Built once per card; its body wears the theme of `s`'s pane (theme.ts). */
+export function windowOf(card: HTMLElement, rung: G.Rung, s: SessionInfo): { head: HTMLElement; state: HTMLElement } {
   let head = card.querySelector<HTMLElement>(":scope > .win-head");
   let state = card.querySelector<HTMLElement>(":scope > .win-body > .win-state");
   if (!head || !state || card.dataset.rung !== rung) {
@@ -38,6 +39,7 @@ export function windowOf(card: HTMLElement, rung: G.Rung): { head: HTMLElement; 
     body.append(col, state);
     card.replaceChildren(head, body);
   }
+  paintWindow(state.parentElement!, s);
   return { head, state };
 }
 

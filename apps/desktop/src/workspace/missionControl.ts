@@ -497,7 +497,7 @@ function draw() {
     const cls = [rung ? `window ${rung === "admiral" ? "admiral" : "skipper"}` : "", s.state === "waiting" ? "waiting" : ""].join(" ");
     putCard(id, r, rung ?? cardParts(s, now), cls, rung ? "var(--accent)" : accent(place(s)?.project ?? null), dimmed(s));
     if (rung) {
-      const w = T.windowOf(cards.get(id)!, rung);
+      const w = T.windowOf(cards.get(id)!, rung, s);
       refill(w.head, T.windowHead(s, cardName(s), numbered.indexOf(id) + 1));
       refill(w.state, stateParts(s, now));
     }

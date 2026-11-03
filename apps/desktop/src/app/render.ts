@@ -19,6 +19,7 @@ import { renderLedger } from "../workspace/ledger";
 
 import { applyBackdrop } from "../appearance/backdrop";
 import { applyApp, applyThemes } from "../appearance/themes";
+import { repaintWindows } from "../workspace/missionControl/theme";
 import { step, tally } from "../diagnostics/stalls";
 
 /**
@@ -89,6 +90,8 @@ function renderAll() {
   step("render.ledger", renderLedger);
   step("render.modes", renderModes);
   step("render.themes", applyThemes);
+  // Mission control's windows wear their panes' themes: a pick shows there too.
+  step("render.missionThemes", repaintWindows);
   step("render.backdrop", applyBackdrop);
   step("render.header", renderHeader);
   step("render.counts", renderCounts);

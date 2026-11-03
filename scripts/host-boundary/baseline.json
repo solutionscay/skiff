@@ -486,12 +486,13 @@
       "local provider: apps/desktop/src/workspace/fleets.ts",
       "local provider: apps/desktop/src/workspace/header.ts",
       "local provider: apps/desktop/src/workspace/ledger.ts",
+      "local provider: apps/desktop/src/workspace/missionControl/theme.ts",
       "local provider: apps/desktop/src/workspace/selection.ts",
       "local provider: apps/desktop/src/workspace/sidebar.ts",
       "local provider: apps/desktop/src/workspace/sidebarLines.ts",
       "local provider: apps/desktop/src/workspace/status.ts"
     ],
-    "sha256": "3b0ddc377480b4137549019342d280231d21c39aed8a3a8384f1bcd6da715771"
+    "sha256": "4b1d70533b75d957ac51a6cd2ee10feb02f4632319cf9948596a3c4cb474b62e"
   },
   "apps/desktop/src/app/seen.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -956,7 +957,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "7ac42526870634fb435392376f9314a8debbd327aad709df24c6a695bd5213d6"
+    "sha256": "2a8fb522f0b51f93a3f308982d501965056d7625ba056b394ff8c2eb2b5b3afd"
   },
   "apps/desktop/src/workspace/missionControl/model.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -979,9 +980,19 @@
     "ownership": "client policy: exact existing adapter only",
     "reasons": [
       "local provider: apps/desktop/src/appearance/agentIcon.ts",
+      "local provider: apps/desktop/src/workspace/missionControl/theme.ts",
       "local provider: apps/desktop/src/workspace/skipperFace.ts"
     ],
-    "sha256": "e0d824d71155f25a9f9f66a27eadbf14a572e09bd9621bd21f51a8b35dc92e70"
+    "sha256": "6e129891d9e5f020eca54df8eec82cd623b9350c6256e526fd582529df8dafa5"
+  },
+  "apps/desktop/src/workspace/missionControl/theme.ts": {
+    "ownership": "client policy: exact existing adapter only",
+    "reasons": [
+      "local provider: apps/desktop/src/app/state.ts",
+      "local provider: apps/desktop/src/appearance/appTheme.ts",
+      "local provider: apps/desktop/src/appearance/themes.ts"
+    ],
+    "sha256": "9d03f84a0415015af8fb8be2c6defd3e1fb920c905dc5e97733d814ea476861f"
   },
   "apps/desktop/src/workspace/missionMotion.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
