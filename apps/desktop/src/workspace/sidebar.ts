@@ -345,16 +345,19 @@ export function renderSidebar() {
   const caret: Caret | null = active instanceof HTMLInputElement && active.selectionStart !== null
     ? [active.selectionStart, active.selectionEnd ?? active.selectionStart, active.selectionDirection ?? "none"]
     : null;
-  // The rows after the focused one, then the rows before it, nearest first. If the
-  // focused row goes (its session ended), the cursor moves to the next one left.
-  const items = listItems();
-  const at = active ? items.indexOf(active) : -1;
-  const near = at < 0 ? [] : [...items.slice(at + 1), ...items.slice(0, at).reverse()].map(itemKey);
-  // Where the view is, read before the first row comes or goes. A state
-  // change alone moves no row: no read, and no layout forced for it.
-  let anchor: ReturnType<typeof anchorOf> | undefined;
+  // Read before the first row comes or goes: the rows, where the view is, and the
+  // rows after the focused one, then before it, nearest first. If the focused row
+  // goes (its session ended), the cursor moves to the next one left. A state
+  // change alone moves no row: no read, no layout forced, no focus to put back.
+  let items: HTMLElement[] | undefined;
+  let near: string[] = [];
+  let anchor: ReturnType<typeof anchorOf> = null;
   const takeAnchor = () => {
-    if (anchor === undefined) anchor = anchorOf(side, items);
+    if (items) return;
+    items = listItems();
+    const at = active ? items.indexOf(active) : -1;
+    near = at < 0 ? [] : [...items.slice(at + 1), ...items.slice(0, at).reverse()].map(itemKey);
+    anchor = anchorOf(side, items);
   };
 
   // The block drawn last time when what it shows is the same, else a new one.
@@ -403,7 +406,7 @@ export function renderSidebar() {
       ? split.shown.length ? [keep(`shown:${sec.fleet}`, shownSig, () => shownBlock(split.shown))] : []
       : sec.projects.map((p) => {
         const k = projectBlockKey(p.name);
-        return syncSkipperRow(keep(k, sig.parts.get(k)!, () => projectBlock(p)), p);
+        return syncSkipperRow(keep(k, sig.parts.get(k)!, () => projectBlock(p)), p, takeAnchor);
       }))], takeAnchor);
     nodes.push(kids);
   }
@@ -430,7 +433,7 @@ export function renderSidebar() {
   blockSigs = sigs;
   if (anchor) keepAnchor(side, anchor);
   growOpened();
-  restoreFocus(side, activeKey, caret, near);
+  if (items) restoreFocus(side, activeKey, caret, near);
 }
 
 /**
@@ -542,7 +545,7 @@ function skipperSig(scope: string) {
  * An open project's Skipper row changes with its state, its watcher and its
  * Ledger counts. A kept block rebuilds that row alone.
  */
-function syncSkipperRow(block: HTMLElement, p: Project): HTMLElement {
+function syncSkipperRow(block: HTMLElement, p: Project, before: () => void): HTMLElement {
   const s = projectSkipperOf(p.name);
   const old = block.querySelector<HTMLElement>(":scope > .tree-kids > .project-skipper-row");
   if (!s || !old) return block;
@@ -550,6 +553,7 @@ function syncSkipperRow(block: HTMLElement, p: Project): HTMLElement {
   if (block.dataset.skipper === sig) return block;
   block.dataset.skipper = sig;
   tally("sidebar.row");
+  before();
   old.replaceWith(projectSkipperRow(p.name, s));
   return block;
 }

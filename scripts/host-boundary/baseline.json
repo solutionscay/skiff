@@ -1092,7 +1092,7 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "78967a08b656ef481ab72b5a8357ed9fc7c3bbe4bd2b347439adc2f955df30af"
+    "sha256": "64a79f59d280628fef580e36bd5b3c2e0e1ae8b3e98301bfb45acbc0e050c238"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
