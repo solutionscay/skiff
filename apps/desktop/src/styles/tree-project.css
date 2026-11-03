@@ -6,7 +6,6 @@
   border: 0; background: transparent; text-align: left;
   font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim);
 }
-#sidebar-scroll > .tree-head:first-child { margin-top: calc(4 * var(--u)); }
 .tree-head-name { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fleet-pick { padding-left: calc(10 * var(--u)); padding-right: calc(12 * var(--u)); }
 .fleet-pick:hover, .fleet-pick.hover { color: var(--text-2); }
@@ -61,9 +60,11 @@ body.kbd #sidebar-scroll .project-row:has(> .project-pick.current:focus) { outli
 
 /* One indent grid. A project's rows start under its name (--in); a worktree's rows one step further.
    Changes and Files put their glyph on the same line as the session icons. No space between rows anywhere. */
-/* --fi: a fleet's projects sit one step in from the fleet's Skipper, so the fleet reads as their head. */
+/* --fi: a fleet's projects sit one step in from the fleet's Skipper, so the fleet reads as their head.
+   In a section box, the box's inset and frame take 8 of the indent: the rows keep their place on screen. */
 .tree-project { --fi: 0; --in: calc(44 + var(--fi)); }
-#sidebar-scroll > .tree-kids[data-kids] > .tree-project { --fi: 20; }
+#sidebar-scroll > .tree-kids > .tree-project { --fi: -8; }
+#sidebar-scroll > .tree-kids[data-kids] > .tree-project { --fi: 12; }
 .tree-project .wt { --in: calc(66 + var(--fi)); padding-bottom: 0; box-shadow: none; }
 .tree-project .wt.selected { box-shadow: none; }
 .tree-project .wt-row, .tree-project .files-head { background: transparent; }
@@ -89,19 +90,27 @@ body.kbd #sidebar-scroll .project-row:has(> .project-pick.current:focus) { outli
 @keyframes tree-fold { from { height: var(--h); opacity: 1; } to { height: 0; opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .tree-opening, .tree-folding { animation: none; } }
 
-/* Grouping: a section is a 40px tinted band, as a Settings section head, with a 1px rule above and below.
-   Projects in a section part with a 1px rule. Worktree rows keep the 20px child grid. */
+/* Grouping: each section (Projects, each fleet, Other) is one box. A 1px --rule-strong frame on the panel color,
+   8px in from the panel's edges, with an 8px dark gutter between boxes. The head is a plain 40px row in the box;
+   the head draws the frame's top and sides, the rows under it the sides and bottom. No wrapper: the blocks stay keyed.
+   Projects in a box part with a 1px rule, the first one from the head too. Worktree rows keep the 20px child grid. */
+#sidebar-scroll:has(> .tree-head) { background: var(--bg-deep); padding-bottom: calc(8 * var(--u)); }
 #sidebar-scroll > .tree-head {
-  height: var(--row); margin-top: 0; align-items: center; padding-bottom: 0;
-  background: var(--bg-raised); color: var(--text-2);
-  border-top: 1px solid var(--rule-strong); border-bottom: 1px solid var(--rule);
+  width: auto; height: var(--row); margin: calc(8 * var(--u)) calc(8 * var(--u)) 0; padding: 0 0 0 calc(8 * var(--u)); align-items: center;
+  background: var(--bg-panel); color: var(--text-3);
+  border: 1px solid var(--rule-strong);
 }
-#sidebar-scroll > .tree-head:first-child { margin-top: 0; border-top: 0; height: var(--row); }
-/* The + fills its cell, from rule to rule, against the right edge. */
+#sidebar-scroll > .tree-head:has(+ :is(.tree-kids, .sessions-block)) { border-bottom: 0; }
+#sidebar-scroll > .tree-head + :is(.tree-kids, .sessions-block) {
+  margin: 0 calc(8 * var(--u)); background: var(--bg-panel);
+  border: 1px solid var(--rule-strong); border-top: 0;
+}
+/* Other's rows set their own height: the frame goes outside it. */
+#sidebar-scroll > .tree-head + .sessions-block { box-sizing: content-box; }
+/* The + fills its cell, from frame to frame, against the right edge. */
 #sidebar-scroll > .tree-head .tree-head-add { height: auto; align-self: stretch; margin-bottom: 0; }
-#sidebar-scroll > .tree-head .tree-head-add:hover { background: color-mix(in srgb, var(--text) 8%, var(--bg-raised)); }
+#sidebar-scroll > .tree-head .tree-head-add:hover { background: var(--hover); }
 .tree-kids > .tree-project { border-top: 1px solid var(--rule); }
-.tree-kids > .tree-project:first-child { border-top: 0; }
 .tree-project .wt-row { height: calc(20 * var(--u)); background: transparent; }
 .tree-project .wt-pick { font-size: calc(12px * var(--zoom, 1)); }
 .tree-project .wt-row .wt-plus { height: calc(20 * var(--u)); }
@@ -130,7 +139,7 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 #sidebar-scroll > .fleet-head { padding: 0; align-items: stretch; }
 .fleet-head .fleet-pick {
   flex-grow: 1; min-width: 0; display: flex; align-items: center; gap: calc(6 * var(--u));
-  padding: 0 calc(12 * var(--u)) 0 calc(16 * var(--u));
+  padding: 0 calc(12 * var(--u)) 0 calc(8 * var(--u));
   border: 0; background: transparent; text-align: left;
   font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit;
 }
@@ -139,6 +148,8 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 /* The ⋯ also shows on the current fleet head and while its menu is open, as on a project row. */
 #sidebar-scroll > .fleet-head .fleet-pick.current ~ .tree-head-more, #sidebar-scroll > .fleet-head .tree-head-more[aria-expanded="true"] { visibility: visible; }
 .fleet-head:hover { color: var(--text); }
+/* A head that folds lights its full width in the box, as a project row. */
+#sidebar-scroll > .fleet-head:not(.alone):hover { background-image: linear-gradient(var(--hover), var(--hover)); }
 /* A fleet that hides its projects: the count of hidden sessions shows them again. */
 .fleet-hidden {
   flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(8 * var(--u));
@@ -148,12 +159,12 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 /* Nothing under the head: no chevron, and the name does not light on hover. */
 #sidebar-scroll > .fleet-head.alone .fleet-pick { cursor: default; color: var(--text-dim); }
 /* The rows still under a fleet that hides its projects line up with its Skipper. */
-.tree-kids > .fleet-shown > .session-row { padding-left: calc(16 * var(--u)); }
+.tree-kids > .fleet-shown > .session-row { padding-left: calc(8 * var(--u)); }
 
 /* The Skiff agent (#95): one session row above the projects, in line with the section heads. */
-/* The Skiff agent: a full 40px row, flush at the top. The Projects divider's rule closes it, in line with the pane header. */
-/* It takes the Admiral's size in the Skippers list: a 60px tinted row with a 40px face, 13px words. */
-.session-row.skiff-agent-row { height: calc(60 * var(--u)); gap: calc(10 * var(--u)); padding-left: calc(12 * var(--u)); background-color: var(--bg-raised); }
+/* The Skiff agent: a full row, flush at the top, above the section boxes. Its own --rule-strong line closes it.
+   It takes the Admiral's size in the Skippers list: a 60px tinted row with a 40px face, 13px words. */
+.session-row.skiff-agent-row { height: calc(60 * var(--u)); gap: calc(10 * var(--u)); padding-left: calc(12 * var(--u)); background-color: var(--bg-raised); border-bottom: 1px solid var(--rule-strong); }
 .skiff-agent-row > .skipper-face { width: calc(40 * var(--u)); height: calc(40 * var(--u)); }
 .skiff-agent-row .skiff-agent-name { flex-shrink: 0; font-size: calc(13px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
 .skiff-agent-row .title { font-size: calc(13px * var(--zoom, 1)); color: var(--text-3); }
@@ -179,12 +190,9 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 
 /* A project Skipper: the first row of its project block. Its face starts under the project name, in line with the session icons. */
 .tree-project .session-row.project-skipper-row { padding-left: calc(var(--in) * var(--u)); }
-/* A fleet's Skipper: the first row under its fleet head, in line with the project rows' chevrons.
-   A fleet has no color: its Skipper takes the default one, as the Skiff agent's row does. */
-.tree-kids > .session-row.project-skipper-row { padding-left: calc(16 * var(--u)); --pc: var(--project-default); }
-/* The fleet's Skipper sits inside the fleet's band: the tint marks fleet scope, so it reads as the fleet's head, not as a project. */
-.tree-kids > .session-row.project-skipper-row:first-child { background-color: var(--bg-raised); border-bottom: 1px solid var(--rule); }
-#sidebar-scroll > .fleet-head:has(+ .tree-kids > .project-skipper-row:first-child) { border-bottom: 0; }
+/* A fleet's Skipper: the first row under its fleet head, in the fleet's box, in line with the head's name. No tint:
+   the box marks fleet scope. A fleet has no color: its Skipper takes the default one, as the Skiff agent's row does. */
+.tree-kids > .session-row.project-skipper-row { padding-left: calc(8 * var(--u)); --pc: var(--project-default); }
 /* A Skipper row is a full 40px row with a 28px face, as tall as a project row, so it reads as the head of its project's sessions. */
 .session-row.project-skipper-row { height: var(--row); }
 .project-skipper-row > .skipper-face { width: calc(28 * var(--u)); height: calc(28 * var(--u)); }
