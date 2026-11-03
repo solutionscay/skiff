@@ -17,6 +17,7 @@ import { changeSkiffFolder } from "./skiffFolderDialog";
 import { rowTable, sectionHead, tableState, tableWords } from "./rowTable";
 import { type HostsPage, hostName, isRemote } from "../app/hosts";
 import { createHostsTab } from "./hostSettings";
+import { openWithPage, type OpenSettings, type OpenKey } from "./openWithSettings";
 import { hostCan, hostInvoke } from "../app/hostCaps";
 
 import { countDisk, diskState, diskUseSection } from "./diskUse";
@@ -58,8 +59,6 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     disk: "settings.tab.disk", activity: "settings.tab.activity", appearance: "settings.tab.appearance", language: "settings.tab.language", open: "settings.tab.open", hosts: "settings.tab.hosts",
   };
   const themeFilters: ThemeFilters = { query: "", family: null };
-  type OpenKey = "diff" | "text" | "markdown" | "html" | "image";
-  type OpenSettings = Record<OpenKey, string> & { default_diff: string; peek: string[] };
   let openSet: OpenSettings | null = null;
   type MenuLayout = { available: boolean; chosen: string | null; auto: string; current: string };
   let menuSet: MenuLayout | null = null;
@@ -201,7 +200,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       return;
     }
     if (tab === "open") {
-      root.replaceChildren(nav, pinClose(openWith()));
+      root.replaceChildren(nav, pinClose(openWithPage(openSet, error, setOpen, setOpenPeek)));
       return;
     }
     if (tab === "skippers") {
@@ -539,14 +538,6 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     render();
   }
 
-  const OPEN_ROWS: { key: OpenKey; label: MessageKey }[] = [
-    { key: "diff", label: "settings.open.diff" },
-    { key: "text", label: "settings.open.text" },
-    { key: "markdown", label: "settings.open.markdown" },
-    { key: "html", label: "settings.open.html" },
-    { key: "image", label: "settings.open.image" },
-  ];
-
   /** One Skiff agent setting on the selected Host: This Mac, or a remote Host through its skiff-host. */
   const skiffAgentEdit = (edit: SkiffAgentEdit) => hostInvoke<SkiffAgentSettings>("skipper_config", "set_skiff_agent", { edit });
 
@@ -712,60 +703,6 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     if (agentSet) main.append(...projectSkippersSection(agentSet, agents, (e) => void setSkiffAgent(e)));
     if (agentSet?.folder) main.append(...avatarsSection(agentSet, draw));
     if (agentSet?.folder) main.append(...instructionsSection(agentSet, { files, errors: fileErrors, editable: hostCan("skipper_file"), edit: (f) => void editFile(f), reset: (f) => void resetFile(f) }));
-    return main;
-  }
-
-  /** Which apps Skiff hands things to. */
-  function openWith(): HTMLElement {
-    const main = h("div", "set-main");
-    const intro = h("div", "set-head");
-    intro.append(h("div", "set-h", t("settings.tab.open")));
-    const cols = h("div", "set-row set-open set-cols");
-    cols.append(h("span", "c-name", upper(t("settings.open.colShows"))), h("span", "c-cmd", upper(t("settings.agents.colCommand"))), h("span", "c-mode", upper(t("settings.open.colOpensIn"))));
-    main.append(intro, cols);
-    const o = openSet;
-    if (o) for (const { key, label: labelKey } of OPEN_ROWS) {
-      const label = t(labelKey);
-      const row = h("div", "set-row set-open set-agent on");
-      const cmd = h("input", "c-cmd mono");
-      cmd.value = o[key];
-      cmd.placeholder = key === "diff" ? o.default_diff : t("settings.open.defaultApp");
-      cmd.spellcheck = false;
-      cmd.setAttribute("aria-label", t("settings.open.commandAria", { kind: label }));
-      cmd.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          cmd.blur();
-        } else if (e.key === "Escape") {
-          cmd.value = o[key];
-          cmd.blur();
-        }
-      });
-      cmd.addEventListener("blur", () => {
-        if (cmd.value.trim() !== o[key].trim()) void setOpen(key, cmd.value);
-      });
-      row.append(h("span", "c-name", label), cmd);
-      if (key === "diff") row.append(h("span", "c-mode", t("settings.open.peek")));
-      else if (key === "image") row.append(h("span", "c-mode", t("settings.open.app")));
-      else {
-        const mode = h("select", "c-mode");
-        mode.setAttribute("aria-label", t("settings.open.modeAria", { kind: label }));
-        for (const [value, label] of [["app", t("settings.open.app")], ["peek", t("settings.open.peek")]]) {
-          const option = h("option", "", label);
-          option.value = value;
-          mode.append(option);
-        }
-        mode.value = o.peek.includes(key) ? "peek" : "app";
-        mode.addEventListener("change", () => void setOpenPeek(key, mode.value === "peek"));
-        row.append(mode);
-      }
-      main.appendChild(row);
-    }
-    if (error) {
-      const err = h("div", "set-error", error);
-      err.setAttribute("role", "alert");
-      main.appendChild(err);
-    }
     return main;
   }
 
