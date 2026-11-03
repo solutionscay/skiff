@@ -447,7 +447,7 @@
       "local provider: apps/desktop/src/workspace/tree.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "5cef66c2ec390d06f806483786bf0b6b1f8512fe90ca0f1c6036ec01e44d56f4"
+    "sha256": "c89a2bcde4dac6b4d6e6aedba10d091b56cb9c05b765a6446ef2a9ee2359bd2c"
   },
   "apps/desktop/src/app/modes.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
