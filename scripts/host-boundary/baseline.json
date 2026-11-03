@@ -906,14 +906,14 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "2c9d8a257f112528170dedd86351a2550ed8b9a86af75583a871702a5a9466eb"
+    "sha256": "6261fc11d9e44f699d5f7c55a34c258b8f3b6bbe7204c428d0ec96b585719d8a"
   },
   "apps/desktop/src/workspace/files.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "45ac89ea518e6770a1869404bab8b16f9907257980734575e631236d9633ac8d"
+    "sha256": "2cffff414d1ce0bf65c9b5a319165779ab9618c41f85466235ab07c9dde366c4"
   },
   "apps/desktop/src/workspace/fleets.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
