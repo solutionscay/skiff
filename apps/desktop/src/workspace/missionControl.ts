@@ -26,7 +26,7 @@
  * persist on this computer, per Host.
  *
  * Admiral and each Skipper show as a terminal window with its face and its
- * last screen lines (missionControl/terminal.ts, output.ts).
+ * state, task and counts (missionControl/terminal.ts, state.ts).
  *
  * The panel under the canvas shows the lit card: its last 12 screen lines,
  * read-only text from skiffd, its task, or a Skipper's hand-offs. One read a
@@ -64,7 +64,7 @@ import { projectBadge, treeSections } from "./tree";
 import { t, tn, upper } from "../i18n";
 import { matchText, noteSince, sinceText } from "./missionControl/model";
 import * as T from "./missionControl/terminal";
-import * as O from "./missionControl/output";
+import { stateParts } from "./missionControl/state";
 
 /** Rows of text in the panel's screen. */
 const ROWS = 12;
@@ -499,7 +499,7 @@ function draw() {
     if (rung) {
       const w = T.windowOf(cards.get(id)!, rung);
       refill(w.head, T.windowHead(s, cardName(s), numbered.indexOf(id) + 1));
-      O.track(id, w.out, G.WINDOW[rung].rows);
+      refill(w.state, stateParts(s, now));
     }
     const label2 = t("mission.tileLabel", { title: cardName(s), state: stateLabel(s) });
     if (cards.get(id)!.getAttribute("aria-label") !== label2) cards.get(id)!.setAttribute("aria-label", label2);
@@ -566,7 +566,6 @@ function draw() {
     plans.delete(key);
   }
 
-  O.untrack(new Set(placed.rungs.keys()));
   drawStrings();
   T.placeFaces(placed, m.sess, lookOf, (id) => `${id === lit ? "lit" : ""} ${cards.get(id)?.classList.contains("dim") ? "dim" : ""}`);
   counts();
@@ -945,7 +944,6 @@ async function read() {
     const text = lines.join("\n");
     if (screen.textContent !== text) screen.textContent = text;
     screen.classList.remove("note");
-    O.feed(id, lines);
   } catch (e) {
     if (paused || screenFor !== id) return;
     // An older skiffd does not know the request.
@@ -961,7 +959,6 @@ function tick() {
   // A drag draws its own frames; the drop draws the whole board.
   if (!drag?.moved) draw();
   void read();
-  if (!document.hidden) void O.readRound(placed, view, canvas.clientWidth, canvas.clientHeight, panelOpen ? screenFor : null, () => !paused && !root.hidden);
 }
 
 // ---- The pointer: pan, drag, click ----
@@ -1230,7 +1227,7 @@ export const board = {
     scope.title = t("mission.scopeTip", { key: keyLabel("focus-mode") });
     lit = focus;
     draw();
-    await Promise.all([read(), O.readRound(placed, null, 0, 0, screenFor, () => !paused)]);
+    await read();
   },
   /** With the root shown: fit the view, bring the lit card in, and keep the graph fresh. */
   start() {
@@ -1266,6 +1263,5 @@ export const board = {
     strands.clear();
     ticks.replaceChildren();
     T.clearFaces();
-    O.untrack(new Set());
   },
 };

@@ -20,6 +20,8 @@ export function noteSince(s: SessionInfo, now: number) {
   if (!was) since.set(s.id, { state: s.state, at: s.state === "working" ? now : s.last_output_at || now });
   else if (was.state !== s.state) since.set(s.id, { state: s.state, at: now });
 }
+/** When the session came into its state, as first seen. */
+export const sinceAt = (s: SessionInfo) => since.get(s.id)?.at;
 export const sinceText = (s: SessionInfo, now: number) => {
   // G.ago's steps, in the catalog's words: "now", "4m", "2h", "3d".
   const m = Math.floor(Math.max(0, now - (since.get(s.id)?.at ?? now)) / 60000);

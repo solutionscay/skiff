@@ -2,8 +2,8 @@
  * Mission control's windows: Admiral and each Skipper show as a small
  * terminal, in the pane's look. The pane header (the agent icon, the name,
  * the state mark and what the program reports, as paneHeader.ts builds it),
- * then the body: the face's column, a 1px rule, and the output's column with
- * the last screen lines (output.ts reads them).
+ * then the body: the face's column, a 1px rule, and the state's column
+ * (state.ts): its state, its task and its counts.
  *
  * The faces live in a layer of their own over the strings, so a string ends
  * under a face and the face draws over it. They take the window's place
@@ -22,23 +22,23 @@ import * as G from "../missionLayout";
 
 const scopeOf = (s: SessionInfo) => (s.coordinator ? null : (s.skipper ?? ""));
 
-/** A window's two parts: the header to fill, and the output's column. Built once per card. */
-export function windowOf(card: HTMLElement, rung: G.Rung): { head: HTMLElement; out: HTMLElement } {
+/** A window's two parts: the header to fill, and the state's column. Built once per card. */
+export function windowOf(card: HTMLElement, rung: G.Rung): { head: HTMLElement; state: HTMLElement } {
   let head = card.querySelector<HTMLElement>(":scope > .win-head");
-  let out = card.querySelector<HTMLElement>(":scope > .win-body > .win-out");
-  if (!head || !out || card.dataset.rung !== rung) {
+  let state = card.querySelector<HTMLElement>(":scope > .win-body > .win-state");
+  if (!head || !state || card.dataset.rung !== rung) {
     card.dataset.rung = rung;
     // The card's session markup is gone: a later session card fills it again.
     delete card.dataset.html;
     head = h("span", "win-head");
-    out = h("pre", "win-out");
+    state = h("span", "win-state");
     const col = h("span", "win-face");
     col.style.width = `${G.WINDOW[rung].face + 15}px`;
     const body = h("span", "win-body");
-    body.append(col, out);
+    body.append(col, state);
     card.replaceChildren(head, body);
   }
-  return { head, out };
+  return { head, state };
 }
 
 /** The header's inside: the number key, the agent icon, the name, the state mark and the program's note. */

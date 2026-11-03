@@ -956,21 +956,24 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "14b66f2a9a2cad2bd225b40ae7d90159e4ade0535b986490336719b3c4a256f6"
+    "sha256": "ccc4b256d651fb02d133b105d1d2454d9687f25a73e3522dc1a80bd001d05a59"
   },
   "apps/desktop/src/workspace/missionControl/model.ts": {
     "ownership": "client policy: exact existing adapter only",
     "reasons": [
       "local provider: apps/desktop/src/workspace/ledger.ts"
     ],
-    "sha256": "409006a66d83290a3fadf1e771ce72998ff16dde87d3f7e6168e8569afe5b43c"
+    "sha256": "d98931816322557c8d7577b74ae190097009024bdd768f3b7a008b8c88d46b24"
   },
-  "apps/desktop/src/workspace/missionControl/output.ts": {
+  "apps/desktop/src/workspace/missionControl/state.ts": {
     "ownership": "client policy: exact existing adapter only",
     "reasons": [
-      "local provider: apps/desktop/src/app/hostCaps.ts"
+      "local provider: apps/desktop/src/app/hostCaps.ts",
+      "local provider: apps/desktop/src/app/state.ts",
+      "local provider: apps/desktop/src/workspace/ledger.ts",
+      "local provider: apps/desktop/src/workspace/missionControl/model.ts"
     ],
-    "sha256": "993a6cf34c52bdc1d774764956deb53fdfab7e0be60ac9f892bc319944496e02"
+    "sha256": "908f6873138efd6bd6d35afc92da6eb598296d05b8030ef4b73940f9c47aa814"
   },
   "apps/desktop/src/workspace/missionControl/terminal.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -978,7 +981,7 @@
       "local provider: apps/desktop/src/appearance/agentIcon.ts",
       "local provider: apps/desktop/src/workspace/skipperFace.ts"
     ],
-    "sha256": "3b24168112edf9d4a5e568c0b3b9611275c3b0099f06624dbc00e5ba6dd34a88"
+    "sha256": "e0d824d71155f25a9f9f66a27eadbf14a572e09bd9621bd21f51a8b35dc92e70"
   },
   "apps/desktop/src/workspace/missionMotion.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

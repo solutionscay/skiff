@@ -50,16 +50,15 @@ export const PLAN_H = 20;
 
 /**
  * Admiral and each Skipper show as a terminal window: a 24px pane header,
- * then a body split by a 1px rule into the face's column and the output's
+ * then a body split by a 1px rule into the face's column and the state's
  * column. The face sets the rung; the face's column is the face and 8px
- * each side, the output's column is twice the face wide. `rows`: the output
- * lines that fit.
+ * each side, the state's column is twice the face wide.
  */
 export type Rung = "admiral" | "fleet" | "project";
-export const WINDOW: Record<Rung, { w: number; h: number; face: number; rows: number }> = {
-  admiral: { w: 353, h: 152, face: 112, rows: 9 },
-  fleet: { w: 257, h: 120, face: 80, rows: 7 },
-  project: { w: 185, h: 96, face: 56, rows: 5 },
+export const WINDOW: Record<Rung, { w: number; h: number; face: number }> = {
+  admiral: { w: 353, h: 152, face: 112 },
+  fleet: { w: 257, h: 120, face: 80 },
+  project: { w: 185, h: 96, face: 56 },
 };
 /** The window's header, with the 1px frame above it. */
 export const WIN_HEAD = 24;
@@ -396,9 +395,9 @@ export function faceBox(r: Rect, rung: Rung): Rect {
 
 /**
  * A string's two ends. It leaves a window from the bottom middle of the
- * face, so it stays out of the output's column, and ends at the middle of
+ * face, so it stays out of the state's column, and ends at the middle of
  * a window's face; the face draws over both ends. At a card it leaves from
- * the foot and ends at the pin. `from` 4px up into the face, so no gap shows.
+ * the foot and ends at the pin. `a` sits 4px up into the face, so no gap shows.
  */
 export function strandEnds(p: Placed, from: string, to: string, toRect: Rect): { a: { x: number; y: number }; b: { x: number; y: number } } {
   const fr = p.cards.get(from)!;
