@@ -193,6 +193,7 @@ export const es = {
   "welcome.addProjectLower": "añadir proyecto…",
   "welcome.addProject": "Añadir proyecto",
   "welcome.skiffAgentLine": "{name} inicia y sigue los agentes por ti.",
+  "welcome.noAgent": "No hay ningún agente en el PATH.",
   "welcome.firstTitle": "Añade tu primer proyecto",
   "welcome.firstText": "Elige una carpeta. Skiff ejecuta agentes en ella. En un repositorio git, también muestra los worktrees.",
   "welcome.ready": "{name}: listo",

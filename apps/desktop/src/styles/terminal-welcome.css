@@ -13,3 +13,4 @@
 .welcome-first .welcome-primary { height: auto; }
 .welcome-first .welcome-actions { border-left: 0; }
 .welcome-hint { max-width: calc(420 * var(--u)); line-height: 1.5; font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); }
+.welcome-error { max-width: calc(420 * var(--u)); line-height: 1.5; font-size: calc(12px * var(--zoom, 1)); color: var(--error); }

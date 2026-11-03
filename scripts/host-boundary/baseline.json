@@ -1191,6 +1191,6 @@
       "local provider: apps/desktop/src/workspace/remoteLaunch.ts",
       "local provider: apps/desktop/src/workspace/selection.ts"
     ],
-    "sha256": "9043fad349491c3d309127b6a76baec001013e61c93e0de7115d8b6b19e1d4e8"
+    "sha256": "c6b2b2db86369e9c2409dca86928d363509ad66ebdd2ed58a7de34088eece6a1"
   }
 }

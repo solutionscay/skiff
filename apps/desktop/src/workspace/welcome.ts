@@ -11,7 +11,7 @@ import { host } from "../terminal/terminalHost";
 import { showError } from "../ui/alerts";
 import { newWorktree } from "./menus";
 
-import { addProject } from "../app/panels";
+import { addProject, settings } from "../app/panels";
 import { openSkiffAgent, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName } from "../app/skiffAgent";
 import { keepRow } from "./selection";
 import { openClosedProject } from "./projectClose";
@@ -21,7 +21,7 @@ import { checkShownHost, hostName, isRemote, updateShownHost } from "../app/host
 import { daemonWarning } from "../app/daemonRestart";
 import { hostCan } from "../app/hostCaps";
 import { openRemoteNewSession } from "./remoteLaunch";
-import { accent, currentProject, launchChoices, shownIds } from "../app/stateQueries";
+import { accent, currentProject, enabledAgents, launchChoices, shownIds } from "../app/stateQueries";
 import { t } from "../i18n";
 
 /** Puts `node` where `{name}` stands in `text`, so a language can move it. */
@@ -44,6 +44,14 @@ function skiffAgentButton(): HTMLButtonElement | null {
   b.append(launchIcon(skiffAgentChoice()), skiffAgentName());
   return b;
 }
+
+/** Agent settings…, as in the + menu: the way out when no agent is on PATH. */
+function agentSettingsButton(): HTMLButtonElement {
+  return button("", t("launch.agentSettings"), () => void settings.open());
+}
+
+/** The one error line when no agent is on PATH. */
+const noAgentLine = () => h("div", "welcome-error", t("welcome.noAgent"));
 
 /** Add project and the Skiff agent's button side by side. */
 function first(add: HTMLElement, agent: HTMLElement): HTMLElement {
@@ -107,9 +115,14 @@ export function renderWelcome() {
   } else if (none) {
     const add = button("welcome-primary", t("welcome.addProject"), () => void addProject.open());
     box.append(h("div", "welcome-title", t("welcome.firstTitle")), h("div", "welcome-text", t("welcome.firstText")));
-    const sa = skiffAgentButton();
-    box.append(sa ? first(add, sa) : add);
-    if (sa) box.append(h("div", "welcome-hint", t("welcome.skiffAgentLine", { name: skiffAgentName() })));
+    if (!enabledAgents().length) {
+      // The Skiff agent cannot start: Agent settings… takes its place.
+      box.append(first(add, agentSettingsButton()), noAgentLine());
+    } else {
+      const sa = skiffAgentButton();
+      box.append(sa ? first(add, sa) : add);
+      if (sa) box.append(h("div", "welcome-hint", t("welcome.skiffAgentLine", { name: skiffAgentName() })));
+    }
   } else if (S.projects.length === 0 && !S.projectsError) {
     // The Skiff agent's pane shows.
     return;
@@ -119,8 +132,9 @@ export function renderWelcome() {
     name.style.color = accent(p);
     if (S.justAdded === p.name) around(title, t("welcome.ready"), "name", name);
     else title.append(name);
-    const text = h("div", "welcome-text");
-    around(text, t(isFolder(p) ? "welcome.startIn" : "welcome.startInRepo"), "branch", h("span", "mono", branchName(w)));
+    const noAgent = !enabledAgents().length;
+    const text = noAgent ? noAgentLine() : h("div", "welcome-text");
+    if (!noAgent) around(text, t(isFolder(p) ? "welcome.startIn" : "welcome.startInRepo"), "branch", h("span", "mono", branchName(w)));
     const actions = h("div", "welcome-actions");
     for (const a of launchChoices()) {
       const b = button("", "", () => {
@@ -135,6 +149,7 @@ export function renderWelcome() {
       wt.append(branchIcon(), t("welcome.worktree"));
       actions.appendChild(wt);
     }
+    if (noAgent) actions.appendChild(agentSettingsButton());
     box.append(title, text, actions);
   } else if (!S.focused && !shownIds().length) {
     box.append(h("div", "welcome-text", t("welcome.noSession")));

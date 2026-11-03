@@ -197,6 +197,7 @@ export const en = {
   "welcome.addProjectLower": "add project…",
   "welcome.addProject": "Add project",
   "welcome.skiffAgentLine": "{name} starts and tracks agents for you.",
+  "welcome.noAgent": "No agent is on PATH.",
   "welcome.firstTitle": "Add your first project",
   "welcome.firstText": "Pick a folder. Skiff runs agents in it. In a git repository, it also lists the worktrees.",
   "welcome.ready": "{name} is ready",
