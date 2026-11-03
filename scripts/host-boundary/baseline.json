@@ -958,7 +958,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "c3d1fbd83e43ed55a59ad38398bab5de6f7eec074b88b0d8f147962ee6d80e8b"
+    "sha256": "14d262f5993d67a0c39f77ab8c16ad9966caf0feab74ec8c40ac3f0f16574de6"
   },
   "apps/desktop/src/workspace/menus/end.ts": {
     "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
@@ -998,6 +998,25 @@
       "../../platform/os"
     ],
     "sha256": "0ffa600fe98b250dec0b76853566a5825bff47250c34c864ed9e5168260d5043"
+  },
+  "apps/desktop/src/workspace/menus/row.ts": {
+    "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
+    "reasons": [
+      "local provider: apps/desktop/src/app/hostCaps.ts",
+      "local provider: apps/desktop/src/app/hosts.ts",
+      "local provider: apps/desktop/src/app/skiffAgent.ts",
+      "local provider: apps/desktop/src/app/state.ts",
+      "local provider: apps/desktop/src/app/stateQueries.ts",
+      "local provider: apps/desktop/src/ui/contextMenu.ts",
+      "local provider: apps/desktop/src/workspace/menus/end.ts",
+      "local provider: apps/desktop/src/workspace/menus/group.ts",
+      "local provider: apps/desktop/src/workspace/menus/pane.ts",
+      "local provider: apps/desktop/src/workspace/rename.ts",
+      "local provider: apps/desktop/src/workspace/selection.ts",
+      "local provider: apps/desktop/src/workspace/skipperFace.ts",
+      "local provider: apps/desktop/src/workspace/view.ts"
+    ],
+    "sha256": "04356a5444f9cb464b0cbbf168649ceafd2b0a16973a881f26123d3db1a0717a"
   },
   "apps/desktop/src/workspace/menus/skipper.ts": {
     "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
