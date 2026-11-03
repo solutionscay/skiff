@@ -1227,6 +1227,21 @@
     ],
     "sha256": "c2e61b819b75de261c2c5d711a876aff7bd9135116dcf4792ff578e034d5a0fc"
   },
+  "apps/desktop/src/workspace/sessionRows.ts": {
+    "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
+    "reasons": [
+      "local provider: apps/desktop/src/app/state.ts",
+      "local provider: apps/desktop/src/app/stateQueries.ts",
+      "local provider: apps/desktop/src/appearance/agentIcon.ts",
+      "local provider: apps/desktop/src/appearance/appTheme.ts",
+      "local provider: apps/desktop/src/workspace/menus.ts",
+      "local provider: apps/desktop/src/workspace/rename.ts",
+      "local provider: apps/desktop/src/workspace/selection.ts",
+      "local provider: apps/desktop/src/workspace/sidebarLines.ts",
+      "local provider: apps/desktop/src/workspace/view.ts"
+    ],
+    "sha256": "e7c8bbc7a1c7f1af744f1ea992405581baf74699d1ced42d7d56bfa500291efe"
+  },
   "apps/desktop/src/workspace/sidebar.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
     "reasons": [
@@ -1244,8 +1259,8 @@
       "local provider: apps/desktop/src/workspace/ledger.ts",
       "local provider: apps/desktop/src/workspace/menus.ts",
       "local provider: apps/desktop/src/workspace/profile.ts",
-      "local provider: apps/desktop/src/workspace/rename.ts",
       "local provider: apps/desktop/src/workspace/selection.ts",
+      "local provider: apps/desktop/src/workspace/sessionRows.ts",
       "local provider: apps/desktop/src/workspace/sidebarFocus.ts",
       "local provider: apps/desktop/src/workspace/sidebarLines.ts",
       "local provider: apps/desktop/src/workspace/skipperFace.ts",
@@ -1254,7 +1269,7 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "b126df5085a750a5308a91b63ccdf99990a29a1a2a03c74d1bb80983a965c9b5"
+    "sha256": "0c6afe5979f3eb07b282a021be632707a72ea6f3811123a5992db78d01719e12"
   },
   "apps/desktop/src/workspace/sidebarFocus.ts": {
     "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
