@@ -147,14 +147,6 @@ test("the view: fit, zoom at a point, center, the edge tick", () => {
   assert.deepEqual(G.edgeTick(c, { x: 100, y: 5000, w: 200, h: 100 }, 1000, 600), { x: 495, y: 590 });
 });
 
-test("time in state reads as minutes, hours and days", () => {
-  const now = 1_700_000_000_000;
-  assert.equal(G.ago(now - 20_000, now), "now");
-  assert.equal(G.ago(now - 4 * 60_000, now), "4m");
-  assert.equal(G.ago(now - 125 * 60_000, now), "2h");
-  assert.equal(G.ago(now - 3 * 1440 * 60_000, now), "3d");
-});
-
 test("a connector: down the trunk and the bus into a Skipper's face, down a rail into a card, or the bus to another cluster's rail", () => {
   const p = Grid.placeGraph(graph());
   const face = (id: string) => G.faceBox(p.cards.get(id)!, p.rungs.get(id)!);

@@ -17,7 +17,6 @@ export function matchText(s: SessionInfo, p: Project | null, row: Entry | undefi
 /** When the session came into its state (app/state.ts `stateSince`). `undefined`: the app did not see the change. */
 export const sinceAt = (s: SessionInfo) => stateSince.get(s.id);
 export const sinceText = (s: SessionInfo, now: number) => {
-  // G.ago's steps, in the catalog's words: "now", "4m", "2h", "3d".
   const at = sinceAt(s);
   if (at === undefined) return "";
   const m = Math.floor(Math.max(0, now - at) / 60000);

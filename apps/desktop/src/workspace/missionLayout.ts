@@ -286,12 +286,3 @@ export function boardCommand(key: string, action: string | null, inSearch: boole
   if (key === "-") return "zoom-out";
   return null;
 }
-
-/** "4m", "2h", "3d": how long ago `at` was, from `now`. Under a minute: "now". */
-export function ago(at: number, now: number): string {
-  const m = Math.floor(Math.max(0, now - at) / 60000);
-  if (m < 1) return "now";
-  if (m < 60) return `${m}m`;
-  if (m < 1440) return `${Math.round(m / 60)}h`;
-  return `${Math.round(m / 1440)}d`;
-}
