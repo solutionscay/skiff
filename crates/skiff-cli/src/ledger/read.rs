@@ -5,7 +5,7 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use rusqlite::{params, Connection, TransactionBehavior};
 use skiff_client::Client;
-use skiff_client::ledger::{heads, rows, OPEN, WORKING};
+use skiff_client::ledger::{heads, rows, OPEN, OUTCOMES, WORKING};
 use skiff_core::session::SessionInfo;
 
 use crate::{print, resolve};
@@ -49,7 +49,7 @@ pub(super) fn unreported_at(file: &Path, owner: &str) -> Result<usize> {
 }
 
 /// Sets `done` each open task on `here` whose pane no session in `all` has,
-/// and stamps `gone_at`. A task on another socket is left alone: its pane
+/// with the outcome `unobserved`, never `succeeded`, and stamps `gone_at`. A task on another socket is left alone: its pane
 /// cannot be checked from here. A restarted pane still exists, so an
 /// interrupted task stays. The report stamp stays empty: the person is told
 /// once. `all` must be a full list from `here`'s daemon. Returns the tasks it
@@ -72,7 +72,7 @@ pub(super) fn close_gone_in(db: &mut Connection, here: &Path, all: &[SessionInfo
         .collect();
     let mut out = Vec::new();
     for r in gone {
-        let n = tx.execute(&format!("UPDATE tasks SET state = 'done', gone_at = {NOW}, updated_at = {NOW} WHERE id = ?1 AND state = ?2"), params![r.id, r.state])?;
+        let n = tx.execute(&format!("UPDATE tasks SET state = 'done', outcome = 'unobserved', gone_at = {NOW}, updated_at = {NOW} WHERE id = ?1 AND state = ?2"), params![r.id, r.state])?;
         if n == 1 {
             out.push(one(&tx, &r.uid)?);
         }
@@ -126,11 +126,28 @@ pub fn handed_back() -> Result<Vec<Row>> {
     rows(&super::open_at(&file)?, "WHERE kind = 'handoff' AND state = 'done' AND gone_at IS NULL AND reported_at IS NULL", None)
 }
 
+/// An open hand-off whose tasks all ended, and how they ended: each outcome
+/// with its count, in the order of [`OUTCOMES`], then the done tasks with no
+/// outcome.
+#[derive(Clone)]
+pub struct Ready {
+    pub row: Row,
+    pub outcomes: Vec<(&'static str, usize)>,
+}
+
+impl Ready {
+    /// The outcomes as one phrase: "2 succeeded, 1 failed".
+    pub fn ended(&self) -> String {
+        self.outcomes.iter().map(|(o, n)| format!("{n} {o}")).collect::<Vec<_>>().join(", ")
+    }
+}
+
 /// The open hand-offs with at least one task, every task done (tasks in a
 /// plan under the hand-off count; a plan row's own state does not): the project
-/// or fleet Skipper has only to report them. `skiff watch` tells that
+/// or fleet Skipper has only to report them. Each task has an outcome, or
+/// none when it was set done before outcomes. `skiff watch` tells that
 /// Skipper once. No `ledger.db` yet gives none.
-pub fn handoffs_ready() -> Result<Vec<Row>> {
+pub fn handoffs_ready() -> Result<Vec<Ready>> {
     let file = path()?;
     if !file.exists() {
         return Ok(Vec::new());
@@ -138,14 +155,31 @@ pub fn handoffs_ready() -> Result<Vec<Row>> {
     handoffs_ready_in(&super::open_at(&file)?)
 }
 
-pub(super) fn handoffs_ready_in(db: &Connection) -> Result<Vec<Row>> {
-    rows(
+const UNDER: &str = "t.kind = 'task' AND (t.parent = tasks.uid OR t.parent IN (SELECT p.uid FROM tasks p WHERE p.kind = 'plan' AND p.parent = tasks.uid))";
+
+pub(super) fn handoffs_ready_in(db: &Connection) -> Result<Vec<Ready>> {
+    let ready = rows(
         db,
-        "WHERE kind = 'handoff' AND state IN ('sent', 'pending', 'blocked') AND gone_at IS NULL
-         AND EXISTS (SELECT 1 FROM tasks t WHERE t.kind = 'task' AND (t.parent = tasks.uid OR t.parent IN (SELECT p.uid FROM tasks p WHERE p.kind = 'plan' AND p.parent = tasks.uid)))
-         AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.kind = 'task' AND t.state <> 'done' AND (t.parent = tasks.uid OR t.parent IN (SELECT p.uid FROM tasks p WHERE p.kind = 'plan' AND p.parent = tasks.uid)))",
+        &format!(
+            "WHERE kind = 'handoff' AND state IN ('sent', 'pending', 'blocked') AND gone_at IS NULL
+             AND EXISTS (SELECT 1 FROM tasks t WHERE {UNDER})
+             AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.state <> 'done' AND {UNDER})"
+        ),
         None,
-    )
+    )?;
+    let count = format!("SELECT t.outcome, count(*) FROM tasks t, tasks WHERE tasks.uid = ?1 AND {UNDER} GROUP BY t.outcome");
+    let mut st = db.prepare(&count)?;
+    ready
+        .into_iter()
+        .map(|row| {
+            let n: Vec<(Option<String>, usize)> = st.query_map([&row.uid], |r| Ok((r.get(0)?, usize::try_from(r.get::<_, i64>(1)?).unwrap_or(0))))?.collect::<rusqlite::Result<_>>()?;
+            let of = |o: Option<&str>| n.iter().find(|(k, _)| k.as_deref() == o).map_or(0, |(_, c)| *c);
+            let mut outcomes: Vec<(&'static str, usize)> = OUTCOMES.iter().map(|o| (*o, of(Some(o)))).collect();
+            outcomes.push(("with no outcome", n.iter().filter(|(k, _)| k.as_deref().is_none_or(|k| !OUTCOMES.contains(&k))).map(|(_, c)| c).sum()));
+            outcomes.retain(|(_, c)| *c > 0);
+            Ok(Ready { row, outcomes })
+        })
+        .collect()
 }
 
 pub(super) fn state(s: &str) -> Result<&str> {
@@ -345,6 +379,7 @@ pub(super) fn print_rows(rows: &[(Row, usize)], closed: bool) {
     let types = rows.iter().any(|(r, _)| r.task_type.is_some());
     let sockets = rows.iter().any(|(r, _)| r.elsewhere);
     let owners = rows.iter().any(|(r, _)| r.owner != GRAND);
+    let outcomes = rows.iter().any(|(r, _)| r.outcome.is_some());
     let table: Vec<Vec<String>> = rows
         .iter()
         .enumerate()
@@ -355,6 +390,11 @@ pub(super) fn print_rows(rows: &[(Row, usize)], closed: bool) {
                 if *child > 0 { format!("{}└ {}", "  ".repeat(child - 1), r.id) } else { r.id.to_string() },
                 r.uid.clone(),
                 r.shown_state().to_string(),
+            ];
+            if outcomes {
+                row.push(r.outcome.clone().unwrap_or_default());
+            }
+            row.extend([
                 if r.is_plan() {
                     "plan".into()
                 } else if r.is_handoff() {
@@ -366,7 +406,7 @@ pub(super) fn print_rows(rows: &[(Row, usize)], closed: bool) {
                 r.project.clone(),
                 r.sent_at.clone(),
                 r.result_path.as_deref().map(shown_path).unwrap_or_default(),
-            ];
+            ]);
             if refs {
                 row.push(r.reference.clone().unwrap_or_default());
             }
@@ -386,7 +426,11 @@ pub(super) fn print_rows(rows: &[(Row, usize)], closed: bool) {
             row
         })
         .collect();
-    let mut header = vec!["WORK", "ID", "UID", "STATE", "PANE", "LIVE", "PROJECT", "SENT", "RESULT"];
+    let mut header = vec!["WORK", "ID", "UID", "STATE"];
+    if outcomes {
+        header.push("OUTCOME");
+    }
+    header.extend(["PANE", "LIVE", "PROJECT", "SENT", "RESULT"]);
     if refs {
         header.push("REF");
     }
@@ -417,6 +461,9 @@ fn one_line(text: &str) -> String {
 pub(super) fn print_one(r: &Row, closed: Option<&str>) {
     let yn = |l: Option<bool>| l.map_or("?", |l| if l { "yes" } else { "no" });
     let mut f: Vec<(&str, String)> = vec![("id", r.id.to_string()), ("uid", r.uid.clone()), ("kind", r.kind.clone()), ("state", r.shown_state().to_string())];
+    if let Some(o) = &r.outcome {
+        f.push(("outcome", o.clone()));
+    }
     if let Some(p) = &r.parent {
         f.push(("plan", p.clone()));
     }
@@ -441,6 +488,12 @@ pub(super) fn print_one(r: &Row, closed: Option<&str>) {
     }
     if let Some(p) = &r.result_path {
         f.push(("result", p.clone()));
+    }
+    if let Some(x) = &r.expects {
+        f.push(("expects", x.clone()));
+    }
+    if let Some(x) = &r.commit_ref {
+        f.push(("commit", x.clone()));
     }
     if let Some(x) = &r.flushed_at {
         f.push(("flushed", x.clone()));

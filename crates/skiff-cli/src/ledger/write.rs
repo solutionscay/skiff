@@ -33,6 +33,8 @@ pub(super) struct New {
     pub(super) owner: String,
     /// A hand-off: a task for a project Skipper.
     pub(super) handoff: bool,
+    /// The evidence the task should leave: `result` or `commit`.
+    pub(super) expects: Option<String>,
 }
 
 /// Adds a row with a new uid, and makes its work folder (see
@@ -55,8 +57,8 @@ pub(super) fn insert(db: &mut Connection, file: &Path, n: New) -> Result<(i64, S
     };
     tx.execute(
         &format!(
-            "INSERT INTO tasks (uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, title, owner, work_dir)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, {NOW}, ?8, ?9, ?10, {NOW}, ?11, ?12, ?13, ?14, ?15)"
+            "INSERT INTO tasks (uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, title, owner, work_dir, expects)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, {NOW}, ?8, ?9, ?10, {NOW}, ?11, ?12, ?13, ?14, ?15, ?16)"
         ),
         params![
             uid,
@@ -73,7 +75,8 @@ pub(super) fn insert(db: &mut Connection, file: &Path, n: New) -> Result<(i64, S
             n.socket,
             n.title,
             n.owner,
-            dir.display().to_string()
+            dir.display().to_string(),
+            n.expects
         ],
     )?;
     let id = tx.last_insert_rowid();
@@ -461,7 +464,8 @@ pub(super) fn report(db: &mut Connection, caller: &Caller, ids: &[String], all: 
 /// report stamp goes, and its work opens again.
 pub(super) fn restate(db: &Connection, r: &Row, st: Option<&str>) -> Result<()> {
     if st.is_some_and(|s| s != "done") {
-        db.execute("UPDATE tasks SET reported_at = NULL WHERE id = ?1", [r.id])?;
+        // Only a done task has an outcome.
+        db.execute("UPDATE tasks SET reported_at = NULL, outcome = NULL WHERE id = ?1", [r.id])?;
         db.execute("UPDATE tasks SET closed_at = NULL WHERE id = ?1", [top(db, r)?.id])?;
     }
     Ok(())

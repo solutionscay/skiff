@@ -177,11 +177,11 @@ The Skiff agent is the main Skipper and the normal coordinator. Its default name
 The ledger is `ledger.db` in that folder. Use only `skiff ledger` to read or change it. Never open or edit the file.
 
 - Each row has an owner: Admiral, the main Skipper (`grand`), a project Skipper (its project's name), or a fleet Skipper (`fleet:<fleet>`). `ls` shows an OWNER column when a project or fleet Skipper owns a row.
-- A coordinator changes only its own rows: `add`, `send`, `update`, `report`, `close`, `reopen`, `prune`, `rm`. The CLI knows the caller from its session. `skiff skipper` records Admiral's session. A project or fleet Skipper may also report the hand-off it was given: `ledger update UID --state done --result PATH`, and no other change. Another agent pane gets a refusal. A shell pane is a person and may change any row. A shell outside Skiff is refused, unless a person passes `--person`.
+- A coordinator changes only its own rows: `add`, `send`, `update`, `report`, `close`, `reopen`, `prune`, `rm`. The CLI knows the caller from its session. `skiff skipper` records Admiral's session. A project or fleet Skipper may also report the hand-off it was given: `ledger update UID --state done [--outcome O] --result PATH`, and no other change. Another agent pane gets a refusal. A shell pane is a person and may change any row. A shell outside Skiff is refused, unless a person passes `--person`.
 - `ls` and `show` work from anywhere.
 - Each row has an id and an 8-character uid. Neither is used again. Every ID argument takes both. Use the uid when you name a task.
 
-Task states are `pending`, `sent`, `blocked` and `done`. `ls` and `show` also print:
+Task states are `pending`, `sent`, `blocked` and `done`. A done task also has an outcome: `succeeded`, `failed`, `interrupted` or `unobserved`. A task whose pane is gone is `unobserved`, never `succeeded`. `ls` shows an OUTCOME column when a row has one. `ls` and `show` also print:
 
 - `interrupted`: the pane restarted after the send. A restore runs a new shell under the old id, so the task does not run.
 - `gone`: the pane no longer exists. Skiff sets the task `done` on the next `ledger ls`, `ledger show` or watcher step. It stays not reported. `--json` shows `state` `done` and a `gone_at` stamp.
@@ -221,6 +221,7 @@ A fleet can have one Skipper for all its projects. It is a project Skipper with 
 | `ledger handoff SCOPE "TASK" --title "..." [--parent UID]` | Hand a task to a project's or a fleet's Skipper. SCOPE: `NAME`, `project:NAME` or `fleet:NAME`. Admiral only. |
 | `ledger send UID --enter` | Send a `pending` or `interrupted` task. |
 | `ledger update UID [--state S] [--pane S] [--title T] [--result PATH] [--parent UID] ...` | Change only the given fields. |
+| `ledger update UID --outcome O [--commit REF]` | Set how a task ended: `succeeded`, `failed`, `interrupted` or `unobserved`. It sets the task `done`. `--state done` alone gives `succeeded`, or `unobserved` when the evidence the task expects (`add --expect result\|commit`) is missing. |
 | `ledger ls [--state S] [--all \| --closed \| --unreported] [--json]` | Show the work that is not closed: working, then open. |
 | `ledger show UID [--json]` | Show one row. |
 | `ledger report UID... \| --all` | Mark done tasks as told to the person. |

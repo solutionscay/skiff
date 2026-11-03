@@ -3,6 +3,7 @@ use super::read::{
     container, join, keep, live, one, pane, print_one, print_rows, project_of, rank, state, sweep,
     top, tree, under, View,
 };
+use super::evidence;
 use super::schema::{open, open_at, NOW};
 use super::write::{
     add_state, age, check_scope, check_writer, close, flush_folders, folder_size, insert,
@@ -18,8 +19,12 @@ use std::path::{Path, PathBuf};
 
 pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
     match cmd {
-        LedgerCmd::Add { pane: p, task, title, plan: is_plan, parent, project, state: st, result, reference, task_type, send, enter, shell } => {
+        LedgerCmd::Add { pane: p, task, title, plan: is_plan, parent, project, state: st, result, reference, task_type, expect, send, enter, shell } => {
             let task_type = task_type.as_deref().map(skiff_core::tasks::check_name).transpose()?.map(str::to_string);
+            let expects = expect.as_deref().map(evidence::expects).transpose()?.map(str::to_string);
+            if is_plan && expects.is_some() {
+                bail!("a plan leaves no evidence of its own: give --expect to its tasks");
+            }
             let st = add_state(st.as_deref(), is_plan, send)?.to_string();
             let target = match p {
                 Some(p) if !is_plan => Some(pane(socket, &p).await?),
@@ -40,7 +45,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                 Some(p) => caller.check_parent(&container(&db, p)?)?,
                 None => caller.owner().to_string(),
             };
-            let new = New { plan: is_plan, parent, pane_id, pane_gen, project, task, title, state: st, result, reference, task_type, socket: here, owner, handoff: false };
+            let new = New { plan: is_plan, parent, pane_id, pane_gen, project, task, title, state: st, result, reference, task_type, socket: here, owner, handoff: false, expects };
             let (id, uid, result, plan) = insert(&mut db, &file, new)?;
             let dir = one(&db, &uid)?.work_dir.unwrap_or_default();
             println!("id {id}\nuid {uid}\nfolder {dir}\nresult {result}");
@@ -53,7 +58,8 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                 return send_row(socket, &db, &row, SendOpts { text: Vec::new(), enter, shell }).await;
             }
         }
-        LedgerCmd::Handoff { project, task, title, parent } => {
+        LedgerCmd::Handoff { project, task, title, parent, expect } => {
+            let expects = expect.as_deref().map(evidence::expects).transpose()?.map(str::to_string);
             let file = path()?;
             let mut db = open_at(&file)?;
             let caller = check_writer(socket, &db, person).await?;
@@ -99,6 +105,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                 socket: Some(socket.display().to_string()),
                 owner: GRAND.into(),
                 handoff: true,
+                expects,
             };
             let (id, uid, result, plan) = insert(&mut db, &file, new)?;
             let dir = one(&db, &uid)?.work_dir.unwrap_or_default();
@@ -124,15 +131,23 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
             caller.check(&row)?;
             return send_row(socket, &db, &row, SendOpts { text, enter, shell }).await;
         }
-        LedgerCmd::Update { id, state: st, result, task, title, pane: p, project, parent, reference, task_type } => {
-            let st = st.as_deref().map(state).transpose()?;
+        LedgerCmd::Update { id, state: st, result, task, title, pane: p, project, parent, reference, task_type, outcome, expect, commit } => {
+            let mut st = st.as_deref().map(state).transpose()?;
             let task_type = task_type.as_deref().map(skiff_core::tasks::check_name).transpose()?;
+            let outcome = outcome.as_deref().map(evidence::outcome).transpose()?;
+            let expects = expect.as_deref().map(evidence::expects).transpose()?;
+            // An outcome ends the task.
+            match (outcome, st) {
+                (Some(o), Some(s)) if s != "done" => bail!("the outcome {o} is for a done task, not a {s} one. Nothing changed"),
+                (Some(_), None) => st = Some("done"),
+                _ => {}
+            }
             let file = path()?;
             let mut db = open_at(&file)?;
             let caller = check_writer(socket, &db, person).await?;
             let row = one(&db, &id)?;
             // A project Skipper reports the hand-off it was given: its state and result.
-            let report_only = task.is_none() && title.is_none() && p.is_none() && project.is_none() && parent.is_none() && reference.is_none() && task_type.is_none();
+            let report_only = task.is_none() && title.is_none() && p.is_none() && project.is_none() && parent.is_none() && reference.is_none() && task_type.is_none() && expects.is_none();
             if report_only {
                 caller.check_report(&row)?;
             } else {
@@ -145,6 +160,9 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
             }
             if row.is_plan() && (p.is_some() || parent.is_some()) {
                 bail!("ledger row {id} is a plan: it has no pane and no plan above it");
+            }
+            if row.is_plan() && (outcome.is_some() || expects.is_some() || commit.is_some()) {
+                bail!("ledger row {id} is a plan: its tasks have the outcomes and the evidence");
             }
             // A new pane, or a new send to the same one, starts from the
             // pane's program as it is now.
@@ -178,8 +196,28 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                 ),
                 params![row.id, st, result, task, pane_id, project, parent, reference, gen.is_some(), gen.flatten(), task_type, here, title],
             )?;
-            restate(&tx, &one(&tx, &row.uid)?, st)?;
+            tx.execute(
+                "UPDATE tasks SET expects = coalesce(?2, expects), commit_ref = coalesce(?3, commit_ref) WHERE id = ?1",
+                params![row.id, expects, commit],
+            )?;
+            let now = one(&tx, &row.uid)?;
+            restate(&tx, &now, st)?;
+            // Set done now: check the evidence, then record how it ended.
+            let found = (st == Some("done") && !now.is_plan()).then(|| evidence::check(&now, socket)).flatten();
+            if st == Some("done") && !now.is_plan() {
+                let o = evidence::settle(outcome, found.as_ref());
+                tx.execute("UPDATE tasks SET outcome = ?2 WHERE id = ?1", params![row.id, o])?;
+            }
             tx.commit()?;
+            match &found {
+                Some(evidence::Evidence::Seen(t)) => println!("{} {}: {t}", kind_word(&now.kind), now.uid),
+                Some(evidence::Evidence::Missing(t)) => {
+                    let o = evidence::settle(outcome, found.as_ref());
+                    eprintln!("skiff: {} {} is done, outcome {o}: {t}", kind_word(&now.kind), now.uid);
+                }
+                Some(evidence::Evidence::Unchecked(t)) => eprintln!("skiff: {} {}: {t}", kind_word(&now.kind), now.uid),
+                None => {}
+            }
         }
         LedgerCmd::Ls { state: st, all, closed, unreported, json } => {
             if let Some(s) = st.as_deref().filter(|s| *s != INTERRUPTED && *s != GONE) {

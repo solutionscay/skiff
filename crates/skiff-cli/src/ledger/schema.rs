@@ -33,7 +33,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   owner       TEXT NOT NULL DEFAULT 'grand',
   reopened_at TEXT,
   work_dir    TEXT,
-  flushed_at  TEXT
+  flushed_at  TEXT,
+  outcome     TEXT,
+  expects     TEXT,
+  commit_ref  TEXT
 );
 ";
 
@@ -126,6 +129,9 @@ pub(super) fn open_at(file: &Path) -> Result<Connection> {
 ///   closes at the next write (see [`super::auto_close`]).
 /// - 10 to 11: `work_dir` and `flushed_at`. No row has them: a row from
 ///   before work folders keeps its result path, with no folder.
+/// - 11 to 12: `outcome`, `expects` and `commit_ref`. A task skiff set done
+///   because its pane was gone takes the outcome `unobserved`. Every other
+///   row has none: the migration cannot tell how a done task ended.
 fn migrate(db: &mut Connection) -> Result<()> {
     add_column(db, "socket", |tx| {
         tx.execute("UPDATE tasks SET socket = ?1 WHERE kind = 'task'", [state::live_socket().display().to_string()])?;
@@ -138,7 +144,13 @@ fn migrate(db: &mut Connection) -> Result<()> {
     add_owner(db)?;
     add_column(db, "reopened_at", |_| Ok(()))?;
     add_column(db, "work_dir", |_| Ok(()))?;
-    add_column(db, "flushed_at", |_| Ok(()))
+    add_column(db, "flushed_at", |_| Ok(()))?;
+    add_column(db, "outcome", |tx| {
+        tx.execute("UPDATE tasks SET outcome = 'unobserved' WHERE state = 'done' AND gone_at IS NOT NULL", [])?;
+        Ok(())
+    })?;
+    add_column(db, "expects", |_| Ok(()))?;
+    add_column(db, "commit_ref", |_| Ok(()))
 }
 
 /// The 8 to 9 step. SQLite cannot change a CHECK in place, so the rows move
@@ -154,7 +166,7 @@ fn add_owner(db: &mut Connection) -> Result<()> {
     if !has(&tx)? {
         let old = "id, uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, reported_at, title, closed_at, gone_at";
         // Version 9's shape: the later columns come in the next steps.
-        tx.execute_batch(&TASKS.replace("IF NOT EXISTS tasks", "tasks_9").replace(",\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", ""))?;
+        tx.execute_batch(&TASKS.replace("IF NOT EXISTS tasks", "tasks_9").replace(",\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT,\n  outcome     TEXT,\n  expects     TEXT,\n  commit_ref  TEXT", ""))?;
         tx.execute_batch(&format!("INSERT INTO tasks_9 ({old}, owner) SELECT {old}, 'grand' FROM tasks; DROP TABLE tasks; ALTER TABLE tasks_9 RENAME TO tasks;"))?;
     }
     tx.commit()?;
