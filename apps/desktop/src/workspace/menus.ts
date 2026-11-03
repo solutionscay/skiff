@@ -13,11 +13,9 @@ import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { type MenuEntry } from "../ui/menu";
 import { isRemote } from "../app/hosts";
 import type { SkipperStart } from "../ui/launchMenu";
-import { agentName, basename, branchName, isFolder, locate, isProjectSkipper, scopeName } from "./model";
+import { agentName, basename, branchName, isFolder, isProjectSkipper, scopeName } from "./model";
 import { setAvatarDialog } from "./skipperFace";
-import { cwdOf } from "./canvas";
-import { filledOf, slotsOf } from "./layoutSlots";
-import type { Group, HostBranches, Project, SessionInfo, SplitDir, Worktree } from "../platform/types";
+import type { HostBranches, Project, SessionInfo, SplitDir, Worktree } from "../platform/types";
 import type { Fleet } from "./fleets";
 import { fleetWorkspaceEntries, keepInView, projectWorkspaceEntries, renameWorkspaceFleet } from "./profile";
 import { invoke } from "@tauri-apps/api/core";
@@ -28,23 +26,23 @@ import { launchMenu } from "../app/panels";
 import { showError } from "../ui/alerts";
 import { hasChanges, reviewChanges, setShowChanges, showsChanges } from "./changes";
 import { setShowFiles, showsFiles } from "./files";
-import { deleteGroup } from "../app/groups";
 import { closeEntries } from "./projectClose";
-import { sessionsOf } from "./layout";
 import { bareWorktree, projectsHidden, renameHidden, setProjectsHidden } from "./tree";
 
-import { startRename, startSessionRename } from "./rename";
+import { startSessionRename } from "./rename";
 import { render } from "../app/render";
 import { clearSelection, selectionPlan, splitSelection } from "./selection";
 import { MAX_PANES, removeErrors, removing, S, selectedWorktree, sessions } from "../app/state";
 import { groupOf, launchChoices, launchDigit, place, shownIds, splitFull } from "../app/stateQueries";
 
-import { groupThemeMenu, projectThemeMenu } from "../appearance/themes";
-import { focusPane, refocusTerminal, removeFromGroup, showGroup, unsplit } from "./view";
-import { resumeAllEntry, resumeOffer, resumePane } from "../terminal/resume";
+import { projectThemeMenu } from "../appearance/themes";
+import { focusPane, refocusTerminal, removeFromGroup } from "./view";
+import { resumeOffer, resumePane } from "../terminal/resume";
 import { ledgerFolded, ledgerShown, toggleLedger } from "./ledger";
 import { hostCan, hostInvoke } from "../app/hostCaps";
 import { endEntry, endSelectedEntry, endSession, sessionLabel, themeEntry } from "./menus/end";
+import { groupCloseEntries } from "./menus/group";
+export { groupCloseEntries, groupMenu, killGroup, ungroup } from "./menus/group";
 export { endEntry };
 
 async function setIcon(p: Project, icon: string | null) {
@@ -615,98 +613,6 @@ export function splitMenu(id: string, dir: SplitDir, x: number, y: number) {
     });
   });
   ctxMenu.open(x, y, t(dir === "row" ? "menu.addPaneRightTitle" : "menu.addPaneBelowTitle"), entries);
-}
-
-export function groupMenu(g: Group, x: number, y: number) {
-  const resume = resumeAllEntry(sessionsOf(g.layout));
-  ctxMenu.open(x, y, t("menu.group", { name: g.name }), [
-    ...(resume ? [resume] : []),
-    ...groupStartEntries(g),
-    { head: upper(t("menu.headGroup")) },
-    { icon: "tools-pencil", label: t("menu.rename"), hint: keyLabel("rename"), disabled: !hostCan("session_groups"), run: () => startRename(g) },
-    { icon: "tools-sparkles", label: t("menu.groupTheme"), hint: keyLabel("theme"), disabled: !hostCan("session_lifecycle"), run: () => void groupThemeMenu(g) },
-    ...groupCloseEntries(g),
-  ]);
-}
-
-/** Shell, then agents: a new session in the group's first empty pane, else a new pane on the right. */
-function groupStartEntries(g: Group): MenuEntry[] {
-  const cwd = cwdOf(g);
-  const at = cwd ? locate(S.projects, cwd) : null;
-  const where = at ? branchName(at.worktree) : cwd ? basename(cwd) : t("menu.home");
-  const empty = slotsOf(g.layout)[0];
-  const filled = filledOf(g.layout).filter((id) => sessions.has(id));
-  const full = !empty && filled.length >= MAX_PANES;
-  const entries: MenuEntry[] = [{ head: upper(t("menu.newIn", { where })) }];
-  launchChoices().forEach((a, i) => {
-    entries.push({
-      glyph: launchIcon(a),
-      label: a?.id ?? t("menu.shell"),
-      hint: launchDigit(i),
-      disabled: full || !hostCan("session_lifecycle"),
-      run: () => {
-        if (g.id !== S.activeGroup) showGroup(g.id);
-        const target = g.focus && filled.includes(g.focus) ? g.focus : filled[0];
-        const place = empty ? { slot: empty } : { target, dir: "row" as const };
-        void newSession(cwd, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell", place).catch(showError);
-      },
-    });
-  });
-  return entries;
-}
-
-/** Drops the group. Its sessions keep running and go back under their worktrees. */
-export function ungroup(g: Group) {
-  if (g.id === S.activeGroup) unsplit(g);
-  else {
-    deleteGroup(g);
-    render();
-  }
-}
-
-/** Kill all sessions in the group. It asks first when one runs. The group goes with its last session. */
-export async function killGroup(id: string) {
-  // Group reloads replace objects while a menu or confirmation is open.
-  const group = S.groups.find((x) => x.id === id);
-  if (!group) return;
-  const ids = sessionsOf(group.layout).filter((s) => sessions.has(s));
-  const running = ids.filter((s) => sessions.get(s)?.state !== "done");
-  if (running.length) {
-    const ok = await confirmAction({
-      // Not the group's name: an unnamed group is called "1 over 2", which reads as noise here.
-      title: t("killGroup.title"),
-      body: tn("killGroup.body", running.length),
-      action: t("killGroup.action"),
-    });
-    if (!ok) return refocusTerminal();
-  }
-  clearSelection();
-  const results = await Promise.allSettled(ids.filter((id) => sessions.has(id)).map((id) => hostInvoke("session_lifecycle", "kill_session", { session: id })));
-  for (const result of results) {
-    if (result.status === "rejected") {
-      showError(result.reason);
-    }
-  }
-  render();
-}
-
-/** The same group actions serve context menus, the menu bar, and the palette. */
-export function groupCloseEntries(g: Group | null): Exclude<MenuEntry, { head: string } | { sep: true }>[] {
-  const current = () => S.groups.find((x) => x.id === g?.id);
-  const idsOf = (group: Group) => sessionsOf(group.layout).filter((id) => sessions.has(id));
-  const hasSessions = !!g && idsOf(g).length > 0;
-  const drop = () => {
-    // Group reloads replace objects while a menu or confirmation is open.
-    const group = current();
-    if (group) ungroup(group);
-  };
-  const entries: Exclude<MenuEntry, { head: string } | { sep: true }>[] = [
-    { icon: "code-ungroup", label: t("menu.ungroup"), hint: keyLabel("close-pane"), disabled: !g || !hostCan("session_groups"), run: drop },
-  ];
-  if (hasSessions) entries.push(
-    { icon: "indicators-square-stop", label: t("menu.killGroup"), hint: keyLabel("end-session"), danger: true, disabled: !hostCan("session_lifecycle"), run: () => void killGroup(g!.id) },
-  );
-  return entries;
 }
 
 export async function removeWorktree(p: Project, w: Worktree) {
