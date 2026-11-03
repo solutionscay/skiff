@@ -36,7 +36,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "e3cc9355eca7a2fb59336d45e0f874a538b26758d227cc2c83a9307aefd7dd01"
+    "sha256": "d710ca57c32108cd012a5792e91f08b4c5df151096c723539c464850e58aa49b"
   },
   "apps/desktop/src-tauri/src/config.rs": {
     "ownership": "agent settings (#166 R8): a remote Host's through HostConnection (agent_config@1); This Mac's [agents] stays the legacy local adapter, read back from the config it writes (installed state from skiffd): migrate in M1\u2013M6; Skipper avatars (skipper_avatars, set_skipper_avatar) read and write avatar.toml in This Mac's Skipper folders: LOCAL_ONLY",
@@ -280,7 +280,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "1eebf97f4c530357c834ed21be21baa6afe82c3e49dd4817fc7ecedb8de2754c"
+    "sha256": "a72fd65e6a8826fbcf2a0e8436259f8b2c6b31330114516aa6408dbf9c6579f8"
   },
   "apps/desktop/src-tauri/src/main.rs": {
     "ownership": "client policy (#189): this app's own command-line flags; no Host data",
@@ -438,7 +438,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "4936b2ca29a1ec712ba742f9fd8b085d5341fa7cd72217156c87263f4cc0d2ba"
+    "sha256": "06681673de959e1d1c1b497c74f70a594b12e8740058947880c83a299b1f74ad"
   },
   "apps/desktop/src/app/hosts.ts": {
     "ownership": "client policy: Host picker and label (list/select Hosts, links to Settings \u203a Hosts, clipboard opt-in) and the remote link-lost signal",
@@ -927,7 +927,7 @@
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "2cffff414d1ce0bf65c9b5a319165779ab9618c41f85466235ab07c9dde366c4"
+    "sha256": "3ceb6a9898cbd232ccda192682738aa8c24c12c7643f0bfb52a0a22fad77b6c7"
   },
   "apps/desktop/src/workspace/fleets.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

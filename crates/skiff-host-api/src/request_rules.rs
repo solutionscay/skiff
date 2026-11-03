@@ -25,6 +25,7 @@ impl Request {
             Self::GitChanges { .. } => Some(Capability::git_status()),
             Self::GitDiff { .. } => Some(Capability::git_diff()),
             Self::FileList { .. } | Self::FileRead { .. } => Some(Capability::files()),
+            Self::FileReveal { .. } => Some(Capability::file_reveal()),
             Self::ProjectBackground { .. } => Some(Capability::project_assets()),
             Self::FolderHome | Self::FolderList { .. } | Self::FolderPlaces | Self::FolderCreate { .. } => Some(Capability::folders()),
             Self::DropPut { .. } => Some(Capability::drops()),
@@ -82,6 +83,7 @@ impl Request {
                 | (Self::BranchList { .. }, Response::Branches { .. })
                 | (Self::FileList { .. }, Response::Files { .. })
                 | (Self::FileRead { .. }, Response::File { .. })
+                | (Self::FileReveal { .. }, Response::Ok)
                 | (Self::ProjectBackground { .. }, Response::Image { .. })
                 | (Self::FolderHome | Self::FolderCreate { .. } | Self::DropPut { .. }, Response::Path { .. })
                 | (Self::FolderList { .. }, Response::Folders { .. })
@@ -125,6 +127,7 @@ impl Request {
                 | Self::BranchList { .. }
                 | Self::FileList { .. }
                 | Self::FileRead { .. }
+                | Self::FileReveal { .. }
                 | Self::ProjectBackground { .. }
                 | Self::FolderHome
                 | Self::FolderList { .. }

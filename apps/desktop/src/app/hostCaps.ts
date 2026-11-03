@@ -22,6 +22,7 @@ type HostCap =
   | "project_config"
   | "worktrees"
   | "files"
+  | "file_reveal"
   | "folders"
   | "project_assets"
   | "ledger"
@@ -49,6 +50,7 @@ const MAJOR: Record<HostCap, number> = {
   project_config: 1,
   worktrees: 1,
   files: 1,
+  file_reveal: 1,
   folders: 1,
   project_assets: 1,
   ledger: 1,
@@ -80,6 +82,7 @@ const OFFERS: Record<HostCap, MessageKey> = {
   project_config: "hostCaps.project_config",
   worktrees: "hostCaps.worktrees",
   files: "hostCaps.files",
+  file_reveal: "hostCaps.files",
   folders: "hostCaps.folders",
   project_assets: "hostCaps.project_assets",
   ledger: "hostCaps.ledger",

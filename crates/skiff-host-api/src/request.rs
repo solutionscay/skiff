@@ -185,6 +185,17 @@ pub enum Request {
         dir: String,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         follow_links: bool,
+        /// Cursor returned by the preceding reply. This is an opaque integer,
+        /// rather than a person-entered path.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cursor: Option<usize>,
+    },
+    /// Shows a worktree folder, or one regular file in it, in this Host's
+    /// file manager. `file` is relative to the named open worktree.
+    FileReveal {
+        worktree: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        file: Option<String>,
     },
     /// Answers `file`: `file` (relative) of `worktree`, read for `purpose`.
     FileRead {

@@ -1304,6 +1304,7 @@ export const es = {
   "files.truncated#one": "Solo se muestra la primera entrada.",
   "files.truncated#other": "Solo se muestran las primeras {count} entradas.",
   "files.tooMany": "No se muestra ninguna entrada. La carpeta tiene demasiadas para listarlas.",
+  "files.more": "Mostrar más",
   "changes.since": "Cambios desde {base}",
   "skippers.admiral": "{name}, el agente de Skiff",
   "skippers.notRunning": "no está en marcha",

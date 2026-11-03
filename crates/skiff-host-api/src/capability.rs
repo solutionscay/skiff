@@ -14,6 +14,7 @@ pub const GIT_DIFF: &str = "git_diff";
 pub const PROJECT_CONFIG: &str = "project_config";
 pub const WORKTREES: &str = "worktrees";
 pub const FILES: &str = "files";
+pub const FILE_REVEAL: &str = "file_reveal";
 pub const FOLDERS: &str = "folders";
 pub const PROJECT_ASSETS: &str = "project_assets";
 pub const LEDGER: &str = "ledger";
@@ -94,6 +95,11 @@ impl Capability {
     /// client may open.
     pub fn files() -> Self {
         Self::new(FILES, 1)
+    }
+    /// Show a file or folder that is already in an open project worktree in
+    /// this Host's file manager. It grants no free path or client-side opener.
+    pub fn file_reveal() -> Self {
+        Self::new(FILE_REVEAL, 1)
     }
     /// List the Host account's folders from its home, and make one new
     /// folder in a folder it lists. Folders and links to folders only:

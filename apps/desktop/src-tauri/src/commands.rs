@@ -176,9 +176,16 @@ pub(crate) async fn project_background(app: State<'_, App>, project: String) -> 
 /// On This Mac links are followed, so a linked folder expands; on a remote
 /// Host they are not.
 #[tauri::command]
-pub(crate) async fn list_files(app: State<'_, App>, worktree: String, dir: String) -> Result<skiff_host_api::HostListing, String> {
+pub(crate) async fn list_files(app: State<'_, App>, worktree: String, dir: String, cursor: Option<usize>) -> Result<skiff_host_api::HostListing, String> {
     let follow = !app.remote();
-    crate::connection::data_read(&app, |c| async move { skiff_client::host::data::file_list(&c, &worktree, &dir, follow).await }).await
+    crate::connection::data_read(&app, |c| async move { skiff_client::host::data::file_list_page(&c, &worktree, &dir, follow, cursor).await }).await
+}
+
+/// Reveals a scoped Host file or worktree in the Host's own file manager.
+/// Neither string reaches a local opener when the selected Host is remote.
+#[tauri::command]
+pub(crate) async fn reveal_host_file(app: State<'_, App>, worktree: String, file: Option<String>) -> Result<(), String> {
+    crate::connection::data_read(&app, |c| async move { skiff_client::host::data::file_reveal(&c, &worktree, file.as_deref()).await }).await
 }
 
 /// A file's preview from the selected Host: bounded text, an image's bytes,
