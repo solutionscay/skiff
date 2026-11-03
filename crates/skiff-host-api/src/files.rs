@@ -80,6 +80,6 @@ pub struct HostFile {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostImage {
     pub mime: String,
-    #[serde(with = "crate::bytes")]
+    #[serde(with = "crate::wire::bytes")]
     pub bytes: Vec<u8>,
 }
