@@ -1,18 +1,16 @@
 import { ctxMenu } from "../ui/contextMenu";
 /** Right-click menus for projects, sessions, panes and groups. */
-import { fleetSkipperOf, joinFleet, renameFleetOn } from "../app/skiffAgent";
 import { confirmAction, promptAction } from "../ui/confirm";
 import { h } from "../ui/dom";
 import { pickColor } from "../appearance/colorPicker";
 import { pickBackgroundOpacity } from "../appearance/backdropOpacity";
 import { keyLabel } from "../app/keys";
-import { t, tn, upper } from "../i18n";
+import { t, upper } from "../i18n";
 import { type MenuEntry } from "../ui/menu";
 import { isRemote } from "../app/hosts";
 import { branchName, isFolder } from "./model";
 import type { HostBranches, Project, Worktree } from "../platform/types";
-import type { Fleet } from "./fleets";
-import { fleetWorkspaceEntries, keepInView, projectWorkspaceEntries, renameWorkspaceFleet } from "./profile";
+import { projectWorkspaceEntries } from "./profile";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
 import { openPath } from "../platform/os";
@@ -22,7 +20,7 @@ import { showError } from "../ui/alerts";
 import { hasChanges, reviewChanges, setShowChanges, showsChanges } from "./changes";
 import { setShowFiles, showsFiles } from "./files";
 import { closeEntries } from "./projectClose";
-import { bareWorktree, projectsHidden, renameHidden, setProjectsHidden } from "./tree";
+import { bareWorktree } from "./tree";
 
 import { render } from "../app/render";
 import { removeErrors, removing, S, selectedWorktree } from "../app/state";
@@ -30,8 +28,10 @@ import { removeErrors, removing, S, selectedWorktree } from "../app/state";
 import { projectThemeMenu } from "../appearance/themes";
 import { refocusTerminal } from "./view";
 import { hostCan, hostInvoke } from "../app/hostCaps";
-import { endEntry, endSession } from "./menus/end";
-import { fleetSkipperEntries, projectSkipperEntries } from "./menus/skipper";
+import { endEntry } from "./menus/end";
+import { projectSkipperEntries } from "./menus/skipper";
+import { setFleet } from "./menus/fleet";
+export { fleetMenu } from "./menus/fleet";
 export { deleteKeyMenu, rowMenu } from "./menus/row";
 export { paneMenu, skiffAgentMenu, splitMenu } from "./menus/pane";
 export { skipperStart } from "./menus/skipper";
@@ -123,92 +123,6 @@ function setInitials(p: Project) {
     submit: (short) => hostInvoke("project_config", "set_project_short", { project: p.name, short }),
     onClose: refocusTerminal,
   });
-}
-
-/** The fleets now, for the picker. */
-const fleetNames = () => [...new Set(S.projects.map((x) => x.fleet).filter((f): f is string => !!f))].sort((a, b) => a.localeCompare(b));
-
-/** Pick the fleet the project sits in. Projects with the same fleet go under one fleet head in the tree. */
-function setFleet(p: Project) {
-  promptAction({
-    title: t("fleet.title", { name: p.name }),
-    body: t("fleet.body"),
-    placeholder: t("fleet.placeholder"),
-    value: p.fleet ?? "",
-    allowEmpty: true,
-    options: fleetNames(),
-    clearLabel: p.fleet ? t("fleet.clear") : undefined,
-    action: t("fleet.action"),
-    // A project Skipper that comes under a running fleet Skipper is taken over, after one confirm.
-    submit: async (fleet) => {
-      const joined = await joinFleet(p.name, fleet.trim());
-      if (joined === null) return;
-      // A fleet the open workspace does not name, or none, would take the project out of view.
-      keepInView(p, fleet.trim() || null);
-      if (joined === false) await hostInvoke("project_config", "set_project_fleet", { project: p.name, fleet });
-    },
-    onClose: refocusTerminal,
-  });
-}
-
-/** Give the fleet a new name: its projects, and its Skipper's folder, rows and session. */
-function renameFleet(f: Fleet, name: string) {
-  renameHidden(f.name, name);
-  renameWorkspaceFleet(f.name, name.trim());
-  return renameFleetOn(f.name, name, f.projects.map((p) => p.name));
-}
-
-/** Take every project out of the fleet. Each goes back under Projects. */
-function dissolveFleet(f: Fleet) {
-  for (const p of f.projects) keepInView(p, null);
-  return hostInvoke<void>("project_config", "reorder_projects", { order: S.projects.map((x) => x.name), fleets: f.projects.map((p) => [p.name, ""]) });
-}
-
-/** A right-click on a fleet tile. */
-export function fleetMenu(f: Fleet, x: number, y: number) {
-  // The Host keeps its fleets: one that takes no project changes keeps them as they are.
-  if (!hostCan("project_config")) return;
-  const skipper = fleetSkipperEntries(f);
-  ctxMenu.open(x, y, t("menu.fleet", { name: f.name }), [
-    ...skipper,
-    ...(skipper.length ? [{ sep: true as const }] : []),
-    // The label says what a click does. Hidden, the head keeps its Skipper and the sessions that need a look.
-    {
-      icon: projectsHidden(f.name) ? "senses-eye" : "senses-eye-off",
-      label: t(projectsHidden(f.name) ? "menu.showProjects" : "menu.hideProjects"),
-      run: () => {
-        setProjectsHidden(f.name, !projectsHidden(f.name));
-        render();
-      },
-    },
-    { sep: true },
-    {
-      icon: "tools-pencil",
-      label: t("menu.renameFleet"),
-      run: () =>
-        promptAction({
-          title: t("renameFleet.title", { name: f.name }),
-          body: tn("renameFleet.body", f.projects.length),
-          placeholder: t("fleet.placeholder"),
-          value: f.name,
-          action: t("renameFleet.action"),
-          submit: (name) => renameFleet(f, name),
-          onClose: refocusTerminal,
-        }),
-    },
-    {
-      icon: "code-ungroup",
-      label: t(fleetSkipperOf(f.name) ? "menu.removeFleetAsk" : "menu.removeFleet"),
-      run: async () => {
-        // The fleet is gone, so its Skipper stops: one confirm.
-        const s = fleetSkipperOf(f.name);
-        if (s && !(await confirmAction({ title: t("removeFleet.title", { name: f.name }), body: t("removeFleet.body", { projects: f.projects.map((p) => p.name).join(", "), name: f.name }), action: t("removeFleet.action") }))) return refocusTerminal();
-        if (s) await endSession(s.id);
-        await dissolveFleet(f).catch(showError);
-      },
-    },
-    ...fleetWorkspaceEntries(f.name),
-  ]);
 }
 
 /** Ask for a branch, then make a worktree for it. A name the list shows is an
