@@ -958,7 +958,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "02d204c81d8d45e825c763ba2df9384f16887baa0c4e2b93c5f9498f6752795b"
+    "sha256": "cb9c63a074fc874ec9ef2ffcaf0e7d903b95116eab0368fd0d9768650b48e88f"
   },
   "apps/desktop/src/workspace/menus/end.ts": {
     "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
@@ -991,6 +991,19 @@
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
     "sha256": "8d80da17f09c1ccab63064b9fe7cd874767e2e682fd540ebe2b6d63bd4f657c9"
+  },
+  "apps/desktop/src/workspace/menus/skipper.ts": {
+    "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
+    "reasons": [
+      "local provider: apps/desktop/src/app/hostCaps.ts",
+      "local provider: apps/desktop/src/app/hosts.ts",
+      "local provider: apps/desktop/src/app/skiffAgent.ts",
+      "local provider: apps/desktop/src/ui/launchMenu.ts",
+      "local provider: apps/desktop/src/workspace/fleets.ts",
+      "local provider: apps/desktop/src/workspace/menus/end.ts",
+      "local provider: apps/desktop/src/workspace/view.ts"
+    ],
+    "sha256": "f56a7d7c717334f918ecd4b94f2a96dc42994f841cb7769aaa783910a0293548"
   },
   "apps/desktop/src/workspace/missionControl.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
