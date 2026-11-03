@@ -37,13 +37,16 @@ mod lifecycle;
 mod output;
 mod persistence;
 mod registry;
+pub(crate) mod reducer;
 pub mod reload;
 mod status;
 #[cfg(test)]
 use crate::screen::Screen;
 #[cfg(test)]
 use attention::topic;
-use attention::{end_reports, live};
+use attention::end_reports;
+#[cfg(test)]
+use attention::live;
 pub use coordinator::{Ask, Coordinated};
 use input::{start_writer, Input};
 use lifecycle::default_shell;
@@ -251,6 +254,7 @@ impl Session {
     /// The program in front reports its own state with OSC 7501. Its report
     /// decides the state over the screen rules and the idle timer. A result
     /// kept after the program left decides nothing.
+    #[cfg(test)]
     fn claimed(&self) -> bool {
         live(&self.info.lock().unwrap())
     }
@@ -411,14 +415,11 @@ impl SessionPool {
             let mut changed = false;
             let mut ended = None;
             if front == Front::Shell {
-                if info.state != SessionState::Idle {
-                    info.state = SessionState::Idle;
-                    info.waiting_cause = None;
-                    state = Some(info.id.clone());
-                }
-                changed = !info.unread;
-                info.unread = true;
-                ended = Some(info.id.clone());
+                let (next, effects) = reducer::reduce(attention::snapshot(session, &info), reducer::Input::Shell, now_ms());
+                *info = next.info;
+                state = effects.state.map(|_| info.id.clone());
+                changed = effects.update;
+                ended = effects.turn.then(|| info.id.clone());
                 // The shell's prompt is back: the program's reports end with it.
                 changed |= end_reports(&mut records, &mut info);
             } else if agent && info.agent_exit.take().is_some() {
@@ -456,17 +457,10 @@ impl SessionPool {
         let session = self.get(id).ok_or_else(|| anyhow!("no such session: {id}"))?;
         let updated = {
             let mut info = session.info.lock().unwrap();
-            // A result kept after its program left is read now.
-            let kept = info.program_status.as_ref().is_some_and(|p| p.ended);
-            if kept {
-                info.program_status = None;
-            }
-            let changed = info.unread || info.agent_exit.is_some() || kept;
-            info.unread = false;
-            if info.agent_exit.take().is_some() {
-                self.dirty.notify_one();
-            }
-            changed.then(|| info.clone())
+            let (next, effects) = reducer::reduce(attention::snapshot(&session, &info), reducer::Input::Seen, now_ms());
+            *info = next.info;
+            if effects.dirty { self.dirty.notify_one(); }
+            effects.update.then(|| info.clone())
         };
         if let Some(session) = updated {
             let _ = self.events.send(Event::SessionUpdated { session });

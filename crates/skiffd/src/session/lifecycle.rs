@@ -364,9 +364,8 @@ impl SessionPool {
         let reported = {
             let mut records = session.records.lock().unwrap();
             let mut info = session.info.lock().unwrap();
-            info.exit_code = code;
-            info.state = SessionState::Done;
-            info.waiting_cause = None;
+            let (next, _) = super::reducer::reduce(super::attention::snapshot(session, &info), super::reducer::Input::Exit { code }, now_ms());
+            *info = next.info;
             end_reports(&mut records, &mut info)
         };
         session.set_reader_done();

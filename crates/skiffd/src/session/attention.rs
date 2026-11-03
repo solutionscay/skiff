@@ -1,6 +1,7 @@
 //! Fallback attention policy.
 use super::output::Scan;
-use super::{Front, Session, SessionPool, IDLE_AFTER, MIN_TURN_MS};
+use super::{Front, Session, SessionPool};
+use super::reducer::{self, Input};
 use crate::program_status::Records;
 use crate::screen::{title_state, TitleState};
 use skiff_core::protocol::Event;
@@ -10,115 +11,30 @@ use std::sync::Arc;
 use std::time::Duration;
 
 impl SessionPool {
-    /// A bell outside the echo of a key. A shell rings for its own reasons.
-    /// A supported agent says what it wants on the screen, and its bell does
-    /// not say why it rang. For every other program the bell is the call.
+    /// A bell from a shell is ignored; an unclaimed command may ring.
     pub(super) fn bell(&self, session: &Session) {
-        if session.claimed() {
-            return;
-        }
-        if matches!(session.front(), Front::Command | Front::Program) {
-            session.belled.store(true, Ordering::Relaxed);
-            self.wait(session, BELL, "");
-        }
+        self.apply_policy(session, Input::Bell, "");
     }
 
-    /// Work is new text on screen. An echo of typing, a redraw after a resize,
-    /// mode codes an idle program re-sends, or a logo that only changes color
-    /// are not. Text at a shell prompt is not work either.
     pub(super) fn apply_scan(&self, session: &Session, scan: Scan) {
-        if !scan.scanned {
-            return;
-        }
-        let front = session.front();
-        if front == Front::Shell {
-            return;
-        }
-        if scan.work {
-            session.last_work.store(now_ms(), Ordering::Relaxed);
-        }
-        if scan.busy {
-            session.busy_seen.store(true, Ordering::Relaxed);
-        }
-        if session.claimed() {
-            // The agent's own approval prompt under a report that it works:
-            // it may ask without saying so. The tick raises it after the
-            // grace; the prompt's end lowers it again.
-            if scan.approval {
-                let _ = session.approval_since.compare_exchange(
-                    0,
-                    now_ms(),
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                );
-            } else {
-                session.approval_since.store(0, Ordering::Relaxed);
-                let working = session
-                    .info
-                    .lock()
-                    .unwrap()
-                    .program_status
-                    .as_ref()
-                    .is_some_and(|p| p.state == "working");
-                if session.raised.swap(false, Ordering::Relaxed) && working {
-                    self.set_state(session, SessionState::Working);
-                }
-            }
-            return;
-        }
-        let waiting = session.info.lock().unwrap().state == SessionState::Waiting;
+        if !scan.scanned { return; }
         let asks = *session.title_state.lock().unwrap() == Some(TitleState::Action);
-        if scan.approval || asks {
-            session.belled.store(false, Ordering::Relaxed);
-            let (cause, detail) = if scan.approval {
-                (PROMPT, String::new())
-            } else {
-                (TITLE, title_detail(session))
-            };
-            self.wait(session, cause, &detail);
-        } else if waiting && matches!(front, Front::Agent(_)) && !session.belled.load(Ordering::Relaxed) {
-            // The prompt left the screen: the user answered it.
-            session.last_work.store(now_ms(), Ordering::Relaxed);
-            self.set_state(session, SessionState::Working);
-        } else if scan.work && !waiting {
-            self.set_state(session, SessionState::Working);
-        }
+        let detail = if asks && !scan.approval { title_detail(session) } else { String::new() };
+        self.apply_policy(session, Input::Scan {
+            scanned: scan.scanned, work: scan.work, busy: scan.busy,
+            approval: scan.approval, asks,
+        }, &detail);
     }
 
-    /// The window title of a supported agent: busy keeps it working and
-    /// proves a turn, an action-required title sets the bell.
     pub(super) fn apply_title(&self, session: &Session, title: Option<&str>) {
         let Front::Agent(agent) = session.front() else { return };
-        let state = title.and_then(|t| title_state(agent, t));
-        let old = std::mem::replace(&mut *session.title_state.lock().unwrap(), state);
-        // A program that reports with OSC 7501 is read by its reports alone.
-        // Claude Code drops its spinner from the title once it reports.
-        if old == state || session.claimed() {
-            return;
-        }
-        match state {
-            Some(TitleState::Busy) => {
-                session.busy_seen.store(true, Ordering::Relaxed);
-                session.last_work.store(now_ms(), Ordering::Relaxed);
-                if session.info.lock().unwrap().state != SessionState::Waiting {
-                    self.set_state(session, SessionState::Working);
-                }
-            }
-            Some(TitleState::Action) => {
-                session.belled.store(false, Ordering::Relaxed);
-                self.wait(session, TITLE, &title_detail(session));
-            }
-            Some(TitleState::Ready) | None => {
-                // The busy title kept the session working. Its end starts the
-                // quiet time now, so the turn ends IDLE_AFTER from here.
-                if old == Some(TitleState::Busy) {
-                    session.last_work.store(now_ms(), Ordering::Relaxed);
-                }
-            }
-        }
+        let new = title.and_then(|t| title_state(agent, t));
+        let old = std::mem::replace(&mut *session.title_state.lock().unwrap(), new);
+        self.apply_policy(session, Input::Title { old, new }, &title_detail(session));
     }
 
     /// Sets `waiting` and records why. `detail` goes to the log only.
+    #[cfg(test)]
     pub(super) fn wait(&self, session: &Session, cause: &'static str, detail: &str) {
         self.move_state(session, SessionState::Waiting, Some((cause, detail)));
     }
@@ -129,39 +45,27 @@ impl SessionPool {
         self.move_state(session, state, None);
     }
 
-    fn move_state(&self, session: &Session, state: SessionState, cause: Option<(&'static str, &str)>) {
-        let (id, dropped) = {
+    fn move_state(&self, session: &Session, target: SessionState, cause: Option<(&'static str, &str)>) {
+        self.apply_policy(session, Input::Move { target, cause: cause.map(|c| c.0), drop_ended: true }, cause.map_or("", |c| c.1));
+    }
+
+    fn apply_policy(&self, session: &Session, input: Input, detail: &str) {
+        let now = now_ms();
+        let (id, effects) = {
             let mut info = session.info.lock().unwrap();
-            // Waiting with no cause: an older daemon handed it over so.
-            // Record the cause it shows now.
-            if info.state == state && cause.is_some() && info.waiting_cause.is_none() {
-                set_cause(&mut info, session.front(), cause);
-                drop(info);
-                let _ = self.events.send(Event::SessionUpdated { session: session.info() });
-                return;
-            }
-            if info.state == state || info.state == SessionState::Done {
-                return;
-            }
-            if state == SessionState::Working && info.state == SessionState::Idle {
-                session.work_started.store(now_ms(), Ordering::Relaxed);
-            }
-            info.state = state;
-            set_cause(&mut info, session.front(), cause);
-            // New work: the result a program left is read or stale.
-            let dropped = state == SessionState::Working
-                && info.program_status.as_ref().is_some_and(|p| p.ended);
-            if dropped {
-                info.program_status = None;
-            }
-            (info.id.clone(), dropped)
+            let (next, effects) = reducer::reduce(snapshot(session, &info), input, now);
+            *info = next.info;
+            if effects.work_started { session.work_started.store(now, Ordering::Relaxed); }
+            if effects.last_work { session.last_work.store(now, Ordering::Relaxed); }
+            if effects.busy_seen { session.busy_seen.store(true, Ordering::Relaxed); }
+            if let Some(value) = effects.belled { session.belled.store(value, Ordering::Relaxed); }
+            if let Some(value) = effects.raised { session.raised.store(value, Ordering::Relaxed); }
+            if let Some(value) = effects.approval_since { session.approval_since.store(value, Ordering::Relaxed); }
+            if let Some(recorded) = effects.cause_recorded { log_cause(&info, session.front(), recorded, detail); }
+            (info.id.clone(), effects)
         };
-        let _ = self.events.send(Event::State { session: id, state });
-        if dropped {
-            let _ = self.events.send(Event::SessionUpdated {
-                session: session.info(),
-            });
-        }
+        if let Some(state) = effects.state { let _ = self.events.send(Event::State { session: id, state }); }
+        if effects.update { let _ = self.events.send(Event::SessionUpdated { session: session.info() }); }
     }
 
     /// Flips quiet `working` sessions to `idle`. For an agent, the end of a
@@ -192,51 +96,22 @@ impl SessionPool {
     }
 
     pub(super) fn idle_if_quiet_at(&self, s: &Session, now: u64) {
-        let front = s.front();
-        // The title says the agent works: a quiet tool call is still work.
-        if *s.title_state.lock().unwrap() == Some(TitleState::Busy) {
-            return;
-        }
-        // Check and flip under one lock, so a bell or output the reader
-        // handles meanwhile is not overwritten with `idle`.
-        let (id, updated, turn) = {
+        let (id, updated, effects) = {
             let mut info = s.info.lock().unwrap();
-            let last = s.last_work.load(Ordering::Relaxed);
-            let quiet = now.saturating_sub(last) > IDLE_AFTER.as_millis() as u64;
-            if !quiet || info.state != SessionState::Working || live(&info) {
-                return;
+            let title = *s.title_state.lock().unwrap();
+            let (next, effects) = reducer::reduce(snapshot(s, &info), Input::Idle { title, live: live(&info) }, now);
+            *info = next.info;
+            if effects.reset_fresh_busy {
+                s.fresh.store(false, Ordering::Relaxed);
+                s.busy_seen.store(false, Ordering::Relaxed);
             }
-            info.state = SessionState::Idle;
-            let stretch = last.saturating_sub(s.work_started.load(Ordering::Relaxed));
-            let fresh = s.fresh.swap(false, Ordering::Relaxed);
-            let busy = s.busy_seen.swap(false, Ordering::Relaxed);
-            let turn = match front {
-                // The busy line proves a turn, even a fast one, or the first
-                // after a resume. Without it, text is a recap or a redraw.
-                Front::Agent(agent) if crate::screen::has_busy_line(agent) => busy,
-                _ => !fresh && match front {
-                    // An agent with no known busy line redraws its status
-                    // line while it does nothing.
-                    Front::Agent(_) => stretch >= MIN_TURN_MS,
-                    Front::Program => true,
-                    // A quiet command in a shell has not finished. Its end
-                    // shows when the shell is in front again.
-                    Front::Shell | Front::Command => false,
-                },
-            };
-            let updated = (turn && !info.unread).then(|| {
-                info.unread = true;
-                info.clone()
-            });
-            (info.id.clone(), updated, turn)
+            (info.id.clone(), effects.update.then(|| info.clone()), effects)
         };
-        let _ = self.events.send(Event::State { session: id.clone(), state: SessionState::Idle });
-        if turn {
-            let _ = self.events.send(Event::TurnEnded { session: id });
+        if let Some(state) = effects.state {
+            let _ = self.events.send(Event::State { session: id.clone(), state });
         }
-        if let Some(session) = updated {
-            let _ = self.events.send(Event::SessionUpdated { session });
-        }
+        if effects.turn { let _ = self.events.send(Event::TurnEnded { session: id }); }
+        if let Some(session) = updated { let _ = self.events.send(Event::SessionUpdated { session }); }
     }
 }
 
@@ -247,18 +122,26 @@ pub(super) const PROMPT: &str = "prompt";
 pub(super) const TITLE: &str = "title";
 pub(super) const REPORT: &str = "report";
 
-/// Records why the session waits, and logs it, when `info.state` just became
-/// `waiting`. Any other state clears the cause.
-pub(super) fn set_cause(info: &mut SessionInfo, front: Front, cause: Option<(&'static str, &str)>) {
-    match cause.filter(|_| info.state == SessionState::Waiting) {
-        Some((cause, detail)) => {
-            info.waiting_cause = Some(cause.to_string());
-            let program = info.foreground_program.as_deref().unwrap_or("?");
-            let sep = if detail.is_empty() { "" } else { ": " };
-            tracing::info!("session {} waits ({front:?}, {program}): {cause}{sep}{detail}", info.id);
-        }
-        None => info.waiting_cause = None,
+pub(super) fn snapshot(session: &Session, info: &SessionInfo) -> reducer::State {
+    reducer::State {
+        info: info.clone(), front: session.front(),
+        last_work: session.last_work.load(Ordering::Relaxed),
+        work_started: session.work_started.load(Ordering::Relaxed),
+        fresh: session.fresh.load(Ordering::Relaxed),
+        busy: session.busy_seen.load(Ordering::Relaxed),
+        belled: session.belled.load(Ordering::Relaxed),
+        raised: session.raised.load(Ordering::Relaxed),
+        approval_since: session.approval_since.load(Ordering::Relaxed),
+        last_output: session.last_output.load(Ordering::Relaxed),
+        status_dirty: session.status_dirty.load(Ordering::Relaxed),
+        status_sent_at: session.status_sent_at.load(Ordering::Relaxed),
     }
+}
+
+pub(super) fn log_cause(info: &SessionInfo, front: Front, cause: &str, detail: &str) {
+    let program = info.foreground_program.as_deref().unwrap_or("?");
+    let sep = if detail.is_empty() { "" } else { ": " };
+    tracing::info!("session {} waits ({front:?}, {program}): {cause}{sep}{detail}", info.id);
 }
 
 /// The title that asked for an action, for the log.

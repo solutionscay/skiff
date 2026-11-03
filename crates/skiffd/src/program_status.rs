@@ -266,13 +266,7 @@ fn hidden(c: char) -> bool {
 /// idle timer decide again from here; a prompt the reports kept up is gone
 /// with them, so waiting becomes working until those rules say otherwise.
 pub fn session_state(claim: Option<State>, now: SessionState) -> SessionState {
-    match claim {
-        Some(State::Working) => SessionState::Working,
-        Some(State::Blocked) => SessionState::Waiting,
-        Some(State::Idle | State::Done | State::Error) => SessionState::Idle,
-        None if now == SessionState::Waiting => SessionState::Working,
-        None => now,
-    }
+    crate::session::reducer::claim_state(claim, now)
 }
 
 /// Whether the change from `old` to `new` ends a turn, a result to read:

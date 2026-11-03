@@ -1,6 +1,7 @@
 //! OSC 7501 session status policy.
-use super::attention::{end_reports, live, set_cause, PROMPT, REPORT};
-use super::{Front, Session, SessionPool, GRACE_MS, STALL_MS, STATUS_EVERY_MS};
+use super::attention::{end_reports, log_cause, snapshot};
+use super::reducer::{self, Input};
+use super::{Front, Session, SessionPool};
 use crate::program_status;
 use crate::program_status::Records;
 use crate::screen::StatusSignal;
@@ -64,52 +65,24 @@ impl SessionPool {
                 .turns
                 .step(old, claim, now, info.input_gen, info.output_bytes);
             drop(records);
-            if info.state == SessionState::Done || info.program_status == view {
-                return;
-            }
-            let minor = matches!(
-                (&info.program_status, &view),
-                (Some(a), Some(b)) if Records::minor_change(a, b)
-            );
-            info.program_status = view;
-            session.stalled.store(false, Ordering::Relaxed);
-            // The grace for an approval prompt starts again from this report.
-            session.approval_since.store(0, Ordering::Relaxed);
-            session.raised.store(false, Ordering::Relaxed);
-            // The quiet time starts now, should the reports end.
-            session.last_work.store(now, Ordering::Relaxed);
-            if claim.is_some() {
-                session.belled.store(false, Ordering::Relaxed);
-            }
-            if ended {
-                info.unread = true;
-                session.fresh.store(false, Ordering::Relaxed);
-                session.busy_seen.store(false, Ordering::Relaxed);
-            }
-            let state = program_status::session_state(claim, info.state);
-            let changed = info.state != state;
-            if changed && state == SessionState::Working && info.state == SessionState::Idle {
-                session.work_started.store(now, Ordering::Relaxed);
-            }
-            info.state = state;
-            // Also a wait an older daemon handed over with no cause.
-            if changed || (state == SessionState::Waiting && info.waiting_cause.is_none()) {
-                let detail = info
-                    .program_status
-                    .as_ref()
+            let (next, effects) = reducer::reduce(snapshot(session, &info), Input::Report { claim, view, ended }, now);
+            *info = next.info;
+            if let Some(value) = effects.stalled { session.stalled.store(value, Ordering::Relaxed); }
+            if let Some(value) = effects.approval_since { session.approval_since.store(value, Ordering::Relaxed); }
+            if let Some(value) = effects.raised { session.raised.store(value, Ordering::Relaxed); }
+            if effects.last_work { session.last_work.store(now, Ordering::Relaxed); }
+            if let Some(value) = effects.belled { session.belled.store(value, Ordering::Relaxed); }
+            if effects.reset_fresh_busy { session.fresh.store(false, Ordering::Relaxed); session.busy_seen.store(false, Ordering::Relaxed); }
+            if effects.work_started { session.work_started.store(now, Ordering::Relaxed); }
+            if effects.status_sent { session.status_sent_at.store(now, Ordering::Relaxed); }
+            if let Some(value) = effects.status_dirty { session.status_dirty.store(value, Ordering::Relaxed); }
+            if let Some(cause) = effects.cause_recorded {
+                let detail = info.program_status.as_ref()
                     .map(|p| [p.kind.as_deref(), p.msg.as_deref()].into_iter().flatten().collect::<Vec<_>>().join(": "))
                     .unwrap_or_default();
-                set_cause(&mut info, session.front(), Some((REPORT, &detail)));
+                log_cause(&info, session.front(), cause, &detail);
             }
-            let now = now;
-            let send = !minor
-                || now.saturating_sub(session.status_sent_at.load(Ordering::Relaxed))
-                    >= STATUS_EVERY_MS;
-            if send {
-                session.status_sent_at.store(now, Ordering::Relaxed);
-            }
-            session.status_dirty.store(!send, Ordering::Relaxed);
-            (changed.then_some(state), ended, info.id.clone(), send)
+            (effects.state, effects.turn, info.id.clone(), effects.update)
         };
         if let Some(state) = state {
             let _ = self.events.send(Event::State {
@@ -144,12 +117,10 @@ impl SessionPool {
                 return;
             }
             let changed = end_reports(&mut records, &mut info);
-            let state = program_status::session_state(None, info.state);
-            let moved = (state != info.state).then(|| {
-                info.state = state;
-                info.waiting_cause = None;
-                (info.id.clone(), state)
-            });
+            let (next, effects) = reducer::reduce(snapshot(session, &info), Input::ClaimLost, now_ms());
+            *info = next.info;
+            if effects.work_started { session.work_started.store(now_ms(), Ordering::Relaxed); }
+            let moved = effects.state.map(|state| (info.id.clone(), state));
             (moved, changed.then(|| info.clone()))
         };
         if let Some((session, state)) = state {
@@ -162,7 +133,7 @@ impl SessionPool {
 
     /// Once a tick, for a program that reports: its approval prompt that
     /// outstayed the grace, a long silence while it says it works, and an
-    /// update held back by [`STATUS_EVERY_MS`].
+    /// update held back by [`super::STATUS_EVERY_MS`].
     pub(super) fn status_tick(&self, s: &Session) {
         self.status_tick_at(s, now_ms());
     }
@@ -170,40 +141,14 @@ impl SessionPool {
     pub(super) fn status_tick_at(&self, s: &Session, now: u64) {
         let (state, updated) = {
             let mut info = s.info.lock().unwrap();
-            if info.state == SessionState::Done || !live(&info) {
-                return;
-            }
-            let mut changed = s.status_dirty.swap(false, Ordering::Relaxed);
-            let mut state = None;
-            let working = info
-                .program_status
-                .as_ref()
-                .is_some_and(|p| p.state == "working");
-            let quiet = now.saturating_sub(s.last_output.load(Ordering::Relaxed)) >= STALL_MS;
-            if let Some(p) = info
-                .program_status
-                .as_mut()
-                .filter(|p| working && quiet && !p.stalled)
-            {
-                p.stalled = true;
-                s.stalled.store(true, Ordering::Relaxed);
-                changed = true;
-            }
-            let since = s.approval_since.load(Ordering::Relaxed);
-            if working
-                && since != 0
-                && now.saturating_sub(since) >= GRACE_MS
-                && info.state == SessionState::Working
-                && !s.raised.swap(true, Ordering::Relaxed)
-            {
-                info.state = SessionState::Waiting;
-                set_cause(&mut info, s.front(), Some((PROMPT, "under a working report")));
-                state = Some((info.id.clone(), SessionState::Waiting));
-            }
-            if changed {
-                s.status_sent_at.store(now, Ordering::Relaxed);
-            }
-            (state, changed)
+            let (next, effects) = reducer::reduce(snapshot(s, &info), Input::Tick, now);
+            *info = next.info;
+            if effects.clear_status_dirty { s.status_dirty.store(false, Ordering::Relaxed); }
+            if effects.status_sent { s.status_sent_at.store(now, Ordering::Relaxed); }
+            if let Some(value) = effects.stalled { s.stalled.store(value, Ordering::Relaxed); }
+            if let Some(value) = effects.raised { s.raised.store(value, Ordering::Relaxed); }
+            if let Some(cause) = effects.cause_recorded { log_cause(&info, s.front(), cause, "under a working report"); }
+            (effects.state.map(|value| (info.id.clone(), value)), effects.update)
         };
         if let Some((session, state)) = state {
             let _ = self.events.send(Event::State { session, state });
