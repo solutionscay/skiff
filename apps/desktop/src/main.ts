@@ -14,7 +14,7 @@ import { bySessionPriority } from "./workspace/model";
 import type { Appearance, DaemonStatus } from "./platform/types";
 import { invoke } from "@tauri-apps/api/core";
 import { switcher } from "./app/commands";
-import { failureLine, followDataPlane, hostOnline, loadProjects, reconnectRemote, refreshSessions, reloadDaemon, setDaemon, subscribeEvents, untilConnected } from "./app/daemon";
+import { failureLine, followDataPlane, hostOnline, loadProjects, reconnectRemote, refreshSessions, reloadDaemon, setDaemon, subscribeDataEvents, subscribeEvents, untilConnected } from "./app/daemon";
 import { connectAttempt, connectDone, connectFailed } from "./app/connectPanel";
 import { isRemote, loadHosts, onHostsChanged, onManageHosts, setHostConnected, watchHostLink, watchHosts } from "./app/hosts";
 import { muteInput } from "./terminal/terminalRuntime";
@@ -166,6 +166,7 @@ async function boot() {
   if (hint) hint.textContent = t("switcher.hint");
   // Projects and Git come back on their own when skiff-host starts late or restarts.
   followDataPlane();
+  await subscribeDataEvents().catch(console.error);
   await loadGroups();
   restorePlace();
   await startWorkspaces();

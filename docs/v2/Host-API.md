@@ -2172,6 +2172,24 @@ the loopback `ssh_remote` data-plane test (below).
 - **Desktop:** the command classification test places `ledger_rows`,
   `ledger_result` and `get_skiff_agent` on the Host side.
 
+### Pushed data-plane events: `data_events@1`
+
+`skiff-host` advertises `data_events@1` when it can push invalidations for
+projects, Git/files worktrees and the ledger. Its event stream sends
+`data_changed { sequence, projects, worktrees, tasks }`, where `tasks` means
+the Ledger data changed. The event has no
+delta and a client always reads the affected Host data again. `sequence` is
+contiguous only during one data-service instance. A receiver that observes a
+missing sequence, a `data_gap`, a lagged receiver, or a new data connection
+must discard its assumptions and read projects, all open file folders, Git
+changes and ledger rows again before it accepts a later event. Events are not
+replayed.
+
+The desktop subscribes after each accepted data connection. A Host without
+this additive capability keeps the existing stamp reads, so an older Host
+continues to refresh its data. The service never sends a Host path to the
+desktop as part of an event.
+
 ### Not yet: requirements before M6 is complete
 
 Skipper settings writes, the folder change, Skipper launch and restore, and

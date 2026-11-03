@@ -238,6 +238,7 @@ pub fn run() {
             commands::git_changes,
             commands::git_diff,
             connection::data_plane_status,
+            connection::subscribe_data_events,
             commands::open_diff,
             commands::open_settings,
             commands::set_open,
