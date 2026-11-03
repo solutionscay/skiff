@@ -125,6 +125,14 @@ impl SessionPool {
     fn move_state(&self, session: &Session, state: SessionState, cause: Option<(&'static str, &str)>) {
         let (id, dropped) = {
             let mut info = session.info.lock().unwrap();
+            // Waiting with no cause: an older daemon handed it over so.
+            // Record the cause it shows now.
+            if info.state == state && cause.is_some() && info.waiting_cause.is_none() {
+                set_cause(&mut info, session.front(), cause);
+                drop(info);
+                let _ = self.events.send(Event::SessionUpdated { session: session.info() });
+                return;
+            }
             if info.state == state || info.state == SessionState::Done {
                 return;
             }

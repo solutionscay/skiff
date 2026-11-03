@@ -309,6 +309,10 @@ mod tests {
         pool.on_output(&session, &info.id, b"\x07");
         assert_eq!(session.info().state, SessionState::Waiting);
         assert_eq!(session.info().waiting_cause.as_deref(), Some("bell"));
+        // Handed over waiting by an older daemon: no cause until it shows one.
+        session.info.lock().unwrap().waiting_cause = None;
+        pool.on_output(&session, &info.id, b"\x07");
+        assert_eq!(session.info().waiting_cause.as_deref(), Some("bell"), "a handed-over wait got no cause");
         pool.on_output(&session, &info.id, b"\x1b[c\x1b[6n");
         pool.write(&info.id, b"\x1b[?1;2c").unwrap();
         pool.write(&info.id, b"\x1b[3;1R").unwrap();

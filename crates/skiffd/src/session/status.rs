@@ -82,7 +82,8 @@ impl SessionPool {
                 session.work_started.store(now_ms(), Ordering::Relaxed);
             }
             info.state = state;
-            if changed {
+            // Also a wait an older daemon handed over with no cause.
+            if changed || (state == SessionState::Waiting && info.waiting_cause.is_none()) {
                 let detail = info
                     .program_status
                     .as_ref()
