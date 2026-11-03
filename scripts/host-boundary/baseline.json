@@ -79,7 +79,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "639d4a84ffebba5f6054484da3b3792df7e2aadc61bd2a199d2ffe3d4ec5432d"
+    "sha256": "1293720f01c5266abace0039b1a860da49b85aa3e1e4765e29c1a976e733744c"
   },
   "apps/desktop/src-tauri/src/connection/daemon.rs": {
     "ownership": "M1a\u2013M1e selected-local Host owner; M4 data-plane owner (skiff-host paired by host_id); endpoint-local process control for skiffd and skiff-host spawn/stop; existing local lifecycle/legacy client adapter; remote refused-channel probe (read-only, skiff-client check) to name its cause; This Mac's capability list adds agent_config@1, skipper_config@1, skipper@1, skipper_file@1, skipper_run@1 and session_agents@1, which this app's local adapter serves; AppImage copy-out (#183): this app's own skiffd and skiff-host, copied to this computer's data folder",
@@ -106,7 +106,7 @@
       "read_to_string",
       "skiff_core"
     ],
-    "sha256": "9a3b9020d19dd9ad016d7a1520c5598547a9ecd92822ec92e3c0bcced1c40a8d"
+    "sha256": "627a9f1a5c233aef2faa427ea007ce87e0add31f5719099a2108068ec390f155"
   },
   "apps/desktop/src-tauri/src/connection/process.rs": {
     "ownership": "M1a\u2013M1e selected-local Host owner; M4 data-plane owner (skiff-host paired by host_id); endpoint-local process control for skiffd and skiff-host spawn/stop; existing local lifecycle/legacy client adapter; remote refused-channel probe (read-only, skiff-client check) to name its cause; This Mac's capability list adds agent_config@1, skipper_config@1, skipper@1, skipper_file@1, skipper_run@1 and session_agents@1, which this app's local adapter serves; AppImage copy-out (#183): this app's own skiffd and skiff-host, copied to this computer's data folder",
@@ -266,9 +266,10 @@
     "ownership": "M6 ledger rows, results and stamp via selected Host ledger@1; no ledger, result or path access here",
     "reasons": [
       "local provider: apps/desktop/src-tauri/src/connection.rs",
+      "local provider: apps/desktop/src-tauri/src/connection/remote.rs",
       "local provider: apps/desktop/src-tauri/src/lib.rs"
     ],
-    "sha256": "92fd8b4f030b200e667213d538bb2cf9605d91fbf4119f3bf0a7e8ef379953cc"
+    "sha256": "5317b9f062be8e45c6fec434a70c3abce834a9e9334083458c214a58475661a5"
   },
   "apps/desktop/src-tauri/src/lib.rs": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6; LOCAL_ONLY no longer holds Skipper and agent commands, which route per Host (#166 R7, R8); skipper_avatars and set_skipper_avatar are LOCAL_ONLY",
@@ -280,7 +281,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "1eebf97f4c530357c834ed21be21baa6afe82c3e49dd4817fc7ecedb8de2754c"
+    "sha256": "e979de07f1b931e5a92baa1a84de0d5980a1b387ba51f121f898d30d3e7f9f17"
   },
   "apps/desktop/src-tauri/src/main.rs": {
     "ownership": "client policy (#189): this app's own command-line flags; no Host data",
@@ -304,7 +305,7 @@
       "local provider: apps/desktop/src-tauri/src/connection/remote.rs",
       "local provider: apps/desktop/src-tauri/src/lib.rs"
     ],
-    "sha256": "cfdc2dd62eae974c1deeadf930840f418d67463751825ae13243d3b39d9b46c3"
+    "sha256": "4a0134ed64ae3fbc3f4823355b75a7eb164193dd38e4eee9f105f955273151ad"
   },
   "apps/desktop/src-tauri/src/quit.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -403,7 +404,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "6e3a34ce9af60597dab78cfa0c340cc16413b87e165bf2f2638edb08bedfd440"
+    "sha256": "9bdfcfd9767a7881eda9abd9f55f40a8aec4b97930325fd70c63afe0ae8ef6eb"
   },
   "apps/desktop/src/app/daemonRestart.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -438,7 +439,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "4936b2ca29a1ec712ba742f9fd8b085d5341fa7cd72217156c87263f4cc0d2ba"
+    "sha256": "a6079ed87f08ae27cd3890a29fb76c9eb77758a5ea3a858f0441dc605e2725b2"
   },
   "apps/desktop/src/app/hosts.ts": {
     "ownership": "client policy: Host picker and label (list/select Hosts, links to Settings \u203a Hosts, clipboard opt-in) and the remote link-lost signal",
@@ -713,7 +714,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "5e93fdc326213e917de37f441fd4c3397288a0485e15f9a4c5e20ecb3a8dc85e"
+    "sha256": "efe87eabd4649837e4c1089cd200eb0e23278290fa612e95f5deffb6026bbcfa"
   },
   "apps/desktop/src/platform/clipboard.ts": {
     "ownership": "client policy: exact existing adapter only",

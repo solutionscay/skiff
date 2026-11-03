@@ -3878,6 +3878,7 @@ dependencies = [
  "skiff-host-api",
  "tokio",
  "uuid",
+ "walkdir",
 ]
 
 [[package]]

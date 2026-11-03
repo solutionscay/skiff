@@ -24,6 +24,7 @@ pub const SKIPPER_RUN: &str = "skipper_run";
 pub const AGENT_CONFIG: &str = "agent_config";
 pub const DROPS: &str = "drops";
 pub const PROGRAM_STATUS: &str = "program_status";
+pub const DATA_EVENTS: &str = "data_events";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Capability {
@@ -62,6 +63,11 @@ impl Capability {
     /// `projects@1` too.
     pub fn projects_watch() -> Self {
         Self::new(PROJECTS, 2)
+    }
+    /// Pushed invalidations for Host-owned projects, Git, files and ledger
+    /// data. A receiver that misses one must read a fresh snapshot.
+    pub fn data_events() -> Self {
+        Self::new(DATA_EVENTS, 1)
     }
     /// Read the changed files of one of the Host's project worktrees. Data
     /// plane; grants no diff text, file read or Git write.

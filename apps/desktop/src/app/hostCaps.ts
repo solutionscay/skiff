@@ -16,6 +16,7 @@ type HostCap =
   | "session_agents"
   | "program_status"
   | "daemon_metrics"
+  | "data_events"
   | "projects"
   | "git_status"
   | "git_diff"
@@ -43,6 +44,7 @@ const MAJOR: Record<HostCap, number> = {
   session_agents: 1,
   program_status: 1,
   daemon_metrics: 1,
+  data_events: 1,
   projects: 1,
   git_status: 1,
   git_diff: 1,
@@ -74,6 +76,7 @@ const OFFERS: Record<HostCap, MessageKey> = {
   session_agents: "hostCaps.session_agents",
   program_status: "hostCaps.program_status",
   daemon_metrics: "hostCaps.daemon_metrics",
+  data_events: "hostCaps.daemon_metrics",
   projects: "hostCaps.projects",
   git_status: "hostCaps.git_status",
   git_diff: "hostCaps.git_diff",

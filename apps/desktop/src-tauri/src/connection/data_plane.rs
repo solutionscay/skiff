@@ -3,7 +3,7 @@
 use std::{sync::{atomic::Ordering, Arc}, time::Duration};
 use serde::Serialize;
 use skiff_client::host::{HostConnection, data::{DataError, DataPlane}, local::{HostSelection, ProcessControl, SelectedHost}};
-use tauri::State;
+use tauri::{ipc::Channel, State};
 use super::{err, host_now, App, HELLO_TIMEOUT};
 use super::daemon::{check_info, stop_daemon, Check};
 use super::process::{data_binary, spawn_daemon, spawn_data_service, DATA_START_WAIT};
@@ -391,6 +391,25 @@ pub(crate) const DATA_UNCERTAIN: &str =
 #[tauri::command]
 pub(crate) async fn data_plane_status(app: State<'_, App>) -> Result<DataPlaneStatus, String> {
     Ok(data_status(&app).await)
+}
+
+#[derive(Serialize, Clone)]
+pub(crate) struct DataEvent { pub projects: bool, pub worktrees: Vec<String>, pub tasks: bool, pub gap: bool }
+
+#[tauri::command]
+pub(crate) async fn subscribe_data_events(app: State<'_, App>, on_event: Channel<DataEvent>) -> Result<(), String> {
+    let c = data_now(&app).await?;
+    c.hello().require(&skiff_host_api::Capability::data_events()).map_err(data_err)?;
+    let mut events = c.events().map_err(data_err)?;
+    let task = tauri::async_runtime::spawn(async move {
+        loop { match events.recv().await {
+            Ok(skiff_host_api::Event::DataChanged { projects, worktrees, tasks, .. }) => if on_event.send(DataEvent { projects, worktrees, tasks, gap: false }).is_err() { return },
+            Ok(skiff_host_api::Event::DataGap { .. }) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => if on_event.send(DataEvent { projects: true, worktrees: vec![], tasks: true, gap: true }).is_err() { return },
+            Ok(_) => {}, Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
+        }}
+    });
+    if let Some(old) = app.data_events.lock().await.replace(task) { old.abort(); }
+    Ok(())
 }
 
 #[cfg(test)]

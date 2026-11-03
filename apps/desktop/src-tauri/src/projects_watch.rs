@@ -18,7 +18,7 @@ use std::{
 
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::connection::{data_read, App};
+use crate::connection::{data_now, data_read, App};
 
 /// The page reloads projects on this event.
 pub(crate) const PROJECTS_CHANGED: &str = "skiff:projects-changed";
@@ -111,6 +111,9 @@ async fn look(app: &App, seen: &mut Seen) -> bool {
     if app.live_session().await.is_none() {
         return false;
     }
+    // New Hosts push invalidations. Keep the stamp loop only for an older
+    // Host that did not advertise the additive event capability.
+    if data_now(app).await.is_ok_and(|c| c.hello().require(&skiff_host_api::Capability::data_events()).is_ok()) { return false; }
     let before = own_now();
     let stamp = data_read(app, |c| async move { skiff_client::host::data::projects_stamp(&c).await }).await;
     // No `projects@2`, or no data plane right now: nothing to compare.

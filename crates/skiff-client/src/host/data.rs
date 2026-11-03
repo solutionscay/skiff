@@ -20,7 +20,7 @@ use skiff_host_api::{
     HostFileScope, HostListing, HostProject, HostSkipper, HostSkipperFile, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response, SkipperEdit, SkipperFolderDone,
     SkipperFolderMode, SkipperFolderPreview, SkipperOpened, InventorySession, TakenSkipper,
 };
-use tokio::net::UnixStream;
+use tokio::{net::UnixStream, sync::broadcast};
 
 use super::{
     local::HostSelection,
@@ -61,6 +61,40 @@ pub struct DataPlane {
     /// a remote Host: the forward's peer is `ssh`.
     pid: Option<u32>,
 }
+
+/// A data-plane invalidation. Events are only hints: a gap always requires
+/// snapshots, never replay or a guessed delta.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DataEvent {
+    Changed { projects: bool, worktrees: Vec<String>, tasks: bool },
+    Gap,
+}
+
+pub struct DataEvents {
+    events: broadcast::Receiver<skiff_host_api::Event>,
+    next: Option<u64>,
+}
+impl DataEvents {
+    pub async fn recv(&mut self) -> Result<DataEvent, Error> {
+        loop {
+            match self.events.recv().await {
+                Ok(skiff_host_api::Event::DataChanged { sequence, projects, worktrees, tasks }) => {
+                    let gap = self.next.is_some_and(|expected| expected != sequence);
+                    self.next = sequence.checked_add(1);
+                    if gap { return Ok(DataEvent::Gap) }
+                    return Ok(DataEvent::Changed { projects, worktrees, tasks });
+                }
+                Ok(skiff_host_api::Event::DataGap { sequence }) => {
+                    self.next = sequence.checked_add(1);
+                    return Ok(DataEvent::Gap);
+                }
+                Ok(_) => {}
+                Err(broadcast::error::RecvError::Lagged(_)) => return Ok(DataEvent::Gap),
+                Err(broadcast::error::RecvError::Closed) => return Err(Error::TransportLost),
+            }
+        }
+    }
+}
 impl DataPlane {
     pub fn connection(&self) -> Arc<HostConnection> {
         self.connection.clone()
@@ -68,6 +102,12 @@ impl DataPlane {
     /// The local service's pid, for the one build that may replace it.
     pub fn pid(&self) -> Option<u32> {
         self.pid
+    }
+    /// Events after this call. A data-plane Host without `data_events@1`
+    /// deliberately uses the caller's snapshot/poll fallback.
+    pub fn events(&self) -> Result<DataEvents, Error> {
+        self.connection.hello().require(&skiff_host_api::Capability::data_events())?;
+        Ok(DataEvents { events: self.connection.events()?, next: None })
     }
 }
 

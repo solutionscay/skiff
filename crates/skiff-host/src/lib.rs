@@ -17,7 +17,7 @@ pub mod skipper;
 
 use anyhow::{bail, Context};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     path::Path,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -34,7 +34,7 @@ use skiff_host_api::{
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     net::{UnixListener, UnixStream},
-    sync::{mpsc, OwnedSemaphorePermit, Semaphore},
+    sync::{broadcast, mpsc, OwnedSemaphorePermit, Semaphore},
     task::JoinSet,
 };
 
@@ -49,6 +49,7 @@ pub fn capabilities() -> Vec<Capability> {
     vec![
         Capability::projects(),
         Capability::projects_watch(),
+        Capability::data_events(),
         Capability::git_status(),
         Capability::git_diff(),
         Capability::project_config(),
@@ -166,6 +167,7 @@ impl BoundSocket {
 /// Accepts connections until the listener fails. Each one is served on its
 /// own; dropping this future closes them all, as a stopped service does.
 pub async fn serve(listener: UnixListener, hello: Arc<Hello>) -> std::io::Result<()> {
+    let events = DataEvents::start();
     let mut connections = tokio::task::JoinSet::new();
     // Skipper's watcher is this service's to keep, as long as it runs.
     connections.spawn(skipper::supervise());
@@ -173,7 +175,7 @@ pub async fn serve(listener: UnixListener, hello: Arc<Hello>) -> std::io::Result
         tokio::select! {
             accepted = listener.accept() => {
                 let (stream, _) = accepted?;
-                connections.spawn(handle(stream, hello.clone()));
+                connections.spawn(handle(stream, hello.clone(), events.subscribe()));
             }
             Some(_) = connections.join_next() => {}
         }
@@ -221,17 +223,31 @@ impl Drop for Admission {
 /// queued for it. The work belongs to the connection: when the client is
 /// gone, or a frame is unreadable or oversize, what is left is dropped.
 /// Nothing is retried.
-pub async fn handle(stream: UnixStream, hello: Arc<Hello>) {
+pub async fn handle(stream: UnixStream, hello: Arc<Hello>, mut events: broadcast::Receiver<skiff_host_api::Event>) {
     let (rd, mut wr) = stream.into_split();
     let slots = Arc::new(Semaphore::new(MAX_IN_FLIGHT));
     // Never full: every queued reply holds one of the permits.
-    let (tx, mut rx) = mpsc::channel::<(Vec<u8>, Admission)>(MAX_IN_FLIGHT);
+    let (tx, mut rx) = mpsc::channel::<Write>(256);
     let writer = async move {
-        while let Some((line, admission)) = rx.recv().await {
+        while let Some(item) = rx.recv().await {
+            let (line, admission) = match item { Write::Reply(line, admission) => (line, Some(admission)), Write::Event(line) => (line, None) };
             if wr.write_all(&line).await.is_err() {
                 return;
             }
             drop(admission);
+        }
+    };
+    let events_tx = tx.clone();
+    let event_writer = async move {
+        loop {
+            let event = match events.recv().await {
+                Ok(event) => event,
+                Err(broadcast::error::RecvError::Lagged(_)) => skiff_host_api::Event::DataGap { sequence: 0 },
+                Err(broadcast::error::RecvError::Closed) => return,
+            };
+            let mut line = serde_json::to_vec(&Message::Event { event }).unwrap_or_default();
+            line.push(b'\n');
+            if events_tx.send(Write::Event(line)).await.is_err() { return; }
         }
     };
     let reader = async move {
@@ -257,18 +273,94 @@ pub async fn handle(stream: UnixStream, hello: Arc<Hello>) {
             let (tx, hello) = (tx.clone(), hello.clone());
             work.spawn(async move {
                 let result = answer(request, &hello).await;
-                let _ = tx.send((encode(id, result), admission)).await;
+                let _ = tx.send(Write::Reply(encode(id, result), admission)).await;
             });
         }
         while work.join_next().await.is_some() {}
     };
     tokio::pin!(writer);
+    tokio::pin!(event_writer);
     tokio::select! {
-        // Every request answered and queued: the writer drains the queue.
-        _ = reader => writer.await,
-        // The client is gone: the reader and its work are dropped here.
-        _ = &mut writer => {}
+        // A closed reader drops the per-client writer and event forwarder.
+        _ = reader => {},
+        _ = &mut event_writer => {},
+        _ = &mut writer => {},
     }
+}
+
+enum Write { Reply(Vec<u8>, Admission), Event(Vec<u8>) }
+
+/// The service owns one bounded invalidation feed. It deliberately carries
+/// no deltas: file-system changes can coalesce, and clients recover every
+/// gap by reading the authoritative Host snapshots again.
+struct DataEvents {
+    tx: broadcast::Sender<skiff_host_api::Event>,
+}
+impl DataEvents {
+    fn start() -> Self {
+        let (tx, _) = broadcast::channel(256);
+        let watch = tx.clone();
+        tokio::spawn(async move {
+            let mut previous = tokio::task::spawn_blocking(data_snapshot).await.unwrap_or_default();
+            let mut sequence = 0u64;
+            let mut tick = tokio::time::interval(std::time::Duration::from_millis(500));
+            tick.tick().await;
+            loop {
+                tick.tick().await;
+                let next = tokio::task::spawn_blocking(data_snapshot).await.unwrap_or_default();
+                let projects = next.projects != previous.projects;
+                let ledger = next.ledger != previous.ledger;
+                let worktrees = next.worktrees.iter().filter_map(|(path, stamp)| {
+                    (previous.worktrees.get(path) != Some(stamp)).then(|| path.clone())
+                }).chain(previous.worktrees.keys().filter(|path| !next.worktrees.contains_key(*path)).cloned()).collect::<Vec<_>>();
+                if projects || ledger || !worktrees.is_empty() {
+                    sequence = sequence.wrapping_add(1);
+                    let _ = watch.send(skiff_host_api::Event::DataChanged { sequence, projects, worktrees, tasks: ledger });
+                }
+                previous = next;
+            }
+        });
+        Self { tx }
+    }
+    fn subscribe(&self) -> broadcast::Receiver<skiff_host_api::Event> { self.tx.subscribe() }
+}
+
+#[derive(Default)]
+struct DataSnapshot { projects: String, ledger: String, worktrees: BTreeMap<String, u64> }
+
+/// A cheap-enough invalidation stamp, not a content hash. A write that keeps
+/// mtimes is outside normal filesystem semantics; a reconnect snapshot still
+/// makes that harmless. `.git` is excluded from the tree walk, except for
+/// its index so a staged Git-only edit also invalidates its worktree.
+fn data_snapshot() -> DataSnapshot {
+    let projects = config::file_stamp(&config::config_path());
+    let ledger = skiff_client::ledger::path().ok().map(|p| skiff_client::ledger::stamp(&p)).unwrap_or_default();
+    let mut worktrees = BTreeMap::new();
+    if let Ok(rows) = project::list() {
+        for project in rows.into_iter().filter(|p| !p.closed) {
+            let mut paths = BTreeSet::new();
+            paths.insert(project.path);
+            for wt in project.worktrees { paths.insert(wt.path); }
+            for path in paths {
+                let mut stamp = 0xcbf29ce484222325u64;
+                for entry in walkdir::WalkDir::new(&path).into_iter().filter_entry(|e| e.file_name() != ".git").flatten() {
+                    if let Ok(meta) = entry.metadata() {
+                        for n in [meta.len(), meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos() as u64).unwrap_or(0)] {
+                            stamp ^= n; stamp = stamp.wrapping_mul(0x100000001b3);
+                        }
+                        for b in entry.path().as_os_str().as_encoded_bytes() { stamp ^= u64::from(*b); stamp = stamp.wrapping_mul(0x100000001b3); }
+                    }
+                }
+                if let Ok(meta) = std::fs::metadata(path.join(".git/index")) {
+                    stamp ^= meta.len(); stamp = stamp.wrapping_mul(0x100000001b3);
+                    let modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos() as u64).unwrap_or(0);
+                    stamp ^= modified; stamp = stamp.wrapping_mul(0x100000001b3);
+                }
+                worktrees.insert(path.to_string_lossy().into_owned(), stamp);
+            }
+        }
+    }
+    DataSnapshot { projects, ledger, worktrees }
 }
 
 fn encode(id: u64, result: Result<Response, Error>) -> Vec<u8> {

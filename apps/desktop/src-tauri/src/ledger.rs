@@ -9,7 +9,7 @@ use std::{sync::atomic::Ordering, time::Duration};
 use skiff_host_api::{HostFile, HostLedgerRow};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::connection::{data_read, App};
+use crate::connection::{data_now, data_read, App};
 
 /// The page reads the ledger again on this event.
 const LEDGER_CHANGED: &str = "skiff:ledger-changed";
@@ -56,6 +56,7 @@ pub fn watch(app: AppHandle) {
 
 /// One tick. True when the ledger may have changed since the last tick.
 async fn look(app: &App, last: &mut Seen) -> bool {
+    if data_now(app).await.is_ok_and(|c| c.hello().require(&skiff_host_api::Capability::data_events()).is_ok()) { return false; }
     if app.live_session().await.is_none() {
         return false;
     }
