@@ -190,7 +190,7 @@ export const zh = {
   "welcome.noOpenText": "重新打开一个已关闭的项目（保留其设置），或添加另一个。",
   "welcome.addProjectLower": "添加项目…",
   "welcome.addProject": "添加项目",
-  "welcome.orEdit": "或编辑 ",
+  "welcome.skiffAgentLine": "{name} 替你启动并跟踪代理。",
   "welcome.firstTitle": "添加你的第一个项目",
   "welcome.firstText": "选择一个文件夹。Skiff 在其中运行代理。在 git 仓库中，它还会列出 worktree。",
   "welcome.ready": "{name} 已就绪",

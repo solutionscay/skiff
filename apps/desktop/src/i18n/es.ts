@@ -192,7 +192,7 @@ export const es = {
   "welcome.noOpenText": "Vuelve a abrir un proyecto cerrado, con sus ajustes, o añade otro.",
   "welcome.addProjectLower": "añadir proyecto…",
   "welcome.addProject": "Añadir proyecto",
-  "welcome.orEdit": "o edita ",
+  "welcome.skiffAgentLine": "{name} inicia y sigue los agentes por ti.",
   "welcome.firstTitle": "Añade tu primer proyecto",
   "welcome.firstText": "Elige una carpeta. Skiff ejecuta agentes en ella. En un repositorio git, también muestra los worktrees.",
   "welcome.ready": "{name}: listo",

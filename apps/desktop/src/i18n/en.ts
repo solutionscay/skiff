@@ -196,7 +196,7 @@ export const en = {
   "welcome.noOpenText": "Open a closed project again, with its settings, or add another.",
   "welcome.addProjectLower": "add project…",
   "welcome.addProject": "Add project",
-  "welcome.orEdit": "or edit ",
+  "welcome.skiffAgentLine": "{name} starts and tracks agents for you.",
   "welcome.firstTitle": "Add your first project",
   "welcome.firstText": "Pick a folder. Skiff runs agents in it. In a git repository, it also lists the worktrees.",
   "welcome.ready": "{name} is ready",

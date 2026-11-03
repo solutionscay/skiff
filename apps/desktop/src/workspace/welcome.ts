@@ -106,15 +106,10 @@ export function renderWelcome() {
     );
   } else if (none) {
     const add = button("welcome-primary", t("welcome.addProject"), () => void addProject.open());
-    const hint = h("div", "welcome-hint", t("welcome.orEdit"));
-    hint.appendChild(h("span", "mono", "~/.config/skiff/projects.toml"));
+    box.append(h("div", "welcome-title", t("welcome.firstTitle")), h("div", "welcome-text", t("welcome.firstText")));
     const sa = skiffAgentButton();
-    box.append(
-      h("div", "welcome-title", t("welcome.firstTitle")),
-      h("div", "welcome-text", t("welcome.firstText")),
-      sa ? first(add, sa) : add,
-      hint,
-    );
+    box.append(sa ? first(add, sa) : add);
+    if (sa) box.append(h("div", "welcome-hint", t("welcome.skiffAgentLine", { name: skiffAgentName() })));
   } else if (S.projects.length === 0 && !S.projectsError) {
     // The Skiff agent's pane shows.
     return;
