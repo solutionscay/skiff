@@ -616,7 +616,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "327bbf0a8634c3742e35d375fbe115acd56dcd8b8b34d5b6675e37b6e274f46b"
+    "sha256": "897f2396a631a11bd0df57285a006d3e094e06506e75a54c09292c5e9daea950"
   },
   "apps/desktop/src/appearance/imagesPage.ts": {
     "ownership": "legacy local adapter/caller: migrate behind Host API in M1\u2013M6",

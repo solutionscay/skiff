@@ -8,6 +8,10 @@ import { confirmAction, promptAction } from "../ui/confirm";
 import { actionDialog } from "../ui/dialogParts";
 import { runDialog } from "./hostProgress";
 import { copyText } from "../platform/clipboard";
+import {
+  type Alias, type Check, type CheckLine, type Draft, type Fingerprint, type Fix, type Form, type HostKey, type HostsState,
+  type Report, type Resolved, type RowResult, type Updated, CHECK_ROWS, FIX_LABEL, alert, defaultName, typed,
+} from "./hostShared";
 import { type HostsPage, type KnownHost, knownHosts, loadHosts, localHostName, pick, shownHost } from "../app/hosts";
 
 /**
@@ -23,126 +27,40 @@ import { type HostsPage, type KnownHost, knownHosts, loadHosts, localHostName, p
  * which gives it to ssh through askpass only; the page keeps none.
  */
 
-interface Resolved {
-  hostname: string;
-  user: string;
-  port: number;
-  jump: string;
-}
-
-interface Alias {
-  name: string;
-  goes_to: string;
-}
-
-type Draft = { destination: string; name: string; user: string; port: string };
-
-type Form = { id: string | null; draft: Draft; more: boolean; error: string | null; busy: boolean };
-
-/** One row of the check list, as Rust's `check_host` answers it. */
-interface CheckLine {
-  row: string;
-  title: string;
-  state: "passed" | "failed" | "skipped" | "warning";
-  text: string;
-  fix: Fix | null;
-}
-type Fix = "trust_key" | "review_key" | "make_key" | "unlock_key" | "install_key" | "copy_public_key" | "fix_permissions" | "install_skiff" | "start_skiff" | "turn_on_linger" | "update_skiff";
-const FIX_LABEL: Record<Fix, string> = {
-  trust_key: "Trust this key…",
-  review_key: "Review…",
-  make_key: "Make key…",
-  unlock_key: "Unlock key…",
-  install_key: "Install key…",
-  copy_public_key: "Copy public key",
-  fix_permissions: "Fix permissions…",
-  install_skiff: "Install Skiff…",
-  start_skiff: "Start",
-  turn_on_linger: "Turn on…",
-  update_skiff: "Update Skiff…",
-};
-/** What `update_skiff` did. */
-type Updated = { version: string; source: string } & (
-  | { result: "done"; from: string; restarted: boolean }
-  | { result: "same" }
-  | { result: "newer"; from: string }
-  | { result: "no_handover"; from: string; sessions: string[] }
-);
-interface Fingerprint {
-  kind: string;
-  sha256: string;
-}
-interface HostKey {
-  token: string;
-  fingerprints: Fingerprint[];
-  known: Fingerprint[];
-  file: string;
-}
-interface Report {
-  rows: CheckLine[];
-  ok: boolean;
-  /** The socket in use. */
-  socket: string | null;
-  /** The server's OS and arch as bundle names write them. */
-  platform: [string, string] | null;
-  /** The Skiff version this app installs. */
-  version: string;
-  /** The server has this version in another build. */
-  other_build: boolean;
-}
-/** The rows, in order, before an answer. */
-const CHECK_ROWS = [
-  "Reach the server",
-  "Host key",
-  "Log in without a prompt",
-  "Server supported",
-  "Skiff on the server",
-  "Sessions service (skiffd)",
-  "Socket forwarding",
-  "Skiff identity and version",
-  "Projects service (skiff-host)",
-  "Keeps running after logout",
-];
-
-/** A run's outcome on its check list row: the text, the time it took or
- *  the failure with its fix, and the output to copy. */
-type RowResult = { row: string; text: string; secs?: number; failed?: boolean; fix?: Fix; output?: string };
-type Check = { id: string; report: Report | null; error: string | null; note?: string; result?: RowResult };
-
 export function createHostsTab(redraw: () => void) {
-  let form: Form | null = null;
-  let check: Check | null = null;
-  let error: string | null = null;
-  let aliases: Alias[] = [];
-  /** This app's version, for this computer's Skiff cell. */
-  let version = "";
-  /** The form's resolve line, and the input it answers. */
-  let line: { for: string; text: string; bad: boolean } = { for: "", text: "", bad: false };
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  const st: HostsState = {
+    form: null,
+    check: null,
+    error: null,
+    aliases: [],
+    version: "",
+    line: { for: "", text: "", bad: false },
+    timer: undefined,
+    lastResolved: null,
+  };
 
-  const typed = (x: KnownHost) => `${x.user ? `${x.user}@` : ""}${x.destination}${x.port ? `:${x.port}` : ""}`;
   const resolve = (destination: string, user: string, port: string) =>
     invoke<Resolved>("resolve_ssh", { destination, user: user ?? "", port: port ?? "" });
 
   /** Reads ssh config and resolves each Host. Local only. */
   async function load() {
-    version = await getVersion().catch(() => "");
-    aliases = await invoke<Alias[]>("ssh_aliases").catch(() => []);
+    st.version = await getVersion().catch(() => "");
+    st.aliases = await invoke<Alias[]>("ssh_aliases").catch(() => []);
   }
 
   function open(page: HostsPage) {
-    error = null;
-    form = "add" in page ? newForm(null) : null;
-    check = null;
+    st.error = null;
+    st.form = "add" in page ? newForm(null) : null;
+    st.check = null;
     if ("check" in page) void (page.reinstall || page.update ? checkThenUpdate(page.check, !!page.reinstall) : runCheck(page.check));
   }
 
   /** Runs the read-only check list of a Host and shows it. */
   /** `result`: what a run just did, kept on its row through this check. */
   async function runCheck(id: string, result?: RowResult) {
-    form = null;
+    st.form = null;
     const c: Check = { id, report: null, error: null, result };
-    check = c;
+    st.check = c;
     redraw();
     try {
       c.report = await invoke<Report>("check_host", { id });
@@ -151,26 +69,24 @@ export function createHostsTab(redraw: () => void) {
     } catch (e) {
       c.error = String(e);
     }
-    if (check === c) redraw();
+    if (st.check === c) redraw();
   }
 
   function newForm(x: KnownHost | null): Form {
     const draft: Draft = x
       ? { destination: x.destination, name: x.name, user: x.user ?? "", port: x.port ? String(x.port) : "",  }
       : { destination: "", name: "", user: "", port: "" };
-    line = { for: "", text: "", bad: false };
+    st.line = { for: "", text: "", bad: false };
     const more = !!x && (!!x.user || !!x.port || x.name !== defaultName(x.destination));
     return { id: x?.id ?? null, draft, more, error: null, busy: false };
   }
 
-  const defaultName = (d: string) => d.split("@").pop() ?? d;
-
   function draw(): HTMLElement {
     // The Host it was about left the list: back to the list.
     const known = (id: string) => knownHosts().some((x) => x.id === id);
-    if (check && !known(check.id)) check = null;
-    if (form?.id && !known(form.id)) form = null;
-    return form ? drawForm(form) : check ? drawCheck(check) : drawList();
+    if (st.check && !known(st.check.id)) st.check = null;
+    if (st.form?.id && !known(st.form.id)) st.form = null;
+    return st.form ? drawForm(st.form) : st.check ? drawCheck(st.check) : drawList();
   }
 
   function drawList(): HTMLElement {
@@ -181,7 +97,7 @@ export function createHostsTab(redraw: () => void) {
     title.id = "set-h-hosts";
     words.append(title);
     const add = button("set-add ready", "Add SSH Host…", () => {
-      form = newForm(null);
+      st.form = newForm(null);
       redraw();
       focusServer();
     });
@@ -196,7 +112,7 @@ export function createHostsTab(redraw: () => void) {
     for (const x of knownHosts()) table.append(hostRow(x));
     main.append(table);
     if (!knownHosts().length) main.append(h("div", "set-note set-line", "No servers yet."));
-    if (error) main.append(alert(error));
+    if (st.error) main.append(alert(st.error));
     return main;
   }
 
@@ -211,7 +127,7 @@ export function createHostsTab(redraw: () => void) {
     const lead = h("span", "c-lead");
     if (shown) lead.append(rune("indicators-check"));
     lead.setAttribute("aria-label", shown ? "Shown in this window" : "");
-    const skiff = h("span", "c-skiff mono" + (x?.update ? " update" : ""), x ? (x.skiff ?? "—") : version || "—");
+    const skiff = h("span", "c-skiff mono" + (x?.update ? " update" : ""), x ? (x.skiff ?? "—") : st.version || "—");
     const more = h("span", "c-more");
     row.append(lead, h("span", "c-name", x ? x.name : localHostName()), h("span", "c-server mono", x ? typed(x) : localHostName()), skiff, stateCell(x), more);
     if (!x) return row;
@@ -256,7 +172,7 @@ export function createHostsTab(redraw: () => void) {
         icon: "tools-pencil",
         label: "Edit…",
         run: () => {
-          form = newForm(x);
+          st.form = newForm(x);
           redraw();
           focusServer();
         },
@@ -274,7 +190,7 @@ export function createHostsTab(redraw: () => void) {
   async function checkThenUpdate(id: string, reinstall = false) {
     await runCheck(id);
     const x = knownHosts().find((k) => k.id === id);
-    if (x && check?.id === id && check.report) updateSkiff(check, x, reinstall);
+    if (x && st.check?.id === id && st.check.report) updateSkiff(st.check, x, reinstall);
   }
 
   /** Dot and word, from the last check or connection in this app run. */
@@ -297,7 +213,7 @@ export function createHostsTab(redraw: () => void) {
     const main = h("div", "set-main");
     const head = h("div", "set-head");
     head.append(
-      button("set-back", "‹ Hosts", () => ((check = null), redraw())),
+      button("set-back", "‹ Hosts", () => ((st.check = null), redraw())),
       h("div", "set-h", `Check ${name}`),
     );
     main.append(head);
@@ -336,7 +252,7 @@ export function createHostsTab(redraw: () => void) {
     again.disabled = running;
     acts.append(again, h("span", "set-fill"));
     if (c.report?.ok && x && shownHost() !== x.id) acts.append(button("set-add ready", `Switch to ${name}`, () => pick(x.id)));
-    acts.append(button("set-rm", "Done", () => ((check = null), redraw())));
+    acts.append(button("set-rm", "Done", () => ((st.check = null), redraw())));
     main.append(acts);
     return main;
   }
@@ -404,7 +320,7 @@ export function createHostsTab(redraw: () => void) {
   /** Close on a failed run: the check list row keeps the cause, with Try
    *  again and Copy output. */
   function rowFailed(c: Check, fix: Fix, cause: string, output: string) {
-    if (check !== c) return;
+    if (st.check !== c) return;
     c.result = { row: "skiff", text: cause, failed: true, fix, output };
     redraw();
   }
@@ -549,7 +465,7 @@ export function createHostsTab(redraw: () => void) {
   }
 
   function alertCheck(e: unknown) {
-    if (check) check.error = String(e);
+    if (st.check) st.check.error = String(e);
     redraw();
   }
 
@@ -673,7 +589,7 @@ export function createHostsTab(redraw: () => void) {
       action: "Remove Host",
       tone: "danger",
       submit: async () => {
-        error = null;
+        st.error = null;
         await invoke("remove_host", { id: x.id, uninstall });
         await loadHosts().catch(() => {});
         redraw();
@@ -695,7 +611,7 @@ export function createHostsTab(redraw: () => void) {
     const main = h("div", "set-main");
     const head = h("div", "set-head");
     const back = button("set-back", "‹ Hosts", () => {
-      form = null;
+      st.form = null;
       redraw();
     });
     const editing = f.id ? knownHosts().find((x) => x.id === f.id) : null;
@@ -707,7 +623,7 @@ export function createHostsTab(redraw: () => void) {
 
     const list = h("datalist");
     list.id = "set-ssh-aliases";
-    for (const a of aliases) {
+    for (const a of st.aliases) {
       const o = h("option");
       o.value = a.name;
       if (a.goes_to) o.label = a.goes_to;
@@ -717,7 +633,7 @@ export function createHostsTab(redraw: () => void) {
     dest.setAttribute("list", list.id);
     dest.addEventListener("input", () => lookup(f));
     main.append(fieldRow("Server", dest, list));
-    const said = h("div", "set-note set-line set-resolve" + (line.bad ? " bad" : ""), line.text);
+    const said = h("div", "set-note set-line set-resolve" + (st.line.bad ? " bad" : ""), st.line.text);
     said.id = "set-resolve";
     main.append(said);
 
@@ -727,7 +643,7 @@ export function createHostsTab(redraw: () => void) {
     });
     toggle.setAttribute("aria-expanded", String(f.more));
     if (f.more) {
-      const r = line.for === key(f) ? lastResolved : null;
+      const r = st.line.for === key(f) ? st.lastResolved : null;
       const name = field(f, "name", "Name", defaultName(f.draft.destination.trim()) || "the server's name");
       const user = field(f, "user", "User", r?.user || "from SSH config");
       const port = field(f, "port", "Port", r ? String(r.port) : "from SSH config");
@@ -740,37 +656,36 @@ export function createHostsTab(redraw: () => void) {
     const acts = h("div", "set-form-acts");
     const save = button("set-add ready", f.busy ? "…" : "Connect", () => void submit(f));
     save.disabled = f.busy;
-    acts.append(toggle, h("span", "set-fill"), button("set-rm", "Cancel", () => ((form = null), redraw())));
+    acts.append(toggle, h("span", "set-fill"), button("set-rm", "Cancel", () => ((st.form = null), redraw())));
     // Only a new name needs no check.
     if (editing && onlyName(f, editing)) acts.append(button("set-rm", "Save", () => void submit(f, false)));
     acts.append(save);
     main.append(acts);
     if (f.error) main.append(alert(f.error));
-    if (!line.for && f.draft.destination.trim()) lookup(f);
+    if (!st.line.for && f.draft.destination.trim()) lookup(f);
     return main;
   }
 
-  let lastResolved: Resolved | null = null;
   const key = (f: Form) => `${f.draft.destination.trim()}\n${f.draft.user.trim()}\n${f.draft.port.trim()}`;
 
   /** The resolve line follows the fields, 250 ms after the last key. */
   function lookup(f: Form) {
-    clearTimeout(timer);
-    timer = setTimeout(async () => {
+    clearTimeout(st.timer);
+    st.timer = setTimeout(async () => {
       const k = key(f);
       if (!f.draft.destination.trim()) {
-        line = { for: "", text: "", bad: false };
+        st.line = { for: "", text: "", bad: false };
         return paint();
       }
       try {
         const r = await resolve(f.draft.destination.trim(), f.draft.user.trim(), f.draft.port.trim());
         if (k !== key(f)) return;
-        lastResolved = r;
+        st.lastResolved = r;
         const jump = r.jump ? `, through ${r.jump}` : "";
-        line = { for: k, text: `${r.user}@${r.hostname}, port ${r.port}${jump}.`, bad: false };
+        st.line = { for: k, text: `${r.user}@${r.hostname}, port ${r.port}${jump}.`, bad: false };
       } catch (e) {
         if (k !== key(f)) return;
-        line = { for: k, text: String(e), bad: true };
+        st.line = { for: k, text: String(e), bad: true };
       }
       paint();
     }, 250);
@@ -780,8 +695,8 @@ export function createHostsTab(redraw: () => void) {
   function paint() {
     const el = document.getElementById("set-resolve");
     if (!el) return;
-    el.textContent = line.text || "User and port come from your SSH config.";
-    el.classList.toggle("bad", line.bad);
+    el.textContent = st.line.text || "User and port come from your SSH config.";
+    el.classList.toggle("bad", st.line.bad);
   }
 
   const onlyName = (f: Form, x: KnownHost) => {
@@ -804,7 +719,7 @@ export function createHostsTab(redraw: () => void) {
       else id = await invoke<string>("add_host", { form: f.draft });
       await loadHosts();
       await load();
-      form = null;
+      st.form = null;
     } catch (e) {
       f.error = String(e);
       id = null;
@@ -842,11 +757,5 @@ export function createHostsTab(redraw: () => void) {
     document.querySelector<HTMLInputElement>('#settings input[aria-label="Server"]')?.focus();
   }
 
-  function alert(text: string): HTMLElement {
-    const err = h("div", "set-error set-line", text);
-    err.setAttribute("role", "alert");
-    return err;
-  }
-
-  return { load, open, draw, focusServer, get editing() { return form !== null; } };
+  return { load, open, draw, focusServer, get editing() { return st.form !== null; } };
 }
