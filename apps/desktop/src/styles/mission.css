@@ -163,6 +163,9 @@ body:has(.mission-search:focus) .mission-card.lit { box-shadow: none; }
 .mission-search::placeholder { color: var(--text-3); }
 /* All / Running: one bordered control at the right of the search. Each part shows its count. The lit one has the raised ground, bold text and an accent line at its foot. */
 #topbar .tb-cell.mission-find { padding-right: calc(8 * var(--u)); }
+/* A narrow window shrinks the field, never the All / Running control: the cell keeps room for it. */
+#topbar .tb-cell.mission-find { min-width: min-content; }
+@media (max-width: 900px) { .mission-search { width: 0; min-width: calc(64 * var(--u)); } }
 .mission-scope { flex-shrink: 0; display: flex; align-items: stretch; height: calc(30 * var(--u)); border: 1px solid var(--rule-strong); background: var(--bg-panel); }
 .mission-scope-btn { display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(12 * var(--u)); border: 0; border-radius: 0; background: transparent; color: var(--text-3); font: inherit; font-size: calc(12px * var(--zoom, 1)); cursor: pointer; transition: background 120ms; }
 .mission-scope-btn + .mission-scope-btn { border-left: 1px solid var(--rule-strong); }
