@@ -170,12 +170,32 @@ export function workspaceHarness() {
     "./profile/storage": profileStorage,
     "./profile/dialogs": profileDialogs,
   };
+  const globals = { document, requestAnimationFrame: (run: () => void) => run(),
+    window: { addEventListener: (name: string, run: () => void) => events.set(name, run) }, setInterval() {},
+    localStorage: { getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => stored.set(key, value), removeItem: (key: string) => stored.delete(key) } };
+  const childImports = {
+    "@tauri-apps/api/core": imports["@tauri-apps/api/core"],
+    "@tauri-apps/api/event": imports["@tauri-apps/api/event"],
+    "@tauri-apps/api/window": imports["@tauri-apps/api/window"],
+    "@tauri-apps/plugin-dialog": imports["@tauri-apps/plugin-dialog"],
+    "../../app/state": imports["../app/state"],
+    "../../app/renderRequest": imports["../app/renderRequest"],
+    "../../ui/alerts": imports["../ui/alerts"],
+    "../../ui/contextMenu": imports["../ui/contextMenu"],
+    "../../ui/dom": imports["../ui/dom"],
+    "../tree": tree, "../view": imports["./view"],
+    "./state": profileState, "./storage": profileStorage, "./dialogs": profileDialogs,
+  };
+  const transitions = moduleFromSource("../src/workspace/profile/transitions.ts", childImports, globals, "");
+  const status = moduleFromSource("../src/workspace/profile/status.ts", childImports, globals, "");
+  Object.assign(imports, { "./profile/transitions": transitions, "./profile/status": status });
   profile = moduleFromSource("../src/workspace/profile.ts", imports, {
     document, requestAnimationFrame: (run: () => void) => run(),
     window: { addEventListener: (name: string, run: () => void) => events.set(name, run) }, setInterval() {},
     localStorage: { getItem: (key: string) => stored.get(key) ?? null,
       setItem: (key: string, value: string) => stored.set(key, value), removeItem: (key: string) => stored.delete(key) },
-  }, "\nexport const review = { workspaceMenu };\n");
+  }, "\nexport const review = { workspaceMenu: status.workspaceMenu };\n");
   const elements = (): Element[] => {
     const walk = (el: Element): Element[] => [el, ...el.children.flatMap(walk)];
     return walk(document.body);

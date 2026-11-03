@@ -19,7 +19,13 @@ function harness() {
   const stored = new Map<string, string>();
   let host: string | null = null;
   const project = { name: "A", worktrees: [] };
+  const storage = { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, val: string) => stored.set(key, val) };
+  const persistence = moduleFromSource("../src/workspace/missionControl/persistence.ts", {}, { localStorage: storage }, "");
+  const render = moduleFromSource("../src/workspace/missionControl/render.ts", {}, {}, "");
+  const panel = moduleFromSource("../src/workspace/missionControl/panel.ts", { "../../ui/dom": { h }, "./render": render }, {}, "");
+  const interact = moduleFromSource("../src/workspace/missionControl/interact.ts", {}, {}, "");
   const imports = {
+    "./missionControl/interact": interact, "./missionControl/persistence": persistence, "./missionControl/render": render, "./missionControl/panel": panel,
     "../ui/dom": { h }, "../app/hosts": { shownHost: () => host, hostName: () => host ?? "local" },
     "../app/state": { S: { themes: [] }, sessions: new Map() },
     "../app/hostCaps": { hostCan: () => false },
@@ -36,8 +42,8 @@ function harness() {
   const mod = moduleFromSource("../src/workspace/missionControl.ts", imports, {
     document, localStorage: { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, val: string) => stored.set(key, val) },
     window: {}, console,
-  }, `\nexport const review = { loadKept, saveKept, model, refill, setRunning, kept: () => ({ panel: missionState.panelOpen }) };\n`);
-  return { mod, stored, setHost: (next: string | null) => { host = next; }, El };
+  }, `\nexport const review = { loadKept, saveKept, model, setRunning, kept: () => ({ panel: missionState.panelOpen }) };\n`);
+  return { mod, render, stored, setHost: (next: string | null) => { host = next; }, El };
 }
 
 test("loading old persistence removes obsolete layout fields", () => {
@@ -61,8 +67,8 @@ test("unchanged labels do not replace panel nodes", () => {
   const h = harness();
   const el = new h.El();
   const part = new h.El(); part.outerHTML = '<span style="--blink-delay:1s;">A</span>';
-  h.mod.review.refill(el, [part]);
+  h.render.refill(el, [part]);
   const same = new h.El(); same.outerHTML = '<span style="--blink-delay:2s;">A</span>';
-  h.mod.review.refill(el, [same]);
+  h.render.refill(el, [same]);
   assert.equal(el.replacements, 1);
 });

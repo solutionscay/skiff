@@ -966,7 +966,19 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "c2174a15f5579d33f318b40f3d354ddf36a6adc03af32e37340b1d4aa9f5a335"
+    "sha256": "60c7eace9965ac953a242b099a6e46c7558cc7d65023c4dca5a3c2d77a7df685"
+  },
+  "apps/desktop/src/workspace/missionControl/interact.ts": {
+    "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
+    "reasons": [
+      "local provider: apps/desktop/src/app/panels.ts",
+      "local provider: apps/desktop/src/app/skiffAgent.ts",
+      "local provider: apps/desktop/src/ui/contextMenu.ts",
+      "local provider: apps/desktop/src/workspace/missionControl.ts",
+      "local provider: apps/desktop/src/workspace/missionControl/terminal.ts",
+      "local provider: apps/desktop/src/workspace/missionMotion.ts"
+    ],
+    "sha256": "83af4ff1b288beb9a7ad9bedf74c1b5b2320b9569a5893121fd6c514342b2469"
   },
   "apps/desktop/src/workspace/missionControl/model.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -975,6 +987,37 @@
       "local provider: apps/desktop/src/workspace/ledger.ts"
     ],
     "sha256": "7bba1ee1d36450aef93b4be573d87297bb398ed00860960b7b54536b0f4861b7"
+  },
+  "apps/desktop/src/workspace/missionControl/panel.ts": {
+    "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
+    "reasons": [
+      "local provider: apps/desktop/src/app/hostCaps.ts",
+      "local provider: apps/desktop/src/app/skiffAgent.ts",
+      "local provider: apps/desktop/src/app/state.ts",
+      "local provider: apps/desktop/src/app/stateQueries.ts",
+      "local provider: apps/desktop/src/appearance/themes.ts",
+      "local provider: apps/desktop/src/workspace/ledger.ts",
+      "local provider: apps/desktop/src/workspace/missionControl.ts",
+      "local provider: apps/desktop/src/workspace/missionControl/model.ts",
+      "local provider: apps/desktop/src/workspace/missionControl/render.ts"
+    ],
+    "sha256": "5416e9548b5f423788fde349fdff26d6690bcf210f5fa7181d19b8d8e55e1a5d"
+  },
+  "apps/desktop/src/workspace/missionControl/render.ts": {
+    "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
+    "reasons": [
+      "local provider: apps/desktop/src/app/hostCaps.ts",
+      "local provider: apps/desktop/src/app/hosts.ts",
+      "local provider: apps/desktop/src/app/stateQueries.ts",
+      "local provider: apps/desktop/src/appearance/agentIcon.ts",
+      "local provider: apps/desktop/src/workspace/ledger.ts",
+      "local provider: apps/desktop/src/workspace/missionControl.ts",
+      "local provider: apps/desktop/src/workspace/missionControl/model.ts",
+      "local provider: apps/desktop/src/workspace/missionControl/state.ts",
+      "local provider: apps/desktop/src/workspace/missionControl/terminal.ts",
+      "local provider: apps/desktop/src/workspace/tree.ts"
+    ],
+    "sha256": "26c2176b53ded0a06e7649676567eb1d55bf4b167ffbc07adabd8455bf17472f"
   },
   "apps/desktop/src/workspace/missionControl/state.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -1017,13 +1060,22 @@
   "apps/desktop/src/workspace/profile.ts": {
     "ownership": "client policy: exact existing adapter only",
     "reasons": [
-      "@tauri-apps/api/core",
-      "@tauri-apps/api/event",
-      "@tauri-apps/api/window",
-      "@tauri-apps/plugin-dialog",
-      "invoke"
+      "local provider: apps/desktop/src/app/state.ts",
+      "local provider: apps/desktop/src/workspace/profile/dialogs.ts",
+      "local provider: apps/desktop/src/workspace/profile/membership.ts",
+      "local provider: apps/desktop/src/workspace/profile/state.ts",
+      "local provider: apps/desktop/src/workspace/profile/status.ts",
+      "local provider: apps/desktop/src/workspace/profile/transitions.ts"
     ],
-    "sha256": "4e1412fd9e75615384f96c9901e2224bacb6e29dd2a45f9c7dfafdfb7a5f42c6"
+    "sha256": "84267120dfd1568b4786a0abbf57576cbed7c360feb189ad06dda1995e5ad5ee"
+  },
+  "apps/desktop/src/workspace/profile/dialogs.ts": {
+    "ownership": "client policy: workspace edit dialog; state and application types only",
+    "reasons": [
+      "local provider: apps/desktop/src/app/state.ts",
+      "local provider: apps/desktop/src/workspace/profile/state.ts"
+    ],
+    "sha256": "56aa009a62c39f5246d28fea9ede4acba794d51d5efc90e94c9f9ab7ae778fad"
   },
   "apps/desktop/src/workspace/profile/membership.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -1042,6 +1094,16 @@
     ],
     "sha256": "104102e7f304fa6f73a7e2e3d4d69278dba1b91f530fee3745152a5913e13899"
   },
+  "apps/desktop/src/workspace/profile/status.ts": {
+    "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
+    "reasons": [
+      "@tauri-apps/api/core",
+      "@tauri-apps/api/event",
+      "@tauri-apps/api/window",
+      "invoke"
+    ],
+    "sha256": "5ee11fc5c3f4ec13f0d8cc72827201b7b924f345e3c34a3a79e6a22f66573bbe"
+  },
   "apps/desktop/src/workspace/profile/storage.ts": {
     "ownership": "client policy: exact existing adapter only",
     "reasons": [
@@ -1049,6 +1111,15 @@
       "invoke"
     ],
     "sha256": "1d12a6b7e61a4830015f083b8c9175caac5bb0b202313e23a02c0b62655f8ac5"
+  },
+  "apps/desktop/src/workspace/profile/transitions.ts": {
+    "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
+    "reasons": [
+      "@tauri-apps/api/core",
+      "@tauri-apps/plugin-dialog",
+      "invoke"
+    ],
+    "sha256": "7d208f007d7c1bab83a27cf246bcd2250f8c1fb8927f1834fcae3e48d7b0a43a"
   },
   "apps/desktop/src/workspace/projectClose.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
