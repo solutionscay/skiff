@@ -50,6 +50,7 @@ Use the report to show the user what is open. Use the JSON to pick a target or m
 | Start a shell | `skiff new [--name N] [--cwd DIR]` |
 | Start an agent | `skiff new --agent ID [--name N] [--cwd DIR]` (`skiff agents --json` lists ids) |
 | Start a task type | `skiff new --type T [--model M] [--cwd DIR]` |
+| Start an agent with a model | `skiff new --agent ID --model M` |
 | Start a command | `skiff new -- npm run dev` |
 | Start next to me | `skiff new --agent codex --group .` |
 | Type into an idle agent | `skiff send S "text" --enter` |
@@ -85,7 +86,7 @@ States: `working`, `waiting`, `idle`, `done`.
 1. Pick the type yourself. Skiff reads no task text.
 2. Do not use a row whose `error` is not null.
 3. If a task fits a type, start it with `skiff new --type T --cwd DIR`.
-4. If the person names a model, add `--model M`. A custom agent (`"custom": true`) takes its model in its command and refuses `--model`.
+4. If the person names a model, add `--model M`. `skiff new --agent ID --model M` adds the same model flag. A custom agent (`"custom": true`), opencode and hermes take their model in the command and refuse `--model`: exit 1, nothing starts. `--model` with `-- CMD` is an error.
 5. If no type fits, start the project's agent with `--agent`.
 
 `--type` with no row exits 1 and starts nothing. `--type` with `--agent` or `-- CMD` is an error.

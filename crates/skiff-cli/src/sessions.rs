@@ -120,6 +120,9 @@ pub async fn spec(c: &Client, o: New) -> Result<SessionSpec> {
         rows: 40,
         ..SessionSpec::default()
     };
+    if o.model.is_some() && o.agent.is_none() && o.task_type.is_none() {
+        bail!("--model needs --type or --agent");
+    }
     let mut flags = Vec::new();
     let words: Vec<String> = if o.task_type.is_some() || o.agent.is_some() {
         let cfg = skiff_core::config::load();
@@ -194,7 +197,9 @@ fn agent_line<'a>(agents: &'a [AgentInfo], rows: &TaskTypes, o: &New, dir: &Path
     if !a.installed {
         bail!("agent {id:?} is not installed: {} is not on skiffd's PATH", a.command);
     }
-    Ok(Start { agent: a, words: a.command.split_whitespace().map(String::from).collect(), env: vec![] })
+    // A model adds the agent's model flag; an agent with none refuses it.
+    let words = skiff_core::tasks::command(a, o.model.as_deref())?.split_whitespace().map(String::from).collect();
+    Ok(Start { agent: a, words, env: vec![] })
 }
 
 /// The first skiffd that passes a session its variables. An older one drops
@@ -620,6 +625,23 @@ mod tests {
         assert_eq!(line(&mine, &new(Some("claude"), None)), "claude --dangerously-skip-permissions");
         assert_eq!(line(&mine, &new(Some("codex"), None)), "codex --yolo");
         assert_eq!(line(&mine, &new(None, Some("review"))), "codex --yolo -m gpt-5");
+    }
+
+    #[test]
+    fn new_agent_takes_a_model_or_refuses_it() {
+        let rows = TaskTypes::default();
+        let dir = Path::new("/no/such/skiff-agent");
+        let with = |agents: &[AgentInfo], id: &str, m: &str| agent_line(agents, &rows, &New { model: Some(m.into()), ..new(Some(id), None) }, dir).map(|s| s.words.join(" "));
+        let agents = [agent("claude", "claude --dangerously-skip-permissions"), agent("gemini", "agy"), agent("opencode", "opencode")];
+        assert_eq!(with(&agents, "claude", "opus").unwrap(), "claude --dangerously-skip-permissions --model opus");
+        assert_eq!(with(&agents, "gemini", "gemini-3.8-flash-medium").unwrap(), "agy --model gemini-3.8-flash-medium");
+        // No model flag: an error, and nothing starts.
+        let e = with(&agents, "opencode", "x").unwrap_err().to_string();
+        assert!(e.contains("opencode takes its model in its command"), "{e}");
+        // A custom agent refuses it too.
+        let mut mine = agent("mine", "mine-cli");
+        mine.custom = true;
+        assert!(with(&[mine], "mine", "x").is_err());
     }
 
     #[test]

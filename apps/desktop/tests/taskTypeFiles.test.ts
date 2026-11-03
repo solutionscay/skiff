@@ -51,7 +51,7 @@ function section(errors = new Map<string, string>()) {
   );
   const t = (type: string, instructions: number | null) => ({ type, agent: "claude", model: null, file: `/home/me/skiff-agent/types/${type}.md`, instructions, command: "claude", error: null });
   const set = { types: "~/skiff-agent/types/", tasks: [t("review", 412), t("spec", null)], agent: "claude" };
-  const agents = [{ id: "claude", enabled: true }, { id: "gemini", enabled: true }];
+  const agents = [{ id: "claude", enabled: true }, { id: "gemini", enabled: true }, { id: "opencode", enabled: true }];
   const [head] = m.taskTypesSection(set, agents, {}, async () => null, () => {}, { edit: (x: any) => edited.push(x.type), errors });
   const col = spec.cols.find((c: any) => c.key === "instructions");
   return { head, spec, col, rows: set.tasks, edited, after };
@@ -74,7 +74,7 @@ test("a row shows the size or none, and Edit opens its file", () => {
 test("a model set by its agent does not refer to a command column", () => {
   const { spec } = section();
   const model = spec.cols.find((c: any) => c.key === "model");
-  assert.equal(model.note({ type: "web-research", agent: "gemini", model: null }, {}), "set by agent");
+  assert.equal(model.note({ type: "web-research", agent: "opencode", model: null }, {}), "set by agent");
 });
 
 test("an Edit fault shows one line under its row", () => {
