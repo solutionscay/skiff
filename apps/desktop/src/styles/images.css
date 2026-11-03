@@ -17,7 +17,7 @@
 
 #images-lib {
   --menu-bg: linear-gradient(var(--bg-panel), var(--bg-panel)), linear-gradient(var(--bg), var(--bg)) #000;
-  position: fixed; z-index: 15; width: calc(600 * var(--u)); max-width: calc(100vw - calc(16 * var(--u)));
+  position: fixed; z-index: 64; width: calc(600 * var(--u)); max-width: calc(100vw - calc(16 * var(--u)));
   display: flex; flex-direction: column; background: var(--menu-bg); border: 1px solid var(--rule-strong);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); transform: translateZ(0); isolation: isolate; outline: 0;
 }

@@ -1,5 +1,5 @@
 #switcher {
-  position: fixed; inset: 0; z-index: 10;
+  position: fixed; inset: 0; z-index: 63;
   display: flex; justify-content: flex-start; align-items: flex-start;
   padding: 0 0 0 max(calc(356 * var(--u) - 1px), calc(50vw - 280 * var(--u)));
   background: color-mix(in srgb, var(--bg-deep) 70%, transparent);
