@@ -6,11 +6,12 @@
 Reads the site from ../skiff-web/index.html when that repo is beside this
 one, else from https://skiff.solutionscay.com/. --live always reads the
 live site. Compares the headline, the tagline and the media: the README
-must show the site's video poster by its public URL. Exits 1 on a drift.
+must show the site's hero image or video poster by its public URL. Exits 1 on a drift.
 """
 import re
 import sys
 import urllib.request
+from urllib.parse import urljoin
 from pathlib import Path
 
 SITE = "https://skiff.solutionscay.com/"
@@ -36,10 +37,14 @@ def main():
     if not hero:
         print(f"no hero in {origin}")
         return 1
+    media = re.search(r'<img\b[^>]*\bsrc="([^"]+)"', hero[2]) or re.search(r'<video\b[^>]*\bposter="([^"]+)"', hero[2])
+    if not media:
+        print(f"no hero image or video poster in {origin}")
+        return 1
     site = {
         "headline": text(re.search(r"<h1>(.*?)</h1>", hero[1], re.S)[1]),
         "tagline": text(re.search(r"<p>(.*?)</p>", hero[1], re.S)[1]),
-        "media": SITE + re.search(r'poster="([^"]+)"', hero[2])[1],
+        "media": urljoin(SITE, media[1]),
     }
 
     readme = (ROOT / "README.md").read_text()

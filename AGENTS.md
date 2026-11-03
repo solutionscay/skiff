@@ -22,7 +22,8 @@ themes. Claude Code and Codex load the same rules as the `skiff-design` skill
 ## README hero
 
 The README hero is the website home hero: the same headline, tagline and media. The
-media is the site's video poster, by its public URL, linked to the site. When you change
+media is the site's hero image, or its video poster when the hero is a video, by its
+public URL, linked to the site. When you change
 one hero, change the other in the same task. Check with `python3 scripts/hero-sync.py`
 (add `--live` to read the live site).
 
