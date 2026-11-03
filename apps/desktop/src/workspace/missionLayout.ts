@@ -41,7 +41,6 @@ export interface GProject {
   skipper: string | null;
   cards: string[];
   plans: GPlan[];
-  folded: boolean;
 }
 export interface GFleet {
   /** `fleet:<name>`. */
@@ -65,7 +64,6 @@ export interface Rect {
 }
 export interface Cluster extends Rect {
   fleet: boolean;
-  folded: boolean;
 }
 export interface PlanBox extends Rect {
   key: string;
@@ -83,13 +81,13 @@ export interface At {
   head?: boolean;
 }
 export interface Placed {
-  /** Every card by id: sessions, Skippers and Admiral. A folded cluster's card is in `clusters`. */
+  /** Every card by id: sessions, Skippers and Admiral. */
   cards: Map<string, Rect>;
   clusters: Map<string, Cluster>;
   plans: PlanBox[];
   /** The rung of each window: Admiral and the Skippers. A card not here is a session card. */
   rungs: Map<string, Rung>;
-  /** How connectors reach each card, window and folded cluster. */
+  /** How connectors reach each card and window. */
   at: Map<string, At>;
   /** Admiral's trunk: the x its connectors come down. `null` with no Admiral. */
   trunk: number | null;
@@ -188,7 +186,7 @@ export function navParent(g: Graph, id: string): string | null {
   return null;
 }
 
-/** The nodes under `id`, left to right. A folded cluster has none. */
+/** The nodes under `id`, left to right. */
 export function navChildren(g: Graph, id: string): string[] {
   if (id === g.admiral) return [...g.fleets.map(fleetNode), ...g.projects.map(projectNode)];
   for (const f of g.fleets) {
@@ -197,7 +195,7 @@ export function navChildren(g: Graph, id: string): string[] {
   }
   for (const p of g.projects) if (id === p.skipper) return [p.key];
   const p = allProjects(g).find((p) => p.key === id);
-  return p && !p.folded ? p.cards : [];
+  return p ? p.cards : [];
 }
 
 /** The next (`dir` 1) or previous node beside `id`, under the same parent. The ends stay. */
@@ -229,13 +227,6 @@ export function navFirst(g: Graph): string | null {
   return g.admiral ?? g.fleets.map(fleetNode)[0] ?? g.projects.map(projectNode)[0] ?? null;
 }
 
-/** The card that stands for `id` on the canvas: itself, or its folded cluster. `null` when neither shows. */
-export function standIn(g: Graph, p: Placed, id: string): string | null {
-  if (p.cards.has(id)) return id;
-  const pr = allProjects(g).find((x) => x.cards.includes(id));
-  return pr && pr.folded && p.clusters.has(pr.key) ? pr.key : null;
-}
-
 // ---- Keys ----
 
 export type BoardCommand =
@@ -243,7 +234,6 @@ export type BoardCommand =
   | "child"
   | "prev"
   | "next"
-  | "fold"
   | "go"
   | "go-max"
   | "fit"
@@ -291,7 +281,6 @@ export function boardCommand(key: string, action: string | null, inSearch: boole
   if (inSearch) return null;
   if (key === "ArrowRight") return "next";
   if (key === "ArrowLeft") return "prev";
-  if (key === " ") return "fold";
   if (key === "Home") return "fit";
   if (key === "=" || key === "+") return "zoom-in";
   if (key === "-") return "zoom-out";

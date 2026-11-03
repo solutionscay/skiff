@@ -11,7 +11,7 @@
  * along the left edge and turns right into each row's bus.
  *
  * Only the data places things: the graph's order is the sidebar tree's, and
- * the window size is never an input. A fold or a new session can change a
+ * the window size is never an input. A new session can change a
  * row's height; nothing else moves. All lengths are unzoomed px.
  *
  * A connector is solid, with right angles and rounded corners. It leaves the
@@ -55,8 +55,8 @@ interface Top {
   projects: GProject[];
 }
 
-/** A project's width from its frame's left edge: with its own Skipper, its sessions hang on that Skipper's rail. Folded, its card (under its Skipper, on the rail). */
-const projectW = (p: GProject) => (p.folded ? PAD + (p.skipper ? IND2 : 0) + CARD_W : PAD + (p.skipper ? Math.max(WINDOW.project.w, IND2 + CARD_W) : CARD_W) + PAD);
+/** A project's width from its frame's left edge: with its own Skipper, its sessions hang on that Skipper's rail. */
+const projectW = (p: GProject) => (PAD + (p.skipper ? Math.max(WINDOW.project.w, IND2 + CARD_W) : CARD_W) + PAD);
 
 /** A cluster's own width, before the grid gives every cell the widest. */
 function naturalW(t: Top): number {
@@ -113,7 +113,7 @@ export function placeGraph(g: Graph): Placed {
       const owners = t.skipper ? [t.skipper] : [];
       let cy = rowTop + HEAD + FP;
       // A fleet's frame takes its place in the map first, so the board draws it under its projects' frames.
-      if (t.fleet) out.clusters.set(t.key, { x, y: rowTop, w: cell, h: 0, fleet: true, folded: false });
+      if (t.fleet) out.clusters.set(t.key, { x, y: rowTop, w: cell, h: 0, fleet: true });
       if (t.skipper) {
         putWindow(t.skipper, t.fleet ? "fleet" : "project", wx, cy);
         out.at.set(t.skipper, { bus, rail, owners: [], head: true });
@@ -121,22 +121,6 @@ export function placeGraph(g: Graph): Placed {
       }
       for (const p of t.projects) {
         const fx = t.fleet ? wx + IND - PAD : x;
-        if (p.folded) {
-          // A folded project is one card where its work would hang. In a fleet, its own Skipper stays above it, the card on its rail.
-          let fo = owners;
-          let cx = wx + IND;
-          if (t.fleet && p.skipper) {
-            putWindow(p.skipper, "project", wx + IND, cy);
-            out.at.set(p.skipper, { bus, rail, owners: [...owners] });
-            cy += WINDOW.project.h + DROP;
-            fo = [...owners, p.skipper];
-            cx = wx + IND + IND2;
-          }
-          out.clusters.set(p.key, { x: cx, y: cy, w: CARD_W, h: CARD_H, fleet: false, folded: true });
-          out.at.set(p.key, { bus, rail, owners: fo });
-          cy += CARD_H + VGAP;
-          continue;
-        }
         if (!t.fleet) {
           // A project in no fleet is its own cluster: the frame holds its Skipper and its work.
           cy = cardsOf(p, wx + IND, cy, { bus, rail, owners });
@@ -154,13 +138,13 @@ export function placeGraph(g: Graph): Placed {
         }
         iy = cardsOf(p, p.skipper ? fx + PAD + IND2 : fx + PAD, iy, at);
         const h = iy - VGAP + PAD - top;
-        out.clusters.set(p.key, { x: fx, y: top, w: projectW(p), h, fleet: false, folded: false });
+        out.clusters.set(p.key, { x: fx, y: top, w: projectW(p), h, fleet: false });
         cy = top + h + VGAP;
       }
       const h = Math.max(cy - VGAP, rowTop + HEAD + FP) + FP - rowTop;
-      // The frame: a fleet's, or a project's in no fleet. A folded project in no fleet has no frame.
-      if (t.fleet) out.clusters.set(t.key, { x, y: rowTop, w: cell, h, fleet: true, folded: false });
-      else if (!t.projects[0].folded) out.clusters.set(t.key, { x, y: rowTop, w: cell, h, fleet: false, folded: false });
+      // The frame: a fleet's, or a project's in no fleet.
+      if (t.fleet) out.clusters.set(t.key, { x, y: rowTop, w: cell, h, fleet: true });
+      else out.clusters.set(t.key, { x, y: rowTop, w: cell, h, fleet: false });
       rowH = Math.max(rowH, h);
     });
     rowTop += rowH + ROW_GAP;
@@ -190,7 +174,7 @@ export function orth(pts: Pt[], r = 8): string {
 }
 
 /**
- * The connector from `from` to `to` (a card, a window or a folded cluster),
+ * The connector from `from` to `to` (a card or a window),
  * as path data. `null` when either is not placed.
  */
 export function route(p: Placed, from: string, to: string): string | null {

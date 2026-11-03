@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import * as G from "../src/workspace/missionLayout.ts";
 import * as Grid from "../src/workspace/missionControl/grid.ts";
 
-const project = (name: string, cards: string[], extra: Partial<G.GProject> = {}): G.GProject => ({ key: `project:${name}`, name, skipper: null, cards, plans: [], folded: false, ...extra });
+const project = (name: string, cards: string[], extra: Partial<G.GProject> = {}): G.GProject => ({ key: `project:${name}`, name, skipper: null, cards, plans: [], ...extra });
 
 /** Admiral, a fleet with its Skipper and two projects, a project with its Skipper, a plain project, Other. */
 function graph(): G.Graph {
@@ -56,24 +56,6 @@ test("the clusters flow in a fixed grid: ceil(√n) to a row, at most 4, wrappin
   assert.ok([web, skiff, gesher, other].every((x) => x.x > p.trunk!));
 });
 
-test("a folded cluster is one card, and its sessions stand in by it", () => {
-  const g = graph();
-  g.projects[1].folded = true;
-  const p = Grid.placeGraph(g);
-  const c = p.clusters.get("project:gesher")!;
-  assert.equal(c.folded, true);
-  assert.deepEqual([c.w, c.h], [G.CARD_W, G.CARD_H]);
-  assert.equal(p.cards.has("s9"), false);
-  assert.equal(G.standIn(g, p, "s9"), "project:gesher");
-  assert.equal(G.standIn(g, p, "s1"), "s1");
-  assert.equal(G.navChildren(g, "project:gesher").length, 0, "a folded cluster has nothing under it");
-  // A folded project in a fleet keeps its own Skipper's window, the folded card under it.
-  g.fleets[0].projects[1] = { ...g.fleets[0].projects[1], skipper: "sk-co", folded: true };
-  const q = Grid.placeGraph(g);
-  assert.ok(q.cards.get("sk-co")!.y + G.WINDOW.project.h <= q.clusters.get("project:checkout")!.y);
-  assert.ok(q.at.get("project:checkout")!.owners.includes("sk-co"));
-});
-
 test("Skipper numbers follow the tree: projects in no fleet first, as the Skippers list counts them", () => {
   // Issue #201: one project in no fleet, one fleet, each with a Skipper. Ctrl+Shift+1 must pick the same one in both places.
   const g: G.Graph = { admiral: "ad", fleets: [{ key: "fleet:web", name: "web", skipper: "sk-web", projects: [project("shop", ["s1"], { skipper: "sk-shop" })] }], projects: [project("solo", ["s2"], { skipper: "sk-solo" }), project("other", ["s3"])] };
@@ -120,7 +102,7 @@ test("the key map: plain keys on the board, the caret's keys in the search, acti
   assert.equal(on("ArrowUp"), "parent");
   assert.equal(on("ArrowRight"), "next");
   assert.equal(on("ArrowLeft"), "prev");
-  assert.equal(on(" "), "fold");
+  assert.equal(on(" "), null);
   assert.equal(on("Enter"), "go");
   assert.equal(on("Home"), "fit");
   assert.equal(on("="), "zoom-in");

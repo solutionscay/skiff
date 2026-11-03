@@ -73,7 +73,6 @@ const FIXED_SHORTCUTS: FixedShortcut[] = [
   ["section.ledger", "fixed.ledger.back", "Esc"],
   ["section.missionControl", "fixed.mission.move", "↑ / ↓ / ← / →"],
   ["section.missionControl", "fixed.mission.go", "Enter"],
-  ["section.missionControl", "fixed.mission.fold", "Space"],
   ["section.missionControl", "fixed.mission.zoom", "Home / = / -"],
   ["section.missionControl", "fixed.mission.pan", { words: isMac ? "fixed.key.dragWheelMac" : "fixed.key.dragWheel" }],
   ["section.missionControl", "fixed.mission.close", "Esc"],

@@ -36,7 +36,7 @@ function harness() {
   const mod = moduleFromSource("../src/workspace/missionControl.ts", imports, {
     document, localStorage: { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, val: string) => stored.set(key, val) },
     window: {}, console,
-  }, `\nexport const review = { loadKept, saveKept, model, refill, setRunning, setOpened: (keys: string[]) => { opened = new Set(keys); }, setFolded: (keys: string[]) => { folded = new Set(keys); }, kept: () => ({ folded: [...folded], opened: [...opened], panel: panelOpen }) };\n`);
+  }, `\nexport const review = { loadKept, saveKept, model, refill, setRunning, kept: () => ({ panel: panelOpen }) };\n`);
   return { mod, stored, setHost: (next: string | null) => { host = next; }, El };
 }
 
@@ -44,10 +44,10 @@ test("loading old persistence removes obsolete layout fields", () => {
   const h = harness();
   h.stored.set("skiff.mission.local", JSON.stringify({ folded: ["project:A"], opened: [], panel: false, offs: {}, order: [] }));
   h.mod.review.loadKept();
-  assert.deepEqual(JSON.parse(h.stored.get("skiff.mission.local")!), { folded: ["project:A"], opened: [], panel: false });
+  assert.deepEqual(JSON.parse(h.stored.get("skiff.mission.local")!), { panel: false });
 });
 
-test("folds and the panel use a separate key for each Host", () => {
+test("the panel uses a separate key for each Host", () => {
   const h = harness();
   h.stored.set("skiff.mission.local", JSON.stringify({ folded: ["project:A"], panel: false }));
   h.stored.set("skiff.mission.remote", JSON.stringify({ opened: ["project:A"], panel: true }));
@@ -55,18 +55,6 @@ test("folds and the panel use a separate key for each Host", () => {
   assert.equal(h.mod.review.kept().panel, false);
   h.setHost("remote"); h.mod.review.loadKept();
   assert.equal(h.mod.review.kept().panel, true);
-  assert.deepEqual(Array.from(h.mod.review.kept().opened), ["project:A"]);
-});
-
-test("manual folds and opens override Running", () => {
-  const h = harness();
-  const review = h.mod.review;
-  assert.equal(review.model().g.projects[0].folded, true);
-  review.setOpened(["project:A"]);
-  assert.equal(review.model().g.projects[0].folded, false);
-  review.setRunning(false);
-  review.setFolded(["project:A"]);
-  assert.equal(review.model().g.projects[0].folded, true);
 });
 
 test("unchanged labels do not replace panel nodes", () => {

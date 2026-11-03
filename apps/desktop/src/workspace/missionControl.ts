@@ -8,8 +8,7 @@
  * working string's dashes march toward the child. missionLayout.ts places it all.
  *
  * Running / All at the right of the search (#133): Running dims every card,
- * cluster and string that is not working or waiting, and folds a project
- * with no running session to one card. Nothing moves. The choice is stored in
+ * cluster and string that is not working or waiting. Nothing moves. The choice is stored in
  * `[appearance] mission_filter`, so the board opens with the last one, also
  * after a restart. With none stored: Running.
  * Ctrl+Shift+P searches the cards and dims the rest. The search stays until
@@ -19,8 +18,8 @@
  * cluster a tidy tree, the clusters in a fixed grid in the sidebar's order,
  * Admiral's trunk down the left. Nothing is dragged; the window size is never
  * an input. Drag or the wheel pans, Ctrl+wheel and pinch zoom at the pointer,
- * Home fits. A click on a cluster's head folds it. The folds and the panel's
- * fold persist on this computer, per Host.
+ * Home fits. A click on a cluster's head lights it. The panel's fold persists
+ * on this computer, per Host.
  *
  * Admiral and each Skipper show as a terminal window with its face and its
  * state, task and counts (missionControl/terminal.ts, state.ts).
@@ -30,7 +29,7 @@
  * second, for the lit card only. Ctrl+Alt+Shift+L folds it to a rail.
  *
  * The keys: Up the parent, Down the first child, Left and Right the siblings,
- * Space folds or opens a cluster, Enter goes to the lit session. A click goes
+ * Enter goes to the lit session. A click goes
  * too. Ctrl+Shift+A or Esc closes. This file is the board. missionMotion.ts
  * opens and closes it.
  */
@@ -123,13 +122,8 @@ const appZoom = () => parseFloat(getComputedStyle(document.documentElement).getP
 // ---- What persists on this computer, per Host ----
 
 interface Kept {
-  folded: string[];
-  opened: string[];
   panel: boolean;
 }
-/** Folded by hand, and opened by hand against the Running rule. */
-let folded = new Set<string>();
-let opened = new Set<string>();
 let panelOpen = true;
 let keptFor: string | null | undefined;
 const keptKey = () => `skiff.mission.${shownHost() ?? "local"}`;
@@ -145,18 +139,16 @@ function loadKept() {
   } catch {
     /* start as laid out */
   }
-  folded = new Set(Array.isArray(k.folded) ? k.folded : []);
-  opened = new Set(Array.isArray(k.opened) ? k.opened : []);
   panelOpen = k.panel !== false;
-  // A record from before the fixed layout still holds the drag offsets and orders: written back, they go.
-  if ("offs" in k || "order" in k) saveKept();
+  // A record from before the fixed layout still holds old layout and fold state: written back, they go.
+  if ("offs" in k || "order" in k || "folded" in k || "opened" in k) saveKept();
 }
 
 function saveKept() {
   try {
-    localStorage.setItem(keptKey(), JSON.stringify({ folded: [...folded], opened: [...opened], panel: panelOpen } satisfies Kept));
+    localStorage.setItem(keptKey(), JSON.stringify({ panel: panelOpen } satisfies Kept));
   } catch {
-    /* the folds last for this run */
+    /* the panel state lasts for this run */
   }
 }
 
@@ -245,7 +237,7 @@ function projectSessions(p: Project | null): SessionInfo[] {
 
 interface Str {
   from: string;
-  /** The session the string goes to; its card, or its folded cluster, is where it ends. */
+  /** The session the string goes to; its card is where it ends. */
   to: string;
   label: string;
 }
@@ -256,7 +248,7 @@ interface Model {
   sess: Map<string, SessionInfo>;
   /** Each cluster's project. Other has none. */
   projects: Map<string, Project | null>;
-  /** Each project cluster's sessions, folded or not. */
+  /** Each project cluster's sessions. */
   members: Map<string, SessionInfo[]>;
   /** A session's ledger task, for its meta line and its string. */
   rows: Map<string, Entry>;
@@ -296,8 +288,6 @@ function model(): Model {
       if (found && fuzzy(q, matchText(s, p, rows.get(s.id))) >= 0) found.add(s.id);
     }
     if (skipper) sess.set(skipper.id, skipper);
-    // Running folds a cluster with nothing running. A fold or an open by hand wins.
-    const fold = folded.has(key) || (!opened.has(key) && running && !list.some(isRunning));
     // A plan heads the cards of its tasks in this cluster.
     const plans: G.GPlan[] = [];
     for (const s of list) {
@@ -307,7 +297,7 @@ function model(): Model {
       const cards = list.filter((t) => rows.get(t.id)?.parent === plan.uid);
       plans.push({ uid: plan.uid, title: ledgerTitle(plan), cards: cards.map((t) => t.id), done: cards.filter((t) => rows.get(t.id)!.state === "done").length });
     }
-    return { key, name: p?.name ?? t("sidebar.other"), skipper: skipper?.id ?? null, cards: list.map((s) => s.id), plans, folded: fold };
+    return { key, name: p?.name ?? t("sidebar.other"), skipper: skipper?.id ?? null, cards: list.map((s) => s.id), plans };
   };
 
   const g: G.Graph = { admiral: admiral?.id ?? null, fleets: [], projects: [] };
@@ -338,12 +328,6 @@ let m: Model = { g: { admiral: null, fleets: [], projects: [] }, sess: new Map()
 let placed: G.Placed = { cards: new Map(), clusters: new Map(), plans: [], rungs: new Map(), at: new Map(), trunk: null };
 
 // ---- Cards and clusters ----
-
-function chevron(): HTMLElement {
-  const el = h("span", "mission-chev");
-  el.innerHTML = '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 3.5 5 7l3.5-3.5"/></svg>';
-  return el;
-}
 
 /** A card's name: Admiral's, "Skipper · gesher" for a Skipper, else the session's title. */
 const cardName = (s: SessionInfo) => (s.coordinator ? skiffAgentName() : taskTitle(s));
@@ -384,26 +368,7 @@ function cardParts(s: SessionInfo, now: number): HTMLElement[] {
   return [head, body];
 }
 
-/** A folded cluster's card: the badge, the name and the counts. */
-function folderParts(key: string): HTMLElement[] {
-  const p = m.projects.get(key) ?? null;
-  const list = m.members.get(key) ?? [];
-  const waits = list.filter((s) => s.state === "waiting").length;
-  const works = list.filter((s) => s.state === "working").length;
-  const head = h("span", "head");
-  head.append(p ? projectBadge(p) : h("span", "name", "…"), h("span", "name", p?.name ?? t("sidebar.other")), h("span", "at", String(list.length)));
-  const body = h("span", "body");
-  const tx = h("span", "tx");
-  const meta = h("span", "m");
-  if (waits) meta.append(h("span", "w", tn("mission.wait", waits)), " · ");
-  if (works) meta.append(h("span", "g", tn("mission.working", works)), " · ");
-  meta.append(tn("mission.idle", list.length - waits - works));
-  tx.append(h("span", "t", p?.name ?? t("sidebar.other")), meta);
-  body.append(chevron(), tx);
-  return [head, body];
-}
-
-/** A cluster's head: the chevron, the badge, the name and the counts. */
+/** A cluster's head: the badge, the name and the counts. */
 function clusterHeadParts(key: string, fleet: boolean): HTMLElement[] {
   const list = fleet ? (m.g.fleets.find((f) => f.key === key)?.projects ?? []).flatMap((p) => m.members.get(p.key) ?? []) : (m.members.get(key) ?? []);
   const waits = list.filter((s) => s.state === "waiting").length;
@@ -414,7 +379,7 @@ function clusterHeadParts(key: string, fleet: boolean): HTMLElement[] {
   roll.appendChild(h("span", "", fleet ? tn("palette.sessions", list.length) : String(list.length)));
   if (fleet) return [h("span", "name", key.slice("fleet:".length)), roll];
   const p = m.projects.get(key) ?? null;
-  return [chevron(), p ? projectBadge(p) : h("span", "name", "…"), h("span", "name", p?.name ?? t("sidebar.other")), roll];
+  return [p ? projectBadge(p) : h("span", "name", "…"), h("span", "name", p?.name ?? t("sidebar.other")), roll];
 }
 
 /** Markup to compare, less the busy icon's phase, which is new on each call. */
@@ -445,12 +410,12 @@ function draw() {
   m = model();
   placed = placeGraph(m.g);
   // The light: a card that left the board hands it to its parent, else the first node.
-  if (lit && !G.standIn(m.g, placed, lit) && !placed.clusters.has(lit)) lit = G.navParent(m.g, lit) ?? G.navFirst(m.g);
+  if (lit && !placed.cards.has(lit) && !placed.clusters.has(lit)) lit = G.navParent(m.g, lit) ?? G.navFirst(m.g);
   if (!lit) lit = G.navFirst(m.g);
 
   numbered = G.skipperOrder(m.g).filter((id) => placed.cards.has(id)).slice(0, 9);
   const seen = new Set<string>();
-  // Cards: sessions, Skippers and Admiral; and folded clusters as cards.
+  // Cards: sessions, Skippers and Admiral.
   const putCard = (id: string, r: G.Rect, parts: HTMLElement[] | G.Rung, cls: string, pc: string, dim: boolean) => {
     seen.add(id);
     let el = cards.get(id);
@@ -483,12 +448,6 @@ function draw() {
     const label2 = t("mission.tileLabel", { title: cardName(s), state: stateLabel(s) });
     if (cards.get(id)!.getAttribute("aria-label") !== label2) cards.get(id)!.setAttribute("aria-label", label2);
   }
-  for (const [key, c] of placed.clusters) {
-    if (!c.folded) continue;
-    const list = m.members.get(key) ?? [];
-    const run = list.some(isRunning);
-    putCard(key, c, folderParts(key), `folder${list.some((s) => s.state === "waiting") ? " waiting" : ""}`, accent(m.projects.get(key) ?? null), (running && !run) || (!!m.found && !list.some((s) => m.found!.has(s.id))));
-  }
   for (const [id, el] of cards) {
     if (seen.has(id)) continue;
     el.remove();
@@ -498,7 +457,6 @@ function draw() {
   // Clusters: the frames.
   const seenClusters = new Set<string>();
   for (const [key, c] of placed.clusters) {
-    if (c.folded) continue;
     seenClusters.add(key);
     let el = clusters.get(key);
     if (!el) {
@@ -555,21 +513,19 @@ function draw() {
   drawPanel();
 }
 
-/** The connectors: one per link, from its owner to the child, or the child's folded cluster. */
+/** The connectors: one per link, from its owner to the child. */
 function drawStrings() {
   const links: Link[] = [];
   const done = new Set<string>();
   for (const st of m.strs) {
-    const to = G.standIn(m.g, placed, st.to);
+    const to = placed.cards.has(st.to) ? st.to : null;
     const d = to ? route(placed, st.from, to) : null;
     const key = `${st.from}>${to}`;
     if (!to || !d || done.has(key)) continue;
     done.add(key);
     const child = m.sess.get(st.to)!;
-    const foldedTo = !placed.cards.has(to);
-    const members = foldedTo ? (m.members.get(to) ?? []) : [child];
-    const state = members.some((s) => s.state === "waiting") ? "waiting" : members.some((s) => s.state === "working") ? "working" : child.state === "done" ? "done" : "idle";
-    links.push({ key, d, state, dim: foldedTo ? !members.some(isRunning) && running : dimmed(child) });
+    const state = child.state === "waiting" ? "waiting" : child.state === "working" ? "working" : child.state === "done" ? "done" : "idle";
+    links.push({ key, d, state, dim: dimmed(child) });
   }
   drawConnectors(links);
   // The box holds every connector, so WebKit repaints them as its own content.
@@ -646,10 +602,10 @@ function zoomBy(f: number, px = canvas.clientWidth / 2, py = canvas.clientHeight
   applyView();
 }
 
-/** Where `id` is on the canvas: its card, or its folded cluster's card. */
+/** Where `id` is on the canvas: its card or cluster. */
 function rectOf(id: string | null): G.Rect | null {
   if (!id) return null;
-  const stand = G.standIn(m.g, placed, id) ?? (placed.clusters.has(id) ? id : null);
+  const stand = placed.cards.has(id) || placed.clusters.has(id) ? id : null;
   return stand ? (placed.cards.get(stand) ?? placed.clusters.get(stand) ?? null) : null;
 }
 
@@ -679,24 +635,6 @@ function light(id: string | null, pan = true) {
 }
 
 const isCluster = (id: string) => id.startsWith("project:") || id.startsWith("fleet:");
-
-/** Folds or opens a project cluster. A fleet folds every project in it. */
-function toggleFold(id: string) {
-  const keys = id.startsWith("fleet:") ? (m.g.fleets.find((f) => f.key === id)?.projects.map((p) => p.key) ?? []) : [id];
-  if (!keys.length || !keys.every((k) => placed.clusters.has(k))) return;
-  const anyOpen = keys.some((k) => !placed.clusters.get(k)!.folded);
-  for (const k of keys) {
-    if (anyOpen) {
-      opened.delete(k);
-      folded.add(k);
-    } else {
-      folded.delete(k);
-      opened.add(k);
-    }
-  }
-  saveKept();
-  draw();
-}
 
 /** The next waiting card after the lit one, around the board. */
 function nextWaitingCard(): string | null {
@@ -730,26 +668,9 @@ function openMenu() {
     upper(t("cmd.missionControl")),
     [
       { label: t("mission.fit"), hint: "Home", run: () => (fit(), back()) },
-      { sep: true },
-      { label: t("mission.foldAll"), run: () => (foldAll(true), back()) },
-      { label: t("mission.openAll"), run: () => (foldAll(false), back()) },
     ],
     back,
   );
-}
-
-function foldAll(fold: boolean) {
-  for (const p of [...m.g.fleets.flatMap((f) => f.projects), ...m.g.projects]) {
-    if (fold) {
-      opened.delete(p.key);
-      folded.add(p.key);
-    } else {
-      folded.delete(p.key);
-      opened.add(p.key);
-    }
-  }
-  saveKept();
-  draw();
 }
 
 // ---- The panel under the canvas ----
@@ -872,12 +793,12 @@ async function read() {
   }
 }
 
-/** What the board shows, as one string: the sessions, the ledger, the tree, the folds, the filter, the search and the time text. */
+/** What the board shows, as one string: the sessions, the ledger, the tree, the filter, the search and the time text. */
 function boardSignature(now: number): string {
   const secs = treeSections().map((sec) => [sec.fleet ?? "", sec.projects.map((p) => p.name)]);
   const ledger = hostCan("ledger") ? ledgerRows() : [];
   const since = [...sessions.values()].map((s) => sinceText(s, now));
-  return JSON.stringify([[...sessions.values()], ledger, secs, since, [...folded], [...opened], running, search.value, hostCan("ledger"), hostName(), view, lit]);
+  return JSON.stringify([[...sessions.values()], ledger, secs, since, running, search.value, hostCan("ledger"), hostName(), view, lit]);
 }
 let drawnSig = "";
 
@@ -898,9 +819,8 @@ interface Pan {
   y: number;
   /** The card or face under the pointer, for the click. */
   id: string | null;
-  /** The cluster whose head is under the pointer: a click folds it. */
+  /** The cluster whose head is under the pointer. */
   head: string | null;
-  chev: boolean;
   moved: boolean;
   vx: number;
   vy: number;
@@ -918,7 +838,7 @@ canvas.addEventListener("pointerdown", (e) => {
   // A face is its window.
   const id = t.closest<HTMLElement>(".mission-card, .mission-face")?.dataset.id ?? null;
   const head = t.closest(".mission-cluster-head")?.closest<HTMLElement>(".mission-cluster")?.dataset.id ?? null;
-  pan = { x: e.clientX, y: e.clientY, id, head, chev: !!t.closest(".mission-chev"), moved: false, vx: view.x, vy: view.y };
+  pan = { x: e.clientX, y: e.clientY, id, head, moved: false, vx: view.x, vy: view.y };
   canvas.setPointerCapture(e.pointerId);
   canvas.classList.add("panning");
   e.preventDefault();
@@ -940,10 +860,8 @@ const endPan = (e: PointerEvent) => {
   pan = null;
   if (d.moved || e.type === "pointercancel") return;
   root.focus();
-  // A cluster's head folds it: a fleet folds all its projects.
-  if (d.head) return toggleFold(d.head);
+  if (d.head) return light(d.head, false);
   if (!d.id) return;
-  if (d.chev && cards.get(d.id)?.classList.contains("folder")) return toggleFold(d.id);
   light(d.id, false);
   go();
 };
@@ -982,7 +900,7 @@ export function missionOpen(): boolean {
   return !root.hidden;
 }
 
-/** A session's card, for the fly of the focus frame. A folded cluster's card does not stand for its sessions here. */
+/** A session's card, for the fly of the focus frame. */
 function tileOf(id: string | null): HTMLElement | null {
   return id && placed.cards.has(id) ? (cards.get(id) ?? null) : null;
 }
@@ -995,7 +913,6 @@ function run(cmd: G.BoardCommand | null): boolean {
     case "child": light(lit ? (G.navChildren(m.g, lit)[0] ?? null) : null); break;
     case "prev": light(lit ? G.navSibling(m.g, lit, -1) : null); break;
     case "next": light(lit ? G.navSibling(m.g, lit, 1) : null); break;
-    case "fold": if (lit) toggleFold(isCluster(lit) ? lit : `project:${place(m.sess.get(lit)!)?.project?.name ?? ""}`); break;
     case "go": go(); break;
     case "go-max": go(true); break;
     case "fit": fit(); break;

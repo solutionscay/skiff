@@ -26,7 +26,7 @@
 .mission-strings path.done, .mission-strings path.idle { stroke-width: 1.5; }
 .mission-strings path.dim { opacity: 0.25; }
 
-/* A cluster: a project's frame, or a fleet's. A click on its head folds it. */
+/* A cluster: a project's frame, or a fleet's. */
 .mission-cluster { position: absolute; z-index: 1; box-sizing: border-box; border: 1px solid var(--rule-strong); background: color-mix(in srgb, var(--pc) 5%, var(--bg)); }
 .mission-cluster.fleet { --pc: var(--accent); background: color-mix(in srgb, var(--accent) 4%, var(--bg)); }
 .mission-cluster-head { height: 20px; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-bottom: 1px solid var(--rule-strong); background: color-mix(in srgb, var(--pc) 22%, var(--bg-panel)); font-size: 11px; font-weight: 600; color: var(--text); cursor: pointer; white-space: nowrap; user-select: none; }
@@ -39,9 +39,6 @@
 .mission-roll .g { color: var(--state-working); }
 .mission-cluster.lit > .mission-cluster-head { box-shadow: inset 0 0 0 2px var(--pc); }
 .mission-cluster.dim { opacity: 0.4; }
-.mission-chev { width: 10px; height: 10px; flex-shrink: 0; color: var(--text-dim); transition: transform 120ms; cursor: pointer; }
-.mission-chev svg { width: 10px; height: 10px; }
-.mission-cluster.folded .mission-chev, .mission-card.folder .mission-chev { transform: rotate(-90deg); }
 /* A plan: a 20px caption above its cards. It has no pane, so it does not light. */
 .mission-plan { position: absolute; z-index: 5; height: 20px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; pointer-events: none; }
 .mission-plan::before { content: ""; width: 8px; height: 8px; border-left: 1px solid var(--rule-strong); border-bottom: 1px solid var(--rule-strong); flex-shrink: 0; }
@@ -114,9 +111,6 @@
 .mission-face.dim { opacity: 0.35; }
 .mission-face.dim.lit { opacity: 1; }
 .mission.flying .mission-card.window.lit { box-shadow: none; }
-.mission-card.folder { background: var(--bg-raised); }
-.mission-card.folder .body { gap: 10px; }
-.mission-card.folder .t { font-weight: 600; }
 /* An elsewhere pane, or a card with no pane: no click. */
 .mission-card.still { cursor: default; }
 
