@@ -441,6 +441,7 @@ function setClass(el: HTMLElement, cls: string, on: boolean) {
 /** Draws the graph as the model has it now: cards, clusters, plans and strings, keyed so what stays stays. */
 function draw() {
   const now = Date.now();
+  drawnSig = boardSignature(now);
   m = model();
   placed = placeGraph(m.g);
   // The light: a card that left the board hands it to its parent, else the first node.
@@ -871,10 +872,22 @@ async function read() {
   }
 }
 
+/** What the board shows, as one string: the sessions, the ledger, the tree, the folds, the filter, the search and the time text. */
+function boardSignature(now: number): string {
+  const secs = treeSections().map((sec) => [sec.fleet ?? "", sec.projects.map((p) => p.name)]);
+  const ledger = hostCan("ledger") ? ledgerRows() : [];
+  const since = [...sessions.values()].map((s) => sinceText(s, now));
+  return JSON.stringify([[...sessions.values()], ledger, secs, since, [...folded], [...opened], running, search.value, hostCan("ledger"), hostName(), view, lit]);
+}
+let drawnSig = "";
+
 function tick() {
   if (paused) return;
-  // A pan draws its own frames.
-  if (!pan?.moved) draw();
+  // A pan draws its own frames. The model and layout rebuild only when an input or the time text changed.
+  if (!pan?.moved) {
+    const sig = boardSignature(Date.now());
+    if (sig !== drawnSig) draw();
+  }
   void read();
 }
 
