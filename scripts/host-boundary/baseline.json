@@ -789,7 +789,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "23c3630cca8d6946fd997416b857a7ce1db2cf3a5b9644f346f8186360d064fd"
+    "sha256": "8c29ea74fd2b581db18569469f104faafcb75e627c1ee0b2252bfe93563bcf39"
   },
   "apps/desktop/src/terminal/resume.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

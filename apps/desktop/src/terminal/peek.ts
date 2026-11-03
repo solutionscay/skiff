@@ -239,18 +239,28 @@ export function enterPreview() {
 }
 
 /**
- * Settings › Skippers › Edit with Open with › Text files in the peek: runs
- * `script` over the current row. `ended` runs once when the peek leaves the
- * screen.
+ * Takes the keys for a new preview of the current row under its own
+ * generation. An Open from a row with no preview, or a closed one, still
+ * shows its tool there.
  */
-export function peekText(script: string, cwd: string, path: string, ended: () => void) {
+function claim(): Active {
   if (!active || active.closed) {
     endPreview();
     active = { key: currentKey(), gen: 0, keys: true, closed: false };
   }
   active.gen = ++gen;
   active.keys = true;
-  if (open) open.gen = active.gen;
+  return active;
+}
+
+/**
+ * Settings › Skippers › Edit with Open with › Text files in the peek: runs
+ * `script` over the current row. `ended` runs once when the peek leaves the
+ * screen.
+ */
+export function peekText(script: string, cwd: string, path: string, ended: () => void) {
+  const a = claim();
+  if (open) open.gen = a.gen;
   afterPeek = ended;
   const name = path.split("/").pop() ?? path;
   handle({ kind: "run", script, cwd }, "file", name, path.slice(0, path.length - name.length - 1));
@@ -258,16 +268,10 @@ export function peekText(script: string, cwd: string, path: string, ended: () =>
 
 /** Shift+Enter, double-click, the card's button, a menu's Open: opens the path over the current row. */
 export function openPath(path: string) {
-  // An Open from a row with no preview, or a closed one, still shows its tool there.
-  if (!active || active.closed) {
-    endPreview();
-    active = { key: currentKey(), gen: 0, keys: true, closed: false };
-  }
   // Its own generation: a reply still due for the row's preview, or an older Open, shows nothing.
-  active.gen = ++gen;
-  active.keys = true;
-  active.result = undefined;
-  const mine = active.gen;
+  const a = claim();
+  a.result = undefined;
+  const mine = a.gen;
   // The command on screen, or still starting, belongs to the Open now: it may be the same tool.
   if (open) open.gen = mine;
   const name = path.split("/").pop() ?? path;
@@ -406,15 +410,9 @@ type HostFilePreview = Extract<Preview, { kind: "host-file" }>;
  * default app. Only the copy's path reaches an opener, never the Host's.
  */
 export function openHostCopy(wt: string, file: string) {
-  // An Open from a row with no preview, or a closed one, still shows its tool there.
-  if (!active || active.closed) {
-    endPreview();
-    active = { key: currentKey(), gen: 0, keys: true, closed: false };
-  }
-  active.gen = ++gen;
-  active.keys = true;
-  active.result = undefined;
-  const mine = active.gen;
+  const a = claim();
+  a.result = undefined;
+  const mine = a.gen;
   if (open) open.gen = mine;
   const name = file.split("/").pop() ?? file;
   hostInvoke<Opened>("files", "open_file_copy", { worktree: wt, file })
@@ -447,18 +445,13 @@ function showHostRead(mine: number, title: string, read: () => Promise<HostFile>
  * named or opened on this Mac. `title` names the work.
  */
 export function openLedgerResult(uid: string, title: string) {
-  if (!active || active.closed) {
-    endPreview();
-    active = { key: currentKey(), gen: 0, keys: true, closed: false };
-  }
-  active.gen = ++gen;
-  active.keys = true;
-  active.result = { uid, title };
+  const a = claim();
+  a.result = { uid, title };
   // A tool on screen gives way to the result.
   const p = open;
   open = null;
   if (p) retire(p);
-  showLedgerResult(active.gen, active.result);
+  showLedgerResult(a.gen, a.result);
 }
 
 function showLedgerResult(mine: number, r: { uid: string; title: string }) {
@@ -470,7 +463,7 @@ function showLedgerResult(mine: number, r: { uid: string; title: string }) {
 export function refreshHostDiff() {
   if (!active || active.closed || !slot.el?.classList.contains("diff-view")) return;
   // A result keeps its own uid and title: the row's preview does not replace it.
-  if (active.result) return showLedgerResult(active.gen, active.result);
+  if (active.result) return showLedgerResult(a.gen, a.result);
   const p = rowActs(active.key)?.preview;
   if (p?.kind === "host-diff") showHostDiff(active.gen, p);
   if (p?.kind === "host-file") showHostFile(active.gen, p);
