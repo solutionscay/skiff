@@ -40,7 +40,7 @@ export const view = createLayoutView(host, {
         if (!body.isConnected) return;
         body.appendChild(p.el);
         useWebgl(id, p);
-        fitShown();
+        fitNextFrame();
         const grab = S.grab === id;
         if (grab) S.grab = null;
         if (id === S.focused && (canTakeFocus() || (grab && !modalOpen() && !previewOnScreen()))) p.term.focus();
@@ -139,11 +139,13 @@ function fitNow() {
   const shown = [...panes].filter(([, p]) => p.el.parentElement !== park && p.el.isConnected);
   let unmeasured = false;
   for (const [id, p] of shown) {
-    if (!p.fit.proposeDimensions()) {
+    const dims = p.fit.proposeDimensions();
+    if (!dims) {
       unmeasured = true;
       continue;
     }
-    p.fit.fit();
+    // fit() measures again. Keep its renderer reset only when the grid changes.
+    if (dims.cols !== p.term.cols || dims.rows !== p.term.rows) p.fit.fit();
     // A drag that moves less than a cell changes nothing: the pty keeps its size.
     if (sizeChanged(id, p)) resizePending.add(id);
   }
