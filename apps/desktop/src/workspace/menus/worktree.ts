@@ -72,7 +72,7 @@ export async function newWorktree(p: Project) {
 }
 
 /** The + on a worktree's row in the sidebar, if it shows. */
-function plusOf(w: Worktree): HTMLElement | undefined {
+export function plusOf(w: Worktree): HTMLElement | undefined {
   return [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .wt-plus")].find((b) => b.dataset.wt === w.path);
 }
 
