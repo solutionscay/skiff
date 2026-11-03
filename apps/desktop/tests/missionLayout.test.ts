@@ -306,5 +306,6 @@ test("a string leaves a window from its face's foot and ends in a window's face 
   assert.deepEqual(toSk.a, { x: ad.x + ad.w / 2, y: ad.y + ad.h - 4 }, "from the bottom middle of Admiral's face, in its column");
   assert.ok(toSk.a.x < p.cards.get("ad")!.x + G.WINDOW.admiral.face + 16, "never from the output's column");
   assert.deepEqual(toSk.b, { x: sk.x + sk.w / 2, y: sk.y + sk.h / 2 }, "into the middle of the Skipper's face");
+  assert.deepEqual(toSk.via, { x: toSk.b.x, y: p.cards.get("sk")!.y }, "from above the face's column, not across the state's");
   assert.deepEqual(G.strandEnds(p, "sk", "s1", p.cards.get("s1")!).b, G.pin(p.cards.get("s1")!), "a session card keeps its pin");
 });

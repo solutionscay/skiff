@@ -594,7 +594,8 @@ function drawStrings() {
     const state = members.some((s) => s.state === "waiting") ? "waiting" : members.some((s) => s.state === "working") ? "working" : stateWord(child);
     const dim = foldedTo ? !members.some(isRunning) && running : dimmed(child);
     const ends = G.strandEnds(placed, st.from, to, toRect);
-    const g = G.strand(ends.a, ends.b);
+    const g = G.strand(ends.a, ends.via ?? ends.b);
+    if (ends.via) g.d += `L${ends.b.x} ${ends.b.y}`;
     let sd = strands.get(key);
     if (!sd) {
       const svg = "http://www.w3.org/2000/svg";
@@ -615,11 +616,9 @@ function drawStrings() {
       sd.tuck.setAttribute("d", g.tuck);
     }
     if (st.label) {
-      // The label stays where it sat when strings ended at the pin: above the window, not on its header.
-      const at = placed.rungs.has(to) ? G.strand(ends.a, G.pin(toRect)) : g;
       const text = st.label.length > 40 ? `${st.label.slice(0, 39)}…` : st.label;
       const w = text.length * 6.2 + 12;
-      labels += `<rect class="lblbg" x="${at.lx - w / 2}" y="${at.ly - 10}" width="${w}" height="20"/><text class="lbl${dim ? " dim" : ""}" x="${at.lx}" y="${at.ly + 4}" text-anchor="middle">${text.replace(/[<&]/g, (c) => (c === "<" ? "&lt;" : "&amp;"))}</text>`;
+      labels += `<rect class="lblbg" x="${g.lx - w / 2}" y="${g.ly - 10}" width="${w}" height="20"/><text class="lbl${dim ? " dim" : ""}" x="${g.lx}" y="${g.ly + 4}" text-anchor="middle">${text.replace(/[<&]/g, (c) => (c === "<" ? "&lt;" : "&amp;"))}</text>`;
     }
   }
   for (const [key, sd] of strands) {

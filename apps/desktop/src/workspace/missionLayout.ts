@@ -398,8 +398,11 @@ export function faceBox(r: Rect, rung: Rung): Rect {
  * face, so it stays out of the state's column, and ends at the middle of
  * a window's face; the face draws over both ends. At a card it leaves from
  * the foot and ends at the pin. `a` sits 4px up into the face, so no gap shows.
+ * `via`: into a window, the curve ends over the face's column, at the
+ * window's top, and drops straight into the face, so it crosses neither the
+ * state's column nor its text.
  */
-export function strandEnds(p: Placed, from: string, to: string, toRect: Rect): { a: { x: number; y: number }; b: { x: number; y: number } } {
+export function strandEnds(p: Placed, from: string, to: string, toRect: Rect): { a: { x: number; y: number }; b: { x: number; y: number }; via: { x: number; y: number } | null } {
   const fr = p.cards.get(from)!;
   const ra = p.rungs.get(from);
   const rb = p.rungs.get(to);
@@ -408,6 +411,7 @@ export function strandEnds(p: Placed, from: string, to: string, toRect: Rect): {
   return {
     a: fa ? { x: fa.x + fa.w / 2, y: fa.y + fa.h - 4 } : foot(fr),
     b: fb ? { x: fb.x + fb.w / 2, y: fb.y + fb.h / 2 } : pin(toRect),
+    via: fb ? { x: fb.x + fb.w / 2, y: toRect.y } : null,
   };
 }
 
