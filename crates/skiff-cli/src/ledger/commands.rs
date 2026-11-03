@@ -3,7 +3,7 @@ use super::read::{
     container, join, keep, live, one, pane, print_attempts, print_one, print_rows, project_of, rank, state, sweep,
     top, tree, under, View,
 };
-use super::{delivery, evidence};
+use super::{brief, delivery, evidence};
 use super::schema::{open, open_at, NOW};
 use super::write::{
     add_state, age, check_scope, check_writer, close, flush_folders, folder_size, insert,
@@ -67,7 +67,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                 return send_row(socket, &db, &row, SendOpts { text: Vec::new(), enter, shell }).await;
             }
         }
-        LedgerCmd::Handoff { project, task, title, parent, expect } => {
+        LedgerCmd::Handoff { project, task, title, parent, expect, no_brief } => {
             let task = task_text(task)?;
             let expects = expect.as_deref().map(evidence::expects).transpose()?.map(str::to_string);
             let file = path()?;
@@ -81,9 +81,14 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
             if let Some(p) = parent.as_deref() {
                 let c = container(&db, p)?;
                 if c.is_handoff() {
-                    bail!("{p} is in hand-off {}: a hand-off goes under a plan of Admiral's. Nothing changed", c.uid);
+                    // A follow-up: it joins the hand-off's plan, or a new plan wraps both.
+                    caller.check(&c)?;
+                    if let Some(plan) = c.parent.as_deref() {
+                        caller.check_parent(&one(&db, plan)?)?;
+                    }
+                } else {
+                    caller.check_parent(&c)?;
                 }
-                caller.check_parent(&c)?;
             }
             let c = crate::connect(socket).await?;
             let (ps, key, name) = match target {
@@ -125,6 +130,11 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                 println!("{} {p}", one(&db, &p).map(|r| r.kind).unwrap_or_else(|_| "plan".into()));
             }
             let row = one(&db, &uid)?;
+            if !no_brief {
+                if let Err(e) = write_brief(socket, &db, &row, &s.id, ps.created).await {
+                    eprintln!("skiff: no brief for {uid}: {e:#}");
+                }
+            }
             let mut text = message(&row);
             if ps.created {
                 // A new agent takes its instructions first, then the task, in one turn.
@@ -133,6 +143,25 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                 println!("started the {name} Skipper");
             }
             return send_row(socket, &db, &row, SendOpts { text: vec![text], enter: true, shell: false }).await;
+        }
+        LedgerCmd::Brief { id, json } => {
+            let db = open()?;
+            let r = one(&db, &id)?;
+            if !r.is_handoff() {
+                eprintln!("skiff: {} {} is not a hand-off. Only a hand-off has a brief", r.kind, r.uid);
+                return Ok(1);
+            }
+            let all = live(socket).await;
+            let b = current_brief(socket, &db, &r, all.as_deref())?;
+            if json {
+                let (bytes, items, left_out) = b.as_ref().map(|b| (b.text.len(), b.items, b.left_out)).unwrap_or_default();
+                print::json(&serde_json::json!({ "uid": r.uid, "scope": r.project, "bytes": bytes, "items": items, "left_out": left_out }))?;
+            } else {
+                match b {
+                    Some(b) => print!("{}", b.text),
+                    None => eprintln!("skiff: hand-off {} has no cited work and no open work", r.uid),
+                }
+            }
         }
         LedgerCmd::Send { id, text, enter, shell } => {
             let db = open()?;
@@ -372,4 +401,24 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
         }
     }
     Ok(0)
+}
+
+/// The brief of hand-off `h` as of now, from every row with its shown state.
+fn current_brief(socket: &Path, db: &rusqlite::Connection, h: &skiff_client::ledger::Row, all: Option<&[skiff_core::session::SessionInfo]>) -> Result<Option<brief::Brief>> {
+    let mut list = rows(db, "", None)?;
+    mark_live(socket, all, &mut list);
+    roll_up(&mut list);
+    let now: String = db.query_row(&format!("SELECT {NOW}"), [], |r| r.get(0))?;
+    let h = list.iter().find(|r| r.uid == h.uid).cloned().unwrap_or_else(|| h.clone());
+    Ok(brief::build(&list, &h, &brief::names(all), &now))
+}
+
+/// Writes `brief.md` for the new hand-off `h` to the Skipper session `pane`,
+/// unless that session already got the same brief. A new Skipper always gets it.
+async fn write_brief(socket: &Path, db: &rusqlite::Connection, h: &skiff_client::ledger::Row, pane: &str, new_skipper: bool) -> Result<()> {
+    let all = live(socket).await;
+    let Some(b) = current_brief(socket, db, h, all.as_deref())? else { return Ok(()) };
+    let last = brief::last_sent(db, h, pane)?;
+    brief::write(h, &b, last.as_deref(), new_skipper)?;
+    Ok(())
 }

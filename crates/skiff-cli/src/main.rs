@@ -341,7 +341,7 @@ pub enum LedgerCmd {
     /// start that Skipper if none runs, and send it the task. Exits with
     /// `send`'s code.
     #[command(
-        after_help = "SCOPE is a project or a fleet, by its name in `skiff projects`. A name that is both is refused: use project:NAME or fleet:NAME. Both spellings always work.\nThe hand-off row is Admiral's: its pane is the project or fleet Skipper, and its result path is in that Skipper's results folder. That Skipper adds its own tasks under it with --parent UID, and reports it with `skiff ledger update UID --state done --result PATH`. A project or fleet Skipper cannot hand off.\nA project in a fleet whose Skipper runs is refused: hand off to the fleet. A fleet with project Skippers and no fleet Skipper is refused: the person starts the fleet Skipper, which takes them over.\nA new Skipper gets SKIPPER.md as its first message, with the task after it. A busy one keeps the row pending: `skiff watch` names it when that Skipper is idle."
+        after_help = "SCOPE is a project or a fleet, by its name in `skiff projects`. A name that is both is refused: use project:NAME or fleet:NAME. Both spellings always work.\nThe hand-off row is Admiral's: its pane is the project or fleet Skipper, and its result path is in that Skipper's results folder. That Skipper adds its own tasks under it with --parent UID, and reports it with `skiff ledger update UID --state done --result PATH`. A project or fleet Skipper cannot hand off.\nA project in a fleet whose Skipper runs is refused: hand off to the fleet. A fleet with project Skippers and no fleet Skipper is refused: the person starts the fleet Skipper, which takes them over.\nA new Skipper gets SKIPPER.md as its first message, with the task after it. A busy one keeps the row pending: `skiff watch` names it when that Skipper is idle.\n--parent may name a hand-off for a follow-up: the new hand-off joins its plan, or a new plan of Admiral's wraps both.\nSkiff writes brief.md in the hand-off's folder: the state of the rows the hand-off cites or joins, and the open work of the scope, at most 8 KiB. The message names it when the brief differs from the last one this Skipper got, and always for a new Skipper. `skiff ledger brief UID` prints it as of now."
     )]
     Handoff {
         /// The project or the fleet: NAME, project:NAME or fleet:NAME.
@@ -352,7 +352,8 @@ pub enum LedgerCmd {
         /// A short title for the app's Ledger panel: 3 to 6 words.
         #[arg(long, value_name = "TEXT")]
         title: Option<String>,
-        /// The work it joins: a plan of yours, or any task in it.
+        /// The work it joins: a plan of yours, any task in it, or an
+        /// earlier hand-off that this one follows up.
         #[arg(long, value_name = "ID")]
         parent: Option<String>,
         /// The evidence the task should leave: result (its result file) or
@@ -360,6 +361,9 @@ pub enum LedgerCmd {
         /// `update --state done` checks it.
         #[arg(long, value_name = "EVIDENCE")]
         expect: Option<String>,
+        /// Write no brief.md, and name none in the message.
+        #[arg(long)]
+        no_brief: bool,
     },
     /// Send a pending or interrupted task to its pane, then mark it sent.
     /// Exits with `send`'s code.
@@ -489,6 +493,14 @@ pub enum LedgerCmd {
         /// Also flush the row's work folder, by the Disk use rule.
         #[arg(long)]
         flush: bool,
+    },
+    /// Print a hand-off's brief as of now: the state of the rows it cites or
+    /// joins, and the open work of its scope. It writes nothing.
+    #[command(after_help = "Exit 0: printed, or the hand-off has no cited work and no open work. Exit 1: no such row, or the row is not a hand-off.\n--json prints uid, scope, bytes, items and left_out.")]
+    Brief {
+        id: String,
+        #[arg(long)]
+        json: bool,
     },
     /// Print a row's work folder: everything for the task goes in it.
     #[command(after_help = "A row from before work folders has none: it exits 1 and names its result path.")]

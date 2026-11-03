@@ -10,6 +10,7 @@ use rusqlite::Connection;
 use crate::LedgerCmd;
 pub use skiff_client::ledger::{path, Row, GRAND, SUCCEEDED};
 
+mod brief;
 mod commands;
 mod delivery;
 mod evidence;
@@ -58,7 +59,7 @@ fn open_at(file: &Path) -> Result<Connection> {
 /// is done and reported closes by itself (see [`auto_close`]).
 /// The exit code: `send`'s for `send` and `add --send`, else 0.
 pub async fn run(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
-    let writes = !matches!(cmd, LedgerCmd::Ls { .. } | LedgerCmd::Show { .. } | LedgerCmd::Dir { .. });
+    let writes = !matches!(cmd, LedgerCmd::Ls { .. } | LedgerCmd::Show { .. } | LedgerCmd::Dir { .. } | LedgerCmd::Brief { .. });
     let code = commands::run_one(socket, cmd, person).await?;
     if writes {
         for r in auto_close(&mut open()?)? {

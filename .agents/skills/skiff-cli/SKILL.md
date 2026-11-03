@@ -200,6 +200,8 @@ A project can have its own Skipper: one agent session in the project's folder, a
 - Admiral hands work to it with `skiff ledger handoff P "TASK" --title "..." [--parent UID]`. This adds a hand-off row that Admiral owns, with the project Skipper as its pane. It starts the project Skipper if none runs, and sends it the task. It exits with `send`'s code. A busy project Skipper keeps the row `pending`.
 - The project Skipper adds its tasks with `--parent UID` of the hand-off. Those rows are its own. When they are done, it reports the hand-off: `skiff ledger update UID --state done --result PATH`.
 - Admiral can cancel a hand-off: it is Admiral's row. It cannot change the project Skipper's tasks, or add tasks under a hand-off.
+- For a follow-up, Admiral gives `--parent UID` of the earlier hand-off, or names its uid in the task. With `--parent`, the new hand-off joins that hand-off's plan, or a new plan of Admiral's wraps both. A hand-off never goes under a hand-off.
+- Brief: `handoff` writes `brief.md` in the hand-off's folder. It lists the rows that the hand-off joins with `--parent` or cites by uid, one step further, with the tasks under them: each with its state, outcome, pane, result path and the first 300 bytes of its task. Then it lists the scope's open work. It is at most 8 KiB, and a "Left out" line counts what did not fit. It has no decisions and no result bodies: the task text carries the decisions. The message names it when it differs from the last brief that this Skipper session got, and always for a new Skipper. `--no-brief` writes none. `skiff ledger brief UID` prints it as of now.
 - `ledger close` on Admiral's plan also needs the hand-off's tasks done.
 
 ### Fleet Skippers
@@ -219,7 +221,8 @@ A fleet can have one Skipper for all its projects. It is a project Skipper with 
 |---|---|
 | `ledger add --pane S --task "..." --title "..." --send --enter [--parent UID] [--type T] [--ref TEXT]` | Add a task and send it. |
 | `ledger add --plan --task "..." --title "..." [--ref TEXT]` | Add a plan for work with more than one task. |
-| `ledger handoff SCOPE "TASK" --title "..." [--parent UID]` | Hand a task to a project's or a fleet's Skipper. SCOPE: `NAME`, `project:NAME` or `fleet:NAME`. Admiral only. TASK `-` reads stdin, as `add --task -` does. |
+| `ledger handoff SCOPE "TASK" --title "..." [--parent UID] [--no-brief]` | Hand a task to a project's or a fleet's Skipper. SCOPE: `NAME`, `project:NAME` or `fleet:NAME`. Admiral only. TASK `-` reads stdin, as `add --task -` does. `--parent` may name an earlier hand-off. |
+| `ledger brief UID [--json]` | Print a hand-off's brief as of now. It writes nothing. Exit 1: the row is not a hand-off. |
 | `ledger send UID --enter` | Send a `pending` or `interrupted` task. |
 | `ledger update UID [--state S] [--pane S] [--title T] [--result PATH] [--parent UID] ...` | Change only the given fields. |
 | `ledger update UID --outcome O [--commit REF]` | Set how a task ended: `succeeded`, `failed`, `interrupted` or `unobserved`. It sets the task `done`. `--state done` alone gives `succeeded`, or `unobserved` when the evidence the task expects (`add --expect result\|commit`) is missing. |

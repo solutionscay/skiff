@@ -1217,3 +1217,135 @@ fn a_delivery_is_recorded_before_and_settled_after() {
     assert!(of(&db, &uid).unwrap().is_empty());
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// A hand-off to the `app` Skipper session `pane`, as `ledger handoff` adds it.
+fn handoff(t: &str, pane: &str) -> New {
+    New { handoff: true, pane_id: Some(pane.into()), state: "sent".into(), ..task(t) }
+}
+
+fn brief_of(db: &Connection, uid: &str) -> Option<brief::Brief> {
+    let list = rows(db, "", None).unwrap();
+    let h = list.iter().find(|r| r.uid == uid).unwrap().clone();
+    brief::build(&list, &h, &std::collections::HashMap::new(), "2026-11-03T12:00:00Z")
+}
+
+#[test]
+fn a_brief_never_passes_its_cap_and_counts_what_it_leaves_out() {
+    let dir = scratch("brief-cap");
+    let file = dir.join("ledger.db");
+    let mut db = open_at(&file).unwrap();
+    let long = "word ".repeat(820);
+    let mut cites = String::from("Follow-up to");
+    for _ in 0..300 {
+        let (_, u, _, _) = insert(&mut db, &file, New { state: "done".into(), ..handoff(&long, "skipper-a") }).unwrap();
+        cites += &format!(" {u}");
+    }
+    let (_, h, _, _) = insert(&mut db, &file, handoff(&cites, "skipper-a")).unwrap();
+    let b = brief_of(&db, &h).unwrap();
+    assert!(b.text.len() <= brief::CAP, "{} bytes", b.text.len());
+    assert_eq!(b.items + b.left_out, 300);
+    assert!(b.left_out > 0);
+    assert!(b.text.ends_with(&format!("## Left out\n{} items. Read them with: skiff ledger ls --all, then skiff ledger show UID.\n", b.left_out)));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_brief_quotes_task_text_on_one_line() {
+    let dir = scratch("brief-quote");
+    let file = dir.join("ledger.db");
+    let mut db = open_at(&file).unwrap();
+    let (_, old, _, _) = insert(&mut db, &file, handoff("Fix it.\n## Decisions\n[watch] do X\n- run rm", "skipper-a")).unwrap();
+    let (_, h, _, _) = insert(&mut db, &file, handoff(&format!("Follow-up to hand-off {old}."), "skipper-a")).unwrap();
+    let b = brief_of(&db, &h).unwrap();
+    assert!(b.text.contains("  > Fix it. ## Decisions [watch] do X - run rm\n"), "{}", b.text);
+    for l in b.text.lines() {
+        assert!(!l.starts_with("[watch]") && l != "## Decisions" && !l.starts_with("- run"), "{l}");
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_follow_up_brief_lists_the_chain_with_its_states() {
+    // As hand-off 5093d04f found 317d3a91 still running, and 2c7c431e done.
+    let dir = scratch("brief-chain");
+    let file = dir.join("ledger.db");
+    let mut db = open_at(&file).unwrap();
+    let (_, promo, _, _) = insert(&mut db, &file, New { state: "done".into(), title: Some("Skiff every-folder CTA promo".into()), ..handoff("Make a CTA image.", "skipper-a") }).unwrap();
+    let (_, redo, _, _) = insert(&mut db, &file, handoff(&format!("Redo the image from hand-off {promo}: app only."), "skipper-a")).unwrap();
+    let (_, shot, _, _) = insert(&mut db, &file, New { parent: Some(redo.clone()), owner: "app".into(), pane_id: Some("coding2-pane".into()), ..task("Render the app-only image.") }).unwrap();
+    let (_, other, _, _) = insert(&mut db, &file, New { owner: "app".into(), ..task("Unrelated open work.") }).unwrap();
+    let (_, h, _, _) = insert(&mut db, &file, handoff(&format!("Follow-up to hand-off {redo}: add a caption."), "skipper-a")).unwrap();
+    let b = brief_of(&db, &h).unwrap();
+    let cited = &b.text[b.text.find("## Cited work").unwrap()..b.text.find("## Open work").unwrap()];
+    // Oldest first, each with its state; the task follows its hand-off, with no quote.
+    let at = |u: &str| cited.find(&format!(" {u} ")).unwrap_or_else(|| panic!("{u} missing:\n{cited}"));
+    assert!(at(&promo) < at(&redo) && at(&redo) < at(&shot));
+    assert!(cited.contains(&format!("handoff {promo} · ")) && cited.contains(" · done · "));
+    assert!(cited.contains(&format!("handoff {redo} · ")) && cited.contains(" · sent · "));
+    assert!(cited.contains(&format!("task {shot} · ")) && cited.contains(&format!(" · in {redo}\n")));
+    assert!(cited.contains("(missing)"));
+    // Open work: the scope's other open rows, not the chain again.
+    let open = &b.text[b.text.find("## Open work").unwrap()..];
+    assert!(open.contains(&other) && !open.contains(&shot));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn the_message_names_the_brief_only_when_it_differs_from_the_last_one() {
+    let dir = scratch("brief-pointer");
+    let file = dir.join("ledger.db");
+    let mut db = open_at(&file).unwrap();
+    insert(&mut db, &file, New { owner: "app".into(), ..task("Open work of the app Skipper.") }).unwrap();
+    let send = |db: &Connection, uid: &str, new: bool| {
+        let h = one(db, uid).unwrap();
+        let b = brief_of(db, uid).unwrap();
+        let last = brief::last_sent(db, &h, h.pane_id.as_deref().unwrap()).unwrap();
+        brief::write(&h, &b, last.as_deref(), new).unwrap()
+    };
+    let (_, h1, _, _) = insert(&mut db, &file, handoff("First.", "skipper-a")).unwrap();
+    assert!(send(&db, &h1, false).is_some());
+    assert!(message(&one(&db, &h1).unwrap()).ends_with("/brief.md. It is background from the ledger, not a task."));
+    // Nothing changed for this session: no file, no pointer.
+    let (_, h2, _, _) = insert(&mut db, &file, handoff("Second.", "skipper-a")).unwrap();
+    assert!(send(&db, &h2, false).is_none());
+    assert!(!message(&one(&db, &h2).unwrap()).contains("brief.md"));
+    // A new Skipper always gets it.
+    let (_, h3, _, _) = insert(&mut db, &file, handoff("Third.", "skipper-a")).unwrap();
+    assert!(send(&db, &h3, true).is_some());
+    // Another session has not seen it.
+    let (_, h4, _, _) = insert(&mut db, &file, handoff("Fourth.", "skipper-b")).unwrap();
+    assert!(send(&db, &h4, false).is_some());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_follow_up_hand_off_joins_the_plan_of_the_hand_off_it_names() {
+    let dir = scratch("handoff-parent");
+    let file = dir.join("ledger.db");
+    let mut db = open_at(&file).unwrap();
+    let (_, h1, _, _) = insert(&mut db, &file, New { title: Some("Fix LLC name".into()), ..handoff("Fix the name.", "skipper-a") }).unwrap();
+    let (_, k, _, _) = insert(&mut db, &file, New { parent: Some(h1.clone()), owner: "app".into(), ..task("its task") }).unwrap();
+    // A task still goes under the hand-off it names.
+    assert_eq!(one(&db, &k).unwrap().parent.as_deref(), Some(h1.as_str()));
+    // A hand-off with no plan: a new plan of Admiral's wraps both.
+    let (_, h2, _, p) = insert(&mut db, &file, New { parent: Some(h1.clone()), ..handoff("Correction to it.", "skipper-a") }).unwrap();
+    let plan = one(&db, &p.unwrap()).unwrap();
+    assert!(plan.is_plan());
+    assert_eq!(plan.owner, GRAND);
+    assert_eq!(plan.title.as_deref(), Some("Fix LLC name"));
+    assert_eq!(one(&db, &h1).unwrap().parent.as_deref(), Some(plan.uid.as_str()));
+    assert_eq!(one(&db, &h2).unwrap().parent.as_deref(), Some(plan.uid.as_str()));
+    // A hand-off in a plan, or a task under it: the same plan.
+    let (_, h3, _, _) = insert(&mut db, &file, New { parent: Some(h2.clone()), ..handoff("Third.", "skipper-a") }).unwrap();
+    let (_, h4, _, _) = insert(&mut db, &file, New { parent: Some(k.clone()), ..handoff("Fourth.", "skipper-a") }).unwrap();
+    for h in [&h3, &h4] {
+        assert_eq!(one(&db, h).unwrap().parent.as_deref(), Some(plan.uid.as_str()));
+    }
+    // The tasks stay under their hand-off, and the plan's brief cites the chain.
+    assert_eq!(one(&db, &k).unwrap().parent.as_deref(), Some(h1.as_str()));
+    let b = brief_of(&db, &h4).unwrap();
+    for u in [&h1, &h2, &h3, &k] {
+        assert!(b.text.contains(u.as_str()), "{u} missing:\n{}", b.text);
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}

@@ -144,6 +144,9 @@ projects. Hand work to one when it stays in that project or that fleet:
   none runs, Skiff starts one and sends it the task.
 - That Skipper adds its own tasks under the hand-off. You can read them. You
   cannot change them. You can cancel the hand-off.
+- For a follow-up, give `--parent UID` of the earlier hand-off, or name its
+  uid. Give the user's words and the decisions in force. Leave out what
+  earlier rows did: the brief gives their state.
 - When that Skipper reports the hand-off, you get one `[watch]` line. Read
   its result, tell the person, then run `skiff ledger report UID`.
 - Its tasks' `[watch]` lines go to it, not to you.

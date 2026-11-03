@@ -280,6 +280,32 @@ pub(super) fn join(db: &Connection, file: &Path, arg: &str) -> Result<Row> {
         db.execute("UPDATE tasks SET closed_at = NULL WHERE id = ?1", [top(db, &r)?.id])?;
         return one(db, &r.uid);
     }
+    wrap(db, file, &r)
+}
+
+/// The plan a new hand-off joins with `--parent arg`: the plan `arg` names or
+/// holds a row of, or, for a hand-off with no plan (`arg` or the hand-off
+/// above it), a new plan that wraps it, as [`join`] wraps a lone task. A
+/// hand-off never goes under a hand-off. Run it in a transaction.
+pub(super) fn join_handoff(db: &Connection, file: &Path, arg: &str) -> Result<Row> {
+    let r = one(db, arg)?;
+    let r = match &r.parent {
+        Some(p) if !r.is_handoff() => one(db, p)?,
+        _ => r,
+    };
+    match (r.is_handoff(), r.parent.as_deref()) {
+        (true, Some(plan)) => join(db, file, plan),
+        (true, None) => {
+            db.execute("UPDATE tasks SET closed_at = NULL WHERE id = ?1", [r.id])?;
+            wrap(db, file, &one(db, &r.uid)?)
+        }
+        (false, _) => join(db, file, &r.uid),
+    }
+}
+
+/// A new plan that wraps the lone row `r`: it takes `r`'s text, title,
+/// project, ref, type, send time and owner, and `r` moves under it. Run it in a transaction.
+fn wrap(db: &Connection, file: &Path, r: &Row) -> Result<Row> {
     let uid = super::new_uid(db)?;
     // The new plan gets its own folder. The task's folder stays where it is.
     let dir = super::work_folder(&super::results_dir(file, &r.owner), &uid, super::label(r.title.as_deref(), &r.task), None);

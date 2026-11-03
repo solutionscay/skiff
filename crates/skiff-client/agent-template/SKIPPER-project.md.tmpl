@@ -37,4 +37,7 @@ get a message that starts with `Hand-off UID`. The hand-off row is
 3. Report it: `skiff ledger update UID --state done --result PATH`. Change
    nothing else on that row. {{main}} gets one `[watch]` line for it.
 
+A hand-off can name `brief.md`. It is background from the ledger: the
+state of the rows it depends on. Your task is the message.
+
 `[watch]` lines for your tasks come to you, not to {{main}}.
