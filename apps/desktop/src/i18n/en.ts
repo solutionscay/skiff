@@ -296,7 +296,7 @@ export const en = {
   "key.rename": "Rename the session, or the group or session row in the list",
   "key.theme": "Session theme, or the theme of the group or session row in the list. On a project or another row, the project theme",
   "key.end-session": "End the highlighted session, or the focused pane's session. On a group row, kill all its sessions. It asks first",
-  "key.project-menu": "Menu for the highlighted row: project, worktree, group, session, Changes or Files. In mission control, the board menu: Arrange, Fit, Fold all, Open all",
+  "key.project-menu": "Menu for the highlighted row: project, worktree, group, session, Changes or Files. In mission control, the board menu: Fit, Fold all, Open all",
   "key.project-folder": "Show the project in the file manager. On a file or change row, that file",
   "key.project-copy-path": "Copy the project path. On a file or change row, that file's path",
   "key.project-color": "Project color",

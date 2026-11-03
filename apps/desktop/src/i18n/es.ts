@@ -286,7 +286,7 @@ export const es = {
   "key.rename": "Renombrar la sesión, o la fila de grupo o sesión de la lista",
   "key.theme": "Tema de la sesión, o el tema de la fila de grupo o sesión de la lista. En un proyecto u otra fila, el tema del proyecto",
   "key.end-session": "Terminar la sesión resaltada, o la sesión del panel enfocado. En una fila de grupo, matar todas sus sesiones. Pregunta antes",
-  "key.project-menu": "Menú de la fila resaltada: proyecto, worktree, grupo, sesión, Cambios o Archivos. En el control de misión, el menú del tablero: Ordenar, Ajustar, Plegar todo, Abrir todo",
+  "key.project-menu": "Menú de la fila resaltada: proyecto, worktree, grupo, sesión, Cambios o Archivos. En el control de misión, el menú del tablero: Ajustar, Plegar todo, Abrir todo",
   "key.project-folder": "Mostrar el proyecto en el gestor de archivos. En una fila de archivo o cambio, ese archivo",
   "key.project-copy-path": "Copiar la ruta del proyecto. En una fila de archivo o cambio, la ruta de ese archivo",
   "key.project-color": "Color del proyecto",
