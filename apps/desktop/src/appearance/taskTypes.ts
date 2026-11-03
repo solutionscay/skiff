@@ -6,7 +6,7 @@ import { t } from "../i18n";
  * with `model_flag` in crates/skiff-core/src/tasks.rs, which builds the line
  * that runs. Settings only shows a hint from this.
  */
-const MODEL_FLAGS: Record<string, string> = { claude: "--model", codex: "-m", grok: "-m", kimi: "-m" };
+const MODEL_FLAGS: Record<string, string> = { claude: "--model", gemini: "--model", codex: "-m", grok: "-m", kimi: "-m" };
 
 /** The rule `check_name` in skiff-core keeps too. */
 export const TASK_TYPE_NAME = /^[a-z0-9][a-z0-9-]*$/;

@@ -66,7 +66,7 @@ enum Cmd {
     },
     /// Start a session and print its id.
     #[command(
-        after_help = "--type starts a task type from Settings › Task types ([skiff_agent.tasks] in projects.toml): its agent, with its model flag. With no --name, the session takes the type's name, numbered when one runs (review, review 2).\nFrom a Skipper (Admiral, a project or a fleet Skipper), new and `group new` need --name: with none, they exit 2 and start nothing. Name a session for one issue `#N feature`, such as `#136 kanban and calendar`; any other session 2 to 4 words that say the task, without the project name; a group after the work it holds.\nWith no row for the type, it exits 1 and starts nothing.\n--model replaces the row's model for this session. A custom agent takes its model in its command, so it refuses --model.\nThe type's instruction file, types/TYPE.md in the agent folder, goes to the agent at start: claude --append-system-prompt-file, codex -c developer_instructions, grok --rules, opencode OPENCODE_CONFIG_CONTENT, kimi --agent-file. An empty file is none. gemini, hermes and custom agents cannot take one: --type exits 1 and starts nothing.\n`skiff agents` lists the types with the command each one starts."
+        after_help = "--type starts a task type from Settings › Task types ([skiff_agent.tasks] in projects.toml): its agent, with its model flag. With no --name, the session takes the type's name, numbered when one runs (review, review 2).\nFrom a Skipper (Admiral, a project or a fleet Skipper), new and `group new` need --name: with none, they exit 2 and start nothing. Name a session for one issue `#N feature`, such as `#136 kanban and calendar`; any other session 2 to 4 words that say the task, without the project name; a group after the work it holds.\nWith no row for the type, it exits 1 and starts nothing.\n--model replaces the row's model for this session. With --agent ID, --model adds the agent's model flag to its command. A custom agent, opencode and hermes take their model in the command, so they refuse --model: it exits 1 and starts nothing.\nThe type's instruction file, types/TYPE.md in the agent folder, goes to the agent at start: claude --append-system-prompt-file, codex -c developer_instructions, grok --rules, opencode OPENCODE_CONFIG_CONTENT, kimi --agent-file. An empty file is none. gemini, hermes and custom agents cannot take one: --type exits 1 and starts nothing.\n`skiff agents` lists the types with the command each one starts."
     )]
     New {
         /// The session's name.
@@ -81,8 +81,8 @@ enum Cmd {
         /// Start this task type's agent with its model and instruction file. Not with --agent.
         #[arg(long = "type", value_name = "TYPE", conflicts_with_all = ["agent", "command"])]
         task_type: Option<String>,
-        /// With --type: this model in place of the type's model.
-        #[arg(long, value_name = "MODEL", requires = "task_type")]
+        /// With --type: this model in place of the type's model. With --agent: the agent's model flag. Not with a command.
+        #[arg(long, value_name = "MODEL", conflicts_with = "command")]
         model: Option<String>,
         /// Default: agent with --agent or --type, else shell.
         #[arg(long, value_enum)]

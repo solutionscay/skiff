@@ -134,8 +134,8 @@ mod tests {
         let s = spec(&with_model(&agent(" codex --yolo "), Some("gpt-5")), "Skipper", PathBuf::from("/tmp"));
         assert_eq!((s.command.as_deref(), s.args), (Some("codex"), vec!["--yolo".to_string(), "-m".into(), "gpt-5".into()]));
         // An agent with no model flag takes its model in its command.
-        let mut gemini = agent("gemini");
-        gemini.id = "gemini".into();
-        assert_eq!(with_model(&gemini, Some("pro")), "gemini");
+        let mut opencode = agent("opencode");
+        opencode.id = "opencode".into();
+        assert_eq!(with_model(&opencode, Some("pro")), "opencode");
     }
 }

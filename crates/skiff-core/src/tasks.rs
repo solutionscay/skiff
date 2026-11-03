@@ -13,12 +13,14 @@ use crate::{config::TaskTypes, project::AgentInfo, shell::{quote_word, shell_quo
 pub const SETTINGS: &str = "Settings › Task types";
 
 /// The model flag of each known agent, from its `--help` (2026-10-15:
-/// claude 2.1.301, codex 0.162.1, grok 1.0.44). An agent with no flag here
-/// takes its model in its command, as a custom agent does. Keep in step with
+/// claude 2.1.301, codex 0.162.1, grok 1.0.44; 2026-11-03: agy, gemini's
+/// command, `--model`, ids from `agy models`). kimi's is not checked here.
+/// An agent with no flag here (opencode, hermes: not checked) takes its model
+/// in its command, as a custom agent does. Keep in step with
 /// `MODEL_FLAGS` in apps/desktop/src/appearance/taskTypes.ts.
 pub fn model_flag(agent: &str) -> Option<&'static str> {
     match agent {
-        "claude" => Some("--model"),
+        "claude" | "gemini" => Some("--model"),
         "codex" | "grok" | "kimi" => Some("-m"),
         _ => None,
     }
@@ -568,7 +570,9 @@ mod tests {
         assert_eq!(command(&agent("codex", "codex", false), Some("gpt-5-codex")).unwrap(), "codex -m gpt-5-codex");
         assert_eq!(command(&agent("grok", "grok", false), Some("grok-4")).unwrap(), "grok -m grok-4");
         assert!(command(&agent("aider", "aider --model sonnet", true), Some("x")).is_err());
-        assert!(command(&agent("gemini", "agy", false), Some("x")).is_err());
+        assert!(command(&agent("opencode", "opencode", false), Some("x")).is_err());
+        assert_eq!(command(&agent("gemini", "agy --dangerously-skip-permissions", false), Some("gemini-3.8-flash-medium")).unwrap(), "agy --dangerously-skip-permissions --model gemini-3.8-flash-medium");
+        assert!(command(&agent("gemini", "agy", true), Some("x")).is_err());
         assert!(command(&claude, Some("two words")).is_err());
     }
 
