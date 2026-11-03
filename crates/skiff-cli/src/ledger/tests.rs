@@ -33,21 +33,24 @@ fn task(t: &str) -> New {
         socket: Some("/tmp/here.sock".into()),
         owner: GRAND.into(),
         handoff: false,
+        expects: None,
     }
 }
 
 #[test]
 fn supported_ledger_schemas_keep_their_columns_and_version() {
     let columns = [
-        "id", "uid", "kind", "parent", "pane_id", "pane_gen", "project", "task", "sent_at", "state", "result_path", "ref", "updated_at", "type", "socket", "reported_at", "title", "closed_at", "gone_at", "owner", "reopened_at", "work_dir", "flushed_at",
+        "id", "uid", "kind", "parent", "pane_id", "pane_gen", "project", "task", "sent_at", "state", "result_path", "ref", "updated_at", "type", "socket", "reported_at", "title", "closed_at", "gone_at", "owner", "reopened_at", "work_dir", "flushed_at", "outcome", "expects", "commit_ref",
     ];
+    let v11 = TASKS.replace(",\n  outcome     TEXT,\n  expects     TEXT,\n  commit_ref  TEXT", "");
     let fixtures = [
-        (3, TASKS.replace(",\n  socket      TEXT,\n  reported_at TEXT,\n  title       TEXT,\n  closed_at   TEXT,\n  gone_at     TEXT,\n  owner       TEXT NOT NULL DEFAULT 'grand',\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
-        (4, TASKS.replace(",\n  reported_at TEXT,\n  title       TEXT,\n  closed_at   TEXT,\n  gone_at     TEXT,\n  owner       TEXT NOT NULL DEFAULT 'grand',\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
-        (6, TASKS.replace(",\n  closed_at   TEXT,\n  gone_at     TEXT,\n  owner       TEXT NOT NULL DEFAULT 'grand',\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
-        (8, TASKS.replace("('task', 'plan', 'handoff')", "('task', 'plan')").replace(",\n  owner       TEXT NOT NULL DEFAULT 'grand',\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
-        (9, TASKS.replace(",\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
-        (10, TASKS.replace(",\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
+        (3, v11.replace(",\n  socket      TEXT,\n  reported_at TEXT,\n  title       TEXT,\n  closed_at   TEXT,\n  gone_at     TEXT,\n  owner       TEXT NOT NULL DEFAULT 'grand',\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
+        (4, v11.replace(",\n  reported_at TEXT,\n  title       TEXT,\n  closed_at   TEXT,\n  gone_at     TEXT,\n  owner       TEXT NOT NULL DEFAULT 'grand',\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
+        (6, v11.replace(",\n  closed_at   TEXT,\n  gone_at     TEXT,\n  owner       TEXT NOT NULL DEFAULT 'grand',\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
+        (8, v11.replace("('task', 'plan', 'handoff')", "('task', 'plan')").replace(",\n  owner       TEXT NOT NULL DEFAULT 'grand',\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
+        (9, v11.replace(",\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
+        (10, v11.replace(",\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
+        (11, v11.clone()),
     ];
     for (version, schema) in fixtures {
         let dir = scratch(&format!("schema-v{version}"));
@@ -512,6 +515,8 @@ fn a_task_whose_pane_is_gone_closes_done_and_stays_unreported() {
     let r = one(&db, &gone).unwrap();
     assert_eq!((r.state.as_str(), r.shown_state(), r.reported_at.as_deref()), ("done", "gone", None));
     assert!(r.gone_at.is_some());
+    // Nobody saw it end: unobserved, never succeeded.
+    assert_eq!(r.outcome.as_deref(), Some("unobserved"));
     assert_eq!(r.result_path.as_deref(), Some(result.as_str()));
     for uid in [&kept, &prefix, &theirs] {
         assert_ne!(one(&db, uid).unwrap().state, "done", "{uid}");
@@ -1060,7 +1065,7 @@ fn a_hand_off_is_ready_when_it_has_tasks_and_all_are_done() {
     let dir = scratch("handoff-ready");
     let file = dir.join("ledger.db");
     let mut db = open_at(&file).unwrap();
-    let ready = |db: &Connection| handoffs_ready_in(db).unwrap().into_iter().map(|r| r.uid).collect::<Vec<_>>();
+    let ready = |db: &Connection| handoffs_ready_in(db).unwrap().into_iter().map(|r| r.row.uid).collect::<Vec<_>>();
     let (_, h, _, _) = insert(&mut db, &file, New { handoff: true, project: "web".into(), ..task("h") }).unwrap();
     // No tasks: not ready.
     assert!(ready(&db).is_empty());
@@ -1086,7 +1091,94 @@ fn a_hand_off_is_ready_when_it_has_tasks_and_all_are_done() {
     assert!(ready(&db).is_empty());
     set(&db, &inner, "done");
     assert_eq!(ready(&db), [h.clone()]);
+    // How the tasks ended: by outcome, then those with none.
+    db.execute("UPDATE tasks SET outcome = 'succeeded' WHERE uid IN (?1, ?2)", params![a, b]).unwrap();
+    db.execute("UPDATE tasks SET outcome = 'failed' WHERE uid = ?1", [&inner]).unwrap();
+    let r = handoffs_ready_in(&db).unwrap();
+    assert_eq!(r[0].ended(), "2 succeeded, 1 failed, 1 with no outcome");
     // Done: no longer open.
     db.execute("UPDATE tasks SET state = 'done'", []).unwrap();
     assert!(ready(&db).is_empty());
+}
+
+#[test]
+fn version_11_gone_tasks_migrate_as_unobserved() {
+    let dir = scratch("v11-outcome");
+    let file = dir.join("ledger.db");
+    {
+        let db = Connection::open(&file).unwrap();
+        db.execute_batch(&TASKS.replace(",\n  outcome     TEXT,\n  expects     TEXT,\n  commit_ref  TEXT", "")).unwrap();
+        db.execute_batch(
+            "INSERT INTO tasks (uid, kind, task, sent_at, state, updated_at, gone_at) VALUES ('a1b2c3d4', 'task', 'lost', 'x', 'done', 'x', 'x');
+             INSERT INTO tasks (uid, kind, task, sent_at, state, updated_at) VALUES ('e5f6a7b8', 'task', 'done', 'x', 'done', 'x');
+             INSERT INTO tasks (uid, kind, task, sent_at, state, updated_at) VALUES ('c9d0e1f2', 'task', 'open', 'x', 'sent', 'x');
+             PRAGMA user_version = 11;",
+        )
+        .unwrap();
+    }
+    let db = open_at(&file).unwrap();
+    let got: Vec<Option<String>> = rows(&db, "", None).unwrap().into_iter().map(|r| r.outcome).collect();
+    // Only the gone task can be told; the rest have none.
+    assert_eq!(got, [Some("unobserved".into()), None, None]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_task_that_opens_again_loses_its_outcome() {
+    let dir = scratch("outcome-reopen");
+    let file = dir.join("ledger.db");
+    let mut db = open_at(&file).unwrap();
+    let (_, uid, _, _) = insert(&mut db, &file, New { state: "done".into(), ..task("t") }).unwrap();
+    db.execute("UPDATE tasks SET outcome = 'failed' WHERE uid = ?1", [&uid]).unwrap();
+    restate(&db, &one(&db, &uid).unwrap(), Some("done")).unwrap();
+    assert_eq!(one(&db, &uid).unwrap().outcome.as_deref(), Some("failed"));
+    restate(&db, &one(&db, &uid).unwrap(), Some("sent")).unwrap();
+    assert_eq!(one(&db, &uid).unwrap().outcome, None);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn expected_evidence_is_checked_and_says_what_it_shows() {
+    use super::evidence::{check, commit_in, settle, Evidence};
+    let dir = scratch("evidence");
+    let here = Path::new("/tmp/here.sock");
+    let result = dir.join("result.md");
+    let row = |expects: Option<&str>| Row {
+        expects: expects.map(str::to_string),
+        result_path: Some(result.display().to_string()),
+        socket: Some(here.display().to_string()),
+        ..rows_one(&dir)
+    };
+    // No expectation: nothing checked, and done means succeeded.
+    assert_eq!(check(&row(None), here), None);
+    assert_eq!(settle(None, None), "succeeded");
+    // A missing result file: unobserved, unless the coordinator names the outcome.
+    let missing = check(&row(Some("result")), here).unwrap();
+    assert!(matches!(&missing, Evidence::Missing(t) if t.contains("does not exist")));
+    assert_eq!(settle(None, Some(&missing)), "unobserved");
+    assert_eq!(settle(Some("failed"), Some(&missing)), "failed");
+    std::fs::write(&result, "ok").unwrap();
+    let seen = check(&row(Some("result")), here).unwrap();
+    assert!(matches!(&seen, Evidence::Seen(t) if t.contains("does not show the result is right")));
+    assert_eq!(settle(None, Some(&seen)), "succeeded");
+    // Another daemon's task is not checked from here.
+    assert!(matches!(check(&row(Some("result")), Path::new("/tmp/other.sock")), Some(Evidence::Unchecked(_))));
+    // A commit with no reference is missing.
+    assert!(matches!(check(&row(Some("commit")), here), Some(Evidence::Missing(t)) if t.contains("--commit")));
+    // A commit: found in the repository, or not.
+    let git = |args: &[&str]| assert!(std::process::Command::new("git").arg("-C").arg(&dir).args(args).output().unwrap().status.success());
+    git(&["init", "-q"]);
+    git(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"]);
+    assert!(matches!(commit_in(&dir, "HEAD"), Evidence::Seen(t) if t.contains("does not show it was pushed")));
+    assert!(matches!(commit_in(&dir, "0000000000000000000000000000000000000000"), Evidence::Missing(_)));
+    assert!(matches!(commit_in(&dir, "--help"), Evidence::Missing(_)));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// One stored row, from a scratch ledger in `dir`.
+fn rows_one(dir: &Path) -> Row {
+    let file = dir.join("ledger.db");
+    let mut db = open_at(&file).unwrap();
+    let (_, uid, _, _) = insert(&mut db, &file, task("t")).unwrap();
+    one(&db, &uid).unwrap()
 }

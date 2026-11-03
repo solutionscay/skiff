@@ -23,10 +23,11 @@ pub const GONE: &str = "gone";
 /// `owner`, 5 added `tasks.reported_at`, 6 added `tasks.title`, 7 added
 /// `tasks.closed_at`, 8 added `tasks.gone_at`, 9 added `tasks.owner` and the
 /// `handoff` kind, 10 added `tasks.reopened_at`, 11 added `tasks.work_dir`
-/// and `tasks.flushed_at`; an older file from version 3 on takes each in
-/// place, with its rows. The readers take a version 10 file: the version 11
+/// and `tasks.flushed_at`, 12 added `tasks.outcome`, `tasks.expects` and
+/// `tasks.commit_ref`; an older file from version 3 on takes each in place,
+/// with its rows. The readers take a version 10 file: the version 11 and 12
 /// columns read as empty there.
-pub const VERSION: i64 = 11;
+pub const VERSION: i64 = 12;
 
 pub const COLUMNS: &str = "id, uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, reported_at, title, closed_at, gone_at, owner";
 
@@ -35,6 +36,28 @@ fn columns_11(db: &Connection) -> rusqlite::Result<&'static str> {
     let n: i64 = db.query_row("SELECT count(*) FROM pragma_table_info('tasks') WHERE name IN ('work_dir', 'flushed_at')", [], |r| r.get(0))?;
     Ok(if n == 2 { "work_dir, flushed_at" } else { "NULL, NULL" })
 }
+
+/// The version 12 columns, or empty values on an older file.
+fn columns_12(db: &Connection) -> rusqlite::Result<&'static str> {
+    let n: i64 = db.query_row("SELECT count(*) FROM pragma_table_info('tasks') WHERE name IN ('outcome', 'expects', 'commit_ref')", [], |r| r.get(0))?;
+    Ok(if n == 3 { "outcome, expects, commit_ref" } else { "NULL, NULL, NULL" })
+}
+
+/// How a done task ended, beside its state. Only a done task has one; a
+/// task that opens again loses it. `None` on a done task: it was set done
+/// before outcomes, or added done.
+pub const SUCCEEDED: &str = "succeeded";
+pub const FAILED: &str = "failed";
+/// The task stopped before it ended, such as when its pane restarted, and
+/// its coordinator chose not to go on.
+pub const INTERRUPTED_OUTCOME: &str = "interrupted";
+/// Nobody saw how it ended: its pane was gone, or its expected evidence was
+/// missing when it was set done.
+pub const UNOBSERVED: &str = "unobserved";
+pub const OUTCOMES: [&str; 4] = [SUCCEEDED, FAILED, INTERRUPTED_OUTCOME, UNOBSERVED];
+
+/// The evidence a task names: its result file, or a commit.
+pub const EXPECTS: [&str; 2] = ["result", "commit"];
 
 /// The owner of the grand Skipper's rows. A project Skipper's rows have its
 /// project's name.
@@ -98,6 +121,13 @@ pub struct Row {
     /// When Settings › Disk use flushed the work folder. The row stays; the
     /// panel shows "Result flushed" in place of a missing result.
     pub flushed_at: Option<String>,
+    /// How the task ended: one of [`OUTCOMES`]. Only a done task has one.
+    pub outcome: Option<String>,
+    /// The evidence the task should leave: one of [`EXPECTS`]. `skiff ledger
+    /// update --state done` checks it. `None`: nothing is checked.
+    pub expects: Option<String>,
+    /// The commit the task names as its evidence, with `--expect commit`.
+    pub commit_ref: Option<String>,
     /// [`WORKING`], [`OPEN`] or [`FINISHED`], for the whole work. Set by
     /// [`buckets`].
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -294,7 +324,7 @@ pub fn open_read(file: &Path) -> Result<Connection> {
 }
 
 pub fn rows(db: &Connection, where_: &str, arg: Option<&dyn rusqlite::ToSql>) -> Result<Vec<Row>> {
-    let sql = format!("SELECT {COLUMNS}, {} FROM tasks {where_} ORDER BY id", columns_11(db)?);
+    let sql = format!("SELECT {COLUMNS}, {}, {} FROM tasks {where_} ORDER BY id", columns_11(db)?, columns_12(db)?);
     let mut st = db.prepare(&sql)?;
     let map = |r: &rusqlite::Row| {
         Ok(Row {
@@ -320,6 +350,9 @@ pub fn rows(db: &Connection, where_: &str, arg: Option<&dyn rusqlite::ToSql>) ->
             owner: r.get(19)?,
             work_dir: r.get(20)?,
             flushed_at: r.get(21)?,
+            outcome: r.get(22)?,
+            expects: r.get(23)?,
+            commit_ref: r.get(24)?,
             bucket: None,
             agent_on: false,
             elsewhere: false,

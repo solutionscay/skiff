@@ -8,9 +8,10 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 use crate::LedgerCmd;
-pub use skiff_client::ledger::{path, Row, GRAND};
+pub use skiff_client::ledger::{path, Row, GRAND, SUCCEEDED};
 
 mod commands;
+mod evidence;
 mod paths;
 mod read;
 mod schema;
@@ -19,7 +20,7 @@ mod write;
 pub use paths::results_dir;
 use paths::{label, make_work_folder, new_uid, result_in, work_folder};
 pub use read::{
-    close_gone, gone_unreported, handed_back, handoffs_ready, open_tasks, plan_tasks, unreported,
+    close_gone, gone_unreported, handed_back, handoffs_ready, open_tasks, plan_tasks, unreported, Ready,
 };
 #[cfg(test)]
 use read::{close_gone_in, handoffs_ready_in, open_tasks_at, unreported_at};

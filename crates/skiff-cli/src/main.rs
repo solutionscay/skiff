@@ -321,6 +321,11 @@ pub enum LedgerCmd {
         /// stores it and never acts on it.
         #[arg(long = "type", value_name = "TYPE")]
         task_type: Option<String>,
+        /// The evidence the task should leave: result (its result file) or
+        /// commit (a commit, named at the end with update --commit).
+        /// `update --state done` checks it.
+        #[arg(long, value_name = "EVIDENCE")]
+        expect: Option<String>,
         /// Add the task as pending and send it at once, as `ledger send` does.
         #[arg(long, conflicts_with_all = ["plan", "state"])]
         send: bool,
@@ -348,6 +353,11 @@ pub enum LedgerCmd {
         /// The work it joins: a plan of yours, or any task in it.
         #[arg(long, value_name = "ID")]
         parent: Option<String>,
+        /// The evidence the task should leave: result (its result file) or
+        /// commit (a commit, named at the end with update --commit).
+        /// `update --state done` checks it.
+        #[arg(long, value_name = "EVIDENCE")]
+        expect: Option<String>,
     },
     /// Send a pending or interrupted task to its pane, then mark it sent.
     /// Exits with `send`'s code.
@@ -389,6 +399,19 @@ pub enum LedgerCmd {
         reference: Option<String>,
         #[arg(long = "type", value_name = "TYPE")]
         task_type: Option<String>,
+        /// How the task ended: succeeded, failed, interrupted or unobserved.
+        /// An outcome sets the task done. Default with --state done:
+        /// succeeded, or unobserved when its expected evidence is missing.
+        #[arg(long)]
+        outcome: Option<String>,
+        /// The evidence the task should leave: result (its result file) or
+        /// commit (a commit, named at the end with update --commit).
+        /// `update --state done` checks it.
+        #[arg(long, value_name = "EVIDENCE")]
+        expect: Option<String>,
+        /// The commit the task leaves, for --expect commit.
+        #[arg(long, value_name = "REF")]
+        commit: Option<String>,
     },
     /// List the work that is not closed: working first, then open, oldest
     /// first, each plan's tasks under it. WORK names the group. LIVE says if

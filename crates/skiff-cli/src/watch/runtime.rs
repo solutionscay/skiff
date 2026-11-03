@@ -302,7 +302,8 @@ pub(super) async fn step(c: &Client, o: &Options, ws: &mut Watchers) -> Result<O
         }
     };
     let ready = match ledger::handoffs_ready() {
-        Ok(rows) => Some(on_socket(rows, &here).0),
+        // A hand-off on another daemon is that daemon's watcher's.
+        Ok(rows) => Some(rows.into_iter().filter(|r| r.row.socket_other_than(&here).is_none()).collect::<Vec<_>>()),
         Err(e) => {
             // Keep what was told: an empty list would forget it.
             log(format!("cannot read the finished hand-offs: {e:#}"));
@@ -370,9 +371,9 @@ pub(super) fn route(
 
 /// Gives each project or fleet Skipper the ready hand-offs of its scope.
 /// The grand Skipper gets none: it hears of the report, not of the wait.
-pub(super) fn tell_ready(ws: &mut Watchers, targets: &[(String, &SessionInfo)], ready: &[ledger::Row]) {
+pub(super) fn tell_ready(ws: &mut Watchers, targets: &[(String, &SessionInfo)], ready: &[ledger::Ready]) {
     for (owner, _) in targets.iter().filter(|(o, _)| o != ledger::GRAND) {
-        let mine: Vec<ledger::Row> = ready.iter().filter(|r| r.project == *owner).cloned().collect();
+        let mine: Vec<ledger::Ready> = ready.iter().filter(|r| r.row.project == *owner).cloned().collect();
         ws.entry(owner.clone()).or_default().handoffs_ready(&mine);
     }
 }

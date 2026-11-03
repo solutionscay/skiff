@@ -412,19 +412,23 @@ impl Watcher {
     }
 
     /// Takes the open hand-offs of this watcher's coordinator whose tasks are
-    /// all done. Each one new since the last read holds one line, which tells
-    /// the Skipper to write its result and set the hand-off done. A hand-off
-    /// that left the list is forgotten with its unsent line, so a reopened
-    /// one is told again.
-    pub(super) fn handoffs_ready(&mut self, rows: &[ledger::Row]) {
-        let now: HashSet<String> = rows.iter().map(|r| r.uid.clone()).collect();
+    /// all done. Each one new since the last read holds one line, which says
+    /// how the tasks ended and tells the Skipper to write its result and set
+    /// the hand-off done. A hand-off that left the list is forgotten with its
+    /// unsent line, so a reopened one is told again.
+    pub(super) fn handoffs_ready(&mut self, ready: &[ledger::Ready]) {
+        let now: HashSet<String> = ready.iter().map(|r| r.row.uid.clone()).collect();
         self.ready.retain(|u| now.contains(u));
         self.lines.retain(|l| !l.starts_with("hand-off ") || now.iter().any(|u| l.contains(u.as_str())));
-        for r in rows.iter().filter(|r| self.ready.insert(r.uid.clone())) {
+        for h in ready.iter().filter(|h| self.ready.insert(h.row.uid.clone())) {
+            let r = &h.row;
             let path = r.result_path.as_deref().unwrap_or("PATH");
+            // Not all succeeded: the result says which did not.
+            let say = if h.outcomes.iter().all(|(o, _)| *o == ledger::SUCCEEDED) { "" } else { ", and say which did not succeed and why" };
             self.lines.push(format!(
-                "hand-off {uid}: every task is done. Write your result to {path}, then run skiff ledger update {uid} --state done --result {path}",
-                uid = r.uid
+                "hand-off {uid}: every task is done ({ended}). Write your result to {path}{say}, then run skiff ledger update {uid} --state done --result {path}",
+                uid = r.uid,
+                ended = h.ended(),
             ));
         }
     }

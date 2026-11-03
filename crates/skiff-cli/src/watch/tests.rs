@@ -361,6 +361,9 @@ pub(crate) fn row(id: i64, uid: &str, pane: &str, state: &str, gen: Option<i64>)
         owner: ledger::GRAND.into(),
         work_dir: None,
         flushed_at: None,
+        outcome: None,
+        expects: None,
+        commit_ref: None,
         bucket: None,
         agent_on: false,
         elsewhere: false,
@@ -703,7 +706,8 @@ fn a_ready_hand_off_wakes_its_own_skipper_once_and_never_the_grand_one() {
     let all = [grand, skipper("bbbb2222", "gesher"), skipper("cccc3333", "fleet:ops")];
     let targets = targets(&all);
     let hand = |uid: &str, scope: &str| ledger::Row { kind: "handoff".into(), project: scope.into(), result_path: Some(format!("/r/{uid}.md")), ..row(1, uid, "", "sent", None) };
-    let ready = [hand("u3", "gesher"), hand("u4", "fleet:ops")];
+    let ok = |row| ledger::Ready { row, outcomes: vec![(ledger::SUCCEEDED, 2)] };
+    let ready = [ok(hand("u3", "gesher")), ledger::Ready { row: hand("u4", "fleet:ops"), outcomes: vec![(ledger::SUCCEEDED, 1), ("failed", 1), ("unobserved", 1)] }];
     let mut ws = Watchers::default();
     tell_ready(&mut ws, &targets, &ready);
     // Project and fleet routing: each Skipper gets its own line, Admiral none.
@@ -713,7 +717,12 @@ fn a_ready_hand_off_wakes_its_own_skipper_once_and_never_the_grand_one() {
     assert!(ws["gesher"].lines[0].contains("u3") && !ws["gesher"].lines[0].contains("u4"));
     assert_eq!(
         ws["gesher"].lines[0],
-        "hand-off u3: every task is done. Write your result to /r/u3.md, then run skiff ledger update u3 --state done --result /r/u3.md"
+        "hand-off u3: every task is done (2 succeeded). Write your result to /r/u3.md, then run skiff ledger update u3 --state done --result /r/u3.md"
+    );
+    // Not all succeeded: the line says how they ended and asks which did not.
+    assert_eq!(
+        ws["fleet:ops"].lines[0],
+        "hand-off u4: every task is done (1 succeeded, 1 failed, 1 unobserved). Write your result to /r/u4.md, and say which did not succeed and why, then run skiff ledger update u4 --state done --result /r/u4.md"
     );
     // Sent once: the same read again adds nothing, and the sent line stays sent.
     tell_ready(&mut ws, &targets, &ready);
