@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
-"""Conservative M0 import/I/O tripwire, with exact-content legacy exemptions.
+"""Reject unclassified desktop I/O at the Host boundary.
 
-Unlike a directory allowlist, an entry admits only the reviewed bytes of one
-file. Every edit to existing direct ownership must shrink or explicitly review
-that entry. This intentionally over-reports client-policy adapters during M0.
+Host-owned data must reach the selected Host through its contract. The small
+local policy lists only desktop-owned operations (window, client settings,
+local applications and SSH setup), each with a reason. It is not a legacy
+hash allowlist: a new direct I/O user must be classified or moved first.
 """
 import argparse
-import hashlib
-import json
 import posixpath
 from pathlib import Path
 import re
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
-BASELINE = Path(__file__).with_name("baseline.json")
+POLICY = Path(__file__).with_name("local.toml")
 # These are module/operation identifiers, not substrings of comments or strings.
 RUST_IO = {"fs", "process", "net", "env", "dirs", "libc", "include", "include_str", "include_bytes", "exists", "is_file", "is_dir", "metadata", "canonicalize", "read_dir", "read_to_string", "app_config_dir", "home_dir"}
 RUST_HOST = {"skiff_core", "config", "ledger", "skipper", "agent_folder", "skiff_agent"}
@@ -193,55 +192,25 @@ def inventory(root):
             if file.suffix in {".rs", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}:
                 sources[file.relative_to(root)] = file.read_text()
     reasons = {p: risks(source, p.suffix) for p, source in sources.items()}
-    lexed = {p: tokens(source, rust=p.suffix == ".rs") for p, source in sources.items()}
-    modules = rust_modules(lexed)
-    edges = {p: local_edges(p, ts, sources, modules) for p, ts in lexed.items()}
-    # Fixed point includes callers of callers and barrel/re-export chains.
-    flagged = {p for p, found in reasons.items() if found}
-    while True:
-        expanded = flagged | {p for p, deps in edges.items() if deps & flagged}
-        if expanded == flagged: break
-        flagged = expanded
-    for file in sorted(flagged):
-        providers = sorted(str(p) for p in edges[file] & flagged)
-        result[str(file)] = {
-            "sha256": hashlib.sha256((root / file).read_bytes()).hexdigest(),
-            "reasons": reasons[file] or ["local provider: " + p for p in providers],
-        }
-    # A new dependency or alias must not introduce an uninspected I/O provider.
-    for name in ["apps/desktop/src-tauri/Cargo.toml", "apps/desktop/package.json"]:
-        result[name] = {"sha256": hashlib.sha256((root / name).read_bytes()).hexdigest(), "reasons": ["dependency surface"]}
+    for file, found in reasons.items():
+        if found:
+            result[str(file)] = {"reasons": found}
     return result
 
 
-def compare(actual, baseline):
+def compare(actual, policy):
     errors = []
     for file, entry in actual.items():
-        old = baseline.get(file)
-        if old is None or old["sha256"] != entry["sha256"]:
-            errors.append(f"{file}: new/changed boundary access ({', '.join(entry['reasons'])}); use HostConnection or explicitly review the exact legacy baseline")
-    for file in baseline.keys() - actual.keys():
-        errors.append(f"{file}: obsolete exemption; remove it from the baseline")
+        reason = policy.get(file)
+        if not reason:
+            errors.append(f"{file}: unclassified local access ({', '.join(entry['reasons'])}); move Host data through HostConnection or add a one-line client-owned reason to local.toml")
+    for file in policy.keys() - actual.keys():
+        errors.append(f"{file}: obsolete local policy; remove it from local.toml")
     return errors
 
 
-def refresh(baseline, actual, files):
-    """Re-record the hash of named, already-reviewed entries; nothing else.
-
-    A release bumps the version in a fingerprinted file. This admits those
-    bytes without re-recording the rest of the inventory, so every other
-    unreviewed change still fails the check. A file that is not already in
-    the baseline is refused: a new entry needs a full, reviewed --record.
-    """
-    for file in files:
-        if file not in baseline:
-            raise SystemExit(f"{file}: not in the baseline; --refresh only updates an existing entry")
-        if file not in actual:
-            raise SystemExit(f"{file}: no longer in the inventory; remove it from the baseline")
-    updated = dict(baseline)
-    for file in files:
-        updated[file] = {**baseline[file], "sha256": actual[file]["sha256"], "reasons": actual[file]["reasons"]}
-    return updated
+def local_policy(root):
+    return tomllib.loads((root / POLICY.relative_to(ROOT)).read_text()).get("local", {})
 
 
 def api_errors(root):
@@ -257,36 +226,13 @@ def api_errors(root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--record", action="store_true", help="explicitly review and replace the legacy inventory (never run in CI)")
-    parser.add_argument("--refresh", action="append", default=[], metavar="FILE",
-                        help="re-record the hash of one existing baseline entry, for example after a release bumps its version (repeatable)")
-    args = parser.parse_args()
+    parser.parse_args()
     actual = inventory(ROOT)
-    if args.refresh:
-        baseline = refresh(json.loads(BASELINE.read_text()), actual, args.refresh)
-        BASELINE.write_text(json.dumps(baseline, indent=2, sort_keys=True) + "\n")
-    if args.record:
-        # Purpose labels make client-owned exceptions explicit and reviewable.
-        old = json.loads(BASELINE.read_text()) if BASELINE.exists() else {}
-        client_files = {
-            "apps/desktop/src-tauri/src/clipboard.rs", "apps/desktop/src-tauri/src/header_bar.rs",
-            "apps/desktop/src-tauri/src/native_menu.rs", "apps/desktop/src-tauri/src/quit.rs",
-            "apps/desktop/src-tauri/src/workspace_file.rs", "apps/desktop/src/workspace/profile.ts",
-            "apps/desktop/src/appearance/appTheme.ts", "apps/desktop/src/appearance/themeCards.ts",
-            "apps/desktop/src/diagnostics/latency.ts", "apps/desktop/src/diagnostics/memory.ts",
-            "apps/desktop/src/platform/clipboard.ts", "apps/desktop/src/terminal/terminalFont.ts",
-            "apps/desktop/src/ui/infoDialogs.ts",
-
-        }
-        for file, entry in actual.items():
-            client = file in client_files
-            entry["ownership"] = old.get(file, {}).get("ownership", "client policy: exact existing adapter only" if client else "legacy local adapter/caller: migrate behind Host API in M1–M6")
-        BASELINE.write_text(json.dumps(actual, indent=2, sort_keys=True) + "\n")
-    baseline = json.loads(BASELINE.read_text())
-    errors = compare(actual, baseline) + api_errors(ROOT)
+    policy = local_policy(ROOT)
+    errors = compare(actual, policy) + api_errors(ROOT)
     if errors:
         print("\n".join(errors)); return 1
-    print(f"Host boundary passed: {len(baseline)} exact-content baseline entries; Host API dependencies remain I/O-free")
+    print(f"Host boundary passed: no legacy allowlist; {len(policy)} explicit client-owned operations; Host API dependencies remain I/O-free")
     return 0
 
 if __name__ == "__main__":

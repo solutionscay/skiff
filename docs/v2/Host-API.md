@@ -1,10 +1,22 @@
-# Host API — M0 contract, local M1a–M1g seams, M2 remote terminals, M3 remote lifecycle, the M4 data plane (reads, then project and worktree writes), M5 files and the M6 ledger and Skipper reads
+# Host API
 
 Tracking: [M0 #156](https://github.com/solutionscay/skiff/issues/156),
 [epic #155](https://github.com/solutionscay/skiff/issues/155).
-This is the repository copy of the proposed wiki contract page. It can be
-published with the wiki glossary when the V2 docs are published; M0 does not
-push to the separate wiki repository.
+This is the shipped Host contract. The matching user documentation is in the
+wiki's [Hosts](https://github.com/solutionscay/skiff/wiki/Hosts) and
+[Remote control](https://github.com/solutionscay/skiff/wiki/Remote-control) pages.
+
+## Shipped model
+
+Each desktop window selects one Host. **This Mac** is a local Host; an SSH Host
+uses strict OpenSSH stream-local forwards. The selected Host supplies sessions,
+projects, Git, files, images, ledger, Skipper settings and agents through
+capability-gated APIs. The desktop owns only per-person state: window and
+appearance settings, known Hosts and trust preferences, workspace profiles, and
+local Open with applications. A remote Host path never reaches a local opener.
+
+The historical M0–M6 sections below explain the contract and compatibility
+decisions that shipped; they are not an unreleased roadmap.
 
 ## Glossary
 
