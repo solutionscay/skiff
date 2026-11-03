@@ -1,6 +1,8 @@
 //! Local daemon and data-service process helpers.
 
-use super::*;
+use std::{path::PathBuf, process::Stdio, time::Duration};
+use skiff_client::host::local::ProcessControl;
+use skiff_core::socket::socket_path;
 
 /// A program this app ships: `env` names it when set, else the one beside
 /// this app's executable, else `name` on PATH.
@@ -105,4 +107,75 @@ pub(super) fn reap(mut child: std::process::Child) {
     let _ = std::thread::Builder::new().name("skiff-host reaper".into()).spawn(move || {
         let _ = child.wait();
     });
+}
+
+/// A control for this Mac, for the tests of the process helpers.
+#[cfg(test)]
+pub(super) fn local_control() -> ProcessControl {
+    super::App::default().selection().process_control().unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn copies_skiffd_out_of_the_appimage_once_per_change() {
+        let dir = std::env::temp_dir().join(format!("skiff-copy-out-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("mount")).unwrap();
+        let src = dir.join("mount/skiffd");
+        std::fs::write(&src, b"one").unwrap();
+        let out = dir.join("bin");
+        let dest = copy_out(&src, &out).unwrap();
+        assert_eq!(dest, out.join("skiffd"));
+        assert_eq!(std::fs::read(&dest).unwrap(), b"one");
+        let first = std::fs::metadata(&dest).unwrap();
+        assert_eq!(copy_out(&src, &out).unwrap(), dest);
+        // The same bytes: the file stays, so a running skiffd's path still names it.
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(std::fs::metadata(&dest).unwrap().ino(), first.ino());
+        std::fs::write(&src, b"two").unwrap();
+        copy_out(&src, &out).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"two");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A data service that exits, or is stopped to restart, is reaped: no
+    /// zombie stays under the app. The service runs from a private fake
+    /// binary; no live service is started or signalled.
+    #[test]
+    fn a_data_service_that_ends_leaves_no_zombie() {
+        let _env = crate::reload::tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = PathBuf::from("/tmp").join(format!("reap-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir(&dir).unwrap();
+        let old = std::env::var_os("SKIFF_HOST_BIN");
+        // Gone: no such process, and not a zombie, which kill(0) still finds.
+        let gone = |pid: i32| unsafe { libc::kill(pid, 0) != 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) };
+        let until_gone = |pid: i32| (0..50).any(|_| gone(pid) || (std::thread::sleep(Duration::from_millis(100)), false).1);
+        for (name, body) in [("exits", "exit 0"), ("stopped", "exec sleep 30")] {
+            let bin = dir.join(name);
+            let pidfile = dir.join(format!("{name}.pid"));
+            std::fs::write(&bin, format!("#!/bin/sh\necho $$ > {}\n{body}\n", pidfile.display())).unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+            std::env::set_var("SKIFF_HOST_BIN", &bin);
+            spawn_data_service(&local_control(), &dir.join(format!("{name}.sock"))).unwrap();
+            let pid = (0..50)
+                .find_map(|_| std::fs::read_to_string(&pidfile).ok().and_then(|p| p.trim().parse::<i32>().ok()).or_else(|| (std::thread::sleep(Duration::from_millis(100)), None).1))
+                .expect("the fake service started");
+            if name == "stopped" {
+                assert!(!gone(pid), "it runs until stopped");
+                unsafe { libc::kill(pid, libc::SIGTERM) };
+            }
+            assert!(until_gone(pid), "{name}: the service stays a zombie");
+        }
+        match old {
+            Some(v) => std::env::set_var("SKIFF_HOST_BIN", v),
+            None => std::env::remove_var("SKIFF_HOST_BIN"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

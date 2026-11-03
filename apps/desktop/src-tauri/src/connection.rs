@@ -1,10 +1,10 @@
-use std::{collections::HashMap, path::PathBuf, process::Stdio, sync::{atomic::{AtomicBool, Ordering}, Arc}, time::Duration};
+use std::{collections::HashMap, sync::{atomic::{AtomicBool, Ordering}, Arc}, time::Duration};
 use serde::Serialize;
-use skiff_client::{Client, host::{HostConnection, data::{DataError, DataPlane}, local::{HostSelection, ProcessControl, SelectedHost, connection_status}}};
-use skiff_core::{socket::socket_path, session::SessionState};
+use skiff_client::{Client, host::{HostConnection, data::{DataError, DataPlane}, local::{HostSelection, ProcessControl, SelectedHost}}};
+use skiff_core::socket::socket_path;
 use tauri::{async_runtime::JoinHandle, State};
 use tokio::sync::Mutex;
-use crate::{input::Input, reload::{self, NoPlan, Plan}, streaming::Flow};
+use crate::{input::Input, reload::Plan, streaming::Flow};
 
 mod daemon;
 mod data_plane;
@@ -390,10 +390,6 @@ pub(crate) async fn daemon_status(app: State<'_, App>) -> Result<DaemonStatus, S
 
 #[cfg(test)]
 mod tests {
-    use super::{compare_versions, copy_out, spawn_data_service, stop_daemon, App, ProcessControl};
-    use std::{path::PathBuf, time::Duration};
-    use std::cmp::Ordering::*;
-
     #[test]
     fn page_status_dtos_keep_their_json_shapes() {
         let daemon = super::DaemonStatus { connected: false, version: None, protocol: None, socket: "/s.sock".into(), pid: None, spawned: false, warning: None, replaced: None, reload: false };
@@ -599,171 +595,6 @@ mod tests {
     }
 
 
-    fn local_control() -> ProcessControl {
-        App::default().selection().process_control().unwrap()
-    }
-
-    #[test]
-    fn copies_skiffd_out_of_the_appimage_once_per_change() {
-        let dir = std::env::temp_dir().join(format!("skiff-copy-out-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("mount")).unwrap();
-        let src = dir.join("mount/skiffd");
-        std::fs::write(&src, b"one").unwrap();
-        let out = dir.join("bin");
-        let dest = copy_out(&src, &out).unwrap();
-        assert_eq!(dest, out.join("skiffd"));
-        assert_eq!(std::fs::read(&dest).unwrap(), b"one");
-        let first = std::fs::metadata(&dest).unwrap();
-        assert_eq!(copy_out(&src, &out).unwrap(), dest);
-        // The same bytes: the file stays, so a running skiffd's path still names it.
-        use std::os::unix::fs::MetadataExt;
-        assert_eq!(std::fs::metadata(&dest).unwrap().ino(), first.ino());
-        std::fs::write(&src, b"two").unwrap();
-        copy_out(&src, &out).unwrap();
-        assert_eq!(std::fs::read(&dest).unwrap(), b"two");
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn orders_versions_by_number() {
-        assert_eq!(compare_versions("0.3.2", "0.5.0"), Less);
-        assert_eq!(compare_versions("0.10.0", "0.9.9"), Greater);
-        assert_eq!(compare_versions("0.5.0", "0.5.0"), Equal);
-    }
-
-    #[test]
-    #[allow(clippy::zombie_processes, reason = "stop_daemon reaps the pid with waitpid")]
-    fn kills_a_process_that_ignores_sigterm() {
-        let child = std::process::Command::new("sh")
-            // exec keeps the ignored TERM disposition and leaves no child
-            // sleep behind when the SIGKILL fallback stops this process.
-            .args(["-c", "trap '' TERM; exec sleep 30"])
-            .spawn()
-            .unwrap();
-        // Let the shell set its trap first.
-        std::thread::sleep(std::time::Duration::from_millis(200));
-        let rt = tokio::runtime::Builder::new_current_thread().enable_time().build().unwrap();
-        assert!(rt.block_on(stop_daemon(&local_control(), child.id() as i32, true)));
-    }
-
-    /// A data service that exits, or is stopped to restart, is reaped: no
-    /// zombie stays under the app. The service runs from a private fake
-    /// binary; no live service is started or signalled.
-    #[test]
-    fn a_data_service_that_ends_leaves_no_zombie() {
-        let _env = crate::reload::tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = PathBuf::from("/tmp").join(format!("reap-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir(&dir).unwrap();
-        let old = std::env::var_os("SKIFF_HOST_BIN");
-        // Gone: no such process, and not a zombie, which kill(0) still finds.
-        let gone = |pid: i32| unsafe { libc::kill(pid, 0) != 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) };
-        let until_gone = |pid: i32| (0..50).any(|_| gone(pid) || (std::thread::sleep(Duration::from_millis(100)), false).1);
-        for (name, body) in [("exits", "exit 0"), ("stopped", "exec sleep 30")] {
-            let bin = dir.join(name);
-            let pidfile = dir.join(format!("{name}.pid"));
-            std::fs::write(&bin, format!("#!/bin/sh\necho $$ > {}\n{body}\n", pidfile.display())).unwrap();
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
-            std::env::set_var("SKIFF_HOST_BIN", &bin);
-            spawn_data_service(&local_control(), &dir.join(format!("{name}.sock"))).unwrap();
-            let pid = (0..50)
-                .find_map(|_| std::fs::read_to_string(&pidfile).ok().and_then(|p| p.trim().parse::<i32>().ok()).or_else(|| (std::thread::sleep(Duration::from_millis(100)), None).1))
-                .expect("the fake service started");
-            if name == "stopped" {
-                assert!(!gone(pid), "it runs until stopped");
-                unsafe { libc::kill(pid, libc::SIGTERM) };
-            }
-            assert!(until_gone(pid), "{name}: the service stays a zombie");
-        }
-        match old {
-            Some(v) => std::env::set_var("SKIFF_HOST_BIN", v),
-            None => std::env::remove_var("SKIFF_HOST_BIN"),
-        }
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// The automatic stop sends SIGTERM only. A process that ignores it
-    /// keeps running, and the stop says so.
-    #[test]
-    fn the_automatic_stop_never_kills() {
-        let mut child = std::process::Command::new("sh")
-            .args(["-c", "trap '' TERM; exec sleep 30"])
-            .spawn()
-            .unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(200));
-        let rt = tokio::runtime::Builder::new_current_thread().enable_time().build().unwrap();
-        let stopped = rt.block_on(stop_daemon(&local_control(), child.id() as i32, false));
-        let running = child.try_wait().unwrap().is_none();
-        let _ = child.kill();
-        let _ = child.wait();
-        assert!(!stopped);
-        assert!(running, "the process was stopped");
-    }
-
-    /// A stand-in daemon on a private socket: it answers `ping` as
-    /// `version` on `protocol` and lists no session. The connection names
-    /// `pid` as the daemon, a process the test owns, so a stop shows on it.
-    /// With `reloads`, the pong says it can hand over (state 2, its pid).
-    async fn fake_daemon(dir: &std::path::Path, version: &'static str, protocol: u32, pid: u32, reloads: bool) -> skiff_client::Client {
-        use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
-        let socket = dir.join(format!("{version}.sock"));
-        let listener = tokio::net::UnixListener::bind(&socket).unwrap();
-        tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            let (rd, mut wr) = stream.into_split();
-            let mut lines = tokio::io::BufReader::new(rd).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                let req: serde_json::Value = serde_json::from_str(&line).unwrap();
-                let id = req["id"].clone();
-                let reply = match req["cmd"].as_str() {
-                    Some("ping") if reloads => serde_json::json!({"id": id, "type": "pong", "version": version, "protocol": protocol, "reload_state": 2, "pid": pid}),
-                    Some("ping") => serde_json::json!({"id": id, "type": "pong", "version": version, "protocol": protocol}),
-                    Some("list_sessions") => serde_json::json!({"id": id, "type": "sessions", "sessions": []}),
-                    other => serde_json::json!({"id": id, "type": "error", "message": format!("{other:?}")}),
-                };
-                let mut out = serde_json::to_vec(&reply).unwrap();
-                out.push(b'\n');
-                wr.write_all(&out).await.unwrap();
-            }
-        });
-        let mut c = skiff_client::Client::connect(&socket).await.unwrap();
-        c.daemon_pid = Some(pid as i32);
-        c
-    }
-
-    /// Never a downgrade: a newer daemon on another protocol with no live
-    /// session keeps running, and the app does not replace it. An older one
-    /// in the same place is stopped and replaced, which shows the stop works.
-    #[test]
-    fn a_newer_daemon_is_never_replaced() {
-        let dir = std::env::temp_dir().join(format!("skiff-app-newer-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let other = skiff_core::PROTOCOL + 1;
-        for (version, replaced) in [("99.0.0", false), ("0.0.1", true)] {
-            let mut stand_in = std::process::Command::new("sleep").arg("30").spawn().unwrap();
-            let app = super::App::default();
-            let check = rt.block_on(async {
-                let c = fake_daemon(&dir, version, other, stand_in.id(), false).await;
-                super::check_daemon(&app, &c, true).await
-            });
-            // The stop reaps what it ends, so a gone child reads as ECHILD.
-            let running = stand_in.try_wait().is_ok_and(|s| s.is_none());
-            let _ = stand_in.kill();
-            let _ = stand_in.wait();
-            assert_eq!(matches!(check, super::Check::Replaced), replaced, "skiffd {version}");
-            assert_eq!(running, !replaced, "skiffd {version}: signalled");
-            assert_eq!(rt.block_on(app.replaced.lock()).is_some(), replaced);
-            if !replaced {
-                assert_eq!(rt.block_on(app.warning.lock()).as_ref().map(|w| w.kind), Some("protocol"));
-            }
-        }
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
 
     /// M4: this Mac's data plane is started for the selected socket when none
     /// answers, paired with the session plane's Host id, and refused when it
@@ -771,6 +602,7 @@ mod tests {
     #[test]
     fn the_data_plane_starts_here_and_pairs_with_the_session_host() {
         use super::*;
+        use std::path::PathBuf;
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
         let _env = crate::reload::tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
         let dir = PathBuf::from("/tmp").join(format!("sd-{}", std::process::id()));
@@ -887,111 +719,4 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Version order decides, whatever the build. An older daemon that can
-    /// hand over is planned for a reload onto the bundled skiffd, with no
-    /// warning. A newer one is left alone, with the "newer" notice. The
-    /// same version is used as it is. Nothing is signalled in any case.
-    #[test]
-    fn an_older_daemon_reloads_and_a_newer_one_is_left_alone() {
-        let _env = crate::reload::tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = std::env::temp_dir().join(format!("skiff-app-order-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        // The bundled skiffd: it answers --reload-info as this build's version.
-        let bin = dir.join("skiffd");
-        std::fs::write(&bin, format!("#!/bin/sh\necho '{{\"version\":\"{}\",\"handover\":[2],\"fingerprint\":\"x\"}}'\n", skiff_core::VERSION)).unwrap();
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let old_daemon = std::env::var_os("SKIFF_DAEMON");
-        std::env::set_var("SKIFF_DAEMON", &bin);
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let mut outcome = Vec::new();
-        for (version, want) in [("0.0.1", "reload"), ("99.0.0", "newer"), (skiff_core::VERSION, "same")] {
-            let mut stand_in = std::process::Command::new("sleep").arg("30").spawn().unwrap();
-            let app = super::App::default();
-            let check = rt.block_on(async {
-                let c = fake_daemon(&dir, version, skiff_core::PROTOCOL, stand_in.id(), true).await;
-                super::check_daemon(&app, &c, true).await
-            });
-            let running = stand_in.try_wait().is_ok_and(|s| s.is_none());
-            let _ = stand_in.kill();
-            let _ = stand_in.wait();
-            let planned = rt.block_on(app.reload.lock()).is_some();
-            let warning = rt.block_on(app.warning.lock()).as_ref().map(|w| w.kind);
-            outcome.push((want, matches!(check, super::Check::Use), running, planned, warning));
-        }
-        match old_daemon {
-            Some(v) => std::env::set_var("SKIFF_DAEMON", v),
-            None => std::env::remove_var("SKIFF_DAEMON"),
-        }
-        let _ = std::fs::remove_dir_all(&dir);
-        assert_eq!(outcome, [("reload", true, true, true, None), ("newer", true, true, false, Some("newer")), ("same", true, true, false, None)]);
-    }
-
-    /// A missing daemon is started once, from the bundled skiffd, and the
-    /// connect loop keeps asking its socket. Here the stand-in only leaves a
-    /// mark and never listens, so the loop ends with the "cannot reach" error.
-    #[test]
-    fn a_missing_daemon_is_spawned() {
-        let _env = crate::reload::tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = PathBuf::from("/tmp").join(format!("sd-spawn-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let mark = dir.join("started");
-        let bin = dir.join("skiffd");
-        std::fs::write(&bin, format!("#!/bin/sh\ntouch {}\n", mark.display())).unwrap();
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let old_daemon = std::env::var_os("SKIFF_DAEMON");
-        let old_socket = std::env::var_os("SKIFF_SOCKET");
-        let socket = dir.join("none.sock");
-        std::env::set_var("SKIFF_DAEMON", &bin);
-        std::env::set_var("SKIFF_SOCKET", &socket);
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let app = super::App::default();
-        app.set_selection(super::HostSelection::new(socket.clone(), dir.join("local-host-id")));
-        let result = rt.block_on(super::ensure_host(&app));
-        for (var, old) in [("SKIFF_DAEMON", old_daemon), ("SKIFF_SOCKET", old_socket)] {
-            match old {
-                Some(v) => std::env::set_var(var, v),
-                None => std::env::remove_var(var),
-            }
-        }
-        let started = mark.exists();
-        let _ = std::fs::remove_dir_all(&dir);
-        assert!(started, "the bundled skiffd was not started");
-        assert!(result.err().is_some_and(|e| e.starts_with("cannot reach skiffd")));
-    }
-
-    /// #182: the bundled skiffd cannot read the daemon's handover. No reload
-    /// is planned, and the warning says why and what a restart does, in the
-    /// words `skiff status` uses.
-    #[test]
-    fn a_blocked_handover_says_why() {
-        let _env = crate::reload::tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = std::env::temp_dir().join(format!("skiff-app-blocked-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let bin = dir.join("skiffd");
-        std::fs::write(&bin, format!("#!/bin/sh\necho '{{\"version\":\"{}\",\"handover\":[3],\"fingerprint\":\"x\"}}'\n", skiff_core::VERSION)).unwrap();
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let old_daemon = std::env::var_os("SKIFF_DAEMON");
-        std::env::set_var("SKIFF_DAEMON", &bin);
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let app = super::App::default();
-        rt.block_on(async {
-            let c = fake_daemon(&dir, "0.0.1", skiff_core::PROTOCOL, std::process::id(), true).await;
-            super::check_daemon(&app, &c, false).await
-        });
-        match old_daemon {
-            Some(v) => std::env::set_var("SKIFF_DAEMON", v),
-            None => std::env::remove_var("SKIFF_DAEMON"),
-        }
-        let _ = std::fs::remove_dir_all(&dir);
-        assert!(rt.block_on(app.reload.lock()).is_none());
-        let w = rt.block_on(app.warning.lock()).clone().unwrap();
-        assert_eq!(w.kind, "outdated");
-        assert!(w.message.contains("handover 2") && w.message.contains("Restart skiffd stops them"), "{}", w.message);
-    }
 }
