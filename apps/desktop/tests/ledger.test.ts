@@ -212,3 +212,47 @@ test("review M6 P2: a remote Host's missing watcher shows as missing once the gr
   t.mod.noteDaemon({ connected: true, protocol: 40 });
   assert.equal(t.mod.skiffWatch(t.coordinator).state, "starting");
 });
+
+test("ledger projections survive unchanged reads and follow session, scope and ledger changes", async () => {
+  const pane = { id: "pane", state: "working", started_at: 1, name: "Agent" };
+  const sessions = new Map([[pane.id, pane]]);
+  const S = { projects: [{ name: "A", fleet: "F" }] };
+  let scope: { names: Set<string> } | null = null;
+  let reply = [{ ...ROW, owner: "A", project: "A", state: "sent", pane_id: pane.id, pane_gen: 1, bucket: "working", title: "First" }];
+  const mod = moduleFromSource("../src/workspace/ledger.ts", {
+    "../app/hostCaps": { hostInvoke: async () => structuredClone(reply) },
+    "../app/dataPlane": { dataEpoch: () => 1 },
+    "../app/renderRequest": { render() {} },
+    "../app/state": { S, sessions },
+    "../app/skiffAgent": { skipperWord: () => "Skipper" },
+    "./model": { taskTitle: (s: typeof pane) => s.name, scopeFleet: (s?: string) => s?.startsWith("fleet:") ? s.slice(6) : null },
+    "./profile": { ledgerScope: () => scope },
+  }, { document: { addEventListener() {} } }, "\nexports.units = units;");
+  await mod.loadLedger();
+  const first = mod.units(null);
+  assert.equal(mod.ledgerCounts("A").working, 1);
+  assert.equal(mod.ledgerNeeds(), 0);
+  assert.equal(mod.ledgerWorkTitle("A"), "First");
+  assert.equal(mod.units(null), first, "callers share the projection");
+  await mod.loadLedger();
+  assert.equal(mod.units(null), first, "unchanged replies keep the generation");
+  pane.state = "waiting";
+  assert.equal(mod.ledgerNeeds(), 1, "a session event invalidates counts without a ledger write");
+  assert.notEqual(mod.units(null), first);
+  pane.name = "Renamed";
+  assert.equal(mod.units(null)[0].look.where, "Renamed");
+  assert.equal(mod.units("fleet:F").length, 1);
+  S.projects[0].fleet = "G";
+  assert.equal(mod.units("fleet:F").length, 0, "fleet membership invalidates a cached filter");
+  scope = { names: new Set(["B"]) };
+  assert.equal(mod.ledgerNeeds(), 0);
+  assert.equal(mod.units(null).length, 0);
+  scope = null;
+  sessions.delete(pane.id);
+  assert.equal(mod.units(null)[0].st, "gone");
+  reply = [{ ...reply[0], title: "Second", state: "done", bucket: "finished" }];
+  await mod.loadLedger();
+  assert.equal(mod.ledgerNeeds(), 0);
+  assert.equal(mod.ledgerWorkTitle("A"), null);
+  assert.equal(mod.units(null)[0].r.title, "Second");
+});

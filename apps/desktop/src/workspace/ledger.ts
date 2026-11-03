@@ -63,7 +63,7 @@ import { skipperWord } from "../app/skiffAgent";
 import { keepRow } from "./selection";
 import { revealSession } from "./view";
 import { ledgerAllWork, ledgerScope, setLedgerAllWork, workspaceName, workspaceOpen } from "./profile";
-import { t, tn, upper, type MessageKey } from "../i18n";
+import { language, t, tn, upper, type MessageKey } from "../i18n";
 
 /** A ledger row as `ledger_rows` returns it. */
 export interface Entry {
@@ -137,6 +137,74 @@ interface Unit {
 }
 
 let rows: Entry[] = [];
+let generation = 0;
+let rowData = "";
+let indexedGeneration = -1;
+const byUid = new Map<string, Entry>();
+const children = new Map<string, Entry[]>();
+const paneIds = new Set<string>();
+const workTitles = new Map<string, string>();
+
+/** Index the Host's data once per changed reply, including the fallback hand-offs. */
+function indexRows() {
+  if (indexedGeneration === generation) return;
+  indexedGeneration = generation;
+  byUid.clear();
+  children.clear();
+  paneIds.clear();
+  workTitles.clear();
+  const fallback = new Map<string, string>();
+  for (const r of rows) {
+    byUid.set(r.uid, r);
+    if (r.parent) {
+      const kids = children.get(r.parent) ?? [];
+      kids.push(r);
+      children.set(r.parent, kids);
+    }
+    if (r.pane_id) paneIds.add(r.pane_id);
+    if (r.kind === "handoff" && r.state !== "done") fallback.set(r.project, titleOf(r));
+    if (r.bucket === "finished" || r.state === "done" || r.parent) continue;
+    workTitles.set(r.owner, titleOf(r));
+    if (r.kind === "handoff") workTitles.set(r.project, titleOf(r));
+  }
+  for (const [scope, title] of fallback) if (!workTitles.has(scope)) workTitles.set(scope, title);
+}
+
+let projectionInputs = "";
+let projectionVersion = 0;
+const paneInputs = new Map<string, { state: SessionInfo["state"] | undefined; started: SessionInfo["started_at"] | undefined; title: string | null }>();
+const projections = new Map<string | null, Unit[]>();
+let counts: { need: number; owners: Map<string, { need: number; working: number }> } | null = null;
+
+/** Session events can change a task without a ledger write. Read only the
+ *  session fields and workspace membership that affect the projection. */
+function projectionKey(): number {
+  indexRows();
+  const scope = ledgerScope();
+  const key = JSON.stringify([
+    generation, scope ? [...scope.names].sort() : null,
+    S.projects.map((p) => [p.name, p.fleet]), skipperWord(), language(),
+  ]);
+  let changed = key !== projectionInputs;
+  if (changed) paneInputs.clear();
+  // Session objects are updated in place. Compare their projected values;
+  // unchanged callers neither serialize nor allocate another session snapshot.
+  for (const id of paneIds) {
+    const s = sessions.get(id);
+    const title = s ? taskTitle(s) : null;
+    const old = paneInputs.get(id);
+    if (old && old.state === s?.state && old.started === s?.started_at && old.title === title) continue;
+    paneInputs.set(id, { state: s?.state, started: s?.started_at, title });
+    changed = true;
+  }
+  if (changed) {
+    projectionVersion++;
+    projectionInputs = key;
+    projections.clear();
+    counts = null;
+  }
+  return projectionVersion;
+}
 let error: string | null = null;
 let loaded = false;
 /** The last read asked for. Only its reply shows. */
@@ -149,18 +217,21 @@ export async function loadLedger() {
   const at = dataEpoch();
   let next: Entry[] = [];
   let err: string | null = null;
-  const before = loaded ? JSON.stringify([rows, error]) : null;
   try {
     next = await hostInvoke<Entry[]>("ledger", "ledger_rows");
   } catch (e) {
     err = String(e);
   }
   if (mine !== asked || at !== dataEpoch()) return;
+  const data = JSON.stringify([next, err]);
+  // Keep both the generation and row objects for repeated, unchanged replies.
+  if (loaded && data === rowData) return;
+  rowData = data;
   rows = next;
   error = err;
   loaded = true;
-  // The file changes with every write to it, often with the same rows.
-  if (JSON.stringify([rows, error]) !== before) render("ledger");
+  generation++;
+  render("ledger");
 }
 
 /** Reads the ledger now and on each change. main.ts calls it once. */
@@ -230,7 +301,7 @@ function closedOf(r: Entry): string | null {
   if (r.bucket !== "finished") return null;
   let at = r;
   // Two steps at most: plan, hand-off, task.
-  for (let i = 0; i < 3 && at.parent; i++) at = rows.find((p) => p.uid === at.parent) ?? at;
+  for (let i = 0; i < 3 && at.parent; i++) at = byUid.get(at.parent) ?? at;
   return at.closed_at ?? r.updated_at;
 }
 
@@ -240,7 +311,7 @@ const flat = (l: Look): Look[] => [l, ...(l.kids ?? [])];
 /** A hand-off with its tasks under it. Each task shows by the view. */
 function handoff(r: Entry, view: (r: Entry) => boolean): Look {
   const l = look(r);
-  return { ...l, kids: rows.filter((k) => k.parent === r.uid && view(k)).map(look) };
+  return { ...l, kids: (children.get(r.uid) ?? []).filter(view).map(look) };
 }
 
 /** A plan's state from its tasks: the most urgent need shows. */
@@ -271,6 +342,9 @@ function inView(r: Entry, scope = ledgerScope(), project: string | null = null):
 
 /** Every item the view shows, in ledger order. `project`: only its rows; undefined takes the panel's filter. */
 function units(project: string | null | undefined = filter()): Unit[] {
+  projectionKey();
+  const cached = projections.get(project);
+  if (cached) return cached;
   const scope = ledgerScope();
   const view = (k: Entry) => inView(k, scope, project);
   const heads = new Set(rows.filter((r) => r.kind === "plan" || r.kind === "handoff").map((r) => r.uid));
@@ -279,7 +353,7 @@ function units(project: string | null | undefined = filter()): Unit[] {
   const out: Unit[] = [];
   for (const r of rows) {
     if (r.kind === "plan") {
-      const all = rows.filter((k) => k.kind !== "plan" && k.parent === r.uid);
+      const all = (children.get(r.uid) ?? []).filter((k) => k.kind !== "plan");
       // Each task shows by its own project. The plan heads the ones that show.
       // A hand-off shows when it or one of its tasks does.
       const kids = all
@@ -300,6 +374,7 @@ function units(project: string | null | undefined = filter()): Unit[] {
       out.push({ r, st: l.st, look: l, closed: closedOf(r), working: flat(l).some((k) => k.st === "sent") });
     }
   }
+  projections.set(project, out);
   return out;
 }
 
@@ -337,20 +412,33 @@ function needing(us: Unit[]): number {
 
 /** The count on Skipper's row: every row that needs the person, whatever its owner. */
 export function ledgerNeeds(): number {
-  return needing(units(null));
+  return ledgerSummary().need;
 }
 
 /** The counts on a project Skipper's row: its tasks that need the person, and its tasks an agent is on. */
 export function ledgerCounts(project: string): { need: number; working: number } {
-  const mine = openLooks(units(null)).filter((l) => l.r.owner === project);
-  return { need: mine.filter((l) => NEED[l.st]).length, working: mine.filter((l) => l.st === "sent").length };
+  return ledgerSummary().owners.get(project) ?? { need: 0, working: 0 };
+}
+
+/** Share one count pass across the tree signatures, rows, and the panel. */
+function ledgerSummary() {
+  projectionKey();
+  if (counts) return counts;
+  const owners = new Map<string, { need: number; working: number }>();
+  let need = 0;
+  for (const l of openLooks(units(null))) {
+    const count = owners.get(l.r.owner) ?? { need: 0, working: 0 };
+    if (NEED[l.st]) { count.need++; need++; }
+    if (l.st === "sent") count.working++;
+    owners.set(l.r.owner, count);
+  }
+  return counts = { need, owners };
 }
 
 /** The title of a project Skipper's newest open work: a hand-off it was given, or its own. */
 export function ledgerWorkTitle(project: string): string | null {
-  const r = [...rows].reverse().find((r) => r.bucket !== "finished" && r.state !== "done" && !r.parent && (r.owner === project || (r.kind === "handoff" && r.project === project)))
-    ?? [...rows].reverse().find((r) => r.kind === "handoff" && r.project === project && r.state !== "done");
-  return r ? titleOf(r) : null;
+  indexRows();
+  return workTitles.get(project) ?? null;
 }
 
 /** The coordinator whose pane is the one pane on screen: "grand" or a project. */
@@ -506,8 +594,14 @@ function taskActs(l: Look, fin: boolean): Acts {
   return { click: pane, icons };
 }
 
+const keptRows = new Map<string, { sig: string; row: HTMLElement }>();
+let rowContext = "";
+
 /** One 20px line, with its actions. */
 function line(r: Entry, st: State, label: string, a: Acts, o: { plan?: boolean; kid?: boolean; kid2?: boolean; fin?: boolean; count?: string }): HTMLElement {
+  const sig = JSON.stringify([r, byUid.get(r.parent ?? "")?.kind, st, label, o, rowContext, !!a.click, a.icons.map(([name, tip]) => [name, tip])]);
+  const kept = keptRows.get(r.uid);
+  if (kept?.sig === sig) return kept.row;
   const need = !o.fin && !!NEED[st];
   const row = h("div", `lg-row s-${st}` + (need ? " need" : "") + (o.plan ? " plan" : "") + (o.kid ? " kid" : "") + (o.kid2 ? " kid2" : "") + (o.fin ? " fin" : "") + (a.click ? "" : " dead"));
   row.dataset.key = r.uid;
@@ -534,6 +628,7 @@ function line(r: Entry, st: State, label: string, a: Acts, o: { plan?: boolean; 
   if (o.count) row.append(h("span", "lg-n", o.count));
   row.append(acts);
   if (a.click) row.addEventListener("click", a.click);
+  keptRows.set(r.uid, { sig, row });
   return row;
 }
 
@@ -548,7 +643,7 @@ function mark(r: Entry): HTMLElement {
   const fleet = r.kind === "handoff" ? scopeFleet(r.project) : null;
   if (fleet !== null) return h("span", "lg-tag fleet", fleet.slice(0, 3).toUpperCase());
   const ownFleet = scopeFleet(r.owner) !== null;
-  const tagged = r.kind === "handoff" || ownFleet || (r.owner !== "grand" && !rows.some((p) => p.uid === r.parent && p.kind === "handoff"));
+  const tagged = r.kind === "handoff" || ownFleet || (r.owner !== "grand" && byUid.get(r.parent ?? "")?.kind !== "handoff");
   const p = tagged ? S.projects.find((x) => x.name === (r.kind === "handoff" || ownFleet ? r.project : r.owner)) : null;
   if (!p) return h("span", "lg-dot");
   const tag = h("span", "lg-tag", p.short);
@@ -575,14 +670,16 @@ function unitRows(u: Unit, fin: boolean): HTMLElement[] {
   return [row, ...kids.flatMap((k) => taskRows(k, 1, fin))];
 }
 
-/** What the list draws. The panel is rebuilt only when it changes. */
-function signature(x: Sections): string {
-  const look = (l: Look): unknown[] => [l.r.id, l.r.state, l.r.title, l.r.task, l.r.updated_at, l.r.closed_at, l.r.result_exists, l.r.flushed_at, l.st, l.where, opens(l), l.kids?.map(look)];
-  const unit = (u: Unit) => [u.r.id, u.st, u.r.title, u.r.task, u.r.updated_at, u.r.closed_at, u.r.result_exists, u.r.flushed_at, u.look ? look(u.look) : null, u.kids?.map(look)];
-  const tags = S.projects.map((p) => [p.name, p.short, accent(p)]);
-  const skippers = [...sessions.keys()].map((id) => [id, coordinatorOf(id)]).filter(([, scope]) => scope);
-  return JSON.stringify([error, scopeLabel(), filter(), tags, skippers, x.working.map(unit), x.open.map(unit), x.finished.map(unit)]);
+/** Presentation inputs also affect row marks and fallback actions. */
+function presentationKey(): string {
+  return JSON.stringify([
+    S.projects.map((p) => [p.name, p.short, accent(p)]),
+    [...sessions.keys()].map((id) => [id, coordinatorOf(id)]).filter(([, scope]) => scope),
+    language(),
+  ]);
 }
+
+const sectionRows = new Map<string, HTMLElement>();
 
 /** The panel's list was on screen at the last render, so a change can move. */
 let drawn = false;
@@ -702,9 +799,8 @@ export function renderLedger() {
     renderRail(panel);
     return;
   }
-  const us = units();
-  const x = sections(us);
-  const sig = signature(x);
+  rowContext = presentationKey();
+  const sig = JSON.stringify([projectionKey(), rowContext, scopeLabel(), filter(), loaded, error]);
   let list = panel.querySelector<HTMLElement>(".lg-list");
   let need = panel.querySelector<HTMLElement>(".lg-need");
   const fold = panel.querySelector<HTMLElement>(".lg-head .lg-fold");
@@ -715,6 +811,8 @@ export function renderLedger() {
   if (pick) filterButton(pick);
   if (drawn && list && panel.dataset.sig === sig) return;
   panel.dataset.sig = sig;
+  const us = units();
+  const x = sections(us);
 
   if (!list || !need) {
     need = h("button", "lg-need");
@@ -744,9 +842,6 @@ export function renderLedger() {
   setText(need, tn("ledger.needsYou", n));
 
   const move = drawn && loaded && !still();
-  const before = new Map<string, { top: number; el: HTMLElement }>();
-  if (move) for (const r of list.querySelectorAll<HTMLElement>(".lg-row[data-key]")) before.set(r.dataset.key!, { top: r.offsetTop, el: r });
-
   const out: HTMLElement[] = [];
   if (error) out.push(h("div", "lg-empty", error));
   else if (!x.working.length && !x.open.length && !x.finished.length && filter() !== null) {
@@ -756,10 +851,42 @@ export function renderLedger() {
   }
   for (const [label, part, fin] of [[t("ledger.working"), x.working, false], [t("ledger.open"), x.open, false], [t("ledger.finished"), x.finished, true]] as const) {
     if (!part.length) continue;
-    out.push(h("div", "lg-sec", label));
+    let heading = sectionRows.get(label);
+    if (!heading) sectionRows.set(label, heading = h("div", "lg-sec", label));
+    out.push(heading);
     for (const u of part) out.push(...unitRows(u, fin));
   }
-  list.replaceChildren(...out);
+  const old = [...list.children].filter((r) => !r.classList.contains("ghost")) as HTMLElement[];
+  // Rows have one fixed height; section heads and empty messages can have
+  // another. Equal slots have equal positions, even if their content changed.
+  const slots = (elements: HTMLElement[]) => {
+    const slots = new Map<string, string>();
+    let rows = 0;
+    const heads: string[] = [];
+    for (const el of elements) {
+      if (el.dataset.key) slots.set(el.dataset.key, JSON.stringify([rows++, heads]));
+      else heads.push(el.textContent ?? "");
+    }
+    return slots;
+  };
+  const oldSlots = slots(old);
+  const nextSlots = slots(out);
+  const before = new Map<string, { top?: number; el: HTMLElement }>();
+  // Read only rows whose slots changed or which need a departing ghost.
+  // All reads precede list writes; animate batches the destination reads.
+  if (move) for (const r of old) if (r.dataset.key) {
+    const id = r.dataset.key;
+    before.set(id, { top: oldSlots.get(id) !== nextSlots.get(id) ? r.offsetTop : undefined, el: r });
+  }
+  const keep = new Set(out);
+  for (const r of old) if (!keep.has(r)) r.remove();
+  let at = list.firstElementChild;
+  for (const row of out) {
+    if (row !== at) list.insertBefore(row, at);
+    at = row.nextElementSibling;
+  }
+  const ids = new Set(out.map((r) => r.dataset.key));
+  for (const id of keptRows.keys()) if (!ids.has(id)) keptRows.delete(id);
   if (move) animate(list, before);
   if (keys) light();
   drawn = loaded;

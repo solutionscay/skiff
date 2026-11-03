@@ -114,12 +114,12 @@ test("mixed-scope plans keep qualifying headings without excluded children", () 
     "../app/skiffAgent": { skipperWord: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
     "./model": MODEL,
     "./profile": { ledgerScope: () => ({ names: new Set(["A"]) }) },
-    "../app/state": { S: {}, sessions: new Map() },
+    "../app/state": { S: { projects: [] }, sessions: new Map() },
     "../app/stateQueries": { shownIds: () => [], accent: () => "" },
   }, {
     document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
   }, "\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units };\n");
-  const plan = (uid: string, project: string) => ({ id: 1, uid, kind: "plan", project, state: "pending", closed_at: null });
+  const plan = (uid: string, project: string) => ({ id: 1, uid, task: uid, kind: "plan", project, state: "pending", closed_at: null });
   const task = (uid: string, parent: string, project: string) => ({ id: 2, uid, kind: "task", project, parent, state: "done", closed_at: null });
   const rows = [
     plan("global", ""), task("hidden-global-child", "global", "B"),
