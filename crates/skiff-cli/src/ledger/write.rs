@@ -1,6 +1,6 @@
 //! The write side: inserts, the owner and the caller's authority, sends, state changes, closing, reopening and pruning.
 use super::paths::{label, make_work_folder, new_uid, result_in, results_dir, work_folder};
-use super::read::{head, join, live, one, project_of, state, top, under};
+use super::read::{head, join, join_handoff, live, one, project_of, state, top, under};
 use super::delivery;
 use super::schema::{open_at, NOW};
 use crate::{resolve, sessions};
@@ -44,7 +44,7 @@ pub(super) struct New {
 /// Returns the id, the uid, the result path and the plan's uid.
 pub(super) fn insert(db: &mut Connection, file: &Path, n: New) -> Result<(i64, String, String, Option<String>)> {
     let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let parent = n.parent.as_deref().map(|p| join(&tx, file, p)).transpose()?;
+    let parent = n.parent.as_deref().map(|p| if n.handoff { join_handoff(&tx, file, p) } else { join(&tx, file, p) }).transpose()?;
     let uid = new_uid(&tx)?;
     // A hand-off's folder goes with the project Skipper's, not in the plan's folder.
     let (results, above) = if n.handoff { (results_dir(file, &n.project), None) } else { (results_dir(file, &n.owner), parent.as_ref()) };
@@ -376,8 +376,9 @@ pub(super) fn message(row: &Row) -> String {
         let path = row.result_path.as_deref().unwrap_or("your results folder");
         let folder = row.work_dir.as_deref().map(|d| format!(" Put everything for this hand-off in {d}. Your tasks for it get their folders in it.")).unwrap_or_default();
         return format!(
-            "Hand-off {uid}: {task}{folder} Add your tasks for it with --parent {uid}. When they are done, write the result to {path}, then run: skiff ledger update {uid} --state done --result {path}",
-            uid = row.uid
+            "Hand-off {uid}: {task}{folder} Add your tasks for it with --parent {uid}. When they are done, write the result to {path}, then run: skiff ledger update {uid} --state done --result {path}{brief}",
+            uid = row.uid,
+            brief = super::brief::pointer(row).unwrap_or_default()
         );
     }
     match (row.work_dir.as_deref(), row.result_path.as_deref()) {
