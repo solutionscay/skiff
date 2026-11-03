@@ -80,7 +80,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "2ed7468d22fbd7e061e54af82e339ea75066993b256cb9a5a1eb2dd095958200"
+    "sha256": "92a8d07875ddb1e722148ee7037b73566d0d6df276914fa4acade32ed4104443"
   },
   "apps/desktop/src-tauri/src/connection/daemon.rs": {
     "ownership": "M1a\u2013M1e selected-local Host owner; M4 data-plane owner (skiff-host paired by host_id); endpoint-local process control for skiffd and skiff-host spawn/stop; existing local lifecycle/legacy client adapter; remote refused-channel probe (read-only, skiff-client check) to name its cause; This Mac's capability list adds agent_config@1, skipper_config@1, skipper@1, skipper_file@1, skipper_run@1 and session_agents@1, which this app's local adapter serves; AppImage copy-out (#183): this app's own skiffd and skiff-host, copied to this computer's data folder",
@@ -94,7 +94,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "73cd50d3bb0b50e03d32673ba88415dd4d63e523e94df4de6e0f870f1a2c6a3f"
+    "sha256": "072b23272b72c05950d02f757aded380313cc6d834472fee0c41fe048c1c49f1"
   },
   "apps/desktop/src-tauri/src/connection/data_plane.rs": {
     "ownership": "M1a\u2013M1e selected-local Host owner; M4 data-plane owner (skiff-host paired by host_id); endpoint-local process control for skiffd and skiff-host spawn/stop; existing local lifecycle/legacy client adapter; remote refused-channel probe (read-only, skiff-client check) to name its cause; This Mac's capability list adds agent_config@1, skipper_config@1, skipper@1, skipper_file@1, skipper_run@1 and session_agents@1, which this app's local adapter serves; AppImage copy-out (#183): this app's own skiffd and skiff-host, copied to this computer's data folder",

@@ -16,7 +16,7 @@ use data_plane::*;
 use process::*;
 use remote::*;
 pub(crate) use data_plane::{data_read, data_write, ensure_host, keep_revision, project_write, DataPlaneStatus};
-pub(crate) use daemon::{check_daemon, compare_versions, restart_warning, status_now};
+pub(crate) use daemon::{check_daemon, compare_versions, daemon_status, restart_daemon, restart_warning, status_now, __cmd__daemon_status, __cmd__restart_daemon, __tauri_command_name_daemon_status, __tauri_command_name_restart_daemon};
 pub(crate) use process::{bundled, daemon_binary};
 
 #[derive(Default)]
@@ -344,36 +344,6 @@ pub(crate) async fn data_plane_status(app: State<'_, App>) -> Result<DataPlaneSt
     Ok(data_status(&app).await)
 }
 
-/// Stops the running daemon, which ends its sessions, and starts a new one.
-#[tauri::command]
-pub(crate) async fn restart_daemon(app: State<'_, App>) -> Result<DaemonStatus, String> {
-    {
-        let mut guard = app.host.lock().await;
-        // A peer pid is the local socket's peer: signal it only for a local endpoint.
-        let selection = app.selection();
-        let control = selection.process_control().ok_or("skiffd on this Host is not managed by this app")?;
-        let pid = match guard.as_ref() {
-            Some(host) => host.client().daemon_pid,
-            None => selection.connect().await.ok().and_then(|c| c.client().daemon_pid),
-        };
-        *guard = None;
-        *app.live.lock().unwrap() = None;
-        if let Some(pid) = pid {
-            if !stop_daemon(&control, pid, true).await {
-                return Err(format!("skiffd (pid {pid}) did not stop"));
-            }
-        }
-        *app.warning.lock().await = None;
-        *app.failed.lock().unwrap() = None;
-        *app.no_reload.lock().unwrap() = None;
-        *app.reload.lock().await = None;
-    }
-    for (_, task) in app.subs.lock().await.drain() {
-        task.abort();
-    }
-    daemon_status(app).await
-}
-
 pub(crate) fn err(e: anyhow::Error) -> String {
     format!("{e:#}")
 }
@@ -381,11 +351,6 @@ pub(crate) fn err(e: anyhow::Error) -> String {
 /// Runs a call that may wait, such as a file lock, off the async workers.
 pub(crate) async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> Result<T, String> {
     tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?.map_err(err)
-}
-
-#[tauri::command]
-pub(crate) async fn daemon_status(app: State<'_, App>) -> Result<DaemonStatus, String> {
-    Ok(status_now(&app).await)
 }
 
 #[cfg(test)]
