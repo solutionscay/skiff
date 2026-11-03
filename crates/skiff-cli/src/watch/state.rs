@@ -43,6 +43,9 @@ pub(super) struct Watcher {
     /// Lines of the watcher's own, such as a fleet change, until the agent
     /// takes them.
     pub(super) lines: Vec<String>,
+    /// The hand-offs whose tasks are all done, as last read, each told once.
+    /// A hand-off leaves it when it is done, reopened or has an open task.
+    pub(super) ready: HashSet<String>,
     /// The plan of each pane whose open tasks are all `sent` and in one plan,
     /// by pane key, as last read. Its idle line waits for the plan.
     plan_of: HashMap<String, String>,
@@ -399,6 +402,24 @@ impl Watcher {
             .collect();
         self.held.extend(wakes.iter().cloned());
         wakes
+    }
+
+    /// Takes the open hand-offs of this watcher's coordinator whose tasks are
+    /// all done. Each one new since the last read holds one line, which tells
+    /// the Skipper to write its result and set the hand-off done. A hand-off
+    /// that left the list is forgotten with its unsent line, so a reopened
+    /// one is told again.
+    pub(super) fn handoffs_ready(&mut self, rows: &[ledger::Row]) {
+        let now: HashSet<String> = rows.iter().map(|r| r.uid.clone()).collect();
+        self.ready.retain(|u| now.contains(u));
+        self.lines.retain(|l| !l.starts_with("hand-off ") || now.iter().any(|u| l.contains(u.as_str())));
+        for r in rows.iter().filter(|r| self.ready.insert(r.uid.clone())) {
+            let path = r.result_path.as_deref().unwrap_or("PATH");
+            self.lines.push(format!(
+                "hand-off {uid}: every task is done. Write your result to {path}, then run skiff ledger update {uid} --state done --result {path}",
+                uid = r.uid
+            ));
+        }
     }
 
     /// Notes the plan of each pane in `groups`, and how far each such plan

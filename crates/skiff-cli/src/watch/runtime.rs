@@ -287,6 +287,14 @@ pub(super) async fn step(c: &Client, o: &Options, ws: &mut Watchers) -> Result<O
             Vec::new()
         }
     };
+    let ready = match ledger::handoffs_ready() {
+        Ok(rows) => on_socket(rows, &here).0,
+        Err(e) => {
+            log(format!("cannot read the finished hand-offs: {e:#}"));
+            Vec::new()
+        }
+    };
+    tell_ready(ws, &targets, &ready);
     let told = route(ws, &targets, &tasks, &gone, &handed, &plan_rows, &all);
     for (owner, wake) in told {
         let to = if owner == ledger::GRAND { String::new() } else { format!(" (to the {owner} Skipper)") };
@@ -341,6 +349,15 @@ pub(super) fn route(
         told.extend(wakes.into_iter().map(|wk| (owner.clone(), wk)));
     }
     told
+}
+
+/// Gives each project or fleet Skipper the ready hand-offs of its scope.
+/// The grand Skipper gets none: it hears of the report, not of the wait.
+pub(super) fn tell_ready(ws: &mut Watchers, targets: &[(String, &SessionInfo)], ready: &[ledger::Row]) {
+    for (owner, _) in targets.iter().filter(|(o, _)| o != ledger::GRAND) {
+        let mine: Vec<ledger::Row> = ready.iter().filter(|r| r.project == *owner).cloned().collect();
+        ws.entry(owner.clone()).or_default().handoffs_ready(&mine);
+    }
 }
 
 /// Types the held lines of `owner`'s watcher into its coordinator `skipper`

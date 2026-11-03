@@ -26,10 +26,10 @@ use paths::{label, make_work_folder, new_uid, result_in, work_folder};
 pub use paths::results_dir;
 use write::*;
 pub use write::{claim, Caller, SendOpts};
-pub use read::{close_gone, gone_unreported, handed_back, open_tasks, plan_tasks, unreported};
+pub use read::{close_gone, gone_unreported, handed_back, handoffs_ready, open_tasks, plan_tasks, unreported};
 use read::{container, head, join, keep, live, one, pane, print_one, print_rows, project_of, rank, state, sweep, top, tree, under, View};
 #[cfg(test)]
-use read::{close_gone_in, open_tasks_at, unreported_at};
+use read::{close_gone_in, handoffs_ready_in, open_tasks_at, unreported_at};
 #[cfg(test)]
 use schema::{OWNER, TASKS, UIDS};
 #[cfg(test)]

@@ -690,3 +690,50 @@ fn finds_an_empty_box_and_a_draft() {
     assert_eq!(front(&rows(&["* Working (2s · esc to interrupt)", &rule, "❯", &rule]), "claude"), Front::Busy);
     assert_eq!(front(&rows(&["$ ls", "a b"]), "claude"), Front::NoBox);
 }
+
+#[test]
+fn a_ready_hand_off_wakes_its_own_skipper_once_and_never_the_grand_one() {
+    let mut grand = info("aaaa1111", "idle", false);
+    grand.coordinator = true;
+    let skipper = |id: &str, scope: &str| {
+        let mut s = info(id, "idle", false);
+        s.skipper = Some(scope.into());
+        s
+    };
+    let all = [grand, skipper("bbbb2222", "gesher"), skipper("cccc3333", "fleet:ops")];
+    let targets = targets(&all);
+    let hand = |uid: &str, scope: &str| ledger::Row { kind: "handoff".into(), project: scope.into(), result_path: Some(format!("/r/{uid}.md")), ..row(1, uid, "", "sent", None) };
+    let ready = [hand("u3", "gesher"), hand("u4", "fleet:ops")];
+    let mut ws = Watchers::default();
+    tell_ready(&mut ws, &targets, &ready);
+    // Project and fleet routing: each Skipper gets its own line, Admiral none.
+    assert_eq!(ws["gesher"].lines.len(), 1);
+    assert_eq!(ws["fleet:ops"].lines.len(), 1);
+    assert!(ws.get("grand").is_none_or(|w| w.lines.is_empty()));
+    assert!(ws["gesher"].lines[0].contains("u3") && !ws["gesher"].lines[0].contains("u4"));
+    assert_eq!(
+        ws["gesher"].lines[0],
+        "hand-off u3: every task is done. Write your result to /r/u3.md, then run skiff ledger update u3 --state done --result /r/u3.md"
+    );
+    // Sent once: the same read again adds nothing, and the sent line stays sent.
+    tell_ready(&mut ws, &targets, &ready);
+    assert_eq!(ws["gesher"].lines.len(), 1);
+    ws.get_mut("gesher").unwrap().lines.clear();
+    tell_ready(&mut ws, &targets, &ready);
+    assert!(ws["gesher"].lines.is_empty());
+    // Reopened (left the list), then ready again: told again. A line not yet sent is dropped on the way.
+    tell_ready(&mut ws, &targets, &ready[1..]);
+    assert_eq!(ws["fleet:ops"].lines.len(), 1);
+    tell_ready(&mut ws, &targets, &[]);
+    assert!(ws["fleet:ops"].lines.is_empty());
+    tell_ready(&mut ws, &targets, &ready);
+    assert_eq!(ws["gesher"].lines.len(), 1);
+    // The Skipper reports: Admiral alone hears the `Reported` line.
+    tell_ready(&mut ws, &targets, &[]);
+    let done = ledger::Row { state: "done".into(), ..hand("u3", "gesher") };
+    assert!(ws.entry("grand".into()).or_default().handed(&[], &[]).is_empty());
+    let told = route(&mut ws, &targets, &[], &[], &[done], &[], &all);
+    let told: Vec<_> = told.iter().map(|(o, w)| (o.as_str(), w.fact)).collect();
+    assert_eq!(told, [("grand", Fact::Reported)]);
+    assert!(ws["gesher"].lines.is_empty());
+}

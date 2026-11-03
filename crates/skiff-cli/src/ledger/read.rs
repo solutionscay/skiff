@@ -126,6 +126,27 @@ pub fn handed_back() -> Result<Vec<Row>> {
     rows(&super::open_at(&file)?, "WHERE kind = 'handoff' AND state = 'done' AND gone_at IS NULL AND reported_at IS NULL", None)
 }
 
+/// The open hand-offs with at least one task, every task done: the project
+/// or fleet Skipper has only to report them. `skiff watch` tells that
+/// Skipper once. No `ledger.db` yet gives none.
+pub fn handoffs_ready() -> Result<Vec<Row>> {
+    let file = path()?;
+    if !file.exists() {
+        return Ok(Vec::new());
+    }
+    handoffs_ready_in(&super::open_at(&file)?)
+}
+
+pub(super) fn handoffs_ready_in(db: &Connection) -> Result<Vec<Row>> {
+    rows(
+        db,
+        "WHERE kind = 'handoff' AND state IN ('sent', 'pending', 'blocked') AND gone_at IS NULL
+         AND EXISTS (SELECT 1 FROM tasks t WHERE t.parent = tasks.uid AND t.kind IN ('task', 'handoff'))
+         AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.parent = tasks.uid AND t.state <> 'done')",
+        None,
+    )
+}
+
 pub(super) fn state(s: &str) -> Result<&str> {
     match STATES.iter().find(|x| **x == s) {
         Some(x) => Ok(x),

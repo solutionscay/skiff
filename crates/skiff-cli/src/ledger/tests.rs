@@ -1054,3 +1054,31 @@ fn a_retiring_skipper_is_refused() {
     f.skipper = Some("fleet:Harbor".into());
     assert_eq!(writer(Some("fleet0000000"), Some(&f), None, live, false), Writer::Yes(Caller::Project("fleet:Harbor".into())));
 }
+
+#[test]
+fn a_hand_off_is_ready_when_it_has_tasks_and_all_are_done() {
+    let dir = scratch("handoff-ready");
+    let file = dir.join("ledger.db");
+    let mut db = open_at(&file).unwrap();
+    let ready = |db: &Connection| handoffs_ready_in(db).unwrap().into_iter().map(|r| r.uid).collect::<Vec<_>>();
+    let (_, h, _, _) = insert(&mut db, &file, New { handoff: true, project: "web".into(), ..task("h") }).unwrap();
+    // No tasks: not ready.
+    assert!(ready(&db).is_empty());
+    let sub = |state: &str| New { parent: Some(h.clone()), owner: "web".into(), state: state.into(), ..task("k") };
+    let (_, a, _, _) = insert(&mut db, &file, sub("done")).unwrap();
+    let (_, b, _, _) = insert(&mut db, &file, sub("sent")).unwrap();
+    // One task open: not ready.
+    assert!(ready(&db).is_empty());
+    let set = |db: &Connection, uid: &str, st: &str| db.execute("UPDATE tasks SET state = ?1 WHERE uid = ?2", params![st, uid]).map(drop).unwrap();
+    set(&db, &b, "done");
+    assert_eq!(ready(&db), [h.clone()]);
+    // A task reopened, or added, takes it back.
+    set(&db, &a, "sent");
+    assert!(ready(&db).is_empty());
+    set(&db, &a, "done");
+    insert(&mut db, &file, sub("pending")).unwrap();
+    assert!(ready(&db).is_empty());
+    // Done: no longer open.
+    db.execute("UPDATE tasks SET state = 'done'", []).unwrap();
+    assert!(ready(&db).is_empty());
+}
