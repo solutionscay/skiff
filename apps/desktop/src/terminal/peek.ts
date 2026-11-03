@@ -22,9 +22,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { handleOsc52 } from "./osc52";
 import { copyText, pasteText } from "../platform/clipboard";
-import { FitAddon } from "@xterm/addon-fit";
-import { Terminal } from "@xterm/xterm";
-import { $, h } from "../ui/dom";
 import { showError } from "../ui/alerts";
 import { appKey, currentRow, itemKey } from "../app/keyboard";
 import { render } from "../app/renderRequest";
@@ -44,9 +41,9 @@ import { hostInvoke } from "../app/hostCaps";
 import { dataEpoch } from "../app/dataPlane";
 import { hostName } from "../app/hosts";
 import type { HostDiff, HostFile } from "../platform/types";
-import { allChanges, buildCard, cardAction, cardFrame, clearCard, mountCard, peekHead, slot } from "./peekCard";
+import { allChanges, buildCard, cardAction, cardFrame, clearCard, mountCard, slot } from "./peekCard";
 import { diffBody } from "./diffView";
-import { exitAction, tookTerminal, type Peek } from "./peekTerminal";
+import { exitAction, newPeek, tookTerminal, type Peek } from "./peekTerminal";
 import { hostFileFrame, renderHostFile, showHostView, type Gate } from "./peekHostView";
 import { splitPath } from "../workspace/paths";
 
@@ -495,32 +492,11 @@ function retire(p: Peek) {
 function frame(mine: number, kind: string, title: string, where: string, program: string, request: string): Peek {
   if (open) retire(open);
   open = null;
-  const el = h("div", "peek pending");
-  el.setAttribute("role", "dialog");
-  el.setAttribute("aria-label", title);
-  const head = peekHead(kind, title, where, closePreview);
-  const box = h("div", "peek-body");
-  el.append(head, box);
-  // Laid out but not visible, so the terminal has its real size from the start.
-  $("main").appendChild(el);
-
-  const term = new Terminal({
-    theme: TERM_THEME,
-    fontFamily: FONT,
-    fontSize: S.fontSize,
-    lineHeight: 1.2,
-    cursorBlink: true,
-    scrollback: 10000,
-    allowProposedApi: true,
+  const p = newPeek({
+    gen: mine, kind, request, title, where, program, close: closePreview,
+    theme: TERM_THEME, font: FONT, fontSize: S.fontSize, prepare: handleOsc52, onResize: resized,
   });
-  handleOsc52(term);
-  const fit = new FitAddon();
-  term.loadAddon(fit);
-  term.open(box);
-  const p: Peek = {
-    gen: mine, kind, request, el, term, fit, resize: new ResizeObserver(() => resized(p)),
-    session: null, program, shown: false, exited: false, interactive: false, got: false, timer: 0,
-  };
+  const term = p.term;
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== "keydown") return true;
     // After the command ends, any key closes the peek.
@@ -549,9 +525,8 @@ function frame(mine: number, kind: string, title: string, where: string, program
   term.onData((data) => {
     if (p.session && !p.exited) hostInvoke("session_terminal", "pty_write", { session: p.session, data }).catch(console.error);
   });
-  p.resize.observe(box);
   open = p;
-  fit.fit();
+  p.fit.fit();
   return p;
 }
 

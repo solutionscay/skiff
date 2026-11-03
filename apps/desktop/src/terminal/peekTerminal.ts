@@ -3,10 +3,12 @@
  * what its terminal holds. It owns no controller state. peek.ts decides what
  * to do with the answers.
  */
-import type { FitAddon } from "@xterm/addon-fit";
-import type { Terminal } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import { Terminal, type ITheme } from "@xterm/xterm";
 import { keyLabel } from "../app/keys";
+import { $, h } from "../ui/dom";
 import { t } from "../i18n";
+import { peekHead } from "./peekCard";
 
 export interface Peek {
   /** The preview this command belongs to. */
@@ -29,6 +31,58 @@ export interface Peek {
   /** Output came. The terminal may not have parsed it yet. */
   got: boolean;
   timer: number;
+}
+
+/** What `newPeek` needs. The facade passes the theme, font and size, so this file reads no app state. */
+export interface NewPeek {
+  gen: number;
+  kind: string;
+  request: string;
+  title: string;
+  where: string;
+  program: string;
+  close: () => void;
+  theme: ITheme;
+  font: string;
+  fontSize: number;
+  /** Runs on the terminal before it opens. */
+  prepare: (term: Terminal) => void;
+  onResize: (p: Peek) => void;
+}
+
+/**
+ * Builds the command's element and terminal, laid out but not visible, so the
+ * terminal has its real size from the start. The caller adds the key handler
+ * and the input handler.
+ */
+export function newPeek(o: NewPeek): Peek {
+  const el = h("div", "peek pending");
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-label", o.title);
+  const head = peekHead(o.kind, o.title, o.where, o.close);
+  const box = h("div", "peek-body");
+  el.append(head, box);
+  $("main").appendChild(el);
+
+  const term = new Terminal({
+    theme: o.theme,
+    fontFamily: o.font,
+    fontSize: o.fontSize,
+    lineHeight: 1.2,
+    cursorBlink: true,
+    scrollback: 10000,
+    allowProposedApi: true,
+  });
+  o.prepare(term);
+  const fit = new FitAddon();
+  term.loadAddon(fit);
+  term.open(box);
+  const p: Peek = {
+    gen: o.gen, kind: o.kind, request: o.request, el, term, fit, resize: new ResizeObserver(() => o.onResize(p)),
+    session: null, program: o.program, shown: false, exited: false, interactive: false, got: false, timer: 0,
+  };
+  p.resize.observe(box);
+  return p;
 }
 
 /**
