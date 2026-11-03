@@ -15,7 +15,7 @@ import { fleetScope, fleetSkipperOf, skiffAgentFolder, syncSkiffAgent } from "..
 import { step, tally } from "../diagnostics/stalls";
 import { t } from "../i18n";
 import { renderSkippers, renderViewToggle, skippersOn } from "./skippersView";
-import { anchorOf, keepAnchor, restoreFocus, type Caret } from "./sidebarFocus";
+import { anchorOf, keepAnchor, restoreFocus, type Anchor, type Caret } from "./sidebarFocus";
 import { applyLook, look, sessionBlock, setChildren } from "./sessionRows";
 import { projectSkipperRow, skiffAgentRow, skipperSig, syncSkipperRow } from "./skipperRows";
 import { AGENT_BLOCK, OTHER_BLOCK, OUTSIDE_BLOCK, listGeneration, outsideSig, projectBlockKey, sidebarSig } from "./sidebarSig";
@@ -67,7 +67,7 @@ export function renderSidebar() {
   // change alone moves no row: no read, no layout forced, no focus to put back.
   let items: HTMLElement[] | undefined;
   let near: string[] = [];
-  let anchor: ReturnType<typeof anchorOf> = null;
+  let anchor: Anchor | null = null;
   const takeAnchor = () => {
     if (items) return;
     items = listItems();
