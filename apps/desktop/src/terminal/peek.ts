@@ -35,7 +35,7 @@ import { rowActs } from "../workspace/rowActs";
 
 import { panes } from "./terminalState";
 import { fitShown } from "./terminal";
-import { FONT, TERM_THEME } from "./terminalRuntime";
+import { coverPanes, FONT, TERM_THEME } from "./terminalRuntime";
 import { t } from "../i18n";
 import { hostInvoke } from "../app/hostCaps";
 import { dataEpoch } from "../app/dataPlane";
@@ -317,13 +317,14 @@ function closePeek(hold = false) {
   }
   // A card with an action stays: the app opened from it runs on.
   if (slot.el && cardAction()) {
+    coverPanes(true);
     slot.el.hidden = false;
     if (hadKeys || active?.keys) giveKeys();
     return peekEnded();
   }
   if (active) active.closed = true;
   clearCard();
-  if (p.shown) repaintPanes();
+  repaintPanes();
   peekEnded();
   if (!hadKeys) return;
   // The keys go back to the row the user left.
@@ -357,6 +358,7 @@ export function closePreview() {
 const keysIn = (el: HTMLElement) => el.contains(document.activeElement) || document.activeElement === document.body;
 
 function repaintPanes() {
+  coverPanes(false);
   // Refit and repaint the live panes after the overlay leaves the screen.
   fitShown();
   for (const pane of panes.values()) {
@@ -371,6 +373,7 @@ function showCard(mine: number, kind: string, path: string, label?: string, act?
 
 /** Puts `el` up as the card. Under a shown command it is hidden. */
 function mount(el: HTMLElement) {
+  coverPanes(true);
   const hadKeys = mountCard(el, { close: closePreview, fold: () => { if (active) rowActs(active.key)?.fold?.(); } });
   if (open?.shown) el.hidden = true;
   else if (hadKeys || active?.keys) giveKeys();
@@ -498,8 +501,11 @@ function retire(p: Peek) {
 }
 
 function frame(mine: number, kind: string, title: string, where: string, program: string, request: string): Peek {
+  const wasShown = open?.shown;
   if (open) retire(open);
   open = null;
+  // A replacement command starts hidden. The panes can show until it takes the terminal.
+  if (wasShown && (!slot.el || slot.el.hidden)) repaintPanes();
   const p = newPeek({
     gen: mine, kind, request, title, where, program, close: closePreview,
     theme: TERM_THEME, font: FONT, fontSize: S.fontSize, prepare: handleOsc52, onResize: resized,
@@ -542,6 +548,7 @@ function frame(mine: number, kind: string, title: string, where: string, program
 function show(p: Peek) {
   if (open !== p || !live(p.gen)) return;
   if (p.shown && !p.el.hidden) return;
+  coverPanes(true);
   p.el.hidden = false;
   p.shown = true;
   clearTimeout(p.timer);

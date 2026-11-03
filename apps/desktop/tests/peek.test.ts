@@ -64,7 +64,7 @@ class El {
   }
 }
 
-function viewer() {
+function viewer(coverPanes = (_covered: boolean) => {}) {
   const main = new El("main");
   const document = { activeElement: null as unknown, addEventListener() {} };
   const h = (tag: string, cls = "", text = "") => new El(tag, cls, text);
@@ -89,6 +89,7 @@ function viewer() {
       "../workspace/rowActs": { rowActs: (key: string) => ({ preview: rows[key] }) },
       "./terminalState": { panes: new Map() },
       "./terminal": { fitShown() {} },
+      "./terminalRuntime": { coverPanes },
       "../app/hostCaps": {
         hostInvoke: (_cap: string, cmd: string, args: unknown) =>
           new Promise((ok, fail) => reads.push({ cmd, args: JSON.parse(JSON.stringify(args)), settle: { ok, fail } })),
@@ -168,4 +169,46 @@ test("a row's own preview after a result is read again as the row's, not as the 
   v.newConnection();
   v.mod.refreshHostDiff();
   assert.deepEqual(v.reads.map((r) => r.cmd), ["read_file"]);
+});
+
+
+test("covered panes skip queued and direct draws through renderer changes and late preview replies", async () => {
+  const runtime = moduleFromSource("../src/terminal/terminalRuntime.ts", {}, {
+    document: { fonts: { load: () => Promise.resolve([]) } },
+    window: { addEventListener() {} },
+  }, "\nexports.gatePaneRendering = gatePaneRendering;");
+  let draws = 0;
+  let events = 0;
+  const renderer = () => ({ renderRows(_start = 0, _end = 23) { draws++; } });
+  const service = {
+    _renderer: { value: renderer() },
+    _renderRows(start: number, end: number) { this._renderer.value.renderRows(start, end); events++; },
+    setRenderer(value: ReturnType<typeof renderer>) { this._renderer.value = value; },
+  };
+  runtime.gatePaneRendering({ _core: { _renderService: service }, modes: { synchronizedOutputMode: false } });
+  const queued = () => service._renderRows(0, 23);
+  const v = viewer(runtime.coverPanes);
+  v.mod.openLedgerResult("old", "Old");
+  const old = v.reads.shift()!;
+  queued();
+  service._renderer.value.renderRows();
+  service.setRenderer(renderer());
+  queued();
+  service._renderer.value.renderRows();
+  assert.equal(draws, 0);
+  assert.equal(events, 0);
+  v.mod.closePreview();
+  v.mod.openLedgerResult("new", "New");
+  old.settle.ok(v.text("stale"));
+  await flush();
+  queued();
+  assert.equal(draws, 0);
+  assert.doesNotMatch(v.card(), /stale/);
+  v.mod.closePreview();
+  v.reads.shift()!.settle.ok(v.text("late"));
+  await flush();
+  queued();
+  assert.equal(draws, 1);
+  assert.equal(events, 1);
+  assert.equal(v.mod.previewOnScreen(), false);
 });

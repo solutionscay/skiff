@@ -69,6 +69,51 @@ export function openPane(id: string): Promise<Pane> {
   return pending;
 }
 
+/** A mounted preview covers the terminal area, including panes still opening. */
+let panesCovered = false;
+
+/** The preview controller releases the gate before it requests the full repaint. */
+export function coverPanes(covered: boolean) {
+  panesCovered = covered;
+}
+
+/**
+ * xterm 6 has no public render pause. Gate its final render callback so even
+ * a frame queued before the preview opened cannot paint through it. Keep
+ * refreshRows running: it owns the synchronized-output timeout and modes.
+ * DOM selection and focus updates also draw rows directly, so gate each
+ * renderer when xterm installs it. Parsing, acknowledgements,
+ * selection and the viewport remain live; uncover requests one full refresh.
+ */
+function gatePaneRendering(term: Terminal) {
+  type Renderer = { renderRows(start: number, end: number): void };
+  const { _renderService: service } = (term as unknown as {
+    _core: { _renderService: {
+      _renderer: { value: Renderer | undefined };
+      _renderRows(start: number, end: number): void;
+      setRenderer(renderer: Renderer | undefined): void;
+    } };
+  })._core;
+  const gateRenderer = (renderer: Renderer | undefined) => {
+    if (!renderer) return;
+    const renderRows = renderer.renderRows;
+    renderer.renderRows = (start, end) => {
+      if (!panesCovered) renderRows.call(renderer, start, end);
+    };
+  };
+  gateRenderer(service._renderer.value);
+  const setRenderer = service.setRenderer;
+  service.setRenderer = (renderer) => {
+    gateRenderer(renderer);
+    setRenderer.call(service, renderer);
+  };
+  const renderRows = service._renderRows;
+  service._renderRows = (start, end) => {
+    // A queued frame can start xterm's mode 2026 timeout without drawing.
+    if (!panesCovered || term.modes.synchronizedOutputMode) renderRows.call(service, start, end);
+  };
+}
+
 export const FONT = "JetBrains Mono, ui-monospace, monospace";
 
 /**
@@ -109,6 +154,7 @@ async function createPane(id: string): Promise<Pane> {
   box.className = "term-box";
   el.appendChild(box);
   term.open(box);
+  gatePaneRendering(term);
 
   // Returning false keeps the key out of the PTY. The window listener acts on it.
   term.attachCustomKeyEventHandler((e) => {
