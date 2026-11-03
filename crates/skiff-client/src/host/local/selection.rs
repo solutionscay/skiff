@@ -221,10 +221,13 @@ impl HostSelection {
                 }
             }
         }
-        let open = forward.as_ref().expect("forward is open");
-        let client = match Client::connect(open.socket()).await {
-            Ok(client) => client,
-            Err(e) => return Err(open.diagnose().map(Into::into).unwrap_or(e)),
+        let open = forward.as_mut().expect("forward is open");
+        let client = match open.connect().await {
+            Ok(stream) => Client::from_stream(stream),
+            Err(e) => {
+                let e = anyhow::Error::new(e).context(format!("connect {}", open.socket().display()));
+                return Err(open.diagnose().map(Into::into).unwrap_or(e));
+            }
         };
         client.limit_input(REMOTE_INPUT_LIMIT);
         Ok(PendingConnection {

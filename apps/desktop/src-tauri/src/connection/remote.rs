@@ -330,7 +330,8 @@ mod tests {
             assert!(changed(&try_remote(&app, &first, "fixture", None, file.clone()).await), "the same selection accepted B");
             drop(first);
             let rebuilt = selection(disk_pin().as_deref());
-            assert!(changed(&try_remote(&app, &rebuilt, "fixture", None, file.clone()).await), "a rebuilt selection accepted B");
+            let r = try_remote(&app, &rebuilt, "fixture", None, file.clone()).await;
+            assert!(changed(&r), "a rebuilt selection accepted B: {:?}", r.err());
             assert_eq!(disk_pin().as_deref(), Some("A"));
         });
         let _ = std::fs::remove_dir_all(&dir);
