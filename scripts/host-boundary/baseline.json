@@ -373,14 +373,14 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "f90436e392ae2f2eec2f39e928b8177109799f930e967ede33525c4e035f3cc7"
+    "sha256": "6fbfa0cb78e4c1f283cc784450196a8bccec34599fa2e8c47345bb99819f129c"
   },
   "apps/desktop/src/app/connectPanel.ts": {
     "ownership": "client policy (#166): the connecting panel; listens only to this client's own SSH connect lines (skiff:connect-line), before any Host answers; no Host data",
     "reasons": [
       "@tauri-apps/api/event"
     ],
-    "sha256": "baf6931fde57f419711c364e57fa059aaaef5a5327d439f4beb7f199088cd333"
+    "sha256": "c48acda115afefb77db77ec7b43ef71cd1be80d3a1b12af53e4321f1c8c117f2"
   },
   "apps/desktop/src/app/daemon.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -389,7 +389,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "4c8a35c5eb42bb85c137dd976408da10baed1fc519623a6c4669b6839941b037"
+    "sha256": "6e3a34ce9af60597dab78cfa0c340cc16413b87e165bf2f2638edb08bedfd440"
   },
   "apps/desktop/src/app/daemonRestart.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -405,7 +405,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "ed39a5ed97e464e41910684374513c2523ebf12ddcab233dd8629df804e7be05"
+    "sha256": "e2205161b05636c843245e9d9d4b2ef1bc38eb359f9442319983ccaff0e9ce51"
   },
   "apps/desktop/src/app/groups.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -470,7 +470,7 @@
       "local provider: apps/desktop/src/terminal/terminal.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "d552c8b69cd1d28ccd024f0522d442cafcf774a1611b0fcbdbaa1bb531f743cb"
+    "sha256": "ba17004628b11e2839a91c7023e1fc82383764dc5c08ef78438d686e71f5360b"
   },
   "apps/desktop/src/app/panels.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -518,7 +518,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "0ab618ee82f958ecb9f760454cce2d456a47d56d18bb1f288e9ca9bd382c9bf4"
+    "sha256": "5fd88a1036f7d22e41ecb8925dca1962e9454033fef9868bdff2ee637b6e6e20"
   },
   "apps/desktop/src/app/state.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -533,7 +533,7 @@
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/appearance/appTheme.ts"
     ],
-    "sha256": "be22cf7341925993b691a206a0ec3b6c138f1d70ed2bec486d788d886097aa6b"
+    "sha256": "b26f5e6bfb3232c152a15ca19740fc73d1bb87159398098802bd8fb618cd10dc"
   },
   "apps/desktop/src/app/updater.ts": {
     "ownership": "client policy (#183): this app's own update from the release's latest.json, its version and relaunch; no Host data",
@@ -552,7 +552,7 @@
       "local provider: apps/desktop/src/appearance/appTheme.ts",
       "local provider: apps/desktop/src/appearance/themes.ts"
     ],
-    "sha256": "141ac7b76ef21dac4472ae9c0bd9ef52809537e4f46680d54ce03bfd1a68ccd9"
+    "sha256": "1d5e06921ce1284e7ddd093741ad6db895ffdc73ae5f6a006f783d6a290ce916"
   },
   "apps/desktop/src/appearance/appTheme.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -590,7 +590,7 @@
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/app/stateQueries.ts"
     ],
-    "sha256": "4437e69ad4dfcf10d6f3432134d6a07fe9fb83cf6a0cbe1c8555bf8422d6863b"
+    "sha256": "67632a63f939107e9b4a5430de36dcf3dd9d6afcb0699e6cb69c19365d6f61b6"
   },
   "apps/desktop/src/appearance/diskUse.ts": {
     "ownership": "client policy: Disk use counts this computer's agent folder only; a Host's disk use needs a Host op (v2 follow-up)",
@@ -598,7 +598,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "b014e60812b6e6dfb044b16d79e8f6a76bb2f888f2c4c305537df7be58ac1138"
+    "sha256": "54f85e8e1f4064a0009f174a16207a364bac0706a595f9bcf7d80b8169dbf103"
   },
   "apps/desktop/src/appearance/hostProgress.ts": {
     "ownership": "client policy (#166): progress of this client's own SSH install/update job (skiff:host-step) and its cancel_install; the Host is not there yet, so no HostConnection",
@@ -607,7 +607,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "497726b97d46668c40b121dabdab2db58bb6c1896ef7178e30d045acda6a5c75"
+    "sha256": "3f6fa0f1876980b8c908fb6afe360602593c9e293e6f314b15ed20cf72a1097a"
   },
   "apps/desktop/src/appearance/hostSettings.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6; @tauri-apps/api/app getVersion is this client's own version, set beside the Host's (#166)",
@@ -627,7 +627,7 @@
       "local provider: apps/desktop/src/platform/clipboard.ts",
       "local provider: apps/desktop/src/terminal/images.ts"
     ],
-    "sha256": "9a3a4ca586d5e0e43bb77df14fea1175b52267ee14c6051a14c2a01f33a9e6fa"
+    "sha256": "f994a03af92514f2f073ac1b2293f6504c686c992a5f15d2ae2cbd90fbbc04a7"
   },
   "apps/desktop/src/appearance/settings.ts": {
     "ownership": "mixed: agent changes (agent_config@1) and Skipper settings (skipper_config@1) through hostInvoke (#166 R7, R8); Open with and the menu layout are this client's own settings",
@@ -635,14 +635,14 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "e7d345bf1302efe70f56eb2fb85172ceb3b423a6096ca07a69356f9d5024afb9"
+    "sha256": "35bf0b5285817841ec3316aa340a3da0a6d7ea740f1b0e8477af548a810b9d23"
   },
   "apps/desktop/src/appearance/skiffAgentSettings.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6; Show in file manager only on This Mac (#166)",
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "463b4f5bed28dfce5f8ffa5355ba6118a9ed586efd858c305f924a20cf635b79"
+    "sha256": "579adb3894ca04c05f3fc27fbd79365b7d4e7a219f5906df97e4def59f2807c7"
   },
   "apps/desktop/src/appearance/skiffFolderDialog.ts": {
     "ownership": "Host caller (#166 R7): folder preview and change through hostInvoke(skipper_config); the system picker and reveal are this client's own, used only on This Mac",
@@ -650,7 +650,7 @@
       "../platform/fileActions",
       "@tauri-apps/plugin-dialog"
     ],
-    "sha256": "fe4a20864e98f742423dad33a34eabefa8b2adccb638aff8499d0ea0aa523d05"
+    "sha256": "b9407201db5636fcf921160a4458bcaeb119e29ceed869491e58e12213a83eff"
   },
   "apps/desktop/src/appearance/themeCards.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -659,7 +659,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "ea8dfb3eda2390ed53d89986d2ef27287c11d9b2dcc5e8de84df9b6064354630"
+    "sha256": "9b4f6b84f210e2fc4dffb077248fb8d9a8abdb5714e99df3ade9637114543f92"
   },
   "apps/desktop/src/appearance/themes.ts": {
     "ownership": "mixed/host data: retain current adapter; route host-owned operations through Host API in M1\u2013M6",
@@ -789,7 +789,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "b226a89162b2b60a047f88627f28944a5dcfcdeaed7470bf1b1abf9db16a9bee"
+    "sha256": "b235db31a87098f8cc3deac0733b7c45a5fa0d473bd818c92e62132799821c21"
   },
   "apps/desktop/src/terminal/resume.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -859,7 +859,7 @@
     "reasons": [
       "local provider: apps/desktop/src/platform/clipboard.ts"
     ],
-    "sha256": "e3f2df15dc7001566e815e679a662f1a719f27298959d17b9b6acf22232cc32c"
+    "sha256": "5162dc03bf7b51daf6a4f339119af2ec021f3813c87ef552b9bbbbe1ce18e070"
   },
   "apps/desktop/src/ui/infoDialogs.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -933,7 +933,7 @@
       "local provider: apps/desktop/src/app/hosts.ts",
       "local provider: apps/desktop/src/app/state.ts"
     ],
-    "sha256": "8c1435fa08d54aefc48a2f7e9b2b51d36603a0f8fac6cf6290004b6cccacc1b6"
+    "sha256": "05d814031e74ba64c738f7355eda205c15b184e29b310deac1630d68c6f153ad"
   },
   "apps/desktop/src/workspace/header.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -948,7 +948,7 @@
     "reasons": [
       "@tauri-apps/api/event"
     ],
-    "sha256": "2627c3ee462fdd36b70c7d5fc920dca539007d49482d7818c8133cb61b0468b3"
+    "sha256": "75f0513c510ad22e7985040c795491cf97cf90dd2be2ef8ba2fa73cf3444f3e7"
   },
   "apps/desktop/src/workspace/menus.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -1055,7 +1055,7 @@
       "local provider: apps/desktop/src/workspace/missionControl.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "8bca69a280d53304f05227fc1a5e561db5b89ce74c65c6195189249ed8567a2a"
+    "sha256": "5bbb0f324d33dc87a34f778a493d586fcdbfb4d8a2b7f87c3267ad1de4b7631f"
   },
   "apps/desktop/src/workspace/profile.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -1075,7 +1075,7 @@
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/workspace/profile/state.ts"
     ],
-    "sha256": "56aa009a62c39f5246d28fea9ede4acba794d51d5efc90e94c9f9ab7ae778fad"
+    "sha256": "c1b0a0973a5451ad2c54ba1d1100825fafc76dfd41f87776ef2c250139a1496f"
   },
   "apps/desktop/src/workspace/profile/membership.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -1162,7 +1162,7 @@
       "local provider: apps/desktop/src/appearance/agentIcon.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "df26e7786006e9bb36258d43569f4c97add7088856f5553c503e1a619c7026df"
+    "sha256": "7c4e4f5870cef2887d85c5fdc3e4109ac48c5f92992f6beb1a2f5fb0aff7173b"
   },
   "apps/desktop/src/workspace/selection.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -1202,7 +1202,7 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "efe16bd20804f336d38c81c1e575433610d0e0c05f7b3d9b41701bd72bad0084"
+    "sha256": "2be538ea31c908ba167251f270f57fa6fc254b1d971290463be12aa8f7f632d7"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -1220,7 +1220,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "e09165d1bf10220ea1218ffb0bcd2f47e5ccc54db854606c1cdcc4aabae4eec2"
+    "sha256": "a0bd53cc25cf312dcaef4d152a80ac93341f0a15efef91507d640fa21961779a"
   },
   "apps/desktop/src/workspace/skippersView.ts": {
     "ownership": "legacy local adapter/caller: migrate behind Host API in M1\u2013M6",
@@ -1236,7 +1236,7 @@
       "local provider: apps/desktop/src/workspace/tree.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "c1ad17cfc1963c62a31203637d2d184895e5263a3cb16e2fbe35ccc0aae3f648"
+    "sha256": "e5358b8780c1aaad6dbb2fab0fc745e6e83234a6caaf0d96419a8c92bc5d2447"
   },
   "apps/desktop/src/workspace/status.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -1254,7 +1254,7 @@
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/app/stateQueries.ts"
     ],
-    "sha256": "555228b46193c07bf9ee4689c37962813861653900d2e699b31b7bb15f16462f"
+    "sha256": "e136099bcbde07a3aef5bf26063a60ecda69803e6fdb44605f655e756d40b404"
   },
   "apps/desktop/src/workspace/treeDrag.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
