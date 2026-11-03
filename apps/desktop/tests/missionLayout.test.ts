@@ -53,7 +53,7 @@ test("the outer grid wraps at three blocks a row, rows top-align, and a wide blo
   assert.deepEqual([c("e").x, c("f").x], [c("b").x, c("c").x]);
   assert.ok(c("b").h > c("a").h, "b is the tallest: three cards in two columns");
   // Admiral centers on the grid, not on the content, so it stays put when blocks come and go.
-  assert.equal(p.cards.get("ad")!.x, G.GRID_W / 2 - G.CARD_W / 2);
+  assert.equal(p.cards.get("ad")!.x, G.GRID_W / 2 - G.WINDOW.admiral.w / 2);
   assert.equal(G.placeGraph({ ...g, projects: g.projects.slice(0, 1) }, {}).cards.get("ad")!.x, p.cards.get("ad")!.x);
   // A project with seven cards is three columns wide: wider than a slot, so it takes a row by itself.
   const big = project("big", ["g1", "g2", "g3", "g4", "g5", "g6", "g7"]);
@@ -293,4 +293,18 @@ test("time in state reads as minutes, hours and days", () => {
   assert.equal(G.ago(now - 4 * 60_000, now), "4m");
   assert.equal(G.ago(now - 125 * 60_000, now), "2h");
   assert.equal(G.ago(now - 3 * 1440 * 60_000, now), "3d");
+});
+
+test("a string leaves a window from its face's foot and ends in a window's face or at a card's pin", () => {
+  const g: G.Graph = { admiral: "ad", fleets: [{ key: "fleet:F", name: "F", skipper: "sk", projects: [project("p", ["s1"])] }], projects: [] };
+  const p = G.placeGraph(g, {});
+  assert.deepEqual([p.rungs.get("ad"), p.rungs.get("sk"), p.rungs.get("s1")], ["admiral", "fleet", undefined]);
+  assert.deepEqual([p.cards.get("sk")!.w, p.cards.get("sk")!.h], [G.WINDOW.fleet.w, G.WINDOW.fleet.h]);
+  const ad = G.faceBox(p.cards.get("ad")!, "admiral");
+  const sk = G.faceBox(p.cards.get("sk")!, "fleet");
+  const toSk = G.strandEnds(p, "ad", "sk", p.cards.get("sk")!);
+  assert.deepEqual(toSk.a, { x: ad.x + ad.w / 2, y: ad.y + ad.h - 4 }, "from the bottom middle of Admiral's face, in its column");
+  assert.ok(toSk.a.x < p.cards.get("ad")!.x + G.WINDOW.admiral.face + 16, "never from the output's column");
+  assert.deepEqual(toSk.b, { x: sk.x + sk.w / 2, y: sk.y + sk.h / 2 }, "into the middle of the Skipper's face");
+  assert.deepEqual(G.strandEnds(p, "sk", "s1", p.cards.get("s1")!).b, G.pin(p.cards.get("s1")!), "a session card keeps its pin");
 });

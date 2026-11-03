@@ -48,6 +48,22 @@ export const GRID_W = GRID_COLS * SLOT_W + (GRID_COLS - 1) * BLOCK_GAP;
 const ADMIRAL_DROP = 96;
 export const PLAN_H = 20;
 
+/**
+ * Admiral and each Skipper show as a terminal window: a 24px pane header,
+ * then a body split by a 1px rule into the face's column and the output's
+ * column. The face sets the rung; the face's column is the face and 8px
+ * each side, the output's column is twice the face wide. `rows`: the output
+ * lines that fit.
+ */
+export type Rung = "admiral" | "fleet" | "project";
+export const WINDOW: Record<Rung, { w: number; h: number; face: number; rows: number }> = {
+  admiral: { w: 353, h: 152, face: 112, rows: 9 },
+  fleet: { w: 257, h: 120, face: 80, rows: 7 },
+  project: { w: 185, h: 96, face: 56, rows: 5 },
+};
+/** The window's header, with the 1px frame above it. */
+export const WIN_HEAD = 24;
+
 export interface GPlan {
   uid: string;
   title: string;
@@ -106,6 +122,8 @@ export interface Placed {
   order: Map<string, string[]>;
   /** The offsets as applied, after the clamp to the parent, for every fleet, project and Admiral placed. */
   offs: Offsets;
+  /** The rung of each window: Admiral and the Skippers. A card not here is a session card. */
+  rungs: Map<string, Rung>;
 }
 
 const off = (offs: Offsets, id: string) => offs[id] ?? { dx: 0, dy: 0 };
@@ -150,9 +168,10 @@ interface Block {
 
 function block(p: GProject): Block {
   const box = p.folded ? { w: CARD_W, h: CARD_H, cards: [], plans: [] } : projectBox(p);
-  const w = Math.max(box.w, p.skipper ? CARD_W : 0);
-  const cy = p.skipper ? CARD_H + DROP : 0;
-  return { p, w, h: cy + box.h, skipper: p.skipper ? { x: w / 2 - CARD_W / 2, y: 0 } : null, cluster: { x: w / 2 - box.w / 2, y: cy, box } };
+  const sk = WINDOW.project;
+  const w = Math.max(box.w, p.skipper ? sk.w : 0);
+  const cy = p.skipper ? sk.h + DROP : 0;
+  return { p, w, h: cy + box.h, skipper: p.skipper ? { x: w / 2 - sk.w / 2, y: 0 } : null, cluster: { x: w / 2 - box.w / 2, y: cy, box } };
 }
 
 /**
@@ -189,9 +208,13 @@ export function gridPlace(blocks: { w: number; h: number }[], gap: number, rowGa
 
 /** Lays the graph out and applies the hand offsets. */
 export function placeGraph(g: Graph, offs: Offsets): Placed {
-  const out: Placed = { cards: new Map(), clusters: new Map(), plans: [], order: new Map(), offs: {} };
+  const out: Placed = { cards: new Map(), clusters: new Map(), plans: [], order: new Map(), offs: {}, rungs: new Map() };
+  const putWindow = (id: string, rung: Rung, x: number, y: number) => {
+    out.cards.set(id, { x, y, w: WINDOW[rung].w, h: WINDOW[rung].h });
+    out.rungs.set(id, rung);
+  };
   const putBlock = (b: Block, bx: number, by: number) => {
-    if (b.skipper && b.p.skipper) out.cards.set(b.p.skipper, { x: bx + b.skipper.x, y: by + b.skipper.y, w: CARD_W, h: CARD_H });
+    if (b.skipper && b.p.skipper) putWindow(b.p.skipper, "project", bx + b.skipper.x, by + b.skipper.y);
     const cx = bx + b.cluster.x;
     const cy = by + b.cluster.y;
     out.clusters.set(b.p.key, { x: cx, y: cy, w: b.cluster.box.w, h: b.cluster.box.h, fleet: false, folded: b.p.folded });
@@ -206,7 +229,8 @@ export function placeGraph(g: Graph, offs: Offsets): Placed {
     // The fleet's own grid: three projects per row, under its Skipper.
     const grid = gridPlace(blocks, FLEET_GAP, FLEET_GAP);
     const top = HEAD + FP;
-    const by = top + (f.skipper ? CARD_H + DROP : 0);
+    const fw = WINDOW.fleet;
+    const by = top + (f.skipper ? fw.h + DROP : 0);
     // Each project moves inside the frame by its offset, but never above or left of the frame's inside.
     const at = blocks.map((b, i) => {
       const o = off(offs, b.p.key);
@@ -216,7 +240,7 @@ export function placeGraph(g: Graph, offs: Offsets): Placed {
       return { x, y };
     });
     // The frame: as wide and tall as its grid, and grown right and down to hold a moved project.
-    const w0 = Math.max(grid.w, f.skipper ? CARD_W : 0) + FP * 2;
+    const w0 = Math.max(grid.w, f.skipper ? fw.w : 0) + FP * 2;
     const w = Math.max(w0, ...blocks.map((b, i) => at[i].x + b.w + FP));
     const h = Math.max(by + grid.h + FP, ...blocks.map((b, i) => at[i].y + b.h + FP));
     tops.push({
@@ -228,7 +252,7 @@ export function placeGraph(g: Graph, offs: Offsets): Placed {
         const tx = fx + o.dx;
         const ty = fy + o.dy;
         out.clusters.set(f.key, { x: tx, y: ty, w, h, fleet: true, folded: false });
-        if (f.skipper) out.cards.set(f.skipper, { x: tx + w0 / 2 - CARD_W / 2, y: ty + top, w: CARD_W, h: CARD_H });
+        if (f.skipper) putWindow(f.skipper, "fleet", tx + w0 / 2 - fw.w / 2, ty + top);
         blocks.forEach((b, i) => putBlock(b, tx + at[i].x, ty + at[i].y));
       },
     });
@@ -246,13 +270,13 @@ export function placeGraph(g: Graph, offs: Offsets): Placed {
     });
   }
   // The outer grid, under Admiral.
-  const y0 = g.admiral ? CARD_H + ADMIRAL_DROP : 0;
+  const y0 = g.admiral ? WINDOW.admiral.h + ADMIRAL_DROP : 0;
   const grid = gridPlace(tops, BLOCK_GAP, BLOCK_GAP);
   tops.forEach((t, i) => t.draw(grid.at[i].x, y0 + grid.at[i].y));
   if (g.admiral) {
     const o = off(offs, g.admiral);
     out.offs[g.admiral] = o;
-    out.cards.set(g.admiral, { x: GRID_W / 2 - CARD_W / 2 + o.dx, y: o.dy, w: CARD_W, h: CARD_H });
+    putWindow(g.admiral, "admiral", GRID_W / 2 - WINDOW.admiral.w / 2 + o.dx, o.dy);
   }
   return out;
 }
@@ -363,6 +387,30 @@ export function strand(a: { x: number; y: number }, b: { x: number; y: number })
 export const TUCK = 10;
 export const foot = (r: Rect) => ({ x: r.x + r.w / 2, y: r.y + r.h });
 export const pin = (r: Rect) => ({ x: r.x + r.w / 2, y: r.y });
+
+/** Where a window's face sits: in the face's column, 8px in from the frame's outer edge and under the header. */
+export function faceBox(r: Rect, rung: Rung): Rect {
+  const f = WINDOW[rung].face;
+  return { x: r.x + 8, y: r.y + WIN_HEAD + 8, w: f, h: f };
+}
+
+/**
+ * A string's two ends. It leaves a window from the bottom middle of the
+ * face, so it stays out of the output's column, and ends at the middle of
+ * a window's face; the face draws over both ends. At a card it leaves from
+ * the foot and ends at the pin. `from` 4px up into the face, so no gap shows.
+ */
+export function strandEnds(p: Placed, from: string, to: string, toRect: Rect): { a: { x: number; y: number }; b: { x: number; y: number } } {
+  const fr = p.cards.get(from)!;
+  const ra = p.rungs.get(from);
+  const rb = p.rungs.get(to);
+  const fa = ra ? faceBox(fr, ra) : null;
+  const fb = rb ? faceBox(toRect, rb) : null;
+  return {
+    a: fa ? { x: fa.x + fa.w / 2, y: fa.y + fa.h - 4 } : foot(fr),
+    b: fb ? { x: fb.x + fb.w / 2, y: fb.y + fb.h / 2 } : pin(toRect),
+  };
+}
 
 // ---- The view: pan and zoom ----
 

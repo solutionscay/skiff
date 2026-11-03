@@ -76,7 +76,11 @@
 }
 :is(.st-done, .sk-row:not([data-session]), .skiff-agent-row:not([data-session])) .skipper-face :is(.sk-eyes, .sk-look, .sk-front, .sk-cap, .sk-turn) { animation: none; }
 @media (prefers-reduced-motion: reduce) { .skipper-face :is(.sk-eyes, .sk-look, .sk-front, .sk-cap, .sk-turn) { animation: none; } }
-.mission-card .skipper-face { width: calc(var(--face) * 1px); height: calc(var(--face) * 1px); }
+.mission-face .skipper-face { width: calc(var(--face) * 1px); height: calc(var(--face) * 1px); }
+/* On the board, a waiting face holds a turn toward the task it waits on (--look), and a done face shuts its eyes. */
+.mission-face.st-waiting .skipper-face :is(.sk-turn, .sk-cap) { animation: none; }
+.mission-face.st-waiting .skipper-face .sk-front { animation: none; transform: translate(calc(var(--look, 1) * 1.5px), 0) scaleX(0.92); }
+.mission-face.st-done .skipper-face .sk-eyes { transform: scaleY(0.1); }
 .cell-head .title .skipper-face { vertical-align: calc(-3 * var(--u)); margin-right: calc(4 * var(--u)); }
 
 /* Avatar…: twelve faces, six to a row, then Shuffle across the foot. */

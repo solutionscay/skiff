@@ -17,8 +17,8 @@
 .mission-canvas.panning { cursor: grabbing; }
 /* The world is laid out in unzoomed px and scaled as one: the app zoom goes into the transform. */
 .mission-world { --zoom: 1; --u: 1px; position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
-/* Layers: cluster frames, then strings, then cards. A string runs over a frame and under a card. */
-.mission-strings { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 2; }
+/* Layers: cluster frames, windows, strings, faces, cards. A string runs over a frame and a window, under a face and a card. */
+.mission-strings { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 3; }
 /* A string is a group: its line, and a solid tuck at each end that ties it to the foot and the pin. */
 .mission-strings path { fill: none; stroke: var(--rule-strong); stroke-width: 2; }
 /* A working line's dashes march toward the child at 10 px/s: one 16px period in 1.6s, linear, so a late frame moves them less than a pixel. */
@@ -52,12 +52,12 @@
 .mission-chev svg { width: 10px; height: 10px; }
 .mission-cluster.folded .mission-chev, .mission-card.folder .mission-chev { transform: rotate(-90deg); }
 /* A plan: a 20px caption above its cards. It has no pane, so it does not light. */
-.mission-plan { position: absolute; z-index: 3; height: 20px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; pointer-events: none; }
+.mission-plan { position: absolute; z-index: 5; height: 20px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; pointer-events: none; }
 .mission-plan::before { content: ""; width: 8px; height: 8px; border-left: 1px solid var(--rule-strong); border-bottom: 1px solid var(--rule-strong); flex-shrink: 0; }
 .mission-plan.dim { opacity: 0.4; }
 
 /* A card: a 20px head in the project tint, a 40px body. Square, flush, no shadow. */
-.mission-card { position: absolute; z-index: 3; box-sizing: border-box; width: 224px; height: 62px; border: 1px solid var(--rule-strong); background: var(--bg-panel); color: var(--text); cursor: pointer; user-select: none; display: flex; flex-direction: column; text-align: left; font: inherit; padding: 0; }
+.mission-card { position: absolute; z-index: 5; box-sizing: border-box; width: 224px; height: 62px; border: 1px solid var(--rule-strong); background: var(--bg-panel); color: var(--text); cursor: pointer; user-select: none; display: flex; flex-direction: column; text-align: left; font: inherit; padding: 0; }
 .mission-card .head { height: 20px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-bottom: 1px solid var(--rule); background: color-mix(in srgb, var(--pc) 22%, var(--bg-panel)); font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; }
 .mission-card .head .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 .mission-card .head .num { flex-shrink: 0; font-family: var(--mono); font-size: 10px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
@@ -81,21 +81,43 @@
 @media (prefers-reduced-motion: reduce) { .mission-card .busy, .mission-panel-head .busy, .mission-card .busy svg, .mission-panel-head .busy svg { animation: none; } }
 .mission-card:hover { background: color-mix(in srgb, var(--text) 4%, var(--bg-panel)); }
 /* The lit card is framed as the focused pane is: 2px of project color. */
-.mission-card.lit { z-index: 5; box-shadow: 0 0 0 2px var(--pc); }
+.mission-card.lit { z-index: 6; box-shadow: 0 0 0 2px var(--pc); }
 .mission-card.waiting { border-color: var(--state-waiting); box-shadow: inset 2px 0 0 var(--state-waiting); }
 .mission-card.waiting .body { background: var(--state-waiting-bg); }
 .mission-card.waiting .t { color: var(--state-waiting-text); }
 .mission-card.waiting.lit { box-shadow: 0 0 0 2px var(--state-waiting), inset 2px 0 0 var(--state-waiting); }
 .mission-card.dim { opacity: 0.35; }
 .mission-card.dim:hover, .mission-card.dim.lit { opacity: 1; }
-.mission-card.skipper .head, .mission-card.admiral .head { --pc: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
-.mission-card.skipper .head .at, .mission-card.admiral .head .at { text-transform: none; letter-spacing: 0; font-weight: 400; }
+/* Admiral and a Skipper: a terminal window in the pane's look (terminal.css .cell-head). The header, then the
+   face's column and the output's column, split by a rule. The size comes from the layout (missionLayout.ts WINDOW).
+   Its state is the header's mark and note, its strings and its face; a waiting window keeps the plain frame. */
+.mission-card.window, .mission-card.window.lit { z-index: 2; }
+.mission-card.window { background: var(--bg-deep); }
+.mission-card.window.waiting { border-color: var(--rule-strong); box-shadow: none; }
+.mission-card.window.waiting.lit { box-shadow: 0 0 0 2px var(--pc); }
+.win-head { height: 23px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--bg-panel); border-bottom: 1px solid var(--rule); font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; }
+.win-head .num { flex-shrink: 0; font-family: var(--mono); font-size: 10px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.win-head .title { flex-shrink: 0; max-width: 70%; color: var(--text-3); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.win-head .status-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-3); }
+.mission-card.window.waiting .win-head .status-note { color: var(--state-waiting-text); }
+.mission-card.window.lit .win-head { background: color-mix(in srgb, var(--pc) 12%, var(--bg-panel)); }
+.mission-card.window.lit .win-head .title { color: var(--text); font-weight: 600; }
+.win-body { flex: 1; min-height: 0; display: flex; }
+.win-face { flex-shrink: 0; box-sizing: border-box; border-right: 1px solid var(--rule); }
+/* The last lines, at the foot of the column as a terminal shows them. Cut at the right, never wrapped. */
+.win-out { flex: 1; min-width: 0; margin: 0; padding: 4px 8px; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; white-space: pre; font: 9px/12px var(--mono); color: var(--text-3); }
+/* The faces: over the strings, under the cards. A face is its window: it lights, dims and clicks with it. */
+.mission-faces { position: absolute; left: 0; top: 0; z-index: 4; }
+.mission-face { position: absolute; line-height: 0; cursor: pointer; }
+.mission-face.dim { opacity: 0.35; }
+.mission-face.dim.lit { opacity: 1; }
+.mission.flying .mission-card.window.lit { box-shadow: none; }
 .mission-card.folder { background: var(--bg-raised); }
 .mission-card.folder .body { gap: 10px; }
 .mission-card.folder .t { font-weight: 600; }
 /* A card on the move follows the pointer over the others. While one moves, the others make room in 120ms, and the dropped card settles into its slot the same way. */
 .mission-items.reorder .mission-card { transition: left 120ms, top 120ms; }
-.mission-card.dragging { transition: none; z-index: 6; cursor: grabbing; }
+.mission-card.dragging { transition: none; z-index: 7; cursor: grabbing; }
 @media (prefers-reduced-motion: reduce) { .mission-items.reorder .mission-card { transition: none; } }
 /* The pin a string ties to: a round dot in the card's state color. */
 .mission-pin { position: absolute; left: 50%; top: -4px; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%; background: var(--rule-strong); }

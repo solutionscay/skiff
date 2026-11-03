@@ -25,6 +25,9 @@
  * The order of each cluster, the offsets, the folds and the panel's fold
  * persist on this computer, per Host.
  *
+ * Admiral and each Skipper show as a terminal window with its face and its
+ * last screen lines (missionControl/terminal.ts, output.ts).
+ *
  * The panel under the canvas shows the lit card: its last 12 screen lines,
  * read-only text from skiffd, its task, or a Skipper's hand-offs. One read a
  * second, for the lit card only. Ctrl+Alt+Shift+L folds it to a rail.
@@ -54,13 +57,14 @@ import { ctxMenu } from "../ui/contextMenu";
 import { h } from "../ui/dom";
 import { type Entry, ledgerRows, ledgerTitle, needWord, taskState } from "./ledger";
 import { fuzzy, taskTitle } from "./model";
-import { skipperFace } from "./skipperFace";
 import { closeMission, goToSession } from "./missionMotion";
 import * as G from "./missionLayout";
 import { worktreeLines } from "./sidebarLines";
 import { projectBadge, treeSections } from "./tree";
-import { type PluralKey, t, tn, upper } from "../i18n";
+import { t, tn, upper } from "../i18n";
 import { matchText, noteSince, sinceText } from "./missionControl/model";
+import * as T from "./missionControl/terminal";
+import * as O from "./missionControl/output";
 
 /** Rows of text in the panel's screen. */
 const ROWS = 12;
@@ -94,7 +98,7 @@ let labelsDrawn = "";
 /** One march of a working string, in ms: one dash period. All strings march in one phase. */
 const MARCH = 1600;
 const items = h("div", "mission-items");
-world.append(strings, items);
+world.append(strings, T.faceLayer, items);
 const ticks = h("div", "mission-ticks");
 const zoomBar = h("div", "mission-zoom");
 const zoomLevel = h("span", "level");
@@ -345,7 +349,7 @@ function model(): Model {
 }
 
 let m: Model = { g: { admiral: null, fleets: [], projects: [] }, sess: new Map(), projects: new Map(), members: new Map(), rows: new Map(), strs: [], found: null };
-let placed: G.Placed = { cards: new Map(), clusters: new Map(), plans: [], order: new Map(), offs: {} };
+let placed: G.Placed = { cards: new Map(), clusters: new Map(), plans: [], order: new Map(), offs: {}, rungs: new Map() };
 
 // ---- Cards and clusters ----
 
@@ -360,34 +364,9 @@ const cardName = (s: SessionInfo) => (s.coordinator ? skiffAgentName() : taskTit
 const dimmed = (s: SessionInfo) => (running && !isRunning(s)) || (!!m.found && !m.found.has(s.id));
 const stateWord = (s: SessionInfo) => t(s.state === "working" ? "state.working" : s.state === "waiting" ? "state.waiting" : s.state === "done" ? "state.done" : "state.idle");
 
-/** A Skipper's counts over the rows it owns: its panes that work, that wait, and the rest that are open. */
-function skipperCounts(s: SessionInfo): { working: number; waiting: number; open: number; handoffs: number } {
-  const own = ledgerRows().filter((r) => r.bucket !== "finished" && r.kind === "task" && r.owner === (s.coordinator ? "grand" : s.skipper));
-  const panes = own.map((r) => (r.pane_id ? sessions.get(r.pane_id) : null));
-  const working = panes.filter((p) => p?.state === "working").length;
-  const waiting = panes.filter((p) => p?.state === "waiting").length;
-  const handoffs = ledgerRows().filter((r) => r.bucket !== "finished" && r.kind === "handoff" && (s.coordinator ? r.state !== "done" : r.pane_id === s.id)).length;
-  return { working, waiting, open: Math.max(0, own.filter((r) => r.state !== "done").length - working - waiting), handoffs };
-}
-
-/** The card's meta line: the task and its uid, a shell's program, or the state. */
+/** A session card's meta line: the task and its uid, a shell's program, or the state. */
 function metaOf(s: SessionInfo): HTMLElement {
   const el = h("span", "m");
-  if (s.coordinator || !!s.skipper) {
-    if (!hostCan("ledger")) {
-      el.textContent = t("mission.noLedgerMeta");
-      return el;
-    }
-    const c = skipperCounts(s);
-    const part = (n: number, key: PluralKey, cls: string) => h("span", n ? cls : "", tn(key, n));
-    if (s.coordinator) {
-      el.append(part(c.handoffs, "mission.handoffs", ""), " · ", part(c.working + c.waiting + c.open, "mission.tasks", ""));
-      return el;
-    }
-    el.append(part(c.working, "mission.working", "g"), " · ", part(c.waiting, "mission.waiting", "w"), " · ", part(c.open, "mission.open", ""));
-    if (c.handoffs) el.append(" · ", tn("mission.handoffs", c.handoffs));
-    return el;
-  }
   // What the program reports: what it waits for, how its turn ended, its subtasks.
   const note = [statusNote(s), childrenNote(s)].filter(Boolean).join(" · ");
   const r = m.rows.get(s.id);
@@ -408,18 +387,15 @@ function metaOf(s: SessionInfo): HTMLElement {
   return el;
 }
 
-/** The card's inside: the pin, the head and the body. `label`: the head's name; none inside a cluster. `num`: a Skipper's number key. */
-function cardParts(s: SessionInfo, label: string | null, now: number, num = 0): HTMLElement[] {
-  const pin = h("span", `mission-pin ${s.coordinator || !!s.skipper ? "accent" : s.state === "working" || s.state === "waiting" || s.state === "done" ? s.state : ""}`);
+/** A session card's inside: the pin, the head and the body. Admiral and the Skippers are windows (terminal.ts). */
+function cardParts(s: SessionInfo, now: number): HTMLElement[] {
+  const pin = h("span", `mission-pin ${s.state === "working" || s.state === "waiting" || s.state === "done" ? s.state : ""}`);
   const head = h("span", "head");
-  if (num) head.appendChild(h("span", "num", String(num)));
-  // A Skipper's card: its face with its model beside it, as the Skippers list shows them.
-  if (label !== null) head.append(skipperFace(s.coordinator ? null : (s.skipper ?? ""), 18), agentIcon(s), h("span", "name", label));
   head.appendChild(h("span", "at", sinceText(s, now)));
   const body = h("span", "body");
   const tx = h("span", "tx");
   tx.append(h("span", "t", cardName(s)), metaOf(s));
-  body.append(...(label !== null ? [stateIcon(s)] : [stateIcon(s), agentIcon(s)]), tx);
+  body.append(stateIcon(s), agentIcon(s), tx);
   return [pin, head, body];
 }
 
@@ -492,7 +468,7 @@ function draw() {
   numbered = G.skipperOrder(m.g).filter((id) => placed.cards.has(id)).slice(0, 9);
   const seen = new Set<string>();
   // Cards: sessions, Skippers and Admiral; and folded clusters as cards.
-  const putCard = (id: string, r: G.Rect, parts: HTMLElement[], cls: string, pc: string, dim: boolean) => {
+  const putCard = (id: string, r: G.Rect, parts: HTMLElement[] | G.Rung, cls: string, pc: string, dim: boolean) => {
     seen.add(id);
     let el = cards.get(id);
     if (!el) {
@@ -511,17 +487,20 @@ function draw() {
       el.style.left = `${r.x}px`;
       el.style.top = `${r.y}px`;
     }
-    refill(el, parts);
+    if (typeof parts !== "string") refill(el, parts);
+    else Object.assign(el.style, { width: `${r.w}px`, height: `${r.h}px` });
   };
   for (const [id, r] of placed.cards) {
     const s = m.sess.get(id);
     if (!s) continue;
-    const inCluster = !s.coordinator && !s.skipper;
-    const p = inCluster ? (place(s)?.project ?? null) : null;
-    const cls = [s.coordinator ? "admiral" : !!s.skipper ? "skipper" : "", s.state === "waiting" ? "waiting" : ""].join(" ");
-    const pc = inCluster ? accent(p) : "var(--accent)";
-    const label = inCluster ? null : cardName(s);
-    putCard(id, r, cardParts(s, label, now, numbered.indexOf(id) + 1), cls, pc, dimmed(s));
+    const rung = placed.rungs.get(id);
+    const cls = [rung ? `window ${rung === "admiral" ? "admiral" : "skipper"}` : "", s.state === "waiting" ? "waiting" : ""].join(" ");
+    putCard(id, r, rung ?? cardParts(s, now), cls, rung ? "var(--accent)" : accent(place(s)?.project ?? null), dimmed(s));
+    if (rung) {
+      const w = T.windowOf(cards.get(id)!, rung);
+      refill(w.head, T.windowHead(s, cardName(s), numbered.indexOf(id) + 1));
+      O.track(id, w.out, G.WINDOW[rung].rows);
+    }
     const label2 = t("mission.tileLabel", { title: cardName(s), state: stateLabel(s) });
     if (cards.get(id)!.getAttribute("aria-label") !== label2) cards.get(id)!.setAttribute("aria-label", label2);
   }
@@ -587,7 +566,9 @@ function draw() {
     plans.delete(key);
   }
 
+  O.untrack(new Set(placed.rungs.keys()));
   drawStrings();
+  T.placeFaces(placed, m.sess, lookOf, (id) => `${id === lit ? "lit" : ""} ${cards.get(id)?.classList.contains("dim") ? "dim" : ""}`);
   counts();
   find.style.setProperty("--pc", cards.get(lit ?? "")?.style.getPropertyValue("--pc") ?? clusters.get(lit ?? "")?.style.getPropertyValue("--pc") ?? "");
   fault.hidden = hostCan("ledger");
@@ -613,7 +594,8 @@ function drawStrings() {
     const members = foldedTo ? (m.members.get(to) ?? []) : [child];
     const state = members.some((s) => s.state === "waiting") ? "waiting" : members.some((s) => s.state === "working") ? "working" : stateWord(child);
     const dim = foldedTo ? !members.some(isRunning) && running : dimmed(child);
-    const g = G.strand(G.foot(from), G.pin(toRect));
+    const ends = G.strandEnds(placed, st.from, to, toRect);
+    const g = G.strand(ends.a, ends.b);
     let sd = strands.get(key);
     if (!sd) {
       const svg = "http://www.w3.org/2000/svg";
@@ -634,9 +616,11 @@ function drawStrings() {
       sd.tuck.setAttribute("d", g.tuck);
     }
     if (st.label) {
+      // The label stays where it sat when strings ended at the pin: above the window, not on its header.
+      const at = placed.rungs.has(to) ? G.strand(ends.a, G.pin(toRect)) : g;
       const text = st.label.length > 40 ? `${st.label.slice(0, 39)}…` : st.label;
       const w = text.length * 6.2 + 12;
-      labels += `<rect class="lblbg" x="${g.lx - w / 2}" y="${g.ly - 10}" width="${w}" height="20"/><text class="lbl${dim ? " dim" : ""}" x="${g.lx}" y="${g.ly + 4}" text-anchor="middle">${text.replace(/[<&]/g, (c) => (c === "<" ? "&lt;" : "&amp;"))}</text>`;
+      labels += `<rect class="lblbg" x="${at.lx - w / 2}" y="${at.ly - 10}" width="${w}" height="20"/><text class="lbl${dim ? " dim" : ""}" x="${at.lx}" y="${at.ly + 4}" text-anchor="middle">${text.replace(/[<&]/g, (c) => (c === "<" ? "&lt;" : "&amp;"))}</text>`;
     }
   }
   for (const [key, sd] of strands) {
@@ -651,6 +635,14 @@ function drawStrings() {
   const h = String(Math.max(0, Math.ceil(b.y + b.h + 64)));
   if (strings.getAttribute("width") !== w) strings.setAttribute("width", w);
   if (strings.getAttribute("height") !== h) strings.setAttribute("height", h);
+}
+
+/** The side a waiting window's face turns to: toward the task it waits on, else its first. */
+function lookOf(id: string): 1 | -1 {
+  const kids = m.strs.filter((x) => x.from === id).map((x) => m.sess.get(x.to)!);
+  const k = rectOf((kids.find((c) => c.state === "waiting") ?? kids[0])?.id ?? null);
+  const r = placed.cards.get(id)!;
+  return k && k.x + k.w / 2 < r.x + r.w / 2 ? -1 : 1;
 }
 
 /** A drag frame: the new places and the strings that moved. The drop draws the rest. */
@@ -674,6 +666,7 @@ function drawMoved() {
     if (el) Object.assign(el.style, { left: `${pl.x}px`, top: `${pl.y}px`, width: `${pl.w}px` });
   }
   drawStrings();
+  T.moveFaces(placed);
 }
 
 /** The top bar's counts: Running and All, of what the search leaves. */
@@ -699,7 +692,7 @@ function drawTicks() {
     tick.type = "button";
     tick.tabIndex = -1;
     tick.dataset.id = id;
-    tick.title = t("mission.waits", { name: el.querySelector(".t")?.textContent ?? "" });
+    tick.title = t("mission.waits", { name: el.querySelector(".t, .win-head .title")?.textContent ?? "" });
     tick.style.left = `${at.x}px`;
     tick.style.top = `${at.y}px`;
     ticks.appendChild(tick);
@@ -770,6 +763,7 @@ function light(id: string | null, pan = true) {
   lit = id;
   for (const [k, el] of cards) el.classList.toggle("lit", k === id);
   for (const [k, el] of clusters) el.classList.toggle("lit", k === id);
+  for (const el of T.faceLayer.children) el.classList.toggle("lit", (el as HTMLElement).dataset.id === id);
   find.style.setProperty("--pc", cards.get(id)?.style.getPropertyValue("--pc") ?? clusters.get(id)?.style.getPropertyValue("--pc") ?? "");
   if (pan) panTo(id);
   drawPanel();
@@ -951,6 +945,7 @@ async function read() {
     const text = lines.join("\n");
     if (screen.textContent !== text) screen.textContent = text;
     screen.classList.remove("note");
+    O.feed(id, lines);
   } catch (e) {
     if (paused || screenFor !== id) return;
     // An older skiffd does not know the request.
@@ -966,6 +961,7 @@ function tick() {
   // A drag draws its own frames; the drop draws the whole board.
   if (!drag?.moved) draw();
   void read();
+  if (!document.hidden) void O.readRound(placed, view, canvas.clientWidth, canvas.clientHeight, panelOpen ? screenFor : null, () => !paused && !root.hidden);
 }
 
 // ---- The pointer: pan, drag, click ----
@@ -996,10 +992,10 @@ canvas.addEventListener("pointerdown", (e) => {
     light(tick.dataset.id);
     return;
   }
-  const el = t.closest<HTMLElement>(".mission-card, .mission-cluster");
+  const el = t.closest<HTMLElement>(".mission-card, .mission-face, .mission-cluster");
   const head = t.closest(".mission-cluster-head");
-  // A cluster moves by its head only. Its inside is the canvas.
-  const id = (el && (el.classList.contains("mission-card") || head) ? el.dataset.id : null) ?? null;
+  // A cluster moves by its head only. Its inside is the canvas. A face is its window.
+  const id = (el && (!el.classList.contains("mission-cluster") || head) ? el.dataset.id : null) ?? null;
   // A Skipper's card, a folded cluster and a cluster head move their block; a session card reorders in its cluster.
   const key = id ? G.moveKey(m.g, id) : null;
   const cluster = id && !key ? G.clusterOf(m.g, id) : null;
@@ -1121,7 +1117,7 @@ canvas.addEventListener("mousemove", (e) => {
   const at = `${e.clientX},${e.clientY}`;
   if (at === pointer) return;
   pointer = at;
-  const el = (e.target as Element).closest<HTMLElement>(".mission-card");
+  const el = (e.target as Element).closest<HTMLElement>(".mission-card, .mission-face");
   if (el?.dataset.id && el.dataset.id !== lit) light(el.dataset.id, false);
 });
 
@@ -1234,7 +1230,7 @@ export const board = {
     scope.title = t("mission.scopeTip", { key: keyLabel("focus-mode") });
     lit = focus;
     draw();
-    await read();
+    await Promise.all([read(), O.readRound(placed, null, 0, 0, screenFor, () => !paused)]);
   },
   /** With the root shown: fit the view, bring the lit card in, and keep the graph fresh. */
   start() {
@@ -1269,5 +1265,7 @@ export const board = {
     labelsDrawn = "";
     strands.clear();
     ticks.replaceChildren();
+    T.clearFaces();
+    O.untrack(new Set());
   },
 };
