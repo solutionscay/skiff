@@ -40,7 +40,6 @@ pub(super) enum Input {
     Seen,
     Idle {
         title: Option<TitleState>,
-        live: bool,
     },
     Bell,
     Tick,
@@ -110,7 +109,7 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
         }
         Input::Report { claim, view, ended } => {
             if state.info.state == SessionState::Done || state.info.program_status == view {
-                return finish(state, effects, now);
+                return (state, effects);
             }
             let minor = matches!((&state.info.program_status, &view),
                 (Some(a), Some(b)) if program_status::Records::minor_change(a, b));
@@ -184,7 +183,7 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
             if state.info.state == SessionState::Done
                 || state.info.program_status.as_ref().is_none_or(|p| p.ended)
             {
-                return finish(state, effects, now);
+                return (state, effects);
             }
             effects.update = state.status_dirty;
             effects.clear_status_dirty = true;
@@ -223,7 +222,7 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
                 effects.state = transition.state;
                 effects.cause_recorded = transition.cause_recorded;
                 effects.status_sent = effects.update;
-                return finish(next, effects, now);
+                return (next, effects);
             }
             effects.status_sent = effects.update;
         }
@@ -240,7 +239,7 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
                     now,
                 );
                 result.belled = Some(true);
-                return finish(next, result, now);
+                return (next, result);
             }
         }
         Input::Scan {
@@ -250,7 +249,7 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
             asks,
         } => {
             if state.front == Front::Shell {
-                return finish(state, effects, now);
+                return (state, effects);
             }
             effects.last_work = work;
             effects.busy_seen = busy;
@@ -303,13 +302,13 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
                 effects.update = result.update;
                 effects.work_started = result.work_started;
                 effects.cause_recorded = result.cause_recorded;
-                return finish(next, effects, now);
+                return (next, effects);
             }
         }
         Input::Title { old, new } => {
             let claimed = state.info.program_status.as_ref().is_some_and(|p| !p.ended);
             if old == new || claimed {
-                return finish(state, effects, now);
+                return (state, effects);
             }
             let target = match new {
                 Some(TitleState::Busy) => {
@@ -341,15 +340,15 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
                 effects.update = result.update;
                 effects.work_started = result.work_started;
                 effects.cause_recorded = result.cause_recorded;
-                return finish(next, effects, now);
+                return (next, effects);
             }
         }
-        Input::Idle { title, live } => {
+        Input::Idle { title } => {
             let quiet = now.saturating_sub(state.last_work) > IDLE_AFTER.as_millis() as u64;
             if title != Some(TitleState::Busy)
                 && quiet
                 && state.info.state == SessionState::Working
-                && !live
+                && state.info.program_status.as_ref().is_none_or(|p| p.ended)
             {
                 state.info.state = SessionState::Idle;
                 let stretch = state.last_work.saturating_sub(state.work_started);
@@ -367,41 +366,6 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
                 effects.state = Some(SessionState::Idle);
             }
         }
-    }
-    finish(state, effects, now)
-}
-
-fn finish(mut state: State, effects: Effects, now: u64) -> (State, Effects) {
-    if effects.work_started {
-        state.work_started = now;
-    }
-    if effects.last_work {
-        state.last_work = now;
-    }
-    if effects.reset_fresh_busy {
-        state.fresh = false;
-        state.busy = false;
-    }
-    if effects.busy_seen {
-        state.busy = true;
-    }
-    if let Some(value) = effects.belled {
-        state.belled = value;
-    }
-    if let Some(value) = effects.raised {
-        state.raised = value;
-    }
-    if let Some(value) = effects.approval_since {
-        state.approval_since = value;
-    }
-    if effects.clear_status_dirty {
-        state.status_dirty = false;
-    }
-    if let Some(value) = effects.status_dirty {
-        state.status_dirty = value;
-    }
-    if effects.status_sent {
-        state.status_sent_at = now;
     }
     (state, effects)
 }

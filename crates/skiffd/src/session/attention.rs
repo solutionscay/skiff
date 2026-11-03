@@ -99,7 +99,7 @@ impl SessionPool {
         let (id, updated, effects) = {
             let mut info = s.info.lock().unwrap();
             let title = *s.title_state.lock().unwrap();
-            let (next, effects) = reducer::reduce(snapshot(s, &info), Input::Idle { title, live: live(&info) }, now);
+            let (next, effects) = reducer::reduce(snapshot(s, &info), Input::Idle { title }, now);
             *info = next.info;
             if effects.reset_fresh_busy {
                 s.fresh.store(false, Ordering::Relaxed);

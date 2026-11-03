@@ -119,7 +119,6 @@ impl SessionPool {
             let changed = end_reports(&mut records, &mut info);
             let (next, effects) = reducer::reduce(snapshot(session, &info), Input::ClaimLost, now_ms());
             *info = next.info;
-            if effects.work_started { session.work_started.store(now_ms(), Ordering::Relaxed); }
             let moved = effects.state.map(|state| (info.id.clone(), state));
             (moved, changed.then(|| info.clone()))
         };
