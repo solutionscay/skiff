@@ -105,6 +105,9 @@ function rhythm(h: number): string {
     + `--face-turn:${turn}s;--face-turn-delay:${phase(turn, (h >>> 9) % turn)}s;--dir:${(h >>> 29) & 1 ? 1 : -1}`;
 }
 
+/** Animation phase for a face mounted now, including a cached face. */
+export const avatarStyle = (name: string, seed = 0) => rhythm(hash(seed ? `${name}#${seed}` : name));
+
 export function skipperAvatar(name: string, seed = 0, finish: Finish = "flat"): string {
   const h = hash(seed ? `${name}#${seed}` : name);
   const [d, y] = BODIES[h % 8];

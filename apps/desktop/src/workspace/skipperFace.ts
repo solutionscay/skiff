@@ -11,7 +11,7 @@
  * generated faces.
  */
 import { invoke } from "@tauri-apps/api/core";
-import { admiralAvatar, DEFAULT_FINISH, FINISH_DEFS_ID, finishDefs, parseFinish, skipperAvatar, type Finish } from "../appearance/skipperAvatar";
+import { admiralAvatar, avatarStyle, DEFAULT_FINISH, FINISH_DEFS_ID, finishDefs, parseFinish, skipperAvatar, type Finish } from "../appearance/skipperAvatar";
 import { place } from "../app/stateQueries";
 import { S } from "../app/state";
 import { projectSkipperOf, skiffAgentSession } from "../app/skiffAgent";
@@ -23,6 +23,26 @@ import { button, h } from "../ui/dom";
 import { t } from "../i18n";
 
 let chosen = new Map<string, number>();
+
+/** Parsed SVG geometry. Bound the cache because Avatar… can shuffle without limit. */
+const faces = new Map<string, SVGElement>();
+const FACE_CACHE_SIZE = 64;
+
+function faceDrawing(scope: string | null, seed: number): SVGElement {
+  const key = JSON.stringify([scope, seed, finish]);
+  let template = faces.get(key);
+  if (!template) {
+    const holder = document.createElement("span");
+    holder.innerHTML = scope === null ? admiralAvatar(finish) : skipperAvatar(scope, seed, finish);
+    template = holder.firstElementChild as SVGElement;
+    if (faces.size >= FACE_CACHE_SIZE) faces.delete(faces.keys().next().value!);
+    faces.set(key, template);
+  }
+  const svg = template.cloneNode(true) as SVGElement;
+  // Geometry stays, but the blink and turn start at their current phase.
+  svg.setAttribute("style", avatarStyle(scope ?? "Admiral", scope === null ? 0 : seed));
+  return svg;
+}
 
 /** Scopes already read, so a face with no choice asks once. */
 const asked = new Set<string>();
@@ -118,7 +138,7 @@ export function skipperFace(scope: string | null, px: number, seed?: number): HT
     }
   }
   ensureDefs();
-  face.innerHTML = scope === null ? admiralAvatar(finish) : skipperAvatar(scope, n ?? 0, finish);
+  face.appendChild(faceDrawing(scope, n ?? 0));
   return face;
 }
 
