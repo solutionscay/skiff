@@ -10,6 +10,7 @@ use alacritty_terminal::{
 use anyhow::Result;
 use skiff_client::Client;
 use skiff_core::session::SessionInfo;
+use skiff_core::screen::{box_rule, codex_input, esc_interrupt_hint, interrupt_hint};
 
 use crate::peek;
 
@@ -50,7 +51,7 @@ pub(super) fn busy_line(rows: &[(String, String)]) -> bool {
     let end = rows.iter().rposition(|(a, _)| !a.is_empty()).map_or(0, |i| i + 1);
     rows[end.saturating_sub(8)..end].iter().any(|(a, _)| {
         let t: String = a.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_lowercase();
-        t.contains("tointerrupt") || t.contains("escinterrupt")
+        interrupt_hint(&t) || esc_interrupt_hint(&t)
     })
 }
 
@@ -99,16 +100,11 @@ pub fn input_box_rows(rows: &[(String, String)], agent: &str) -> Option<std::ops
     let start = end.saturating_sub(16);
     let near = &rows[start..end];
     if agent == "codex" {
-        let line = start + near.iter().rposition(|(all, _)| all.trim_start().starts_with('›'))?;
+        let line = start + near.iter().rposition(|(all, _)| codex_input(all))?;
         return Some(line..line + 1);
     }
     let cols = rows.iter().map(|(a, _)| a.chars().count()).max().unwrap_or(0);
-    let rule = |r: &str| {
-        let t = r.trim();
-        let n = t.chars().count();
-        n >= 8 && n * 2 >= cols && t.chars().filter(|c| ('\u{2500}'..='\u{257f}').contains(c)).count() * 10 >= n * 8
-    };
-    let marks: Vec<usize> = near.iter().enumerate().filter(|(_, (a, _))| rule(a)).map(|(i, _)| i).collect();
+    let marks: Vec<usize> = near.iter().enumerate().filter(|(_, (a, _))| a.trim().chars().count() >= 8 && box_rule(a, cols)).map(|(i, _)| i).collect();
     let [.., top, bottom] = marks[..] else { return None };
     if bottom - top < 2 {
         return None;

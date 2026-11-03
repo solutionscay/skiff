@@ -9,6 +9,6 @@ mod signals;
 mod snapshot;
 mod terminal;
 
-pub use inspect::{has_busy_line, title_state, TitleState};
+pub use skiff_core::screen::{has_busy_line, title_state, TitleState};
 pub use signals::{Signals, StatusSignal};
 pub use terminal::Screen;

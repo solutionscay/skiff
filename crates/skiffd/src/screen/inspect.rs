@@ -3,7 +3,9 @@ use super::terminal::Screen;
 use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::{Column, Line};
 use alacritty_terminal::term::cell::{Cell, Flags};
-use serde::{Deserialize, Serialize};
+use skiff_core::screen::{box_rule, codex_input};
+#[cfg(test)]
+use skiff_core::screen::{title_state, TitleState};
 
 impl Screen {
     /// The last `n` rows of the screen that hold text, joined, in lower case
@@ -30,77 +32,12 @@ impl Screen {
         rows.concat()
     }
 
-    /// Whether `agent` shows a prompt that stops its turn until the user
-    /// answers: an approval, a question, or the trust check at start. The
-    /// agents ring no bell for it, so the daemon reads the screen.
-    ///
-    /// Each agent draws the prompt in place of its input box, with a line of
-    /// key hints at the bottom of the screen. The match reads only those last
-    /// rows, so the same words in the conversation above do not count.
     pub fn approval_prompt(&self, agent: &str) -> bool {
-        match agent {
-            // "Esc to cancel · Tab to amend", "Enter to confirm · Esc to cancel".
-            "claude" => self.bottom_text(2).contains("esctocancel"),
-            "codex" => {
-                let t = self.bottom_text(2);
-                t.contains("pressentertoconfirmoresctocancel") || t.contains("entercontinue·escskip")
-            }
-            // "Allow once   Allow always   Reject".
-            "opencode" => {
-                let t = self.bottom_text(4);
-                t.contains("allowonce") && t.contains("reject")
-            }
-            "gemini" => {
-                // Antigravity (agy): "↑/↓ Navigate · tab Amend", "↑/↓ Navigate · enter Confirm".
-                // Its slash-command menu shows "↑/↓ Navigate · enter Select · tab Complete".
-                // Gemini CLI: "Allow once", "Allow for this session", "No, suggest changes (esc)".
-                let t = self.bottom_text(10);
-                (t.contains("↑/↓navigate")
-                    && (t.contains("tabamend") || t.contains("enterconfirm")))
-                    || (t.contains("allowonce") && t.contains("suggestchanges"))
-            }
-            "copilot" => {
-                // A tool's "Do you want to create …?" ends with "3. No, and tell
-                // Copilot what to do differently (Esc to stop)"; the folder trust
-                // dialog asks "Do you trust the files in this folder?". Both
-                // close with "↑/↓ to navigate · enter to select · esc to cancel".
-                let t = self.bottom_text(14);
-                t.contains("↑/↓tonavigate")
-                    && (t.contains("no,andtellcopilotwhattododifferently")
-                        || t.contains("doyoutrustthefilesinthisfolder"))
-            }
-            "grok" => {
-                // "1/4:select │ Tab:next option │ ...", or a command's
-                // "Allow once", "Always allow this command", "Reject".
-                let t = self.bottom_text(10);
-                let hints = self.bottom_text(2);
-                (hints.contains(":select") && hints.contains("tab:nextoption"))
-                    || (t.contains("allowonce") && t.contains("reject"))
-            }
-            _ => false,
-        }
+        skiff_core::screen::approval_prompt(agent, |n| self.bottom_text(n))
     }
 
-    /// The agent shows the line it keeps up while it works, above its input
-    /// box. Proof of a turn, however short. Grok and Hermes have no such line known yet.
     pub fn busy_line(&self, agent: &str) -> bool {
-        if !has_busy_line(agent) {
-            return false;
-        }
-        let t = self.bottom_text(6);
-        match agent {
-            // "esc to interrupt", "• Working (2s • esc to interrupt)". The key
-            // follows the user's keymap, so the match leaves it out.
-            "claude" | "codex" => t.contains("tointerrupt"),
-            // "esc interrupt", and "esc again to interrupt" after one Esc.
-            "opencode" => t.contains("escinterrupt") || t.contains("tointerrupt"),
-            // "(esc to cancel, 12s)". Antigravity shows "esc to cancel" at
-            // its prompts and its slash-command menu too, under a "↑/↓ Navigate" list.
-            "gemini" => t.contains("esctocancel") && !t.contains("↑/↓navigate"),
-            // "◎ Working esc esc edit prompt", "◎ Working · 19 B esc esc interrupt".
-            "copilot" => t.contains("working") && t.contains("escesc"),
-            _ => false,
-        }
+        skiff_core::screen::busy_line(agent, |n| self.bottom_text(n))
     }
 
     /// The last `n` rows of text above the agent's input box, for mission
@@ -126,68 +63,6 @@ impl Screen {
     }
 
 }
-/// What an agent's window title says about its turn.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum TitleState {
-    Busy,
-    /// The agent waits for the user's answer.
-    Action,
-    Ready,
-}
-
-/// Reads the state an agent puts in its window title. `None` when the agent
-/// has no known title state, or this title carries none.
-///
-/// - Claude Code: "◐ " or "◑ " while busy, "✳ " otherwise.
-/// - Codex: a braille spinner while busy, "[ ! ] Action Required" for an
-///   answer. Its default title has the spinner first.
-/// - Gemini CLI: "✦ " or "⏲ " while busy, "✋ " for an answer, "◇ " when ready.
-pub fn title_state(agent: &str, title: &str) -> Option<TitleState> {
-    let first = title.trim_start().chars().next()?;
-    match agent {
-        "claude" => match first {
-            '\u{25d0}'..='\u{25d3}' => Some(TitleState::Busy),
-            '\u{2733}' => Some(TitleState::Ready),
-            _ => None,
-        },
-        "codex" => {
-            if title.contains("Action Required") {
-                Some(TitleState::Action)
-            } else if title.chars().any(|c| ('\u{2801}'..='\u{28ff}').contains(&c)) {
-                Some(TitleState::Busy)
-            } else {
-                Some(TitleState::Ready)
-            }
-        }
-        "gemini" => match first {
-            '\u{2726}' | '\u{23f2}' => Some(TitleState::Busy),
-            '\u{270b}' => Some(TitleState::Action),
-            '\u{25c7}' => Some(TitleState::Ready),
-            _ => None,
-        },
-        // "⚠ Action Required - ⠋ - Running: … - grok" at a prompt,
-        // "⠋ - Thinking - <topic> - grok" while it works, "<topic> - grok" after.
-        "grok" => {
-            if title.contains("Action Required") {
-                Some(TitleState::Action)
-            } else if ('\u{2801}'..='\u{28ff}').contains(&first) {
-                Some(TitleState::Busy)
-            } else {
-                Some(TitleState::Ready)
-            }
-        }
-        _ => None,
-    }
-}
-/// The agents whose busy line `Screen::busy_line` knows. For them, only that
-/// line makes a turn: text they print without it (a recap, a status line) is not one.
-pub fn has_busy_line(agent: &str) -> bool {
-    matches!(
-        agent,
-        "claude" | "codex" | "opencode" | "gemini" | "copilot"
-    )
-}
-
 /// A row's characters, trailing spaces dropped.
 fn row_text(row: &alacritty_terminal::grid::Row<Cell>, cols: usize) -> String {
     let mut s = String::with_capacity(cols);
@@ -213,14 +88,9 @@ fn input_box_top(rows: &[String], agent: &str, cols: usize) -> Option<usize> {
     let from = rows.len().saturating_sub(12);
     let near = rows.iter().enumerate().skip(from);
     if agent == "codex" {
-        return near.filter(|(_, r)| r.trim_start().starts_with('›')).map(|(i, _)| i).next_back();
+        return near.filter(|(_, r)| codex_input(r)).map(|(i, _)| i).next_back();
     }
-    let rule = |r: &str| {
-        let t = r.trim();
-        let n = t.chars().count();
-        n * 2 >= cols && t.chars().filter(|c| ('\u{2500}'..='\u{257f}').contains(c)).count() * 10 >= n * 8
-    };
-    near.filter(|(_, r)| rule(r)).map(|(i, _)| i).next()
+    near.filter(|(_, r)| box_rule(r, cols)).map(|(i, _)| i).next()
 }
 
 

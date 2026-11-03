@@ -12,6 +12,7 @@ pub mod open;
 pub mod project;
 pub mod protocol;
 pub mod session;
+pub mod screen;
 pub mod socket;
 pub mod state;
 pub mod shell;
