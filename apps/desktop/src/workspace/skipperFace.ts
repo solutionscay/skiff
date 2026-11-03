@@ -24,21 +24,79 @@ import { t } from "../i18n";
 
 let chosen = new Map<string, number>();
 
-/** Parsed SVG geometry. Bound the cache because Avatar… can shuffle without limit. */
+/** Face geometry and static finish images. Bound the cache for Avatar… shuffles. */
 const faces = new Map<string, SVGElement>();
 const FACE_CACHE_SIZE = 64;
+const rasterized = new WeakMap<SVGElement, Promise<string>>();
 
-function faceDrawing(scope: string | null, seed: number): SVGElement {
-  const key = JSON.stringify([scope, seed, finish]);
+/** Decode each static finish once. Keep the SVG if canvas is unavailable. */
+function rasterLayer(uri: string, pixels: number): Promise<string> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onerror = () => resolve(uri);
+    image.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = pixels;
+        const context = canvas.getContext("2d");
+        if (!context) return resolve(uri);
+        context.drawImage(image, 0, 0, pixels, pixels);
+        resolve(canvas.toDataURL("image/png"));
+      } catch {
+        resolve(uri);
+      }
+    };
+    image.src = uri;
+  });
+}
+
+function faceDrawing(scope: string | null, seed: number, color: string): SVGElement {
+  // Four pixels per SVG unit at device scale keep the row size ladder sharp,
+  // including CSS zoom. The image has a 16-unit margin for fur and shadows.
+  const pixels = Math.ceil(256 * (window.devicePixelRatio || 1));
+  const key = JSON.stringify([scope, seed, finish, color, pixels]);
   let template = faces.get(key);
   if (!template) {
     const holder = document.createElement("span");
     holder.innerHTML = scope === null ? admiralAvatar(finish) : skipperAvatar(scope, seed, finish);
     template = holder.firstElementChild as SVGElement;
+    // SVG filters inside an animated SVG repaint even while a transform holds.
+    // Image documents keep the same finish, but the browser caches their pixels.
+    // Leave the moving groups and crisp visor/eyes in the outer SVG.
+    if (finish !== "flat") {
+      const defs = document.getElementById(FINISH_DEFS_ID)!.firstElementChild!;
+      for (const layer of template.querySelectorAll<SVGElement>("[filter]")) {
+        if (!template.contains(layer)) continue; // An outer filtered layer already includes it.
+        const image = document.createElementNS("http://www.w3.org/2000/svg", "image");
+        const source = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        source.setAttribute("viewBox", "-16 -16 64 64");
+        source.setAttribute("width", String(pixels));
+        source.setAttribute("height", String(pixels));
+        source.style.setProperty("--pc", color);
+        source.append(defs.cloneNode(true), layer.cloneNode(true));
+        image.setAttribute("x", "-16");
+        image.setAttribute("y", "-16");
+        image.setAttribute("width", "64");
+        image.setAttribute("height", "64");
+        const uri = "data:image/svg+xml," + encodeURIComponent(new XMLSerializer().serializeToString(source));
+        image.setAttribute("href", uri);
+        const ready = rasterLayer(uri, pixels);
+        rasterized.set(image, ready);
+        void ready.then((png) => image.setAttribute("href", png));
+        layer.replaceWith(image);
+      }
+    }
     if (faces.size >= FACE_CACHE_SIZE) faces.delete(faces.keys().next().value!);
     faces.set(key, template);
   }
   const svg = template.cloneNode(true) as SVGElement;
+  const layers = template.querySelectorAll<SVGElement>("image");
+  svg.querySelectorAll<SVGElement>("image").forEach((image, i) => {
+    const ready = rasterized.get(layers[i]);
+    if (ready) void ready.then((png) => {
+      if (image.getAttribute("href") !== png) image.setAttribute("href", png);
+    });
+  });
   // Geometry stays, but the blink and turn start at their current phase.
   svg.setAttribute("style", avatarStyle(scope ?? "Admiral", scope === null ? 0 : seed));
   return svg;
@@ -126,7 +184,8 @@ export const faceSig = (scope: string | null) => [chosen.get(scope ?? "") ?? nul
 export function skipperFace(scope: string | null, px: number, seed?: number): HTMLElement {
   const face = h("span", "skipper-face");
   face.style.setProperty("--face", String(px));
-  face.style.setProperty("--pc", faceColor(scope));
+  const color = faceColor(scope);
+  face.style.setProperty("--pc", color);
   const key = scope ?? "";
   const n = seed ?? chosen.get(key);
   // A new Skipper's folder gets its random face on the next read.
@@ -138,7 +197,7 @@ export function skipperFace(scope: string | null, px: number, seed?: number): HT
     }
   }
   ensureDefs();
-  face.appendChild(faceDrawing(scope, n ?? 0));
+  face.appendChild(faceDrawing(scope, n ?? 0, color));
   return face;
 }
 
