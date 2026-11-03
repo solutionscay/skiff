@@ -16,7 +16,7 @@ import { bareWorktree, folded, hiddenSplit, isOpen, outsideSessions, projectKey,
 import { shows } from "./profile";
 import { ledgerNeeds } from "./ledger";
 import { projectSkipperOf, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch } from "../app/skiffAgent";
-import { look, groupColor } from "./sessionRows";
+import { groupColor, look } from "./sessionRows";
 import { skipperSig } from "./skipperRows";
 
 let lastProjects: Project[] | null = null;

@@ -1284,6 +1284,22 @@
     ],
     "sha256": "7c4e4f5870cef2887d85c5fdc3e4109ac48c5f92992f6beb1a2f5fb0aff7173b"
   },
+  "apps/desktop/src/workspace/sectionRows.ts": {
+    "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
+    "reasons": [
+      "local provider: apps/desktop/src/app/hosts.ts",
+      "local provider: apps/desktop/src/app/panels.ts",
+      "local provider: apps/desktop/src/app/state.ts",
+      "local provider: apps/desktop/src/app/stateQueries.ts",
+      "local provider: apps/desktop/src/workspace/menus.ts",
+      "local provider: apps/desktop/src/workspace/profile.ts",
+      "local provider: apps/desktop/src/workspace/projectRows.ts",
+      "local provider: apps/desktop/src/workspace/sessionRows.ts",
+      "local provider: apps/desktop/src/workspace/tree.ts",
+      "local provider: apps/desktop/src/workspace/treeDrag.ts"
+    ],
+    "sha256": "2d74d5a2ca41f144c0605d3aebabfef25909032a056720ab4586067d219449f7"
+  },
   "apps/desktop/src/workspace/selection.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
     "reasons": [
@@ -1313,7 +1329,6 @@
   "apps/desktop/src/workspace/sidebar.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
     "reasons": [
-      "local provider: apps/desktop/src/app/hosts.ts",
       "local provider: apps/desktop/src/app/keyboard.ts",
       "local provider: apps/desktop/src/app/panels.ts",
       "local provider: apps/desktop/src/app/skiffAgent.ts",
@@ -1321,19 +1336,18 @@
       "local provider: apps/desktop/src/app/stateQueries.ts",
       "local provider: apps/desktop/src/appearance/agentIcon.ts",
       "local provider: apps/desktop/src/appearance/themes.ts",
-      "local provider: apps/desktop/src/workspace/menus.ts",
       "local provider: apps/desktop/src/workspace/profile.ts",
       "local provider: apps/desktop/src/workspace/projectRows.ts",
+      "local provider: apps/desktop/src/workspace/sectionRows.ts",
       "local provider: apps/desktop/src/workspace/sessionRows.ts",
       "local provider: apps/desktop/src/workspace/sidebarFocus.ts",
       "local provider: apps/desktop/src/workspace/sidebarLines.ts",
       "local provider: apps/desktop/src/workspace/sidebarSig.ts",
       "local provider: apps/desktop/src/workspace/skipperRows.ts",
       "local provider: apps/desktop/src/workspace/skippersView.ts",
-      "local provider: apps/desktop/src/workspace/tree.ts",
-      "local provider: apps/desktop/src/workspace/treeDrag.ts"
+      "local provider: apps/desktop/src/workspace/tree.ts"
     ],
-    "sha256": "3736db2127f458032266b7ded31c68919a88d9aa3276620e2bf135f5fb4bc9da"
+    "sha256": "616a3a526db783ee0c5da7589ed2f99edfe194ae6e9e511843267f035b1c853a"
   },
   "apps/desktop/src/workspace/sidebarFocus.ts": {
     "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
@@ -1375,7 +1389,7 @@
       "local provider: apps/desktop/src/workspace/tree.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "379598aa9d0c057e4228fd60a818c61fdea5bb6c58ff23f40f875115029fcce7"
+    "sha256": "65c8fedcde254a0528cbbbb2ee5dcf35c1d691965dfd2db1c21410e2b07c06ff"
   },
   "apps/desktop/src/workspace/skipperFace.ts": {
     "ownership": "local only by design: a Skipper's avatar (avatar.toml in its folder on This Mac) through skipper_avatars and set_skipper_avatar, both in LOCAL_ONLY and refused on a remote Host; the avatar menu and Settings rows are off on a remote Host",
