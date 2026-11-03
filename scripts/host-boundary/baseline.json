@@ -1232,7 +1232,6 @@
       "local provider: apps/desktop/src/appearance/agentIcon.ts",
       "local provider: apps/desktop/src/appearance/appTheme.ts",
       "local provider: apps/desktop/src/appearance/themes.ts",
-      "local provider: apps/desktop/src/terminal/peek.ts",
       "local provider: apps/desktop/src/workspace/changes.ts",
       "local provider: apps/desktop/src/workspace/files.ts",
       "local provider: apps/desktop/src/workspace/ledger.ts",
@@ -1240,6 +1239,7 @@
       "local provider: apps/desktop/src/workspace/profile.ts",
       "local provider: apps/desktop/src/workspace/rename.ts",
       "local provider: apps/desktop/src/workspace/selection.ts",
+      "local provider: apps/desktop/src/workspace/sidebarFocus.ts",
       "local provider: apps/desktop/src/workspace/sidebarLines.ts",
       "local provider: apps/desktop/src/workspace/skipperFace.ts",
       "local provider: apps/desktop/src/workspace/skippersView.ts",
@@ -1247,7 +1247,17 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "2be538ea31c908ba167251f270f57fa6fc254b1d971290463be12aa8f7f632d7"
+    "sha256": "b126df5085a750a5308a91b63ccdf99990a29a1a2a03c74d1bb80983a965c9b5"
+  },
+  "apps/desktop/src/workspace/sidebarFocus.ts": {
+    "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
+    "reasons": [
+      "local provider: apps/desktop/src/app/keyboard.ts",
+      "local provider: apps/desktop/src/terminal/peek.ts",
+      "local provider: apps/desktop/src/workspace/rename.ts",
+      "local provider: apps/desktop/src/workspace/selection.ts"
+    ],
+    "sha256": "30e771c954ffe88cc9134575175a459ad314a433233ccf84b1103ffdc667583f"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
