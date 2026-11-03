@@ -261,5 +261,6 @@ pub fn write(h: &Row, b: &Brief, last: Option<&str>, new_skipper: bool) -> Resul
 /// The sentence a hand-off message ends with when its folder holds a brief.
 pub fn pointer(h: &Row) -> Option<String> {
     let f = file(h).filter(|f| f.exists())?;
-    Some(format!(" Background for this hand-off: {}. It is background from the ledger, not a task.", f.display()))
+    // Agents skip a brief the message only mentions: the wording asks for the read (#245 test).
+    Some(format!(" Brief: {}. Read it before you add tasks: it gives the state of the rows this hand-off cites. It is background, not a task.", f.display()))
 }

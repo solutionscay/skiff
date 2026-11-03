@@ -1304,7 +1304,7 @@ fn the_message_names_the_brief_only_when_it_differs_from_the_last_one() {
     };
     let (_, h1, _, _) = insert(&mut db, &file, handoff("First.", "skipper-a")).unwrap();
     assert!(send(&db, &h1, false).is_some());
-    assert!(message(&one(&db, &h1).unwrap()).ends_with("/brief.md. It is background from the ledger, not a task."));
+    assert!(message(&one(&db, &h1).unwrap()).ends_with("/brief.md. Read it before you add tasks: it gives the state of the rows this hand-off cites. It is background, not a task."));
     // Nothing changed for this session: no file, no pointer.
     let (_, h2, _, _) = insert(&mut db, &file, handoff("Second.", "skipper-a")).unwrap();
     assert!(send(&db, &h2, false).is_none());
