@@ -1,4 +1,4 @@
-import { worktreeLines, type Line } from "./sidebarLines";
+import { lineIndex, worktreeLines, type Line, type LineIndex } from "./sidebarLines";
 import { groupRenameInput } from "./rename";
 /** The session tree and its focus, caret, and hover restoration. */
 
@@ -217,7 +217,7 @@ const projectBlockKey = (name: string) => `project:${name}`;
  * restarts its icons and costs a style pass, so a block is rebuilt only when
  * what it shows changes. Expanding one project rebuilds that project.
  */
-function sidebarSig(): { all: string; parts: Map<string, string>; looks: Map<string, string[]> } {
+function sidebarSig(index: LineIndex): { all: string; parts: Map<string, string>; looks: Map<string, string[]> } {
   // Rows close over project, worktree and group objects. A new list brings new
   // objects, and some callers compare them by identity: the rows are rebuilt.
   if (S.projects !== lastProjects || S.groups !== lastGroups) {
@@ -273,16 +273,24 @@ function sidebarSig(): { all: string; parts: Map<string, string>; looks: Map<str
   // The watcher state changes with no session event when the grace ends.
   const sa = skiffAgentSession();
   const agent = skiffAgentFolder() ? [skiffAgentName(), sa?.id ?? null, skiffAgentChoice()?.id ?? null, sa ? skiffWatch(sa) : null, sa?.watch?.follows ?? null, ledgerNeeds(), sa ? [rowOf.get(sa.id), look(sa)] : null, faceSig(null)] : null;
-  const base = [listGen, appliedTheme(), S.selection, S.renamingSession, S.renaming?.id ?? null, sa?.id ?? null];
+  const base = [listGen, appliedTheme(), sa?.id ?? null];
   const parts = new Map<string, string>();
-  parts.set(AGENT_BLOCK, JSON.stringify([base, agent]));
-  parts.set(OTHER_BLOCK, JSON.stringify([base, under.get(OTHER_BLOCK) ?? null]));
+  parts.set(AGENT_BLOCK, JSON.stringify([base, agent, sa ? S.selection.includes(sa.id) : false]));
+  parts.set(OTHER_BLOCK, JSON.stringify([base, under.get(OTHER_BLOCK) ?? null, S.selection, S.renamingSession, S.renaming?.id]));
   S.projects.forEach((p, i) => {
     const k = projectBlockKey(p.name);
     const open = isOpen(projectKey(p.name));
     // An open project's Skipper row is rebuilt alone (syncSkipperRow).
     const skipper = open ? !!projectSkipperOf(p.name) : skipperSig(p.name);
-    parts.set(k, JSON.stringify([base, projects[i], open, p.name === S.selectedProject, under.get(k) ?? null, skipper, open ? null : looksUnder.get(k) ?? null]));
+    const bare = bareWorktree(p);
+    const lines = bare ? worktreeLines(bare, index) : [];
+    const bareEmpty = bare ? !lines.length && !skipper && !showsFiles(p) && !(showsChanges(p) && changesBlock(bare)) : false;
+    parts.set(k, JSON.stringify([base, projects[i].slice(0, -1), p.worktrees.map((w) => w.path), bare?.path, bareEmpty, open, p.name === S.selectedProject, skipper, open ? null : looksUnder.get(k) ?? null]));
+    for (const w of p.worktrees) {
+      const wtLines = worktreeLines(w, index);
+      const ids = wtLines.flatMap((l) => l.group ? [l.group.id] : "session" in l ? [l.session.id] : [l.pointer.id]);
+      parts.set(`worktree:${p.name}:${w.path}`, JSON.stringify([base, (projects[i][projects[i].length - 1] as unknown[][])[p.worktrees.indexOf(w)], bare === w, w.path, w.path === selectedWorktree.get(p.name), wtLines.map((l) => l.group ? [groups[S.groups.indexOf(l.group)], filledOf(l.group.layout).map((id) => rowOf.get(id))] : rowOf.get(("session" in l ? l.session : l.pointer).id)), S.selection.filter((id) => ids.includes(id)), ids.includes(S.renamingSession ?? "") ? S.renamingSession : null, ids.includes(S.renaming?.id ?? "") ? S.renaming?.id : null]));
+    }
   });
   const all = JSON.stringify([
     listGen, appliedTheme(), S.selectedProject, folded.keys(), S.projects.map(shows), hiddenSig(), outsideSig(),
@@ -337,7 +345,8 @@ export function renderSidebar() {
     return;
   }
   openToFocused();
-  const sig = step("render.sidebar.sig", sidebarSig);
+  const index = lineIndex();
+  const sig = step("render.sidebar.sig", () => sidebarSig(index));
   if (lastSig === sig.all) return tally("sidebar.same");
   lastSig = sig.all;
   tally("sidebar.drawn");
@@ -412,7 +421,22 @@ export function renderSidebar() {
       ? split.shown.length ? [keep(`shown:${sec.fleet}`, shownSig, () => shownBlock(split.shown))] : []
       : sec.projects.map((p) => {
         const k = projectBlockKey(p.name);
-        return syncSkipperRow(keep(k, sig.parts.get(k)!, () => projectBlock(p)), p, takeAnchor);
+        const block = keep(k, sig.parts.get(k)!, () => projectBlock(p, index));
+        const kids = [...block.children].find((el) => el.classList.contains("tree-kids")) as HTMLElement | undefined;
+        if (kids && !p.error && p.worktrees.length) {
+          const bare = bareWorktree(p);
+          const prefix = [...kids.children].filter((el) => !(el as HTMLElement).dataset.worktreeBlock) as HTMLElement[];
+          const worktrees = p.worktrees.map((w) => {
+            const wk = `worktree:${p.name}:${w.path}`;
+            return keep(wk, sig.parts.get(wk)!, () => {
+              const body = bare === w ? bareBlock(p, w, index) : worktreeBlock(p, w, w.path === selectedWorktree.get(p.name), accent(p), index);
+              body.dataset.worktreeBlock = w.path;
+              return body;
+            });
+          });
+          setChildren(kids, [...prefix, ...worktrees], takeAnchor);
+        }
+        return syncSkipperRow(block, p, takeAnchor);
       }))], takeAnchor);
     nodes.push(kids);
   }
@@ -429,9 +453,9 @@ export function renderSidebar() {
     nodes.push(keep(OUTSIDE_BLOCK, outsideKey, () => outsideBlock(outside)));
   }
   // Sessions whose folder is in no project.
-  if (worktreeLines(null).length) {
+  if (worktreeLines(null, index).length) {
     nodes.push(keep(`${OTHER_BLOCK}-head`, "", otherHead));
-    nodes.push(keep(OTHER_BLOCK, sig.parts.get(OTHER_BLOCK)!, () => sessionBlock(worktreeLines(null), DEFAULT_ACCENT)));
+    nodes.push(keep(OTHER_BLOCK, sig.parts.get(OTHER_BLOCK)!, () => sessionBlock(worktreeLines(null, index), DEFAULT_ACCENT)));
   }
   setChildren(side, nodes, takeAnchor);
   // Rows in kept blocks take the new state of their session.
@@ -721,7 +745,7 @@ function sectionHead(sec: Section, hidden: number | null = null, alone = false):
 }
 
 /** A project: one 40px row, then its worktrees, groups and sessions while it is open. */
-function projectBlock(p: Project): HTMLElement {
+function projectBlock(p: Project, index: LineIndex): HTMLElement {
   const color = accent(p);
   const key = projectKey(p.name);
   const open = isOpen(key);
@@ -730,7 +754,7 @@ function projectBlock(p: Project): HTMLElement {
   // changesBlock reads the worktree's changes the first time, so a project folded since the start still learns of them.
   const changes = bare && showsChanges(p) ? changesBlock(bare) : null;
   const skipper = projectSkipperOf(p.name);
-  const empty = !!bare && !p.error && !worktreeLines(bare).length && !changes && !showsFiles(p) && !skipper;
+  const empty = !!bare && !p.error && !worktreeLines(bare, index).length && !changes && !showsFiles(p) && !skipper;
   const block = h("div", "tree-project" + (p.name === S.selectedProject ? " selected" : ""));
   block.style.setProperty("--pc", color);
 
@@ -778,16 +802,6 @@ function projectBlock(p: Project): HTMLElement {
   }
   if (p.error) kids.appendChild(errorRow(p.error));
   else if (p.worktrees.length === 0) kids.appendChild(h("div", "note-row", t("sidebar.noWorktrees")));
-  else if (bare) {
-    const body = h("div", "wt-body tree-bare");
-    body.appendChild(sessionBlock(worktreeLines(bare), color));
-    if (changes) body.appendChild(changes);
-    if (showsFiles(p)) body.appendChild(filesBlock(bare));
-    kids.appendChild(body);
-  } else {
-    const sel = selectedWorktree.get(p.name);
-    for (const w of p.worktrees) kids.appendChild(worktreeBlock(p, w, w.path === sel, color));
-  }
   return block;
 }
 
@@ -883,11 +897,19 @@ function groupRow(g: Group, hasPrevious = false, hasNext = false): HTMLElement {
   return row;
 }
 
-function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string): HTMLElement {
+function bareBlock(p: Project, w: Worktree, index: LineIndex): HTMLElement {
+  const body = h("div", "wt-body tree-bare");
+  body.appendChild(sessionBlock(worktreeLines(w, index), accent(p)));
+  if (showsChanges(p)) { const changes = changesBlock(w); if (changes) body.appendChild(changes); }
+  if (showsFiles(p)) body.appendChild(filesBlock(w));
+  return body;
+}
+
+function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string, index: LineIndex): HTMLElement {
   const block = h("div", "wt" + (selected ? " selected" : ""));
   block.style.setProperty("--pc", color);
 
-  const lines = worktreeLines(w);
+  const lines = worktreeLines(w, index);
   // changesBlock reads the worktree's changes the first time, folded or not.
   const changes = showsChanges(p) ? changesBlock(w) : null;
   // Nothing under the worktree: no chevron and no fold. A click still selects it.

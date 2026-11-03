@@ -4,7 +4,7 @@ import { byStart } from "./model";
 import type { Group, SessionInfo, Worktree } from "../platform/types";
 
 import { S, sessions } from "../app/state";
-import { groupedIds, place, visitors, worktreeSessions } from "../app/stateQueries";
+import { awayPlaces, place } from "../app/stateQueries";
 
 import { groupHome } from "./view";
 import { projectSkippers, skiffAgentSession } from "../app/skiffAgent";
@@ -14,13 +14,48 @@ export type Line =
   | { group: Group; hasPrevious: boolean; hasNext: boolean; pointer?: undefined }
   | { pointer: SessionInfo; group?: undefined };
 
+export interface LineIndex {
+  groups: Map<Worktree | null, Group[]>;
+  sessions: Map<Worktree | null, SessionInfo[]>;
+  visitors: Map<Worktree, SessionInfo[]>;
+  grouped: Set<string>;
+  skippers: Set<string>;
+  agent: string | undefined;
+}
+
+/** Gather the rows once for a sidebar render. */
+export function lineIndex(): LineIndex {
+  const index: LineIndex = { groups: new Map(), sessions: new Map(), visitors: new Map(), grouped: new Set(), skippers: new Set(projectSkippers().map((s) => s.id)), agent: skiffAgentSession()?.id };
+  for (const g of S.groups) {
+    const home = groupHome(g);
+    const groups = index.groups.get(home) ?? [];
+    groups.push(g);
+    index.groups.set(home, groups);
+    for (const id of sessionsOf(g.layout)) index.grouped.add(id);
+  }
+  for (const s of sessions.values()) {
+    const home = place(s)?.worktree ?? null;
+    const own = index.sessions.get(home) ?? [];
+    own.push(s);
+    index.sessions.set(home, own);
+    for (const at of awayPlaces(s)) {
+      const visitors = index.visitors.get(at.worktree) ?? [];
+      visitors.push(s);
+      index.visitors.set(at.worktree, visitors);
+    }
+  }
+  for (const rows of index.sessions.values()) rows.sort(byStart);
+  for (const rows of index.visitors.values()) rows.sort(byStart);
+  return index;
+}
+
 /**
  * A worktree's lines: its groups (a group lives in the worktree of its first
  * session) with their members, then its sessions in no group.
  */
-export function worktreeLines(w: Worktree | null): Line[] {
+export function worktreeLines(w: Worktree | null, index: LineIndex = lineIndex()): Line[] {
   const lines: Line[] = [];
-  const groups = S.groups.filter((g) => groupHome(g) === w);
+  const groups = index.groups.get(w) ?? [];
   for (const [groupIndex, g] of groups.entries()) {
     const members: Array<{ session: SessionInfo; branch: boolean }> = [];
     for (const id of sessionsOf(g.layout)) {
@@ -34,13 +69,8 @@ export function worktreeLines(w: Worktree | null): Line[] {
   }
   // The Skiff agent has its own row above the projects. In a group it stays
   // there too. A live project Skipper has the first row of its project.
-  const grouped = groupedIds();
-  const agent = skiffAgentSession()?.id;
-  const skippers = new Set(projectSkippers().map((x) => x.id));
-  const loose = w
-    ? worktreeSessions(w)
-    : [...sessions.values()].filter((x) => !place(x)).sort(byStart);
-  for (const m of loose) if (!grouped.has(m.id) && m.id !== agent && !skippers.has(m.id)) lines.push({ session: m });
-  if (w) for (const m of visitors(w)) lines.push({ pointer: m });
+  const loose = index.sessions.get(w) ?? [];
+  for (const m of loose) if (!index.grouped.has(m.id) && m.id !== index.agent && !index.skippers.has(m.id)) lines.push({ session: m });
+  if (w) for (const m of index.visitors.get(w) ?? []) lines.push({ pointer: m });
   return lines;
 }

@@ -1131,7 +1131,7 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "ce53fa27a7df3c1eb95271557e3cd624d5608a77a9ed7f15430311050c6570e2"
+    "sha256": "2fa2e62ca1f187ac797f398ff29f7765908507d91bee055984d74c3768e3caf6"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -1141,7 +1141,7 @@
       "local provider: apps/desktop/src/app/stateQueries.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "dff92979d8661a01c2cf368dc898d62140d41eac8c72519f5ec33669e8b2e583"
+    "sha256": "8a272dd7654111835d677b88aef9b5d5aee533866e508c1907a610d0d1b7fee7"
   },
   "apps/desktop/src/workspace/skipperFace.ts": {
     "ownership": "local only by design: a Skipper's avatar (avatar.toml in its folder on This Mac) through skipper_avatars and set_skipper_avatar, both in LOCAL_ONLY and refused on a remote Host; the avatar menu and Settings rows are off on a remote Host",
