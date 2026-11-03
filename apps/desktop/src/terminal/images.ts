@@ -124,8 +124,11 @@ async function load() {
   }
 }
 
-void load();
-void listen("skiff:images-changed", () => void load());
+/** Loads the library and follows its changes. main.ts calls it once, after every module has loaded: load() draws through render.ts. */
+export function startImages() {
+  void load();
+  void listen("skiff:images-changed", () => void load());
+}
 
 // The library: one floating surface, under the button that opened it.
 const lib = h("div");

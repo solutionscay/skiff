@@ -23,7 +23,7 @@ import { $ } from "./ui/dom";
 import { showError } from "./ui/alerts";
 import { loadGroups } from "./app/groups";
 import { initTrace } from "./diagnostics/latency";
-import { settings } from "./app/panels";
+import { initPanels, settings } from "./app/panels";
 import { render, scheduleRender } from "./app/render";
 import { FONT_DEFAULT, S, sessions } from "./app/state";
 import { groupOf } from "./app/stateQueries";
@@ -40,9 +40,11 @@ import { closeMission, goToSession } from "./workspace/missionMotion";
 import { missionOpen, restoreRunning } from "./workspace/missionControl";
 import { startLedger } from "./workspace/ledger";
 import "./terminal/fileDrop";
+import { startImages } from "./terminal/images";
 import { startWorkspaceQuitGuard, startWorkspaces } from "./workspace/profile";
 import { startUpdates } from "./app/updater";
 
+initPanels();
 configureRender(render);
 configurePaneActions({ focusPane, closePane, dragSessions });
 configureActionDispatch(runAction);
@@ -111,6 +113,7 @@ async function boot() {
     .catch(() => null);
   void initTrace();
   startMemory();
+  startImages();
   watchStatusbar();
   if (isRemote()) connectAttempt();
   let status = await invoke<DaemonStatus>("daemon_status");

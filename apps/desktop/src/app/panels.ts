@@ -19,29 +19,39 @@ import { refocusTerminal, selectProject } from "../workspace/view";
 import { includeAdded } from "../workspace/profile";
 import { skipperStart } from "../workspace/menus";
 
-export const settings = createSettings(
-  (a) => {
-    S.agents = a;
-    render();
-  },
-  () => refocusTerminal(),
-  {
-    themes: () => S.themes,
-    current: () => S.appTheme,
-    overrides: themeOverrides,
-    load: loadThemes,
-    set: (id) => {
-      S.appTheme = id;
+/**
+ * Settings. createSettings builds the Hosts page from hosts.ts, and hosts.ts reaches this
+ * file through the context menu, so building it at import ran before hosts.ts had loaded.
+ * main.ts calls initPanels once, after every module has loaded. Every other use is inside a
+ * function that runs later.
+ */
+export let settings!: ReturnType<typeof createSettings>;
+
+export function initPanels() {
+  settings = createSettings(
+    (a) => {
+      S.agents = a;
       render();
-      invoke("set_appearance", { theme: id }).catch(showError);
     },
-  },
-  // Edit › Copy and Paste work in its text fields while it shows. The app wears the app theme while it shows.
-  () => {
-    S.settingsShown = settings.isOpen;
-    scheduleRender();
-  },
-);
+    () => refocusTerminal(),
+    {
+      themes: () => S.themes,
+      current: () => S.appTheme,
+      overrides: themeOverrides,
+      load: loadThemes,
+      set: (id) => {
+        S.appTheme = id;
+        render();
+        invoke("set_appearance", { theme: id }).catch(showError);
+      },
+    },
+    // Edit › Copy and Paste work in its text fields while it shows. The app wears the app theme while it shows.
+    () => {
+      S.settingsShown = settings.isOpen;
+      scheduleRender();
+    },
+  );
+}
 
 export const launchMenu = createLaunchMenu({
   choices: launchChoices,

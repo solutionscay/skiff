@@ -121,6 +121,7 @@ async function app() {
     "./terminalState": { panes: new Map([["s1", {}]]) },
   }, globals, `
 exports.__t = { openAt, rows, field, lit: () => lit };`);
+  lib.startImages();
   await flush();
   const t = lib.__t;
   const rows = t.rows as El;
