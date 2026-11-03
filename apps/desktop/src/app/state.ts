@@ -18,9 +18,17 @@ export const removeErrors = new Map<string, string>();
 /** Worktrees with a remove in flight. */
 export const removing = new Set<string>();
 
+/**
+ * When each session came into its state, as this app saw the change: a
+ * daemon update with a new state notes the time, board open or not. A session
+ * first seen in a state has no time: the daemon does not say when it began.
+ */
+export const stateSince = new Map<string, number>();
+
 /** Merge a daemon copy into the known session, so menus and closures holding it see the change. */
 export function upsert(info: SessionInfo) {
   const known = sessions.get(info.id);
+  if (known && known.state !== info.state) stateSince.set(info.id, Date.now());
   // skiffd leaves `watch` out when no watcher runs: that clears it.
   if (known) Object.assign(known, { watch: null }, info);
   else sessions.set(info.id, info);

@@ -4,6 +4,7 @@ import type { Entry } from "../ledger";
 import { ledgerTitle } from "../ledger";
 import { agentName, taskTitle } from "../model";
 import { t } from "../../i18n";
+import { stateSince } from "../../app/state";
 
 /** What the search matches: project, agent, title, task and state, as the palette does. Other: its folder. */
 export function matchText(s: SessionInfo, p: Project | null, row: Entry | undefined): string {
@@ -13,18 +14,13 @@ export function matchText(s: SessionInfo, p: Project | null, row: Entry | undefi
 
 // ---- Time in state ----
 
-/** When each session was last seen in its state. The first sight takes the last output, or now for a working one. */
-const since = new Map<string, { state: string; at: number }>();
-export function noteSince(s: SessionInfo, now: number) {
-  const was = since.get(s.id);
-  if (!was) since.set(s.id, { state: s.state, at: s.state === "working" ? now : s.last_output_at || now });
-  else if (was.state !== s.state) since.set(s.id, { state: s.state, at: now });
-}
-/** When the session came into its state, as first seen. */
-export const sinceAt = (s: SessionInfo) => since.get(s.id)?.at;
+/** When the session came into its state (app/state.ts `stateSince`). `undefined`: the app did not see the change. */
+export const sinceAt = (s: SessionInfo) => stateSince.get(s.id);
 export const sinceText = (s: SessionInfo, now: number) => {
   // G.ago's steps, in the catalog's words: "now", "4m", "2h", "3d".
-  const m = Math.floor(Math.max(0, now - (since.get(s.id)?.at ?? now)) / 60000);
+  const at = sinceAt(s);
+  if (at === undefined) return "";
+  const m = Math.floor(Math.max(0, now - at) / 60000);
   if (m < 1) return t("activity.now");
   if (m < 60) return t("activity.minutes", { n: m });
   if (m < 1440) return t("activity.hours", { n: Math.round(m / 60) });

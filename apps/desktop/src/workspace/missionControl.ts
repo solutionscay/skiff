@@ -62,7 +62,7 @@ import * as G from "./missionLayout";
 import { worktreeLines } from "./sidebarLines";
 import { projectBadge, treeSections } from "./tree";
 import { t, tn, upper } from "../i18n";
-import { matchText, noteSince, sinceText } from "./missionControl/model";
+import { matchText, sinceText } from "./missionControl/model";
 import * as T from "./missionControl/terminal";
 import { stateParts } from "./missionControl/state";
 
@@ -459,7 +459,6 @@ function setClass(el: HTMLElement, cls: string, on: boolean) {
 function draw() {
   const now = Date.now();
   m = model();
-  for (const s of m.sess.values()) noteSince(s, now);
   placed = G.placeGraph(m.g, offs);
   // The light: a card that left the board hands it to its parent, else the first node.
   if (lit && !G.standIn(m.g, placed, lit) && !placed.clusters.has(lit)) lit = G.navParent(m.g, lit) ?? G.navFirst(m.g);

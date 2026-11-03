@@ -380,7 +380,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "581ddb8bfe6e7b198d0be5884ae6df96e4cb1f403b30ec816e14b614081d9cc3"
+    "sha256": "4c8a35c5eb42bb85c137dd976408da10baed1fc519623a6c4669b6839941b037"
   },
   "apps/desktop/src/app/daemonRestart.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -516,7 +516,7 @@
     "reasons": [
       "local provider: apps/desktop/src/app/skiffAgent.ts"
     ],
-    "sha256": "81d8b24ff1c8a0f282b8a9184dbeba1c4114516bf7012d7ca3062d47433f5015"
+    "sha256": "035bfdbb743ff516352899719b8225341c20847db79622d02841e358701f78ef"
   },
   "apps/desktop/src/app/stateQueries.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -957,14 +957,15 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "2a8fb522f0b51f93a3f308982d501965056d7625ba056b394ff8c2eb2b5b3afd"
+    "sha256": "af303f0bc50106ee6edc7a13891b355cb717d8a714d1c401397397c704b39aed"
   },
   "apps/desktop/src/workspace/missionControl/model.ts": {
     "ownership": "client policy: exact existing adapter only",
     "reasons": [
+      "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/workspace/ledger.ts"
     ],
-    "sha256": "d98931816322557c8d7577b74ae190097009024bdd768f3b7a008b8c88d46b24"
+    "sha256": "7bba1ee1d36450aef93b4be573d87297bb398ed00860960b7b54536b0f4861b7"
   },
   "apps/desktop/src/workspace/missionControl/state.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -974,7 +975,7 @@
       "local provider: apps/desktop/src/workspace/ledger.ts",
       "local provider: apps/desktop/src/workspace/missionControl/model.ts"
     ],
-    "sha256": "908f6873138efd6bd6d35afc92da6eb598296d05b8030ef4b73940f9c47aa814"
+    "sha256": "bb08ca4238c430959fdf72be78980f9942cd357041b6593495ffde7d70bac2bb"
   },
   "apps/desktop/src/workspace/missionControl/terminal.ts": {
     "ownership": "client policy: exact existing adapter only",

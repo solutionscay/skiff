@@ -18,7 +18,7 @@ import { projectThemesFrom } from "../appearance/themes";
 import { filesFrom } from "../workspace/files";
 import { deleteGroup, loadGroups, syncTemplateName } from "./groups";
 import { render, scheduleRender } from "./render";
-import { born, gone, OTHER, removeErrors, S, sessions, upsert } from "./state";
+import { born, gone, OTHER, removeErrors, S, sessions, stateSince, upsert } from "./state";
 import { hasKeys, markSeen, quietSeen } from "./seen";
 import { peekExited, peekUpdated, previewToken, strayPeek } from "../terminal/peek";
 import { activeGroupObj, awayPlaces, currentWorktree, place, shownIds } from "./stateQueries";
@@ -546,6 +546,7 @@ export function onEvent(e: DaemonEvent) {
       if (peekExited(e.session, e.code)) return;
       const s = sessions.get(e.session);
       if (s) {
+        if (s.state !== "done") stateSince.set(s.id, Date.now());
         s.state = "done";
         s.exit_code = e.code;
         // A shell that exits (Ctrl+D, `exit`) has nothing left to show: it closes.

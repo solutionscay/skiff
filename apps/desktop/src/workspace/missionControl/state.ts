@@ -5,7 +5,8 @@
  *
  * 1. The state word, in its state color, with a detail: the time in the state
  *    for working ("working · 4m"), why it waits ("waiting · approval"), the
- *    clock time it ended ("done · 10:25 PM"); idle stands alone.
+ *    clock time it ended ("done · 10:25 PM"); idle stands alone. A time shows
+ *    only when the app saw the change; else the word stands alone.
  * 2. Its current task: the open hand-off it got, else the first open task it
  *    owns, else "no task".
  * 3. Its counts: Admiral's open hand-offs and tasks; a Skipper's open tasks.
@@ -33,7 +34,8 @@ const STATE: Record<SessionInfo["state"], MessageKey> = { working: "state.workin
 function detail(s: SessionInfo, now: number): string {
   if (s.state === "working") return sinceText(s, now);
   if (s.state === "waiting") return s.waiting_cause && CAUSE[s.waiting_cause] ? t(CAUSE[s.waiting_cause]) : "";
-  if (s.state === "done") return new Date(sinceAt(s) ?? now).toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" });
+  const at = sinceAt(s);
+  if (s.state === "done" && at !== undefined) return new Date(at).toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" });
   return "";
 }
 
