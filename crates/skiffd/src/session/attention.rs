@@ -21,7 +21,7 @@ impl SessionPool {
         let asks = *session.title_state.lock().unwrap() == Some(TitleState::Action);
         let detail = if asks && !scan.approval { title_detail(session) } else { String::new() };
         self.apply_policy(session, Input::Scan {
-            scanned: scan.scanned, work: scan.work, busy: scan.busy,
+            work: scan.work, busy: scan.busy,
             approval: scan.approval, asks,
         }, &detail);
     }

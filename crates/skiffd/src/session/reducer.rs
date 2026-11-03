@@ -45,7 +45,6 @@ pub(super) enum Input {
     Bell,
     Tick,
     Scan {
-        scanned: bool,
         work: bool,
         busy: bool,
         approval: bool,
@@ -128,7 +127,7 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
                 effects.reset_fresh_busy = true;
                 effects.turn = true;
             }
-            let target = claim_state(claim, state.info.state);
+            let target = program_status::session_state(claim, state.info.state);
             let changed = state.info.state != target;
             effects.work_started = changed
                 && target == SessionState::Working
@@ -172,7 +171,7 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
             effects.dirty = state.info.agent_exit.take().is_some();
         }
         Input::ClaimLost => {
-            let target = claim_state(None, state.info.state);
+            let target = program_status::session_state(None, state.info.state);
             if target != state.info.state {
                 state.info.state = target;
                 state.info.waiting_cause = None;
@@ -245,13 +244,12 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
             }
         }
         Input::Scan {
-            scanned,
             work,
             busy,
             approval,
             asks,
         } => {
-            if !scanned || state.front == Front::Shell {
+            if state.front == Front::Shell {
                 return finish(state, effects, now);
             }
             effects.last_work = work;
@@ -408,13 +406,3 @@ fn finish(mut state: State, effects: Effects, now: u64) -> (State, Effects) {
     (state, effects)
 }
 
-/// A live claim takes precedence over inferred attention.
-pub(crate) fn claim_state(claim: Option<Claim>, current: SessionState) -> SessionState {
-    match claim {
-        Some(Claim::Working) => SessionState::Working,
-        Some(Claim::Blocked) => SessionState::Waiting,
-        Some(Claim::Idle | Claim::Done | Claim::Error) => SessionState::Idle,
-        None if current == SessionState::Waiting => SessionState::Working,
-        None => current,
-    }
-}
