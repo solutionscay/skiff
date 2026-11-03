@@ -7,9 +7,9 @@ import { isRemote } from "../app/hosts";
 import { branchName, isFolder } from "./model";
 import type { Project } from "../platform/types";
 import { projectWorkspaceEntries } from "./profile";
-import { openPath } from "../platform/os";
+import { copy, openFolder } from "../platform/fileActions";
+import { copyPathEntry, revealEntry } from "./fileMenu";
 import { launchMenu } from "../app/panels";
-import { showError } from "../ui/alerts";
 import { setShowChanges, showsChanges } from "./changes";
 import { setShowFiles, showsFiles } from "./files";
 import { closeEntries } from "./projectClose";
@@ -33,8 +33,8 @@ export { endEntry };
 /** What each project key does to the selected project. The project menu runs the same. */
 export function projectRun(p: Project) {
   return {
-    "project-folder": () => void openPath(p.path).catch(showError),
-    "project-copy-path": () => void navigator.clipboard.writeText(p.path).catch(showError),
+    "project-folder": () => openFolder(p.path),
+    "project-copy-path": () => copy(p.path),
     "project-color": () => pickProjectColor(p),
     "project-changes": () => void (isFolder(p) || setShowChanges(p, !showsChanges(p))),
     "project-files": () => void setShowFiles(p, !showsFiles(p)),
@@ -106,8 +106,8 @@ export function projectMenu(p: Project, x: number, y: number) {
     hostCan("worktrees") && !isFolder(p) && { icon: "code-git-branch", label: t("cmd.newWorktree"), hint: keyLabel("new-worktree"), disabled: !!p.error, run: () => newWorktree(p) },
     ...(carried ? skipper : []),
     { sep: true },
-    local && { icon: "indicators-square-arrow-out-up-right", label: t("menu.showInFileManager"), hint: keyLabel("project-folder"), run: run["project-folder"] },
-    { icon: "code-copy", label: t("menu.copyPath"), hint: keyLabel("project-copy-path"), run: run["project-copy-path"] },
+    local && revealEntry(run["project-folder"], { hint: keyLabel("project-folder") }),
+    copyPathEntry(run["project-copy-path"], keyLabel("project-copy-path")),
     appearance.length > 0 && { icon: "tools-sparkles", label: t("menu.appearance"), sub: appearance },
     sidebar.length > 0 && { icon: "layouts-panel-left", label: t("menu.sidebar"), sub: sidebar },
     { sep: true },

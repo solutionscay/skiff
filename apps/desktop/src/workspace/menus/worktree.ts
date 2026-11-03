@@ -7,10 +7,10 @@ import { type MenuEntry } from "../../ui/menu";
 import { isRemote } from "../../app/hosts";
 import { branchName } from "../model";
 import type { HostBranches, Project, Worktree } from "../../platform/types";
-import { openPath } from "../../platform/os";
+import { copy, openFolder } from "../../platform/fileActions";
+import { copyPathEntry, revealEntry } from "../fileMenu";
 import { loadProjects } from "../../app/daemon";
 import { launchMenu } from "../../app/panels";
-import { showError } from "../../ui/alerts";
 import { hasChanges, reviewChanges, showsChanges } from "../changes";
 import { render } from "../../app/render";
 import { removeErrors, removing, S, selectedWorktree } from "../../app/state";
@@ -87,8 +87,8 @@ export function worktreeMenu(p: Project, w: Worktree, x: number, y: number) {
     // A new group stands on its own, beside New session: its layouts.
     { icon: "code-group", label: t("select.newGroup"), disabled: off, sub: launchMenu.groups(p, w) },
     showsChanges(p) && hasChanges(w) && { icon: "code-git-branch", label: t("menu.reviewChanges"), run: () => reviewChanges(w) },
-    local && { icon: "indicators-square-arrow-out-up-right", label: t("menu.showInFileManager"), run: () => void openPath(w.path).catch(showError) },
-    { icon: "code-copy", label: t("menu.copyPath"), run: () => void navigator.clipboard.writeText(w.path).catch(showError) },
+    local && revealEntry(() => openFolder(w.path)),
+    copyPathEntry(() => copy(w.path)),
     // The Host removes it, and refuses while one of its sessions runs there.
     !w.is_main && hostCan("worktrees") && { icon: "tools-trash-2", label: t("menu.removeWorktree"), danger: true, disabled: removing.has(w.path), run: () => void removeWorktree(p, w) },
   ];

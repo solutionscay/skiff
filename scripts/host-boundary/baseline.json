@@ -716,7 +716,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "86145ddfbf5d43a4a93cb7bb3cbf6e104d177d9fcd44bf87f3ec740d3faa4eba"
+    "sha256": "7b4bc6d2769a200c65004552d2e1930fdd2df54c9d9f7599aa37fceb1e3560b4"
   },
   "apps/desktop/src/platform/os.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -906,14 +906,14 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "6fae5ad36473cfefd076db718cf4a124de3743cc4be21ad637b87dbb9682977d"
+    "sha256": "9e45a922ce84e208e7a40dbd8fe17326f4dbbe0e87dde9d5b763e530bebd600f"
   },
   "apps/desktop/src/workspace/files.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
     "reasons": [
       "../platform/fileActions"
     ],
-    "sha256": "3721cd134395ee23635cd8c886c478e4c5d373d69838f885691f96628b669f98"
+    "sha256": "039217652650008d0f46bb3c05100b368cbcd96e2a0b40fbb6f5b672b2c42eda"
   },
   "apps/desktop/src/workspace/fleets.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -953,9 +953,9 @@
   "apps/desktop/src/workspace/menus.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
     "reasons": [
-      "../platform/os"
+      "../platform/fileActions"
     ],
-    "sha256": "6ab307ba990cb0dd91d9c2795852b2055ff5db166ee02c178bdf87675a8cdbb9"
+    "sha256": "6b799daabd59a0a82f934bae9d18ab92e62e59a62798be2be0910fe5c0dd0b37"
   },
   "apps/desktop/src/workspace/menus/end.ts": {
     "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
@@ -1009,9 +1009,9 @@
   "apps/desktop/src/workspace/menus/pane.ts": {
     "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
     "reasons": [
-      "../../platform/os"
+      "../../platform/fileActions"
     ],
-    "sha256": "0ffa600fe98b250dec0b76853566a5825bff47250c34c864ed9e5168260d5043"
+    "sha256": "e47b821306439517edfc7c3cea61c6ef7099bde9d3e8c72f5a60fbff3ea3f926"
   },
   "apps/desktop/src/workspace/menus/projectLook.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -1057,9 +1057,9 @@
   "apps/desktop/src/workspace/menus/worktree.ts": {
     "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
     "reasons": [
-      "../../platform/os"
+      "../../platform/fileActions"
     ],
-    "sha256": "9fed27026bd8245053b551e626337a1009b7acdaecffa7075322b3353cee81dd"
+    "sha256": "8106f2d40bb315cc433896b4e446c9c9832aa4f7388248a7caba4ce3a2b3aa03"
   },
   "apps/desktop/src/workspace/missionControl.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

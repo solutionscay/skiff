@@ -1,4 +1,5 @@
 import { open, reveal, copy } from "../platform/fileActions";
+import { copyPathEntry, ICON_FOLDER, revealEntry } from "./fileMenu";
 import { setRowActs, type Preview } from "./rowActs";
 import { sectionHeader } from "../ui/sectionHeader";
 /**
@@ -150,7 +151,7 @@ export function filesBlock(w: Worktree): HTMLElement {
     e.stopPropagation();
     ctxMenu.open(e.clientX, e.clientY, t("menu.files"), [
       { icon: "schedule-refresh-cw", label: t("menu.refresh"), run: () => refresh(w.path, w.path) },
-      !isRemote() && { icon: "indicators-square-arrow-out-up-right", label: t("menu.showInFileManager"), run: () => open(w.path) },
+      !isRemote() && revealEntry(() => open(w.path)),
     ].filter((x) => !!x));
   });
   block.appendChild(head);
@@ -242,13 +243,13 @@ function row(e: Entry, root: string, path: string, depth: number): HTMLElement {
     const items = dir
       ? [
           { icon: "schedule-refresh-cw", label: t("menu.refresh"), run: () => refresh(root, path) },
-          local && { icon: "indicators-square-arrow-out-up-right", label: t("menu.showInFileManager"), hint: keyLabel("project-folder"), run: () => open(path) },
-          { icon: "code-copy", label: t("menu.copyPath"), hint: keyLabel("project-copy-path"), run: () => copy(path) },
+          local && revealEntry(() => open(path), { hint: keyLabel("project-folder") }),
+          copyPathEntry(() => copy(path), keyLabel("project-copy-path")),
         ]
       : [
           acts?.open && { icon: "indicators-square-arrow-out-up-right", label: t(local ? "menu.open" : "menu.openCopy"), hint: "Enter", run: acts.open },
-          local && { icon: "documents-folder-open", label: t("menu.showInFileManager"), hint: keyLabel("project-folder"), run: () => reveal(path) },
-          { icon: "code-copy", label: t("menu.copyPath"), hint: keyLabel("project-copy-path"), run: () => copy(path) },
+          local && revealEntry(() => reveal(path), { icon: ICON_FOLDER, hint: keyLabel("project-folder") }),
+          copyPathEntry(() => copy(path), keyLabel("project-copy-path")),
         ];
     ctxMenu.open(m.clientX, m.clientY, e.name, items.filter((x) => !!x));
   });

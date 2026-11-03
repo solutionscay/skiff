@@ -1,4 +1,5 @@
 import { open, reveal, copy } from "../platform/fileActions";
+import { copyPathEntry, ICON_FOLDER, revealEntry } from "./fileMenu";
 import { sectionHeader } from "../ui/sectionHeader";
 /**
  * The Changes section under each worktree, and the +/- counts on its row.
@@ -221,9 +222,9 @@ function row(w: Worktree, c: Change): HTMLElement {
     ] : [];
     if (!gone && !remote) items.push(
       { icon: "indicators-square-arrow-out-up-right", label: t("menu.openFile"), hint: "Shift+Enter", run: () => open(path) },
-      { icon: "documents-folder-open", label: t("menu.showInFileManager"), hint: keyLabel("project-folder"), run: () => reveal(path) },
+      revealEntry(() => reveal(path), { icon: ICON_FOLDER, hint: keyLabel("project-folder") }),
     );
-    items.push({ icon: "code-copy", label: t("menu.copyPath"), hint: keyLabel("project-copy-path"), run: () => copy(path) });
+    items.push(copyPathEntry(() => copy(path), keyLabel("project-copy-path")));
     ctxMenu.open(m.clientX, m.clientY, name, items);
   });
   return r;

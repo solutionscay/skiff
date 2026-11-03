@@ -9,7 +9,8 @@ import { type MenuEntry } from "../../ui/menu";
 import { isRemote } from "../../app/hosts";
 import { basename, branchName, isProjectSkipper } from "../model";
 import type { SessionInfo, SplitDir } from "../../platform/types";
-import { openPath } from "../../platform/os";
+import { openFolder } from "../../platform/fileActions";
+import { revealEntry } from "../fileMenu";
 import { newSession } from "../../app/daemon";
 import { showError } from "../../ui/alerts";
 import { startSessionRename } from "../rename";
@@ -57,7 +58,7 @@ export function skiffAgentMenu(s: SessionInfo | null, x: number, y: number) {
   // A remote Host's folder and log are that Host's: neither opens here.
   const local = !isRemote();
   const entries: MenuEntry[] = folder && local
-    ? [{ icon: "indicators-square-arrow-out-up-right", label: t("menu.showInFileManager"), run: () => void openPath(folder).catch(showError) }]
+    ? [revealEntry(() => openFolder(folder))]
     : [];
   if (s) {
     // Only while the row's icon is red: no watcher runs, or its last line failed.
