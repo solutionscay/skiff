@@ -16,7 +16,7 @@ use skiff_host_api::{HostSkipper, SkipperEdit, SkipperFolderDone, SkipperFolderP
 use tauri::{AppHandle, State};
 
 use crate::{
-    connection::{blocking, bundled, data_write, ensure_client, err, App},
+    connection::{blocking, bundled, data_read, data_write, ensure_client, err, App},
     projects_watch::OwnEdit,
 };
 use skiff_client::host::local::ProcessControl;
