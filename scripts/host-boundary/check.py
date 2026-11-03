@@ -12,7 +12,13 @@ import json
 import posixpath
 from pathlib import Path
 import re
-import tomllib
+import sys
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    sys.exit("host-boundary check needs Python 3.11 or newer (tomllib): run it with python3.11+ or "
+             "`uv run --no-project --python 3.12 scripts/host-boundary/check.py`")
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY = Path(__file__).with_name("local.toml")

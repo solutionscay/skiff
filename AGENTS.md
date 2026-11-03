@@ -51,7 +51,8 @@ A full test run uses too much CPU and takes too long. Run it only at release tim
 - Do not add tests by default. Add one test only when it guards the exact bug or rule of
   the task.
 - The host-boundary check (`python3 scripts/host-boundary/check.py`) runs on v2 merges, as
-  before. It is fast.
+  before. It is fast. It needs Python 3.11+ (macOS `python3` is 3.9): use `python3.11` or
+  `uv run --no-project --python 3.12 scripts/host-boundary/check.py`.
 
 ## Rust imports
 
