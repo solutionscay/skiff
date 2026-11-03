@@ -1,6 +1,7 @@
 import { openPane, parkPane, unparkPane, useWebgl } from "./terminalRuntime";
 import { paneHead } from "./paneHeader";
 import { applyZoom } from "./terminalFont";
+import { TerminalFitter, resizeTerminal } from "./terminalFit";
 /** Pane layout, terminal fitting, and terminal-area listeners. */
 
 import { slotBody } from "../workspace/canvas";
@@ -125,27 +126,26 @@ export function ptySized(info: SessionInfo) {
 let fitTries = 0;
 const FIT_TRIES = 10;
 
-/** Fit every visible terminal now; tell the daemon the new sizes once the drag settles. */
+/** Fit all visible terminals in one frame; tell the daemon after the drag settles. */
 export function fitShown() {
-  step("fit", fitNow);
+  fitNextFrame();
 }
 
+const fitter = new TerminalFitter(fitSoon);
+
 function fitNow() {
-  cancelAnimationFrame(fitFrame);
-  fitFrame = 0;
-  clearTimeout(fitTimer);
-  fitTimer = 0;
   lastFit = performance.now();
   const shown = [...panes].filter(([, p]) => p.el.parentElement !== park && p.el.isConnected);
+  fitter.sync(shown.map(([, p]) => p.term));
+  // Finish every read before a resize clears a renderer or reflows scrollback.
+  const measured = shown.map(([id, p]) => ({ id, p, dims: fitter.read(p.term, S.fontSize) }));
   let unmeasured = false;
-  for (const [id, p] of shown) {
-    const dims = p.fit.proposeDimensions();
+  for (const { id, p, dims } of measured) {
     if (!dims) {
       unmeasured = true;
       continue;
     }
-    // fit() measures again. Keep its renderer reset only when the grid changes.
-    if (dims.cols !== p.term.cols || dims.rows !== p.term.rows) p.fit.fit();
+    resizeTerminal(p.term, dims);
     // A drag that moves less than a cell changes nothing: the pty keeps its size.
     if (sizeChanged(id, p)) resizePending.add(id);
   }
@@ -182,42 +182,30 @@ function fitNow() {
 
 let fitFrame = 0;
 let fitTimer = 0;
-/** When fitShown last ran, in performance.now() ms. */
 let lastFit = 0;
-/** The least time between two fits while resizes keep coming. */
 const FIT_MS = 100;
 
-/** fitShown on the next frame, at most once per frame. */
+/** One fit pass per frame for all panes, including explicit fit requests. */
 function fitNextFrame() {
   clearTimeout(fitTimer);
   fitTimer = 0;
-  if (fitFrame) return;
+  if (fitsHeld || fitFrame) return;
   fitFrame = requestAnimationFrame(() => {
     fitFrame = 0;
-    fitShown();
+    step("fit", fitNow);
   });
 }
 
-/**
- * A window or divider drag fires many resizes. Each fit reflows the
- * scrollback of every shown pane, so the first resize fits on the next
- * frame and the rest wait for FIT_MS since the last fit. The wait runs out
- * after the last resize too, so the panes end at the final size.
- */
+/** Keep scrollback reflow throttled during a drag; all panes share its frame. */
 function fitSoon() {
   if (fitsHeld || fitFrame || fitTimer) return;
   const wait = FIT_MS - (performance.now() - lastFit);
-  if (wait <= 0) {
-    fitNextFrame();
-    return;
-  }
+  if (wait <= 0) return fitNextFrame();
   fitTimer = window.setTimeout(() => {
     fitTimer = 0;
     fitNextFrame();
   }, wait);
 }
-
-new ResizeObserver(() => fitSoon()).observe(host);
 
 /**
  * A panel slide changes the terminal area's width on each frame. While the
