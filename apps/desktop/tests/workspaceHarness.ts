@@ -1,5 +1,5 @@
 // Execute the real UI modules without a webview, filesystem writes or a daemon.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
 
@@ -47,12 +47,58 @@ class Element {
   querySelectorAll() { return []; }
 }
 
+// Split facades: `x.ts` keeps its public names and loads children. Tests load the facade alone,
+// with an import map keyed by the facade's own specifiers. Each facade lists the children it may load.
+// "folder": children live in `dir/<child>.ts` and are named `./dir/<child>` (their own `../y` is the facade's `./y`).
+// "sibling": children are sibling files named `./<child>` (their specifiers equal the facade's).
+// A child loads only if its file exists, so children can land one at a time.
+type Split = { kind: "folder"; dir: string } | { kind: "sibling"; children: string[] };
+const SPLIT: Record<string, Split> = {
+  "../src/workspace/menus.ts": { kind: "folder", dir: "menus" },
+  "../src/workspace/sidebar.ts": { kind: "sibling", children: ["sidebarFocus", "sessionRows", "skipperRows", "sidebarSig", "projectRows", "sectionRows"] },
+  "../src/appearance/hostSettings.ts": { kind: "sibling", children: ["hostShared", "hostList", "hostCheck", "hostFixes", "hostForm"] },
+  "../src/terminal/peek.ts": { kind: "sibling", children: ["peekCard", "peekHostView", "peekTerminal"] },
+};
+
+/** A folder child's specifier as the facade would write it: `../y` is `./y`, `../../z` is `../z`. */
+const asFacade = (name: string) => (!name.startsWith("../") ? name : name.startsWith("../../") ? name.slice(3) : `./${name.slice(3)}`);
+
 export function moduleFromSource(path: string, imports: Record<string, unknown>, globals: Record<string, unknown>, expose: string) {
   const source = readFileSync(new URL(path, import.meta.url), "utf8") + expose;
   const code = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  const context = { exports: {} as any, require: (name: string) => (Object.hasOwn(imports, name) ? imports[name] : words(name) ?? pure(name) ?? imports[name] ?? {}), ...globals };
+  const find = (name: string) => (Object.hasOwn(imports, name) ? imports[name] : words(name) ?? pure(name) ?? imports[name] ?? {});
+  const split = SPLIT[path];
+  const folder = path.slice(0, path.lastIndexOf("/") + 1);
+  const children = new Map<string, unknown>();
+  // The file of a listed child, when it exists. Explicit import-map entries win.
+  const fileOf = (name: string): string | undefined => {
+    if (!split || Object.hasOwn(imports, name)) return undefined;
+    const kid = split.kind === "folder" ? name.match(new RegExp(`^\\./${split.dir}/(\\w+)$`))?.[1] : split.children.find((c) => name === `./${c}`);
+    const file = kid && `${folder}${split.kind === "folder" ? `${split.dir}/` : ""}${kid}.ts`;
+    return file && existsSync(new URL(file, import.meta.url)) ? file : undefined;
+  };
+  // The real child, once per load, over the facade's import map and globals.
+  const load = (file: string): unknown => {
+    if (!children.has(file)) {
+      const exported = {} as any;
+      children.set(file, exported);
+      const out = ts.transpileModule(readFileSync(new URL(file, import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+      const require = (name: string) => {
+        const key = split!.kind === "folder" ? (name.startsWith("./") ? `./${(split as { dir: string }).dir}/${name.slice(2)}` : asFacade(name)) : name;
+        const kid = fileOf(key);
+        return kid ? load(kid) : find(key);
+      };
+      vm.runInNewContext(out, { exports: exported, require, ...globals }, { filename: file });
+    }
+    return children.get(file);
+  };
+  const require = (name: string) => {
+    const file = fileOf(name);
+    return file ? load(file) : find(name);
+  };
+  const context = { exports: {} as any, require, ...globals };
   vm.runInNewContext(code, context, { filename: path });
   return context.exports;
 }

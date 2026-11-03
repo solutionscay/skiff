@@ -958,7 +958,19 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "008fcbed48a9785d8499a6a40edb704579210f69aaf93bfae95bb9cb2e7eefc9"
+    "sha256": "b01432584bc32b22d7dbda05df87b86c81a06c84844d0255d5e4e9b2130e05cb"
+  },
+  "apps/desktop/src/workspace/menus/end.ts": {
+    "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
+    "reasons": [
+      "local provider: apps/desktop/src/app/hostCaps.ts",
+      "local provider: apps/desktop/src/app/render.ts",
+      "local provider: apps/desktop/src/app/state.ts",
+      "local provider: apps/desktop/src/appearance/themes.ts",
+      "local provider: apps/desktop/src/workspace/selection.ts",
+      "local provider: apps/desktop/src/workspace/view.ts"
+    ],
+    "sha256": "c7bef0af12033e4732bfe457bea15f90bed2f9dcdc182be3b71e10387be3fbe6"
   },
   "apps/desktop/src/workspace/missionControl.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
