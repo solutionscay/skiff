@@ -1,6 +1,6 @@
-use std::{collections::HashMap, sync::{atomic::{AtomicBool, Ordering}, Arc}, time::Duration};
+use std::{collections::HashMap, sync::{atomic::AtomicBool, Arc}, time::Duration};
 use serde::Serialize;
-use skiff_client::{Client, host::{HostConnection, data::{DataError, DataPlane}, local::{HostSelection, ProcessControl, SelectedHost}}};
+use skiff_client::{Client, host::{HostConnection, data::DataPlane, local::{HostSelection, SelectedHost}}};
 use skiff_core::socket::socket_path;
 use tauri::{async_runtime::JoinHandle, State};
 use tokio::sync::Mutex;
@@ -11,11 +11,10 @@ mod data_plane;
 mod process;
 mod remote;
 
-use daemon::*;
 use data_plane::*;
-use process::*;
-use remote::*;
-pub(crate) use data_plane::{data_read, data_write, ensure_host, keep_revision, project_write, DataPlaneStatus};
+#[cfg(test)]
+pub(crate) use data_plane::DATA_UNREAD;
+pub(crate) use data_plane::{data_now, data_plane_status, data_read, data_write, ensure_host, keep_revision, project_write, __cmd__data_plane_status, __tauri_command_name_data_plane_status};
 pub(crate) use daemon::{check_daemon, compare_versions, daemon_status, restart_daemon, restart_warning, status_now, __cmd__daemon_status, __cmd__restart_daemon, __tauri_command_name_daemon_status, __tauri_command_name_restart_daemon};
 pub(crate) use process::{bundled, daemon_binary};
 
@@ -253,97 +252,6 @@ fn add_local_adapter(names: &mut Vec<String>) {
     }
 }
 
-/// M4: the selected Host's data-plane connection. Its Host id must be the
-/// one the session plane accepted, so data from another Host never shows
-/// under this one. This Mac's service is started when none answers (a
-/// local endpoint's lifecycle); a remote Host's never is.
-pub(crate) async fn data_now(app: &App) -> Result<Arc<HostConnection>, String> {
-    let session = host_now(app).await?;
-    let host = session.hello().host.host_id.clone();
-    let mut guard = app.data.lock().await;
-    if let Some(d) = guard.as_ref() {
-        let c = d.connection();
-        if !c.is_closed() && c.hello().host.host_id == host {
-            return Ok(c);
-        }
-    }
-    *guard = None;
-    let selection = app.selection();
-    let not_running = |e: &anyhow::Error| matches!(e.downcast_ref(), Some(DataError::NotRunning));
-    let plane = match selection.connect_data(&host).await {
-        Ok(plane) => plane,
-        Err(e) if not_running(&e) && selection.process_control().is_some() => {
-            let control = selection.process_control().expect("checked");
-            // One that stops right after it starts is tried again later,
-            // not on every read: its log stays readable meanwhile.
-            let too_soon = {
-                let mut started = app.data_started.lock().unwrap();
-                let soon = started.is_some_and(|at| at.elapsed() < DATA_START_WAIT);
-                if !soon {
-                    *started = Some(std::time::Instant::now());
-                }
-                soon
-            };
-            if too_soon {
-                return Err(data_failure(&e, &selection));
-            }
-            spawn_data_service(&control, selection.socket()).map_err(start_failure)?;
-            let mut last = e;
-            let mut plane = None;
-            for _ in 0..50 {
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                match selection.connect_data(&host).await {
-                    Ok(p) => {
-                        plane = Some(p);
-                        break;
-                    }
-                    Err(e) if not_running(&e) => last = e,
-                    Err(e) => return Err(data_failure(&e, &selection)),
-                }
-            }
-            plane.ok_or_else(|| data_failure(&last, &selection))?
-        }
-        // This computer's service from a build this app cannot read: it is
-        // replaced as in `replace_older_data_service`, by its socket's peer.
-        Err(e) if unreadable(&e) && selection.process_control().is_some() => {
-            let control = selection.process_control().expect("checked");
-            match data_service_pid(&selection).await {
-                Some(pid) if !app.data_replaced.swap(true, Ordering::SeqCst) => {
-                    eprintln!("skiff-host (pid {pid}) is from a build this app cannot read: replacing it");
-                    restart_data_service(app, &control, &selection, &host, pid).await?
-                }
-                _ => return Err(data_failure(&e, &selection)),
-            }
-        }
-        Err(e) => return Err(data_failure(&e, &selection)),
-    };
-    let plane = match selection.process_control() {
-        Some(control) => replace_older_data_service(app, &control, &selection, &host, plane).await?,
-        None => plane,
-    };
-    let c = plane.connection();
-    *guard = Some(plane);
-    app.data_gen.fetch_add(1, Ordering::SeqCst);
-    Ok(c)
-}
-
-/// Why a data reply is not shown: the connection it came on was replaced.
-pub(crate) const DATA_REPLACED: &str = "The connection to the projects service changed during the read. Skiff reads again.";
-
-/// Why a change was not sent: no project read of this Host to make it from.
-pub(crate) const DATA_UNREAD: &str = "Skiff has not read this Host's projects yet. It reads them again: try again.";
-/// Why a change's outcome is unknown: its reply was lost or late.
-pub(crate) const DATA_UNCERTAIN: &str =
-    "The Host did not answer in time, so the change may or may not have been made. Skiff reads the projects again: check them before you try again.";
-
-/// Checks the data plane over the live session plane only: it never connects
-/// or starts skiffd, and never touches a terminal stream. On This Mac a
-/// missing `skiff-host` starts, as for any data read.
-#[tauri::command]
-pub(crate) async fn data_plane_status(app: State<'_, App>) -> Result<DataPlaneStatus, String> {
-    Ok(data_status(&app).await)
-}
-
 pub(crate) fn err(e: anyhow::Error) -> String {
     format!("{e:#}")
 }
@@ -359,7 +267,7 @@ mod tests {
     fn page_status_dtos_keep_their_json_shapes() {
         let daemon = super::DaemonStatus { connected: false, version: None, protocol: None, socket: "/s.sock".into(), pid: None, spawned: false, warning: None, replaced: None, reload: false };
         assert_eq!(serde_json::to_value(daemon).unwrap(), serde_json::json!({"connected":false,"version":null,"protocol":null,"socket":"/s.sock","pid":null,"spawned":false,"warning":null,"replaced":null,"reload":false}));
-        let data = super::DataPlaneStatus { ready: false, waiting: true, host_id: None, instance_id: None, connection: 0, capabilities: vec![], message: None };
+        let data = super::data_plane::DataPlaneStatus { ready: false, waiting: true, host_id: None, instance_id: None, connection: 0, capabilities: vec![], message: None };
         assert_eq!(serde_json::to_value(data).unwrap(), serde_json::json!({"ready":false,"waiting":true,"host_id":null,"instance_id":null,"connection":0,"capabilities":[],"message":null}));
     }
 
@@ -560,128 +468,5 @@ mod tests {
     }
 
 
-
-    /// M4: this Mac's data plane is started for the selected socket when none
-    /// answers, paired with the session plane's Host id, and refused when it
-    /// names another Host. Private config only; nothing live is read.
-    #[test]
-    fn the_data_plane_starts_here_and_pairs_with_the_session_host() {
-        use super::*;
-        use std::path::PathBuf;
-        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-        let _env = crate::reload::tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = PathBuf::from("/tmp").join(format!("sd-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir(&dir).unwrap();
-        let old = (std::env::var_os("SKIFF_HOST_BIN"), std::env::var_os("SKIFF_CONFIG"));
-        let launcher = dir.join("skiff-host");
-        std::fs::write(&launcher, format!("#!/bin/sh\necho \"$@\" >> {}/started\n", dir.display())).unwrap();
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).unwrap();
-        std::env::set_var("SKIFF_HOST_BIN", &launcher);
-        std::env::set_var("SKIFF_CONFIG", dir.join("projects.toml"));
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
-            let session = dir.join("s.sock");
-            let listener = tokio::net::UnixListener::bind(&session).unwrap();
-            // A skiffd that reports Host A on every connection.
-            tokio::spawn(async move {
-                loop {
-                    let (stream, _) = listener.accept().await.unwrap();
-                    tokio::spawn(async move {
-                        let mut stream = BufReader::new(stream);
-                        let mut line = String::new();
-                        while stream.read_line(&mut line).await.unwrap_or(0) > 0 {
-                            let id = serde_json::from_str::<serde_json::Value>(&line).unwrap()["id"].clone();
-                            let reply = serde_json::json!({"id":id,"type":"pong","version":skiff_core::VERSION,"protocol":skiff_core::PROTOCOL,
-                                "identity":{"host_id":"A","instance_id":"run","os":"test","account":"uid:1"}});
-                            let mut bytes = serde_json::to_vec(&reply).unwrap(); bytes.push(b'\n');
-                            stream.get_mut().write_all(&bytes).await.unwrap();
-                            line.clear();
-                        }
-                    });
-                }
-            });
-            let app = App::default();
-            app.set_selection(HostSelection::new(session.clone(), dir.join("bootstrap-id")));
-            // The launcher's build is the bundled service's: the service is current.
-            let version = format!("{}+{}", skiff_core::VERSION, skiff_client::host::data::build_of(&launcher).unwrap());
-            let host = |id: &str| {
-                let mut h = skiff_host::hello().unwrap();
-                h.host.host_id = skiff_host_api::HostId::try_from(id.to_string()).unwrap();
-                h.service_versions.insert("skiff-host".into(), version.clone());
-                h
-            };
-            // The "started" service binds once the launcher has run.
-            let data_socket = skiff_core::socket::data_socket(&session);
-            let (marks, socket, hello_a) = (dir.join("started"), data_socket.clone(), host("A"));
-            let service = tokio::spawn(async move {
-                while !marks.exists() {
-                    tokio::time::sleep(Duration::from_millis(20)).await;
-                }
-                let listener = tokio::net::UnixListener::bind(&socket).unwrap();
-                let _ = skiff_host::serve(listener, Arc::new(hello_a)).await;
-            });
-            let c = data_now(&app).await.unwrap();
-            assert_eq!(c.hello().host.host_id.as_str(), "A");
-            let started = std::fs::read_to_string(dir.join("started")).unwrap();
-            assert_eq!(started.trim(), format!("--session-socket {} --this-mac", session.display()));
-            assert!(skiff_client::host::data::project_list(&c).await.unwrap().is_empty());
-            // Reused while open: no second start.
-            assert!(Arc::ptr_eq(&c, &data_now(&app).await.unwrap()));
-            assert_eq!(std::fs::read_to_string(dir.join("started")).unwrap().lines().count(), 1);
-
-            // The page's check: ready, with the data plane's own families.
-            let first = data_status(&app).await;
-            assert!(first.ready && !first.waiting && first.host_id.as_deref() == Some("A"), "{first:?}");
-            assert!(first.capabilities.contains(&"git_diff@1".to_string()), "{first:?}");
-            // A reply that comes on a connection replaced meanwhile is never shown.
-            let app = &app;
-            let stale = data_read(app, |c| async move {
-                *app.data.lock().await = None;
-                skiff_client::host::data::project_list(&c).await
-            })
-            .await;
-            assert_eq!(stale, Err(DATA_REPLACED.to_string()));
-            let again = data_status(app).await;
-            assert!(again.ready && again.connection > first.connection && again.instance_id == first.instance_id, "{again:?}");
-
-            // The service restarts: the next check finds the new instance on
-            // a new connection, with no page reload and nothing else redone.
-            service.abort();
-            let _ = service.await;
-            let _ = std::fs::remove_file(&data_socket);
-            let listener = tokio::net::UnixListener::bind(&data_socket).unwrap();
-            let restarted = tokio::spawn(skiff_host::serve(listener, Arc::new(host("A"))));
-            let old_c = app.data.lock().await.as_ref().unwrap().connection();
-            for _ in 0..100 {
-                if old_c.is_closed() {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(20)).await;
-            }
-            let back = data_status(app).await;
-            assert!(back.ready && back.connection > again.connection && back.instance_id != again.instance_id, "{back:?}");
-            assert_eq!(std::fs::read_to_string(dir.join("started")).unwrap().lines().count(), 1, "a running service was started again");
-            let service = restarted;
-
-            // Another Host's service at this socket: refused, nothing sent.
-            service.abort();
-            let _ = service.await;
-            *app.data.lock().await = None;
-            let _ = std::fs::remove_file(&data_socket);
-            let listener = tokio::net::UnixListener::bind(&data_socket).unwrap();
-            let other = tokio::spawn(skiff_host::serve(listener, Arc::new(host("B"))));
-            let e = data_now(app).await.err().unwrap();
-            assert!(e.contains("answers as another Skiff Host"), "{e}");
-            other.abort();
-        });
-        for (key, value) in [("SKIFF_HOST_BIN", old.0), ("SKIFF_CONFIG", old.1)] {
-            match value {
-                Some(v) => std::env::set_var(key, v),
-                None => std::env::remove_var(key),
-            }
-        }
-        let _ = std::fs::remove_dir_all(&dir);
-    }
 
 }
