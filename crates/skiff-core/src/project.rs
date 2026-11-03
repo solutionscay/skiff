@@ -152,7 +152,7 @@ const ICON_NAMES: [&str; 11] = [
 
 /// The configured background image, made absolute. `None` when unset, missing,
 /// or not a regular file reached without a link ([`crate::files::open_background`]).
-pub fn background_file(project: &Path, configured: Option<&str>) -> Option<String> {
+fn background_file(project: &Path, configured: Option<&str>) -> Option<String> {
     let configured = configured?;
     crate::files::open_background(project, configured).ok()?;
     let p = Path::new(configured.trim());
@@ -262,7 +262,7 @@ pub fn find(name: &str) -> Result<ProjectConfig> {
 }
 
 /// `<parent>/<dir>-worktrees/<branch with '/' as '-'>`.
-pub fn worktree_path(project: &Path, branch: &str) -> PathBuf {
+fn worktree_path(project: &Path, branch: &str) -> PathBuf {
     let dir = project
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
@@ -276,7 +276,7 @@ pub fn worktree_path(project: &Path, branch: &str) -> PathBuf {
 
 /// A new branch name git would take, checked before git runs: its folder
 /// name comes from it, so it never climbs out of `<dir>-worktrees`.
-pub fn check_branch(branch: &str) -> Result<()> {
+fn check_branch(branch: &str) -> Result<()> {
     let bad = branch.is_empty()
         || branch.starts_with(['-', '/', '.'])
         || branch.ends_with(['/', '.'])

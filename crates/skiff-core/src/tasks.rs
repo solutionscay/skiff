@@ -147,7 +147,7 @@ pub fn delivery(agent: &AgentInfo) -> Result<Delivery> {
 pub const MAX_INLINE: usize = 64 * 1024;
 
 /// The kimi wrapper of a type's file, in the agent folder's cache.
-pub fn kimi_wrapper(dir: &Path, name: &str) -> PathBuf {
+fn kimi_wrapper(dir: &Path, name: &str) -> PathBuf {
     dir.join("cache").join(TYPES).join(format!("{name}.md"))
 }
 
@@ -213,7 +213,7 @@ pub fn tilde(p: &Path) -> String {
 /// The file's part of the command line as Settings and `skiff agents` show
 /// it: the flag and the file, never the text. `<file>` stands for what Skiff
 /// builds from the file at start. The variable goes in front of the command.
-pub fn instruction_preview(agent: &AgentInfo, dir: &Path, name: &str) -> Result<(Option<String>, String)> {
+fn instruction_preview(agent: &AgentInfo, dir: &Path, name: &str) -> Result<(Option<String>, String)> {
     let f = tilde(&file(dir, name));
     Ok(match delivery(agent)? {
         Delivery::Claude => (None, format!("--append-system-prompt-file {}", quote_word(&f))),

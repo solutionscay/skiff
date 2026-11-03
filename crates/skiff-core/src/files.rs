@@ -351,7 +351,7 @@ fn read_file(file: std::fs::File, size: u64, rel: &str, purpose: Purpose) -> Res
 
 /// The image types a client may draw, by their first bytes. SVG is text:
 /// it can hold scripts, so it shows as text.
-pub fn image_type(head: &[u8]) -> Option<&'static str> {
+fn image_type(head: &[u8]) -> Option<&'static str> {
     if head.starts_with(b"\x89PNG\r\n\x1a\n") {
         Some("image/png")
     } else if head.starts_with(&[0xff, 0xd8, 0xff]) {
@@ -373,7 +373,7 @@ pub fn image_type(head: &[u8]) -> Option<&'static str> {
 /// a relative name below the project folder, an absolute one from `/`, one
 /// component at a time and none followed if it is a link, and only a regular
 /// file, typed before it opens. A link anywhere in the name is refused.
-pub fn open_background(project: &Path, configured: &str) -> Result<std::fs::File> {
+pub(crate) fn open_background(project: &Path, configured: &str) -> Result<std::fs::File> {
     let configured = configured.trim();
     let named = Path::new(configured);
     let (from, rel) = match named.strip_prefix("/") {
@@ -422,7 +422,7 @@ pub fn hold_beneath(folder: &Path, named: &Path) -> Result<(Root, String)> {
 /// An image file the Host's config names, opened without following a link:
 /// a regular file of at most [`BYTES_LIMIT`] whose first bytes are an
 /// image. Its type and bytes.
-pub fn read_image(file: std::fs::File) -> Result<(String, Vec<u8>)> {
+fn read_image(file: std::fs::File) -> Result<(String, Vec<u8>)> {
     let meta = file.metadata()?;
     if !meta.is_file() {
         return Err(invalid!("The image is not a regular file."));
