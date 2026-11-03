@@ -123,7 +123,6 @@
 .mission-zoom button + button { border-left: 1px solid var(--rule-strong); }
 .mission-zoom button:hover { color: var(--text); background: var(--hover); }
 .mission-zoom .level { width: calc(44 * var(--u)); font-family: var(--mono); font-size: calc(10px * var(--zoom, 1)); color: var(--text-dim); display: grid; place-items: center; border-left: 1px solid var(--rule-strong); font-variant-numeric: tabular-nums; }
-.mission-empty { margin: auto; color: var(--text-dim); }
 /* The board holds the keys; the lit card is the only highlight. */
 body.kbd .mission:focus { outline: 0; }
 
