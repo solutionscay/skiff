@@ -539,7 +539,6 @@ export const en = {
   "mission.zoomOut": "Zoom out: {key}",
   "mission.zoomIn": "Zoom in: {key}",
   "mission.fitTip": "Fit: {key}",
-  "mission.arrange": "Arrange",
   "mission.fit": "Fit",
   "mission.foldAll": "Fold all",
   "mission.openAll": "Open all",

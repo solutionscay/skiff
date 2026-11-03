@@ -504,7 +504,6 @@ export const zh = {
   "mission.zoomOut": "缩小：{key}",
   "mission.zoomIn": "放大：{key}",
   "mission.fitTip": "适应：{key}",
-  "mission.arrange": "排列",
   "mission.fit": "适应",
   "mission.foldAll": "全部折叠",
   "mission.openAll": "全部展开",

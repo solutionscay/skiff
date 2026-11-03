@@ -957,7 +957,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "af303f0bc50106ee6edc7a13891b355cb717d8a714d1c401397397c704b39aed"
+    "sha256": "ad95f49b62bcd2b09803ac91d1fb0c2069bfee1e2973eb523c844befaafbc134"
   },
   "apps/desktop/src/workspace/missionControl/model.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -984,7 +984,7 @@
       "local provider: apps/desktop/src/workspace/missionControl/theme.ts",
       "local provider: apps/desktop/src/workspace/skipperFace.ts"
     ],
-    "sha256": "6e129891d9e5f020eca54df8eec82cd623b9350c6256e526fd582529df8dafa5"
+    "sha256": "5ce9d75dc5c47ffe381039cfc4105ae5e94c62b507cee72d8320a339ed475a41"
   },
   "apps/desktop/src/workspace/missionControl/theme.ts": {
     "ownership": "client policy: exact existing adapter only",

@@ -525,7 +525,6 @@ export const es = {
   "mission.zoomOut": "Alejar: {key}",
   "mission.zoomIn": "Acercar: {key}",
   "mission.fitTip": "Ajustar: {key}",
-  "mission.arrange": "Ordenar",
   "mission.fit": "Ajustar",
   "mission.foldAll": "Plegar todo",
   "mission.openAll": "Abrir todo",

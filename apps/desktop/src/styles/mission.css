@@ -12,33 +12,24 @@
 .mission-fault { height: calc(20 * var(--u)); flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(16 * var(--u)); border-bottom: 1px solid var(--rule); background: var(--bg-panel); font-size: calc(11px * var(--zoom, 1)); color: var(--error); }
 .mission-fault[hidden] { display: none; }
 
-/* The canvas: pan by drag or wheel, zoom by Ctrl+wheel. A dot grid moves with the pan. */
-.mission-canvas { flex: 1; min-height: 0; position: relative; overflow: hidden; cursor: grab; background-color: var(--bg-deep); background-image: radial-gradient(circle, color-mix(in srgb, var(--text) 9%, transparent) 1px, transparent 1.2px); touch-action: none; }
+/* The canvas: pan by drag or wheel, zoom by Ctrl+wheel. Plain board color. */
+.mission-canvas { flex: 1; min-height: 0; position: relative; overflow: hidden; cursor: grab; background-color: var(--bg-deep); touch-action: none; }
 .mission-canvas.panning { cursor: grabbing; }
 /* The world is laid out in unzoomed px and scaled as one: the app zoom goes into the transform. */
 .mission-world { --zoom: 1; --u: 1px; position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
-/* Layers: cluster frames, windows, strings, faces, cards. A string runs over a frame and a window, under a face and a card. */
+/* Layers: cluster frames, windows, connectors, faces, cards. A connector runs over a frame and a window, under a face and a card. */
 .mission-strings { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 3; }
-/* A string is a group: its line, and a solid tuck at each end that ties it to the foot and the pin. */
 .mission-strings path { fill: none; stroke: var(--rule-strong); stroke-width: 2; }
-/* A working line's dashes march toward the child at 10 px/s: one 16px period in 1.6s, linear, so a late frame moves them less than a pixel. */
-.mission-strings .working > path { stroke: var(--state-working); }
-.mission-strings .working > .line { stroke-dasharray: 6 10; animation: mission-march 1.6s linear infinite; }
-@keyframes mission-march { to { stroke-dashoffset: -16; } }
-/* A drag pauses the march and keeps its phase. */
-.mission-canvas.moving .mission-strings .line { animation-play-state: paused; }
-.mission-strings .waiting > path { stroke: var(--state-waiting); }
-.mission-strings .done > path, .mission-strings .idle > path { stroke-width: 1.5; }
-.mission-strings g.dim { opacity: 0.25; }
-.mission-strings .lbl { font-family: var(--font); font-size: 11px; fill: var(--text-2); }
-.mission-strings .lbl.dim { opacity: 0.3; }
-.mission-strings .lblbg { fill: var(--bg-panel); stroke: var(--rule-strong); stroke-width: 1; }
-@media (prefers-reduced-motion: reduce) { .mission-strings .working > .line { animation: none; } }
+/* Connectors (missionControl/connectors.ts): solid, in the state colors. No march: it needs dashes. Waiting draws over working over idle. */
+.mission-strings path.working { stroke: var(--state-working); }
+.mission-strings path.waiting { stroke: var(--state-waiting); }
+.mission-strings path.done, .mission-strings path.idle { stroke-width: 1.5; }
+.mission-strings path.dim { opacity: 0.25; }
 
-/* A cluster: a project's frame, or a fleet's. Its head folds it and drags it. */
+/* A cluster: a project's frame, or a fleet's. A click on its head folds it. */
 .mission-cluster { position: absolute; z-index: 1; box-sizing: border-box; border: 1px solid var(--rule-strong); background: color-mix(in srgb, var(--pc) 5%, var(--bg)); }
 .mission-cluster.fleet { --pc: var(--accent); background: color-mix(in srgb, var(--accent) 4%, var(--bg)); }
-.mission-cluster-head { height: 20px; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-bottom: 1px solid var(--rule-strong); background: color-mix(in srgb, var(--pc) 22%, var(--bg-panel)); font-size: 11px; font-weight: 600; color: var(--text); cursor: grab; white-space: nowrap; user-select: none; }
+.mission-cluster-head { height: 20px; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-bottom: 1px solid var(--rule-strong); background: color-mix(in srgb, var(--pc) 22%, var(--bg-panel)); font-size: 11px; font-weight: 600; color: var(--text); cursor: pointer; white-space: nowrap; user-select: none; }
 .mission-cluster.fleet > .mission-cluster-head { text-transform: uppercase; letter-spacing: 0.08em; }
 .mission-cluster-head .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .mission-cluster-head .tree-icon, .mission-card .head .tree-icon { width: 14px; height: 14px; flex-shrink: 0; display: grid; place-items: center; font-family: var(--mono); font-size: 7px; font-weight: 500; color: var(--bg); background: var(--pc); overflow: hidden; }
@@ -126,16 +117,6 @@
 .mission-card.folder { background: var(--bg-raised); }
 .mission-card.folder .body { gap: 10px; }
 .mission-card.folder .t { font-weight: 600; }
-/* A card on the move follows the pointer over the others. While one moves, the others make room in 120ms, and the dropped card settles into its slot the same way. */
-.mission-items.reorder .mission-card { transition: left 120ms, top 120ms; }
-.mission-card.dragging { transition: none; z-index: 7; cursor: grabbing; }
-@media (prefers-reduced-motion: reduce) { .mission-items.reorder .mission-card { transition: none; } }
-/* The pin a string ties to: a round dot in the card's state color. */
-.mission-pin { position: absolute; left: 50%; top: -4px; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%; background: var(--rule-strong); }
-.mission-pin.working { background: var(--state-working); }
-.mission-pin.waiting { background: var(--state-waiting); }
-.mission-pin.done { background: var(--state-done); }
-.mission-pin.accent { background: var(--accent); }
 /* An elsewhere pane, or a card with no pane: no click. */
 .mission-card.still { cursor: default; }
 

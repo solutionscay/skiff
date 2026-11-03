@@ -1,7 +1,8 @@
-// Mission control's graph: the layout, the strings, the keys' moves and the key map.
+// Mission control's graph: the layout, the connectors, the keys' moves and the key map.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as G from "../src/workspace/missionLayout.ts";
+import * as Grid from "../src/workspace/missionControl/grid.ts";
 
 const project = (name: string, cards: string[], extra: Partial<G.GProject> = {}): G.GProject => ({ key: `project:${name}`, name, skipper: null, cards, plans: [], folded: false, ...extra });
 
@@ -18,89 +19,47 @@ const overlap = (a: G.Rect, b: G.Rect) => a.x < b.x + b.w && b.x < a.x + a.w && 
 const inside = (a: G.Rect, b: G.Rect) => a.x >= b.x && a.y >= b.y && a.x + a.w <= b.x + b.w && a.y + a.h <= b.y + b.h;
 
 test("the layout keeps cards apart, inside their clusters, under their Skippers", () => {
-  const p = G.placeGraph(graph(), {});
+  const g = graph();
+  const p = Grid.placeGraph(g);
   const cards = [...p.cards.entries()];
   for (const [a, ra] of cards) for (const [b, rb] of cards) if (a < b) assert.ok(!overlap(ra, rb), `${a} and ${b} overlap`);
   assert.equal(p.cards.size, 14, "every session, Skipper and Admiral has a card");
-  // Each session card sits inside its project's frame; each project frame inside its fleet's.
-  const g = graph();
+  // Each session sits inside its project's frame; each project frame of a fleet inside the fleet's.
   for (const pr of [...g.fleets[0].projects, ...g.projects]) for (const id of pr.cards) assert.ok(inside(p.cards.get(id)!, p.clusters.get(pr.key)!), `${id} inside ${pr.key}`);
   for (const pr of g.fleets[0].projects) assert.ok(inside(p.clusters.get(pr.key)!, p.clusters.get("fleet:Web")!), `${pr.key} inside the fleet`);
-  // The project frames of one fleet do not overlap each other, and the top blocks do not overlap.
   assert.ok(!overlap(p.clusters.get("project:storefront")!, p.clusters.get("project:checkout")!));
-  assert.ok(!overlap(p.clusters.get("fleet:Web")!, p.clusters.get("project:skiff")!));
-  assert.ok(!overlap(p.clusters.get("project:skiff")!, p.clusters.get("project:gesher")!));
-  // Admiral is above everything, a Skipper above what it owns.
-  const ad = p.cards.get("ad")!;
-  for (const [id, r] of p.cards) if (id !== "ad") assert.ok(r.y >= ad.y + ad.h, `${id} under Admiral`);
-  assert.ok(p.cards.get("sk-web")!.y + G.CARD_H <= p.clusters.get("project:storefront")!.y);
-  assert.ok(p.cards.get("sk-skiff")!.y + G.CARD_H <= p.clusters.get("project:skiff")!.y);
-  // A plan caption sits above its first card, inside the cluster.
+  // Admiral at the top left; a Skipper's window above the work that hangs under it, which is indented past its face.
+  assert.deepEqual([p.cards.get("ad")!.x, p.cards.get("ad")!.y], [0, 0]);
+  for (const [id, r] of p.cards) if (id !== "ad") assert.ok(r.y >= G.WINDOW.admiral.h, `${id} under Admiral`);
+  const web = p.cards.get("sk-web")!;
+  assert.ok(web.y + web.h <= p.clusters.get("project:storefront")!.y);
+  assert.ok(p.cards.get("sk-skiff")!.y + G.WINDOW.project.h <= p.cards.get("s6")!.y);
+  assert.ok(p.cards.get("s6")!.x > p.at.get("s6")!.rail, "the work hangs right of the rail");
+  // A plan caption sits above its first card, inside the project.
   const plan = p.plans.find((pl) => pl.plan.uid === "p1")!;
   assert.ok(plan.y + plan.h <= p.cards.get("s1")!.y);
   assert.ok(inside(plan, p.clusters.get("project:storefront")!));
 });
 
-test("the outer grid wraps at three blocks a row, rows top-align, and a wide block takes a row alone", () => {
-  // Six small projects: two rows of three, the second row under the tallest of the first.
-  const g: G.Graph = { admiral: "ad", fleets: [], projects: [project("a", ["a1"]), project("b", ["b1", "b2", "b3"]), project("c", ["c1"]), project("d", ["d1"]), project("e", ["e1"]), project("f", ["f1"])] };
-  const p = G.placeGraph(g, {});
-  const c = (n: string) => p.clusters.get(`project:${n}`)!;
-  assert.deepEqual([c("a").x, c("b").x, c("c").x], [0, G.SLOT_W + 48, 2 * (G.SLOT_W + 48)], "three slots across");
-  assert.equal(c("a").y, c("b").y, "a row top-aligns");
-  assert.equal(c("d").x, 0, "the fourth block starts the next row");
-  assert.equal(c("d").y, c("a").y + c("b").h + 48, "the next row sits under the tallest block of the row above");
-  assert.deepEqual([c("e").x, c("f").x], [c("b").x, c("c").x]);
-  assert.ok(c("b").h > c("a").h, "b is the tallest: three cards in two columns");
-  // Admiral centers on the grid, not on the content, so it stays put when blocks come and go.
-  assert.equal(p.cards.get("ad")!.x, G.GRID_W / 2 - G.WINDOW.admiral.w / 2);
-  assert.equal(G.placeGraph({ ...g, projects: g.projects.slice(0, 1) }, {}).cards.get("ad")!.x, p.cards.get("ad")!.x);
-  // A project with seven cards is three columns wide: wider than a slot, so it takes a row by itself.
-  const big = project("big", ["g1", "g2", "g3", "g4", "g5", "g6", "g7"]);
-  const q = G.placeGraph({ admiral: null, fleets: [], projects: [project("a", ["a1"]), big, project("c", ["c1"])] }, {});
-  const r = (n: string) => q.clusters.get(`project:${n}`)!;
-  assert.ok(r("big").w > G.SLOT_W);
-  assert.equal(r("big").x, 0);
-  assert.ok(r("big").y > r("a").y, "big starts a new row");
-  assert.ok(r("c").y > r("big").y, "the block after it starts another");
-  assert.equal(r("c").x, 0);
-});
-
-test("a fleet lays its projects out three a row inside its frame, and a wide fleet takes a row alone", () => {
-  const five = ["p1", "p2", "p3", "p4", "p5"].map((n) => project(n, [`${n}a`]));
-  const g: G.Graph = { admiral: "ad", fleets: [{ key: "fleet:F", name: "F", skipper: "sk", projects: five }, { key: "fleet:G", name: "G", skipper: null, projects: [project("g1", ["x1"])] }], projects: [project("solo", ["s1"]), project("other", ["o1"])] };
-  const p = G.placeGraph(g, {});
-  const frame = p.clusters.get("fleet:F")!;
-  const c = (n: string) => p.clusters.get(`project:${n}`)!;
-  for (const n of ["p1", "p2", "p3", "p4", "p5"]) assert.ok(inside(c(n), frame), `${n} inside the frame`);
-  assert.equal(c("p1").y, c("p3").y, "the first three share a row");
-  assert.equal(c("p4").y, c("p1").y + c("p1").h + 24, "the fourth starts a second row inside the frame");
-  assert.equal(c("p4").x, c("p1").x);
-  assert.equal(c("p5").x, c("p2").x);
-  assert.ok(c("p5").y + c("p5").h <= frame.y + frame.h, "the frame holds the second row");
-  assert.ok(p.cards.get("sk")!.y + G.CARD_H <= c("p1").y, "the Skipper sits above the rows");
-  // The wide fleet took the first row alone; the one-project fleet and the two projects share the next.
-  assert.ok(frame.w > G.SLOT_W);
-  assert.equal(frame.x, 0);
-  const small = p.clusters.get("fleet:G")!;
-  assert.ok(small.w <= G.SLOT_W, "a fleet with one small project fits a slot");
-  assert.equal(small.y, frame.y + frame.h + 48, "it starts the row under the wide fleet");
-  assert.deepEqual([small.x, c("solo").x, c("other").x], [0, G.SLOT_W + 48, 2 * (G.SLOT_W + 48)], "three blocks share that row");
-  assert.equal(c("solo").y, small.y);
-  // The hand offsets of the first test still move only what they name.
-  const moved = G.placeGraph(g, { "fleet:F": { dx: 10, dy: 20 }, "project:solo": { dx: -5, dy: 0 } });
-  assert.equal(moved.clusters.get("project:p5")!.x, c("p5").x + 10);
-  assert.equal(moved.clusters.get("project:p5")!.y, c("p5").y + 20);
-  assert.equal(moved.cards.get("sk")!.y, p.cards.get("sk")!.y + 20);
-  assert.equal(moved.clusters.get("project:solo")!.x, c("solo").x - 5);
-  assert.deepEqual(moved.clusters.get("project:other"), c("other"));
-  assert.deepEqual(moved.clusters.get("fleet:G"), small);
+test("the clusters flow in a fixed grid: ceil(√n) to a row, at most 4, wrapping like text, in the tree's order", () => {
+  assert.deepEqual([1, 2, 4, 5, 9, 10, 30].map(Grid.perRow), [1, 2, 2, 3, 3, 4, 4]);
+  // Four clusters (a fleet, a project with a Skipper, a plain project, Other): two to a row, in that order.
+  const p = Grid.placeGraph(graph());
+  const c = (k: string) => p.clusters.get(k)!;
+  const [web, skiff, gesher, other] = [c("fleet:Web"), c("project:skiff"), c("project:gesher"), c("project:other")];
+  assert.equal(web.y, skiff.y, "a row top-aligns");
+  assert.ok(skiff.x > web.x);
+  assert.deepEqual([gesher.x, other.x], [web.x, skiff.x], "the next row starts at the left, on the same columns");
+  assert.equal(gesher.y, web.y + Math.max(web.h, skiff.h) + 64, "a row is as tall as its tallest cluster");
+  assert.ok([web, skiff, gesher, other].every((x) => x.w === web.w), "every cell is one width");
+  // The trunk runs left of every cluster.
+  assert.ok([web, skiff, gesher, other].every((x) => x.x > p.trunk!));
 });
 
 test("a folded cluster is one card, and its sessions stand in by it", () => {
   const g = graph();
   g.projects[1].folded = true;
-  const p = G.placeGraph(g, {});
+  const p = Grid.placeGraph(g);
   const c = p.clusters.get("project:gesher")!;
   assert.equal(c.folded, true);
   assert.deepEqual([c.w, c.h], [G.CARD_W, G.CARD_H]);
@@ -108,92 +67,6 @@ test("a folded cluster is one card, and its sessions stand in by it", () => {
   assert.equal(G.standIn(g, p, "s9"), "project:gesher");
   assert.equal(G.standIn(g, p, "s1"), "s1");
   assert.equal(G.navChildren(g, "project:gesher").length, 0, "a folded cluster has nothing under it");
-});
-
-test("a hand offset moves a cluster with its contents, and nothing else; a card has no offset", () => {
-  const base = G.placeGraph(graph(), {});
-  const moved = G.placeGraph(graph(), { "project:skiff": { dx: 100, dy: -30 }, s4: { dx: 7, dy: 7 } });
-  for (const id of ["sk-skiff", "s6", "s7", "s8"]) {
-    assert.equal(moved.cards.get(id)!.x, base.cards.get(id)!.x + 100, id);
-    assert.equal(moved.cards.get(id)!.y, base.cards.get(id)!.y - 30, id);
-  }
-  assert.equal(moved.clusters.get("project:skiff")!.x, base.clusters.get("project:skiff")!.x + 100);
-  assert.deepEqual(moved.cards.get("s4"), base.cards.get("s4"), "a card's offset is ignored: it never leaves its frame");
-  for (const id of ["ad", "sk-web", "s1", "s5", "s9", "s11"]) assert.deepEqual(moved.cards.get(id), base.cards.get(id), `${id} stays`);
-  // A drag of Admiral moves Admiral; of a Skipper's card or a folded card, its block; a session card reorders instead.
-  const g = graph();
-  assert.equal(G.moveKey(g, "ad"), "ad");
-  assert.equal(G.moveKey(g, "sk-web"), "fleet:Web");
-  assert.equal(G.moveKey(g, "fleet:Web"), "fleet:Web");
-  assert.equal(G.moveKey(g, "sk-skiff"), "project:skiff");
-  assert.equal(G.moveKey(g, "project:checkout"), "project:checkout");
-  assert.equal(G.moveKey(g, "s4"), null);
-  assert.equal(G.clusterOf(g, "s4"), "project:checkout");
-  assert.equal(G.clusterOf(g, "sk-web"), null);
-});
-
-test("a card reorders inside its cluster: the slot under it, the others make room, and a drop outside springs back", () => {
-  const g = graph();
-  const p = G.placeGraph(g, {});
-  const c = p.clusters.get("project:checkout")!;
-  assert.deepEqual(p.order.get("project:checkout"), ["s4", "s5"]);
-  const s4 = p.cards.get("s4")!;
-  const s5 = p.cards.get("s5")!;
-  const mid = (r: G.Rect) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
-  // Two cards sit side by side. The slot nearest the card's middle: its own, then the other's once it is past the midpoint between them.
-  assert.equal(s4.y, s5.y);
-  assert.equal(G.slotAt(p, "project:checkout", mid(s4)), 0);
-  assert.equal(G.slotAt(p, "project:checkout", { x: (mid(s4).x + mid(s5).x) / 2 - 10, y: mid(s4).y + 20 }), 0);
-  assert.equal(G.slotAt(p, "project:checkout", { x: (mid(s4).x + mid(s5).x) / 2 + 10, y: mid(s4).y - 20 }), 1);
-  // Outside the frame: no slot, so the order stays and the card springs back to its last place.
-  assert.equal(G.slotAt(p, "project:checkout", { x: c.x - 1, y: mid(s4).y }), null);
-  assert.equal(G.slotAt(p, "project:checkout", { x: mid(s4).x, y: c.y + c.h + 1 }), null);
-  // The others make room: s4 to slot 1 puts s5 first.
-  assert.deepEqual(G.reorder(["s4", "s5"], "s4", 1), ["s5", "s4"]);
-  assert.deepEqual(G.reorder(["a", "b", "c", "d"], "d", 0), ["d", "a", "b", "c"]);
-  assert.deepEqual(G.reorder(["a", "b", "c"], "a", 9), ["b", "c", "a"], "past the end: last");
-  // The kept order leads; a new session follows in tree order; a gone one is dropped.
-  assert.deepEqual(G.orderCards(["s4", "s5", "s6"], ["s5", "gone", "s4"]), ["s5", "s4", "s6"]);
-  assert.deepEqual(G.orderCards(["s4", "s5"], undefined), ["s4", "s5"]);
-  // The reordered cluster places the cards in the new order, in the same slots.
-  g.fleets[0].projects[1].cards = G.reorder(["s4", "s5"], "s4", 1);
-  const q = G.placeGraph(g, {});
-  assert.deepEqual(q.order.get("project:checkout"), ["s5", "s4"]);
-  assert.deepEqual(q.cards.get("s5"), s4);
-  assert.deepEqual(q.cards.get("s4"), s5);
-  assert.deepEqual(q.clusters.get("project:checkout"), c, "the frame does not change");
-});
-
-test("a project in a fleet stays inside the frame: clamped above and left, and the frame grows right and down to hold it", () => {
-  const g = graph();
-  const base = G.placeGraph(g, {});
-  const frame = base.clusters.get("fleet:Web")!;
-  const sf = base.clusters.get("project:storefront")!;
-  // Left and up past the inside of the frame: the project stops at the frame's padding, under its head; the applied offset says so.
-  const up = G.placeGraph(g, { "project:storefront": { dx: -500, dy: -500 } });
-  const c = up.clusters.get("project:storefront")!;
-  assert.equal(c.x, frame.x + 16);
-  assert.equal(c.y, frame.y + 20 + 16);
-  assert.deepEqual(up.offs["project:storefront"], { dx: c.x - sf.x, dy: c.y - sf.y });
-  assert.deepEqual(up.clusters.get("fleet:Web"), frame, "the frame keeps its size");
-  assert.ok(inside(c, up.clusters.get("fleet:Web")!));
-  for (const id of ["s1", "s2", "s3"]) assert.ok(inside(up.cards.get(id)!, c), `${id} inside its moved cluster`);
-  // Right and down: the frame grows to hold the project, with its padding, and the blocks after it move down with the taller frame.
-  const grown = G.placeGraph(g, { "project:checkout": { dx: 300, dy: 200 } });
-  const ck = grown.clusters.get("project:checkout")!;
-  const f2 = grown.clusters.get("fleet:Web")!;
-  assert.deepEqual(grown.offs["project:checkout"], { dx: 300, dy: 200 }, "an offset inside the frame applies as given");
-  assert.ok(inside(ck, f2));
-  assert.equal(f2.x + f2.w, ck.x + ck.w + 16);
-  assert.equal(f2.y + f2.h, ck.y + ck.h + 16);
-  assert.ok(f2.w > frame.w && f2.h > frame.h);
-  assert.equal(grown.cards.get("sk-web")!.x, base.cards.get("sk-web")!.x, "the fleet Skipper stays put");
-  assert.ok(!overlap(f2, grown.clusters.get("project:skiff")!), "the wider frame takes its row alone");
-  // The free blocks and Admiral go where they are put, with no clamp.
-  const free = G.placeGraph(g, { "fleet:Web": { dx: -300, dy: -100 }, "project:gesher": { dx: 0, dy: -900 }, ad: { dx: 50, dy: -50 } });
-  assert.equal(free.clusters.get("fleet:Web")!.x, frame.x - 300);
-  assert.equal(free.clusters.get("project:gesher")!.y, base.clusters.get("project:gesher")!.y - 900);
-  assert.deepEqual(free.cards.get("ad"), { ...base.cards.get("ad")!, x: base.cards.get("ad")!.x + 50, y: base.cards.get("ad")!.y - 50 });
 });
 
 test("Skipper numbers follow the tree: projects in no fleet first, as the Skippers list counts them", () => {
@@ -295,17 +168,22 @@ test("time in state reads as minutes, hours and days", () => {
   assert.equal(G.ago(now - 3 * 1440 * 60_000, now), "3d");
 });
 
-test("a string leaves a window from its face's foot and ends in a window's face or at a card's pin", () => {
-  const g: G.Graph = { admiral: "ad", fleets: [{ key: "fleet:F", name: "F", skipper: "sk", projects: [project("p", ["s1"])] }], projects: [] };
-  const p = G.placeGraph(g, {});
-  assert.deepEqual([p.rungs.get("ad"), p.rungs.get("sk"), p.rungs.get("s1")], ["admiral", "fleet", undefined]);
-  assert.deepEqual([p.cards.get("sk")!.w, p.cards.get("sk")!.h], [G.WINDOW.fleet.w, G.WINDOW.fleet.h]);
-  const ad = G.faceBox(p.cards.get("ad")!, "admiral");
-  const sk = G.faceBox(p.cards.get("sk")!, "fleet");
-  const toSk = G.strandEnds(p, "ad", "sk", p.cards.get("sk")!);
-  assert.deepEqual(toSk.a, { x: ad.x + ad.w / 2, y: ad.y + ad.h - 4 }, "from the bottom middle of Admiral's face, in its column");
-  assert.ok(toSk.a.x < p.cards.get("ad")!.x + G.WINDOW.admiral.face + 16, "never from the output's column");
-  assert.deepEqual(toSk.b, { x: sk.x + sk.w / 2, y: sk.y + sk.h / 2 }, "into the middle of the Skipper's face");
-  assert.deepEqual(toSk.via, { x: toSk.b.x, y: p.cards.get("sk")!.y }, "from above the face's column, not across the state's");
-  assert.deepEqual(G.strandEnds(p, "sk", "s1", p.cards.get("s1")!).b, G.pin(p.cards.get("s1")!), "a session card keeps its pin");
+test("a connector: down the trunk and the bus into a Skipper's face, down a rail into a card, or the bus to another cluster's rail", () => {
+  const p = Grid.placeGraph(graph());
+  const face = (id: string) => G.faceBox(p.cards.get(id)!, p.rungs.get(id)!);
+  const mid = (id: string) => ({ x: face(id).x + face(id).w / 2, y: face(id).y + face(id).h / 2 });
+  const ad = face("ad");
+  const toWeb = Grid.route(p, "ad", "sk-web")!;
+  assert.ok(toWeb.startsWith(`M${p.trunk} ${ad.y + ad.h - 4}`), "from the bottom of Admiral's face, on the trunk");
+  assert.ok(toWeb.endsWith(`L${mid("sk-web").x} ${mid("sk-web").y}`), "into the middle of the Skipper's face");
+  assert.ok(toWeb.includes(` ${p.at.get("sk-web")!.bus}`), "along the row's bus");
+  const s4 = p.cards.get("s4")!;
+  const own = Grid.route(p, "sk-web", "s4")!;
+  assert.ok(own.startsWith(`M${mid("sk-web").x} `), "down the Skipper's own rail");
+  assert.ok(own.endsWith(`L${s4.x} ${s4.y + s4.h / 2}`), "into the card's left edge");
+  // Admiral's own task in a cluster with no Skipper: the bus, then that cluster's rail.
+  assert.ok(Grid.route(p, "ad", "s9")!.includes(`${p.at.get("s9")!.rail} `));
+  assert.equal(Grid.route(p, "ad", "nobody"), null);
+  // Right angles only: every move is along x or along y, turned with a quarter curve.
+  assert.ok(!/[CA]/.test(own + toWeb));
 });

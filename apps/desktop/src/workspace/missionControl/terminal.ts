@@ -93,18 +93,6 @@ export function placeFaces(placed: G.Placed, sess: Map<string, SessionInfo>, loo
   }
 }
 
-/** Only the places, for a drag frame. */
-export function moveFaces(placed: G.Placed) {
-  for (const [id, f] of faces) {
-    const r = placed.cards.get(id);
-    const rung = placed.rungs.get(id);
-    if (!r || !rung) continue;
-    const at = G.faceBox(r, rung);
-    f.el.style.left = `${at.x}px`;
-    f.el.style.top = `${at.y}px`;
-  }
-}
-
 export function clearFaces() {
   faceLayer.replaceChildren();
   faces.clear();

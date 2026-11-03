@@ -15,15 +15,12 @@
  * Ctrl+Shift+P searches the cards and dims the rest. The search stays until
  * Esc clears it, so a close and an open keep it.
  *
- * Drag empty space or use the wheel to pan. Ctrl+wheel and pinch zoom at the
- * pointer. Home fits the graph. A thing moves only inside its parent. Drag a
- * card to reorder it in its cluster: the others make room, and it snaps into
- * a slot. Drag a cluster by its head, or by its Skipper's card: a project in
- * a fleet moves inside the frame, which grows to hold it; a fleet, a project
- * in no fleet, Other and Admiral move on the canvas. A drop outside the
- * parent springs back. A drop never changes a session's project or fleet.
- * The order of each cluster, the offsets, the folds and the panel's fold
- * persist on this computer, per Host.
+ * The layout (missionControl/grid.ts) comes from the data alone: each
+ * cluster a tidy tree, the clusters in a fixed grid in the sidebar's order,
+ * Admiral's trunk down the left. Nothing is dragged; the window size is never
+ * an input. Drag or the wheel pans, Ctrl+wheel and pinch zoom at the pointer,
+ * Home fits. A click on a cluster's head folds it. The folds and the panel's
+ * fold persist on this computer, per Host.
  *
  * Admiral and each Skipper show as a terminal window with its face and its
  * state, task and counts (missionControl/terminal.ts, state.ts).
@@ -64,6 +61,8 @@ import { projectBadge, treeSections } from "./tree";
 import { t, tn, upper } from "../i18n";
 import { matchText, sinceText } from "./missionControl/model";
 import * as T from "./missionControl/terminal";
+import { placeGraph, route } from "./missionControl/grid";
+import { clearConnectors, drawConnectors, type Link, mountConnectors } from "./missionControl/connectors";
 import { stateParts } from "./missionControl/state";
 
 /** Rows of text in the panel's screen. */
@@ -87,16 +86,8 @@ const canvas = h("div", "mission-canvas");
 const world = h("div", "mission-world");
 const strings = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 strings.setAttribute("class", "mission-strings");
-// Paths stay across draws, so a working string's dashes keep marching (#198). Labels draw over them.
-const strandLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
-const labelLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
-strings.append(strandLayer, labelLayer);
-/** One group per string, by `from>to`: its line and its tucks. */
-const strands = new Map<string, { g: SVGGElement; line: SVGPathElement; tuck: SVGPathElement }>();
-/** The labels as last drawn, so a draw that changes none leaves them be. */
-let labelsDrawn = "";
-/** One march of a working string, in ms: one dash period. All strings march in one phase. */
-const MARCH = 1600;
+// One solid path per link, keyed, in three state layers (missionControl/connectors.ts).
+mountConnectors(strings);
 const items = h("div", "mission-items");
 world.append(strings, T.faceLayer, items);
 const ticks = h("div", "mission-ticks");
@@ -130,14 +121,10 @@ const appZoom = () => parseFloat(getComputedStyle(document.documentElement).getP
 // ---- What persists on this computer, per Host ----
 
 interface Kept {
-  offs: G.Offsets;
-  order: G.Order;
   folded: string[];
   opened: string[];
   panel: boolean;
 }
-let offs: G.Offsets = {};
-let order: G.Order = {};
 /** Folded by hand, and opened by hand against the Running rule. */
 let folded = new Set<string>();
 let opened = new Set<string>();
@@ -156,22 +143,18 @@ function loadKept() {
   } catch {
     /* start as laid out */
   }
-  offs = k.offs && typeof k.offs === "object" ? k.offs : {};
-  order = k.order && typeof k.order === "object" ? k.order : {};
   folded = new Set(Array.isArray(k.folded) ? k.folded : []);
   opened = new Set(Array.isArray(k.opened) ? k.opened : []);
   panelOpen = k.panel !== false;
+  // The record is written back as it is now: what it held beyond these goes.
+  saveKept();
 }
 
 function saveKept() {
-  // Only a fleet, a project and Admiral keep an offset; a cluster keeps an order. A card's old offset goes.
-  const keep = new Set([...placed.clusters.keys(), ...(m.g.admiral ? [m.g.admiral] : [])]);
-  for (const k of Object.keys(offs)) if (!keep.has(k)) delete offs[k];
-  for (const k of Object.keys(order)) if (!keep.has(k)) delete order[k];
   try {
-    localStorage.setItem(keptKey(), JSON.stringify({ offs, order, folded: [...folded], opened: [...opened], panel: panelOpen } satisfies Kept));
+    localStorage.setItem(keptKey(), JSON.stringify({ folded: [...folded], opened: [...opened], panel: panelOpen } satisfies Kept));
   } catch {
-    /* the layout lasts for this run */
+    /* the folds last for this run */
   }
 }
 
@@ -300,9 +283,8 @@ function model(): Model {
 
   const cluster = (p: Project | null, skipper: SessionInfo | null): G.GProject => {
     const key = p ? `project:${p.name}` : OTHER;
-    // The cards in the hand order, then the new ones in tree order.
-    const byId = new Map(projectSessions(p).map((s) => [s.id, s]));
-    const list = G.orderCards([...byId.keys()], order[key]).map((id) => byId.get(id)!);
+    // The cards in tree order: the board mirrors the sidebar.
+    const list = projectSessions(p);
     projects.set(key, p);
     members.set(key, list);
     for (const s of list) {
@@ -349,7 +331,7 @@ function model(): Model {
 }
 
 let m: Model = { g: { admiral: null, fleets: [], projects: [] }, sess: new Map(), projects: new Map(), members: new Map(), rows: new Map(), strs: [], found: null };
-let placed: G.Placed = { cards: new Map(), clusters: new Map(), plans: [], order: new Map(), offs: {}, rungs: new Map() };
+let placed: G.Placed = { cards: new Map(), clusters: new Map(), plans: [], rungs: new Map(), at: new Map(), trunk: null };
 
 // ---- Cards and clusters ----
 
@@ -387,25 +369,23 @@ function metaOf(s: SessionInfo): HTMLElement {
   return el;
 }
 
-/** A session card's inside: the pin, the head and the body. Admiral and the Skippers are windows (terminal.ts). */
+/** A session card's inside: the head and the body. Admiral and the Skippers are windows (terminal.ts). */
 function cardParts(s: SessionInfo, now: number): HTMLElement[] {
-  const pin = h("span", `mission-pin ${s.state === "working" || s.state === "waiting" || s.state === "done" ? s.state : ""}`);
   const head = h("span", "head");
   head.appendChild(h("span", "at", sinceText(s, now)));
   const body = h("span", "body");
   const tx = h("span", "tx");
   tx.append(h("span", "t", cardName(s)), metaOf(s));
   body.append(stateIcon(s), agentIcon(s), tx);
-  return [pin, head, body];
+  return [head, body];
 }
 
 /** A folded cluster's card: the badge, the name and the counts. */
-function folderParts(key: string, now: number): HTMLElement[] {
+function folderParts(key: string): HTMLElement[] {
   const p = m.projects.get(key) ?? null;
   const list = m.members.get(key) ?? [];
   const waits = list.filter((s) => s.state === "waiting").length;
   const works = list.filter((s) => s.state === "working").length;
-  const pin = h("span", `mission-pin ${waits ? "waiting" : works ? "working" : ""}`);
   const head = h("span", "head");
   head.append(p ? projectBadge(p) : h("span", "name", "…"), h("span", "name", p?.name ?? t("sidebar.other")), h("span", "at", String(list.length)));
   const body = h("span", "body");
@@ -416,8 +396,7 @@ function folderParts(key: string, now: number): HTMLElement[] {
   meta.append(tn("mission.idle", list.length - waits - works));
   tx.append(h("span", "t", p?.name ?? t("sidebar.other")), meta);
   body.append(chevron(), tx);
-  void now;
-  return [pin, head, body];
+  return [head, body];
 }
 
 /** A cluster's head: the chevron, the badge, the name and the counts. */
@@ -459,7 +438,7 @@ function setClass(el: HTMLElement, cls: string, on: boolean) {
 function draw() {
   const now = Date.now();
   m = model();
-  placed = G.placeGraph(m.g, offs);
+  placed = placeGraph(m.g);
   // The light: a card that left the board hands it to its parent, else the first node.
   if (lit && !G.standIn(m.g, placed, lit) && !placed.clusters.has(lit)) lit = G.navParent(m.g, lit) ?? G.navFirst(m.g);
   if (!lit) lit = G.navFirst(m.g);
@@ -479,13 +458,9 @@ function draw() {
     el.className = `mission-card ${cls}`;
     setClass(el, "lit", id === lit);
     setClass(el, "dim", dim);
-    setClass(el, "dragging", drag?.card?.id === id);
     el.style.setProperty("--pc", pc);
-    // A card on the move stays under the pointer; its slot waits for it.
-    if (drag?.card?.id !== id) {
-      el.style.left = `${r.x}px`;
-      el.style.top = `${r.y}px`;
-    }
+    el.style.left = `${r.x}px`;
+    el.style.top = `${r.y}px`;
     if (typeof parts !== "string") refill(el, parts);
     else Object.assign(el.style, { width: `${r.w}px`, height: `${r.h}px` });
   };
@@ -507,7 +482,7 @@ function draw() {
     if (!c.folded) continue;
     const list = m.members.get(key) ?? [];
     const run = list.some(isRunning);
-    putCard(key, c, folderParts(key, now), `folder${list.some((s) => s.state === "waiting") ? " waiting" : ""}`, accent(m.projects.get(key) ?? null), (running && !run) || (!!m.found && !list.some((s) => m.found!.has(s.id))));
+    putCard(key, c, folderParts(key), `folder${list.some((s) => s.state === "waiting") ? " waiting" : ""}`, accent(m.projects.get(key) ?? null), (running && !run) || (!!m.found && !list.some((s) => m.found!.has(s.id))));
   }
   for (const [id, el] of cards) {
     if (seen.has(id)) continue;
@@ -575,58 +550,24 @@ function draw() {
   drawPanel();
 }
 
-/** The strings: one path per link, from the parent's foot to the child's pin. A hand-off carries its label. */
+/** The connectors: one per link, from its owner to the child, or the child's folded cluster. */
 function drawStrings() {
+  const links: Link[] = [];
   const done = new Set<string>();
-  let labels = "";
   for (const st of m.strs) {
     const to = G.standIn(m.g, placed, st.to);
-    const from = placed.cards.get(st.from);
-    if (!to || !from) continue;
+    const d = to ? route(placed, st.from, to) : null;
     const key = `${st.from}>${to}`;
-    if (done.has(key)) continue;
+    if (!to || !d || done.has(key)) continue;
     done.add(key);
-    const toRect = placed.cards.get(to) ?? placed.clusters.get(to)!;
     const child = m.sess.get(st.to)!;
     const foldedTo = !placed.cards.has(to);
     const members = foldedTo ? (m.members.get(to) ?? []) : [child];
-    const state = members.some((s) => s.state === "waiting") ? "waiting" : members.some((s) => s.state === "working") ? "working" : stateWord(child);
-    const dim = foldedTo ? !members.some(isRunning) && running : dimmed(child);
-    const ends = G.strandEnds(placed, st.from, to, toRect);
-    const g = G.strand(ends.a, ends.via ?? ends.b);
-    if (ends.via) g.d += `L${ends.b.x} ${ends.b.y}`;
-    let sd = strands.get(key);
-    if (!sd) {
-      const svg = "http://www.w3.org/2000/svg";
-      sd = { g: document.createElementNS(svg, "g"), line: document.createElementNS(svg, "path"), tuck: document.createElementNS(svg, "path") };
-      sd.line.setAttribute("class", "line");
-      sd.g.append(sd.line, sd.tuck);
-      strands.set(key, sd);
-      strandLayer.appendChild(sd.g);
-    }
-    const cls = `${state}${dim ? " dim" : ""}`;
-    if (sd.g.getAttribute("class") !== cls) {
-      // A string that starts to work joins the others' phase.
-      if (state === "working" && !sd.g.classList.contains("working")) sd.line.style.animationDelay = `${-(performance.now() % MARCH)}ms`;
-      sd.g.setAttribute("class", cls);
-    }
-    if (sd.line.getAttribute("d") !== g.d) {
-      sd.line.setAttribute("d", g.d);
-      sd.tuck.setAttribute("d", g.tuck);
-    }
-    if (st.label) {
-      const text = st.label.length > 40 ? `${st.label.slice(0, 39)}…` : st.label;
-      const w = text.length * 6.2 + 12;
-      labels += `<rect class="lblbg" x="${g.lx - w / 2}" y="${g.ly - 10}" width="${w}" height="20"/><text class="lbl${dim ? " dim" : ""}" x="${g.lx}" y="${g.ly + 4}" text-anchor="middle">${text.replace(/[<&]/g, (c) => (c === "<" ? "&lt;" : "&amp;"))}</text>`;
-    }
+    const state = members.some((s) => s.state === "waiting") ? "waiting" : members.some((s) => s.state === "working") ? "working" : child.state === "done" ? "done" : "idle";
+    links.push({ key, d, state, dim: foldedTo ? !members.some(isRunning) && running : dimmed(child) });
   }
-  for (const [key, sd] of strands) {
-    if (done.has(key)) continue;
-    sd.g.remove();
-    strands.delete(key);
-  }
-  if (labels !== labelsDrawn) labelLayer.innerHTML = labelsDrawn = labels;
-  // The box holds every string, so WebKit repaints them as its own content. The margin takes the sag and the labels.
+  drawConnectors(links);
+  // The box holds every connector, so WebKit repaints them as its own content.
   const b = G.bounds(placed);
   const w = String(Math.max(0, Math.ceil(b.x + b.w + 64)));
   const h = String(Math.max(0, Math.ceil(b.y + b.h + 64)));
@@ -640,30 +581,6 @@ function lookOf(id: string): 1 | -1 {
   const k = rectOf((kids.find((c) => c.state === "waiting") ?? kids[0])?.id ?? null);
   const r = placed.cards.get(id)!;
   return k && k.x + k.w / 2 < r.x + r.w / 2 ? -1 : 1;
-}
-
-/** A drag frame: the new places and the strings that moved. The drop draws the rest. */
-function drawMoved() {
-  placed = G.placeGraph(m.g, offs);
-  for (const [id, r] of placed.cards) {
-    const el = cards.get(id);
-    if (!el || drag?.card?.id === id) continue;
-    el.style.left = `${r.x}px`;
-    el.style.top = `${r.y}px`;
-  }
-  for (const [key, c] of placed.clusters) {
-    const el = c.folded ? cards.get(key) : clusters.get(key);
-    if (!el) continue;
-    el.style.left = `${c.x}px`;
-    el.style.top = `${c.y}px`;
-    if (!c.folded) Object.assign(el.style, { width: `${c.w}px`, height: `${c.h}px` });
-  }
-  for (const pl of placed.plans) {
-    const el = plans.get(pl.key);
-    if (el) Object.assign(el.style, { left: `${pl.x}px`, top: `${pl.y}px`, width: `${pl.w}px` });
-  }
-  drawStrings();
-  T.moveFaces(placed);
 }
 
 /** The top bar's counts: Running and All, of what the search leaves. */
@@ -700,9 +617,6 @@ function drawTicks() {
 
 function applyView() {
   world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
-  const cell = 40 * view.z;
-  canvas.style.backgroundSize = `${cell}px ${cell}px`;
-  canvas.style.backgroundPosition = `${view.x}px ${view.y}px`;
   zoomLevel.textContent = `${Math.round((view.z / appZoom()) * 100)}%`;
   drawTicks();
 }
@@ -818,7 +732,6 @@ function openMenu() {
     at ? r.bottom : r.top,
     upper(t("cmd.missionControl")),
     [
-      { label: t("mission.arrange"), run: () => (offs = {}, order = {}, saveKept(), draw(), fit(), back()) },
       { label: t("mission.fit"), hint: "Home", run: () => (fit(), back()) },
       { sep: true },
       { label: t("mission.foldAll"), run: () => (foldAll(true), back()) },
@@ -954,30 +867,26 @@ async function read() {
 
 function tick() {
   if (paused) return;
-  // A drag draws its own frames; the drop draws the whole board.
-  if (!drag?.moved) draw();
+  // A pan draws its own frames.
+  if (!pan?.moved) draw();
   void read();
 }
 
-// ---- The pointer: pan, drag, click ----
+// ---- The pointer: pan and click ----
 
-interface Drag {
+interface Pan {
   x: number;
   y: number;
-  /** The card or cluster under the pointer, for the click. */
+  /** The card or face under the pointer, for the click. */
   id: string | null;
-  /** A fleet, a project or Admiral on the move, with its offset at the start. */
-  move: { key: string; o: { dx: number; dy: number } } | null;
-  /** A session card on the move in its cluster, from its place at the start. */
-  card: { id: string; cluster: string; x: number; y: number } | null;
+  /** The cluster whose head is under the pointer: a click folds it. */
+  head: string | null;
   chev: boolean;
   moved: boolean;
   vx: number;
   vy: number;
 }
-let drag: Drag | null = null;
-let dragFrame = 0;
-let settleTimer: number | undefined;
+let pan: Pan | null = null;
 
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
@@ -987,108 +896,40 @@ canvas.addEventListener("pointerdown", (e) => {
     light(tick.dataset.id);
     return;
   }
-  const el = t.closest<HTMLElement>(".mission-card, .mission-face, .mission-cluster");
-  const head = t.closest(".mission-cluster-head");
-  // A cluster moves by its head only. Its inside is the canvas. A face is its window.
-  const id = (el && (!el.classList.contains("mission-cluster") || head) ? el.dataset.id : null) ?? null;
-  // A Skipper's card, a folded cluster and a cluster head move their block; a session card reorders in its cluster.
-  const key = id ? G.moveKey(m.g, id) : null;
-  const cluster = id && !key ? G.clusterOf(m.g, id) : null;
-  const at = cluster ? placed.cards.get(id!) : null;
-  drag = {
-    x: e.clientX,
-    y: e.clientY,
-    id,
-    move: key ? { key, o: { ...(placed.offs[key] ?? { dx: 0, dy: 0 }) } } : null,
-    card: cluster && at ? { id: id!, cluster, x: at.x, y: at.y } : null,
-    chev: !!t.closest(".mission-chev"),
-    moved: false,
-    vx: view.x,
-    vy: view.y,
-  };
+  // A face is its window.
+  const id = t.closest<HTMLElement>(".mission-card, .mission-face")?.dataset.id ?? null;
+  const head = t.closest(".mission-cluster-head")?.closest<HTMLElement>(".mission-cluster")?.dataset.id ?? null;
+  pan = { x: e.clientX, y: e.clientY, id, head, chev: !!t.closest(".mission-chev"), moved: false, vx: view.x, vy: view.y };
   canvas.setPointerCapture(e.pointerId);
-  if (!drag.move && !drag.card) canvas.classList.add("panning");
+  canvas.classList.add("panning");
   e.preventDefault();
 });
 canvas.addEventListener("pointermove", (e) => {
-  if (!drag) return;
-  const dx = e.clientX - drag.x;
-  const dy = e.clientY - drag.y;
-  if (!drag.moved && Math.hypot(dx, dy) < 4) return;
-  if (!drag.moved) canvas.classList.add("moving");
-  drag.moved = true;
-  if (drag.move) {
-    // The layout clamps it to its parent; the stored offset follows at the drop.
-    offs[drag.move.key] = { dx: drag.move.o.dx + dx / view.z, dy: drag.move.o.dy + dy / view.z };
-    // One draw per frame while the pointer moves.
-    if (!dragFrame) dragFrame = requestAnimationFrame(() => (dragFrame = 0, drawMoved()));
-  } else if (drag.card) {
-    const c = drag.card;
-    const el = cards.get(c.id);
-    const x = c.x + dx / view.z;
-    const y = c.y + dy / view.z;
-    if (el) {
-      window.clearTimeout(settleTimer);
-      items.classList.add("reorder");
-      el.classList.add("dragging");
-      el.style.left = `${x}px`;
-      el.style.top = `${y}px`;
-    }
-    // The slot under the card's middle: the others make room. Outside the frame, the order stays.
-    const slot = G.slotAt(placed, c.cluster, { x: x + G.CARD_W / 2, y: y + G.CARD_H / 2 });
-    const shown = placed.order.get(c.cluster) ?? [];
-    if (slot !== null && shown[slot] !== c.id) {
-      order[c.cluster] = G.reorder(shown, c.id, slot);
-      if (!dragFrame) dragFrame = requestAnimationFrame(() => (dragFrame = 0, drawMoved()));
-    }
-  } else {
-    view.x = drag.vx + dx;
-    view.y = drag.vy + dy;
-    applyView();
-  }
+  if (!pan) return;
+  const dx = e.clientX - pan.x;
+  const dy = e.clientY - pan.y;
+  if (!pan.moved && Math.hypot(dx, dy) < 4) return;
+  pan.moved = true;
+  view.x = pan.vx + dx;
+  view.y = pan.vy + dy;
+  applyView();
 });
-/** The dropped card goes to its slot: the last valid place. */
-function settle(id: string) {
-  const el = cards.get(id);
-  const r = placed.cards.get(id);
-  el?.classList.remove("dragging");
-  if (el && r) {
-    el.style.left = `${r.x}px`;
-    el.style.top = `${r.y}px`;
-  }
-  settleTimer = window.setTimeout(() => items.classList.remove("reorder"), 150);
-}
-const endDrag = (e: PointerEvent) => {
-  if (!drag) return;
-  canvas.classList.remove("panning", "moving");
-  const d = drag;
-  drag = null;
-  if (d.moved) {
-    cancelAnimationFrame(dragFrame);
-    dragFrame = 0;
-    draw();
-    // The offset as the layout applied it: inside the parent.
-    if (d.move && placed.offs[d.move.key]) offs[d.move.key] = placed.offs[d.move.key];
-    if (d.card) settle(d.card.id);
-    saveKept();
-    return;
-  }
-  if (e.type === "pointercancel") return;
+const endPan = (e: PointerEvent) => {
+  if (!pan) return;
+  canvas.classList.remove("panning");
+  const d = pan;
+  pan = null;
+  if (d.moved || e.type === "pointercancel") return;
   root.focus();
+  // A cluster's head folds it: a fleet folds all its projects.
+  if (d.head) return toggleFold(d.head);
   if (!d.id) return;
-  if (d.chev && (isCluster(d.id) || cards.get(d.id)?.classList.contains("folder"))) {
-    toggleFold(d.id);
-    return;
-  }
+  if (d.chev && cards.get(d.id)?.classList.contains("folder")) return toggleFold(d.id);
   light(d.id, false);
   go();
 };
-canvas.addEventListener("pointerup", endDrag);
-canvas.addEventListener("pointercancel", endDrag);
-canvas.addEventListener("dblclick", (e) => {
-  const id = (e.target as Element).closest(".mission-cluster-head")?.closest<HTMLElement>(".mission-cluster")?.dataset.id;
-  if (id && id.startsWith("project:")) toggleFold(id);
-});
+canvas.addEventListener("pointerup", endPan);
+canvas.addEventListener("pointercancel", endPan);
 // The wheel pans. With Ctrl (or a pinch), it zooms at the pointer. Shift+wheel pans sideways.
 canvas.addEventListener(
   "wheel",
@@ -1108,7 +949,7 @@ canvas.addEventListener(
 // still pointer, and the card that lands under it must not take the light back.
 let pointer = "";
 canvas.addEventListener("mousemove", (e) => {
-  if (drag) return;
+  if (pan) return;
   const at = `${e.clientX},${e.clientY}`;
   if (at === pointer) return;
   pointer = at;
@@ -1247,18 +1088,14 @@ export const board = {
     window.clearInterval(timer);
     topbar()?.toggleAttribute("inert", document.body.classList.contains("focus-mode"));
     root.hidden = true;
-    drag = null;
-    canvas.classList.remove("panning", "moving");
-    items.classList.remove("reorder");
+    pan = null;
+    canvas.classList.remove("panning");
     screenFor = null;
     for (const el of [...cards.values(), ...clusters.values(), ...plans.values()]) el.remove();
     cards.clear();
     clusters.clear();
     plans.clear();
-    strandLayer.replaceChildren();
-    labelLayer.replaceChildren();
-    labelsDrawn = "";
-    strands.clear();
+    clearConnectors();
     ticks.replaceChildren();
     T.clearFaces();
   },
