@@ -154,7 +154,6 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
             state.info.exit_code = code;
             state.info.state = SessionState::Done;
             state.info.waiting_cause = None;
-            effects.state = Some(SessionState::Done);
         }
         Input::Seen => {
             let kept = state.info.program_status.as_ref().is_some_and(|p| p.ended);
