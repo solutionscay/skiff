@@ -125,7 +125,7 @@ export interface HostsEnv {
   ask<T>(cmd: string, args?: object): Promise<T>;
   redraw(): void;
   hosts: {
-    knownHosts(): HostRow[];
+    knownHosts(): readonly HostRow[];
     loadHosts(): Promise<void>;
     localHostName(): string;
     shownHost(): string | null;
