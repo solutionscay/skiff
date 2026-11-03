@@ -29,6 +29,7 @@ impl Request {
             Self::ProjectBackground { .. } => Some(Capability::project_assets()),
             Self::FolderHome | Self::FolderList { .. } | Self::FolderPlaces | Self::FolderCreate { .. } => Some(Capability::folders()),
             Self::DropPut { .. } => Some(Capability::drops()),
+            Self::ImageList | Self::ImageRead { .. } | Self::ImageDelete { .. } | Self::ImagePin { .. } | Self::CacheUse => Some(Capability::image_cache()),
             Self::LedgerRows | Self::LedgerStamp | Self::LedgerResult { .. } => Some(Capability::ledger_read()),
             Self::SkipperSettings => Some(Capability::skipper_settings()),
             Self::SkipperEdit { .. } | Self::SkipperFolderPreview { .. } | Self::SkipperFolderChange { .. } => {
@@ -86,6 +87,9 @@ impl Request {
                 | (Self::FileRead { .. }, Response::File { .. })
                 | (Self::FileReveal { .. }, Response::Ok)
                 | (Self::ProjectBackground { .. }, Response::Image { .. })
+                | (Self::ImageList, Response::Images { .. })
+                | (Self::ImageRead { .. }, Response::Image { .. })
+                | (Self::CacheUse, Response::CacheUse { .. })
                 | (Self::FolderHome | Self::FolderCreate { .. } | Self::DropPut { .. }, Response::Path { .. })
                 | (Self::FolderList { .. }, Response::Folders { .. })
                 | (Self::FolderPlaces, Response::Places { .. })
@@ -136,6 +140,11 @@ impl Request {
                 | Self::FolderPlaces
                 | Self::FolderCreate { .. }
                 | Self::DropPut { .. }
+                | Self::ImageList
+                | Self::ImageRead { .. }
+                | Self::ImageDelete { .. }
+                | Self::ImagePin { .. }
+                | Self::CacheUse
                 | Self::LedgerRows
                 | Self::LedgerStamp
                 | Self::ProjectsStamp

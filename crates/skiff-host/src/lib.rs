@@ -28,7 +28,7 @@ use std::{
 use skiff_core::{config::{self, ProjectConfig}, files, git, project, session::SessionInfo};
 use skiff_host_api::{
     Capability, ChangeStatus, EntryKind, Envelope, Error, FileContent, Hello, Host, HostChange, HostDiff, HostEntry,
-    HostFile, HostBranch, HostBranches, HostFolder, HostId, HostImage, HostLedgerRow, HostListing, HostProject, HostWorktree, InstanceId, Limits, Message,
+    HostCacheImage, HostCacheUse, HostFile, HostBranch, HostBranches, HostFolder, HostId, HostImage, HostLedgerRow, HostListing, HostProject, HostWorktree, InstanceId, Limits, Message,
     ProjectEdit, ReadPurpose, Request, Response, API_MAJOR,
 };
 use tokio::{
@@ -73,6 +73,7 @@ pub fn capabilities() -> Vec<Capability> {
         Capability::skipper_watch_log(),
         Capability::agent_config(),
         Capability::drops(),
+        Capability::image_cache(),
     ]
 }
 
@@ -525,6 +526,37 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             let path = skiff_client::cache::put(&cfg, &name, &bytes).map_err(refused)?;
             Ok(Response::Path { path: path.to_string_lossy().into_owned() })
         }
+        Request::ImageList => {
+            let cfg = config::load().map_err(failed)?;
+            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
+            Ok(Response::Images { images: skiff_client::cache::list(&dir).into_iter().map(host_cache_image).collect() })
+        }
+        Request::ImageRead { path } => {
+            let cfg = config::load().map_err(failed)?;
+            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
+            let (mime, bytes) = cache_image(&dir, &path)?;
+            Ok(Response::Image { image: HostImage { mime, bytes } })
+        }
+        Request::ImageDelete { paths } => {
+            let cfg = config::load().map_err(failed)?;
+            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
+            for path in paths { skiff_client::cache::delete(&dir, Path::new(&path)).map_err(refused)?; }
+            Ok(Response::Ok)
+        }
+        Request::ImagePin { paths, on } => {
+            let cfg = config::load().map_err(failed)?;
+            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
+            for path in paths { skiff_client::cache::pin(&dir, Path::new(&path), on).map_err(refused)?; }
+            Ok(Response::Ok)
+        }
+        Request::CacheUse => {
+            let cfg = config::load().map_err(failed)?;
+            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
+            let images = skiff_client::cache::list(&dir);
+            let image_bytes = images.iter().map(|image| image.size).sum();
+            let bytes = cache_bytes(&dir).map_err(failed)?;
+            Ok(Response::CacheUse { usage: HostCacheUse { bytes, images: images.len() as u64, image_bytes } })
+        }
         Request::LedgerRows => Ok(Response::Ledger { rows: ledger_rows(ledger_sessions.as_deref())? }),
         Request::LedgerStamp => {
             let file = skiff_client::ledger::path().map_err(failed)?;
@@ -877,6 +909,43 @@ pub fn host_listing(l: files::Listing) -> HostListing {
         truncated: l.truncated,
         next: l.next,
     }
+}
+
+fn host_cache_image(image: skiff_client::cache::Image) -> HostCacheImage {
+    HostCacheImage {
+        path: image.path,
+        file: image.entry.file,
+        name: image.entry.name,
+        session: image.entry.session,
+        title: image.entry.title,
+        project: image.entry.project,
+        at: image.entry.at,
+        pinned: image.entry.pinned,
+        size: image.size,
+    }
+}
+
+/// Reads only a direct image cache entry and gives the webview its MIME type.
+fn cache_image(dir: &Path, path: &str) -> Result<(String, Vec<u8>), Error> {
+    let bytes = skiff_client::cache::read(dir, Path::new(path)).map_err(refused)?;
+    let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or_default();
+    let mime = match ext.to_ascii_lowercase().as_str() {
+        "svg" => "image/svg+xml", "png" => "image/png", "jpg" => "image/jpeg", "gif" => "image/gif",
+        "webp" => "image/webp", "bmp" => "image/bmp", "tif" => "image/tiff", "heic" => "image/heic", "avif" => "image/avif",
+        _ => return Err(Error::NotFound { message: "the image is not in this Host's cache".into() }),
+    };
+    Ok((mime.into(), bytes))
+}
+
+fn cache_bytes(dir: &Path) -> anyhow::Result<u64> {
+    let mut bytes = 0;
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let meta = entry.metadata()?;
+        if meta.is_file() { bytes += meta.len(); }
+        if meta.is_dir() { bytes += cache_bytes(&entry.path())?; }
+    }
+    Ok(bytes)
 }
 
 /// Opens only a path held and checked above. On a headless Host this reports

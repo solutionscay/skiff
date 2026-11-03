@@ -16,7 +16,7 @@ use std::{
 };
 
 use skiff_host_api::{
-    AgentEdit, Error, FolderListing, FolderPlaces, Hello, HostBranches, HostAgent, HostChanges, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
+    AgentEdit, Error, FolderListing, FolderPlaces, Hello, HostBranches, HostCacheImage, HostCacheUse, HostAgent, HostChanges, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
     HostFileScope, HostListing, HostProject, HostSkipper, HostSkipperFile, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response, SkipperEdit, SkipperFolderDone,
     SkipperFolderMode, SkipperFolderPreview, SkipperOpened, InventorySession, TakenSkipper,
 };
@@ -287,6 +287,44 @@ pub async fn file_read(c: &HostConnection, worktree: &str, file: &str, purpose: 
 pub async fn project_background(c: &HostConnection, project: &str) -> Result<HostImage, Error> {
     match c.request(Request::ProjectBackground { project: project.into() }).await? {
         Response::Image { image } => Ok(image),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// The Host's Images library, newest first.
+pub async fn image_list(c: &HostConnection) -> Result<Vec<HostCacheImage>, Error> {
+    match c.request(Request::ImageList).await? {
+        Response::Images { images } => Ok(images),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// One Host cache image's bytes. `path` came from [`image_list`].
+pub async fn image_read(c: &HostConnection, path: &str) -> Result<HostImage, Error> {
+    match c.request(Request::ImageRead { path: path.into() }).await? {
+        Response::Image { image } => Ok(image),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+pub async fn image_delete(c: &HostConnection, paths: Vec<String>) -> Result<(), Error> {
+    match c.request(Request::ImageDelete { paths }).await? {
+        Response::Ok => Ok(()),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+pub async fn image_pin(c: &HostConnection, paths: Vec<String>, on: bool) -> Result<(), Error> {
+    match c.request(Request::ImagePin { paths, on }).await? {
+        Response::Ok => Ok(()),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// The total cache and image sizes of this Host.
+pub async fn cache_use(c: &HostConnection) -> Result<HostCacheUse, Error> {
+    match c.request(Request::CacheUse).await? {
+        Response::CacheUse { usage } => Ok(usage),
         _ => unreachable!("checked by Request::accepts"),
     }
 }

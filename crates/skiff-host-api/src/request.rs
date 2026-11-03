@@ -249,6 +249,17 @@ pub enum Request {
         #[serde(default)]
         finish: bool,
     },
+    /// Answers the Host's image cache, newest first.
+    ImageList,
+    /// Answers one Host cache image's validated bytes.
+    ImageRead { path: String },
+    /// Deletes Host cache images. Each path must be one returned by
+    /// `image_list`; an absent image is already deleted.
+    ImageDelete { paths: Vec<String> },
+    /// Pins or unpins Host cache images.
+    ImagePin { paths: Vec<String>, on: bool },
+    /// Answers the Host cache's total size, image count and image size.
+    CacheUse,
     /// Answers `image`: the project's configured background, read on the
     /// Host. No background is `not_found`; a file that is not an image, or
     /// is over 5 MiB, is `invalid`.
