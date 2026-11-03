@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-"""Checks that the README hero matches the website home hero.
+"""Checks the README hero against the website home hero.
 
     python3 scripts/hero-sync.py [--live]
 
 Reads the site from ../skiff-web/index.html when that repo is beside this
 one, else from https://skiff.solutionscay.com/. --live always reads the
-live site. Compares the headline, the tagline and the media: the README
-must show the site's hero image or video poster by its public URL. Exits 1 on a drift.
+live site. The headline and the tagline must match the site. The hero image
+is a file in this repo: it must exist. Exits 1 on a fault.
 """
 import re
 import sys
 import urllib.request
-from urllib.parse import urljoin
 from pathlib import Path
 
 SITE = "https://skiff.solutionscay.com/"
@@ -33,18 +32,13 @@ def text(s):
 
 def main():
     html, origin = site_html("--live" in sys.argv)
-    hero = re.search(r'<div class="hero">(.*?)<div class="shot">(.*?)</div>', html, re.S)
+    hero = re.search(r'<div class="hero">(.*?)<div class="shot">', html, re.S)
     if not hero:
         print(f"no hero in {origin}")
-        return 1
-    media = re.search(r'<img\b[^>]*\bsrc="([^"]+)"', hero[2]) or re.search(r'<video\b[^>]*\bposter="([^"]+)"', hero[2])
-    if not media:
-        print(f"no hero image or video poster in {origin}")
         return 1
     site = {
         "headline": text(re.search(r"<h1>(.*?)</h1>", hero[1], re.S)[1]),
         "tagline": text(re.search(r"<p>(.*?)</p>", hero[1], re.S)[1]),
-        "media": urljoin(SITE, media[1]),
     }
 
     readme = (ROOT / "README.md").read_text()
@@ -56,15 +50,18 @@ def main():
     ours = {
         "headline": text(paras[0]) if paras else "",
         "tagline": text(paras[1]) if len(paras) > 1 else "",
-        "media": (re.search(r'<img src="([^"]+)"', block[1]) or [None, ""])[1],
     }
+    image = (re.search(r'<img src="([^"]+)"', block[1]) or [None, ""])[1]
 
     drift = [k for k in site if site[k] != ours[k]]
     for k in drift:
         print(f"{k}: README {ours[k]!r} != site {site[k]!r}")
+    if not image or "://" in image or not (ROOT / image).is_file():
+        print(f"hero image: {image!r} is not a file in this repo")
+        drift.append("image")
     if drift:
         return 1
-    print(f"README hero matches {origin}")
+    print(f"README hero matches {origin}; image {image} exists")
     return 0
 
 

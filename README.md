@@ -6,12 +6,12 @@
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey" alt="Platforms: Linux and macOS">
 </p>
 
-<!-- hero: keep in step with the skiff-web home hero; check with scripts/hero-sync.py -->
+<!-- hero: headline and tagline match the skiff-web home hero; the image is local; check with scripts/hero-sync.py -->
 <h3 align="center">The multi-agent coding terminal.</h3>
 
 <p align="center">Run Claude Code, Codex and other agents in parallel. They send each other tasks and report back.</p>
 
-<p align="center"><a href="https://skiff.solutionscay.com/"><img src="https://skiff.solutionscay.com/shots/v1.9.4-mission-control-hero.webp" width="1600" alt="Skiff Mission control in v1.9.4: Admiral and the Skippers as terminal windows, each with its own face. The projects hang under each Skipper in a fixed tree, and solid connectors run from each owner to its session cards. Amber cards wait for approval."></a></p>
+<p align="center"><a href="https://skiff.solutionscay.com/"><img src="docs/readme/mission-control.webp" width="1600" alt="Skiff Mission control: Admiral at the top, the Platform, Storefront and Data fleets with their Skippers, and session cards under each project. One card waits for approval."></a></p>
 <!-- /hero -->
 
 Skiff is a terminal app for coding agents, on Linux and macOS. You code with Claude Code,
@@ -20,8 +20,6 @@ Each pane shows what its agent needs: a bell when it asks for approval, a flag w
 finished a turn out of sight. Admiral, the Skiff agent, hands tasks to your other agents
 and to project Skippers, and collects their results in a ledger. Any agent can do the
 same with the `skiff` command.
-
-<p align="center"><img src="docs/readme/mission-control.webp" width="1600" alt="Mission control: the fleet seen from above. Admiral at the top, the Platform, Storefront and Data fleets with their Skippers, and session cards under each project. One card waits for approval."><br><sub>Mission control: the fleet seen from above.</sub></p>
 
 ## Philosophy
 
@@ -54,7 +52,7 @@ See the [CLI](https://github.com/solutionscay/skiff/wiki/CLI) page.
 4. Click the top row, Admiral, to start the Skiff agent. It hands tasks to your sessions
    and tracks them in a ledger.
 
-<p align="center"><img src="docs/readme/tree.webp" width="284" alt="The side panel tree: Admiral at the top, loose projects, then the Platform fleet with its Skipper, the atlas-api project Skipper, and sessions under each worktree."><br><sub>The tree: Admiral, a fleet and its Skipper, projects, worktrees and sessions.</sub></p>
+<p align="center"><img src="docs/readme/sidebar.webp" width="284" alt="The side panel, in turn on its two tabs. Tree: Admiral, loose projects, then the Platform, Storefront and Data fleets with their Skippers, projects, worktrees and sessions. Skippers: Admiral and each Skipper with its current task."><br><sub>The side panel: the Tree tab and the Skippers tab.</sub></p>
 
 Press F1 for every key. Press Ctrl+Shift+A for Mission control, the whole agent hierarchy as a graph. The [wiki](https://github.com/solutionscay/skiff/wiki) has the
 details: [Skiff agent](https://github.com/solutionscay/skiff/wiki/Skiff-agent),
