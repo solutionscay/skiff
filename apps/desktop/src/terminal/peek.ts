@@ -28,7 +28,7 @@ import { $, h } from "../ui/dom";
 import { showError } from "../ui/alerts";
 import { appKey, currentRow, itemKey } from "../app/keyboard";
 import { render } from "../app/renderRequest";
-import { keyLabel, type Action } from "../app/keys";
+import type { Action } from "../app/keys";
 import { S, sessions } from "../app/state";
 import type { SessionInfo } from "../platform/types";
 import { toBytes } from "../platform/ipcBytes";
@@ -46,6 +46,7 @@ import { hostName } from "../app/hosts";
 import type { HostDiff, HostFile } from "../platform/types";
 import { allChanges, buildCard, cardAction, cardFrame, clearCard, mountCard, peekHead, slot } from "./peekCard";
 import { diffBody } from "./diffView";
+import { exitAction, tookTerminal, type Peek } from "./peekTerminal";
 import { hostFileFrame, renderHostFile, showHostView, type Gate } from "./peekHostView";
 
 /** Where to find tools for a row that has none. */
@@ -60,29 +61,6 @@ type Opened =
   | { kind: "no_app"; message: string };
 
 type FilePreview = { script: string | null; cwd: string; app: string; peek: boolean };
-
-interface Peek {
-  /** The preview this command belongs to. */
-  gen: number;
-  kind: string;
-  request: string;
-  el: HTMLElement;
-  term: Terminal;
-  fit: FitAddon;
-  resize: ResizeObserver;
-  /** The command's session, once skiffd started it. */
-  session: string | null;
-  /** The program, for prompts and messages. */
-  program: string;
-  /** On screen. Until then the command runs hidden. */
-  shown: boolean;
-  exited: boolean;
-  /** The tool took the terminal: it closes the peek when it exits. */
-  interactive: boolean;
-  /** Output came. The terminal may not have parsed it yet. */
-  got: boolean;
-  timer: number;
-}
 
 /** The preview of the current row. Closed: the user closed it, the row stays current. */
 interface Active {
@@ -374,19 +352,6 @@ export function closePreview() {
   const row = currentRow();
   if (row) row.focus();
   else if (S.focused) panes.get(S.focused)?.term.focus();
-}
-
-/**
- * The command took the terminal: Esc is the tool's now. The keycap names the
- * close key, which Skiff takes before the tool does. A click still closes.
- */
-function tookTerminal(p: Peek) {
-  p.interactive = true;
-  const b = p.el.querySelector<HTMLButtonElement>(".peek-esc");
-  if (!b) return;
-  const key = keyLabel("close-pane");
-  b.textContent = key;
-  b.title = t("peek.closeKey", { key });
 }
 
 const keysIn = (el: HTMLElement) => el.contains(document.activeElement) || document.activeElement === document.body;
@@ -710,23 +675,6 @@ function reclaim({ p, key }: { p: Peek; key: string }) {
   show(p);
 }
 
-/** The program `sh` could not find, from its message: dash, bash and busybox word it apart. */
-function notFound(term: Terminal): string | null {
-  const b = term.buffer.active;
-  for (let y = 0; y < b.length; y++) {
-    const m = b.getLine(y)?.translateToString(true).match(/([^\s:]+): (?:command )?not found/);
-    if (m) return m[1];
-  }
-  return null;
-}
-
-/** The terminal holds text: the command printed something. */
-function printed(term: Terminal): boolean {
-  const b = term.buffer.active;
-  for (let y = 0; y < b.length; y++) if (b.getLine(y)?.translateToString(true).trim()) return true;
-  return false;
-}
-
 /** skiffd says a peek command ended. True when the session was a peek's. */
 export function peekExited(id: string, code: number | null): boolean {
   if (released.delete(id)) {
@@ -758,17 +706,11 @@ export function peekExited(id: string, code: number | null): boolean {
   // The last output can still be on its way: it comes on another channel.
   window.setTimeout(() => {
     if (open !== p) return;
-    // A tool that took the terminal is done with it, and it cleared up after itself.
-    // A pager that quit at once because the text fit (less -F under delta) took the
-    // terminal for a moment but left the text on screen: that text is the preview.
-    if (p.interactive && code === 0 && !printed(p.term)) return closePeek();
-    // Nothing printed, no error: an app took the file and runs on its own.
-    if (!p.shown && !code && !p.got && !printed(p.term)) return closePeek();
-    // `sh` could not find the program: name it, and where to find tools.
-    if (code === 127) {
-      const name = notFound(p.term) ?? p.program;
+    const action = exitAction(p, code);
+    if (action === "close") return closePeek();
+    if (action !== "show") {
       closePeek();
-      return showError(t("peek.notFound", { name }), { label: t("peek.findTool"), run: () => openUrl(TOOLS_URL) });
+      return showError(t("peek.notFound", { name: action.missing }), { label: t("peek.findTool"), run: () => openUrl(TOOLS_URL) });
     }
     show(p);
     if (p.shown) p.term.write(`\r\n\x1b[2m${code ? t("peek.exited", { program: p.program, code }) : t("peek.pressKey")}\x1b[0m`);
