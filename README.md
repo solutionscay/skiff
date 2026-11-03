@@ -11,7 +11,7 @@
 
 <p align="center">Run Claude Code, Codex and other agents in parallel. They send each other tasks and report back.</p>
 
-<p align="center"><a href="https://skiff.solutionscay.com/"><img src="https://skiff.solutionscay.com/shots/skiff-mission-control-hero-poster.webp" width="1600" alt="Skiff Mission control: Admiral at the top, the Skippers under it, each project a cluster of session cards, and a string from each owner to each pane. Click to play the video on the website."></a></p>
+<p align="center"><a href="https://skiff.solutionscay.com/"><img src="https://skiff.solutionscay.com/shots/v1.9.4-mission-control-hero.webp" width="1600" alt="Skiff Mission control in v1.9.4: Admiral and the Skippers as terminal windows, each with its own face. The projects hang under each Skipper in a fixed tree, and solid connectors run from each owner to its session cards. Amber cards wait for approval."></a></p>
 <!-- /hero -->
 
 Skiff is a terminal app for coding agents, on Linux and macOS. You code with Claude Code,
@@ -52,7 +52,7 @@ See the [CLI](https://github.com/solutionscay/skiff/wiki/CLI) page.
 4. Click the top row, Admiral, to start the Skiff agent. It hands tasks to your sessions
    and tracks them in a ledger.
 
-Press F1 for every key. The [wiki](https://github.com/solutionscay/skiff/wiki) has the
+Press F1 for every key. Press Ctrl+Shift+A for Mission control, the whole agent hierarchy as a graph. The [wiki](https://github.com/solutionscay/skiff/wiki) has the
 details: [Skiff agent](https://github.com/solutionscay/skiff/wiki/Skiff-agent),
 [Open with](https://github.com/solutionscay/skiff/wiki/Open-with),
 [skiffd](https://github.com/solutionscay/skiff/wiki/skiffd).
