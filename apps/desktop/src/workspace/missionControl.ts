@@ -126,7 +126,7 @@ const appZoom = () => parseFloat(getComputedStyle(document.documentElement).getP
 
 // ---- What persists on this computer, per Host ----
 
-const { loadKept, saveKept } = createPersistence(missionState, shownHost);
+const { loadKept, saveKept } = createPersistence(missionState, () => shownHost());
 
 // ---- The search and Running / All, in the app's top bar ----
 
