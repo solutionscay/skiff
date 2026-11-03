@@ -580,7 +580,7 @@ function projectSkipperRow(scope: string, s: SessionInfo): HTMLElement {
   const { need, working } = ledgerCounts(scope);
   const vars = { scope: scopeName(scope), skipper: name, title: title || t(`state.${s.state}`), watch: watch.text };
   row.setAttribute("aria-label", watch.text ? t("sidebar.skipperLabelWatch", vars) : t("sidebar.skipperLabel", vars));
-  row.append(h("span", "chev-space"), skipperFace(scope, 20), agentIcon(s), ...underWay(s), h("span", "skiff-agent-name", name), h("span", "title", title));
+  row.append(skipperFace(scope, 20), agentIcon(s), ...underWay(s), h("span", "skiff-agent-name", name), h("span", "title", title));
   // Its tasks an agent is on: the blue count. The bell is for a waiting session only.
   const roll = rollCounts(0, working);
   if (roll) row.append(roll);
@@ -650,7 +650,9 @@ function sectionHead(sec: Section, hidden: number | null = null, alone = false):
     pick.dataset.fold = key;
     pick.setAttribute("aria-expanded", String(open));
   }
-  pick.append(alone ? h("span", "chev-space") : chevron(open), h("span", "tree-head-name", name));
+  // The chevron sits at the row's end: the indent stays for the hierarchy.
+  pick.append(h("span", "tree-head-name", name));
+  if (!alone) pick.append(chevron(open));
   const add = button("tree-head-add", "", () => void addProject.open(name));
   add.title = t("sidebar.addProjectTo", { name });
   add.setAttribute("aria-label", add.title);
@@ -674,7 +676,7 @@ function sectionHead(sec: Section, hidden: number | null = null, alone = false):
   }
   head.append(more, add);
   const roll = open || alone ? null : rollup(sec.projects, name);
-  if (roll) pick.appendChild(roll);
+  if (roll) pick.insertBefore(roll, pick.querySelector(".chev"));
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     fleetMenu({ name, projects: sec.projects }, e.clientX, e.clientY);
@@ -707,10 +709,11 @@ function projectBlock(p: Project): HTMLElement {
   if (!empty) pick.setAttribute("aria-expanded", String(open));
   const fold = h("span", "tree-fold");
   if (!empty) fold.appendChild(chevron(open));
-  pick.append(fold, projectBadge(p), h("span", "project-name", p.name));
+  pick.append(projectBadge(p), h("span", "project-name", p.name));
   if (p.error) pick.appendChild(h("span", "project-meta", t("sidebar.error")));
   const roll = open ? null : rollup([p]);
   if (roll) pick.appendChild(roll);
+  if (!empty) pick.appendChild(fold);
   // A click opens or folds the project, as on a fleet head. Its sessions open from their rows.
   if (!empty) pick.addEventListener("click", () => toggleRow(key, render));
   head.appendChild(pick);
@@ -868,8 +871,7 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   );
   pick.dataset.wt = pick.dataset.fold = w.path;
   if (!empty) pick.setAttribute("aria-expanded", String(open));
-  const lead = empty ? h("span", "chev-space") : chevron(open);
-  pick.append(lead, branchIcon(), h("span", "branch", branchName(w)));
+  pick.append(branchIcon(), h("span", "branch", branchName(w)));
   // The main checkout shows its tag only while it is off its usual branch.
   const usual = p.default_branch ? w.branch === p.default_branch : ["main", "master"].includes(w.branch ?? "");
   if (w.is_main && !usual) pick.appendChild(h("span", "tag", t("sidebar.mainFolder")));
@@ -879,6 +881,7 @@ function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string
   // The rows under an open worktree show the detail.
   const diff = showsChanges(p) && !open ? changeCounts(w) : null;
   if (diff) pick.appendChild(diff);
+  if (!empty) pick.appendChild(chevron(open));
   row.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     worktreeMenu(p, w, e.clientX, e.clientY);
