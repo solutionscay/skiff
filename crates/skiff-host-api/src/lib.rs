@@ -1,7 +1,5 @@
 //! The Host contract. No I/O, service implementation, application state or core types.
 //! This contract is not sent by the existing desktop/CLI connection.
-use std::{collections::BTreeMap, fmt};
-
 use serde::{Deserialize, Serialize};
 
 pub mod agents;
@@ -15,6 +13,8 @@ pub mod projects;
 pub mod terminal;
 pub mod updates;
 mod capability;
+mod error;
+mod hello;
 mod host;
 mod wire;
 use wire::bytes;
@@ -32,111 +32,9 @@ pub use projects::{ChangeStatus, HostBranch, HostBranches, HostChange, HostChang
 pub use terminal::{EchoTimes, TerminalFrame};
 pub use updates::SessionUpdate;
 pub use capability::{Capability, AGENT_CONFIG, CONNECTION_STATUS, DROPS, FILES, FOLDERS, GIT_DIFF, GIT_STATUS, LEDGER, PROGRAM_STATUS, PROJECTS, PROJECT_ASSETS, PROJECT_CONFIG, SESSION_AGENTS, SESSION_GROUPS, SESSION_INVENTORY, SESSION_LIFECYCLE, SESSION_SCREEN, SESSION_TERMINAL, SESSION_UPDATES, SKIPPER, SKIPPER_CONFIG, SKIPPER_FILE, SKIPPER_RUN, WORKTREES};
+pub use error::Error;
+pub use hello::{Hello, Limits, API_MAJOR};
 pub use host::{Endpoint, Host, HostId, InstanceId};
-
-pub const API_MAJOR: u32 = 1;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Limits {
-    pub max_frame_bytes: usize,
-    pub max_in_flight: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Hello {
-    #[serde(flatten)]
-    pub host: Host,
-    pub instance_id: InstanceId,
-    pub service_versions: BTreeMap<String, String>,
-    pub api_major: u32,
-    pub capabilities: Vec<Capability>,
-    pub limits: Limits,
-}
-impl Hello {
-    pub fn validate(&self) -> Result<(), Error> {
-        if self.api_major != API_MAJOR {
-            return Err(Error::IncompatibleVersion {
-                supported: API_MAJOR,
-                received: self.api_major,
-            });
-        }
-        if self.host.os.is_empty()
-            || self.host.account.is_empty()
-            || self.limits.max_frame_bytes == 0
-            || self.limits.max_in_flight == 0
-            || self
-                .capabilities
-                .iter()
-                .any(|c| c.name.is_empty() || c.version == 0)
-            || self
-                .capabilities
-                .iter()
-                .enumerate()
-                .any(|(i, c)| self.capabilities[..i].contains(c))
-        {
-            return Err(Error::MalformedContract {
-                message: "invalid Hello metadata or limits".into(),
-            });
-        }
-        Ok(())
-    }
-
-    pub fn require(&self, capability: &Capability) -> Result<(), Error> {
-        if self.capabilities.contains(capability) {
-            Ok(())
-        } else {
-            Err(Error::UnsupportedCapability {
-                capability: capability.clone(),
-            })
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "code", rename_all = "snake_case")]
-pub enum Error {
-    UnsupportedCapability {
-        capability: Capability,
-    },
-    IncompatibleVersion {
-        supported: u32,
-        received: u32,
-    },
-    MalformedContract {
-        message: String,
-    },
-    /// Legacy service rejection without a structured cause; never guess a
-    /// not-found/permission code from message text.
-    OperationFailed {
-        message: String,
-    },
-    NotFound {
-        message: String,
-    },
-    /// A value the request carries is not one the Host takes.
-    Invalid {
-        message: String,
-    },
-    Conflict {
-        message: String,
-    },
-    Permission {
-        message: String,
-    },
-    HostBusy,
-    TransportLost,
-    TimedOut,
-    IdentityChanged {
-        expected: HostId,
-        received: HostId,
-    },
-}
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-impl std::error::Error for Error {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
