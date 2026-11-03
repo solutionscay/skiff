@@ -32,12 +32,14 @@ import { copyText } from "../platform/clipboard";
 import { button, h } from "../ui/dom";
 import { showError } from "../ui/alerts";
 import { scheduleRender } from "../app/render";
-import { S } from "../app/state";
+import { S, sessions } from "../app/state";
 import { startStalls, stopStalls, takeTallies, type StepTime } from "./stalls";
 import { t, tn } from "../i18n";
 
 interface Entry {
   sid: string;
+  /** Pane role at send time, retained even if the session ends before the echo. */
+  skipper: boolean;
   key: number | null;
   sent: number;
   /** `sent` as Unix ms, to compare with skiffd's times. */
@@ -67,7 +69,7 @@ interface Load {
 
 type Band = "low" | "medium" | "high" | "unknown";
 type Stage = "queue" | "ipc" | "daemon-in" | "program" | "daemon-out" | "echo" | "parse" | "render" | "total";
-type Row = Record<Stage, number | null> & Load & { at: number; sid: string; bytes: number | null; busy: number; band: Band; build: string };
+type Row = Record<Stage, number | null> & Load & { at: number; sid: string; skipper: boolean; bytes: number | null; busy: number; band: Band; build: string };
 interface Stall {
   at: number;
   stall: number;
@@ -208,7 +210,8 @@ export function traceSend(sid: string): (() => void) | undefined {
   const k = lastKey.get(sid);
   lastKey.delete(sid);
   const busy = (recent.get(sid) ?? []).filter((r) => now - r.t < 250).reduce((a, r) => a + r.n, 0);
-  const entry: Entry = { sid, key: k !== undefined && now - k < 100 ? k : null, sent: now, sentWall: performance.timeOrigin + now, busy };
+  const s = sessions.get(sid);
+  const entry: Entry = { sid, skipper: !!(s?.coordinator || s?.skipper), key: k !== undefined && now - k < 100 ? k : null, sent: now, sentWall: performance.timeOrigin + now, busy };
   (pending.get(sid) ?? pending.set(sid, []).get(sid)!).push(entry);
   return () => (entry.ipc = performance.now());
 }
@@ -273,6 +276,7 @@ function done(e: Entry) {
   const row: Row = {
     at: Date.now(),
     sid: e.sid,
+    skipper: e.skipper,
     queue: d(e.key, e.sent),
     ipc: d(e.sent, e.ipc),
     ...split(e, echo),
