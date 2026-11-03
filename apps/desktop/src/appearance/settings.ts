@@ -10,8 +10,6 @@ import { editField, fieldEditKey, textField } from "../ui/fieldClipboard";
 import { mainName, type InstructionFile, type SkiffAgentSettings, type TaskType } from "../app/skiffAgent";
 import { avatarsSection, finishSection, instructionsSection, type SkiffAgentEdit, projectSkippersSection, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
 import { peekText } from "../terminal/peek";
-import { fileSize } from "./taskTypes";
-import { confirmAction } from "../ui/confirm";
 import { changeSkiffFolder } from "./skiffFolderDialog";
 import { tableState } from "./rowTable";
 import { type HostsPage, hostName, isRemote } from "../app/hosts";
@@ -27,8 +25,8 @@ import { revealSession } from "../workspace/view";
 import { locate } from "../workspace/model";
 import { openClosedProject } from "../workspace/projectClose";
 import { S } from "../app/state";
-import { basename } from "../workspace/paths";
 import { arrowKeys, redrawKeeping } from "./settingsFocus";
+import { createSettingsFiles, type FilesState } from "./settingsFiles";
 import { agentsPage } from "./settingsAgents";
 import { languagePage, type MenuLayout, menuLayout } from "./settingsLanguage";
 
@@ -70,16 +68,24 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   /** The random faces of Settings › Appearance › Finish: one set per open. */
   let sampleSeeds: number[] = [];
   // Settings › Skippers › Instructions, and one error line per row.
-  let files: InstructionFile[] = [];
-  const fileErrors = new Map<string, string>();
-  /** Task types › Edit faults, by type. */
-  const typeErrors = new Map<string, string>();
+  const fs: FilesState<InstructionFile> = { files: [], fileErrors: new Map(), typeErrors: new Map() };
   let error: string | null = null;
   let saving = false;
   // The draft rows and their error lines survive every redraw.
   const agentsTable = tableState();
   const tasksTable = tableState();
   const hostsTab = createHostsTab(() => render());
+  const { loadFiles, editFile, loadTypes, editTypeFile, resetFile } = createSettingsFiles<InstructionFile, SkiffAgentSettings, TaskType>({
+    ask: invoke,
+    peek: peekText,
+    hostName,
+    close: () => close(),
+    reopen: (at) => void settings.open(at),
+    showing: (at) => !root.hidden && tab === at,
+    render: () => render(),
+    setError: (e) => { error = e; },
+    setAgentSet: (a) => { agentSet = a; },
+  }, fs);
 
   /** The agents, from the selected Host. A remote Host's come with the revision its next change is made from. */
   function loadAgents(): Promise<AgentInfo[]> {
@@ -189,7 +195,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         main.append(h("div", "set-head"));
         main.firstElementChild!.append(h("div", "set-h", t("settings.tab.taskTypes")), h("div", "set-sub mono", hostName()));
         for (const task of agentSet?.tasks ?? []) main.append(h("div", "set-note mono", `${task.type}: ${task.command ?? task.agent}${task.error ? ` (${task.error})` : ""}`));
-      } else if (agentSet) main.append(...taskTypesSection(agentSet, agents, tasksTable, saveTask, render, { edit: editTypeFile, errors: typeErrors }));
+      } else if (agentSet) main.append(...taskTypesSection(agentSet, agents, tasksTable, saveTask, render, { edit: editTypeFile, errors: fs.typeErrors }));
       root.replaceChildren(nav, pinClose(main));
       return;
     }
@@ -353,94 +359,6 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     render();
   }
 
-  /** Settings › Skippers › Instructions: each file's status, read again on each show. */
-  async function loadFiles() {
-    try {
-      files = await invoke<InstructionFile[]>("skipper_files");
-      // A save of a remote Host's copy that did not go back: one line under its row.
-      const host = hostName();
-      for (const f of await invoke<{ file: string; conflict: boolean; message: string }[]>("skipper_file_errors")) {
-        fileErrors.set(f.file, f.conflict ? t("settings.remote.fileConflict", { host }) : f.message);
-      }
-    } catch (e) {
-      files = [];
-      error = String(e);
-    }
-    if (!root.hidden && tab === "skippers") render();
-  }
-
-  /**
-   * Edit: the file opens as Open with › Text files says, written from the
-   * template first when there is none. In the peek, Settings closes and
-   * opens again on this tab when the peek ends.
-   */
-  async function editFile(f: InstructionFile) {
-    fileErrors.delete(f.file);
-    type Opened = { kind: "run"; script: string; cwd: string } | { kind: "default" } | { kind: "no_app"; message: string };
-    let o: Opened;
-    try {
-      o = await invoke<Opened>("edit_skipper_file", { scope: f.scope });
-    } catch (e) {
-      fileErrors.set(f.file, String(e));
-      return void loadFiles();
-    }
-    if (o.kind === "run") {
-      close();
-      return peekText(o.script, o.cwd, `${o.cwd}/${basename(f.file)}`, () => void settings.open("skippers"));
-    }
-    if (o.kind === "no_app") fileErrors.set(f.file, t("settings.noApp", { file: f.file }));
-    void loadFiles();
-  }
-
-  /** Task types: each row's file size, read again on each show. */
-  async function loadTypes() {
-    agentSet = (await invoke<SkiffAgentSettings>("get_skiff_agent").catch(() => null)) ?? agentSet;
-    if (!root.hidden && tab === "task-types") render();
-  }
-
-  /**
-   * Task types › Edit: the file opens as Open with › Text files says, with
-   * its `# <type>` line written first when there is none. In the peek,
-   * Settings closes and opens again on this tab when the peek ends.
-   */
-  async function editTypeFile(task: TaskType) {
-    typeErrors.delete(task.type);
-    type Opened = { kind: "run"; script: string; cwd: string } | { kind: "default" } | { kind: "no_app"; message: string };
-    let o: Opened;
-    try {
-      o = await invoke<Opened>("edit_task_type_file", { name: task.type });
-    } catch (e) {
-      typeErrors.set(task.type, String(e));
-      return void loadTypes();
-    }
-    if (o.kind === "run") {
-      close();
-      return peekText(o.script, o.cwd, task.file, () => void settings.open("task-types"));
-    }
-    if (o.kind === "no_app") typeErrors.set(task.type, t("settings.noApp", { file: `${task.type}.md` }));
-    void loadTypes();
-  }
-
-  /** Reset…: asks, with the file's date and size, then writes the template again. */
-  async function resetFile(f: InstructionFile) {
-    const base = basename(f.file);
-    const date = f.modified ? new Date(f.modified).toISOString().slice(0, 10) : "";
-    const who = f.scope.kind === "skipper" ? t("settings.reset.everySkipper") : t("settings.reset.oneSkipper", { name: f.scope.name });
-    const ok = await confirmAction({
-      title: t("settings.reset.title", { file: f.file }),
-      body: t("settings.reset.body", { date, size: fileSize(f.size ?? 0), base, who }),
-      action: t("settings.reset.action"),
-    });
-    if (!ok) return;
-    fileErrors.delete(f.file);
-    try {
-      await invoke("reset_skipper_file", { scope: f.scope });
-    } catch (e) {
-      fileErrors.set(f.file, String(e));
-    }
-    void loadFiles();
-  }
-
   /** Settings › Skippers › Folder › Change…. The page reads the folder again after a change. */
   function changeFolder() {
     if (!agentSet) return;
@@ -482,7 +400,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     }
     if (agentSet) main.append(...projectSkippersSection(agentSet, agents, (e) => void setSkiffAgent(e)));
     if (agentSet?.folder) main.append(...avatarsSection(agentSet, draw));
-    if (agentSet?.folder) main.append(...instructionsSection(agentSet, { files, errors: fileErrors, editable: hostCan("skipper_file"), edit: (f) => void editFile(f), reset: (f) => void resetFile(f) }));
+    if (agentSet?.folder) main.append(...instructionsSection(agentSet, { files: fs.files, errors: fs.fileErrors, editable: hostCan("skipper_file"), edit: (f) => void editFile(f), reset: (f) => void resetFile(f) }));
     return main;
   }
 
