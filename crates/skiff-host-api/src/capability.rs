@@ -22,6 +22,7 @@ pub const SKIPPER: &str = "skipper";
 pub const SKIPPER_CONFIG: &str = "skipper_config";
 pub const SKIPPER_FILE: &str = "skipper_file";
 pub const SKIPPER_RUN: &str = "skipper_run";
+pub const SKIPPER_WATCH_LOG: &str = "skipper_watch_log";
 pub const AGENT_CONFIG: &str = "agent_config";
 pub const DROPS: &str = "drops";
 pub const PROGRAM_STATUS: &str = "program_status";
@@ -152,6 +153,12 @@ impl Capability {
     /// settings change. A Host that offers it offers `skipper_run@1` too.
     pub fn skipper_run_fleets() -> Self {
         Self::new(SKIPPER_RUN, 2)
+    }
+    /// Read Skipper's watcher log as bounded text. The Host chooses the log
+    /// beside its own skiffd socket; a client supplies no path and never
+    /// opens one locally.
+    pub fn skipper_watch_log() -> Self {
+        Self::new(SKIPPER_WATCH_LOG, 1)
     }
     /// Read and change the Host's `[agents]` table: which agents are on,
     /// their commands, custom agents. Each change names the revision it was

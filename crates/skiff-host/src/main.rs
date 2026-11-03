@@ -37,6 +37,11 @@ fn main() -> Result<()> {
     if let Err(e) = skiff_core::config::load().and_then(|cfg| skiff_client::skipper::make_folder(&cfg)) {
         eprintln!("skiff-host: {e:#}");
     }
+    // This Host owns the built-in skill copy too. In particular, a remote
+    // Host has no desktop process there to copy a newer skill after update.
+    if let Err(e) = skiff_client::skipper::sync_skill() {
+        eprintln!("skiff-host: sync skiff-cli skill: {e:#}");
+    }
     let path = skiff_core::socket::data_socket(&session);
     tokio::runtime::Runtime::new()?.block_on(async move {
         let (listener, socket) = skiff_host::bind(&path).await?;

@@ -450,6 +450,14 @@ export function openLedgerResult(uid: string, title: string) {
   showLedgerResult(a.gen, a.result);
 }
 
+/** Skipper's watcher log in the page's own viewer. The selected Host reads
+ * its own bounded log; no remote path is handed to an opener on this Mac. */
+export function openSkipperWatchLog() {
+  const a = claim();
+  a.result = undefined;
+  showHostRead(a.gen, t("peek.watchLog"), () => hostInvoke<HostFile>("skipper_watch_log", "skipper_watch_log"), null);
+}
+
 function showLedgerResult(mine: number, r: { uid: string; title: string }) {
   const { uid } = r;
   showHostRead(mine, t("peek.result", { title: r.title }), () => hostInvoke<HostFile>("ledger", "ledger_result", { uid }), null);

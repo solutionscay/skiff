@@ -63,6 +63,7 @@ pub fn capabilities() -> Vec<Capability> {
         Capability::skipper_file(),
         Capability::skipper_run(),
         Capability::skipper_run_fleets(),
+        Capability::skipper_watch_log(),
         Capability::agent_config(),
         Capability::drops(),
     ]
@@ -316,6 +317,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             | Request::SkipperFolderChange { .. }
             | Request::SkipperOpen { .. }
             | Request::SkipperWatch { .. }
+            | Request::SkipperWatchLog
             | Request::SkipperProject { .. }
             | Request::SkipperFleet { .. }
             | Request::FleetTakeoverPreview { .. }

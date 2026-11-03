@@ -36,6 +36,7 @@ impl Request {
             }
             Self::SkipperFileRead { .. } | Self::SkipperFileWrite { .. } | Self::SkipperFileReset { .. } => Some(Capability::skipper_file()),
             Self::SkipperOpen { .. } | Self::SkipperWatch { .. } | Self::SkipperProject { .. } => Some(Capability::skipper_run()),
+            Self::SkipperWatchLog => Some(Capability::skipper_watch_log()),
             Self::SkipperFleet { .. } | Self::FleetTakeoverPreview { .. } | Self::FleetTakeover { .. } | Self::FleetRename { .. } => {
                 Some(Capability::skipper_run_fleets())
             }
@@ -98,6 +99,7 @@ impl Request {
                 | (Self::SkipperFolderChange { .. }, Response::SkipperFolderDone { .. })
                 | (Self::SkipperOpen { .. }, Response::SkipperOpened { .. })
                 | (Self::SkipperWatch { .. }, Response::Watch { .. })
+                | (Self::SkipperWatchLog, Response::File { .. })
                 | (Self::SkipperProject { .. } | Self::SkipperFleet { .. }, Response::Session { .. })
                 | (Self::FleetTakeoverPreview { .. } | Self::FleetTakeover { .. }, Response::FleetTakeover { .. })
                 | (Self::AgentConfig | Self::AgentEdit { .. }, Response::AgentConfig { .. })
@@ -146,6 +148,7 @@ impl Request {
                 | Self::SkipperFolderPreview { .. }
                 | Self::SkipperFolderChange { .. }
                 | Self::SkipperWatch { .. }
+                | Self::SkipperWatchLog
                 | Self::SkipperProject { .. }
                 | Self::SkipperFleet { .. }
                 | Self::FleetTakeoverPreview { .. }
