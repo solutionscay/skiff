@@ -42,7 +42,7 @@ mod registry;
 mod status;
 pub mod reload;
 use groups::prune;
-use attention::{end_reports, live, topic};
+use attention::{end_reports, live, set_cause, topic, PROMPT, REPORT};
 use input::{start_writer, Input};
 use lifecycle::default_shell;
 use output::{Scan, ScreenState};
@@ -412,6 +412,7 @@ impl SessionPool {
             if front == Front::Shell {
                 if info.state != SessionState::Idle {
                     info.state = SessionState::Idle;
+                    info.waiting_cause = None;
                     state = Some(info.id.clone());
                 }
                 changed = !info.unread;
@@ -698,6 +699,7 @@ mod tests {
         let asked =
             feed(b"\x1b]7501;state=blocked:app=codex:kind=question:msg=UGljayBhIGJyYW5jaA==\x1b\\");
         assert_eq!(asked.state, SessionState::Waiting);
+        assert_eq!(asked.waiting_cause.as_deref(), Some("report"));
         let status = asked.program_status.unwrap();
         assert_eq!(
             (status.kind.as_deref(), status.msg.as_deref()),
@@ -712,6 +714,7 @@ mod tests {
 
         let done = feed(b"\x1b]7501;state=done:app=codex\x1b\\");
         assert_eq!((done.state, done.unread), (SessionState::Idle, true));
+        assert_eq!(done.waiting_cause, None, "the cause outlived the wait");
         assert_eq!(
             done.program_status.unwrap().state,
             "done",
@@ -726,7 +729,9 @@ mod tests {
         // Cleared, the prompt still on screen counts again.
         let cleared = feed(b"\x1b]7501;state=clear\x1b\\");
         assert!(cleared.program_status.is_none());
-        assert_eq!(feed(prompt).state, SessionState::Waiting);
+        let asked = feed(prompt);
+        assert_eq!(asked.state, SessionState::Waiting);
+        assert_eq!(asked.waiting_cause.as_deref(), Some("prompt"));
 
         // A full reset drops the reports, and so does the shell's prompt.
         assert!(feed(b"\x1b]7501;state=working\x07")
@@ -848,6 +853,7 @@ mod tests {
         session.approval_since.store(now_ms() - GRACE_MS, Relaxed);
         pool.status_tick(&session);
         assert_eq!(session.info().state, SessionState::Waiting);
+        assert_eq!(session.info().waiting_cause.as_deref(), Some("prompt"));
         assert_eq!(
             feed(b"\x1b[2J\x1b[Hdone deciding\r\n").state,
             SessionState::Working

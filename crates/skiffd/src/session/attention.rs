@@ -12,7 +12,7 @@ impl SessionPool {
         }
         if matches!(session.front(), Front::Command | Front::Program) {
             session.belled.store(true, Ordering::Relaxed);
-            self.set_state(session, SessionState::Waiting);
+            self.wait(session, BELL, "");
         }
     }
 
@@ -63,7 +63,12 @@ impl SessionPool {
         let asks = *session.title_state.lock().unwrap() == Some(TitleState::Action);
         if scan.approval || asks {
             session.belled.store(false, Ordering::Relaxed);
-            self.set_state(session, SessionState::Waiting);
+            let (cause, detail) = if scan.approval {
+                (PROMPT, String::new())
+            } else {
+                (TITLE, title_detail(session))
+            };
+            self.wait(session, cause, &detail);
         } else if waiting && matches!(front, Front::Agent(_)) && !session.belled.load(Ordering::Relaxed) {
             // The prompt left the screen: the user answered it.
             session.last_work.store(now_ms(), Ordering::Relaxed);
@@ -94,7 +99,7 @@ impl SessionPool {
             }
             Some(TitleState::Action) => {
                 session.belled.store(false, Ordering::Relaxed);
-                self.set_state(session, SessionState::Waiting);
+                self.wait(session, TITLE, &title_detail(session));
             }
             Some(TitleState::Ready) | None => {
                 // The busy title kept the session working. Its end starts the
@@ -106,7 +111,18 @@ impl SessionPool {
         }
     }
 
+    /// Sets `waiting` and records why. `detail` goes to the log only.
+    pub(super) fn wait(&self, session: &Session, cause: &'static str, detail: &str) {
+        self.move_state(session, SessionState::Waiting, Some((cause, detail)));
+    }
+
+    /// Sets any state but `waiting`, which [`Self::wait`] sets with its cause.
     pub(super) fn set_state(&self, session: &Session, state: SessionState) {
+        debug_assert_ne!(state, SessionState::Waiting, "waiting needs a cause");
+        self.move_state(session, state, None);
+    }
+
+    fn move_state(&self, session: &Session, state: SessionState, cause: Option<(&'static str, &str)>) {
         let (id, dropped) = {
             let mut info = session.info.lock().unwrap();
             if info.state == state || info.state == SessionState::Done {
@@ -116,6 +132,7 @@ impl SessionPool {
                 session.work_started.store(now_ms(), Ordering::Relaxed);
             }
             info.state = state;
+            set_cause(&mut info, session.front(), cause);
             // New work: the result a program left is read or stale.
             let dropped = state == SessionState::Working
                 && info.program_status.as_ref().is_some_and(|p| p.ended);
@@ -202,6 +219,32 @@ impl SessionPool {
             let _ = self.events.send(Event::SessionUpdated { session });
         }
     }
+}
+
+/// The causes of `waiting`, as `SessionInfo::waiting_cause` names them.
+/// General ones, for any terminal program.
+pub(super) const BELL: &str = "bell";
+pub(super) const PROMPT: &str = "prompt";
+pub(super) const TITLE: &str = "title";
+pub(super) const REPORT: &str = "report";
+
+/// Records why the session waits, and logs it, when `info.state` just became
+/// `waiting`. Any other state clears the cause.
+pub(super) fn set_cause(info: &mut SessionInfo, front: Front, cause: Option<(&'static str, &str)>) {
+    match cause.filter(|_| info.state == SessionState::Waiting) {
+        Some((cause, detail)) => {
+            info.waiting_cause = Some(cause.to_string());
+            let program = info.foreground_program.as_deref().unwrap_or("?");
+            let sep = if detail.is_empty() { "" } else { ": " };
+            tracing::info!("session {} waits ({front:?}, {program}): {cause}{sep}{detail}", info.id);
+        }
+        None => info.waiting_cause = None,
+    }
+}
+
+/// The title that asked for an action, for the log.
+fn title_detail(session: &Session) -> String {
+    session.info.lock().unwrap().title.clone().unwrap_or_default()
 }
 
 /// A live report decides the state: one kept after its program left does not.

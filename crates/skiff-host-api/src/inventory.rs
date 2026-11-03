@@ -80,6 +80,9 @@ pub struct InventorySession {
     /// The program's own OSC 7501 report. Absent from an older Host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub program_status: Option<ProgramStatus>,
+    /// Why the session waits. Absent while it does not, or from an older Host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiting_cause: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -82,6 +82,14 @@ impl SessionPool {
                 session.work_started.store(now_ms(), Ordering::Relaxed);
             }
             info.state = state;
+            if changed {
+                let detail = info
+                    .program_status
+                    .as_ref()
+                    .map(|p| [p.kind.as_deref(), p.msg.as_deref()].into_iter().flatten().collect::<Vec<_>>().join(": "))
+                    .unwrap_or_default();
+                set_cause(&mut info, session.front(), Some((REPORT, &detail)));
+            }
             let now = now_ms();
             let send = !minor
                 || now.saturating_sub(session.status_sent_at.load(Ordering::Relaxed))
@@ -128,6 +136,7 @@ impl SessionPool {
             let state = program_status::session_state(None, info.state);
             let moved = (state != info.state).then(|| {
                 info.state = state;
+                info.waiting_cause = None;
                 (info.id.clone(), state)
             });
             (moved, changed.then(|| info.clone()))
@@ -174,6 +183,7 @@ impl SessionPool {
                 && !s.raised.swap(true, Ordering::Relaxed)
             {
                 info.state = SessionState::Waiting;
+                set_cause(&mut info, s.front(), Some((PROMPT, "under a working report")));
                 state = Some((info.id.clone(), SessionState::Waiting));
             }
             if changed {

@@ -55,6 +55,8 @@ export interface SessionInfo {
   watch?: WatchInfo | null;
   /** The program's own OSC 7501 report while it lasts; it decides `state` unless `ended`. Absent when the program reports nothing, or from an older daemon. */
   program_status?: ProgramStatus | null;
+  /** Why the session waits: "bell", "prompt", "title" or "report" (OSC 7501 blocked); a newer daemon can add others. Absent when it does not wait, or from an older daemon. */
+  waiting_cause?: string | null;
 }
 
 /** OSC 7501 (Program Status Protocol). `state` shows "blocked" as waiting, and "done" and "error" as idle. */

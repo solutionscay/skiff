@@ -59,6 +59,12 @@ fn turned(s: &SessionInfo) -> Option<bool> {
     (s.state == SessionState::Idle && ended).then_some(reported == Some("error"))
 }
 
+/// Says that a person must answer `s`, and why. The exit code for it.
+fn needs_person(name: &str, s: &SessionInfo) -> i32 {
+    eprintln!("skiff: {}", sessions::waiting_msg(name, &s.id, s.waiting_cause.as_deref()));
+    3
+}
+
 /// The timeout of a wait an agent runs when it names none, and the most it
 /// can name: the agent's shell tool stops a call after about a minute.
 const AGENT_DEFAULT: f64 = 45.0;
@@ -146,13 +152,9 @@ pub async fn wait(c: &Client, args: &[String], target: Target, any: bool, timeou
         })
         .collect();
     let stop_on_waiting = !matches!(target, Target::Waiting);
-    let needs_person = |id: &String| -> i32 {
-        eprintln!("skiff: {}", sessions::waiting_msg(&names[id], id));
-        3
-    };
     if stop_on_waiting {
-        if let Some(id) = ids.iter().find(|id| now[*id] == Now::State(SessionState::Waiting)) {
-            return Ok(needs_person(id));
+        if let Some(s) = ids.iter().find_map(|id| all.iter().find(|s| &s.id == id && s.state == SessionState::Waiting)) {
+            return Ok(needs_person(&names[&s.id], s));
         }
     }
 
@@ -242,9 +244,8 @@ pub async fn wait(c: &Client, args: &[String], target: Target, any: bool, timeou
                 // Missed events: read the states again.
                 let all = c.list_sessions().await?;
                 if stop_on_waiting {
-                    let waiting = |id: &&String| all.iter().any(|s| &s.id == *id && s.state == SessionState::Waiting);
-                    if let Some(id) = ids.iter().find(waiting) {
-                        return Ok(needs_person(id));
+                    if let Some(s) = ids.iter().find_map(|id| all.iter().find(|s| &s.id == id && s.state == SessionState::Waiting)) {
+                        return Ok(needs_person(&names[&s.id], s));
                     }
                 }
                 for id in &ids {
@@ -266,7 +267,11 @@ pub async fn wait(c: &Client, args: &[String], target: Target, any: bool, timeou
             Err(RecvError::Closed) => bail!("skiffd closed the connection"),
         };
         if stop_on_waiting && n == Now::State(SessionState::Waiting) && ids.contains(&id) {
-            return Ok(needs_person(&id));
+            // The event names no cause: the session holds it.
+            let all = c.list_sessions().await?;
+            let cause = all.iter().find(|s| s.id == id).and_then(|s| s.waiting_cause.as_deref());
+            eprintln!("skiff: {}", sessions::waiting_msg(&names[&id], &id, cause));
+            return Ok(3);
         }
         // Once settled, a session keeps the state it settled in.
         if let Some(cur) = now.get_mut(&id) {

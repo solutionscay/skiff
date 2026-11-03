@@ -178,6 +178,14 @@ pub struct SessionInfo {
     /// daemon older than this field. A reload keeps it; a restore does not.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub program_status: Option<ProgramStatus>,
+    /// Why the session went to `waiting`, while it waits: "bell" (the
+    /// program rang the bell), "prompt" (a prompt that asks for an answer is
+    /// on screen), "title" (the window title says the program needs an
+    /// action) or "report" (an OSC 7501 `blocked` report). A string, so a
+    /// client reads a cause a newer daemon adds. `None` when the session does
+    /// not wait, or from a daemon older than this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiting_cause: Option<String>,
 }
 
 /// A program's own report of its state, from OSC 7501. Strings, not enums,

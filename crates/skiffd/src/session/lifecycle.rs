@@ -88,6 +88,7 @@ impl SessionPool {
             retiring: false,
             watch: None,
             program_status: None,
+            waiting_cause: None,
         };
 
         let (input, queued, wrote) = start_writer(&id, &pty)?;
@@ -344,6 +345,7 @@ impl SessionPool {
             let mut info = session.info.lock().unwrap();
             info.exit_code = code;
             info.state = SessionState::Done;
+            info.waiting_cause = None;
             end_reports(&mut records, &mut info)
         };
         session.set_reader_done();

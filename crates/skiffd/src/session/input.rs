@@ -308,6 +308,7 @@ mod tests {
         // A program rings, then asks for DA1 and the cursor.
         pool.on_output(&session, &info.id, b"\x07");
         assert_eq!(session.info().state, SessionState::Waiting);
+        assert_eq!(session.info().waiting_cause.as_deref(), Some("bell"));
         pool.on_output(&session, &info.id, b"\x1b[c\x1b[6n");
         pool.write(&info.id, b"\x1b[?1;2c").unwrap();
         pool.write(&info.id, b"\x1b[3;1R").unwrap();

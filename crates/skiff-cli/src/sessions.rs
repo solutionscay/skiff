@@ -273,7 +273,7 @@ pub fn refusal(s: &SessionInfo, here: Option<&str>, shell_ok: bool, caller_shell
         return Some((7, format!("{who} is your own session. Send to another session.")));
     }
     match s.state {
-        SessionState::Waiting => return Some((3, waiting_msg(&resolve::display_name(s), &s.id))),
+        SessionState::Waiting => return Some((3, waiting_msg(&resolve::display_name(s), &s.id, s.waiting_cause.as_deref()))),
         SessionState::Working => {
             return Some((4, format!("{who} is busy. Skiff does not type into a working session.")))
         }
@@ -306,8 +306,17 @@ pub fn refusal(s: &SessionInfo, here: Option<&str>, shell_ok: bool, caller_shell
 }
 
 /// The message for a session that needs a person: `send` and `wait` share it.
-pub fn waiting_msg(name: &str, id: &str) -> String {
-    format!("{name} ({}) is waiting (approval prompt or bell). Check its pane in Skiff.", print::short_id(id))
+pub fn waiting_msg(name: &str, id: &str, cause: Option<&str>) -> String {
+    let why = match cause {
+        Some("bell") => "it rang the bell",
+        Some("prompt") => "a prompt on screen asks for an answer",
+        Some("title") => "its title asks for an action",
+        Some("report") => "it reported that it is blocked",
+        Some(other) => other,
+        // A daemon older than `waiting_cause`, or it no longer waits.
+        None => "approval prompt or bell",
+    };
+    format!("{name} ({}) is waiting: {why}. Check its pane in Skiff.", print::short_id(id))
 }
 
 const SHELLS: [&str; 9] = ["bash", "zsh", "fish", "sh", "dash", "ksh", "tcsh", "csh", "nu"];

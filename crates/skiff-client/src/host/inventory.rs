@@ -45,6 +45,7 @@ pub fn project_session(value: core::SessionInfo) -> Result<api::InventorySession
         retiring,
         watch,
         program_status,
+        waiting_cause,
     } = value;
     Ok(api::InventorySession {
         id,
@@ -81,6 +82,7 @@ pub fn project_session(value: core::SessionInfo) -> Result<api::InventorySession
         retiring,
         watch: watch.map(project_watch),
         program_status: program_status.map(project_program_status),
+        waiting_cause,
     })
 }
 
@@ -214,6 +216,7 @@ pub fn restore_session(value: api::InventorySession) -> core::SessionInfo {
         retiring,
         watch,
         program_status,
+        waiting_cause,
     } = value;
     core::SessionInfo {
         id,
@@ -247,6 +250,7 @@ pub fn restore_session(value: api::InventorySession) -> core::SessionInfo {
         retiring,
         watch: watch.map(restore_watch),
         program_status: program_status.map(restore_program_status),
+        waiting_cause,
     }
 }
 
