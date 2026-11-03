@@ -57,6 +57,7 @@ const SPLIT: Record<string, Split> = {
   "../src/workspace/menus.ts": { kind: "folder", dir: "menus" },
   "../src/workspace/sidebar.ts": { kind: "sibling", children: ["sidebarFocus", "sessionRows", "skipperRows", "sidebarSig", "projectRows", "sectionRows"] },
   "../src/appearance/hostSettings.ts": { kind: "sibling", children: ["hostShared", "hostList", "hostCheck", "hostFixes", "hostForm"] },
+  "../src/appearance/settings.ts": { kind: "sibling", children: ["settingsFocus", "settingsLanguage", "settingsAgents"] },
   "../src/terminal/peek.ts": { kind: "sibling", children: ["peekCard", "peekHostView", "peekTerminal"] },
 };
 
