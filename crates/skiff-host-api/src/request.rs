@@ -303,6 +303,9 @@ pub enum Request {
     SkipperWatch {
         session: String,
     },
+    /// Answers `file`: Skipper's watcher log as a bounded preview. The Host
+    /// chooses the log beside its own skiffd socket; it never accepts a path.
+    SkipperWatchLog,
     /// Finds the project Skipper of `project` or starts it in the project's
     /// folder, with `SKIPPER.md` as its first message, and the watcher.
     /// Answers `session`. Not retried: the session may have started.

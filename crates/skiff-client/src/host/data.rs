@@ -278,6 +278,15 @@ pub async fn skipper_settings(c: &HostConnection) -> Result<HostSkipper, Error> 
     }
 }
 
+/// Skipper's watcher log, chosen and read by the Host as a bounded preview.
+/// A client supplies no path and never opens a Host path locally.
+pub async fn skipper_watch_log(c: &HostConnection) -> Result<HostFile, Error> {
+    match c.request(Request::SkipperWatchLog).await? {
+        Response::File { file } => Ok(*file),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
 /// An instruction file on the Host and its revision (`skipper_file@1`). A
 /// Skipper's missing file is written from the template there first.
 pub async fn skipper_file_read(c: &HostConnection, scope: HostFileScope) -> Result<HostSkipperFile, Error> {

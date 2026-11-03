@@ -13,12 +13,12 @@ use std::{path::PathBuf, time::Duration};
 
 use skiff_client::{agent_folder, fleet, host::project_agent, skipper, Client};
 use skiff_core::{
-    config,
+    config, files,
     session::{SessionInfo, SessionState},
 };
 use skiff_host_api::{AgentEdit, Error, Request, Response, SkipperOpened};
 
-use crate::{failed, refused, SESSIONS_TIMEOUT};
+use crate::{failed, host_file, unread, refused, SESSIONS_TIMEOUT};
 
 /// How often [`supervise`] looks for Skipper's session without a watcher.
 const WATCH_EVERY: Duration = Duration::from_secs(15);
@@ -105,6 +105,10 @@ pub async fn answer(request: Request) -> Result<Response, Error> {
             let started = ensure_watch(session).await.map_err(|message| Error::OperationFailed { message })?;
             Ok(Response::Watch { started })
         }
+        Request::SkipperWatchLog => {
+            let file = blocking(watch_log).await?;
+            Ok(Response::File { file: Box::new(file) })
+        }
         Request::SkipperProject { project } => {
             let id = blocking(move || skipper::start_project(&skiff_core::state::socket(), &cli(), &project).map_err(failed)).await?;
             let c = connect().await?;
@@ -158,6 +162,34 @@ pub async fn answer(request: Request) -> Result<Response, Error> {
         }
         _ => Err(Error::OperationFailed { message: "not a Skipper or agent request".into() }),
     }
+}
+
+/// The one watcher log this Host owns, read as a bounded regular file. Its
+/// name comes only from this Host's socket; links and other file kinds are
+/// refused so a remote path or link target never reaches the client.
+fn watch_log() -> Result<skiff_host_api::HostFile, Error> {
+    let log = skiff_core::state::socket().with_extension("watch.log");
+    match std::fs::symlink_metadata(&log) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            return Err(Error::Invalid { message: "Skiff's watcher log is a link on this Host.".into() });
+        }
+        Ok(meta) if !meta.is_file() => {
+            return Err(Error::NotFound { message: "Skiff has no watcher log on this Host.".into() });
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(Error::NotFound { message: "Skiff has no watcher log on this Host.".into() });
+        }
+        Err(e) => return Err(failed(e)),
+    }
+    let dir = log.parent().ok_or_else(|| Error::NotFound { message: "Skiff has no watcher log on this Host.".into() })?;
+    let name = log.file_name().and_then(|name| name.to_str()).ok_or_else(|| Error::NotFound { message: "Skiff has no watcher log on this Host.".into() })?;
+    let root = skiff_core::git::Root::open(dir).map_err(failed)?;
+    let read = files::read_in(&root, dir, name, files::Purpose::Preview).map_err(unread)?;
+    if read.content != files::Content::Text {
+        return Err(Error::Invalid { message: "Skiff's watcher log is not a text file on this Host.".into() });
+    }
+    Ok(host_file(read))
 }
 
 /// Keeps a watcher on Skipper's session while this service runs.

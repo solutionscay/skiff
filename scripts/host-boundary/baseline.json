@@ -280,7 +280,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "1eebf97f4c530357c834ed21be21baa6afe82c3e49dd4817fc7ecedb8de2754c"
+    "sha256": "47359d63eaaef6954b25d743f4ef1cdf3577c2aaf3334ddeedb736efb9ed38f2"
   },
   "apps/desktop/src-tauri/src/main.rs": {
     "ownership": "client policy (#189): this app's own command-line flags; no Host data",
@@ -345,7 +345,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "e9d399612bb7e3c0db6de1515fd710f6f8fa6b123a0da48d063022a2d1d49e15"
+    "sha256": "896d2552966b4e6722d877cfdead6b9bf46af770a8b333ea625689ddda77df5c"
   },
   "apps/desktop/src-tauri/src/streaming.rs": {
     "ownership": "M1e terminal output via selected Host session_terminal@1; M1d page session events via selected Host; core Event only for the page channel type",
@@ -438,7 +438,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "4936b2ca29a1ec712ba742f9fd8b085d5341fa7cd72217156c87263f4cc0d2ba"
+    "sha256": "d46ea3d934a96dd1ad35cef8edad9b3745e2e67d5c70733e0a99f3e90ea2b0f1"
   },
   "apps/desktop/src/app/hosts.ts": {
     "ownership": "client policy: Host picker and label (list/select Hosts, links to Settings \u203a Hosts, clipboard opt-in) and the remote link-lost signal",
@@ -532,7 +532,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "5fd88a1036f7d22e41ecb8925dca1962e9454033fef9868bdff2ee637b6e6e20"
+    "sha256": "581c435c916d0269dfc08a83b40f5459408fe5313c45cd892c6ade05beb54d2e"
   },
   "apps/desktop/src/app/state.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -803,7 +803,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "25a7c560d16c4325b90e8ba083f6734413a818fc972f52c2843efa534f93a7a5"
+    "sha256": "06adf30743d5375df91f335a3f98e9f9b6c9ac4c980f9b8f26968c4ef0001888"
   },
   "apps/desktop/src/terminal/resume.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -1025,7 +1025,7 @@
     "reasons": [
       "../../platform/fileActions"
     ],
-    "sha256": "e47b821306439517edfc7c3cea61c6ef7099bde9d3e8c72f5a60fbff3ea3f926"
+    "sha256": "e9802eb6e6e6c556d8c28250c4ba1789cd0928296c0f22f4b0cd662afec270a2"
   },
   "apps/desktop/src/workspace/menus/projectLook.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",

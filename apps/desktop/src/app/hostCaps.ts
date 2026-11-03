@@ -30,6 +30,7 @@ type HostCap =
   | "skipper_file"
   | "skipper_run"
   | "skipper_fleets"
+  | "skipper_watch_log"
   | "agent_config";
 
 /** The major of each capability that this page speaks. */
@@ -57,6 +58,7 @@ const MAJOR: Record<HostCap, number> = {
   skipper_file: 1,
   skipper_run: 1,
   skipper_fleets: 2,
+  skipper_watch_log: 1,
   agent_config: 1,
 };
 
@@ -88,6 +90,7 @@ const OFFERS: Record<HostCap, MessageKey> = {
   skipper_file: "hostCaps.skipper_file",
   skipper_run: "hostCaps.skipper_run",
   skipper_fleets: "hostCaps.skipper_fleets",
+  skipper_watch_log: "hostCaps.skipper_watch_log",
   agent_config: "hostCaps.agent_config",
 };
 

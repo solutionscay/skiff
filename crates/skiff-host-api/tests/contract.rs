@@ -742,6 +742,27 @@ fn skipper_changes_launch_and_agent_changes_are_families_of_their_own() {
 }
 
 #[test]
+fn skipper_watch_log_is_a_bounded_file_from_its_own_capability() {
+    let cap = Capability::skipper_watch_log();
+    assert_eq!(serde_json::to_value(&cap).unwrap(), json!({"name":"skipper_watch_log","version":1}));
+    let request: Request = serde_json::from_value(json!({"cmd":"skipper_watch_log"})).unwrap();
+    assert_eq!(request.capability(), Some(cap));
+    let file = Response::File {
+        file: Box::new(skiff_host_api::HostFile {
+            content: skiff_host_api::FileContent::Text,
+            size: 0,
+            mime: None,
+            text: Some(String::new()),
+            bytes: None,
+            truncated: false,
+            target: None,
+        }),
+    };
+    assert!(request.accepts(&file));
+    assert!(!request.accepts(&Response::Ok));
+}
+
+#[test]
 fn fleet_skippers_are_skipper_run_major_2_apart_from_major_1() {
     let fleets = Capability::skipper_run_fleets();
     assert_eq!((fleets.name.as_str(), fleets.version), ("skipper_run", 2));
