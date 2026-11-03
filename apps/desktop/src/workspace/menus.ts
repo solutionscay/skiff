@@ -1,26 +1,23 @@
 import { ctxMenu } from "../ui/contextMenu";
 /** Right-click menus for projects, sessions, panes and groups. */
-import { imageCount, openImages } from "../terminal/images";
-import { fleetSkipperOf, isSkiffAgent, joinFleet, renameFleetOn, openWatchLog, skiffAgentFolder, skiffAgentName, skiffWatch, skipperWord, startSkiffWatch } from "../app/skiffAgent";
-import { launchIcon } from "../appearance/agentIcon";
+import { fleetSkipperOf, isSkiffAgent, joinFleet, renameFleetOn, skipperWord } from "../app/skiffAgent";
 import { confirmAction, promptAction } from "../ui/confirm";
 import { h } from "../ui/dom";
 import { pickColor } from "../appearance/colorPicker";
 import { pickBackgroundOpacity } from "../appearance/backdropOpacity";
 import { keyLabel } from "../app/keys";
 import { t, tn, upper } from "../i18n";
-import { toggleFocusMode, toggleMaximize } from "../app/modes";
 import { type MenuEntry } from "../ui/menu";
 import { isRemote } from "../app/hosts";
-import { basename, branchName, isFolder, isProjectSkipper, scopeName } from "./model";
+import { branchName, isFolder, isProjectSkipper, scopeName } from "./model";
 import { setAvatarDialog } from "./skipperFace";
-import type { HostBranches, Project, SessionInfo, SplitDir, Worktree } from "../platform/types";
+import type { HostBranches, Project, SessionInfo, Worktree } from "../platform/types";
 import type { Fleet } from "./fleets";
 import { fleetWorkspaceEntries, keepInView, projectWorkspaceEntries, renameWorkspaceFleet } from "./profile";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
 import { openPath } from "../platform/os";
-import { loadProjects, newSession } from "../app/daemon";
+import { loadProjects } from "../app/daemon";
 import { launchMenu } from "../app/panels";
 import { showError } from "../ui/alerts";
 import { hasChanges, reviewChanges, setShowChanges, showsChanges } from "./changes";
@@ -32,16 +29,16 @@ import { startSessionRename } from "./rename";
 import { render } from "../app/render";
 import { clearSelection, selectionPlan, splitSelection } from "./selection";
 import { MAX_PANES, removeErrors, removing, S, selectedWorktree, sessions } from "../app/state";
-import { groupOf, launchChoices, launchDigit, place, shownIds, splitFull } from "../app/stateQueries";
+import { groupOf } from "../app/stateQueries";
 
 import { projectThemeMenu } from "../appearance/themes";
-import { focusPane, refocusTerminal, removeFromGroup } from "./view";
-import { resumeOffer, resumePane } from "../terminal/resume";
-import { ledgerFolded, ledgerShown, toggleLedger } from "./ledger";
+import { refocusTerminal, removeFromGroup } from "./view";
 import { hostCan, hostInvoke } from "../app/hostCaps";
 import { endEntry, endSelectedEntry, endSession, sessionLabel, themeEntry } from "./menus/end";
 import { groupCloseEntries } from "./menus/group";
 import { fleetSkipperEntries, projectSkipperEntries } from "./menus/skipper";
+import { skiffAgentMenu } from "./menus/pane";
+export { paneMenu, skiffAgentMenu, splitMenu } from "./menus/pane";
 export { skipperStart } from "./menus/skipper";
 export { groupCloseEntries, groupMenu, killGroup, ungroup } from "./menus/group";
 export { endEntry };
@@ -471,81 +468,6 @@ export function deleteKeyMenu(el: HTMLElement) {
 /** A Skipper's face: `scope` "fleet:<name>" or a project. Kept in its folder on this Mac. The Admiral wears the mascot's head. */
 function avatarEntry(scope: string, title: string): MenuEntry {
   return { icon: "playback-image", label: t("menu.avatar"), disabled: isRemote(), run: () => setAvatarDialog(scope, title, () => {}) };
-}
-
-export function paneMenu(id: string, x: number, y: number) {
-  const s = sessions.get(id);
-  if (!s) return;
-  if (id !== S.focused) focusPane(id);
-  if (isSkiffAgent(id)) return skiffAgentMenu(s, x, y);
-  const full = splitFull();
-  const entries: MenuEntry[] = [
-    { icon: "layouts-panel-left:flip", label: t("cmd.splitRight"), hint: keyLabel("split-right"), disabled: full || !hostCan("session_lifecycle"), run: () => splitMenu(id, "row", x, y) },
-    { icon: "layouts-panel-bottom", label: t("cmd.splitDown"), hint: keyLabel("split-down"), disabled: full || !hostCan("session_lifecycle"), run: () => splitMenu(id, "col", x, y) },
-    ...(isProjectSkipper(s) ? [] : [{ icon: "tools-pencil", label: t("menu.rename"), hint: keyLabel("rename"), disabled: !hostCan("session_lifecycle"), run: () => startSessionRename(id) }]),
-  ];
-  const offer = resumeOffer(s);
-  if (offer) entries.unshift({ icon: "schedule-refresh-cw", label: t("menu.resume", { agent: offer.agent }), run: () => resumePane(id, { x, y }) });
-  // These act on the pane you right-clicked, which the line above just focused.
-  if (shownIds().length > 1) {
-    entries.push({ icon: S.maximized ? "view-restore" : "view-maximize", label: t(S.maximized ? "cmd.restore" : "cmd.maximize"), hint: keyLabel("maximize"), run: toggleMaximize });
-  }
-  entries.push({ icon: "view-focus", label: t(S.focusMode ? "cmd.leaveFocusMode" : "cmd.focusMode"), hint: keyLabel("focus-mode"), run: toggleFocusMode });
-  entries.push(themeEntry(s));
-  entries.push({ icon: "playback-image", label: t("cmd.images"), hint: keyLabel("images"), disabled: !imageCount(), run: openImages });
-  if (shownIds().length > 1) {
-    entries.push({ icon: "code-ungroup", label: t("cmd.removeFromGroup"), hint: keyLabel("close-pane"), disabled: !hostCan("session_groups"), run: () => removeFromGroup(id) });
-  }
-  entries.push(endEntry(s));
-  ctxMenu.open(x, y, sessionLabel(s), entries);
-}
-
-/**
- * The Skiff agent's row and pane menu: no splits, groups or rename. Its name is in Settings.
- * With no session, the row shows only its folder entries.
- */
-export function skiffAgentMenu(s: SessionInfo | null, x: number, y: number) {
-  const folder = skiffAgentFolder();
-  // A remote Host's folder and log are that Host's: neither opens here.
-  const local = !isRemote();
-  const entries: MenuEntry[] = folder && local
-    ? [{ icon: "indicators-square-arrow-out-up-right", label: t("menu.showInFileManager"), run: () => void openPath(folder).catch(showError) }]
-    : [];
-  if (s) {
-    // Only while the row's icon is red: no watcher runs, or its last line failed.
-    const watch = skiffWatch(s).state;
-    // A remote Host's skiff-host starts it there.
-    if (watch === "missing" && (local || hostCan("skipper_run"))) entries.push({ icon: "schedule-refresh-cw", label: t("menu.startWatcher"), run: startSkiffWatch });
-    if ((watch === "missing" || watch === "failed") && local) entries.push({ icon: "indicators-square-arrow-out-up-right", label: t("menu.openWatchLog"), run: openWatchLog });
-    entries.push(
-      { icon: "view-focus", label: t(S.focusMode ? "cmd.leaveFocusMode" : "cmd.focusMode"), hint: keyLabel("focus-mode"), run: toggleFocusMode },
-    );
-    if (ledgerShown()) entries.push({ icon: "layouts-panel-left:flip", label: t(ledgerFolded() ? "cmd.showLedger" : "cmd.hideLedger"), hint: keyLabel("ledger"), run: toggleLedger });
-    entries.push(
-      themeEntry(s),
-      endEntry(s),
-    );
-  }
-  if (entries.length) ctxMenu.open(x, y, s ? sessionLabel(s) : skiffAgentName(), entries);
-}
-
-/** Second step of Split: a new shell or agent in this pane's worktree. */
-export function splitMenu(id: string, dir: SplitDir, x: number, y: number) {
-  const s = sessions.get(id);
-  if (!s) return;
-  const at = place(s);
-  const cwd = at ? at.worktree.path : s.cwd;
-  const where = at ? branchName(at.worktree) : basename(s.cwd);
-  const entries: MenuEntry[] = [{ head: upper(t("menu.newIn", { where })) }];
-  launchChoices().forEach((a, i) => {
-    entries.push({
-      glyph: launchIcon(a),
-      label: a?.id ?? t("menu.shell"),
-      hint: launchDigit(i),
-      run: () => void newSession(cwd, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell", { target: id, dir }).catch(showError),
-    });
-  });
-  ctxMenu.open(x, y, t(dir === "row" ? "menu.addPaneRightTitle" : "menu.addPaneBelowTitle"), entries);
 }
 
 export async function removeWorktree(p: Project, w: Worktree) {

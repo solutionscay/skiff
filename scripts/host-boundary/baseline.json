@@ -958,7 +958,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "cb9c63a074fc874ec9ef2ffcaf0e7d903b95116eab0368fd0d9768650b48e88f"
+    "sha256": "c3d1fbd83e43ed55a59ad38398bab5de6f7eec074b88b0d8f147962ee6d80e8b"
   },
   "apps/desktop/src/workspace/menus/end.ts": {
     "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
@@ -991,6 +991,13 @@
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
     "sha256": "8d80da17f09c1ccab63064b9fe7cd874767e2e682fd540ebe2b6d63bd4f657c9"
+  },
+  "apps/desktop/src/workspace/menus/pane.ts": {
+    "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
+    "reasons": [
+      "../../platform/os"
+    ],
+    "sha256": "0ffa600fe98b250dec0b76853566a5825bff47250c34c864ed9e5168260d5043"
   },
   "apps/desktop/src/workspace/menus/skipper.ts": {
     "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
