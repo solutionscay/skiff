@@ -21,6 +21,8 @@ finished a turn out of sight. Admiral, the Skiff agent, hands tasks to your othe
 and to project Skippers, and collects their results in a ledger. Any agent can do the
 same with the `skiff` command.
 
+<p align="center"><img src="docs/readme/mission-control.webp" width="1600" alt="Mission control: the fleet seen from above. Admiral at the top, the Platform, Storefront and Data fleets with their Skippers, and session cards under each project. One card waits for approval."><br><sub>Mission control: the fleet seen from above.</sub></p>
+
 ## Philosophy
 
 Skiff manages sessions. The apps you already have do everything else. Skiff does not
@@ -51,6 +53,8 @@ See the [CLI](https://github.com/solutionscay/skiff/wiki/CLI) page.
 3. Put related sessions side by side in a named group.
 4. Click the top row, Admiral, to start the Skiff agent. It hands tasks to your sessions
    and tracks them in a ledger.
+
+<p align="center"><img src="docs/readme/tree.webp" width="284" alt="The side panel tree: Admiral at the top, loose projects, then the Platform fleet with its Skipper, the atlas-api project Skipper, and sessions under each worktree."><br><sub>The tree: Admiral, a fleet and its Skipper, projects, worktrees and sessions.</sub></p>
 
 Press F1 for every key. Press Ctrl+Shift+A for Mission control, the whole agent hierarchy as a graph. The [wiki](https://github.com/solutionscay/skiff/wiki) has the
 details: [Skiff agent](https://github.com/solutionscay/skiff/wiki/Skiff-agent),
