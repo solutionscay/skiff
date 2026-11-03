@@ -207,3 +207,54 @@ test("a connector never crosses a window that is not its parent or its child", (
   }
   assert.ok(routes > 30, "the repro layout has connectors to check");
 });
+
+/** The straight runs of a connector, as pairs of corner points. */
+const segs = (d: string) => corners(d).slice(1).map((b, i, all) => [i ? all[i - 1] : corners(d)[0], b] as const);
+/** Two runs on one line that share more than `min` px. */
+function collinear(a: readonly [G.Rect | { x: number; y: number }, { x: number; y: number }], b: typeof a, min = 4) {
+  const [a0, a1] = a as [{ x: number; y: number }, { x: number; y: number }];
+  const [b0, b1] = b as [{ x: number; y: number }, { x: number; y: number }];
+  if (a0.x === a1.x && b0.x === b1.x && a0.x === b0.x) return Math.min(Math.max(a0.y, a1.y), Math.max(b0.y, b1.y)) - Math.max(Math.min(a0.y, a1.y), Math.min(b0.y, b1.y)) > min;
+  if (a0.y === a1.y && b0.y === b1.y && a0.y === b0.y) return Math.min(Math.max(a0.x, a1.x), Math.max(b0.x, b1.x)) - Math.max(Math.min(a0.x, a1.x), Math.min(b0.x, b1.x)) > min;
+  return false;
+}
+
+test("no connector crosses a window, a card or a nested project at any level: Admiral's, a fleet Skipper's, a project Skipper's", () => {
+  // Issue #255: a fleet with two project clusters, each with a project Skipper and cards, a fleet with its Skipper, two rows.
+  // The upper project's Skipper has tasks in the lower row (Other), the way its line ran down through the lower Skipper's face.
+  const g: G.Graph = {
+    admiral: "ad",
+    fleets: [
+      { key: "fleet:Skiff", name: "Skiff", skipper: null, projects: [project("skiff", ["a1", "a2", "a3"], { skipper: "sk-skiff" }), project("web", ["b1", "b2"], { skipper: "sk-web" })] },
+      { key: "fleet:Cay", name: "Cay", skipper: "sk-cay", projects: [project("vault", ["c1"], { skipper: "sk-vault" }), project("biz", ["c2", "c3"], { skipper: "sk-biz" }), project("tool", ["c4"])] },
+      { key: "fleet:Moss", name: "Moss", skipper: "sk-moss", projects: [project("gesher", ["d1", "d2"])] },
+    ],
+    projects: [project("hsd", ["e1"], { skipper: "sk-hsd" }), project("other", ["o1", "o2"])],
+  };
+  const p = Grid.placeGraph(g);
+  const nested = [...g.fleets.flatMap((f) => f.projects)].map((pr) => ({ key: pr.key, ids: new Set([pr.skipper, ...pr.cards].filter(Boolean)) }));
+  const sources = [...p.rungs.keys()];
+  const lines: { from: string; to: string; d: string }[] = [];
+  for (const from of sources) for (const to of p.cards.keys()) {
+    if (to === from || to === "ad") continue;
+    const d = Grid.route(p, from, to);
+    if (d) lines.push({ from, to, d });
+  }
+  const bad: string[] = [];
+  for (const { from, to, d } of lines) {
+    const s = segs(d);
+    for (const [w, r] of p.cards) if (w !== from && w !== to && s.some(([a, b]) => through(a, b, r))) bad.push(`${from} > ${to} crosses ${w}`);
+    for (const n of nested) if (!n.ids.has(from) && !n.ids.has(to) && s.some(([a, b]) => through(a, b, p.clusters.get(n.key)!))) bad.push(`${from} > ${to} runs through ${n.key}`);
+  }
+  assert.deepEqual(bad.slice(0, 8), [], `${bad.length} crossings`);
+  // Lines that run together stay apart: an Admiral line and another Skipper's never share a run, but where they end in the same window.
+  const ad = lines.filter((l) => l.from === "ad");
+  const others = lines.filter((l) => l.from !== "ad");
+  for (const o of others) for (const a of ad) {
+    if (a.to === o.to) continue;
+    const so = segs(o.d);
+    const sa = segs(a.d);
+    for (const x of so.slice(0, -1)) assert.ok(!sa.slice(0, -1).some((y) => collinear(x, y)), `${o.from} > ${o.to} runs on ${a.from} > ${a.to}`);
+  }
+  assert.ok(lines.length > 150, `the repro layout has connectors to check: ${lines.length}`);
+});

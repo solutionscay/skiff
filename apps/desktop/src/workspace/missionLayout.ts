@@ -79,6 +79,13 @@ export interface At {
   rail: number;
   owners: string[];
   head?: boolean;
+  /** Its top cluster's lanes: the gutter inside the frame's left edge, the gap left of the frame, the frame's foot. */
+  cell?: Lanes;
+}
+export interface Lanes {
+  gutter: number;
+  lane: number;
+  foot: number;
 }
 export interface Placed {
   /** Every card by id: sessions, Skippers and Admiral. */

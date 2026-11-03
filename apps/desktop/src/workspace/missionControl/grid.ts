@@ -21,8 +21,14 @@
  * takes the bus to the target's cluster rail, then the rail. With a Skipper in
  * the cluster that rail is the gutter between the frame's edge and the window,
  * so no connector crosses a window that is not its own parent or child.
+ *
+ * A Skipper's line to anything else leaves under its own window, goes left
+ * into its top cluster's gutter, and leaves the cluster at the frame's top
+ * (to the bus) or its foot (to a lower row). Between rows it runs in the gap
+ * left of its cluster, then comes in by the target's bus and gutter. These
+ * lines run a few px off Admiral's, so two lines never share a run.
  */
-import { type At, CARD_H, CARD_W, PLAN_H, type GProject, type Graph, type Placed, type Rect, type Rung, WINDOW, faceBox } from "../missionLayout.ts";
+import { type At, type Lanes, CARD_H, CARD_W, PLAN_H, type GProject, type Graph, type Placed, type Rect, type Rung, WINDOW, faceBox } from "../missionLayout.ts";
 
 const PAD = 12;
 const HEAD = 20;
@@ -114,30 +120,31 @@ export function placeGraph(g: Graph): Placed {
       // inside the frame's left edge, so a connector never crosses the Skipper's window.
       const rail = t.skipper ? x + FP / 2 : wx + 8 + WINDOW[t.fleet ? "fleet" : "project"].face / 2;
       const owners = t.skipper ? [t.skipper] : [];
+      const lanes: Lanes = { gutter: x + FP / 2, lane: x - CELL_GAP / 2, foot: 0 };
       let cy = rowTop + HEAD + FP;
       // A fleet's frame takes its place in the map first, so the board draws it under its projects' frames.
       if (t.fleet) out.clusters.set(t.key, { x, y: rowTop, w: cell, h: 0, fleet: true });
       if (t.skipper) {
         putWindow(t.skipper, t.fleet ? "fleet" : "project", wx, cy);
-        out.at.set(t.skipper, { bus, rail, owners: [], head: true });
+        out.at.set(t.skipper, { cell: lanes, bus, rail, owners: [], head: true });
         cy += WINDOW[t.fleet ? "fleet" : "project"].h + DROP;
       }
       for (const p of t.projects) {
         const fx = t.fleet ? wx + IND - PAD : x;
         if (!t.fleet) {
           // A project in no fleet is its own cluster: the frame holds its Skipper and its work.
-          cy = cardsOf(p, wx + IND, cy, { bus, rail, owners });
+          cy = cardsOf(p, wx + IND, cy, { cell: lanes, bus, rail, owners });
           continue;
         }
         const top = cy;
         let iy = top + HEAD + PAD;
         const inner = [...owners];
-        let at: At = { bus, rail, owners: inner };
+        let at: At = { cell: lanes, bus, rail, owners: inner };
         if (p.skipper) {
           putWindow(p.skipper, "project", fx + PAD, iy);
-          out.at.set(p.skipper, { bus, rail, owners: [...owners] });
+          out.at.set(p.skipper, { cell: lanes, bus, rail, owners: [...owners] });
           iy += WINDOW.project.h + DROP;
-          at = { bus, rail, owners: [...owners, p.skipper] };
+          at = { cell: lanes, bus, rail, owners: [...owners, p.skipper] };
         }
         iy = cardsOf(p, p.skipper ? fx + PAD + IND2 : fx + PAD, iy, at);
         const h = iy - VGAP + PAD - top;
@@ -145,6 +152,7 @@ export function placeGraph(g: Graph): Placed {
         cy = top + h + VGAP;
       }
       const h = Math.max(cy - VGAP, rowTop + HEAD + FP) + FP - rowTop;
+      lanes.foot = rowTop + h;
       // The frame: a fleet's, or a project's in no fleet.
       if (t.fleet) out.clusters.set(t.key, { x, y: rowTop, w: cell, h, fleet: true });
       else out.clusters.set(t.key, { x, y: rowTop, w: cell, h, fleet: false });
@@ -189,10 +197,32 @@ export function route(p: Placed, from: string, to: string): string | null {
   const tRung = p.rungs.get(to);
   const a = fRung ? (() => { const f = faceBox(fr, fRung); return { x: f.x + f.w / 2, y: f.y + f.h - 4 }; })() : { x: fr.x + fr.w / 2, y: fr.y + fr.h };
   const end = tRung ? faceMid(tr, tRung) : { x: tr.x, y: tr.y + tr.h / 2 };
+  const src = p.at.get(from);
+  // Admiral's lines, or a source with no cluster, keep the trunk, the bus and the rail.
+  const own = fRung === "admiral" || !src?.cell || !info.cell;
   // Into a cluster's top window: down to the row's bus, across, down into the face. Admiral comes down its trunk.
-  if (info.head) return orth([a, { x: a.x, y: info.bus }, { x: end.x, y: info.bus }, end]);
+  if (info.head && own) return orth([a, { x: a.x, y: info.bus }, { x: end.x, y: info.bus }, end]);
   // Work under this Skipper: down its own rail, then right.
   if (info.owners.includes(from)) return orth([a, { x: a.x, y: end.y }, end]);
-  // Anything else: the bus to the cluster's rail, down it, then right.
-  return orth([a, { x: a.x, y: info.bus }, { x: info.rail, y: info.bus }, { x: info.rail, y: end.y }, end]);
+  // Anything else from Admiral: the bus to the cluster's rail, down it, then right.
+  if (own) return orth([a, { x: a.x, y: info.bus }, { x: info.rail, y: info.bus }, { x: info.rail, y: end.y }, end]);
+  // Any other line: out under its own window into its cluster's gutter, then the lanes, a few px off Admiral's.
+  const sc = src!.cell!;
+  const tc = info.cell!;
+  const k = [...p.rungs.keys()].filter((id) => p.rungs.get(id) !== "admiral").indexOf(from) % 2 ? 1 : -1;
+  const gx = (c: Lanes) => c.gutter + 4 * k;
+  const by = (bus: number) => bus + 8 * k;
+  const pts: Pt[] = [a, { x: a.x, y: fr.y + fr.h + (fRung ? DROP : VGAP) / 2 }];
+  pts.push({ x: gx(sc), y: pts[1].y });
+  const into = (bus: number) => (info.head ? [{ x: end.x, y: bus }, end] : [{ x: gx(tc), y: bus }, { x: gx(tc), y: end.y }, end]);
+  if (sc === tc) {
+    // The same cluster: along its gutter, then right. Its top window is reached from the bus.
+    if (info.head) return orth([...pts, { x: gx(sc), y: by(info.bus) }, ...into(by(info.bus))]);
+    return orth([...pts, { x: gx(sc), y: end.y }, end]);
+  }
+  const lane = sc.lane + 4 * k;
+  if (info.bus === src!.bus) pts.push({ x: gx(sc), y: by(src!.bus) });
+  else if (info.bus > src!.bus) pts.push({ x: gx(sc), y: sc.foot + 12 }, { x: lane, y: sc.foot + 12 }, { x: lane, y: by(info.bus) });
+  else pts.push({ x: gx(sc), y: by(src!.bus) }, { x: lane, y: by(src!.bus) }, { x: lane, y: by(info.bus) });
+  return orth([...pts, ...into(by(info.bus))]);
 }
