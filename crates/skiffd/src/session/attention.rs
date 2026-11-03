@@ -46,7 +46,7 @@ impl SessionPool {
     }
 
     fn move_state(&self, session: &Session, target: SessionState, cause: Option<(&'static str, &str)>) {
-        self.apply_policy(session, Input::Move { target, cause: cause.map(|c| c.0), drop_ended: true }, cause.map_or("", |c| c.1));
+        self.apply_policy(session, Input::Move { target, cause: cause.map(|c| c.0) }, cause.map_or("", |c| c.1));
     }
 
     fn apply_policy(&self, session: &Session, input: Input, detail: &str) {

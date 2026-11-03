@@ -142,7 +142,7 @@ impl SessionPool {
             let mut info = s.info.lock().unwrap();
             let (next, effects) = reducer::reduce(snapshot(s, &info), Input::Tick, now);
             *info = next.info;
-            if effects.clear_status_dirty { s.status_dirty.store(false, Ordering::Relaxed); }
+            if let Some(value) = effects.status_dirty { s.status_dirty.store(value, Ordering::Relaxed); }
             if effects.status_sent { s.status_sent_at.store(now, Ordering::Relaxed); }
             if let Some(value) = effects.stalled { s.stalled.store(value, Ordering::Relaxed); }
             if let Some(value) = effects.raised { s.raised.store(value, Ordering::Relaxed); }

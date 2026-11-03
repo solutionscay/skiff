@@ -1,5 +1,5 @@
 //! Pure session transitions. The caller supplies observations and time.
-use super::attention::{BELL, PROMPT, REPORT, TITLE};
+use super::attention::{live, BELL, PROMPT, REPORT, TITLE};
 use super::{Front, GRACE_MS, IDLE_AFTER, MIN_TURN_MS, STALL_MS, STATUS_EVERY_MS};
 use crate::program_status::{self, State as Claim};
 use crate::screen::{has_busy_line, TitleState};
@@ -25,7 +25,6 @@ pub(super) enum Input {
     Move {
         target: SessionState,
         cause: Option<&'static str>,
-        drop_ended: bool,
     },
     Report {
         claim: Option<Claim>,
@@ -70,7 +69,6 @@ pub(super) struct Effects {
     pub approval_since: Option<u64>,
     pub stalled: Option<bool>,
     pub status_sent: bool,
-    pub clear_status_dirty: bool,
     pub status_dirty: Option<bool>,
     pub dirty: bool,
 }
@@ -83,7 +81,6 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
         Input::Move {
             target,
             cause,
-            drop_ended,
         } => {
             if state.info.state == target && cause.is_some() && state.info.waiting_cause.is_none() {
                 state.info.waiting_cause = cause.map(str::to_owned);
@@ -97,8 +94,7 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
                     .filter(|_| target == SessionState::Waiting)
                     .map(str::to_owned);
                 effects.cause_recorded = cause.filter(|_| target == SessionState::Waiting);
-                if drop_ended
-                    && target == SessionState::Working
+                if target == SessionState::Working
                     && state.info.program_status.as_ref().is_some_and(|p| p.ended)
                 {
                     state.info.program_status = None;
@@ -181,12 +177,12 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
         // claim otherwise takes precedence over inferred screen and title data.
         Input::Tick => {
             if state.info.state == SessionState::Done
-                || state.info.program_status.as_ref().is_none_or(|p| p.ended)
+                || !live(&state.info)
             {
                 return (state, effects);
             }
             effects.update = state.status_dirty;
-            effects.clear_status_dirty = true;
+            effects.status_dirty = Some(false);
             let working = state
                 .info
                 .program_status
@@ -214,7 +210,6 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
                     Input::Move {
                         target: SessionState::Waiting,
                         cause: Some(PROMPT),
-                        drop_ended: false,
                     },
                     now,
                 );
@@ -227,14 +222,13 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
             effects.status_sent = effects.update;
         }
         Input::Bell => {
-            let claimed = state.info.program_status.as_ref().is_some_and(|p| !p.ended);
+            let claimed = live(&state.info);
             if !claimed && matches!(state.front, Front::Command | Front::Program) {
                 let (next, mut result) = reduce(
                     state,
                     Input::Move {
                         target: SessionState::Waiting,
                         cause: Some(BELL),
-                        drop_ended: true,
                     },
                     now,
                 );
@@ -253,7 +247,7 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
             }
             effects.last_work = work;
             effects.busy_seen = busy;
-            let claimed = state.info.program_status.as_ref().is_some_and(|p| !p.ended);
+            let claimed = live(&state.info);
             let mut target = None;
             if claimed {
                 if approval {
@@ -294,7 +288,6 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
                     Input::Move {
                         target,
                         cause,
-                        drop_ended: true,
                     },
                     now,
                 );
@@ -306,7 +299,7 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
             }
         }
         Input::Title { old, new } => {
-            let claimed = state.info.program_status.as_ref().is_some_and(|p| !p.ended);
+            let claimed = live(&state.info);
             if old == new || claimed {
                 return (state, effects);
             }
@@ -332,7 +325,6 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
                     Input::Move {
                         target,
                         cause,
-                        drop_ended: true,
                     },
                     now,
                 );
@@ -348,7 +340,7 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
             if title != Some(TitleState::Busy)
                 && quiet
                 && state.info.state == SessionState::Working
-                && state.info.program_status.as_ref().is_none_or(|p| p.ended)
+                && !live(&state.info)
             {
                 state.info.state = SessionState::Idle;
                 let stretch = state.last_work.saturating_sub(state.work_started);
