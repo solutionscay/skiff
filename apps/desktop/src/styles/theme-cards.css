@@ -1,8 +1,9 @@
 /* Theme cards: a grid split by 1px rules, a small window preview, name and badge. */
 .tc-tools { display: flex; flex-wrap: wrap; gap: calc(8 * var(--u)); }
 .tc-search, .tc-tool, .tc-swatches { height: var(--row); border: 1px solid var(--rule-strong); background: var(--bg-panel); color: var(--text); font: inherit; }
-.tc-search { flex: 1; min-width: calc(160 * var(--u)); padding: 0 calc(12 * var(--u)); }
-.tc-swatches { display: flex; align-items: center; gap: calc(4 * var(--u)); padding: 0 calc(8 * var(--u)); }
+.tc-search { flex: 1; min-width: calc(240 * var(--u)); padding: 0 calc(12 * var(--u)); }
+/* The swatches wrap in a narrow page: each line adds one row. */
+.tc-swatches { display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: calc(20 * var(--u)) calc(4 * var(--u)); height: auto; min-height: var(--row); max-width: 100%; padding: calc(9 * var(--u)) calc(8 * var(--u)); }
 .tc-swatch { width: calc(20 * var(--u)); height: calc(20 * var(--u)); padding: 0; border: 1px solid transparent; background: var(--sw); cursor: pointer; }
 .tc-swatch.all { width: auto; padding: 0 calc(6 * var(--u)); background: none; color: var(--text-3); font: inherit; font-size: calc(12px * var(--zoom, 1)); }
 .tc-swatch:hover { border-color: var(--text-3); }

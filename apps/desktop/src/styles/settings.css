@@ -364,3 +364,23 @@ body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset:
 .set-daemon-band .set-sink:not(:disabled):is(:hover, :focus-visible) { border-color: var(--error); color: var(--error); }
 .set-daemon-band .set-sink:disabled { opacity: 0.5; cursor: default; }
 .set-daemon-band { justify-content: flex-start; font-variant-numeric: tabular-nums; }.set-daemon-band span + span { margin-left: calc(24 * var(--u)); }
+/*
+ * A narrow window. The page list gives its width to the page first. In a
+ * narrow page, a cell clips what does not fit, so no cell draws over the next
+ * one, and the columns at each end take less. The Menu choices take the end
+ * column too when no status shows there.
+ */
+.set-nav-head .set-path, .set-tab { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-tab { flex-shrink: 0; }
+.set-seg-item { overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1000px) { .set-nav { width: calc(200 * var(--u)); } }
+@media (max-width: 760px) { .set-nav { width: calc(152 * var(--u)); } }
+@container set-main (max-width: 800px) {
+  .set-row > * { min-width: 0; overflow: hidden; }
+  .set-menu:has(> .c-status:empty) > .set-seg { grid-column: 2 / -1; }
+  .set-menu > .c-status:empty { display: none; }
+  /* Folder: its buttons go on a second row, under the path. */
+  .set-folder { height: auto; grid-template-columns: var(--set-label) minmax(0, 1fr); grid-template-rows: var(--row) var(--row); }
+  .set-folder > .c-acts { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--rule); }
+}
+@container set-main (max-width: 600px) { .set-main > * { --set-label: calc(120 * var(--u)); --set-end: calc(200 * var(--u)); --set-acts: calc(120 * var(--u)); } }
