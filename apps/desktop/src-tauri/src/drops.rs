@@ -36,6 +36,18 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Sen
 /// Every header button and open library redraws on this.
 pub(crate) const IMAGES_CHANGED: &str = "skiff:images-changed";
 
+/// A picture selected for a project on a remote Host. The Host owns the
+/// resulting cache path; the desktop never writes that Host's projects.toml.
+#[tauri::command]
+pub(crate) async fn project_image_upload(app: State<'_, App>, path: PathBuf, host: Option<String>) -> Result<String, String> {
+    if !app.remote() {
+        return Ok(path.to_string_lossy().into_owned());
+    }
+    let (name, bytes) = data::drop_file(&path, host.as_deref()).await?;
+    let c = data_now(&app).await?;
+    data::drop_send(&c, &name, bytes, host.as_deref()).await
+}
+
 /// Records the images for `who`, then builds the text. A failed record
 /// costs only the library line: the text is typed all the same.
 async fn finish(handle: &AppHandle, who: Who, t: cache::Typed) -> Result<Typed, String> {

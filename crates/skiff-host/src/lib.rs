@@ -525,6 +525,8 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         Request::ProjectEdit { project, revision, edit } => {
             let p = project.as_str();
             let ((), revision) = config::edit_projects(&revision, || match &edit {
+                ProjectEdit::Icon { icon } => config::set_project_icon(p, icon.as_deref()),
+                ProjectEdit::Background { background } => config::set_project_background(p, background.as_deref()),
                 ProjectEdit::Short { short } => config::set_project_short(p, short),
                 ProjectEdit::Fleet { fleet } => config::set_project_fleet(p, fleet),
                 ProjectEdit::Color { color } => config::set_project_color(p, color),

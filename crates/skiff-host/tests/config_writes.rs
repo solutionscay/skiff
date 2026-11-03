@@ -149,6 +149,18 @@ async fn skiff_host_is_the_writer_of_the_hosts_projects_and_worktrees() {
     assert_eq!(data::project_get(&l, "app").await.unwrap().fleet.as_deref(), Some("F"));
     assert_eq!(data::project_rows(&l).await.unwrap(), data::project_rows(&r).await.unwrap());
 
+    // Presentation settings are writes of this Host too, including over the
+    // remote route. They must not take the desktop's local config path.
+    let icon = app.join("icon.png");
+    let background = app.join("background.png");
+    std::fs::write(&icon, b"icon").unwrap();
+    std::fs::write(&background, b"background").unwrap();
+    let rev4 = data::project_edit(&r, &rev3, "app", ProjectEdit::Icon { icon: Some(icon.display().to_string()) }).await.unwrap();
+    let rev5 = data::project_edit(&l, &rev4, "app", ProjectEdit::Background { background: Some(background.display().to_string()) }).await.unwrap();
+    let saved = file();
+    assert!(saved.contains("icon =") && saved.contains("background ="), "{saved}");
+    assert_eq!(data::project_rows(&r).await.unwrap().1.as_deref(), Some(rev5.as_str()));
+
     // Validation: typed refusals, nothing written.
     let before = file();
     for (edit, project) in [
@@ -157,12 +169,12 @@ async fn skiff_host_is_the_writer_of_the_hosts_projects_and_worktrees() {
         (ProjectEdit::Fleet { fleet: "two\nlines".into() }, "app"),
         (ProjectEdit::Theme { theme: Some("x".repeat(65)) }, "app"),
     ] {
-        let got = data::project_edit(&r, &rev3, project, edit.clone()).await;
+        let got = data::project_edit(&r, &rev5, project, edit.clone()).await;
         assert!(matches!(got, Err(Error::Invalid { .. })), "{edit:?}: {got:?}");
     }
-    let got = data::project_edit(&r, &rev3, "nope", ProjectEdit::Files { on: true }).await;
+    let got = data::project_edit(&r, &rev5, "nope", ProjectEdit::Files { on: true }).await;
     assert!(matches!(got, Err(Error::NotFound { .. })), "{got:?}");
-    let got = data::project_arrange(&r, &rev3, vec!["app".into(), "ghost".into()], vec![]).await;
+    let got = data::project_arrange(&r, &rev5, vec!["app".into(), "ghost".into()], vec![]).await;
     assert!(matches!(got, Err(Error::NotFound { .. })), "{got:?}");
     for path in ["relative/dir", "", "/a\nb"] {
         let got = data::project_inspect(&r, path).await;
@@ -174,7 +186,7 @@ async fn skiff_host_is_the_writer_of_the_hosts_projects_and_worktrees() {
     let mut writers = Vec::new();
     for i in 0..8u8 {
         let c = if i % 2 == 0 { l.clone() } else { r.clone() };
-        let rev = rev3.clone();
+        let rev = rev5.clone();
         writers.push(tokio::spawn(async move {
             data::project_edit(&c, &rev, "other", ProjectEdit::Short { short: format!("o{i}") }).await
         }));

@@ -102,11 +102,16 @@ pub struct HostFolder {
     pub error: Option<String>,
 }
 
-/// One change to one project's settings. Images (icon, background) are not
-/// here: they need their bytes sent, which no capability offers yet.
+/// One change to one project's settings. Image bytes arrive through `drops`;
+/// these values are paths on the Host that stored them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "key", rename_all = "snake_case")]
 pub enum ProjectEdit {
+    /// The rail image. `None` finds an image in the project; empty shows
+    /// letters only. Any other value is a path on this Host.
+    Icon { icon: Option<String> },
+    /// The terminal background. `None` removes it. The path is on this Host.
+    Background { background: Option<String> },
     /// Rail initials, at most 3 characters. Empty: from the name.
     Short { short: String },
     /// Empty: on the rail by itself.
