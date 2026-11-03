@@ -8,12 +8,9 @@ import { promptAction } from "../ui/confirm";
 import { actionDialog } from "../ui/dialogParts";
 import { runDialog } from "./hostProgress";
 import { copyText } from "../platform/clipboard";
-import { createHostFixes } from "./hostFixes";
+import { createHostCheck } from "./hostCheck";
 import { createHostForm } from "./hostForm";
-import {
-  type Alias, type Check, type CheckLine, type Fix, type HostsEnv, type HostsState,
-  type Report, type RowResult, CHECK_ROWS, FIX_LABEL, alert, typed,
-} from "./hostShared";
+import { type Alias, type HostsEnv, type HostsState, alert, typed } from "./hostShared";
 import { type HostsPage, type KnownHost, knownHosts, loadHosts, localHostName, pick, shownHost } from "../app/hosts";
 
 /**
@@ -48,8 +45,8 @@ export function createHostsTab(redraw: () => void) {
     runDialog,
     openMenu: (left, top, title, entries, onClose) => ctxMenu.open(left, top, title, entries, onClose),
   };
-  const form = createHostForm(env, st, { runCheck, reload: load });
-  const fixes = createHostFixes(env, st, { runCheck });
+  const check = createHostCheck(env, st, { reload: load });
+  const form = createHostForm(env, st, { runCheck: check.runCheck, reload: load });
 
   /** Reads ssh config and resolves each Host. Local only. */
   async function load() {
@@ -62,33 +59,15 @@ export function createHostsTab(redraw: () => void) {
     st.form = null;
     if ("add" in page) form.open(null);
     st.check = null;
-    if ("check" in page) void (page.reinstall || page.update ? checkThenUpdate(page.check, !!page.reinstall) : runCheck(page.check));
+    if ("check" in page) void (page.reinstall || page.update ? check.checkThenUpdate(page.check, !!page.reinstall) : check.runCheck(page.check));
   }
-
-  /** Runs the read-only check list of a Host and shows it. */
-  /** `result`: what a run just did, kept on its row through this check. */
-  async function runCheck(id: string, result?: RowResult) {
-    st.form = null;
-    const c: Check = { id, report: null, error: null, result };
-    st.check = c;
-    redraw();
-    try {
-      c.report = await invoke<Report>("check_host", { id });
-      await loadHosts();
-      await load();
-    } catch (e) {
-      c.error = String(e);
-    }
-    if (st.check === c) redraw();
-  }
-
 
   function draw(): HTMLElement {
     // The Host it was about left the list: back to the list.
     const known = (id: string) => knownHosts().some((x) => x.id === id);
     if (st.check && !known(st.check.id)) st.check = null;
     if (st.form?.id && !known(st.form.id)) st.form = null;
-    return st.form ? form.draw(st.form) : st.check ? drawCheck(st.check) : drawList();
+    return st.form ? form.draw(st.form) : st.check ? check.drawCheck(st.check) : drawList();
   }
 
   function drawList(): HTMLElement {
@@ -146,13 +125,13 @@ export function createHostsTab(redraw: () => void) {
       openMenu({ x: b.left, y: b.bottom });
     });
     more.append(menu);
-    row.addEventListener("click", () => void runCheck(x.id));
+    row.addEventListener("click", () => void check.runCheck(x.id));
     row.addEventListener("contextmenu", (e: MouseEvent) => {
       e.preventDefault();
       openMenu({ x: e.clientX, y: e.clientY });
     });
     row.addEventListener("keydown", (e: KeyboardEvent) => {
-      if (e.key === "Enter") void runCheck(x.id);
+      if (e.key === "Enter") void check.runCheck(x.id);
       else if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
         const b = menu.getBoundingClientRect();
         openMenu({ x: b.left, y: b.bottom });
@@ -168,8 +147,8 @@ export function createHostsTab(redraw: () => void) {
   /** The row menu: Check, Update Skiff… when offered, Edit…, Rename…, Remove…. */
   function hostMenu(x: KnownHost, left: number, top: number, back: HTMLElement) {
     const entries: MenuEntry[] = [
-      { icon: "indicators-check", label: "Check", run: () => void runCheck(x.id) },
-      ...(x.update ? [{ icon: "schedule-refresh-cw", label: "Update Skiff…", run: () => void checkThenUpdate(x.id) }] : []),
+      { icon: "indicators-check", label: "Check", run: () => void check.runCheck(x.id) },
+      ...(x.update ? [{ icon: "schedule-refresh-cw", label: "Update Skiff…", run: () => void check.checkThenUpdate(x.id) }] : []),
       {
         icon: "tools-pencil",
         label: "Edit…",
@@ -186,15 +165,6 @@ export function createHostsTab(redraw: () => void) {
     ctxMenu.open(left, top, x.name, entries, () => back.focus());
   }
 
-  /** Update Skiff… from the list: the check list first, for the version
-   *  and platform the dialog names, then the dialog. `reinstall`: this
-   *  app's build goes in even when the server has it. */
-  async function checkThenUpdate(id: string, reinstall = false) {
-    await runCheck(id);
-    const x = knownHosts().find((k) => k.id === id);
-    if (x && st.check?.id === id && st.check.report) fixes.updateSkiff(st.check, x, reinstall);
-  }
-
   /** Dot and word, from the last check or connection in this app run. */
   function stateCell(x: KnownHost | null): HTMLElement {
     const [cls, word] = !x
@@ -207,115 +177,6 @@ export function createHostsTab(redraw: () => void) {
     const cell = h("span", `c-state ${cls}`);
     cell.append(h("span", "sq"), word);
     return cell;
-  }
-
-  function drawCheck(c: Check): HTMLElement {
-    const x = knownHosts().find((k) => k.id === c.id);
-    const name = x?.name ?? "this Host";
-    const main = h("div", "set-main");
-    const head = h("div", "set-head");
-    head.append(
-      button("set-back", "‹ Hosts", () => ((st.check = null), redraw())),
-      h("div", "set-h", `Check ${name}`),
-    );
-    main.append(head);
-    const table = h("div", "set-table g-check");
-    table.setAttribute("role", "table");
-    table.setAttribute("aria-label", `Check ${name}`);
-    const rows: CheckLine[] = c.report?.rows ?? CHECK_ROWS.map((title, i) => ({ row: String(i), title, state: "skipped", text: i === 0 ? "Checking…" : "Waiting", fix: null }));
-    for (const r of rows) {
-      // The row a run just changed shows what the run did, until the next check.
-      const res = c.result && r.title === CHECK_ROWS[4] ? c.result : null;
-      const state = res ? (res.failed ? "failed" : "passed") : c.report ? r.state : "waiting";
-      const row = h("div", `set-row set-check ${state}`);
-      row.setAttribute("role", "row");
-      const mark = h("span", "c-lead");
-      if (state === "passed") mark.append(rune("indicators-check"));
-      else mark.append(h("span", "sq"));
-      mark.setAttribute("aria-label", state);
-      const text = h("span", "c-text", res ? res.text : r.text);
-      if (res?.secs !== undefined && !res.failed) text.append(h("span", "c-secs", `${res.secs} s`));
-      const fix = res ? res.fix : c.report && (r.state === "failed" || r.state === "warning") ? r.fix : null;
-      if (fix && x) text.append(button("set-rm set-fix", res?.failed ? "Try again" : FIX_LABEL[fix], () => void runFix(c, x, fix)));
-      if (res?.output) {
-        const out = res.output;
-        text.append(button("set-rm set-fix", "Copy output", () => void copyText(out)));
-      }
-      row.append(mark, h("span", "c-name", r.title), text);
-      table.append(row);
-    }
-    main.append(table);
-    if (x) main.append(autoUpdate(x));
-    if (c.error) main.append(alert(c.error));
-    if (c.note) main.append(h("div", "set-note set-line", c.note));
-    const acts = h("div", "set-form-acts");
-    const running = !c.report && !c.error;
-    const again = button("set-rm", running ? "Checking…" : "Check again", () => void runCheck(c.id));
-    again.disabled = running;
-    acts.append(again, h("span", "set-fill"));
-    if (c.report?.ok && x && shownHost() !== x.id) acts.append(button("set-add ready", `Switch to ${name}`, () => pick(x.id)));
-    acts.append(button("set-rm", "Done", () => ((st.check = null), redraw())));
-    main.append(acts);
-    return main;
-  }
-
-  /** One fix, after its confirm, then the check again. */
-  async function runFix(c: Check, x: KnownHost, fix: Fix) {
-    const again = () => void runCheck(x.id);
-    c.note = undefined;
-    try {
-      if (fix === "trust_key" || fix === "review_key") return await fixes.trustKey(x, again);
-      if (fix === "make_key") return fixes.makeKey(x, again);
-      if (fix === "unlock_key") return fixes.secretDialog(x, "unlock", again);
-      if (fix === "install_key") return fixes.secretDialog(x, "install", again);
-      if (fix === "fix_permissions") return fixes.secretDialog(x, "fix", again);
-      if (fix === "install_skiff") return fixes.installSkiff(c, x);
-      if (fix === "start_skiff") {
-        c.note = `Starting Skiff on ${x.name}…`;
-        redraw();
-        await invoke("start_skiff", { id: x.id });
-        return again();
-      }
-      if (fix === "turn_on_linger") return fixes.turnOnLinger(x, again);
-      if (fix === "update_skiff") return fixes.updateSkiff(c, x);
-      if (fix === "copy_public_key") {
-        await copyText(await invoke<string>("public_key", { id: x.id }));
-        c.note = `Public key copied. Send it to the admin of ${x.name}, then check again.`;
-        redraw();
-      }
-    } catch (e) {
-      c.error = String(e);
-      redraw();
-    }
-  }
-
-
-  /** The Host's own setting: on, an older install Skiff made is updated as
-   *  the app connects, when every session survives. */
-  function autoUpdate(x: KnownHost): HTMLElement {
-    const row = h("div", "set-row set-agent set-auto-update" + (x.auto_update ? " on" : ""));
-    const sw = h("button", "c-on");
-    sw.type = "button";
-    sw.setAttribute("role", "switch");
-    sw.setAttribute("aria-checked", String(x.auto_update));
-    sw.setAttribute("aria-label", `Update Skiff here automatically ${x.auto_update ? "on" : "off"}`);
-    sw.append(h("span", "switch"));
-    const flip = async () => {
-      sw.disabled = true;
-      try {
-        await invoke("set_host_auto_update", { id: x.id, on: !x.auto_update });
-        await loadHosts();
-        redraw();
-      } catch (e) {
-        sw.disabled = false;
-        fixes.alertCheck(e);
-      }
-    };
-    sw.addEventListener("click", () => void flip());
-    const label = h("span", "c-text", "Update Skiff here automatically");
-    label.addEventListener("click", () => void flip());
-    row.append(sw, label);
-    return row;
   }
 
 
