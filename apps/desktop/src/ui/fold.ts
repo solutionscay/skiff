@@ -42,7 +42,13 @@ export function growOpened() {
   if (!key || !kids) return;
   kids.style.setProperty("--h", `${kids.offsetHeight}px`);
   kids.classList.add("tree-opening");
-  kids.addEventListener("animationend", (e) => e.target === kids && kids.classList.remove("tree-opening"));
+  // The node stays for the next open: the listener goes with its own animation, not a child's.
+  const grown = (e: AnimationEvent) => {
+    if (e.target !== kids) return;
+    kids.classList.remove("tree-opening");
+    kids.removeEventListener("animationend", grown);
+  };
+  kids.addEventListener("animationend", grown);
   const chev = find("data-fold", key)?.querySelector(".chev");
   if (!chev) return;
   chev.classList.add("closed");
