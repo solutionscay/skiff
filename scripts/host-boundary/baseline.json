@@ -50,7 +50,7 @@
       "skiff_core",
       "skipper"
     ],
-    "sha256": "f784225600d5a0e28b24a7e4f82c386a00847f5c36a0e49bf88d2245a73399b3"
+    "sha256": "b056085d59ae0857a70a814b4d9904c71ed3bfd9b0ae46d0edc9c9dcfdabc80f"
   },
   "apps/desktop/src-tauri/src/config_tests.rs": {
     "ownership": "test only: an in-process skiff-host on private state, never the live config",
@@ -193,7 +193,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "86d1c1fb9960cc5b29aad0dd9f2b5d237cf849bb61d6292b08b8d03926a673ce"
+    "sha256": "e2263f2410ee88abef84007c478cd895e4efab9ad9191c43e06c71891d7d8c9f"
   },
   "apps/desktop/src-tauri/src/header_bar.rs": {
     "ownership": "client policy: exact existing adapter only",
@@ -280,7 +280,7 @@
       "ledger",
       "skiff_agent"
     ],
-    "sha256": "1eebf97f4c530357c834ed21be21baa6afe82c3e49dd4817fc7ecedb8de2754c"
+    "sha256": "c00df47e870ff4f8fbe02242704564f3aa0dea1ac877bb6ccb370f907871d1b9"
   },
   "apps/desktop/src-tauri/src/main.rs": {
     "ownership": "client policy (#189): this app's own command-line flags; no Host data",
@@ -438,7 +438,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "4936b2ca29a1ec712ba742f9fd8b085d5341fa7cd72217156c87263f4cc0d2ba"
+    "sha256": "a7507714e2f01262d8a4bf65bbeedc3d9acc3a9260908eecb78071b943be7d77"
   },
   "apps/desktop/src/app/hosts.ts": {
     "ownership": "client policy: Host picker and label (list/select Hosts, links to Settings \u203a Hosts, clipboard opt-in) and the remote link-lost signal",
@@ -1034,7 +1034,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "3dc323bac077a6ee9eac7f8aeba2d4fa68ddab4dd0717c6c3e97a7a8ff09d0c1"
+    "sha256": "262fe28e41711c4669ebf8745951e14b531a3a5641ce502bab6f697af14e892a"
   },
   "apps/desktop/src/workspace/menus/row.ts": {
     "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
