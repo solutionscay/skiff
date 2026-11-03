@@ -1,6 +1,12 @@
 //! OSC 7501 session status policy.
-
-use super::*;
+use super::attention::{end_reports, live, set_cause, PROMPT, REPORT};
+use super::{Front, Session, SessionPool, GRACE_MS, STALL_MS, STATUS_EVERY_MS};
+use crate::program_status;
+use crate::program_status::Records;
+use crate::screen::StatusSignal;
+use skiff_core::protocol::Event;
+use skiff_core::session::{now_ms, SessionState};
+use std::sync::atomic::Ordering;
 
 impl SessionPool {
     /// Applies what the program reported with OSC 7501, in order. While a

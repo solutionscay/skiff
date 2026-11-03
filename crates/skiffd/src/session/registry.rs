@@ -1,6 +1,10 @@
 //! The pool's registry: construction, the change gate, list and metrics, and watch publication.
-
-use super::*;
+use super::{Session, SessionPool, Watcher};
+use anyhow::{bail, Result};
+use skiff_core::protocol::Event;
+use skiff_core::session::{now_ms, SessionId, SessionInfo, WatchFailure, WatchInfo};
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, RwLockReadGuard};
 
 impl SessionPool {
     pub fn new() -> Arc<Self> {

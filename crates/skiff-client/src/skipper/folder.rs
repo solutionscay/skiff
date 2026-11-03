@@ -1,7 +1,6 @@
 //! Skipper folder, setup, instruction marker and skill helpers.
 
-use super::*;
-
+use super::identity::name;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};

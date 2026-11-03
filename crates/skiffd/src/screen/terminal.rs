@@ -1,6 +1,17 @@
 //! The emulator itself: feeding bytes, synchronized updates, resize, and the postcard save and restore.
-
-use super::*;
+use super::signals::{held_probes, Listener, Signals, StatusSignal};
+use super::SCROLLBACK;
+use alacritty_terminal::grid::Dimensions;
+use alacritty_terminal::grid::Grid;
+use alacritty_terminal::index::{Column, Line};
+use alacritty_terminal::term::cell::Cell;
+use alacritty_terminal::term::test::TermSize;
+use alacritty_terminal::term::{Config, Term, TermMode, TermSave, TermSaveOwned};
+use alacritty_terminal::vte::ansi::{Processor, ProcessorSave};
+use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
+use std::hash::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 pub struct Screen {
     pub(super) term: Term<Listener>,

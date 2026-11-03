@@ -1,6 +1,12 @@
 //! The screen redrawn as ANSI bytes for a client that attaches late.
-
-use super::*;
+use super::terminal::Screen;
+use alacritty_terminal::grid::Dimensions;
+use alacritty_terminal::grid::Grid;
+use alacritty_terminal::index::{Column, Line};
+use alacritty_terminal::term::cell::{Cell, Flags};
+use alacritty_terminal::term::TermMode;
+use alacritty_terminal::vte::ansi::{Color, NamedColor};
+use std::fmt::Write as _;
 
 impl Screen {
     /// Bytes that redraw scrollback, screen, cursor, and input modes on a

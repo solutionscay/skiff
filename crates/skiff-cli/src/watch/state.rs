@@ -1,6 +1,13 @@
 //! The watcher state machine: panes grouped by task, held lines, plans, the failure, and the registration with skiffd.
-
-use super::*;
+use super::model::{wake_line, Fact, Now, Pane, Wake};
+use super::{log, LEDGER_FAILS};
+use crate::{ledger, print, resolve};
+use anyhow::Result;
+use skiff_client::Client;
+use skiff_core::protocol::{Event, Request, Response};
+use skiff_core::session::{now_ms, SessionInfo, SessionState, WatchFailure};
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 #[derive(Default)]
 pub(super) struct Watcher {

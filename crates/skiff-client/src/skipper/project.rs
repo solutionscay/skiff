@@ -1,7 +1,9 @@
 //! Project and fleet Skipper setup and instructions.
 
-use super::*;
-
+use super::folder::{ensure, folder, lock, setup_in, sync_skill, template, AGENTS_FILE};
+use super::identity::{
+    choose, continue_line, fleet_name, fleet_scope, name, project_name, with_model,
+};
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
@@ -11,8 +13,8 @@ use skiff_core::{
     session::{Role, SessionInfo, SessionSpec, SessionState},
 };
 
-use crate::{Client, Coordinated, Coordinator};
 use super::folder::{hash, refresh, write_file, written};
+use crate::{Client, Coordinated, Coordinator};
 
 /// A project Skipper's `SKIPPER.md`: the project section only, as
 /// [`TEMPLATE`] is the base of every Skipper. `{{project}}`, `{{path}}`,

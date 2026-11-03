@@ -28,40 +28,36 @@
 //! new ledger read just before the submit, and a line whose task left pending
 //! is dropped. A row that changes after that read is not seen.
 
-use std::{
-    collections::{HashMap, HashSet},
-    fs::File,
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{path::Path, time::Duration};
 
-use anyhow::{bail, Context, Result};
-use skiff_client::Client;
-use skiff_core::{
-    protocol::{Event, Request, Response},
-    session::{now_ms, SessionInfo, SessionState, WatchFailure},
-};
-use tokio::{
-    sync::broadcast::error::{RecvError, TryRecvError},
-    time::{interval, sleep, Instant, MissedTickBehavior},
-};
+use anyhow::Result;
+use skiff_core::session::SessionInfo;
 
-use crate::{ledger, print, resolve, sessions};
+use crate::resolve;
 
 mod model;
 mod runtime;
 mod state;
 mod terminal;
 
-pub use model::{wake_line, Options};
-pub use terminal::{input_box_rows, read_front, rows_of, Front};
-use model::{Fact, Now, Pane, Wake};
+#[cfg(test)]
+use crate::ledger;
+pub use model::Options;
+#[cfg(test)]
+use model::{wake_line, Fact, Now, Pane, Wake};
 #[cfg(test)]
 use runtime::*;
+#[cfg(test)]
+use skiff_core::protocol::Event;
+#[cfg(test)]
+use skiff_core::session::SessionState;
+#[cfg(test)]
 use state::*;
-use terminal::desktop_notify;
+#[cfg(test)]
+use std::fs::File;
 #[cfg(test)]
 use terminal::{busy_line, front, input_box};
+pub use terminal::{input_box_rows, read_front, rows_of, Front};
 
 /// How often the ledger and the session list are read again without an event.
 const TICK: Duration = Duration::from_secs(2);

@@ -1,7 +1,7 @@
 //! Host-facing Skipper settings and instruction-file adapter.
 
-use super::*;
-
+use super::folder::{configured, folder, lock, no_folder};
+use super::project::{edit_file, instructions, Scope, Status};
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};

@@ -1,6 +1,13 @@
 //! Fallback attention policy.
-
-use super::*;
+use super::output::Scan;
+use super::{Front, Session, SessionPool, IDLE_AFTER, MIN_TURN_MS};
+use crate::program_status::Records;
+use crate::screen::{title_state, TitleState};
+use skiff_core::protocol::Event;
+use skiff_core::session::{now_ms, SessionInfo, SessionState};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::time::Duration;
 
 impl SessionPool {
     /// A bell outside the echo of a key. A shell rings for its own reasons.

@@ -2,29 +2,27 @@
 
 use std::{
     collections::HashMap,
-    io::{Read, Write},
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, AtomicUsize, Ordering},
-        Arc, Condvar, Mutex, RwLock, RwLockReadGuard,
+        Arc, Condvar, Mutex, RwLock,
     },
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, Result};
 use polling::Poller;
-use portable_pty::{native_pty_system, PtySize};
 use skiff_core::{
     group::Group,
     protocol::{EchoTimes, Event},
-    session::{now_ms, SessionId, SessionInfo, SessionSpec, SessionState, WatchFailure, WatchInfo, ENTER_DELAY},
+    session::{now_ms, SessionId, SessionInfo, SessionSpec, SessionState, WatchFailure},
 };
 use tokio::sync::{broadcast, Notify};
 
 use crate::{
-    program_status::{self, Records},
-    pty::{self, Pty},
-    screen::{title_state, Screen, Signals, StatusSignal, TitleState},
+    program_status::Records,
+    pty::Pty,
+    screen::TitleState,
     workspace::{SavedSession, Workspace},
 };
 
@@ -39,16 +37,19 @@ mod lifecycle;
 mod output;
 mod persistence;
 mod registry;
-mod status;
 pub mod reload;
-use groups::prune;
-use attention::{end_reports, live, set_cause, topic, PROMPT, REPORT};
+mod status;
+#[cfg(test)]
+use crate::screen::Screen;
+#[cfg(test)]
+use attention::topic;
+use attention::{end_reports, live};
+pub use coordinator::{Ask, Coordinated};
 use input::{start_writer, Input};
 use lifecycle::default_shell;
-use output::{Scan, ScreenState};
 #[cfg(test)]
 use output::prints;
-pub use coordinator::{Ask, Coordinated};
+use output::ScreenState;
 
 /// A process's command line, for logs. Empty when it is gone.
 pub(crate) fn proc_argv(pid: u32) -> Vec<String> {

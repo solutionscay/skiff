@@ -2,18 +2,13 @@
 //! The agent reads and writes it through these commands only, so a bad edit,
 //! a compaction or a second writer cannot break it.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use anyhow::{bail, Context, Result};
-use rusqlite::{params, Connection, TransactionBehavior};
-use skiff_core::{
-    session::{Role, SessionInfo},
-    state,
-};
+use anyhow::Result;
+use rusqlite::Connection;
 
-use crate::{print, resolve, sessions, LedgerCmd};
+use crate::LedgerCmd;
 pub use skiff_client::ledger::{path, Row, GRAND};
-use skiff_client::ledger::{gen, heads, mark_live, roll_up, rows, GONE, INTERRUPTED};
 
 mod commands;
 mod paths;
@@ -21,19 +16,32 @@ mod read;
 mod schema;
 mod write;
 
-use schema::NOW;
-use paths::{label, make_work_folder, new_uid, result_in, work_folder};
 pub use paths::results_dir;
-use write::*;
-pub use write::{claim, Caller, SendOpts};
-pub use read::{close_gone, gone_unreported, handed_back, handoffs_ready, open_tasks, plan_tasks, unreported};
-use read::{container, head, join, keep, live, one, pane, print_one, print_rows, project_of, rank, state, sweep, top, tree, under, View};
+use paths::{label, make_work_folder, new_uid, result_in, work_folder};
+pub use read::{
+    close_gone, gone_unreported, handed_back, handoffs_ready, open_tasks, plan_tasks, unreported,
+};
 #[cfg(test)]
 use read::{close_gone_in, handoffs_ready_in, open_tasks_at, unreported_at};
+use schema::NOW;
 #[cfg(test)]
 use schema::{OWNER, TASKS, UIDS};
 #[cfg(test)]
 use skiff_client::ledger::{OPEN, VERSION, WORKING};
+pub use write::claim;
+use write::*;
+#[cfg(test)]
+use read::{container, keep, one, rank, tree, View};
+#[cfg(test)]
+use rusqlite::params;
+#[cfg(test)]
+use skiff_client::ledger::{heads, mark_live, roll_up, rows, GONE};
+#[cfg(test)]
+use skiff_core::session::SessionInfo;
+#[cfg(test)]
+use skiff_core::state;
+#[cfg(test)]
+use std::path::PathBuf;
 
 fn open() -> Result<Connection> {
     schema::open()

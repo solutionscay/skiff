@@ -53,6 +53,17 @@ A full test run uses too much CPU and takes too long. Run it only at release tim
 - The host-boundary check (`python3 scripts/host-boundary/check.py`) runs on v2 merges, as
   before. It is fast.
 
+## Rust imports
+
+A child module names its own imports. It does not write `use super::*;`.
+
+- Import external items from their source: `use std::path::Path;`, `use anyhow::Result;`.
+- Import items of the parent facade or a sibling by name: `use super::{Name, other};`.
+- Do not add an import to a facade only for its children. A facade imports what its own code uses.
+- A `tests` module may write `use super::*;`. A facade import that only tests use has `#[cfg(test)]`.
+
+Why: a reader sees where each name comes from, and a child no longer breaks when the facade drops an import.
+
 ## Development
 
 See the README's [Development](README.md#development) section for build and run

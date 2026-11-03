@@ -1,6 +1,9 @@
 //! Reading the screen for an agent's prompt, its busy line, the input box and the title state.
-
-use super::*;
+use super::terminal::Screen;
+use alacritty_terminal::grid::Dimensions;
+use alacritty_terminal::index::{Column, Line};
+use alacritty_terminal::term::cell::{Cell, Flags};
+use serde::{Deserialize, Serialize};
 
 impl Screen {
     /// The last `n` rows of the screen that hold text, joined, in lower case
