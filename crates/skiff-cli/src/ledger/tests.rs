@@ -1078,6 +1078,14 @@ fn a_hand_off_is_ready_when_it_has_tasks_and_all_are_done() {
     set(&db, &a, "done");
     insert(&mut db, &file, sub("pending")).unwrap();
     assert!(ready(&db).is_empty());
+    // A plan under the hand-off: its own state is ignored, its tasks count.
+    db.execute("UPDATE tasks SET state = 'done' WHERE kind = 'task'", []).unwrap();
+    let (_, plan, _, _) = insert(&mut db, &file, New { plan: true, pane_id: None, parent: Some(h.clone()), owner: "web".into(), ..task("p") }).unwrap();
+    assert_eq!(ready(&db), [h.clone()]);
+    let (_, inner, _, _) = insert(&mut db, &file, New { parent: Some(plan), owner: "web".into(), ..task("in") }).unwrap();
+    assert!(ready(&db).is_empty());
+    set(&db, &inner, "done");
+    assert_eq!(ready(&db), [h.clone()]);
     // Done: no longer open.
     db.execute("UPDATE tasks SET state = 'done'", []).unwrap();
     assert!(ready(&db).is_empty());

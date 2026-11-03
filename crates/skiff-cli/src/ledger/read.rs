@@ -126,7 +126,8 @@ pub fn handed_back() -> Result<Vec<Row>> {
     rows(&super::open_at(&file)?, "WHERE kind = 'handoff' AND state = 'done' AND gone_at IS NULL AND reported_at IS NULL", None)
 }
 
-/// The open hand-offs with at least one task, every task done: the project
+/// The open hand-offs with at least one task, every task done (tasks in a
+/// plan under the hand-off count; a plan row's own state does not): the project
 /// or fleet Skipper has only to report them. `skiff watch` tells that
 /// Skipper once. No `ledger.db` yet gives none.
 pub fn handoffs_ready() -> Result<Vec<Row>> {
@@ -141,8 +142,8 @@ pub(super) fn handoffs_ready_in(db: &Connection) -> Result<Vec<Row>> {
     rows(
         db,
         "WHERE kind = 'handoff' AND state IN ('sent', 'pending', 'blocked') AND gone_at IS NULL
-         AND EXISTS (SELECT 1 FROM tasks t WHERE t.parent = tasks.uid AND t.kind IN ('task', 'handoff'))
-         AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.parent = tasks.uid AND t.state <> 'done')",
+         AND EXISTS (SELECT 1 FROM tasks t WHERE t.kind = 'task' AND (t.parent = tasks.uid OR t.parent IN (SELECT p.uid FROM tasks p WHERE p.kind = 'plan' AND p.parent = tasks.uid)))
+         AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.kind = 'task' AND t.state <> 'done' AND (t.parent = tasks.uid OR t.parent IN (SELECT p.uid FROM tasks p WHERE p.kind = 'plan' AND p.parent = tasks.uid)))",
         None,
     )
 }
