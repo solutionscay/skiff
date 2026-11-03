@@ -16,7 +16,7 @@ import { step, tally } from "../diagnostics/stalls";
 import { t } from "../i18n";
 import { renderSkippers, renderViewToggle, skippersOn } from "./skippersView";
 import { anchorOf, keepAnchor, restoreFocus, type Caret } from "./sidebarFocus";
-import { applyLook, look, sessionBlock } from "./sessionRows";
+import { applyLook, look, sessionBlock, setChildren } from "./sessionRows";
 import { projectSkipperRow, skiffAgentRow, skipperSig, syncSkipperRow } from "./skipperRows";
 import { AGENT_BLOCK, OTHER_BLOCK, OUTSIDE_BLOCK, listGeneration, outsideSig, projectBlockKey, sidebarSig } from "./sidebarSig";
 import { bareBlock, projectBlock, worktreeBlock } from "./projectRows";
@@ -29,21 +29,6 @@ let blockSigs = new Map<string, string>();
 /** The blocks the last render drew, by the same keys, and each section's rows. */
 let blocks = new Map<string, HTMLElement>();
 const sectionKids = new Map<string, HTMLElement>();
-
-/**
- * Puts `nodes` in `parent` in order. Kept nodes stay where they are: a node
- * taken out and put back loses its style and restarts its animations.
- * `before` runs first when anything moves.
- */
-function setChildren(parent: HTMLElement, nodes: HTMLElement[], before: () => void) {
-  if (parent.children.length === nodes.length && nodes.every((n, i) => parent.children[i] === n)) return;
-  before();
-  const want = new Set<Node>(nodes);
-  for (const c of [...parent.children]) if (!want.has(c)) c.remove();
-  nodes.forEach((n, i) => {
-    if (parent.children[i] !== n) parent.insertBefore(n, parent.children[i] ?? null);
-  });
-}
 
 export function renderSidebar() {
   const side = $<HTMLElement>("sidebar-scroll");
@@ -94,9 +79,10 @@ export function renderSidebar() {
   // The block drawn last time when what it shows is the same, else a new one.
   const next = new Map<string, HTMLElement>();
   const sigs = new Map<string, string>();
-  const keep = (key: string, sig: string, build: () => HTMLElement) => {
+  // A block drawn again gets the old one: its session rows that still fit stay (sessionBlock).
+  const keep = (key: string, sig: string, build: (old?: HTMLElement) => HTMLElement) => {
     const old = blocks.get(key);
-    const el = old && blockSigs.get(key) === sig ? old : (tally("sidebar.block"), takeAnchor(), build());
+    const el = old && blockSigs.get(key) === sig ? old : (tally("sidebar.block"), takeAnchor(), build(old));
     next.set(key, el);
     sigs.set(key, sig);
     return el;
@@ -134,7 +120,7 @@ export function renderSidebar() {
       : [];
     const shownSig = split ? JSON.stringify([listGeneration(), appliedTheme(), S.selection, S.renamingSession, split.shown.map((x) => [x.id, x.state, x.unread, x.exit_code, x.agent_exit, taskTitle(x), agentName(x), agentKind(x), place(x)?.project.name])]) : "";
     setChildren(kids, [...skipperRow, ...(split
-      ? split.shown.length ? [keep(`shown:${sec.fleet}`, shownSig, () => shownBlock(split.shown))] : []
+      ? split.shown.length ? [keep(`shown:${sec.fleet}`, shownSig, (old) => shownBlock(split.shown, old))] : []
       : sec.projects.map((p) => {
         const k = projectBlockKey(p.name);
         const block = keep(k, sig.parts.get(k)!, () => projectBlock(p, index));
@@ -144,8 +130,9 @@ export function renderSidebar() {
           const prefix = [...kids.children].filter((el) => !(el as HTMLElement).dataset.worktreeBlock) as HTMLElement[];
           const worktrees = p.worktrees.map((w) => {
             const wk = `worktree:${p.name}:${w.path}`;
-            return keep(wk, sig.parts.get(wk)!, () => {
-              const body = bare === w ? bareBlock(p, w, index) : worktreeBlock(p, w, w.path === selectedWorktree.get(p.name), accent(p), index);
+            return keep(wk, sig.parts.get(wk)!, (old) => {
+              const rows = old?.querySelector<HTMLElement>(":scope > .sessions-block, :scope > .wt-body > .sessions-block") ?? undefined;
+              const body = bare === w ? bareBlock(p, w, index, rows) : worktreeBlock(p, w, w.path === selectedWorktree.get(p.name), accent(p), index, rows);
               body.dataset.worktreeBlock = w.path;
               return body;
             });
@@ -166,12 +153,12 @@ export function renderSidebar() {
   if (outside.length) {
     nodes.push(keep(`${OUTSIDE_BLOCK}-head`, "", outsideHead));
     const outsideKey = JSON.stringify([listGeneration(), appliedTheme(), S.selection, S.renamingSession, outsideSig()]);
-    nodes.push(keep(OUTSIDE_BLOCK, outsideKey, () => outsideBlock(outside)));
+    nodes.push(keep(OUTSIDE_BLOCK, outsideKey, (old) => outsideBlock(outside, old)));
   }
   // Sessions whose folder is in no project.
   if (worktreeLines(null, index).length) {
     nodes.push(keep(`${OTHER_BLOCK}-head`, "", otherHead));
-    nodes.push(keep(OTHER_BLOCK, sig.parts.get(OTHER_BLOCK)!, () => sessionBlock(worktreeLines(null, index), DEFAULT_ACCENT)));
+    nodes.push(keep(OTHER_BLOCK, sig.parts.get(OTHER_BLOCK)!, (old) => sessionBlock(worktreeLines(null, index), DEFAULT_ACCENT, old)));
   }
   setChildren(side, nodes, takeAnchor);
   // Rows in kept blocks take the new state of their session.

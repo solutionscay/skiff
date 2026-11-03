@@ -87,15 +87,16 @@ export function projectBlock(p: Project, index: LineIndex): HTMLElement {
   return block;
 }
 
-export function bareBlock(p: Project, w: Worktree, index: LineIndex): HTMLElement {
+/** `rows`: the session block drawn last time, whose rows stay. */
+export function bareBlock(p: Project, w: Worktree, index: LineIndex, rows?: HTMLElement): HTMLElement {
   const body = h("div", "wt-body tree-bare");
-  body.appendChild(sessionBlock(worktreeLines(w, index), accent(p)));
+  body.appendChild(sessionBlock(worktreeLines(w, index), accent(p), rows));
   if (showsChanges(p)) { const changes = changesBlock(w); if (changes) body.appendChild(changes); }
   if (showsFiles(p)) body.appendChild(filesBlock(w));
   return body;
 }
 
-export function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string, index: LineIndex): HTMLElement {
+export function worktreeBlock(p: Project, w: Worktree, selected: boolean, color: string, index: LineIndex, rows?: HTMLElement): HTMLElement {
   const block = h("div", "wt" + (selected ? " selected" : ""));
   block.style.setProperty("--pc", color);
 
@@ -147,7 +148,7 @@ export function worktreeBlock(p: Project, w: Worktree, selected: boolean, color:
     // and goes would move the whole tree.
     const body = h("div", "wt-body");
     body.dataset.kids = w.path;
-    body.appendChild(sessionBlock(lines, color));
+    body.appendChild(sessionBlock(lines, color, rows));
     if (changes) body.appendChild(changes);
     if (showsFiles(p)) body.appendChild(filesBlock(w));
     block.appendChild(body);
