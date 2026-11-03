@@ -63,7 +63,7 @@ import { matchText, sinceText } from "./missionControl/model";
 import * as T from "./missionControl/terminal";
 import { placeGraph, route } from "./missionControl/grid";
 import { clearConnectors, drawConnectors, type Link, mountConnectors } from "./missionControl/connectors";
-import { stateParts } from "./missionControl/state";
+import { indexLedger, type LedgerIndex, stateParts } from "./missionControl/state";
 
 /** Rows of text in the panel's screen. */
 const ROWS = 12;
@@ -261,6 +261,8 @@ interface Model {
   strs: Str[];
   /** The sessions the search leaves. `null`: no search. */
   found: Set<string> | null;
+  /** The open ledger rows by owner and pane, once per draw, for the windows and the panel. */
+  idx: LedgerIndex;
 }
 
 /** The Skipper whose rows these are: Admiral for `grand`, else the session with that scope. */
@@ -327,10 +329,10 @@ function model(): Model {
     if (!from || !sess.has(from.id) || from.id === r.pane_id) continue;
     strs.push({ from: from.id, to: r.pane_id, label: r.kind === "handoff" ? ledgerTitle(r) : "" });
   }
-  return { g, sess, projects, members, rows, strs, found };
+  return { g, sess, projects, members, rows, strs, found, idx: indexLedger(ledger) };
 }
 
-let m: Model = { g: { admiral: null, fleets: [], projects: [] }, sess: new Map(), projects: new Map(), members: new Map(), rows: new Map(), strs: [], found: null };
+let m: Model = { g: { admiral: null, fleets: [], projects: [] }, sess: new Map(), projects: new Map(), members: new Map(), rows: new Map(), strs: [], found: null, idx: indexLedger([]) };
 let placed: G.Placed = { cards: new Map(), clusters: new Map(), plans: [], rungs: new Map(), at: new Map(), trunk: null };
 
 // ---- Cards and clusters ----
@@ -473,7 +475,7 @@ function draw() {
     if (rung) {
       const w = T.windowOf(cards.get(id)!, rung, s);
       refill(w.head, T.windowHead(s, cardName(s), numbered.indexOf(id) + 1));
-      refill(w.state, stateParts(s, now));
+      refill(w.state, stateParts(s, now, m.idx));
     }
     const label2 = t("mission.tileLabel", { title: cardName(s), state: stateLabel(s) });
     if (cards.get(id)!.getAttribute("aria-label") !== label2) cards.get(id)!.setAttribute("aria-label", label2);
@@ -832,7 +834,7 @@ function drawPanel() {
   const parts: HTMLElement[] = [];
   const r = m.rows.get(s.id);
   if (s.coordinator || !!s.skipper) {
-    const hos = ledgerRows().filter((x) => x.bucket !== "finished" && x.kind === "handoff" && (s.coordinator ? x.state !== "done" : x.pane_id === s.id));
+    const hos = s.coordinator ? m.idx.open : (m.idx.handoffs.get(s.id) ?? []);
     parts.push(sideHead(t("mission.handoffsHead"), String(hos.length)));
     if (!hostCan("ledger")) parts.push(h("div", "mission-task none", t("mission.noLedger")));
     else if (!hos.length) parts.push(h("div", "mission-task none", t("mission.noneDot")));

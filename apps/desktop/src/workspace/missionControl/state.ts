@@ -17,7 +17,7 @@ import { hostCan } from "../../app/hostCaps";
 import { sessions } from "../../app/state";
 import { h } from "../../ui/dom";
 import { type MessageKey, locale, t, tn } from "../../i18n";
-import { ledgerRows, ledgerTitle } from "../ledger";
+import { type Entry, ledgerTitle } from "../ledger";
 import { sinceAt, sinceText } from "./model";
 
 /** waiting_cause (#226) in plain words. A cause this page does not know shows no detail. */
@@ -39,8 +39,34 @@ function detail(s: SessionInfo, now: number): string {
   return "";
 }
 
-/** The three lines, for `refill`. */
-export function stateParts(s: SessionInfo, now: number): HTMLElement[] {
+/** The open ledger rows, indexed once per draw: tasks by owner, hand-offs by pane, and every open hand-off. */
+export interface LedgerIndex {
+  tasks: Map<string, Entry[]>;
+  handoffs: Map<string, Entry[]>;
+  open: Entry[];
+}
+
+/** Indexes `rows`: what is not finished and not done. */
+export function indexLedger(rows: readonly Entry[]): LedgerIndex {
+  const idx: LedgerIndex = { tasks: new Map(), handoffs: new Map(), open: [] };
+  const put = (map: Map<string, Entry[]>, key: string, r: Entry) => {
+    const list = map.get(key);
+    if (list) list.push(r);
+    else map.set(key, [r]);
+  };
+  for (const r of rows) {
+    if (r.bucket === "finished" || r.state === "done") continue;
+    if (r.kind === "task") put(idx.tasks, r.owner, r);
+    else if (r.kind === "handoff") {
+      idx.open.push(r);
+      if (r.pane_id) put(idx.handoffs, r.pane_id, r);
+    }
+  }
+  return idx;
+}
+
+/** The three lines, for `refill`. `idx`: the board's ledger index for this draw. */
+export function stateParts(s: SessionInfo, now: number, idx: LedgerIndex): HTMLElement[] {
   const line = (cls: string, text: string) => {
     const el = h("span", cls, text);
     el.title = text;
@@ -49,10 +75,8 @@ export function stateParts(s: SessionInfo, now: number): HTMLElement[] {
   const d = detail(s, now);
   const word = line(`st ${s.state}`, d ? `${t(STATE[s.state])} · ${d}` : t(STATE[s.state]));
   if (!hostCan("ledger")) return [word, line("task none", t("mission.win.noLedger"))];
-  const owner = s.coordinator ? "grand" : s.skipper;
-  const open = ledgerRows().filter((r) => r.bucket !== "finished" && r.state !== "done");
-  const tasks = open.filter((r) => r.kind === "task" && r.owner === owner);
-  const handoffs = open.filter((r) => r.kind === "handoff" && (s.coordinator || r.pane_id === s.id));
+  const tasks = idx.tasks.get(s.coordinator ? "grand" : (s.skipper ?? "")) ?? [];
+  const handoffs = s.coordinator ? idx.open : (idx.handoffs.get(s.id) ?? []);
   const current = (s.coordinator ? null : handoffs[0]) ?? tasks[0];
   const task = line(`task${current ? "" : " none"}`, current ? ledgerTitle(current) : t("mission.win.noTask"));
   const waits = tasks.filter((r) => r.pane_id && sessions.get(r.pane_id)?.state === "waiting").length;

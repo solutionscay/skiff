@@ -957,7 +957,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "3dc987198c5a27c051dfd20416bf280cfaa177ee9a5aee6229973a2d1705a132"
+    "sha256": "6ea56a0593412f1b4e6adb5768bd208bb32b40d96b168d314f987a0bbadf6034"
   },
   "apps/desktop/src/workspace/missionControl/model.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -975,7 +975,7 @@
       "local provider: apps/desktop/src/workspace/ledger.ts",
       "local provider: apps/desktop/src/workspace/missionControl/model.ts"
     ],
-    "sha256": "bb08ca4238c430959fdf72be78980f9942cd357041b6593495ffde7d70bac2bb"
+    "sha256": "0360f4bd343b11de65f75c2996c11a4a7b46108a285687e9ccc3faa82c838e52"
   },
   "apps/desktop/src/workspace/missionControl/terminal.ts": {
     "ownership": "client policy: exact existing adapter only",
