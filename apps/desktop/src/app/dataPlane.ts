@@ -10,7 +10,7 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 
-export interface DataStatus {
+interface DataStatus {
   ready: boolean;
   /** No live session plane: the data plane was not tried. */
   waiting: boolean;

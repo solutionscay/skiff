@@ -178,7 +178,7 @@ export const describeText = (key: MessageKey) => t(key, { "skiff-agent": skiffAg
 /** What the action does, for the shortcut sheet. Each action has a `key.<action>` line in the catalog. */
 export const describe = (action: Action) => describeText(`key.${action}`);
 
-export type KeySection = "file" | "edit" | "project" | "view" | "help";
+type KeySection = "file" | "edit" | "project" | "view" | "help";
 
 /** The shortcut sheet's sections for the actions. Grouped as the menu bar is. */
 export const DESCRIBE: [KeySection, Action][] = [

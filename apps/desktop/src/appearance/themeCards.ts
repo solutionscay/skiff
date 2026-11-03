@@ -65,7 +65,7 @@ export interface ThemeFilters {
 
 const pickerFilters: ThemeFilters = { query: "", family: null };
 
-export interface CardOpts {
+interface CardOpts {
   /** The id shown as active. */
   active: string | null;
   pick: (id: string | null) => void;

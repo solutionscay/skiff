@@ -11,7 +11,7 @@ import type { DaemonMetrics, DaemonStatus, SessionInfo } from "../platform/types
 import { abandonShip, emptyPick, keepLive, moveTo, type Pick, pickAll, picked, pickedText, pickRow, sinkLabel } from "./sessionPick";
 import { type MessageKey, t, tn, upper } from "../i18n";
 
-export interface ActivityState { list: SessionInfo[]; metrics: DaemonMetrics | null; version: string | null; error: string | null; timer: number | null; pick: Pick; }
+interface ActivityState { list: SessionInfo[]; metrics: DaemonMetrics | null; version: string | null; error: string | null; timer: number | null; pick: Pick; }
 export const activityState = (): ActivityState => ({ list: [], metrics: null, version: null, error: null, timer: null, pick: emptyPick() });
 const bytes = (n: number) => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
 const folder = (path: string) => {
@@ -28,7 +28,7 @@ const age = (at: number, zero = false) => {
   return t("activity.days", { n: Math.floor(seconds / 86400) });
 };
 
-export async function refreshActivity(s: ActivityState, redraw: () => void) {
+async function refreshActivity(s: ActivityState, redraw: () => void) {
   try {
     const [list, metrics, status] = await Promise.all([
       hostInvoke<SessionInfo[]>("session_inventory", "list_sessions"),

@@ -12,7 +12,7 @@ import { editField, fieldEditKey, textField } from "../ui/fieldClipboard";
 import { type MessageKey, t, tn } from "../i18n";
 
 /** A folder's contents, as `agent_folder::Counts` sends them. */
-export interface FolderCounts {
+interface FolderCounts {
   tasks: number;
   open: number;
   done: number;
@@ -68,7 +68,7 @@ export function size(n: number): string {
 }
 
 /** "3 tasks, 2 open · 3 results, 1.2 KB". */
-export function countsLine(c: FolderCounts): string {
+function countsLine(c: FolderCounts): string {
   return t("folder.counts", { tasks: tn("folder.tasks", c.tasks), open: c.open, results: tn("folder.results", c.results), size: size(c.bytes) });
 }
 

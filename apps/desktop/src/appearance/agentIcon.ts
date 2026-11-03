@@ -4,7 +4,7 @@ import { ownTheme, signatureColor } from "./themes";
 import { basename } from "../workspace/model";
 import { svg } from "../ui/icons";
 
-export type AgentKind = "claude" | "codex" | "gemini" | "grok" | "opencode" | "hermes" | "shell" | "other";
+type AgentKind = "claude" | "codex" | "gemini" | "grok" | "opencode" | "hermes" | "shell" | "other";
 
 const BY_PROGRAM: Record<string, AgentKind> = {
   claude: "claude",

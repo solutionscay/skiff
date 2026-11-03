@@ -21,7 +21,7 @@ import { locale, t, tn } from "../i18n";
 export const DEFAULT_NAME = "Admiral";
 
 /** The role word: the old default name, and the tail of a project or fleet Skipper's session name. */
-export const SKIPPER_WORD = "Skipper";
+const SKIPPER_WORD = "Skipper";
 
 /** The main Skipper's name from a stored one: Admiral when none is set. */
 export const mainName = (stored: string | null | undefined) => {
@@ -75,7 +75,7 @@ export interface TaskType {
 }
 
 /** One instruction file: AGENTS.md, the base of every Skipper, or the SKIPPER.md of a fleet or a project. */
-export type InstructionScope = { kind: "skipper" } | { kind: "fleet" | "project" | "type"; name: string };
+type InstructionScope = { kind: "skipper" } | { kind: "fleet" | "project" | "type"; name: string };
 
 /** A row of Settings › Skippers › Instructions. */
 export interface InstructionFile {
@@ -462,7 +462,7 @@ export function openWatchLog() {
  */
 export type WatchState = "runs" | "failed" | "missing" | "starting" | "unknown";
 
-export function watchMark(s: SessionInfo | null, protocol: number | null, lastAsk: number, now: number): WatchState {
+function watchMark(s: SessionInfo | null, protocol: number | null, lastAsk: number, now: number): WatchState {
   if (!s || s.state === "done" || protocol === null || protocol < 27) return "unknown";
   if (s.watch) return s.watch.failure ? "failed" : "runs";
   return now - lastAsk < WATCH_GRACE ? "starting" : "missing";
@@ -523,7 +523,7 @@ export function projectWatch(s: SessionInfo): { state: WatchState; text: string 
 }
 
 /** A project or fleet Skipper's session name: its project or fleet, then the Skipper word ("gesher Skipper", "Harbor Skipper"). */
-export function projectSkipperName(s: SessionInfo): string {
+function projectSkipperName(s: SessionInfo): string {
   return `${scopeName(skipperProject(s) ?? s.skipper ?? "")} ${skipperWord()}`;
 }
 

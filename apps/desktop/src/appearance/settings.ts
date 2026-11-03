@@ -32,7 +32,7 @@ import { S } from "../app/state";
  * Settings over the sidebar and terminal: agents, Skippers, task types,
  * appearance, language, Open with, images, disk use and Hosts.
  */
-export interface AppearanceHooks {
+interface AppearanceHooks {
   themes: () => TerminalTheme[];
   /** A theme id, or null for the default Foot theme. */
   current: () => string | null;

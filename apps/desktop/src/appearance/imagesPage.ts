@@ -15,7 +15,7 @@ import { size } from "./skiffFolderDialog";
 import { t, tn, upper } from "../i18n";
 
 /** The page's state. It survives every redraw of Settings. */
-export interface ImagesState {
+interface ImagesState {
   query: string;
   /** Selected paths. */
   sel: Set<string>;

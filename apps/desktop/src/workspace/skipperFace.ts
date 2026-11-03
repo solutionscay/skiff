@@ -53,7 +53,7 @@ const projectOf = (scope: string) => S.projects.find((p) => p.name === scope) ??
  * Each face resolves its own Skipper and sets --pc on itself, so it never
  * takes the focused pane's theme or a color an ancestor sets.
  */
-export function faceColor(scope: string | null): string {
+function faceColor(scope: string | null): string {
   const s = scope === null ? skiffAgentSession() : projectSkipperOf(scope);
   const t = s && (s.theme || place(s)) ? S.themes.find((x) => x.id === themeIdFor(s)) : appThemeOf(scope === null ? null : projectOf(scope));
   const own = t ?? S.themes.find((x) => x.id === DEFAULT_THEME);

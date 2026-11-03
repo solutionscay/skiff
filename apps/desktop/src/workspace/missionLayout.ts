@@ -24,7 +24,7 @@ export type Rung = "admiral" | "fleet" | "project";
 const win = (face: number) => ({ w: 3 * face + 17, h: face + 40, face });
 export const WINDOW: Record<Rung, { w: number; h: number; face: number }> = { admiral: win(88), fleet: win(72), project: win(56) };
 /** The window's header, with the 1px frame above it. */
-export const WIN_HEAD = 24;
+const WIN_HEAD = 24;
 
 export interface GPlan {
   uid: string;
@@ -42,7 +42,7 @@ export interface GProject {
   cards: string[];
   plans: GPlan[];
 }
-export interface GFleet {
+interface GFleet {
   /** `fleet:<name>`. */
   key: string;
   name: string;
@@ -62,10 +62,10 @@ export interface Rect {
   w: number;
   h: number;
 }
-export interface Cluster extends Rect {
+interface Cluster extends Rect {
   fleet: boolean;
 }
-export interface PlanBox extends Rect {
+interface PlanBox extends Rect {
   key: string;
   plan: GPlan;
 }

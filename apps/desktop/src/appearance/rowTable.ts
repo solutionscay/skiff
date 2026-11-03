@@ -34,7 +34,7 @@ import { t } from "../i18n";
 export type Draft = Record<string, string>;
 
 /** One column. `key` names the field in the draft and in edits. */
-export interface RowCol<R> {
+interface RowCol<R> {
   key: string;
   /** Column header text. Empty for the lead column. */
   head: string;
@@ -71,7 +71,7 @@ export interface RowCol<R> {
  * A table's own words. Each is a whole phrase from the catalog, so a language
  * puts the noun, its article and its gender where it needs them.
  */
-export interface TableWords {
+interface TableWords {
   /** "Add agent": the draft's button. */
   add: string;
   /** "New agent": the draft row, and the start of its field labels. */
@@ -90,7 +90,7 @@ export interface TableWords {
   dupHint: string;
 }
 
-export type TableKind = "agent" | "file" | "taskType";
+type TableKind = "agent" | "file" | "taskType";
 
 /** The words of a table from the catalog: `table.<kind>.*`. */
 export const tableWords = (k: TableKind): TableWords => ({
@@ -104,7 +104,7 @@ export const tableWords = (k: TableKind): TableWords => ({
   dupHint: t(`table.${k}.dupHint`),
 });
 
-export interface RowTableSpec<R> {
+interface RowTableSpec<R> {
   /** Grid class: "g-agents", "g-tasks". Also names the table in the DOM. */
   grid: string;
   /** What the table holds, in whole phrases: see `tableWords()`. */
@@ -161,7 +161,7 @@ export function sectionHead(title: string, id?: string, count?: string): HTMLEle
 export const tableState = (): RowTableState => ({ draft: {}, error: null, bad: null, pending: null, done: null });
 
 /** What the line under the draft says. "hidden": nothing. "error" is an alert, the others are polite. */
-export type LineKind = "hidden" | "incomplete" | "check" | "ready" | "adding" | "added" | "blocked" | "error";
+type LineKind = "hidden" | "incomplete" | "check" | "ready" | "adding" | "added" | "blocked" | "error";
 
 const FIELDS = new Set(["key", "text", "select"]);
 
@@ -444,7 +444,7 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
 }
 
 /** The draft as it would be sent: trimmed, and empty where a cell shows a note. */
-export function draftValues<R>(spec: RowTableSpec<R>, state: RowTableState): { d: Draft; shown: (c: RowCol<R>) => boolean } {
+function draftValues<R>(spec: RowTableSpec<R>, state: RowTableState): { d: Draft; shown: (c: RowCol<R>) => boolean } {
   const d: Draft = {};
   for (const c of spec.cols) d[c.key] = draftValue(c, state).trim();
   const shown = (c: RowCol<R>) => c.note?.(null, d) == null;
@@ -464,7 +464,7 @@ function draftValue<R>(c: RowCol<R>, state: RowTableState): string {
 }
 
 /** True when a draft field differs from its starting value. */
-export function draftDirty<R>(spec: RowTableSpec<R>, state: RowTableState): boolean {
+function draftDirty<R>(spec: RowTableSpec<R>, state: RowTableState): boolean {
   return spec.cols.some((c) => FIELDS.has(c.kind) && draftValue(c, state) !== initialOf(c));
 }
 
@@ -490,7 +490,7 @@ function fieldWords<R>(spec: RowTableSpec<R>, c: RowCol<R>): string {
 }
 
 /** The kind and the text of the line under the draft. */
-export function draftLine<R>(spec: RowTableSpec<R>, state: RowTableState): { kind: LineKind; text: string } {
+function draftLine<R>(spec: RowTableSpec<R>, state: RowTableState): { kind: LineKind; text: string } {
   const add = spec.words.add;
   if (state.pending !== null) return { kind: "adding", text: t("table.addingName", { name: state.pending }) };
   if (state.error) return { kind: "error", text: state.error };

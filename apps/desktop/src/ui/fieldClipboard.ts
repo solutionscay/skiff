@@ -10,8 +10,8 @@
 import { copyText, pasteText } from "../platform/clipboard";
 import { showError } from "./alerts";
 
-export type FieldEdit = "copy" | "cut" | "paste" | "select-all";
-export type TextField = HTMLInputElement | HTMLTextAreaElement;
+type FieldEdit = "copy" | "cut" | "paste" | "select-all";
+type TextField = HTMLInputElement | HTMLTextAreaElement;
 
 /** Input types that hold plain text. A password field does not give its text to the clipboard. */
 const TEXT_INPUTS = new Set(["text", "search", "url", "email", "tel"]);
@@ -24,7 +24,7 @@ export function textField(el: Element | null): TextField | null {
 }
 
 /** Text for a one-line field: a trailing line break goes, and the other line breaks become spaces. */
-export function oneLine(text: string): string {
+function oneLine(text: string): string {
   return text.replace(/(\r\n|\r|\n)+$/, "").replace(/\r\n|\r|\n/g, " ");
 }
 

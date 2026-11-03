@@ -22,7 +22,7 @@ const savedFolds = storedSet("skiff.tree.folded");
  * its own folds. A user fold goes to `fold`; an automatic open (the session
  * on screen moved into a folded row) goes to `autoOpen` and is no edit.
  */
-export interface TreeView {
+interface TreeView {
   shows(p: Project): boolean;
   isFolded(key: string): boolean;
   fold(key: string, folded: boolean): void;

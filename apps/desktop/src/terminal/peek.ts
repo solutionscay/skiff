@@ -49,7 +49,7 @@ import { diffBody, diffState } from "./diffView";
 import { fileBody } from "./fileView";
 
 /** Where to find tools for a row that has none. */
-export const TOOLS_URL = "https://github.com/solutionscay/skiff/wiki/Open-with";
+const TOOLS_URL = "https://github.com/solutionscay/skiff/wiki/Open-with";
 
 /** A command that has not taken the terminal by now is an app with its own window. */
 const APP_AFTER_MS = 3000;
@@ -328,7 +328,7 @@ const failed = (mine: number) => (e: unknown) => (live(mine) ? showError(e) : co
  * Closes the peek and ends its tool. A card under it stays; without one, the
  * preview closes. `hold`: the command runs on hidden, as an app may.
  */
-export function closePeek(hold = false) {
+function closePeek(hold = false) {
   const p = open;
   if (!p) return;
   const hadKeys = keysIn(p.el) || !!card?.contains(document.activeElement);

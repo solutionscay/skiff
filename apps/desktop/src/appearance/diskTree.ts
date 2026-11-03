@@ -67,7 +67,7 @@ export function canFlush(n: DiskNode): number {
 }
 
 /** Every file under `n` is stale, and `n` is not one of Skiff's folders. */
-export function allStale(n: DiskNode): boolean {
+function allStale(n: DiskNode): boolean {
   if (n.frame) return false;
   return kids(n).length ? kids(n).every(allStale) : stale(n);
 }
@@ -122,13 +122,13 @@ const WHY: Record<string, MessageKey> = {
 const why = (code: string) => (WHY[code] ? t(WHY[code]) : code);
 
 /** "Stale · done", "In use · changed 4 min ago". */
-export function verdictText(v: Verdict, now: number): string {
+function verdictText(v: Verdict, now: number): string {
   const reason = v.why === "changed" && v.changed !== undefined ? t("disk.changedAgo", { ago: ago(v.changed, now) }) : why(v.why);
   return `${t(WORD[v.kind])} · ${reason}`;
 }
 
 /** A reason group in the dialog: in use, held and protected group by why, stale too. */
-export function groupName(v: Verdict): string {
+function groupName(v: Verdict): string {
   if (v.why === "changed") return t(v.kind === "use" ? "disk.group.useChanged" : "disk.group.heldChanged");
   return `${t(WORD[v.kind])} · ${why(v.why)}`;
 }

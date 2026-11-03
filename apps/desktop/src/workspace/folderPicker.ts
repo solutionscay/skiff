@@ -24,7 +24,7 @@ const placeLabel = (label: string) =>
   label === "Home" ? t("picker.home") : label === "Recent" ? t("picker.recent") : label === "Git repos" ? t("picker.repos") : label;
 
 /** What the primary button does for a folder when it is not the plain pick. */
-export interface PickVerdict {
+interface PickVerdict {
   /** The primary button's label, such as "Initialize repository…". */
   label: string;
   /** One line under the list that says why. */
@@ -33,7 +33,7 @@ export interface PickVerdict {
   run: () => Promise<boolean>;
 }
 
-export interface PickerUse {
+interface PickerUse {
   /** The primary button: "Add project", "Start here". */
   action: string;
   /** Checks the highlighted folder. `null`: the primary button picks it. */
@@ -59,7 +59,7 @@ function message(e: unknown): string {
  * The picker cannot open: the Host has no `folders@1`, or its projects
  * service is not reachable. Says so, with the fix. Answers true when it did.
  */
-export function pickerUnavailable(): boolean {
+function pickerUnavailable(): boolean {
   const host = hostName();
   if (S.dataState === "unavailable") {
     showError(t("picker.noService", { host }), {

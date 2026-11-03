@@ -19,7 +19,7 @@ export type Preview =
   /** `local: false`: a remote Host's folder, with no file manager here to show it in. */
   | { kind: "folder"; path: string; local?: boolean };
 
-export interface RowActs {
+interface RowActs {
   preview?: Preview;
   /** Space, Left and Right: open or close the row. */
   fold?: (open?: boolean) => void;

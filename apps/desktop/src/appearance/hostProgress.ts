@@ -25,7 +25,7 @@ type Progress =
 /** The step that switches to the new version: no Cancel from it on. */
 const SWITCH = 5;
 
-export interface RunDialog<T> {
+interface RunDialog<T> {
   id: string;
   /** Before the run: "Install Skiff on devbox?". */
   title: string;

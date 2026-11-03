@@ -234,7 +234,7 @@ function enter() {
   focusPane(S.focused!);
 }
 
-export function leaveModes() {
+function leaveModes() {
   S.focusMode = false;
   S.maximized = null;
   maxReturn.to = null;

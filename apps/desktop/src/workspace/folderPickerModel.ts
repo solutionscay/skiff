@@ -36,7 +36,7 @@ export function parentPath(path: string): string | null {
 }
 
 /** The child `name` of a Host folder. */
-export function childPath(dir: string, name: string): string {
+function childPath(dir: string, name: string): string {
   return `${dir.replace(/\/+$/, "")}/${name}`;
 }
 

@@ -175,7 +175,7 @@ export function startLedger() {
  * ". ", "; " or line break outside parentheses, and is cut at a space before
  * 80 characters. The row's ellipsis cuts the rest.
  */
-export function shortTitle(text: string): string {
+function shortTitle(text: string): string {
   const t = text.trim();
   let depth = 0;
   let end = t.length;

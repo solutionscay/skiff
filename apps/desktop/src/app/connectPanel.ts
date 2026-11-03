@@ -85,7 +85,7 @@ export function connectWait(ms: number): Promise<void> {
 }
 
 /** The raw lines, for a bug report. */
-export function connectOutput(): string {
+function connectOutput(): string {
   const out = lines.map((l) => `${secs(l.at)}  ${l.text}`);
   if (failed) out.push(failed.cause);
   return out.join("\n");

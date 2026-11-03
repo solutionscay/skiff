@@ -369,7 +369,7 @@ let stale: Set<string> | null = new Set();
  * outside Skiff: an agent's `git worktree add`, an editor's save. Without
  * `paths`, every project and every known worktree is read.
  */
-export function reposStale(paths?: Iterable<string>) {
+function reposStale(paths?: Iterable<string>) {
   if (!paths) stale = null;
   else if (stale) for (const p of paths) stale.add(p);
   window.clearTimeout(staleTimer);

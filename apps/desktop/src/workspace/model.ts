@@ -69,7 +69,7 @@ export function skipperBase(s: SessionInfo): string {
 
 /** What a project or fleet Skipper shows outside its block: "Skipper · gesher",
  *  "Skipper · Harbor". Derived, never typed: the row in the tree shows the name alone. */
-export function skipperTitle(s: SessionInfo): string {
+function skipperTitle(s: SessionInfo): string {
   return `${skipperBase(s)} · ${scopeName(s.skipper ?? "")}`;
 }
 

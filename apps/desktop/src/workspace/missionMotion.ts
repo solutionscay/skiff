@@ -92,7 +92,7 @@ function fade(from: number, to: number): Animation {
 }
 
 /** `after`: runs when the board covers the window, at the end of the open. */
-export async function openMission(after?: () => void) {
+async function openMission(after?: () => void) {
   if (preparing) return;
   settle();
   if (missionOpen()) return after?.();

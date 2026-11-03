@@ -8,7 +8,7 @@ import type { S as AppState } from "../../app/state";
 
 // ── Choice dialog ──────────────────────────────────────────────────────────
 
-export function trapTab(panel: HTMLElement, e: KeyboardEvent) {
+function trapTab(panel: HTMLElement, e: KeyboardEvent) {
   const stops = [...panel.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled)")];
   const i = stops.indexOf(document.activeElement as HTMLElement);
   stops[(i + (e.shiftKey ? -1 : 1) + stops.length) % stops.length]?.focus();

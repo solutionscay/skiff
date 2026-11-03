@@ -1,5 +1,5 @@
 /** Where a drop lands: the pane's nearest edge, or the whole area when none is shown. */
-export type Zone = "left" | "right" | "top" | "bottom" | "center";
+type Zone = "left" | "right" | "top" | "bottom" | "center";
 
 export interface DropTarget {
   /** The pane's session, or null for an empty terminal area. */

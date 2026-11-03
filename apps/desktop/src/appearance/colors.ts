@@ -37,7 +37,7 @@ export function readable(c: string, on: string[], ratio: number): string {
 }
 
 /** Hue in degrees, saturation and lightness from 0 to 1. */
-export function hsl(hex: string): [number, number, number] {
+function hsl(hex: string): [number, number, number] {
   const [r, g, b] = rgb(hex).map((v) => v / 255);
   const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
   if (!d) return [0, 0, l];

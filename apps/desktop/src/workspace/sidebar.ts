@@ -171,7 +171,7 @@ function pointerRow(s: SessionInfo): HTMLElement {
  * Host's data plane: they load, they are out of reach and why, or there are
  * none. Null when the projects show and say it all.
  */
-export function projectsNote(): HTMLElement | null {
+function projectsNote(): HTMLElement | null {
   const remote = isRemote();
   const host = remote ? hostName() : "";
   // A remote Host says what it waits for: the connect, then its projects.

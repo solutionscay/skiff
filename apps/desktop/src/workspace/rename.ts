@@ -34,7 +34,7 @@ function rememberRow() {
 }
 
 /** After a rename ends by key: back to the row it began on, else the terminal. */
-export function leaveRename() {
+function leaveRename() {
   const back = renameReturn;
   renameReturn = null;
   if (back) S.roveAt = { key: back.key, group: back.group };
@@ -111,7 +111,7 @@ export function renameRow(s: SessionInfo, color: string): HTMLElement {
   return row;
 }
 
-export async function renameGroup(id: string, name: string, byKey = false) {
+async function renameGroup(id: string, name: string, byKey = false) {
   S.renaming = null;
   const g = S.groups.find((x) => x.id === id);
   const n = name.trim();

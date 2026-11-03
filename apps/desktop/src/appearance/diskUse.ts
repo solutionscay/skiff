@@ -7,7 +7,7 @@ import { canFlush, expected, find, groups, idleReason, plan, rowState, visibleRo
 import { locale, type PluralKey, sentences, t, tn, upper } from "../i18n";
 
 /** `disk_usage`: the Skiff agent's folder as a tree, each file with the rule's verdict. */
-export interface DiskUsage {
+interface DiskUsage {
   /** The folder with `~` for home. */
   shown: string;
   tree: DiskNode;
@@ -38,13 +38,13 @@ type Opened = { kind: "run"; script: string; cwd: string } | { kind: "default" }
  * Host is shown, where this computer's openers are refused. `peek` runs an
  * Open with command in the peek: Settings closes for it.
  */
-export interface DiskOpen {
+interface DiskOpen {
   local: boolean;
   peek: (script: string, cwd: string, name: string) => void;
 }
 
 /** The page's state. It survives every redraw of Settings. */
-export interface DiskState {
+interface DiskState {
   usage: DiskUsage | null;
   counting: boolean;
   /** "Removed N files, X." after a flush. */
@@ -77,7 +77,7 @@ export async function countDisk(s: DiskState, redraw: () => void) {
 }
 
 /** The status line after a flush. */
-export function flushedLine(out: Flushed): string {
+function flushedLine(out: Flushed): string {
   const lines = [t("disk.removed", { files: count("disk.files", out.files), size: size(out.bytes) })];
   if (out.kept) lines.push(t("disk.kept", { items: count("disk.items", out.kept) }));
   if (out.rows) lines.push(count("disk.rowsFlushed", out.rows));

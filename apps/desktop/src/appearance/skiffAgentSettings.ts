@@ -32,7 +32,7 @@ export type SkiffAgentEdit =
   | { key: "cache_days"; value: number };
 
 /** What the Instructions table does with a row. */
-export interface InstructionActs {
+interface InstructionActs {
   files: InstructionFile[];
   /** One error line under a row, by its file. */
   errors: Map<string, string>;
@@ -386,7 +386,7 @@ function folderRows(set: SkiffAgentSettings, change: () => void): HTMLElement[] 
 }
 
 /** Task types › Edit: opens a row's file. `errors`: one line under a row, by type. */
-export interface TypeFileActs {
+interface TypeFileActs {
   edit: (t: TaskType) => void;
   errors: Map<string, string>;
 }

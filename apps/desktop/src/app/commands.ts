@@ -177,7 +177,7 @@ export function syncMenuSoon() {
 }
 
 /** Sends the command list to the native menu bar when it changes. */
-export function syncMenu() {
+function syncMenu() {
   const menus: { title: string; items: MenuItem[] }[] = [];
   const runs = new Map<string, () => void>();
   const app: Record<string, MenuItem> = {};

@@ -30,7 +30,7 @@ import { render } from "../app/renderRequest";
 import type { Project, SessionInfo } from "../platform/types";
 import { t } from "../i18n";
 
-export type SidebarView = "tree" | "skippers";
+type SidebarView = "tree" | "skippers";
 
 const VIEW_KEY = "skiff.sidebar.view";
 
@@ -63,7 +63,7 @@ export function setSidebarView(v: SidebarView) {
 type Entry = { kind: "admiral" | "fleet" | "project"; s: SessionInfo | null; name: string; scope: string | null; project: Project | null };
 
 /** The Skiff agent, then each section's fleet Skipper and project Skippers, in tree order. */
-export function skipperEntries(): Entry[] {
+function skipperEntries(): Entry[] {
   const out: Entry[] = [];
   if (skiffAgentFolder()) out.push({ kind: "admiral", s: skiffAgentSession(), name: skiffAgentName(), scope: null, project: null });
   for (const sec of treeSections()) {
@@ -78,7 +78,7 @@ export function skipperEntries(): Entry[] {
 }
 
 /** The Skippers that wait on the person: the count on the toggle. */
-export const waitingSkippers = () => skipperEntries().filter((e) => e.s?.state === "waiting").length;
+const waitingSkippers = () => skipperEntries().filter((e) => e.s?.state === "waiting").length;
 
 /** The latest line of a Skipper's work: its newest open hand-off or task, else the title its agent set. */
 function latestLine(e: Entry): string {

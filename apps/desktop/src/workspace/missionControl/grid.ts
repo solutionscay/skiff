@@ -156,7 +156,7 @@ export function placeGraph(g: Graph): Placed {
 type Pt = { x: number; y: number };
 
 /** A right-angle path through `pts`, each corner rounded by up to `r`. Repeated and straight-through points drop out. */
-export function orth(pts: Pt[], r = 8): string {
+function orth(pts: Pt[], r = 8): string {
   const p = pts.filter((q, i) => i === 0 || q.x !== pts[i - 1].x || q.y !== pts[i - 1].y);
   const k = p.filter((q, i) => i === 0 || i === p.length - 1 || !((p[i - 1].x === q.x && q.x === p[i + 1].x) || (p[i - 1].y === q.y && q.y === p[i + 1].y)));
   let d = `M${k[0].x} ${k[0].y}`;
