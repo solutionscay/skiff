@@ -25,9 +25,11 @@ impl Request {
             Self::GitChanges { .. } => Some(Capability::git_status()),
             Self::GitDiff { .. } => Some(Capability::git_diff()),
             Self::FileList { .. } | Self::FileRead { .. } => Some(Capability::files()),
+            Self::FileReveal { .. } => Some(Capability::file_reveal()),
             Self::ProjectBackground { .. } => Some(Capability::project_assets()),
             Self::FolderHome | Self::FolderList { .. } | Self::FolderPlaces | Self::FolderCreate { .. } => Some(Capability::folders()),
             Self::DropPut { .. } => Some(Capability::drops()),
+            Self::ImageList | Self::ImageRead { .. } | Self::ImageDelete { .. } | Self::ImagePin { .. } | Self::CacheUse => Some(Capability::image_cache()),
             Self::LedgerRows | Self::LedgerStamp | Self::LedgerResult { .. } => Some(Capability::ledger_read()),
             Self::SkipperSettings => Some(Capability::skipper_settings()),
             Self::SkipperEdit { .. } | Self::SkipperFolderPreview { .. } | Self::SkipperFolderChange { .. } => {
@@ -35,6 +37,7 @@ impl Request {
             }
             Self::SkipperFileRead { .. } | Self::SkipperFileWrite { .. } | Self::SkipperFileReset { .. } => Some(Capability::skipper_file()),
             Self::SkipperOpen { .. } | Self::SkipperWatch { .. } | Self::SkipperProject { .. } => Some(Capability::skipper_run()),
+            Self::SkipperWatchLog => Some(Capability::skipper_watch_log()),
             Self::SkipperFleet { .. } | Self::FleetTakeoverPreview { .. } | Self::FleetTakeover { .. } | Self::FleetRename { .. } => {
                 Some(Capability::skipper_run_fleets())
             }
@@ -82,7 +85,11 @@ impl Request {
                 | (Self::BranchList { .. }, Response::Branches { .. })
                 | (Self::FileList { .. }, Response::Files { .. })
                 | (Self::FileRead { .. }, Response::File { .. })
+                | (Self::FileReveal { .. }, Response::Ok)
                 | (Self::ProjectBackground { .. }, Response::Image { .. })
+                | (Self::ImageList, Response::Images { .. })
+                | (Self::ImageRead { .. }, Response::Image { .. })
+                | (Self::CacheUse, Response::CacheUse { .. })
                 | (Self::FolderHome | Self::FolderCreate { .. } | Self::DropPut { .. }, Response::Path { .. })
                 | (Self::FolderList { .. }, Response::Folders { .. })
                 | (Self::FolderPlaces, Response::Places { .. })
@@ -96,6 +103,7 @@ impl Request {
                 | (Self::SkipperFolderChange { .. }, Response::SkipperFolderDone { .. })
                 | (Self::SkipperOpen { .. }, Response::SkipperOpened { .. })
                 | (Self::SkipperWatch { .. }, Response::Watch { .. })
+                | (Self::SkipperWatchLog, Response::File { .. })
                 | (Self::SkipperProject { .. } | Self::SkipperFleet { .. }, Response::Session { .. })
                 | (Self::FleetTakeoverPreview { .. } | Self::FleetTakeover { .. }, Response::FleetTakeover { .. })
                 | (Self::AgentConfig | Self::AgentEdit { .. }, Response::AgentConfig { .. })
@@ -125,12 +133,18 @@ impl Request {
                 | Self::BranchList { .. }
                 | Self::FileList { .. }
                 | Self::FileRead { .. }
+                | Self::FileReveal { .. }
                 | Self::ProjectBackground { .. }
                 | Self::FolderHome
                 | Self::FolderList { .. }
                 | Self::FolderPlaces
                 | Self::FolderCreate { .. }
                 | Self::DropPut { .. }
+                | Self::ImageList
+                | Self::ImageRead { .. }
+                | Self::ImageDelete { .. }
+                | Self::ImagePin { .. }
+                | Self::CacheUse
                 | Self::LedgerRows
                 | Self::LedgerStamp
                 | Self::ProjectsStamp
@@ -143,6 +157,7 @@ impl Request {
                 | Self::SkipperFolderPreview { .. }
                 | Self::SkipperFolderChange { .. }
                 | Self::SkipperWatch { .. }
+                | Self::SkipperWatchLog
                 | Self::SkipperProject { .. }
                 | Self::SkipperFleet { .. }
                 | Self::FleetTakeoverPreview { .. }

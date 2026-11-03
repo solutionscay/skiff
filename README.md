@@ -60,10 +60,10 @@ details: [Skiff agent](https://github.com/solutionscay/skiff/wiki/Skiff-agent),
 ## Layout
 
 ```
-crates/skiff-host-api V2 Host contract types only (M0–M4; no I/O)
+crates/skiff-host-api Host contract types (no I/O)
 crates/skiff-core    session model, wire protocol, projects.toml config, git, themes
 crates/skiffd        daemon: owns every PTY, serves clients over a Unix socket
-crates/skiff-host    V2 data plane: a Host's projects and Git status over the Host API (M4, read-only)
+crates/skiff-host    Host data plane: projects, Git, files, images, ledger and Skipper over the Host API
 crates/skiff-client  async client for the socket; Skiff agent setup shared by the app and the CLI
 crates/skiff-cli     the `skiff` command: sessions, groups, the Skiff agent's ledger and watcher
 apps/desktop         Tauri v2 app, vanilla TypeScript + xterm.js
@@ -81,10 +81,11 @@ apps/desktop         Tauri v2 app, vanilla TypeScript + xterm.js
 
 ## Development
 
-The v2 Host contract, its seams and the import-boundary check are in
-[Host API](docs/v2/Host-API.md). Terminals, session lifecycle and groups go through the
-selected Host. Remote terminals run on an SSH Host picked from the Host cell in the top
-bar; see Host API § M2 for the demo and limits.
+Every window has one selected Host. Sessions, projects, Git, files, images, ledger,
+Skipper and agents come from that Host through the [Host API](docs/v2/Host-API.md).
+**This Mac** is the local Host. Add an SSH Host in Settings › Hosts to work with a
+server through the same surfaces. The app keeps only client-owned settings, window
+state, known Hosts and local Open with applications.
 
 ```
 cd apps/desktop && pnpm install && pnpm tauri dev

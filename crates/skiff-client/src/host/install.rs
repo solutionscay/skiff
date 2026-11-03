@@ -243,7 +243,7 @@ async fn run(target: &SshTarget, options: &SshOptions, command: String, stdin: &
         ssh::BatchEvent::Ssh(text) => step(Progress::Line { text }),
         ssh::BatchEvent::Sent(sent, total) => step(Progress::Sent { sent, total }),
     };
-    match ssh::run_batch_steps(target, options, command, stdin, STEP_TIMEOUT, Some(&show)).await? {
+    match ssh::run_batch_steps(target, options, command, stdin, STEP_TIMEOUT, Some(&show)).await.map_err(|e| e.to_string())? {
         BatchRun::Done(out) => Ok(out),
         BatchRun::Ssh(_) => Err("ssh stopped before the step ran. Check again.".into()),
         BatchRun::TimedOut => Err("The server did not finish in time.".into()),

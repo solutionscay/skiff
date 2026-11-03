@@ -75,6 +75,9 @@ pub struct Listing {
     /// The folder has more than [`LIST_LIMIT`] entries git does not ignore,
     /// or more than [`SCAN_LIMIT`] in all: the rest are left out.
     pub truncated: bool,
+    /// The next raw directory entry to inspect.  It is only for continuing
+    /// this listing; callers must not treat it as a filesystem path.
+    pub next: Option<usize>,
 }
 
 /// `rel` names the worktree itself (empty) or a path below it.
@@ -89,20 +92,27 @@ fn below(rel: &str) -> Result<()> {
 /// The folder `rel` under `root` (empty: `root` itself), listed. `dir` must
 /// name `root` before and after. Outside a repository nothing is ignored.
 pub fn list_in(root: &Root, dir: &Path, rel: &str) -> Result<Listing> {
-    list_with(root, dir, rel, false)
+    list_page(root, dir, rel, false, 0)
 }
 
 /// [`list_in`], and with `follow` a link is followed: a link to a folder is
 /// listed as a folder and can be listed. For the Host that is this Mac only;
 /// the client never asks for it on a remote Host.
 pub fn list_with(root: &Root, dir: &Path, rel: &str, follow: bool) -> Result<Listing> {
+    list_page(root, dir, rel, follow, 0)
+}
+
+/// One page of [`list_with`]. `start` is an opaque cursor returned by a
+/// preceding listing, not a path and not an offset supplied by a person.
+pub fn list_page(root: &Root, dir: &Path, rel: &str, follow: bool, start: usize) -> Result<Listing> {
     below(rel)?;
     root.check(dir)?;
-    let (read, mut truncated, linked) = read_folder(root, rel, follow)?;
+    let (read, more, linked) = read_folder(root, rel, follow, start)?;
     let deadline = git::Deadline::after(IGNORE_TIMEOUT);
     let mut entries = Vec::new();
     // In batches, after git's answer: an ignored entry takes no place in the listing.
-    for batch in read.chunks(IGNORE_BATCH) {
+    let mut next = None;
+    'batches: for (batch_at, batch) in read.chunks(IGNORE_BATCH).enumerate() {
         let asked: Vec<String> = batch
             .iter()
             .map(|e| {
@@ -112,18 +122,15 @@ pub fn list_with(root: &Root, dir: &Path, rel: &str, follow: bool) -> Result<Lis
             })
             .collect();
         let ignored = git::ignored_in(root, dir, &asked, deadline);
-        for (e, path) in batch.iter().zip(&asked) {
+        for (in_batch, (e, path)) in batch.iter().zip(&asked).enumerate() {
             if ignored.contains(path) || ignored.contains(path.trim_end_matches('/')) {
                 continue;
             }
             if entries.len() == LIST_LIMIT {
-                truncated = true;
-                break;
+                next = Some(start + batch_at * IGNORE_BATCH + in_batch);
+                break 'batches;
             }
             entries.push(e.clone());
-        }
-        if entries.len() == LIST_LIMIT && truncated {
-            break;
         }
     }
     entries.sort_by(|a, b| {
@@ -132,13 +139,14 @@ pub fn list_with(root: &Root, dir: &Path, rel: &str, follow: bool) -> Result<Lis
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     root.check(dir)?;
-    Ok(Listing { entries, truncated })
+    let next = next.or_else(|| more.then_some(start + read.len()));
+    Ok(Listing { entries, truncated: next.is_some(), next })
 }
 
 /// The entries of `rel`, opened under `root` one component at a time, each
 /// typed without following it. Names that are not UTF-8 are left out.
 #[cfg(unix)]
-fn read_folder(root: &Root, rel: &str, follow: bool) -> Result<(Vec<Entry>, bool, std::collections::HashSet<String>)> {
+fn read_folder(root: &Root, rel: &str, follow: bool, start: usize) -> Result<(Vec<Entry>, bool, std::collections::HashSet<String>)> {
     use std::{ffi::{CStr, CString}, os::fd::AsRawFd, os::unix::ffi::OsStrExt};
     let gone = || missing!("{} is not a folder in this worktree", if rel.is_empty() { "." } else { rel });
     // SAFETY: open(2), readdir(3) and fstatat(2) on fds made and closed here;
@@ -167,7 +175,7 @@ fn read_folder(root: &Root, rel: &str, follow: bool) -> Result<(Vec<Entry>, bool
         }
         let mut entries = Vec::new();
         let mut linked = std::collections::HashSet::new();
-        let mut truncated = false;
+        let mut more = false;
         loop {
             let e = libc::readdir(stream);
             if e.is_null() {
@@ -179,7 +187,7 @@ fn read_folder(root: &Root, rel: &str, follow: bool) -> Result<(Vec<Entry>, bool
                 continue;
             }
             if entries.len() == SCAN_LIMIT {
-                truncated = true;
+                more = true;
                 break;
             }
             let mut st: libc::stat = std::mem::zeroed();
@@ -204,20 +212,26 @@ fn read_folder(root: &Root, rel: &str, follow: bool) -> Result<(Vec<Entry>, bool
             entries.push(Entry { name: name.to_string(), kind });
         }
         libc::closedir(stream);
-        Ok((entries, truncated, linked))
+        // `readdir` order is not a cursor. Keep every page's cursor stable
+        // across reads of the same folder before the caller filters ignores.
+        entries.sort_by(|a, b| a.name.cmp(&b.name));
+        let entries = entries.into_iter().skip(start).collect();
+        Ok((entries, more, linked))
     }
 }
 
 #[cfg(not(unix))]
-fn read_folder(root: &Root, rel: &str, follow: bool) -> Result<(Vec<Entry>, bool, std::collections::HashSet<String>)> {
+fn read_folder(root: &Root, rel: &str, follow: bool, start: usize) -> Result<(Vec<Entry>, bool, std::collections::HashSet<String>)> {
     let mut entries = Vec::new();
     let mut truncated = false;
+    let mut seen = 0;
     for e in std::fs::read_dir(root.path.join(rel))? {
         let e = e?;
         let Ok(name) = e.file_name().into_string() else { continue };
         if name == ".git" {
             continue;
         }
+        if seen < start { seen += 1; continue; }
         if entries.len() == SCAN_LIMIT {
             truncated = true;
             break;
@@ -299,6 +313,18 @@ pub fn read_in(root: &Root, dir: &Path, rel: &str, purpose: Purpose) -> Result<F
     };
     root.check(dir)?;
     Ok(read)
+}
+
+/// Validates a regular file for a Host-side reveal. The returned path is for
+/// the Host's own file manager only; a client must never receive it as an
+/// opener path. Links and special files are refused just as for a preview.
+pub fn reveal_in(root: &Root, dir: &Path, rel: &str) -> Result<std::path::PathBuf> {
+    let read = read_in(root, dir, rel, Purpose::Preview)?;
+    if read.content == Content::Link {
+        return Err(invalid!("{rel} is a link, so it is not revealed"));
+    }
+    root.check(dir)?;
+    Ok(dir.join(rel))
 }
 
 fn read_file(file: std::fs::File, size: u64, rel: &str, purpose: Purpose) -> Result<FileRead> {

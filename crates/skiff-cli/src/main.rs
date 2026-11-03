@@ -32,8 +32,8 @@ mod watch;
 #[command(
     name = "skiff",
     version,
-    about = "Command-line client for skiffd",
-    after_help = "A session is a full id, a unique id prefix, or the name the sidebar shows. A group is an id, prefix or name.\nInside a Skiff pane, `.` is this pane's session, or the group that holds it."
+    about = "Command-line client for one Skiff Host's session service",
+    after_help = "The CLI controls the Host whose skiffd socket it reaches. The desktop selects local and SSH Hosts; this command stays on the Host that owns its socket. A session is a full id, a unique id prefix, or the name the sidebar shows. A group is an id, prefix or name.\nInside a Skiff pane, `.` is this pane's session, or the group that holds it."
 )]
 struct Cli {
     /// The skiffd socket. Default: $SKIFF_SOCKET, else the daemon's own default.

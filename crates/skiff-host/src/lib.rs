@@ -17,24 +17,24 @@ pub mod skipper;
 
 use anyhow::{bail, Context};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet, HashMap},
     path::Path,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc,
+        Arc, LazyLock, Mutex,
     },
 };
 
 use skiff_core::{config::{self, ProjectConfig}, files, git, project, session::SessionInfo};
 use skiff_host_api::{
     Capability, ChangeStatus, EntryKind, Envelope, Error, FileContent, Hello, Host, HostChange, HostDiff, HostEntry,
-    HostFile, HostBranch, HostBranches, HostFolder, HostId, HostImage, HostLedgerRow, HostListing, HostProject, HostWorktree, InstanceId, Limits, Message,
+    HostCacheImage, HostCacheUse, HostFile, HostBranch, HostBranches, HostFolder, HostId, HostImage, HostLedgerRow, HostListing, HostProject, HostWorktree, InstanceId, Limits, Message,
     ProjectEdit, ReadPurpose, Request, Response, API_MAJOR,
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     net::{UnixListener, UnixStream},
-    sync::{mpsc, OwnedSemaphorePermit, Semaphore},
+    sync::{broadcast, mpsc, OwnedSemaphorePermit, Semaphore},
     task::JoinSet,
 };
 
@@ -43,17 +43,25 @@ pub const MAX_FRAME: usize = 8 * 1024 * 1024;
 /// Requests one connection may have admitted at once, until each reply is
 /// written. A client that sends more waits: the service reads no further.
 pub const MAX_IN_FLIGHT: usize = 16;
+/// In-progress framed drops. A service restart discards them; no partial file
+/// reaches the cache before the final frame.
+static UPLOADS: LazyLock<Mutex<HashMap<String, Upload>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+const MAX_DROP: usize = 50 * 1024 * 1024;
+
+struct Upload { name: String, total: usize, bytes: Vec<u8> }
 
 /// What this service offers.
 pub fn capabilities() -> Vec<Capability> {
     vec![
         Capability::projects(),
         Capability::projects_watch(),
+        Capability::data_events(),
         Capability::git_status(),
         Capability::git_diff(),
         Capability::project_config(),
         Capability::worktrees(),
         Capability::files(),
+        Capability::file_reveal(),
         Capability::project_assets(),
         Capability::folders(),
         Capability::ledger_read(),
@@ -62,8 +70,10 @@ pub fn capabilities() -> Vec<Capability> {
         Capability::skipper_file(),
         Capability::skipper_run(),
         Capability::skipper_run_fleets(),
+        Capability::skipper_watch_log(),
         Capability::agent_config(),
         Capability::drops(),
+        Capability::image_cache(),
     ]
 }
 
@@ -166,6 +176,7 @@ impl BoundSocket {
 /// Accepts connections until the listener fails. Each one is served on its
 /// own; dropping this future closes them all, as a stopped service does.
 pub async fn serve(listener: UnixListener, hello: Arc<Hello>) -> std::io::Result<()> {
+    let events = DataEvents::start();
     let mut connections = tokio::task::JoinSet::new();
     // Skipper's watcher is this service's to keep, as long as it runs.
     connections.spawn(skipper::supervise());
@@ -173,7 +184,7 @@ pub async fn serve(listener: UnixListener, hello: Arc<Hello>) -> std::io::Result
         tokio::select! {
             accepted = listener.accept() => {
                 let (stream, _) = accepted?;
-                connections.spawn(handle(stream, hello.clone()));
+                connections.spawn(handle(stream, hello.clone(), events.subscribe()));
             }
             Some(_) = connections.join_next() => {}
         }
@@ -221,19 +232,33 @@ impl Drop for Admission {
 /// queued for it. The work belongs to the connection: when the client is
 /// gone, or a frame is unreadable or oversize, what is left is dropped.
 /// Nothing is retried.
-pub async fn handle(stream: UnixStream, hello: Arc<Hello>) {
+pub async fn handle(stream: UnixStream, hello: Arc<Hello>, mut events: broadcast::Receiver<skiff_host_api::Event>) {
     let (rd, mut wr) = stream.into_split();
     let slots = Arc::new(Semaphore::new(MAX_IN_FLIGHT));
     // Never full: every queued reply holds one of the permits.
-    let (tx, mut rx) = mpsc::channel::<(Vec<u8>, Admission)>(MAX_IN_FLIGHT);
+    let (tx, mut rx) = mpsc::channel::<Write>(256);
     let writer = async move {
-        while let Some((line, admission)) = rx.recv().await {
+        while let Some(item) = rx.recv().await {
+            let (line, admission) = match item { Write::Reply(line, admission) => (line, Some(admission)), Write::Event(line) => (line, None) };
             if wr.write_all(&line).await.is_err() {
                 return;
             }
             drop(admission);
         }
     };
+    let events_tx = tx.clone();
+    let mut event_writer = tokio::spawn(async move {
+        loop {
+            let event = match events.recv().await {
+                Ok(event) => event,
+                Err(broadcast::error::RecvError::Lagged(_)) => skiff_host_api::Event::DataGap { sequence: 0 },
+                Err(broadcast::error::RecvError::Closed) => return,
+            };
+            let mut line = serde_json::to_vec(&Message::Event { event }).unwrap_or_default();
+            line.push(b'\n');
+            if events_tx.send(Write::Event(line)).await.is_err() { return; }
+        }
+    });
     let reader = async move {
         let mut work = JoinSet::new();
         let mut reader = BufReader::new(rd);
@@ -257,18 +282,97 @@ pub async fn handle(stream: UnixStream, hello: Arc<Hello>) {
             let (tx, hello) = (tx.clone(), hello.clone());
             work.spawn(async move {
                 let result = answer(request, &hello).await;
-                let _ = tx.send((encode(id, result), admission)).await;
+                let _ = tx.send(Write::Reply(encode(id, result), admission)).await;
             });
         }
         while work.join_next().await.is_some() {}
     };
     tokio::pin!(writer);
     tokio::select! {
-        // Every request answered and queued: the writer drains the queue.
-        _ = reader => writer.await,
-        // The client is gone: the reader and its work are dropped here.
-        _ = &mut writer => {}
+        // A closed reader stops events after admitted replies drain.
+        _ = reader => {
+            event_writer.abort();
+            let _ = event_writer.await;
+            writer.as_mut().await;
+        },
+        _ = &mut event_writer => {},
+        _ = &mut writer => event_writer.abort(),
     }
+}
+
+enum Write { Reply(Vec<u8>, Admission), Event(Vec<u8>) }
+
+/// The service owns one bounded invalidation feed. It deliberately carries
+/// no deltas: file-system changes can coalesce, and clients recover every
+/// gap by reading the authoritative Host snapshots again.
+struct DataEvents {
+    tx: broadcast::Sender<skiff_host_api::Event>,
+}
+impl DataEvents {
+    fn start() -> Self {
+        let (tx, _) = broadcast::channel(256);
+        let watch = tx.clone();
+        tokio::spawn(async move {
+            let mut previous = tokio::task::spawn_blocking(data_snapshot).await.unwrap_or_default();
+            let mut sequence = 0u64;
+            let mut tick = tokio::time::interval(std::time::Duration::from_millis(500));
+            tick.tick().await;
+            loop {
+                tick.tick().await;
+                let next = tokio::task::spawn_blocking(data_snapshot).await.unwrap_or_default();
+                let projects = next.projects != previous.projects;
+                let ledger = next.ledger != previous.ledger;
+                let worktrees = next.worktrees.iter().filter_map(|(path, stamp)| {
+                    (previous.worktrees.get(path) != Some(stamp)).then(|| path.clone())
+                }).chain(previous.worktrees.keys().filter(|path| !next.worktrees.contains_key(*path)).cloned()).collect::<Vec<_>>();
+                if projects || ledger || !worktrees.is_empty() {
+                    sequence = sequence.wrapping_add(1);
+                    let _ = watch.send(skiff_host_api::Event::DataChanged { sequence, projects, worktrees, tasks: ledger });
+                }
+                previous = next;
+            }
+        });
+        Self { tx }
+    }
+    fn subscribe(&self) -> broadcast::Receiver<skiff_host_api::Event> { self.tx.subscribe() }
+}
+
+#[derive(Default)]
+struct DataSnapshot { projects: String, ledger: String, worktrees: BTreeMap<String, u64> }
+
+/// A cheap-enough invalidation stamp, not a content hash. A write that keeps
+/// mtimes is outside normal filesystem semantics; a reconnect snapshot still
+/// makes that harmless. `.git` is excluded from the tree walk, except for
+/// its index so a staged Git-only edit also invalidates its worktree.
+fn data_snapshot() -> DataSnapshot {
+    let projects = config::file_stamp(&config::config_path());
+    let ledger = skiff_client::ledger::path().ok().map(|p| skiff_client::ledger::stamp(&p)).unwrap_or_default();
+    let mut worktrees = BTreeMap::new();
+    if let Ok(rows) = project::list() {
+        for project in rows.into_iter().filter(|p| !p.closed) {
+            let mut paths = BTreeSet::new();
+            paths.insert(project.path);
+            for wt in project.worktrees { paths.insert(wt.path); }
+            for path in paths {
+                let mut stamp = 0xcbf29ce484222325u64;
+                for entry in walkdir::WalkDir::new(&path).into_iter().filter_entry(|e| e.file_name() != ".git").flatten() {
+                    if let Ok(meta) = entry.metadata() {
+                        for n in [meta.len(), meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos() as u64).unwrap_or(0)] {
+                            stamp ^= n; stamp = stamp.wrapping_mul(0x100000001b3);
+                        }
+                        for b in entry.path().as_os_str().as_encoded_bytes() { stamp ^= u64::from(*b); stamp = stamp.wrapping_mul(0x100000001b3); }
+                    }
+                }
+                if let Ok(meta) = std::fs::metadata(path.join(".git/index")) {
+                    stamp ^= meta.len(); stamp = stamp.wrapping_mul(0x100000001b3);
+                    let modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos() as u64).unwrap_or(0);
+                    stamp ^= modified; stamp = stamp.wrapping_mul(0x100000001b3);
+                }
+                worktrees.insert(path.to_string_lossy().into_owned(), stamp);
+            }
+        }
+    }
+    DataSnapshot { projects, ledger, worktrees }
 }
 
 fn encode(id: u64, result: Result<Response, Error>) -> Vec<u8> {
@@ -315,6 +419,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             | Request::SkipperFolderChange { .. }
             | Request::SkipperOpen { .. }
             | Request::SkipperWatch { .. }
+            | Request::SkipperWatchLog
             | Request::SkipperProject { .. }
             | Request::SkipperFleet { .. }
             | Request::FleetTakeoverPreview { .. }
@@ -353,11 +458,11 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             let diff = git::diff_in(&root.map_err(failed)?, &worktree, file.as_deref()).map_err(failed)?;
             Ok(Response::Diff { diff: host_diff(diff) })
         }
-        Request::FileList { worktree, dir, follow_links } => {
+        Request::FileList { worktree, dir, follow_links, cursor } => {
             // As for GitChanges: held before the check, named after it.
             let root = git::Root::open(Path::new(&worktree));
             let worktree = known_worktree(&worktree)?;
-            let listing = files::list_with(&root.map_err(failed)?, &worktree, &dir, follow_links).map_err(unread)?;
+            let listing = files::list_page(&root.map_err(failed)?, &worktree, &dir, follow_links, cursor.unwrap_or(0)).map_err(unread)?;
             Ok(Response::Files { listing: host_listing(listing) })
         }
         Request::FileRead { worktree, file, purpose } => {
@@ -369,6 +474,16 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             };
             let read = files::read_in(&root.map_err(failed)?, &worktree, &file, purpose).map_err(unread)?;
             Ok(Response::File { file: Box::new(host_file(read)) })
+        }
+        Request::FileReveal { worktree, file } => {
+            let root = git::Root::open(Path::new(&worktree));
+            let worktree = known_worktree(&worktree)?;
+            let path = match file {
+                Some(file) => files::reveal_in(&root.map_err(failed)?, &worktree, &file).map_err(unread)?,
+                None => worktree,
+            };
+            reveal_path(&path).map_err(failed)?;
+            Ok(Response::Ok)
         }
         Request::ProjectBackground { project } => {
             let p = project::find(&project).map_err(refused)?;
@@ -382,10 +497,65 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         Request::FolderList { path, hidden, filter } => Ok(Response::Folders { listing: folders::list(&path, hidden, filter.as_deref())? }),
         Request::FolderPlaces => Ok(Response::Places { places: folders::places()? }),
         Request::FolderCreate { parent, name } => Ok(Response::Path { path: folders::create(&parent, &name)? }),
-        Request::DropPut { name, bytes } => {
+        Request::DropPut { name, bytes, upload, total, offset, finish } => {
             let cfg = config::load().map_err(failed)?;
+            let bytes = if let Some(upload) = upload {
+                let total = total.ok_or_else(|| Error::Invalid { message: "an upload needs its total size".into() })? as usize;
+                if total > MAX_DROP || bytes.len() > MAX_DROP || offset as usize > total || bytes.len() > total.saturating_sub(offset as usize) {
+                    return Err(Error::Invalid { message: "the upload is too large or out of range".into() });
+                }
+                let mut uploads = UPLOADS.lock().map_err(|_| Error::HostBusy)?;
+                let entry = uploads.entry(upload.clone()).or_insert_with(|| Upload { name: name.clone(), total, bytes: Vec::new() });
+                if entry.name != name || entry.total != total || entry.bytes.len() != offset as usize {
+                    uploads.remove(&upload);
+                    return Err(Error::Invalid { message: "the upload chunks are not in order".into() });
+                }
+                entry.bytes.extend_from_slice(&bytes);
+                if !finish {
+                    return Ok(Response::Path { path: String::new() });
+                }
+                if entry.bytes.len() != total {
+                    uploads.remove(&upload);
+                    return Err(Error::Invalid { message: "the upload ended before all bytes arrived".into() });
+                }
+                uploads.remove(&upload).expect("present").bytes
+            } else {
+                bytes
+            };
+            if bytes.len() > MAX_DROP { return Err(Error::Invalid { message: "the upload is larger than 50 MB".into() }); }
             let path = skiff_client::cache::put(&cfg, &name, &bytes).map_err(refused)?;
             Ok(Response::Path { path: path.to_string_lossy().into_owned() })
+        }
+        Request::ImageList => {
+            let cfg = config::load().map_err(failed)?;
+            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
+            Ok(Response::Images { images: skiff_client::cache::list(&dir).into_iter().map(host_cache_image).collect() })
+        }
+        Request::ImageRead { path } => {
+            let cfg = config::load().map_err(failed)?;
+            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
+            let (mime, bytes) = cache_image(&dir, &path)?;
+            Ok(Response::Image { image: HostImage { mime, bytes } })
+        }
+        Request::ImageDelete { paths } => {
+            let cfg = config::load().map_err(failed)?;
+            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
+            for path in paths { skiff_client::cache::delete(&dir, Path::new(&path)).map_err(refused)?; }
+            Ok(Response::Ok)
+        }
+        Request::ImagePin { paths, on } => {
+            let cfg = config::load().map_err(failed)?;
+            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
+            for path in paths { skiff_client::cache::pin(&dir, Path::new(&path), on).map_err(refused)?; }
+            Ok(Response::Ok)
+        }
+        Request::CacheUse => {
+            let cfg = config::load().map_err(failed)?;
+            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
+            let images = skiff_client::cache::list(&dir);
+            let image_bytes = images.iter().map(|image| image.size).sum();
+            let bytes = cache_bytes(&dir).map_err(failed)?;
+            Ok(Response::CacheUse { usage: HostCacheUse { bytes, images: images.len() as u64, image_bytes } })
         }
         Request::LedgerRows => Ok(Response::Ledger { rows: ledger_rows(ledger_sessions.as_deref())? }),
         Request::LedgerStamp => {
@@ -420,6 +590,8 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         Request::ProjectEdit { project, revision, edit } => {
             let p = project.as_str();
             let ((), revision) = config::edit_projects(&revision, || match &edit {
+                ProjectEdit::Icon { icon } => config::set_project_icon(p, icon.as_deref()),
+                ProjectEdit::Background { background } => config::set_project_background(p, background.as_deref()),
                 ProjectEdit::Short { short } => config::set_project_short(p, short),
                 ProjectEdit::Fleet { fleet } => config::set_project_fleet(p, fleet),
                 ProjectEdit::Color { color } => config::set_project_color(p, color),
@@ -735,7 +907,57 @@ pub fn host_listing(l: files::Listing) -> HostListing {
             })
             .collect(),
         truncated: l.truncated,
+        next: l.next,
     }
+}
+
+fn host_cache_image(image: skiff_client::cache::Image) -> HostCacheImage {
+    HostCacheImage {
+        path: image.path,
+        file: image.entry.file,
+        name: image.entry.name,
+        session: image.entry.session,
+        title: image.entry.title,
+        project: image.entry.project,
+        at: image.entry.at,
+        pinned: image.entry.pinned,
+        size: image.size,
+    }
+}
+
+/// Reads only a direct image cache entry and gives the webview its MIME type.
+fn cache_image(dir: &Path, path: &str) -> Result<(String, Vec<u8>), Error> {
+    let bytes = skiff_client::cache::read(dir, Path::new(path)).map_err(refused)?;
+    let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or_default();
+    let mime = match ext.to_ascii_lowercase().as_str() {
+        "svg" => "image/svg+xml", "png" => "image/png", "jpg" => "image/jpeg", "gif" => "image/gif",
+        "webp" => "image/webp", "bmp" => "image/bmp", "tif" => "image/tiff", "heic" => "image/heic", "avif" => "image/avif",
+        _ => return Err(Error::NotFound { message: "the image is not in this Host's cache".into() }),
+    };
+    Ok((mime.into(), bytes))
+}
+
+fn cache_bytes(dir: &Path) -> anyhow::Result<u64> {
+    let mut bytes = 0;
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let meta = entry.metadata()?;
+        if meta.is_file() { bytes += meta.len(); }
+        if meta.is_dir() { bytes += cache_bytes(&entry.path())?; }
+    }
+    Ok(bytes)
+}
+
+/// Opens only a path held and checked above. On a headless Host this reports
+/// the desktop's own opener error; it never asks the client to open it.
+#[cfg(target_os = "macos")]
+fn reveal_path(path: &Path) -> anyhow::Result<()> {
+    skiff_core::open::launch("open -R", path)
+}
+
+#[cfg(target_os = "linux")]
+fn reveal_path(path: &Path) -> anyhow::Result<()> {
+    skiff_core::open::open_default(path.parent().unwrap_or(path))
 }
 
 pub fn host_file(f: files::FileRead) -> HostFile {

@@ -55,7 +55,7 @@ async fn host_ledger(dir: PathBuf) {
     .unwrap();
 
     let hello = skiff_host::hello().unwrap();
-    for c in [Capability::ledger_read(), Capability::skipper_settings()] {
+    for c in [Capability::ledger_read(), Capability::skipper_settings(), Capability::skipper_watch_log()] {
         assert!(hello.capabilities.contains(&c), "{c:?}");
     }
     let host = hello.host.host_id.clone();
@@ -64,6 +64,7 @@ async fn host_ledger(dir: PathBuf) {
     let selection = HostSelection::new(socket.clone(), dir.join("bootstrap-id"));
     let local = selection.connect_data(&host).await.unwrap();
     let l = local.connection();
+    assert!(l.hello().capabilities.contains(&Capability::skipper_watch_log()), "{:?}", l.hello().capabilities);
     let ssh = HostSelection::ssh(
         SshTarget::new("devbox", socket.to_string_lossy().into_owned()),
         SshOptions { program: fake_ssh(&dir).unwrap_or_else(|| "/nonexistent/ssh".into()), config: None },
@@ -74,6 +75,26 @@ async fn host_ledger(dir: PathBuf) {
     let remote = ssh.connect_data(&host).await.ok();
     assert_eq!(remote.is_some(), Path::new("/usr/bin/python3").is_file(), "the SSH route ran");
     let r = remote.as_ref().map(|p| p.connection()).unwrap_or_else(|| l.clone());
+    assert!(r.hello().capabilities.contains(&Capability::skipper_watch_log()), "{:?}", r.hello().capabilities);
+
+    // The Host chooses its watcher log beside its own socket. It is readable
+    // over both routes as bounded text, and no log is a typed absence.
+    for c in [&l, &r] {
+        let got = data::skipper_watch_log(c).await;
+        assert!(matches!(got, Err(Error::NotFound { .. })), "{got:?}");
+    }
+    let log = socket.with_extension("watch.log");
+    std::fs::write(&log, "watch started\n").unwrap();
+    for c in [&l, &r] {
+        let got = data::skipper_watch_log(c).await.unwrap();
+        assert_eq!((got.content, got.text.as_deref(), got.truncated), (FileContent::Text, Some("watch started\n"), false));
+    }
+    std::fs::write(&log, "x".repeat(files::TEXT_LIMIT + 100)).unwrap();
+    assert!(data::skipper_watch_log(&r).await.unwrap().truncated, "the log is bounded");
+    std::fs::remove_file(&log).unwrap();
+    std::os::unix::fs::symlink(dir.join("outside"), &log).unwrap();
+    assert!(matches!(data::skipper_watch_log(&l).await, Err(Error::Invalid { .. })), "a watcher log link is refused");
+    std::fs::remove_file(&log).unwrap();
 
     // No ledger yet: no rows, nothing made on disk.
     let ledger = skiff_client::ledger::path().unwrap();
@@ -219,11 +240,12 @@ async fn host_ledger(dir: PathBuf) {
 
     // A Host without the families: the client refuses before sending.
     let mut bare = skiff_host::hello().unwrap();
-    bare.capabilities.retain(|c| *c != Capability::ledger_read() && *c != Capability::skipper_settings());
+    bare.capabilities.retain(|c| *c != Capability::ledger_read() && *c != Capability::skipper_settings() && *c != Capability::skipper_watch_log());
     let bare_socket = dir.join("bare.sock");
     let _bare = start(&bare_socket, bare);
     let stream = tokio::net::UnixStream::connect(&bare_socket).await.unwrap();
     let b = skiff_client::host::HostConnection::connect_with_timeout(stream, None, Duration::from_secs(5)).await.unwrap();
     assert!(matches!(data::ledger_rows(&b).await, Err(Error::UnsupportedCapability { .. })));
     assert!(matches!(data::skipper_settings(&b).await, Err(Error::UnsupportedCapability { .. })));
+    assert!(matches!(data::skipper_watch_log(&b).await, Err(Error::UnsupportedCapability { .. })));
 }

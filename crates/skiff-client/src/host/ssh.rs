@@ -27,7 +27,7 @@ use std::{
 };
 
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader},
     process::{Child, Command},
 };
 
@@ -37,6 +37,13 @@ pub const OPEN_TIMEOUT: Duration = Duration::from_secs(20);
 pub const CONNECT_TIMEOUT: u64 = 15;
 /// The most stderr kept for diagnosis.
 const STDERR_KEEP: usize = 16 * 1024;
+/// The Host protocol never accepts a frame larger than this. Batch SSH runs
+/// carry either a probe or one command result, so accepting more can only let
+/// a remote peer exhaust this process.
+const MAX_BATCH_OUTPUT: usize = 8 * 1024 * 1024;
+/// Stderr is line-oriented for diagnostics and progress. A line has no
+/// protocol value beyond this bound.
+const MAX_STDERR_LINE: usize = 16 * 1024;
 
 /// One remote Host as `ssh` reaches it. `destination` is what the user types
 /// after `ssh`: an alias from ssh config, `host`, or `user@host`. Keys and
@@ -81,12 +88,18 @@ impl SshTarget {
     /// socket is not checked: [`Self::validate`] does that for a forward.
     pub fn validate_login(&self) -> Result<(), String> {
         let word = |s: &str| {
-            !s.is_empty() && !s.starts_with('-') && !s.chars().any(|c| c.is_whitespace() || c.is_control())
+            !s.is_empty()
+                && !s.starts_with('-')
+                && !s.chars().any(|c| c.is_whitespace() || c.is_control())
         };
         if !word(&self.destination) {
             return Err("Type one name, such as devbox or 10.0.0.5.".into());
         }
-        if self.user.as_deref().is_some_and(|u| !word(u) || u.contains('@')) {
+        if self
+            .user
+            .as_deref()
+            .is_some_and(|u| !word(u) || u.contains('@'))
+        {
             return Err("Type one user name, such as jose.".into());
         }
         if self.port == Some(0) {
@@ -220,7 +233,13 @@ pub enum BatchRun {
 
 /// Runs `command` over one strict, batch ssh run, with `stdin`, within
 /// `timeout`. Err: ssh itself could not be run.
-pub async fn run_batch(target: &SshTarget, options: &SshOptions, command: String, stdin: &[u8], timeout: Duration) -> Result<BatchRun, String> {
+pub async fn run_batch(
+    target: &SshTarget,
+    options: &SshOptions,
+    command: String,
+    stdin: &[u8],
+    timeout: Duration,
+) -> Result<BatchRun, SshError> {
     run_batch_steps(target, options, command, stdin, timeout, None).await
 }
 
@@ -251,8 +270,7 @@ pub async fn run_batch_steps(
     stdin: &[u8],
     timeout: Duration,
     show: Option<&(dyn Fn(BatchEvent) + Send + Sync)>,
-) -> Result<BatchRun, String> {
-    use tokio::io::AsyncReadExt;
+) -> Result<BatchRun, SshError> {
     let mut args = batch_args(target, options, command);
     if show.is_some() {
         for a in args.iter_mut().filter(|a| *a == "LogLevel=INFO") {
@@ -266,9 +284,12 @@ pub async fn run_batch_steps(
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| format!("Skiff cannot run ssh: {e}"))?;
+        .map_err(|e| SshError::Run(format!("Skiff cannot run ssh: {e}")))?;
     let mut input = child.stdin.take().expect("piped");
-    let (mut stdout, stderr) = (child.stdout.take().expect("piped"), child.stderr.take().expect("piped"));
+    let (mut stdout, stderr) = (
+        child.stdout.take().expect("piped"),
+        child.stderr.take().expect("piped"),
+    );
     let emit = |e: BatchEvent| {
         if let Some(f) = show {
             f(e)
@@ -284,17 +305,20 @@ pub async fn run_batch_steps(
                     break;
                 }
                 last += chunk.len() as u64;
-                if total > 4 * CHUNK as u64 && (last.is_multiple_of(4 * CHUNK as u64) || last == total) {
+                if total > 4 * CHUNK as u64
+                    && (last.is_multiple_of(4 * CHUNK as u64) || last == total)
+                {
                     emit(BatchEvent::Sent(last, total));
                 }
             }
             drop(input);
+            Ok::<_, SshError>(())
         };
-        let mut out = Vec::new();
-        let read_out = stdout.read_to_end(&mut out);
+        let read_out = read_stdout(&mut stdout);
         let read_err = async {
-            let (mut lines, mut rest) = (BufReader::new(stderr).lines(), String::new());
-            while let Ok(Some(line)) = lines.next_line().await {
+            let mut reader = BufReader::new(stderr);
+            let mut rest = String::new();
+            while let Some(line) = read_stderr_line(&mut reader).await? {
                 match line.strip_prefix(STEP) {
                     Some(words) => emit(BatchEvent::Step(words.trim())),
                     None => {
@@ -308,20 +332,67 @@ pub async fn run_batch_steps(
                     }
                 }
             }
-            rest
+            Ok::<_, SshError>(rest)
         };
-        let (_, _, err) = tokio::join!(write, read_out, read_err);
-        (child.wait().await, out, err)
+        let (_, out, err) = tokio::try_join!(write, read_out, read_err)?;
+        Ok::<_, SshError>((child.wait().await, out, err))
     };
     let (status, out, err) = match tokio::time::timeout(timeout, run).await {
-        Ok(done) => done,
+        Ok(Ok(done)) => done,
+        Ok(Err(error)) => {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            return Err(error);
+        }
         Err(_) => return Ok(BatchRun::TimedOut),
     };
-    let status = status.map_err(|e| format!("Skiff cannot run ssh: {e}"))?;
+    let status = status.map_err(|e| SshError::Run(format!("Skiff cannot run ssh: {e}")))?;
     if status.code() == Some(255) {
         return Ok(BatchRun::Ssh(err));
     }
     Ok(BatchRun::Done(String::from_utf8_lossy(&out).into_owned()))
+}
+
+async fn read_stdout<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Vec<u8>, SshError> {
+    let mut output = Vec::new();
+    let mut chunk = [0; 8192];
+    loop {
+        let count = reader
+            .read(&mut chunk)
+            .await
+            .map_err(|e| SshError::Run(format!("Skiff cannot read ssh output: {e}")))?;
+        if count == 0 {
+            return Ok(output);
+        }
+        if output.len().saturating_add(count) > MAX_BATCH_OUTPUT {
+            return Err(SshError::OutputTooLarge);
+        }
+        output.extend_from_slice(&chunk[..count]);
+    }
+}
+
+async fn read_stderr_line<R: AsyncRead + Unpin>(
+    reader: &mut BufReader<R>,
+) -> Result<Option<String>, SshError> {
+    let mut bytes = Vec::new();
+    let count = (&mut *reader)
+        .take(MAX_STDERR_LINE as u64 + 1)
+        .read_until(b'\n', &mut bytes)
+        .await
+        .map_err(|e| SshError::Run(format!("Skiff cannot read ssh diagnostics: {e}")))?;
+    if count == 0 {
+        return Ok(None);
+    }
+    if bytes.len() > MAX_STDERR_LINE
+        || bytes.last() != Some(&b'\n') && bytes.len() == MAX_STDERR_LINE + 1
+    {
+        return Err(SshError::OutputTooLarge);
+    }
+    Ok(Some(
+        String::from_utf8_lossy(&bytes)
+            .trim_end_matches(['\r', '\n'])
+            .to_owned(),
+    ))
 }
 
 /// One of ssh's own stderr lines as a person may see it, or `None`. Only a
@@ -358,7 +429,8 @@ pub fn shown_line(line: &str) -> Option<String> {
 
 /// Lines a connect shows as it goes: ssh's allowlisted lines from each
 /// forward, and the replies the app notes. One stream for this app run.
-static CONNECT_LOG: std::sync::OnceLock<tokio::sync::broadcast::Sender<String>> = std::sync::OnceLock::new();
+static CONNECT_LOG: std::sync::OnceLock<tokio::sync::broadcast::Sender<String>> =
+    std::sync::OnceLock::new();
 
 fn connect_log_tx() -> &'static tokio::sync::broadcast::Sender<String> {
     CONNECT_LOG.get_or_init(|| tokio::sync::broadcast::channel(64).0)
@@ -387,7 +459,11 @@ pub fn backoff(failures: u32) -> Duration {
 /// The caller removes it.
 pub fn temp_dir(what: &str) -> std::io::Result<PathBuf> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    let dir = std::env::temp_dir().join(format!("skiff-{what}-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+    let dir = std::env::temp_dir().join(format!(
+        "skiff-{what}-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::DirBuilder::new().mode(0o700).create(&dir)?;
     Ok(dir)
@@ -420,6 +496,8 @@ pub enum SshError {
         destination: String,
         seconds: u64,
     },
+    OutputTooLarge,
+    Run(String),
     Setup(String),
 }
 
@@ -435,6 +513,8 @@ impl fmt::Display for SshError {
             Self::Exited { destination, .. } => write!(f, "ssh to {destination} stopped for an unknown reason. Settings › Hosts checks {destination} and finds the cause."),
             Self::TimedOut(d) => write!(f, "ssh to {d} did not connect within {}s.", OPEN_TIMEOUT.as_secs()),
             Self::Waiting { destination, seconds } => write!(f, "Not connected to {destination}. Skiff tries again in {seconds}s."),
+            Self::OutputTooLarge => write!(f, "SSH output was too large"),
+            Self::Run(why) => f.write_str(why),
             Self::Setup(why) => write!(f, "Cannot prepare the SSH forward: {why}"),
         }
     }
@@ -446,7 +526,9 @@ impl SshError {
     /// the sshd blocks the forward, not that skiffd is missing.
     pub fn refine(self, socket_live: bool) -> Self {
         match self {
-            Self::NoSkiffd { destination, .. } if socket_live => Self::ForwardingRefused(destination),
+            Self::NoSkiffd { destination, .. } if socket_live => {
+                Self::ForwardingRefused(destination)
+            }
             e => e,
         }
     }

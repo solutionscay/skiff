@@ -9,6 +9,14 @@ import { open as openFile } from "@tauri-apps/plugin-dialog";
 import { showError } from "../../ui/alerts";
 import { refocusTerminal } from "../view";
 import { hostInvoke } from "../../app/hostCaps";
+import { isRemote, hostName } from "../../app/hosts";
+
+/** A local picker can only name this computer's file. Put it on a remote
+ * Host before its project config refers to it. */
+async function hostImage(file: string): Promise<string> {
+  if (!isRemote()) return file;
+  return hostInvoke<string>("drops", "project_image_upload", { path: file, host: hostName() });
+}
 
 async function setIcon(p: Project, icon: string | null) {
   try {
@@ -51,7 +59,7 @@ export function backgroundEntries(p: Project): MenuEntry[] {
           defaultPath: p.path,
           filters: [{ name: t("dialog.imageFiles"), extensions: ["png", "jpg", "jpeg", "webp", "gif", "svg"] }],
         }).catch(() => null);
-        if (typeof file === "string") await setBackground(p, file);
+        if (typeof file === "string") await setBackground(p, await hostImage(file));
       },
     },
     // Only an image shows through the panes, so the opacity waits for one.
@@ -73,7 +81,8 @@ export function iconEntries(p: Project): MenuEntry[] {
           filters: [{ name: t("dialog.imageFiles"), extensions: ["png", "svg", "ico", "jpg", "jpeg", "webp", "gif"] }],
         }).catch(() => null);
         if (typeof file !== "string") return;
-        const rel = file.startsWith(p.path + "/") ? file.slice(p.path.length + 1) : file;
+        const image = await hostImage(file);
+        const rel = !isRemote() && image.startsWith(p.path + "/") ? image.slice(p.path.length + 1) : image;
         await setIcon(p, rel);
       },
     },

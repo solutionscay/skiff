@@ -16,20 +16,24 @@ type HostCap =
   | "session_agents"
   | "program_status"
   | "daemon_metrics"
+  | "data_events"
   | "projects"
   | "git_status"
   | "git_diff"
   | "project_config"
   | "worktrees"
   | "files"
+  | "file_reveal"
   | "folders"
   | "project_assets"
+  | "drops"
   | "ledger"
   | "skipper"
   | "skipper_config"
   | "skipper_file"
   | "skipper_run"
   | "skipper_fleets"
+  | "skipper_watch_log"
   | "agent_config";
 
 /** The major of each capability that this page speaks. */
@@ -43,20 +47,24 @@ const MAJOR: Record<HostCap, number> = {
   session_agents: 1,
   program_status: 1,
   daemon_metrics: 1,
+  data_events: 1,
   projects: 1,
   git_status: 1,
   git_diff: 1,
   project_config: 1,
   worktrees: 1,
   files: 1,
+  file_reveal: 1,
   folders: 1,
   project_assets: 1,
+  drops: 1,
   ledger: 1,
   skipper: 1,
   skipper_config: 1,
   skipper_file: 1,
   skipper_run: 1,
   skipper_fleets: 2,
+  skipper_watch_log: 1,
   agent_config: 1,
 };
 
@@ -74,20 +82,24 @@ const OFFERS: Record<HostCap, MessageKey> = {
   session_agents: "hostCaps.session_agents",
   program_status: "hostCaps.program_status",
   daemon_metrics: "hostCaps.daemon_metrics",
+  data_events: "hostCaps.daemon_metrics",
   projects: "hostCaps.projects",
   git_status: "hostCaps.git_status",
   git_diff: "hostCaps.git_diff",
   project_config: "hostCaps.project_config",
   worktrees: "hostCaps.worktrees",
   files: "hostCaps.files",
+  file_reveal: "hostCaps.files",
   folders: "hostCaps.folders",
   project_assets: "hostCaps.project_assets",
+  drops: "hostCaps.project_assets",
   ledger: "hostCaps.ledger",
   skipper: "hostCaps.skipper",
   skipper_config: "hostCaps.skipper_config",
   skipper_file: "hostCaps.skipper_file",
   skipper_run: "hostCaps.skipper_run",
   skipper_fleets: "hostCaps.skipper_fleets",
+  skipper_watch_log: "hostCaps.skipper_watch_log",
   agent_config: "hostCaps.agent_config",
 };
 

@@ -9,7 +9,7 @@ import { place } from "./stateQueries";
 import { agentKind } from "../appearance/agentIcon";
 import { keepRow } from "../workspace/selection";
 import { revealSession } from "../workspace/view";
-import { openPath } from "../terminal/peek";
+import { openSkipperWatchLog } from "../terminal/peek";
 import { hostCan, hostInvoke } from "./hostCaps";
 import { checkShownHost, hostName, isRemote } from "./hosts";
 import { actionDialog } from "../ui/dialogParts";
@@ -447,9 +447,9 @@ export function startSkiffWatch() {
   if (s) watch(s.id, true);
 }
 
-/** The row menu's Open watch log, as Settings › Open with says. */
+/** The row menu's Open watch log in the page's Host-file viewer. */
 export function openWatchLog() {
-  invoke<string>("skiff_watch_log").then(openPath).catch(showError);
+  openSkipperWatchLog();
 }
 
 /**

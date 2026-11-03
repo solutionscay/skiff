@@ -22,7 +22,7 @@ import { showError } from "../ui/alerts";
 import { ctxMenu } from "../ui/contextMenu";
 import { render } from "../app/render";
 import { storedSet } from "../app/stored";
-import { t, tn } from "../i18n";
+import { t } from "../i18n";
 import { hostCan, hostInvoke } from "../app/hostCaps";
 import { isRemote } from "../app/hosts";
 import { dataEpoch } from "../app/dataPlane";
@@ -85,14 +85,23 @@ export async function setShowFiles(p: Project, show: boolean) {
   }
 }
 
-function load(root: string, dir: string) {
+function load(root: string, dir: string, cursor?: number) {
   if (reading.has(dir)) return;
   reading.add(dir);
   roots.set(dir, root);
   const at = dataEpoch();
-  hostInvoke<HostListing>("files", "list_files", { worktree: root, dir: relative(root, dir) })
+  hostInvoke<HostListing>("files", "list_files", { worktree: root, dir: relative(root, dir), cursor: cursor ?? null })
     .then((l) => {
-      if (at === dataEpoch()) store(dir, l);
+      if (at !== dataEpoch()) return;
+      if (cursor === undefined) store(dir, l);
+      else {
+        const before = listings.get(dir);
+        if (before && !("error" in before)) {
+          const byName = new Map(before.entries.map((e) => [e.name, e]));
+          for (const e of l.entries) byName.set(e.name, e);
+          store(dir, { entries: [...byName.values()].sort((a, b) => (b.kind === "dir" ? 1 : 0) - (a.kind === "dir" ? 1 : 0) || a.name.localeCompare(b.name)), truncated: l.truncated, ...(l.next === undefined ? {} : { next: l.next }) });
+        }
+      }
     })
     .catch((e) => {
       if (at !== dataEpoch()) return;
@@ -152,7 +161,7 @@ export function filesBlock(w: Worktree): HTMLElement {
     e.stopPropagation();
     ctxMenu.open(e.clientX, e.clientY, t("menu.files"), [
       { icon: "schedule-refresh-cw", label: t("menu.refresh"), run: () => refresh(w.path, w.path) },
-      !isRemote() && revealEntry(() => openFolder(w.path)),
+      revealEntry(() => !isRemote() ? openFolder(w.path) : void hostInvoke("file_reveal", "reveal_host_file", { worktree: w.path, file: null }).catch(showError)),
     ].filter((x) => !!x));
   });
   block.appendChild(head);
@@ -187,7 +196,16 @@ function folder(into: HTMLElement, root: string, dir: string, depth: number) {
       }
     }
     // Cut: never "Empty", and the folder keeps its fold.
-    if (l.truncated) into.appendChild(note(l.entries.length ? tn("files.truncated", l.entries.length) : t("files.tooMany"), depth));
+    if (l.truncated) {
+      if (l.next === undefined) into.appendChild(note(t("files.tooMany"), depth));
+      else {
+        const more = h("button", "file-note", t("files.more"));
+        more.type = "button";
+        more.style.setProperty("--depth", String(depth));
+        more.addEventListener("click", () => load(root, dir, l.next));
+        into.appendChild(more);
+      }
+    }
   }
 }
 
@@ -244,12 +262,12 @@ function row(e: Entry, root: string, path: string, depth: number): HTMLElement {
     const items = dir
       ? [
           { icon: "schedule-refresh-cw", label: t("menu.refresh"), run: () => refresh(root, path) },
-          local && revealEntry(() => openFolder(path), { hint: keyLabel("project-folder") }),
+          revealEntry(() => local ? openFolder(path) : void hostInvoke("file_reveal", "reveal_host_file", { worktree: root, file: relative(root, path) }).catch(showError), { hint: keyLabel("project-folder") }),
           copyPathEntry(() => copy(path), keyLabel("project-copy-path")),
         ]
       : [
           acts?.open && { icon: "indicators-square-arrow-out-up-right", label: t(local ? "menu.open" : "menu.openCopy"), hint: "Enter", run: acts.open },
-          local && revealEntry(() => reveal(path), { hint: keyLabel("project-folder") }),
+          revealEntry(() => local ? reveal(path) : void hostInvoke("file_reveal", "reveal_host_file", { worktree: root, file: relative(root, path) }).catch(showError), { hint: keyLabel("project-folder") }),
           copyPathEntry(() => copy(path), keyLabel("project-copy-path")),
         ];
     ctxMenu.open(m.clientX, m.clientY, e.name, items.filter((x) => !!x));

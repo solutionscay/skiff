@@ -16,11 +16,11 @@ use std::{
 };
 
 use skiff_host_api::{
-    AgentEdit, Error, FolderListing, FolderPlaces, Hello, HostBranches, HostAgent, HostChanges, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
+    AgentEdit, Error, FolderListing, FolderPlaces, Hello, HostBranches, HostCacheImage, HostCacheUse, HostAgent, HostChanges, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
     HostFileScope, HostListing, HostProject, HostSkipper, HostSkipperFile, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response, SkipperEdit, SkipperFolderDone,
     SkipperFolderMode, SkipperFolderPreview, SkipperOpened, InventorySession, TakenSkipper,
 };
-use tokio::net::UnixStream;
+use tokio::{net::UnixStream, sync::broadcast};
 
 use super::{
     local::HostSelection,
@@ -61,6 +61,40 @@ pub struct DataPlane {
     /// a remote Host: the forward's peer is `ssh`.
     pid: Option<u32>,
 }
+
+/// A data-plane invalidation. Events are only hints: a gap always requires
+/// snapshots, never replay or a guessed delta.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DataEvent {
+    Changed { projects: bool, worktrees: Vec<String>, tasks: bool },
+    Gap,
+}
+
+pub struct DataEvents {
+    events: broadcast::Receiver<skiff_host_api::Event>,
+    next: Option<u64>,
+}
+impl DataEvents {
+    pub async fn recv(&mut self) -> Result<DataEvent, Error> {
+        loop {
+            match self.events.recv().await {
+                Ok(skiff_host_api::Event::DataChanged { sequence, projects, worktrees, tasks }) => {
+                    let gap = self.next.is_some_and(|expected| expected != sequence);
+                    self.next = sequence.checked_add(1);
+                    if gap { return Ok(DataEvent::Gap) }
+                    return Ok(DataEvent::Changed { projects, worktrees, tasks });
+                }
+                Ok(skiff_host_api::Event::DataGap { sequence }) => {
+                    self.next = sequence.checked_add(1);
+                    return Ok(DataEvent::Gap);
+                }
+                Ok(_) => {}
+                Err(broadcast::error::RecvError::Lagged(_)) => return Ok(DataEvent::Gap),
+                Err(broadcast::error::RecvError::Closed) => return Err(Error::TransportLost),
+            }
+        }
+    }
+}
 impl DataPlane {
     pub fn connection(&self) -> Arc<HostConnection> {
         self.connection.clone()
@@ -68,6 +102,12 @@ impl DataPlane {
     /// The local service's pid, for the one build that may replace it.
     pub fn pid(&self) -> Option<u32> {
         self.pid
+    }
+    /// Events after this call. A data-plane Host without `data_events@1`
+    /// deliberately uses the caller's snapshot/poll fallback.
+    pub fn events(&self) -> Result<DataEvents, Error> {
+        self.connection.hello().require(&skiff_host_api::Capability::data_events())?;
+        Ok(DataEvents { events: self.connection.events()?, next: None })
     }
 }
 
@@ -215,8 +255,22 @@ pub async fn git_diff(c: &HostConnection, worktree: &str, file: Option<&str>) ->
 /// The folder `dir` (relative; empty for the worktree itself) of `worktree`.
 /// `follow_links`: This Mac only; a remote Host never gets it.
 pub async fn file_list(c: &HostConnection, worktree: &str, dir: &str, follow_links: bool) -> Result<HostListing, Error> {
-    match c.request(Request::FileList { worktree: worktree.into(), dir: dir.into(), follow_links }).await? {
+    file_list_page(c, worktree, dir, follow_links, None).await
+}
+
+/// A page after `cursor`, which came from the preceding listing.
+pub async fn file_list_page(c: &HostConnection, worktree: &str, dir: &str, follow_links: bool, cursor: Option<usize>) -> Result<HostListing, Error> {
+    match c.request(Request::FileList { worktree: worktree.into(), dir: dir.into(), follow_links, cursor }).await? {
         Response::Files { listing } => Ok(listing),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// Shows a known worktree folder or a known regular file in this Host's file
+/// manager. No Host path is passed to this computer.
+pub async fn file_reveal(c: &HostConnection, worktree: &str, file: Option<&str>) -> Result<(), Error> {
+    match c.request(Request::FileReveal { worktree: worktree.into(), file: file.map(Into::into) }).await? {
+        Response::Ok => Ok(()),
         _ => unreachable!("checked by Request::accepts"),
     }
 }
@@ -233,6 +287,44 @@ pub async fn file_read(c: &HostConnection, worktree: &str, file: &str, purpose: 
 pub async fn project_background(c: &HostConnection, project: &str) -> Result<HostImage, Error> {
     match c.request(Request::ProjectBackground { project: project.into() }).await? {
         Response::Image { image } => Ok(image),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// The Host's Images library, newest first.
+pub async fn image_list(c: &HostConnection) -> Result<Vec<HostCacheImage>, Error> {
+    match c.request(Request::ImageList).await? {
+        Response::Images { images } => Ok(images),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// One Host cache image's bytes. `path` came from [`image_list`].
+pub async fn image_read(c: &HostConnection, path: &str) -> Result<HostImage, Error> {
+    match c.request(Request::ImageRead { path: path.into() }).await? {
+        Response::Image { image } => Ok(image),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+pub async fn image_delete(c: &HostConnection, paths: Vec<String>) -> Result<(), Error> {
+    match c.request(Request::ImageDelete { paths }).await? {
+        Response::Ok => Ok(()),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+pub async fn image_pin(c: &HostConnection, paths: Vec<String>, on: bool) -> Result<(), Error> {
+    match c.request(Request::ImagePin { paths, on }).await? {
+        Response::Ok => Ok(()),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// The total cache and image sizes of this Host.
+pub async fn cache_use(c: &HostConnection) -> Result<HostCacheUse, Error> {
+    match c.request(Request::CacheUse).await? {
+        Response::CacheUse { usage } => Ok(usage),
         _ => unreachable!("checked by Request::accepts"),
     }
 }
@@ -274,6 +366,15 @@ pub async fn ledger_result(c: &HostConnection, uid: &str) -> Result<HostFile, Er
 pub async fn skipper_settings(c: &HostConnection) -> Result<HostSkipper, Error> {
     match c.request(Request::SkipperSettings).await? {
         Response::Skipper { settings } => Ok(*settings),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// Skipper's watcher log, chosen and read by the Host as a bounded preview.
+/// A client supplies no path and never opens a Host path locally.
+pub async fn skipper_watch_log(c: &HostConnection) -> Result<HostFile, Error> {
+    match c.request(Request::SkipperWatchLog).await? {
+        Response::File { file } => Ok(*file),
         _ => unreachable!("checked by Request::accepts"),
     }
 }
@@ -375,14 +476,16 @@ pub async fn folder_create(c: &HostConnection, parent: &str, name: &str) -> Resu
 
 /// Puts a dropped or pasted file into the Host's cache. Answers its Host path.
 pub async fn drop_put(c: &HostConnection, name: &str, bytes: Vec<u8>) -> Result<String, Error> {
-    match c.request(Request::DropPut { name: name.into(), bytes }).await? {
+    match c.request(Request::DropPut { name: name.into(), bytes, upload: None, total: None, offset: 0, finish: true }).await? {
         Response::Path { path } => Ok(path),
         _ => unreachable!("checked by Request::accepts"),
     }
 }
 
 /// The largest file a drop sends to a remote Host: one frame holds it.
-pub const DROP_MAX: u64 = 5 * 1024 * 1024;
+pub const DROP_MAX: u64 = 50 * 1024 * 1024;
+/// The raw payload of one upload frame. JSON/base64 stays below 8 MiB.
+const DROP_CHUNK: usize = 4 * 1024 * 1024;
 
 /// A dropped or pasted file for the Host `on`: no folder, and no larger than
 /// [`DROP_MAX`]. Answers its name and bytes, or the message to show. It
@@ -394,7 +497,7 @@ pub async fn drop_file(p: &std::path::Path, on: Option<&str>) -> Result<(String,
         return Err(format!("Drop files, not folders, on a pane on {on}."));
     }
     if m.len() > DROP_MAX {
-        return Err(format!("{} is larger than 5 MB. Skiff cannot send it to {on} yet.", p.display()));
+        return Err(format!("{} is larger than 50 MB. Skiff cannot send it to {on}.", p.display()));
     }
     let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let bytes = std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()))?;
@@ -403,7 +506,27 @@ pub async fn drop_file(p: &std::path::Path, on: Option<&str>) -> Result<(String,
 
 /// [`drop_put`] with the message to show when it fails. `on` names the Host.
 pub async fn drop_send(c: &HostConnection, name: &str, bytes: Vec<u8>, on: Option<&str>) -> Result<String, String> {
-    drop_put(c, name, bytes).await.map_err(|e| match e {
+    let put = async {
+        if bytes.len() <= DROP_CHUNK {
+            return drop_put(c, name, bytes).await;
+        }
+        let upload = uuid::Uuid::new_v4().to_string();
+        let total = bytes.len() as u64;
+        let mut offset = 0usize;
+        while offset < bytes.len() {
+            let end = (offset + DROP_CHUNK).min(bytes.len());
+            let finish = end == bytes.len();
+            let reply = c.request(Request::DropPut {
+                name: name.into(), bytes: bytes[offset..end].to_vec(), upload: Some(upload.clone()), total: Some(total), offset: offset as u64, finish,
+            }).await?;
+            if finish {
+                return match reply { Response::Path { path } => Ok(path), _ => unreachable!("checked by Request::accepts") };
+            }
+            offset = end;
+        }
+        unreachable!("a non-empty upload has a final frame")
+    };
+    put.await.map_err(|e| match e {
         Error::UnsupportedCapability { .. } => format!(
             "{} cannot take dropped files. Its Skiff is older than this app: use Update Skiff… on that Host in Settings › Hosts.",
             on.unwrap_or("This Host")
