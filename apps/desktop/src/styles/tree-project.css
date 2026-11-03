@@ -60,10 +60,11 @@ body.kbd #sidebar-scroll .project-row:has(> .project-pick.current:focus) { outli
 
 /* One indent grid. A project's rows start under its name (--in); a worktree's rows one step further.
    Changes and Files put their glyph on the same line as the session icons. No space between rows anywhere. */
-/* --fi: in a section box, the box's inset and frame take 8 of the indent. A fleet's projects sit at the box edge,
-   as the loose ones do, in line with the fleet's Skipper: the box and the Skipper's bigger row mark the fleet. */
+/* --fi: in a section box, the box's inset and frame take 8 of the indent. Loose projects sit at the box edge.
+   A fleet's projects sit 10 further in, past the fleet Skipper's face, so they read as the fleet's, not the Skipper's siblings. */
 .tree-project { --fi: 0; --in: calc(44 + var(--fi)); }
 #sidebar-scroll > .tree-kids > .tree-project { --fi: -8; }
+#sidebar-scroll > .tree-kids[data-kids] > .tree-project { --fi: 2; }
 .tree-project .wt { --in: calc(66 + var(--fi)); padding-bottom: 0; box-shadow: none; }
 .tree-project .wt.selected { box-shadow: none; }
 .tree-project .wt-row, .tree-project .files-head { background: transparent; }
