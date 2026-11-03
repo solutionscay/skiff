@@ -61,6 +61,7 @@ import { projectBadge, treeSections } from "./tree";
 import { t, tn, upper } from "../i18n";
 import { matchText, sinceText } from "./missionControl/model";
 import * as T from "./missionControl/terminal";
+import { clearEdges, drawEdges, type Edge, mountEdges } from "./missionControl/edges";
 import { placeGraph, route } from "./missionControl/grid";
 import { clearConnectors, drawConnectors, type Link, mountConnectors } from "./missionControl/connectors";
 import { indexLedger, type LedgerIndex, stateParts } from "./missionControl/state";
@@ -91,6 +92,7 @@ mountConnectors(strings);
 const items = h("div", "mission-items");
 world.append(strings, T.faceLayer, items);
 const ticks = h("div", "mission-ticks");
+mountEdges(ticks);
 const zoomBar = h("div", "mission-zoom");
 const zoomLevel = h("span", "level");
 const zoomBtn = (text: string, title: string, run: () => void) => {
@@ -594,25 +596,17 @@ function counts() {
 
 /** A waiting card out of view: a tick at the edge of the view, toward it. */
 function drawTicks() {
-  ticks.replaceChildren();
   const vw = canvas.clientWidth;
   const vh = canvas.clientHeight;
   const size = 10 * appZoom();
+  const edges: Edge[] = [];
   for (const [id, el] of cards) {
     if (!el.classList.contains("waiting")) continue;
     const r = placed.cards.get(id) ?? placed.clusters.get(id);
     if (!r) continue;
-    const at = G.edgeTick(view, r, vw, vh, size);
-    if (!at) continue;
-    const tick = h("button", "mission-tick");
-    tick.type = "button";
-    tick.tabIndex = -1;
-    tick.dataset.id = id;
-    tick.title = t("mission.waits", { name: el.querySelector(".t, .win-head .title")?.textContent ?? "" });
-    tick.style.left = `${at.x}px`;
-    tick.style.top = `${at.y}px`;
-    ticks.appendChild(tick);
+    edges.push({ id, at: G.edgeTick(view, r, vw, vh, size), title: t("mission.waits", { name: el.querySelector(".t, .win-head .title")?.textContent ?? "" }) });
   }
+  drawEdges(edges);
 }
 
 // ---- The view ----
@@ -1108,7 +1102,7 @@ export const board = {
     clusters.clear();
     plans.clear();
     clearConnectors();
-    ticks.replaceChildren();
+    clearEdges();
     T.clearFaces();
   },
 };
