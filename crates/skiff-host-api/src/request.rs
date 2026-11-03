@@ -237,6 +237,17 @@ pub enum Request {
         name: String,
         #[serde(with = "bytes")]
         bytes: Vec<u8>,
+        /// One upload id and its complete size make this a framed upload.
+        /// Absent keeps the original one-frame request.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        upload: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        total: Option<u64>,
+        #[serde(default)]
+        offset: u64,
+        /// Only this frame stores the completed file in the Host cache.
+        #[serde(default)]
+        finish: bool,
     },
     /// Answers `image`: the project's configured background, read on the
     /// Host. No background is `not_found`; a file that is not an image, or

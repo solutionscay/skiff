@@ -288,9 +288,12 @@ pub(crate) async fn open_image(path: PathBuf) -> Result<(), String> {
 /// space in front. Empty for an agent that gets none.
 #[tauri::command]
 pub(crate) async fn agent_cache_flags(app: State<'_, App>, agent: String) -> Result<String, String> {
-    // A remote Host's cache path is its own: this computer's means nothing there.
     if app.remote() {
-        return Ok(String::new());
+        return crate::connection::data_read(&app, |c| async move {
+            let (agents, _) = data::agent_config(&c).await?;
+            Ok(agents.into_iter().find(|a| a.id == agent).map(|a| a.cache_flags).unwrap_or_default())
+        })
+        .await;
     }
     let (c, _) = ensure_client(&app).await?;
     let agents = c.list_agents().await.map_err(err)?;

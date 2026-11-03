@@ -252,7 +252,16 @@ async fn agents() -> Result<Vec<skiff_host_api::HostAgent>, Error> {
     let mut list = tokio::time::timeout(SESSIONS_TIMEOUT, c.list_agents()).await.map_err(|_| Error::TimedOut)?.map_err(failed)?;
     // What uses each agent comes from this Host's config, whatever its skiffd build.
     skiff_core::project::mark_used(&mut list);
-    Ok(list.into_iter().map(project_agent).collect())
+    let cfg = config::load().map_err(failed)?;
+    Ok(list
+        .into_iter()
+        .map(|agent| {
+            let flags = skiff_client::cache::flags_typed(&cfg, &agent);
+            let mut agent = project_agent(agent);
+            agent.cache_flags = flags;
+            agent
+        })
+        .collect())
 }
 
 /// The skiffd this service is paired with.

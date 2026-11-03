@@ -163,6 +163,7 @@ pub fn project_agent(value: AgentInfo) -> HostAgent {
         installed,
         enabled,
         used_by,
+        cache_flags: String::new(),
     }
 }
 
@@ -175,6 +176,7 @@ pub fn restore_agent(value: HostAgent) -> AgentInfo {
         installed,
         enabled,
         used_by,
+        ..
     } = value;
     AgentInfo {
         id,

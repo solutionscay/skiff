@@ -193,7 +193,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "e2263f2410ee88abef84007c478cd895e4efab9ad9191c43e06c71891d7d8c9f"
+    "sha256": "e77dea044df1c180d7b4068c9596eb61b9a6fa2627332863d26eb859bc97e417"
   },
   "apps/desktop/src-tauri/src/header_bar.rs": {
     "ownership": "client policy: exact existing adapter only",
