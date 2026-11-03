@@ -407,6 +407,12 @@ function tookTerminal(p: Peek) {
 const KIND_NAMES: Record<string, MessageKey> = { file: "peek.kindFile", folder: "peek.kindFolder", diff: "peek.kindDiff" };
 const kindName = (kind: string) => (KIND_NAMES[kind] ? t(KIND_NAMES[kind]) : kind);
 
+function peekHead(kind: string, title: string, where: string): HTMLElement {
+  const head = h("div", "peek-head");
+  head.append(h("span", "peek-kind", kindName(kind)), h("span", "peek-title mono", title), h("span", "peek-where mono", where), escButton());
+  return head;
+}
+
 const keysIn = (el: HTMLElement) => el.contains(document.activeElement) || document.activeElement === document.body;
 
 function repaintPanes() {
@@ -433,8 +439,7 @@ function cardFrame(kind: string, path: string, cls = "peek file-preview"): HTMLE
   const el = h("div", cls);
   el.tabIndex = -1;
   el.setAttribute("aria-label", name);
-  const head = h("div", "peek-head");
-  head.append(h("span", "peek-kind", kindName(kind)), h("span", "peek-title mono", name), h("span", "peek-where mono", dir), escButton());
+  const head = peekHead(kind, name, dir);
   el.append(head);
   return el;
 }
@@ -650,8 +655,7 @@ function frame(mine: number, kind: string, title: string, where: string, program
   const el = h("div", "peek pending");
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-label", title);
-  const head = h("div", "peek-head");
-  head.append(h("span", "peek-kind", kindName(kind)), h("span", "peek-title mono", title), h("span", "peek-where mono", where), escButton());
+  const head = peekHead(kind, title, where);
   const box = h("div", "peek-body");
   el.append(head, box);
   // Laid out but not visible, so the terminal has its real size from the start.
