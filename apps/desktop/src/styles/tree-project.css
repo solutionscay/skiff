@@ -60,11 +60,10 @@ body.kbd #sidebar-scroll .project-row:has(> .project-pick.current:focus) { outli
 
 /* One indent grid. A project's rows start under its name (--in); a worktree's rows one step further.
    Changes and Files put their glyph on the same line as the session icons. No space between rows anywhere. */
-/* --fi: a fleet's projects sit one step in from the fleet's Skipper, so the fleet reads as their head.
-   In a section box, the box's inset and frame take 8 of the indent: the rows keep their place on screen. */
+/* --fi: in a section box, the box's inset and frame take 8 of the indent. A fleet's projects sit at the box edge,
+   as the loose ones do, in line with the fleet's Skipper: the box and the Skipper's bigger row mark the fleet. */
 .tree-project { --fi: 0; --in: calc(44 + var(--fi)); }
 #sidebar-scroll > .tree-kids > .tree-project { --fi: -8; }
-#sidebar-scroll > .tree-kids[data-kids] > .tree-project { --fi: 12; }
 .tree-project .wt { --in: calc(66 + var(--fi)); padding-bottom: 0; box-shadow: none; }
 .tree-project .wt.selected { box-shadow: none; }
 .tree-project .wt-row, .tree-project .files-head { background: transparent; }
@@ -166,7 +165,9 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
    It takes the Admiral's size in the Skippers list: a 60px tinted row with a 40px face, 13px words. */
 .session-row.skiff-agent-row { height: calc(60 * var(--u)); gap: calc(10 * var(--u)); padding-left: calc(12 * var(--u)); background-color: var(--bg-raised); border-bottom: 1px solid var(--rule-strong); }
 .skiff-agent-row > .skipper-face { width: calc(40 * var(--u)); height: calc(40 * var(--u)); }
-.skiff-agent-row .skiff-agent-name { flex-shrink: 0; font-size: calc(13px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
+/* The size ladder, as h1 to p: Admiral 60px row, 40px face, 15px name; fleet Skipper 40, 28, 14px;
+   project Skipper 30, 20, 13px; session rows 20px with 12px words. */
+.skiff-agent-row .skiff-agent-name { flex-shrink: 0; font-size: calc(15px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
 .skiff-agent-row .title { font-size: calc(13px * var(--zoom, 1)); color: var(--text-3); }
 .skiff-agent-row:not([data-session]) .title { color: var(--text-dim); }
 /* The Skiff agent's watcher, on its agent icon. Runs: teal. The icon turns
@@ -190,16 +191,19 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 
 /* A fleet's Skipper: the first row under its fleet head, in the fleet's box, in line with the head's name. No tint:
    the box marks fleet scope. A fleet has no color: its Skipper takes the default one, as the Skiff agent's row does.
-   It is a full 40px row with a 28px face, as tall as a project row, so it reads as the head of the fleet's projects. */
+   It is a full 40px row with a 28px face and a 14px name, as tall as a project row, so it reads as the head of the fleet's projects. */
 #sidebar-scroll > .tree-kids > .session-row.project-skipper-row { padding-left: calc(8 * var(--u)); --pc: var(--project-default); }
 .session-row.project-skipper-row { height: var(--row); }
 .project-skipper-row > .skipper-face { width: calc(28 * var(--u)); height: calc(28 * var(--u)); }
-/* A project Skipper: the first child of its project, a 20px row in the worktree column with an 18px face.
-   The worktrees and loose sessions under it are its siblings, not its children. It takes the project's color. */
-.tree-project .session-row.project-skipper-row { height: calc(20 * var(--u)); padding-left: calc(var(--in) * var(--u)); }
-.tree-project .project-skipper-row > .skipper-face { width: calc(18 * var(--u)); height: calc(18 * var(--u)); }
-.project-skipper-row .skiff-agent-name { flex-shrink: 0; font-size: calc(13px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
+.project-skipper-row .skiff-agent-name { flex-shrink: 0; font-size: calc(14px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
 .project-skipper-row .title { font-size: calc(13px * var(--zoom, 1)); color: var(--text-3); }
+/* A project Skipper: the first child of its project, in the worktree column. The worktrees and loose sessions under it
+   are its siblings, not its children. It takes the project's color. Its 30px row (20px face, 13px name, 12px title)
+   sits between the fleet Skipper and a session row; it leaves the 20px child grid by 10px, once per project. */
+.tree-project .session-row.project-skipper-row { height: calc(30 * var(--u)); padding-left: calc(var(--in) * var(--u)); }
+.tree-project .project-skipper-row > .skipper-face { width: calc(20 * var(--u)); height: calc(20 * var(--u)); }
+.tree-project .project-skipper-row .skiff-agent-name { font-size: calc(13px * var(--zoom, 1)); }
+.tree-project .project-skipper-row .title { font-size: calc(12px * var(--zoom, 1)); }
 /* Its own watcher, with the Skiff agent row's states: teal while it runs,
    turning while idle with a followed pane, red when a line failed. The
    Skippers list's rows (.sk-row) show it the same way. */
