@@ -449,15 +449,6 @@ $("sidebar-scroll").addEventListener("mousedown", (e) => {
   if (preview) el.focus();
 });
 
-// The list's scrollbar shows while the list scrolls, also by keys with the pointer away (tree.css).
-let scrollEnd = 0;
-$("sidebar-scroll").addEventListener("scroll", (e) => {
-  const list = e.currentTarget as HTMLElement;
-  list.classList.add("scrolling");
-  clearTimeout(scrollEnd);
-  scrollEnd = window.setTimeout(() => list.classList.remove("scrolling"), 800);
-}, { passive: true });
-
 // Tab from the list goes into a preview on screen, not to a pane under it.
 window.addEventListener("keydown", (e) => {
   if (e.key !== "Tab" || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || modalOpen()) return;
