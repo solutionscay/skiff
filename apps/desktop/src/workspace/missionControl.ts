@@ -146,8 +146,8 @@ function loadKept() {
   folded = new Set(Array.isArray(k.folded) ? k.folded : []);
   opened = new Set(Array.isArray(k.opened) ? k.opened : []);
   panelOpen = k.panel !== false;
-  // The record is written back as it is now: what it held beyond these goes.
-  saveKept();
+  // A record from before the fixed layout still holds the drag offsets and orders: written back, they go.
+  if ("offs" in k || "order" in k) saveKept();
 }
 
 function saveKept() {

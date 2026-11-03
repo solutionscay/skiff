@@ -957,7 +957,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "3a81f719a85513930fdb7f31c9c6bef4c4511084b2c556ee5ce86f6737d11a00"
+    "sha256": "522e938a521b49ce627787d168eb7239dc985122d7762e3c4c521f1c63611578"
   },
   "apps/desktop/src/workspace/missionControl/model.ts": {
     "ownership": "client policy: exact existing adapter only",
