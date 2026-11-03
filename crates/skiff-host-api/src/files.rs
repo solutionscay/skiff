@@ -68,7 +68,7 @@ pub struct HostFile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     /// A previewed image, or the whole file for a copy. Base64.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "crate::opt_bytes")]
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "crate::wire::opt_bytes")]
     pub bytes: Option<Vec<u8>>,
     /// Text cut at 512 KiB (at a line end), or an image over 5 MiB not sent.
     pub truncated: bool,
