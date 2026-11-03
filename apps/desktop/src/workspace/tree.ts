@@ -1,6 +1,6 @@
 /** The side panel's tree: fleets as section heads, projects as rows, each folded or open (#87). */
 
-import { fleetSkipperOf } from "../app/skiffAgent";
+import { coordinatorOf, fleetSkipperOf } from "../app/skiffAgent";
 import type { Project, SessionInfo, Worktree } from "../platform/types";
 
 import { isFolder, isUnread } from "./model";
@@ -69,6 +69,32 @@ export function treeSections(): Section[] {
     else fleets.set(p.fleet, [p]);
   }
   return [{ fleet: null, projects: loose }, ...[...fleets].map(([fleet, projects]) => ({ fleet, projects }))];
+}
+
+/**
+ * The sessions an open workspace would hide (#229): in a project it leaves
+ * out, the Skipper of such a project, and the Skipper of a fleet it shows no
+ * project of. The tree lists them under their own head, so no session is
+ * out of sight. `where` names the project or fleet. None in All projects.
+ */
+export function outsideSessions(): { session: SessionInfo; where: string }[] {
+  if (!view) return [];
+  const shows = view.shows;
+  const out: { session: SessionInfo; where: string }[] = [];
+  for (const s of sessions.values()) {
+    const scope = coordinatorOf(s.id);
+    // The Skiff agent has its own row above the projects.
+    if (scope === "grand") continue;
+    if (scope?.startsWith("fleet:")) {
+      const fleet = scope.slice("fleet:".length);
+      const projects = S.projects.filter((p) => p.fleet === fleet);
+      if (projects.length && !projects.some(shows)) out.push({ session: s, where: fleet });
+      continue;
+    }
+    const p = scope ? S.projects.find((x) => x.name === scope) : place(s)?.project;
+    if (p && !shows(p)) out.push({ session: s, where: p.name });
+  }
+  return out;
 }
 
 /** The project rows the tree shows, in order. A folded fleet, or one that hides its projects, has none. */

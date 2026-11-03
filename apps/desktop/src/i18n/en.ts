@@ -554,6 +554,7 @@ export const en = {
   "mission.resultNotYet": "not yet",
   "sidebar.projects": "Projects",
   "sidebar.other": "Other",
+  "sidebar.outside": "Not in this workspace",
   "sidebar.otherWhere": "other",
   "sidebar.rowLabel": "{agent}, {title}, {state}",
   "sidebar.from": "from {name}",

@@ -27,7 +27,8 @@ function page(o: { remote: boolean; caps: string[]; fail?: string; capsFail?: st
         Channel: class {},
       },
       "@tauri-apps/api/event": { listen: async () => {} },
-      "./hosts": { isRemote: () => o.remote, hostName: () => "devbox" },
+      "./hosts": { isRemote: () => o.remote, hostName: () => "devbox", shownHost: () => (o.remote ? "devbox" : null) },
+      "../workspace/profile": { includeNew() {} },
       "./render": { render() {}, scheduleRender() {} },
       "./state": { S, sessions: new Map(), removeErrors: new Map(), OTHER: "\u0000other" },
       "./hostCaps": {

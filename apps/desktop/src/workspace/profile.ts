@@ -55,7 +55,7 @@ export const ledgerScope = state.ledgerScope;
 export const ledgerAllWork = state.ledgerAllWork;
 export const setLedgerAllWork = state.setLedgerAllWork;
 export const noteSelected = state.noteSelected;
-export const { includeAdded, keepInView, renameWorkspaceFleet, projectsPlus, projectWorkspaceEntries, fleetWorkspaceEntries } = membership;
+export const { includeAdded, includeNew, keepInView, renameWorkspaceFleet, projectsPlus, projectWorkspaceEntries, fleetWorkspaceEntries } = membership;
 
 // ── Notices ────────────────────────────────────────────────────────────────
 

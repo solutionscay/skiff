@@ -519,6 +519,7 @@ export const zh = {
   "mission.resultNotYet": "尚无",
   "sidebar.projects": "项目",
   "sidebar.other": "其他",
+  "sidebar.outside": "不在此工作区中",
   "sidebar.otherWhere": "其他",
   "sidebar.rowLabel": "{agent}，{title}，{state}",
   "sidebar.from": "来自 {name}",

@@ -540,6 +540,7 @@ export const es = {
   "mission.resultNotYet": "todavía no",
   "sidebar.projects": "Proyectos",
   "sidebar.other": "Otras",
+  "sidebar.outside": "Fuera de este espacio de trabajo",
   "sidebar.otherWhere": "otra",
   "sidebar.rowLabel": "{agent}, {title}, {state}",
   "sidebar.from": "desde {name}",

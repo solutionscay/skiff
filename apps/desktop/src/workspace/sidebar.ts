@@ -34,7 +34,7 @@ import { dragGroup, dragSessions, groupHome, revealSession, selectWorktree, show
 import { addProject } from "../app/panels";
 import { animateFold, growOpened } from "../ui/fold";
 import { dragTree } from "./treeDrag";
-import { bareWorktree, fleetKey, folded, hiddenSplit, isOpen, openToFocused, projectBadge, projectKey, projectsHidden, rollCounts, rollup, setProjectsHidden, toggleRow, treeDrag, treeSections, type Section } from "./tree";
+import { bareWorktree, fleetKey, folded, hiddenSplit, isOpen, openToFocused, outsideSessions, projectBadge, projectKey, projectsHidden, rollCounts, rollup, setProjectsHidden, toggleRow, treeDrag, treeSections, type Section } from "./tree";
 import { render } from "../app/renderRequest";
 import { projectsPlus, renderWorkspaceStatus, shows, workspaceOpen } from "./profile";
 import { ledgerCounts, ledgerNeeds, ledgerWorkTitle } from "./ledger";
@@ -208,6 +208,7 @@ const sectionKids = new Map<string, HTMLElement>();
 
 const AGENT_BLOCK = "agent";
 const OTHER_BLOCK = "other";
+const OUTSIDE_BLOCK = "outside";
 const projectBlockKey = (name: string) => `project:${name}`;
 
 /**
@@ -284,11 +285,16 @@ function sidebarSig(): { all: string; parts: Map<string, string>; looks: Map<str
     parts.set(k, JSON.stringify([base, projects[i], open, p.name === S.selectedProject, under.get(k) ?? null, skipper, open ? null : looksUnder.get(k) ?? null]));
   });
   const all = JSON.stringify([
-    listGen, appliedTheme(), S.selectedProject, folded.keys(), S.projects.map(shows), hiddenSig(),
+    listGen, appliedTheme(), S.selectedProject, folded.keys(), S.projects.map(shows), hiddenSig(), outsideSig(),
     S.selection, S.renamingSession, S.renaming?.id ?? null, rows, groups, projects, agent,
     S.dataState, S.dataNote,
   ]);
   return { all, parts, looks: looksUnder };
+}
+
+/** The sessions under Not in this workspace, and what their rows draw. */
+function outsideSig() {
+  return outsideSessions().map(({ session: x, where }) => [x.id, where, taskTitle(x), agentName(x), agentKind(x)]);
 }
 
 /** What each fleet that hides its projects shows: its head's count and the rows still under it. */
@@ -415,6 +421,13 @@ export function renderSidebar() {
   const note = projectsNote();
   if (note) nodes.push(note);
   else if (S.projects.length && !S.projects.some(shows)) nodes.push(h("div", "note-row", t("sidebar.noProjectsHere")));
+  // Sessions the open workspace would hide: never out of sight (#229).
+  const outside = outsideSessions();
+  if (outside.length) {
+    nodes.push(keep(`${OUTSIDE_BLOCK}-head`, "", outsideHead));
+    const outsideKey = JSON.stringify([listGen, appliedTheme(), S.selection, S.renamingSession, outsideSig()]);
+    nodes.push(keep(OUTSIDE_BLOCK, outsideKey, () => outsideBlock(outside)));
+  }
   // Sessions whose folder is in no project.
   if (worktreeLines(null).length) {
     nodes.push(keep(`${OTHER_BLOCK}-head`, "", otherHead));
@@ -454,6 +467,24 @@ function keepAnchor(side: HTMLElement, anchor: [key: string, dy: number] | null)
   if (!el) return;
   const moved = el.getBoundingClientRect().top - side.getBoundingClientRect().top - anchor[1];
   if (Math.abs(moved) >= 1) side.scrollTop += moved;
+}
+
+/** The head over sessions in projects the open workspace leaves out. */
+function outsideHead(): HTMLElement {
+  const head = h("div", "tree-head");
+  head.append(h("span", "tree-head-name", t("sidebar.outside")));
+  return head;
+}
+
+/** One row for each session the open workspace would hide. Each names its project or fleet. */
+function outsideBlock(outside: { session: SessionInfo; where: string }[]): HTMLElement {
+  const block = h("div", "sessions-block");
+  block.style.height = `calc(${Math.max(40, outside.length * 20)} * var(--u))`;
+  for (const { session, where } of outside) {
+    const p = S.projects.find((x) => x.name === where);
+    block.appendChild(sessionRow(session, p ? accent(p) : DEFAULT_ACCENT, { where }));
+  }
+  return block;
 }
 
 /** The head over sessions whose folder is in no project. */

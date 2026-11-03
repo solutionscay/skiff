@@ -50,6 +50,24 @@ export function createMembership(state: ReturnType<typeof createWorkspaceState>,
     if (state.doc && !state.shows(p)) setIncluded("project", p.path, true);
   }
 
+  /** The project folders, open and closed, of the last read of one Host's projects. */
+  let known: { host: string; folders: Set<string> } | null = null;
+
+  /**
+   * The projects as just read. A folder new since the last read of the same
+   * Host was added outside the app, such as by `skiff projects add`: it joins
+   * the open workspace as an add in the app does (#229). The first read, and
+   * the first after a Host switch, only learn the folders. A project the
+   * workspace already leaves out stays out.
+   */
+  function includeNew(host: string, all: Project[]) {
+    const folders = new Set(all.map((p) => trimPath(p.path)));
+    const before = known?.host === host ? known.folders : null;
+    known = { host, folders };
+    if (!before) return;
+    for (const p of all) if (!p.closed && !before.has(trimPath(p.path))) includeAdded(p);
+  }
+
   /** A project that goes to a fleet the workspace does not name, or to none, stays in by its folder. Call it before the change. */
   function keepInView(p: Project, fleet: string | null) {
     if (state.doc && state.shows(p) && !listed(p) && !(fleet && state.doc.profile.fleets.includes(fleet))) setIncluded("project", p.path, true);
@@ -96,5 +114,5 @@ export function createMembership(state: ReturnType<typeof createWorkspaceState>,
     return [{ icon: "indicators-plus", label: t("workspace.addFleet"), run: () => setIncluded("fleet", name, true) }];
   }
 
-  return { includeAdded, keepInView, renameWorkspaceFleet, projectsPlus, projectWorkspaceEntries, fleetWorkspaceEntries };
+  return { includeAdded, includeNew, keepInView, renameWorkspaceFleet, projectsPlus, projectWorkspaceEntries, fleetWorkspaceEntries };
 }

@@ -94,7 +94,7 @@ function app(host: string | null = null) {
   const fleetSkipperOf = (f: string) => [...sessions.values()].find((s) => s.skipper === `fleet:${f}`);
   const state = { S, sessions, removing: new Set(), removeErrors: new Map(), collapsed: new Set(), selectedWorktree: new Map(), DEFAULT_ACCENT: "#888" };
   const stateQueries = { place, accent: () => "#888", awayPlaces: () => [] };
-  const skiffAgent = orStub({ fleetSkipperOf, projectSkipperOf: () => null, fleetScope: (f: string) => `fleet:${f}`, skiffAgentFolder: () => null });
+  const skiffAgent = orStub({ fleetSkipperOf, coordinatorOf: (id: string) => sessions.get(id)?.skipper ?? null, projectSkipperOf: () => null, fleetScope: (f: string) => `fleet:${f}`, skiffAgentFolder: () => null });
   const model = { isUnread: () => false, taskTitle: (s: any) => s.title, agentName: () => "claude", branchName: (w: any) => w.branch, isFolder: () => false, scopeName: (x: string) => x };
   const stored_ = moduleFromSource("../src/app/stored.ts", {}, globals, "");
   const tree = moduleFromSource("../src/workspace/tree.ts", withStubs({
@@ -118,7 +118,7 @@ function app(host: string | null = null) {
   const sidebar = moduleFromSource("../src/workspace/sidebar.ts", withStubs({
     ...ui, "./tree": tree, "../app/state": state, "../app/stateQueries": stateQueries, "../app/skiffAgent": skiffAgent,
     "./model": model, "./view": view, "../app/renderRequest": { render: () => rendered++ }, "./profile": { workspaceOpen: () => false, shows: () => true },
-  }), { ...globals, document: { activeElement: null } }, "\nexports.sectionHead = sectionHead; exports.shownBlock = shownBlock;");
+  }), { ...globals, document: { activeElement: null } }, "\nexports.sectionHead = sectionHead; exports.shownBlock = shownBlock; exports.outsideHead = outsideHead; exports.outsideBlock = outsideBlock;");
   const menus = moduleFromSource("../src/workspace/menus.ts", withStubs({
     ...ui, "./tree": tree, "../app/state": state, "../app/stateQueries": stateQueries, "../app/skiffAgent": skiffAgent,
     "./model": model, "./view": view, "../app/render": { render: () => rendered++ },
@@ -141,7 +141,7 @@ function app(host: string | null = null) {
     menus.fleetMenu({ name, projects: projects.filter((p) => p.fleet === name) }, 0, 0);
     return menu.find((m) => m.label === "Hide projects" || m.label === "Show projects");
   };
-  return { S, sessions, tree, stored, draw, fleetMenu, palette: () => palette(), harbor, rendered: () => rendered };
+  return { S, sessions, tree, sidebar, stored, draw, fleetMenu, palette: () => palette(), harbor, rendered: () => rendered };
 }
 
 test("Hide projects hides a fleet's projects; waiting and on-screen sessions stay; the count shows them again", () => {
@@ -227,4 +227,20 @@ test("a fleet on a remote Host hides the same way, with its own stored choice", 
   assert.deepEqual(JSON.parse(a.stored.get("skiff.tree.hidden")!), ["host:box/fleet:Harbor"]);
   a.draw().head.all().find((e) => e.className === "fleet-hidden")!.click();
   assert.equal(a.tree.projectsHidden("Harbor"), false);
+});
+
+test("a session in a project the open workspace leaves out shows under Not in this workspace (#229)", () => {
+  const a = app();
+  assert.equal(a.tree.outsideSessions().length, 0, "All projects hides nothing");
+  // A workspace with only Dock's site: the Harbor projects and their Skipper are out.
+  a.tree.useTreeView({ shows: (p: any) => p.name === "site", isFolded: () => false, fold() {}, autoOpen() {}, keys: () => [] });
+  const outside = a.tree.outsideSessions();
+  assert.deepEqual([...outside].map((o: any) => [o.session.id, o.where]), [
+    ["skipper", "Harbor"], ["web-1", "web"], ["web-2", "web"], ["api-1", "api"], ["api-2", "api"],
+  ]);
+  assert.equal(a.sidebar.outsideHead().text(), "Not in this workspace");
+  const block = a.sidebar.outsideBlock(outside);
+  assert.deepEqual([...block.children].map((r: any) => r.dataset.session), ["skipper", "web-1", "web-2", "api-1", "api-2"]);
+  assert.match(block.children[1].text(), /fix login.*web/);
+  a.tree.useTreeView(null);
 });

@@ -32,12 +32,13 @@ import { reattachPanes } from "../terminal/terminalRuntime";
 import { focusPane, inBackground, paneNear, revealSession, rowNear, showSingle, splitWith, unfocus } from "../workspace/view";
 import { t } from "../i18n";
 import { hostCan, hostInvoke, loadHostCaps } from "./hostCaps";
-import { hostName, isRemote } from "./hosts";
+import { hostName, isRemote, shownHost } from "./hosts";
 import { watchDataPlane } from "./dataPlane";
 import { refreshHostDiff } from "../terminal/peek";
 import { reloadFiles } from "../workspace/files";
 import { reloadBackdrops } from "../appearance/backdrop";
 import { loadLedger } from "../workspace/ledger";
+import { includeNew } from "../workspace/profile";
 import { muteInput } from "../terminal/terminalRuntime";
 import { connectAttempt, connectDone, connectFailed, connectWait } from "./connectPanel";
 
@@ -275,6 +276,7 @@ export async function loadProjects() {
   // Mac's projects under its name. This Mac's service starts on demand, so
   // its read is tried even before it is offered: a failure says why.
   const remote = isRemote();
+  const host = shownHost() ?? "";
   if (remote && !hostCan("projects")) {
     // Skipper is the Host's own (`skipper@1`), with or without projects there.
     await loadSkiffAgent();
@@ -308,6 +310,8 @@ export async function loadProjects() {
     // The same list keeps its objects: the tree and place() compare worktrees by identity.
     if (JSON.stringify(open) !== JSON.stringify(S.projects)) S.projects = open;
     S.closedProjects = list.filter((p) => p.closed);
+    // A project added outside the app joins the open workspace (#229).
+    includeNew(host, list);
   }
   S.projectsError = err;
   S.dataState = err ? "unavailable" : "ready";

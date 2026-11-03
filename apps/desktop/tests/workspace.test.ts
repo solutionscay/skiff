@@ -237,3 +237,47 @@ test("a project taken out of a fleet the workspace names stays in by its folder"
   assert.equal(h.profile.shows(a), true);
   assert.equal(h.profile.workspaceEdited(), true);
 });
+
+test("a project added outside the app joins the open workspace; one it leaves out stays out (#229)", async () => {
+  const h = workspaceHarness();
+  h.fixture("/work.skiffw", ["/a"]);
+  await h.profile.openWorkspace("/work.skiffw");
+  // The first read only learns the folders: B was there before and stays out.
+  h.profile.includeNew("", h.S.projects);
+  assert.equal(h.profile.workspaceEdited(), false);
+  // `skiff projects add`: C is new in projects.toml since the last read.
+  h.S.projects.push({ name: "C", path: "/c", fleet: null });
+  h.profile.includeNew("", h.S.projects);
+  assert.equal(h.profile.shows(h.S.projects[2]), true);
+  assert.equal(h.profile.shows(h.S.projects[1]), false, "B was left out on purpose");
+  assert.equal(h.profile.workspaceEdited(), true);
+  // The next read: nothing new, no second add.
+  h.profile.includeNew("", h.S.projects);
+  h.profile.saveWorkspace();
+  await flush();
+  assert.deepEqual([...h.files.get("/work.skiffw").profile.projects], ["/a", "/c"]);
+});
+
+test("a Host switch only learns its folders: none joins the workspace (#229)", async () => {
+  const h = workspaceHarness();
+  h.fixture("/work.skiffw", ["/a"]);
+  await h.profile.openWorkspace("/work.skiffw");
+  h.profile.includeNew("", h.S.projects);
+  h.S.projects.push({ name: "C", path: "/c", fleet: null });
+  h.profile.includeNew("remote-host", h.S.projects);
+  assert.equal(h.profile.shows(h.S.projects[2]), false);
+  assert.equal(h.profile.workspaceEdited(), false);
+});
+
+test("with no workspace open, an outside add changes nothing (#229)", async () => {
+  const h = workspaceHarness();
+  h.profile.includeNew("", h.S.projects);
+  h.S.projects.push({ name: "C", path: "/c", fleet: null });
+  h.profile.includeNew("", h.S.projects);
+  assert.equal(h.profile.workspaceOpen(), false);
+  assert.equal(h.profile.workspaceEdited(), false);
+  // A workspace opened later is as its file says.
+  h.fixture("/work.skiffw", ["/a"]);
+  await h.profile.openWorkspace("/work.skiffw");
+  assert.equal(h.profile.shows(h.S.projects[2]), false);
+});
