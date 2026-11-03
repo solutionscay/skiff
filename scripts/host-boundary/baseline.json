@@ -1278,17 +1278,17 @@
       "local provider: apps/desktop/src/workspace/ledger.ts",
       "local provider: apps/desktop/src/workspace/menus.ts",
       "local provider: apps/desktop/src/workspace/profile.ts",
-      "local provider: apps/desktop/src/workspace/selection.ts",
       "local provider: apps/desktop/src/workspace/sessionRows.ts",
       "local provider: apps/desktop/src/workspace/sidebarFocus.ts",
       "local provider: apps/desktop/src/workspace/sidebarLines.ts",
       "local provider: apps/desktop/src/workspace/skipperFace.ts",
+      "local provider: apps/desktop/src/workspace/skipperRows.ts",
       "local provider: apps/desktop/src/workspace/skippersView.ts",
       "local provider: apps/desktop/src/workspace/tree.ts",
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "0c6afe5979f3eb07b282a021be632707a72ea6f3811123a5992db78d01719e12"
+    "sha256": "0f94c0200fe50d7cd7fa9b338c1b294b0b65943384a8be55bb787774b6c97f9e"
   },
   "apps/desktop/src/workspace/sidebarFocus.ts": {
     "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
@@ -1317,6 +1317,21 @@
       "invoke"
     ],
     "sha256": "a0bd53cc25cf312dcaef4d152a80ac93341f0a15efef91507d640fa21961779a"
+  },
+  "apps/desktop/src/workspace/skipperRows.ts": {
+    "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
+    "reasons": [
+      "local provider: apps/desktop/src/app/skiffAgent.ts",
+      "local provider: apps/desktop/src/app/state.ts",
+      "local provider: apps/desktop/src/appearance/agentIcon.ts",
+      "local provider: apps/desktop/src/workspace/ledger.ts",
+      "local provider: apps/desktop/src/workspace/menus.ts",
+      "local provider: apps/desktop/src/workspace/selection.ts",
+      "local provider: apps/desktop/src/workspace/skipperFace.ts",
+      "local provider: apps/desktop/src/workspace/tree.ts",
+      "local provider: apps/desktop/src/workspace/view.ts"
+    ],
+    "sha256": "2b34f20e61050351754a1cf7f5f92a02fab943019efc1f161130a3192efe69d4"
   },
   "apps/desktop/src/workspace/skippersView.ts": {
     "ownership": "legacy local adapter/caller: migrate behind Host API in M1\u2013M6",
