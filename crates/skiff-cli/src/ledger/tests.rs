@@ -51,6 +51,7 @@ fn supported_ledger_schemas_keep_their_columns_and_version() {
         (9, v11.replace(",\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
         (10, v11.replace(",\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
         (11, v11.clone()),
+        (12, TASKS.to_string()),
     ];
     for (version, schema) in fixtures {
         let dir = scratch(&format!("schema-v{version}"));
@@ -67,6 +68,8 @@ fn supported_ledger_schemas_keep_their_columns_and_version() {
             .map(Result::unwrap)
             .collect();
         assert_eq!(got, columns);
+        let deliveries: i64 = db.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'deliveries'", [], |r| r.get(0)).unwrap();
+        assert_eq!(deliveries, 1);
         assert_eq!(db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0)).unwrap(), VERSION);
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -1181,4 +1184,36 @@ fn rows_one(dir: &Path) -> Row {
     let mut db = open_at(&file).unwrap();
     let (_, uid, _, _) = insert(&mut db, &file, task("t")).unwrap();
     one(&db, &uid).unwrap()
+}
+
+#[test]
+fn a_delivery_is_recorded_before_and_settled_after() {
+    use super::delivery::{end, end_uncertain, identity, of, start, Evidence, UNCERTAIN};
+    let dir = scratch("delivery");
+    let file = dir.join("ledger.db");
+    let mut db = open_at(&file).unwrap();
+    let (_, uid, _, _) = insert(&mut db, &file, New { handoff: true, project: "web".into(), ..task("h") }).unwrap();
+    // The payload's identity: its bytes and SHA-256.
+    assert_eq!(identity("abc"), (3, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into()));
+    // Before the send: recorded, not settled. A process that dies here leaves it uncertain.
+    let a = start(&db, &uid, "send", "websk0000000", Some(7), "-").unwrap();
+    let got = of(&db, &uid).unwrap();
+    assert_eq!((got[0].bytes, got[0].session_gen, got[0].shown_evidence()), (1, Some(7), UNCERTAIN));
+    end(&db, a, Evidence::of(0, true)).unwrap();
+    let b = start(&db, &uid, "send", "websk0000000", Some(7), "the task").unwrap();
+    end(&db, b, Evidence::of(8, true)).unwrap();
+    let c = start(&db, &uid, "send", "websk0000000", Some(7), "the task").unwrap();
+    end(&db, c, Evidence::of(4, true)).unwrap();
+    let d = start(&db, &uid, "report", "grand0000000", None, "[watch] reported").unwrap();
+    end_uncertain(&db, d, "skiffd closed the connection").unwrap();
+    let got = of(&db, &uid).unwrap();
+    let seen: Vec<(&str, &str, Option<i64>)> = got.iter().map(|a| (a.kind.as_str(), a.shown_evidence(), a.code)).collect();
+    assert_eq!(seen, [("send", "turn started", Some(0)), ("send", "no turn", Some(8)), ("send", "refused", Some(4)), ("report", UNCERTAIN, None)]);
+    assert_eq!(got[2].failure.as_deref(), Some("the session is working"));
+    // Text in without Enter to a known agent: accepted, not a turn.
+    assert_eq!(Evidence::of(0, false).word(), "text accepted");
+    // A removed row takes its attempts with it.
+    db.execute("DELETE FROM tasks WHERE uid = ?1", [&uid]).unwrap();
+    assert!(of(&db, &uid).unwrap().is_empty());
+    std::fs::remove_dir_all(&dir).unwrap();
 }

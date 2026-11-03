@@ -1,6 +1,7 @@
 //! The write side: inserts, the owner and the caller's authority, sends, state changes, closing, reopening and pruning.
 use super::paths::{label, make_work_folder, new_uid, result_in, results_dir, work_folder};
 use super::read::{head, join, live, one, project_of, state, top, under};
+use super::delivery;
 use super::schema::{open_at, NOW};
 use crate::{resolve, sessions};
 use anyhow::Context;
@@ -410,8 +411,27 @@ pub(super) async fn send_row(socket: &Path, db: &Connection, row: &Row, o: SendO
         bail!(why);
     }
     let s = s.expect("checked");
-    let text = if o.text.is_empty() { vec![message(row)] } else { o.text };
-    let code = sessions::send_to(&c, s, sessions::Send { text: &text, enter: o.enter, raw: false, shell: o.shell }).await?;
+    // The payload as it goes in: read now, so the record names it.
+    let text = match o.text.as_slice() {
+        [] => message(row),
+        [dash] if dash == "-" => read_stdin()?,
+        t => t.join(" "),
+    };
+    let attempt = delivery::start(db, &row.uid, "send", &s.id, gen(s), &text)?;
+    // The text is read already: `-` here is the text itself, not stdin.
+    let sent = sessions::send_to(&c, s, sessions::Send { text: std::slice::from_ref(&text), enter: o.enter, raw: false, shell: o.shell, stdin: false }).await;
+    let code = match sent {
+        Ok(code) => code,
+        Err(e) => {
+            // It may have typed before it failed: neither sent nor not.
+            delivery::end_uncertain(db, attempt, &format!("{e:#}"))?;
+            return Err(e);
+        }
+    };
+    let e = delivery::Evidence::of(code, o.enter && sessions::is_agent(s));
+    delivery::end(db, attempt, e)?;
+    let (bytes, sha) = delivery::identity(&text);
+    println!("delivery {attempt}: {bytes} bytes, sha256 {}, {}", &sha[..12], e.word());
     match state_after(code) {
         Some(st) => {
             // Only from the state read: a send that raced this one keeps its own.
@@ -426,6 +446,18 @@ pub(super) async fn send_row(socket: &Path, db: &Connection, row: &Row, o: SendO
         None => eprintln!("skiff: task {} stays {}", row.uid, row.state),
     }
     Ok(code)
+}
+
+/// All of stdin, for `-` in place of a text. Empty is an error: it would
+/// store or send nothing.
+pub(super) fn read_stdin() -> Result<String> {
+    use std::io::Read;
+    let mut buf = String::new();
+    std::io::stdin().read_to_string(&mut buf).context("read stdin")?;
+    if buf.trim().is_empty() {
+        bail!("stdin is empty: `-` reads the text from stdin. Nothing changed");
+    }
+    Ok(buf)
 }
 
 /// Stamps `reported_at` on the done rows `ids` name, in one transaction.

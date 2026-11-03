@@ -3798,6 +3798,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "skiff-client",
  "skiff-core",
  "tokio",

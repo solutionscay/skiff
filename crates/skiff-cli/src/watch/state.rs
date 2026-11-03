@@ -461,6 +461,13 @@ impl Watcher {
         (h.fact == Fact::Idle).then(|| self.plan_of.get(&h.pane).map(String::as_str)).flatten()
     }
 
+    /// The hand-offs whose report goes in the line [`Self::ready_line`]
+    /// gives now: a child's report to its parent, which the ledger records
+    /// as a delivery.
+    pub(super) fn reports_ready(&self) -> Vec<String> {
+        self.held.iter().filter(|h| h.fact == Fact::Reported && self.waits_for(h).is_none()).filter_map(|h| h.task.clone()).collect()
+    }
+
     /// The one line for the held lines that can go now. A plan whose tasks
     /// all ended gives one part for its panes. `None`: every held line waits.
     pub(super) fn ready_line(&self) -> Option<String> {

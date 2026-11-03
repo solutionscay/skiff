@@ -510,3 +510,32 @@ pub(super) fn print_one(r: &Row, closed: Option<&str>) {
     f.push(("task", r.task.clone()));
     print::table(&["", ""], &f.into_iter().map(|(k, v)| vec![k.to_string(), v]).collect::<Vec<_>>());
 }
+
+/// The delivery attempts under `show`: one line each, oldest first, then
+/// the last failure. None prints nothing.
+pub(super) fn print_attempts(attempts: &[super::delivery::Attempt]) {
+    if attempts.is_empty() {
+        return;
+    }
+    println!();
+    let table: Vec<Vec<String>> = attempts
+        .iter()
+        .map(|a| {
+            vec![
+                a.id.to_string(),
+                a.kind.clone(),
+                print::short_id(&a.session).to_string(),
+                a.session_gen.map(|g| g.to_string()).unwrap_or_default(),
+                a.bytes.to_string(),
+                a.sha256.chars().take(12).collect(),
+                a.started_at.clone(),
+                a.shown_evidence().to_string(),
+                a.code.map(|c| c.to_string()).unwrap_or_default(),
+            ]
+        })
+        .collect();
+    print::table(&["DELIVERY", "KIND", "SESSION", "GEN", "BYTES", "SHA256", "STARTED", "EVIDENCE", "CODE"], &table);
+    if let Some(a) = attempts.iter().rev().find(|a| a.failure.is_some()) {
+        println!("last failure: delivery {}: {}", a.id, a.failure.as_deref().unwrap_or_default());
+    }
+}

@@ -167,7 +167,7 @@ const READY: Duration = Duration::from_secs(90);
 /// `text` with Enter. Returns `send`'s exit code.
 pub async fn greet(c: &Client, id: &str, text: &str) -> Result<i32> {
     let s = ready(c, id).await?;
-    crate::sessions::send_to(c, &s, crate::sessions::Send { text: &[text.to_string()], enter: true, raw: false, shell: false }).await
+    crate::sessions::send_to(c, &s, crate::sessions::Send { text: &[text.to_string()], enter: true, raw: false, shell: false, stdin: false }).await
 }
 
 /// The session `id` once a known agent is in front, idle, with an empty

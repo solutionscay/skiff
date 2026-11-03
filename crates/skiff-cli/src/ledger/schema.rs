@@ -72,6 +72,34 @@ CREATE TABLE IF NOT EXISTS owner (
 /// Every uid the ledger gave out, so a removed row's uid is not given again.
 pub(super) const UIDS: &str = "CREATE TABLE IF NOT EXISTS uids (uid TEXT PRIMARY KEY);";
 
+/// Each attempt to deliver a row's text to a session (#246): written before
+/// the text goes in, with what goes in, then settled with what came of it.
+/// `kind` is `send`, a task or hand-off sent to its pane, or `report`, a
+/// child's report typed into its parent. `evidence` stays empty when nothing
+/// settled it: the process ended between the two writes. A terminal write
+/// and a SQLite write are not one step, so no attempt claims exactly once.
+pub(super) const DELIVERIES: &str = "
+CREATE TABLE IF NOT EXISTS deliveries (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  task        TEXT NOT NULL,
+  kind        TEXT NOT NULL CHECK (kind IN ('send', 'report')),
+  session     TEXT NOT NULL,
+  session_gen INTEGER,
+  bytes       INTEGER NOT NULL,
+  sha256      TEXT NOT NULL,
+  started_at  TEXT NOT NULL,
+  evidence    TEXT,
+  code        INTEGER,
+  failure     TEXT,
+  ended_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS deliveries_task ON deliveries (task);
+CREATE TRIGGER IF NOT EXISTS deliveries_go_with_their_row AFTER DELETE ON tasks
+BEGIN
+  DELETE FROM deliveries WHERE task = OLD.uid;
+END;
+";
+
 /// UTC, to the second, set by SQLite.
 pub(super) const NOW: &str = "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')";
 
@@ -101,6 +129,8 @@ pub(super) fn open_at(file: &Path) -> Result<Connection> {
     db.execute_batch(OWNER)?;
     migrate(&mut db)?;
     db.execute_batch(REOPEN_ENDS)?;
+    // 12 to 13: the table, empty. No send before it left a record.
+    db.execute_batch(DELIVERIES)?;
     // Only up: an older skiff that opens the file stamps its own version, and
     // must not undo a newer one's. The columns, not the stamp, tell the shape.
     let v: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;

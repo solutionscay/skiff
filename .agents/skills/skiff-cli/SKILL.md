@@ -218,12 +218,12 @@ A fleet can have one Skipper for all its projects. It is a project Skipper with 
 |---|---|
 | `ledger add --pane S --task "..." --title "..." --send --enter [--parent UID] [--type T] [--ref TEXT]` | Add a task and send it. |
 | `ledger add --plan --task "..." --title "..." [--ref TEXT]` | Add a plan for work with more than one task. |
-| `ledger handoff SCOPE "TASK" --title "..." [--parent UID]` | Hand a task to a project's or a fleet's Skipper. SCOPE: `NAME`, `project:NAME` or `fleet:NAME`. Admiral only. |
+| `ledger handoff SCOPE "TASK" --title "..." [--parent UID]` | Hand a task to a project's or a fleet's Skipper. SCOPE: `NAME`, `project:NAME` or `fleet:NAME`. Admiral only. TASK `-` reads stdin, as `add --task -` does. |
 | `ledger send UID --enter` | Send a `pending` or `interrupted` task. |
 | `ledger update UID [--state S] [--pane S] [--title T] [--result PATH] [--parent UID] ...` | Change only the given fields. |
 | `ledger update UID --outcome O [--commit REF]` | Set how a task ended: `succeeded`, `failed`, `interrupted` or `unobserved`. It sets the task `done`. `--state done` alone gives `succeeded`, or `unobserved` when the evidence the task expects (`add --expect result\|commit`) is missing. |
 | `ledger ls [--state S] [--all \| --closed \| --unreported] [--json]` | Show the work that is not closed: working, then open. |
-| `ledger show UID [--json]` | Show one row. |
+| `ledger show UID [--json]` | Show one row, with its delivery attempts: the session, the payload's bytes and SHA-256, and the evidence (`turn started`, `text accepted`, `no turn`, `refused` or `uncertain`). |
 | `ledger report UID... \| --all` | Mark done tasks as told to the person. |
 | `ledger close UID...` | Close work on the person's word, before each task is reported. |
 | `ledger reopen UID...` | Open closed work again, or keep open work open. Use it for work that waits on the person. |

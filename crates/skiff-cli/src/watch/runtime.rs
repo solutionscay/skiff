@@ -430,12 +430,44 @@ async fn deliver(c: &Client, w: &mut Watcher, owner: &str, skipper: &SessionInfo
             }
         }
         let Some(line) = w.ready_line() else { return Ok(()) };
-        let d = submit(c, skipper, &line).await?;
+        // A child's report: recorded before it goes in, settled after.
+        let file = skiff_client::ledger::path()?;
+        let reports = w.reports_ready();
+        let attempts = if reports.is_empty() || !file.exists() {
+            Vec::new()
+        } else {
+            ledger::start_reports(&file, &reports, &skipper.id, skiff_client::ledger::gen(skipper), &line).unwrap_or_else(|e| {
+                log(format!("cannot record the report delivery: {e:#}"));
+                Vec::new()
+            })
+        };
+        let d = match submit(c, skipper, &line).await {
+            Ok(d) => d,
+            Err(e) => {
+                if let Err(e) = ledger::end_reports_uncertain(&file, &attempts, &format!("{e:#}")) {
+                    log(format!("cannot record the report delivery: {e:#}"));
+                }
+                return Err(e);
+            }
+        };
+        if let Err(e) = ledger::end_reports(&file, &attempts, delivery_evidence(d)) {
+            log(format!("cannot record the report delivery: {e:#}"));
+        }
         let msg = w.delivered(d, &line);
         log(&msg);
         w.after_delivery(d, &msg);
     }
     Ok(())
+}
+
+/// A watcher delivery as the ledger records it.
+fn delivery_evidence(d: Delivery) -> ledger::Evidence {
+    match d {
+        Delivery::Taken => ledger::Evidence::TurnStarted,
+        Delivery::NoTurn => ledger::Evidence::NoTurn,
+        // skiffd typed nothing: the person typed after the check.
+        Delivery::Refused => ledger::Evidence::Refused(9),
+    }
 }
 
 /// Types `line` into the agent's pane and presses Enter. The check before it
