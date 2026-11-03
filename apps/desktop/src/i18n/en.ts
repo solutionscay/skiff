@@ -404,7 +404,7 @@ export const en = {
   "fixed.mission.go": "Go to the lit session. A cluster: its first session",
   "fixed.mission.fold": "Fold or open the lit cluster",
   "fixed.mission.zoom": "Fit the graph, zoom in, zoom out",
-  "fixed.mission.pan": "Pan, or zoom at the pointer. Drag a card to reorder it in its cluster, or a cluster head to move the cluster inside its fleet or on the canvas",
+  "fixed.mission.pan": "Pan the board, or zoom at the pointer",
   "fixed.mission.close": "Close. With text in the search, the first Esc clears it",
 
   // Row, pane and group menus (workspace/menus.ts). Menu heads are written in

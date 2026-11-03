@@ -392,7 +392,7 @@ export const es = {
   "fixed.mission.go": "Ir a la sesión resaltada. Un grupo: su primera sesión",
   "fixed.mission.fold": "Plegar o abrir el grupo resaltado",
   "fixed.mission.zoom": "Ajustar el gráfico, acercar, alejar",
-  "fixed.mission.pan": "Desplazar, o hacer zoom en el puntero. Arrastra una tarjeta para reordenarla en su grupo, o la cabecera de un grupo para moverlo dentro de su flota o en el lienzo",
+  "fixed.mission.pan": "Desplazar el tablero, o hacer zoom en el puntero",
   "fixed.mission.close": "Cerrar. Con texto en la búsqueda, el primer Esc lo borra",
 
   "menu.chooseImage": "Elegir imagen…",

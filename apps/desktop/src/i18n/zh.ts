@@ -385,7 +385,7 @@ export const zh = {
   "fixed.mission.go": "转到高亮的会话。若是一个簇：其第一个会话",
   "fixed.mission.fold": "折叠或展开高亮的簇",
   "fixed.mission.zoom": "适应图表、放大、缩小",
-  "fixed.mission.pan": "平移，或在指针处缩放。拖动卡片可在其簇内重新排序，拖动簇标题可在其舰队内或画布上移动该簇",
+  "fixed.mission.pan": "平移画板，或在指针处缩放",
   "fixed.mission.close": "关闭。搜索框有文字时，第一次 Esc 清空它",
 
   "menu.chooseImage": "选择图片…",
