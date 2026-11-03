@@ -47,7 +47,7 @@ F1 is the full list. It reads the live keymap, so it is never out of date. The w
 
 - [Design](https://github.com/solutionscay/skiff/wiki/Design) holds the rules: Ctrl+Shift for the app, keys act on the highlighted target, `[keys]` and F1.
 - [Glossary](https://github.com/solutionscay/skiff/wiki/Glossary), section "The current keybinding scheme", holds the navigation model only: Ctrl+Shift+Up/Down, Ctrl+Shift+Left/Right, Ctrl+Shift+Home, F6, F1, Ctrl+Shift+P, Ctrl+Shift+M, Ctrl+Shift+A, Ctrl+Shift+Alt+Arrow. Each line names its action id. It sends the reader to F1 for the rest.
-- [Mission control](https://github.com/solutionscay/skiff/wiki/Mission-control) lists the board's keys: Ctrl+Shift+A opens and closes it; in it, arrows pick a screen, Enter goes to the session, Esc closes, Ctrl+Shift+E switches Running / All, Ctrl+Shift+P searches. Update it when a key in `onKey()` or the mission branch of `runAction()` changes.
+- [Mission control](https://github.com/solutionscay/skiff/wiki/Mission-control) lists the board's keys: Ctrl+Shift+A opens and closes it; in it, arrows move between cards, Enter goes to the session, Esc closes, Ctrl+Shift+E switches Running / All, Ctrl+Shift+P searches. Update it when a key in `onKey()` or the mission branch of `runAction()` changes.
 
 Update the wiki only when one of those keys or rules changes. The wiki is a separate repo: `git clone https://github.com/solutionscay/skiff.wiki.git`. Ask the operator before you push it.
 
