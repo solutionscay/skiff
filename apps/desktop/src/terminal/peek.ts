@@ -463,7 +463,7 @@ function showLedgerResult(mine: number, r: { uid: string; title: string }) {
 export function refreshHostDiff() {
   if (!active || active.closed || !slot.el?.classList.contains("diff-view")) return;
   // A result keeps its own uid and title: the row's preview does not replace it.
-  if (active.result) return showLedgerResult(a.gen, a.result);
+  if (active.result) return showLedgerResult(active.gen, active.result);
   const p = rowActs(active.key)?.preview;
   if (p?.kind === "host-diff") showHostDiff(active.gen, p);
   if (p?.kind === "host-file") showHostFile(active.gen, p);
