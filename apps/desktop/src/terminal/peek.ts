@@ -24,7 +24,7 @@ import { handleOsc52 } from "./osc52";
 import { copyText, pasteText } from "../platform/clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import { $, button, h } from "../ui/dom";
+import { $, h } from "../ui/dom";
 import { showError } from "../ui/alerts";
 import { appKey, currentRow, itemKey } from "../app/keyboard";
 import { render } from "../app/renderRequest";
@@ -45,8 +45,8 @@ import { dataEpoch } from "../app/dataPlane";
 import { hostName } from "../app/hosts";
 import type { HostDiff, HostFile } from "../platform/types";
 import { allChanges, buildCard, cardAction, cardFrame, clearCard, mountCard, peekHead, slot } from "./peekCard";
-import { diffBody, diffState } from "./diffView";
-import { fileBody } from "./fileView";
+import { diffBody } from "./diffView";
+import { hostFileFrame, renderHostFile, showHostView, type Gate } from "./peekHostView";
 
 /** Where to find tools for a row that has none. */
 const TOOLS_URL = "https://github.com/solutionscay/skiff/wiki/Open-with";
@@ -411,6 +411,9 @@ function mount(el: HTMLElement) {
   else if (hadKeys || active?.keys) giveKeys();
 }
 
+/** What a Host view asks the controller about preview `mine`. */
+const gate = (mine: number): Gate => ({ live: () => live(mine), keys: () => !!active?.keys, epoch: dataEpoch, mount });
+
 type HostDiffPreview = Extract<Preview, { kind: "host-diff" }>;
 
 /**
@@ -421,44 +424,13 @@ type HostDiffPreview = Extract<Preview, { kind: "host-diff" }>;
 function showHostDiff(mine: number, p: HostDiffPreview) {
   const el = cardFrame("diff", `${p.wt}/${p.file ?? allChanges(p.base)}`, closePreview, "peek diff-view");
   showHostView(
-    mine,
+    gate(mine),
     el,
     t("peek.loadingDiff", { host: hostName() }),
     () => hostInvoke<HostDiff>("git_diff", "git_diff", { path: p.wt, file: p.file ?? null }),
     (d) => diffBody(d, p.file, p.base),
     t("peek.noDiff"),
   );
-}
-
-/**
- * A Host's read in the card `el`: it shows at once, says it loads, then
- * shows `render` of what `read` gave, or why there is none. A reply for a
- * row the user left shows nothing; one from an older data connection is
- * asked again.
- */
-function showHostView<T>(mine: number, el: HTMLElement, loading: string, read: () => Promise<T>, render: (value: T) => HTMLElement, none: string) {
-  if (!live(mine)) return;
-  el.append(diffState(loading));
-  mount(el);
-  const at = dataEpoch();
-  const shows = () => live(mine) && slot.el === el;
-  const fill = (body: HTMLElement) => {
-    const hadKeys = el.contains(document.activeElement);
-    el.querySelector(".diff-view-body")?.replaceWith(body);
-    if (hadKeys || active?.keys) body.focus();
-  };
-  const again = () => showHostView(mine, el, loading, read, render, none);
-  read()
-    .then((value) => {
-      if (!shows()) return;
-      if (at !== dataEpoch()) return again();
-      fill(render(value));
-    })
-    .catch((e) => {
-      if (!shows()) return console.error(e);
-      if (at !== dataEpoch()) return again();
-      fill(diffState(t("peek.noneReason", { none, error: String(e) }), true));
-    });
 }
 
 type HostFilePreview = Extract<Preview, { kind: "host-file" }>;
@@ -501,15 +473,7 @@ function showHostFile(mine: number, p: HostFilePreview) {
 
 /** The Host's bounded read `read` in the page's viewer, under `title`. `copy`: the Open a copy button. */
 function showHostRead(mine: number, title: string, read: () => Promise<HostFile>, copy: (() => void) | null) {
-  const el = cardFrame("file", title, closePreview, "peek diff-view file-view");
-  if (copy) {
-    const open = button("peek-open", "", copy);
-    open.title = t("peek.openCopyTitle");
-    open.setAttribute("aria-label", t("menu.openCopy"));
-    open.append(h("span", "peek-open-key", "Enter"), " " + t("menu.openCopy"));
-    el.querySelector(".peek-esc")?.before(open);
-  }
-  showHostView(mine, el, t("peek.loadingFile", { host: hostName() }), read, (f) => fileBody(f, (b) => (slot.url = URL.createObjectURL(b))), t("peek.noPreview"));
+  showHostView(gate(mine), hostFileFrame(title, closePreview, copy), t("peek.loadingFile", { host: hostName() }), read, renderHostFile, t("peek.noPreview"));
 }
 
 /**
