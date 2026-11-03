@@ -11,7 +11,7 @@ import { agentName, basename, branchName, scopeName, taskTitle } from "./model";
 import { faceSig, skipperFace } from "./skipperFace";
 import type { Group, Project, SessionInfo, Worktree } from "../platform/types";
 
-import { changeCounts, changesBlock, changesSig, showsChanges } from "./changes";
+import { changeCounts, changesBlock, changesSig, hasChanges, showsChanges } from "./changes";
 import { filesBlock, filesSig, showsFiles } from "./files";
 import { $, button, h } from "../ui/dom";
 import { branchIcon, chevron, icon, plusIcon } from "../ui/icons";
@@ -284,7 +284,7 @@ function sidebarSig(index: LineIndex): { all: string; parts: Map<string, string>
     const skipper = open ? !!projectSkipperOf(p.name) : skipperSig(p.name);
     const bare = bareWorktree(p);
     const lines = bare ? worktreeLines(bare, index) : [];
-    const bareEmpty = bare ? !lines.length && !skipper && !showsFiles(p) && !(showsChanges(p) && changesBlock(bare)) : false;
+    const bareEmpty = bare ? !lines.length && !skipper && !showsFiles(p) && !(showsChanges(p) && hasChanges(bare)) : false;
     parts.set(k, JSON.stringify([base, projects[i].slice(0, -1), p.worktrees.map((w) => w.path), bare?.path, bareEmpty, open, p.name === S.selectedProject, skipper, open ? null : looksUnder.get(k) ?? null]));
     for (const w of p.worktrees) {
       const wtLines = worktreeLines(w, index);
