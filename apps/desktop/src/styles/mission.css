@@ -105,9 +105,8 @@
 .win-body { flex: 1; min-height: 0; display: flex; }
 .win-face { flex-shrink: 0; box-sizing: border-box; border-right: 1px solid var(--rule); }
 /* The state's column (state.ts): the state word in its state color, the task, the counts. The terminal's font,
-   a size per rung: three lines fit the project window. A line too long ends in an ellipsis. */
-.win-state { flex: 1; min-width: 0; padding: 0 10px; display: flex; flex-direction: column; justify-content: center; gap: 2px; font: 13px/18px var(--mono); color: var(--text-3); }
-.mission-card[data-rung="fleet"] .win-state { font-size: 12px; line-height: 17px; padding: 0 8px; }
+   12px, 11px in the project window: the lines fit every rung. A line too long ends in an ellipsis. */
+.win-state { flex: 1; min-width: 0; padding: 0 8px; display: flex; flex-direction: column; justify-content: center; gap: 2px; font: 12px/17px var(--mono); color: var(--text-3); }
 .mission-card[data-rung="project"] .win-state { font-size: 11px; line-height: 16px; padding: 0 8px; gap: 1px; }
 .win-state > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The state line may take two lines, so a narrow window still shows why it waits. */

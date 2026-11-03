@@ -51,15 +51,15 @@ export const PLAN_H = 20;
 /**
  * Admiral and each Skipper show as a terminal window: a 24px pane header,
  * then a body split by a 1px rule into the face's column and the state's
- * column. The face sets the rung; the face's column is the face and 8px
- * each side, the state's column is twice the face wide.
+ * column. The face sets the rung, in even steps of 16: Admiral 88, a fleet
+ * Skipper 72, a project Skipper 56. The face's column is the face and 8px
+ * each side less the rule, the state's column twice the face, and the 1px
+ * frame each side: 3 × face + 17 wide. The header, the face and 8px above
+ * and below it: face + 40 high.
  */
 export type Rung = "admiral" | "fleet" | "project";
-export const WINDOW: Record<Rung, { w: number; h: number; face: number }> = {
-  admiral: { w: 353, h: 152, face: 112 },
-  fleet: { w: 257, h: 120, face: 80 },
-  project: { w: 185, h: 96, face: 56 },
-};
+const win = (face: number) => ({ w: 3 * face + 17, h: face + 40, face });
+export const WINDOW: Record<Rung, { w: number; h: number; face: number }> = { admiral: win(88), fleet: win(72), project: win(56) };
 /** The window's header, with the 1px frame above it. */
 export const WIN_HEAD = 24;
 
