@@ -776,17 +776,21 @@ function togglePanel() {
   requestAnimationFrame(drawTicks);
 }
 
+const panelHead = h("div", "mission-panel-head");
+const panelBody = h("div", "mission-panel-body");
+const side = h("div", "mission-side");
+panelBody.append(screen, side);
+panel.append(panelHead, panelBody);
+const foldBtn = h("button", "fold");
+foldBtn.type = "button";
+foldBtn.tabIndex = -1;
+foldBtn.innerHTML = FOLD_SVG;
+foldBtn.addEventListener("click", togglePanel);
+
+/** The panel: its nodes stay; a part is replaced only when its text changes. Folded, only the head updates. */
 function drawPanel() {
   panel.classList.toggle("folded", !panelOpen);
-  const head = h("div", "mission-panel-head");
-  const fold = h("button", "fold");
-  fold.type = "button";
-  fold.tabIndex = -1;
-  fold.title = t("mission.foldPanel", { key: keyLabel("ledger") });
-  fold.innerHTML = FOLD_SVG;
-  fold.addEventListener("click", togglePanel);
-  const body = h("div", "mission-panel-body");
-  const side = h("div", "mission-side");
+  foldBtn.title = t("mission.foldPanel", { key: keyLabel("ledger") });
   const sideHead = (text: string, mono = "") => {
     const el = h("div", "mission-side-head", text);
     el.appendChild(h("span", "mono", mono));
@@ -797,51 +801,57 @@ function drawPanel() {
     for (const [k, v, cls] of pairs) el.append(h("div", "", k), h("div", cls ?? "", v));
     return el;
   };
+  const head = (parts: HTMLElement[]) => {
+    refill(panelHead, parts);
+    if (foldBtn.parentNode !== panelHead) panelHead.appendChild(foldBtn);
+  };
   const s = lit ? m.sess.get(lit) : null;
   if (!s) {
     const list = lit ? (m.g.fleets.find((f) => f.key === lit)?.projects ?? []).flatMap((p) => m.members.get(p.key) ?? []).concat(m.members.get(lit) ?? []) : [];
     const name = lit?.startsWith("fleet:") ? lit.slice("fleet:".length) : (m.projects.get(lit ?? "")?.name ?? (lit === OTHER ? t("sidebar.other") : ""));
-    head.append(h("span", "title", name), h("span", "state", `${tn("mission.waiting", list.filter((x) => x.state === "waiting").length)} · ${tn("mission.working", list.filter((x) => x.state === "working").length)} · ${tn("palette.sessions", list.length)}`), fold);
-    screen.textContent = "";
-    screen.classList.add("note");
-    screen.removeAttribute("style");
-    screenFor = null;
-    side.appendChild(h("div", "mission-task none", t("mission.clusterNoPane")));
-  } else {
-    const p = place(s)?.project ?? null;
-    const title = s.coordinator || !!s.skipper ? cardName(s) : p ? `${p.name} · ${cardName(s)}` : cardName(s);
-    head.append(stateIcon(s), h("span", "title", title), h("span", `state${s.state === "waiting" ? " w" : ""}`, [stateWord(s), statusNote(s), childrenNote(s), sinceText(s, Date.now())].filter(Boolean).join(" · ")), fold);
-    if (screenFor !== s.id) {
-      screenFor = s.id;
+    head([h("span", "title", name), h("span", "state", `${tn("mission.waiting", list.filter((x) => x.state === "waiting").length)} · ${tn("mission.working", list.filter((x) => x.state === "working").length)} · ${tn("palette.sessions", list.length)}`)]);
+    if (screenFor !== null) {
       screen.textContent = "";
-      screen.classList.remove("note");
+      screen.classList.add("note");
+      screen.removeAttribute("style");
+      screenFor = null;
     }
-    paint(screen, s);
-    const r = m.rows.get(s.id);
-    if (s.coordinator || !!s.skipper) {
-      const hos = ledgerRows().filter((x) => x.bucket !== "finished" && x.kind === "handoff" && (s.coordinator ? x.state !== "done" : x.pane_id === s.id));
-      side.appendChild(sideHead(t("mission.handoffsHead"), String(hos.length)));
-      if (!hostCan("ledger")) side.appendChild(h("div", "mission-task none", t("mission.noLedger")));
-      else if (!hos.length) side.appendChild(h("div", "mission-task none", t("mission.noneDot")));
-      else side.appendChild(kv(hos.map((x) => [x.uid, `${ledgerTitle(x)} · ${s.coordinator ? (x.pane_id && sessions.get(x.pane_id) ? cardName(sessions.get(x.pane_id)!) : x.project) : t("mission.from", { name: skiffAgentName() })}`])));
-    } else {
-      side.appendChild(sideHead(t("mission.taskHead"), r ? r.uid : ""));
-      if (!hostCan("ledger")) side.appendChild(h("div", "mission-task none", t("mission.noLedger")));
-      else if (!r) side.appendChild(h("div", "mission-task none", t("mission.noTask")));
-      else {
-        side.appendChild(h("div", "mission-task", r.task));
-        const st = taskState(r);
-        const owner = ownerOf(r.owner, skiffAgentSession());
-        side.appendChild(kv([
-          [t("mission.owner"), owner ? cardName(owner) : r.owner === "grand" ? skiffAgentName() : r.owner],
-          [t("mission.state"), needWord(st) ?? st, needWord(st) ? "w" : ""],
-          [t("mission.result"), t(r.state === "done" ? (r.result_exists ? "mission.resultReady" : r.flushed_at ? "mission.resultFlushed" : "mission.resultNone") : "mission.resultNotYet"), "mono"],
-        ]));
-      }
+    if (panelOpen) refill(side, [h("div", "mission-task none", t("mission.clusterNoPane"))]);
+    return;
+  }
+  const p = place(s)?.project ?? null;
+  const title = s.coordinator || !!s.skipper ? cardName(s) : p ? `${p.name} · ${cardName(s)}` : cardName(s);
+  head([stateIcon(s), h("span", "title", title), h("span", `state${s.state === "waiting" ? " w" : ""}`, [stateWord(s), statusNote(s), childrenNote(s), sinceText(s, Date.now())].filter(Boolean).join(" · "))]);
+  if (screenFor !== s.id) {
+    screenFor = s.id;
+    screen.textContent = "";
+    screen.classList.remove("note");
+  }
+  if (!panelOpen) return;
+  paint(screen, s);
+  const parts: HTMLElement[] = [];
+  const r = m.rows.get(s.id);
+  if (s.coordinator || !!s.skipper) {
+    const hos = ledgerRows().filter((x) => x.bucket !== "finished" && x.kind === "handoff" && (s.coordinator ? x.state !== "done" : x.pane_id === s.id));
+    parts.push(sideHead(t("mission.handoffsHead"), String(hos.length)));
+    if (!hostCan("ledger")) parts.push(h("div", "mission-task none", t("mission.noLedger")));
+    else if (!hos.length) parts.push(h("div", "mission-task none", t("mission.noneDot")));
+    else parts.push(kv(hos.map((x) => [x.uid, `${ledgerTitle(x)} · ${s.coordinator ? (x.pane_id && sessions.get(x.pane_id) ? cardName(sessions.get(x.pane_id)!) : x.project) : t("mission.from", { name: skiffAgentName() })}`])));
+  } else {
+    parts.push(sideHead(t("mission.taskHead"), r ? r.uid : ""));
+    if (!hostCan("ledger")) parts.push(h("div", "mission-task none", t("mission.noLedger")));
+    else if (!r) parts.push(h("div", "mission-task none", t("mission.noTask")));
+    else {
+      const st = taskState(r);
+      const owner = ownerOf(r.owner, skiffAgentSession());
+      parts.push(h("div", "mission-task", r.task), kv([
+        [t("mission.owner"), owner ? cardName(owner) : r.owner === "grand" ? skiffAgentName() : r.owner],
+        [t("mission.state"), needWord(st) ?? st, needWord(st) ? "w" : ""],
+        [t("mission.result"), t(r.state === "done" ? (r.result_exists ? "mission.resultReady" : r.flushed_at ? "mission.resultFlushed" : "mission.resultNone") : "mission.resultNotYet"), "mono"],
+      ]));
     }
   }
-  body.append(screen, side);
-  panel.replaceChildren(head, body);
+  refill(side, parts);
 }
 
 /** Reads the lit card's screen. One read a second, for that card only. */
