@@ -15,4 +15,6 @@ body.kbd #sidebar-scroll .wt-row:has(> .wt-pick.current:focus) { box-shadow: ins
 #topbar .host-cell { gap: calc(8 * var(--u)); border: 0; border-left: 1px solid var(--rule); border-right: 1px solid var(--rule); background: transparent; color: var(--text-2); font: inherit; font-size: calc(12px * var(--zoom, 1)); cursor: pointer; }
 #topbar .host-cell:hover { background: var(--bg-raised); color: var(--text); }
 #topbar .host-cell.remote .host-name { color: var(--text); font-weight: 600; }
-#topbar .host-cell .host-name { max-width: calc(200 * var(--u)); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#topbar .host-cell { min-width: 0; flex-shrink: 1; }
+#topbar .host-cell .dot { flex-shrink: 0; }
+#topbar .host-cell .host-name { min-width: 0; max-width: calc(200 * var(--u)); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

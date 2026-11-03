@@ -27,6 +27,11 @@ body.header-bar #topbar .search { display: none; }
 #topbar .nx-waiting svg { color: var(--state-waiting); }
 #topbar .nx-waiting .num { color: var(--state-waiting-text); }
 #topbar .nx-unread svg, #topbar .nx-unread .num { color: var(--diff-add); }
+/* A narrow window: the wordmark and the Host's name give way first, then the counts drop their words. The gear always shows. */
+#topbar { min-width: 0; overflow: hidden; }
+#topbar .wordmark { min-width: min-content; }
+#topbar .nx, #topbar .gear, #topbar .daemon-badge, #topbar .update-badge { flex-shrink: 0; }
+@media (max-width: 800px) { #topbar .nx .label { display: none; } }
 
 #body { flex-grow: 1; min-height: 0; display: flex; position: relative; }
 
