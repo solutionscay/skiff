@@ -9,7 +9,7 @@ import { place } from "./stateQueries";
 import { agentKind } from "../appearance/agentIcon";
 import { keepRow } from "../workspace/selection";
 import { revealSession } from "../workspace/view";
-import { openSkipperWatchLog, openPath } from "../terminal/peek";
+import { openSkipperWatchLog } from "../terminal/peek";
 import { hostCan, hostInvoke } from "./hostCaps";
 import { checkShownHost, hostName, isRemote } from "./hosts";
 import { actionDialog } from "../ui/dialogParts";

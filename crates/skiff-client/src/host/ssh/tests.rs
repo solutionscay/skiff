@@ -1,5 +1,30 @@
 use super::*;
 
+#[tokio::test]
+async fn oversized_stdout_is_rejected_without_returning_it() {
+    let (mut writer, mut reader) = tokio::io::duplex(MAX_BATCH_OUTPUT + 1);
+    let data = vec![b'x'; MAX_BATCH_OUTPUT + 1];
+    let write = tokio::spawn(async move { writer.write_all(&data).await });
+    assert_eq!(
+        read_stdout(&mut reader).await,
+        Err(SshError::OutputTooLarge)
+    );
+    write.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn oversized_unterminated_stderr_line_is_rejected() {
+    let (mut writer, reader) = tokio::io::duplex(MAX_STDERR_LINE + 1);
+    let data = vec![b'x'; MAX_STDERR_LINE + 1];
+    let write = tokio::spawn(async move { writer.write_all(&data).await });
+    let mut reader = BufReader::new(reader);
+    assert_eq!(
+        read_stderr_line(&mut reader).await,
+        Err(SshError::OutputTooLarge)
+    );
+    write.await.unwrap().unwrap();
+}
+
 fn target() -> SshTarget {
     SshTarget::new("devbox", "/run/user/501/skiff/skiffd.sock")
 }
@@ -69,17 +94,35 @@ fn the_forward_keeps_strict_trust_and_never_takes_the_destination_as_an_option()
         .collect();
     let n = args.len();
     assert_eq!(&args[n - 9..n - 5], ["-l", "jose", "-p", "2222"]);
-    assert!(SshTarget { user: Some("-oX".into()), ..target() }.validate().is_err());
-    assert!(SshTarget { port: Some(0), ..target() }.validate().is_err());
+    assert!(SshTarget {
+        user: Some("-oX".into()),
+        ..target()
+    }
+    .validate()
+    .is_err());
+    assert!(SshTarget {
+        port: Some(0),
+        ..target()
+    }
+    .validate()
+    .is_err());
 }
 
 #[test]
 fn only_allowlisted_ssh_lines_show_and_never_a_key_path() {
     let shown = |l: &str| shown_line(l);
-    assert_eq!(shown("debug1: Connecting to p0p [192.168.1.40] port 22.").as_deref(), Some("Connecting to p0p [192.168.1.40] port 22."));
-    assert_eq!(shown("debug1: Connection established.").as_deref(), Some("Connection established."));
+    assert_eq!(
+        shown("debug1: Connecting to p0p [192.168.1.40] port 22.").as_deref(),
+        Some("Connecting to p0p [192.168.1.40] port 22.")
+    );
+    assert_eq!(
+        shown("debug1: Connection established.").as_deref(),
+        Some("Connection established.")
+    );
     assert!(shown("debug1: Host 'p0p' is known and matches the ED25519 host key.").is_some());
-    assert!(shown("debug1: Authenticated to p0p ([192.168.1.40]:22) using \"publickey\".").is_some());
+    assert!(
+        shown("debug1: Authenticated to p0p ([192.168.1.40]:22) using \"publickey\".").is_some()
+    );
     assert!(shown("ssh: connect to host p0p port 22: Connection timed out").is_some());
     for hidden in [
         "debug1: Will attempt key: /home/me/.ssh/id_ed25519 ED25519 SHA256:abc",
@@ -154,9 +197,15 @@ fn ssh_output_maps_to_one_cause_without_repeating_it() {
         None
     );
     // The probe splits the one line in two.
-    let refused = SshError::NoSkiffd { destination: "devbox".into(), socket: t.socket.clone() };
+    let refused = SshError::NoSkiffd {
+        destination: "devbox".into(),
+        socket: t.socket.clone(),
+    };
     assert_eq!(refused.clone().refine(false), refused);
-    assert_eq!(refused.refine(true), SshError::ForwardingRefused("devbox".into()));
+    assert_eq!(
+        refused.refine(true),
+        SshError::ForwardingRefused("devbox".into())
+    );
     // The messages name the destination and never ssh's own lines.
     let text = SshError::AuthFailed("devbox".into()).to_string();
     assert!(text.contains("devbox") && !text.contains(".ssh"));

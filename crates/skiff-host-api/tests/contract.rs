@@ -489,7 +489,7 @@ fn m4_project_and_worktree_changes_have_their_own_capabilities_and_golden_shapes
         json!({"cmd":"project_remove","project":"web"}),
         json!({"cmd":"project_arrange","order":[]}),
         json!({"cmd":"project_add","path":"/srv/new"}),
-        json!({"cmd":"project_edit","project":"web","revision":"r","edit":{"key":"icon","icon":"/etc/passwd"}}),
+        json!({"cmd":"project_edit","project":"web","revision":"r","edit":{"key":"icon","icon":1}}),
         json!({"cmd":"branch_list"}),
     ] {
         assert!(serde_json::from_value::<Request>(bad.clone()).is_err(), "{bad}");

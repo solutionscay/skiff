@@ -240,7 +240,7 @@ pub async fn handle(stream: UnixStream, hello: Arc<Hello>, mut events: broadcast
         }
     };
     let events_tx = tx.clone();
-    let event_writer = async move {
+    let mut event_writer = tokio::spawn(async move {
         loop {
             let event = match events.recv().await {
                 Ok(event) => event,
@@ -251,7 +251,7 @@ pub async fn handle(stream: UnixStream, hello: Arc<Hello>, mut events: broadcast
             line.push(b'\n');
             if events_tx.send(Write::Event(line)).await.is_err() { return; }
         }
-    };
+    });
     let reader = async move {
         let mut work = JoinSet::new();
         let mut reader = BufReader::new(rd);
@@ -281,12 +281,15 @@ pub async fn handle(stream: UnixStream, hello: Arc<Hello>, mut events: broadcast
         while work.join_next().await.is_some() {}
     };
     tokio::pin!(writer);
-    tokio::pin!(event_writer);
     tokio::select! {
-        // A closed reader drops the per-client writer and event forwarder.
-        _ = reader => {},
+        // A closed reader stops events after admitted replies drain.
+        _ = reader => {
+            event_writer.abort();
+            let _ = event_writer.await;
+            writer.as_mut().await;
+        },
         _ = &mut event_writer => {},
-        _ = &mut writer => {},
+        _ = &mut writer => event_writer.abort(),
     }
 }
 

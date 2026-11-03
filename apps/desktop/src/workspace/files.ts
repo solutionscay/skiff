@@ -22,7 +22,7 @@ import { showError } from "../ui/alerts";
 import { ctxMenu } from "../ui/contextMenu";
 import { render } from "../app/render";
 import { storedSet } from "../app/stored";
-import { t, tn } from "../i18n";
+import { t } from "../i18n";
 import { hostCan, hostInvoke } from "../app/hostCaps";
 import { isRemote } from "../app/hosts";
 import { dataEpoch } from "../app/dataPlane";
@@ -197,11 +197,14 @@ function folder(into: HTMLElement, root: string, dir: string, depth: number) {
     }
     // Cut: never "Empty", and the folder keeps its fold.
     if (l.truncated) {
-      const more = h("button", "file-note", t("files.more"));
-      more.type = "button";
-      more.style.setProperty("--depth", String(depth));
-      more.addEventListener("click", () => load(root, dir, l.next));
-      into.appendChild(more);
+      if (l.next === undefined) into.appendChild(note(t("files.tooMany"), depth));
+      else {
+        const more = h("button", "file-note", t("files.more"));
+        more.type = "button";
+        more.style.setProperty("--depth", String(depth));
+        more.addEventListener("click", () => load(root, dir, l.next));
+        into.appendChild(more);
+      }
     }
   }
 }
