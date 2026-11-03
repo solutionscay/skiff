@@ -139,12 +139,30 @@ export function admiralAvatar(finish: Finish = "flat"): string {
     + wrap(head)
     // The cap's crown and band stay back in a turn; the front, on one centerline,
     // moves as one: the button, the visor and the eyes. No brim, as on the mascot.
-    + `<g class="sk-cap">${wrap(crown)}`
-    + `<rect x="4.2" y="8" width="23.6" height="4.4" rx="1.8" style="fill:${FILL}" ${EDGE}/></g>`
-    + `<g class="sk-front"><circle cx="16" cy="8.2" r="1.9" fill="#f4c430" ${EDGE}/>`
+    + `<g class="sk-cap">${wrap(crown)}${capBand(finish)}</g>`
+    + `<g class="sk-front">${capButton(finish)}`
     + `<rect ${visorAt} fill="${VISOR}"/>${visorLight(visorAt, finish)}`
     + `<g class="sk-look"><g class="sk-eyes" fill="#fff"><rect x="9.2" y="17.6" width="3.4" height="6.6" rx="1.7"/><rect x="19.4" y="17.6" width="3.4" height="6.6" rx="1.7"/></g></g></g></g></svg>`;
 }
+
+/**
+ * The cap's band and gold button. Plush: the band in a short felt pile with a
+ * top-lit shade, its theme color lifted back after the pile dulls it, and
+ * the button a plush gold ball with a stitched ring. The pile frays the ink
+ * edge into a thick rim, so it is thinner there. Other finishes: flat.
+ */
+const BAND_AT = `x="4.2" y="8" width="23.6" height="4.4" rx="1.8"`;
+const PILE_EDGE = `stroke="${VISOR}" stroke-width=".9" stroke-linejoin="round"`;
+const capBand = (finish: Finish) =>
+  finish !== "plush"
+    ? `<rect ${BAND_AT} style="fill:${FILL}" ${EDGE}/>`
+    : `<g filter="url(#sk-band-lift)"><g filter="url(#sk-pile)"><rect ${BAND_AT} style="fill:${FILL}" ${PILE_EDGE}/>`
+      + `<rect ${BAND_AT} fill="url(#sk-band-shade)" stroke="url(#sk-band-shade)" stroke-width=".9" stroke-linejoin="round" style="mix-blend-mode:hard-light"/></g></g>`;
+const capButton = (finish: Finish) =>
+  finish !== "plush"
+    ? `<circle cx="16" cy="8.2" r="1.9" fill="#f4c430" ${EDGE}/>`
+    : `<g filter="url(#sk-pile)"><circle cx="16" cy="8.2" r="1.9" fill="url(#sk-button)" ${PILE_EDGE}/></g>`
+      + `<circle cx="16" cy="8.2" r="1.25" fill="none" stroke="#8a5a00" stroke-width=".2" stroke-dasharray=".45 .3" opacity=".75"/>`;
 
 /** A finish's shadow and fur reach past the 32-unit grid. */
 const over = (finish: Finish) => (finish === "flat" ? "" : ` overflow="visible"`);
@@ -215,4 +233,34 @@ export const finishDefs = () => `<svg id="${FINISH_DEFS_ID}" width="0" height="0
   <feComposite in2="so" operator="in" result="shadow"/>
   <feMerge><feMergeNode in="shadow"/><feMergeNode in="toy"/></feMerge>
 </filter>
+<filter id="sk-pile" x="-60%" y="-80%" width="220%" height="260%" color-interpolation-filters="sRGB">
+  <feTurbulence type="fractalNoise" baseFrequency="1.6" numOctaves="4" seed="31" result="noise"/>
+  <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.5" xChannelSelector="R" yChannelSelector="G" result="far"/>
+  <feGaussianBlur in="far" stdDeviation=".3" result="far2"/>
+  <feComponentTransfer in="far2" result="fluff1"><feFuncA type="linear" slope=".55"/></feComponentTransfer>
+  <feDisplacementMap in="SourceGraphic" in2="noise" scale=".7" xChannelSelector="G" yChannelSelector="R" result="core"/>
+  <feGaussianBlur in="core" stdDeviation=".08" result="core2"/>
+  <feMerge result="fluff"><feMergeNode in="fluff1"/><feMergeNode in="core2"/></feMerge>
+  <feTurbulence type="fractalNoise" baseFrequency="2.2 1.4" numOctaves="2" seed="9" result="grain"/>
+  <feColorMatrix in="grain" type="saturate" values="0" result="gg"/>
+  <feGaussianBlur in="gg" stdDeviation=".12" result="gb"/>
+  <feComponentTransfer in="gb" result="g"><feFuncR type="linear" slope=".6" intercept=".2"/><feFuncG type="linear" slope=".6" intercept=".2"/><feFuncB type="linear" slope=".6" intercept=".2"/></feComponentTransfer>
+  <feBlend in="fluff" in2="g" mode="soft-light" result="furred"/>
+  <feComposite in="furred" in2="fluff" operator="in" result="toy"/>
+  <feGaussianBlur in="SourceAlpha" stdDeviation=".6" result="sb"/>
+  <feOffset in="sb" dy=".6" result="so"/>
+  <feFlood flood-color="#000" flood-opacity=".28"/>
+  <feComposite in2="so" operator="in" result="shadow"/>
+  <feMerge><feMergeNode in="shadow"/><feMergeNode in="toy"/></feMerge>
+</filter>
+<filter id="sk-band-lift" x="-20%" y="-60%" width="140%" height="220%" color-interpolation-filters="sRGB">
+  <feColorMatrix type="saturate" values="1.3"/>
+  <feComponentTransfer><feFuncR type="linear" slope="1.3"/><feFuncG type="linear" slope="1.3"/><feFuncB type="linear" slope="1.3"/></feComponentTransfer>
+</filter>
+<linearGradient id="sk-band-shade" gradientUnits="userSpaceOnUse" x1="0" y1="7.2" x2="0" y2="13.2">
+  <stop offset="0" stop-color="#c4c4c4"/><stop offset=".5" stop-color="#8a8a8a"/><stop offset="1" stop-color="#6a6a6a"/>
+</linearGradient>
+<radialGradient id="sk-button" gradientUnits="userSpaceOnUse" cx="15.3" cy="7.4" r="2.6">
+  <stop offset="0" stop-color="#fff2b0"/><stop offset=".45" stop-color="#f4c430"/><stop offset="1" stop-color="#b8860b"/>
+</radialGradient>
 </defs></svg>`;
