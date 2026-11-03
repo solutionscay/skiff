@@ -166,3 +166,44 @@ test("a connector: down the trunk and the bus into a Skipper's face, down a rail
   // Right angles only: every move is along x or along y, turned with a quarter curve.
   assert.ok(!/[CA]/.test(own + toWeb));
 });
+
+/** The corner points of a connector's path data: M, L and the control point of each Q. */
+function corners(d: string): { x: number; y: number }[] {
+  const n = d.match(/[MLQ][^MLQ]*/g)!.map((s) => ({ c: s[0], v: s.slice(1).trim().split(/[ ,]+/).map(Number) }));
+  return n.map(({ v }) => ({ x: v[0], y: v[1] }));
+}
+/** A straight segment through the open inside of `r`. */
+const through = (a: { x: number; y: number }, b: { x: number; y: number }, r: G.Rect) =>
+  Math.max(a.x, b.x) > r.x && Math.min(a.x, b.x) < r.x + r.w && Math.max(a.y, b.y) > r.y && Math.min(a.y, b.y) < r.y + r.h;
+
+test("a connector never crosses a window that is not its parent or its child", () => {
+  // Admiral, a fleet with its Skipper and project Skippers, a project with its Skipper, plain projects: Admiral's own tasks reach every card.
+  const g: G.Graph = {
+    admiral: "ad",
+    fleets: [
+      { key: "fleet:Web", name: "Web", skipper: "sk-web", projects: [project("storefront", ["s1", "s2"], { skipper: "sk-store" }), project("checkout", ["s4", "s5"], { skipper: "sk-check" }), project("docs", ["s12"])] },
+      { key: "fleet:Moss", name: "Moss", skipper: "sk-moss", projects: [project("gesher", ["s13", "s14"])] },
+      { key: "fleet:Sage", name: "Sage", skipper: null, projects: [project("forecast", ["s15"], { skipper: "sk-fc" })] },
+    ],
+    projects: [project("skiff", ["s6", "s7", "s8"], { skipper: "sk-skiff" }), project("gesher2", ["s9", "s10"]), project("other", ["s11"])],
+  };
+  const p = Grid.placeGraph(g);
+  const windows = [...p.rungs.keys()];
+  let routes = 0;
+  const check = (from: string, to: string) => {
+    const d = Grid.route(p, from, to);
+    if (!d) return;
+    routes++;
+    const pts = corners(d);
+    for (const w of windows) {
+      if (w === from || w === to) continue;
+      for (let i = 1; i < pts.length; i++) assert.ok(!through(pts[i - 1], pts[i], p.cards.get(w)!), `${from} > ${to} crosses the window of ${w}`);
+    }
+  };
+  for (const to of p.cards.keys()) {
+    if (to === "ad") continue;
+    check("ad", to);
+    for (const owner of p.at.get(to)!.owners) check(owner, to);
+  }
+  assert.ok(routes > 30, "the repro layout has connectors to check");
+});

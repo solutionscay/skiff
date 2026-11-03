@@ -70,7 +70,7 @@ interface PlanBox extends Rect {
   plan: GPlan;
 }
 /**
- * How a connector reaches a node: its row's bus, its cluster's rail, and the
+ * How a connector reaches a node: its row's bus, its cluster's rail (the gutter when the cluster has a Skipper), and the
  * Skippers whose rail it hangs on. `head`: a cluster's top window, which the
  * bus reaches from above.
  */

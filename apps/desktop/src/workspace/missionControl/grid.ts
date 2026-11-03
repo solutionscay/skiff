@@ -18,7 +18,9 @@
  * bottom middle of a window's face (or a card's foot). Into a cluster's top
  * window it comes down the row's bus; to work under a Skipper it runs down
  * that Skipper's rail and turns right into the card; from anywhere else it
- * takes the bus to the target's cluster rail, then the rail.
+ * takes the bus to the target's cluster rail, then the rail. With a Skipper in
+ * the cluster that rail is the gutter between the frame's edge and the window,
+ * so no connector crosses a window that is not its own parent or child.
  */
 import { type At, CARD_H, CARD_W, PLAN_H, type GProject, type Graph, type Placed, type Rect, type Rung, WINDOW, faceBox } from "../missionLayout.ts";
 
@@ -108,8 +110,9 @@ export function placeGraph(g: Graph): Placed {
     tops.slice(r * cols, r * cols + cols).forEach((t, i) => {
       const x = x0 + i * (cell + CELL_GAP);
       const wx = x + FP;
-      // The cluster's rail: its Skipper's face; with no Skipper, where that face would be.
-      const rail = wx + 8 + WINDOW[t.fleet ? "fleet" : "project"].face / 2;
+      // The rail other connectors run down to reach the work: with no Skipper, where its face would be. With one, the gutter
+      // inside the frame's left edge, so a connector never crosses the Skipper's window.
+      const rail = t.skipper ? x + FP / 2 : wx + 8 + WINDOW[t.fleet ? "fleet" : "project"].face / 2;
       const owners = t.skipper ? [t.skipper] : [];
       let cy = rowTop + HEAD + FP;
       // A fleet's frame takes its place in the map first, so the board draws it under its projects' frames.
