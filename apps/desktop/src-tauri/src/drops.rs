@@ -36,6 +36,18 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Sen
 /// Every header button and open library redraws on this.
 pub(crate) const IMAGES_CHANGED: &str = "skiff:images-changed";
 
+/// A picture selected for a project on a remote Host. The Host owns the
+/// resulting cache path; the desktop never writes that Host's projects.toml.
+#[tauri::command]
+pub(crate) async fn project_image_upload(app: State<'_, App>, path: PathBuf, host: Option<String>) -> Result<String, String> {
+    if !app.remote() {
+        return Ok(path.to_string_lossy().into_owned());
+    }
+    let (name, bytes) = data::drop_file(&path, host.as_deref()).await?;
+    let c = data_now(&app).await?;
+    data::drop_send(&c, &name, bytes, host.as_deref()).await
+}
+
 /// Records the images for `who`, then builds the text. A failed record
 /// costs only the library line: the text is typed all the same.
 async fn finish(handle: &AppHandle, who: Who, t: cache::Typed) -> Result<Typed, String> {
@@ -182,9 +194,19 @@ async fn read_clip(handle: &AppHandle) -> Result<Clip, String> {
     .await
 }
 
-/// The Images library: this computer's cache, newest first.
+/// The selected Host's Images library, newest first. A remote list is Host
+/// metadata only; this desktop never opens its paths.
 #[tauri::command]
-pub(crate) async fn images() -> Result<Vec<cache::Image>, String> {
+pub(crate) async fn images(app: State<'_, App>) -> Result<Vec<cache::Image>, String> {
+    if app.remote() {
+        return crate::connection::data_read(&app, |c| async move { skiff_client::host::data::image_list(&c).await })
+            .await
+            .map(|images| images.into_iter().map(|image| cache::Image {
+                path: image.path,
+                entry: cache::Entry { file: image.file, name: image.name, session: image.session, title: image.title, project: image.project, at: image.at, pinned: image.pinned },
+                size: image.size,
+            }).collect());
+    }
     blocking(|| {
         let cfg = skiff_core::config::load().unwrap_or_default();
         Ok(cache::list(&cache::ensure(&cfg)?))
@@ -202,24 +224,33 @@ pub(crate) async fn image_insert(handle: AppHandle, app: State<'_, App>, paths: 
     if app.remote() {
         let c = data_now(&app).await?;
         for p in &paths {
-            let (name, bytes) = data::drop_file(p, host.as_deref()).await?;
-            text += &format!("{} ", skiff_core::shell::quote_word(&data::drop_send(&c, &name, bytes, host.as_deref()).await?));
+            let image = data::image_read(&c, &p.to_string_lossy()).await.map_err(data::message)?;
+            let name = p.file_name().map(|name| name.to_string_lossy()).unwrap_or_default();
+            text += &format!("{} ", skiff_core::shell::quote_word(&data::drop_send(&c, &name, image.bytes, host.as_deref()).await?));
         }
     } else {
         text = paths.iter().map(|p| format!("{} ", skiff_core::shell::quote_word(&p.to_string_lossy()))).collect();
     }
     let image = paths.first().map(|p| p.to_string_lossy().into_owned());
-    blocking(move || {
-        let dir = cache_dir()?;
-        paths.iter().rev().try_for_each(|p| cache::record(&dir, p, None, Some(&who)))
-    })
-    .await?;
+    if !app.remote() {
+        blocking(move || {
+            let dir = cache_dir()?;
+            paths.iter().rev().try_for_each(|p| cache::record(&dir, p, None, Some(&who)))
+        })
+        .await?;
+    }
     let _ = handle.emit(IMAGES_CHANGED, ());
     Ok(Typed { text, warning: None, image })
 }
 
 #[tauri::command]
-pub(crate) async fn image_pin(handle: AppHandle, paths: Vec<PathBuf>, on: bool) -> Result<(), String> {
+pub(crate) async fn image_pin(handle: AppHandle, app: State<'_, App>, paths: Vec<PathBuf>, on: bool) -> Result<(), String> {
+    if app.remote() {
+        let paths = paths.into_iter().map(|path| path.to_string_lossy().into_owned()).collect();
+        crate::connection::data_read(&app, |c| async move { data::image_pin(&c, paths, on).await }).await?;
+        let _ = handle.emit(IMAGES_CHANGED, ());
+        return Ok(());
+    }
     blocking(move || {
         let dir = cache_dir()?;
         paths.iter().try_for_each(|p| cache::pin(&dir, p, on))
@@ -231,7 +262,13 @@ pub(crate) async fn image_pin(handle: AppHandle, paths: Vec<PathBuf>, on: bool) 
 
 /// Deletes the files. The page asks first only for two or more.
 #[tauri::command]
-pub(crate) async fn image_delete(handle: AppHandle, paths: Vec<PathBuf>) -> Result<(), String> {
+pub(crate) async fn image_delete(handle: AppHandle, app: State<'_, App>, paths: Vec<PathBuf>) -> Result<(), String> {
+    if app.remote() {
+        let paths = paths.into_iter().map(|path| path.to_string_lossy().into_owned()).collect();
+        crate::connection::data_read(&app, |c| async move { data::image_delete(&c, paths).await }).await?;
+        let _ = handle.emit(IMAGES_CHANGED, ());
+        return Ok(());
+    }
     let done = blocking(move || {
         let dir = cache_dir()?;
         paths.iter().try_for_each(|p| cache::delete(&dir, p))
@@ -244,7 +281,11 @@ pub(crate) async fn image_delete(handle: AppHandle, paths: Vec<PathBuf>) -> Resu
 
 /// A library image's bytes, for its thumbnail. Only files in the cache.
 #[tauri::command]
-pub(crate) async fn image_thumb(path: PathBuf) -> Result<tauri::ipc::Response, String> {
+pub(crate) async fn image_thumb(app: State<'_, App>, path: PathBuf) -> Result<tauri::ipc::Response, String> {
+    if app.remote() {
+        let image = crate::connection::data_read(&app, |c| async move { data::image_read(&c, &path.to_string_lossy()).await }).await?;
+        return Ok(tauri::ipc::Response::new(image.bytes));
+    }
     let cfg = skiff_core::config::load().unwrap_or_default();
     let dir = cache::dir(&cfg).map_err(|e| format!("{e:#}"))?.canonicalize().map_err(|e| e.to_string())?;
     let file = path.canonicalize().map_err(|e| format!("read {}: {e}", path.display()))?;
@@ -276,9 +317,12 @@ pub(crate) async fn open_image(path: PathBuf) -> Result<(), String> {
 /// space in front. Empty for an agent that gets none.
 #[tauri::command]
 pub(crate) async fn agent_cache_flags(app: State<'_, App>, agent: String) -> Result<String, String> {
-    // A remote Host's cache path is its own: this computer's means nothing there.
     if app.remote() {
-        return Ok(String::new());
+        return crate::connection::data_read(&app, |c| async move {
+            let (agents, _) = data::agent_config(&c).await?;
+            Ok(agents.into_iter().find(|a| a.id == agent).map(|a| a.cache_flags).unwrap_or_default())
+        })
+        .await;
     }
     let (c, _) = ensure_client(&app).await?;
     let agents = c.list_agents().await.map_err(err)?;

@@ -95,7 +95,7 @@ impl SessionUpdates {
                 match rx.recv().await {
                     Ok(Event::SessionUpdate { update }) => return Ok(*update),
                     // Other families have their own receivers.
-                    Ok(Event::TerminalSnapshot { .. } | Event::TerminalOutput { .. }) => {}
+                    Ok(Event::TerminalSnapshot { .. } | Event::TerminalOutput { .. } | Event::DataChanged { .. } | Event::DataGap { .. }) => {}
                     Err(broadcast::error::RecvError::Lagged(n)) => {
                         return Err(UpdateGap::Lagged(n))
                     }

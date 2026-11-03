@@ -69,6 +69,7 @@ export function setDaemon(status: DaemonStatus) {
 
 /** Counts event subscriptions. An event from an older one is dropped. */
 let eventStream = 0;
+let dataEventStream = 0;
 
 /** Streams daemon events to `onEvent`. Replaces an earlier subscription. */
 export async function subscribeEvents() {
@@ -78,6 +79,21 @@ export async function subscribeEvents() {
     if (n === eventStream) onEvent(e);
   };
   await hostInvoke("session_updates", "subscribe_events", { onEvent: events });
+}
+
+/** Pushed Host data invalidations. A gap is intentionally a broad refresh. */
+export async function subscribeDataEvents() {
+  if (!hostCan("data_events")) return;
+  const n = ++dataEventStream;
+  const events = new Channel<{ projects: boolean; worktrees: string[]; tasks: boolean; gap: boolean }>();
+  events.onmessage = (e) => {
+    if (n !== dataEventStream) return;
+    if (e.projects || e.gap) void loadProjects();
+    if (e.tasks || e.gap) void loadLedger();
+    if (e.gap) { reloadFiles(); reloadChanges(); }
+    else { reloadChanges(e.worktrees); reloadFiles(); }
+  };
+  await invoke("subscribe_data_events", { onEvent: events });
 }
 
 /**
@@ -340,6 +356,7 @@ export function followDataPlane() {
         () => true,
         (e) => (console.error(e), false),
       );
+      await subscribeDataEvents().catch(console.error);
       // The ledger too: its watcher sees no change in a ledger that did not change.
       await Promise.all([loadProjects(), loadLedger()]);
       reloadChanges();

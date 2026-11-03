@@ -29,7 +29,7 @@ async fn changed<T>(handle: &AppHandle, change: impl std::future::Future<Output 
     change.await
 }
 
-/// Runs a local projects.toml edit (images only), then tells the page.
+/// A client-owned setting which has not moved to the Host yet.
 async fn local_edit(handle: &AppHandle, f: impl FnOnce() -> anyhow::Result<()> + Send + 'static) -> Result<(), String> {
     changed(handle, blocking(f)).await
 }
@@ -178,10 +178,9 @@ pub(crate) async fn folder_create(app: State<'_, App>, parent: String, name: Str
     folder_call(&app, |c| async move { data::folder_create(&c, &parent, &name).await }).await
 }
 
-/// This Mac only: an image is a path here, and no Host takes image bytes yet.
 #[tauri::command]
-pub(crate) async fn set_project_icon(handle: AppHandle, project: String, icon: Option<String>) -> Result<(), String> {
-    local_edit(&handle, move || config::set_project_icon(&project, icon.as_deref())).await
+pub(crate) async fn set_project_icon(handle: AppHandle, app: State<'_, App>, project: String, icon: Option<String>) -> Result<(), String> {
+    edit(&handle, &app, project, ProjectEdit::Icon { icon }).await
 }
 
 /// A Skipper's generated avatar. `scope`: "" for the Skiff agent,
@@ -264,14 +263,14 @@ pub(crate) async fn set_skipper_avatar(handle: AppHandle, scope: String, seed: u
     .await
 }
 
-/// This Mac only, as the icon.
 #[tauri::command]
 pub(crate) async fn set_project_background(
     handle: AppHandle,
+    app: State<'_, App>,
     project: String,
     background: Option<String>,
 ) -> Result<(), String> {
-    local_edit(&handle, move || config::set_project_background(&project, background.as_deref())).await
+    edit(&handle, &app, project, ProjectEdit::Background { background }).await
 }
 
 #[tauri::command]

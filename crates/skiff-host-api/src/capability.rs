@@ -14,6 +14,7 @@ pub const GIT_DIFF: &str = "git_diff";
 pub const PROJECT_CONFIG: &str = "project_config";
 pub const WORKTREES: &str = "worktrees";
 pub const FILES: &str = "files";
+pub const FILE_REVEAL: &str = "file_reveal";
 pub const FOLDERS: &str = "folders";
 pub const PROJECT_ASSETS: &str = "project_assets";
 pub const LEDGER: &str = "ledger";
@@ -21,9 +22,12 @@ pub const SKIPPER: &str = "skipper";
 pub const SKIPPER_CONFIG: &str = "skipper_config";
 pub const SKIPPER_FILE: &str = "skipper_file";
 pub const SKIPPER_RUN: &str = "skipper_run";
+pub const SKIPPER_WATCH_LOG: &str = "skipper_watch_log";
 pub const AGENT_CONFIG: &str = "agent_config";
 pub const DROPS: &str = "drops";
+pub const IMAGE_CACHE: &str = "image_cache";
 pub const PROGRAM_STATUS: &str = "program_status";
+pub const DATA_EVENTS: &str = "data_events";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Capability {
@@ -63,6 +67,11 @@ impl Capability {
     pub fn projects_watch() -> Self {
         Self::new(PROJECTS, 2)
     }
+    /// Pushed invalidations for Host-owned projects, Git, files and ledger
+    /// data. A receiver that misses one must read a fresh snapshot.
+    pub fn data_events() -> Self {
+        Self::new(DATA_EVENTS, 1)
+    }
     /// Read the changed files of one of the Host's project worktrees. Data
     /// plane; grants no diff text, file read or Git write.
     pub fn git_status() -> Self {
@@ -94,6 +103,11 @@ impl Capability {
     /// client may open.
     pub fn files() -> Self {
         Self::new(FILES, 1)
+    }
+    /// Show a file or folder that is already in an open project worktree in
+    /// this Host's file manager. It grants no free path or client-side opener.
+    pub fn file_reveal() -> Self {
+        Self::new(FILE_REVEAL, 1)
     }
     /// List the Host account's folders from its home, and make one new
     /// folder in a folder it lists. Folders and links to folders only:
@@ -147,6 +161,12 @@ impl Capability {
     pub fn skipper_run_fleets() -> Self {
         Self::new(SKIPPER_RUN, 2)
     }
+    /// Read Skipper's watcher log as bounded text. The Host chooses the log
+    /// beside its own skiffd socket; a client supplies no path and never
+    /// opens one locally.
+    pub fn skipper_watch_log() -> Self {
+        Self::new(SKIPPER_WATCH_LOG, 1)
+    }
     /// Read and change the Host's `[agents]` table: which agents are on,
     /// their commands, custom agents. Each change names the revision it was
     /// made from, and a changed revision refuses it (`conflict`). Data
@@ -159,6 +179,11 @@ impl Capability {
     /// write and no path outside the cache.
     pub fn drops() -> Self {
         Self::new(DROPS, 1)
+    }
+    /// List, preview, pin and delete the Host's own image cache. The client
+    /// only handles bytes returned here; it never reads a Host cache path.
+    pub fn image_cache() -> Self {
+        Self::new(IMAGE_CACHE, 1)
     }
     /// Attach/output, input, resize and detach of existing sessions; grants
     /// no create, kill, rename or inventory operation.

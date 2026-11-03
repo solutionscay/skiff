@@ -1,7 +1,7 @@
 //! Self-update: where the updater plugin may replace the app, and the
 //! restart that finishes an update. The new app hands skiffd, the skiff CLI
 //! and `skiff watch` over at its launch, as after any install.
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 use crate::quit::Guard;
 

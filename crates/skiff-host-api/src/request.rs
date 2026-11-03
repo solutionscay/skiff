@@ -185,6 +185,17 @@ pub enum Request {
         dir: String,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         follow_links: bool,
+        /// Cursor returned by the preceding reply. This is an opaque integer,
+        /// rather than a person-entered path.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cursor: Option<usize>,
+    },
+    /// Shows a worktree folder, or one regular file in it, in this Host's
+    /// file manager. `file` is relative to the named open worktree.
+    FileReveal {
+        worktree: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        file: Option<String>,
     },
     /// Answers `file`: `file` (relative) of `worktree`, read for `purpose`.
     FileRead {
@@ -226,7 +237,29 @@ pub enum Request {
         name: String,
         #[serde(with = "bytes")]
         bytes: Vec<u8>,
+        /// One upload id and its complete size make this a framed upload.
+        /// Absent keeps the original one-frame request.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        upload: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        total: Option<u64>,
+        #[serde(default)]
+        offset: u64,
+        /// Only this frame stores the completed file in the Host cache.
+        #[serde(default)]
+        finish: bool,
     },
+    /// Answers the Host's image cache, newest first.
+    ImageList,
+    /// Answers one Host cache image's validated bytes.
+    ImageRead { path: String },
+    /// Deletes Host cache images. Each path must be one returned by
+    /// `image_list`; an absent image is already deleted.
+    ImageDelete { paths: Vec<String> },
+    /// Pins or unpins Host cache images.
+    ImagePin { paths: Vec<String>, on: bool },
+    /// Answers the Host cache's total size, image count and image size.
+    CacheUse,
     /// Answers `image`: the project's configured background, read on the
     /// Host. No background is `not_found`; a file that is not an image, or
     /// is over 5 MiB, is `invalid`.
@@ -303,6 +336,9 @@ pub enum Request {
     SkipperWatch {
         session: String,
     },
+    /// Answers `file`: Skipper's watcher log as a bounded preview. The Host
+    /// chooses the log beside its own skiffd socket; it never accepts a path.
+    SkipperWatchLog,
     /// Finds the project Skipper of `project` or starts it in the project's
     /// folder, with `SKIPPER.md` as its first message, and the watcher.
     /// Answers `session`. Not retried: the session may have started.

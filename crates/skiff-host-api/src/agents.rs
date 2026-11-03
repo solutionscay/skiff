@@ -22,6 +22,10 @@ pub struct HostAgent {
     /// review". It cannot be removed then. Absent: nothing, or an older Host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub used_by: Option<String>,
+    /// Arguments that let this agent read this Host's image cache. The path
+    /// is meaningful only on the Host that returned it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub cache_flags: String,
 }
 
 /// One change to the Host's `[agents]` table (`agent_config@1`).

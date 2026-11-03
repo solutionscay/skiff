@@ -276,7 +276,7 @@ pub enum ProbeRun {
 pub async fn run_probe(target: &SshTarget, options: &SshOptions) -> Result<ProbeRun, String> {
     let started = Instant::now();
     let command = probe_command();
-    Ok(match ssh::run_batch(target, options, command, SERVER.as_bytes(), PROBE_TIMEOUT).await? {
+    Ok(match ssh::run_batch(target, options, command, SERVER.as_bytes(), PROBE_TIMEOUT).await.map_err(|e| e.to_string())? {
         BatchRun::Ssh(stderr) => ProbeRun::Ssh(stderr),
         BatchRun::TimedOut => ProbeRun::TimedOut,
         BatchRun::Done(text) => match text.lines().rev().find_map(|l| serde_json::from_str::<Probe>(l.trim()).ok()) {

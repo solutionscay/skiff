@@ -206,6 +206,8 @@ export interface HostListing {
   entries: HostEntry[];
   /** More entries than the Host lists: the rest are left out. */
   truncated: boolean;
+  /** Opaque cursor for the next page; never a Host path. */
+  next?: number;
 }
 
 /** A file's preview from the selected Host. Its kind comes from its bytes, never its name. */

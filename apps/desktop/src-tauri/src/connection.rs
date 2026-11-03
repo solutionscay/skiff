@@ -14,7 +14,7 @@ mod remote;
 use data_plane::capability_names;
 #[cfg(test)]
 pub(crate) use data_plane::DATA_UNREAD;
-pub(crate) use data_plane::{data_now, data_plane_status, data_read, data_write, ensure_host, keep_revision, project_write, __cmd__data_plane_status, __tauri_command_name_data_plane_status};
+pub(crate) use data_plane::{data_now, data_plane_status, data_read, data_write, ensure_host, keep_revision, project_write, subscribe_data_events, __cmd__data_plane_status, __cmd__subscribe_data_events, __tauri_command_name_data_plane_status, __tauri_command_name_subscribe_data_events};
 pub(crate) use daemon::{check_daemon, compare_versions, daemon_status, restart_daemon, restart_warning, status_now, __cmd__daemon_status, __cmd__restart_daemon, __tauri_command_name_daemon_status, __tauri_command_name_restart_daemon};
 pub(crate) use process::{bundled, daemon_binary};
 
@@ -55,6 +55,7 @@ pub(crate) struct App {
     pub(crate) subs: Mutex<HashMap<String, JoinHandle<()>>>,
     /// The task that streams events to the page.
     pub(crate) events: Mutex<Option<JoinHandle<()>>>,
+    pub(crate) data_events: Mutex<Option<JoinHandle<()>>>,
     /// Terminal input on its way to the daemon.
     pub(crate) input: Input,
     /// Per session: how far the page's xterm is behind its stream.

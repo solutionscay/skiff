@@ -16,7 +16,7 @@ use skiff_host_api::{HostSkipper, SkipperEdit, SkipperFolderDone, SkipperFolderP
 use tauri::{AppHandle, State};
 
 use crate::{
-    connection::{blocking, bundled, data_write, ensure_client, err, App},
+    connection::{blocking, bundled, data_read, data_write, ensure_client, err, App},
     projects_watch::OwnEdit,
 };
 use skiff_client::host::local::ProcessControl;
@@ -93,10 +93,11 @@ pub(crate) async fn ensure_watch(app: &App, _local: &ProcessControl, cli: PathBu
     }
 }
 
-/// The watch log beside the socket, for the row's Open watch log.
+/// Skipper's watcher log from the selected Host. The Host chooses and reads
+/// it; no Host path reaches this computer.
 #[tauri::command]
-pub fn skiff_watch_log() -> String {
-    skiff_core::socket::socket_path().with_extension("watch.log").display().to_string()
+pub async fn skipper_watch_log(app: State<'_, App>) -> Result<skiff_host_api::HostFile, String> {
+    data_read(&app, |c| async move { data::skipper_watch_log(&c).await }).await
 }
 
 /// What Start project Skipper did.

@@ -269,6 +269,30 @@ test("a Host switch only learns its folders: none joins the workspace (#229)", a
   assert.equal(h.profile.workspaceEdited(), false);
 });
 
+test("workspace history is separate for each Host", () => {
+  const values = new Map<string, string>();
+  let host: string | null = null;
+  const storage = moduleFromSource("../src/workspace/profile/storage.ts", {
+    "@tauri-apps/api/core": { invoke() {} },
+    "../../app/hosts": { shownHost: () => host },
+  }, {
+    localStorage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    },
+  }, "");
+  storage.remember("/local.skiffw");
+  host = "remote-host";
+  assert.equal(storage.last(), null);
+  assert.deepEqual([...storage.recents()], []);
+  storage.remember("/remote.skiffw");
+  assert.equal(storage.last(), "/remote.skiffw");
+  host = null;
+  assert.equal(storage.last(), "/local.skiffw");
+  assert.deepEqual([...storage.recents()], ["/local.skiffw"]);
+});
+
 test("with no workspace open, an outside add changes nothing (#229)", async () => {
   const h = workspaceHarness();
   h.profile.includeNew("", h.S.projects);

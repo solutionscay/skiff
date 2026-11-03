@@ -145,7 +145,7 @@ export function workspaceHarness() {
     "../../app/state": { S }, "../../ui/contextMenu": { ctxMenu: { open(_x: number, _y: number, _title: string, _entries: unknown, done: () => void) { menus.push(done); } } },
   }, {}, "");
   const profileStorage = moduleFromSource("../src/workspace/profile/storage.ts", {
-    "@tauri-apps/api/core": { invoke }, "./state": profileState,
+    "@tauri-apps/api/core": { invoke }, "./state": profileState, "../../app/hosts": { shownHost: () => null },
   }, { localStorage: { getItem: (key: string) => stored.get(key) ?? null,
     setItem: (key: string, value: string) => stored.set(key, value), removeItem: (key: string) => stored.delete(key) } }, "");
   const profileDialogs = moduleFromSource("../src/workspace/profile/dialogs.ts", {
