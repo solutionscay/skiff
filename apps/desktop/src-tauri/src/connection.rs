@@ -11,7 +11,7 @@ mod data_plane;
 mod process;
 mod remote;
 
-use data_plane::*;
+use data_plane::capability_names;
 #[cfg(test)]
 pub(crate) use data_plane::DATA_UNREAD;
 pub(crate) use data_plane::{data_now, data_plane_status, data_read, data_write, ensure_host, keep_revision, project_write, __cmd__data_plane_status, __tauri_command_name_data_plane_status};
