@@ -12,7 +12,7 @@ import { render } from "../app/renderRequest";
 import { projectsPlus, workspaceOpen } from "./profile";
 import { hostConnected, hostName, isRemote } from "../app/hosts";
 import { sentences, t, tn } from "../i18n";
-import { sessionRow } from "./sessionRows";
+import { placedRows } from "./sessionRows";
 import { errorRow } from "./projectRows";
 
 /**
@@ -46,14 +46,12 @@ export function outsideHead(): HTMLElement {
 }
 
 /** One row for each session the open workspace would hide. Each names its project or fleet. */
-export function outsideBlock(outside: { session: SessionInfo; where: string }[]): HTMLElement {
-  const block = h("div", "sessions-block");
+export function outsideBlock(outside: { session: SessionInfo; where: string }[], block: HTMLElement = h("div", "sessions-block")): HTMLElement {
   block.style.height = `calc(${Math.max(40, outside.length * 20)} * var(--u))`;
-  for (const { session, where } of outside) {
+  return placedRows(block, outside.map(({ session, where }) => {
     const p = S.projects.find((x) => x.name === where);
-    block.appendChild(sessionRow(session, p ? accent(p) : DEFAULT_ACCENT, { where }));
-  }
-  return block;
+    return [session, p ? accent(p) : DEFAULT_ACCENT, where];
+  }));
 }
 
 /** The head over sessions whose folder is in no project. */
@@ -67,14 +65,12 @@ export function otherHead(): HTMLElement {
  * The sessions still under a fleet that hides its projects: each one that
  * waits, and the one on screen. Each row names its project.
  */
-export function shownBlock(shown: SessionInfo[]): HTMLElement {
-  const block = h("div", "sessions-block fleet-shown");
+export function shownBlock(shown: SessionInfo[], block: HTMLElement = h("div", "sessions-block fleet-shown")): HTMLElement {
   block.style.height = `calc(${shown.length * 20} * var(--u))`;
-  for (const s of shown) {
+  return placedRows(block, shown.map((s) => {
     const p = place(s)!.project;
-    block.appendChild(sessionRow(s, accent(p), { where: p.name }));
-  }
-  return block;
+    return [s, accent(p), p.name];
+  }));
 }
 
 /**

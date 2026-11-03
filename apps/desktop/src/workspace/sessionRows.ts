@@ -2,7 +2,8 @@
 import { type Line } from "./sidebarLines";
 import { groupRenameInput } from "./rename";
 import { filledOf } from "./layoutSlots";
-import { agentIcon } from "../appearance/agentIcon";
+import { agentIcon, agentKind } from "../appearance/agentIcon";
+import { appliedTheme, ownTheme, signatureColor } from "../appearance/themes";
 import { ink } from "../appearance/appTheme";
 import { glyph } from "./layoutIcon";
 import { agentName, basename, branchName, taskTitle } from "./model";
@@ -17,21 +18,113 @@ import { S, sessions } from "../app/state";
 import { accent, awayPlaces, place } from "../app/stateQueries";
 import { dragGroup, dragSessions, revealSession, showGroup } from "./view";
 import { t } from "../i18n";
+import { tally } from "../diagnostics/stalls";
 
-/** 20px lines, flush against whatever follows. */
-export function sessionBlock(lines: Line[], color: string): HTMLElement {
-  const block = h("div", "sessions-block");
-  const n = lines.length;
-  block.style.height = `calc(${n ? Math.max(40, n * 20) : 0} * var(--u))`;
-  for (const l of lines) {
-    if (l.group) block.appendChild(groupRow(l.group, l.hasPrevious, l.hasNext));
-    else if (l.pointer) block.appendChild(pointerRow(l.pointer));
-    else block.appendChild(sessionRow(l.session, color, l));
-  }
+/**
+ * Puts `nodes` in `parent` in order. Kept nodes stay where they are: a node
+ * taken out and put back loses its style and restarts its animations.
+ * `before` runs first when anything moves.
+ */
+export function setChildren(parent: HTMLElement, nodes: HTMLElement[], before: () => void = () => {}) {
+  if (parent.children.length === nodes.length && nodes.every((n, i) => parent.children[i] === n)) return;
+  before();
+  // A new parent: no node to keep in place.
+  if (!parent.children.length) return parent.append(...nodes);
+  const want = new Set<Node>(nodes);
+  for (const c of [...parent.children]) if (!want.has(c)) c.remove();
+  nodes.forEach((n, i) => {
+    if (parent.children[i] !== n) parent.insertBefore(n, parent.children[i] ?? null);
+  });
+}
+
+/** A row to draw: what it shows apart from its state, how to make it, and how a kept one takes the new state. */
+type Keyed = [key: string, build: () => HTMLElement, update?: (row: HTMLElement) => void];
+
+/** Each session block's rows, by key: the same block drawn again keeps them. */
+const keptRows = new WeakMap<HTMLElement, Map<string, HTMLElement>>();
+
+/**
+ * Draws `rows` into `block`. A row whose key is unchanged is the row drawn
+ * last time: it keeps its node, listeners, icons, hover and focus, and only
+ * takes the new state. The rest are built. Rows that stay do not move.
+ */
+function keyedRows(block: HTMLElement, rows: Keyed[]): HTMLElement {
+  const old = keptRows.get(block);
+  const next = new Map<string, HTMLElement>();
+  const nodes = rows.map(([key, build, update]) => {
+    let row = next.has(key) ? undefined : old?.get(key);
+    if (row) {
+      tally("sidebar.kept");
+      update?.(row);
+    } else row = build();
+    next.set(key, row);
+    return row;
+  });
+  keptRows.set(block, next);
+  setChildren(block, nodes);
   return block;
 }
 
-export function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean; in?: Group; groupRail?: boolean; where?: string }): HTMLElement {
+/** What a session row draws apart from its state: applyLook writes the state, keyedRows keeps the row. */
+function sessionKey(s: SessionInfo, color: string, o: RowOpts): string {
+  const at = o.branch ? place(s) : null;
+  return JSON.stringify([
+    S.renamingSession === s.id ? "rename" : "session", s.id, color, o.in?.id ?? null, o.in ? groupColor(o.in) : null, !!o.groupRail,
+    o.branch ? [at ? branchName(at.worktree) : null] : null, o.where ?? null,
+    awayPlaces(s).map((a) => branchName(a.worktree)), iconKey(s),
+  ]);
+}
+
+/** What a row's agent icon draws: the agent, the session's own theme color, the app theme it is inked for. */
+function iconKey(s: SessionInfo) {
+  const own = ownTheme(s);
+  return [agentKind(s), own ? signatureColor(own) : null, appliedTheme()];
+}
+
+const keepSession = (s: SessionInfo) => (row: HTMLElement) => {
+  // The rename field keeps its text and caret.
+  if (row.classList.contains("renaming")) return;
+  row.classList.toggle("selected", S.selection.includes(s.id));
+  applyLook(row, s);
+};
+
+/** Groups by object: a new group list brings new objects, and the rows that hold them are built again. */
+const groupIds = new WeakMap<Group, number>();
+let groupNext = 0;
+const groupId = (g: Group) => groupIds.get(g) ?? (groupIds.set(g, ++groupNext), groupNext);
+
+function lineRow(l: Line, color: string): Keyed {
+  if (l.group) {
+    const g = l.group;
+    const lead = sessions.get(g.focus ?? filledOf(g.layout).filter((id) => sessions.has(id))[0]);
+    const key = JSON.stringify(["group", groupId(g), g.name, g.layout, l.hasPrevious, l.hasNext, groupColor(g), accent(lead ? place(lead)?.project : null), S.renaming?.id === g.id, appliedTheme()]);
+    return [key, () => groupRow(g, l.hasPrevious, l.hasNext)];
+  }
+  if (l.pointer) {
+    const s = l.pointer;
+    const at = place(s);
+    const key = JSON.stringify(["pointer", s.id, at ? branchName(at.worktree) : basename(s.cwd), taskTitle(s), iconKey(s)]);
+    return [key, () => pointerRow(s)];
+  }
+  return [sessionKey(l.session, color, l), () => sessionRow(l.session, color, l), keepSession(l.session)];
+}
+
+/** 20px lines, flush against whatever follows. `block`: the one drawn last time, whose rows stay. */
+export function sessionBlock(lines: Line[], color: string, block: HTMLElement = h("div", "sessions-block")): HTMLElement {
+  const n = lines.length;
+  const height = `calc(${n ? Math.max(40, n * 20) : 0} * var(--u))`;
+  if (block.style.height !== height) block.style.height = height;
+  return keyedRows(block, lines.map((l) => lineRow(l, color)));
+}
+
+/** Session rows that each name their project, as Not in this workspace and a fleet's shown rows draw them. */
+export function placedRows(block: HTMLElement, rows: [s: SessionInfo, color: string, where: string][]): HTMLElement {
+  return keyedRows(block, rows.map(([s, color, where]) => [sessionKey(s, color, { where }), () => sessionRow(s, color, { where }), keepSession(s)]));
+}
+
+type RowOpts = { branch?: boolean; in?: Group; groupRail?: boolean; where?: string };
+
+export function sessionRow(s: SessionInfo, color: string, o: RowOpts): HTMLElement {
   if (S.renamingSession === s.id) return renameRow(s, color);
   const cls = ["session-row"];
   if (o.in) cls.push("nested");
@@ -64,7 +157,8 @@ export function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean;
   });
   row.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    rowMenu(s, e.clientX, e.clientY);
+    // The row outlives this render: the session as it is now.
+    rowMenu(sessions.get(s.id) ?? s, e.clientX, e.clientY);
   });
   row.style.setProperty("--pc", color);
   if (o.in) row.style.setProperty("--gc", groupColor(o.in));
