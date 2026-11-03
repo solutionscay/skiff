@@ -165,8 +165,8 @@ impl HostSelection {
                 (stream, None, pid)
             }
             DataRoute::Ssh { target, options, dir } => {
-                let forward = SshForward::open(&target, &options, &dir).await?;
-                let stream = UnixStream::connect(forward.socket()).await.map_err(|_| DataError::NotRunning)?;
+                let mut forward = SshForward::open(&target, &options, &dir).await?;
+                let stream = forward.connect().await.map_err(|_| DataError::NotRunning)?;
                 (stream, Some(forward), None)
             }
         };

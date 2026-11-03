@@ -31,6 +31,10 @@ use tokio::{
     process::{Child, Command},
 };
 
+/// How long a forward's socket may refuse a connect while `ssh` runs: the
+/// moment between `ssh` binding it and listening on it.
+const LISTEN_WAIT: Duration = Duration::from_secs(5);
+
 /// How long `ssh` may take to log in and listen.
 pub const OPEN_TIMEOUT: Duration = Duration::from_secs(20);
 /// ssh's own connect timeout, in seconds, on every run.
@@ -667,6 +671,27 @@ impl SshForward {
     /// The local end; a connection here is a channel to the remote socket.
     pub fn socket(&self) -> &Path {
         &self.socket
+    }
+
+    /// A connection to the local end. The socket file appears when `ssh`
+    /// binds it, a moment before `ssh` listens on it, and a connect in that
+    /// moment is refused. While `ssh` runs, a refusal is only that moment,
+    /// never the Host's answer (a channel the Host refuses is accepted here,
+    /// then closed), so the connect is tried again for up to [`LISTEN_WAIT`].
+    pub async fn connect(&mut self) -> std::io::Result<tokio::net::UnixStream> {
+        let until = Instant::now() + LISTEN_WAIT;
+        loop {
+            match tokio::net::UnixStream::connect(&self.socket).await {
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::ConnectionRefused
+                        && Instant::now() < until
+                        && self.is_alive() =>
+                {
+                    tokio::time::sleep(Duration::from_millis(10)).await
+                }
+                r => return r,
+            }
+        }
     }
 
     /// `ssh` still runs.

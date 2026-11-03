@@ -157,6 +157,12 @@ impl Client {
         let stream = UnixStream::connect(path)
             .await
             .with_context(|| format!("connect {}", path.display()))?;
+        Ok(Self::from_stream(stream))
+    }
+
+    /// A client on a stream already connected to skiffd, such as an SSH
+    /// forward's. Must be called from inside a tokio runtime.
+    pub fn from_stream(stream: UnixStream) -> Self {
         let daemon_pid = stream.peer_cred().ok().and_then(|c| c.pid());
         let (rd, mut wr) = transport::Transport::split(stream);
 
@@ -218,7 +224,7 @@ impl Client {
             });
         }
 
-        Ok(Self {
+        Self {
             daemon_pid,
             tx,
             next_id: AtomicU64::new(1),
@@ -228,7 +234,7 @@ impl Client {
             closed,
             queued,
             input_limit: AtomicUsize::new(0),
-        })
+        }
     }
 
     /// Refuse input once `bytes` wait to be written. For a slow link, such as
