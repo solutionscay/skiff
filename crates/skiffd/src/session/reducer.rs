@@ -1,6 +1,6 @@
 //! Pure session transitions. The caller supplies observations and time.
 use super::attention::{live, BELL, PROMPT, REPORT, TITLE};
-use super::{Front, GRACE_MS, IDLE_AFTER, MIN_TURN_MS, STALL_MS, STATUS_EVERY_MS};
+use super::{Front, AUTH_HOLD_MS, GRACE_MS, IDLE_AFTER, MIN_TURN_MS, STALL_MS, STATUS_EVERY_MS};
 use crate::program_status::{self, State as Claim};
 use crate::screen::{has_busy_line, TitleState};
 use skiff_core::session::{ProgramStatus, SessionInfo, SessionState};
@@ -73,6 +73,18 @@ pub(super) struct Effects {
     pub dirty: bool,
 }
 
+fn is_auth_block(info: &SessionInfo) -> bool {
+    info.program_status
+        .as_ref()
+        .is_some_and(|p| p.state == "blocked" && p.kind.as_deref() == Some("auth"))
+}
+
+/// Whether the session shows an `auth` block inside the first
+/// [`AUTH_HOLD_MS`] after its start.
+fn auth_held(info: &SessionInfo, now: u64) -> bool {
+    is_auth_block(info) && now.saturating_sub(info.started_at) < AUTH_HOLD_MS
+}
+
 /// All time is supplied by the caller. The returned effects describe work to
 /// perform after releasing the session lock.
 pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effects) {
@@ -122,7 +134,12 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
                 effects.reset_fresh_busy = true;
                 effects.turn = true;
             }
-            let target = program_status::session_state(claim, state.info.state);
+            let mut target = program_status::session_state(claim, state.info.state);
+            // A program that signs in by itself says so with a short auth
+            // block at its start: hold it as working; the tick ends the hold.
+            if target == SessionState::Waiting && auth_held(&state.info, now) {
+                target = SessionState::Working;
+            }
             let changed = state.info.state != target;
             effects.work_started = changed
                 && target == SessionState::Working
@@ -179,6 +196,22 @@ pub(super) fn reduce(mut state: State, input: Input, now: u64) -> (State, Effect
                 || !live(&state.info)
             {
                 return (state, effects);
+            }
+            // The hold on a start-up auth block ran out and the block stays.
+            if state.info.state == SessionState::Working
+                && is_auth_block(&state.info)
+                && !auth_held(&state.info, now)
+            {
+                let (next, transition) = reduce(
+                    state,
+                    Input::Move { target: SessionState::Waiting, cause: Some(REPORT) },
+                    now,
+                );
+                effects.state = transition.state;
+                effects.cause_recorded = transition.cause_recorded;
+                effects.update = true;
+                effects.status_sent = true;
+                return (next, effects);
             }
             effects.update = state.status_dirty;
             effects.status_dirty = Some(false);
