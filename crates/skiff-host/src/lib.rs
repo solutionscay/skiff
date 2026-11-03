@@ -54,6 +54,7 @@ pub fn capabilities() -> Vec<Capability> {
         Capability::project_config(),
         Capability::worktrees(),
         Capability::files(),
+        Capability::file_reveal(),
         Capability::project_assets(),
         Capability::folders(),
         Capability::ledger_read(),
@@ -353,11 +354,11 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             let diff = git::diff_in(&root.map_err(failed)?, &worktree, file.as_deref()).map_err(failed)?;
             Ok(Response::Diff { diff: host_diff(diff) })
         }
-        Request::FileList { worktree, dir, follow_links } => {
+        Request::FileList { worktree, dir, follow_links, cursor } => {
             // As for GitChanges: held before the check, named after it.
             let root = git::Root::open(Path::new(&worktree));
             let worktree = known_worktree(&worktree)?;
-            let listing = files::list_with(&root.map_err(failed)?, &worktree, &dir, follow_links).map_err(unread)?;
+            let listing = files::list_page(&root.map_err(failed)?, &worktree, &dir, follow_links, cursor.unwrap_or(0)).map_err(unread)?;
             Ok(Response::Files { listing: host_listing(listing) })
         }
         Request::FileRead { worktree, file, purpose } => {
@@ -369,6 +370,16 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             };
             let read = files::read_in(&root.map_err(failed)?, &worktree, &file, purpose).map_err(unread)?;
             Ok(Response::File { file: Box::new(host_file(read)) })
+        }
+        Request::FileReveal { worktree, file } => {
+            let root = git::Root::open(Path::new(&worktree));
+            let worktree = known_worktree(&worktree)?;
+            let path = match file {
+                Some(file) => files::reveal_in(&root.map_err(failed)?, &worktree, &file).map_err(unread)?,
+                None => worktree,
+            };
+            reveal_path(&path).map_err(failed)?;
+            Ok(Response::Ok)
         }
         Request::ProjectBackground { project } => {
             let p = project::find(&project).map_err(refused)?;
@@ -735,7 +746,20 @@ pub fn host_listing(l: files::Listing) -> HostListing {
             })
             .collect(),
         truncated: l.truncated,
+        next: l.next,
     }
+}
+
+/// Opens only a path held and checked above. On a headless Host this reports
+/// the desktop's own opener error; it never asks the client to open it.
+#[cfg(target_os = "macos")]
+fn reveal_path(path: &Path) -> anyhow::Result<()> {
+    skiff_core::open::launch("open -R", path)
+}
+
+#[cfg(target_os = "linux")]
+fn reveal_path(path: &Path) -> anyhow::Result<()> {
+    skiff_core::open::open_default(path.parent().unwrap_or(path))
 }
 
 pub fn host_file(f: files::FileRead) -> HostFile {

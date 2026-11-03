@@ -215,8 +215,22 @@ pub async fn git_diff(c: &HostConnection, worktree: &str, file: Option<&str>) ->
 /// The folder `dir` (relative; empty for the worktree itself) of `worktree`.
 /// `follow_links`: This Mac only; a remote Host never gets it.
 pub async fn file_list(c: &HostConnection, worktree: &str, dir: &str, follow_links: bool) -> Result<HostListing, Error> {
-    match c.request(Request::FileList { worktree: worktree.into(), dir: dir.into(), follow_links }).await? {
+    file_list_page(c, worktree, dir, follow_links, None).await
+}
+
+/// A page after `cursor`, which came from the preceding listing.
+pub async fn file_list_page(c: &HostConnection, worktree: &str, dir: &str, follow_links: bool, cursor: Option<usize>) -> Result<HostListing, Error> {
+    match c.request(Request::FileList { worktree: worktree.into(), dir: dir.into(), follow_links, cursor }).await? {
         Response::Files { listing } => Ok(listing),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// Shows a known worktree folder or a known regular file in this Host's file
+/// manager. No Host path is passed to this computer.
+pub async fn file_reveal(c: &HostConnection, worktree: &str, file: Option<&str>) -> Result<(), Error> {
+    match c.request(Request::FileReveal { worktree: worktree.into(), file: file.map(Into::into) }).await? {
+        Response::Ok => Ok(()),
         _ => unreachable!("checked by Request::accepts"),
     }
 }

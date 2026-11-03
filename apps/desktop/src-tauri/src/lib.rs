@@ -233,6 +233,7 @@ pub fn run() {
             config::set_project_background_opacity,
             commands::project_background,
             commands::list_files,
+            commands::reveal_host_file,
             commands::read_file,
             commands::open_file_copy,
             commands::git_changes,

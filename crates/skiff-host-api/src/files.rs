@@ -30,6 +30,9 @@ pub struct HostListing {
     /// More entries than the Host lists (2000, after what git ignores), or
     /// more than it reads from disk (40000): the rest are left out.
     pub truncated: bool,
+    /// Opaque cursor for the next page. It is never a Host path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next: Option<usize>,
 }
 
 /// Why a file is read.

@@ -1248,6 +1248,7 @@ export const zh = {
   "files.empty": "空",
   "files.truncated#other": "仅显示前 {count} 个条目。",
   "files.tooMany": "未显示任何条目。文件夹中的条目太多，无法列出。",
+  "files.more": "显示更多",
   "changes.since": "自 {base} 以来的更改",
   "skippers.admiral": "{name}，Skiff 代理",
   "skippers.notRunning": "未运行",
