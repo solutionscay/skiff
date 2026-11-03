@@ -39,23 +39,31 @@ function detail(s: SessionInfo, now: number): string {
   return "";
 }
 
-/** The open ledger rows, indexed once per draw: tasks by owner, hand-offs by pane, and every open hand-off. */
+/**
+ * The ledger rows, indexed once per draw. For the windows, the open rows
+ * (not finished, not done): tasks by owner, hand-offs by pane, and every open
+ * hand-off. For a Skipper's panel, `paneHandoffs`: its hand-offs not yet
+ * finished, done ones too.
+ */
 export interface LedgerIndex {
   tasks: Map<string, Entry[]>;
   handoffs: Map<string, Entry[]>;
   open: Entry[];
+  paneHandoffs: Map<string, Entry[]>;
 }
 
-/** Indexes `rows`: what is not finished and not done. */
+/** Indexes `rows`. */
 export function indexLedger(rows: readonly Entry[]): LedgerIndex {
-  const idx: LedgerIndex = { tasks: new Map(), handoffs: new Map(), open: [] };
+  const idx: LedgerIndex = { tasks: new Map(), handoffs: new Map(), open: [], paneHandoffs: new Map() };
   const put = (map: Map<string, Entry[]>, key: string, r: Entry) => {
     const list = map.get(key);
     if (list) list.push(r);
     else map.set(key, [r]);
   };
   for (const r of rows) {
-    if (r.bucket === "finished" || r.state === "done") continue;
+    if (r.bucket === "finished") continue;
+    if (r.kind === "handoff" && r.pane_id) put(idx.paneHandoffs, r.pane_id, r);
+    if (r.state === "done") continue;
     if (r.kind === "task") put(idx.tasks, r.owner, r);
     else if (r.kind === "handoff") {
       idx.open.push(r);

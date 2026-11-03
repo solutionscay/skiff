@@ -834,7 +834,7 @@ function drawPanel() {
   const parts: HTMLElement[] = [];
   const r = m.rows.get(s.id);
   if (s.coordinator || !!s.skipper) {
-    const hos = s.coordinator ? m.idx.open : (m.idx.handoffs.get(s.id) ?? []);
+    const hos = s.coordinator ? m.idx.open : (m.idx.paneHandoffs.get(s.id) ?? []);
     parts.push(sideHead(t("mission.handoffsHead"), String(hos.length)));
     if (!hostCan("ledger")) parts.push(h("div", "mission-task none", t("mission.noLedger")));
     else if (!hos.length) parts.push(h("div", "mission-task none", t("mission.noneDot")));
