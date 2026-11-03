@@ -1,3 +1,4 @@
+import { animate, still } from "./ledgerMotion";
 /**
  * The Ledger: Skipper's tasks, in a panel at the right of its pane. It shows
  * only while Skipper's pane is the one pane on screen. Focus mode keeps it;
@@ -274,7 +275,7 @@ function units(project: string | null | undefined = filter()): Unit[] {
   const view = (k: Entry) => inView(k, scope, project);
   const heads = new Set(rows.filter((r) => r.kind === "plan" || r.kind === "handoff").map((r) => r.uid));
   // A hand-off in a plan, and a row under a hand-off, show under their head.
-  const placed = (r: Entry) => !!r.parent && heads.has(r.parent) && rows.some((p) => p.uid === r.parent && (p.kind === "plan" || p.kind === "handoff"));
+  const placed = (r: Entry) => !!r.parent && heads.has(r.parent);
   const out: Unit[] = [];
   for (const r of rows) {
     if (r.kind === "plan") {
@@ -581,51 +582,6 @@ function signature(x: Sections): string {
   const tags = S.projects.map((p) => [p.name, p.short, accent(p)]);
   const skippers = [...sessions.keys()].map((id) => [id, coordinatorOf(id)]).filter(([, scope]) => scope);
   return JSON.stringify([error, scopeLabel(), filter(), tags, skippers, x.working.map(unit), x.open.map(unit), x.finished.map(unit)]);
-}
-
-const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-/**
- * Moves the rows of `list` from their places in `before`: a row that stays
- * slides from its old place, a row with a new look flashes, a new row fades
- * in, a row that left fades up and out. A row that moved into Finished
- * slides slower and does not flash.
- */
-function animate(list: HTMLElement, before: Map<string, { top: number; el: HTMLElement }>) {
-  const after = new Set<string>();
-  for (const r of list.querySelectorAll<HTMLElement>(".lg-row[data-key]")) {
-    const k = r.dataset.key!;
-    after.add(k);
-    const b = before.get(k);
-    if (!b) {
-      r.classList.add("enter");
-      continue;
-    }
-    const intoFin = r.classList.contains("fin") && !b.el.classList.contains("fin");
-    if (b.el.dataset.look !== r.dataset.look && !intoFin) r.classList.add("flash");
-    const dy = b.top - r.offsetTop;
-    if (!dy) continue;
-    r.style.transform = `translateY(${dy}px)`;
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        r.classList.add("moving");
-        if (intoFin) r.classList.add("long");
-        r.style.transform = "";
-      }),
-    );
-  }
-  for (const [k, b] of before) {
-    if (after.has(k)) continue;
-    const g = b.el.cloneNode(true) as HTMLElement;
-    g.classList.remove("moving", "long", "enter", "flash");
-    g.classList.add("ghost");
-    g.removeAttribute("data-key");
-    g.style.top = `${b.top}px`;
-    g.style.transform = "";
-    list.append(g);
-    requestAnimationFrame(() => requestAnimationFrame(() => g.classList.add("out")));
-    setTimeout(() => g.remove(), 420);
-  }
 }
 
 /** The panel's list was on screen at the last render, so a change can move. */
