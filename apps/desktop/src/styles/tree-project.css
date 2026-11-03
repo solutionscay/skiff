@@ -188,14 +188,16 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 @keyframes sk-turn { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .skiff-agent-row.watch-turn .agent-icon { animation: none; } }
 
-/* A project Skipper: the first row of its project block. Its face starts under the project name, in line with the session icons. */
-.tree-project .session-row.project-skipper-row { padding-left: calc(var(--in) * var(--u)); }
 /* A fleet's Skipper: the first row under its fleet head, in the fleet's box, in line with the head's name. No tint:
-   the box marks fleet scope. A fleet has no color: its Skipper takes the default one, as the Skiff agent's row does. */
-.tree-kids > .session-row.project-skipper-row { padding-left: calc(8 * var(--u)); --pc: var(--project-default); }
-/* A Skipper row is a full 40px row with a 28px face, as tall as a project row, so it reads as the head of its project's sessions. */
+   the box marks fleet scope. A fleet has no color: its Skipper takes the default one, as the Skiff agent's row does.
+   It is a full 40px row with a 28px face, as tall as a project row, so it reads as the head of the fleet's projects. */
+#sidebar-scroll > .tree-kids > .session-row.project-skipper-row { padding-left: calc(8 * var(--u)); --pc: var(--project-default); }
 .session-row.project-skipper-row { height: var(--row); }
 .project-skipper-row > .skipper-face { width: calc(28 * var(--u)); height: calc(28 * var(--u)); }
+/* A project Skipper: the first child of its project, a 20px row in the worktree column with an 18px face.
+   The worktrees and loose sessions under it are its siblings, not its children. It takes the project's color. */
+.tree-project .session-row.project-skipper-row { height: calc(20 * var(--u)); padding-left: calc(var(--in) * var(--u)); }
+.tree-project .project-skipper-row > .skipper-face { width: calc(18 * var(--u)); height: calc(18 * var(--u)); }
 .project-skipper-row .skiff-agent-name { flex-shrink: 0; font-size: calc(13px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
 .project-skipper-row .title { font-size: calc(13px * var(--zoom, 1)); color: var(--text-3); }
 /* Its own watcher, with the Skiff agent row's states: teal while it runs,
