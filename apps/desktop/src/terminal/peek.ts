@@ -25,7 +25,6 @@ import { copyText, pasteText } from "../platform/clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { $, button, h } from "../ui/dom";
-import { icon } from "../ui/icons";
 import { showError } from "../ui/alerts";
 import { appKey, currentRow, itemKey } from "../app/keyboard";
 import { render } from "../app/renderRequest";
@@ -40,11 +39,12 @@ import { rowActs } from "../workspace/rowActs";
 import { panes } from "./terminalState";
 import { fitShown } from "./terminal";
 import { FONT, TERM_THEME } from "./terminalRuntime";
-import { t, type MessageKey } from "../i18n";
+import { t } from "../i18n";
 import { hostInvoke } from "../app/hostCaps";
 import { dataEpoch } from "../app/dataPlane";
 import { hostName } from "../app/hosts";
 import type { HostDiff, HostFile } from "../platform/types";
+import { allChanges, buildCard, cardAction, cardFrame, clearCard, mountCard, peekHead, slot } from "./peekCard";
 import { diffBody, diffState } from "./diffView";
 import { fileBody } from "./fileView";
 
@@ -106,12 +106,6 @@ function peekEnded() {
   afterPeek = null;
   f?.();
 }
-/** The card over the panes. Under a shown command it is hidden. */
-let card: HTMLElement | null = null;
-/** The card's own action: the Enter keycap. Its Esc keycap is not one. */
-const cardAction = () => card?.querySelector<HTMLButtonElement>("button.file-preview-key, button.peek-open") ?? null;
-/** The blob URL of a Host image on the card, revoked when the card goes. */
-let cardUrl: string | null = null;
 /** The command of the active preview. */
 let open: Peek | null = null;
 /** File tools kept running off screen while another row is current. */
@@ -246,16 +240,16 @@ export function giveKeys(): boolean {
   if (!active || active.closed) return false;
   active.keys = true;
   if (open?.shown) open.term.focus();
-  else if (card) (card.querySelector<HTMLElement>(".diff-view-body") ?? cardAction() ?? card).focus();
+  else if (slot.el) (slot.el.querySelector<HTMLElement>(".diff-view-body") ?? cardAction() ?? slot.el).focus();
   // A command still starting takes the keys when it shows.
-  return !!(open || card);
+  return !!(open || slot.el);
 }
 
 // The keys left the preview (F6, a click, a menu or dialog): a late show does not take them back.
 document.addEventListener("focusin", (e) => {
   if (!active?.keys) return;
   const t = e.target as Node;
-  if (!card?.contains(t) && !open?.el.contains(t)) active.keys = false;
+  if (!slot.el?.contains(t) && !open?.el.contains(t)) active.keys = false;
 });
 
 /** Enter on the row or the card: the card's action runs; a tool or diff takes the keys. */
@@ -331,7 +325,7 @@ const failed = (mine: number) => (e: unknown) => (live(mine) ? showError(e) : co
 function closePeek(hold = false) {
   const p = open;
   if (!p) return;
-  const hadKeys = keysIn(p.el) || !!card?.contains(document.activeElement);
+  const hadKeys = keysIn(p.el) || !!slot.el?.contains(document.activeElement);
   open = null;
   if (hold) {
     if (held) drop(held.p, false);
@@ -344,8 +338,8 @@ function closePeek(hold = false) {
     showCard(active.gen, "diff", `${preview.wt}/${preview.file ?? allChanges(preview.base)}`, preview.file ? t("menu.showDiff") : t("menu.reviewChanges"), () => startPreview(key, true, true));
   }
   // A card with an action stays: the app opened from it runs on.
-  if (card && cardAction()) {
-    card.hidden = false;
+  if (slot.el && cardAction()) {
+    slot.el.hidden = false;
     if (hadKeys || active?.keys) giveKeys();
     return peekEnded();
   }
@@ -367,7 +361,7 @@ function closePeek(hold = false) {
  */
 export function closePreview() {
   if (!active || active.closed) return;
-  const hadKeys = !!card?.contains(document.activeElement) || (!!open && keysIn(open.el));
+  const hadKeys = !!slot.el?.contains(document.activeElement) || (!!open && keysIn(open.el));
   active.closed = true;
   clearCard();
   const p = open;
@@ -380,14 +374,6 @@ export function closePreview() {
   const row = currentRow();
   if (row) row.focus();
   else if (S.focused) panes.get(S.focused)?.term.focus();
-}
-
-/** The Esc keycap at the right of a preview's header. */
-function escButton(): HTMLButtonElement {
-  const b = button("peek-esc", "Esc", closePreview);
-  b.title = t("peek.closeKey", { key: "Esc" });
-  b.setAttribute("aria-label", t("peek.close"));
-  return b;
 }
 
 /**
@@ -403,16 +389,6 @@ function tookTerminal(p: Peek) {
   b.title = t("peek.closeKey", { key });
 }
 
-/** The word in a preview's header for its kind: file, folder or diff. */
-const KIND_NAMES: Record<string, MessageKey> = { file: "peek.kindFile", folder: "peek.kindFolder", diff: "peek.kindDiff" };
-const kindName = (kind: string) => (KIND_NAMES[kind] ? t(KIND_NAMES[kind]) : kind);
-
-function peekHead(kind: string, title: string, where: string): HTMLElement {
-  const head = h("div", "peek-head");
-  head.append(h("span", "peek-kind", kindName(kind)), h("span", "peek-title mono", title), h("span", "peek-where mono", where), escButton());
-  return head;
-}
-
 const keysIn = (el: HTMLElement) => el.contains(document.activeElement) || document.activeElement === document.body;
 
 function repaintPanes() {
@@ -423,71 +399,17 @@ function repaintPanes() {
   }
 }
 
-// ── The card ────────────────────────────────────────────────────────────────
-
-function clearCard() {
-  card?.remove();
-  card = null;
-  if (cardUrl) URL.revokeObjectURL(cardUrl);
-  cardUrl = null;
-}
-
-/** A card's frame: its head, with the kind, the name, its folder and Esc. */
-function cardFrame(kind: string, path: string, cls = "peek file-preview"): HTMLElement {
-  const name = path.split("/").pop() ?? path;
-  const dir = path.slice(0, path.length - name.length - 1);
-  const el = h("div", cls);
-  el.tabIndex = -1;
-  el.setAttribute("aria-label", name);
-  const head = peekHead(kind, name, dir);
-  el.append(head);
-  return el;
-}
-
 function showCard(mine: number, kind: string, path: string, label?: string, act?: () => void) {
   if (!live(mine)) return;
-  const el = cardFrame(kind, path);
-  const body = h("div", "file-preview-body");
-  if (label && act) {
-    // A keycap you can click, with the action under it: the hint and the button in one.
-    const cap = button("file-preview-key", "", act);
-    cap.title = t("peek.actKey", { label });
-    cap.setAttribute("aria-label", label);
-    const arrow = icon(`<path d="M19 5v8H6m0 0 4-4m-4 4 4 4"></path>`);
-    arrow.classList.add("file-preview-key-arrow");
-    cap.append(h("span", "", "Enter"), arrow);
-    const space = label.indexOf(" ");
-    const text = h("div", "file-preview-label");
-    text.append(h("b", "", space < 0 ? label : label.slice(0, space)), space < 0 ? "" : label.slice(space));
-    body.append(cap, text);
-  }
-  el.append(body);
-  mountCard(el);
+  mount(buildCard(kind, path, closePreview, label, act));
 }
 
-/** Puts `el` up as the card, over the panes. */
-function mountCard(el: HTMLElement) {
-  // Tab does nothing here. Space opens or closes the row, as on the row. Enter runs the button.
-  el.addEventListener("keydown", (e) => {
-    if (e.key === "Tab") e.preventDefault();
-    else if (e.key === "Escape" && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
-      e.preventDefault();
-      closePreview();
-    } else if (e.key === " " && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
-      e.preventDefault();
-      if (active) rowActs(active.key)?.fold?.();
-    }
-  });
-  const hadKeys = !!card && card.contains(document.activeElement);
-  clearCard();
-  card = el;
-  $("main").appendChild(el);
+/** Puts `el` up as the card. Under a shown command it is hidden. */
+function mount(el: HTMLElement) {
+  const hadKeys = mountCard(el, { close: closePreview, fold: () => { if (active) rowActs(active.key)?.fold?.(); } });
   if (open?.shown) el.hidden = true;
   else if (hadKeys || active?.keys) giveKeys();
 }
-
-/** The whole-worktree diff's title: what it counts from, when not HEAD. */
-const allChanges = (base?: string) => (base ? t("peek.allChangesSince", { base }) : t("peek.allChanges"));
 
 type HostDiffPreview = Extract<Preview, { kind: "host-diff" }>;
 
@@ -497,7 +419,7 @@ type HostDiffPreview = Extract<Preview, { kind: "host-diff" }>;
  * from an older data connection, shows nothing; the latter is asked again.
  */
 function showHostDiff(mine: number, p: HostDiffPreview) {
-  const el = cardFrame("diff", `${p.wt}/${p.file ?? allChanges(p.base)}`, "peek diff-view");
+  const el = cardFrame("diff", `${p.wt}/${p.file ?? allChanges(p.base)}`, closePreview, "peek diff-view");
   showHostView(
     mine,
     el,
@@ -517,9 +439,9 @@ function showHostDiff(mine: number, p: HostDiffPreview) {
 function showHostView<T>(mine: number, el: HTMLElement, loading: string, read: () => Promise<T>, render: (value: T) => HTMLElement, none: string) {
   if (!live(mine)) return;
   el.append(diffState(loading));
-  mountCard(el);
+  mount(el);
   const at = dataEpoch();
-  const shows = () => live(mine) && card === el;
+  const shows = () => live(mine) && slot.el === el;
   const fill = (body: HTMLElement) => {
     const hadKeys = el.contains(document.activeElement);
     el.querySelector(".diff-view-body")?.replaceWith(body);
@@ -579,7 +501,7 @@ function showHostFile(mine: number, p: HostFilePreview) {
 
 /** The Host's bounded read `read` in the page's viewer, under `title`. `copy`: the Open a copy button. */
 function showHostRead(mine: number, title: string, read: () => Promise<HostFile>, copy: (() => void) | null) {
-  const el = cardFrame("file", title, "peek diff-view file-view");
+  const el = cardFrame("file", title, closePreview, "peek diff-view file-view");
   if (copy) {
     const open = button("peek-open", "", copy);
     open.title = t("peek.openCopyTitle");
@@ -587,7 +509,7 @@ function showHostRead(mine: number, title: string, read: () => Promise<HostFile>
     open.append(h("span", "peek-open-key", "Enter"), " " + t("menu.openCopy"));
     el.querySelector(".peek-esc")?.before(open);
   }
-  showHostView(mine, el, t("peek.loadingFile", { host: hostName() }), read, (f) => fileBody(f, (b) => (cardUrl = URL.createObjectURL(b))), t("peek.noPreview"));
+  showHostView(mine, el, t("peek.loadingFile", { host: hostName() }), read, (f) => fileBody(f, (b) => (slot.url = URL.createObjectURL(b))), t("peek.noPreview"));
 }
 
 /**
@@ -617,7 +539,7 @@ function showLedgerResult(mine: number, r: { uid: string; title: string }) {
 
 /** The data plane is back: a Host diff, file or ledger result on screen is read again from it. */
 export function refreshHostDiff() {
-  if (!active || active.closed || !card?.classList.contains("diff-view")) return;
+  if (!active || active.closed || !slot.el?.classList.contains("diff-view")) return;
   // A result keeps its own uid and title: the row's preview does not replace it.
   if (active.result) return showLedgerResult(active.gen, active.result);
   const p = rowActs(active.key)?.preview;
@@ -655,7 +577,7 @@ function frame(mine: number, kind: string, title: string, where: string, program
   const el = h("div", "peek pending");
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-label", title);
-  const head = peekHead(kind, title, where);
+  const head = peekHead(kind, title, where, closePreview);
   const box = h("div", "peek-body");
   el.append(head, box);
   // Laid out but not visible, so the terminal has its real size from the start.
@@ -722,7 +644,7 @@ function show(p: Peek) {
   p.el.classList.remove("pending");
   if (!p.exited) p.el.classList.add("busy");
   // A placeholder card goes. A card with an action waits under the command.
-  if (card && cardAction()) card.hidden = true;
+  if (slot.el && cardAction()) slot.el.hidden = true;
   else clearCard();
   resized(p);
   if (active?.keys) p.term.focus();
