@@ -73,7 +73,6 @@
       "exists",
       "fs",
       "include_str",
-      "is_file",
       "ledger",
       "libc",
       "metadata",
@@ -83,7 +82,7 @@
       "skiff_client",
       "skiff_core"
     ],
-    "sha256": "946444c409ac09dfc583c627d81a1b9a1a8be621c3e11a679b62e9814e1c3551"
+    "sha256": "b8edcb196e3a89537f1c7151003c7f97967f209e339e971cfe62eb8dfb29cea1"
   },
   "apps/desktop/src-tauri/src/connection/daemon.rs": {
     "ownership": "M1a\u2013M1e selected-local Host owner; M4 data-plane owner (skiff-host paired by host_id); endpoint-local process control for skiffd and skiff-host spawn/stop; existing local lifecycle/legacy client adapter; remote refused-channel probe (read-only, skiff-client check) to name its cause; This Mac's capability list adds agent_config@1, skipper_config@1, skipper@1, skipper_file@1, skipper_run@1 and session_agents@1, which this app's local adapter serves; AppImage copy-out (#183): this app's own skiffd and skiff-host, copied to this computer's data folder",
@@ -117,11 +116,16 @@
   "apps/desktop/src-tauri/src/connection/remote.rs": {
     "ownership": "M1a\u2013M1e selected-local Host owner; M4 data-plane owner (skiff-host paired by host_id); endpoint-local process control for skiffd and skiff-host spawn/stop; existing local lifecycle/legacy client adapter; remote refused-channel probe (read-only, skiff-client check) to name its cause; This Mac's capability list adds agent_config@1, skipper_config@1, skipper@1, skipper_file@1, skipper_run@1 and session_agents@1, which this app's local adapter serves; AppImage copy-out (#183): this app's own skiffd and skiff-host, copied to this computer's data folder",
     "reasons": [
-      "local provider: apps/desktop/src-tauri/src/connection.rs",
-      "local provider: apps/desktop/src-tauri/src/hosts.rs",
-      "local provider: apps/desktop/src-tauri/src/lib.rs"
+      "config",
+      "env",
+      "exists",
+      "fs",
+      "is_file",
+      "process",
+      "read_to_string",
+      "skiff_core"
     ],
-    "sha256": "e7e8ec48d7a871141df3cdadb543528881d0a7f5ca71afde3c828ba48c38d65d"
+    "sha256": "a590f862f3d4d7978b0e89f18943ecc1a535f2683e3e4484f5eb3ed6e91feb35"
   },
   "apps/desktop/src-tauri/src/copies.rs": {
     "ownership": "client-owned (M5 reviewed): local copies of bytes the Host sent, for this computer's Open with; never reads or opens a Host path",
