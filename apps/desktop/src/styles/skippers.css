@@ -45,12 +45,12 @@
    goes back. The depth comes from what stays back: the whole face narrows
    to 97 % toward the near side, with no rotation, so the centerline stays
    upright, and the Admiral's crown and band slide only 0.5 and narrow to 97 %.
-   Eased in and out over about 250 ms, held about 1.2 s, then back. A cycle
+   Two steps in and out over about 250 ms, held about 1.2 s, then back. A cycle
    holds three turns: one side, the other side, then up. Each face's rhythm
    comes in its SVG's variables (skipperAvatar.ts). Done and no-session
    faces sleep, and reduced motion stops all of it. */
 .skipper-face .sk-eyes { transform-box: fill-box; transform-origin: center; animation: var(--blink-anim, sk-blink) var(--blink, 5s) var(--blink-delay, 0s) infinite steps(1, end); }
-.skipper-face :is(.sk-turn, .sk-cap, .sk-front) { animation-duration: var(--face-turn, 42s); animation-delay: var(--face-turn-delay, 0s); animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+.skipper-face :is(.sk-turn, .sk-cap, .sk-front) { animation-duration: var(--face-turn, 42s); animation-delay: var(--face-turn-delay, 0s); animation-iteration-count: infinite; animation-timing-function: steps(2, end); }
 .skipper-face .sk-turn { transform-origin: 16px 16px; animation-name: sk-lean; }
 .skipper-face .sk-cap { transform-box: fill-box; transform-origin: center; animation-name: sk-capslide; }
 .skipper-face .sk-front { transform-box: fill-box; transform-origin: center; animation-name: sk-slide; }
