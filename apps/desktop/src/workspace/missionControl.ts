@@ -106,17 +106,28 @@ const zoomBtn = (text: string, title: string, run: () => void) => {
 canvas.append(world, ticks, zoomBar);
 const panel = h("div", "mission-panel");
 root.append(fault, canvas, panel);
+const missionState = {
+  lit: null as string | null,
+  timer: undefined as number | undefined,
+  reading: false,
+  paused: false,
+  screenFor: null as string | null,
+  view: { x: 0, y: 0, z: 1 } as G.View,
+  panelOpen: true,
+  keptFor: undefined as string | null | undefined,
+  running: true,
+  m: { g: { admiral: null, fleets: [], projects: [] }, sess: new Map(), projects: new Map(), members: new Map(), rows: new Map(), strs: [], found: null, idx: indexLedger([]) } as Model,
+  placed: { cards: new Map(), clusters: new Map(), plans: [], rungs: new Map(), at: new Map(), trunk: null } as G.Placed,
+  cards: new Map<string, HTMLElement>(),
+  numbered: [] as string[],
+  clusters: new Map<string, HTMLElement>(),
+  plans: new Map<string, HTMLElement>(),
+  drawnSig: "",
+  pan: null as Pan | null,
+  pointer: "",
+};
 
-let lit: string | null = null;
-let timer: number | undefined;
-let reading = false;
-// Set by board.stop(): no draw or read until board.start().
-let paused = false;
-let screenFor: string | null = null;
 const screen = h("pre", "mission-screen");
-
-/** The view: pan and zoom, with the app zoom in the scale. */
-let view: G.View = { x: 0, y: 0, z: 1 };
 const appZoom = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--zoom")) || 1;
 
 // ---- What persists on this computer, per Host ----
@@ -124,14 +135,12 @@ const appZoom = () => parseFloat(getComputedStyle(document.documentElement).getP
 interface Kept {
   panel: boolean;
 }
-let panelOpen = true;
-let keptFor: string | null | undefined;
 const keptKey = () => `skiff.mission.${shownHost() ?? "local"}`;
 
 function loadKept() {
   const host = shownHost();
-  if (keptFor === host) return;
-  keptFor = host;
+  if (missionState.keptFor === host) return;
+  missionState.keptFor = host;
   let k: Partial<Kept> = {};
   try {
     const v: unknown = JSON.parse(localStorage.getItem(keptKey()) ?? "{}");
@@ -139,14 +148,14 @@ function loadKept() {
   } catch {
     /* start as laid out */
   }
-  panelOpen = k.panel !== false;
+  missionState.panelOpen = k.panel !== false;
   // A record from before the fixed layout still holds old layout and fold state: written back, they go.
   if ("offs" in k || "order" in k || "folded" in k || "opened" in k) saveKept();
 }
 
 function saveKept() {
   try {
-    localStorage.setItem(keptKey(), JSON.stringify({ panel: panelOpen } satisfies Kept));
+    localStorage.setItem(keptKey(), JSON.stringify({ panel: missionState.panelOpen } satisfies Kept));
   } catch {
     /* the panel state lasts for this run */
   }
@@ -167,9 +176,6 @@ search.setAttribute("aria-label", t("mission.search"));
 const find = h("label", "tb-cell mission-find");
 find.appendChild(search);
 document.getElementById("open-switcher")?.after(find);
-
-/** Running / All, at the right of the search. `running`: only sessions that work or wait stand out. */
-let running = true;
 const scope = h("div", "mission-scope");
 scope.setAttribute("role", "group");
 scope.setAttribute("aria-label", t("mission.scopeAria"));
@@ -198,8 +204,8 @@ const isRunning = (s: SessionInfo) => s.state === "working" || s.state === "wait
 
 /** Shows Running or All. `store`: a change by the user, kept in the config. */
 function setRunning(on: boolean, store = false) {
-  if (store && on !== running) invoke("set_mission_filter", { running: on }).catch(console.error);
-  running = on;
+  if (store && on !== missionState.running) invoke("set_mission_filter", { running: on }).catch(console.error);
+  missionState.running = on;
   scopeAll.setAttribute("aria-pressed", String(!on));
   scopeRunning.setAttribute("aria-pressed", String(on));
   if (!root.hidden) draw();
@@ -213,7 +219,7 @@ export function restoreRunning(filter: string | null | undefined) {
 
 /** The Running key here: only the running sessions stand out, or all. */
 export function toggleRunning() {
-  setRunning(!running, true);
+  setRunning(!missionState.running, true);
 }
 
 // ---- The model: the graph from the sessions, the projects and the ledger ----
@@ -324,14 +330,11 @@ function model(): Model {
   return { g, sess, projects, members, rows, strs, found, idx: indexLedger(ledger) };
 }
 
-let m: Model = { g: { admiral: null, fleets: [], projects: [] }, sess: new Map(), projects: new Map(), members: new Map(), rows: new Map(), strs: [], found: null, idx: indexLedger([]) };
-let placed: G.Placed = { cards: new Map(), clusters: new Map(), plans: [], rungs: new Map(), at: new Map(), trunk: null };
-
 // ---- Cards and clusters ----
 
 /** A card's name: Admiral's, "Skipper · gesher" for a Skipper, else the session's title. */
 const cardName = (s: SessionInfo) => (s.coordinator ? skiffAgentName() : taskTitle(s));
-const dimmed = (s: SessionInfo) => (running && !isRunning(s)) || (!!m.found && !m.found.has(s.id));
+const dimmed = (s: SessionInfo) => (missionState.running && !isRunning(s)) || (!!missionState.m.found && !missionState.m.found.has(s.id));
 const stateWord = (s: SessionInfo) => t(s.state === "working" ? "state.working" : s.state === "waiting" ? "state.waiting" : s.state === "done" ? "state.done" : "state.idle");
 
 /** A session card's meta line: the task and its uid, a shell's program, or the state. */
@@ -339,7 +342,7 @@ function metaOf(s: SessionInfo): HTMLElement {
   const el = h("span", "m");
   // What the program reports: what it waits for, how its turn ended, its subtasks.
   const note = [statusNote(s), childrenNote(s)].filter(Boolean).join(" · ");
-  const r = m.rows.get(s.id);
+  const r = missionState.m.rows.get(s.id);
   if (r) {
     el.append(ledgerTitle(r), " ", h("span", "mono", r.uid));
     if (note) el.append(" · ", note);
@@ -370,7 +373,7 @@ function cardParts(s: SessionInfo, now: number): HTMLElement[] {
 
 /** A cluster's head: the badge, the name and the counts. */
 function clusterHeadParts(key: string, fleet: boolean): HTMLElement[] {
-  const list = fleet ? (m.g.fleets.find((f) => f.key === key)?.projects ?? []).flatMap((p) => m.members.get(p.key) ?? []) : (m.members.get(key) ?? []);
+  const list = fleet ? (missionState.m.g.fleets.find((f) => f.key === key)?.projects ?? []).flatMap((p) => missionState.m.members.get(p.key) ?? []) : (missionState.m.members.get(key) ?? []);
   const waits = list.filter((s) => s.state === "waiting").length;
   const works = list.filter((s) => s.state === "working").length;
   const roll = h("span", "mission-roll");
@@ -378,7 +381,7 @@ function clusterHeadParts(key: string, fleet: boolean): HTMLElement[] {
   if (works) roll.appendChild(h("span", "g", tn("mission.working", works)));
   roll.appendChild(h("span", "", fleet ? tn("palette.sessions", list.length) : String(list.length)));
   if (fleet) return [h("span", "name", key.slice("fleet:".length)), roll];
-  const p = m.projects.get(key) ?? null;
+  const p = missionState.m.projects.get(key) ?? null;
   return [p ? projectBadge(p) : h("span", "name", "…"), h("span", "name", p?.name ?? t("sidebar.other")), roll];
 }
 
@@ -393,12 +396,6 @@ function refill(el: HTMLElement, parts: HTMLElement[]) {
   el.replaceChildren(...parts);
 }
 
-const cards = new Map<string, HTMLElement>();
-/** The Skippers' cards in number-key order: Ctrl+Shift+1 opens the first. */
-let numbered: string[] = [];
-const clusters = new Map<string, HTMLElement>();
-const plans = new Map<string, HTMLElement>();
-
 function setClass(el: HTMLElement, cls: string, on: boolean) {
   el.classList.toggle(cls, on);
 }
@@ -406,27 +403,27 @@ function setClass(el: HTMLElement, cls: string, on: boolean) {
 /** Draws the graph as the model has it now: cards, clusters, plans and strings, keyed so what stays stays. */
 function draw() {
   const now = Date.now();
-  drawnSig = boardSignature(now);
-  m = model();
-  placed = placeGraph(m.g);
+  missionState.drawnSig = boardSignature(now);
+  missionState.m = model();
+  missionState.placed = placeGraph(missionState.m.g);
   // The light: a card that left the board hands it to its parent, else the first node.
-  if (lit && !placed.cards.has(lit) && !placed.clusters.has(lit)) lit = G.navParent(m.g, lit) ?? G.navFirst(m.g);
-  if (!lit) lit = G.navFirst(m.g);
+  if (missionState.lit && !missionState.placed.cards.has(missionState.lit) && !missionState.placed.clusters.has(missionState.lit)) missionState.lit = G.navParent(missionState.m.g, missionState.lit) ?? G.navFirst(missionState.m.g);
+  if (!missionState.lit) missionState.lit = G.navFirst(missionState.m.g);
 
-  numbered = G.skipperOrder(m.g).filter((id) => placed.cards.has(id)).slice(0, 9);
+  missionState.numbered = G.skipperOrder(missionState.m.g).filter((id) => missionState.placed.cards.has(id)).slice(0, 9);
   const seen = new Set<string>();
   // Cards: sessions, Skippers and Admiral.
   const putCard = (id: string, r: G.Rect, parts: HTMLElement[] | G.Rung, cls: string, pc: string, dim: boolean) => {
     seen.add(id);
-    let el = cards.get(id);
+    let el = missionState.cards.get(id);
     if (!el) {
       el = h("div", "mission-card");
       el.dataset.id = id;
-      cards.set(id, el);
+      missionState.cards.set(id, el);
       items.appendChild(el);
     }
     el.className = `mission-card ${cls}`;
-    setClass(el, "lit", id === lit);
+    setClass(el, "lit", id === missionState.lit);
     setClass(el, "dim", dim);
     el.style.setProperty("--pc", pc);
     el.style.left = `${r.x}px`;
@@ -434,79 +431,79 @@ function draw() {
     if (typeof parts !== "string") refill(el, parts);
     else Object.assign(el.style, { width: `${r.w}px`, height: `${r.h}px` });
   };
-  for (const [id, r] of placed.cards) {
-    const s = m.sess.get(id);
+  for (const [id, r] of missionState.placed.cards) {
+    const s = missionState.m.sess.get(id);
     if (!s) continue;
-    const rung = placed.rungs.get(id);
+    const rung = missionState.placed.rungs.get(id);
     const cls = [rung ? `window ${rung === "admiral" ? "admiral" : "skipper"}` : "", s.state === "waiting" ? "waiting" : ""].join(" ");
     putCard(id, r, rung ?? cardParts(s, now), cls, rung ? "var(--accent)" : accent(place(s)?.project ?? null), dimmed(s));
     if (rung) {
-      const w = T.windowOf(cards.get(id)!, rung, s);
-      refill(w.head, T.windowHead(s, cardName(s), numbered.indexOf(id) + 1));
-      refill(w.state, stateParts(s, now, m.idx));
+      const w = T.windowOf(missionState.cards.get(id)!, rung, s);
+      refill(w.head, T.windowHead(s, cardName(s), missionState.numbered.indexOf(id) + 1));
+      refill(w.state, stateParts(s, now, missionState.m.idx));
     }
     const label2 = t("mission.tileLabel", { title: cardName(s), state: stateLabel(s) });
-    if (cards.get(id)!.getAttribute("aria-label") !== label2) cards.get(id)!.setAttribute("aria-label", label2);
+    if (missionState.cards.get(id)!.getAttribute("aria-label") !== label2) missionState.cards.get(id)!.setAttribute("aria-label", label2);
   }
-  for (const [id, el] of cards) {
+  for (const [id, el] of missionState.cards) {
     if (seen.has(id)) continue;
     el.remove();
-    cards.delete(id);
+    missionState.cards.delete(id);
   }
 
   // Clusters: the frames.
   const seenClusters = new Set<string>();
-  for (const [key, c] of placed.clusters) {
+  for (const [key, c] of missionState.placed.clusters) {
     seenClusters.add(key);
-    let el = clusters.get(key);
+    let el = missionState.clusters.get(key);
     if (!el) {
       el = h("div", "mission-cluster");
       el.dataset.id = key;
       el.appendChild(h("div", "mission-cluster-head"));
-      clusters.set(key, el);
+      missionState.clusters.set(key, el);
       items.appendChild(el);
     }
-    const list = c.fleet ? (m.g.fleets.find((f) => f.key === key)?.projects ?? []).flatMap((p) => m.members.get(p.key) ?? []) : (m.members.get(key) ?? []);
-    const skipper = c.fleet ? m.g.fleets.find((f) => f.key === key)?.skipper : null;
-    const run = list.some(isRunning) || (skipper ? isRunning(m.sess.get(skipper)!) : false);
+    const list = c.fleet ? (missionState.m.g.fleets.find((f) => f.key === key)?.projects ?? []).flatMap((p) => missionState.m.members.get(p.key) ?? []) : (missionState.m.members.get(key) ?? []);
+    const skipper = c.fleet ? missionState.m.g.fleets.find((f) => f.key === key)?.skipper : null;
+    const run = list.some(isRunning) || (skipper ? isRunning(missionState.m.sess.get(skipper)!) : false);
     setClass(el, "fleet", c.fleet);
-    setClass(el, "lit", key === lit);
-    setClass(el, "dim", (running && !run) || (!!m.found && !list.some((s) => m.found!.has(s.id))));
-    el.style.setProperty("--pc", c.fleet ? "var(--accent)" : accent(m.projects.get(key) ?? null));
+    setClass(el, "lit", key === missionState.lit);
+    setClass(el, "dim", (missionState.running && !run) || (!!missionState.m.found && !list.some((s) => missionState.m.found!.has(s.id))));
+    el.style.setProperty("--pc", c.fleet ? "var(--accent)" : accent(missionState.m.projects.get(key) ?? null));
     Object.assign(el.style, { left: `${c.x}px`, top: `${c.y}px`, width: `${c.w}px`, height: `${c.h}px` });
     refill(el.firstElementChild as HTMLElement, clusterHeadParts(key, c.fleet));
   }
-  for (const [key, el] of clusters) {
+  for (const [key, el] of missionState.clusters) {
     if (seenClusters.has(key)) continue;
     el.remove();
-    clusters.delete(key);
+    missionState.clusters.delete(key);
   }
 
   // Plans: captions.
   const seenPlans = new Set<string>();
-  for (const pl of placed.plans) {
+  for (const pl of missionState.placed.plans) {
     seenPlans.add(pl.key);
-    let el = plans.get(pl.key);
+    let el = missionState.plans.get(pl.key);
     if (!el) {
       el = h("div", "mission-plan");
-      plans.set(pl.key, el);
+      missionState.plans.set(pl.key, el);
       items.appendChild(el);
     }
     const text = t("mission.plan", { title: pl.plan.title, done: pl.plan.done, total: pl.plan.cards.length });
     if (el.textContent !== text) el.textContent = text;
-    setClass(el, "dim", running && !pl.plan.cards.some((id) => isRunning(m.sess.get(id)!)));
+    setClass(el, "dim", missionState.running && !pl.plan.cards.some((id) => isRunning(missionState.m.sess.get(id)!)));
     Object.assign(el.style, { left: `${pl.x}px`, top: `${pl.y}px`, width: `${pl.w}px` });
   }
-  for (const [key, el] of plans) {
+  for (const [key, el] of missionState.plans) {
     if (seenPlans.has(key)) continue;
     el.remove();
-    plans.delete(key);
+    missionState.plans.delete(key);
   }
 
   drawStrings();
-  T.placeFaces(placed, m.sess, lookOf, (id) => `${id === lit ? "lit" : ""} ${cards.get(id)?.classList.contains("dim") ? "dim" : ""}`);
+  T.placeFaces(missionState.placed, missionState.m.sess, lookOf, (id) => `${id === missionState.lit ? "lit" : ""} ${missionState.cards.get(id)?.classList.contains("dim") ? "dim" : ""}`);
   counts();
-  find.style.setProperty("--pc", cards.get(lit ?? "")?.style.getPropertyValue("--pc") ?? clusters.get(lit ?? "")?.style.getPropertyValue("--pc") ?? "");
+  find.style.setProperty("--pc", missionState.cards.get(missionState.lit ?? "")?.style.getPropertyValue("--pc") ?? missionState.clusters.get(missionState.lit ?? "")?.style.getPropertyValue("--pc") ?? "");
   fault.hidden = hostCan("ledger");
   if (!fault.hidden) fault.textContent = t("mission.noLedgerFault", { host: hostName() });
   drawTicks();
@@ -517,19 +514,19 @@ function draw() {
 function drawStrings() {
   const links: Link[] = [];
   const done = new Set<string>();
-  for (const st of m.strs) {
-    const to = placed.cards.has(st.to) ? st.to : null;
-    const d = to ? route(placed, st.from, to) : null;
+  for (const st of missionState.m.strs) {
+    const to = missionState.placed.cards.has(st.to) ? st.to : null;
+    const d = to ? route(missionState.placed, st.from, to) : null;
     const key = `${st.from}>${to}`;
     if (!to || !d || done.has(key)) continue;
     done.add(key);
-    const child = m.sess.get(st.to)!;
+    const child = missionState.m.sess.get(st.to)!;
     const state = child.state === "waiting" ? "waiting" : child.state === "working" ? "working" : child.state === "done" ? "done" : "idle";
     links.push({ key, d, state, dim: dimmed(child) });
   }
   drawConnectors(links);
   // The box holds every connector, so WebKit repaints them as its own content.
-  const b = G.bounds(placed);
+  const b = G.bounds(missionState.placed);
   const w = String(Math.max(0, Math.ceil(b.x + b.w + 64)));
   const h = String(Math.max(0, Math.ceil(b.y + b.h + 64)));
   if (strings.getAttribute("width") !== w) strings.setAttribute("width", w);
@@ -538,15 +535,15 @@ function drawStrings() {
 
 /** The side a waiting window's face turns to: toward the task it waits on, else its first. */
 function lookOf(id: string): 1 | -1 {
-  const kids = m.strs.filter((x) => x.from === id).map((x) => m.sess.get(x.to)!);
+  const kids = missionState.m.strs.filter((x) => x.from === id).map((x) => missionState.m.sess.get(x.to)!);
   const k = rectOf((kids.find((c) => c.state === "waiting") ?? kids[0])?.id ?? null);
-  const r = placed.cards.get(id)!;
+  const r = missionState.placed.cards.get(id)!;
   return k && k.x + k.w / 2 < r.x + r.w / 2 ? -1 : 1;
 }
 
 /** The top bar's counts: Running and All, of what the search leaves. */
 function counts() {
-  const all = [...m.sess.values()].filter((s) => !m.found || m.found.has(s.id));
+  const all = [...missionState.m.sess.values()].filter((s) => !missionState.m.found || missionState.m.found.has(s.id));
   allCount.textContent = String(all.length);
   runningCount.textContent = String(all.filter(isRunning).length);
 }
@@ -557,11 +554,11 @@ function drawTicks() {
   const vh = canvas.clientHeight;
   const size = 10 * appZoom();
   const edges: Edge[] = [];
-  for (const [id, el] of cards) {
+  for (const [id, el] of missionState.cards) {
     if (!el.classList.contains("waiting")) continue;
-    const r = placed.cards.get(id) ?? placed.clusters.get(id);
+    const r = missionState.placed.cards.get(id) ?? missionState.placed.clusters.get(id);
     if (!r) continue;
-    edges.push({ id, at: G.edgeTick(view, r, vw, vh, size), title: t("mission.waits", { name: el.querySelector(".t, .win-head .title")?.textContent ?? "" }) });
+    edges.push({ id, at: G.edgeTick(missionState.view, r, vw, vh, size), title: t("mission.waits", { name: el.querySelector(".t, .win-head .title")?.textContent ?? "" }) });
   }
   drawEdges(edges);
 }
@@ -569,17 +566,17 @@ function drawTicks() {
 // ---- The view ----
 
 function applyView() {
-  world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
-  zoomLevel.textContent = `${Math.round((view.z / appZoom()) * 100)}%`;
+  world.style.transform = `translate(${missionState.view.x}px, ${missionState.view.y}px) scale(${missionState.view.z})`;
+  zoomLevel.textContent = `${Math.round((missionState.view.z / appZoom()) * 100)}%`;
   drawTicks();
 }
 
 function fit() {
-  view = G.fitView(G.bounds(placed), canvas.clientWidth, canvas.clientHeight, 24 * appZoom());
-  view.z = Math.min(view.z, appZoom());
-  const b = G.bounds(placed);
-  view.x = (canvas.clientWidth - b.w * view.z) / 2 - b.x * view.z;
-  view.y = (canvas.clientHeight - b.h * view.z) / 2 - b.y * view.z;
+  missionState.view = G.fitView(G.bounds(missionState.placed), canvas.clientWidth, canvas.clientHeight, 24 * appZoom());
+  missionState.view.z = Math.min(missionState.view.z, appZoom());
+  const b = G.bounds(missionState.placed);
+  missionState.view.x = (canvas.clientWidth - b.w * missionState.view.z) / 2 - b.x * missionState.view.z;
+  missionState.view.y = (canvas.clientHeight - b.h * missionState.view.z) / 2 - b.y * missionState.view.z;
   applyView();
 }
 
@@ -587,33 +584,33 @@ function fit() {
 function openView() {
   fit();
   const z = appZoom();
-  if (view.z >= 0.85 * z) return;
-  const r = rectOf(lit);
+  if (missionState.view.z >= 0.85 * z) return;
+  const r = rectOf(missionState.lit);
   if (!r) return;
-  view = G.centerOn({ ...view, z: 0.85 * z }, r, canvas.clientWidth, canvas.clientHeight);
-  view.y = Math.min(24, view.y);
+  missionState.view = G.centerOn({ ...missionState.view, z: 0.85 * z }, r, canvas.clientWidth, canvas.clientHeight);
+  missionState.view.y = Math.min(24, missionState.view.y);
   applyView();
 }
 
 function zoomBy(f: number, px = canvas.clientWidth / 2, py = canvas.clientHeight / 2) {
   const z = appZoom();
-  const next = G.zoomView({ ...view, z: view.z / z }, f, px, py);
-  view = { ...next, z: next.z * z };
+  const next = G.zoomView({ ...missionState.view, z: missionState.view.z / z }, f, px, py);
+  missionState.view = { ...next, z: next.z * z };
   applyView();
 }
 
 /** Where `id` is on the canvas: its card or cluster. */
 function rectOf(id: string | null): G.Rect | null {
   if (!id) return null;
-  const stand = placed.cards.has(id) || placed.clusters.has(id) ? id : null;
-  return stand ? (placed.cards.get(stand) ?? placed.clusters.get(stand) ?? null) : null;
+  const stand = missionState.placed.cards.has(id) || missionState.placed.clusters.has(id) ? id : null;
+  return stand ? (missionState.placed.cards.get(stand) ?? missionState.placed.clusters.get(stand) ?? null) : null;
 }
 
 /** Brings `id` into view when it is out of it. */
 function panTo(id: string | null) {
   const r = rectOf(id);
-  if (!r || G.inView(view, r, canvas.clientWidth, canvas.clientHeight)) return;
-  view = G.centerOn(view, r, canvas.clientWidth, canvas.clientHeight);
+  if (!r || G.inView(missionState.view, r, canvas.clientWidth, canvas.clientHeight)) return;
+  missionState.view = G.centerOn(missionState.view, r, canvas.clientWidth, canvas.clientHeight);
   applyView();
 }
 
@@ -624,11 +621,11 @@ zoomBar.append(zoomBtn("−", t("mission.zoomOut", { key: "-" }), () => zoomBy(1
 /** `pan`: bring the card into view, for keys. The pointer is already on it. */
 function light(id: string | null, pan = true) {
   if (!id) return;
-  lit = id;
-  for (const [k, el] of cards) el.classList.toggle("lit", k === id);
-  for (const [k, el] of clusters) el.classList.toggle("lit", k === id);
+  missionState.lit = id;
+  for (const [k, el] of missionState.cards) el.classList.toggle("lit", k === id);
+  for (const [k, el] of missionState.clusters) el.classList.toggle("lit", k === id);
   for (const el of T.faceLayer.children) el.classList.toggle("lit", (el as HTMLElement).dataset.id === id);
-  find.style.setProperty("--pc", cards.get(id)?.style.getPropertyValue("--pc") ?? clusters.get(id)?.style.getPropertyValue("--pc") ?? "");
+  find.style.setProperty("--pc", missionState.cards.get(id)?.style.getPropertyValue("--pc") ?? missionState.clusters.get(id)?.style.getPropertyValue("--pc") ?? "");
   if (pan) panTo(id);
   drawPanel();
   void read();
@@ -638,17 +635,17 @@ const isCluster = (id: string) => id.startsWith("project:") || id.startsWith("fl
 
 /** The next waiting card after the lit one, around the board. */
 function nextWaitingCard(): string | null {
-  const ids = [...cards].filter(([id, el]) => el.classList.contains("waiting") && !isCluster(id)).map(([id]) => id);
+  const ids = [...missionState.cards].filter(([id, el]) => el.classList.contains("waiting") && !isCluster(id)).map(([id]) => id);
   if (!ids.length) return null;
-  const i = ids.indexOf(lit ?? "");
+  const i = ids.indexOf(missionState.lit ?? "");
   return ids[(i + 1) % ids.length];
 }
 
 /** The lit node's session: a card's own, a cluster's first. `null` with nothing to go to. */
 function litSession(): string | null {
-  if (!lit) return null;
-  const id = isCluster(lit) ? (m.g.fleets.find((f) => f.key === lit)?.projects.flatMap((p) => p.cards)[0] ?? [...m.g.fleets.flatMap((f) => f.projects), ...m.g.projects].find((p) => p.key === lit)?.cards[0] ?? null) : lit;
-  return id && m.sess.has(id) ? id : null;
+  if (!missionState.lit) return null;
+  const id = isCluster(missionState.lit) ? (missionState.m.g.fleets.find((f) => f.key === missionState.lit)?.projects.flatMap((p) => p.cards)[0] ?? [...missionState.m.g.fleets.flatMap((f) => f.projects), ...missionState.m.g.projects].find((p) => p.key === missionState.lit)?.cards[0] ?? null) : missionState.lit;
+  return id && missionState.m.sess.has(id) ? id : null;
 }
 
 /** To the lit node's session, maximized or not. */
@@ -659,7 +656,7 @@ function go(max = false) {
 
 /** The board menu: the layout as a whole. */
 function openMenu() {
-  const at = cards.get(lit ?? "") ?? clusters.get(lit ?? "");
+  const at = missionState.cards.get(missionState.lit ?? "") ?? missionState.clusters.get(missionState.lit ?? "");
   const r = (at ?? canvas).getBoundingClientRect();
   const back = () => requestAnimationFrame(() => root.focus());
   ctxMenu.open(
@@ -688,7 +685,7 @@ function paint(pre: HTMLElement, s: SessionInfo) {
 }
 
 function togglePanel() {
-  panelOpen = !panelOpen;
+  missionState.panelOpen = !missionState.panelOpen;
   saveKept();
   drawPanel();
   requestAnimationFrame(drawTicks);
@@ -707,7 +704,7 @@ foldBtn.addEventListener("click", togglePanel);
 
 /** The panel: its nodes stay; a part is replaced only when its text changes. Folded, only the head updates. */
 function drawPanel() {
-  panel.classList.toggle("folded", !panelOpen);
+  panel.classList.toggle("folded", !missionState.panelOpen);
   foldBtn.title = t("mission.foldPanel", { key: keyLabel("ledger") });
   const sideHead = (text: string, mono = "") => {
     const el = h("div", "mission-side-head", text);
@@ -723,34 +720,34 @@ function drawPanel() {
     refill(panelHead, parts);
     if (foldBtn.parentNode !== panelHead) panelHead.appendChild(foldBtn);
   };
-  const s = lit ? m.sess.get(lit) : null;
+  const s = missionState.lit ? missionState.m.sess.get(missionState.lit) : null;
   if (!s) {
-    const list = lit ? (m.g.fleets.find((f) => f.key === lit)?.projects ?? []).flatMap((p) => m.members.get(p.key) ?? []).concat(m.members.get(lit) ?? []) : [];
-    const name = lit?.startsWith("fleet:") ? lit.slice("fleet:".length) : (m.projects.get(lit ?? "")?.name ?? (lit === OTHER ? t("sidebar.other") : ""));
+    const list = missionState.lit ? (missionState.m.g.fleets.find((f) => f.key === missionState.lit)?.projects ?? []).flatMap((p) => missionState.m.members.get(p.key) ?? []).concat(missionState.m.members.get(missionState.lit) ?? []) : [];
+    const name = missionState.lit?.startsWith("fleet:") ? missionState.lit.slice("fleet:".length) : (missionState.m.projects.get(missionState.lit ?? "")?.name ?? (missionState.lit === OTHER ? t("sidebar.other") : ""));
     head([h("span", "title", name), h("span", "state", `${tn("mission.waiting", list.filter((x) => x.state === "waiting").length)} · ${tn("mission.working", list.filter((x) => x.state === "working").length)} · ${tn("palette.sessions", list.length)}`)]);
-    if (screenFor !== null) {
+    if (missionState.screenFor !== null) {
       screen.textContent = "";
       screen.classList.add("note");
       screen.removeAttribute("style");
-      screenFor = null;
+      missionState.screenFor = null;
     }
-    if (panelOpen) refill(side, [h("div", "mission-task none", t("mission.clusterNoPane"))]);
+    if (missionState.panelOpen) refill(side, [h("div", "mission-task none", t("mission.clusterNoPane"))]);
     return;
   }
   const p = place(s)?.project ?? null;
   const title = s.coordinator || !!s.skipper ? cardName(s) : p ? `${p.name} · ${cardName(s)}` : cardName(s);
   head([stateIcon(s), h("span", "title", title), h("span", `state${s.state === "waiting" ? " w" : ""}`, [stateWord(s), statusNote(s), childrenNote(s), sinceText(s, Date.now())].filter(Boolean).join(" · "))]);
-  if (screenFor !== s.id) {
-    screenFor = s.id;
+  if (missionState.screenFor !== s.id) {
+    missionState.screenFor = s.id;
     screen.textContent = "";
     screen.classList.remove("note");
   }
-  if (!panelOpen) return;
+  if (!missionState.panelOpen) return;
   paint(screen, s);
   const parts: HTMLElement[] = [];
-  const r = m.rows.get(s.id);
+  const r = missionState.m.rows.get(s.id);
   if (s.coordinator || !!s.skipper) {
-    const hos = s.coordinator ? m.idx.open : (m.idx.paneHandoffs.get(s.id) ?? []);
+    const hos = s.coordinator ? missionState.m.idx.open : (missionState.m.idx.paneHandoffs.get(s.id) ?? []);
     parts.push(sideHead(t("mission.handoffsHead"), String(hos.length)));
     if (!hostCan("ledger")) parts.push(h("div", "mission-task none", t("mission.noLedger")));
     else if (!hos.length) parts.push(h("div", "mission-task none", t("mission.noneDot")));
@@ -774,22 +771,22 @@ function drawPanel() {
 
 /** Reads the lit card's screen. One read a second, for that card only. */
 async function read() {
-  const id = screenFor;
-  if (!id || reading || !panelOpen || paused) return;
-  reading = true;
+  const id = missionState.screenFor;
+  if (!id || missionState.reading || !missionState.panelOpen || missionState.paused) return;
+  missionState.reading = true;
   try {
     const lines = await hostInvoke<string[]>("session_screen", "session_screen", { session: id, rows: ROWS });
-    if (paused || screenFor !== id) return;
+    if (missionState.paused || missionState.screenFor !== id) return;
     const text = lines.join("\n");
     if (screen.textContent !== text) screen.textContent = text;
     screen.classList.remove("note");
   } catch (e) {
-    if (paused || screenFor !== id) return;
+    if (missionState.paused || missionState.screenFor !== id) return;
     // An older skiffd does not know the request.
     screen.textContent = /unknown variant|bad request/.test(String(e)) ? t("mission.updateDaemon") : String(e);
     screen.classList.add("note");
   } finally {
-    reading = false;
+    missionState.reading = false;
   }
 }
 
@@ -798,16 +795,15 @@ function boardSignature(now: number): string {
   const secs = treeSections().map((sec) => [sec.fleet ?? "", sec.projects.map((p) => p.name)]);
   const ledger = hostCan("ledger") ? ledgerRows() : [];
   const since = [...sessions.values()].map((s) => sinceText(s, now));
-  return JSON.stringify([[...sessions.values()], ledger, secs, since, running, search.value, hostCan("ledger"), hostName(), view, lit]);
+  return JSON.stringify([[...sessions.values()], ledger, secs, since, missionState.running, search.value, hostCan("ledger"), hostName(), missionState.view, missionState.lit]);
 }
-let drawnSig = "";
 
 function tick() {
-  if (paused) return;
+  if (missionState.paused) return;
   // A pan draws its own frames. The model and layout rebuild only when an input or the time text changed.
-  if (!pan?.moved) {
+  if (!missionState.pan?.moved) {
     const sig = boardSignature(Date.now());
-    if (sig !== drawnSig) draw();
+    if (sig !== missionState.drawnSig) draw();
   }
   void read();
 }
@@ -825,7 +821,6 @@ interface Pan {
   vx: number;
   vy: number;
 }
-let pan: Pan | null = null;
 
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
@@ -838,26 +833,26 @@ canvas.addEventListener("pointerdown", (e) => {
   // A face is its window.
   const id = t.closest<HTMLElement>(".mission-card, .mission-face")?.dataset.id ?? null;
   const head = t.closest(".mission-cluster-head")?.closest<HTMLElement>(".mission-cluster")?.dataset.id ?? null;
-  pan = { x: e.clientX, y: e.clientY, id, head, moved: false, vx: view.x, vy: view.y };
+  missionState.pan = { x: e.clientX, y: e.clientY, id, head, moved: false, vx: missionState.view.x, vy: missionState.view.y };
   canvas.setPointerCapture(e.pointerId);
   canvas.classList.add("panning");
   e.preventDefault();
 });
 canvas.addEventListener("pointermove", (e) => {
-  if (!pan) return;
-  const dx = e.clientX - pan.x;
-  const dy = e.clientY - pan.y;
-  if (!pan.moved && Math.hypot(dx, dy) < 4) return;
-  pan.moved = true;
-  view.x = pan.vx + dx;
-  view.y = pan.vy + dy;
+  if (!missionState.pan) return;
+  const dx = e.clientX - missionState.pan.x;
+  const dy = e.clientY - missionState.pan.y;
+  if (!missionState.pan.moved && Math.hypot(dx, dy) < 4) return;
+  missionState.pan.moved = true;
+  missionState.view.x = missionState.pan.vx + dx;
+  missionState.view.y = missionState.pan.vy + dy;
   applyView();
 });
 const endPan = (e: PointerEvent) => {
-  if (!pan) return;
+  if (!missionState.pan) return;
   canvas.classList.remove("panning");
-  const d = pan;
-  pan = null;
+  const d = missionState.pan;
+  missionState.pan = null;
   if (d.moved || e.type === "pointercancel") return;
   root.focus();
   if (d.head) return light(d.head, false);
@@ -875,23 +870,20 @@ canvas.addEventListener(
     const r = canvas.getBoundingClientRect();
     if (e.ctrlKey || e.metaKey) zoomBy(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top);
     else {
-      view.x -= e.shiftKey ? e.deltaY : e.deltaX;
-      view.y -= e.shiftKey ? 0 : e.deltaY;
+      missionState.view.x -= e.shiftKey ? e.deltaY : e.deltaX;
+      missionState.view.y -= e.shiftKey ? 0 : e.deltaY;
       applyView();
     }
   },
   { passive: false },
 );
-// Only a pointer that moves lights a card. A key pans the canvas under a
-// still pointer, and the card that lands under it must not take the light back.
-let pointer = "";
 canvas.addEventListener("mousemove", (e) => {
-  if (pan) return;
+  if (missionState.pan) return;
   const at = `${e.clientX},${e.clientY}`;
-  if (at === pointer) return;
-  pointer = at;
+  if (at === missionState.pointer) return;
+  missionState.pointer = at;
   const el = (e.target as Element).closest<HTMLElement>(".mission-card, .mission-face");
-  if (el?.dataset.id && el.dataset.id !== lit) light(el.dataset.id, false);
+  if (el?.dataset.id && el.dataset.id !== missionState.lit) light(el.dataset.id, false);
 });
 
 // ---- The keys ----
@@ -902,17 +894,17 @@ export function missionOpen(): boolean {
 
 /** A session's card, for the fly of the focus frame. */
 function tileOf(id: string | null): HTMLElement | null {
-  return id && placed.cards.has(id) ? (cards.get(id) ?? null) : null;
+  return id && missionState.placed.cards.has(id) ? (missionState.cards.get(id) ?? null) : null;
 }
 
 /** Runs a board command. `false`: the board has no such command. */
 function run(cmd: G.BoardCommand | null): boolean {
   if (!cmd) return false;
   switch (cmd) {
-    case "parent": light(lit ? G.navParent(m.g, lit) : null); break;
-    case "child": light(lit ? (G.navChildren(m.g, lit)[0] ?? null) : null); break;
-    case "prev": light(lit ? G.navSibling(m.g, lit, -1) : null); break;
-    case "next": light(lit ? G.navSibling(m.g, lit, 1) : null); break;
+    case "parent": light(missionState.lit ? G.navParent(missionState.m.g, missionState.lit) : null); break;
+    case "child": light(missionState.lit ? (G.navChildren(missionState.m.g, missionState.lit)[0] ?? null) : null); break;
+    case "prev": light(missionState.lit ? G.navSibling(missionState.m.g, missionState.lit, -1) : null); break;
+    case "next": light(missionState.lit ? G.navSibling(missionState.m.g, missionState.lit, 1) : null); break;
     case "go": go(); break;
     case "go-max": go(true); break;
     case "fit": fit(); break;
@@ -956,7 +948,7 @@ export function missionKey(a: Action | null): boolean {
 
 /** Ctrl+Shift+1..9 here: the Skipper card with that number, as a click on it. */
 export function pickSkipper(n: number) {
-  const id = numbered[n - 1];
+  const id = missionState.numbered[n - 1];
   if (!id) return;
   light(id, false);
   go();
@@ -996,41 +988,41 @@ export const board = {
   tile: tileOf,
   /** Builds the board lit on `focus` and reads its screen once. Shows nothing. */
   async prepare(focus: string | null) {
-    paused = false;
+    missionState.paused = false;
     loadKept();
     search.title = t("mission.searchTip", { key: keyLabel("palette") });
     scope.title = t("mission.scopeTip", { key: keyLabel("focus-mode") });
-    lit = focus;
+    missionState.lit = focus;
     draw();
     await read();
   },
   /** With the root shown: fit the view, bring the lit card in, and keep the graph fresh. */
   start() {
-    paused = false;
+    missionState.paused = false;
     // Focus mode and maximize leave the top bar inert. The board shows it, and its search is in it.
     topbar()?.toggleAttribute("inert", false);
     openView();
-    light(lit, false);
-    window.clearInterval(timer);
-    timer = window.setInterval(tick, TICK);
+    light(missionState.lit, false);
+    window.clearInterval(missionState.timer);
+    missionState.timer = window.setInterval(tick, TICK);
   },
   /** No draw or read from here on: an animation is about to measure. */
   stop() {
-    paused = true;
-    window.clearInterval(timer);
+    missionState.paused = true;
+    window.clearInterval(missionState.timer);
   },
   /** Empty and hidden. */
   clear() {
-    window.clearInterval(timer);
+    window.clearInterval(missionState.timer);
     topbar()?.toggleAttribute("inert", document.body.classList.contains("focus-mode"));
     root.hidden = true;
-    pan = null;
+    missionState.pan = null;
     canvas.classList.remove("panning");
-    screenFor = null;
-    for (const el of [...cards.values(), ...clusters.values(), ...plans.values()]) el.remove();
-    cards.clear();
-    clusters.clear();
-    plans.clear();
+    missionState.screenFor = null;
+    for (const el of [...missionState.cards.values(), ...missionState.clusters.values(), ...missionState.plans.values()]) el.remove();
+    missionState.cards.clear();
+    missionState.clusters.clear();
+    missionState.plans.clear();
     clearConnectors();
     clearEdges();
     T.clearFaces();

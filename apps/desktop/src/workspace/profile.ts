@@ -45,8 +45,6 @@ const EXT = "skiffw";
 const state = createWorkspaceState();
 const membership = createMembership(state, { announce, changed, showView });
 const clone = (p: Profile): Profile => JSON.parse(JSON.stringify(p));
-/** A transition or save runs. A second request is dropped, so one prompt and one write at a time. */
-let busy = false;
 export const workspaceOpen = state.workspaceOpen;
 export const workspaceName = state.workspaceName;
 export const workspaceEdited = state.workspaceEdited;
@@ -56,10 +54,6 @@ export const ledgerAllWork = state.ledgerAllWork;
 export const setLedgerAllWork = state.setLedgerAllWork;
 export const noteSelected = state.noteSelected;
 export const { includeAdded, includeNew, keepInView, renameWorkspaceFleet, projectsPlus, projectWorkspaceEntries, fleetWorkspaceEntries } = membership;
-
-// ── Notices ────────────────────────────────────────────────────────────────
-
-let wasEdited = false;
 
 /** Says a change to screen readers without moving the keys. */
 function announce(text: string) {
@@ -72,8 +66,8 @@ function announce(text: string) {
 /** The profile changed in memory. */
 function changed() {
   const now = workspaceEdited();
-  if (now !== wasEdited) announce(t(now ? "workspace.editedSay" : "workspace.cleanSay", { name: workspaceName() }));
-  wasEdited = now;
+  if (now !== state.wasEdited) announce(t(now ? "workspace.editedSay" : "workspace.cleanSay", { name: workspaceName() }));
+  state.wasEdited = now;
   render();
 }
 
@@ -90,7 +84,7 @@ function commit(l: Loaded | null, focus = true) {
   state.allWork = false;
   useTreeView(state.doc ? state.treeView : null);
   if (l) remember(l.path);
-  wasEdited = workspaceEdited();
+  state.wasEdited = workspaceEdited();
   showView(focus);
 }
 
@@ -101,7 +95,7 @@ function commitUntitled() {
   state.allWork = false;
   useTreeView(state.treeView);
   forgetLast();
-  wasEdited = false;
+  state.wasEdited = false;
   showView();
 }
 
@@ -203,12 +197,12 @@ async function saveAsNow(): Promise<boolean> {
 
 /** Runs `f` alone: a request while another runs is dropped. */
 async function exclusive(f: () => Promise<boolean>): Promise<boolean> {
-  if (busy) return false;
-  busy = true;
+  if (state.busy) return false;
+  state.busy = true;
   try {
     return await f();
   } finally {
-    busy = false;
+    state.busy = false;
   }
 }
 
@@ -262,20 +256,17 @@ export function newWorkspace() {
   }).then((ok) => ok && editWorkspace());
 }
 
-/** Open…: the file first, so a closed file dialog asks nothing. */
-let picking = false;
-
 export async function openWorkspace(path?: string) {
-  if (busy || picking) return;
+  if (state.busy || state.picking) return;
   let target: string | string[] | null = path ?? null;
   if (!target) {
-    picking = true;
+    state.picking = true;
     target = await openDialog({ title: t("workspace.openTitle"), filters: [{ name: t("workspace.fileType"), extensions: [EXT] }], multiple: false, directory: false })
       .catch((e) => {
         showError(e);
         return null;
       })
-      .finally(() => (picking = false));
+      .finally(() => (state.picking = false));
   }
   if (typeof target !== "string") return;
   await leave(t("workspace.leaveOpen", { file: fileName(target) }), () => openNow(target));
@@ -315,7 +306,7 @@ export function quitApp() {
 // ── Outside changes ────────────────────────────────────────────────────────
 
 async function checkDisk() {
-  if (!state.doc?.path || state.saving || busy) return;
+  if (!state.doc?.path || state.saving || state.busy) return;
   const d = state.doc;
   let now: Doc["disk"];
   try {

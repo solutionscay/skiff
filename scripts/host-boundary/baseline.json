@@ -966,7 +966,7 @@
       "@tauri-apps/api/core",
       "invoke"
     ],
-    "sha256": "5ebe28e7a8a7a3eb8b9ef23a44e4a2278adac260e8aed42af57fcd5c22644110"
+    "sha256": "c2174a15f5579d33f318b40f3d354ddf36a6adc03af32e37340b1d4aa9f5a335"
   },
   "apps/desktop/src/workspace/missionControl/model.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -1023,7 +1023,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "897a50f13c3de692720e9c8b64dbb825dbc5f8d1f576dbf5b614e07a4db08657"
+    "sha256": "4e1412fd9e75615384f96c9901e2224bacb6e29dd2a45f9c7dfafdfb7a5f42c6"
   },
   "apps/desktop/src/workspace/profile/membership.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -1040,7 +1040,7 @@
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/workspace/tree.ts"
     ],
-    "sha256": "4d5a0b7fe7f7481b43e93e866bb7eaa044bb8264ed6e50500b3519f292044dd5"
+    "sha256": "104102e7f304fa6f73a7e2e3d4d69278dba1b91f530fee3745152a5913e13899"
   },
   "apps/desktop/src/workspace/profile/storage.ts": {
     "ownership": "client policy: exact existing adapter only",

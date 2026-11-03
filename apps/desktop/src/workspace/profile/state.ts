@@ -186,6 +186,9 @@ export function createWorkspaceState() {
   }
 
   return {
+    busy: false,
+    wasEdited: false,
+    picking: false,
     get doc() { return doc; },
     set doc(next: Doc | null) { doc = next; },
     get saving() { return saving; },

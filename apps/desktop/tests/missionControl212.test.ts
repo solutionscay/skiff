@@ -36,7 +36,7 @@ function harness() {
   const mod = moduleFromSource("../src/workspace/missionControl.ts", imports, {
     document, localStorage: { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, val: string) => stored.set(key, val) },
     window: {}, console,
-  }, `\nexport const review = { loadKept, saveKept, model, refill, setRunning, kept: () => ({ panel: panelOpen }) };\n`);
+  }, `\nexport const review = { loadKept, saveKept, model, refill, setRunning, kept: () => ({ panel: missionState.panelOpen }) };\n`);
   return { mod, stored, setHost: (next: string | null) => { host = next; }, El };
 }
 
