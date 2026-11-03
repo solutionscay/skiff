@@ -11,12 +11,14 @@ use crate::LedgerCmd;
 pub use skiff_client::ledger::{path, Row, GRAND, SUCCEEDED};
 
 mod commands;
+mod delivery;
 mod evidence;
 mod paths;
 mod read;
 mod schema;
 mod write;
 
+pub use delivery::{end_reports, end_reports_uncertain, start_reports, Evidence};
 pub use paths::results_dir;
 use paths::{label, make_work_folder, new_uid, result_in, work_folder};
 pub use read::{

@@ -745,4 +745,7 @@ fn a_ready_hand_off_wakes_its_own_skipper_once_and_never_the_grand_one() {
     let told: Vec<_> = told.iter().map(|(o, w)| (o.as_str(), w.fact)).collect();
     assert_eq!(told, [("grand", Fact::Reported)]);
     assert!(ws["gesher"].lines.is_empty());
+    // The child's report goes to Admiral, which records its delivery on the hand-off.
+    assert_eq!(ws["grand"].reports_ready(), ["u3"]);
+    assert!(ws["gesher"].reports_ready().is_empty());
 }

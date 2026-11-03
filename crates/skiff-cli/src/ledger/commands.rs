@@ -1,13 +1,13 @@
 //! One `skiff ledger` command, matched and sequenced over the read and write sides.
 use super::read::{
-    container, join, keep, live, one, pane, print_one, print_rows, project_of, rank, state, sweep,
+    container, join, keep, live, one, pane, print_attempts, print_one, print_rows, project_of, rank, state, sweep,
     top, tree, under, View,
 };
-use super::evidence;
+use super::{delivery, evidence};
 use super::schema::{open, open_at, NOW};
 use super::write::{
     add_state, age, check_scope, check_writer, close, flush_folders, folder_size, insert,
-    kind_word, message, prune, reopen, report, restate, rows_word, scope, send_row, who, work_word,
+    kind_word, message, prune, read_stdin, reopen, report, restate, rows_word, scope, send_row, who, work_word,
     Caller, New, Scope, SendOpts,
 };
 use crate::{print, resolve, LedgerCmd};
@@ -17,11 +17,20 @@ use rusqlite::{params, TransactionBehavior};
 use skiff_client::ledger::{gen, mark_live, path, roll_up, rows, GONE, GRAND, INTERRUPTED};
 use std::path::{Path, PathBuf};
 
+/// The task text: `-` reads it from stdin, as `skiff send -` does.
+fn task_text(task: String) -> Result<String> {
+    if task != "-" {
+        return Ok(task);
+    }
+    Ok(read_stdin()?.trim_end().to_string())
+}
+
 pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
     match cmd {
         LedgerCmd::Add { pane: p, task, title, plan: is_plan, parent, project, state: st, result, reference, task_type, expect, send, enter, shell } => {
             let task_type = task_type.as_deref().map(skiff_core::tasks::check_name).transpose()?.map(str::to_string);
             let expects = expect.as_deref().map(evidence::expects).transpose()?.map(str::to_string);
+            let task = task_text(task)?;
             if is_plan && expects.is_some() {
                 bail!("a plan leaves no evidence of its own: give --expect to its tasks");
             }
@@ -59,6 +68,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
             }
         }
         LedgerCmd::Handoff { project, task, title, parent, expect } => {
+            let task = task_text(task)?;
             let expects = expect.as_deref().map(evidence::expects).transpose()?.map(str::to_string);
             let file = path()?;
             let mut db = open_at(&file)?;
@@ -313,10 +323,14 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
             roll_up(&mut work);
             let closed = h.closed_at.clone();
             let r = work.into_iter().find(|w| w.uid == r.uid).context("the row left the ledger")?;
+            let attempts = delivery::of(&db, &r.uid)?;
             if json {
-                print::json(&r)?;
+                let mut v = serde_json::to_value(&r)?;
+                v["deliveries"] = serde_json::to_value(&attempts)?;
+                print::json(&v)?;
             } else {
                 print_one(&r, closed.as_deref());
+                print_attempts(&attempts);
             }
         }
         LedgerCmd::Dir { id } => {

@@ -333,6 +333,8 @@ pub struct Send<'a> {
     pub enter: bool,
     pub raw: bool,
     pub shell: bool,
+    /// The text `-` reads stdin. False when the caller read it already.
+    pub stdin: bool,
 }
 
 /// Exit codes: 0 when sent; 3 waiting, 4 working, 5 a shell or unknown
@@ -365,7 +367,7 @@ pub async fn send_to(c: &Client, s: &SessionInfo, o: Send<'_>) -> Result<i32> {
             return Ok(9);
         }
     }
-    let mut data = if o.text == ["-"] {
+    let mut data = if o.stdin && o.text == ["-"] {
         let mut buf = Vec::new();
         std::io::stdin().read_to_end(&mut buf).context("read stdin")?;
         buf

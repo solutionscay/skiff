@@ -290,6 +290,7 @@ pub enum LedgerCmd {
         /// must exist. A plan has no pane.
         #[arg(long, required_unless_present = "plan", conflicts_with = "plan")]
         pane: Option<String>,
+        /// The task text. `-` reads it from stdin.
         #[arg(long)]
         task: String,
         /// A short title for the app's Ledger panel: 3 to 6 words. Default:
@@ -346,6 +347,7 @@ pub enum LedgerCmd {
         /// The project or the fleet: NAME, project:NAME or fleet:NAME.
         #[arg(value_name = "SCOPE")]
         project: String,
+        /// The task text. `-` reads it from stdin.
         task: String,
         /// A short title for the app's Ledger panel: 3 to 6 words.
         #[arg(long, value_name = "TEXT")]
@@ -434,7 +436,11 @@ pub enum LedgerCmd {
         #[arg(long)]
         json: bool,
     },
-    /// Show one task.
+    /// Show one task, and each attempt to deliver its text: the session and
+    /// its generation, the payload's bytes and SHA-256, and what came of it.
+    #[command(
+        after_help = "Each send by ledger send, add --send and handoff records an attempt before the text goes in, then its evidence: turn started, text accepted, no turn (exit 8), refused (with send's exit code), or uncertain. Uncertain: the send failed after it could have typed, or the process ended before the evidence. A child's report that skiff watch types into its parent is recorded on its hand-off the same way. An attempt is kept, never retried or guessed. --json adds deliveries."
+    )]
     Show {
         id: String,
         #[arg(long)]
@@ -786,7 +792,7 @@ async fn run(cli: Cli) -> Result<i32> {
         return events::events(&c, sessions, *json, *timeout).await;
     }
     if let Cmd::Send { session, text, enter, raw, shell } = &cli.cmd {
-        let o = sessions::Send { text, enter: *enter, raw: *raw, shell: *shell };
+        let o = sessions::Send { text, enter: *enter, raw: *raw, shell: *shell, stdin: true };
         return sessions::send(&c, session, o).await;
     }
     if let Cmd::Kill { sessions: ids, force } = &cli.cmd {
