@@ -130,6 +130,12 @@ const REPLY_WINDOW_MS: u64 = 5000;
 /// Queries kept unanswered at most.
 const MAX_QUERIES: u32 = 64;
 
+/// A program that reports a `blocked` / `auth` block in this time after the
+/// session started shows `working`: some sign in by themselves at start
+/// (Antigravity). A block that stays longer, and every other kind, shows
+/// `waiting` at once.
+const AUTH_HOLD_MS: u64 = 2000;
+
 /// A program that says it works yields to its own approval prompt once the
 /// prompt has stayed on screen this long after its last report: it may ask
 /// without saying so.

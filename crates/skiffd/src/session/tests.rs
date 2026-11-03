@@ -99,6 +99,58 @@ fn deterministic_attention_boundaries_and_event_order() {
     pool.kill(&info.id).unwrap();
 }
 
+/// An agy start, seen by the pool: reports at `t` ms after the session began.
+fn agy_start(reports: &[(&str, u64)], tick_at: Option<u64>) -> (skiff_core::session::SessionInfo, Vec<skiff_core::session::SessionState>) {
+    use crate::screen::StatusSignal;
+    use skiff_core::{protocol::Event, session::SessionSpec};
+    let pool = super::SessionPool::new();
+    let info = pool.create(SessionSpec { command: Some("/bin/sleep".into()), args: vec!["30".into()], cols: 80, rows: 24, ..Default::default() }).unwrap();
+    let s = pool.get(&info.id).unwrap();
+    let t0 = info.started_at;
+    let mut events = pool.events.subscribe();
+    for (body, at) in reports {
+        pool.apply_status_at(&s, vec![StatusSignal::Report(body.as_bytes().to_vec())], t0 + at);
+    }
+    if let Some(at) = tick_at {
+        pool.status_tick_at(&s, t0 + at);
+    }
+    let mut states = vec![];
+    while let Ok(e) = events.try_recv() {
+        if let Event::State { state, .. } = e { states.push(state); }
+    }
+    let out = s.info();
+    pool.kill(&info.id).unwrap();
+    (out, states)
+}
+
+const AUTH: &str = "state=blocked:app=antigravity:kind=auth:msg=U2lnbiBpbiByZXF1aXJlZA==";
+
+#[test]
+fn a_short_auth_block_at_start_never_shows_waiting() {
+    use skiff_core::session::SessionState::*;
+    let (info, states) = agy_start(&[(AUTH, 100), ("state=idle:app=antigravity", 700)], None);
+    assert_eq!(info.state, Idle);
+    assert!(!states.contains(&Waiting), "{states:?}");
+}
+
+#[test]
+fn a_permission_block_after_the_auth_block_waits_at_once() {
+    use skiff_core::session::SessionState::*;
+    let (info, states) = agy_start(&[(AUTH, 100), ("state=blocked:app=antigravity:kind=permission:msg=VHJ1c3Q=", 600)], None);
+    assert_eq!(info.state, Waiting);
+    assert_eq!(states.last(), Some(&Waiting));
+}
+
+#[test]
+fn an_auth_block_that_lasts_waits_after_the_hold() {
+    use skiff_core::session::SessionState::*;
+    let (held, _) = agy_start(&[(AUTH, 100)], Some(super::AUTH_HOLD_MS - 1));
+    assert_eq!(held.state, Working);
+    let (info, states) = agy_start(&[(AUTH, 100)], Some(super::AUTH_HOLD_MS));
+    assert_eq!(info.state, Waiting);
+    assert_eq!(states.last(), Some(&Waiting));
+}
+
 #[test]
 fn deterministic_scan_and_flush_deadlines() {
     let mut st = state();
