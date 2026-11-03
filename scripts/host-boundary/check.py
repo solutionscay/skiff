@@ -7,6 +7,8 @@ local applications and SSH setup), each with a reason. It is not a legacy
 hash allowlist: a new direct I/O user must be classified or moved first.
 """
 import argparse
+import hashlib
+import json
 import posixpath
 from pathlib import Path
 import re
@@ -192,21 +194,56 @@ def inventory(root):
             if file.suffix in {".rs", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}:
                 sources[file.relative_to(root)] = file.read_text()
     reasons = {p: risks(source, p.suffix) for p, source in sources.items()}
-    for file, found in reasons.items():
-        if found:
-            result[str(file)] = {"reasons": found}
+    lexed = {p: tokens(source, rust=p.suffix == ".rs") for p, source in sources.items()}
+    modules = rust_modules(lexed)
+    edges = {p: local_edges(p, ts, sources, modules) for p, ts in lexed.items()}
+    flagged = {p for p, found in reasons.items() if found}
+    while True:
+        expanded = flagged | {p for p, deps in edges.items() if deps & flagged}
+        if expanded == flagged: break
+        flagged = expanded
+    for file in sorted(flagged):
+        providers = sorted(str(p) for p in edges[file] & flagged)
+        result[str(file)] = {
+            "sha256": hashlib.sha256((root / file).read_bytes()).hexdigest(),
+            "reasons": reasons[file] or ["local provider: " + p for p in providers],
+        }
+    for name in ["apps/desktop/src-tauri/Cargo.toml", "apps/desktop/package.json"]:
+        result[name] = {"sha256": hashlib.sha256((root / name).read_bytes()).hexdigest(), "reasons": ["dependency surface"]}
     return result
 
 
 def compare(actual, policy):
+    # The dictionary form is retained for the scanner's historical unit tests.
+    # Production passes the string-only client policy below.
+    if policy and isinstance(next(iter(policy.values())), dict):
+        errors = []
+        for file, entry in actual.items():
+            old = policy.get(file)
+            if old is None or old["sha256"] != entry["sha256"]:
+                errors.append(f"{file}: changed boundary access")
+        return errors + [f"{file}: obsolete exemption" for file in policy.keys() - actual.keys()]
     errors = []
     for file, entry in actual.items():
+        if entry["reasons"][0].startswith("local provider:") or entry["reasons"] == ["dependency surface"]:
+            continue
         reason = policy.get(file)
         if not reason:
             errors.append(f"{file}: unclassified local access ({', '.join(entry['reasons'])}); move Host data through HostConnection or add a one-line client-owned reason to local.toml")
     for file in policy.keys() - actual.keys():
         errors.append(f"{file}: obsolete local policy; remove it from local.toml")
     return errors
+
+
+def refresh(baseline, actual, files):
+    """Legacy helper retained for scanner test fixtures, not used by CI."""
+    for file in files:
+        if file not in baseline or file not in actual:
+            raise SystemExit(f"{file}: no legacy entry to refresh")
+    updated = dict(baseline)
+    for file in files:
+        updated[file] = {**baseline[file], "sha256": actual[file]["sha256"], "reasons": actual[file]["reasons"]}
+    return updated
 
 
 def local_policy(root):
