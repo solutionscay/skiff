@@ -52,7 +52,7 @@ See the [CLI](https://github.com/solutionscay/skiff/wiki/CLI) page.
 4. Click the top row, Admiral, to start the Skiff agent. It hands tasks to your sessions
    and tracks them in a ledger.
 
-<p align="center"><img src="docs/readme/sidebar.webp" width="284" alt="The side panel, in turn on its two tabs. Tree: Admiral, loose projects, then the Platform, Storefront and Data fleets with their Skippers, projects, worktrees and sessions. Skippers: Admiral and each Skipper with its current task."><br><sub>The side panel: the Tree tab and the Skippers tab.</sub></p>
+<p align="center"><img src="docs/readme/app.webp" width="1600" alt="The Skiff window: the side panel on the left and the Rate limits group in a 2x2 split on the right. Three Claude Code sessions and one Codex session work on rate limits for atlas-api; one of them is the atlas-api Skipper. The side panel shows the Tree tab, then the Skippers tab."><br><sub>The app with its side panel on the Tree tab, then the Skippers tab.</sub></p>
 
 Press F1 for every key. Press Ctrl+Shift+A for Mission control, the whole agent hierarchy as a graph. The [wiki](https://github.com/solutionscay/skiff/wiki) has the
 details: [Skiff agent](https://github.com/solutionscay/skiff/wiki/Skiff-agent),
