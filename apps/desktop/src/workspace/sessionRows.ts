@@ -85,7 +85,7 @@ export function sessionRow(s: SessionInfo, color: string, o: { branch?: boolean;
 }
 
 /** What a session row shows of the session's state. A kept row takes a new one in place. */
-export const look = (s: SessionInfo) => JSON.stringify([s.state, s.unread, s.exit_code, s.agent_exit, statusSig(s)]);
+export const look = (s: SessionInfo) => JSON.stringify([s.state, s.unread, s.exit_code, s.agent_exit, statusSig(s), taskTitle(s)]);
 
 /**
  * Writes the session's state into its row: the state class, the label, the
@@ -98,6 +98,11 @@ export function applyLook(row: HTMLElement, s: SessionInfo) {
   if (row.dataset.look === l) return;
   const kept = row.dataset.look !== undefined;
   row.dataset.look = l;
+  if (kept) {
+    const title = row.querySelector<HTMLElement>(".title");
+    const text = taskTitle(s);
+    if (title && title.textContent !== text) title.textContent = text;
+  }
   // State shows only when it matters: waiting stands out, working pulses, done fades.
   for (const st of STATES) if (st !== s.state) row.classList.remove(`st-${st}`);
   row.classList.add(`st-${s.state}`);

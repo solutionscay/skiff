@@ -61,8 +61,8 @@ class El {
   closest() {
     return null;
   }
-  querySelector() {
-    return null;
+  querySelector(sel: string) {
+    return sel === ".title" ? this.children.find((e) => e.className === "title") ?? null : null;
   }
   all(): El[] {
     return this.children.flatMap((c) => [c, ...c.all()]);
@@ -152,7 +152,7 @@ function app() {
     sidebar.renderSidebar();
     return tallies.get("sidebar.drawn") ? "drawn" : "same";
   };
-  return { S, sessions, draw, rows };
+  return { S, sessions, draw, rows, side };
 }
 
 const TREE = [
@@ -257,4 +257,19 @@ test("a session that moves to another folder places its away worktrees from ther
     "Other",
     "  session: o1 task→ main",
   ]);
+});
+
+
+test("a title update keeps its session row and updates its visitor pointer", () => {
+  const a = app();
+  a.draw();
+  const row = a.side.all().find((e) => e.dataset.session === "w1")!;
+  const icon = row.children[0];
+  a.sessions.get("w1").label = "new task";
+  assert.equal(a.draw(), "drawn");
+  assert.equal(a.side.all().find((e) => e.dataset.session === "w1"), row);
+  assert.equal(row.children[0], icon);
+  assert.ok(a.rows().includes("  session: new task→ trunk"));
+  assert.ok(a.rows().includes("  pointer: new taskfrom main"));
+  assert.equal(a.draw(), "same");
 });

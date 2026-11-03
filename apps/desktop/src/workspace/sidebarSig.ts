@@ -48,7 +48,7 @@ export function sidebarSig(index: LineIndex): { all: string; parts: Map<string, 
     const k = name === null ? OTHER_BLOCK : projectBlockKey(name);
     (under.get(k) ?? under.set(k, []).get(k)!).push(row);
   };
-  // A state change alone rebuilds no block: applyLook writes it into the kept rows.
+  // State and title changes rebuild no block: applyLook writes them into kept rows.
   // A folded row counts the states under it, so its block keeps them.
   const looksUnder = new Map<string, string[]>();
   const addLook = (name: string | null, l: string) => {
@@ -62,7 +62,7 @@ export function sidebarSig(index: LineIndex): { all: string; parts: Map<string, 
     const away = awayPlaces(s);
     const row = [
       s.id, s.started_at,
-      taskTitle(s), agentName(s), agentKind(s), t ? ink(signatureColor(t)) : null,
+      agentName(s), agentKind(s), t ? ink(signatureColor(t)) : null,
       at?.worktree.path ?? null, away.map((a) => a.worktree.path),
     ];
     rowOf.set(s.id, row);
@@ -106,7 +106,7 @@ export function sidebarSig(index: LineIndex): { all: string; parts: Map<string, 
     for (const w of p.worktrees) {
       const wtLines = worktreeLines(w, index);
       const ids = wtLines.flatMap((l) => l.group ? [l.group.id] : "session" in l ? [l.session.id] : [l.pointer.id]);
-      parts.set(`worktree:${p.name}:${w.path}`, JSON.stringify([base, (projects[i][projects[i].length - 1] as unknown[][])[p.worktrees.indexOf(w)], bare === w, w.path, w.path === selectedWorktree.get(p.name), wtLines.map((l) => l.group ? [groups[S.groups.indexOf(l.group)], filledOf(l.group.layout).map((id) => rowOf.get(id))] : rowOf.get(("session" in l ? l.session : l.pointer).id)), S.selection.filter((id) => ids.includes(id)), ids.includes(S.renamingSession ?? "") ? S.renamingSession : null, ids.includes(S.renaming?.id ?? "") ? S.renaming?.id : null]));
+      parts.set(`worktree:${p.name}:${w.path}`, JSON.stringify([base, (projects[i][projects[i].length - 1] as unknown[][])[p.worktrees.indexOf(w)], bare === w, w.path, w.path === selectedWorktree.get(p.name), wtLines.map((l) => l.group ? [groups[S.groups.indexOf(l.group)], filledOf(l.group.layout).map((id) => rowOf.get(id))] : l.pointer ? [rowOf.get(l.pointer.id), taskTitle(l.pointer)] : rowOf.get(l.session.id)), S.selection.filter((id) => ids.includes(id)), ids.includes(S.renamingSession ?? "") ? S.renamingSession : null, ids.includes(S.renaming?.id ?? "") ? S.renaming?.id : null]));
     }
   });
   const all = JSON.stringify([
