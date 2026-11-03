@@ -32,7 +32,7 @@ Test every change with three questions:
 
 ## Visual rules
 
-- **Square and flush.** `border-radius: 0` everywhere. Dots and slider thumbs are round. Panes touch, with no gaps and no floating cards.
+- **Square and flush.** `border-radius: 0` everywhere. Dots and slider thumbs are round. Panes touch, with no gaps and no floating cards. One exception: in the tree, Projects, each fleet and Other are boxes with a 1px `--rule-strong` frame, 8px in from the panel's edges, with an 8px `--bg-deep` gutter between them.
 - **A line marks a region edge.** The sidebar, the terminal area, the top bar and the panes have lines between them.
 - **Show only what needs a look.** An idle session has no mark unless it has unread output. A shell at its prompt has no mark. The bell means an agent asks for approval. The flag means a turn or a command ended out of sight. Pane buttons show on the focused pane and on a hovered header. A changed file's folder shows on the current row and on hover.
 - **One rule weight.** Lines are 1px `--rule`. Pane dividers and edges of floating surfaces use `--rule-strong`. Do not stack accent lines.
