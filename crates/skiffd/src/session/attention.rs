@@ -188,6 +188,10 @@ impl SessionPool {
     }
 
     pub(super) fn idle_if_quiet(&self, s: &Session) {
+        self.idle_if_quiet_at(s, now_ms());
+    }
+
+    pub(super) fn idle_if_quiet_at(&self, s: &Session, now: u64) {
         let front = s.front();
         // The title says the agent works: a quiet tool call is still work.
         if *s.title_state.lock().unwrap() == Some(TitleState::Busy) {
@@ -198,7 +202,7 @@ impl SessionPool {
         let (id, updated, turn) = {
             let mut info = s.info.lock().unwrap();
             let last = s.last_work.load(Ordering::Relaxed);
-            let quiet = now_ms().saturating_sub(last) > IDLE_AFTER.as_millis() as u64;
+            let quiet = now.saturating_sub(last) > IDLE_AFTER.as_millis() as u64;
             if !quiet || info.state != SessionState::Working || live(&info) {
                 return;
             }

@@ -13,6 +13,10 @@ impl SessionPool {
     /// root record lives, it decides the state; see
     /// [`program_status::session_state`] and [`program_status::ends_turn`].
     pub(super) fn apply_status(&self, session: &Session, signals: Vec<StatusSignal>) {
+        self.apply_status_at(session, signals, now_ms());
+    }
+
+    pub(super) fn apply_status_at(&self, session: &Session, signals: Vec<StatusSignal>, now: u64) {
         if signals.is_empty() {
             return;
         }
@@ -58,7 +62,7 @@ impl SessionPool {
             // says them, with idle after a turn the user started.
             let ended = records
                 .turns
-                .step(old, claim, now_ms(), info.input_gen, info.output_bytes);
+                .step(old, claim, now, info.input_gen, info.output_bytes);
             drop(records);
             if info.state == SessionState::Done || info.program_status == view {
                 return;
@@ -73,7 +77,7 @@ impl SessionPool {
             session.approval_since.store(0, Ordering::Relaxed);
             session.raised.store(false, Ordering::Relaxed);
             // The quiet time starts now, should the reports end.
-            session.last_work.store(now_ms(), Ordering::Relaxed);
+            session.last_work.store(now, Ordering::Relaxed);
             if claim.is_some() {
                 session.belled.store(false, Ordering::Relaxed);
             }
@@ -85,7 +89,7 @@ impl SessionPool {
             let state = program_status::session_state(claim, info.state);
             let changed = info.state != state;
             if changed && state == SessionState::Working && info.state == SessionState::Idle {
-                session.work_started.store(now_ms(), Ordering::Relaxed);
+                session.work_started.store(now, Ordering::Relaxed);
             }
             info.state = state;
             // Also a wait an older daemon handed over with no cause.
@@ -97,7 +101,7 @@ impl SessionPool {
                     .unwrap_or_default();
                 set_cause(&mut info, session.front(), Some((REPORT, &detail)));
             }
-            let now = now_ms();
+            let now = now;
             let send = !minor
                 || now.saturating_sub(session.status_sent_at.load(Ordering::Relaxed))
                     >= STATUS_EVERY_MS;
@@ -160,7 +164,10 @@ impl SessionPool {
     /// outstayed the grace, a long silence while it says it works, and an
     /// update held back by [`STATUS_EVERY_MS`].
     pub(super) fn status_tick(&self, s: &Session) {
-        let now = now_ms();
+        self.status_tick_at(s, now_ms());
+    }
+
+    pub(super) fn status_tick_at(&self, s: &Session, now: u64) {
         let (state, updated) = {
             let mut info = s.info.lock().unwrap();
             if info.state == SessionState::Done || !live(&info) {

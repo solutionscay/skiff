@@ -626,6 +626,215 @@ mod tests {
     }
 
     #[test]
+    fn deterministic_attention_boundaries_and_event_order() {
+        use crate::screen::StatusSignal;
+        use skiff_core::{protocol::Event, session::{SessionSpec, SessionState}};
+        use std::sync::atomic::Ordering::Relaxed;
+        let pool = super::SessionPool::new();
+        let info = pool.create(SessionSpec { command: Some("/bin/sleep".into()), args: vec!["30".into()], cols: 80, rows: 24, ..Default::default() }).unwrap();
+        let s = pool.get(&info.id).unwrap();
+        let mut events = pool.events.subscribe();
+        let report = |body: &str, now| pool.apply_status_at(&s, vec![StatusSignal::Report(body.as_bytes().to_vec())], now);
+        s.last_input.store(1000, Relaxed);
+        for (elapsed, expected) in [(super::ECHO_MS - 1, true), (super::ECHO_MS, false), (super::ECHO_MS + 1, false)] {
+            assert_eq!(s.echoing_at(1000 + elapsed), expected);
+        }
+        report("state=working", 1000);
+        s.last_output.store(1000, Relaxed);
+        s.approval_since.store(1000, Relaxed);
+        for (elapsed, expected) in [(GRACE_MS - 1, SessionState::Working), (GRACE_MS, SessionState::Waiting)] {
+            pool.status_tick_at(&s, 1000 + elapsed);
+            assert_eq!(s.info().state, expected);
+        }
+        assert_eq!(s.info().waiting_cause.as_deref(), Some("prompt"));
+        report("state=blocked", 4000);
+        assert_eq!(s.info().waiting_cause.as_deref(), Some("prompt"));
+        while events.try_recv().is_ok() {}
+        report("state=done", 5000);
+        assert_eq!(s.info().waiting_cause, None);
+        assert!(matches!(events.try_recv().unwrap(), Event::State { state: SessionState::Idle, .. }));
+        assert!(matches!(events.try_recv().unwrap(), Event::TurnEnded { .. }));
+        assert!(matches!(events.try_recv().unwrap(), Event::SessionUpdated { .. }));
+        assert!(events.try_recv().is_err());
+        report("state=working", 6000);
+        s.last_output.store(6000, Relaxed);
+        for (elapsed, expected) in [(STALL_MS - 1, false), (STALL_MS, true)] {
+            pool.status_tick_at(&s, 6000 + elapsed);
+            assert_eq!(s.info().program_status.unwrap().stalled, expected);
+        }
+        pool.kill(&info.id).unwrap();
+    }
+
+    #[test]
+    fn deterministic_scan_and_flush_deadlines() {
+        let mut st = state();
+        let t = Instant::now();
+        st.last_scan = t;
+        st.held_since = t;
+        st.last_push = t;
+        st.pending.push(b'x');
+        st.unscanned = true;
+        for (at, scan, flush) in [(t + QUIET - std::time::Duration::from_nanos(1), false, false), (t + QUIET, false, true), (t + SCAN, true, true)] {
+            assert_eq!(st.scan_due().is_some_and(|due| due <= at), scan);
+            assert_eq!(st.flush_due().is_some_and(|due| due <= at), flush);
+        }
+        st.last_push = t + HOLD;
+        assert_eq!(st.flush_due(), Some(t + HOLD));
+    }
+
+    #[test]
+    fn waiting_causes_and_front_event_order() {
+        use crate::screen::StatusSignal;
+        use skiff_core::{protocol::Event, session::{SessionSpec, SessionState}};
+        let pool = super::SessionPool::new();
+        let info = pool.create(SessionSpec { command: Some("/bin/sleep".into()), args: vec!["30".into()], cols: 80, rows: 24, ..Default::default() }).unwrap();
+        let s = pool.get(&info.id).unwrap();
+        pool.set_front(&s, Front::Shell);
+        pool.bell(&s);
+        assert_eq!(s.info().state, SessionState::Idle);
+        pool.set_front(&s, Front::Command);
+        pool.bell(&s);
+        assert_eq!(s.info().waiting_cause.as_deref(), Some("bell"));
+        pool.set_state(&s, SessionState::Working);
+        pool.set_front(&s, Front::Agent("codex"));
+        pool.apply_title(&s, Some("[ ! ] Action Required"));
+        assert_eq!(s.info().waiting_cause.as_deref(), Some("title"));
+        pool.set_state(&s, SessionState::Working);
+        pool.apply_scan(&s, super::output::Scan { scanned: true, approval: true, ..Default::default() });
+        assert_eq!(s.info().waiting_cause.as_deref(), Some("prompt"));
+        pool.set_state(&s, SessionState::Working);
+        pool.apply_status_at(&s, vec![StatusSignal::Report(b"state=blocked".to_vec())], 10000);
+        assert_eq!(s.info().waiting_cause.as_deref(), Some("report"));
+        let mut events = pool.events.subscribe();
+        pool.set_front(&s, Front::Shell);
+        assert_eq!(s.info().waiting_cause, None);
+        assert!(matches!(events.try_recv().unwrap(), Event::State { state: SessionState::Idle, .. }));
+        assert!(matches!(events.try_recv().unwrap(), Event::TurnEnded { .. }));
+        assert!(matches!(events.try_recv().unwrap(), Event::SessionUpdated { .. }));
+        assert!(events.try_recv().is_err());
+        pool.kill(&info.id).unwrap();
+    }
+
+    #[test]
+    fn status_group_and_tick_event_order() {
+        use crate::screen::StatusSignal;
+        use skiff_core::{protocol::Event, session::{SessionSpec, SessionState}};
+        use std::sync::atomic::Ordering::Relaxed;
+        let pool = super::SessionPool::new();
+        let info = pool.create(SessionSpec { command: Some("/bin/sleep".into()), args: vec!["30".into()], cols: 80, rows: 24, ..Default::default() }).unwrap();
+        let s = pool.get(&info.id).unwrap();
+        let report = |body: &str, now| pool.apply_status_at(&s, vec![StatusSignal::Report(body.as_bytes().to_vec())], now);
+        report("state=working", 1000);
+        s.approval_since.store(1000, Relaxed);
+        s.last_output.store(1000, Relaxed);
+        let mut events = pool.events.subscribe();
+        pool.status_tick_at(&s, 1000 + STALL_MS);
+        assert!(matches!(events.try_recv().unwrap(), Event::State { state: SessionState::Waiting, .. }));
+        assert!(matches!(events.try_recv().unwrap(), Event::SessionUpdated { .. }));
+        assert!(events.try_recv().is_err());
+        s.records.lock().unwrap().group = 7;
+        pool.status_group(&s, 8);
+        assert!(matches!(events.try_recv().unwrap(), Event::State { state: SessionState::Working, .. }));
+        assert!(matches!(events.try_recv().unwrap(), Event::SessionUpdated { .. }));
+        assert!(events.try_recv().is_err());
+        assert_eq!(s.info().waiting_cause, None);
+        pool.kill(&info.id).unwrap();
+    }
+
+    #[test]
+    fn retained_result_work_transition_event_order() {
+        use crate::screen::StatusSignal;
+        use skiff_core::{protocol::Event, session::{SessionSpec, SessionState}};
+        let pool = super::SessionPool::new();
+        let info = pool.create(SessionSpec { command: Some("/bin/sleep".into()), args: vec!["30".into()], cols: 80, rows: 24, ..Default::default() }).unwrap();
+        let s = pool.get(&info.id).unwrap();
+        pool.apply_status_at(&s, vec![StatusSignal::Report(b"state=done".to_vec())], 1000);
+        s.records.lock().unwrap().group = 7;
+        pool.status_group(&s, 8);
+        assert!(s.info().program_status.unwrap().ended);
+        let mut events = pool.events.subscribe();
+        pool.set_state(&s, SessionState::Working);
+        assert!(matches!(events.try_recv().unwrap(), Event::State { state: SessionState::Working, .. }));
+        assert!(matches!(events.try_recv().unwrap(), Event::SessionUpdated { .. }));
+        assert!(events.try_recv().is_err());
+        assert!(s.info().program_status.is_none());
+        pool.kill(&info.id).unwrap();
+    }
+
+    #[tokio::test]
+    async fn exit_event_order_with_a_live_report() {
+        use crate::screen::StatusSignal;
+        use skiff_core::{protocol::Event, session::{SessionSpec, SessionState}};
+        use std::time::Duration;
+        let pool = super::SessionPool::new();
+        let info = pool.create(SessionSpec { command: Some("/bin/sh".into()), args: vec!["-c".into(), "read line".into()], cols: 80, rows: 24, peek: true, ..Default::default() }).unwrap();
+        let s = pool.get(&info.id).unwrap();
+        pool.apply_status_at(&s, vec![StatusSignal::Report(b"state=working".to_vec())], 1000);
+        let mut events = pool.events.subscribe();
+        pool.write(&info.id, b"go\n").unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if matches!(events.recv().await.unwrap(), Event::State { state: SessionState::Done, .. }) { break; }
+            }
+            assert!(matches!(events.recv().await.unwrap(), Event::Exit { .. }));
+            assert!(matches!(events.recv().await.unwrap(), Event::SessionUpdated { .. }));
+        }).await.unwrap();
+    }
+
+    #[test]
+    fn deterministic_status_throttle() {
+        use crate::screen::StatusSignal;
+        use skiff_core::{protocol::Event, session::SessionSpec};
+        let pool = super::SessionPool::new();
+        let info = pool.create(SessionSpec { command: Some("/bin/sleep".into()), args: vec!["30".into()], cols: 80, rows: 24, ..Default::default() }).unwrap();
+        let s = pool.get(&info.id).unwrap();
+        let mut events = pool.events.subscribe();
+        let report = |body: &str, now| pool.apply_status_at(&s, vec![StatusSignal::Report(body.as_bytes().to_vec())], now);
+        report("state=working:msg=YQ==", 10000);
+        while events.try_recv().is_ok() {}
+        report("state=working:msg=Yg==", 10000 + super::STATUS_EVERY_MS - 1);
+        assert!(events.try_recv().is_err());
+        report("state=working:msg=Yw==", 10000 + super::STATUS_EVERY_MS);
+        assert!(matches!(events.try_recv().unwrap(), Event::SessionUpdated { .. }));
+        report("state=working:msg=ZA==", 10000 + super::STATUS_EVERY_MS + 1);
+        assert!(events.try_recv().is_err());
+        pool.status_tick_at(&s, 11002);
+        assert!(matches!(events.try_recv().unwrap(), Event::SessionUpdated { .. }));
+        pool.kill(&info.id).unwrap();
+    }
+
+    #[test]
+    fn deterministic_idle_boundary_and_waiting_cause() {
+        use skiff_core::{protocol::Event, session::{SessionSpec, SessionState}};
+        use std::sync::atomic::Ordering::Relaxed;
+        let pool = super::SessionPool::new();
+        let info = pool.create(SessionSpec { command: Some("/bin/sleep".into()), args: vec!["30".into()], cols: 80, rows: 24, ..Default::default() }).unwrap();
+        let s = pool.get(&info.id).unwrap();
+        pool.set_front(&s, Front::Program);
+        s.last_work.store(1000, Relaxed);
+        s.fresh.store(false, Relaxed);
+        let mut events = pool.events.subscribe();
+        for (elapsed, expected) in [(super::IDLE_AFTER.as_millis() as u64, SessionState::Working), (super::IDLE_AFTER.as_millis() as u64 + 1, SessionState::Idle)] {
+            pool.idle_if_quiet_at(&s, 1000 + elapsed);
+            assert_eq!(s.info().state, expected);
+        }
+        assert!(matches!(events.try_recv().unwrap(), Event::State { state: SessionState::Idle, .. }));
+        assert!(matches!(events.try_recv().unwrap(), Event::TurnEnded { .. }));
+        assert!(matches!(events.try_recv().unwrap(), Event::SessionUpdated { .. }));
+        pool.bell(&s);
+        assert_eq!(s.info().waiting_cause.as_deref(), Some("bell"));
+        pool.set_state(&s, SessionState::Working);
+        assert_eq!(s.info().waiting_cause, None);
+        { let mut info = s.info.lock().unwrap(); info.state = SessionState::Waiting; info.waiting_cause = None; }
+        while events.try_recv().is_ok() {}
+        pool.wait(&s, super::attention::REPORT, "");
+        assert_eq!(s.info().waiting_cause.as_deref(), Some("report"));
+        assert!(matches!(events.try_recv().unwrap(), Event::SessionUpdated { .. }));
+        assert!(events.try_recv().is_err());
+        pool.kill(&info.id).unwrap();
+    }
+
+    #[test]
     fn topic_drops_the_status_glyph() {
         assert_eq!(topic("◐ Fix the flusher"), "Fix the flusher");
         assert_eq!(topic("◑ Fix the flusher"), "Fix the flusher");

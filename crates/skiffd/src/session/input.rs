@@ -57,7 +57,11 @@ impl Session {
 
     /// True shortly after input: output now is the program answering a key.
     pub(super) fn echoing(&self) -> bool {
-        now_ms().saturating_sub(self.last_input.load(Ordering::Relaxed)) < ECHO_MS
+        self.echoing_at(now_ms())
+    }
+
+    pub(super) fn echoing_at(&self, now: u64) -> bool {
+        now.saturating_sub(self.last_input.load(Ordering::Relaxed)) < ECHO_MS
     }
 
 }

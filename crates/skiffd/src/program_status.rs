@@ -468,6 +468,28 @@ mod tests {
     }
 
     #[test]
+    fn idle_turn_duration_boundary() {
+        use crate::session::MIN_TURN_MS;
+
+        for (elapsed, printed, input, expected) in [
+            (MIN_TURN_MS - 1, true, true, false),
+            (MIN_TURN_MS, true, true, true),
+            (MIN_TURN_MS + 1, true, true, true),
+            (MIN_TURN_MS, false, true, false),
+            (MIN_TURN_MS, true, false, false),
+        ] {
+            let mut turns = Turns::default();
+            assert!(!turns.step(None, Some(State::Idle), 100, 0, 0));
+            assert!(!turns.step(Some(State::Idle), Some(State::Working), 200, input as u64, 0));
+            assert_eq!(
+                turns.step(Some(State::Working), Some(State::Idle), 200 + elapsed, input as u64, printed as u64),
+                expected,
+                "elapsed={elapsed}, printed={printed}, input={input}",
+            );
+        }
+    }
+
+    #[test]
     fn reads_the_agents_reports() {
         let (id, r) = set("state=working:app=codex");
         assert_eq!(
