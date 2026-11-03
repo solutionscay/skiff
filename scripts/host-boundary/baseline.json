@@ -380,7 +380,7 @@
       "@tauri-apps/api/event",
       "invoke"
     ],
-    "sha256": "b6f1f4eabd48a572a8a33117d4c00b66b1f7a974cd40e181ac86a376f9e4a569"
+    "sha256": "581ddb8bfe6e7b198d0be5884ae6df96e4cb1f403b30ec816e14b614081d9cc3"
   },
   "apps/desktop/src/app/daemonRestart.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -984,7 +984,7 @@
       "@tauri-apps/plugin-dialog",
       "invoke"
     ],
-    "sha256": "1effc8de68aab909c0462a09adffb7414b3c24795f46ed183b4fb39efe6c0be6"
+    "sha256": "897a50f13c3de692720e9c8b64dbb825dbc5f8d1f576dbf5b614e07a4db08657"
   },
   "apps/desktop/src/workspace/profile/membership.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -993,7 +993,7 @@
       "local provider: apps/desktop/src/ui/contextMenu.ts",
       "local provider: apps/desktop/src/workspace/profile/state.ts"
     ],
-    "sha256": "4a6894314597a359c34f66d7ec66f72d2e337d26e6984e7ad45e4be7b2ea9be6"
+    "sha256": "5560effb187ac602b7249f1979b109c3d0ac588fa27f2db727ad3ea86ae98cf3"
   },
   "apps/desktop/src/workspace/profile/state.ts": {
     "ownership": "client policy: exact existing adapter only",
@@ -1092,7 +1092,7 @@
       "local provider: apps/desktop/src/workspace/treeDrag.ts",
       "local provider: apps/desktop/src/workspace/view.ts"
     ],
-    "sha256": "64a79f59d280628fef580e36bd5b3c2e0e1ae8b3e98301bfb45acbc0e050c238"
+    "sha256": "ce53fa27a7df3c1eb95271557e3cd624d5608a77a9ed7f15430311050c6570e2"
   },
   "apps/desktop/src/workspace/sidebarLines.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
@@ -1144,7 +1144,7 @@
       "local provider: apps/desktop/src/app/state.ts",
       "local provider: apps/desktop/src/app/stateQueries.ts"
     ],
-    "sha256": "b8d2e8c67348eeaf9acf82b451c0148faf46e014d5fae9f0648b4c67d703df10"
+    "sha256": "555228b46193c07bf9ee4689c37962813861653900d2e699b31b7bb15f16462f"
   },
   "apps/desktop/src/workspace/treeDrag.ts": {
     "ownership": "legacy local adapter: migrate behind Host API in M1\u2013M6",
