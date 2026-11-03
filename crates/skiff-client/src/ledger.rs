@@ -23,10 +23,11 @@ pub const GONE: &str = "gone";
 /// `owner`, 5 added `tasks.reported_at`, 6 added `tasks.title`, 7 added
 /// `tasks.closed_at`, 8 added `tasks.gone_at`, 9 added `tasks.owner` and the
 /// `handoff` kind, 10 added `tasks.reopened_at`, 11 added `tasks.work_dir`
-/// and `tasks.flushed_at`; an older file from version 3 on takes each in
-/// place, with its rows. The readers take a version 10 file: the version 11
+/// and `tasks.flushed_at`, 12 added `tasks.outcome`, `tasks.expects` and
+/// `tasks.commit_ref`; an older file from version 3 on takes each in place,
+/// with its rows. The readers take a version 10 file: the version 11 and 12
 /// columns read as empty there.
-pub const VERSION: i64 = 11;
+pub const VERSION: i64 = 12;
 
 pub const COLUMNS: &str = "id, uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, reported_at, title, closed_at, gone_at, owner";
 
