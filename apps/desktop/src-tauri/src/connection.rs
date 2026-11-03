@@ -1356,6 +1356,41 @@ mod tests {
         assert_eq!(outcome, [("reload", true, true, true, None), ("newer", true, true, false, Some("newer")), ("same", true, true, false, None)]);
     }
 
+    /// A missing daemon is started once, from the bundled skiffd, and the
+    /// connect loop keeps asking its socket. Here the stand-in only leaves a
+    /// mark and never listens, so the loop ends with the "cannot reach" error.
+    #[test]
+    fn a_missing_daemon_is_spawned() {
+        let _env = crate::reload::tests::ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = PathBuf::from("/tmp").join(format!("sd-spawn-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mark = dir.join("started");
+        let bin = dir.join("skiffd");
+        std::fs::write(&bin, format!("#!/bin/sh\ntouch {}\n", mark.display())).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let old_daemon = std::env::var_os("SKIFF_DAEMON");
+        let old_socket = std::env::var_os("SKIFF_SOCKET");
+        let socket = dir.join("none.sock");
+        std::env::set_var("SKIFF_DAEMON", &bin);
+        std::env::set_var("SKIFF_SOCKET", &socket);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let app = super::App::default();
+        app.set_selection(super::HostSelection::new(socket.clone(), dir.join("local-host-id")));
+        let result = rt.block_on(super::ensure_host(&app));
+        for (var, old) in [("SKIFF_DAEMON", old_daemon), ("SKIFF_SOCKET", old_socket)] {
+            match old {
+                Some(v) => std::env::set_var(var, v),
+                None => std::env::remove_var(var),
+            }
+        }
+        let started = mark.exists();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(started, "the bundled skiffd was not started");
+        assert!(result.err().is_some_and(|e| e.starts_with("cannot reach skiffd")));
+    }
+
     /// #182: the bundled skiffd cannot read the daemon's handover. No reload
     /// is planned, and the warning says why and what a restart does, in the
     /// words `skiff status` uses.
