@@ -288,13 +288,16 @@ pub(super) async fn step(c: &Client, o: &Options, ws: &mut Watchers) -> Result<O
         }
     };
     let ready = match ledger::handoffs_ready() {
-        Ok(rows) => on_socket(rows, &here).0,
+        Ok(rows) => Some(on_socket(rows, &here).0),
         Err(e) => {
+            // Keep what was told: an empty list would forget it.
             log(format!("cannot read the finished hand-offs: {e:#}"));
-            Vec::new()
+            None
         }
     };
-    tell_ready(ws, &targets, &ready);
+    if let Some(ready) = &ready {
+        tell_ready(ws, &targets, ready);
+    }
     let told = route(ws, &targets, &tasks, &gone, &handed, &plan_rows, &all);
     for (owner, wake) in told {
         let to = if owner == ledger::GRAND { String::new() } else { format!(" (to the {owner} Skipper)") };
