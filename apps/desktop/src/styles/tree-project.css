@@ -197,10 +197,11 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 .project-skipper-row > .skipper-face { width: calc(28 * var(--u)); height: calc(28 * var(--u)); }
 .project-skipper-row .skiff-agent-name { flex-shrink: 0; font-size: calc(14px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
 .project-skipper-row .title { font-size: calc(13px * var(--zoom, 1)); color: var(--text-3); }
-/* A project Skipper: the first child of its project, in the worktree column. The worktrees and loose sessions under it
+/* A project Skipper: the first child of its project. Its face sits 18px out from the worktree column, between the
+   project icon and the session icons, so it reads a level above them. The worktrees and loose sessions under it
    are its siblings, not its children. It takes the project's color. Its 30px row (20px face, 13px name, 12px title)
    sits between the fleet Skipper and a session row; it leaves the 20px child grid by 10px, once per project. */
-.tree-project .session-row.project-skipper-row { height: calc(30 * var(--u)); padding-left: calc(var(--in) * var(--u)); }
+.tree-project .session-row.project-skipper-row { height: calc(30 * var(--u)); padding-left: calc((var(--in) - 18) * var(--u)); }
 .tree-project .project-skipper-row > .skipper-face { width: calc(20 * var(--u)); height: calc(20 * var(--u)); }
 .tree-project .project-skipper-row .skiff-agent-name { font-size: calc(13px * var(--zoom, 1)); }
 .tree-project .project-skipper-row .title { font-size: calc(12px * var(--zoom, 1)); }
