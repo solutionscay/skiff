@@ -2,6 +2,8 @@
 //! restart that finishes an update. The new app hands skiffd, the skiff CLI
 //! and `skiff watch` over at its launch, as after any install.
 use tauri::{AppHandle, State};
+#[cfg(target_os = "linux")]
+use tauri::Manager;
 
 use crate::quit::Guard;
 
