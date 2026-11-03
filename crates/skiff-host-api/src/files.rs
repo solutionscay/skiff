@@ -15,7 +15,6 @@ pub enum EntryKind {
     /// A FIFO, device or socket: listed, never opened.
     Other,
 }
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostEntry {
     pub name: String,
@@ -85,4 +84,31 @@ pub struct HostImage {
     pub mime: String,
     #[serde(with = "crate::wire::bytes")]
     pub bytes: Vec<u8>,
+}
+
+/// One image in the Host's cache. `path` is an opaque Host cache path: a
+/// client can give it back to this API, but must never open it itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostCacheImage {
+    pub path: String,
+    pub file: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    pub at: u64,
+    pub pinned: bool,
+    pub size: u64,
+}
+
+/// The Host cache's total size and its image count and size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostCacheUse {
+    pub bytes: u64,
+    pub images: u64,
+    pub image_bytes: u64,
 }

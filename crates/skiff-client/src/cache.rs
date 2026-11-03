@@ -377,6 +377,13 @@ pub fn delete(dir: &Path, file: &Path) -> Result<()> {
     write_index(dir, index)
 }
 
+/// Reads one image in this cache. The path must name a direct cache image;
+/// callers cannot use this to read another file in the agent folder.
+pub fn read(dir: &Path, file: &Path) -> Result<Vec<u8>> {
+    let key = name_in(dir, file)?;
+    std::fs::read(dir.join(key)).with_context(|| format!("read {}", file.display()))
+}
+
 /// The cache paths a flush keeps: the pinned images and the index.
 pub fn kept(dir: &Path) -> HashSet<PathBuf> {
     let root = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());

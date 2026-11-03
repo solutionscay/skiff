@@ -61,9 +61,29 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Sen
 }
 
 #[tauri::command]
-pub async fn disk_usage(app: State<'_, App>) -> Result<Usage, String> {
+pub async fn disk_usage(app: State<'_, App>) -> Result<serde_json::Value, String> {
+    if app.remote() {
+        let usage = crate::connection::data_read(&app, |c| async move { skiff_client::host::data::cache_use(&c).await }).await?;
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+        return Ok(serde_json::json!({
+            "shown": "cache",
+            "cache_days": 0,
+            "tree": {
+                "name": "cache/", "path": "", "bytes": usage.bytes, "files": usage.images,
+                "mtime": now, "dir": true, "frame": true,
+                "state": { "kind": "prot", "why": "skiff-file", "label": "" },
+                "children": [{
+                    "name": "images/", "path": "images", "bytes": usage.image_bytes, "files": usage.images,
+                    "mtime": now, "dir": true, "frame": false,
+                    "state": { "kind": "prot", "why": "image", "label": "" }
+                }]
+            },
+            "now": now, "daemon": true, "ledger_error": null, "unreadable": 0
+        }));
+    }
     let s = sessions(&app).await;
-    blocking(move || count(s)).await
+    let usage = blocking(move || count(s)).await?;
+    serde_json::to_value(usage).map_err(|e| e.to_string())
 }
 
 /// Auto flush's age in days, in this computer's projects.toml. `0`: off.

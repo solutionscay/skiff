@@ -61,7 +61,7 @@
 "apps/desktop/src-tauri/src/connection.rs" = "Owns client connection state and selected-Host routing."
 "apps/desktop/src-tauri/src/copies.rs" = "Stores quarantined local copies fetched from a Host."
 "apps/desktop/src-tauri/src/diagnostics.rs" = "Collects this desktop's diagnostics only."
-"apps/desktop/src-tauri/src/disk.rs" = "Reports this desktop's cache and local service footprint, not Host disk use."
+"apps/desktop/src-tauri/src/disk.rs" = "Reports local disk use or selected-Host cache use through HostConnection."
 "apps/desktop/src-tauri/src/drops.rs" = "Stages a local upload before the selected Host stores it."
 "apps/desktop/src-tauri/src/header_bar.rs" = "Reads client-owned Host selection and window title state."
 "apps/desktop/src-tauri/src/host_files.rs" = "Stores revisioned local copies fetched from a Host for Open with."

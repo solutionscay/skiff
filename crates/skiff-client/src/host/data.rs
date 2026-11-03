@@ -16,7 +16,7 @@ use std::{
 };
 
 use skiff_host_api::{
-    AgentEdit, Error, FolderListing, FolderPlaces, Hello, HostBranches, HostAgent, HostChanges, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
+    AgentEdit, Error, FolderListing, FolderPlaces, Hello, HostBranches, HostCacheImage, HostCacheUse, HostAgent, HostChanges, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
     HostFileScope, HostListing, HostProject, HostSkipper, HostSkipperFile, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response, SkipperEdit, SkipperFolderDone,
     SkipperFolderMode, SkipperFolderPreview, SkipperOpened, InventorySession, TakenSkipper,
 };
@@ -291,6 +291,44 @@ pub async fn project_background(c: &HostConnection, project: &str) -> Result<Hos
     }
 }
 
+/// The Host's Images library, newest first.
+pub async fn image_list(c: &HostConnection) -> Result<Vec<HostCacheImage>, Error> {
+    match c.request(Request::ImageList).await? {
+        Response::Images { images } => Ok(images),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// One Host cache image's bytes. `path` came from [`image_list`].
+pub async fn image_read(c: &HostConnection, path: &str) -> Result<HostImage, Error> {
+    match c.request(Request::ImageRead { path: path.into() }).await? {
+        Response::Image { image } => Ok(image),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+pub async fn image_delete(c: &HostConnection, paths: Vec<String>) -> Result<(), Error> {
+    match c.request(Request::ImageDelete { paths }).await? {
+        Response::Ok => Ok(()),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+pub async fn image_pin(c: &HostConnection, paths: Vec<String>, on: bool) -> Result<(), Error> {
+    match c.request(Request::ImagePin { paths, on }).await? {
+        Response::Ok => Ok(()),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// The total cache and image sizes of this Host.
+pub async fn cache_use(c: &HostConnection) -> Result<HostCacheUse, Error> {
+    match c.request(Request::CacheUse).await? {
+        Response::CacheUse { usage } => Ok(usage),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
 /// The Host's Ledger panel rows, oldest first (`ledger@1`).
 pub async fn ledger_rows(c: &HostConnection) -> Result<Vec<HostLedgerRow>, Error> {
     match c.request(Request::LedgerRows).await? {
@@ -438,14 +476,16 @@ pub async fn folder_create(c: &HostConnection, parent: &str, name: &str) -> Resu
 
 /// Puts a dropped or pasted file into the Host's cache. Answers its Host path.
 pub async fn drop_put(c: &HostConnection, name: &str, bytes: Vec<u8>) -> Result<String, Error> {
-    match c.request(Request::DropPut { name: name.into(), bytes }).await? {
+    match c.request(Request::DropPut { name: name.into(), bytes, upload: None, total: None, offset: 0, finish: true }).await? {
         Response::Path { path } => Ok(path),
         _ => unreachable!("checked by Request::accepts"),
     }
 }
 
 /// The largest file a drop sends to a remote Host: one frame holds it.
-pub const DROP_MAX: u64 = 5 * 1024 * 1024;
+pub const DROP_MAX: u64 = 50 * 1024 * 1024;
+/// The raw payload of one upload frame. JSON/base64 stays below 8 MiB.
+const DROP_CHUNK: usize = 4 * 1024 * 1024;
 
 /// A dropped or pasted file for the Host `on`: no folder, and no larger than
 /// [`DROP_MAX`]. Answers its name and bytes, or the message to show. It
@@ -457,7 +497,7 @@ pub async fn drop_file(p: &std::path::Path, on: Option<&str>) -> Result<(String,
         return Err(format!("Drop files, not folders, on a pane on {on}."));
     }
     if m.len() > DROP_MAX {
-        return Err(format!("{} is larger than 5 MB. Skiff cannot send it to {on} yet.", p.display()));
+        return Err(format!("{} is larger than 50 MB. Skiff cannot send it to {on}.", p.display()));
     }
     let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let bytes = std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()))?;
@@ -466,7 +506,27 @@ pub async fn drop_file(p: &std::path::Path, on: Option<&str>) -> Result<(String,
 
 /// [`drop_put`] with the message to show when it fails. `on` names the Host.
 pub async fn drop_send(c: &HostConnection, name: &str, bytes: Vec<u8>, on: Option<&str>) -> Result<String, String> {
-    drop_put(c, name, bytes).await.map_err(|e| match e {
+    let put = async {
+        if bytes.len() <= DROP_CHUNK {
+            return drop_put(c, name, bytes).await;
+        }
+        let upload = uuid::Uuid::new_v4().to_string();
+        let total = bytes.len() as u64;
+        let mut offset = 0usize;
+        while offset < bytes.len() {
+            let end = (offset + DROP_CHUNK).min(bytes.len());
+            let finish = end == bytes.len();
+            let reply = c.request(Request::DropPut {
+                name: name.into(), bytes: bytes[offset..end].to_vec(), upload: Some(upload.clone()), total: Some(total), offset: offset as u64, finish,
+            }).await?;
+            if finish {
+                return match reply { Response::Path { path } => Ok(path), _ => unreachable!("checked by Request::accepts") };
+            }
+            offset = end;
+        }
+        unreachable!("a non-empty upload has a final frame")
+    };
+    put.await.map_err(|e| match e {
         Error::UnsupportedCapability { .. } => format!(
             "{} cannot take dropped files. Its Skiff is older than this app: use Update Skiff… on that Host in Settings › Hosts.",
             on.unwrap_or("This Host")
