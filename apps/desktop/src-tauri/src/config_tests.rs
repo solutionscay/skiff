@@ -16,6 +16,8 @@ fn project_changes_are_made_from_the_last_read_and_never_resent() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir(&dir).unwrap();
     let old = std::env::var_os("SKIFF_CONFIG");
+    let old_bin = std::env::var_os("SKIFF_HOST_BIN");
+    std::env::remove_var("SKIFF_HOST_BIN");
     let config = dir.join("projects.toml");
     std::env::set_var("SKIFF_CONFIG", &config);
     std::fs::write(&config, format!("[[project]]\nname = \"app\"\npath = \"{}\"\n", dir.display())).unwrap();
@@ -81,6 +83,9 @@ fn project_changes_are_made_from_the_last_read_and_never_resent() {
     match old {
         Some(v) => std::env::set_var("SKIFF_CONFIG", v),
         None => std::env::remove_var("SKIFF_CONFIG"),
+    }
+    if let Some(v) = old_bin {
+        std::env::set_var("SKIFF_HOST_BIN", v);
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
