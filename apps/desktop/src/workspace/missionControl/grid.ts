@@ -55,8 +55,8 @@ interface Top {
   projects: GProject[];
 }
 
-/** A project frame's width: with its own Skipper, its sessions hang on that Skipper's rail. */
-const projectW = (p: GProject) => (p.folded ? CARD_W : PAD + (p.skipper ? Math.max(WINDOW.project.w, IND2 + CARD_W) : CARD_W) + PAD);
+/** A project's width from its frame's left edge: with its own Skipper, its sessions hang on that Skipper's rail. Folded, its card (under its Skipper, on the rail). */
+const projectW = (p: GProject) => (p.folded ? PAD + (p.skipper ? IND2 : 0) + CARD_W : PAD + (p.skipper ? Math.max(WINDOW.project.w, IND2 + CARD_W) : CARD_W) + PAD);
 
 /** A cluster's own width, before the grid gives every cell the widest. */
 function naturalW(t: Top): number {
@@ -122,10 +122,18 @@ export function placeGraph(g: Graph): Placed {
       for (const p of t.projects) {
         const fx = t.fleet ? wx + IND - PAD : x;
         if (p.folded) {
-          // A folded project is one card where its work would hang.
-          const r = { x: wx + IND, y: cy, w: CARD_W, h: CARD_H };
-          out.clusters.set(p.key, { ...r, fleet: false, folded: true });
-          out.at.set(p.key, { bus, rail, owners });
+          // A folded project is one card where its work would hang. In a fleet, its own Skipper stays above it, the card on its rail.
+          let fo = owners;
+          let cx = wx + IND;
+          if (t.fleet && p.skipper) {
+            putWindow(p.skipper, "project", wx + IND, cy);
+            out.at.set(p.skipper, { bus, rail, owners: [...owners] });
+            cy += WINDOW.project.h + DROP;
+            fo = [...owners, p.skipper];
+            cx = wx + IND + IND2;
+          }
+          out.clusters.set(p.key, { x: cx, y: cy, w: CARD_W, h: CARD_H, fleet: false, folded: true });
+          out.at.set(p.key, { bus, rail, owners: fo });
           cy += CARD_H + VGAP;
           continue;
         }

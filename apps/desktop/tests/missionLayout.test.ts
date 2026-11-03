@@ -67,6 +67,11 @@ test("a folded cluster is one card, and its sessions stand in by it", () => {
   assert.equal(G.standIn(g, p, "s9"), "project:gesher");
   assert.equal(G.standIn(g, p, "s1"), "s1");
   assert.equal(G.navChildren(g, "project:gesher").length, 0, "a folded cluster has nothing under it");
+  // A folded project in a fleet keeps its own Skipper's window, the folded card under it.
+  g.fleets[0].projects[1] = { ...g.fleets[0].projects[1], skipper: "sk-co", folded: true };
+  const q = Grid.placeGraph(g);
+  assert.ok(q.cards.get("sk-co")!.y + G.WINDOW.project.h <= q.clusters.get("project:checkout")!.y);
+  assert.ok(q.at.get("project:checkout")!.owners.includes("sk-co"));
 });
 
 test("Skipper numbers follow the tree: projects in no fleet first, as the Skippers list counts them", () => {
