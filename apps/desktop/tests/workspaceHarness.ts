@@ -186,8 +186,9 @@ export function workspaceHarness() {
   const profileMembership = moduleFromSource("../src/workspace/profile/membership.ts", {
     "../../app/state": { S }, "../../ui/contextMenu": { ctxMenu: { open(_x: number, _y: number, _title: string, _entries: unknown, done: () => void) { menus.push(done); } } },
   }, {}, "");
+  const hosts = { shownHost: () => null };
   const profileStorage = moduleFromSource("../src/workspace/profile/storage.ts", {
-    "@tauri-apps/api/core": { invoke }, "./state": profileState,
+    "@tauri-apps/api/core": { invoke }, "./state": profileState, "../../app/hosts": hosts,
   }, { localStorage: { getItem: (key: string) => stored.get(key) ?? null,
     setItem: (key: string, value: string) => stored.set(key, value), removeItem: (key: string) => stored.delete(key) } }, "");
   const profileDialogs = moduleFromSource("../src/workspace/profile/dialogs.ts", {
@@ -222,7 +223,7 @@ export function workspaceHarness() {
     "@tauri-apps/api/window": imports["@tauri-apps/api/window"], "@tauri-apps/plugin-dialog": imports["@tauri-apps/plugin-dialog"],
     "../../app/state": imports["../app/state"], "../../app/renderRequest": imports["../app/renderRequest"],
     "../../ui/alerts": imports["../ui/alerts"], "../../ui/contextMenu": imports["../ui/contextMenu"], "../../ui/dom": imports["../ui/dom"],
-    "../tree": tree, "../view": imports["./view"], "./state": profileState, "./storage": profileStorage, "./dialogs": profileDialogs,
+    "../tree": tree, "../view": imports["./view"], "./state": profileState, "./storage": profileStorage, "./dialogs": profileDialogs, "../../app/hosts": hosts,
   };
   const transitions = moduleFromSource("../src/workspace/profile/transitions.ts", childImports, globals, "");
   const status = moduleFromSource("../src/workspace/profile/status.ts", childImports, globals, "");
