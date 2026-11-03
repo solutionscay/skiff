@@ -1231,6 +1231,25 @@
     ],
     "sha256": "5c74d6524294116fc63fb7fe5b14a8ec3842e451db2f0573a3537d012e91575e"
   },
+  "apps/desktop/src/workspace/projectRows.ts": {
+    "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
+    "reasons": [
+      "local provider: apps/desktop/src/app/panels.ts",
+      "local provider: apps/desktop/src/app/skiffAgent.ts",
+      "local provider: apps/desktop/src/app/state.ts",
+      "local provider: apps/desktop/src/app/stateQueries.ts",
+      "local provider: apps/desktop/src/workspace/changes.ts",
+      "local provider: apps/desktop/src/workspace/files.ts",
+      "local provider: apps/desktop/src/workspace/menus.ts",
+      "local provider: apps/desktop/src/workspace/sessionRows.ts",
+      "local provider: apps/desktop/src/workspace/sidebarLines.ts",
+      "local provider: apps/desktop/src/workspace/skipperRows.ts",
+      "local provider: apps/desktop/src/workspace/tree.ts",
+      "local provider: apps/desktop/src/workspace/treeDrag.ts",
+      "local provider: apps/desktop/src/workspace/view.ts"
+    ],
+    "sha256": "4abfd8e4781251e9401cc4497728f520224424cecdff15f92381009f0a4b0291"
+  },
   "apps/desktop/src/workspace/remoteLaunch.ts": {
     "ownership": "Host caller (M3): remote start menu over Host-reported sessions, groups and agents; no local data",
     "reasons": [
@@ -1296,10 +1315,9 @@
       "local provider: apps/desktop/src/app/stateQueries.ts",
       "local provider: apps/desktop/src/appearance/agentIcon.ts",
       "local provider: apps/desktop/src/appearance/themes.ts",
-      "local provider: apps/desktop/src/workspace/changes.ts",
-      "local provider: apps/desktop/src/workspace/files.ts",
       "local provider: apps/desktop/src/workspace/menus.ts",
       "local provider: apps/desktop/src/workspace/profile.ts",
+      "local provider: apps/desktop/src/workspace/projectRows.ts",
       "local provider: apps/desktop/src/workspace/sessionRows.ts",
       "local provider: apps/desktop/src/workspace/sidebarFocus.ts",
       "local provider: apps/desktop/src/workspace/sidebarLines.ts",
@@ -1307,10 +1325,9 @@
       "local provider: apps/desktop/src/workspace/skipperRows.ts",
       "local provider: apps/desktop/src/workspace/skippersView.ts",
       "local provider: apps/desktop/src/workspace/tree.ts",
-      "local provider: apps/desktop/src/workspace/treeDrag.ts",
-      "local provider: apps/desktop/src/workspace/view.ts"
+      "local provider: apps/desktop/src/workspace/treeDrag.ts"
     ],
-    "sha256": "04aab3b4f39cca1d1053a9ddba53158c7e2870e66bf5f02991dd4940caf60ad5"
+    "sha256": "3736db2127f458032266b7ded31c68919a88d9aa3276620e2bf135f5fb4bc9da"
   },
   "apps/desktop/src/workspace/sidebarFocus.ts": {
     "ownership": "reviewed desktop refactor: existing Host and UI dependencies",
