@@ -311,14 +311,6 @@ pub(super) fn edit_table_in(file: &Path, name: &str, f: impl FnOnce(&mut toml_ed
     write_doc(&file, &mut doc)
 }
 
-/// `~/x` for paths under the home directory, so the file moves between machines.
-pub(super) fn home_relative(p: &Path) -> String {
-    match dirs::home_dir().and_then(|h| p.strip_prefix(h).ok().map(Path::to_path_buf)) {
-        Some(rest) => format!("~/{}", rest.display()),
-        None => p.display().to_string(),
-    }
-}
-
 pub(super) fn expand_home(p: &Path) -> PathBuf {
     let Some(rest) = p.to_str().and_then(|s| s.strip_prefix("~/")) else {
         return p.to_path_buf();

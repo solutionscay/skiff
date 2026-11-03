@@ -1,7 +1,7 @@
 use std::path::Path;
 use anyhow::{Context, Result};
 use super::types::{FolderInfo, ProjectConfig, short_name};
-use super::persistence::{load, config_path, edit_lock, home_relative, expand_home, write_doc, check_label, Refused};
+use super::persistence::{load, config_path, edit_lock, expand_home, write_doc, check_label, Refused};
 
 /// Accent colors for new projects. Kept clear of the state colors.
 const PALETTE: [&str; 8] = [
@@ -149,7 +149,7 @@ pub fn add_project(
     if let Some(short) = &short {
         table["short"] = toml_edit::value(short.as_str());
     }
-    table["path"] = toml_edit::value(home_relative(&path));
+    table["path"] = toml_edit::value(crate::tasks::tilde(&path));
     table["color"] = toml_edit::value(color.as_str());
     table["theme"] = toml_edit::value(theme.as_str());
     // No key: detect. "" : no icon. A path: that file.

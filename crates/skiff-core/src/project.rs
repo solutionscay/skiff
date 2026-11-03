@@ -156,7 +156,7 @@ pub fn background_file(project: &Path, configured: Option<&str>) -> Option<Strin
     let configured = configured?;
     crate::files::open_background(project, configured).ok()?;
     let p = Path::new(configured.trim());
-    let p = if p.is_absolute() { p.to_path_buf() } else { project.join(p) };
+    let p = project.join(p);
     Some(p.display().to_string())
 }
 
@@ -166,7 +166,7 @@ pub fn icon_file(project: &Path, configured: Option<&str>) -> Option<PathBuf> {
         Some("") => None,
         Some(p) => {
             let p = Path::new(p);
-            let p = if p.is_absolute() { p.to_path_buf() } else { project.join(p) };
+            let p = project.join(p);
             p.is_file().then_some(p)
         }
         None => detect_icon(project),
