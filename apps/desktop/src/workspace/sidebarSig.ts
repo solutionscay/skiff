@@ -15,7 +15,7 @@ import { groupHome } from "./view";
 import { bareWorktree, folded, hiddenSplit, isOpen, outsideSessions, projectKey, projectsHidden, treeSections } from "./tree";
 import { shows } from "./profile";
 import { ledgerNeeds } from "./ledger";
-import { projectSkipperOf, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch } from "../app/skiffAgent";
+import { fleetScope, projectSkipperOf, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch } from "../app/skiffAgent";
 import { groupColor, look } from "./sessionRows";
 import { skipperSig } from "./skipperRows";
 
@@ -112,6 +112,7 @@ export function sidebarSig(index: LineIndex): { all: string; parts: Map<string, 
   const all = JSON.stringify([
     listGen, appliedTheme(), S.selectedProject, folded.keys(), S.projects.map(shows), hiddenSig(), outsideSig(),
     S.selection, S.renamingSession, S.renaming?.id ?? null, rows, groups, projects, agent,
+    S.projects.map((p) => faceSig(p.name)), treeSections().map((sec) => sec.fleet ? faceSig(fleetScope(sec.fleet)) : null),
     S.dataState, S.dataNote,
   ]);
   return { all, parts, looks: looksUnder };
