@@ -1,0 +1,69 @@
+/* Loudness pass: the whole list of CSS changes. No box changes size or place, so before and after match row for row.
+   Colors come from the theme tokens (appearance/quietTokens.ts). This file sets who uses which token, at what weight. */
+
+/* ---- 1. Top bar: the wordmark steps back, Waiting is the one lit cell ---- */
+#topbar .wordmark { font-size: calc(17px * var(--zoom, 1)); letter-spacing: 0.05em; }
+#topbar .search, #topbar .tb-cell.mission-find { background: var(--bg-panel); }
+#topbar .nx { color: var(--text-3); }
+#topbar .nx-waiting { background: var(--state-waiting-bg); box-shadow: inset 0 -2px 0 var(--state-waiting); color: var(--state-waiting-text); font-weight: 600; }
+#topbar .nx-waiting:hover { background: var(--state-waiting-bg); color: var(--state-waiting-text); }
+#topbar .nx-unread svg, #topbar .nx-unread .num { color: var(--text-3); }
+#topbar .host-cell, #topbar .gear { color: var(--text-3); }
+
+/* ---- 2. No HUD labels: section heads and tabs read as words ---- */
+.sv-tab { font: 500 calc(12px * var(--zoom, 1)) var(--font); letter-spacing: 0; text-transform: none; background: var(--bg-deep); }
+.sv-tab.on { background: var(--bg-panel); color: var(--text); }
+.tree-head { font-size: calc(12px * var(--zoom, 1)); font-weight: 500; letter-spacing: 0; text-transform: none; }
+.mission-cluster.fleet > .mission-cluster-head { text-transform: none; letter-spacing: 0; font-size: 12px; }
+.mission-side-head { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-3); }
+
+/* ---- 3. Frames: the same boxes, drawn in the quiet rule, on one ground ---- */
+#sidebar-scroll:has(> .tree-head) { background: var(--bg-panel); }
+#sidebar-scroll > .tree-head { border-color: var(--rule); color: var(--text-3); }
+#sidebar-scroll > .tree-head + :is(.tree-kids, .sessions-block) { border-color: var(--rule); }
+.session-row.skiff-agent-row { background-color: transparent; border-bottom-color: var(--rule); }
+
+/* ---- 4. Names: the size ladder stays, one step down in weight ---- */
+.skiff-agent-row .skiff-agent-name { font-size: calc(14px * var(--zoom, 1)); font-weight: 500; }
+.project-skipper-row .skiff-agent-name { font-size: calc(13px * var(--zoom, 1)); font-weight: 500; }
+.tree-project .project-skipper-row .skiff-agent-name { font-weight: 500; }
+.project-row .project-name { font-weight: 500; }
+.sk-name { font-weight: 500; }
+.session-row .title, .session-row .agent, .wt-pick { color: var(--text-3); }
+.tree-project .wt-pick svg { color: var(--text-dim); }
+.skiff-agent-row .title, .project-skipper-row .title { color: var(--text-dim); }
+.sk-row .sk-line .title { color: var(--text-dim); }
+.session-row.unread-row .title, .sk-row.unread-row .sk-line .title { color: var(--text); font-weight: 500; }
+.tree-icon { background: color-mix(in srgb, var(--pc) 10%, transparent); font-weight: 500; }
+
+/* ---- 5. Marks: one grey for what needs no one. Shape and motion still tell them apart ---- */
+.session-row .unread, .cell-head .unread, .mission-card .unread, .mission-panel-head .unread, .roll-unread { color: var(--text-3); }
+
+/* ---- 6. The current row: same bar, half the tint ---- */
+#sidebar-scroll .current { background: color-mix(in srgb, var(--pc) 10%, transparent); }
+#sidebar-scroll .project-row:has(> .project-pick.current) { background: color-mix(in srgb, var(--pc) 10%, var(--bg-panel)); }
+#sidebar-scroll .wt-row:has(> .wt-pick.current) { background: linear-gradient(to right, transparent 0 3px, color-mix(in srgb, var(--pc) 10%, transparent) 3px); }
+.mission-card.window.lit .win-head { background: color-mix(in srgb, var(--pc) 6%, var(--bg-panel)); }
+
+/* ---- 7. Waiting: the one thing that fills a band, in every view ---- */
+#sidebar-scroll .session-row.st-waiting { background: var(--state-waiting-bg); box-shadow: inset 2px 0 0 var(--state-waiting); }
+.session-row.st-waiting .title, .session-row.st-waiting .time { color: var(--state-waiting-text); }
+.session-row .belled, .cell-head .belled, .mission-card .belled, .mission-panel-head .belled { color: var(--state-waiting); }
+.mission-card.waiting .head { background: var(--state-waiting-bg); border-bottom-color: var(--state-waiting-rule); }
+
+/* ---- 8. Panes: the title drops to body size, the head loses its tint ---- */
+.cell-head .title { font-size: calc(13px * var(--zoom, 1)); }
+.cell.focused .cell-head { background: color-mix(in srgb, var(--pc) 5%, var(--bg-panel)); }
+.cell-head.st-waiting .title { font-weight: 600; }
+#statusbar { color: var(--text-3); }
+
+/* ---- 9. Mission control: same board, tints out, strings thin. Only a waiting string keeps its weight ---- */
+.mission-canvas { background-color: var(--bg); }
+.mission-strings path { stroke-width: 1; }
+.mission-strings path.done, .mission-strings path.idle { stroke-width: 1; }
+.mission-strings path.waiting { stroke-width: 2; }
+.mission-cluster { border-color: var(--rule); background: var(--bg-panel); }
+.mission-cluster.fleet { background: color-mix(in srgb, var(--bg-panel) 50%, var(--bg)); }
+.mission-cluster-head { border-bottom-color: var(--rule); background: var(--bg-raised); font-weight: 500; color: var(--text-2); }
+.mission-card .head { background: color-mix(in srgb, var(--pc) 6%, var(--bg-panel)); }
+.mission-card .t { font-weight: 400; }
