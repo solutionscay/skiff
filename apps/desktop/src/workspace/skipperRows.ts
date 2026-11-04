@@ -70,8 +70,8 @@ export function skiffAgentRow(): HTMLElement {
   if (watch.text) row.title = watch.text;
   const vars = { name, title: s.title ?? agentName(s), state: t(`state.${s.state}`), watch: watch.text };
   row.setAttribute("aria-label", watch.text ? t("sidebar.agentLabelWatch", vars) : t("sidebar.agentLabel", vars));
-  // Its face, 24 px and centered on the row, then the agent icon with the watcher, and the skiff under way while it works.
-  row.append(skipperFace(null, 24), agentIcon(s), ...underWay(s), h("span", "skiff-agent-name", name), h("span", "title", s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? ""));
+  // Its face, 24 px and centered on the row, then the agent icon with the watcher. The state mark is at the row's end.
+  row.append(skipperFace(null, 24), agentIcon(s), h("span", "skiff-agent-name", name), h("span", "title", s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? ""));
   // One amber count, only while ledger tasks need the person.
   const needs = ledgerNeeds();
   if (needs) {
@@ -93,9 +93,6 @@ export function skiffAgentRow(): HTMLElement {
   });
   return row;
 }
-
-/** A Skipper row's skiff under way, the tree's working mark, while it works. */
-const underWay = (s: SessionInfo) => (s.state === "working" ? [stateIcon(s)] : []);
 
 /** What a project's or a fleet's Skipper row shows, for the block's signature. */
 export function skipperSig(scope: string) {
@@ -147,7 +144,7 @@ export function projectSkipperRow(scope: string, s: SessionInfo): HTMLElement {
   const { need, working } = ledgerCounts(scope);
   const vars = { scope: scopeName(scope), skipper: name, title: title || t(`state.${s.state}`), watch: watch.text };
   row.setAttribute("aria-label", watch.text ? t("sidebar.skipperLabelWatch", vars) : t("sidebar.skipperLabel", vars));
-  row.append(skipperFace(scope, 20), agentIcon(s), ...underWay(s), h("span", "skiff-agent-name", name), h("span", "title", title));
+  row.append(skipperFace(scope, 20), agentIcon(s), h("span", "skiff-agent-name", name), h("span", "title", title));
   // Its tasks an agent is on: the blue count. The bell is for a waiting session only.
   const roll = rollCounts(0, working);
   if (roll) row.append(roll);
