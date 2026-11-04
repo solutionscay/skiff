@@ -943,7 +943,8 @@ export const zh = {
   "skipper.finish.gummy": "软糖",
   "skipper.finish.plush": "毛绒",
 
-  // Settings › Skippers › Task types.
+  // Settings › Task types.
+  "tasks.colType": "类型",
   "tasks.type": "类型",
   "tasks.agent": "代理",
   "tasks.agentOff": "{id}（已停用）",

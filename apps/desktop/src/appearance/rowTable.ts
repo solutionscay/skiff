@@ -4,8 +4,8 @@ import { picker, smallButton, textBox } from "../ui/controls";
 import { t } from "../i18n";
 
 /**
- * A Settings table: Settings › Agents and the Task types of Settings ›
- * Skippers. One implementation, so they edit, remove and report errors the
+ * A Settings table: Settings › Agents and Settings › Task types. One
+ * implementation, so they edit, remove and report errors the
  * same way. A new row comes from the page's own Add… action.
  *
  * - A text cell saves on Enter or blur, Esc puts the old value back, and a

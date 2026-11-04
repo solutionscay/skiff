@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { moduleFromSource } from "./workspaceHarness.ts";
 
-// The Task types of the real skippersPage in skiffAgentSettings.ts, with the
+// The real taskTable in skiffAgentSettings.ts, with the
 // table stubbed to keep its spec. Each row's Instructions cell shows the file's
 // size or none, and its end cell has Edit. No help text.
 class El {
@@ -58,7 +58,7 @@ function section(errors = new Map<string, string>()) {
   const t = (type: string, instructions: number | null) => ({ type, agent: "claude", model: null, file: `/home/me/skiff-agent/types/${type}.md`, instructions, command: "claude", error: null });
   const set = { types: "~/skiff-agent/types/", tasks: [t("review", 412), t("spec", null)], agent: "claude" };
   const agents = [{ id: "claude", enabled: true }, { id: "gemini", enabled: true }, { id: "opencode", enabled: true }];
-  m.skippersPage(set, agents, { save() {}, saveTask: async () => null, redraw() {}, render() {}, tasksTable: {}, files: { files: [], errors: new Map(), editable: true, edit() {}, reset() {} }, types: { edit: (x: any) => edited.push(x.type), errors } });
+  m.taskTable(set, agents, { saveTask: async () => null, render() {}, tasksTable: {}, types: { edit: (x: any) => edited.push(x.type), errors } });
   const col = spec.cols.find((c: any) => c.key === "instructions");
   return { spec, col, rows: set.tasks, edited, after };
 }

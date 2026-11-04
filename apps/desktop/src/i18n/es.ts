@@ -981,7 +981,8 @@ export const es = {
   "skipper.finish.gummy": "Gominola",
   "skipper.finish.plush": "Peluche",
 
-  // Settings › Skippers › Task types.
+  // Settings › Task types.
+  "tasks.colType": "Tipo",
   "tasks.type": "tipo",
   "tasks.agent": "agente",
   "tasks.agentOff": "{id} (desactivado)",

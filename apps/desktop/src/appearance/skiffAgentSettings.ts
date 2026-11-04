@@ -53,12 +53,16 @@ interface TypeFileActs {
 /** What the Skippers page does with its rows. */
 export interface SkippersPageActs {
   save: (e: SkiffAgentEdit) => void;
-  saveTask: (e: SkiffAgentEdit) => Promise<string | null>;
   /** Draws the page again after a face changes. */
   redraw: () => void;
+  files: InstructionActs;
+}
+
+/** What the Task types page does with its rows. */
+export interface TaskTypesPageActs {
+  saveTask: (e: SkiffAgentEdit) => Promise<string | null>;
   render: () => void;
   tasksTable: RowTableState;
-  files: InstructionActs;
   types: TypeFileActs;
 }
 
@@ -205,7 +209,7 @@ function errorLine(why: string): HTMLElement {
  * and fleet Skippers take their agent and model from, then each of them, in
  * tree order. A dim value comes from the all row. A project's `skipper_agent`
  * in projects.toml wins for its project Skipper: its row shows it bright, read
- * only. Task types take the same columns, so every line runs through the page.
+ * only.
  */
 export function skippersPage(set: SkiffAgentSettings, agents: AgentInfo[], a: SkippersPageActs): HTMLElement {
   // Enabled agents and the user's own. A custom agent is on when the user added it.
@@ -315,10 +319,14 @@ export function skippersPage(set: SkiffAgentSettings, agents: AgentInfo[], a: Sk
     table.append(r, ...errorsOf(f));
   }
 
-  // Task types: the same columns.
-  const band = sectionHead(t("settings.tab.taskTypes"), "set-h-tasks", String((set.tasks ?? []).length));
-  band.classList.add("set-band-act");
-  band.append(smallButton(t("skipper.addTask"), () => {
+  return table;
+}
+
+/** Settings › Task types › Add task type…: asks for the name. The new row starts the Admiral's agent. */
+export function addTaskButton(set: SkiffAgentSettings, agents: AgentInfo[], a: TaskTypesPageActs): HTMLElement {
+  const choices = agents.filter((x) => x.enabled || x.custom);
+  const chosen = skiffAgentChoice(agents, set.agent) ?? undefined;
+  return smallButton(t("skipper.addTask"), () => {
     if (!choices.length) return void showError(t("skipper.noAgentOn"));
     promptAction({
       title: t("skipper.addTask"),
@@ -331,13 +339,11 @@ export function skippersPage(set: SkiffAgentSettings, agents: AgentInfo[], a: Sk
         a.render();
       },
     });
-  }));
-  table.append(band, taskTable(set, agents, a));
-  return table;
+  }, { go: true });
 }
 
-/** One row for each task type, in the page's columns. */
-function taskTable(set: SkiffAgentSettings, agents: AgentInfo[], a: SkippersPageActs): HTMLElement {
+/** Settings › Task types: one row for each task type. */
+export function taskTable(set: SkiffAgentSettings, agents: AgentInfo[], a: TaskTypesPageActs): HTMLElement {
   const choices = agents.filter((x) => x.enabled || x.custom);
   const byId = (id: string) => agents.find((x) => x.id === id);
   const row = (task: TaskType, change: Partial<TaskEdit>): TaskEdit => ({ type: task.type, agent: task.agent, model: task.model, ...change });
@@ -345,15 +351,14 @@ function taskTable(set: SkiffAgentSettings, agents: AgentInfo[], a: SkippersPage
     {
       grid: "g-tasks",
       labelledBy: "set-h-tasks",
-      noHead: true,
       rows: set.tasks ?? [],
       id: (task) => task.type,
       rowClass: () => "set-agent on",
       cols: [
-        { key: "type", head: "", name: t("tasks.type"), kind: "key", get: (task) => task.type, check: (v) => (TASK_TYPE_NAME.test(v) ? null : badTaskTypeName()) },
+        { key: "type", head: t("tasks.colType"), name: t("tasks.type"), kind: "key", get: (task) => task.type, check: (v) => (TASK_TYPE_NAME.test(v) ? null : badTaskTypeName()) },
         {
           key: "agent",
-          head: "",
+          head: t("settings.agents.colAgent"),
           name: t("tasks.agent"),
           kind: "select",
           empty: t("skipper.noAgentOnShort"),
@@ -367,7 +372,7 @@ function taskTable(set: SkiffAgentSettings, agents: AgentInfo[], a: SkippersPage
         },
         {
           key: "model",
-          head: "",
+          head: t("tasks.colModel"),
           name: t("tasks.model"),
           kind: "text",
           mono: true,
@@ -382,7 +387,7 @@ function taskTable(set: SkiffAgentSettings, agents: AgentInfo[], a: SkippersPage
         },
         {
           key: "instructions",
-          head: "",
+          head: t("tasks.colInstructions"),
           name: t("tasks.instructions"),
           kind: "lead",
           draw: (task) => {

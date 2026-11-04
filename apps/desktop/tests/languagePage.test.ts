@@ -51,7 +51,7 @@ function settingsPage() {
     "../ui/controls": { ...controls, picker },
     "./settingsLanguage": moduleFromSource("../src/appearance/settingsLanguage.ts", { "../ui/dom": { h }, "../ui/controls": { ...controls, picker } }, { navigator: { language: "en-US" } }, ""),
     "./rowTable": { tableState: () => ({}), sectionHead: (title: string) => { const b = h("div", "set-band"); b.append(h("span", "set-band-title", title)); return b; } },
-    "./skiffAgentSettings": { finishRow: () => h("div", "set-finish"), skippersPage: () => h("div", "g-skip") },
+    "./skiffAgentSettings": { finishRow: () => h("div", "set-finish"), skippersPage: () => h("div", "g-skip"), taskTable: () => h("div", "g-tasks"), addTaskButton: () => h("button", "ctl-btn") },
     "../terminal/images": { onImagesChanged() {}, imageCount: () => 0 },
     "../app/hosts": { isRemote: () => false, hostName: () => "This computer (devbox)", knownHosts: () => [] },
     "../app/hostCaps": { hostCan: () => true, hostInvoke: async (_cap: string, cmd: string) => (cmd === "list_agents" ? [] : null) },
@@ -75,11 +75,11 @@ test("the old Language id opens Appearance, and its row picks the language", asy
   assert.ok(s.picks.some((p) => p.names.join() === "Auto (English),English,Español,简体中文"));
 });
 
-test("the old Task types id opens Skippers, and the nav names the Host and the App", async () => {
+test("Task types is its own page, and the nav names the Host and the App", async () => {
   const s = settingsPage();
   await s.settings.open("task-types");
   const names = s.root.all().filter((e) => e.className === "set-tab-name").map((e) => e.textContent);
-  assert.equal(names.join(), "Agents,Skippers,Sessions,Disk use,Images,Appearance,Open with,Hosts");
+  assert.equal(names.join(), "Agents,Skippers,Task types,Sessions,Disk use,Images,Appearance,Open with,Hosts");
   assert.equal(s.root.all().filter((e) => e.className === "set-band-title").map((e) => e.textContent).slice(0, 2).join(), "This computer (devbox),App");
-  assert.ok(s.root.all().some((e) => e.className === "set-h" && e.textContent === "Skippers"));
+  assert.ok(s.root.all().some((e) => e.className === "set-h" && e.textContent === "Task types"));
 });

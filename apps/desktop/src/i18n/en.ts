@@ -844,7 +844,8 @@ export const en = {
   "skipper.finish.gummy": "Gummy",
   "skipper.finish.plush": "Plush",
 
-  // Settings › Skippers › Task types.
+  // Settings › Task types.
+  "tasks.colType": "Type",
   "tasks.type": "type",
   "tasks.agent": "agent",
   "tasks.agentOff": "{id} (off)",
