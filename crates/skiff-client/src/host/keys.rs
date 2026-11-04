@@ -267,6 +267,15 @@ pub async fn local_key(target: &SshTarget, options: &SshOptions, home: &Path, ag
     Ok(locked.map(LocalKey::Locked).unwrap_or(LocalKey::None))
 }
 
+/// The `.pub` file on this computer that holds the public key `line`, if
+/// ssh would offer that key for `target`.
+pub fn public_key_file(target: &SshTarget, options: &SshOptions, home: &Path, line: &str) -> Option<PathBuf> {
+    let g = ssh_config::resolve_full(target, options).ok()?;
+    g.identity_files.iter().map(|f| expand(f, home)).map(|f| f.with_extension(ext_pub(&f))).find(|p| {
+        std::fs::read_to_string(p).ok().and_then(|t| public_line(&t)).is_some_and(|l| same_key(&l, line))
+    })
+}
+
 /// `id_ed25519` → `id_ed25519.pub`, keeping any extension the name has.
 fn ext_pub(f: &Path) -> String {
     match f.extension() {

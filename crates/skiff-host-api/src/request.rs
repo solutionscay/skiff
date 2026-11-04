@@ -217,6 +217,9 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         filter: Option<String>,
     },
+    /// Answers `programs`: the names of the executable files in `path`, a
+    /// full Host path, sorted. A path that is not a folder is `not_found`.
+    ProgramList { path: String },
     /// Answers `places`: the Recent list, and the git repositories a
     /// bounded scan of home found (depth 4, 5 s, 200 repositories, no
     /// hidden folder, `node_modules`, `target`, `vendor` or `.cache`). The

@@ -90,7 +90,7 @@ pub fn sync_skill() -> Result<PathBuf> {
 }
 
 /// The agent's folder: [`default_folder`], or the override in projects.toml
-/// when it passes [`check`]. Settings › Skippers › Folder changes it with
+/// when it passes [`check`]. Settings › Disk use › Folder changes it with
 /// a copy, check and switch ([`crate::agent_folder`]), so the ledger, the
 /// results and the instructions go with it. A socket other than the live
 /// one never gets the live agent's folder ([`refuse_live_folder`]).
@@ -345,7 +345,7 @@ pub(crate) fn setup_in(dir: &Path, name: &str, skill: &Path) -> Result<PathBuf> 
         bail!("{} is not a folder", dir.display());
     }
     if dir.is_dir() && !dir.join(MARKER).exists() && std::fs::read_dir(dir)?.next().is_some() {
-        bail!("{} holds other files. Move them, or choose another folder in Settings › Skippers › Folder", dir.display());
+        bail!("{} holds other files. Move them, or choose another folder in Settings › Disk use › Folder", dir.display());
     }
 
     std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;

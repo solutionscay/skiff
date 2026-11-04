@@ -154,6 +154,8 @@ pub fn project_agent(value: AgentInfo) -> HostAgent {
         installed,
         enabled,
         used_by,
+        path,
+        skip_approvals,
     } = value;
     HostAgent {
         id,
@@ -164,6 +166,8 @@ pub fn project_agent(value: AgentInfo) -> HostAgent {
         enabled,
         used_by,
         cache_flags: String::new(),
+        path,
+        skip_approvals,
     }
 }
 
@@ -176,6 +180,8 @@ pub fn restore_agent(value: HostAgent) -> AgentInfo {
         installed,
         enabled,
         used_by,
+        path,
+        skip_approvals,
         ..
     } = value;
     AgentInfo {
@@ -186,6 +192,8 @@ pub fn restore_agent(value: HostAgent) -> AgentInfo {
         installed,
         enabled,
         used_by,
+        path,
+        skip_approvals,
     }
 }
 
@@ -195,9 +203,12 @@ mod tests {
 
     #[test]
     fn an_agent_in_use_says_so_through_the_host_contract() {
-        let a = AgentInfo { id: "grok".into(), command: "grok".into(), default_command: "grok".into(), custom: false, installed: true, enabled: true, used_by: Some("Used by task type web-research".into()) };
+        let a = AgentInfo { id: "grok".into(), command: "grok".into(), default_command: "grok".into(), custom: false, installed: true, enabled: true, used_by: Some("Used by task type web-research".into()), path: Some("/usr/bin/grok".into()), skip_approvals: vec!["--always-approve".into()] };
         let wire = serde_json::to_value(project_agent(a.clone())).unwrap();
         assert_eq!(wire["used_by"], "Used by task type web-research");
+        // Where the Host found the program, and its flags, reach the page from the Host.
+        assert_eq!(wire["path"], "/usr/bin/grok");
+        assert_eq!(wire["skip_approvals"][0], "--always-approve");
         assert_eq!(restore_agent(serde_json::from_value(wire).unwrap()), a);
         // An older Host sends no line: the agent reads as free.
         let old: HostAgent = serde_json::from_value(serde_json::json!({ "id": "grok", "command": "grok", "installed": true, "enabled": true })).unwrap();

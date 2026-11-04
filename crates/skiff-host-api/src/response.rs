@@ -45,6 +45,8 @@ pub enum Response {
     /// A folder on the Host.
     Path { path: String },
     Folders { listing: FolderListing },
+    /// The names of the programs in a Host folder.
+    Programs { names: Vec<String> },
     Places { places: FolderPlaces },
     Ledger { rows: Vec<HostLedgerRow> },
     LedgerStamp { stamp: String },

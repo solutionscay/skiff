@@ -42,6 +42,7 @@ impl Request {
                 Some(Capability::skipper_run_fleets())
             }
             Self::AgentConfig | Self::AgentEdit { .. } => Some(Capability::agent_config()),
+            Self::ProgramList { .. } => Some(Capability::agent_programs()),
             Self::ProjectInspect { .. }
             | Self::ProjectInit { .. }
             | Self::ProjectAdd { .. }
@@ -92,6 +93,7 @@ impl Request {
                 | (Self::CacheUse, Response::CacheUse { .. })
                 | (Self::FolderHome | Self::FolderCreate { .. } | Self::DropPut { .. }, Response::Path { .. })
                 | (Self::FolderList { .. }, Response::Folders { .. })
+                | (Self::ProgramList { .. }, Response::Programs { .. })
                 | (Self::FolderPlaces, Response::Places { .. })
                 | (Self::LedgerRows, Response::Ledger { .. })
                 | (Self::LedgerStamp, Response::LedgerStamp { .. })
@@ -137,6 +139,7 @@ impl Request {
                 | Self::ProjectBackground { .. }
                 | Self::FolderHome
                 | Self::FolderList { .. }
+                | Self::ProgramList { .. }
                 | Self::FolderPlaces
                 | Self::FolderCreate { .. }
                 | Self::DropPut { .. }

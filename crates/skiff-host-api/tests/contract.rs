@@ -724,6 +724,7 @@ fn skipper_changes_launch_and_agent_changes_are_families_of_their_own() {
         (json!({"cmd":"skipper_open","restore":4}), Capability::skipper_run()),
         (json!({"cmd":"skipper_watch","session":"s1"}), Capability::skipper_run()),
         (json!({"cmd":"agent_config"}), Capability::agent_config()),
+        (json!({"cmd":"program_list","path":"/h"}), Capability::agent_programs()),
         (json!({"cmd":"agent_edit","revision":"r1","edit":{"key":"enabled","agents":["claude"]}}), Capability::agent_config()),
         (json!({"cmd":"agent_edit","revision":"r1","edit":{"key":"restore"}}), Capability::agent_config()),
     ];
