@@ -314,6 +314,22 @@ pub(crate) fn set_open_peek(key: String, peek: bool) -> Result<OpenSettings, Str
     open_settings_now()
 }
 
+/// What each Open with row can pick: the terminal tools and the apps found
+/// on this computer.
+#[tauri::command]
+pub(crate) async fn open_choices() -> Result<crate::open_apps::Choices, String> {
+    tauri::async_runtime::spawn_blocking(crate::open_apps::read).await.map_err(|e| e.to_string())
+}
+
+/// Sets one `[open]` row to a program from the file picker. It opens in a window of its own.
+#[tauri::command]
+pub(crate) fn set_open_app(key: String, path: String) -> Result<OpenSettings, String> {
+    let _own = crate::projects_watch::OwnEdit::quiet();
+    skiff_core::config::set_open(&key, Some(&crate::open_apps::command_for_app(&path))).map_err(err)?;
+    skiff_core::config::set_open_peek(&key, false).map_err(err)?;
+    open_settings_now()
+}
+
 #[derive(serde::Serialize)]
 pub(crate) struct FilePreview {
     script: Option<String>,

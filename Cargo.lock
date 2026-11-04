@@ -3848,6 +3848,7 @@ dependencies = [
  "dirs 6.0.0",
  "gtk",
  "libc",
+ "plist",
  "png 0.17.16",
  "serde",
  "serde_json",

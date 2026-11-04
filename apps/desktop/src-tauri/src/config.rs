@@ -166,6 +166,13 @@ pub(crate) async fn folder_list(
     folder_call(&app, |c| async move { data::folder_list(&c, &path, hidden, filter).await }).await
 }
 
+/// The programs in `path` on the Host, for an agent's program picker. Host
+/// paths only: nothing here reads or opens them on this Mac.
+#[tauri::command]
+pub(crate) async fn program_list(app: State<'_, App>, path: String) -> Result<Vec<String>, skiff_host_api::Error> {
+    folder_call(&app, |c| async move { data::program_list(&c, &path).await }).await
+}
+
 /// The picker's Recent and Git repos, from the Host.
 #[tauri::command]
 pub(crate) async fn folder_places(app: State<'_, App>) -> Result<skiff_host_api::FolderPlaces, skiff_host_api::Error> {
@@ -397,9 +404,14 @@ pub(crate) async fn local_agents(app: &App) -> Result<Vec<AgentInfo>, String> {
     };
     blocking(move || {
         let cfg = config::load()?.agents;
-        let mut list = skiff_core::project::agents_in(&cfg, |id, command| {
-            daemon.iter().find(|a| a.id == id && a.command == command).map(|a| a.installed)
-        });
+        let same = |id: &str, command: &str| daemon.iter().find(|a| a.id == id && a.command == command);
+        let mut list = skiff_core::project::agents_in(&cfg, |id, command| same(id, command).map(|a| a.installed));
+        // skiffd's PATH is the sessions' PATH: where it found the program is where a session runs it.
+        for a in &mut list {
+            if let Some(found) = same(&a.id, &a.command).and_then(|d| d.path.clone()) {
+                a.path = Some(found);
+            }
+        }
         skiff_core::project::mark_used(&mut list);
         Ok(list)
     })
