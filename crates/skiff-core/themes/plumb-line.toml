@@ -1,0 +1,26 @@
+# Aubergine ground, orchid accent. Neutral text and muted ANSI colors.
+name = "Plumb Line"
+color_family = "Purple"
+main_color = "#c39ad8"
+
+[terminal]
+foreground = "#e0dbe3"
+background = "#211a24"
+cursor = "#e0dbe3"
+cursor_foreground = "#211a24"
+selection = "#55435e"
+selection_foreground = "#e0dbe3"
+regular = ["#37313a", "#d08078", "#8fb587", "#cdb06e", "#83a3d4", "#b391c9", "#73b2ae", "#cdc8d0"]
+bright = ["#7d7780", "#dd938b", "#a3c49b", "#dabf85", "#99b4de", "#c2a4d4", "#8ac2be", "#f1f2f3"]
+
+[ui]
+sidebar = "#27202a"
+tertiary = "#1c161f"
+secondary = "#2f2832"
+border = "#3a333d"
+mutedForeground = "#908a93"
+sidebarForeground = "#c9c4cc"
+primary = "#c39ad8"
+working = "#8ea8c8"
+warning = "#e6ad45"
+destructive = "#e27a70"

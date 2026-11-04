@@ -1,0 +1,26 @@
+# Deep green-grey ground, sage accent. Neutral text and muted ANSI colors.
+name = "Kelp"
+color_family = "Green"
+main_color = "#8fbf87"
+
+[terminal]
+foreground = "#d7ddd6"
+background = "#161d18"
+cursor = "#d7ddd6"
+cursor_foreground = "#161d18"
+selection = "#3d513c"
+selection_foreground = "#d7ddd6"
+regular = ["#2d342f", "#d08078", "#8fb587", "#cdb06e", "#83a3d4", "#b391c9", "#73b2ae", "#c4cac3"]
+bright = ["#737973", "#dd938b", "#a3c49b", "#dabf85", "#99b4de", "#c2a4d4", "#8ac2be", "#f1f2f3"]
+
+[ui]
+sidebar = "#1c231e"
+tertiary = "#131915"
+secondary = "#242b26"
+border = "#2f3631"
+mutedForeground = "#868c86"
+sidebarForeground = "#c0c6bf"
+primary = "#8fbf87"
+working = "#8ea8c6"
+warning = "#e6ad45"
+destructive = "#e27a70"

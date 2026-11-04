@@ -1,0 +1,26 @@
+# Warm light ground, pine accent. Neutral text and muted ANSI colors.
+name = "Sailcloth"
+color_family = "Beige"
+main_color = "#2c6e58"
+
+[terminal]
+foreground = "#2c2a26"
+background = "#f5f2ea"
+cursor = "#2c2a26"
+cursor_foreground = "#f5f2ea"
+selection = "#b5c8bb"
+selection_foreground = "#2c2a26"
+regular = ["#2c2a26", "#a8423a", "#3f7a45", "#83640f", "#35609f", "#7d4a98", "#1f7480", "#d9d6cf"]
+bright = ["#807e78", "#ba5147", "#4b8a52", "#94751f", "#4270b0", "#8d5aa8", "#2a8590", "#fbfaf6"]
+
+[ui]
+sidebar = "#edeae2"
+tertiary = "#faf8f3"
+secondary = "#e3e0d8"
+border = "#d7d4cd"
+mutedForeground = "#6e6c67"
+sidebarForeground = "#44423e"
+primary = "#2c6e58"
+working = "#4f6a8c"
+warning = "#b57400"
+destructive = "#b03a30"

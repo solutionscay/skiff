@@ -1,0 +1,26 @@
+# Slate blue ground, chart blue accent. Neutral text and muted ANSI colors.
+name = "Chart Room"
+color_family = "Blue"
+main_color = "#7fb0e0"
+
+[terminal]
+foreground = "#d8dee6"
+background = "#18202b"
+cursor = "#d8dee6"
+cursor_foreground = "#18202b"
+selection = "#394e65"
+selection_foreground = "#d8dee6"
+regular = ["#2f3640", "#d08078", "#8fb587", "#cdb06e", "#83a3d4", "#b391c9", "#73b2ae", "#c5cbd3"]
+bright = ["#747b85", "#dd938b", "#a3c49b", "#dabf85", "#99b4de", "#c2a4d4", "#8ac2be", "#f1f2f3"]
+
+[ui]
+sidebar = "#1e2631"
+tertiary = "#151c25"
+secondary = "#262e39"
+border = "#313943"
+mutedForeground = "#878e97"
+sidebarForeground = "#c1c7d0"
+primary = "#7fb0e0"
+working = "#a3b5bf"
+warning = "#e6ad45"
+destructive = "#e27a70"

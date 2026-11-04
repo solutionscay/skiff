@@ -77,6 +77,14 @@ const BUILTIN: &[(&str, &str)] = &[
     ("dusty-rose", include_str!("../themes/dusty-rose.toml")),
     ("battleship", include_str!("../themes/battleship.toml")),
     ("driftwood", include_str!("../themes/driftwood.toml")),
+    // Quiet themes: neutral text, muted ANSI colors, a `[ui]` block with their own accent.
+    // Last, so a new project reaches them only after every theme above is in use.
+    ("chart-room", include_str!("../themes/chart-room.toml")),
+    ("engine-room", include_str!("../themes/engine-room.toml")),
+    ("kelp", include_str!("../themes/kelp.toml")),
+    ("plumb-line", include_str!("../themes/plumb-line.toml")),
+    ("sailcloth", include_str!("../themes/sailcloth.toml")),
+    ("morning-watch", include_str!("../themes/morning-watch.toml")),
 ];
 
 /// The ids of the bundled themes, such as `builtin:foot`.
@@ -318,6 +326,11 @@ fn parse_file(path: &Path, text: &str) -> Option<TerminalTheme> {
             if let Some(color) = doc.get("main_color") {
                 theme.main_color = Some(hex(color.as_str()?)?);
             }
+            theme.ui = doc.get("ui").and_then(|v| v.as_table()).map(|u| {
+                u.iter()
+                    .filter_map(|(k, x)| x.as_str().and_then(hex).map(|h| (k.clone(), h)))
+                    .collect()
+            });
             return Some(theme);
         }
         // Alacritty: [colors.primary], [colors.normal], [colors.bright].
@@ -382,8 +395,15 @@ mod tests {
         assert_eq!(t.background, "#08001a");
         assert_eq!(t.palette.len(), 16);
         assert_eq!(t.palette[9], "#ff1111");
-        assert_eq!(builtin_count(), 34);
-        for theme in list().into_iter().filter(|t| t.source == "built-in") {
+        assert_eq!(builtin_count(), 40);
+        let (foot_set, quiet): (Vec<_>, Vec<_>) = list().into_iter().filter(|t| t.source == "built-in").partition(|t| t.ui.is_none());
+        assert_eq!(quiet.len(), 6);
+        for theme in &quiet {
+            assert!(theme.color_family.is_some(), "{}", theme.name);
+            assert!(theme.main_color.is_some(), "{}", theme.name);
+            assert_eq!(theme.main_color.as_ref(), theme.ui.as_ref().unwrap().get("primary"), "{}", theme.name);
+        }
+        for theme in foot_set {
             assert!(theme.color_family.is_some(), "{}", theme.name);
             assert_eq!(theme.main_color.as_ref(), Some(&theme.foreground));
             assert_eq!(theme.cursor.as_deref(), Some("#08001a"));

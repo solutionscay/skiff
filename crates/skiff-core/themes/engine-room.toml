@@ -1,0 +1,26 @@
+# Warm charcoal ground, verdigris accent. Neutral text and muted ANSI colors.
+name = "Engine Room"
+color_family = "Cyan"
+main_color = "#62b6ab"
+
+[terminal]
+foreground = "#ddd9d2"
+background = "#1f1d1a"
+cursor = "#ddd9d2"
+cursor_foreground = "#1f1d1a"
+selection = "#344e48"
+selection_foreground = "#ddd9d2"
+regular = ["#353431", "#d08078", "#8fb587", "#cdb06e", "#83a3d4", "#b391c9", "#73b2ae", "#cac6c0"]
+bright = ["#7a7772", "#dd938b", "#a3c49b", "#dabf85", "#99b4de", "#c2a4d4", "#8ac2be", "#f1f2f3"]
+
+[ui]
+sidebar = "#252320"
+tertiary = "#1b1916"
+secondary = "#2d2b28"
+border = "#383532"
+mutedForeground = "#8d8a85"
+sidebarForeground = "#c6c2bc"
+primary = "#62b6ab"
+working = "#8ea6c4"
+warning = "#e6ad45"
+destructive = "#e27a70"

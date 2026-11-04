@@ -46,6 +46,7 @@ const VARS = [
   "--hover", "--press",
   "--error-bg", "--error-bg-hover", "--error-rule", "--error-text",
   "--danger", "--danger-hover", "--danger-text", "--ok", "--scrim", "--on-working", "--watch", "--rank",
+  "--diff-add", "--diff-del",
 ];
 
 /**
@@ -123,6 +124,9 @@ function themeVars(t: TerminalTheme): Record<string, string> {
   set["--watch"] = legible(t.palette[6], 3);
   // The Skiff agent's rank stripes: the theme's yellow, toward the text, off the waiting amber.
   set["--rank"] = legible(mix(t.palette[3], set["--text"], 0.35), 3);
+  // The stylesheet's pale diff colors read only on a dark ground.
+  set["--diff-add"] = lightScheme ? legible(t.palette[2], 4.5) : "#7fd08a";
+  set["--diff-del"] = lightScheme ? legible(t.palette[1], 4.5) : "#ff8a80";
   set["--hover"] = lightScheme ? "rgba(0, 0, 0, 0.05)" : "rgba(255, 255, 255, 0.05)";
   set["--press"] = lightScheme ? "rgba(0, 0, 0, 0.09)" : "rgba(255, 255, 255, 0.09)";
   return set;
@@ -153,7 +157,8 @@ function alerts(v: Record<string, string>, green: string): Record<string, string
 
 /**
  * A theme file's own app colors (Superset's ui block, shadcn names). Any
- * missing key falls back to a mix of background and foreground.
+ * missing key falls back to a mix of background and foreground. `primary` is
+ * the accent. `working`, Skiff's own key, keeps the working state off it.
  */
 function fromUi(u: Record<string, string>, t: TerminalTheme): Record<string, string> {
   const bg = u.background ?? t.background;
@@ -172,7 +177,7 @@ function fromUi(u: Record<string, string>, t: TerminalTheme): Record<string, str
     "--text-2": u.sidebarForeground ?? mix(fg, bg, 0.15),
     "--text-3": mix(fg, muted, 0.5),
     "--text-dim": muted,
-    "--state-working": u.primary ?? t.palette[4],
+    "--state-working": u.working ?? u.primary ?? t.palette[4],
     "--state-waiting": warning,
     "--state-waiting-text": mix(warning, fg, 0.3),
     "--state-waiting-bg": mix(bg, warning, 0.12),

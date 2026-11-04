@@ -1,0 +1,26 @@
+# Cool light ground, indigo accent. Neutral text and muted ANSI colors.
+name = "Morning Watch"
+color_family = "Blue"
+main_color = "#4b57a6"
+
+[terminal]
+foreground = "#242a33"
+background = "#eef1f5"
+cursor = "#242a33"
+cursor_foreground = "#eef1f5"
+selection = "#bac0dc"
+selection_foreground = "#242a33"
+regular = ["#242a33", "#a8423a", "#3f7a45", "#83640f", "#35609f", "#7d4a98", "#1f7480", "#d2d5da"]
+bright = ["#797e84", "#ba5147", "#4b8a52", "#94751f", "#4270b0", "#8d5aa8", "#2a8590", "#fbfaf6"]
+
+[ui]
+sidebar = "#e6e9ed"
+tertiary = "#f6f7fa"
+secondary = "#dcdfe4"
+border = "#d0d3d8"
+mutedForeground = "#676c73"
+sidebarForeground = "#3c424a"
+primary = "#4b57a6"
+working = "#3f7486"
+warning = "#b57400"
+destructive = "#b03a30"
