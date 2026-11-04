@@ -331,3 +331,21 @@ pub mod recent {
         }
     }
 }
+
+#[cfg(test)]
+mod program_tests {
+    use super::*;
+
+    #[test]
+    fn programs_lists_executable_files_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("skiff-programs-{}", std::process::id()));
+        fs::create_dir_all(dir.join("folder")).unwrap();
+        for (name, mode) in [("tool", 0o755), ("notes.txt", 0o644), (".hidden", 0o755)] {
+            fs::write(dir.join(name), "").unwrap();
+            fs::set_permissions(dir.join(name), fs::Permissions::from_mode(mode)).unwrap();
+        }
+        assert_eq!(programs(dir.to_str().unwrap()).unwrap(), ["tool"]);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+}
