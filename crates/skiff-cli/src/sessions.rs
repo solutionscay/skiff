@@ -582,7 +582,7 @@ mod tests {
     };
 
     fn agent(id: &str, command: &str) -> AgentInfo {
-        AgentInfo { id: id.into(), command: command.into(), default_command: id.into(), custom: false, installed: true, enabled: true, used_by: None }
+        AgentInfo { id: id.into(), command: command.into(), default_command: id.into(), custom: false, installed: true, enabled: true, used_by: None, path: None, skip_approvals: Vec::new() }
     }
 
     fn new(agent: Option<&str>, task_type: Option<&str>) -> New {

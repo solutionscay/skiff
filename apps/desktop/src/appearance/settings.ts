@@ -2,19 +2,21 @@ import { DEFAULT_THEME } from "./colors";
 import { escapeButton } from "../ui/dialogParts";
 import { h } from "../ui/dom";
 import { invoke } from "@tauri-apps/api/core";
+import { imageCount } from "../terminal/images";
+import { size as byteSize } from "./skiffFolderDialog";
 import type { AgentInfo, Appearance, TerminalTheme } from "../platform/types";
 import { type MessageKey, t } from "../i18n";
 import { nextCard, themeGrid, type ThemeFilters } from "./themeCards";
 import { type Action, actionFor, isMac } from "../app/keys";
 import { editField, fieldEditKey, textField } from "../ui/fieldClipboard";
 import { mainName, type InstructionFile, type SkiffAgentSettings, type TaskType } from "../app/skiffAgent";
-import { avatarsSection, finishSection, instructionsSection, type SkiffAgentEdit, projectSkippersSection, skiffAgentSection, taskTypesSection } from "./skiffAgentSettings";
+import { finishRow, folderRows, type SkiffAgentEdit, skippersPage } from "./skiffAgentSettings";
 import { peekText } from "../terminal/peek";
 import { changeSkiffFolder } from "./skiffFolderDialog";
-import { tableState } from "./rowTable";
-import { type HostsPage, hostName, isRemote } from "../app/hosts";
+import { sectionHead, tableState } from "./rowTable";
+import { type HostsPage, hostName, isRemote, knownHosts } from "../app/hosts";
 import { createHostsTab } from "./hostSettings";
-import { openWithPage, type OpenSettings, type OpenKey } from "./openWithSettings";
+import { openWithPage, type OpenChoices, type OpenSettings, type OpenKey } from "./openWithSettings";
 import { hostCan, hostInvoke } from "../app/hostCaps";
 
 import { countDisk, diskState, diskUseSection } from "./diskUse";
@@ -24,15 +26,16 @@ import { activityState, daemonActivitySection, startActivity, stopActivity } fro
 import { revealSession } from "../workspace/view";
 import { locate } from "../workspace/model";
 import { openClosedProject } from "../workspace/projectClose";
-import { S } from "../app/state";
+import { S, sessions } from "../app/state";
 import { arrowKeys, redrawKeeping } from "./settingsFocus";
 import { createSettingsFiles, type FilesState } from "./settingsFiles";
 import { agentsPage } from "./settingsAgents";
-import { languagePage, type MenuLayout, menuLayout } from "./settingsLanguage";
+import { languageRow, type MenuLayout, menuLayout } from "./settingsLanguage";
 
 /**
- * Settings over the sidebar and terminal: agents, Skippers, task types,
- * appearance, language, Open with, images, disk use and Hosts.
+ * Settings over the sidebar and terminal. Two groups. The shown Host's pages:
+ * Agents, Skippers, Sessions, Disk use, Images. The app's pages: Appearance,
+ * Open with, Hosts.
  */
 interface AppearanceHooks {
   themes: () => TerminalTheme[];
@@ -53,14 +56,30 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   document.getElementById("body")!.appendChild(root);
 
   let agents: AgentInfo[] = [];
-  const TABS = ["agents", "skippers", "task-types", "appearance", "language", "open", "images", "disk", "activity", "hosts"] as const;
-  let tab: (typeof TABS)[number] = "agents";
-  const TAB_NAMES: Record<(typeof TABS)[number], MessageKey> = {
-    agents: "settings.tab.agents", skippers: "settings.tab.skippers", "task-types": "settings.tab.taskTypes", images: "settings.tab.images",
-    disk: "settings.tab.disk", activity: "settings.tab.activity", appearance: "settings.tab.appearance", language: "settings.tab.language", open: "settings.tab.open", hosts: "settings.tab.hosts",
+  const HOST_TABS = ["agents", "skippers", "activity", "disk", "images"] as const;
+  const APP_TABS = ["appearance", "open", "hosts"] as const;
+  const TABS = [...HOST_TABS, ...APP_TABS] as const;
+  type Tab = (typeof TABS)[number];
+  let tab: Tab = "agents";
+  const TAB_NAMES: Record<Tab, MessageKey> = {
+    agents: "settings.tab.agents", skippers: "settings.tab.skippers", images: "settings.tab.images",
+    disk: "settings.tab.disk", activity: "settings.tab.activity", appearance: "settings.tab.appearance", open: "settings.tab.open", hosts: "settings.tab.hosts",
+  };
+  /** The sections that moved: each old id opens the page that holds it now. */
+  const OLD_TABS: Record<string, Tab> = { "task-types": "skippers", language: "appearance" };
+  /** A count on a page's row, when Skiff knows it without a read. */
+  const tabCount = (id: Tab): string => {
+    if (id === "agents") return agents.length ? t("settings.ofCount", { on: agents.filter((a) => a.enabled).length, all: agents.length }) : "";
+    if (id === "skippers") return fs.files.length ? String(fs.files.length) : "";
+    if (id === "activity") return String([...sessions.values()].filter((x) => !x.peek).length);
+    if (id === "disk") return disk.usage ? byteSize(disk.usage.tree.bytes) : "";
+    if (id === "images") return String(imageCount());
+    if (id === "hosts") return String(knownHosts().length + 1);
+    return "";
   };
   const themeFilters: ThemeFilters = { query: "", family: null };
   let openSet: OpenSettings | null = null;
+  let openFound: OpenChoices = {};
   let menuSet: MenuLayout | null = null;
   /** `[appearance] language`: a code, or null for the system language. */
   let langSet: string | null = null;
@@ -81,7 +100,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     hostName,
     close: () => close(),
     reopen: (at) => void settings.open(at),
-    showing: (at) => !root.hidden && tab === at,
+    showing: (at) => !root.hidden && tab === (OLD_TABS[at] ?? at),
     render: () => render(),
     setError: (e) => { error = e; },
     setAgentSet: (a) => { agentSet = a; },
@@ -156,9 +175,12 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   function draw() {
     const nav = h("div", "set-nav");
     const head = h("div", "set-nav-head");
-    head.append(h("div", "set-title", t("cmd.settings")), h("div", "set-path mono", "~/.config/skiff/projects.toml"));
-    const tabs = TABS.map((id) => {
-      const b = h("button", "set-tab" + (tab === id ? " active" : ""), t(TAB_NAMES[id]));
+    head.append(h("div", "set-title", t("cmd.settings")));
+    const tabButton = (id: Tab) => {
+      const b = h("button", "set-tab" + (tab === id ? " active" : ""));
+      b.append(h("span", "set-tab-name", t(TAB_NAMES[id])));
+      if (id === "hosts" && knownHosts().some((x) => x.state === "attention")) b.append(h("i", "set-tab-bad"));
+      b.append(h("span", "set-tab-count", tabCount(id)));
       b.type = "button";
       b.addEventListener("click", () => {
         if (tab === "activity") stopActivity(activity);
@@ -170,33 +192,18 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
       });
       return b;
-    });
-    nav.append(head, ...tabs);
+    };
+    nav.append(head, sectionHead(hostName()), ...HOST_TABS.map(tabButton), sectionHead(t("settings.group.app")), ...APP_TABS.map(tabButton));
     if (tab === "appearance") {
       root.replaceChildren(nav, pinClose(appearance()));
       return;
     }
-    if (tab === "language") {
-      root.replaceChildren(nav, pinClose(languagePage({ langSet, error, pick: (code) => void setLanguageSetting(code) })));
-      return;
-    }
     if (tab === "open") {
-      root.replaceChildren(nav, pinClose(openWithPage(openSet, error, setOpen, setOpenPeek)));
+      root.replaceChildren(nav, pinClose(openWithPage(openSet, openFound, error, { set: (key, command, peek) => void setOpen(key, command, peek), setApp: (key, path) => void setOpenApp(key, path) })));
       return;
     }
     if (tab === "skippers") {
       root.replaceChildren(nav, pinClose(skippers()));
-      return;
-    }
-    if (tab === "task-types") {
-      const main = h("div", "set-main");
-      // A Host whose Skiff is too old to take changes: its task types, read-only.
-      if (isRemote() && !hostCan("skipper_config")) {
-        main.append(h("div", "set-head"));
-        main.firstElementChild!.append(h("div", "set-h", t("settings.tab.taskTypes")), h("div", "set-sub mono", hostName()));
-        for (const task of agentSet?.tasks ?? []) main.append(h("div", "set-note mono", `${task.type}: ${task.command ?? task.agent}${task.error ? ` (${task.error})` : ""}`));
-      } else if (agentSet) main.append(...taskTypesSection(agentSet, agents, tasksTable, saveTask, render, { edit: editTypeFile, errors: fs.typeErrors }));
-      root.replaceChildren(nav, pinClose(main));
       return;
     }
     if (tab === "hosts") {
@@ -218,7 +225,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
           peekText(script, cwd, `${cwd}/${name}`, () => void settings.open("disk"));
         },
       };
-      main.append(...diskUseSection(disk, render, (days) => void setCacheDays(days), opener));
+      main.append(...diskUseSection(disk, render, (days) => void setCacheDays(days), opener, agentSet && !(isRemote() && !hostCan("skipper_config")) ? folderRows(agentSet, changeFolder) : []));
       root.replaceChildren(nav, pinClose(main));
       return;
     }
@@ -248,7 +255,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     })));
   }
 
-  /** Esc in the top band of the page's head, which stays at the top as the page scrolls. A click closes. */
+  /** Esc in the page's head, which stays at the top as the page scrolls. A click closes. */
   function pinClose(main: HTMLElement): HTMLElement {
     (main.querySelector(":scope > .set-head") ?? main).append(escapeButton("set-x", t("settings.close"), close));
     return main;
@@ -258,10 +265,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   function appearance(): HTMLElement {
     const main = h("div", "set-main");
     const intro = h("div", "set-head");
-    intro.append(
-      h("div", "set-h", t("settings.tab.appearance")),
-      h("div", "set-sub", t("settings.appTheme")),
-    );
+    intro.append(h("div", "set-h", t("settings.tab.appearance")));
     const cur = look.current() ?? null;
     const cards = h("div", "set-cards");
     cards.appendChild(
@@ -275,11 +279,16 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         },
       }),
     );
-    main.append(intro);
+    main.append(intro, languageRow(langSet, (code) => void setLanguageSetting(code)));
     if (menuSet?.available) main.appendChild(menuLayout(menuSet, (v) => void setMenuLayout(v)));
+    if (error) {
+      const err = h("div", "set-error", error);
+      err.setAttribute("role", "alert");
+      main.appendChild(err);
+    }
     // The sample faces wear the theme colors Skippers get: each theme's main color.
     const colors = look.themes().flatMap((t) => (t.main_color ? [t.main_color] : []));
-    main.append(...finishSection(draw, sampleSeeds, colors), cards);
+    main.append(finishRow(draw, sampleSeeds, colors), sectionHead(t("settings.appTheme"), undefined, String(look.themes().length)), cards);
     return main;
   }
 
@@ -304,20 +313,23 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     render();
   }
 
-  async function setOpen(key: OpenKey, command: string) {
+  /** One Open with row: its command, and whether it opens in the peek. */
+  async function setOpen(key: OpenKey, command: string, peek: boolean) {
     error = null;
     try {
-      openSet = await invoke<OpenSettings>("set_open", { key, command });
+      await invoke<OpenSettings>("set_open", { key, command });
+      openSet = await invoke<OpenSettings>("set_open_peek", { key, peek });
     } catch (e) {
       error = String(e);
     }
     render();
   }
 
-  async function setOpenPeek(key: OpenKey, peek: boolean) {
+  /** One Open with row, from the file picker. */
+  async function setOpenApp(key: OpenKey, path: string) {
     error = null;
     try {
-      openSet = await invoke<OpenSettings>("set_open_peek", { key, peek });
+      openSet = await invoke<OpenSettings>("set_open_app", { key, path });
     } catch (e) {
       error = String(e);
     }
@@ -359,7 +371,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     render();
   }
 
-  /** Settings › Skippers › Folder › Change…. The page reads the folder again after a change. */
+  /** Settings › Disk use › Folder › Change…. The page reads the folder again after a change. */
   function changeFolder() {
     if (!agentSet) return;
     changeSkiffFolder({
@@ -371,12 +383,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     });
   }
 
-  /** Settings › Skippers: the Skipper, project and fleet Skippers, and their instruction files. */
+  /** Settings › Skippers: one row for each Skipper, then the task types. */
   function skippers(): HTMLElement {
     const main = h("div", "set-main");
     const intro = h("div", "set-head");
     intro.append(h("div", "set-h", t("settings.tab.skippers")));
-    if (isRemote()) intro.append(h("div", "set-sub mono", hostName()));
     main.append(intro);
     // A Host whose Skiff is too old to take changes: its Skiff agent, read-only.
     if (isRemote() && !hostCan("skipper_config")) {
@@ -388,19 +399,25 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         main.append(
           h("div", "set-note mono", t("settings.remote.skipperName", { name: mainName(a.name), agent: a.agent ?? t("settings.remote.default") })),
           h("div", "set-note mono", t(a.folder_error ? "settings.remote.folderRefused" : "settings.remote.folder", { folder: a.folder ?? a.configured, error: a.folder_error ?? "" })),
+          ...(a.tasks ?? []).map((task) => h("div", "set-note mono", `${task.type}: ${task.command ?? task.agent}${task.error ? ` (${task.error})` : ""}`)),
         );
       }
       return main;
     }
-    if (agentSet) main.append(...skiffAgentSection(agentSet, agents, (e) => void setSkiffAgent(e), changeFolder));
     if (error) {
       const err = h("div", "set-error", error);
       err.setAttribute("role", "alert");
       main.appendChild(err);
     }
-    if (agentSet) main.append(...projectSkippersSection(agentSet, agents, (e) => void setSkiffAgent(e)));
-    if (agentSet?.folder) main.append(...avatarsSection(agentSet, draw));
-    if (agentSet?.folder) main.append(...instructionsSection(agentSet, { files: fs.files, errors: fs.fileErrors, editable: hostCan("skipper_file"), edit: (f) => void editFile(f), reset: (f) => void resetFile(f) }));
+    if (agentSet) main.append(skippersPage(agentSet, agents, {
+      save: (e) => void setSkiffAgent(e),
+      saveTask,
+      redraw: draw,
+      render,
+      tasksTable,
+      files: { files: fs.files, errors: fs.fileErrors, editable: hostCan("skipper_file"), edit: (f) => void editFile(f), reset: (f) => void resetFile(f) },
+      types: { edit: editTypeFile, errors: fs.typeErrors },
+    }));
     return main;
   }
 
@@ -433,7 +450,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     document.body.classList.add("kbd");
     if (!into) return root.querySelector<HTMLButtonElement>(".set-tab.active")?.focus();
     if (tab === "appearance") return root.querySelector<HTMLInputElement>(".tc-search")?.focus();
-    root.querySelector<HTMLElement>(".set-main :is(button, input, select, textarea, [tabindex]):not(:disabled, .set-x)")?.focus();
+    root.querySelector<HTMLElement>(".set-main :is(button, input, [tabindex]):not(:disabled, .set-x)")?.focus();
   }
 
   arrowKeys(root, { stepTab, enterSection, nextCard });
@@ -478,7 +495,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   // An external app saved a file: its status shows when the window has the keys again.
   window.addEventListener("focus", () => {
     if (!root.hidden && tab === "skippers") void loadFiles();
-    if (!root.hidden && tab === "task-types") void loadTypes();
+    if (!root.hidden && tab === "skippers") void loadTypes();
   });
 
   const settings = {
@@ -489,8 +506,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     },
     /** `at`: the section to show, else the last one. A Hosts page opens
      *  Settings › Hosts at its list or its Add form. */
-    async open(at?: HostsPage | (typeof TABS)[number]) {
-      if (typeof at === "string") tab = at;
+    async open(at?: HostsPage | Tab | keyof typeof OLD_TABS) {
+      if (typeof at === "string") tab = OLD_TABS[at] ?? (at as Tab);
       else if (at) {
         tab = "hosts";
         hostsTab.open(at);
@@ -501,6 +518,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       onShowChange();
       await look.load();
       openSet = await invoke<OpenSettings>("open_settings").catch(() => null);
+      openFound = await invoke<OpenChoices>("open_choices").catch(() => ({}));
       menuSet = await invoke<MenuLayout>("menu_layout").catch(() => null);
       langSet = (await invoke<Appearance>("get_appearance").catch(() => null))?.language ?? null;
       agentSet = await hostInvoke<SkiffAgentSettings>("skipper", "get_skiff_agent").catch(() => null);
@@ -517,6 +535,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
       else if (tab === "images") root.querySelector<HTMLInputElement>(".img-page .lib-search")?.focus();
       else root.querySelector<HTMLButtonElement>(".set-agent .c-on:not(:disabled)")?.focus();
+      // The Task types band of Skippers, for what opens the old section.
+      if (at === "task-types") document.getElementById("set-h-tasks")?.scrollIntoView();
     },
     close,
     /** The native menu runs its accelerators here, not through the keydown above. */

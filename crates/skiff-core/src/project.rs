@@ -60,6 +60,10 @@ pub struct Project {
     /// The fleet it sits in on the rail. Absent: on the rail by itself.
     #[serde(default)]
     pub fleet: Option<String>,
+    /// The agent this project's Skipper starts, in place of the one all
+    /// project Skippers share. Only by hand, in `projects.toml`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skipper_agent: Option<String>,
     /// `changes = false`: the Changes section is hidden. Absent: shown.
     #[serde(default)]
     pub changes: Option<bool>,
@@ -107,6 +111,7 @@ impl Project {
             error,
             closed: p.closed,
             fleet: p.fleet.clone().filter(|f| !f.trim().is_empty()),
+            skipper_agent: p.skipper_agent.clone().filter(|a| !a.trim().is_empty()),
             changes: p.changes,
             theme: p.theme.clone(),
             files: p.files.unwrap_or(kind == ProjectKind::Folder),
@@ -422,6 +427,14 @@ pub struct AgentInfo {
     /// older skiffd.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub used_by: Option<String>,
+    /// Where the program of `command` was found, in full. Absent: not found,
+    /// or an older skiffd.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// The flags that make this agent skip its approval prompts: the first
+    /// is the one Skiff writes, each one reads as on. Empty: Skiff lists none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skip_approvals: Vec<String>,
 }
 
 /// What in `cfg` starts agent `id`, in this order: the main Skipper, project and
@@ -498,22 +511,24 @@ pub fn agents_in(cfg: &crate::config::Agents, installed: impl Fn(&str, &str) -> 
             // Installed means the program, the first word, is on PATH.
             let first = command.split_whitespace().next().unwrap_or(default);
             let program = crate::alias::expand(first).map_or(first, |w| w[0].as_str());
-            let installed = installed(id, &command).unwrap_or_else(|| {
-                if program.contains('/') {
-                    is_executable(Path::new(program))
-                } else {
-                    dirs.iter().any(|d| is_executable(&d.join(program)))
-                }
-            });
+            let path = if program.contains('/') {
+                Some(PathBuf::from(program)).filter(|p| is_executable(p))
+            } else {
+                dirs.iter().map(|d| d.join(program)).find(|p| is_executable(p))
+            };
+            let installed = installed(id, &command).unwrap_or(path.is_some());
+            let custom = !KNOWN_AGENTS.iter().any(|&(k, _)| k == id);
             let on = cfg.enabled.as_ref().is_none_or(|e| e.iter().any(|x| x == id));
             AgentInfo {
                 id: id.to_string(),
                 command,
                 default_command: default.to_string(),
-                custom: !KNOWN_AGENTS.iter().any(|&(k, _)| k == id),
+                custom,
                 installed,
                 enabled: installed && on,
                 used_by: None,
+                path: path.map(|p| p.to_string_lossy().into_owned()),
+                skip_approvals: if custom { Vec::new() } else { crate::tasks::skip_flags(id).iter().map(|f| f.to_string()).collect() },
             }
         })
         .collect()

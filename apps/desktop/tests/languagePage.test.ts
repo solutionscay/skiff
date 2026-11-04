@@ -1,9 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { moduleFromSource } from "./workspaceHarness.ts";
+import { moduleFromSource, realControls } from "./workspaceHarness.ts";
 
-// The real settings.ts. Settings › Language has the language picker;
-// Settings › Appearance does not.
+// The real settings.ts: the page groups, and the ids of the pages that moved.
 class El {
   className: string;
   textContent: string;
@@ -23,6 +22,7 @@ class El {
   replaceChildren(...kids: El[]) { this.children = kids; }
   setAttribute() {}
   addEventListener(ev: string, run: () => void) { this.listeners.set(ev, [...(this.listeners.get(ev) ?? []), run]); }
+  scrollIntoView() {}
   querySelector() { return null; }
   querySelectorAll() { return []; }
   contains() { return false; }
@@ -32,6 +32,12 @@ const h = (tag: string, cls = "", text = "") => new El(tag, cls, text);
 
 function settingsPage() {
   const body = h("div");
+  const picks: { names: string[] }[] = [];
+  const controls = realControls(h);
+  const picker = (o: { entries: () => { label: string }[] }) => {
+    picks.push({ names: o.entries().map((e) => e.label) });
+    return h("button", "ctl-pick");
+  };
   const invoke = async (cmd: string) => (cmd === "get_appearance" ? { language: null } : null);
   const mod = moduleFromSource("../src/appearance/settings.ts", {
     "@tauri-apps/api/core": { invoke },
@@ -42,12 +48,14 @@ function settingsPage() {
     "./diskUse": { diskState: () => ({}) },
     "./imagesPage": { imagesState: () => ({}) },
     "./daemonActivity": { activityState: () => ({}), stopActivity() {} },
-    "./rowTable": { tableState: () => ({}) },
-    "./skiffAgentSettings": { finishSection: () => [h("div", "set-finish")] },
-    "../terminal/images": { onImagesChanged() {} },
-    "../app/hosts": { isRemote: () => false },
-    "../app/hostCaps": { hostCan: () => true, hostInvoke: async () => null },
-    "../app/state": { S: {} },
+    "../ui/controls": { ...controls, picker },
+    "./settingsLanguage": moduleFromSource("../src/appearance/settingsLanguage.ts", { "../ui/dom": { h }, "../ui/controls": { ...controls, picker } }, { navigator: { language: "en-US" } }, ""),
+    "./rowTable": { tableState: () => ({}), sectionHead: (title: string) => { const b = h("div", "set-band"); b.append(h("span", "set-band-title", title)); return b; } },
+    "./skiffAgentSettings": { finishRow: () => h("div", "set-finish"), skippersPage: () => h("div", "g-skip") },
+    "../terminal/images": { onImagesChanged() {}, imageCount: () => 0 },
+    "../app/hosts": { isRemote: () => false, hostName: () => "This computer (devbox)", knownHosts: () => [] },
+    "../app/hostCaps": { hostCan: () => true, hostInvoke: async (_cap: string, cmd: string) => (cmd === "list_agents" ? [] : null) },
+    "../app/state": { S: {}, sessions: new Map() },
   }, {
     document: { getElementById: () => body, activeElement: null, body },
     window: { addEventListener() {} },
@@ -57,21 +65,21 @@ function settingsPage() {
   const look = { themes: () => [], current: () => null, load: async () => {}, set() {} };
   const settings = mod.createSettings(() => {}, () => {}, look);
   const root = body.children[0];
-  // The picker is the table of languages: a row per catalog, its name in the first cell.
-  const picker = () => root.all().find((e) => e.className === "set-lang" && e.children.some((r) => r.children[0]?.textContent === "Español"));
-  return { settings, root, picker };
+  return { settings, root, picks };
 }
 
-test("Settings › Language shows the language picker, and Appearance does not", async () => {
+test("the old Language id opens Appearance, and its row picks the language", async () => {
   const s = settingsPage();
   await s.settings.open("language");
-  const tabs = s.root.all().filter((e) => e.className.startsWith("set-tab")).map((e) => e.textContent);
-  assert.deepEqual(tabs.slice(3, 6), ["Appearance", "Language", "Open with"]);
-  assert.ok(s.root.all().some((e) => e.className === "set-h" && e.textContent === "Language"));
-  const seg = s.picker();
-  assert.ok(seg, "the Language page has the picker");
-  assert.deepEqual(seg!.children.filter((r) => r.className.includes("set-lang-row")).map((r) => r.children[0].textContent).slice(1), ["English", "Español", "简体中文"]);
-  await s.settings.open("appearance");
   assert.ok(s.root.all().some((e) => e.className === "set-h" && e.textContent === "Appearance"));
-  assert.equal(s.picker(), undefined, "Appearance has no language picker");
+  assert.ok(s.picks.some((p) => p.names.join() === "Auto (English),English,Español,简体中文"));
+});
+
+test("the old Task types id opens Skippers, and the nav names the Host and the App", async () => {
+  const s = settingsPage();
+  await s.settings.open("task-types");
+  const names = s.root.all().filter((e) => e.className === "set-tab-name").map((e) => e.textContent);
+  assert.equal(names.join(), "Agents,Skippers,Sessions,Disk use,Images,Appearance,Open with,Hosts");
+  assert.equal(s.root.all().filter((e) => e.className === "set-band-title").map((e) => e.textContent).slice(0, 2).join(), "This computer (devbox),App");
+  assert.ok(s.root.all().some((e) => e.className === "set-h" && e.textContent === "Skippers"));
 });

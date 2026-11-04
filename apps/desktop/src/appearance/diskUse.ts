@@ -1,10 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { h } from "../ui/dom";
+import { smallButton, switchButton } from "../ui/controls";
+import { isRemote } from "../app/hosts";
 import { actionDialog } from "../ui/dialogParts";
 import { rune } from "../ui/runes";
 import { size } from "./skiffFolderDialog";
 import { canFlush, expected, find, groups, idleReason, plan, rowState, visibleRows, type DiskNode, type Expected } from "./diskTree";
-import { locale, type PluralKey, sentences, t, tn, upper } from "../i18n";
+import { locale, type PluralKey, sentences, t, tn,  } from "../i18n";
 import { dirname } from "../workspace/paths";
 
 /** `disk_usage`: the Skiff agent's folder as a tree, each file with the rule's verdict. */
@@ -171,19 +173,20 @@ const CHEVRON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="tr
  * A click on a file row opens the file. A folder row has Show in file
  * manager. `setDays` saves `[skiff_agent] cache_days`.
  */
-export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days: number) => void, opener: DiskOpen): HTMLElement[] {
+export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days: number) => void, opener: DiskOpen, folder: HTMLElement[] = []): HTMLElement[] {
   const u = s.usage;
   const head = h("div", "set-head");
   const title = h("div", "set-h", t("settings.tab.disk"));
   title.id = "set-h-disk";
-  head.append(title, h("div", "set-sub mono", u?.shown ?? ""));
+  head.append(title);
+  if (u) head.append(h("span", "set-band-count", t("disk.total", { size: size(u.tree.bytes), flush: size(canFlush(u.tree)) })));
 
   const table = h("div", "set-disk");
   table.setAttribute("role", "treegrid");
   table.setAttribute("aria-labelledby", title.id);
   const cols = h("div", "set-row set-cols");
   cols.setAttribute("role", "row");
-  cols.append(h("span", "", upper(t("disk.colName"))), h("span", "c-num", upper(t("disk.colSize"))), h("span", "c-num", upper(t("disk.colCanFlush"))), h("span", "", upper(t("disk.colState"))), h("span"));
+  cols.append(h("span", "", (t("disk.colName"))), h("span", "c-num", (t("disk.colSize"))), h("span", "c-num", (t("disk.colCanFlush"))), h("span", "", (t("disk.colState"))), h("span"));
   table.append(cols);
 
   if (!u) {
@@ -232,8 +235,7 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
       const flush = canFlush(n);
       const acts = h("span", "c-acts");
       if (flush > 0) {
-        const b = h("button", "set-rm", t("disk.flushButton"));
-        b.type = "button";
+        const b = smallButton(t("disk.flushButton"), () => {}, { danger: true });
         b.dataset.key = `flush:${n.path}`;
         b.disabled = s.counting;
         b.addEventListener("click", (e) => {
@@ -244,12 +246,8 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
         acts.append(b);
       } else acts.append(h("span", "disk-why", idleReason(n, u.now)));
       if (n.dir && opener.local) {
-        const b = h("button", "set-rm set-ico");
-        b.type = "button";
+        const b = smallButton(t("menu.showInFileManager"), () => {}, { icon: rune("indicators-square-arrow-out-up-right"), label: t("menu.showInFileManager") });
         b.dataset.key = `reveal:${n.path}`;
-        b.title = t("menu.showInFileManager");
-        b.setAttribute("aria-label", t("menu.showInFileManager"));
-        b.appendChild(rune("indicators-square-arrow-out-up-right"));
         b.addEventListener("click", (e) => {
           e.stopPropagation();
           const moved = s.cur !== n.path;
@@ -318,30 +316,15 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
   const days = u?.cache_days ?? 0;
   const on = days > 0;
   const auto = h("div", "set-row set-open set-agent set-disk-auto" + (on ? " on" : ""));
-  const sw = h("button", "c-mode set-switch");
-  sw.type = "button";
-  sw.disabled = !u;
-  sw.setAttribute("role", "switch");
-  sw.setAttribute("aria-checked", String(on));
-  sw.setAttribute("aria-label", t(on ? "disk.autoOn" : "disk.autoOff"));
-  sw.appendChild(h("span", "switch"));
-  sw.addEventListener("click", () => setDays(on ? 0 : 30));
-  // Flush now: the whole folder's stale files, through the same dialog as a row's Flush….
-  const now = h("span", "c-acts");
-  const all = h("button", "set-rm", t("disk.flushNow"));
-  all.type = "button";
-  all.dataset.key = "flush-now";
-  all.disabled = !u || s.counting || canFlush(u.tree) === 0;
-  all.addEventListener("click", () => {
-    if (!u) return;
-    s.cur = "";
-    askFlush(s, u.tree, redraw);
-  });
-  now.append(all);
-  auto.append(h("span", "c-name", t("disk.auto")), h("span", "c-cmd", on ? count("disk.days", days) : ""), sw, now);
+  auto.append(
+    h("span", "c-name", t("disk.auto")),
+    h("span", "c-cmd", on ? count("disk.days", days) : ""),
+    switchButton({ label: t(on ? "disk.autoOn" : "disk.autoOff"), on, disabled: !u, toggle: () => setDays(on ? 0 : 30) }),
+  );
 
-  // The status, the errors and the flush controls stay at the bottom as the tree scrolls.
+  // The status and the errors stay at the bottom as the tree scrolls.
   const foot = h("div", "set-disk-foot");
-  foot.append(status, ...errors, auto);
-  return [head, table, foot];
+  foot.append(status, ...errors);
+  // Auto flush is this computer's setting: a remote Host's page has no such row.
+  return [head, ...folder, ...(isRemote() ? [] : [auto]), table, foot];
 }

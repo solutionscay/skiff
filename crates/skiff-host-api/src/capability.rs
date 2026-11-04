@@ -24,6 +24,7 @@ pub const SKIPPER_FILE: &str = "skipper_file";
 pub const SKIPPER_RUN: &str = "skipper_run";
 pub const SKIPPER_WATCH_LOG: &str = "skipper_watch_log";
 pub const AGENT_CONFIG: &str = "agent_config";
+pub const AGENT_PROGRAMS: &str = "agent_programs";
 pub const DROPS: &str = "drops";
 pub const IMAGE_CACHE: &str = "image_cache";
 pub const PROGRAM_STATUS: &str = "program_status";
@@ -173,6 +174,12 @@ impl Capability {
     /// plane; grants no session and no other setting.
     pub fn agent_config() -> Self {
         Self::new(AGENT_CONFIG, 1)
+    }
+    /// The names of the programs in a Host folder, for an agent's program
+    /// picker: executable files only, no size or content. Read-only; grants
+    /// no change and no run.
+    pub fn agent_programs() -> Self {
+        Self::new(AGENT_PROGRAMS, 1)
     }
     /// Put a file dropped or pasted on a pane into the Host's image cache, so
     /// the pane can type its Host path. Data plane; grants no read, no other

@@ -402,10 +402,25 @@ pub(crate) async fn unlock_key(id: String, passphrase: String) -> Result<(), Str
     }
 }
 
-/// This computer's public key for this Host, for Copy public key.
+/// Shows the public key's file in the file manager, for the admin of a
+/// server. A key only the SSH agent holds has no file: Skiff writes its public
+/// line to one in this app's cache.
 #[tauri::command]
-pub(crate) async fn public_key(id: String) -> Result<String, String> {
-    ready_key(&host_by_id(&id).await?).await
+pub(crate) async fn show_public_key(id: String) -> Result<(), String> {
+    let h = host_by_id(&id).await?;
+    let line = ready_key(&h).await?;
+    let file = keys::public_key_file(&h.target(), &SshOptions::default(), &home()?, &line);
+    let file = match file {
+        Some(f) => f,
+        None => {
+            let dir = dirs::cache_dir().ok_or("This computer has no cache folder.")?.join("skiff");
+            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            let f = dir.join("public-key.pub");
+            std::fs::write(&f, format!("{line}\n")).map_err(|e| e.to_string())?;
+            f
+        }
+    };
+    crate::commands::reveal(&file).map_err(|e| e.to_string())
 }
 
 /// Adds this computer's key to the Host's `authorized_keys`, once, after one

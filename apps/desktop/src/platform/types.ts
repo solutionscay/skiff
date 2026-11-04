@@ -175,6 +175,8 @@ export interface Project {
   closed?: boolean;
   /** The fleet it sits in. Absent: under Projects, in no fleet. */
   fleet?: string | null;
+  /** The agent its Skipper starts, by hand in the Host's projects.toml. Absent: the shared one. */
+  skipper_agent?: string | null;
   /** `changes = false` in the Host's projects.toml: no Changes section. Absent: shown. */
   changes?: boolean | null;
   /** The project's own theme id. Absent: the app theme. */
@@ -247,6 +249,10 @@ export interface AgentInfo {
   enabled: boolean;
   /** What starts it: "Used by task type review". It cannot be removed then. Absent: nothing. */
   used_by?: string | null;
+  /** Where the program was found, in full, on the shown Host. Absent: not found, or an older Host. */
+  path?: string | null;
+  /** The flags that make it skip its approval prompts. The first is the one to write. Absent: none listed. */
+  skip_approvals?: string[];
 }
 
 /** `[appearance]` in the daemon config. `font_size` is absent from an older daemon. */

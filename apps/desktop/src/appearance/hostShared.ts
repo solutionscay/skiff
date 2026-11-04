@@ -1,4 +1,5 @@
 import { h } from "../ui/dom";
+import type { MessageKey } from "../i18n";
 import type { MenuEntry } from "../ui/menu";
 
 /** Shared types, labels and state of the Hosts tab. The facade owns every
@@ -31,7 +32,8 @@ export interface Alias {
 
 export type Draft = { destination: string; name: string; user: string; port: string };
 
-export type Form = { id: string | null; draft: Draft; more: boolean; error: string | null; busy: boolean };
+/** `typing`: Other server…: the fields show in place of the SSH config list. */
+export type Form = { id: string | null; draft: Draft; typing: boolean; error: string | null; busy: boolean };
 
 /** One row of the check list, as Rust's `check_host` answers it. */
 export interface CheckLine {
@@ -42,18 +44,18 @@ export interface CheckLine {
   fix: Fix | null;
 }
 export type Fix = "trust_key" | "review_key" | "make_key" | "unlock_key" | "install_key" | "copy_public_key" | "fix_permissions" | "install_skiff" | "start_skiff" | "turn_on_linger" | "update_skiff";
-export const FIX_LABEL: Record<Fix, string> = {
-  trust_key: "Trust this key…",
-  review_key: "Review…",
-  make_key: "Make key…",
-  unlock_key: "Unlock key…",
-  install_key: "Install key…",
-  copy_public_key: "Copy public key",
-  fix_permissions: "Fix permissions…",
-  install_skiff: "Install Skiff…",
-  start_skiff: "Start",
-  turn_on_linger: "Turn on…",
-  update_skiff: "Update Skiff…",
+export const FIX_LABEL: Record<Fix, MessageKey> = {
+  trust_key: "hosts.fix.trustKey",
+  review_key: "hosts.fix.reviewKey",
+  make_key: "hosts.fix.makeKey",
+  unlock_key: "hosts.fix.unlockKey",
+  install_key: "hosts.fix.installKey",
+  copy_public_key: "hosts.fix.showKey",
+  fix_permissions: "hosts.fix.permissions",
+  install_skiff: "hosts.fix.installSkiff",
+  start_skiff: "hosts.fix.start",
+  turn_on_linger: "hosts.fix.linger",
+  update_skiff: "hosts.updateSkiff",
 };
 /** What `update_skiff` did. */
 export type Updated = { version: string; source: string } & (
@@ -84,7 +86,7 @@ export interface Report {
   /** The server has this version in another build. */
   other_build: boolean;
 }
-/** The rows, in order, before an answer. */
+/** The rows, in order, before an answer. These are Rust's titles, which the code matches on. */
 export const CHECK_ROWS = [
   "Reach the server",
   "Host key",

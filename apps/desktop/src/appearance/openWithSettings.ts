@@ -1,8 +1,14 @@
 import { h } from "../ui/dom";
-import { t, upper, type MessageKey } from "../i18n";
+import { picker, type PickEntry } from "../ui/controls";
+import { open as openFile } from "@tauri-apps/plugin-dialog";
+import { t, type MessageKey } from "../i18n";
 
 export type OpenKey = "diff" | "text" | "markdown" | "html" | "image";
 export type OpenSettings = Record<OpenKey, string> & { default_diff: string; peek: string[] };
+/** One thing a row can pick. `command` is what `[open]` stores. */
+export interface OpenChoice { label: string; command: string }
+/** What each row can pick, found on this computer. */
+export type OpenChoices = Partial<Record<OpenKey, { peek: OpenChoice[]; apps: OpenChoice[] }>>;
 
 const OPEN_ROWS: { key: OpenKey; label: MessageKey }[] = [
   { key: "diff", label: "settings.open.diff" },
@@ -12,50 +18,50 @@ const OPEN_ROWS: { key: OpenKey; label: MessageKey }[] = [
   { key: "image", label: "settings.open.image" },
 ];
 
+export interface OpenWithActs {
+  /** Stores a command, and whether it opens in the peek. Empty: the default. */
+  set(key: OpenKey, command: string, peek: boolean): void;
+  /** Stores a program from the file picker. */
+  setApp(key: OpenKey, path: string): void;
+}
 
-/** Which apps Skiff hands things to. */
-export function openWithPage(o: OpenSettings | null, error: string | null, setOpen: (key: OpenKey, command: string) => Promise<void>, setOpenPeek: (key: OpenKey, peek: boolean) => Promise<void>): HTMLElement {
+/**
+ * Which apps Skiff hands things to. Each row is a picker: the default, the
+ * tools and apps found on this computer, then the file picker. Where it opens
+ * follows the choice. A command set by hand in projects.toml shows as it is.
+ */
+export function openWithPage(o: OpenSettings | null, found: OpenChoices, error: string | null, acts: OpenWithActs): HTMLElement {
   const main = h("div", "set-main");
   const intro = h("div", "set-head");
   intro.append(h("div", "set-h", t("settings.tab.open")));
   const cols = h("div", "set-row set-open set-cols");
-  cols.append(h("span", "c-name", upper(t("settings.open.colShows"))), h("span", "c-cmd", upper(t("settings.agents.colCommand"))), h("span", "c-mode", upper(t("settings.open.colOpensIn"))));
+  cols.append(h("span", "", t("settings.open.colShows")), h("span", "", t("settings.open.colWith")), h("span", "", t("settings.open.colOpensIn")));
   main.append(intro, cols);
   if (o) for (const { key, label: labelKey } of OPEN_ROWS) {
     const label = t(labelKey);
     const row = h("div", "set-row set-open set-agent on");
-    const cmd = h("input", "c-cmd mono");
-    cmd.value = o[key];
-    cmd.placeholder = key === "diff" ? o.default_diff : t("settings.open.defaultApp");
-    cmd.spellcheck = false;
-    cmd.setAttribute("aria-label", t("settings.open.commandAria", { kind: label }));
-    cmd.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        cmd.blur();
-      } else if (e.key === "Escape") {
-        cmd.value = o[key];
-        cmd.blur();
-      }
-    });
-    cmd.addEventListener("blur", () => {
-      if (cmd.value.trim() !== o[key].trim()) void setOpen(key, cmd.value);
-    });
-    row.append(h("span", "c-name", label), cmd);
-    if (key === "diff") row.append(h("span", "c-mode", t("settings.open.peek")));
-    else if (key === "image") row.append(h("span", "c-mode", t("settings.open.app")));
-    else {
-      const mode = h("select", "c-mode");
-      mode.setAttribute("aria-label", t("settings.open.modeAria", { kind: label }));
-      for (const [value, label] of [["app", t("settings.open.app")], ["peek", t("settings.open.peek")]]) {
-        const option = h("option", "", label);
-        option.value = value;
-        mode.append(option);
-      }
-      mode.value = o.peek.includes(key) ? "peek" : "app";
-      mode.addEventListener("change", () => void setOpenPeek(key, mode.value === "peek"));
-      row.append(mode);
-    }
+    const list = found[key] ?? { peek: [], apps: [] };
+    const none = key === "diff" ? t("settings.open.gitDiff") : t("settings.open.defaultApp");
+    const known = [...list.peek, ...list.apps].find((c) => c.command === o[key]);
+    const entries = (): PickEntry[] => [
+      { value: "", label: none },
+      ...(list.peek.length ? [{ head: t("settings.open.inPeek") }, ...list.peek.map((c) => ({ value: c.command, label: c.label }))] : []),
+      ...(list.apps.length ? [{ head: t("settings.open.inWindow") }, ...list.apps.map((c) => ({ value: c.command, label: c.label }))] : []),
+      { sep: true as const },
+      { label: t("settings.open.chooseApp"), run: () => void chooseApp().then((path) => { if (path) acts.setApp(key, path); }) },
+    ];
+    const cell = h("span", "c-field");
+    cell.append(picker({
+      label,
+      value: o[key],
+      shows: o[key] ? (known?.label ?? o[key]) : none,
+      quiet: !o[key],
+      entries,
+      pick: (v) => acts.set(key, v, list.peek.some((c) => c.command === v)),
+    }));
+    // Diffs run in the peek unless the pick is an app with a window. Images always open in an app.
+    const inPeek = key === "diff" ? !list.apps.some((c) => c.command === o[key]) : key !== "image" && o.peek.includes(key);
+    row.append(h("span", "c-name", label), cell, h("span", "c-mode", t(inPeek ? "settings.open.peek" : "settings.open.app")));
     main.appendChild(row);
   }
   if (error) {
@@ -66,3 +72,7 @@ export function openWithPage(o: OpenSettings | null, error: string | null, setOp
   return main;
 }
 
+async function chooseApp(): Promise<string | null> {
+  const path = await openFile({ multiple: false, directory: false }).catch(() => null);
+  return typeof path === "string" ? path : null;
+}

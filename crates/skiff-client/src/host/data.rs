@@ -458,6 +458,14 @@ pub async fn folder_list(c: &HostConnection, path: &str, hidden: bool, filter: O
     }
 }
 
+/// The programs in `path` on the Host (`agent_programs@1`).
+pub async fn program_list(c: &HostConnection, path: &str) -> Result<Vec<String>, Error> {
+    match c.request(Request::ProgramList { path: path.into() }).await? {
+        Response::Programs { names } => Ok(names),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
 /// Recent and the Host's git repositories under home (`folders@1`).
 pub async fn folder_places(c: &HostConnection) -> Result<FolderPlaces, Error> {
     match c.request(Request::FolderPlaces).await? {

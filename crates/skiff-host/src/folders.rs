@@ -73,6 +73,25 @@ pub fn list(path: &str, hidden: bool, filter: Option<&str>) -> Result<FolderList
     })
 }
 
+/// The names of the executable files in `path`, by name, at most
+/// [`MAX_ENTRIES`] (`agent_programs@1`). Hidden files stay out.
+pub fn programs(path: &str) -> Result<Vec<String>, Error> {
+    use std::os::unix::fs::PermissionsExt;
+    let real = real_dir(&full_path(path)?)?;
+    let dir = fs::read_dir(&real).map_err(|e| io_error(e, &real))?;
+    let mut names: Vec<String> = dir
+        .take(READ_LIMIT)
+        .flatten()
+        // A link counts as what it points at.
+        .filter(|e| fs::metadata(e.path()).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0))
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| !n.starts_with('.'))
+        .collect();
+    names.sort_by_key(|n| n.to_lowercase());
+    names.truncate(MAX_ENTRIES);
+    Ok(names)
+}
+
 /// Makes the folder `name` in `parent`. Answers its real path.
 pub fn create(parent: &str, name: &str) -> Result<String, Error> {
     check_name(name)?;
@@ -310,5 +329,23 @@ pub mod recent {
         if fs::write(&tmp, &bytes).and_then(|()| fs::rename(&tmp, &file)).is_err() {
             let _ = fs::remove_file(&tmp);
         }
+    }
+}
+
+#[cfg(test)]
+mod program_tests {
+    use super::*;
+
+    #[test]
+    fn programs_lists_executable_files_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("skiff-programs-{}", std::process::id()));
+        fs::create_dir_all(dir.join("folder")).unwrap();
+        for (name, mode) in [("tool", 0o755), ("notes.txt", 0o644), (".hidden", 0o755)] {
+            fs::write(dir.join(name), "").unwrap();
+            fs::set_permissions(dir.join(name), fs::Permissions::from_mode(mode)).unwrap();
+        }
+        assert_eq!(programs(dir.to_str().unwrap()).unwrap(), ["tool"]);
+        fs::remove_dir_all(&dir).unwrap();
     }
 }

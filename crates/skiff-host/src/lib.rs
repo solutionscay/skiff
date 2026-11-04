@@ -72,6 +72,7 @@ pub fn capabilities() -> Vec<Capability> {
         Capability::skipper_run_fleets(),
         Capability::skipper_watch_log(),
         Capability::agent_config(),
+        Capability::agent_programs(),
         Capability::drops(),
         Capability::image_cache(),
     ]
@@ -496,6 +497,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         Request::FolderHome => Ok(Response::Path { path: folders::home()? }),
         Request::FolderList { path, hidden, filter } => Ok(Response::Folders { listing: folders::list(&path, hidden, filter.as_deref())? }),
         Request::FolderPlaces => Ok(Response::Places { places: folders::places()? }),
+        Request::ProgramList { path } => Ok(Response::Programs { names: folders::programs(&path)? }),
         Request::FolderCreate { parent, name } => Ok(Response::Path { path: folders::create(&parent, &name)? }),
         Request::DropPut { name, bytes, upload, total, offset, finish } => {
             let cfg = config::load().map_err(failed)?;
@@ -843,6 +845,7 @@ pub fn host_project(p: project::Project) -> HostProject {
         changes: p.changes,
         theme: p.theme,
         files: p.files,
+        skipper_agent: p.skipper_agent,
     }
 }
 

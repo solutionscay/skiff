@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { flush, moduleFromSource } from "./workspaceHarness.ts";
+import { flush, moduleFromSource, realControls } from "./workspaceHarness.ts";
 
 /** A stand-in element: enough for the Hosts tab to build and be clicked. */
 class El {
@@ -8,6 +8,14 @@ class El {
   attrs: Record<string, string> = {};
   listeners: Record<string, ((e: unknown) => void)[]> = {};
   classList = { toggle() {}, add() {} };
+  dataset: Record<string, string> = {};
+  tabIndex = 0;
+  type = "";
+  title = "";
+  spellcheck = false;
+  autocomplete = "";
+  inputMode = "";
+  hidden = false;
   value = "";
   placeholder = "";
   disabled = false;
@@ -68,6 +76,7 @@ function tab(report?: unknown) {
     {
       "@tauri-apps/api/core": { invoke },
       "@tauri-apps/api/event": { listen: async (_e: string, f: (e: unknown) => void) => (steps.push(f), () => {}) },
+      "../ui/controls": realControls(h),
       "../ui/dom": { h, button: (cls: string, text: string, run: () => void) => { const b = h("button", cls, text); b.addEventListener("click", run); return b; } },
       "../ui/runes": { rune: () => new El("svg") },
       "../ui/confirm": { confirmAction: async () => true, promptAction: (o: typeof prompt) => void (prompt = o) },
@@ -103,7 +112,7 @@ test("Edit opens the form with the Host's values and saves them under its id", a
   x.redraw();
   pickFromMenu(x, "Edit…");
   assert.ok(x.page().find("Edit devbox"));
-  // User and port were set, so More is open and shows them.
+  // Every field shows.
   const port = x.page().all().find((e) => e.attrs["aria-label"] === "Port")!;
   assert.equal(port.value, "2222");
   port.value = "2200";
@@ -179,17 +188,16 @@ test("Install key sends the password once, clears the field, then checks again",
   assert.equal(x.calls.filter(([c]) => c === "check_host").length, checks + 1, "the check runs again");
 });
 
-test("Copy public key copies the line Rust gives and says it is safe to send", async () => {
+test("Show key file asks Rust to show the public key, and copies nothing", async () => {
   const x = tab({ ok: false, rows: [{ row: "login", title: "Log in without a prompt", state: "failed", text: "keys only", fix: "copy_public_key" }] });
   await x.t.load();
   x.t.open({ check: "h_dev" });
   for (let i = 0; i < 4; i++) await flush();
   x.redraw();
-  x.page().find("Copy public key")!.click();
+  x.page().find("Show key file")!.click();
   for (let i = 0; i < 4; i++) await flush();
-  assert.ok(x.calls.some(([c]) => c === "public_key"));
-  x.redraw();
-  assert.ok(x.page().all().some((e) => e.textContent.startsWith("Public key copied.")));
+  assert.ok(x.calls.some(([c]) => c === "show_public_key"));
+  assert.ok(!x.calls.some(([c]) => c === "copy"));
 });
 
 test("Install Skiff asks once, names the folder, installs, then checks again", async () => {

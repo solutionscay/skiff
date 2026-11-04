@@ -1,3 +1,4 @@
+import { t, tn } from "../i18n";
 import { h } from "../ui/dom";
 import { confirmAction } from "../ui/confirm";
 import { actionDialog } from "../ui/dialogParts";
@@ -13,28 +14,26 @@ export function createHostFixes(env: HostsEnv, st: HostsState, deps: { runCheck(
     const v = c.report?.version ?? "";
     env.runDialog<{ version: string; cli_linked: boolean }>({
       id: x.id,
-      title: `Install Skiff on ${x.name}?`,
+      title: t("hosts.install.title", { name: x.name }),
       body:
-        os === "macos"
-          ? `Installs Skiff ${v} in your home folder on ${x.name}. It starts when you log in there.`
-          : `Installs Skiff ${v} in your home folder on ${x.name}. It keeps running after a restart.`,
-      action: "Install Skiff",
-      runningTitle: `Installing Skiff on ${x.name}`,
-      working: "Installing",
-      failTitle: `Install failed on ${x.name}`,
-      steps: runSteps(x, v, "Start skiffd and skiff-host"),
+        t(os === "macos" ? "hosts.install.bodyMac" : "hosts.install.body", { version: v, name: x.name }),
+      action: t("hosts.install.action"),
+      runningTitle: t("hosts.install.running", { name: x.name }),
+      working: t("hosts.install.working"),
+      failTitle: t("hosts.install.failed", { name: x.name }),
+      steps: runSteps(x, v, t("hosts.step.startBoth")),
       tone: "go",
       run: () => env.ask("install_skiff", { id: x.id }),
       done: (r, secs, output) => {
-        const cli = r.cli_linked ? "" : " ~/.local/bin/skiff is taken, so Skiff left it.";
-        void deps.runCheck(x.id, { row: "skiff", text: `Installed Skiff ${r.version}.${cli}`, secs, output });
+        const cli = r.cli_linked ? "" : ` ${t("hosts.install.cliTaken")}`;
+        void deps.runCheck(x.id, { row: "skiff", text: `${t("hosts.install.done", { version: r.version })}${cli}`, secs, output });
       },
       failed: (cause, output) => rowFailed(c, "install_skiff", cause, output),
     });
   }
 
   /** The six steps an install or update counts, before each runs. */
-  const runSteps = (x: HostRow, v: string, last: string) => [`Check ${x.name}`, `Get Skiff ${v}`, "Upload", "Unpack", `Switch to Skiff ${v}`, last];
+  const runSteps = (x: HostRow, v: string, last: string) => [t("hosts.checkTitle", { name: x.name }), t("hosts.step.get", { version: v }), t("hosts.step.upload"), t("hosts.step.unpack"), t("hosts.step.switch", { version: v }), last];
 
   /** Close on a failed run: the check list row keeps the cause, with Try
    *  again and Copy output. */
@@ -48,9 +47,9 @@ export function createHostFixes(env: HostsEnv, st: HostsState, deps: { runCheck(
    *  names the sessions it would end. */
   function updateSkiff(c: Check, x: HostRow, reinstall = false) {
     updateDialog(c, x, {
-      title: `Update Skiff on ${x.name}?`,
-      body: `Updates Skiff on ${x.name} to ${c.report?.version ?? ""}${reinstall || c.report?.other_build ? ", this app's build" : ""}. Its sessions keep running.`,
-      action: "Update Skiff",
+      title: t("hosts.update.title", { name: x.name }),
+      body: t(reinstall || c.report?.other_build ? "hosts.update.bodyBuild" : "hosts.update.body", { name: x.name, version: c.report?.version ?? "" }),
+      action: t("hosts.update.action"),
       tone: "go",
       endSessions: false,
       reinstall,
@@ -66,19 +65,19 @@ export function createHostFixes(env: HostsEnv, st: HostsState, deps: { runCheck(
     env.runDialog<Updated>({
       id: x.id,
       ...o,
-      runningTitle: `Updating Skiff on ${x.name}`,
-      working: "Updating",
-      failTitle: `Update failed on ${x.name}`,
-      steps: runSteps(x, v, "Start skiff-host"),
+      runningTitle: t("hosts.update.running", { name: x.name }),
+      working: t("hosts.update.working"),
+      failTitle: t("hosts.update.failed", { name: x.name }),
+      steps: runSteps(x, v, t("hosts.step.startHost")),
       run: () => env.ask<Updated>("update_skiff", { id: x.id, endSessions: o.endSessions, reinstall: o.reinstall }),
       done: (r, secs, output) => {
         if (r.result === "no_handover") return endsSessions(c, x, r.from, r.sessions, o.reinstall);
         const text =
           r.result === "done"
-            ? `Updated to Skiff ${r.version}.${r.restarted ? " skiffd restarted." : ""}`
+            ? `${t("hosts.update.done", { version: r.version })}${r.restarted ? ` ${t("hosts.update.restarted")}` : ""}`
             : r.result === "newer"
-              ? `${x.name} runs a newer Skiff, ${r.from}.`
-              : `Skiff ${r.version} runs already.`;
+              ? t("hosts.update.newer", { name: x.name, version: r.from })
+              : t("hosts.update.same", { version: r.version });
         void deps.runCheck(x.id, { row: "skiff", text, secs, output });
       },
       failed: (cause, output) => rowFailed(c, "update_skiff", cause, output),
@@ -89,9 +88,9 @@ export function createHostFixes(env: HostsEnv, st: HostsState, deps: { runCheck(
   function endsSessions(c: Check, x: HostRow, from: string, sessions: string[], reinstall: boolean) {
     const n = sessions.length;
     updateDialog(c, x, {
-      title: `Update Skiff on ${x.name} and end ${n === 1 ? "1 session" : `${n} sessions`}?`,
-      body: `Skiff ${from} cannot hand its sessions over. This ends: ${sessions.join(", ")}. Save their work first.`,
-      action: n === 1 ? "Update and end 1 session" : `Update and end ${n} sessions`,
+      title: tn("hosts.update.endTitle", n, { name: x.name }),
+      body: t("hosts.update.endBody", { version: from, names: sessions.join(", ") }),
+      action: tn("hosts.update.endAction", n),
       tone: "danger",
       endSessions: true,
       reinstall,
@@ -100,9 +99,9 @@ export function createHostFixes(env: HostsEnv, st: HostsState, deps: { runCheck(
 
   function turnOnLinger(x: HostRow, done: () => void) {
     actionDialog({
-      title: `Keep Skiff running on ${x.name} after you log out?`,
-      body: `Turns on lingering for your account. Skiff then keeps running after you log out.`,
-      action: "Turn on",
+      title: t("hosts.linger.title", { name: x.name }),
+      body: t("hosts.linger.body"),
+      action: t("hosts.linger.action"),
       tone: "go",
       submit: async () => {
         await env.ask<boolean>("turn_on_linger", { id: x.id });
@@ -121,10 +120,10 @@ export function createHostFixes(env: HostsEnv, st: HostsState, deps: { runCheck(
     };
     if (!key.known.length) {
       return actionDialog({
-        title: `Trust the host key of ${x.name}?`,
-        body: `First connection to ${x.name}. Compare the fingerprint with the one from your provider, if you have it.`,
-        content: [prints("Fingerprint", key.fingerprints)],
-        action: "Trust this key",
+        title: t("hosts.trust.title", { name: x.name }),
+        body: t("hosts.trust.body", { name: x.name }),
+        content: [prints(t("hosts.trust.print"), key.fingerprints)],
+        action: t("hosts.trust.action"),
         tone: "go",
         submit: async () => {
           await env.ask("host_key_trust", { token: key.token, replace: false });
@@ -133,18 +132,18 @@ export function createHostFixes(env: HostsEnv, st: HostsState, deps: { runCheck(
       });
     }
     actionDialog({
-      title: `The host key of ${x.name} changed`,
-      body: `Normal after a server reinstall. It can also mean another machine answers here.`,
-      content: [prints("Key that Skiff knows", key.known, true), prints("Key that answers now", key.fingerprints)],
-      action: "Replace the key…",
+      title: t("hosts.changed.title", { name: x.name }),
+      body: t("hosts.changed.body"),
+      content: [prints(t("hosts.changed.known"), key.known, true), prints(t("hosts.changed.now"), key.fingerprints)],
+      action: t("hosts.changed.action"),
       tone: "danger",
       submit: async () => {
         // Asked a second time, as a changed key can be an attack.
         setTimeout(async () => {
           const ok = await confirmAction({
-            title: `Replace the key of ${x.name}?`,
-            body: `Skiff replaces the old key in ${key.file}. Do this only if you know why it changed.`,
-            action: "Replace the key",
+            title: t("hosts.replace.title", { name: x.name }),
+            body: t("hosts.replace.body", { file: key.file }),
+            action: t("hosts.replace.action"),
           });
           if (!ok) return;
           await env.ask("host_key_trust", { token: key.token, replace: true }).catch((e) => alertCheck(e));
@@ -161,9 +160,9 @@ export function createHostFixes(env: HostsEnv, st: HostsState, deps: { runCheck(
 
   function makeKey(x: HostRow, done: () => void) {
     actionDialog({
-      title: "Make an SSH key on this computer?",
-      body: `Makes ~/.ssh/id_ed25519 with no passphrase, then installs it on ${x.name}.`,
-      action: "Make key",
+      title: t("hosts.make.title"),
+      body: t("hosts.make.body", { name: x.name }),
+      action: t("hosts.make.action"),
       tone: "go",
       submit: async () => {
         await env.ask("make_key");
@@ -180,27 +179,27 @@ export function createHostFixes(env: HostsEnv, st: HostsState, deps: { runCheck(
     input.autocomplete = "off";
     input.spellcheck = false;
     const user = x.user ?? (x.destination.includes("@") ? x.destination.split("@")[0] : "");
-    const who = user ? `${user} on ${x.name}` : `your account on ${x.name}`;
+    const who = user ? t("hosts.secret.who", { user, name: x.name }) : t("hosts.secret.yours", { name: x.name });
     const copy = {
       install: {
-        title: `Log in to ${x.name} once`,
-        body: `Type the password of ${who}. Skiff uses it once and does not store it.`,
-        label: "Password",
-        action: "Install key",
+        title: t("hosts.secret.installTitle", { name: x.name }),
+        body: t("hosts.secret.installBody", { who }),
+        label: t("hosts.secret.password"),
+        action: t("hosts.secret.installAction"),
         cmd: "install_key",
       },
       unlock: {
-        title: "Unlock your SSH key",
-        body: "Type the passphrase of your SSH key. Skiff does not store it.",
-        label: "Passphrase",
-        action: "Unlock",
+        title: t("hosts.secret.unlockTitle"),
+        body: t("hosts.secret.unlockBody"),
+        label: t("hosts.secret.passphrase"),
+        action: t("hosts.secret.unlockAction"),
         cmd: "unlock_key",
       },
       fix: {
-        title: `Replace the key file on ${x.name}?`,
-        body: `Another account owns your key file on ${x.name}. Skiff writes a new one with only this computer's key. The other keys stop working. Type the password of ${who}.`,
-        label: "Password",
-        action: "Replace the key file",
+        title: t("hosts.secret.fixTitle", { name: x.name }),
+        body: t("hosts.secret.fixBody", { name: x.name, who }),
+        label: t("hosts.secret.password"),
+        action: t("hosts.secret.fixAction"),
         cmd: "fix_permissions",
       },
     }[what];
@@ -217,7 +216,7 @@ export function createHostFixes(env: HostsEnv, st: HostsState, deps: { runCheck(
       submit: async () => {
         if (!input.value) {
           input.focus();
-          throw `Type the ${copy.label.toLowerCase()}.`;
+          throw t("dialog.typeField", { field: copy.label });
         }
         const secret = input.value;
         input.value = "";

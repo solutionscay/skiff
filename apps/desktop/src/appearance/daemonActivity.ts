@@ -1,5 +1,5 @@
 import { hostCan, hostInvoke } from "../app/hostCaps";
-import { hostName } from "../app/hosts";
+import { smallButton } from "../ui/controls";
 import { isMac } from "../app/keys";
 import { confirmAction } from "../ui/confirm";
 import { h } from "../ui/dom";
@@ -9,7 +9,7 @@ import { projectSkipperOf, skiffAgentSession } from "../app/skiffAgent";
 import { branchName, locate, scopeFleet, scopeName, taskTitle } from "../workspace/model";
 import type { DaemonMetrics, DaemonStatus, SessionInfo } from "../platform/types";
 import { abandonShip, emptyPick, keepLive, moveTo, type Pick, pickAll, picked, pickedText, pickRow, sinkLabel } from "./sessionPick";
-import { type MessageKey, t, tn, upper } from "../i18n";
+import { type MessageKey, t, tn } from "../i18n";
 
 interface ActivityState { list: SessionInfo[]; metrics: DaemonMetrics | null; version: string | null; error: string | null; timer: number | null; pick: Pick; }
 export const activityState = (): ActivityState => ({ list: [], metrics: null, version: null, error: null, timer: null, pick: emptyPick() });
@@ -67,7 +67,7 @@ type SortKey = "state" | "session" | "program" | "workspace" | "folder" | "out" 
 const COLS: { label: MessageKey; key: SortKey | null; cls: string }[] = [
   { label: "activity.colState", key: "state", cls: "" }, { label: "activity.colSession", key: "session", cls: "" }, { label: "activity.colProgram", key: "program", cls: "" },
   { label: "activity.colWorkspace", key: "workspace", cls: "" }, { label: "activity.colFolder", key: "folder", cls: "" },
-  { label: "activity.colOut", key: "out", cls: "c-num" }, { label: "activity.colAge", key: "age", cls: "c-num" }, { label: "activity.colActions", key: null, cls: "" },
+  { label: "activity.colOut", key: "out", cls: "c-num" }, { label: "activity.colAge", key: "age", cls: "c-num" }, { label: "activity.colActions", key: null, cls: "c-acts-head" },
 ];
 /** The chosen sort. It holds while the app runs and comes back to the default on restart. */
 let sort: { key: SortKey; dir: 1 | -1 } | null = null;
@@ -96,7 +96,7 @@ function compare(a: SessionInfo, b: SessionInfo): number {
 export function daemonActivitySection(s: ActivityState, redraw: () => void, reveal: (id: string, closed: boolean) => void): HTMLElement[] {
   const head = h("div", "set-head"), title = h("div", "set-h", t("settings.tab.activity")); title.id = "set-h-activity";
   // The page shows the selected Host: "This computer (name)" or the remote Host's name.
-  head.append(title, h("div", "set-sub mono", hostName()));
+  head.append(title);
   const band = h("div", "set-band set-daemon-band");
   const m = s.metrics;
   const version = m?.version ?? s.version;
@@ -105,8 +105,7 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
   // The selection count is a live status: a screen reader reads each change.
   const count = h("span", "set-daemon-picked"); count.setAttribute("role", "status");
   // Sink kills the selected sessions. It asks first.
-  const sink = h("button", "set-rm set-sink"); sink.type = "button"; sink.dataset.key = "sink";
-  sink.addEventListener("click", () => void sinkPicked());
+  const sink = smallButton("", () => void sinkPicked(), { danger: true }); sink.classList.add("set-sink"); sink.dataset.key = "sink";
   // A Host without daemon metrics, such as a remote Host, has no Up and no Memory.
   const metrics = hostCan("daemon_metrics");
   band.append(h("span", "", version ? `skiffd ${version}` : "skiffd"));
@@ -123,7 +122,7 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
   cols.setAttribute("role", "row");
   for (const c of COLS) {
     // A head that sorts is a button: a click, Enter or Space sorts by it, and again reverses.
-    const el = h(c.key ? "button" : "span", c.key ? `set-sort ${c.cls}` : c.cls, upper(t(c.label)));
+    const el = h(c.key ? "button" : "span", c.key ? `set-sort ${c.cls}` : c.cls, t(c.label));
     el.setAttribute("role", "columnheader");
     if (c.key) {
       const key = c.key; (el as HTMLButtonElement).type = "button"; el.dataset.key = key;
@@ -154,7 +153,7 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
     // The name alone, as the sidebar shows it. Hover shows the session id.
     row.append(state, cell(taskTitle(item), "c-name", `${taskTitle(item)} · ${item.id}`), cell(program(item)), cell(w.text, w.out ? "bad" : ""), cell(folder(item.cwd), "", item.cwd), cell(item.output_bytes ? bytes(item.output_bytes) : "—", "c-num"), cell(age(item.started_at), "c-num", item.started_at ? new Date(item.started_at).toLocaleString() : ""));
     const acts = h("span", "c-acts"); acts.setAttribute("role", "gridcell");
-    const show = h("button", "set-rm", t("activity.reveal")); show.type = "button"; show.disabled = item.skipper != null && !item.coordinator && w.out; show.addEventListener("click", () => reveal(item.id, !!locate(S.closedProjects, item.cwd))); acts.append(show);
+    const show = h("button", "set-reveal", t("activity.reveal")); show.type = "button"; show.disabled = item.skipper != null && !item.coordinator && w.out; show.addEventListener("click", () => reveal(item.id, !!locate(S.closedProjects, item.cwd))); acts.append(show);
     row.append(acts); table.append(row);
   }
 

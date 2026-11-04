@@ -26,6 +26,14 @@ pub struct HostAgent {
     /// is meaningful only on the Host that returned it.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub cache_flags: String,
+    /// Where the program was found on the Host, in full. It is meaningful
+    /// only on that Host. Absent: not found, or an older Host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// The flags that make this agent skip its approval prompts. The first
+    /// is the one to write. Empty: the Host's Skiff lists none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skip_approvals: Vec<String>,
 }
 
 /// One change to the Host's `[agents]` table (`agent_config@1`).

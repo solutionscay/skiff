@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::{config::TaskTypes, project::AgentInfo, shell::{quote_word, shell_quote}};
 
 /// Where a person sets the table, for error messages.
-pub const SETTINGS: &str = "Settings › Task types";
+pub const SETTINGS: &str = "Settings › Skippers › Task types";
 
 /// The model flag of each known agent, from its `--help` (2026-10-15:
 /// claude 2.1.301, codex 0.162.1, grok 1.0.44; 2026-11-03: agy, gemini's
@@ -23,6 +23,20 @@ pub fn model_flag(agent: &str) -> Option<&'static str> {
         "claude" | "gemini" => Some("--model"),
         "codex" | "grok" | "kimi" => Some("-m"),
         _ => None,
+    }
+}
+
+/// The flags that make a known agent skip its approval prompts, from its
+/// `--help` (2026-11-04: claude 2.1.301, codex 0.162.1, agy, grok 1.0.44,
+/// opencode). The first is the one Settings writes. codex also takes `--yolo`.
+/// hermes and kimi are not checked here: they have none.
+pub fn skip_flags(agent: &str) -> &'static [&'static str] {
+    match agent {
+        "claude" | "gemini" => &["--dangerously-skip-permissions"],
+        "codex" => &["--dangerously-bypass-approvals-and-sandbox", "--yolo"],
+        "grok" => &["--always-approve"],
+        "opencode" => &["--auto"],
+        _ => &[],
     }
 }
 
@@ -392,6 +406,8 @@ mod tests {
             installed: true,
             enabled: true,
             used_by: None,
+            path: None,
+            skip_approvals: Vec::new(),
         }
     }
 

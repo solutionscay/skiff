@@ -28,7 +28,7 @@ export function confirmAction(o: { title: string; body: string; action: string }
  */
 export function promptAction(o: {
   title: string;
-  body: string;
+  body?: string;
   placeholder: string;
   /** The field starts with this text. */
   value?: string;

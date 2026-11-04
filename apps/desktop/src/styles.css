@@ -12,6 +12,7 @@
 @import "./styles/terminal-welcome.css";
 @import "./styles/shell-actions.css";
 @import "./styles/menus.css";
+@import "./styles/controls.css";
 @import "./styles/settings.css";
 @import "./styles/tree-icons.css";
 @import "./styles/terminal-drag.css";
