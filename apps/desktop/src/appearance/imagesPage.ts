@@ -1,8 +1,6 @@
 import { isMac } from "../app/keys";
 import { sessions } from "../app/state";
 import { accent, place } from "../app/stateQueries";
-import { copyText } from "../platform/clipboard";
-import { showError } from "../ui/alerts";
 import { confirmAction } from "../ui/confirm";
 import { h } from "../ui/dom";
 import { icon } from "../ui/icons";
@@ -12,7 +10,7 @@ import {
   imagesError, pinImages, queryWords, searchField, section, shownName, when, whoLine,
 } from "../terminal/images";
 import { size } from "./skiffFolderDialog";
-import { t, tn, upper } from "../i18n";
+import { t, tn } from "../i18n";
 
 /** The page's state. It survives every redraw of Settings. */
 interface ImagesState {
@@ -26,34 +24,24 @@ interface ImagesState {
   /** Where the keys were, so a redraw puts them back. */
   keys: "field" | "grid" | null;
   scroll: number;
-  /** The count cell says "Copied". */
-  copied: boolean;
-  copiedTimer: number;
   /** The tiles that Pin or Unpin moves: the rebuild that shows them in their new
    *  section scrolls the current one into view. */
   moving: { paths: string[]; pinned: boolean } | null;
 }
 
-export const imagesState = (): ImagesState => ({ query: "", sel: new Set(), anchor: null, now: null, keys: null, scroll: 0, copied: false, copiedTimer: 0, moving: null });
+export const imagesState = (): ImagesState => ({ query: "", sel: new Set(), anchor: null, now: null, keys: null, scroll: 0, moving: null });
 
-
-/** The cache folder with `~` for home, from an image's path. */
-function folder(): string {
-  const p = allImages()[0]?.path;
-  if (!p) return "";
-  return p.slice(0, p.lastIndexOf("/")).replace(/^\/(home|Users)\/[^/]+/, "~");
-}
 
 /**
  * Settings › Images: the library as a gallery. Search, select as in a file
- * manager, and act on the selection: Open, Insert, Pin, Copy path, Delete.
+ * manager, and act on the selection: Open, Insert, Pin, Delete.
  * Insert closes Settings, so the pane shows the insert signals. `close`
  * closes Settings.
  */
 export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
   const main = h("div", "set-main img-page");
   const head = h("div", "set-head");
-  head.append(h("div", "set-h", t("images.title")), h("div", "set-sub mono", folder()));
+  head.append(h("div", "set-h", t("images.title")));
 
   const tools = h("div", "img-tools");
   const field = searchField();
@@ -71,10 +59,9 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
   openB.textContent = t("menu.open");
   const insB = btn(" ins", () => void insert());
   const pinB = btn("", () => void pin());
-  const copyB = btn("", () => void copy());
   const delB = btn(" del", () => void remove());
   delB.textContent = t("images.delete");
-  tools.append(find, openB, insB, pinB, copyB, delB);
+  tools.append(find, openB, insB, pinB, delB);
 
   const scroll = h("div", "img-scroll");
   scroll.tabIndex = 0;
@@ -122,9 +109,9 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
       for (const i of part) g.append(tile(i, words));
       return g;
     };
-    if (pins.length) kids.push(section(upper(t("images.pinned")), pins.length), grid(pins));
+    if (pins.length) kids.push(section((t("images.pinned")), pins.length), grid(pins));
     if (rest.length) {
-      if (pins.length) kids.push(section(upper(t("images.recent")), rest.length));
+      if (pins.length) kids.push(section((t("images.recent")), rest.length));
       kids.push(grid(rest));
     }
     scroll.replaceChildren(...kids);
@@ -165,14 +152,12 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
     }
     const sel = picked();
     const words = queryWords(st.query);
-    count.textContent = st.copied ? t("images.copied") : countText(shown.length, words) + (sel.length ? ` · ${t("images.selected", { n: sel.length })}` : "");
+    count.textContent = countText(shown.length, words) + (sel.length ? ` · ${t("images.selected", { n: sel.length })}` : "");
     const none = !sel.length;
     openB.disabled = none;
     pinB.disabled = none;
-    copyB.disabled = none;
     delB.disabled = none;
     pinB.textContent = t(sel.length && sel.every((i) => i.pinned) ? "images.unpin" : "images.pin");
-    copyB.textContent = t(sel.length > 1 ? "images.copyPaths" : "menu.copyPath");
     // The label names the target: the project letters in their color, then the session title.
     const id = insertTarget();
     const s = id ? sessions.get(id) : undefined;
@@ -272,23 +257,6 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
     if (to) tiles.get(to)?.scrollIntoView({ block: "nearest" });
   }
 
-  async function copy() {
-    const sel = picked();
-    if (!sel.length) return;
-    try {
-      await copyText(sel.map((i) => i.path).join("\n"));
-    } catch (e) {
-      return showError(e);
-    }
-    st.copied = true;
-    clearTimeout(st.copiedTimer);
-    st.copiedTimer = window.setTimeout(() => {
-      st.copied = false;
-      if (count.isConnected) paint();
-    }, 1500);
-    paint();
-  }
-
   /** One image goes at once, as in the drop-down. Two or more ask first. */
   async function remove() {
     const sel = picked();
@@ -379,7 +347,6 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
     } else if (e.key === "Enter") openAll();
     else if (k === "i") void insert();
     else if (k === "p") void pin();
-    else if (k === "c") void copy();
     else if (e.key === "Delete") void remove();
     else return;
     e.preventDefault();

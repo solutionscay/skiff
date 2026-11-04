@@ -1,4 +1,6 @@
 import { h, button } from "../ui/dom";
+import { smallButton, switchButton } from "../ui/controls";
+import { t } from "../i18n";
 import { rune } from "../ui/runes";
 import type { MenuEntry } from "../ui/menu";
 import { promptAction } from "../ui/confirm";
@@ -16,21 +18,22 @@ export function createHostList(
     const main = h("div", "set-main");
     const head = h("div", "set-head set-head-row");
     const words = h("div", "set-head-words");
-    const title = h("div", "set-h", "Hosts");
+    const title = h("div", "set-h", t("settings.tab.hosts"));
     title.id = "set-h-hosts";
     words.append(title);
-    const add = button("set-add ready", "Add SSH Host…", () => deps.openForm(null));
-    head.append(words, add);
+    const acts = h("div", "set-head-acts");
+    acts.append(smallButton(t("hosts.addSsh"), () => deps.openForm(null), { go: true }));
+    head.append(words, acts);
     main.append(head);
     const table = h("div", "set-table g-hosts");
     table.setAttribute("role", "table");
     table.setAttribute("aria-labelledby", "set-h-hosts");
     const cols = h("div", "set-row set-cols");
-    cols.append(h("span", "c-lead"), h("span", "", "NAME"), h("span", "", "SERVER"), h("span", "", "SKIFF"), h("span", "", "STATE"), h("span", ""));
+    cols.append(h("span", "c-lead"), h("span", "", t("hosts.colName")), h("span", "", t("hosts.colServer")), h("span", "", t("hosts.colSkiff")), h("span", "", t("hosts.colAuto")), h("span", "", t("hosts.colState")), h("span", ""));
     table.append(cols, hostRow(null));
     for (const x of env.hosts.knownHosts()) table.append(hostRow(x));
     main.append(table);
-    if (!env.hosts.knownHosts().length) main.append(h("div", "set-note set-line", "No servers yet."));
+    if (!env.hosts.knownHosts().length) main.append(h("div", "set-note set-line", t("hosts.none")));
     if (st.error) main.append(alert(st.error));
     return main;
   }
@@ -45,17 +48,31 @@ export function createHostList(
     const shown = x ? env.hosts.shownHost() === x.id : env.hosts.shownHost() === null;
     const lead = h("span", "c-lead");
     if (shown) lead.append(rune("indicators-check"));
-    lead.setAttribute("aria-label", shown ? "Shown in this window" : "");
-    const skiff = h("span", "c-skiff mono" + (x?.update ? " update" : ""), x ? (x.skiff ?? "—") : st.version || "—");
+    lead.setAttribute("aria-label", shown ? t("hosts.shown") : "");
+    const skiff = h("span", "c-skiff" + (x?.update ? " update" : ""));
+    skiff.append(h("span", "mono", x ? (x.skiff ?? "—") : st.version || "—"));
+    const auto = h("span", "c-auto");
+    if (x) {
+      if (x.update) {
+        const up = smallButton(t("hosts.updateShort"), () => void deps.checkThenUpdate(x.id), { label: t("hosts.updateSkiff") });
+        up.tabIndex = -1;
+        up.addEventListener("click", (e) => e.stopPropagation());
+        skiff.append(up);
+      }
+      const sw = switchButton({ label: t("hosts.autoOf", { name: x.name }), on: x.auto_update, toggle: () => void flipAuto(x) });
+      sw.tabIndex = -1;
+      sw.addEventListener("click", (e) => e.stopPropagation());
+      auto.append(sw);
+    }
     const more = h("span", "c-more");
-    row.append(lead, h("span", "c-name", x ? x.name : env.hosts.localHostName()), h("span", "c-server mono", x ? typed(x) : env.hosts.localHostName()), skiff, stateCell(x), more);
+    row.append(lead, h("span", "c-name", x ? x.name : env.hosts.localHostName()), h("span", "c-server mono", x ? typed(x) : ""), skiff, auto, stateCell(x), more);
     if (!x) return row;
     row.tabIndex = 0;
-    row.setAttribute("aria-label", `${x.name}: open its check list`);
+    row.setAttribute("aria-label", t("hosts.openCheck", { name: x.name }));
     const menu = button("c-menu", "⋯", () => {});
     menu.tabIndex = -1;
-    menu.title = "More";
-    menu.setAttribute("aria-label", `More for ${x.name}`);
+    menu.title = t("hosts.more");
+    menu.setAttribute("aria-label", t("hosts.moreFor", { name: x.name }));
     const openMenu = (at: { x: number; y: number }) => hostMenu(x, at.x, at.y, row);
     menu.addEventListener("click", (e: MouseEvent) => {
       e.stopPropagation();
@@ -82,19 +99,31 @@ export function createHostList(
     return row;
   }
 
-  /** The row menu: Check, Update Skiff… when offered, Edit…, Rename…, Remove…. */
+  /** Update Skiff on this Host automatically: an older install Skiff made is updated as the app connects, when every session survives. */
+  async function flipAuto(x: HostRow) {
+    try {
+      await env.ask("set_host_auto_update", { id: x.id, on: !x.auto_update });
+      await env.hosts.loadHosts();
+    } catch (e) {
+      st.error = String(e);
+    }
+    env.redraw();
+  }
+
+  /** The row menu: Check, Update Skiff… when offered, the auto update switch, Edit…, Rename…, Remove…. */
   function hostMenu(x: HostRow, left: number, top: number, back: HTMLElement) {
     const entries: MenuEntry[] = [
-      { icon: "indicators-check", label: "Check", run: () => void deps.runCheck(x.id) },
-      ...(x.update ? [{ icon: "schedule-refresh-cw", label: "Update Skiff…", run: () => void deps.checkThenUpdate(x.id) }] : []),
+      { icon: "indicators-check", label: t("hosts.check"), run: () => void deps.runCheck(x.id) },
+      ...(x.update ? [{ icon: "schedule-refresh-cw", label: t("hosts.updateSkiff"), run: () => void deps.checkThenUpdate(x.id) }] : []),
+      { ...(x.auto_update ? { icon: "indicators-check" } : {}), label: t("hosts.colAuto"), run: () => void flipAuto(x) },
       {
         icon: "tools-pencil",
-        label: "Edit…",
+        label: t("hosts.edit"),
         run: () => deps.openForm(x),
       },
-      { label: "Rename…", run: () => rename(x) },
+      { label: t("hosts.rename"), run: () => rename(x) },
       { sep: true },
-      { icon: "indicators-x", label: "Remove…", danger: true, run: () => void remove(x) },
+      { icon: "indicators-x", label: t("hosts.remove"), danger: true, run: () => void remove(x) },
     ];
     env.openMenu(left, top, x.name, entries, () => back.focus());
   }
@@ -102,12 +131,12 @@ export function createHostList(
   /** Dot and word, from the last check or connection in this app run. */
   function stateCell(x: HostRow | null): HTMLElement {
     const [cls, word] = !x
-      ? ["ok", "Connected"]
+      ? ["ok", t("hosts.connected")]
       : x.state === "ok"
-        ? ["ok", "Connected"]
+        ? ["ok", t("hosts.connected")]
         : x.state === "attention"
-          ? ["bad", "Needs attention"]
-          : ["none", "Not checked"];
+          ? ["bad", t("hosts.needsAttention")]
+          : ["none", t("hosts.notChecked")];
     const cell = h("span", `c-state ${cls}`);
     cell.append(h("span", "sq"), word);
     return cell;
@@ -116,11 +145,11 @@ export function createHostList(
 
   function rename(x: HostRow) {
     promptAction({
-      title: `Rename ${x.name}`,
-      body: "The server stays the same.",
-      placeholder: "a name",
+      title: t("hosts.renameTitle", { name: x.name }),
+      body: t("hosts.renameBody"),
+      placeholder: t("hosts.namePlaceholder"),
       value: x.name,
-      action: "Rename",
+      action: t("hosts.renameAction"),
       submit: async (name) => {
         await env.ask("rename_host", { id: x.id, name });
         await env.hosts.loadHosts();
@@ -135,29 +164,23 @@ export function createHostList(
    * so, and the copy names the sessions that end and what stays.
    */
   function remove(x: HostRow) {
-    const kept = `Its sessions keep running on ${x.name}.`;
+    const kept = t("hosts.removeKept", { name: x.name });
     const body = h("div", "confirm-body", kept);
     const extra = h("div", "set-remove-box");
-    const status = h("div", "set-sub", `Checking ${x.name}…`);
+    const status = h("div", "set-sub", t("hosts.removeChecking", { name: x.name }));
     extra.append(status);
     let uninstall = false;
     let ends = "";
-    const box = h("button", "set-check-label");
-    box.type = "button";
-    box.setAttribute("role", "switch");
-    box.setAttribute("aria-checked", "false");
-    box.addEventListener("click", () => {
+    const flip = () => {
       uninstall = !uninstall;
-      box.setAttribute("aria-checked", String(uninstall));
-      box.classList.toggle("on", uninstall);
-      body.textContent = uninstall
-        ? `Skiff uninstalls itself from ${x.name}. ${ends}Your other files stay.`
-        : kept;
-    });
+      box?.setAttribute("aria-checked", String(uninstall));
+      body.textContent = uninstall ? t("hosts.removeUninstalls", { name: x.name, ends }) : kept;
+    };
+    let box: HTMLButtonElement | null = null;
     actionDialog({
-      title: `Remove ${x.name}?`,
+      title: t("hosts.removeTitle", { name: x.name }),
       content: [body, extra],
-      action: "Remove Host",
+      action: t("hosts.removeAction"),
       tone: "danger",
       submit: async () => {
         st.error = null;
@@ -168,13 +191,12 @@ export function createHostList(
     });
     env.ask<{ managed: boolean; sessions: string[] }>("uninstall_preview", { id: x.id }).then(
       (p) => {
-        if (!p.managed) return void (status.textContent = `Skiff on ${x.name} is its own install. It stays.`);
-        const n = p.sessions.length;
-        ends = n === 0 ? "" : `This ends: ${p.sessions.join(", ")}. `;
-        box.append(h("span", "switch"), h("span", "", `Also uninstall Skiff on ${x.name}. ${ends}`.trim()));
-        status.replaceWith(box);
+        if (!p.managed) return void (status.textContent = t("hosts.removeOwnInstall", { name: x.name }));
+        ends = p.sessions.length ? t("hosts.removeEnds", { names: p.sessions.join(", ") }) : "";
+        box = switchButton({ label: t("hosts.removeAlso", { name: x.name }), text: `${t("hosts.removeAlso", { name: x.name })} ${ends}`.trim(), on: false, danger: true, toggle: flip });
+        extra.replaceChildren(box);
       },
-      () => void (status.textContent = `${x.name} does not answer. Skiff removes it here only.`),
+      () => void (status.textContent = t("hosts.removeNoAnswer", { name: x.name })),
     );
   }
 

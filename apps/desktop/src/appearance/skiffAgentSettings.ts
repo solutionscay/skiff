@@ -1,15 +1,17 @@
 import { h } from "../ui/dom";
+import { picker, smallButton, switchButton, textBox, type PickEntry } from "../ui/controls";
+import { promptAction } from "../ui/confirm";
+import { showError } from "../ui/alerts";
 import type { AgentInfo } from "../platform/types";
 import type { InstructionFile, SkiffAgentSettings, TaskType } from "../app/skiffAgent";
 import { DEFAULT_NAME, mainName, skiffAgentChoice } from "../app/skiffAgent";
 import { continueLine } from "../terminal/resume";
-import { rowTable, sectionHead, tableState, tableWords, type RowTableState } from "./rowTable";
-import { t, tn, upper } from "../i18n";
+import { rowTable, sectionHead, type RowTableState } from "./rowTable";
+import { t } from "../i18n";
 import { badTaskTypeName, fileSize, modelError, modelFlag, TASK_TYPE_NAME } from "./taskTypes";
 import { reveal } from "../platform/fileActions";
-import { copyText } from "../platform/clipboard";
-import { showError } from "../ui/alerts";
 import { isRemote } from "../app/hosts";
+import { S } from "../app/state";
 import { avatarFinish, avatarScopes, setAvatarDialog, setAvatarFinish, skipperFace } from "../workspace/skipperFace";
 import { FINISHES, parseFinish } from "./skipperAvatar";
 import { scopeName } from "../workspace/model";
@@ -31,7 +33,7 @@ export type SkiffAgentEdit =
   | { key: "remove_task"; value: string }
   | { key: "cache_days"; value: number };
 
-/** What the Instructions table does with a row. */
+/** What a Skipper's row does with its instruction file. */
 interface InstructionActs {
   files: InstructionFile[];
   /** One error line under a row, by its file. */
@@ -42,130 +44,55 @@ interface InstructionActs {
   reset: (f: InstructionFile) => void;
 }
 
-/**
- * Settings › Skippers: the folder, the name, the agent and model, Continue
- * on restore, the agent and model of project and fleet Skippers, and the
- * instruction files. `changeFolder` opens the Change… dialog: a change
- * copies, checks and switches, so the ledger and results go with the folder.
- */
-export function skiffAgentSection(
-  set: SkiffAgentSettings,
-  agents: AgentInfo[],
-  save: (e: SkiffAgentEdit) => void,
-  changeFolder: () => void,
-): HTMLElement[] {
-  // Enabled agents and the user's own. A custom agent is on when the user added it.
-  const choices = agents.filter((a) => a.enabled || a.custom);
-  const chosen = skiffAgentChoice(agents, set.agent);
-
-  const name = textRow(t("skipper.name"), t("skipper.nameAria"), set.name ?? "", DEFAULT_NAME, (v) => save({ key: "name", value: v || null }));
-  const skipperName = textRow(t("skipper.skipperName"), t("skipper.skipperNameAria"), set.skipper_name ?? "", "Skipper", (v) => save({ key: "skipper_name", value: v || null }));
-
-  const main = mainName(set.name);
-  const pick = agentPick(t("skipper.agentOf", { name: main }), choices, null);
-  if (chosen) pick.value = chosen.id;
-  pick.addEventListener("change", () => save({ key: "agent", value: pick.value }));
-  const agentRow = agentModelRow(pick, chosen ?? undefined, set.model, t("skipper.modelOf", { name: main }), (v) => save({ key: "model", value: v }));
-
-  // A custom agent has no continue line: the switch shows off.
-  const line = chosen ? continueLine(chosen.id, chosen.command) : null;
-  const on = !!line && set.continue_on_restore;
-  const cont = h("div", "set-row set-open set-agent" + (on ? " on" : "") + (line ? "" : " missing"));
-  const sw = h("button", "c-mode set-switch");
-  sw.type = "button";
-  sw.disabled = !line;
-  sw.setAttribute("role", "switch");
-  sw.setAttribute("aria-checked", String(on));
-  sw.setAttribute("aria-label", t(on ? "skipper.continueOn" : "skipper.continueOff"));
-  sw.appendChild(h("span", "switch"));
-  sw.addEventListener("click", () => save({ key: "continue_on_restore", value: !on }));
-  const what = line
-    ? h("span", "c-cmd mono", line)
-    : h("span", "c-cmd", chosen ? t("skipper.noContinue", { id: chosen.id }) : t("skipper.noAgentOn"));
-  cont.append(h("span", "c-name", t("skipper.continue")), what, sw);
-  return [...folderRows(set, changeFolder), name, skipperName, agentRow, cont];
+/** Task types › Edit: opens a row's file. `errors`: one line under a row, by type. */
+interface TypeFileActs {
+  edit: (t: TaskType) => void;
+  errors: Map<string, string>;
 }
 
-/**
- * Settings › Skippers › Project and fleet Skippers: one agent and model for
- * both levels. "Same as Admiral" takes the main Skipper's agent. A project's
- * `skipper_agent` in projects.toml still wins for its project Skipper.
- */
-export function projectSkippersSection(set: SkiffAgentSettings, agents: AgentInfo[], save: (e: SkiffAgentEdit) => void): HTMLElement[] {
-  const head = sectionHead(t("skipper.projectSkippers"));
-  const choices = agents.filter((a) => a.enabled || a.custom);
-  const pick = agentPick(t("skipper.projectAgent"), choices, t("skipper.sameAs", { name: mainName(set.name) }));
-  const own = choices.find((a) => a.id === set.project_agent);
-  pick.value = own ? own.id : "";
-  pick.addEventListener("change", () => save({ key: "project_agent", value: pick.value || null }));
-  const agent = own ?? skiffAgentChoice(agents, set.agent) ?? undefined;
-  const row = agentModelRow(pick, agent, set.project_model, t("skipper.projectModel"), (v) => save({ key: "project_model", value: v }));
-  return [head, row];
-}
-
-/**
- * Settings › Skippers › Avatars: each fleet and project
- * Skipper with a folder on this computer, as a tile with its face. A click opens the picker.
- * The faces are kept in those folders: a remote Host shows none here.
- */
-export function avatarsSection(set: SkiffAgentSettings, redraw: () => void): HTMLElement[] {
-  // The Admiral wears the mascot's head: nothing to change.
-  const scopes = isRemote() ? [] : avatarScopes().filter((s) => s);
-  const word = set.skipper_name || "Skipper";
-  if (!scopes.length) return [];
-  // A grid of tiles, as many across as fit: the face and the name. A click opens the picker.
-  const grid = h("div", "set-avatars");
-  for (const scope of scopes) {
-    const label = scope ? t(scope.startsWith("fleet:") ? "skipper.avatarFleet" : "skipper.avatarProject", { scope: scopeName(scope), skipper: word }) : mainName(set.name);
-    const title = t("skipper.avatarTitle", { name: label });
-    const tile = h("button", "set-avatar");
-    tile.type = "button";
-    tile.title = title;
-    tile.setAttribute("aria-label", title);
-    tile.append(skipperFace(scope || null, 26), h("span", "set-avatar-name", label));
-    tile.addEventListener("click", () => setAvatarDialog(scope || null, title, redraw));
-    grid.append(tile);
-  }
-  return [sectionHead(t("skipper.avatars"), undefined, String(scopes.length)), grid];
+/** What the Skippers page does with its rows. */
+export interface SkippersPageActs {
+  save: (e: SkiffAgentEdit) => void;
+  saveTask: (e: SkiffAgentEdit) => Promise<string | null>;
+  /** Draws the page again after a face changes. */
+  redraw: () => void;
+  render: () => void;
+  tasksTable: RowTableState;
+  files: InstructionActs;
+  types: TypeFileActs;
 }
 
 /**
  * Settings › Appearance: the Finish of every face (plush, gummy or flat), an
- * app look kept in localStorage, then a strip of sample faces in it.
- * `seeds`: the strip's random faces, one per face; the strip adds seeds as it
- * needs more. `colors`: the theme colors the faces wear.
+ * app look kept in localStorage, then sample faces in it, in one row. It
+ * changes every face at once. `seeds`: the strip's random faces, one per face;
+ * the strip adds seeds as it needs more. `colors`: the theme colors the faces wear.
  */
-export function finishSection(redraw: () => void, seeds: number[], colors: string[]): HTMLElement[] {
-  return [finishRow(redraw), finishSamples(seeds, colors)];
-}
-
-/** The Finish row: the pick. It changes every face at once. */
-function finishRow(redraw: () => void): HTMLElement {
-  const row = h("div", "set-row set-open set-opacity set-finish");
-  const pick = h("select", "c-cmd");
-  pick.setAttribute("aria-label", t("skipper.finish"));
-  for (const f of FINISHES) {
-    const o = h("option", "", t(`skipper.finish.${f}`));
-    o.value = f;
-    pick.append(o);
-  }
-  pick.value = avatarFinish();
-  pick.addEventListener("change", () => {
-    setAvatarFinish(parseFinish(pick.value));
-    redraw();
-    document.querySelector<HTMLSelectElement>(".set-finish select")?.focus();
-  });
-  row.append(h("span", "c-name", t("skipper.finish")), pick, h("span"));
+export function finishRow(redraw: () => void, seeds: number[], colors: string[]): HTMLElement {
+  const row = h("div", "set-row set-open set-agent on set-finish");
+  row.append(
+    h("span", "c-name", t("skipper.finish")),
+    fieldCell(picker({
+      label: t("skipper.finish"),
+      value: avatarFinish(),
+      entries: () => FINISHES.map((f) => ({ value: f, label: t(`skipper.finish.${f}`) })),
+      pick: (v) => {
+        setAvatarFinish(parseFinish(v));
+        redraw();
+      },
+    })),
+    finishSamples(seeds, colors),
+  );
   return row;
 }
 
 /**
  * The sample strip: the Admiral, then random crew faces, in the finish, at
- * the Skippers view's size. As many faces as fit the strip's width, on one
- * line; a resize or a zoom adds or drops faces. Each crew face wears another
- * vivid one of `colors`, in an order the first seed shuffles.
+ * one row's size. As many faces as fit the strip's width, on one line; a resize
+ * or a zoom adds or drops faces. Each crew face wears another vivid one of
+ * `colors`, in an order the first seed shuffles.
  */
-const SAMPLE_PX = 40;
+const SAMPLE_PX = 28;
 function finishSamples(seeds: number[], colors: string[]): HTMLElement {
   const strip = h("div", "set-finish-faces");
   const admiral = skipperFace(null, SAMPLE_PX);
@@ -206,68 +133,36 @@ function shuffled(colors: string[], seed: number): string[] {
   return out;
 }
 
+/** A cell a control fills. */
+function fieldCell(el: HTMLElement): HTMLElement {
+  const c = h("span", "c-field");
+  c.append(el);
+  return c;
+}
+
+/** The agents to pick from, after `first` (value "") when given. */
+function agentEntries(choices: AgentInfo[], first: string | null): PickEntry[] {
+  const list = choices.map((a) => ({ value: a.id, label: a.custom ? t("skipper.custom", { id: a.id }) : a.id }));
+  return first === null ? list : [{ value: "", label: first }, ...list];
+}
+
 /**
- * Settings › Skippers › Instructions: AGENTS.md, then each fleet's and each
- * open project's SKIPPER.md, in tree order. Edit opens the file, and writes
- * it from the template first when there is none. Reset… shows on an edited
- * file only.
+ * The model of a row: one word in a field. Empty is the agent's default. An
+ * agent with no model flag shows "in the command" in place of the field.
  */
-export function instructionsSection(set: SkiffAgentSettings, acts: InstructionActs): HTMLElement[] {
-  const edited = acts.files.filter((f) => f.status.startsWith("edited")).length;
-  const head = sectionHead(t("skipper.instructions"), "set-h-instructions", t("skipper.instructionsCount", { files: tn("skipper.files", acts.files.length), edited }));
-  const skipper = mainName(set.name);
-  const table = rowTable<InstructionFile>(
-    {
-      grid: "g-instr",
-      words: tableWords("file"),
-      labelledBy: "set-h-instructions",
-      rows: acts.files,
-      id: (f) => f.file,
-      cols: [
-        {
-          key: "scope",
-          head: upper(t("skipper.colScope")),
-          name: t("skipper.scope"),
-          kind: "lead",
-          draw: (f) => {
-            const cell = h("span", "c-scope", f.scope.kind === "skipper" ? skipper : f.scope.name);
-            if (f.scope.kind === "skipper" || f.scope.kind === "fleet") cell.append(h("span", "c-kind", t(f.scope.kind === "skipper" ? "skipper.everySkipper" : "skipper.fleet")));
-            return cell;
-          },
-        },
-        { key: "file", head: upper(t("skipper.colFile")), name: t("skipper.file"), kind: "preview", get: (f) => f.file },
-        { key: "status", head: upper(t("settings.colStatus")), name: t("skipper.status"), kind: "lead", draw: fileState },
-      ],
-      // The buttons go straight into the end cell, so they line up with every other row's.
-      status: (f) => {
-        const box = document.createDocumentFragment();
-        if (!acts.editable) return box;
-        const edit = h("button", "set-rm", t("skipper.edit"));
-        edit.type = "button";
-        edit.setAttribute("aria-label", t("skipper.editFile", { file: f.file }));
-        edit.addEventListener("click", () => acts.edit(f));
-        box.append(edit);
-        if (f.status.startsWith("edited")) {
-          const reset = h("button", "set-rm", t("skipper.reset"));
-          reset.type = "button";
-          reset.setAttribute("aria-label", t("skipper.resetFile", { file: f.file }));
-          reset.addEventListener("click", () => acts.reset(f));
-          box.append(reset);
-        }
-        return box;
-      },
+function modelCell(agent: AgentInfo | undefined, model: string | null, label: string, save: (v: string | null) => void): HTMLElement {
+  if (!modelFlag(agent)) return h("span", "c-dim", agent ? t("skipper.inCommand") : "");
+  return fieldCell(textBox({
+    label,
+    value: model ?? "",
+    placeholder: t("skipper.agentDefault"),
+    mono: true,
+    save: (v) => {
+      const bad = modelError(v);
+      if (bad) return void showError(bad);
+      save(v || null);
     },
-    tableState(),
-    () => {},
-  );
-  // One 40px error row under the row it is about.
-  for (const [file, why] of acts.errors) {
-    const row = [...table.querySelectorAll<HTMLElement>(".set-row")].find((r) => r.querySelector(".c-preview span")?.textContent === file);
-    const meta = h("div", "set-error", why);
-    meta.setAttribute("role", "alert");
-    row?.after(meta);
-  }
-  return [head, table];
+  }));
 }
 
 /** The STATUS cell: a square and the word. */
@@ -279,75 +174,253 @@ function fileState(f: InstructionFile): HTMLElement {
   return cell;
 }
 
-/** The agents to pick from, after `first` (value "") when given. */
-function agentPick(label: string, choices: AgentInfo[], first: string | null): HTMLSelectElement {
-  const pick = h("select", "c-cmd");
-  pick.setAttribute("aria-label", label);
-  if (first !== null) {
-    const o = h("option", "", first);
-    o.value = "";
-    pick.append(o);
-  } else if (!choices.length) pick.append(h("option", "", t("skipper.noAgentOnShort")));
-  for (const a of choices) {
-    const o = h("option", "", a.custom ? t("skipper.custom", { id: a.id }) : a.id);
-    o.value = a.id;
-    pick.append(o);
+/** The Instructions cell: the file's state. A hover shows the file. */
+function fileCell(f: InstructionFile | undefined): HTMLElement {
+  const cell = h("span", "c-file");
+  if (!f) return cell;
+  cell.title = f.file;
+  cell.append(fileState(f));
+  return cell;
+}
+
+/** Edit and Reset… of one file. Reset… shows on an edited file only. */
+function fileActs(f: InstructionFile | undefined, acts: InstructionActs): HTMLElement {
+  const box = h("span", "c-acts");
+  if (!f || !acts.editable) return box;
+  box.append(smallButton(t("skipper.edit"), () => acts.edit(f), { label: t("skipper.editFile", { file: f.file }) }));
+  if (f.status.startsWith("edited")) box.append(smallButton(t("skipper.reset"), () => acts.reset(f), { label: t("skipper.resetFile", { file: f.file }) }));
+  return box;
+}
+
+/** One error row under the row it is about. */
+function errorLine(why: string): HTMLElement {
+  const meta = h("div", "set-error", why);
+  meta.setAttribute("role", "alert");
+  return meta;
+}
+
+/**
+ * Settings › Skippers: one table, one row for each Skipper: its face, name,
+ * agent, model and instructions. The Admiral first, then the row all project
+ * and fleet Skippers take their agent and model from, then each of them, in
+ * tree order. A dim value comes from the all row. A project's `skipper_agent`
+ * in projects.toml wins for its project Skipper: its row shows it bright, read
+ * only. Task types take the same columns, so every line runs through the page.
+ */
+export function skippersPage(set: SkiffAgentSettings, agents: AgentInfo[], a: SkippersPageActs): HTMLElement {
+  // Enabled agents and the user's own. A custom agent is on when the user added it.
+  const choices = agents.filter((x) => x.enabled || x.custom);
+  const chosen = skiffAgentChoice(agents, set.agent) ?? undefined;
+  const main = mainName(set.name);
+  const word = set.skipper_name || "Skipper";
+  const fileOf = (scope: string | null) =>
+    a.files.files.find((f) => (scope === null ? f.scope.kind === "skipper" : f.scope.kind !== "skipper" && f.scope.kind !== "type" && (f.scope.kind === "fleet" ? `fleet:${f.scope.name}` : f.scope.name) === scope));
+  const errorsOf = (f: InstructionFile | undefined) => {
+    const why = f && a.files.errors.get(f.file);
+    return why ? [errorLine(why)] : [];
+  };
+
+  const table = h("div", "g-skip");
+  table.setAttribute("role", "table");
+  table.setAttribute("aria-label", t("settings.tab.skippers"));
+  const cols = h("div", "set-row set-cols");
+  cols.append(h("span", "", t("skipper.colSkipper")), h("span", "", t("settings.agents.colAgent")), h("span", "", t("tasks.colModel")), h("span", "", t("tasks.colInstructions")), h("span"));
+  table.append(cols);
+
+  const who = (face: HTMLElement, rest: HTMLElement) => {
+    const c = h("span", "c-who");
+    c.append(face, rest);
+    return c;
+  };
+
+  // The Admiral.
+  const adminFile = fileOf(null);
+  const admiral = h("div", "set-row set-agent on");
+  admiral.append(
+    who(skipperFace(null, 28), textBox({ label: t("skipper.nameAria"), value: set.name ?? "", placeholder: DEFAULT_NAME, name: true, save: (v) => a.save({ key: "name", value: v || null }) })),
+    fieldCell(picker({
+      label: t("skipper.agentOf", { name: main }),
+      value: chosen?.id ?? "",
+      shows: chosen ? undefined : t("skipper.noAgentOnShort"),
+      disabled: !choices.length,
+      entries: () => agentEntries(choices, null),
+      pick: (v) => a.save({ key: "agent", value: v }),
+    })),
+    modelCell(chosen, set.model, t("skipper.modelOf", { name: main }), (v) => a.save({ key: "model", value: v })),
+    fileCell(adminFile),
+    fileActs(adminFile, a.files),
+  );
+  table.append(admiral, ...errorsOf(adminFile));
+
+  // Continue on restore: the Admiral's. The line it runs, and the switch. A custom agent has no line: off.
+  const line = chosen ? continueLine(chosen.id, chosen.command) : null;
+  const on = !!line && set.continue_on_restore;
+  const cont = h("div", "set-row set-agent set-cont" + (on ? " on" : "") + (line ? "" : " missing"));
+  cont.append(
+    h("span", "c-who-sub", t("skipper.continue")),
+    h("span", "c-line mono", line ?? (chosen ? t("skipper.noContinue", { id: chosen.id }) : t("skipper.noAgentOn"))),
+    switchButton({ label: t(on ? "skipper.continueOn" : "skipper.continueOff"), on, disabled: !line, toggle: () => a.save({ key: "continue_on_restore", value: !on }) }),
+  );
+  table.append(cont);
+
+  // Project and fleet Skippers, in the order of their files, else of their faces.
+  const scopes = a.files.files.flatMap((f) => (f.scope.kind === "fleet" ? [`fleet:${f.scope.name}`] : f.scope.kind === "project" ? [f.scope.name] : []));
+  const rows = scopes.length ? scopes : avatarScopes().filter((s) => s);
+  table.append(sectionHead(t("skipper.projectSkippers"), undefined, String(rows.length)));
+  const own = choices.find((x) => x.id === set.project_agent);
+  const shared = own ?? chosen;
+  const sharedRow = h("div", "set-row set-agent on");
+  sharedRow.append(
+    who(h("span", "c-kind-all", t("skipper.all")), textBox({ label: t("skipper.skipperNameAria"), value: set.skipper_name ?? "", placeholder: "Skipper", name: true, save: (v) => a.save({ key: "skipper_name", value: v || null }) })),
+    fieldCell(picker({
+      label: t("skipper.projectAgent"),
+      value: own?.id ?? "",
+      entries: () => agentEntries(choices, t("skipper.sameAs", { name: main })),
+      pick: (v) => a.save({ key: "project_agent", value: v || null }),
+    })),
+    modelCell(shared, set.project_model, t("skipper.projectModel"), (v) => a.save({ key: "project_model", value: v })),
+    h("span", "c-file"),
+    h("span", "c-acts"),
+  );
+  table.append(sharedRow);
+
+  for (const scope of rows) {
+    const name = t(scope.startsWith("fleet:") ? "skipper.avatarFleet" : "skipper.avatarProject", { scope: scopeName(scope), skipper: word });
+    const face = skipperFace(scope, 28);
+    const label = h("span", "c-who-name", name);
+    // The faces are kept in those folders on this computer: a remote Host's row has no picker.
+    let cell: HTMLElement = who(face, label);
+    if (!isRemote()) {
+      const title = t("skipper.avatarTitle", { name });
+      const b = h("button", "c-who");
+      b.type = "button";
+      b.title = title;
+      b.setAttribute("aria-label", title);
+      b.append(face, label);
+      b.addEventListener("click", () => setAvatarDialog(scope, title, a.redraw));
+      cell = b;
+    }
+    // A project's own agent starts with the agent's default model, while that agent is on.
+    const over = S.projects.find((p) => p.name === scope)?.skipper_agent;
+    const overAgent = over ? choices.find((x) => x.id === over) : undefined;
+    const f = fileOf(scope);
+    const r = h("div", "set-row set-agent on");
+    r.append(
+      cell,
+      h("span", overAgent ? "c-own" : "c-dim", overAgent?.id ?? shared?.id ?? ""),
+      h("span", "c-dim", overAgent || !set.project_model ? t("skipper.agentDefault") : set.project_model),
+      fileCell(f),
+      fileActs(f, a.files),
+    );
+    table.append(r, ...errorsOf(f));
   }
-  pick.disabled = !choices.length && first === null;
-  return pick;
+
+  // Task types: the same columns.
+  const band = sectionHead(t("settings.tab.taskTypes"), "set-h-tasks", String((set.tasks ?? []).length));
+  band.classList.add("set-band-act");
+  band.append(smallButton(t("skipper.addTask"), () => {
+    if (!choices.length) return void showError(t("skipper.noAgentOn"));
+    promptAction({
+      title: t("skipper.addTask"),
+      placeholder: t("table.taskType.newName"),
+      action: t("settings.names.addAction"),
+      submit: async (name) => {
+        if (!TASK_TYPE_NAME.test(name)) throw badTaskTypeName();
+        const err = await a.saveTask({ key: "add_task", value: { type: name, agent: chosen?.id ?? choices[0].id, model: null } });
+        if (err) throw err;
+        a.render();
+      },
+    });
+  }));
+  table.append(band, taskTable(set, agents, a));
+  return table;
+}
+
+/** One row for each task type, in the page's columns. */
+function taskTable(set: SkiffAgentSettings, agents: AgentInfo[], a: SkippersPageActs): HTMLElement {
+  const choices = agents.filter((x) => x.enabled || x.custom);
+  const byId = (id: string) => agents.find((x) => x.id === id);
+  const row = (task: TaskType, change: Partial<TaskEdit>): TaskEdit => ({ type: task.type, agent: task.agent, model: task.model, ...change });
+  const table = rowTable<TaskType>(
+    {
+      grid: "g-tasks",
+      labelledBy: "set-h-tasks",
+      noHead: true,
+      rows: set.tasks ?? [],
+      id: (task) => task.type,
+      rowClass: () => "set-agent on",
+      cols: [
+        { key: "type", head: "", name: t("tasks.type"), kind: "key", get: (task) => task.type, check: (v) => (TASK_TYPE_NAME.test(v) ? null : badTaskTypeName()) },
+        {
+          key: "agent",
+          head: "",
+          name: t("tasks.agent"),
+          kind: "select",
+          empty: t("skipper.noAgentOnShort"),
+          options: (task) => {
+            const list: [string, string][] = choices.map((x) => [x.id, x.custom ? t("skipper.custom", { id: x.id }) : x.id]);
+            // A row keeps an agent that is off or gone, so the picker shows the truth.
+            if (!choices.some((x) => x.id === task.agent)) list.unshift([task.agent, t(byId(task.agent) ? "tasks.agentOff" : "tasks.agentGone", { id: task.agent })]);
+            return list;
+          },
+          get: (task) => task.agent,
+        },
+        {
+          key: "model",
+          head: "",
+          name: t("tasks.model"),
+          kind: "text",
+          mono: true,
+          placeholder: () => t("skipper.agentDefault"),
+          get: (task) => task.model ?? "",
+          // A custom agent sets its model itself. A gone agent has none.
+          note: (task) => {
+            const x = byId(task.agent);
+            return modelFlag(x) ? null : x ? t("tasks.setByAgent") : "";
+          },
+          check: modelError,
+        },
+        {
+          key: "instructions",
+          head: "",
+          name: t("tasks.instructions"),
+          kind: "lead",
+          draw: (task) => {
+            const none = task.instructions == null;
+            const state = h("span", "c-state" + (none ? " none" : ""));
+            state.append(h("span", "sq"), none ? t("tasks.none") : fileSize(task.instructions!));
+            return state;
+          },
+        },
+      ],
+      status: (task) => smallButton(t("skipper.edit"), () => a.types.edit(task), { label: t("tasks.editInstructions", { type: task.type }) }),
+      edit: (task, key, v) => {
+        if (key === "type") return a.saveTask({ key: "rename_task", value: { from: task.type, to: v } });
+        // A new agent with no model flag drops the model: skiff-core saves none.
+        return a.saveTask({ key: "task", value: row(task, key === "agent" ? { agent: v } : { model: v || null }) });
+      },
+      remove: (task) => a.saveTask({ key: "remove_task", value: task.type }),
+    },
+    a.tasksTable,
+    a.render,
+  );
+  // One 40px error row under the row it is about.
+  for (const [type, why] of a.types.errors) {
+    table.querySelector<HTMLElement>(`.set-row[data-id="${CSS.escape(type)}"]`)?.after(errorLine(why));
+  }
+  return table;
 }
 
 /**
- * An Agent row: the agent, then its model in the same cell, and "At next
- * start". An empty model is the agent's default. An agent with no model
- * flag shows "in the command" in place of the field.
+ * Settings › Disk use › Folder: the path, Show in file manager and Change…. A
+ * 40px error row under it says why only when the folder is not usable; the
+ * counts and safety checks show in the Change… preview. The path is a read-only
+ * text field, so it selects and copies as any field does, with the keys and the
+ * field's own right-click menu. Only Change… sets the folder, after its preview.
  */
-function agentModelRow(pick: HTMLSelectElement, agent: AgentInfo | undefined, model: string | null, label: string, save: (v: string | null) => void): HTMLElement {
-  const row = h("div", "set-row set-open set-agent on");
-  const cell = h("span", "c-split");
-  cell.append(pick);
-  if (modelFlag(agent)) {
-    const old = model ?? "";
-    const input = h("input", "c-cmd mono");
-    input.value = old;
-    input.placeholder = t("skipper.agentDefault");
-    input.spellcheck = false;
-    input.setAttribute("aria-label", label);
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        input.blur();
-      } else if (e.key === "Escape") {
-        input.value = old;
-        input.blur();
-      }
-    });
-    input.addEventListener("blur", () => {
-      const v = input.value.trim();
-      if (v === old) return;
-      if (modelError(v)) {
-        input.value = old;
-        return void showError(modelError(v)!);
-      }
-      save(v || null);
-    });
-    cell.append(input);
-  } else cell.append(h("span", "c-note", agent ? t("skipper.inCommand") : ""));
-  row.append(h("span", "c-name", t("skipper.agent")), cell, h("span", "c-mode", t("skipper.atNextStart")));
-  return row;
-}
-
-/**
- * The Folder row: the path, Copy path, Show in file manager and Change…. A
- * 40px error row under it says why only when the folder is not usable; the counts and
- * safety checks show in the Change… preview. The path is a read-only text field, so it selects,
- * copies and selects all as any field does, with the keys and the field's
- * own right-click menu. Cut and paste do nothing in it: only Change… sets the
- * folder, after its preview.
- */
-function folderRows(set: SkiffAgentSettings, change: () => void): HTMLElement[] {
+export function folderRows(set: SkiffAgentSettings, change: () => void): HTMLElement[] {
   const row = h("div", "set-row set-open set-agent set-folder on");
-  const path = h("input", "c-cmd mono set-path");
+  const path = h("input", "ctl-field mono set-path");
   path.type = "text";
   path.readOnly = true;
   path.spellcheck = false;
@@ -355,22 +428,10 @@ function folderRows(set: SkiffAgentSettings, change: () => void): HTMLElement[] 
   path.title = set.configured;
   path.setAttribute("aria-label", t("skipper.folderAria"));
   const acts = h("span", "c-acts");
-  const copy = h("button", "set-rm", t("menu.copyPath"));
-  copy.type = "button";
-  copy.addEventListener("click", () => void copyText(set.configured).catch(showError));
-  acts.append(copy);
   // A remote Host's folder is on that Host: no file manager here opens it.
-  if (set.folder_status === "ready" && !isRemote()) {
-    const show = h("button", "set-rm", t("menu.showInFileManager"));
-    show.type = "button";
-    show.addEventListener("click", () => reveal(set.configured));
-    acts.append(show);
-  }
-  const edit = h("button", "set-rm", t("skipper.change"));
-  edit.type = "button";
-  edit.addEventListener("click", change);
-  acts.append(edit);
-  row.append(h("span", "c-name", t("skipper.folder")), path, acts);
+  if (set.folder_status === "ready" && !isRemote()) acts.append(smallButton(t("menu.showInFileManager"), () => reveal(set.configured)));
+  acts.append(smallButton(t("skipper.change"), change));
+  row.append(h("span", "c-name", t("skipper.folder")), fieldCell(path), acts);
   const why =
     set.folder_status === "other"
       ? t("skipper.folderOther")
@@ -378,153 +439,9 @@ function folderRows(set: SkiffAgentSettings, change: () => void): HTMLElement[] 
         ? (set.folder_error ?? t("skipper.refused"))
         : null;
   if (!why) return [row];
-  const meta = h("div", "set-error", why);
+  const meta = errorLine(why);
   meta.id = "set-folder-why";
   path.setAttribute("aria-invalid", "true");
   path.setAttribute("aria-describedby", meta.id);
   return [row, meta];
-}
-
-/** Task types › Edit: opens a row's file. `errors`: one line under a row, by type. */
-interface TypeFileActs {
-  edit: (t: TaskType) => void;
-  errors: Map<string, string>;
-}
-
-/**
- * Settings › Task types: the agent, model and instruction file Skipper
- * starts for each kind of task. `save` answers with the error to show, or null.
- */
-export function taskTypesSection(
-  set: SkiffAgentSettings,
-  agents: AgentInfo[],
-  state: RowTableState,
-  save: (e: SkiffAgentEdit) => Promise<string | null>,
-  redraw: () => void,
-  files: TypeFileActs,
-): HTMLElement[] {
-  // As the Agent row above: enabled agents and the user's own.
-  const choices = agents.filter((a) => a.enabled || a.custom);
-  const byId = (id: string) => agents.find((a) => a.id === id);
-  const label = (a: AgentInfo) => (a.custom ? t("skipper.custom", { id: a.id }) : a.id);
-  const head = h("div", "set-head");
-  const title = h("div", "set-h", t("settings.tab.taskTypes"));
-  title.id = "set-h-tasks";
-  head.append(title, h("div", "set-sub mono", set.types));
-  const row = (task: TaskType, change: Partial<TaskEdit>): TaskEdit => ({ type: task.type, agent: task.agent, model: task.model, ...change });
-  const table = rowTable<TaskType>(
-    {
-      grid: "g-tasks",
-      words: tableWords("taskType"),
-      labelledBy: title.id,
-      rows: set.tasks ?? [],
-      id: (task) => task.type,
-      cols: [
-        {
-          key: "type",
-          head: upper(t("tasks.colType")),
-          name: t("tasks.type"),
-          kind: "key",
-          required: true,
-          get: (task) => task.type,
-          check: (v) => (TASK_TYPE_NAME.test(v) ? null : badTaskTypeName()),
-        },
-        {
-          key: "agent",
-          head: upper(t("settings.agents.colAgent")),
-          name: t("tasks.agent"),
-          kind: "select",
-          empty: t("skipper.noAgentOnShort"),
-          options: (task) => {
-            const list: [string, string][] = choices.map((a) => [a.id, label(a)]);
-            // A row keeps an agent that is off or gone, so the select shows the truth.
-            if (task && !choices.some((a) => a.id === task.agent)) list.unshift([task.agent, t(byId(task.agent) ? "tasks.agentOff" : "tasks.agentGone", { id: task.agent })]);
-            return list;
-          },
-          initial: () => skiffAgentChoice(agents, set.agent)?.id ?? choices[0]?.id ?? "",
-          get: (task) => task.agent,
-        },
-        {
-          key: "model",
-          head: upper(t("tasks.colModel")),
-          name: t("tasks.model"),
-          kind: "text",
-          mono: true,
-          placeholder: () => t("skipper.agentDefault"),
-          get: (task) => task.model ?? "",
-          // A custom agent sets its model itself. A gone agent has none.
-          note: (task, d) => {
-            const a = byId(task ? task.agent : (d.agent ?? ""));
-            return modelFlag(a) ? null : a ? t("tasks.setByAgent") : "";
-          },
-          check: modelError,
-        },
-        {
-          key: "instructions",
-          head: upper(t("tasks.colInstructions")),
-          name: t("tasks.instructions"),
-          kind: "lead",
-          draw: (task) => {
-            const cell = h("span", "c-file");
-            const none = task.instructions == null;
-            const state = h("span", "c-state" + (none ? " none" : ""));
-            state.append(h("span", "sq"), none ? t("tasks.none") : fileSize(task.instructions!));
-            const edit = h("button", "set-rm", t("skipper.edit"));
-            edit.type = "button";
-            edit.setAttribute("aria-label", t("tasks.editInstructions", { type: task.type }));
-            edit.addEventListener("click", () => files.edit(task));
-            cell.append(state, edit);
-            return cell;
-          },
-          drawDraft: () => {
-            const state = h("span", "c-state none");
-            state.append(h("span", "sq"), t("tasks.none"));
-            return state;
-          },
-        },
-      ],
-      blocked: () => (choices.length ? null : t("tasks.blocked")),
-      add: (d) => save({ key: "add_task", value: { type: d.type, agent: d.agent, model: d.model || null } }),
-      edit: (task, key, v) => {
-        if (key === "type") return save({ key: "rename_task", value: { from: task.type, to: v } });
-        // A new agent with no model flag drops the model: skiff-core saves none.
-        return save({ key: "task", value: row(task, key === "agent" ? { agent: v } : { model: v || null }) });
-      },
-      remove: (task) => save({ key: "remove_task", value: task.type }),
-    },
-    state,
-    redraw,
-  );
-  // One 40px error row under the row it is about.
-  for (const [type, why] of files.errors) {
-    const row = table.querySelector<HTMLElement>(`.set-row[data-id="${CSS.escape(type)}"]`);
-    const meta = h("div", "set-error", why);
-    meta.setAttribute("role", "alert");
-    row?.after(meta);
-  }
-  return [head, table];
-}
-
-/** A label and a text field that saves on Enter or blur. Esc puts the old value back. */
-function textRow(label: string, aria: string, value: string, placeholder: string, save: (v: string) => void): HTMLElement {
-  const row = h("div", "set-row set-open set-agent on");
-  const input = h("input", "c-cmd");
-  input.value = value;
-  input.placeholder = placeholder;
-  input.spellcheck = false;
-  input.setAttribute("aria-label", aria);
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      input.blur();
-    } else if (e.key === "Escape") {
-      input.value = value;
-      input.blur();
-    }
-  });
-  input.addEventListener("blur", () => {
-    if (input.value.trim() !== value.trim()) save(input.value.trim());
-  });
-  row.append(h("span", "c-name", label), input, h("span", "c-mode", ""));
-  return row;
 }

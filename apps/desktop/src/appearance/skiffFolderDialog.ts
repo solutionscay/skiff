@@ -151,11 +151,6 @@ export function changeSkiffFolder(o: { current: string; changed: () => void }) {
 
   const title = h("div", "confirm-title", t("folder.title"));
   const choices = h("div", "folder-choices");
-  const typed = h("input", "prompt-input");
-  typed.type = "text";
-  typed.spellcheck = false;
-  typed.placeholder = t("folder.typePath");
-  typed.setAttribute("aria-label", t("folder.pathAria"));
   const body = h("div", "folder-preview");
   const error = h("div", "prompt-error");
   error.setAttribute("role", "alert");
@@ -184,21 +179,6 @@ export function changeSkiffFolder(o: { current: string; changed: () => void }) {
     pick("~/.skiff-agent", "~/.skiff-agent", t("folder.hidden")),
     chooser,
   );
-  // A typed, pasted or cut path is a new choice: the preview and its actions go
-  // until Enter reads the folder there. An action never runs on a path the field no longer shows.
-  typed.addEventListener("input", () => {
-    if (!preview || busy) return;
-    preview = null;
-    error.textContent = "";
-    draw();
-  });
-  typed.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    e.stopPropagation();
-    if (typed.value.trim()) void show(typed.value);
-  });
-
   /** Reads the chosen folder and draws what Skiff would do. */
   async function show(path: string) {
     if (busy) return;
@@ -291,7 +271,6 @@ export function changeSkiffFolder(o: { current: string; changed: () => void }) {
   function finished(d: Done) {
     title.textContent = t("folder.nowUses", { name: skiffAgentName(), to: d.to });
     choices.remove();
-    typed.remove();
     const lines: string[] = [];
     if (d.copied) lines.push(t("folder.copied", { counts: countsLine(d.copied) }));
     if (d.mode === "empty") lines.push(t("folder.doneEmpty"));
@@ -316,7 +295,7 @@ export function changeSkiffFolder(o: { current: string; changed: () => void }) {
     ok.focus();
   }
 
-  panel.append(title, choices, ...(remote ? [] : [typed]), body, error, foot);
+  panel.append(title, choices, body, error, foot);
   draw();
 
   overlay.addEventListener("mousedown", (e) => {

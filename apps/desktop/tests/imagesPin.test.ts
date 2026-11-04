@@ -203,28 +203,28 @@ async function gallery() {
   const grid = () => scroll().children.map((c) => {
     const e = c as El;
     return e.classes().includes("lib-sec") ? (e.children[0] as string) : e.children.map((t) => (t as El).dataset.path.slice(3, 4)).join(" ");
-  }).join(" ").replace(" RECENT", " | RECENT");
+  }).join(" ").replace(" Recent", " | Recent");
   const tile = (p: string) => main.querySelectorAll("img-tile").find((t) => t.dataset.path === `/c/${p}.png`)!;
   const pick = (p: string) => tile(p).fire("click");
   const btn = (label: string) => main.querySelectorAll("img-btn").find((b) => b.textContent === label)!;
   return { ...a, st, grid, tile, pick, btn, scroll, main: () => main, open: () => open };
 }
 
-test("gallery: Pin moves the tile to PINNED at once; the selection stays on it", async () => {
+test("gallery: Pin moves the tile to Pinned at once; the selection stays on it", async () => {
   const g = await gallery();
-  assert.equal(g.grid(), "PINNED d | RECENT a b c");
+  assert.equal(g.grid(), "Pinned d | Recent a b c");
   g.pick("c");
   g.btn("Pin").fire("click");
   await g.settle();
-  assert.equal(g.grid(), "PINNED c d | RECENT a b");
+  assert.equal(g.grid(), "Pinned c d | Recent a b");
   assert.deepEqual([...g.st.sel], ["/c/c.png"]);
   assert.equal(g.st.now, "/c/c.png");
   assert.ok(g.tile("c").classes().includes("sel"));
   assert.ok(g.tile("c").scrolled > 0);
-  // P unpins it, and it goes back to RECENT.
+  // P unpins it, and it goes back to Recent.
   g.scroll().fire("keydown", { key: "p" });
   await g.settle();
-  assert.equal(g.grid(), "PINNED d | RECENT a b c");
+  assert.equal(g.grid(), "Pinned d | Recent a b c");
   assert.deepEqual([...g.st.sel], ["/c/c.png"]);
 });
 
@@ -234,5 +234,5 @@ test("gallery: Insert closes Settings and does not reorder the gallery", async (
   g.btn("Insert").fire("click");
   await g.settle();
   assert.equal(g.open(), false);
-  assert.equal(g.grid(), "PINNED d | RECENT a b c");
+  assert.equal(g.grid(), "Pinned d | Recent a b c");
 });

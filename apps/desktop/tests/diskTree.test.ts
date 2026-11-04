@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { moduleFromSource } from "./workspaceHarness.ts";
+import { realControls, moduleFromSource } from "./workspaceHarness.ts";
 
 // The real diskTree.ts and diskUse.ts. The tree adds up the rule's verdicts:
 // CAN FLUSH, STATE, the flush plan, and the dialog's REMOVE and KEEP.
@@ -118,6 +118,8 @@ test("the page draws the tree, and Flush asks with REMOVE and KEEP, then sends w
         },
       },
       "../ui/dom": { h: (tag: string, cls = "", text = "") => new El(tag, cls, text) },
+      "../ui/controls": realControls((tag: string, cls = "", text = "") => new El(tag, cls, text)),
+      "../app/hosts": { isRemote: () => false },
       "../ui/dialogParts": { actionDialog: (o: any) => dialogs.push(o) },
       "../ui/runes": { rune: () => new El("svg") },
       "./skiffFolderDialog": { size },
@@ -130,15 +132,15 @@ test("the page draws the tree, and Flush asks with REMOVE and KEEP, then sends w
   s.usage = usage;
   let draws = 0;
   const parts: El[] = P.diskUseSection(s, () => draws++, () => {}, { local: true, peek: () => {} });
-  const rows = parts[1].all().filter((e) => e.className.includes("set-disk-row"));
+  const rows = parts.find((p) => p.className === "set-disk")!.all().filter((e) => e.className.includes("set-disk-row"));
   assert.deepEqual(plain(rows.map((r) => r.dataset.path)), ["", "results", "results/p1-ship", "results/2026-10-01-old.md", "results/new.md", "cache", "ledger.db"]);
   const plan = rows.find((r) => r.dataset.path === "results/p1-ship")!;
   assert.match(plan.text(), /Mixed · 2 files stay/);
-  const flush = plan.all().find((e) => e.tag === "button" && e.className === "set-rm")!;
+  const flush = plan.all().find((e) => e.tag === "button" && e.className === "ctl-btn danger")!;
   assert.equal(flush.textContent, "Flush…");
   // A row with nothing to flush says why, and has no button.
   const held = rows.find((r) => r.dataset.path === "results/new.md")!;
-  assert.ok(held.text().includes("Changed 3 h ago") && !held.all().some((e) => e.className === "set-rm"));
+  assert.ok(held.text().includes("Changed 3 h ago") && !held.all().some((e) => e.className === "ctl-btn danger"));
 
   flush.fire("click");
   assert.equal(dialogs.length, 1);
@@ -169,6 +171,8 @@ function page(answer: (cmd: string) => unknown, local = true) {
         },
       },
       "../ui/dom": { h: (tag: string, cls = "", text = "") => new El(tag, cls, text) },
+      "../ui/controls": realControls((tag: string, cls = "", text = "") => new El(tag, cls, text)),
+      "../app/hosts": { isRemote: () => false },
       "../ui/dialogParts": { actionDialog: () => {} },
       "../ui/runes": { rune: () => new El("svg") },
       "./skiffFolderDialog": { size },
@@ -181,7 +185,7 @@ function page(answer: (cmd: string) => unknown, local = true) {
   s.usage = { shown: "~/skiff-agent", tree: tree(), now: NOW, daemon: true, ledger_error: null, unreadable: 0, cache_days: 30 };
   const draw = () => {
     const parts: El[] = P.diskUseSection(s, draw, () => {}, { local, peek: (script: string, cwd: string, name: string) => peeks.push([script, cwd, name]) });
-    return parts[1].all().filter((e) => e.className.includes("set-disk-row"));
+    return parts.find((p) => p.className === "set-disk")!.all().filter((e) => e.className.includes("set-disk-row"));
   };
   const row = (path: string) => draw().find((r) => r.dataset.path === path)!;
   return { s, calls, peeks, row };

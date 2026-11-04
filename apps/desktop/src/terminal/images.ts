@@ -14,7 +14,6 @@ import { hostName, isRemote } from "../app/hosts";
 import { scheduleRender } from "../app/render";
 import { S, sessions } from "../app/state";
 import { accent, place } from "../app/stateQueries";
-import { copyText } from "../platform/clipboard";
 import { showError } from "../ui/alerts";
 import { button, h } from "../ui/dom";
 import { icon } from "../ui/icons";
@@ -163,7 +162,7 @@ let keysIn: "field" | "list" = "field";
 /** The lit row, by path, so a redraw keeps it. */
 let lit: string | null = null;
 /** The row whose right column says "Copied" (1.5 s) or "Inserted" (3 s), in place of its buttons. */
-let done: { path: string; word: "Copied" | "Inserted" } | null = null;
+let done: { path: string; word: "Inserted" } | null = null;
 let doneTimer = 0;
 
 /** Pinned first, then the rest; each newest first. */
@@ -290,7 +289,6 @@ function row(i: Image, words: string[]): HTMLElement {
     doneCell(word, i.at),
     act(t("images.insert"), () => void insertImage(i)),
     act(t(i.pinned ? "images.unpin" : "images.pin"), () => void pin(i)),
-    act(t("menu.copyPath"), () => void copyPath(i)),
     x,
   );
   r.append(th, text, right);
@@ -301,19 +299,19 @@ function row(i: Image, words: string[]): HTMLElement {
 
 /** The time; else "Copied", or "Inserted" with a check. */
 function doneCell(word: string | null, at: number): HTMLElement {
-  const cell = h("span", "lib-time" + (word ? " copied" : ""), word ? t(word === "Inserted" ? "images.inserted" : "images.copied") : when(at));
-  if (word === "Inserted") cell.prepend(icon('<path d="M4 12.5l5 5 11-11"></path>'));
+  const cell = h("span", "lib-time" + (word ? " copied" : ""), word ? t("images.inserted") : when(at));
+  if (word) cell.prepend(icon('<path d="M4 12.5l5 5 11-11"></path>'));
   return cell;
 }
 
-/** Shows `word` on the row: "Inserted" for 3 s, "Copied" for 1.5 s. */
-function showDone(path: string, word: "Copied" | "Inserted") {
+/** Shows "Inserted" on the row for 3 s. */
+function showDone(path: string, word: "Inserted") {
   done = { path, word };
   clearTimeout(doneTimer);
   doneTimer = window.setTimeout(() => {
     done = null;
     if (!lib.hidden) draw();
-  }, word === "Inserted" ? 3000 : 1500);
+  }, 3000);
   if (!lib.hidden) draw();
 }
 
@@ -401,15 +399,6 @@ export async function deleteImages(imgs: readonly Image[]) {
   await invoke("image_delete", { paths: imgs.map((i) => i.path) }).catch(showError);
 }
 
-async function copyPath(i: Image) {
-  try {
-    await copyText(i.path);
-  } catch (e) {
-    return showError(e);
-  }
-  showDone(i.path, "Copied");
-}
-
 async function remove(i: Image) {
   // The row below takes the light.
   const o = shown();
@@ -472,7 +461,6 @@ rows.addEventListener("keydown", (e) => {
   } else if (e.key === "Enter" && i) openImage(i);
   else if (k === "i" && i) void insertImage(i);
   else if (k === "p" && i) void pin(i);
-  else if (k === "c" && i) void copyPath(i);
   else if (e.key === "Delete" && i) void remove(i);
   else if (e.key === "Backspace") toField("\b");
   else if (e.key.length === 1) toField(e.key);

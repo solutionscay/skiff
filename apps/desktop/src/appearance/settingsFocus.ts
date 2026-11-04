@@ -13,9 +13,9 @@ export function redrawKeeping(root: HTMLElement, tab: string, draw: () => void) 
   // So does the focused field: a save on blur finishes after the click that moved focus to the next field.
   const a = document.activeElement;
   const field = a instanceof HTMLInputElement && root.contains(a) ? { label: a.getAttribute("aria-label"), at: a.selectionStart, to: a.selectionEnd } : null;
-  // Disk use redraws under its buttons after a count, and skiffd activity under a sort head on a sort or
-  // a refresh. The keys stay on the same button, else the first one on.
-  const button = a instanceof HTMLButtonElement && a.closest(".set-main") && (tab === "disk" || a.classList.contains("set-sort") || a.classList.contains("set-sink")) ? a.dataset.key ?? a.textContent : null;
+  // A picker or a switch saves and redraws, Disk use redraws under its buttons after a count, and Sessions
+  // under a sort head on a sort or a refresh. The keys stay on the same button, else the first one on.
+  const button = a instanceof HTMLButtonElement && a.closest(".set-main") && (tab === "disk" || a.matches(".set-sort, .set-sink, .ctl-pick, .ctl-switch")) ? a.dataset.key ?? a.textContent : null;
   // A selected skiffd session row keeps the keys too; an ended one hands them to the current row.
   const row = a instanceof HTMLElement && a.classList.contains("set-daemon-row") ? a.dataset.id ?? null : null;
   // A Disk use tree row keeps the keys on the current row: a move, an open or a count.
@@ -39,8 +39,7 @@ export function redrawKeeping(root: HTMLElement, tab: string, draw: () => void) 
 /**
  * Plain arrows. On a tab, Up/Down change the section and Right goes into it.
  * In a section, Up/Down go to the nearest control above or below, and Left/Right
- * along the row. Text keeps its own keys: Left/Right move the caret, and a name
- * list lets Up/Down out only from its first or last line.
+ * along the row. Text keeps its own keys: Left/Right move the caret.
  */
 export function arrowKeys(root: HTMLElement, hooks: { stepTab(dir: 1 | -1): void; enterSection(into: boolean): void; nextCard: NextCard }) {
   const { stepTab, enterSection, nextCard } = hooks;
@@ -57,20 +56,15 @@ export function arrowKeys(root: HTMLElement, hooks: { stepTab(dir: 1 | -1): void
       return e.preventDefault();
     }
     if (!el.closest(".set-main")) return;
-    if (el instanceof HTMLSelectElement) return;
     const text = el instanceof HTMLInputElement && el.type !== "range";
     // A text field moves its caret, and lets Left or Right out only at its start or end.
-    if (!vertical && (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !text))) return;
+    if (!vertical && el instanceof HTMLInputElement && !text) return;
     if (!vertical && text) {
       const edge = e.key === "ArrowLeft" ? 0 : el.value.length;
       if (el.selectionStart !== edge || el.selectionEnd !== edge) return;
     }
-    if (el instanceof HTMLTextAreaElement) {
-      const v = el.value;
-      if (up ? v.lastIndexOf("\n", el.selectionStart - 1) >= 0 : v.indexOf("\n", el.selectionEnd) >= 0) return;
-    }
     // The current skiffd session row is a stop too: Left/Right go between it and its Reveal.
-    const stops = [...root.querySelectorAll<HTMLElement>(".set-main :is(button, input, select, textarea, .set-daemon-row[tabindex='0']):not(:disabled, .set-x)")];
+    const stops = [...root.querySelectorAll<HTMLElement>(".set-main :is(button, input, .set-daemon-row[tabindex='0']):not(:disabled, .set-x)")];
     const at = stops.indexOf(el);
     if (at < 0) return;
     e.preventDefault();

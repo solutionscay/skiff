@@ -104,6 +104,10 @@ export function moduleFromSource(path: string, imports: Record<string, unknown>,
   return context.exports;
 }
 
+/** The real ui/controls.ts over a test's stand-in `h`. */
+export const realControls = (h: unknown, ctxMenu: unknown = { open() {} }) =>
+  moduleFromSource("../src/ui/controls.ts", { "./dom": { h }, "./contextMenu": { ctxMenu } }, {}, "");
+
 // The UI words: the real English catalog, unless a test passes its own.
 let catalog: { en: any; i18n: any } | undefined;
 function words(name: string) {

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { moduleFromSource } from "./workspaceHarness.ts";
+import { moduleFromSource, realControls } from "./workspaceHarness.ts";
 
 // The real rowTable.ts, as Settings › Agents uses it: a row that something
 // starts has its − off and one plain line under it. Any other row, default
@@ -32,14 +32,13 @@ function table(rows: { id: string; used_by: string | null }[]) {
   const removed: string[] = [];
   const m = moduleFromSource(
     "../src/appearance/rowTable.ts",
-    { "../ui/dom": { h: (tag: string, cls = "", text = "") => new El(tag, cls, text) }, "../ui/runes": { rune: () => new El("svg") } },
-    { console, document: { querySelector: () => null }, CSS: { escape: (s: string) => s }, HTMLInputElement: class {} },
+    { "../ui/dom": { h: (tag: string, cls = "", text = "") => new El(tag, cls, text) }, "../ui/runes": { rune: () => new El("svg") }, "../ui/controls": realControls((tag: string, cls = "", text = "") => new El(tag, cls, text)) },
+    { console, document: { querySelector: () => null, querySelectorAll: () => [] }, CSS: { escape: (s: string) => s }, HTMLInputElement: class {} },
     "",
   );
   const t: El = m.rowTable(
     {
       grid: "g-agents",
-      words: m.tableWords("agent"),
       labelledBy: "x",
       rows,
       id: (a: any) => a.id,
@@ -54,7 +53,7 @@ function table(rows: { id: string; used_by: string | null }[]) {
   const minus = (id: string) => t.all().find((e) => e.className.includes("c-remove") && t.all().some((r) => r.dataset.id === id && r.all().includes(e)))!;
   // What keeps the − off shows in the STATUS cell. No line goes under the row.
   const lines = t.all().filter((e) => e.className === "c-kept").map((e) => e.textContent);
-  assert.equal(t.children.some((e) => !e.className.startsWith("set-row") && e.className !== "set-hint"), false);
+  assert.equal(t.children.some((e) => !e.className.startsWith("set-row") && e.className !== "set-error"), false);
   return { minus, lines, removed };
 }
 

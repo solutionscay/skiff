@@ -194,7 +194,8 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
     });
     tools.append(add, folder);
   }
-  browser.append(tools, status, grid);
+  tools.append(status);
+  browser.append(tools, grid);
   draw();
   return browser;
 }
