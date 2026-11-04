@@ -1,8 +1,8 @@
 /**
- * Cut, copy, paste and select all in a text field, for screens that hold the
+ * Cut, copy and paste in a text field, for screens that hold the
  * keys, such as Settings. The copy and paste keys are app actions with menu
  * accelerators, so the webview never does them in a field on its own. On
- * macOS no Edit menu item gives ⌘X or ⌘A to the field either.
+ * macOS no Edit menu item gives ⌘X to the field either.
  *
  * An edit goes in as typing does (`insertText`): the field's undo, its input
  * event and its save on Enter or blur all work as for typed text.
@@ -10,7 +10,7 @@
 import { copyText, pasteText } from "../platform/clipboard";
 import { showError } from "./alerts";
 
-type FieldEdit = "copy" | "cut" | "paste" | "select-all";
+type FieldEdit = "copy" | "cut" | "paste";
 type TextField = HTMLInputElement | HTMLTextAreaElement;
 
 /** Input types that hold plain text. A password field does not give its text to the clipboard. */
@@ -29,13 +29,12 @@ function oneLine(text: string): string {
 }
 
 /**
- * The cut and select-all keys on macOS: ⌘X and ⌘A. Other platforms keep the
- * webview's own Ctrl+X and Ctrl+A. Copy and paste are the `copy` and `paste` actions.
+ * The cut key on macOS: ⌘X. Other platforms keep the webview's Ctrl+X.
+ * Copy and paste are the `copy` and `paste` actions.
  */
 export function fieldEditKey(e: KeyboardEvent, mac: boolean): FieldEdit | null {
   if (!mac || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return null;
   if (e.code === "KeyX") return "cut";
-  if (e.code === "KeyA") return "select-all";
   return null;
 }
 
@@ -45,7 +44,6 @@ export async function editField(field: TextField, edit: FieldEdit): Promise<void
   const to = field.selectionEnd ?? at;
   const locked = field.readOnly || field.disabled;
   try {
-    if (edit === "select-all") return field.select();
     if (edit === "copy" || edit === "cut") {
       if (at === to || (edit === "cut" && locked)) return;
       await copyText(field.value.slice(at, to));

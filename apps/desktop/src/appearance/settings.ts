@@ -480,7 +480,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   window.addEventListener("keydown", (e) => {
     if (root.hidden || e.defaultPrevented || document.querySelector("#ctx-menu:not([hidden]), #launch-menu:not([hidden]), .confirm-overlay")) return;
     if (runKey(actionFor(e))) return e.preventDefault();
-    // Cut and select all on macOS. The webview does them only through an Edit menu item.
+    // Cut on macOS. The webview needs an Edit menu item for it.
     const edit = fieldEditKey(e, isMac);
     const f = edit && field();
     if (edit && f) {

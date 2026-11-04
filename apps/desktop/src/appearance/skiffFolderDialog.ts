@@ -303,7 +303,7 @@ export function changeSkiffFolder(o: { current: string; changed: () => void }) {
   });
   overlay.addEventListener("keydown", (e) => {
     e.stopPropagation();
-    // ⌘X and ⌘A in the path field on macOS, as Settings does them. Copy and paste come through the menu.
+    // ⌘X in the path field on macOS, as Settings does it. Copy and paste come through the menu.
     const edit = fieldEditKey(e, isMac);
     const field = edit && textField(e.target as Element);
     if (edit && field) {
