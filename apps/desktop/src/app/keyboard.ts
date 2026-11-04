@@ -6,6 +6,7 @@ import { runAction } from "./actionDispatch";
 import { switcher } from "./commandUi";
 import { modeKeyBlocked } from "./modes";
 import { $, modalOpen } from "../ui/dom";
+import { textField } from "../ui/fieldClipboard";
 import { host } from "../terminal/terminalHost";
 import { deleteKeyMenu } from "../workspace/menus";
 import { ctxMenu } from "../ui/contextMenu";
@@ -40,6 +41,19 @@ export function appKey(e: KeyboardEvent): Action | number | null {
 }
 
 window.addEventListener("keydown", (e) => {
+  // Select text fields before app or dialog key handlers run.
+  // Leave xterm's helper textarea to the terminal.
+  if ((isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) &&
+      !e.altKey && !e.shiftKey && e.code === "KeyA") {
+    const target = e.target instanceof Element ? e.target : null;
+    const field = textField(target) ?? (target instanceof HTMLInputElement && target.type === "password" ? target : null);
+    if (field) {
+      e.preventDefault();
+      e.stopPropagation();
+      field.select();
+      return;
+    }
+  }
   // The open palette runs no app key but its own, which closes it. The key still
   // reaches the palette input, so Ctrl+Shift+Enter picks and Ctrl+Shift+Up moves.
   if (switcher.isOpen()) {

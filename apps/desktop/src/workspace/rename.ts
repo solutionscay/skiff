@@ -97,8 +97,7 @@ export function renameRow(s: SessionInfo, color: string): HTMLElement {
   };
   input.addEventListener("keydown", (e) => {
     e.stopPropagation();
-    if (e.ctrlKey && e.key.toLowerCase() === "a") input.select();
-    else if (e.key === "Enter") finish(input.value, true);
+    if (e.key === "Enter") finish(input.value, true);
     else if (e.key === "Escape") finish(null, true);
     else return;
     e.preventDefault();
@@ -159,8 +158,7 @@ export function groupRenameInput(g: Group): HTMLInputElement {
     });
     input.addEventListener("keydown", (e) => {
       e.stopPropagation();
-      if (e.ctrlKey && e.key.toLowerCase() === "a") input.select();
-      else if (e.key === "Enter") void renameGroup(g.id, r.name, true);
+      if (e.key === "Enter") void renameGroup(g.id, r.name, true);
       else if (e.key === "Escape") {
         S.renaming = null;
         render();
