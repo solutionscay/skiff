@@ -493,6 +493,8 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let a = store(&dir, b"\x89PNG\r\n\x1a\na", "png").unwrap();
         let b = store(&dir, b"\x89PNG\r\n\x1a\nb", "png").unwrap();
+        // An older mtime: `b` cannot tie with the first `record` of `a` in one millisecond.
+        std::fs::File::options().write(true).open(&b).unwrap().set_modified(SystemTime::now() - std::time::Duration::from_secs(60)).unwrap();
         std::fs::write(dir.join("notes.txt"), "x").unwrap();
         // No entry yet: the cache name and the mtime.
         assert_eq!(list(&dir).len(), 2);
