@@ -232,9 +232,15 @@ pub fn set_menu_layout(layout: Option<&str>) -> Result<()> {
 /// The keys `[open]` takes.
 pub const OPEN_KEYS: [&str; 5] = ["diff", "text", "markdown", "html", "image"];
 
+/// Whether this `[open]` key has a peek setting. Where a diff or an image
+/// opens does not follow `peek`.
+pub fn open_has_peek_setting(key: &str) -> bool {
+    OPEN_KEYS.contains(&key) && key != "diff" && key != "image"
+}
+
 /// Sets whether selecting this file kind opens its command in the peek.
 pub fn set_open_peek(key: &str, peek: bool) -> Result<()> {
-    if !OPEN_KEYS.contains(&key) || key == "diff" || key == "image" {
+    if !open_has_peek_setting(key) {
         anyhow::bail!("unknown file kind: {key}");
     }
     super::client::edit_table("open", |t| {

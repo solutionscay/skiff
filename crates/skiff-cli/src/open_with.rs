@@ -65,6 +65,9 @@ pub fn run(cmd: OpenWithCmd) -> Result<()> {
             if (peek || app) && key == "diff" {
                 bail!("diff always opens in the peek");
             }
+            if (peek || app) && key == "image" {
+                bail!("image always opens in an app");
+            }
             if let Some(command) = command {
                 let c = command.trim();
                 if c.is_empty() {

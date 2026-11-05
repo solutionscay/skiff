@@ -141,7 +141,7 @@ enum Cmd {
         /// Do not attach. Print the session id.
         #[arg(long)]
         no_attach: bool,
-        /// Change the Skiff agent's folder to PATH, as Settings › Skippers ›
+        /// Change the Skiff agent's folder to PATH, as Settings › Disk use ›
         /// Folder does: copy, check and switch to a new or empty folder, or
         /// switch to a Skiff folder. It shows the preview and asks first.
         #[arg(long, value_name = "PATH", conflicts_with = "no_attach")]
@@ -261,7 +261,7 @@ enum Cmd {
     /// Show and set the command that opens a diff or a file.
     #[command(
         name = "open-with",
-        after_help = "Keys: diff, text, markdown, html. `{path}` in a command becomes the file; without it the file goes at the end. `{target}` in the diff command becomes what to compare.\nA terminal tool shows in the peek over the panes. An app with its own window just starts. A file with no command opens in the system's default app.\nOPENS IN is what selecting a file does: peek runs the command, app shows an Open button. An explicit Open always runs it. diff always opens in the peek.\nChanges apply to the next file or diff the app opens."
+        after_help = "Keys: diff, text, markdown, html, image. `{path}` in a command becomes the file; without it the file goes at the end. `{target}` in the diff command becomes what to compare.\nA terminal tool shows in the peek over the panes. An app with its own window just starts. A file with no command opens in the system's default app.\nOPENS IN is what selecting a file does: peek runs the command, app shows an Open button. An explicit Open always runs it. diff always opens in the peek. image always opens in an app.\nChanges apply to the next file or diff the app opens."
     )]
     OpenWith {
         #[command(subcommand)]

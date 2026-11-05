@@ -323,8 +323,9 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   async function setOpen(key: OpenKey, command: string, peek: boolean) {
     error = null;
     try {
-      await invoke<OpenSettings>("set_open", { key, command });
-      openSet = await invoke<OpenSettings>("set_open_peek", { key, peek });
+      openSet = await invoke<OpenSettings>("set_open", { key, command });
+      // Diffs and Images have no peek setting: set_open_peek refuses them.
+      if (key !== "diff" && key !== "image") openSet = await invoke<OpenSettings>("set_open_peek", { key, peek });
     } catch (e) {
       error = String(e);
     }
