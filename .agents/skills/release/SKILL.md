@@ -12,7 +12,7 @@ A `v*` tag triggers `.github/workflows/release.yml`. CI builds the Linux package
 
 1. Get the app version from the operator. Use the form `X.Y.Z`.
 2. Check that the working tree is clean and you are on `main`. Check that
-   `python3.12 scripts/host-boundary/check.py` passes before you change a version.
+   `python3 scripts/host-boundary/check.py` passes (any Python 3.11 or newer) before you change a version.
    If it fails, stop and report it.
 3. Set the app version in `Cargo.toml` (`[workspace.package]`) and `apps/desktop/package.json`.
    Add `<release version="X.Y.Z" date="YYYY-MM-DD"/>` at the top of `<releases>` in
@@ -27,19 +27,17 @@ A `v*` tag triggers `.github/workflows/release.yml`. CI builds the Linux package
    breaks the wire raises it, under the rule written next to it. If `PROTOCOL` changed since
    the tag, tell the operator: users with live sessions must restart skiffd.
 5. Refresh the lockfile: `cargo update --workspace --offline`.
-6. Refresh the host-boundary hash of the files the version bump changed. The boundary
-   check fingerprints `apps/desktop/package.json`, so the bump alone fails CI. Run
-   `python3.12 scripts/host-boundary/check.py --refresh apps/desktop/package.json`
-   (or `uv run --no-project --python 3.12 scripts/host-boundary/check.py --refresh ...`).
-   Add `--refresh FILE` for each other file you changed in steps 3–5 that
-   `scripts/host-boundary/baseline.json` lists; today no other one is listed.
-   Refresh only these files. Never run `--record` in a release. The command must print
-   `Host boundary passed`. If it lists another file, stop and report it: that change was
-   not reviewed before the release.
+6. Run `python3 scripts/host-boundary/check.py` on the bumped tree. It must print
+   `Host boundary passed`. There is no baseline to refresh. If it fails, stop and
+   report it: that change was not reviewed before the release.
 7. Commit: `git commit -am "release: prepare vX.Y.Z"`.
-   Run the full suite one time, on this commit, with `CARGO_BUILD_JOBS=8`:
-   `cargo test --workspace`, all page tests (`cd apps/desktop && pnpm test`) and, on v2,
-   `python3.12 scripts/host-boundary/check.py`. If a test fails, stop and report it.
+   Run the full suite one time, on this commit, with `CARGO_BUILD_JOBS=8` and
+   `unset SKIFF_SOCKET SKIFF_SESSION SKIFF_SHELL XDG_RUNTIME_DIR`, so no test reaches a live
+   daemon. Run `cargo test --workspace --no-fail-fast`, all page tests (`cd apps/desktop &&
+   pnpm test`) and, on v2, `python3 scripts/host-boundary/check.py`.
+   The page tests need Node 22 (`--experimental-strip-types`). If `node -v` shows an older
+   version, put a Node 22 `bin` first in `PATH` for the run
+   (here: `~/.local/node-v22.23.4-linux-x64/bin`). If a test fails, stop and report it.
 8. Tag and push: `git tag vX.Y.Z && git push origin main vX.Y.Z`.
 9. Wait for the run: `gh run watch` (about 10 minutes).
 10. Check the assets: `gh release view vX.Y.Z --json isDraft,assets`.
@@ -50,7 +48,12 @@ A `v*` tag triggers `.github/workflows/release.yml`. CI builds the Linux package
    versioned `.AppImage`, `.deb` and `.rpm`, and `latest.json`. Check that each URL in
    `latest.json` names an asset of this release. Without them, installed apps do not see
    the update.
-11. Publish only when the operator says so: `gh release edit vX.Y.Z --draft=false --latest`.
+11. Write the release notes in the format of the last release's notes
+   (`gh release view <last tag> --json body -q .body`): `## Changes`, one `###` group per
+   area, one line per change with its PR number, a line on skiffd (new version, restart,
+   protocol) and the `**Full Changelog**` link. Set them on the draft:
+   `gh release edit vX.Y.Z --notes-file FILE`.
+12. Publish only when the operator says so: `gh release edit vX.Y.Z --draft=false --latest`.
 
 ## Rules
 

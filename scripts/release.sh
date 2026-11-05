@@ -26,9 +26,9 @@ case "$part" in
 esac
 git rev-parse -q --verify "refs/tags/v$new" >/dev/null && { echo "Tag v$new exists." >&2; exit 1; }
 
-# The host-boundary check needs Python 3.12. It must pass before the bump, so
-# the refresh below admits only the version change, not an unreviewed one.
-if command -v python3.12 >/dev/null; then boundary=(python3.12 scripts/host-boundary/check.py)
+# The host-boundary check needs Python 3.11 or newer. It must pass before the bump.
+if python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; then boundary=(python3 scripts/host-boundary/check.py)
+elif command -v python3.12 >/dev/null; then boundary=(python3.12 scripts/host-boundary/check.py)
 else boundary=(uv run --no-project --python 3.12 scripts/host-boundary/check.py); fi
 "${boundary[@]}" >/dev/null || { "${boundary[@]}" >&2; echo "Fix the host-boundary check first." >&2; exit 1; }
 
@@ -54,16 +54,10 @@ metainfo=apps/desktop/src-tauri/linux/com.solutionscay.skiff.metainfo.xml
 sed -i "s|^\(\s*\)<releases>$|&\n\1  <release version=\"$new\" date=\"$(date +%F)\"/>|" "$metainfo"
 # Refresh the workspace entries in Cargo.lock. Dependencies stay as they are.
 cargo metadata --format-version 1 >/dev/null
-# The boundary check fingerprints the bumped files it lists in its baseline
-# (today only package.json). Re-record those entries alone, never --record.
 bumped=(Cargo.toml Cargo.lock apps/desktop/package.json crates/skiffd/Cargo.toml crates/skiff-core/Cargo.toml "$metainfo")
-refresh=()
-for f in "${bumped[@]}"; do
-  if grep -q "^  \"$f\": {" scripts/host-boundary/baseline.json; then refresh+=(--refresh "$f"); fi
-done
-"${boundary[@]}" "${refresh[@]}"
+"${boundary[@]}"
 
-git add "${bumped[@]}" scripts/host-boundary/baseline.json
+git add "${bumped[@]}"
 git commit -q -m "Release v$new"
 git tag -a "v$new" -m "v$new"
 git push -q origin main "v$new"
