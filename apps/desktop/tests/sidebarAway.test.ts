@@ -141,7 +141,6 @@ function app() {
     "../diagnostics/stalls": { step: (_: string, run: () => unknown) => run(), tally: (k: string) => tallies.set(k, (tallies.get(k) ?? 0) + 1) },
     "./skippersView": { renderSkippers() {}, renderViewToggle() {}, skippersOn: () => false },
     "../appearance/stateIcon": { stateIcon: () => h("span", "mark") },
-    "../ui/fold": { growOpened() {} },
   }), globals, "");
   // The tree as a person reads it: one line per head, project, worktree and session row.
   const rows = () => side.all()

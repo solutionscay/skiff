@@ -416,7 +416,7 @@ export const board = {
     window.clearInterval(missionState.timer);
     missionState.timer = window.setInterval(tick, TICK);
   },
-  /** No draw or read from here on: an animation is about to measure. */
+  /** No draw or read from here on: the board is about to go. */
   stop() {
     missionState.paused = true;
     window.clearInterval(missionState.timer);

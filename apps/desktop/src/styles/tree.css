@@ -98,7 +98,6 @@ body:has(#ctx-menu:not([hidden]), #launch-menu:not([hidden]), #switcher:not([hid
 /* A file's folder shows on the current row and on hover only. */
 .change-row:not(.current, :hover, .hover) .change-dir { display: none; }
 .change-dir { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
-.chev { transition: transform 120ms; }
 .chev.closed { transform: rotate(-90deg); }
 .session-row {
   height: calc(20 * var(--u)); width: 100%; flex-shrink: 0;

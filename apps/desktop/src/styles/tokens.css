@@ -42,5 +42,9 @@
   --font: "IBM Plex Sans", system-ui, sans-serif;
   --mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
   --u: calc(1px * var(--zoom, 1));
+  /* Motion: every one-off animation uses these. ui/motion.ts reads them. Light layers only, opacity and transform only. */
+  --motion-fade: 100ms;
+  --motion-move: 120ms;
+  --motion-ease: cubic-bezier(.2, .6, .2, 1);
   --row: calc(40 * var(--u));
 }

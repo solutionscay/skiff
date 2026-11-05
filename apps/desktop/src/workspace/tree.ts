@@ -12,7 +12,6 @@ import { removeErrors, removing, S, sessions } from "../app/state";
 import { place } from "../app/stateQueries";
 import { h } from "../ui/dom";
 import { icon } from "../ui/icons";
-import { animateFold } from "../ui/fold";
 
 /** Folded rows in All projects: `fleet:<name>` and `project:<name>`. Every row starts open. */
 const savedFolds = storedSet("skiff.tree.folded");
@@ -212,10 +211,8 @@ export function projectBadge(p: Project): HTMLElement {
 /** Open or fold a fleet or project row: `want`, or the other way. */
 export function toggleRow(key: string, render: () => void, want = !isOpen(key)) {
   if (want === isOpen(key)) return;
-  animateFold(key, want, () => {
-    setOpen(key, want);
-    render();
-  });
+  setOpen(key, want);
+  render();
 }
 
 /** True while a project or fleet is in the air. The tree does not rebuild under it. */

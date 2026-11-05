@@ -8,7 +8,6 @@ import { launchMenu } from "../app/panels";
 import { itemKey, listItems } from "../app/keyboard";
 import { DEFAULT_ACCENT, S, selectedWorktree, sessions } from "../app/state";
 import { accent, currentWorktree, place } from "../app/stateQueries";
-import { growOpened } from "../ui/fold";
 import { bareWorktree, fleetKey, hiddenSplit, isOpen, openToFocused, outsideSessions, projectsHidden, treeDrag, treeSections } from "./tree";
 import { renderWorkspaceStatus, shows, workspaceOpen } from "./profile";
 import { fleetScope, fleetSkipperOf, skiffAgentFolder, syncSkiffAgent } from "../app/skiffAgent";
@@ -172,7 +171,6 @@ export function renderSidebar() {
   blocks = next;
   blockSigs = sigs;
   if (anchor) keepAnchor(side, anchor);
-  growOpened();
   if (items) restoreFocus(side, activeKey, caret, near);
 }
 

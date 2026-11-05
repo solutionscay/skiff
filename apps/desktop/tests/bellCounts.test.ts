@@ -140,7 +140,6 @@ function skipperRow(counts: { need: number; working: number }) {
     "../diagnostics/stalls": { step: (_: string, run: () => unknown) => run(), tally() {} },
     "./skippersView": { renderSkippers() {}, renderViewToggle() {}, skippersOn: () => false },
     "../appearance/stateIcon": { stateIcon: () => h("span", "anchored") },
-    "../ui/fold": { growOpened() {} },
     "../i18n": { t: (k: string) => k, tn: (k: string, n: number) => `${n} ${k}`, sentences: (s: string) => s },
   }), globals, "");
   sidebar.renderSidebar();
