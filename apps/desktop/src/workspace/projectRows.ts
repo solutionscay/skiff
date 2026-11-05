@@ -11,7 +11,6 @@ import { launchMenu } from "../app/panels";
 import { collapsed, removeErrors, removing, S } from "../app/state";
 import { accent } from "../app/stateQueries";
 import { selectWorktree } from "./view";
-import { animateFold } from "../ui/fold";
 import { dragTree } from "./treeDrag";
 import { bareWorktree, isOpen, projectBadge, projectKey, rollup, toggleRow } from "./tree";
 import { render } from "../app/renderRequest";
@@ -108,15 +107,13 @@ export function worktreeBlock(p: Project, w: Worktree, selected: boolean, color:
   const open = !empty && !collapsed.has(w.path);
 
   const row = h("div", "wt-row");
-  const pick = button("wt-pick", "", () =>
-    empty
-      ? selectWorktree(p, w)
-      : animateFold(w.path, !open, () => {
-          if (open) collapsed.add(w.path);
-          else collapsed.delete(w.path);
-          selectWorktree(p, w);
-        }),
-  );
+  const pick = button("wt-pick", "", () => {
+    if (!empty) {
+      if (open) collapsed.add(w.path);
+      else collapsed.delete(w.path);
+    }
+    selectWorktree(p, w);
+  });
   pick.dataset.wt = pick.dataset.fold = w.path;
   if (!empty) pick.setAttribute("aria-expanded", String(open));
   pick.append(branchIcon(), h("span", "branch", branchName(w)));

@@ -33,10 +33,6 @@ body.ledger-keys .cell.focused .cell-head { background: var(--bg-panel); }
 .lg-fold svg { width: calc(9 * var(--u)); height: calc(9 * var(--u)); }
 /* Folded: a rail with the chevron on a header-high cell, and the amber count under it. */
 #ledger.folded { width: calc(28 * var(--u)); }
-/* The slide: the width eases between the open panel and the rail, as focus mode does. The content keeps its own width, clipped, so no row wraps. */
-#ledger.sliding { transition: width 180ms cubic-bezier(.2, .7, .2, 1); }
-#ledger > :is(.lg-head, .lg-list) { width: calc(360 * var(--u)); }
-@media (prefers-reduced-motion: reduce) { #ledger.sliding { transition: none; } }
 .lg-rail { width: calc(28 * var(--u)); display: flex; flex-direction: column; align-items: center; }
 .lg-rail .lg-fold { width: 100%; height: var(--row); margin: 0; border-bottom: 1px solid var(--rule); }
 .lg-rail-need {
@@ -100,19 +96,12 @@ body.ledger-keys .cell.focused .cell-head { background: var(--bg-panel); }
 .lg-row.fin :is(.lg-title, .lg-pane, .lg-n) { color: var(--text-dim); }
 .lg-empty { padding: calc(8 * var(--u)) calc(16 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); white-space: normal; }
 
-/* Movement: a row slides to its new place. A reported row slides into Finished, slower, so the eye can follow it. */
-.lg-row.moving { transition: transform 260ms ease; }
-.lg-row.moving.long { transition-duration: 520ms; }
-.lg-row.enter { animation: lg-enter 260ms ease; }
-@keyframes lg-enter { from { opacity: 0; transform: translateY(calc(8 * var(--u))); } }
-.lg-row.flash { animation: lg-flash 600ms ease; }
-@keyframes lg-flash { 0% { background-color: color-mix(in srgb, var(--accent) 22%, transparent); } }
-.lg-row.ghost { position: absolute; left: 0; right: 0; pointer-events: none; transition: opacity 360ms ease, transform 360ms ease; }
-.lg-row.ghost.out { opacity: 0; transform: translateY(calc(-14 * var(--u))); }
-@media (prefers-reduced-motion: reduce) {
-  .lg-row.moving, .lg-row.ghost { transition: none; }
-  .lg-row.enter, .lg-row.flash { animation: none; }
-}
+/* A row that left, while it fades out (ledgerMotion.ts). */
+.lg-row.ghost { position: absolute; left: 0; right: 0; pointer-events: none; }
+/* The row that needs the person, when the count is pressed: a tint over the row that goes out. */
+.lg-row.flash::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; background: color-mix(in srgb, var(--accent) 22%, transparent); animation: lg-flash var(--motion-move) var(--motion-ease); }
+@keyframes lg-flash { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .lg-row.flash::after { animation: none; } }
 
 /* Skipper's row and a project Skipper's row: one amber count while ledger tasks need the person. */
 :is(.skiff-agent-row, .project-skipper-row) .ledger-count { flex-shrink: 0; font-family: var(--mono); font-size: calc(11px * var(--zoom, 1)); color: var(--state-waiting); }

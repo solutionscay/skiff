@@ -214,7 +214,6 @@ body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset:
 .disk-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .disk-chev, .disk-leaf { width: calc(16 * var(--u)); height: calc(16 * var(--u)); flex-shrink: 0; }
 .disk-chev { display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--text-3); }
-.disk-chev svg { transition: transform 120ms; }
 .disk-chev.open svg { transform: rotate(90deg); }
 .set-disk .c-state { gap: calc(8 * var(--u)); font-size: calc(12px * var(--zoom, 1)); }
 .set-disk .c-state .disk-state { flex-shrink: 0; white-space: nowrap; color: var(--text-2); }

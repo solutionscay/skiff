@@ -3,11 +3,6 @@
 .mission { transform: translateZ(0); isolation: isolate; position: fixed; inset: calc(48 * var(--u)) 0 0 0; z-index: 60; display: flex; flex-direction: column; background: var(--bg); outline: none; }
 .mission[hidden] { display: none; }
 
-/* Open and close: the board only fades. The focus frame flies between the pane and its card, over the board. */
-.mission-frame { position: fixed; z-index: 61; box-sizing: border-box; border: calc(2 * var(--u)) solid var(--pc); pointer-events: none; transform: translateZ(0); }
-/* One frame at a time: the lit card's own frame waits while the flying one moves. */
-.mission.flying .mission-card.lit { box-shadow: none; }
-
 /* One error line under the top bar: the Host has no ledger. */
 .mission-fault { height: calc(20 * var(--u)); flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(16 * var(--u)); border-bottom: 1px solid var(--rule); background: var(--bg-panel); font-size: calc(11px * var(--zoom, 1)); color: var(--error); }
 .mission-fault[hidden] { display: none; }
@@ -110,7 +105,6 @@
 .mission-face { position: absolute; line-height: 0; cursor: pointer; }
 .mission-face.dim { opacity: 0.35; }
 .mission-face.dim.lit { opacity: 1; }
-.mission.flying .mission-card.window.lit { box-shadow: none; }
 /* An elsewhere pane, or a card with no pane: no click. */
 .mission-card.still { cursor: default; }
 
@@ -133,7 +127,7 @@ body.kbd .mission:focus { outline: 0; }
 .mission-panel-head .state { color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .mission-panel-head .state.w { color: var(--state-waiting-text); }
 .mission-panel-head .fold { margin-left: auto; width: calc(20 * var(--u)); height: calc(20 * var(--u)); display: grid; place-items: center; border: 0; padding: 0; background: transparent; color: var(--text-dim); cursor: pointer; }
-.mission-panel-head .fold svg { width: calc(10 * var(--u)); height: calc(10 * var(--u)); transition: transform 120ms; }
+.mission-panel-head .fold svg { width: calc(10 * var(--u)); height: calc(10 * var(--u)); }
 .mission-panel.folded .mission-panel-head .fold svg { transform: rotate(180deg); }
 .mission-panel-body { display: flex; height: calc(12 * 14 * var(--u) + 16 * var(--u)); }
 .mission-panel.folded .mission-panel-body { display: none; }
@@ -167,7 +161,7 @@ body:has(.mission-search:focus) .mission-card.lit { box-shadow: none; }
 #topbar .tb-cell.mission-find { min-width: min-content; }
 @media (max-width: 900px) { .mission-search { width: 0; min-width: calc(64 * var(--u)); } }
 .mission-scope { flex-shrink: 0; display: flex; align-items: stretch; height: calc(30 * var(--u)); border: 1px solid var(--rule-strong); background: var(--bg-panel); }
-.mission-scope-btn { display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(12 * var(--u)); border: 0; border-radius: 0; background: transparent; color: var(--text-3); font: inherit; font-size: calc(12px * var(--zoom, 1)); cursor: pointer; transition: background 120ms; }
+.mission-scope-btn { display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(12 * var(--u)); border: 0; border-radius: 0; background: transparent; color: var(--text-3); font: inherit; font-size: calc(12px * var(--zoom, 1)); cursor: pointer; }
 .mission-scope-btn + .mission-scope-btn { border-left: 1px solid var(--rule-strong); }
 .mission-scope-btn:hover { color: var(--text); }
 .mission-scope-btn[aria-pressed="true"] { background: var(--bg-raised); color: var(--text); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }

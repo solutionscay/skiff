@@ -25,8 +25,6 @@ export function signalButton(id: string, image: string) {
   scheduleRender("insert");
 }
 
-const still = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
 /** `color` at `alpha` over `bg`, as #rrggbb: xterm takes no other format. */
 function mix(color: string, alpha: number, bg: string): string {
   const c = document.createElement("canvas");
@@ -51,8 +49,8 @@ function tint(term: Terminal, marker: ReturnType<Terminal["registerMarker"]>, al
 }
 
 /**
- * Marks the cursor row before the paste: 18% for 1 s, then a 120ms step at
- * half strength (none with reduced motion). Then the marker goes.
+ * Marks the cursor row before the paste: 18% for 1 s. Then the tint and the
+ * marker go at once: a terminal row has no fade.
  */
 export function signalLine(term: Terminal, el: HTMLElement) {
   const marker = term.registerMarker(0);
@@ -60,10 +58,6 @@ export function signalLine(term: Terminal, el: HTMLElement) {
   if (!marker || !full) return marker?.dispose();
   window.setTimeout(() => {
     full.dispose();
-    const fade = still() ? undefined : tint(term, marker, 0.09, el);
-    window.setTimeout(() => {
-      fade?.dispose();
-      marker.dispose();
-    }, fade ? 120 : 0);
+    marker.dispose();
   }, 1000);
 }

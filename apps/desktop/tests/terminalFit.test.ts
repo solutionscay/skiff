@@ -63,7 +63,8 @@ test("pane fits share one frame, read before writes and reuse observer sizes and
         panes.set(id, p);
         return p;
       },
-      useWebgl() {},
+      webglBeforeShow() {},
+      coverPanes() {},
     },
     "../workspace/layoutView": { createLayoutView: (_: unknown, h: unknown) => { hooks = h; return {}; } },
     "../workspace/layoutSlots": { isSlot: () => false },

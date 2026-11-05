@@ -23,7 +23,6 @@ import { closePreview, enterPreview, giveKeys, peekBlocksAction, previewOnScreen
 import { rowActs } from "../workspace/rowActs";
 import { worktreeLines } from "../workspace/sidebarLines";
 import { ledgerKey } from "../workspace/ledger";
-import { animateFold } from "../ui/fold";
 import { fleetKey, isOpen, projectKey as projectRowKey, toggleRow, visibleProjects } from "../workspace/tree";
 import { scopeFleet } from "../workspace/model";
 import { missionOpen, pickSkipper } from "../workspace/missionControl";
@@ -396,12 +395,10 @@ $("sidebar-scroll").addEventListener("keydown", (e) => {
     const close = e.key === "ArrowLeft" || ((e.key === "Enter" || e.key === " ") && !collapsed.has(wt));
     S.roveKey = wt;
     if (close === collapsed.has(wt)) return e.preventDefault();
-    animateFold(wt, !close, () => {
-      if (close) collapsed.add(wt);
-      else collapsed.delete(wt);
-      render();
-      roveTarget()?.focus();
-    });
+    if (close) collapsed.add(wt);
+    else collapsed.delete(wt);
+    render();
+    roveTarget()?.focus();
   } else if (e.key === "Enter") {
     // Enter opens the row right away, instead of waiting out the pause.
     openRow(el);

@@ -17,7 +17,6 @@ import type { HostEntry, HostListing, Project, Worktree } from "../platform/type
 import { h } from "../ui/dom";
 import { keyLabel } from "../app/keys";
 import { chevron, icon } from "../ui/icons";
-import { animateFold } from "../ui/fold";
 import { showError } from "../ui/alerts";
 import { ctxMenu } from "../ui/contextMenu";
 import { render } from "../app/render";
@@ -137,15 +136,13 @@ function refresh(root: string, dir: string) {
 
 /** Opening reads again, so the tree is as fresh as the last click. */
 function toggle(root: string, dir: string, set: Set<string>) {
-  animateFold(`${set === shown ? "files" : "file"}:${dir}`, !set.has(dir), () => {
-    if (set.has(dir)) set.delete(dir);
-    else {
-      set.add(dir);
-      refresh(root, dir);
-    }
-    version++;
-    render();
-  });
+  if (set.has(dir)) set.delete(dir);
+  else {
+    set.add(dir);
+    refresh(root, dir);
+  }
+  version++;
+  render();
 }
 
 export function filesBlock(w: Worktree): HTMLElement {

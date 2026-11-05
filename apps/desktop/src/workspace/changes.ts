@@ -14,7 +14,6 @@ import type { Project, Worktree } from "../platform/types";
 import { h } from "../ui/dom";
 import { keyLabel } from "../app/keys";
 import { icon } from "../ui/icons";
-import { animateFold } from "../ui/fold";
 import { showError } from "../ui/alerts";
 import type { MenuEntry } from "../ui/menu";
 import { ctxMenu } from "../ui/contextMenu";
@@ -132,14 +131,12 @@ export const hasChanges = (w: Worktree) => !!lists.get(w.path)?.changes.length;
 const join = (wt: string, rel: string) => `${wt}/${rel}`;
 
 function toggle(wt: string) {
-  animateFold(`changes:${wt}`, !shown.has(wt), () => {
-    if (shown.has(wt)) shown.delete(wt);
-    else {
-      shown.add(wt);
-      load(wt);
-    }
-    render();
-  });
+  if (shown.has(wt)) shown.delete(wt);
+  else {
+    shown.add(wt);
+    load(wt);
+  }
+  render();
 }
 
 /** Review all changes: the worktree's Changes row becomes current, and its diff takes the keys. */

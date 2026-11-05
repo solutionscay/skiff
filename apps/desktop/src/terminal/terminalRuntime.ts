@@ -18,6 +18,7 @@ import { FONT_DEFAULT, S, sessions } from "../app/state";
 import { paneFontSize } from "./terminalFont";
 import { place, shownIds } from "../app/stateQueries";
 import { bySessionPriority } from "../workspace/model";
+import { isSlot } from "../workspace/layoutSlots";
 import type { SessionInfo } from "../platform/types";
 import { opening, type Pane, panes } from "./terminalState";
 import { hostInvoke } from "../app/hostCaps";
@@ -69,12 +70,15 @@ export function openPane(id: string): Promise<Pane> {
   return pending;
 }
 
-/** A mounted preview covers the terminal area, including panes still opening. */
+/** What covers the terminal area, including panes still opening: a mounted preview, mission control. */
+const covers = new Set<string>();
 let panesCovered = false;
 
-/** The preview controller releases the gate before it requests the full repaint. */
-export function coverPanes(covered: boolean) {
-  panesCovered = covered;
+/** The cover's owner releases the gate before it requests the full repaint. */
+export function coverPanes(covered: boolean, by = "preview") {
+  if (covered) covers.add(by);
+  else covers.delete(by);
+  panesCovered = covers.size > 0;
 }
 
 /**
@@ -287,13 +291,13 @@ export function unparkPane(id: string, pane: Pane) {
 }
 
 /**
- * WebGL contexts are few (WebKit drops the oldest past 16) and slow to make:
- * a new one blocks the page for 100 to 200 ms. So a shown pane asks for one,
- * and the queue attaches one per frame after the switch has painted, the
- * focused pane first. Until then the pane draws with the DOM renderer. The
- * panes shown most recently keep their context, so switching back to a group
- * is cheap; older parked panes lose theirs and draw nothing while hidden.
- * The limit sits just under WebKit's 16.
+ * WebGL contexts are few (WebKit drops the oldest past 16) and slow to make.
+ * A pane gets its context before it shows, in the park, so its first frame on
+ * screen comes from the renderer it keeps: no swap and no second paint in
+ * view. Only a lost context takes the queue, one per frame. The panes shown
+ * most recently keep their context, so switching back to a group is cheap;
+ * older parked panes lose theirs and draw nothing while hidden. warmPanes
+ * makes most contexts ahead of time. The limit sits just under WebKit's 16.
  */
 const GL_KEEP = 14;
 /** Pane ids with a WebGL renderer, least recently shown first. */
@@ -302,17 +306,29 @@ const glOrder: string[] = [];
 const glWanted: string[] = [];
 let glFrame = 0;
 
-/** Asks for a WebGL renderer on a shown pane. It arrives a frame or more later. */
-export function useWebgl(id: string, pane: Pane) {
-  if (pane.webgl) {
-    const i = glOrder.indexOf(id);
-    if (i >= 0) glOrder.splice(i, 1);
-    glOrder.push(id);
-    return;
-  }
+/** Gives a pane its WebGL renderer now, before it goes on screen. */
+export function webglBeforeShow(id: string, pane: Pane) {
+  const queued = glWanted.indexOf(id);
+  if (queued >= 0) glWanted.splice(queued, 1);
+  if (!pane.webgl) return attachWebgl(id, pane);
+  const i = glOrder.indexOf(id);
+  if (i >= 0) glOrder.splice(i, 1);
+  glOrder.push(id);
+}
+
+/** Asks for a WebGL renderer again after a lost context. It arrives a frame or more later. */
+function useWebgl(id: string, pane: Pane) {
+  if (pane.webgl) return;
   if (!glWanted.includes(id)) glWanted.push(id);
-  // Two frames out: the switch paints with the DOM renderer first.
-  if (!glFrame) glFrame = requestAnimationFrame(() => (glFrame = requestAnimationFrame(drainWebgl)));
+  if (!glFrame) glFrame = requestAnimationFrame(drainWebgl);
+}
+
+/** True when each shown pane has written its screen. The board closes on that, or after a few frames. */
+export function panesDrawn(): boolean {
+  return shownIds().every((id) => {
+    const pane = panes.get(id);
+    return isSlot(id) || (!!pane && pane.wrote === pane.stream);
+  });
 }
 
 /** Attaches one context per frame. The focused pane goes first: its echo is what the user waits for. */

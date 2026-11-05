@@ -1,4 +1,5 @@
-import { animate, still } from "./ledgerMotion";
+import { animate } from "./ledgerMotion";
+import { still } from "../ui/motion";
 /**
  * The Ledger: Skipper's tasks, in a panel at the right of its pane. It shows
  * only while Skipper's pane is the one pane on screen. Focus mode keeps it;
@@ -10,8 +11,8 @@ import { animate, still } from "./ledgerMotion";
  * person first, then done tasks, then the rest. A row that needs the person
  * turns amber. Finished: the work Skipper closed on the person's word, newest
  * first, the last 100. A plan is a head row with its tasks always open under
- * it, and it counts as one item. Rows slide to their new place, flash on a
- * change and fade in; a close slides the work down into Finished.
+ * it, and it counts as one item. Rows slide to their new place and fade in or
+ * out; a close slides the work down into Finished.
  *
  * Ctrl+Shift+Right from Skipper's pane gives the keys to the panel, and opens
  * a folded one. Ctrl+Shift+Up/Down, or the plain arrows, step the lit row.
@@ -53,7 +54,7 @@ import type { SessionInfo } from "../platform/types";
 import { openLedgerResult, previewToken } from "../terminal/peek";
 import { hostInvoke } from "../app/hostCaps";
 import { dataEpoch } from "../app/dataPlane";
-import { holdFits, releaseFits } from "../terminal/terminal";
+import { fitWithLayout } from "../terminal/terminal";
 import { panes } from "../terminal/terminalState";
 import type { Action } from "../app/keys";
 import { h, setAttr, setHidden, setText } from "../ui/dom";
@@ -494,34 +495,9 @@ export function toggleLedger() {
   } catch {
     /* the fold lasts for this run */
   }
-  slide();
+  // At once: the terminal beside the panel takes its new size in the same frame.
+  fitWithLayout();
   render();
-}
-
-/** As focus mode and maximize: 180ms, ease-out. */
-const SLIDE_MS = 180;
-/** A fold in progress: the open panel's rows stay, clipped, until the rail takes their place. */
-let folding = false;
-let slideEnd = 0;
-
-/**
- * Slides the width to the new fold. Skipper's terminal keeps its size
- * during the slide and fits once at the end.
- */
-function slide() {
-  const panel = document.getElementById("ledger");
-  if (!panel || still()) return;
-  panel.classList.add("sliding");
-  folding = folded;
-  holdFits();
-  clearTimeout(slideEnd);
-  // A frame after the transition, so the fit reads the final width.
-  slideEnd = window.setTimeout(() => {
-    panel.classList.remove("sliding");
-    folding = false;
-    render("ledger.slide");
-    releaseFits();
-  }, SLIDE_MS + 40);
 }
 
 /** The next draw of the open panel flashes the first row that needs the person. */
@@ -606,7 +582,6 @@ function line(r: Entry, st: State, label: string, a: Acts, o: { plan?: boolean; 
   const row = h("div", `lg-row s-${st}` + (need ? " need" : "") + (o.plan ? " plan" : "") + (o.kid ? " kid" : "") + (o.kid2 ? " kid2" : "") + (o.fin ? " fin" : "") + (a.click ? "" : " dead"));
   row.dataset.key = r.uid;
   row.tabIndex = -1;
-  row.dataset.look = o.fin ? "fin" : `${st}:${label}`;
   // No tooltip: the title names the row for a screen reader.
   row.setAttribute("aria-label", titleOf(r));
   const acts = h("span", "lg-acts");
@@ -793,7 +768,7 @@ export function renderLedger() {
     return;
   }
   panel.classList.toggle("folded", folded);
-  if (folded && !folding) {
+  if (folded) {
     drawn = false;
     setKeys(false);
     renderRail(panel);
