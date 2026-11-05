@@ -13,6 +13,7 @@ export interface Profile {
   /** Fleet names. */
   fleets: string[];
   folded_projects: string[];
+  /** Fleet names. "" is the Projects head (`sectionKey`). */
   folded_fleets: string[];
   /** The folder of the last project the user picked here. */
   selected: string | null;

@@ -316,8 +316,8 @@ export const zh = {
   "key.shortcuts": "本表",
   "key.sidebar-view": "将侧面板在树和 Skipper 列表之间切换。列表显示 {skiff-agent} 和每个 Skipper",
 
-  "fixed.projects.select": "第 1 到第 9 个项目，按列表从上往下计数：其 Skipper，否则其第一个窗格。折叠的舰队不计入。在任务控制和 Skipper 列表中，按 Skipper 列表从上往下计数的第 1 到第 9 个 Skipper",
-  "fixed.list.openProject": "打开或折叠聚焦的项目或舰队",
+  "fixed.projects.select": "第 1 到第 9 个项目，按列表从上往下计数：其 Skipper，否则其第一个窗格。折叠的分区不计入。在任务控制和 Skipper 列表中，按 Skipper 列表从上往下计数的第 1 到第 9 个 Skipper",
+  "fixed.list.openProject": "打开或折叠聚焦的项目、舰队或“项目”标题",
   "fixed.list.closeProject": "从项目行关闭或移除项目",
   "fixed.list.openWorktree": "打开或关闭聚焦的 worktree",
   "fixed.list.openSession": "打开聚焦的会话或组",

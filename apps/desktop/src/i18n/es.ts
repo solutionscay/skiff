@@ -323,8 +323,8 @@ export const es = {
   "key.shortcuts": "Esta hoja",
   "key.sidebar-view": "Cambiar el panel lateral entre el árbol y la lista de Skippers. La lista muestra a {skiff-agent} y cada Skipper",
 
-  "fixed.projects.select": "Proyecto 1 a 9, contados de arriba abajo en la lista: su Skipper o, si no tiene, su primer panel. Las flotas plegadas no cuentan. En Control de misión y en la lista de Skippers, Skipper 1 a 9, contados de arriba abajo en la lista de Skippers",
-  "fixed.list.openProject": "Abrir o plegar el proyecto o la flota enfocados",
+  "fixed.projects.select": "Proyecto 1 a 9, contados de arriba abajo en la lista: su Skipper o, si no tiene, su primer panel. Las secciones plegadas no cuentan. En Control de misión y en la lista de Skippers, Skipper 1 a 9, contados de arriba abajo en la lista de Skippers",
+  "fixed.list.openProject": "Abrir o plegar el proyecto, la flota o el encabezado Proyectos enfocado",
   "fixed.list.closeProject": "Cerrar o quitar el proyecto desde su fila",
   "fixed.list.openWorktree": "Abrir o cerrar el worktree enfocado",
   "fixed.list.openSession": "Abrir la sesión o el grupo enfocados",

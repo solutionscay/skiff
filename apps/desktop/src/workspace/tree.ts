@@ -13,7 +13,7 @@ import { place } from "../app/stateQueries";
 import { h } from "../ui/dom";
 import { icon } from "../ui/icons";
 
-/** Folded rows in All projects: `fleet:<name>` and `project:<name>`. Every row starts open. */
+/** Folded rows in All projects: `fleet:<name>`, `project:<name>` and the Projects head (`sectionKey`). Every row starts open. */
 const savedFolds = storedSet("skiff.tree.folded");
 
 /**
@@ -49,6 +49,11 @@ function autoOpen(key: string) {
 
 export const fleetKey = (name: string) => `fleet:${name}`;
 export const projectKey = (name: string) => `project:${name}`;
+/**
+ * The fold key of a section head. The Projects head (no fleet) is `fleet:`: no
+ * fleet has an empty name, so it folds as a fleet does, also in a workspace file.
+ */
+export const sectionKey = (fleet: string | null | undefined) => fleetKey(fleet ?? "");
 
 export interface Section {
   /** null: the projects in no fleet. */
@@ -96,9 +101,9 @@ export function outsideSessions(): { session: SessionInfo; where: string }[] {
   return out;
 }
 
-/** The project rows the tree shows, in order. A folded fleet, or one that hides its projects, has none. */
+/** The project rows the tree shows, in order. A folded section, or a fleet that hides its projects, has none. */
 export function visibleProjects(): Project[] {
-  return treeSections().flatMap((s) => (s.fleet && (folded.has(fleetKey(s.fleet)) || projectsHidden(s.fleet)) ? [] : s.projects));
+  return treeSections().flatMap((s) => (folded.has(sectionKey(s.fleet)) || (s.fleet && projectsHidden(s.fleet)) ? [] : s.projects));
 }
 
 /**
@@ -154,7 +159,7 @@ export function setOpen(key: string, open: boolean) {
   else savedFolds.add(key);
 }
 
-/** The session on screen moved into a folded project or fleet: open them, so its row shows. */
+/** The session on screen moved into a folded project or section: open them, so its row shows. */
 let shownFor: string | null = null;
 export function openToFocused() {
   if (S.focused === shownFor) return;
@@ -163,7 +168,7 @@ export function openToFocused() {
   const p = s ? place(s)?.project : null;
   if (!p) return;
   autoOpen(projectKey(p.name));
-  if (p.fleet) autoOpen(fleetKey(p.fleet));
+  autoOpen(sectionKey(p.fleet));
 }
 
 /** A folded row's marks: how many sessions under it wait, work, or have unread output. */
@@ -229,11 +234,11 @@ export function bareWorktree(p: Project): Worktree | null {
 
 /**
  * The list row for a worktree: its own row, or the project's row when it has none.
- * Opens its fleet and project. A fleet that hides its projects shows them again.
+ * Opens its section and project. A fleet that hides its projects shows them again.
  */
 export function worktreeRowKey(p: Project, w: Worktree): string {
   autoOpen(projectKey(p.name));
-  if (p.fleet) autoOpen(fleetKey(p.fleet));
+  autoOpen(sectionKey(p.fleet));
   if (p.fleet) setProjectsHidden(p.fleet, false);
   return bareWorktree(p) === w ? projectKey(p.name) : w.path;
 }

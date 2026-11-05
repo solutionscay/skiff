@@ -24,7 +24,7 @@ export function createStatus(state: ReturnType<typeof createWorkspaceState>, tra
 
   /** File › Open recent workspace…: the recent files, under the Projects head as Open closed project does. */
   function recentWorkspacesMenu() {
-    const r = document.querySelector<HTMLElement>("#sidebar-scroll .tree-head:not(.fleet-head)")?.getBoundingClientRect();
+    const r = document.querySelector<HTMLElement>("#sidebar-scroll .projects-head")?.getBoundingClientRect();
     const entries = recentEntries();
     if (!entries.length) entries.push({ label: t("workspace.noRecent"), disabled: true });
     ctxMenu.open(r ? r.left + 24 : 80, r ? r.bottom : 80, t("workspace.recentTitle"), entries);

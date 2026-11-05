@@ -334,8 +334,8 @@ export const en = {
   "key.sidebar-view": "Switch the side panel between the tree and the Skippers list. The list shows {skiff-agent} and every Skipper",
 
   // F1 lines of the fixed keys.
-  "fixed.projects.select": "Project 1 through 9, counted down the list: its Skipper, else its first pane. Folded fleets do not count. In Mission control and the Skippers list, Skipper 1 through 9, counted down the Skippers list",
-  "fixed.list.openProject": "Open or fold the focused project or fleet",
+  "fixed.projects.select": "Project 1 through 9, counted down the list: its Skipper, else its first pane. Folded sections do not count. In Mission control and the Skippers list, Skipper 1 through 9, counted down the Skippers list",
+  "fixed.list.openProject": "Open or fold the focused project, fleet or Projects head",
   "fixed.list.closeProject": "Close or remove the project from the project row",
   "fixed.list.openWorktree": "Open or close the focused worktree",
   "fixed.list.openSession": "Open the focused session or group",

@@ -8,7 +8,7 @@ import { launchMenu } from "../app/panels";
 import { itemKey, listItems } from "../app/keyboard";
 import { DEFAULT_ACCENT, S, selectedWorktree, sessions } from "../app/state";
 import { accent, currentWorktree, place } from "../app/stateQueries";
-import { bareWorktree, fleetKey, hiddenSplit, isOpen, openToFocused, outsideSessions, projectsHidden, treeDrag, treeSections } from "./tree";
+import { bareWorktree, fleetKey, hiddenSplit, isOpen, openToFocused, outsideSessions, projectsHidden, sectionKey, treeDrag, treeSections } from "./tree";
 import { renderWorkspaceStatus, shows, workspaceOpen } from "./profile";
 import { fleetScope, fleetSkipperOf, skiffAgentFolder, syncSkiffAgent } from "../app/skiffAgent";
 import { step, tally } from "../diagnostics/stalls";
@@ -90,14 +90,14 @@ export function renderSidebar() {
   const kidsNow = new Set<string>();
   if (skiffAgentFolder()) nodes.push(keep(AGENT_BLOCK, sig.parts.get(AGENT_BLOCK)!, skiffAgentRow));
   for (const sec of treeSections()) {
-    // A fleet head holds its projects for drag and menu. Folded, it counts
-    // what they wait on, work on and left unread.
+    // A head holds its projects. Folded, it counts what they wait on, work on and left unread.
     const fleetSkipper = sec.fleet ? fleetSkipperOf(sec.fleet) : null;
     // A fleet that hides its projects keeps its Skipper and the sessions that need a look.
     const split = sec.fleet && projectsHidden(sec.fleet) ? hiddenSplit(sec.projects) : null;
-    // With none of them, the head is alone: no chevron and no fold.
-    const alone = !!split && !fleetSkipper && !split.shown.length;
-    const open = !sec.fleet || (!alone && isOpen(fleetKey(sec.fleet)));
+    // With none of them, or with no project under Projects, the head is alone: no chevron and no fold.
+    const alone = sec.fleet ? !!split && !fleetSkipper && !split.shown.length : !sec.projects.length;
+    // A lone fleet head has no rows. A lone Projects head keeps its empty box.
+    const open = alone ? !sec.fleet : isOpen(sectionKey(sec.fleet));
     const headSig = JSON.stringify([
       listGeneration(), sec.fleet, open, workspaceOpen(), sec.projects.map((p) => p.name), split?.hidden ?? null, alone,
       open ? null : sec.projects.map((p) => [sig.parts.get(projectBlockKey(p.name)), sig.looks.get(projectBlockKey(p.name)) ?? null]),
@@ -142,7 +142,7 @@ export function renderSidebar() {
       }))], takeAnchor);
     nodes.push(kids);
   }
-  // A folded fleet's rows start over when it opens: the fold left them shrunk.
+  // A folded section's rows start over when it opens: the fold left them shrunk.
   for (const k of [...sectionKids.keys()]) if (!kidsNow.has(k)) sectionKids.delete(k);
   const note = projectsNote();
   if (note) nodes.push(note);
@@ -176,7 +176,9 @@ export function renderSidebar() {
 
 // Right-click on the empty part of the list: the + menu for the current worktree.
 $<HTMLElement>("sidebar-scroll").addEventListener("contextmenu", (e) => {
-  if (e.defaultPrevented || (e.target as Element).closest("button, input, .wt-count")) return;
+  const on = e.target as Element;
+  // The name on the Projects head has no menu of its own: it stays this empty part.
+  if (e.defaultPrevented || (on.closest("button, input, .wt-count") && !on.closest(".projects-head .fleet-pick"))) return;
   const at = currentWorktree();
   if (!at) return;
   e.preventDefault();

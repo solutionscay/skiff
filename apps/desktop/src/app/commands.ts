@@ -308,6 +308,6 @@ const withProject = (f: (p: NonNullable<ReturnType<typeof currentProject>>) => P
 
 /** The closed projects, under the tree's Projects head. */
 function openClosedMenu() {
-  const r = document.querySelector<HTMLElement>("#sidebar-scroll .tree-head:not(.fleet-head)")?.getBoundingClientRect();
+  const r = document.querySelector<HTMLElement>("#sidebar-scroll .projects-head")?.getBoundingClientRect();
   closedProjectsMenu(r ? r.left + 24 : 80, r ? r.bottom : 80);
 }

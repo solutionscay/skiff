@@ -7,7 +7,7 @@ import { DEFAULT_ACCENT, S } from "../app/state";
 import { accent, place } from "../app/stateQueries";
 import { addProject } from "../app/panels";
 import { dragTree } from "./treeDrag";
-import { fleetKey, isOpen, rollup, setProjectsHidden, toggleRow, type Section } from "./tree";
+import { isOpen, rollup, sectionKey, setProjectsHidden, toggleRow, type Section } from "./tree";
 import { render } from "../app/renderRequest";
 import { projectsPlus, workspaceOpen } from "./profile";
 import { hostConnected, hostName, isRemote } from "../app/hosts";
@@ -74,27 +74,12 @@ export function shownBlock(shown: SessionInfo[], block: HTMLElement = h("div", "
 }
 
 /**
- * A section head: "Projects" with its +, or a fleet that folds and opens.
- * A fleet that hides its projects counts its hidden sessions (`hidden`); a
- * click on the count shows the projects. `alone`: nothing under the head.
+ * The part of a section head that folds: the name, the rollup while folded and
+ * the chevron at the row's end. `alone`: nothing under the head, so no fold.
  */
-export function sectionHead(sec: Section, hidden: number | null = null, alone = false): HTMLElement {
-  if (!sec.fleet) {
-    const head = h("div", "tree-head");
-    head.append(h("span", "tree-head-name", t("sidebar.projects")));
-    // In a workspace, the + puts projects and fleets in it, or adds a project to Skiff.
-    const add = button("tree-head-add", "", () => projectsPlus(add, () => void addProject.open()));
-    add.title = workspaceOpen() ? t("sidebar.addToWorkspace") : t("sidebar.addProject");
-    add.setAttribute("aria-label", add.title);
-    if (workspaceOpen()) add.setAttribute("aria-haspopup", "menu");
-    add.appendChild(plusIcon());
-    head.appendChild(add);
-    return head;
-  }
-  const name = sec.fleet;
-  const key = fleetKey(name);
+function foldPick(sec: Section, name: string, alone: boolean): HTMLElement {
+  const key = sectionKey(sec.fleet);
   const open = !alone && isOpen(key);
-  const head = h("div", "tree-head fleet-head" + (alone ? " alone" : ""));
   const pick = button("fleet-pick", "", () => {
     if (!alone) toggleRow(key, render);
   });
@@ -105,7 +90,36 @@ export function sectionHead(sec: Section, hidden: number | null = null, alone = 
   }
   // The chevron sits at the row's end: the indent stays for the hierarchy.
   pick.append(h("span", "tree-head-name", name));
+  const roll = open || alone ? null : rollup(sec.projects, sec.fleet);
+  if (roll) pick.append(roll);
   if (!alone) pick.append(chevron(open));
+  return pick;
+}
+
+/** The "Projects" head with its +. With no project under it, the head is no row: no fold and no stop for the keys. */
+function projectsHead(sec: Section, alone: boolean): HTMLElement {
+  const head = h("div", "tree-head projects-head" + (alone ? "" : " fleet-head"));
+  head.append(alone ? h("span", "tree-head-name", t("sidebar.projects")) : foldPick(sec, t("sidebar.projects"), false));
+  // In a workspace, the + puts projects and fleets in it, or adds a project to Skiff.
+  const add = button("tree-head-add", "", () => projectsPlus(add, () => void addProject.open()));
+  add.title = workspaceOpen() ? t("sidebar.addToWorkspace") : t("sidebar.addProject");
+  add.setAttribute("aria-label", add.title);
+  if (workspaceOpen()) add.setAttribute("aria-haspopup", "menu");
+  add.appendChild(plusIcon());
+  head.appendChild(add);
+  return head;
+}
+
+/**
+ * A section head: "Projects" or a fleet, each folds and opens.
+ * A fleet that hides its projects counts its hidden sessions (`hidden`); a
+ * click on the count shows the projects. `alone`: nothing under the head.
+ */
+export function sectionHead(sec: Section, hidden: number | null = null, alone = false): HTMLElement {
+  if (!sec.fleet) return projectsHead(sec, alone);
+  const name = sec.fleet;
+  const head = h("div", "tree-head fleet-head" + (alone ? " alone" : ""));
+  const pick = foldPick(sec, name, alone);
   const add = button("tree-head-add", "", () => void addProject.open(name));
   add.title = t("sidebar.addProjectTo", { name });
   add.setAttribute("aria-label", add.title);
@@ -128,8 +142,6 @@ export function sectionHead(sec: Section, hidden: number | null = null, alone = 
     head.append(count);
   }
   head.append(more, add);
-  const roll = open || alone ? null : rollup(sec.projects, name);
-  if (roll) pick.insertBefore(roll, pick.querySelector(".chev"));
   head.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     fleetMenu({ name, projects: sec.projects }, e.clientX, e.clientY);
