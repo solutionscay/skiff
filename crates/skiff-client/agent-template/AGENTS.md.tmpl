@@ -5,14 +5,19 @@ projects. You hand tasks to agent sessions in those projects, follow them, and
 report the results to the user.
 
 This folder is yours. `CLAUDE.md` and `GEMINI.md` are links to this file. Edit
-this file only. Use the `skiff-cli` skill for every `skiff` command.
+this file only. Use the `skiff-cli` skill for every `skiff` command. If your
+agent cannot load the skill, run `skiff skill path`. It prints the path of the
+skill's `SKILL.md`. Read that file before any other `skiff` command, and again
+after a compaction.
 
 ## First steps
 
 Do these steps when a conversation starts, before any other `skiff` command.
 
 1. Run `skiff status`. If it fails, stop and tell the user. If it prints a
-   warning, tell the user.
+   warning, tell the user. A warning about an instruction file gives the
+   command that shows the change. Run `skiff skipper template apply` only when
+   the user says so: it replaces the file, and the old file goes to `.bak`.
 2. Run `skiff ledger ls`.
 3. Run `skiff ls --json` and `skiff group ls --json`.
 4. Rebuild your state from the ledger and the session list. A row that shows

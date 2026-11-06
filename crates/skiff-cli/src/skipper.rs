@@ -56,7 +56,7 @@ pub async fn run_project(socket: &Path, project: &str, no_attach: bool) -> Resul
     let ps = start_project(socket, &c, project).await?;
     let s = ps.session;
     if ps.created {
-        match greet(&c, &s.id, &skipper::first_message(&skiff_core::config::load()?, &ps.dir)?).await? {
+        match greet(&c, &s.id, &skipper::first_message(&skiff_core::config::load()?, &skipper::Scope::Project(project.to_string()))?).await? {
             0 => {}
             code => bail!("the {project} Skipper started, but its first message did not go in (exit {code}). Tell it to read {}", ps.dir.join(skipper::SKIPPER_FILE).display()),
         }
@@ -90,7 +90,7 @@ pub async fn run_fleet(socket: &Path, fleet: &str, no_attach: bool, yes: bool) -
     let fs = start_fleet(socket, &c, fleet, Over::Ask { yes }).await?;
     let s = fs.skipper.session;
     if fs.skipper.created {
-        let mut text = skipper::first_message(&skiff_core::config::load()?, &fs.skipper.dir)?;
+        let mut text = skipper::first_message(&skiff_core::config::load()?, &skipper::Scope::Fleet(fleet.to_string()))?;
         if !fs.taken.is_empty() {
             text = format!("{text} {}", skiff_client::fleet::line(fleet, &fs.taken));
         }
@@ -158,6 +158,50 @@ pub async fn start_fleet(socket: &Path, c: &Client, fleet: &str, over: Over) -> 
         eprintln!("skiff: the {fleet} Skipper took over the {} Skipper", t.project);
     }
     Ok(FleetStart { skipper: ps, taken })
+}
+
+/// `skiff skipper template`: list, diff or apply. No daemon needed.
+pub fn template(cmd: crate::TemplateCmd) -> Result<()> {
+    use crate::TemplateCmd as T;
+    let cfg = skiff_core::config::load()?;
+    match cmd {
+        T::Ls => {
+            for f in skipper::instructions(&cfg)? {
+                let status = serde_json::to_value(f.status)?;
+                println!("{}  {}  {}", f.scope.arg(), status.as_str().unwrap_or_default(), f.file);
+            }
+        }
+        T::Diff { scope } => print!("{}", skipper::template_diff(&cfg, &template_scope(&cfg, &scope)?)?),
+        T::Apply { scope } => {
+            let scope = template_scope(&cfg, &scope)?;
+            let file = scope.file();
+            if skipper::template_diff(&cfg, &scope)?.is_empty() {
+                println!("{file} is the same as its template. Nothing changed.");
+                return Ok(());
+            }
+            let had_file = skipper::file_status(&cfg, &scope)?.status != skipper::Status::None;
+            skipper::reset_file(&cfg, &scope)?;
+            if had_file {
+                println!("{file} now holds the template. The old file is {file}.bak.");
+            } else {
+                println!("{file} now holds the template.");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Reads the SCOPE of `skiff skipper template`: `agents`, or a project or
+/// fleet as `skiff ledger handoff` reads it.
+fn template_scope(cfg: &skiff_core::config::Config, arg: &str) -> Result<skipper::Scope> {
+    use crate::ledger::Scope as L;
+    if arg == "agents" {
+        return Ok(skipper::Scope::Skipper);
+    }
+    Ok(match crate::ledger::scope(cfg, arg)? {
+        L::Project(p) => skipper::Scope::Project(p),
+        L::Fleet(f) => skipper::Scope::Fleet(f),
+    })
 }
 
 /// How long a new agent has to show its input box.

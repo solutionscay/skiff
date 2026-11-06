@@ -44,11 +44,41 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+pub enum SkillCmd {
+    /// Print the path of the skill's SKILL.md, the copy that this skiff
+    /// keeps. The file exists when this prints. Read it before any skiff
+    /// command when your agent cannot load the skill.
+    Path,
+}
+
+#[derive(Subcommand)]
+pub enum SkipperCmd {
+    /// See and apply the template of a Skipper instruction file.
+    #[command(subcommand)]
+    Template(TemplateCmd),
+}
+
+#[derive(Subcommand)]
+#[command(after_help = "SCOPE is `agents` for AGENTS.md, or project:NAME or fleet:NAME for a SKIPPER.md. A bare NAME is a project or a fleet, and a NAME that is both is refused.")]
+pub enum TemplateCmd {
+    /// List each instruction file with its scope and status: none, template,
+    /// edited or edited-template-changed.
+    Ls,
+    /// Show how a file differs from its template: `-` lines are the file,
+    /// `+` lines the template. Changes nothing.
+    Diff { scope: String },
+    /// Replace a file with its template. The old file goes to <name>.bak,
+    /// which replaces the last .bak. A file that is the same as the template
+    /// stays as it is. Run this only when the person asks.
+    Apply { scope: String },
+}
+
+#[derive(Subcommand)]
 enum Cmd {
     /// Show this skiff's version and path, and the daemon's version,
     /// protocol, pid and socket. Warns when another skiff comes first on
     /// PATH, or skiffd's version is not the one this skiff was built for.
-    #[command(after_help = "--json prints one object and no warnings:\n  {\"skiff\":VERSION,\"protocol\":N,\"socket\":PATH,\"skiffd\":{\"version\":V,\"protocol\":N,\"pid\":PID,\"host_id\":ID}}\nskiffd is null when no skiffd answers on the socket; the exit code is then 1.")]
+    #[command(after_help = "It also prints one warning for each Skipper instruction file (AGENTS.md or a SKIPPER.md) that is edited and whose template changed, with the command that shows the change. It writes no file.\n--json prints one object and no warnings:\n  {\"skiff\":VERSION,\"protocol\":N,\"socket\":PATH,\"skiffd\":{\"version\":V,\"protocol\":N,\"pid\":PID,\"host_id\":ID},\"templates\":[{\"file\":PATH,\"scope\":SCOPE,\"command\":COMMAND}]}\nskiffd is null when no skiffd answers on the socket; the exit code is then 1. templates lists those same files.")]
     Status {
         #[arg(long)]
         json: bool,
@@ -137,7 +167,10 @@ enum Cmd {
     #[command(
         after_help = "Reads [skiff_agent] in projects.toml: the folder, the name, the agent and whether it is on.\nWith no Skiff agent session, it sets up the folder (missing files come back, existing ones stay), starts the agent, and starts `skiff watch` for it. One watcher runs per daemon.\nA Skiff agent session that is a bare shell (after a restore, or after its agent quit) gets the agent again: its last conversation when Settings continues on restore, else a new one.\nWith no skiffd running, it starts one, as the app does.\nThe app and this command find the same session: skiffd marks it, and two starts at once give one.\nAttach gives the session this terminal's size, in the app too, until you detach. Then the pane gets its own size back.\n--move-to resolves a relative PATH against this shell's folder and stores the full path. The old folder keeps every file and gets MOVED.md; Skiff never deletes it. The conversation does not move. Admiral's session ends first, and tasks that still run stop the change unless you confirm."
     )]
+    #[command(args_conflicts_with_subcommands = true)]
     Skipper {
+        #[command(subcommand)]
+        cmd: Option<SkipperCmd>,
         /// Do not attach. Print the session id.
         #[arg(long)]
         no_attach: bool,
@@ -167,6 +200,9 @@ enum Cmd {
         #[arg(long, requires = "move_to")]
         dry_run: bool,
     },
+    /// Find the skiff-cli skill, with no Skipper and no daemon.
+    #[command(subcommand)]
+    Skill(SkillCmd),
     /// Print a session's screen as plain text.
     Peek {
         session: String,
@@ -766,6 +802,8 @@ async fn run(cli: Cli) -> Result<i32> {
         | Cmd::Projects { cmd: Some(ProjectsCmd::Add { .. }), .. }
         | Cmd::Theme { cmd: ThemeCmd::Ls { .. } | ThemeCmd::App { .. } | ThemeCmd::Project { .. } }
         | Cmd::OpenWith { .. }
+        | Cmd::Skill(_)
+        | Cmd::Skipper { cmd: Some(_), .. }
     ) {
         if let Ok(c) = Client::connect(&socket).await {
             check_daemon(c).await?;
@@ -789,6 +827,11 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Status { json: false } => return info::status(&socket).await.map(|_| 0),
         Cmd::Daemon(DaemonCmd::Reload { binary }) => return daemon::reload(&socket, binary).await.map(|_| 0),
         Cmd::Daemon(DaemonCmd::Stop) => return daemon::stop(&socket).await.map(|_| 0),
+        Cmd::Skill(SkillCmd::Path) => {
+            println!("{}", skiff_client::skipper::skill_file()?.display());
+            return Ok(0);
+        }
+        Cmd::Skipper { cmd: Some(SkipperCmd::Template(cmd)), .. } => return skipper::template(cmd).map(|_| 0),
         // Starts skiffd when it does not run.
         Cmd::Skipper { move_to: Some(to), empty, dry_run, .. } => return skipper::move_to(&socket, &to, empty, dry_run).await.map(|_| 0),
         Cmd::Skipper { project: Some(p), no_attach, .. } => return skipper::run_project(&socket, &p, no_attach).await.map(|_| 0),
@@ -843,7 +886,7 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Seen { session } => sessions::seen(&c, &session).await,
         Cmd::Agents { json } => info::agents(&c, json).await,
         Cmd::Theme { cmd: ThemeCmd::Session { cmd } } => theme::session(&c, cmd).await,
-        Cmd::Status { .. } | Cmd::Daemon(_) | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::OpenWith { .. } | Cmd::Ledger { .. } | Cmd::Wait { .. } | Cmd::Events { .. } | Cmd::Watch { .. } | Cmd::Send { .. } | Cmd::Kill { .. } | Cmd::Skipper { .. } => {
+        Cmd::Status { .. } | Cmd::Daemon(_) | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::OpenWith { .. } | Cmd::Ledger { .. } | Cmd::Wait { .. } | Cmd::Events { .. } | Cmd::Watch { .. } | Cmd::Send { .. } | Cmd::Kill { .. } | Cmd::Skipper { .. } | Cmd::Skill(_) => {
             unreachable!()
         }
     }

@@ -23,6 +23,31 @@ const SKILL: &[(&str, &[u8], bool)] = &[
 /// one the person edited, with no second copy of the file.
 pub(crate) const MARKER: &str = ".skiff-agent";
 
+/// The FNV hash ([`hash`]) of each `AGENTS.md` template in the repository's
+/// history up to the one that names the skill path, rendered with each default
+/// name, `Skipper` and `Admiral`, sorted. A file with no hash in the marker
+/// that matches one is Skiff's text, not the person's, so [`refresh`] upgrades
+/// it. A file with no hash comes from an install older than the marker's
+/// hashes, or a `--move-to` copy that lost them. This table does not grow:
+/// each write now records a hash, and a copy now keeps the marker.
+const PAST_AGENTS: &[&str] = &[
+    "003fa3faa64c7b52", "0882afff6d4e71d7", "0ab950d5af5bab05", "1032f603a3f70b0b",
+    "193764bb63603739", "1eed6b4fc944e74e", "2422f8d7b7a9d167", "2495c5aa6a98b2bf",
+    "2ed314b4c0ea93c4", "2f56ab50b4a7251d", "3230464dd15b617a", "3655324c7814c3e5",
+    "3fd7750460cb37c2", "4492923517ecceae", "4719da4012c9164e", "490b9a3cfbaabc16",
+    "4c1440ded47852f3", "4cf90c42bd810887", "4fd5b3fc03f287be", "57c1950b011b47e3",
+    "60d4d674a4b2561e", "611f374ef388403b", "6225dbf5d2c3e272", "68e543477c6a836a",
+    "6bb837d917f3b84d", "6c97eba00255b8f9", "71070ce0c12c1535", "72604f03f8b3bfb7",
+    "736021c39b4e9c17", "76cefe71362ede4e", "76f72aca4330fdfd", "7d2caa90d9fa1b5f",
+    "85050dd1a413106b", "86a1b965dcfac679", "88cb2508c396b706", "8eb3ced724085191",
+    "964d0d0b101d450b", "96adb8b3fdf665f9", "9c9ba8b292e7a9e2", "a0681ee385ccddc6",
+    "a5e01eb63d076127", "aef97bbb04b19651", "b308fcd69c689e0a", "b39ab622c2884dbb",
+    "b401965272bbc67d", "b877c5650aaff601", "ba0c3b4f8496f0fb", "bfca8007f82dd7ea",
+    "c5b2777932f4ca85", "cae0572f3b9a7c5f", "d853c55212d6460b", "e8275589878c6a87",
+    "e9dac5334c51cbea", "edf8ee1bcbfefd60", "f42d17f55bdb366d", "fa6314dca044f9e3",
+    "fbf6884bfbc1b3c7", "fc577d2369227951", "fd2b78d7f1daea41", "fe34204cae8d11fb",
+];
+
 /// The agents' own homes, from the home folder. Skiff never writes there.
 const AGENT_HOMES: [(&str, &str); 5] =
     [(".claude", "claude"), (".codex", "codex"), (".gemini", "gemini"), (".config/opencode", "opencode"), (".grok", "grok")];
@@ -56,12 +81,29 @@ pub fn skill_home() -> Result<PathBuf> {
     Ok(dir.join("skills").join("skiff-cli"))
 }
 
+/// The copy of the skill at `dest` is the built-in one.
+fn skill_current(dest: &Path) -> bool {
+    SKILL.iter().all(|(f, bytes, _)| std::fs::read(dest.join(f)).is_ok_and(|b| b == *bytes))
+}
+
+/// The path of the skill's `SKILL.md`, as a first message and `skiff skill
+/// path` give it. The file exists and is this build's: a stale copy is
+/// replaced first, under [`lock`]. The caller does not hold the lock.
+pub fn skill_file() -> Result<PathBuf> {
+    let home = skill_home()?;
+    if !skill_current(&home) {
+        let _lock = lock()?;
+        sync_skill()?;
+    }
+    Ok(home.join("SKILL.md"))
+}
+
 /// Replaces the copy of the skill when the built-in one differs. A new copy
 /// is built beside the old one and renamed over it, so an agent that reads
 /// the skill never sees half of it.
 pub fn sync_skill() -> Result<PathBuf> {
     let dest = skill_home()?;
-    if SKILL.iter().all(|(f, bytes, _)| std::fs::read(dest.join(f)).is_ok_and(|b| b == *bytes)) {
+    if skill_current(&dest) {
         return Ok(dest);
     }
     let parent = dest.parent().context("find the skills folder")?;
@@ -340,15 +382,20 @@ pub fn setup(dir: &Path, name: &str) -> Result<PathBuf> {
     setup_in(dir, name, &sync_skill()?)
 }
 
-/// [`setup`] for a caller that holds the lock. `skill` is the skill's copy.
-pub(crate) fn setup_in(dir: &Path, name: &str, skill: &Path) -> Result<PathBuf> {
+/// Refuses a folder that [`setup_in`] must not fill in. Changes nothing.
+pub(super) fn check_setup(dir: &Path) -> Result<()> {
     if dir.metadata().is_ok_and(|m| !m.is_dir()) {
         bail!("{} is not a folder", dir.display());
     }
     if dir.is_dir() && !dir.join(MARKER).exists() && std::fs::read_dir(dir)?.next().is_some() {
         bail!("{} holds other files. Move them, or choose another folder in Settings › Disk use › Folder", dir.display());
     }
+    Ok(())
+}
 
+/// [`setup`] for a caller that holds the lock. `skill` is the skill's copy.
+pub(crate) fn setup_in(dir: &Path, name: &str, skill: &Path) -> Result<PathBuf> {
+    check_setup(dir)?;
     std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
     let dir = dir.canonicalize().with_context(|| format!("find {}", dir.display()))?;
     // A broken link counts as there: setup does not replace what the user made.
@@ -418,6 +465,11 @@ pub(super) fn write_file(dir: &Path, rel: &str, text: &str) -> Result<()> {
     record(dir, rel, Some(&hash(text.as_bytes())))
 }
 
+/// `bytes` are a past `AGENTS.md` as Skiff wrote it, with a default name.
+pub(super) fn past_agents(rel: &str, bytes: &[u8]) -> bool {
+    rel == AGENTS_FILE && PAST_AGENTS.binary_search(&hash(bytes).as_str()).is_ok()
+}
+
 /// At a Skipper's start: writes `rel` when it is missing, and again when its
 /// status is template and the template changed. An edited file stays.
 pub(super) fn refresh(dir: &Path, rel: &str, text: &str) -> Result<()> {
@@ -427,10 +479,18 @@ pub(super) fn refresh(dir: &Path, rel: &str, text: &str) -> Result<()> {
         return write_file(dir, rel, text);
     }
     let Ok(now) = std::fs::read(&path) else { return Ok(()) };
+    let same = now == text.as_bytes();
     match written(dir).get(rel) {
-        Some(h) if *h == hash(&now) && now != text.as_bytes() => write_file(dir, rel, text),
-        // The same text with no hash: keep it as Skiff's, so the next template change reaches it.
-        None if now == text.as_bytes() => record(dir, rel, Some(&hash(&now))),
+        Some(h) if *h == hash(&now) => {
+            if same {
+                Ok(())
+            } else {
+                write_file(dir, rel, text)
+            }
+        }
+        // The same text with no hash or an old one: keep it as Skiff's, so the next template change reaches it.
+        _ if same => record(dir, rel, Some(&hash(&now))),
+        None if past_agents(rel, &now) => write_file(dir, rel, text),
         _ => Ok(()),
     }
 }

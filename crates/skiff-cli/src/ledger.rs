@@ -34,6 +34,7 @@ use schema::{OWNER, TASKS, UIDS};
 #[cfg(test)]
 use skiff_client::ledger::{OPEN, VERSION, WORKING};
 pub use write::claim;
+pub(crate) use write::{scope, Scope};
 #[cfg(test)]
 use write::*;
 #[cfg(test)]

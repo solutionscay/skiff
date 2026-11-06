@@ -91,17 +91,17 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                 }
             }
             let c = crate::connect(socket).await?;
-            let (ps, key, name) = match target {
+            let (ps, key, name, scope) = match target {
                 Scope::Project(p) => {
                     // One Skipper per project: its fleet's Skipper takes the work.
                     if let Some(f) = skiff_client::skipper::commanding_fleet(&cfg, &c.list_sessions().await?, &p) {
                         bail!("{p} is in {f}, which has a fleet Skipper. Use: skiff ledger handoff {f}. Nothing changed");
                     }
-                    (crate::skipper::start_project(socket, &c, &p).await?, p.clone(), p)
+                    (crate::skipper::start_project(socket, &c, &p).await?, p.clone(), p.clone(), skiff_client::skipper::Scope::Project(p))
                 }
                 Scope::Fleet(f) => {
                     let fs = crate::skipper::start_fleet(socket, &c, &f, crate::skipper::Over::Refuse).await?;
-                    (fs.skipper, skiff_client::skipper::fleet_scope(&f), f)
+                    (fs.skipper, skiff_client::skipper::fleet_scope(&f), f.clone(), skiff_client::skipper::Scope::Fleet(f))
                 }
             };
             let s = &ps.session;
@@ -138,7 +138,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
             let mut text = message(&row);
             if ps.created {
                 // A new agent takes its instructions first, then the task, in one turn.
-                text = format!("{} Then take this hand-off. {text}", skiff_client::skipper::first_message(&skiff_core::config::load()?, &ps.dir)?);
+                text = format!("{} Then take this hand-off. {text}", skiff_client::skipper::first_message(&skiff_core::config::load()?, &scope)?);
                 crate::skipper::ready(&c, &s.id).await?;
                 println!("started the {name} Skipper");
             }
