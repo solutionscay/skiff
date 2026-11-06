@@ -323,6 +323,9 @@ impl Session {
 
 pub struct SessionPool {
     sessions: RwLock<HashMap<SessionId, Arc<Session>>>,
+    /// Why the start could not read or parse the workspace file. A reload hands
+    /// it on. See [`skiff_core::protocol::WorkspaceLoad`].
+    load_error: Mutex<Option<String>>,
     /// Killed sessions whose reader has not reaped the child yet.
     dying: Mutex<Vec<Arc<Session>>>,
     /// Children of sessions lost to a reload, not reaped yet. A reload
@@ -371,6 +374,7 @@ impl Default for SessionPool {
     fn default() -> Self {
         let (events, _) = broadcast::channel(4096);
         Self {
+            load_error: Mutex::new(None),
             sessions: RwLock::new(HashMap::new()),
             dying: Mutex::new(Vec::new()),
             orphans: Mutex::new(Vec::new()),

@@ -84,7 +84,7 @@ impl InventorySource for LegacyReadOnly {
                 .request_decoded(skiff_core::protocol::Request::ListSessions)
                 .await
             {
-                Ok(skiff_core::protocol::Response::Sessions { sessions }) => {
+                Ok(skiff_core::protocol::Response::Sessions { sessions, .. }) => {
                     let sessions = sessions
                         .into_iter()
                         .map(super::super::inventory::project_session)

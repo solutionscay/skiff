@@ -202,7 +202,10 @@ pub(super) fn targets(all: &[SessionInfo]) -> Vec<(String, &SessionInfo)> {
 /// each coordinator's held lines when it can take them. Each line goes to
 /// the coordinator that owns the task. `Some` stops the watcher.
 pub(super) async fn step(c: &Client, o: &Options, ws: &mut Watchers) -> Result<Option<i32>> {
-    let all = sessions::sorted(c).await?;
+    let list = c.session_list().await?;
+    // The daemon says a missing session means nothing: no sweep, and no "gone" line.
+    let gap = list.gap();
+    let all = sessions::in_order(list.sessions);
     let targets = targets(&all);
     if targets.is_empty() {
         log("no Skipper runs");
@@ -221,7 +224,16 @@ pub(super) async fn step(c: &Client, o: &Options, ws: &mut Watchers) -> Result<O
     // A read that fails (the file busy past its timeout) skips this step: the
     // next tick reads again. An empty list would forget the open panes.
     let here = skiff_core::state::socket();
-    match ledger::close_gone(&here, &all) {
+    let unknown = |r: &ledger::Row| gap.is_some() && r.pane_id.as_deref().is_some_and(|p| !all.iter().any(|s| s.id.starts_with(p)));
+    if let Some(why) = &gap {
+        log(why);
+        for w in ws.values_mut().filter(|w| !w.told_gap) {
+            w.told_gap = true;
+            w.lines.push(why.clone());
+        }
+    }
+    let swept = if gap.is_some() { Ok(ledger::Swept::default()) } else { ledger::close_gone(&here, &all) };
+    match swept {
         Ok(swept) => {
             for r in swept.gone {
                 log(format!("task {} is done: its pane {} is gone", r.uid, print::short_id(r.pane_id.as_deref().unwrap_or(""))));
@@ -234,7 +246,8 @@ pub(super) async fn step(c: &Client, o: &Options, ws: &mut Watchers) -> Result<O
     }
     let tasks = match ledger::open_tasks() {
         Ok(t) => {
-            let (mine, line) = on_socket(t, &here);
+            let (mut mine, line) = on_socket(t, &here);
+            mine.retain(|r| !unknown(r));
             let w = ws.values_mut().next().expect("a target");
             if line != w.elsewhere {
                 if !line.is_empty() {
@@ -295,7 +308,7 @@ pub(super) async fn step(c: &Client, o: &Options, ws: &mut Watchers) -> Result<O
     let plan_rows = match ledger::plan_tasks() {
         Ok(mut rows) => {
             for r in &mut rows {
-                r.elsewhere = r.socket_other_than(&here).is_some();
+                r.elsewhere = r.socket_other_than(&here).is_some() || unknown(r);
             }
             rows
         }

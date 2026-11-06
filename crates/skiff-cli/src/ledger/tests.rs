@@ -1554,7 +1554,7 @@ fn stale_names_the_session_of_what_holds_old_work_and_says_why() {
     assert!(got.contains(&(flushed, "reopened: it stays open until a task in it changes state".to_string())));
     assert!(got.contains(&(busy, format!("sent: no result recorded; {soon}"))));
     // With no answer from the daemon, it says so.
-    assert!(pairs(list(&db, &HashSet::new(), None)).contains(&(done, "done, not reported, not flushed; session not checked: skiffd did not answer".to_string())));
+    assert!(pairs(list(&db, &HashSet::new(), None)).contains(&(done, "done, not reported, not flushed; session not checked: no full session list".to_string())));
     // Nothing changed.
     assert_eq!(serde_json::to_string(&rows(&db, "", None).unwrap()).unwrap(), before);
     std::fs::remove_dir_all(&dir).unwrap();

@@ -202,6 +202,7 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
             }
             Request::ListSessions => Response::Sessions {
                 sessions: pool.list(),
+                workspace_load: Some(pool.workspace_load()),
             },
             Request::DaemonMetrics => Response::DaemonMetrics { metrics: pool.metrics() },
             req @ (Request::CreateSession { .. }

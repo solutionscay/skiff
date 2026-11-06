@@ -40,7 +40,7 @@ pub(super) async fn answer_slow(pool: Arc<SessionPool>, request: Request) -> Res
             let ask = crate::session::Ask { spec, start, resume, expect };
             match blocking(move || pool.coordinator(ask)).await {
                 Ok(Some(c)) => Response::Coordinator { session: c.session, created: c.created, typed: c.typed },
-                Ok(None) => Response::Sessions { sessions: Vec::new() },
+                Ok(None) => Response::Sessions { sessions: Vec::new(), workspace_load: None },
                 Err(e) => error(e),
             }
         }
