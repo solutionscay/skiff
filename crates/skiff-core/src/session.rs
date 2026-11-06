@@ -62,6 +62,9 @@ pub struct SessionSpec {
     /// as a session. Runs the command as is, with no shell after it.
     #[serde(default)]
     pub peek: bool,
+    /// The app run that opened this peek tool. See [`SessionInfo::peek_owner`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peek_owner: Option<String>,
     /// The Skiff agent's session. Never on the wire: only the daemon's
     /// guarded [`Request::Coordinator`] and a restore set it.
     ///
@@ -143,6 +146,11 @@ pub struct SessionInfo {
     /// Started for the app's peek. See [`SessionSpec::peek`].
     #[serde(default)]
     pub peek: bool,
+    /// The app run that opened this peek tool. A session list leaves it out
+    /// when that run has gone, so any app may clean the session up. A reload
+    /// keeps it; a peek is never saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peek_owner: Option<String>,
     /// A peek tool took the terminal (raw input or the alternate screen): it
     /// is a terminal tool, and the app shows it.
     #[serde(default)]

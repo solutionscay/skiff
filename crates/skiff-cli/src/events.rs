@@ -156,7 +156,7 @@ pub async fn events(c: &Client, args: &[String], json: bool, timeout: Option<f64
                     emit(&session, names.get(&session), Line::State(state));
                 }
             }
-            Ok(Event::Exit { session, code }) if follows(&session) => {
+            Ok(Event::Exit { session, code, .. }) if follows(&session) => {
                 emit(&session, names.get(&session), Line::Exit(code));
             }
             Ok(Event::SessionRemoved { session }) if follows(&session) => {

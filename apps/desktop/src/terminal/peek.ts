@@ -93,6 +93,12 @@ const early = new Map<string, number | null>();
 const earlyInteractive = new Set<string>();
 /** Apps let go from the peek. Their session goes when they exit. */
 const released = new Set<string>();
+/** Where this page keeps its commands for the next page after a reload. */
+const STORE = "skiff.peekSessions";
+/** The last page's commands, by session. Each is a `run` request. */
+const reloaded = new Map<string, string>(readStore());
+/** Terminal tools of the last page that still run, by request. Their row shows them again. */
+const orphans = new Map<string, string>();
 /**
  * The last command let go as an app, still hidden and subscribed, with the
  * row it opened on. A terminal tool can be quiet for a while before it takes
@@ -101,6 +107,32 @@ const released = new Set<string>();
 let held: { p: Peek; key: string } | null = null;
 /** One number per subscription, as panes count theirs. */
 let stream = 0;
+
+function readStore(): [string, string][] {
+  try {
+    return Object.entries(JSON.parse(sessionStorage.getItem(STORE) ?? "{}") as Record<string, string>);
+  } catch {
+    return [];
+  }
+}
+
+/** Keeps what the next page needs if this one reloads. */
+function saveStore() {
+  const kept: Record<string, string> = {};
+  for (const [request, session] of orphans) kept[session] = request;
+  for (const p of [open, ...parked.values()]) if (p?.session) kept[p.session] = p.request;
+  try {
+    sessionStorage.setItem(STORE, JSON.stringify(kept));
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+let owner: Promise<string> | null = null;
+/** This app run's id. A page reload keeps it. */
+export function peekOwner(): Promise<string> {
+  return (owner ??= invoke<string>("peek_owner"));
+}
 
 /** The current row's key; "" with no row. */
 function currentKey(): string {
@@ -120,9 +152,22 @@ export function previewToken(): number {
   return active && !active.closed ? active.gen : 0;
 }
 
-/** A peek session that is not the open peek's: left behind, or an app let go. */
-export function strayPeek(s: SessionInfo) {
+/**
+ * A peek session that is not the open peek's: left behind, an app let go, the
+ * last page's, or another app run's. A session list names the owner only while
+ * it lives, so no name means that any app may clean up.
+ */
+export function strayPeek(s: SessionInfo, me: string) {
   if (s.id === open?.session || s.id === held?.p.session || [...parked.values()].some((p) => p.session === s.id)) return;
+  if (s.peek_owner && s.peek_owner !== me) return;
+  // A start is in flight: this can be its command, ahead of the reply.
+  if (open && !open.session) return;
+  const request = reloaded.get(s.id);
+  if (request) {
+    if (s.peek_owner === me && s.interactive && s.state !== "done") return void orphans.set(request, s.id);
+    reloaded.delete(s.id);
+    orphans.delete(request);
+  }
   // An app still running keeps its window. Its session goes when it exits.
   // A terminal tool out of the peek has no screen left: it ends.
   if (s.state === "done" || s.interactive) hostInvoke("session_lifecycle", "kill_session", { session: s.id }).catch(console.error);
@@ -489,6 +534,7 @@ function drop(p: Peek, end: boolean) {
   p.term.dispose();
   p.el.remove();
   if (!p.session) return;
+  saveStore();
   if (end || p.exited) hostInvoke("session_lifecycle", "kill_session", { session: p.session }).catch(console.error);
   else released.add(p.session);
 }
@@ -584,10 +630,21 @@ async function run(kind: string, title: string, where: string, script: string, c
   }
   const program = script.trim().split(/\s+/)[0] ?? kind;
   const p = frame(mine, kind, title, where, program, request);
+  const back = orphans.get(request);
+  if (back) {
+    orphans.delete(request);
+    reloaded.delete(back);
+    p.session = back;
+    saveStore();
+    tookTerminal(p);
+    await follow(p, back);
+    return show(p);
+  }
   let info: SessionInfo;
   try {
+    const peek_owner = await peekOwner();
     info = await hostInvoke<SessionInfo>("session_lifecycle", "create_session", {
-      spec: { label: program, role: "task", cwd, command: "/bin/sh", args: ["-c", script], peek: true, cols: p.term.cols, rows: p.term.rows },
+      spec: { label: program, role: "task", cwd, command: "/bin/sh", args: ["-c", script], peek: true, peek_owner, cols: p.term.cols, rows: p.term.rows },
     });
   } catch (e) {
     if (open !== p) return console.error(e);
@@ -608,26 +665,32 @@ async function run(kind: string, title: string, where: string, script: string, c
     return showError(t("peek.oldDaemon"));
   }
   p.session = info.id;
+  saveStore();
   // Still hidden and still running: an app with its own window. Let it go, but keep watching.
   p.timer = window.setTimeout(() => {
     if (open === p && !p.shown && !p.exited) closePeek(true);
   }, APP_AFTER_MS);
-  const n = ++stream;
-  const channel = new Channel<unknown>();
-  channel.onmessage = (m) => {
-    if (open !== p && held?.p !== p && parked.get(p.request) !== p) return;
-    if (traceEcho(info.id, m)) return;
-    const bytes = toBytes(m);
-    if (bytes.length) p.got = true;
-    p.term.write(bytes, () => invoke("ack_output", { session: info.id, stream: n, bytes: bytes.length }).catch(console.error));
-  };
-  await hostInvoke("session_terminal", "subscribe_output", { session: info.id, stream: n, onOutput: channel }).catch(showError);
+  await follow(p, info.id);
   if (info.interactive || earlyInteractive.delete(info.id)) peekUpdated({ ...info, interactive: true });
   if (early.has(info.id)) {
     const code = early.get(info.id) ?? null;
     early.delete(info.id);
     peekExited(info.id, code);
   }
+}
+
+/** Puts the session's output in the command's terminal. */
+async function follow(p: Peek, session: string) {
+  const n = ++stream;
+  const channel = new Channel<unknown>();
+  channel.onmessage = (m) => {
+    if (open !== p && held?.p !== p && parked.get(p.request) !== p) return;
+    if (traceEcho(session, m)) return;
+    const bytes = toBytes(m);
+    if (bytes.length) p.got = true;
+    p.term.write(bytes, () => invoke("ack_output", { session, stream: n, bytes: bytes.length }).catch(console.error));
+  };
+  await hostInvoke("session_terminal", "subscribe_output", { session, stream: n, onOutput: channel }).catch(showError);
 }
 
 /** skiffd changed a peek session: the command took the terminal. */
@@ -661,6 +724,15 @@ function reclaim({ p, key }: { p: Peek; key: string }) {
 
 /** skiffd says a peek command ended. True when the session was a peek's. */
 export function peekExited(id: string, code: number | null): boolean {
+  // A tool of the last page ended before its row showed it again.
+  const request = reloaded.get(id);
+  if (request && orphans.get(request) === id) {
+    orphans.delete(request);
+    reloaded.delete(id);
+    saveStore();
+    hostInvoke("session_lifecycle", "kill_session", { session: id }).catch(console.error);
+    return true;
+  }
   if (released.delete(id)) {
     hostInvoke("session_lifecycle", "kill_session", { session: id }).catch(console.error);
     return true;
@@ -697,9 +769,15 @@ export function peekExited(id: string, code: number | null): boolean {
       return showError(t("peek.notFound", { name: action.missing }), { label: t("peek.findTool"), run: () => openUrl(TOOLS_URL) });
     }
     show(p);
-    if (p.shown) p.term.write(`\r\n\x1b[2m${code ? t("peek.exited", { program: p.program, code }) : t("peek.pressKey")}\x1b[0m`);
+    if (p.shown) p.term.write(`\r\n\x1b[2m${exitLine(p, code)}\x1b[0m`);
   }, 150);
   return true;
+}
+
+/** Only a code from the program blames the program. */
+function exitLine(p: Peek, code: number | null): string {
+  if (code === null) return t("peek.ended");
+  return code ? t("peek.exited", { program: p.program, code }) : t("peek.pressKey");
 }
 
 function handle(o: Opened, kind: string, title: string, where: string) {

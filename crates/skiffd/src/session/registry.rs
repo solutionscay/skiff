@@ -5,6 +5,7 @@ use skiff_core::protocol::Event;
 use skiff_core::session::{now_ms, SessionId, SessionInfo, WatchFailure, WatchInfo};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLockReadGuard};
+use std::time::Instant;
 
 impl SessionPool {
     pub fn new() -> Arc<Self> {
@@ -40,8 +41,19 @@ impl SessionPool {
             .values()
             .map(|s| s.info())
             .collect();
+        let now = Instant::now();
+        let owners = self.peek_owners.lock().unwrap();
+        for info in &mut v {
+            info.peek_owner = info.peek_owner.take().filter(|owner| owners.live(owner, now));
+        }
+        drop(owners);
         v.sort_by(|a, b| a.id.cmp(&b.id));
         v
+    }
+
+    /// Connection `conn` belongs to app run `owner`.
+    pub fn peek_owner(&self, conn: u64, owner: String) {
+        self.peek_owners.lock().unwrap().connected(conn, owner);
     }
 
     pub fn metrics(&self) -> skiff_core::protocol::DaemonMetrics {
@@ -88,6 +100,7 @@ impl SessionPool {
 
     /// Connection `conn` closed: its registrations, if any, end.
     pub fn unwatch(&self, conn: u64) {
+        self.peek_owners.lock().unwrap().closed(conn, Instant::now());
         let gone: Vec<Watcher> = {
             let mut w = self.watchers.lock().unwrap();
             let keys: Vec<(u64, SessionId)> = w.keys().filter(|k| k.0 == conn).cloned().collect();

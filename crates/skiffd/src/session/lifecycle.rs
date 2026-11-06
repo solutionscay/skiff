@@ -102,6 +102,7 @@ impl SessionPool {
             unread: false,
             agent_exit: None,
             peek: spec.peek,
+            peek_owner: spec.peek_owner.filter(|_| spec.peek),
             interactive: false,
             input_gen: 0,
             coordinator: spec.coordinator,
@@ -352,12 +353,13 @@ impl SessionPool {
     /// wait; the exit is reaped and recorded in one step, before or after.
     fn reap(&self, session: &Arc<Session>, sid: &str) {
         let pid = session.info.lock().unwrap().pid;
-        let code = loop {
+        let (code, signaled) = loop {
             session.park_point();
-            let Some(pid) = pid else { break None };
+            let Some(pid) = pid else { break (None, false) };
             match pty::try_reap(pid) {
-                pty::Reap::Exited(code) => break Some(code),
-                pty::Reap::Gone => break None,
+                pty::Reap::Exited(code) => break (Some(code), false),
+                pty::Reap::Signaled => break (Some(1), true),
+                pty::Reap::Gone => break (None, false),
                 pty::Reap::Running => std::thread::sleep(Duration::from_millis(20)),
             }
         };
@@ -374,7 +376,7 @@ impl SessionPool {
             session: sid.to_string(),
             state: SessionState::Done,
         });
-        let _ = self.events.send(Event::Exit { session: sid.to_string(), code });
+        let _ = self.events.send(Event::Exit { session: sid.to_string(), code, signaled });
         if reported {
             let _ = self.events.send(Event::SessionUpdated {
                 session: session.info(),

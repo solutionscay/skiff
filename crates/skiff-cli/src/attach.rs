@@ -333,7 +333,7 @@ pub async fn attach(c: &Client, arg: &str, mut drops: Option<Drops>) -> Result<(
                 _ = int.recv() => break End::Signal,
                 _ = quit.recv() => break End::Signal,
                 e = events.recv() => match e {
-                    Ok(Event::Exit { session, code }) if session == id => break End::Exited(code),
+                    Ok(Event::Exit { session, code, .. }) if session == id => break End::Exited(code),
                     Ok(Event::SessionRemoved { session }) if session == id => break End::Removed,
                     Ok(Event::SessionUpdated { session }) if session.id == id => {
                         foreign = !sent.contains(&(session.cols, session.rows));

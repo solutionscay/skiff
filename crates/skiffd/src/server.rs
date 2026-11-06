@@ -58,7 +58,8 @@ pub fn take_test_version() {
     }
 }
 
-/// Ends the connection's watcher registration, on every way out of [`handle`].
+/// Ends the connection's watcher and peek owner registrations, on every way
+/// out of [`handle`].
 struct Unwatch {
     pool: Arc<SessionPool>,
     conn: u64,
@@ -300,6 +301,10 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
                 Ok(()) => Response::Ok,
                 Err(e) => error(e),
             },
+            Request::PeekOwner { owner } => {
+                pool.peek_owner(conn, owner);
+                Response::Ok
+            }
             Request::Retire { session } => match pool.retire(&session) {
                 Ok(()) => Response::Ok,
                 Err(e) => error(e),

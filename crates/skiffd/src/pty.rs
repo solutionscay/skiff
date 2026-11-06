@@ -132,6 +132,8 @@ impl Drop for PtyWriter {
 pub enum Reap {
     /// The child exited and is reaped now. Its code, or 1 after a signal.
     Exited(i32),
+    /// A signal ended it.
+    Signaled,
     Running,
     /// Not our child, or already reaped.
     Gone,
@@ -146,7 +148,7 @@ pub fn try_reap(pid: u32) -> Reap {
         -1 if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted => Reap::Running,
         -1 => Reap::Gone,
         _ if libc::WIFEXITED(status) => Reap::Exited(libc::WEXITSTATUS(status)),
-        _ => Reap::Exited(1),
+        _ => Reap::Signaled,
     }
 }
 

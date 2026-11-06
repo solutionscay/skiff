@@ -1122,6 +1122,7 @@ export const en = {
   "peek.noApp": "No app opens {title}.",
   "peek.exited": "{program} exited with code {code}. Press any key to close.",
   "peek.pressKey": "Press any key to close.",
+  "peek.ended": "The session was ended. Press any key to close.",
   "peek.allChangesSince": "All changes since {base}",
   "peek.loadingDiff": "Loading the diff from {host}…",
   "peek.loadingFile": "Loading the file from {host}…",

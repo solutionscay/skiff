@@ -41,6 +41,8 @@ export interface SessionInfo {
   agent_exit?: number | null;
   /** A tool in the app's peek. Not a session to the user. Absent from older daemons. */
   peek?: boolean;
+  /** The app run that opened this peek tool. A session list leaves it out when that run has gone. */
+  peek_owner?: string | null;
   /** A peek command took the terminal: a terminal tool. */
   interactive?: boolean;
   /** Counts the input the session took. A guarded submit names it. */
@@ -228,7 +230,7 @@ export interface HostFile {
 
 export type DaemonEvent =
   | { event: "state"; session: string; state: SessionState }
-  | { event: "exit"; session: string; code: number | null }
+  | { event: "exit"; session: string; code: number | null; signaled?: boolean }
   | { event: "session_created"; session: SessionInfo }
   | { event: "session_removed"; session: string }
   | { event: "session_updated"; session: SessionInfo }

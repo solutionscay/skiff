@@ -730,6 +730,7 @@ export const zh = {
   "peek.noApp": "没有应用能打开 {title}。",
   "peek.exited": "{program} 已退出，代码 {code}。按任意键关闭。",
   "peek.pressKey": "按任意键关闭。",
+  "peek.ended": "会话已结束。按任意键关闭。",
   "peek.allChangesSince": "自 {base} 以来的所有更改",
   "peek.loadingDiff": "正在从 {host} 加载 diff…",
   "peek.loadingFile": "正在从 {host} 加载文件…",

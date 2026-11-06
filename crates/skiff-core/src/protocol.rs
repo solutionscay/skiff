@@ -190,6 +190,9 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         follows: Option<Vec<SessionId>>,
     },
+    /// This connection belongs to app run `owner`. Its peek sessions have a
+    /// live owner while a connection names it, and for a short time after.
+    PeekOwner { owner: String },
 }
 
 /// Who answers a `ping`, from the daemon itself: never from a socket's peer
@@ -358,6 +361,10 @@ pub enum Event {
     Exit {
         session: SessionId,
         code: Option<i32>,
+        /// A signal ended the process. `code` is then 1, and it says nothing
+        /// about the program.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        signaled: bool,
     },
     SessionCreated {
         session: SessionInfo,
@@ -417,6 +424,7 @@ impl Request {
             Request::Watching { .. } => "watching",
             Request::Retire { .. } => "retire",
             Request::Rescope { .. } => "rescope",
+            Request::PeekOwner { .. } => "peek_owner",
         }
     }
 }
