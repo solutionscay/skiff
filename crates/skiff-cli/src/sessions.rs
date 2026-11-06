@@ -17,10 +17,14 @@ use crate::{callsign::callsign, groups, layout::Side, ledger, print, resolve, wa
 /// Sessions in a stable order: oldest first, then by id. Tools in the app's
 /// peek are not sessions to the user, so they are left out.
 pub async fn sorted(c: &Client) -> Result<Vec<SessionInfo>> {
-    let mut all = c.list_sessions().await?;
+    Ok(in_order(c.list_sessions().await?))
+}
+
+/// Oldest first, without the peek tools.
+pub fn in_order(mut all: Vec<SessionInfo>) -> Vec<SessionInfo> {
     all.retain(|s| !s.peek);
     all.sort_by(|a, b| a.started_at.cmp(&b.started_at).then_with(|| a.id.cmp(&b.id)));
-    Ok(all)
+    all
 }
 
 pub async fn ls(c: &Client, json: bool) -> Result<()> {

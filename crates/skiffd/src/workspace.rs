@@ -87,12 +87,13 @@ pub fn path() -> PathBuf {
         .join("workspace.json")
 }
 
-/// A missing file is an empty workspace, not an error.
+/// A missing file is an empty workspace, not an error. Only the read says it
+/// is missing: `exists` also says no when it cannot look.
 pub fn load(file: &Path) -> Result<Workspace> {
-    if !file.exists() {
-        return Ok(Workspace::default());
-    }
-    let text = std::fs::read_to_string(file).with_context(|| format!("read {}", file.display()))?;
+    let text = match std::fs::read_to_string(file) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Workspace::default()),
+        read => read.with_context(|| format!("read {}", file.display()))?,
+    };
     serde_json::from_str(&text).with_context(|| format!("parse {}", file.display()))
 }
 

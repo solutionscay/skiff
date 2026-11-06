@@ -1,7 +1,26 @@
 use crate::Client;
 use anyhow::{anyhow, bail, Result};
-use skiff_core::{protocol::{Envelope, Request, Response}, session::{SessionId, SessionInfo, SessionSpec}};
+use skiff_core::{protocol::{Envelope, Request, Response, WorkspaceLoad}, session::{SessionId, SessionInfo, SessionSpec}};
 use std::sync::atomic::Ordering;
+
+/// The reply to a session list.
+pub struct SessionList {
+    pub sessions: Vec<SessionInfo>,
+    pub workspace_load: Option<WorkspaceLoad>,
+}
+
+impl SessionList {
+    /// `None`: a missing session means it closed. Else the one line that says
+    /// why it does not. A daemon with no report may have lost sessions and
+    /// not know, so it counts the same as a failed load: nothing closes.
+    pub fn gap(&self) -> Option<String> {
+        match &self.workspace_load {
+            Some(WorkspaceLoad::Loaded) => None,
+            Some(WorkspaceLoad::Failed { error }) => Some(format!("skiffd could not load its workspace: {error}. No task closes for a missing session. Repair or remove the file, then restart skiffd")),
+            None => Some("this skiffd is older and does not report its workspace load. No task closes for a missing session until it updates".into()),
+        }
+    }
+}
 
 impl Client {
     pub async fn daemon_metrics(&self) -> Result<skiff_core::protocol::DaemonMetrics> {
@@ -12,8 +31,14 @@ impl Client {
         }
     }
     pub async fn list_sessions(&self) -> Result<Vec<SessionInfo>> {
+        Ok(self.session_list().await?.sessions)
+    }
+
+    /// The sessions, with the daemon's report on them. A reader that takes a
+    /// missing session as closed uses this.
+    pub async fn session_list(&self) -> Result<SessionList> {
         match self.request(Request::ListSessions).await? {
-            Response::Sessions { sessions } => Ok(sessions),
+            Response::Sessions { sessions, workspace_load } => Ok(SessionList { sessions, workspace_load }),
             Response::Error { message } => bail!(message),
             other => bail!("unexpected reply: {other:?}"),
         }

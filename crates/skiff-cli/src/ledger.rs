@@ -24,7 +24,7 @@ pub use delivery::{end_reports, end_reports_uncertain, start_reports, Evidence};
 pub use paths::results_dir;
 use paths::{label, make_work_folder, new_uid, result_in, work_folder};
 pub use read::{
-    close_gone, gone_unreported, handed_back, handoffs_ready, open_tasks, plan_tasks, unreported, Ready,
+    close_gone, gone_unreported, handed_back, handoffs_ready, open_tasks, plan_tasks, unreported, Ready, Swept,
 };
 #[cfg(test)]
 use read::{close_gone_in, handoffs_ready_in, open_tasks_at, sweep, unreported_at};

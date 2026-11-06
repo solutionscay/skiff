@@ -1,6 +1,7 @@
 use super::{SessionPool, SavedSession, Workspace, SessionSpec, Arc, Path, SAVE_DELAY};
 use super::groups::prune;
 use crate::{paths, workspace};
+use skiff_core::protocol::WorkspaceLoad;
 
 impl SessionPool {
     /// Every group and session as they stand. Exited sessions count: their
@@ -22,9 +23,27 @@ impl SessionPool {
         }
     }
 
+    /// How this daemon's start loaded the workspace.
+    pub fn workspace_load(&self) -> WorkspaceLoad {
+        match self.load_error.lock().unwrap().clone() {
+            Some(error) => WorkspaceLoad::Failed { error },
+            None => WorkspaceLoad::Loaded,
+        }
+    }
+
+    /// Writes the workspace file. After a failed load it writes nothing: the
+    /// file still names the lost sessions, and a new file would make the next
+    /// start a healthy one, with those sessions closed.
+    fn save(&self) -> anyhow::Result<()> {
+        if self.load_error.lock().unwrap().is_some() {
+            return Ok(());
+        }
+        workspace::save(&paths::state(), &self.workspace())
+    }
+
     /// Writes the workspace file now. On shutdown, so the last changes count.
     pub fn save_now(&self) {
-        if let Err(e) = workspace::save(&paths::state(), &self.workspace()) {
+        if let Err(e) = self.save() {
             tracing::warn!("save workspace: {e:#}");
         }
     }
@@ -40,7 +59,7 @@ impl SessionPool {
                 // A reload saves on its own, and must not exec halfway through a save.
                 let saved = tokio::task::spawn_blocking(move || {
                     let Some(_quiet) = pool.quiet() else { return Ok(()) };
-                    workspace::save(&paths::state(), &pool.workspace())
+                    pool.save()
                 })
                 .await;
                 if let Ok(Err(e)) = saved {
@@ -58,7 +77,8 @@ impl SessionPool {
         let ws = match workspace::load(&file) {
             Ok(ws) => ws,
             Err(e) => {
-                tracing::warn!("restore workspace: {e:#}");
+                tracing::error!("restore workspace: {e:#}. The file stays as it is until skiffd restarts");
+                *self.load_error.lock().unwrap() = Some(format!("{e:#}"));
                 return;
             }
         };
@@ -97,7 +117,8 @@ impl SessionPool {
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("restore session {}: {e:#}", saved.id);
+                    tracing::error!("restore session {}: {e:#}. The file stays as it is until skiffd restarts", saved.id);
+                    self.load_error.lock().unwrap().get_or_insert(format!("restore session {}: {e:#}", saved.id));
                     prune(&mut groups, &saved.id, &saved.cwd);
                 }
             }

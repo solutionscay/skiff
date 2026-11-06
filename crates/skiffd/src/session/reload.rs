@@ -114,6 +114,9 @@ struct Meta {
     aliases: String,
     #[serde(default)]
     started_at: u64,
+    /// See `SessionPool::load_error`. An older image never sends it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    load_error: Option<String>,
     groups: Vec<Group>,
     sessions: Vec<SessionMeta>,
     /// Killed sessions' children not reaped yet. The new image reaps them.
@@ -319,6 +322,7 @@ impl SessionPool {
             state: Some(crate::paths::state()),
             aliases: shellenv::aliases().to_string(),
             started_at: self.started_at.load(Ordering::Relaxed),
+            load_error: self.load_error.lock().unwrap().clone(),
             groups: self.groups.lock().unwrap().clone(),
             sessions: metas,
             orphans,
@@ -344,6 +348,7 @@ impl SessionPool {
     pub fn adopt(self: &Arc<Self>, handover: Handover) {
         let Handover { meta, bytes, screens } = handover;
         if meta.started_at != 0 { self.started_at.store(meta.started_at, Ordering::Relaxed); }
+        *self.load_error.lock().unwrap() = meta.load_error;
         shellenv::set_aliases(&meta.aliases);
         let mut groups = meta.groups;
         let mut orphans = meta.orphans;

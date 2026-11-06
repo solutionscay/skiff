@@ -50,6 +50,8 @@ pub(super) struct Watcher {
     /// Lines of the watcher's own, such as a fleet change, until the agent
     /// takes them.
     pub(super) lines: Vec<String>,
+    /// The coordinator heard once that the session list has a gap.
+    pub(super) told_gap: bool,
     /// The hand-offs whose tasks are all done, as last read, each told once.
     /// A hand-off leaves it when it is done, reopened or has an open task.
     pub(super) ready: HashSet<String>,

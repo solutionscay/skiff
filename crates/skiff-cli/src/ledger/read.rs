@@ -87,6 +87,7 @@ pub(super) fn close_gone_in(db: &mut Connection, here: &Path, all: &[SessionInfo
 }
 
 /// What one sweep did: the rows skiff set done, and the work it closed.
+#[derive(Default)]
 pub struct Swept {
     pub gone: Vec<Row>,
     pub closed: Vec<Row>,
@@ -100,17 +101,17 @@ fn sweep_in(db: &mut Connection, here: &Path, all: &[SessionInfo]) -> Result<Swe
     Ok(Swept { gone, closed })
 }
 
-/// The sweep for `skiff watch`. No `ledger.db` yet does nothing, and makes no file.
+/// The sweep for `skiff watch`, which runs it only when the list is full. No `ledger.db` yet does nothing, and makes no file.
 pub fn close_gone(here: &Path, all: &[SessionInfo]) -> Result<Swept> {
     let file = path()?;
     if !file.exists() {
-        return Ok(Swept { gone: Vec::new(), closed: Vec::new() });
+        return Ok(Swept::default());
     }
     sweep_in(&mut super::open_at(&file)?, here, all)
 }
 
-/// The sweep for `ledger ls` and `show`, when the daemon answered. It says what
-/// it did. With no answer, no session is closed.
+/// The sweep for `ledger ls` and `show`, with [`full_list`]. It says what it
+/// did. With no full list, no session is closed.
 pub(super) fn sweep(db: &mut Connection, here: &Path, all: Option<&[SessionInfo]>) -> Result<()> {
     let Some(all) = all else { return Ok(()) };
     let s = sweep_in(db, here, all)?;
@@ -226,6 +227,20 @@ pub(super) fn state(s: &str) -> Result<&str> {
 pub(super) async fn live(socket: &Path) -> Option<Vec<SessionInfo>> {
     let c = Client::connect(socket).await.ok()?;
     c.list_sessions().await.ok()
+}
+
+/// The live sessions for a reader that takes a missing session as closed. With
+/// no answer, or when the daemon says a missing session means nothing (see
+/// [`skiff_client::SessionList::gap`]), says so and gives none. Every ledger read
+/// that shows or closes a task by its session comes through here.
+pub(super) async fn full_list(socket: &Path) -> Option<Vec<SessionInfo>> {
+    let c = Client::connect(socket).await.ok()?;
+    let list = c.session_list().await.ok()?;
+    if let Some(why) = list.gap() {
+        eprintln!("skiff: {why}");
+        return None;
+    }
+    Some(list.sessions)
 }
 
 /// A pane as other commands take it, checked against the live sessions.
@@ -399,7 +414,7 @@ pub(super) struct Stale {
 /// The state of a row's session, in words, with its name. `all`: the sessions,
 /// when the daemon answered.
 fn session_word(r: &Row, all: Option<&[SessionInfo]>) -> String {
-    let Some(all) = all else { return "session not checked: skiffd did not answer".into() };
+    let Some(all) = all else { return "session not checked: no full session list".into() };
     if r.elsewhere {
         return "session on another daemon".into();
     }

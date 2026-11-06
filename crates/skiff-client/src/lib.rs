@@ -30,7 +30,7 @@ mod requests;
 pub mod skipper;
 pub mod transport;
 pub mod update;
-pub use requests::{Coordinated, Coordinator, DaemonInfo, Refused};
+pub use requests::{Coordinated, Coordinator, DaemonInfo, Refused, SessionList};
 
 type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Response, ReplyDecodeError>>>>>;
 type Outputs = Arc<Mutex<HashMap<SessionId, OutputTx>>>;

@@ -215,6 +215,19 @@ pub struct Envelope {
 /// The daemon reads OSC 7501 and fills [`crate::session::SessionInfo::program_status`].
 pub const FEATURE_PROGRAM_STATUS: &str = "program_status@1";
 
+/// Whether a session missing from the list has closed. Only [`Self::Loaded`]
+/// says so. After [`Self::Failed`] the daemon lost track of the sessions it
+/// saved, so a missing one says nothing. It lasts as long as the daemon runs,
+/// a reload included.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum WorkspaceLoad {
+    /// The file was read and each saved session came back, or there was no file.
+    Loaded,
+    /// The file could not be read, or a saved session could not start.
+    Failed { error: String },
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Response {
@@ -247,6 +260,11 @@ pub enum Response {
     },
     Sessions {
         sessions: Vec<SessionInfo>,
+        /// How this daemon's start loaded its workspace, on the reply to
+        /// [`Request::ListSessions`]. `None`: a daemon that predates the field,
+        /// or another request's reply. See [`WorkspaceLoad`].
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        workspace_load: Option<WorkspaceLoad>,
     },
     DaemonMetrics {
         metrics: DaemonMetrics,

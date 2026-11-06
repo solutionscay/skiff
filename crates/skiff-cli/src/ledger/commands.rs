@@ -1,6 +1,6 @@
 //! One `skiff ledger` command, matched and sequenced over the read and write sides.
 use super::read::{
-    container, join, keep, live, one, pane, print_attempts, print_one, print_rows, print_stale, project_of, rank, stale,
+    container, full_list, join, keep, live, one, pane, print_attempts, print_one, print_rows, print_stale, project_of, rank, stale,
     state, sweep, top, tree, under, View,
 };
 use super::{brief, delivery, evidence};
@@ -151,7 +151,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                 eprintln!("skiff: {} {} is not a hand-off. Only a hand-off has a brief", r.kind, r.uid);
                 return Ok(1);
             }
-            let all = live(socket).await;
+            let all = full_list(socket).await;
             let b = current_brief(socket, &db, &r, all.as_deref())?;
             if json {
                 let (bytes, items, left_out) = b.as_ref().map(|b| (b.text.len(), b.items, b.left_out)).unwrap_or_default();
@@ -272,7 +272,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                 View::Open
             };
             let mut db = open()?;
-            let all = live(socket).await;
+            let all = full_list(socket).await;
             sweep(&mut db, socket, all.as_deref())?;
             let mut list = rows(&db, "", None)?;
             mark_live(socket, all.as_deref(), &mut list);
@@ -293,7 +293,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
         LedgerCmd::Stale { older_than, json } => {
             let secs = age(&older_than)?;
             let db = open()?;
-            let sessions = live(socket).await;
+            let sessions = full_list(socket).await;
             let cutoff: String = db.query_row("SELECT strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?1)", [format!("-{secs} seconds")], |r| r.get(0))?;
             let held: std::collections::HashSet<String> = {
                 let mut st = db.prepare("SELECT uid FROM tasks WHERE reopened_at IS NOT NULL")?;
@@ -339,7 +339,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
             let secs = age(&older_than)?;
             let mut db = open()?;
             let caller = check_writer(socket, &db, person).await?;
-            let sessions = live(socket).await;
+            let sessions = full_list(socket).await;
             // The rows first, so the rule still sees them while it judges their folders.
             let mut gone = prune(&mut db, &caller, secs, false)?;
             if gone.is_empty() {
@@ -368,7 +368,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
         }
         LedgerCmd::Show { id, json } => {
             let mut db = open()?;
-            let all = live(socket).await;
+            let all = full_list(socket).await;
             sweep(&mut db, socket, all.as_deref())?;
             let r = one(&db, &id)?;
             // The whole work: a plan's state and the bucket come from its tasks.
@@ -416,7 +416,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
             }
             if flush {
                 if let Some(d) = &row.work_dir {
-                    flush_folders(socket, live(socket).await.as_deref(), &[PathBuf::from(d)])?;
+                    flush_folders(socket, full_list(socket).await.as_deref(), &[PathBuf::from(d)])?;
                 }
             }
             // The row. Without --flush, its folder and result file stay where they are.
@@ -443,7 +443,7 @@ fn current_brief(socket: &Path, db: &rusqlite::Connection, h: &skiff_client::led
 /// Writes `brief.md` for the new hand-off `h` to the Skipper session `pane`,
 /// unless that session already got the same brief. A new Skipper always gets it.
 async fn write_brief(socket: &Path, db: &rusqlite::Connection, h: &skiff_client::ledger::Row, pane: &str, new_skipper: bool) -> Result<()> {
-    let all = live(socket).await;
+    let all = full_list(socket).await;
     let Some(b) = current_brief(socket, db, h, all.as_deref())? else { return Ok(()) };
     let last = brief::last_sent(db, h, pane)?;
     brief::write(h, &b, last.as_deref(), new_skipper)?;
