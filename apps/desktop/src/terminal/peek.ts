@@ -29,6 +29,7 @@ import type { Action } from "../app/keys";
 import { S, sessions } from "../app/state";
 import type { SessionInfo } from "../platform/types";
 import { toBytes } from "../platform/ipcBytes";
+import { traceEcho } from "../diagnostics/latency";
 import { openUrl } from "../platform/os";
 import type { Preview } from "../workspace/rowActs";
 import { rowActs } from "../workspace/rowActs";
@@ -615,6 +616,7 @@ async function run(kind: string, title: string, where: string, script: string, c
   const channel = new Channel<unknown>();
   channel.onmessage = (m) => {
     if (open !== p && held?.p !== p && parked.get(p.request) !== p) return;
+    if (traceEcho(info.id, m)) return;
     const bytes = toBytes(m);
     if (bytes.length) p.got = true;
     p.term.write(bytes, () => invoke("ack_output", { session: info.id, stream: n, bytes: bytes.length }).catch(console.error));

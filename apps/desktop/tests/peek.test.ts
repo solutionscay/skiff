@@ -64,7 +64,7 @@ class El {
   }
 }
 
-function viewer(coverPanes = (_covered: boolean) => {}) {
+function viewer(coverPanes = (_covered: boolean) => {}, stubs: Record<string, unknown> = {}) {
   const main = new El("main");
   const document = { activeElement: null as unknown, addEventListener() {} };
   const h = (tag: string, cls = "", text = "") => new El(tag, cls, text);
@@ -98,6 +98,7 @@ function viewer(coverPanes = (_covered: boolean) => {}) {
       "../app/hosts": { hostName: () => "devbox" },
       "./diffView": { diffState: (text: string) => h("div", "diff-view-body", text) },
       "./fileView": { fileBody: (f: { text: string }) => h("div", "diff-view-body", f.text) },
+      ...stubs,
     },
     { Promise, Map, Set, JSON, document, window: { setTimeout: () => 0 }, clearTimeout() {}, URL },
     "",
@@ -171,6 +172,23 @@ test("a row's own preview after a result is read again as the row's, not as the 
   assert.deepEqual(v.reads.map((r) => r.cmd), ["read_file"]);
 });
 
+test("the latency trace's echo message does not reach a peek's terminal", async () => {
+  let channel: { onmessage(m: unknown): void };
+  const wrote: string[] = [];
+  const term = { attachCustomKeyEventHandler() {}, onData() {}, write: (b: Uint8Array) => void wrote.push(new TextDecoder().decode(b)) };
+  const v = viewer(undefined, {
+    "@tauri-apps/api/core": { invoke: () => Promise.resolve(null), Channel: class { constructor() { channel = this as never; } } },
+    "../platform/ipcBytes": moduleFromSource("../src/platform/ipcBytes.ts", {}, { TextEncoder }, ""),
+    "../diagnostics/latency": moduleFromSource("../src/diagnostics/latency.ts", {}, {}, ""),
+    "./peekTerminal": { newPeek: () => ({ term, fit: { fit() {} } }) },
+    "../app/hostCaps": { hostInvoke: async () => ({ id: "peek", peek: true }) },
+  });
+  v.mod.peekText("micro SKIPPER.md", "/srv", "/srv/SKIPPER.md", () => {});
+  await flush();
+  channel!.onmessage({ wrote: 1, read: 2 });
+  channel!.onmessage([104, 105]);
+  assert.deepEqual(wrote, ["hi"]);
+});
 
 test("covered panes skip queued and direct draws through renderer changes and late preview replies", async () => {
   const runtime = moduleFromSource("../src/terminal/terminalRuntime.ts", {}, {
