@@ -76,13 +76,14 @@ fn instruction_files_are_written_once_and_keep_their_status() {
     skipper::reset_file(&cfg, &app).unwrap();
     assert_eq!(std::fs::read_to_string(top.join("projects/app/SKIPPER.md.bak")).unwrap(), "mine\n");
 
-    // The first message names both files.
-    let msg = skipper::first_message(&cfg, &top.join("projects/app")).unwrap();
+    // The first message names the skill and both files.
+    let msg = skipper::first_message(&cfg, &app).unwrap();
     assert_eq!(
         msg,
         format!(
-            "Read {0}/AGENTS.md, then {0}/projects/app/SKIPPER.md. SKIPPER.md wins where the two differ. Then do the First steps.",
-            top.display()
+            "Read the file `{1}` before any skiff command: it is the skiff-cli skill. `skiff skill path` prints this path again. Read `{0}/AGENTS.md`, then `{0}/projects/app/SKIPPER.md`. SKIPPER.md wins where the two differ. Then do the First steps.",
+            top.display(),
+            skipper::skill_file().unwrap().display()
         )
     );
     let _ = std::fs::remove_dir_all(&root);

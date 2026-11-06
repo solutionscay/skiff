@@ -15,6 +15,9 @@ pub async fn status(socket: &Path) -> Result<()> {
     if let Some(w) = exe.as_deref().and_then(|e| path_warning(e, &std::env::var_os("PATH").unwrap_or_default())) {
         eprintln!("skiff: warning: {w}");
     }
+    for f in stale_templates() {
+        eprintln!("skiff: warning: {} is edited and its template changed. Run: {}", f.file, f.scope.diff_command());
+    }
     let c = crate::connect(socket).await?;
     let info = c.daemon_info().await?;
     let (version, protocol) = (info.version.clone(), info.protocol);
@@ -43,6 +46,16 @@ pub async fn status(socket: &Path) -> Result<()> {
     Ok(())
 }
 
+/// The instruction files that are edited and whose template changed. Reads
+/// only. A config, folder or file that Skiff cannot read gives no warning of
+/// its own: status reports on the daemon, and other commands report those
+/// faults. A file that cannot be read does not hide the others.
+fn stale_templates() -> Vec<skiff_client::skipper::FileStatus> {
+    let Ok(cfg) = skiff_core::config::load() else { return Vec::new() };
+    let rows = skiff_client::skipper::instructions_each(&cfg).unwrap_or_default();
+    rows.into_iter().flatten().filter(|f| f.status == skiff_client::skipper::Status::EditedTemplateChanged).collect()
+}
+
 /// `skiff status --json`: for a program, such as the app's check of a Host
 /// over ssh. No warnings and no starts: exit 1 when no skiffd answers.
 pub async fn status_json(socket: &Path) -> i32 {
@@ -58,11 +71,16 @@ pub async fn status_json(socket: &Path) -> i32 {
             "host_id": i.identity.as_ref().map(|id| id.host_id.clone()),
         })
     });
+    let templates: Vec<_> = stale_templates()
+        .iter()
+        .map(|f| serde_json::json!({ "file": f.file, "scope": f.scope.arg(), "command": f.scope.diff_command() }))
+        .collect();
     let out = serde_json::json!({
         "skiff": env!("CARGO_PKG_VERSION"),
         "protocol": skiff_core::PROTOCOL,
         "socket": socket.display().to_string(),
         "skiffd": skiffd,
+        "templates": templates,
     });
     println!("{out}");
     if daemon.is_some() { 0 } else { 1 }

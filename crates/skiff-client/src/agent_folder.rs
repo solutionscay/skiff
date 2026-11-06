@@ -711,7 +711,12 @@ pub fn change(cfg: &Config, to: &Path, mode: Mode, panes: &Panes, anyway: bool) 
         }
         step(Step::Setup, &staging, || {
             // The staging folder is this change's: mark it, so setup fills it in.
-            std::fs::write(staging.join(MARKER), "1\n")?;
+            // A copy keeps the hashes: its files are the same bytes, and each
+            // stays template or edited, as it was.
+            match mode {
+                Mode::Copy => std::fs::copy(from.join(MARKER), staging.join(MARKER)).map(|_| ())?,
+                _ => std::fs::write(staging.join(MARKER), "1\n")?,
+            }
             skipper::setup_in(&staging, &name, &skill)
         })?;
         step(Step::Rename, &to, || std::fs::rename(&staging, &to).map_err(Into::into))?;
