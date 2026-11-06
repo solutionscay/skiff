@@ -3788,7 +3788,7 @@ checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
 name = "skiff-cli"
-version = "2.2.1"
+version = "2.2.2"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -3807,7 +3807,7 @@ dependencies = [
 
 [[package]]
 name = "skiff-client"
-version = "2.2.1"
+version = "2.2.2"
 dependencies = [
  "anyhow",
  "libc",
@@ -3826,7 +3826,7 @@ dependencies = [
 
 [[package]]
 name = "skiff-core"
-version = "0.6.43"
+version = "0.6.44"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3841,7 +3841,7 @@ dependencies = [
 
 [[package]]
 name = "skiff-desktop"
-version = "2.2.1"
+version = "2.2.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -3867,7 +3867,7 @@ dependencies = [
 
 [[package]]
 name = "skiff-host"
-version = "2.2.1"
+version = "2.2.2"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
@@ -3894,7 +3894,7 @@ dependencies = [
 
 [[package]]
 name = "skiffd"
-version = "0.6.43"
+version = "0.6.44"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
