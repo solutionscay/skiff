@@ -340,6 +340,10 @@ pub enum Event {
     Exit {
         session: SessionId,
         code: Option<i32>,
+        /// A signal ended the process. `code` is then 1, and it says nothing
+        /// about the program.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        signaled: bool,
     },
     SessionCreated {
         session: SessionInfo,

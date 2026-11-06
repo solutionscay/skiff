@@ -230,7 +230,7 @@ export interface HostFile {
 
 export type DaemonEvent =
   | { event: "state"; session: string; state: SessionState }
-  | { event: "exit"; session: string; code: number | null }
+  | { event: "exit"; session: string; code: number | null; signaled?: boolean }
   | { event: "session_created"; session: SessionInfo }
   | { event: "session_removed"; session: string }
   | { event: "session_updated"; session: SessionInfo }

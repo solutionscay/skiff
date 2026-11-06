@@ -267,6 +267,30 @@ async fn exit_event_order_with_a_live_report() {
     }).await.unwrap();
 }
 
+/// A killed session must not look like a program that failed with code 1.
+#[tokio::test]
+async fn an_exit_says_when_a_signal_ended_the_process() {
+    use skiff_core::{protocol::Event, session::SessionSpec};
+    use std::time::Duration;
+    let pool = super::SessionPool::new();
+    let spec = |script: &str| SessionSpec { command: Some("/bin/sh".into()), args: vec!["-c".into(), script.into()], cols: 80, rows: 24, peek: true, ..Default::default() };
+    let mut events = pool.events.subscribe();
+    let failed = pool.create(spec("exit 1")).unwrap();
+    let killed = pool.create(spec("sleep 30")).unwrap();
+    pool.kill(&killed.id).unwrap();
+    let (mut a, mut b) = (None, None);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while a.is_none() || b.is_none() {
+            if let Event::Exit { session, code, signaled } = events.recv().await.unwrap() {
+                if session == failed.id { a = Some((code, signaled)); }
+                if session == killed.id { b = Some((code, signaled)); }
+            }
+        }
+    }).await.unwrap();
+    assert_eq!(a, Some((Some(1), false)));
+    assert_eq!(b, Some((Some(1), true)));
+}
+
 #[test]
 fn deterministic_status_throttle() {
     use crate::screen::StatusSignal;

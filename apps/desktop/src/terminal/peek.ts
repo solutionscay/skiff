@@ -769,9 +769,15 @@ export function peekExited(id: string, code: number | null): boolean {
       return showError(t("peek.notFound", { name: action.missing }), { label: t("peek.findTool"), run: () => openUrl(TOOLS_URL) });
     }
     show(p);
-    if (p.shown) p.term.write(`\r\n\x1b[2m${code ? t("peek.exited", { program: p.program, code }) : t("peek.pressKey")}\x1b[0m`);
+    if (p.shown) p.term.write(`\r\n\x1b[2m${exitLine(p, code)}\x1b[0m`);
   }, 150);
   return true;
+}
+
+/** Only a code from the program blames the program. */
+function exitLine(p: Peek, code: number | null): string {
+  if (code === null) return t("peek.ended");
+  return code ? t("peek.exited", { program: p.program, code }) : t("peek.pressKey");
 }
 
 function handle(o: Opened, kind: string, title: string, where: string) {

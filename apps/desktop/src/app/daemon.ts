@@ -563,7 +563,8 @@ export function onEvent(e: DaemonEvent) {
       break;
     }
     case "exit": {
-      if (peekExited(e.session, e.code)) return;
+      // A signal: the code says nothing about the program. No code means no status to report.
+      if (peekExited(e.session, e.signaled ? null : e.code)) return;
       const s = sessions.get(e.session);
       if (s) {
         if (s.state !== "done") stateSince.set(s.id, Date.now());

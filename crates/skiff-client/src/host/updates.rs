@@ -19,7 +19,7 @@ pub(super) fn project_update(value: core::Event) -> Result<SessionUpdate, Error>
             away: away.into_iter().map(project_away).collect::<Result<_, _>>()?,
         },
         core::Event::Title { session, title } => SessionUpdate::Title { session, title },
-        core::Event::Exit { session, code } => SessionUpdate::Exit { session, code },
+        core::Event::Exit { session, code, signaled } => SessionUpdate::Exit { session, code, signaled },
         core::Event::SessionCreated { session } => SessionUpdate::SessionCreated {
             session: project_session(session)?,
         },
@@ -49,7 +49,7 @@ pub(super) fn restore_update(value: SessionUpdate) -> core::Event {
             away: away.into_iter().map(restore_away).collect(),
         },
         SessionUpdate::Title { session, title } => core::Event::Title { session, title },
-        SessionUpdate::Exit { session, code } => core::Event::Exit { session, code },
+        SessionUpdate::Exit { session, code, signaled } => core::Event::Exit { session, code, signaled },
         SessionUpdate::SessionCreated { session } => core::Event::SessionCreated {
             session: restore_session(session),
         },

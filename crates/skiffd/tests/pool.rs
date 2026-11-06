@@ -46,7 +46,7 @@ async fn shell_session_streams_output_and_exits() {
             },
             ev = events.recv() => match ev {
                 Ok(Event::State { session, state: SessionState::Waiting }) if session == info.id => saw_waiting = true,
-                Ok(Event::Exit { session, code }) if session == info.id => { exit_code = Some(code); break; }
+                Ok(Event::Exit { session, code, .. }) if session == info.id => { exit_code = Some(code); break; }
                 Ok(_) => {}
                 Err(RecvError::Lagged(_)) => {}
                 Err(RecvError::Closed) => break,

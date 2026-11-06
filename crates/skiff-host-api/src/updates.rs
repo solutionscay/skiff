@@ -23,6 +23,9 @@ pub enum SessionUpdate {
     Exit {
         session: String,
         code: Option<i32>,
+        /// A signal ended the process. `code` is then 1.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        signaled: bool,
     },
     SessionCreated {
         session: InventorySession,

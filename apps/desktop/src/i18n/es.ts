@@ -760,6 +760,7 @@ export const es = {
   "peek.noApp": "Ninguna app abre {title}.",
   "peek.exited": "{program} terminó con el código {code}. Pulse una tecla para cerrar.",
   "peek.pressKey": "Pulse una tecla para cerrar.",
+  "peek.ended": "Se terminó la sesión. Pulse una tecla para cerrar.",
   "peek.allChangesSince": "Todos los cambios desde {base}",
   "peek.loadingDiff": "Cargando el diff desde {host}…",
   "peek.loadingFile": "Cargando el archivo desde {host}…",
