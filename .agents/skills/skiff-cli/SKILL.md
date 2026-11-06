@@ -185,12 +185,12 @@ The ledger is `ledger.db` in that folder. Use only `skiff ledger` to read or cha
 Task states are `pending`, `sent`, `blocked` and `done`. A done task also has an outcome: `succeeded`, `failed`, `interrupted` or `unobserved`. A task whose pane is gone is `unobserved`, never `succeeded`. `ls` shows an OUTCOME column when a row has one. `ls` and `show` also print:
 
 - `interrupted`: the pane restarted after the send. A restore runs a new shell under the old id, so the task does not run.
-- `gone`: the pane no longer exists. Skiff sets the task `done` on the next `ledger ls`, `ledger show` or watcher step. It stays not reported. `--json` shows `state` `done` and a `gone_at` stamp.
+- `gone`: the session closed. Skiff sets the task `done`, `unobserved`, on the next `ledger ls`, `ledger show` or watcher step, whatever its state was, and its work closes when nothing else holds it. An `interrupted` or `elsewhere` task, or an unanswered session list, closes nothing. An interrupted task whose session closes later takes this path. The files stay until a flush. `--json` shows `state` `done` and a `gone_at` stamp.
 - `elsewhere` in LIVE: the task went out on another daemon. Its socket shows. It is not gone. Leave it to that daemon's Skiff agent.
 
 A plan shows `done` when every task in it is done, else `sent`.
 
-Work is a plan with its tasks, or a task with no plan. It is `working` while an agent is on one of its tasks (the task is `sent`, and its pane works or ended its turn), `open` otherwise, and `finished` once closed. Done is not closed. Work closes by itself when every task in it is done, and reported or flushed: the tasks of a plan, a hand-off and its tasks, or a task with no plan. A flush is the person's word, so a flushed task needs no report. A blocked, sent or pending task keeps its work open, and no pane does. This has the same effect as `ledger close`. A plan with no task stays open. After `ledger reopen`, work stays open until a task in it changes state.
+Work is a plan with its tasks, or a task with no plan. It is `working` while an agent is on one of its tasks (the task is `sent`, and its pane works or ended its turn), `open` otherwise, and `finished` once closed. Done is not closed. Work closes by itself when every task in it is closed. A task is closed when it is done and reported, done and flushed by the person, or when its session closed. A session closed means it no longer exists, or its program and shell exited (state `done`). An idle session is not closed, so a blocked or finished task in an idle session stays open. A hand-off with tasks follows them, also while its Skipper runs. A hand-off with no tasks follows its Skipper's session. This has the same effect as `ledger close`. A plan with no task stays open. After `ledger reopen`, work stays open until a task in it changes state.
 
 ### Project Skippers
 
@@ -203,7 +203,7 @@ A project can have its own Skipper: one agent session in the project's folder, a
 - For a follow-up, Admiral gives `--parent UID` of the earlier hand-off, or names its uid in the task. With `--parent`, the new hand-off joins that hand-off's plan, or a new plan of Admiral's wraps both. A hand-off never goes under a hand-off.
 - Brief: `handoff` writes `brief.md` in the hand-off's folder. It lists the rows that the hand-off joins with `--parent` or cites by uid, one step further, with the tasks under them: each with its state, outcome, pane, result path and the first 300 bytes of its task. Then it lists the scope's open work. It is at most 8 KiB, and a "Left out" line counts what did not fit. It has no decisions and no result bodies: the task text carries the decisions. The message names it when it differs from the last brief that this Skipper session got, and always for a new Skipper. `--no-brief` writes none. `skiff ledger brief UID` prints it as of now.
 - `ledger close` on Admiral's plan also needs the hand-off's tasks done.
-- `ledger report` on the hand-off also stamps the done tasks under it, though the project Skipper owns them, and names each failed or unobserved one on stderr.
+- `ledger report` on the hand-off also stamps the done tasks under it, though the project Skipper owns them, and names each that did not succeed on stderr.
 
 ### Fleet Skippers
 
@@ -231,7 +231,7 @@ A fleet can have one Skipper for all its projects. It is a project Skipper with 
 | `ledger show UID [--json]` | Show one row, with its delivery attempts: the session, the payload's bytes and SHA-256, and the evidence (`turn started`, `text accepted`, `no turn`, `refused` or `uncertain`). |
 | `ledger report UID... \| --all` | Mark done tasks as told to the person. |
 | `ledger close UID...` | Close work on the person's word, before each task is reported. |
-| `ledger stale [--older-than 7d] [--json]` | List each row that holds open work with no change for that age, and why. It closes nothing and writes nothing. A work item with a task whose pane works is left out. A hand-off's own pane is not read. |
+| `ledger stale [--older-than 7d] [--json]` | List each row that holds open work with no change for that age, with its session's name and why. Close an idle session to close its task. It closes nothing and writes nothing. A work item with a working session is left out. A hand-off with tasks follows them, so its own session is not read. |
 | `ledger reopen UID...` | Open closed work again, or keep open work open. Use it for work that waits on the person. |
 | `ledger prune [--older-than 7d] [--yes [--flush]]` | Remove closed work. Without `--yes` it only prints it. |
 | `ledger rm UID [--flush]` | Remove one row now. |
@@ -248,7 +248,7 @@ A fleet can have one Skipper for all its projects. It is a project Skipper with 
 - `ls --state` takes `sent`, `pending`, `blocked`, `done`, `interrupted` or `gone`. `ls --unreported` lists the done tasks to report. A flushed task is not in it.
 - Run `ledger report` in the same turn as you tell the person. A plan's uid reports its done tasks. A hand-off's uid also reports the done tasks under it. A task that is not done is refused. A state change away from `done` clears the report and flush marks and opens the work again.
 - `ledger close` takes a plan, or a task with no plan. It refuses work with a task that is not done, and a task in a plan. It reports the done tasks of the work.
-- After each `ledger` command that writes, and after each flush, Skiff closes the work whose tasks are all done, and reported or flushed. A command prints one line for each to stderr. A failed or unobserved task that closes unreported gives Admiral one `[watch]` line, wherever the close ran. Work that `ledger reopen` named is not closed until a task in it changes state, is added, or moves into it.
+- After each `ledger` command that writes, after each sweep and after the person's flush, Skiff closes the work whose tasks are all closed. A command prints one line for each to stderr. A task that closes unreported and did not succeed (failed, interrupted, unobserved, or open when its session closed) gives Admiral one `[watch]` line, wherever the close ran. Auto flush takes a row's files only when its work is closed, and closes nothing. Work that `ledger reopen` named is not closed until a task in it changes state, is added, or moves into it.
 - `prune` removes only closed work, with its tasks. `rm` and `prune` keep the work folders and result files. With `--flush` they also flush each work folder that Settings › Disk use would flush: the work is done, its pane is not working, nothing in it changed in the last 15 minutes, and no git checkout in it has changes or unpushed commits. A folder in use stays, and the output says why.
 
 Work folders: `add` and `handoff` make one folder for each row, in `results/` in the agent folder, in `projects/<project>/results/` for a project Skipper's rows and a hand-off to it, or in `fleets/<fleet>/results/` for a fleet Skipper's. The name is `<uid>-<slug>`, from the title. It never changes.
@@ -270,7 +270,7 @@ A plan holds the turn ends of its tasks. While a task in the plan still runs, a 
 3. A gone pane cannot be marked seen. The `[watch]` line names the tasks that skiff set `done` with it. Tell the person, then run `skiff ledger report UID...`. To run a task again, reassign it with `skiff ledger update UID --pane S --state pending`.
 4. On `[watch] N done tasks not reported`, run `skiff ledger ls --unreported` and report them.
 5. On `[watch] the P Skipper reported hand-off UID`, read the hand-off's result, tell the person, then run `skiff ledger report UID`. That also stamps the tasks under it.
-6. On `[watch] Closed KIND UID with no report`, tell the person what it names. It comes once.
+6. On `[watch] Closed KIND UID with no report`, tell the person what it names. It comes once. A hand-off in it that a Skipper reports later gives its normal line.
 7. On `[watch] plan UID: N of M tasks ended`, read each pane it names and mark it seen. Set each task `done` with its result, tell the person in one report, then run `skiff ledger report UID`.
 
 ### The Ledger panel

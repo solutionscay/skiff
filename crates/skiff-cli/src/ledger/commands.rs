@@ -306,7 +306,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
             if json {
                 let out: Vec<_> = found
                     .iter()
-                    .map(|s| serde_json::json!({ "work": s.work, "uid": s.row.uid, "kind": s.row.kind, "state": s.row.shown_state(), "outcome": s.row.outcome, "owner": s.row.owner, "project": s.row.project, "pane": s.row.pane_id, "changed": s.changed, "why": s.why }))
+                    .map(|s| serde_json::json!({ "work": s.work, "uid": s.row.uid, "kind": s.row.kind, "state": s.row.shown_state(), "outcome": s.row.outcome, "owner": s.row.owner, "project": s.row.project, "pane": s.row.pane_id, "session": s.session, "changed": s.changed, "why": s.why }))
                     .collect();
                 print::json(&out)?;
             } else if found.is_empty() {

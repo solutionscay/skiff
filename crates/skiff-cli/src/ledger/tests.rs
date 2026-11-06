@@ -524,13 +524,15 @@ fn a_task_whose_pane_is_gone_closes_done_and_stays_unreported() {
     for uid in [&kept, &prefix, &theirs] {
         assert_ne!(one(&db, uid).unwrap().state, "done", "{uid}");
     }
-    assert!(one(&db, &done).unwrap().gone_at.is_none());
-    // The plan rolls up to done; only the person closes it.
+    // A done task whose session closed needs no report, and is not "gone".
+    let r = one(&db, &done).unwrap();
+    assert!(r.gone_at.is_none() && r.reported_at.is_some());
+    // The plan rolls up to done. The next auto close closes it.
     let mut list = rows(&db, "", None).unwrap();
     roll_up(&mut list);
     let p = list.iter().find(|r| r.uid == plan).unwrap();
     assert_eq!((p.state.as_str(), p.closed_at.as_deref()), ("done", None));
-    assert_eq!(unreported_at(&file, GRAND).unwrap(), 4);
+    assert_eq!(unreported_at(&file, GRAND).unwrap(), 3);
     // A second sweep finds nothing.
     assert!(close_gone_in(&mut db, here, &all).unwrap().is_empty());
     std::fs::remove_dir_all(&dir).unwrap();
@@ -1490,61 +1492,203 @@ fn reporting_a_hand_off_stamps_the_tasks_under_it_whoever_owns_them() {
 }
 
 #[test]
-fn stale_lists_what_holds_old_work_and_why_by_the_panes_of_its_tasks() {
+fn stale_names_the_session_of_what_holds_old_work_and_says_why() {
+    use skiff_core::session::SessionState;
     use std::collections::HashSet;
     let dir = scratch("stale");
     let file = dir.join("ledger.db");
     let mut db = open_at(&file).unwrap();
     let here = Path::new("/tmp/here.sock");
-    let idle = serde_json::from_value::<SessionInfo>({
-        let mut v = serde_json::to_value(pane("abc123456789", "agent", false)).unwrap();
-        v["state"] = "idle".into();
-        v
-    })
-    .unwrap();
-    let working = |id: &str| {
-        let mut v = serde_json::to_value(pane(id, "agent", false)).unwrap();
-        v["state"] = "working".into();
-        serde_json::from_value::<SessionInfo>(v).unwrap()
+    let named = |id: &str, name: &str, state: SessionState| {
+        let mut s = pane(id, "agent", false);
+        s.name = Some(name.into());
+        s.state = state;
+        s
     };
+    // A finished task in an idle agent session stays open, by its name.
     let (_, done, _, _) = insert(&mut db, &file, New { state: "done".into(), ..task("done") }).unwrap();
     let (_, flushed, _, _) = insert(&mut db, &file, New { state: "done".into(), ..task("flushed") }).unwrap();
     flush_row(&db, &flushed);
     let (_, blocked, _, _) = insert(&mut db, &file, New { state: "blocked".into(), ..task("blocked") }).unwrap();
-    // The hand-off's pane is the Skipper, which works. Its task's pane is idle.
+    // A hand-off follows its task. Its working Skipper neither hides nor lists it.
     let (_, h, _, _) = insert(&mut db, &file, New { handoff: true, pane_id: Some("skipper00000".into()), project: "web".into(), ..task("h") }).unwrap();
-    let (_, under, _, _) = insert(&mut db, &file, New { parent: Some(h.clone()), owner: "web".into(), state: "done".into(), ..task("t") }).unwrap();
-    // A task whose pane works keeps its work out of the list.
+    let (_, under, _, _) = insert(&mut db, &file, New { parent: Some(h), owner: "web".into(), state: "done".into(), ..task("t") }).unwrap();
+    // A hand-off with no tasks follows its Skipper.
+    let (_, alone, _, _) = insert(&mut db, &file, New { handoff: true, pane_id: Some("skipperidle0".into()), project: "web".into(), ..task("h") }).unwrap();
+    // A task in a working session keeps its work out of the list.
     let (_, busy, _, _) = insert(&mut db, &file, New { pane_id: Some("busy00000000".into()), ..task("busy") }).unwrap();
     let (_, new, _, _) = insert(&mut db, &file, New { state: "done".into(), ..task("new") }).unwrap();
     db.execute("UPDATE tasks SET updated_at = '2026-01-01T00:00:00Z' WHERE uid <> ?1", [&new]).unwrap();
     db.execute("UPDATE tasks SET updated_at = '2026-11-01T00:00:00Z' WHERE uid = ?1", [&new]).unwrap();
-    let all = [idle, working("skipper00000"), working("busy00000000")];
+    let all = [
+        named("abc123456789", "fix-login", SessionState::Idle),
+        named("skipper00000", "web Skipper", SessionState::Working),
+        named("skipperidle0", "web Skipper", SessionState::Idle),
+        named("busy00000000", "busy", SessionState::Working),
+    ];
     let before = serde_json::to_string(&rows(&db, "", None).unwrap()).unwrap();
     let list = |db: &Connection, held: &HashSet<String>, all: Option<&[SessionInfo]>| {
         let mut r = rows(db, "", None).unwrap();
         mark_live(here, all, &mut r);
-        stale(&r, held, all, "2026-06-01T00:00:00Z").into_iter().map(|s| (s.row.uid, s.why)).collect::<Vec<_>>()
+        stale(&r, held, all, "2026-06-01T00:00:00Z")
     };
+    let pairs = |l: Vec<read::Stale>| l.into_iter().map(|s| (s.row.uid, s.why)).collect::<Vec<_>>();
+    let idle = "session fix-login idle: close it to close the task";
+    let got = list(&db, &HashSet::new(), Some(&all));
+    assert_eq!(got[0].session.as_deref(), Some("fix-login"));
     assert_eq!(
-        list(&db, &HashSet::new(), Some(&all)),
+        pairs(got),
         [
-            (done.clone(), "done, not reported, not flushed; pane idle".to_string()),
-            (flushed.clone(), "every task is settled: it closes at the next ledger write".to_string()),
-            (blocked, "blocked: it never closes by itself; pane idle".to_string()),
-            (h.clone(), "hand-off sent, 1 of 1 tasks done, not reported by its Skipper".to_string()),
-            (under, "done, not reported, not flushed; pane idle".to_string()),
+            (done.clone(), format!("done, not reported, not flushed; {idle}")),
+            (flushed.clone(), "every task is closed: it closes at the next ledger write".to_string()),
+            (blocked.clone(), format!("blocked: no result recorded; {idle}")),
+            (under.clone(), format!("done, not reported, not flushed; {idle}")),
+            (alone, "hand-off sent, no tasks under it; session web Skipper idle: close it to close the task".to_string()),
         ]
     );
-    // A closed pane is named, and reopened work says what holds it.
+    // A closed session says the task closes soon. Reopened work says what holds it.
     let held: HashSet<String> = [flushed.clone()].into();
-    let got = list(&db, &held, Some(&[]));
-    assert!(got.contains(&(done.clone(), "done, not reported, not flushed; pane closed".to_string())));
+    let got = pairs(list(&db, &held, Some(&[])));
+    let soon = "session closed: it closes at the next ledger ls or watcher step";
+    assert!(got.contains(&(done.clone(), format!("done, not reported, not flushed; {soon}"))));
     assert!(got.contains(&(flushed, "reopened: it stays open until a task in it changes state".to_string())));
-    assert!(got.iter().any(|(u, why)| *u == busy && why == "sent: no result recorded, and it never closes by itself; pane closed"));
+    assert!(got.contains(&(busy, format!("sent: no result recorded; {soon}"))));
     // With no answer from the daemon, it says so.
-    assert!(list(&db, &HashSet::new(), None).contains(&(done, "done, not reported, not flushed; pane not checked: skiffd did not answer".to_string())));
+    assert!(pairs(list(&db, &HashSet::new(), None)).contains(&(done, "done, not reported, not flushed; session not checked: skiffd did not answer".to_string())));
     // Nothing changed.
     assert_eq!(serde_json::to_string(&rows(&db, "", None).unwrap()).unwrap(), before);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Runs the sweep with the session list `all` and returns the notes, dropped.
+fn swept(db: &mut Connection, file: &Path, all: &[SessionInfo]) -> Vec<String> {
+    sweep(db, Path::new("/tmp/here.sock"), Some(all)).unwrap();
+    let notes = skiff_client::ledger::notes(file, GRAND).unwrap();
+    skiff_client::ledger::drop_notes(file, &notes.iter().map(|n| n.0).collect::<Vec<_>>()).unwrap();
+    notes.into_iter().map(|n| n.1).collect()
+}
+
+#[test]
+fn a_closed_session_closes_its_task_whatever_its_state_and_nothing_else_does() {
+    use skiff_core::session::SessionState;
+    let dir = scratch("session-close");
+    let file = dir.join("ledger.db");
+    let mut db = open_at(&file).unwrap();
+    let closed = |db: &Connection, uid: &str| one(db, uid).unwrap().closed_at.is_some();
+    let on = |id: &str, st: &str| New { pane_id: Some(id.into()), state: st.into(), ..task(st) };
+    let live = |id: &str, state: SessionState| {
+        let mut s = pane(id, "agent", false);
+        s.state = state;
+        s.started_at = 1000;
+        s
+    };
+    let mut uids = Vec::new();
+    for (i, st) in ["sent", "pending", "blocked", "done", "done"].iter().enumerate() {
+        uids.push(insert(&mut db, &file, on(&format!("gone0000000{i}"), st)).unwrap().1);
+    }
+    db.execute("UPDATE tasks SET outcome = 'failed' WHERE uid = ?1", [&uids[3]]).unwrap();
+    db.execute("UPDATE tasks SET outcome = 'succeeded' WHERE uid = ?1", [&uids[4]]).unwrap();
+    // A session that exited counts as closed.
+    let (_, exited, _, _) = insert(&mut db, &file, on("exited000000", "blocked")).unwrap();
+    // These stay: an idle session with a blocked or a finished task.
+    let (_, idle_blocked, _, _) = insert(&mut db, &file, on("idle00000000", "blocked")).unwrap();
+    let (_, idle_done, _, _) = insert(&mut db, &file, on("idle00000000", "done")).unwrap();
+    // A pane restored under the old id, a task on another daemon.
+    let (_, restored, _, _) = insert(&mut db, &file, on("restored0000", "sent")).unwrap();
+    let (_, theirs, _, _) = insert(&mut db, &file, New { socket: Some("/tmp/other.sock".into()), ..on("theirs000000", "sent") }).unwrap();
+    let mut back = live("restored0000", SessionState::Idle);
+    back.started_at = 2000;
+    let all = [live("exited000000", SessionState::Done), live("idle00000000", SessionState::Idle), back];
+
+    // No answer from the daemon closes nothing.
+    sweep(&mut db, Path::new("/tmp/here.sock"), None).unwrap();
+    assert!(uids.iter().all(|u| one(&db, u).unwrap().state != "done" || !closed(&db, u)));
+    assert!(!closed(&db, &exited));
+
+    let mut notes = swept(&mut db, &file, &all);
+    notes.sort();
+    for u in uids.iter().chain([&exited]) {
+        assert!(closed(&db, u), "{u}");
+        assert_eq!(one(&db, u).unwrap().state, "done");
+    }
+    // One note each for what did not succeed, and none for what did.
+    assert_eq!(notes.len(), 5);
+    for (u, word) in [(&uids[0], "unobserved"), (&uids[1], "unobserved"), (&uids[2], "unobserved"), (&uids[3], "failed"), (&exited, "unobserved")] {
+        assert!(notes.iter().any(|n| n.starts_with(&format!("Closed task {u} with no report: task {u} {word}."))), "{u}: {notes:?}");
+    }
+    assert!(!notes.iter().any(|n| n.contains(uids[4].as_str())));
+    for u in [&idle_blocked, &idle_done, &restored, &theirs] {
+        assert!(!closed(&db, u), "{u}");
+    }
+    assert_eq!(one(&db, &restored).unwrap().state, "sent");
+    assert_eq!(one(&db, &theirs).unwrap().state, "sent");
+    // Results stay on disk: the close removes no file.
+    assert!(Path::new(&one(&db, &uids[0]).unwrap().work_dir.unwrap()).is_dir());
+    // A second sweep says nothing again.
+    assert!(swept(&mut db, &file, &all).is_empty());
+
+    // The restored pane closes later: unobserved, with the same note.
+    let notes = swept(&mut db, &file, &all[..2]);
+    assert!(closed(&db, &restored));
+    assert_eq!(notes, [format!("Closed task {restored} with no report: task {restored} unobserved. Tell the person. Read a row with skiff ledger show UID.")]);
+    // A done task with the outcome interrupted gets the note too.
+    let (_, stopped, _, _) = insert(&mut db, &file, on("stopped00000", "done")).unwrap();
+    db.execute("UPDATE tasks SET outcome = 'interrupted' WHERE uid = ?1", [&stopped]).unwrap();
+    let notes = swept(&mut db, &file, &all[..2]);
+    assert!(closed(&db, &stopped) && notes[0].contains(&format!("task {stopped} interrupted")));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_hand_off_follows_its_tasks_and_with_none_its_skippers_session() {
+    let dir = scratch("session-handoff");
+    let file = dir.join("ledger.db");
+    let mut db = open_at(&file).unwrap();
+    let closed = |db: &Connection, uid: &str| one(db, uid).unwrap().closed_at.is_some();
+    let skipper = pane("skipper00000", "agent", false);
+    let handoff = |st: &str| New { handoff: true, pane_id: Some("skipper00000".into()), project: "web".into(), state: st.into(), ..task("h") };
+    let under = |h: &str, id: &str| New { parent: Some(h.into()), owner: "web".into(), pane_id: Some(id.into()), ..task("t") };
+
+    // Its Skipper runs. Its only task's session closes: the hand-off closes, with one note.
+    let (_, h, _, _) = insert(&mut db, &file, handoff("sent")).unwrap();
+    let (_, t, _, _) = insert(&mut db, &file, under(&h, "task00000000")).unwrap();
+    let task_pane = pane("task00000000", "agent", false);
+    assert!(swept(&mut db, &file, &[skipper.clone(), task_pane]).is_empty());
+    assert!(!closed(&db, &h));
+    let notes = swept(&mut db, &file, std::slice::from_ref(&skipper));
+    assert!(closed(&db, &h));
+    assert_eq!(notes.len(), 1);
+    assert!(notes[0].contains(&format!("hand-off {h} unobserved")) && notes[0].contains(&format!("task {t} unobserved")));
+    let r = one(&db, &h).unwrap();
+    assert_eq!((r.state.as_str(), r.outcome.as_deref()), ("done", Some("unobserved")));
+    // Its Skipper reports late: the stamp goes, so the watcher tells Admiral.
+    restate(&db, &r, Some("done")).unwrap();
+    assert!(one(&db, &h).unwrap().reported_at.is_none() && closed(&db, &h));
+
+    // A hand-off its Skipper reported closes with no stamp and no note: the watcher tells Admiral.
+    let (_, h2, _, _) = insert(&mut db, &file, handoff("done")).unwrap();
+    db.execute("UPDATE tasks SET outcome = 'succeeded' WHERE uid = ?1", [&h2]).unwrap();
+    insert(&mut db, &file, under(&h2, "task00000000")).unwrap();
+    assert!(swept(&mut db, &file, std::slice::from_ref(&skipper)).iter().all(|n| !n.contains(&format!("hand-off {h2}"))));
+    let r = one(&db, &h2).unwrap();
+    assert!(r.closed_at.is_some() && r.reported_at.is_none());
+
+    // With no tasks, it follows its Skipper's session.
+    let (_, lone, _, _) = insert(&mut db, &file, handoff("sent")).unwrap();
+    assert!(swept(&mut db, &file, std::slice::from_ref(&skipper)).is_empty());
+    assert!(!closed(&db, &lone));
+    let notes = swept(&mut db, &file, &[]);
+    assert!(closed(&db, &lone));
+    assert!(notes.iter().any(|n| n.contains(&format!("hand-off {lone} unobserved"))));
+
+    // A plan closes when all its tasks close.
+    let live = pane("live00000000", "agent", false);
+    let (_, p, _, _) = insert(&mut db, &file, New { plan: true, pane_id: None, ..task("p") }).unwrap();
+    insert(&mut db, &file, New { parent: Some(p.clone()), pane_id: Some("live00000000".into()), ..task("a") }).unwrap();
+    let (_, b, _, _) = insert(&mut db, &file, New { parent: Some(p.clone()), pane_id: Some("gone00000000".into()), ..task("b") }).unwrap();
+    swept(&mut db, &file, std::slice::from_ref(&live));
+    assert!(one(&db, &b).unwrap().state == "done" && !closed(&db, &p));
+    swept(&mut db, &file, &[]);
+    assert!(closed(&db, &p));
     std::fs::remove_dir_all(&dir).unwrap();
 }

@@ -87,22 +87,29 @@ the commands:
   the done tasks not yet reported.
 - `report` refuses a task that is not done. A plan's uid reports its done
   tasks. A hand-off's uid also reports the done tasks under it, whoever owns
-  them, and names each failed or unobserved one. A task set to another state than `done` is new work: it shows again,
+  them, and names each that did not succeed. A task set to another state than `done` is new work: it shows again,
   and its work opens again.
-- Skiff closes work by itself when every task in it is done, and reported or
-  flushed: the tasks of a plan, a hand-off and its tasks, or a task with no
-  plan. A flush is the user's word, so a flushed task needs no report. A
-  blocked, sent or pending task keeps its work open. This has the same effect
-  as `close`. A plan with no task stays open.
-- A `[watch]` line that says `Closed UID with no report` names each failed or
-  unobserved task that closed unreported. Tell the user. It comes once.
-- `stale` lists each row that holds open work with no change for 7 days, and
-  why. Skiff closes nothing because of it.
+- Skiff closes work by itself when every task in it is closed: done and
+  reported, done and flushed by the user, or its session closed. This has the
+  same effect as `close`. A plan with no task stays open. A hand-off with tasks
+  follows them, also while its Skipper runs. A hand-off with no tasks follows
+  its Skipper's session.
+- A session closed means it no longer exists, or its program and shell exited.
+  An open task then becomes done, `unobserved`, whatever its state was. An idle
+  session is not closed, and neither is an `interrupted` or `elsewhere` one. Its
+  files stay until a flush.
+- A `[watch]` line that says `Closed KIND UID with no report` names each task
+  that closed unreported and did not succeed. Tell the user. It comes once.
+- Auto flush takes only closed work and closes nothing. The user's flush closes
+  the work it settles.
+- `stale` lists each row that holds open work with no change for 7 days, with
+  its session's name and why. The user can close an idle session to close its
+  task. Skiff closes nothing because of it.
 - `close` takes a plan's uid, or a task with no plan. It refuses work with a
   task that is not done, and a task in a plan. It also reports the done tasks
   of the work.
 - `reopen` opens closed work again. The work then stays open, also when every
-  task is done, and reported or flushed. Use it for work that waits on the user. The work
+  task in it is closed. Use it for work that waits on the user. The work
   can close by itself again after a task in it changes state.
 - A follow-up on the same work joins it with `--parent UID`: the uid of the
   plan or of any task in it. A task with no plan then goes into a new plan,
@@ -118,7 +125,7 @@ the commands:
   when you name a task to the user or in a file.
 - A plan has no pane. Put each of its tasks under it with `--parent UID`. `ls`
   shows the tasks under their plan, and the plan shows `done` when they are.
-  The plan is done, not closed. It closes when its tasks are reported or flushed.
+  The plan is done, not closed. It closes when its tasks are closed.
 - `--ref` is optional free text that names the work somewhere else, such as a
   URL or a ticket key. Skiff does not read it. Nothing here needs a tracker,
   git or a network.

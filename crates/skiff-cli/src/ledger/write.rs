@@ -7,7 +7,7 @@ use crate::{resolve, sessions};
 use anyhow::Context;
 use anyhow::{bail, Result};
 use rusqlite::{params, Connection, TransactionBehavior};
-use skiff_client::ledger::{gen, heads, path, rows, Row, FAILED, GRAND, UNOBSERVED};
+use skiff_client::ledger::{gen, heads, path, rows, Row, GRAND, UNOBSERVED};
 use skiff_core::{
     session::{Role, SessionInfo},
     state,
@@ -471,7 +471,7 @@ fn report_under(tx: &Connection, h: &Row, bad: &mut Vec<(String, Row)>) -> Resul
         tx.execute(&format!("UPDATE tasks SET reported_at = {NOW} WHERE id = ?1"), [t.id])?;
     }
     let n = tasks.len();
-    bad.extend(tasks.into_iter().filter(|t| matches!(t.outcome.as_deref(), Some(FAILED | UNOBSERVED))).map(|t| (h.uid.clone(), t)));
+    bad.extend(tasks.into_iter().filter(Row::ended_badly).map(|t| (h.uid.clone(), t)));
     Ok(n)
 }
 
@@ -529,8 +529,13 @@ pub(super) fn report(db: &mut Connection, caller: &Caller, ids: &[String], all: 
 
 /// A row set to a state other than done opens again. That is new work: its
 /// report and flush stamps go, and its work opens again. An old flush must not
-/// settle the row when it is done again.
+/// settle the row when it is done again. A hand-off that closed unobserved and
+/// is set done now is a late report: its stamp goes, so the watcher tells the
+/// grand Skipper to read it.
 pub(super) fn restate(db: &Connection, r: &Row, st: Option<&str>) -> Result<()> {
+    if st == Some("done") && r.is_handoff() && r.outcome.as_deref() == Some(UNOBSERVED) {
+        db.execute("UPDATE tasks SET reported_at = NULL WHERE id = ?1", [r.id])?;
+    }
     if st.is_some_and(|s| s != "done") {
         // Only a done task has an outcome.
         db.execute("UPDATE tasks SET reported_at = NULL, flushed_at = NULL, outcome = NULL WHERE id = ?1", [r.id])?;

@@ -7,6 +7,7 @@ use super::{
     tree::{collect_states, find},
 };
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use skiff_core::session::SessionInfo;
@@ -38,16 +39,11 @@ fn expected_of(n: &Node) -> Expected {
     Expected { path: n.path.clone(), bytes: n.bytes, files: n.files, mtime: n.mtime }
 }
 
-/// What a flush of `n` removes: each largest part whose files are all stale.
-/// The page does the same in `diskTree.ts`.
+/// What a person's flush of `n` removes: each largest part whose files are all
+/// stale. The page does the same in `diskTree.ts`.
+#[cfg(test)]
 fn plan(n: &Node, out: &mut Vec<Expected>) {
-    if !n.path.is_empty() && all_stale(n) {
-        out.push(expected_of(n));
-        return;
-    }
-    for c in &n.children {
-        plan(c, out);
-    }
+    plan_unheld(n, &HashSet::new(), out);
 }
 
 /// Removes the clean linked worktrees under `n` with git, first: a plain
@@ -117,6 +113,13 @@ pub fn flush(folder: &Path, cache: &Path, ledger_file: &Path, sessions: Option<&
 }
 
 fn flush_at(folder: &Path, cache: &Path, ledger_file: &Path, sessions: Option<&[SessionInfo]>, socket: &Path, items: &[Expected], now: i64) -> Flushed {
+    flush_items(folder, cache, ledger_file, sessions, socket, items, now, true)
+}
+
+/// `closes`: a person asked, so the flush is their word, and it closes the
+/// work it settles. Auto flush passes `false`.
+#[allow(clippy::too_many_arguments, reason = "flush_at with one flag")]
+fn flush_items(folder: &Path, cache: &Path, ledger_file: &Path, sessions: Option<&[SessionInfo]>, socket: &Path, items: &[Expected], now: i64, closes: bool) -> Flushed {
     let fresh = raw(folder, cache, ledger_file, sessions, socket, now);
     let mut out = Flushed::default();
     let mut gone = Vec::new();
@@ -134,7 +137,7 @@ fn flush_at(folder: &Path, cache: &Path, ledger_file: &Path, sessions: Option<&[
         collect_units(n, &mut gone);
     }
     let gone: Vec<String> = gone.into_iter().filter(|(_, abs)| !abs.exists()).map(|(uid, _)| uid).collect();
-    out.rows = stamp(ledger_file, &gone);
+    out.rows = stamp(ledger_file, &gone, closes);
     out
 }
 
@@ -147,11 +150,10 @@ fn collect_units(n: &Node, out: &mut Vec<(String, PathBuf)>) {
     }
 }
 
-/// Stamps `flushed_at` on the rows `uids`, then closes the work this settled:
-/// a flush is the person's word. A failed close changes nothing, and the next
-/// `skiff ledger` write tries again. A ledger without the column (an older
-/// `skiff`) is left as it is.
-fn stamp(ledger_file: &Path, uids: &[String]) -> u64 {
+/// Stamps `flushed_at` on the rows `uids`. `closes`: then closes the work this
+/// settled. A failed close changes nothing, and the next `skiff ledger` write
+/// tries again. A ledger without the column (an older `skiff`) is left as it is.
+fn stamp(ledger_file: &Path, uids: &[String], closes: bool) -> u64 {
     if uids.is_empty() {
         return 0;
     }
@@ -160,14 +162,58 @@ fn stamp(ledger_file: &Path, uids: &[String]) -> u64 {
     for uid in uids {
         n += db.execute("UPDATE tasks SET flushed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE uid = ?1", [uid]).unwrap_or(0) as u64;
     }
+    if !closes {
+        return n;
+    }
     if let Err(e) = ledger::auto_close(&mut db) {
         eprintln!("skiff: the flush closed no work: {e:#}");
     }
     n
 }
 
+/// The folders and result files of the rows in work that is not closed. Auto
+/// flush leaves them: no person asked, so it must close nothing. `None`: the
+/// ledger cannot be read.
+fn open_work_paths(ledger_file: &Path) -> Option<HashSet<PathBuf>> {
+    if !ledger_file.exists() {
+        return Some(HashSet::new());
+    }
+    let db = ledger::open_read(ledger_file).ok()?;
+    let rows = ledger::rows(&db, "", None).ok()?;
+    let head = ledger::heads(&rows);
+    let closed: HashSet<&str> = rows.iter().filter(|r| r.closed_at.is_some()).map(|r| r.uid.as_str()).collect();
+    Some(
+        rows.iter()
+            .filter(|r| !closed.contains(head[&r.uid].as_str()))
+            .flat_map(|r| [r.work_dir.as_deref(), r.result_path.as_deref()])
+            .flatten()
+            .filter_map(|p| Path::new(p).canonicalize().ok())
+            .collect(),
+    )
+}
+
+/// Each largest part of `n` whose files are all stale, without what `hold` names
+/// or anything in it.
+fn plan_unheld(n: &Node, hold: &HashSet<PathBuf>, out: &mut Vec<Expected>) {
+    fn touches(n: &Node, hold: &HashSet<PathBuf>) -> bool {
+        hold.contains(&n.abs) || n.children.iter().any(|c| touches(c, hold))
+    }
+    if hold.contains(&n.abs) {
+        return;
+    }
+    if !n.path.is_empty() && all_stale(n) && !touches(n, hold) {
+        out.push(expected_of(n));
+        return;
+    }
+    for c in &n.children {
+        plan_unheld(c, hold, out);
+    }
+}
+
 /// Auto flush: the stale parts of the folder whose last change is older
-/// than `days` days, by the same rule. `0` does nothing.
+/// than `days` days, by the same rule. A ledger row's files go only when its
+/// work is closed, and it closes nothing. Parts with no row keep the rule.
+/// `0` does nothing.
 pub fn flush_old(folder: &Path, cache: &Path, ledger_file: &Path, sessions: Option<&[SessionInfo]>, socket: &Path, days: u32) -> Flushed {
     flush_old_at(folder, cache, ledger_file, sessions, socket, days, now_secs())
 }
@@ -177,10 +223,11 @@ fn flush_old_at(folder: &Path, cache: &Path, ledger_file: &Path, sessions: Optio
         return Flushed::default();
     }
     let u = raw(folder, cache, ledger_file, sessions, socket, now);
+    let Some(hold) = open_work_paths(ledger_file) else { return Flushed::default() };
     let mut items = Vec::new();
-    plan(&u.tree, &mut items);
+    plan_unheld(&u.tree, &hold, &mut items);
     items.retain(|e| now - e.mtime > i64::from(days) * 86_400);
-    flush_at(folder, cache, ledger_file, sessions, socket, &items, now)
+    flush_items(folder, cache, ledger_file, sessions, socket, &items, now, false)
 }
 
 /// For `skiff ledger prune --flush` and `rm --flush`: flushes each work
@@ -607,6 +654,7 @@ mod tests {
         let dir = scratch("auto");
         let (a, b) = (dir.join("results/a1-task"), dir.join("results/b1-task"));
         let l = ledger(&dir, &[("a1", "task", None, "done", None, &a), ("b1", "task", None, "done", None, &b)]);
+        Connection::open(&l).unwrap().execute("UPDATE tasks SET closed_at = 'x'", []).unwrap();
         write(&a.join("result.md"), "a", 40 * 86_400);
         write(&b.join("result.md"), "b", 2 * 86_400);
         write(&dir.join("results/notes.md"), "n", 40 * 86_400);
@@ -614,6 +662,34 @@ mod tests {
         assert_eq!(out.files, 2);
         assert!(!a.exists() && b.join("result.md").exists() && !dir.join("results/notes.md").exists());
         assert_eq!(flush_old_at(&dir, &dir.join("cache"), &l, Some(&[]), Path::new(SOCK), 0, NOW), Flushed::default());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn auto_flush_takes_a_rows_files_only_when_its_work_is_closed_and_closes_nothing() {
+        let dir = scratch("auto-closed");
+        let r = dir.join("results");
+        let (shut, open, p, a, b) = (r.join("s1-task"), r.join("o1-task"), r.join("p1-plan"), r.join("p1-plan/a1-task"), r.join("p1-plan/b1-task"));
+        let l = ledger(&dir, &[("s1", "task", None, "done", None, &shut), ("o1", "task", None, "done", None, &open), ("p1", "plan", None, "sent", None, &p), ("a1", "task", Some("p1"), "done", None, &a), ("b1", "task", Some("p1"), "done", None, &b)]);
+        let db = Connection::open(&l).unwrap();
+        db.execute("UPDATE tasks SET closed_at = 'x' WHERE uid = 's1'", []).unwrap();
+        // Reported, so a person's flush or any ledger write would close it.
+        db.execute("UPDATE tasks SET reported_at = 'x' WHERE uid = 'o1'", []).unwrap();
+        // A row from before work folders: its result stands alone.
+        let older = r.join("2026-10-01-ee11ff22-old.md");
+        write(&older, "r", 40 * 86_400);
+        db.execute("INSERT INTO tasks (uid, kind, project, task, sent_at, state, updated_at, title, result_path) VALUES ('ee11ff22', 'task', '', 't', 'x', 'done', 'x', 'Old', ?1)", [older.to_string_lossy()]).unwrap();
+        for f in [&shut, &open, &a, &b] {
+            write(&f.join("result.md"), "x", 40 * 86_400);
+        }
+        write(&r.join("notes.md"), "no row", 40 * 86_400);
+        write(&dir.join("cache/old.png"), "png", 40 * 86_400);
+        let out = flush_old_at(&dir, &dir.join("cache"), &l, Some(&[]), Path::new(SOCK), 30, NOW);
+        assert_eq!(out.rows, 1);
+        assert!(!shut.exists() && !r.join("notes.md").exists() && !dir.join("cache/old.png").exists());
+        assert!(open.join("result.md").exists() && a.join("result.md").exists() && b.join("result.md").exists() && older.exists());
+        let closed: i64 = db.query_row("SELECT count(*) FROM tasks WHERE closed_at IS NOT NULL", [], |r| r.get(0)).unwrap();
+        assert_eq!(closed, 1);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

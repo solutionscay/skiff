@@ -222,9 +222,12 @@ pub(super) async fn step(c: &Client, o: &Options, ws: &mut Watchers) -> Result<O
     // next tick reads again. An empty list would forget the open panes.
     let here = skiff_core::state::socket();
     match ledger::close_gone(&here, &all) {
-        Ok(closed) => {
-            for r in closed {
+        Ok(swept) => {
+            for r in swept.gone {
                 log(format!("task {} is done: its pane {} is gone", r.uid, print::short_id(r.pane_id.as_deref().unwrap_or(""))));
+            }
+            for r in swept.closed {
+                log(format!("closed {} {}: every task in it is closed", r.kind, r.uid));
             }
         }
         Err(e) => log(format!("cannot close the tasks of gone panes: {e:#}")),

@@ -162,10 +162,17 @@ impl Row {
         self.kind == "handoff"
     }
 
-    /// The row holds no work open: it is done, and it was reported or flushed.
-    /// A blocked, sent or pending row is never settled.
+    /// The row holds no work open: it is done, and it was reported or flushed,
+    /// or skiff set it done because its session closed. A blocked, sent or
+    /// pending row is never settled: when its session closes it becomes done
+    /// first (see `skiff ledger`'s sweep).
     pub fn settled(&self) -> bool {
-        self.state == "done" && (self.reported_at.is_some() || self.flushed_at.is_some())
+        self.state == "done" && (self.reported_at.is_some() || self.flushed_at.is_some() || self.gone_at.is_some())
+    }
+
+    /// It ended, and not well: a person should hear of it.
+    pub fn ended_badly(&self) -> bool {
+        matches!(self.outcome.as_deref(), Some(FAILED | UNOBSERVED | INTERRUPTED_OUTCOME))
     }
 
     /// The coordinator that owns the row, as a person reads it.
@@ -378,14 +385,9 @@ pub fn rows(db: &Connection, where_: &str, arg: Option<&dyn rusqlite::ToSql>) ->
     Ok(out)
 }
 
-/// The row ended badly and nobody was told: [`auto_close`] must not close it
-/// in silence.
-fn untold_failure(r: &Row) -> bool {
-    r.state == "done" && r.reported_at.is_none() && matches!(r.outcome.as_deref(), Some(FAILED | UNOBSERVED))
-}
-
-/// The note [`auto_close`] leaves for the work head `head`, for its `rows`.
-fn untold_note(head: &Row, rows: &[&Row]) -> String {
+/// The one line for the grand Skipper's watcher when `rows` of the work head
+/// `head` close with no report.
+pub fn untold_note(head: &Row, rows: &[&Row]) -> String {
     let named: Vec<String> = rows
         .iter()
         .map(|r| {
@@ -397,14 +399,42 @@ fn untold_note(head: &Row, rows: &[&Row]) -> String {
     format!("Closed {} {} with no report: {}. Tell the person. Read a row with skiff ledger show UID.", head.kind, head.uid, named.join(", "))
 }
 
-/// Closes each open work item in which every task is [`Row::settled`]: a
-/// plan's tasks, a hand-off and its tasks, or a lone task. Panes do not count:
-/// a hand-off's pane is its Skipper, which stays running. A plan with no task
+/// Leaves `text` for the grand Skipper's watcher. Run [`NOTES`] first.
+pub fn add_note(db: &Connection, text: &str) -> Result<()> {
+    db.execute(&format!("INSERT INTO notes (owner, text, at) VALUES (?1, ?2, {NOW})"), params![GRAND, text])?;
+    Ok(())
+}
+
+/// The hand-offs with a task under them, a plan's in them included. Such a
+/// hand-off follows its tasks: its Skipper's session stays up, and says nothing.
+pub fn handoffs_with_tasks(rows: &[Row]) -> std::collections::HashSet<&str> {
+    let by: std::collections::HashMap<&str, &Row> = rows.iter().map(|r| (r.uid.as_str(), r)).collect();
+    let above = |r: &Row| r.parent.as_deref().and_then(|p| by.get(p).copied());
+    let mut out = std::collections::HashSet::new();
+    for t in rows.iter().filter(|r| r.kind == "task") {
+        let Some(p) = above(t) else { continue };
+        let h = if p.is_plan() { above(p) } else { Some(p) };
+        if let Some(h) = h.filter(|h| h.is_handoff()) {
+            out.insert(h.uid.as_str());
+        }
+    }
+    out
+}
+
+/// The row keeps its work open. `with_tasks`: from [`handoffs_with_tasks`].
+pub fn holds_open(r: &Row, with_tasks: &std::collections::HashSet<&str>) -> bool {
+    !r.is_plan() && !with_tasks.contains(r.uid.as_str()) && !r.settled()
+}
+
+/// Closes each open work item that no row holds open (see [`holds_open`]): a
+/// plan's tasks, a hand-off and its tasks, or a lone task. A plan with no task
 /// stays open, as does work with `reopened_at`. As `ledger close` does, it
-/// stamps `reported_at` on the rows not yet reported. A failed or unobserved
-/// row among those leaves one note for the grand Skipper's watcher, in the
-/// same transaction. The stamp keeps a later close from naming it again.
-/// Returns the work heads it closed.
+/// stamps `reported_at` on the rows not yet reported. A hand-off that is not
+/// done becomes done, `unobserved`: closed work has no open row. A done hand-off
+/// nobody reported keeps no stamp: the watcher tells the grand Skipper to read
+/// its result. A row that ended badly among those it stamps leaves one note
+/// for that watcher, in the same transaction. The stamp keeps a later close
+/// from naming it again. Returns the work heads it closed.
 pub fn auto_close(db: &mut Connection) -> Result<Vec<Row>> {
     use std::collections::{BTreeMap, HashSet};
     db.execute_batch(NOTES)?;
@@ -416,6 +446,7 @@ pub fn auto_close(db: &mut Connection) -> Result<Vec<Row>> {
         out
     };
     let head = heads(&all);
+    let with_tasks = handoffs_with_tasks(&all);
     // Each work head with its tasks and hand-offs. A plan row's own state does not count.
     let mut work: BTreeMap<&str, Vec<&Row>> = BTreeMap::new();
     for r in all.iter().filter(|r| !r.is_plan()) {
@@ -424,15 +455,28 @@ pub fn auto_close(db: &mut Connection) -> Result<Vec<Row>> {
     let mut out = Vec::new();
     for (h, members) in work {
         let Some(r) = all.iter().find(|r| r.uid == h) else { continue };
-        if r.closed_at.is_some() || held.contains(h) || !members.iter().all(|m| m.settled()) {
+        if r.closed_at.is_some() || held.contains(h) || members.iter().any(|m| holds_open(m, &with_tasks)) {
             continue;
         }
-        let untold: Vec<&Row> = members.iter().copied().filter(|m| untold_failure(m)).collect();
-        if !untold.is_empty() {
-            tx.execute(&format!("INSERT INTO notes (owner, text, at) VALUES (?1, ?2, {NOW})"), params![GRAND, untold_note(r, &untold)])?;
+        let mut untold = Vec::new();
+        for m in &members {
+            let mut m = (*m).clone();
+            if m.state != "done" {
+                tx.execute(&format!("UPDATE tasks SET state = 'done', outcome = ?2, updated_at = {NOW} WHERE id = ?1"), params![m.id, UNOBSERVED])?;
+                m.state = "done".into();
+                m.outcome = Some(UNOBSERVED.into());
+            } else if with_tasks.contains(m.uid.as_str()) && !m.settled() {
+                continue;
+            }
+            if m.reported_at.is_none() {
+                tx.execute(&format!("UPDATE tasks SET reported_at = {NOW} WHERE id = ?1"), [m.id])?;
+                if m.ended_badly() {
+                    untold.push(m);
+                }
+            }
         }
-        for m in members.iter().filter(|m| m.reported_at.is_none()) {
-            tx.execute(&format!("UPDATE tasks SET reported_at = {NOW} WHERE id = ?1"), [m.id])?;
+        if !untold.is_empty() {
+            add_note(&tx, &untold_note(r, &untold.iter().collect::<Vec<_>>()))?;
         }
         if tx.execute(&format!("UPDATE tasks SET closed_at = {NOW} WHERE id = ?1 AND closed_at IS NULL"), [r.id])? == 1 {
             out.push(r.clone());
@@ -542,6 +586,15 @@ pub fn session_of<'a>(all: &'a [SessionInfo], p: &str) -> Option<&'a SessionInfo
         let mut found = all.iter().filter(|s| s.id.starts_with(p));
         found.next().filter(|_| found.next().is_none())
     })
+}
+
+/// The session the stored pane id `p` named has closed: `all`, a full list
+/// from its daemon, has none it could name, or each one it could name has
+/// exited. skiffd sets `SessionState::Done` only when it reaped the process,
+/// and it never leaves it. An idle pane, or a pane restored under the old id,
+/// is a live session.
+pub fn session_closed(all: &[SessionInfo], p: &str) -> bool {
+    all.iter().filter(|s| s.id.starts_with(p)).all(|s| s.state == SessionState::Done)
 }
 
 /// Fills in `live`, `interrupted` and `agent_on` from the sessions `all`,
