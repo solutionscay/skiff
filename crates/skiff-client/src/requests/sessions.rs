@@ -16,7 +16,7 @@ impl SessionList {
     pub fn gap(&self) -> Option<String> {
         match &self.workspace_load {
             Some(WorkspaceLoad::Loaded) => None,
-            Some(WorkspaceLoad::Failed { error }) => Some(format!("skiffd could not load its workspace: {error}. No task closes for a missing session. Repair or remove the file, then restart skiffd")),
+            Some(WorkspaceLoad::Failed { error }) => Some(format!("skiffd could not load its workspace: {error}. No task closes for a missing session. Clear the fault, or repair or remove the file, then restart skiffd")),
             None => Some("this skiffd is older and does not report its workspace load. No task closes for a missing session until it updates".into()),
         }
     }

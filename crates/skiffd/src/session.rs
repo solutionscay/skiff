@@ -323,7 +323,8 @@ impl Session {
 
 pub struct SessionPool {
     sessions: RwLock<HashMap<SessionId, Arc<Session>>>,
-    /// Why the start could not read or parse the workspace file. A reload hands
+    /// Why the start failed its load: it could not read or parse the workspace
+    /// file, or no saved session started. A reload hands
     /// it on. See [`skiff_core::protocol::WorkspaceLoad`].
     load_error: Mutex<Option<String>>,
     /// Killed sessions whose reader has not reaped the child yet.
