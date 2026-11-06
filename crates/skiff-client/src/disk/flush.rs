@@ -147,16 +147,21 @@ fn collect_units(n: &Node, out: &mut Vec<(String, PathBuf)>) {
     }
 }
 
-/// Stamps `flushed_at` on the rows `uids`. A ledger without the column (an
-/// older `skiff`) is left as it is.
+/// Stamps `flushed_at` on the rows `uids`, then closes the work this settled:
+/// a flush is the person's word. A failed close changes nothing, and the next
+/// `skiff ledger` write tries again. A ledger without the column (an older
+/// `skiff`) is left as it is.
 fn stamp(ledger_file: &Path, uids: &[String]) -> u64 {
     if uids.is_empty() {
         return 0;
     }
-    let Ok(db) = ledger::open_write(ledger_file) else { return 0 };
+    let Ok(mut db) = ledger::open_write(ledger_file) else { return 0 };
     let mut n = 0;
     for uid in uids {
         n += db.execute("UPDATE tasks SET flushed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE uid = ?1", [uid]).unwrap_or(0) as u64;
+    }
+    if let Err(e) = ledger::auto_close(&mut db) {
+        eprintln!("skiff: the flush closed no work: {e:#}");
     }
     n
 }
@@ -314,6 +319,27 @@ mod tests {
         assert!(!a.exists() && b.join("result.md").exists() && p.exists());
         let flushed: Option<String> = Connection::open(&l).unwrap().query_row("SELECT flushed_at FROM tasks WHERE uid = 'a1'", [], |r| r.get(0)).unwrap();
         assert!(flushed.is_some());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_flush_closes_the_work_it_settles_and_an_idle_pane_holds_nothing() {
+        let dir = scratch("closes");
+        let r = dir.join("results");
+        let (a, p, b, c) = (r.join("a1-task"), r.join("p1-plan"), r.join("p1-plan/b1-task"), r.join("p1-plan/c1-task"));
+        let l = ledger(&dir, &[("a1", "task", None, "done", Some("pa"), &a), ("p1", "plan", None, "sent", None, &p), ("b1", "task", Some("p1"), "done", Some("pa"), &b), ("c1", "task", Some("p1"), "blocked", Some("pa"), &c)]);
+        write(&a.join("result.md"), "a", 3600);
+        write(&b.join("result.md"), "b", 3600);
+        write(&c.join("result.md"), "c", 3600);
+        let s = [pane("pa", "idle", Path::new("/"))];
+        let mut items = Vec::new();
+        plan(&at(&dir, &l, &s).tree, &mut items);
+        let out = flush_at(&dir, &dir.join("cache"), &l, Some(&s), Path::new(SOCK), &items, NOW);
+        assert_eq!(out.rows, 2);
+        let closed = |uid: &str| Connection::open(&l).unwrap().query_row("SELECT closed_at FROM tasks WHERE uid = ?1", [uid], |r| r.get::<_, Option<String>>(0)).unwrap();
+        assert!(closed("a1").is_some());
+        // The blocked task keeps its plan open.
+        assert!(closed("p1").is_none());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

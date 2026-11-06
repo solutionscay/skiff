@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::{params, Connection, OpenFlags, TransactionBehavior};
 use serde::Serialize;
 use skiff_core::{
     session::{SessionInfo, SessionState},
@@ -59,6 +59,9 @@ pub const OUTCOMES: [&str; 4] = [SUCCEEDED, FAILED, INTERRUPTED_OUTCOME, UNOBSER
 /// The evidence a task names: its result file, or a commit.
 pub const EXPECTS: [&str; 2] = ["result", "commit"];
 
+/// UTC, to the second, set by SQLite.
+const NOW: &str = "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')";
+
 /// The owner of the grand Skipper's rows. A project Skipper's rows have its
 /// project's name.
 pub const GRAND: &str = "grand";
@@ -104,9 +107,9 @@ pub struct Row {
     /// A short title, 3 to 6 words, for the app's panel. `None`: the panel
     /// takes one from the task text.
     pub title: Option<String>,
-    /// When the person closed the work. Only a work head has it: a plan, or a
-    /// task with no plan. A task in a plan is closed with its plan. `None`:
-    /// the work is open.
+    /// When the person, or Skiff by [`auto_close`], closed the work. Only a
+    /// work head has it: a plan, or a task with no plan. A task in a plan is
+    /// closed with its plan. `None`: the work is open.
     pub closed_at: Option<String>,
     /// When skiff set the task done because its pane was gone: no session
     /// with its id on its daemon. `None`: the task did not close that way.
@@ -119,7 +122,9 @@ pub struct Row {
     /// folders, whose result path stands alone.
     pub work_dir: Option<String>,
     /// When Settings › Disk use flushed the work folder. The row stays; the
-    /// panel shows "Result flushed" in place of a missing result.
+    /// panel shows "Result flushed" in place of a missing result. A flush is
+    /// the person's word on the row: it needs no report (see [`Row::settled`]).
+    /// A state other than done clears it.
     pub flushed_at: Option<String>,
     /// How the task ended: one of [`OUTCOMES`]. Only a done task has one.
     pub outcome: Option<String>,
@@ -155,6 +160,12 @@ impl Row {
 
     pub fn is_handoff(&self) -> bool {
         self.kind == "handoff"
+    }
+
+    /// The row holds no work open: it is done, and it was reported or flushed.
+    /// A blocked, sent or pending row is never settled.
+    pub fn settled(&self) -> bool {
+        self.state == "done" && (self.reported_at.is_some() || self.flushed_at.is_some())
     }
 
     /// The coordinator that owns the row, as a person reads it.
@@ -367,6 +378,70 @@ pub fn rows(db: &Connection, where_: &str, arg: Option<&dyn rusqlite::ToSql>) ->
     Ok(out)
 }
 
+/// The row ended badly and nobody was told: [`auto_close`] must not close it
+/// in silence.
+fn untold_failure(r: &Row) -> bool {
+    r.state == "done" && r.reported_at.is_none() && matches!(r.outcome.as_deref(), Some(FAILED | UNOBSERVED))
+}
+
+/// The note [`auto_close`] leaves for the work head `head`, for its `rows`.
+fn untold_note(head: &Row, rows: &[&Row]) -> String {
+    let named: Vec<String> = rows
+        .iter()
+        .map(|r| {
+            let kind: &str = if r.is_handoff() { "hand-off" } else { &r.kind };
+            let title = r.title.as_deref().map(|t| format!(" ({t})")).unwrap_or_default();
+            format!("{kind} {}{title} {}", r.uid, r.outcome.as_deref().unwrap_or_default())
+        })
+        .collect();
+    format!("Closed {} {} with no report: {}. Tell the person. Read a row with skiff ledger show UID.", head.kind, head.uid, named.join(", "))
+}
+
+/// Closes each open work item in which every task is [`Row::settled`]: a
+/// plan's tasks, a hand-off and its tasks, or a lone task. Panes do not count:
+/// a hand-off's pane is its Skipper, which stays running. A plan with no task
+/// stays open, as does work with `reopened_at`. As `ledger close` does, it
+/// stamps `reported_at` on the rows not yet reported. A failed or unobserved
+/// row among those leaves one note for the grand Skipper's watcher, in the
+/// same transaction. The stamp keeps a later close from naming it again.
+/// Returns the work heads it closed.
+pub fn auto_close(db: &mut Connection) -> Result<Vec<Row>> {
+    use std::collections::{BTreeMap, HashSet};
+    db.execute_batch(NOTES)?;
+    let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let all = rows(&tx, "", None)?;
+    let held: HashSet<String> = {
+        let mut st = tx.prepare("SELECT uid FROM tasks WHERE reopened_at IS NOT NULL")?;
+        let out = st.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<_>>()?;
+        out
+    };
+    let head = heads(&all);
+    // Each work head with its tasks and hand-offs. A plan row's own state does not count.
+    let mut work: BTreeMap<&str, Vec<&Row>> = BTreeMap::new();
+    for r in all.iter().filter(|r| !r.is_plan()) {
+        work.entry(head[&r.uid].as_str()).or_default().push(r);
+    }
+    let mut out = Vec::new();
+    for (h, members) in work {
+        let Some(r) = all.iter().find(|r| r.uid == h) else { continue };
+        if r.closed_at.is_some() || held.contains(h) || !members.iter().all(|m| m.settled()) {
+            continue;
+        }
+        let untold: Vec<&Row> = members.iter().copied().filter(|m| untold_failure(m)).collect();
+        if !untold.is_empty() {
+            tx.execute(&format!("INSERT INTO notes (owner, text, at) VALUES (?1, ?2, {NOW})"), params![GRAND, untold_note(r, &untold)])?;
+        }
+        for m in members.iter().filter(|m| m.reported_at.is_none()) {
+            tx.execute(&format!("UPDATE tasks SET reported_at = {NOW} WHERE id = ?1"), [m.id])?;
+        }
+        if tx.execute(&format!("UPDATE tasks SET closed_at = {NOW} WHERE id = ?1 AND closed_at IS NULL"), [r.id])? == 1 {
+            out.push(r.clone());
+        }
+    }
+    tx.commit()?;
+    Ok(out)
+}
+
 /// Finished in the app's Ledger panel shows this many closed items, newest
 /// first. Keep in step with `KEEP` in `apps/desktop/src/workspace/ledger.ts`.
 pub const PANEL_KEEP: i64 = 100;
@@ -462,7 +537,7 @@ pub fn buckets(rows: &mut [Row]) {
 
 /// The session a stored pane id names in `all`: the same id, else the one
 /// session it is a prefix of.
-fn session_of<'a>(all: &'a [SessionInfo], p: &str) -> Option<&'a SessionInfo> {
+pub fn session_of<'a>(all: &'a [SessionInfo], p: &str) -> Option<&'a SessionInfo> {
     all.iter().find(|s| s.id == p).or_else(|| {
         let mut found = all.iter().filter(|s| s.id.starts_with(p));
         found.next().filter(|_| found.next().is_none())

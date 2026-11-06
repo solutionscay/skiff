@@ -5,8 +5,8 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use rusqlite::{params, Connection, TransactionBehavior};
 use skiff_client::Client;
-use skiff_client::ledger::{heads, rows, OPEN, OUTCOMES, WORKING};
-use skiff_core::session::SessionInfo;
+use skiff_client::ledger::{heads, rows, session_of, OPEN, OUTCOMES, WORKING};
+use skiff_core::session::{SessionInfo, SessionState};
 
 use crate::{print, resolve};
 
@@ -29,8 +29,8 @@ pub(super) fn open_tasks_at(file: &Path) -> Result<Vec<Row>> {
     rows(&db, "WHERE kind IN ('task', 'handoff') AND state IN ('sent', 'pending', 'blocked')", None)
 }
 
-/// The done tasks of `owner` the person was not told of yet. `skiff watch`
-/// names the count at its start. No `ledger.db` yet gives 0, and makes no file.
+/// The done tasks of `owner` the person was not told of yet. A flushed one
+/// needs no report. `skiff watch` names the count at its start. No `ledger.db` yet gives 0, and makes no file.
 pub fn unreported(owner: &str) -> Result<usize> {
     unreported_at(&path()?, owner)
 }
@@ -41,7 +41,7 @@ pub(super) fn unreported_at(file: &Path, owner: &str) -> Result<usize> {
     }
     let db = super::open_at(file)?;
     let n: i64 = db.query_row(
-        "SELECT count(*) FROM tasks WHERE kind IN ('task', 'handoff') AND state = 'done' AND reported_at IS NULL AND owner = ?1",
+        "SELECT count(*) FROM tasks WHERE kind IN ('task', 'handoff') AND state = 'done' AND reported_at IS NULL AND flushed_at IS NULL AND owner = ?1",
         [owner],
         |r| r.get(0),
     )?;
@@ -91,14 +91,15 @@ pub(super) fn sweep(db: &mut Connection, here: &Path, all: Option<&[SessionInfo]
     Ok(())
 }
 
-/// The tasks skiff set done because their panes were gone, not yet reported.
+/// The tasks skiff set done because their panes were gone, not yet reported
+/// and not flushed.
 /// No `ledger.db` yet gives none, and makes no file.
 pub fn gone_unreported() -> Result<Vec<Row>> {
     let file = path()?;
     if !file.exists() {
         return Ok(Vec::new());
     }
-    rows(&super::open_at(&file)?, "WHERE kind IN ('task', 'handoff') AND state = 'done' AND gone_at IS NOT NULL AND reported_at IS NULL", None)
+    rows(&super::open_at(&file)?, "WHERE kind IN ('task', 'handoff') AND state = 'done' AND gone_at IS NOT NULL AND reported_at IS NULL AND flushed_at IS NULL", None)
 }
 
 /// The tasks of each plan that is not closed, in any state, oldest first.
@@ -116,14 +117,14 @@ pub fn plan_tasks() -> Result<Vec<Row>> {
     )
 }
 
-/// The hand-offs a project Skipper set done, not yet reported: the grand
+/// The hand-offs a project Skipper set done, not yet reported and not flushed: the grand
 /// Skipper's watcher tells it each once. No `ledger.db` yet gives none.
 pub fn handed_back() -> Result<Vec<Row>> {
     let file = path()?;
     if !file.exists() {
         return Ok(Vec::new());
     }
-    rows(&super::open_at(&file)?, "WHERE kind = 'handoff' AND state = 'done' AND gone_at IS NULL AND reported_at IS NULL", None)
+    rows(&super::open_at(&file)?, "WHERE kind = 'handoff' AND state = 'done' AND gone_at IS NULL AND reported_at IS NULL AND flushed_at IS NULL", None)
 }
 
 /// An open hand-off whose tasks all ended, and how they ended: each outcome
@@ -330,7 +331,8 @@ pub(super) enum View {
     /// Only closed work.
     Closed,
     All,
-    /// Only the done tasks the person was not told of, under their plans.
+    /// Only the done tasks the person was not told of and did not flush,
+    /// under their plans.
     Unreported,
 }
 
@@ -340,7 +342,7 @@ pub(super) fn keep(rows: &mut Vec<Row>, view: View) {
     use std::collections::HashSet;
     let head = heads(rows);
     let closed: HashSet<String> = rows.iter().filter(|r| r.closed_at.is_some()).map(|r| r.uid.clone()).collect();
-    let untold = |r: &Row| !r.is_plan() && r.state == "done" && r.reported_at.is_none();
+    let untold = |r: &Row| !r.is_plan() && r.state == "done" && r.reported_at.is_none() && r.flushed_at.is_none();
     let plans: HashSet<String> = rows.iter().filter(|r| untold(r)).filter_map(|r| r.parent.clone()).collect();
     rows.retain(|r| match view {
         View::Open => !closed.contains(&head[&r.uid]),
@@ -348,6 +350,105 @@ pub(super) fn keep(rows: &mut Vec<Row>, view: View) {
         View::All => true,
         View::Unreported => untold(r) || plans.contains(&r.uid),
     });
+}
+
+/// One row `ledger stale` lists, and why.
+pub(super) struct Stale {
+    /// The uid of the row's work head.
+    pub(super) work: String,
+    pub(super) row: Row,
+    /// The work's last change.
+    pub(super) changed: String,
+    pub(super) why: String,
+}
+
+/// A task's pane, in words. `all`: the sessions, when the daemon answered.
+fn pane_word(r: &Row, all: Option<&[SessionInfo]>) -> &'static str {
+    let Some(all) = all else { return "pane not checked: skiffd did not answer" };
+    if r.elsewhere {
+        return "pane on another daemon";
+    }
+    let Some(s) = r.pane_id.as_deref().and_then(|p| session_of(all, p)) else { return "pane closed" };
+    match s.state {
+        _ if r.interrupted == Some(true) => "pane restarted",
+        SessionState::Working => "pane working",
+        SessionState::Waiting => "pane waiting",
+        SessionState::Idle => "pane idle",
+        SessionState::Done => "pane exited",
+    }
+}
+
+/// Why the unsettled row `r` holds its work open. `tasks`: the tasks of `r`
+/// when it is a hand-off.
+fn stale_why(r: &Row, tasks: &[&Row], all: Option<&[SessionInfo]>) -> String {
+    if r.is_handoff() {
+        let done = tasks.iter().filter(|t| t.state == "done").count();
+        return match (r.state.as_str(), tasks.len()) {
+            ("done", _) => "hand-off done, not reported, not flushed".into(),
+            (st, 0) => format!("hand-off {st}, no tasks under it"),
+            (st, n) => format!("hand-off {st}, {done} of {n} tasks done, not reported by its Skipper"),
+        };
+    }
+    let pane = pane_word(r, all);
+    match r.state.as_str() {
+        "done" => format!("done, not reported, not flushed; {pane}"),
+        "blocked" => format!("blocked: it never closes by itself; {pane}"),
+        "pending" => format!("pending: not delivered, and it never closes by itself; {pane}"),
+        st => format!("{st}: no result recorded, and it never closes by itself; {pane}"),
+    }
+}
+
+/// What holds open work that had no change since `cutoff`: each row that is not
+/// [`Row::settled`], with why. `rows` come from [`mark_live`], which gives no
+/// row a new state, and this writes nothing. A work item with a task whose pane
+/// works is in use, and is left out. A hand-off's pane is its Skipper, which
+/// stays running, so it says nothing about the work. Work with no unsettled row
+/// lists its head: `reopened_at` holds it, or the next write closes it.
+pub(super) fn stale(rows: &[Row], held: &std::collections::HashSet<String>, all: Option<&[SessionInfo]>, cutoff: &str) -> Vec<Stale> {
+    let head = heads(rows);
+    let mut out = Vec::new();
+    for h in rows.iter().filter(|r| r.closed_at.is_none() && head[&r.uid] == r.uid) {
+        let work: Vec<&Row> = rows.iter().filter(|r| head[&r.uid] == h.uid).collect();
+        let members: Vec<&Row> = work.iter().copied().filter(|r| !r.is_plan()).collect();
+        let changed = work.iter().map(|r| r.updated_at.as_str()).max().unwrap_or_default();
+        if changed > cutoff || members.is_empty() || members.iter().any(|r| !r.is_handoff() && pane_word(r, all) == "pane working") {
+            continue;
+        }
+        let mut add = |row: &Row, why: String| out.push(Stale { work: h.uid.clone(), row: row.clone(), changed: changed.to_string(), why });
+        let open: Vec<&Row> = members.iter().copied().filter(|r| !r.settled()).collect();
+        if held.contains(&h.uid) {
+            add(h, "reopened: it stays open until a task in it changes state".into());
+        } else if open.is_empty() {
+            add(h, "every task is settled: it closes at the next ledger write".into());
+        }
+        for r in open {
+            // A task under a hand-off, a plan's in it included.
+            let tasks: Vec<&Row> = members.iter().copied().filter(|t| !t.is_handoff() && (t.parent.as_deref() == Some(&r.uid) || t.parent.as_deref().is_some_and(|p| work.iter().any(|w| w.uid == p && w.parent.as_deref() == Some(&r.uid))))).collect();
+            add(r, stale_why(r, &tasks, all));
+        }
+    }
+    out
+}
+
+/// The rows of `ledger stale` as a table.
+pub(super) fn print_stale(list: &[Stale]) {
+    let table: Vec<Vec<String>> = list
+        .iter()
+        .map(|s| {
+            vec![
+                s.work.clone(),
+                s.row.uid.clone(),
+                s.row.kind.clone(),
+                s.row.shown_state().to_string(),
+                s.row.outcome.clone().unwrap_or_default(),
+                s.row.owner.clone(),
+                s.row.project.clone(),
+                s.changed.clone(),
+                s.why.clone(),
+            ]
+        })
+        .collect();
+    print::table(&["WORK", "UID", "KIND", "STATE", "OUTCOME", "OWNER", "PROJECT", "CHANGED", "WHY"], &table);
 }
 
 /// The order of the groups in `ls`.

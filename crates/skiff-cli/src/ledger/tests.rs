@@ -1349,3 +1349,202 @@ fn a_follow_up_hand_off_joins_the_plan_of_the_hand_off_it_names() {
     }
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// A hand-off to `web` under Admiral, done and with `tasks` of the Skipper's
+/// under it, each in the given state. Returns the hand-off and the tasks.
+fn handed(db: &mut Connection, file: &Path, tasks: &[&str]) -> (String, Vec<String>) {
+    let (_, h, _, _) = insert(db, file, New { handoff: true, project: "web".into(), state: "done".into(), ..task("h") }).unwrap();
+    let uids = tasks
+        .iter()
+        .map(|st| insert(db, file, New { parent: Some(h.clone()), owner: "web".into(), state: (*st).into(), ..task("t") }).unwrap().1)
+        .collect();
+    (h, uids)
+}
+
+fn flush_row(db: &Connection, uid: &str) {
+    db.execute("UPDATE tasks SET flushed_at = '2026-11-01T00:00:00Z' WHERE uid = ?1", [uid]).unwrap();
+}
+
+fn closed_uids(db: &mut Connection) -> Vec<String> {
+    auto_close(db).unwrap().into_iter().map(|r| r.uid).collect()
+}
+
+#[test]
+fn a_flush_settles_a_done_task_but_never_an_open_one() {
+    let dir = scratch("flush-closes");
+    let file = dir.join("ledger.db");
+    let mut db = open_at(&file).unwrap();
+    // The case that stayed open: Admiral reported the hand-off, the Skipper's tasks are flushed.
+    let (h, tasks) = handed(&mut db, &file, &["done", "done"]);
+    report(&mut db, &Caller::Grand, std::slice::from_ref(&h), false).unwrap();
+    db.execute("UPDATE tasks SET reported_at = NULL WHERE parent = ?1", [&h]).unwrap();
+    assert!(closed_uids(&mut db).is_empty());
+    tasks.iter().for_each(|t| flush_row(&db, t));
+    assert_eq!(closed_uids(&mut db), [h.clone()]);
+    // Like `close`, it stamps them, so nothing asks for a report later.
+    assert!(one(&db, &tasks[0]).unwrap().reported_at.is_some());
+    assert_eq!(unreported_at(&file, "web").unwrap(), 0);
+
+    // A flushed row in a blocked, sent or pending state holds its work.
+    for st in ["blocked", "sent", "pending"] {
+        let (_, uid, _, _) = insert(&mut db, &file, New { state: st.into(), ..task(st) }).unwrap();
+        flush_row(&db, &uid);
+        assert!(closed_uids(&mut db).is_empty(), "{st}");
+    }
+    db.execute("DELETE FROM tasks WHERE state <> 'done'", []).unwrap();
+
+    // A plan row under a hand-off keeps its stored state and holds nothing.
+    let (h2, _) = handed(&mut db, &file, &[]);
+    let (_, inner, _, _) = insert(&mut db, &file, New { plan: true, pane_id: None, parent: Some(h2.clone()), owner: "web".into(), ..task("inner") }).unwrap();
+    let (_, in_plan, _, _) = insert(&mut db, &file, New { parent: Some(inner), owner: "web".into(), state: "done".into(), ..task("t") }).unwrap();
+    flush_row(&db, &h2);
+    flush_row(&db, &in_plan);
+    assert_eq!(closed_uids(&mut db), [h2]);
+
+    // A flushed task not yet closed is out of the unreported list and count.
+    let (_, p, _, _) = insert(&mut db, &file, New { plan: true, pane_id: None, ..task("p") }).unwrap();
+    let (_, gone, _, _) = insert(&mut db, &file, New { parent: Some(p.clone()), state: "done".into(), ..task("gone") }).unwrap();
+    let (_, open, _, _) = insert(&mut db, &file, New { parent: Some(p.clone()), ..task("open") }).unwrap();
+    assert_eq!(unreported_at(&file, GRAND).unwrap(), 1);
+    flush_row(&db, &gone);
+    assert_eq!(unreported_at(&file, GRAND).unwrap(), 0);
+    let mut list = rows(&db, &format!("WHERE parent = '{p}' OR uid = '{p}'"), None).unwrap();
+    keep(&mut list, View::Unreported);
+    assert!(list.is_empty());
+
+    // A task set to another state is new work: the old flush no longer settles it.
+    db.execute("UPDATE tasks SET state = 'done', reported_at = 'x' WHERE uid = ?1", [&open]).unwrap();
+    assert_eq!(closed_uids(&mut db), [p.clone()]);
+    reopen(&mut db, &Caller::Person, std::slice::from_ref(&p)).unwrap();
+    assert!(closed_uids(&mut db).is_empty());
+    db.execute("UPDATE tasks SET state = 'sent' WHERE uid = ?1", [&gone]).unwrap();
+    restate(&db, &one(&db, &gone).unwrap(), Some("sent")).unwrap();
+    db.execute("UPDATE tasks SET state = 'done' WHERE uid = ?1", [&gone]).unwrap();
+    assert!(closed_uids(&mut db).is_empty());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_failed_task_that_closes_unreported_gives_admiral_one_note() {
+    let dir = scratch("flush-note");
+    let file = dir.join("ledger.db");
+    let mut db = open_at(&file).unwrap();
+    let (h, tasks) = handed(&mut db, &file, &["done", "done", "done"]);
+    db.execute("UPDATE tasks SET outcome = 'failed', title = 'Fix it' WHERE uid = ?1", [&tasks[0]]).unwrap();
+    db.execute("UPDATE tasks SET outcome = 'unobserved' WHERE uid = ?1", [&tasks[1]]).unwrap();
+    db.execute("UPDATE tasks SET outcome = 'succeeded' WHERE uid = ?1", [&tasks[2]]).unwrap();
+    flush_row(&db, &h);
+    tasks.iter().for_each(|t| flush_row(&db, t));
+    assert_eq!(closed_uids(&mut db), [h.clone()]);
+    let notes = skiff_client::ledger::notes(&file, GRAND).unwrap();
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].1, format!("Closed handoff {h} with no report: task {} (Fix it) failed, task {} unobserved. Tell the person. Read a row with skiff ledger show UID.", tasks[0], tasks[1]));
+    skiff_client::ledger::drop_notes(&file, &[notes[0].0]).unwrap();
+    // A second close of the same work names nothing again.
+    reopen(&mut db, &Caller::Person, std::slice::from_ref(&h)).unwrap();
+    db.execute("UPDATE tasks SET reopened_at = NULL WHERE uid = ?1", [&h]).unwrap();
+    assert_eq!(closed_uids(&mut db), [h]);
+    assert!(skiff_client::ledger::notes(&file, GRAND).unwrap().is_empty());
+    // A failed task the person was told of closes with no note.
+    let (_, told, _, _) = insert(&mut db, &file, New { state: "done".into(), ..task("told") }).unwrap();
+    db.execute("UPDATE tasks SET outcome = 'failed', reported_at = 'x' WHERE uid = ?1", [&told]).unwrap();
+    assert_eq!(closed_uids(&mut db), [told]);
+    assert!(skiff_client::ledger::notes(&file, GRAND).unwrap().is_empty());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn reporting_a_hand_off_stamps_the_tasks_under_it_whoever_owns_them() {
+    let dir = scratch("report-under");
+    let file = dir.join("ledger.db");
+    let mut db = open_at(&file).unwrap();
+    let stamped = |db: &Connection, uid: &str| one(db, uid).unwrap().reported_at.is_some();
+    // By its uid: the done tasks take the stamp, an open one does not, and the work stays open.
+    let (h, t) = handed(&mut db, &file, &["done", "sent"]);
+    assert_eq!(report(&mut db, &Caller::Grand, std::slice::from_ref(&h), false).unwrap(), 2);
+    assert!(stamped(&db, &h) && stamped(&db, &t[0]) && !stamped(&db, &t[1]));
+    assert!(closed_uids(&mut db).is_empty());
+    // A later report of the same hand-off stamps a task done since. Then the work closes.
+    db.execute("UPDATE tasks SET state = 'done' WHERE uid = ?1", [&t[1]]).unwrap();
+    assert_eq!(report(&mut db, &Caller::Grand, std::slice::from_ref(&h), false).unwrap(), 1);
+    assert_eq!(closed_uids(&mut db), [h]);
+    // Through the plan that holds the hand-off, a plan under the hand-off too.
+    let (_, p, _, _) = insert(&mut db, &file, New { plan: true, pane_id: None, ..task("p") }).unwrap();
+    let (_, h2, _, _) = insert(&mut db, &file, New { parent: Some(p.clone()), handoff: true, project: "web".into(), state: "done".into(), ..task("h") }).unwrap();
+    let (_, inner, _, _) = insert(&mut db, &file, New { plan: true, pane_id: None, parent: Some(h2.clone()), owner: "web".into(), ..task("inner") }).unwrap();
+    let (_, deep, _, _) = insert(&mut db, &file, New { parent: Some(inner), owner: "web".into(), state: "done".into(), ..task("t") }).unwrap();
+    report(&mut db, &Caller::Grand, std::slice::from_ref(&p), false).unwrap();
+    assert!(stamped(&db, &h2) && stamped(&db, &deep));
+    assert_eq!(closed_uids(&mut db), [p]);
+    // --all from Admiral, and a task under a hand-off that is not done keeps no stamp.
+    let (h3, t3) = handed(&mut db, &file, &["done"]);
+    let (_, h4, _, _) = insert(&mut db, &file, New { handoff: true, project: "web".into(), ..task("h") }).unwrap();
+    let (_, t4, _, _) = insert(&mut db, &file, New { parent: Some(h4.clone()), owner: "web".into(), state: "done".into(), ..task("t") }).unwrap();
+    report(&mut db, &Caller::Grand, &[], true).unwrap();
+    assert!(stamped(&db, &h3) && stamped(&db, &t3[0]) && !stamped(&db, &t4));
+    // A hand-off that is not done is refused, and a Skipper still cannot report one.
+    assert!(report(&mut db, &Caller::Grand, std::slice::from_ref(&h4), false).is_err());
+    let (h5, _) = handed(&mut db, &file, &["done"]);
+    assert!(report(&mut db, &Caller::Project("web".into()), std::slice::from_ref(&h5), false).is_err());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn stale_lists_what_holds_old_work_and_why_by_the_panes_of_its_tasks() {
+    use std::collections::HashSet;
+    let dir = scratch("stale");
+    let file = dir.join("ledger.db");
+    let mut db = open_at(&file).unwrap();
+    let here = Path::new("/tmp/here.sock");
+    let idle = serde_json::from_value::<SessionInfo>({
+        let mut v = serde_json::to_value(pane("abc123456789", "agent", false)).unwrap();
+        v["state"] = "idle".into();
+        v
+    })
+    .unwrap();
+    let working = |id: &str| {
+        let mut v = serde_json::to_value(pane(id, "agent", false)).unwrap();
+        v["state"] = "working".into();
+        serde_json::from_value::<SessionInfo>(v).unwrap()
+    };
+    let (_, done, _, _) = insert(&mut db, &file, New { state: "done".into(), ..task("done") }).unwrap();
+    let (_, flushed, _, _) = insert(&mut db, &file, New { state: "done".into(), ..task("flushed") }).unwrap();
+    flush_row(&db, &flushed);
+    let (_, blocked, _, _) = insert(&mut db, &file, New { state: "blocked".into(), ..task("blocked") }).unwrap();
+    // The hand-off's pane is the Skipper, which works. Its task's pane is idle.
+    let (_, h, _, _) = insert(&mut db, &file, New { handoff: true, pane_id: Some("skipper00000".into()), project: "web".into(), ..task("h") }).unwrap();
+    let (_, under, _, _) = insert(&mut db, &file, New { parent: Some(h.clone()), owner: "web".into(), state: "done".into(), ..task("t") }).unwrap();
+    // A task whose pane works keeps its work out of the list.
+    let (_, busy, _, _) = insert(&mut db, &file, New { pane_id: Some("busy00000000".into()), ..task("busy") }).unwrap();
+    let (_, new, _, _) = insert(&mut db, &file, New { state: "done".into(), ..task("new") }).unwrap();
+    db.execute("UPDATE tasks SET updated_at = '2026-01-01T00:00:00Z' WHERE uid <> ?1", [&new]).unwrap();
+    db.execute("UPDATE tasks SET updated_at = '2026-11-01T00:00:00Z' WHERE uid = ?1", [&new]).unwrap();
+    let all = [idle, working("skipper00000"), working("busy00000000")];
+    let before = serde_json::to_string(&rows(&db, "", None).unwrap()).unwrap();
+    let list = |db: &Connection, held: &HashSet<String>, all: Option<&[SessionInfo]>| {
+        let mut r = rows(db, "", None).unwrap();
+        mark_live(here, all, &mut r);
+        stale(&r, held, all, "2026-06-01T00:00:00Z").into_iter().map(|s| (s.row.uid, s.why)).collect::<Vec<_>>()
+    };
+    assert_eq!(
+        list(&db, &HashSet::new(), Some(&all)),
+        [
+            (done.clone(), "done, not reported, not flushed; pane idle".to_string()),
+            (flushed.clone(), "every task is settled: it closes at the next ledger write".to_string()),
+            (blocked, "blocked: it never closes by itself; pane idle".to_string()),
+            (h.clone(), "hand-off sent, 1 of 1 tasks done, not reported by its Skipper".to_string()),
+            (under, "done, not reported, not flushed; pane idle".to_string()),
+        ]
+    );
+    // A closed pane is named, and reopened work says what holds it.
+    let held: HashSet<String> = [flushed.clone()].into();
+    let got = list(&db, &held, Some(&[]));
+    assert!(got.contains(&(done.clone(), "done, not reported, not flushed; pane closed".to_string())));
+    assert!(got.contains(&(flushed, "reopened: it stays open until a task in it changes state".to_string())));
+    assert!(got.iter().any(|(u, why)| *u == busy && why == "sent: no result recorded, and it never closes by itself; pane closed"));
+    // With no answer from the daemon, it says so.
+    assert!(list(&db, &HashSet::new(), None).contains(&(done, "done, not reported, not flushed; pane not checked: skiffd did not answer".to_string())));
+    // Nothing changed.
+    assert_eq!(serde_json::to_string(&rows(&db, "", None).unwrap()).unwrap(), before);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
