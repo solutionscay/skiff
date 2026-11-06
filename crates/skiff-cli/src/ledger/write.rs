@@ -7,7 +7,7 @@ use crate::{resolve, sessions};
 use anyhow::Context;
 use anyhow::{bail, Result};
 use rusqlite::{params, Connection, TransactionBehavior};
-use skiff_client::ledger::{gen, heads, path, rows, Row, GRAND};
+use skiff_client::ledger::{gen, heads, path, rows, Row, GRAND, UNOBSERVED};
 use skiff_core::{
     session::{Role, SessionInfo},
     state,
@@ -461,17 +461,42 @@ pub(super) fn read_stdin() -> Result<String> {
     Ok(buf)
 }
 
+/// Stamps the done tasks under the done hand-off `h`, a plan's in it included,
+/// whoever owns them: the Skipper that owns them cannot tell the person, and
+/// the hand-off's report does. Adds each failed or unobserved one to `bad`:
+/// this stamp is the only one it gets. Returns how many took a stamp.
+fn report_under(tx: &Connection, h: &Row, bad: &mut Vec<(String, Row)>) -> Result<usize> {
+    let tasks = rows(tx, "WHERE kind = 'task' AND state = 'done' AND reported_at IS NULL AND (parent = ?1 OR parent IN (SELECT uid FROM tasks WHERE kind = 'plan' AND parent = ?1))", Some(&h.uid))?;
+    for t in &tasks {
+        tx.execute(&format!("UPDATE tasks SET reported_at = {NOW} WHERE id = ?1"), [t.id])?;
+    }
+    let n = tasks.len();
+    bad.extend(tasks.into_iter().filter(Row::ended_badly).map(|t| (h.uid.clone(), t)));
+    Ok(n)
+}
+
 /// Stamps `reported_at` on the done rows `ids` name, in one transaction.
 /// A plan with tasks stamps its done tasks and leaves the others; a plan with
-/// none is stamped itself. A hand-off is stamped itself. A row that is not
-/// done, or that `caller` does not own, refuses the lot. A first stamp stays.
-/// `all`: every done task the caller owns, and every done plan with no task.
-/// Returns how many rows took a new stamp.
+/// none is stamped itself. A hand-off is stamped itself, with the done tasks
+/// under it (see [`report_under`]). A row that is not done, or that `caller`
+/// does not own, refuses the lot. A first stamp stays. `all`: every done task
+/// the caller owns, and every done plan with no task. Names on stderr each
+/// failed or unobserved task a hand-off's report stamped. Returns how many
+/// rows took a new stamp.
 pub(super) fn report(db: &mut Connection, caller: &Caller, ids: &[String], all: bool) -> Result<usize> {
     let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let stamp = format!("UPDATE tasks SET reported_at = {NOW} WHERE state = 'done' AND reported_at IS NULL");
     let mut n = 0;
+    let mut bad = Vec::new();
     if all {
+        let handoffs = if *caller == Caller::Person {
+            rows(&tx, "WHERE kind = 'handoff' AND state = 'done'", None)?
+        } else {
+            rows(&tx, "WHERE kind = 'handoff' AND state = 'done' AND owner = ?1", Some(&caller.owner()))?
+        };
+        for h in &handoffs {
+            n += report_under(&tx, h, &mut bad)?;
+        }
         let mine = if *caller == Caller::Person { "1" } else { "owner = ?1" };
         let sql = format!("{stamp} AND {mine} AND (kind IN ('task', 'handoff') OR NOT EXISTS (SELECT 1 FROM tasks t WHERE t.parent = tasks.uid))");
         n += if *caller == Caller::Person { tx.execute(&sql, [])? } else { tx.execute(&sql, [caller.owner()])? };
@@ -481,24 +506,39 @@ pub(super) fn report(db: &mut Connection, caller: &Caller, ids: &[String], all: 
         caller.check(&r)?;
         let tasks = if r.is_plan() { rows(&tx, "WHERE parent = ?1", Some(&r.uid))? } else { Vec::new() };
         if !tasks.is_empty() {
+            for h in tasks.iter().filter(|t| t.is_handoff() && t.state == "done") {
+                n += report_under(&tx, h, &mut bad)?;
+            }
             n += tx.execute(&format!("{stamp} AND parent = ?1"), [&r.uid])?;
             continue;
         }
         if r.state != "done" {
             bail!("{} {} is {}, not done. Nothing changed", r.kind, r.uid, r.state);
         }
+        if r.is_handoff() {
+            n += report_under(&tx, &r, &mut bad)?;
+        }
         n += tx.execute(&format!("{stamp} AND id = ?1"), [r.id])?;
     }
     tx.commit()?;
+    for (h, t) in bad {
+        eprintln!("skiff: hand-off {h} reported: its task {} {}. Tell the person", t.uid, t.outcome.unwrap_or_default());
+    }
     Ok(n)
 }
 
 /// A row set to a state other than done opens again. That is new work: its
-/// report stamp goes, and its work opens again.
+/// report and flush stamps go, and its work opens again. An old flush must not
+/// settle the row when it is done again. A hand-off that closed unobserved and
+/// is set done now is a late report: its stamp goes, so the watcher tells the
+/// grand Skipper to read it.
 pub(super) fn restate(db: &Connection, r: &Row, st: Option<&str>) -> Result<()> {
+    if st == Some("done") && r.is_handoff() && r.outcome.as_deref() == Some(UNOBSERVED) {
+        db.execute("UPDATE tasks SET reported_at = NULL WHERE id = ?1", [r.id])?;
+    }
     if st.is_some_and(|s| s != "done") {
         // Only a done task has an outcome.
-        db.execute("UPDATE tasks SET reported_at = NULL, outcome = NULL WHERE id = ?1", [r.id])?;
+        db.execute("UPDATE tasks SET reported_at = NULL, flushed_at = NULL, outcome = NULL WHERE id = ?1", [r.id])?;
         db.execute("UPDATE tasks SET closed_at = NULL WHERE id = ?1", [top(db, r)?.id])?;
     }
     Ok(())
@@ -548,43 +588,6 @@ pub(super) fn reopen(db: &mut Connection, caller: &Caller, ids: &[String]) -> Re
     }
     tx.commit()?;
     Ok(n)
-}
-
-/// Closes, as `close` does, each open work item whose tasks are all done and
-/// reported: a plan's tasks, a hand-off and its tasks, or a lone task. A plan
-/// with no task stays open, as does work with `reopened_at`. Returns the work
-/// heads it closed.
-pub(super) fn auto_close(db: &mut Connection) -> Result<Vec<Row>> {
-    let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let all = rows(&tx, "", None)?;
-    let held: std::collections::HashSet<String> = {
-        let mut st = tx.prepare("SELECT uid FROM tasks WHERE reopened_at IS NOT NULL")?;
-        let out = st.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<_>>()?;
-        out
-    };
-    let head = heads(&all);
-    // Each open work head, with whether every task in it is done and reported.
-    let mut ready: std::collections::BTreeMap<&str, bool> = std::collections::BTreeMap::new();
-    for r in &all {
-        let h = head[&r.uid].as_str();
-        if r.is_plan() && r.uid == h {
-            continue;
-        }
-        let done = r.state == "done" && r.reported_at.is_some();
-        ready.entry(h).and_modify(|ok| *ok &= done).or_insert(done);
-    }
-    let mut out = Vec::new();
-    for (h, ok) in ready {
-        let Some(r) = all.iter().find(|r| r.uid == h) else { continue };
-        if !ok || r.closed_at.is_some() || held.contains(h) {
-            continue;
-        }
-        if tx.execute(&format!("UPDATE tasks SET closed_at = {NOW} WHERE id = ?1 AND closed_at IS NULL"), [r.id])? == 1 {
-            out.push(r.clone());
-        }
-    }
-    tx.commit()?;
-    Ok(out)
 }
 
 pub(super) fn work_word(n: usize) -> &'static str {

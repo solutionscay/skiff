@@ -47,7 +47,8 @@ pub struct HostLedgerRow {
     pub reference: Option<String>,
     #[serde(default)]
     pub reported_at: Option<String>,
-    /// When the person, or Skiff once every task was done and reported,
+    /// When the person, or Skiff once every task was done, and reported or
+    /// flushed,
     /// closed the work. Only a work head has it.
     #[serde(default)]
     pub closed_at: Option<String>,

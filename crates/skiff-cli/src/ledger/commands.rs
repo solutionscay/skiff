@@ -1,7 +1,7 @@
 //! One `skiff ledger` command, matched and sequenced over the read and write sides.
 use super::read::{
-    container, join, keep, live, one, pane, print_attempts, print_one, print_rows, project_of, rank, state, sweep,
-    top, tree, under, View,
+    container, join, keep, live, one, pane, print_attempts, print_one, print_rows, print_stale, project_of, rank, stale,
+    state, sweep, top, tree, under, View,
 };
 use super::{brief, delivery, evidence};
 use super::schema::{open, open_at, NOW};
@@ -288,6 +288,33 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                 print::json(&list.iter().map(|(r, _)| r).collect::<Vec<_>>())?;
             } else {
                 print_rows(&list, matches!(view, View::Closed | View::All));
+            }
+        }
+        LedgerCmd::Stale { older_than, json } => {
+            let secs = age(&older_than)?;
+            let db = open()?;
+            let sessions = live(socket).await;
+            let cutoff: String = db.query_row("SELECT strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?1)", [format!("-{secs} seconds")], |r| r.get(0))?;
+            let held: std::collections::HashSet<String> = {
+                let mut st = db.prepare("SELECT uid FROM tasks WHERE reopened_at IS NOT NULL")?;
+                let out = st.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<_>>()?;
+                out
+            };
+            let mut list = rows(&db, "", None)?;
+            mark_live(socket, sessions.as_deref(), &mut list);
+            let found = stale(&list, &held, sessions.as_deref(), &cutoff);
+            if json {
+                let out: Vec<_> = found
+                    .iter()
+                    .map(|s| serde_json::json!({ "work": s.work, "uid": s.row.uid, "kind": s.row.kind, "state": s.row.shown_state(), "outcome": s.row.outcome, "owner": s.row.owner, "project": s.row.project, "pane": s.row.pane_id, "session": s.session, "changed": s.changed, "why": s.why }))
+                    .collect();
+                print::json(&out)?;
+            } else if found.is_empty() {
+                println!("no stale work: all open work changed in the last {older_than}, or an agent works on it");
+            } else {
+                print_stale(&found);
+                let works: std::collections::HashSet<&str> = found.iter().map(|s| s.work.as_str()).collect();
+                println!("{} {} in {} {}. Nothing changed", found.len(), rows_word(found.len()), works.len(), work_word(works.len()));
             }
         }
         LedgerCmd::Report { ids, all } => {

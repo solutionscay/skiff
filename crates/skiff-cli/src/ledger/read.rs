@@ -1,12 +1,13 @@
 //! The read side: the queries, liveness, the work hierarchy, the list views and the table rendering.
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
 use rusqlite::{params, Connection, TransactionBehavior};
 use skiff_client::Client;
-use skiff_client::ledger::{heads, rows, OPEN, OUTCOMES, WORKING};
-use skiff_core::session::SessionInfo;
+use skiff_client::ledger::{add_note, auto_close, handoffs_with_tasks, heads, holds_open, rows, session_closed, session_of, untold_note, NOTES, OPEN, OUTCOMES, WORKING};
+use skiff_core::session::{SessionInfo, SessionState};
 
 use crate::{print, resolve};
 
@@ -29,8 +30,8 @@ pub(super) fn open_tasks_at(file: &Path) -> Result<Vec<Row>> {
     rows(&db, "WHERE kind IN ('task', 'handoff') AND state IN ('sent', 'pending', 'blocked')", None)
 }
 
-/// The done tasks of `owner` the person was not told of yet. `skiff watch`
-/// names the count at its start. No `ledger.db` yet gives 0, and makes no file.
+/// The done tasks of `owner` the person was not told of yet. A flushed one
+/// needs no report. `skiff watch` names the count at its start. No `ledger.db` yet gives 0, and makes no file.
 pub fn unreported(owner: &str) -> Result<usize> {
     unreported_at(&path()?, owner)
 }
@@ -41,64 +42,96 @@ pub(super) fn unreported_at(file: &Path, owner: &str) -> Result<usize> {
     }
     let db = super::open_at(file)?;
     let n: i64 = db.query_row(
-        "SELECT count(*) FROM tasks WHERE kind IN ('task', 'handoff') AND state = 'done' AND reported_at IS NULL AND owner = ?1",
+        "SELECT count(*) FROM tasks WHERE kind IN ('task', 'handoff') AND state = 'done' AND reported_at IS NULL AND flushed_at IS NULL AND owner = ?1",
         [owner],
         |r| r.get(0),
     )?;
     Ok(usize::try_from(n).unwrap_or(0))
 }
 
-/// Sets `done` each open task on `here` whose pane no session in `all` has,
-/// with the outcome `unobserved`, never `succeeded`, and stamps `gone_at`. A task on another socket is left alone: its pane
-/// cannot be checked from here. A restarted pane still exists, so an
-/// interrupted task stays. The report stamp stays empty: the person is told
-/// once. `all` must be a full list from `here`'s daemon. Returns the tasks it
-/// closed.
-pub fn close_gone(here: &Path, all: &[SessionInfo]) -> Result<Vec<Row>> {
-    let file = path()?;
-    if !file.exists() {
-        return Ok(Vec::new());
-    }
-    close_gone_in(&mut super::open_at(&file)?, here, all)
-}
-
+/// The one rule for a closed session (see [`session_closed`]), for each row on
+/// `here`. `all` must be a full list from `here`'s daemon. A row on another
+/// socket is left alone: its session cannot be checked from here. A pane
+/// restored under the old id is a live session, so an interrupted task stays,
+/// until that session closes too.
+///
+/// An open row becomes `done`, `unobserved`, never `succeeded`, and takes
+/// `gone_at`. It stays not reported: [`auto_close`] or the person's report
+/// stamps it. A done row not yet reported takes the stamp now. If it ended
+/// badly it leaves the note, and a done hand-off always does: the person should
+/// read it. A done hand-off with tasks is left out: it follows its tasks.
+/// Returns the rows that were open.
 pub(super) fn close_gone_in(db: &mut Connection, here: &Path, all: &[SessionInfo]) -> Result<Vec<Row>> {
+    db.execute_batch(NOTES)?;
     let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let open = rows(&tx, "WHERE kind IN ('task', 'handoff') AND state IN ('sent', 'pending', 'blocked') AND pane_id IS NOT NULL", None)?;
-    // A stored id may be a prefix: any session it could name keeps the task.
-    let gone: Vec<Row> = open
-        .into_iter()
-        .filter(|r| r.socket_other_than(here).is_none() && r.pane_id.as_deref().is_some_and(|p| !all.iter().any(|s| s.id.starts_with(p))))
-        .collect();
+    let every = rows(&tx, "", None)?;
+    let head = heads(&every);
+    let with_tasks = handoffs_with_tasks(&every);
+    let shut: HashSet<&str> = every.iter().filter(|r| r.closed_at.is_some()).map(|r| r.uid.as_str()).collect();
     let mut out = Vec::new();
-    for r in gone {
-        let n = tx.execute(&format!("UPDATE tasks SET state = 'done', outcome = 'unobserved', gone_at = {NOW}, updated_at = {NOW} WHERE id = ?1 AND state = ?2"), params![r.id, r.state])?;
-        if n == 1 {
-            out.push(one(&tx, &r.uid)?);
+    for r in every.iter().filter(|r| !r.is_plan() && r.socket_other_than(here).is_none() && r.pane_id.as_deref().is_some_and(|p| session_closed(all, p))) {
+        if r.state != "done" {
+            let n = tx.execute(&format!("UPDATE tasks SET state = 'done', outcome = 'unobserved', gone_at = {NOW}, updated_at = {NOW} WHERE id = ?1 AND state = ?2"), params![r.id, r.state])?;
+            if n == 1 {
+                out.push(one(&tx, &r.uid)?);
+            }
+        } else if !r.settled() && !shut.contains(head[&r.uid].as_str()) && !with_tasks.contains(r.uid.as_str()) {
+            tx.execute(&format!("UPDATE tasks SET reported_at = {NOW} WHERE id = ?1"), [r.id])?;
+            if r.ended_badly() || r.is_handoff() {
+                add_note(&tx, &untold_note(r, &[r]))?;
+            }
         }
     }
     tx.commit()?;
     Ok(out)
 }
 
-/// Runs [`close_gone_in`] when the daemon answered, and says which tasks it
-/// closed. With no answer, nothing is gone.
+/// What one sweep did: the rows skiff set done, and the work it closed.
+pub struct Swept {
+    pub gone: Vec<Row>,
+    pub closed: Vec<Row>,
+}
+
+/// [`close_gone_in`], then [`auto_close`]: a task whose session closed closes
+/// its work when nothing else holds it.
+fn sweep_in(db: &mut Connection, here: &Path, all: &[SessionInfo]) -> Result<Swept> {
+    let gone = close_gone_in(db, here, all)?;
+    let closed = auto_close(db)?;
+    Ok(Swept { gone, closed })
+}
+
+/// The sweep for `skiff watch`. No `ledger.db` yet does nothing, and makes no file.
+pub fn close_gone(here: &Path, all: &[SessionInfo]) -> Result<Swept> {
+    let file = path()?;
+    if !file.exists() {
+        return Ok(Swept { gone: Vec::new(), closed: Vec::new() });
+    }
+    sweep_in(&mut super::open_at(&file)?, here, all)
+}
+
+/// The sweep for `ledger ls` and `show`, when the daemon answered. It says what
+/// it did. With no answer, no session is closed.
 pub(super) fn sweep(db: &mut Connection, here: &Path, all: Option<&[SessionInfo]>) -> Result<()> {
     let Some(all) = all else { return Ok(()) };
-    for r in close_gone_in(db, here, all)? {
+    let s = sweep_in(db, here, all)?;
+    for r in s.gone {
         eprintln!("skiff: task {} is done: its pane {} is gone", r.uid, print::short_id(r.pane_id.as_deref().unwrap_or("")));
+    }
+    for r in s.closed {
+        eprintln!("skiff: closed {} {}: every task in it is closed", r.kind, r.uid);
     }
     Ok(())
 }
 
-/// The tasks skiff set done because their panes were gone, not yet reported.
+/// The tasks skiff set done because their sessions closed, not yet reported
+/// and not flushed.
 /// No `ledger.db` yet gives none, and makes no file.
 pub fn gone_unreported() -> Result<Vec<Row>> {
     let file = path()?;
     if !file.exists() {
         return Ok(Vec::new());
     }
-    rows(&super::open_at(&file)?, "WHERE kind IN ('task', 'handoff') AND state = 'done' AND gone_at IS NOT NULL AND reported_at IS NULL", None)
+    rows(&super::open_at(&file)?, "WHERE kind IN ('task', 'handoff') AND state = 'done' AND gone_at IS NOT NULL AND reported_at IS NULL AND flushed_at IS NULL", None)
 }
 
 /// The tasks of each plan that is not closed, in any state, oldest first.
@@ -116,14 +149,14 @@ pub fn plan_tasks() -> Result<Vec<Row>> {
     )
 }
 
-/// The hand-offs a project Skipper set done, not yet reported: the grand
+/// The hand-offs a project Skipper set done, not yet reported and not flushed: the grand
 /// Skipper's watcher tells it each once. No `ledger.db` yet gives none.
 pub fn handed_back() -> Result<Vec<Row>> {
     let file = path()?;
     if !file.exists() {
         return Ok(Vec::new());
     }
-    rows(&super::open_at(&file)?, "WHERE kind = 'handoff' AND state = 'done' AND gone_at IS NULL AND reported_at IS NULL", None)
+    rows(&super::open_at(&file)?, "WHERE kind = 'handoff' AND state = 'done' AND gone_at IS NULL AND reported_at IS NULL AND flushed_at IS NULL", None)
 }
 
 /// An open hand-off whose tasks all ended, and how they ended: each outcome
@@ -330,7 +363,8 @@ pub(super) enum View {
     /// Only closed work.
     Closed,
     All,
-    /// Only the done tasks the person was not told of, under their plans.
+    /// Only the done tasks the person was not told of and did not flush,
+    /// under their plans.
     Unreported,
 }
 
@@ -340,7 +374,7 @@ pub(super) fn keep(rows: &mut Vec<Row>, view: View) {
     use std::collections::HashSet;
     let head = heads(rows);
     let closed: HashSet<String> = rows.iter().filter(|r| r.closed_at.is_some()).map(|r| r.uid.clone()).collect();
-    let untold = |r: &Row| !r.is_plan() && r.state == "done" && r.reported_at.is_none();
+    let untold = |r: &Row| !r.is_plan() && r.state == "done" && r.reported_at.is_none() && r.flushed_at.is_none();
     let plans: HashSet<String> = rows.iter().filter(|r| untold(r)).filter_map(|r| r.parent.clone()).collect();
     rows.retain(|r| match view {
         View::Open => !closed.contains(&head[&r.uid]),
@@ -348,6 +382,108 @@ pub(super) fn keep(rows: &mut Vec<Row>, view: View) {
         View::All => true,
         View::Unreported => untold(r) || plans.contains(&r.uid),
     });
+}
+
+/// One row `ledger stale` lists, and why.
+pub(super) struct Stale {
+    /// The uid of the row's work head.
+    pub(super) work: String,
+    pub(super) row: Row,
+    /// The name of the row's live session, so the person can close it.
+    pub(super) session: Option<String>,
+    /// The work's last change.
+    pub(super) changed: String,
+    pub(super) why: String,
+}
+
+/// The state of a row's session, in words, with its name. `all`: the sessions,
+/// when the daemon answered.
+fn session_word(r: &Row, all: Option<&[SessionInfo]>) -> String {
+    let Some(all) = all else { return "session not checked: skiffd did not answer".into() };
+    if r.elsewhere {
+        return "session on another daemon".into();
+    }
+    let Some(s) = r.pane_id.as_deref().and_then(|p| session_of(all, p)) else { return "session closed: it closes at the next ledger ls or watcher step".into() };
+    let name = resolve::display_name(s);
+    match s.state {
+        SessionState::Done => format!("session {name} exited: it closes at the next ledger ls or watcher step"),
+        _ if r.interrupted == Some(true) => format!("session {name} restarted"),
+        SessionState::Working => format!("session {name} working"),
+        SessionState::Waiting => format!("session {name} waiting"),
+        SessionState::Idle => format!("session {name} idle: close it to close the task"),
+    }
+}
+
+/// Why the row `r`, which holds its work open, does.
+fn stale_why(r: &Row, all: Option<&[SessionInfo]>) -> String {
+    let session = session_word(r, all);
+    match (r.is_handoff(), r.state.as_str()) {
+        (true, "done") => format!("hand-off done, not reported, not flushed, no tasks under it; {session}"),
+        (true, st) => format!("hand-off {st}, no tasks under it; {session}"),
+        (_, "done") => format!("done, not reported, not flushed; {session}"),
+        (_, "pending") => format!("pending: not delivered; {session}"),
+        (_, st) => format!("{st}: no result recorded; {session}"),
+    }
+}
+
+/// What holds open work that had no change since `cutoff`: each row
+/// [`holds_open`] names, with why. `rows` come from [`mark_live`], which gives
+/// no row a new state, and this writes nothing. A work item with a working
+/// session is in use, and is left out. That counts a task's session, and a
+/// hand-off's only when it has no tasks: else its session is the Skipper, which
+/// stays up. Work no row holds lists its head: `reopened_at` holds it, or the
+/// next write closes it.
+pub(super) fn stale(rows: &[Row], held: &HashSet<String>, all: Option<&[SessionInfo]>, cutoff: &str) -> Vec<Stale> {
+    let head = heads(rows);
+    let with_tasks = handoffs_with_tasks(rows);
+    let working = |r: &Row| {
+        let s = r.pane_id.as_deref().and_then(|p| all.and_then(|all| session_of(all, p)));
+        !r.elsewhere && s.is_some_and(|s| s.state == SessionState::Working && r.interrupted != Some(true))
+    };
+    let mut out = Vec::new();
+    for h in rows.iter().filter(|r| r.closed_at.is_none() && head[&r.uid] == r.uid) {
+        let work: Vec<&Row> = rows.iter().filter(|r| head[&r.uid] == h.uid).collect();
+        let members: Vec<&Row> = work.iter().copied().filter(|r| !r.is_plan()).collect();
+        let changed = work.iter().map(|r| r.updated_at.as_str()).max().unwrap_or_default();
+        if changed > cutoff || members.is_empty() || members.iter().any(|r| !with_tasks.contains(r.uid.as_str()) && working(r)) {
+            continue;
+        }
+        let mut add = |row: &Row, why: String| {
+            let session = all.and_then(|all| row.pane_id.as_deref().and_then(|p| session_of(all, p))).map(|s| resolve::display_name(s).into_owned());
+            out.push(Stale { work: h.uid.clone(), row: row.clone(), session: session.filter(|_| !row.is_plan() && !row.elsewhere), changed: changed.to_string(), why })
+        };
+        let open: Vec<&Row> = members.iter().copied().filter(|r| holds_open(r, &with_tasks)).collect();
+        if held.contains(&h.uid) {
+            add(h, "reopened: it stays open until a task in it changes state".into());
+        } else if open.is_empty() {
+            add(h, "every task is closed: it closes at the next ledger write".into());
+        }
+        for r in open {
+            add(r, stale_why(r, all));
+        }
+    }
+    out
+}
+
+/// The rows of `ledger stale` as a table.
+pub(super) fn print_stale(list: &[Stale]) {
+    let table: Vec<Vec<String>> = list
+        .iter()
+        .map(|s| {
+            vec![
+                s.work.clone(),
+                s.row.uid.clone(),
+                s.row.kind.clone(),
+                s.row.shown_state().to_string(),
+                s.row.outcome.clone().unwrap_or_default(),
+                s.row.owner.clone(),
+                s.row.project.clone(),
+                s.changed.clone(),
+                s.why.clone(),
+            ]
+        })
+        .collect();
+    print::table(&["WORK", "UID", "KIND", "STATE", "OUTCOME", "OWNER", "PROJECT", "CHANGED", "WHY"], &table);
 }
 
 /// The order of the groups in `ls`.

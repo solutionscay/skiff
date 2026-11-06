@@ -35,7 +35,8 @@ get a message that starts with `Hand-off UID`. The hand-off row is
 2. When every task is done, write the result to the hand-off's result path.
    Name each task that did not succeed, and why.
 3. Report it: `skiff ledger update UID --state done --result PATH`. Change
-   nothing else on that row. {{main}} gets one `[watch]` line for it.
+   nothing else on that row. {{main}} gets one `[watch]` line for it. Its
+   report to the person also reports your tasks under it.
 
 A hand-off can name `brief.md`. It is background from the ledger: the
 state of the rows it depends on. Your task is the message.
