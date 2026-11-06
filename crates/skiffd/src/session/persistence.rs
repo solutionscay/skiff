@@ -72,7 +72,9 @@ impl SessionPool {
     /// Brings back the saved groups, and each saved session as a shell in its
     /// folder under its old id, so the layouts still point at it. A session
     /// that cannot start ends as a kill would: it leaves its groups, and it is
-    /// closed. A file that cannot be read or parsed is a failed load.
+    /// closed. A failed load is a file that cannot be read or parsed, or a file
+    /// with saved sessions of which none starts: that says more about this
+    /// start than about the sessions.
     pub fn restore(self: &Arc<Self>) {
         let file = paths::state();
         let ws = match workspace::load(&file) {
@@ -85,6 +87,8 @@ impl SessionPool {
         };
         let mut groups = ws.groups;
         let mut restored = 0;
+        let total = ws.sessions.len();
+        let mut first_error = None;
         // At most one coordinator, whatever the file holds.
         let mut coordinator = false;
         for saved in ws.sessions {
@@ -118,9 +122,8 @@ impl SessionPool {
                     }
                 }
                 Err(e) => {
-                    // The load is still good. The session no longer exists, so
-                    // its task closes, and the next save drops its entry.
-                    tracing::error!("restore session {}: {e:#}. It is closed", saved.id);
+                    tracing::error!("restore session {}: {e:#}", saved.id);
+                    first_error.get_or_insert_with(|| format!("{e:#}"));
                     prune(&mut groups, &saved.id, &saved.cwd);
                 }
             }
@@ -135,6 +138,18 @@ impl SessionPool {
                     }
                 }
             }
+        }
+        match first_error {
+            Some(first) if restored == 0 => {
+                let first = first.split_whitespace().collect::<Vec<_>>().join(" ");
+                let which = if total == 1 { "the 1 saved session".to_string() } else { format!("all {total} saved sessions") };
+                tracing::error!("{which} failed to start. The file stays as it is until skiffd restarts");
+                *self.load_error.lock().unwrap() = Some(format!("{which} failed to start, the first with: {first}"));
+            }
+            // The load is good. These sessions no longer exist, so their tasks
+            // close, and the next save drops their entries.
+            Some(_) => tracing::error!("{} of {total} saved sessions failed to start. They are closed", total - restored),
+            None => {}
         }
         tracing::info!("restored {} groups and {restored} sessions from {}", groups.len(), file.display());
         *self.groups.lock().unwrap() = groups;

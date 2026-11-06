@@ -1,6 +1,7 @@
 //! A failed workspace load: the daemon says so, for as long as it runs, and it
-//! keeps the file. A missing file is a healthy load with no sessions, and a
-//! saved session that cannot start is a closed session in a healthy load.
+//! keeps the file. A missing file is a healthy load with no sessions. A saved
+//! session that cannot start is a closed session in a healthy load, unless no
+//! saved session starts: that is a failed load.
 #![cfg(target_os = "linux")]
 
 use std::{
@@ -110,4 +111,31 @@ async fn a_saved_session_that_cannot_start_is_closed_in_a_healthy_load() {
     tokio::time::sleep(Duration::from_secs(2)).await;
     let saved = std::fs::read_to_string(&file).unwrap();
     assert!(saved.contains(&new.id) && saved.contains("aaaaaaaaaaaa") && !saved.contains("bbbbbbbbbbbb"), "{saved}");
+}
+
+#[tokio::test]
+async fn a_start_where_every_saved_session_fails_is_a_failed_load_and_keeps_the_file() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = scratch("all-bad");
+    let bad = [dir.join("bad1"), dir.join("bad2")];
+    let entries: Vec<_> = bad.iter().zip(["aaaaaaaaaaaa", "bbbbbbbbbbbb"]).map(|(cwd, id)| {
+        std::fs::create_dir_all(cwd).unwrap();
+        std::fs::set_permissions(cwd, std::fs::Permissions::from_mode(0o000)).unwrap();
+        serde_json::json!({ "id": id, "name": id, "role": "shell", "cwd": cwd, "cols": 80, "rows": 24 })
+    }).collect();
+    let file = dir.join("workspace.json");
+    let text = serde_json::json!({ "groups": [], "sessions": entries }).to_string();
+    std::fs::write(&file, &text).unwrap();
+    let (_daemon, c) = start(&dir).await;
+    let list = c.session_list().await.unwrap();
+    for cwd in &bad {
+        std::fs::set_permissions(cwd, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    assert!(list.sessions.is_empty());
+    assert!(matches!(&list.workspace_load, Some(WorkspaceLoad::Failed { error }) if error.starts_with("all 2 saved sessions failed to start") && !error.contains('\n')));
+    // A new session gives no full list, and does not write the file.
+    c.create_session(SessionSpec { cwd: Some(dir.clone()), ..Default::default() }).await.unwrap();
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert!(c.session_list().await.unwrap().gap().is_some());
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
 }
