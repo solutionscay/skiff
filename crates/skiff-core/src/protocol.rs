@@ -222,9 +222,10 @@ pub const FEATURE_PROGRAM_STATUS: &str = "program_status@1";
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum WorkspaceLoad {
-    /// The file was read and each saved session came back, or there was no file.
+    /// The file was read, or there was no file. A saved session that could not
+    /// start is not in the list because it no longer exists: it has closed.
     Loaded,
-    /// The file could not be read, or a saved session could not start.
+    /// The file could not be read or parsed.
     Failed { error: String },
 }
 

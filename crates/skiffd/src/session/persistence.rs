@@ -71,7 +71,8 @@ impl SessionPool {
 
     /// Brings back the saved groups, and each saved session as a shell in its
     /// folder under its old id, so the layouts still point at it. A session
-    /// that cannot start leaves its groups the way a kill would.
+    /// that cannot start ends as a kill would: it leaves its groups, and it is
+    /// closed. A file that cannot be read or parsed is a failed load.
     pub fn restore(self: &Arc<Self>) {
         let file = paths::state();
         let ws = match workspace::load(&file) {
@@ -117,8 +118,9 @@ impl SessionPool {
                     }
                 }
                 Err(e) => {
-                    tracing::error!("restore session {}: {e:#}. The file stays as it is until skiffd restarts", saved.id);
-                    self.load_error.lock().unwrap().get_or_insert(format!("restore session {}: {e:#}", saved.id));
+                    // The load is still good. The session no longer exists, so
+                    // its task closes, and the next save drops its entry.
+                    tracing::error!("restore session {}: {e:#}. It is closed", saved.id);
                     prune(&mut groups, &saved.id, &saved.cwd);
                 }
             }

@@ -1,5 +1,6 @@
 //! A failed workspace load: the daemon says so, for as long as it runs, and it
-//! keeps the file. A missing file is a healthy load with no sessions.
+//! keeps the file. A missing file is a healthy load with no sessions, and a
+//! saved session that cannot start is a closed session in a healthy load.
 #![cfg(target_os = "linux")]
 
 use std::{
@@ -82,4 +83,31 @@ async fn a_missing_file_is_a_healthy_load_and_its_empty_list_is_full() {
     assert!(list.sessions.is_empty());
     assert_eq!(list.workspace_load, Some(WorkspaceLoad::Loaded));
     assert!(list.gap().is_none());
+}
+
+/// A saved session whose folder has no permissions: `is_dir` says yes, so the
+/// restore keeps the folder, and the spawn fails to enter it.
+#[tokio::test]
+async fn a_saved_session_that_cannot_start_is_closed_in_a_healthy_load() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = scratch("one-bad");
+    let (good, bad) = (dir.join("good"), dir.join("bad"));
+    std::fs::create_dir_all(&good).unwrap();
+    std::fs::create_dir_all(&bad).unwrap();
+    let entry = |id: &str, cwd: &Path| serde_json::json!({ "id": id, "name": id, "role": "shell", "cwd": cwd, "cols": 80, "rows": 24 });
+    let ws = serde_json::json!({ "groups": [], "sessions": [entry("aaaaaaaaaaaa", &good), entry("bbbbbbbbbbbb", &bad)] });
+    let file = dir.join("workspace.json");
+    std::fs::write(&file, ws.to_string()).unwrap();
+    std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let (_daemon, c) = start(&dir).await;
+    let list = c.session_list().await.unwrap();
+    std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(list.workspace_load, Some(WorkspaceLoad::Loaded));
+    assert!(list.gap().is_none());
+    assert_eq!(list.sessions.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(), ["aaaaaaaaaaaa"]);
+    // Saves go on, and the next one drops the entry.
+    let new = c.create_session(SessionSpec { cwd: Some(dir.clone()), ..Default::default() }).await.unwrap();
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let saved = std::fs::read_to_string(&file).unwrap();
+    assert!(saved.contains(&new.id) && saved.contains("aaaaaaaaaaaa") && !saved.contains("bbbbbbbbbbbb"), "{saved}");
 }
