@@ -326,17 +326,24 @@ mod tests {
         let peer = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.unwrap();
             let mut stream = BufReader::new(stream);
-            for id in 1..=3 {
+            for id in [1, 3, 4] {
                 let mut line = String::new();
                 stream.read_line(&mut line).await.unwrap();
                 assert_eq!(serde_json::from_str::<serde_json::Value>(&line).unwrap(), serde_json::json!({"id":id,"cmd":"ping"}));
                 let reply = serde_json::json!({"id":id,"type":"pong","version":skiff_core::VERSION,"protocol":skiff_core::PROTOCOL});
                 let mut bytes = serde_json::to_vec(&reply).unwrap(); bytes.push(b'\n');
                 stream.get_mut().write_all(&bytes).await.unwrap();
+                // The new connection names this app run, after its first ping.
+                if id == 1 {
+                    line.clear();
+                    stream.read_line(&mut line).await.unwrap();
+                    assert_eq!(serde_json::from_str::<serde_json::Value>(&line).unwrap(), serde_json::json!({"id":2,"cmd":"peek_owner","owner":peek_owner_id()}));
+                    stream.get_mut().write_all(b"{\"id\":2,\"type\":\"ok\"}\n").await.unwrap();
+                }
             }
             for (id, response) in [
-                (4, serde_json::json!({"type":"screen","lines":["", "λ  "]})),
-                (5, serde_json::json!({"type":"error","message":"unknown variant `screen`"})),
+                (5, serde_json::json!({"type":"screen","lines":["", "λ  "]})),
+                (6, serde_json::json!({"type":"error","message":"unknown variant `screen`"})),
             ] {
                 let mut line = String::new();
                 stream.read_line(&mut line).await.unwrap();
@@ -346,8 +353,8 @@ mod tests {
                 stream.get_mut().write_all(&bytes).await.unwrap();
             }
             for (id, response) in [
-                (6, serde_json::json!({"type":"sessions","sessions":inventory})),
-                (7, serde_json::json!({"type":"error","message":"inventory unavailable"})),
+                (7, serde_json::json!({"type":"sessions","sessions":inventory})),
+                (8, serde_json::json!({"type":"error","message":"inventory unavailable"})),
             ] {
                 let mut line = String::new();
                 stream.read_line(&mut line).await.unwrap();
@@ -365,27 +372,27 @@ mod tests {
             let legacy = |id: u64, request: skiff_core::protocol::Request| serde_json::to_value(skiff_core::protocol::Envelope { id, request }).unwrap();
             let mut line = String::new();
             stream.read_line(&mut line).await.unwrap();
-            assert_eq!(serde_json::from_str::<serde_json::Value>(&line).unwrap(), legacy(8, skiff_core::protocol::Request::Subscribe { session: "t1".into() }));
+            assert_eq!(serde_json::from_str::<serde_json::Value>(&line).unwrap(), legacy(9, skiff_core::protocol::Request::Subscribe { session: "t1".into() }));
             // The snapshot and output precede the reply, as skiffd may send them.
             for frame in [
                 serde_json::json!({"event":"snapshot","session":"t1","data":"AP8KDQ==","cols":80,"rows":24}),
                 serde_json::json!({"event":"output","session":"other","data":"eA=="}),
                 serde_json::json!({"event":"output","session":"t1","data":"bHMK","echo":{"wrote":1,"read":2}}),
-                serde_json::json!({"id":8,"type":"ok"}),
+                serde_json::json!({"id":9,"type":"ok"}),
             ] {
                 let mut bytes = serde_json::to_vec(&frame).unwrap(); bytes.push(b'\n');
                 stream.get_mut().write_all(&bytes).await.unwrap();
             }
             line.clear();
             stream.read_line(&mut line).await.unwrap();
-            assert_eq!(serde_json::from_str::<serde_json::Value>(&line).unwrap(), legacy(9, skiff_core::protocol::Request::Write { session: "t1".into(), data: vec![0, 255, b'\n'], paste: false }));
+            assert_eq!(serde_json::from_str::<serde_json::Value>(&line).unwrap(), legacy(10, skiff_core::protocol::Request::Write { session: "t1".into(), data: vec![0, 255, b'\n'], paste: false }));
             line.clear();
             stream.read_line(&mut line).await.unwrap();
-            assert_eq!(serde_json::from_str::<serde_json::Value>(&line).unwrap(), legacy(10, skiff_core::protocol::Request::Write { session: "t1".into(), data: b"ls\n".to_vec(), paste: false }));
+            assert_eq!(serde_json::from_str::<serde_json::Value>(&line).unwrap(), legacy(11, skiff_core::protocol::Request::Write { session: "t1".into(), data: b"ls\n".to_vec(), paste: false }));
             for (id, request, reply) in [
-                (11, skiff_core::protocol::Request::Resize { session: "t1".into(), cols: 100, rows: 30 }, serde_json::json!({"type":"ok"})),
-                (12, skiff_core::protocol::Request::Resize { session: "gone".into(), cols: 1, rows: 1 }, serde_json::json!({"type":"error","message":"no such session"})),
-                (13, skiff_core::protocol::Request::Unsubscribe { session: "t1".into() }, serde_json::json!({"type":"ok"})),
+                (12, skiff_core::protocol::Request::Resize { session: "t1".into(), cols: 100, rows: 30 }, serde_json::json!({"type":"ok"})),
+                (13, skiff_core::protocol::Request::Resize { session: "gone".into(), cols: 1, rows: 1 }, serde_json::json!({"type":"error","message":"no such session"})),
+                (14, skiff_core::protocol::Request::Unsubscribe { session: "t1".into() }, serde_json::json!({"type":"ok"})),
             ] {
                 line.clear();
                 stream.read_line(&mut line).await.unwrap();
@@ -400,10 +407,10 @@ mod tests {
             let mut row = inventory[0].clone();
             row["id"] = "made".into();
             for (id, request, reply) in [
-                (14, skiff_core::protocol::Request::CreateSession { spec }, serde_json::json!({"type":"session","session":row})),
-                (15, skiff_core::protocol::Request::Kill { session: "gone".into() }, serde_json::json!({"type":"error","message":"no such session"})),
-                (16, skiff_core::protocol::Request::ListGroups, serde_json::json!({"type":"groups","groups":[]})),
-                (17, skiff_core::protocol::Request::SaveGroup { group }, serde_json::json!({"type":"group","group":{"id":"g1","name":"G","layout":{"type":"pane","session":"t1"},"focus":null}})),
+                (15, skiff_core::protocol::Request::CreateSession { spec }, serde_json::json!({"type":"session","session":row})),
+                (16, skiff_core::protocol::Request::Kill { session: "gone".into() }, serde_json::json!({"type":"error","message":"no such session"})),
+                (17, skiff_core::protocol::Request::ListGroups, serde_json::json!({"type":"groups","groups":[]})),
+                (18, skiff_core::protocol::Request::SaveGroup { group }, serde_json::json!({"type":"group","group":{"id":"g1","name":"G","layout":{"type":"pane","session":"t1"},"focus":null}})),
             ] {
                 line.clear();
                 stream.read_line(&mut line).await.unwrap();
