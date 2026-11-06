@@ -129,6 +129,10 @@ pub struct HostSkipper {
     /// Their model. Absent: the agent's default.
     #[serde(default)]
     pub project_model: Option<String>,
+    /// The Skippers list's order, by scope. Empty: tree order, also from an
+    /// older Host.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skippers_order: Vec<String>,
     /// `[skiff_agent.tasks]` in file order.
     pub tasks: Vec<HostTaskType>,
     /// The folder of the task types' files, as `~/…/types/`. Empty from an
@@ -195,6 +199,8 @@ pub enum SkipperEdit {
     /// `None`: Same as Skipper.
     ProjectAgent(Option<String>),
     ProjectModel(Option<String>),
+    /// The Skippers list's order, by scope. Empty: tree order.
+    SkippersOrder(Vec<String>),
     /// A new row at the end of Task types.
     AddTask(TaskEdit),
     /// A row's agent or model.

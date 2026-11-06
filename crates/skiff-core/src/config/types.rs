@@ -83,6 +83,12 @@ pub struct SkiffAgent {
     /// The model project and fleet Skippers start with. Absent: the agent's
     /// default.
     pub project_model: Option<String>,
+    /// The Skippers list's own order, by scope: a project's name or
+    /// `fleet:<name>`. The tree's order does not read it and does not change
+    /// it. A name with no row stays here, so a Skipper that starts again gets
+    /// its place back. Absent: tree order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skippers_order: Vec<String>,
     /// `[skiff_agent.tasks]`: the agent and model each task type starts.
     #[serde(default, skip_serializing_if = "TaskTypes::is_empty")]
     pub tasks: TaskTypes,

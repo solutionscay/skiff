@@ -41,7 +41,7 @@ import { keyLabel } from "../app/keys";
 import { hostCan } from "../app/hostCaps";
 import { hostName, shownHost } from "../app/hosts";
 import { skiffAgentName, skiffAgentSession } from "../app/skiffAgent";
-import { sessions } from "../app/state";
+import { S, sessions } from "../app/state";
 import { h } from "../ui/dom";
 import { type Entry, ledgerRows, ledgerTitle } from "./ledger";
 import { fuzzy, taskTitle } from "./model";
@@ -354,7 +354,7 @@ function boardSignature(now: number): string {
   const secs = treeSections().map((sec) => [sec.fleet ?? "", sec.projects.map((p) => p.name)]);
   const ledger = hostCan("ledger") ? ledgerRows() : [];
   const since = [...sessions.values()].map((s) => sinceText(s, now));
-  return JSON.stringify([[...sessions.values()], ledger, secs, since, missionState.running, search.value, hostCan("ledger"), hostName(), missionState.view, missionState.lit]);
+  return JSON.stringify([[...sessions.values()], ledger, secs, since, missionState.running, search.value, hostCan("ledger"), hostName(), missionState.view, missionState.lit, S.skiffAgent?.skippers_order]);
 }
 
 function tick() {

@@ -56,12 +56,6 @@ test("the clusters flow in a fixed grid: ceil(√n) to a row, at most 4, wrappin
   assert.ok([web, skiff, gesher, other].every((x) => x.x > p.trunk!));
 });
 
-test("Skipper numbers follow the tree: projects in no fleet first, as the Skippers list counts them", () => {
-  // Issue #201: one project in no fleet, one fleet, each with a Skipper. Ctrl+Shift+1 must pick the same one in both places.
-  const g: G.Graph = { admiral: "ad", fleets: [{ key: "fleet:web", name: "web", skipper: "sk-web", projects: [project("shop", ["s1"], { skipper: "sk-shop" })] }], projects: [project("solo", ["s2"], { skipper: "sk-solo" }), project("other", ["s3"])] };
-  assert.deepEqual(G.skipperOrder(g), ["sk-solo", "sk-web", "sk-shop"]);
-});
-
 test("the keys move along the tree: parent, children, siblings", () => {
   const g = graph();
   assert.deepEqual(G.navChildren(g, "ad"), ["sk-web", "sk-skiff", "project:gesher", "project:other"]);

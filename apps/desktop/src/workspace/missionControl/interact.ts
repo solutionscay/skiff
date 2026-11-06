@@ -267,7 +267,7 @@ export function attachPointer(missionState: BoardState, canvas: HTMLElement, roo
   /** Ctrl+Shift+1..9 here: the Skipper card with that number, as a click on it. */
   function pickSkipper(n: number) {
     const id = missionState.numbered[n - 1];
-    if (!id) return;
+    if (!id || !missionState.placed.cards.has(id)) return;
     light(id, false);
     go();
   }

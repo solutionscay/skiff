@@ -281,6 +281,8 @@ pub enum SkiffAgentKey<'a> {
     ProjectModel(Option<&'a str>),
     /// Auto flush's age in days. `0`: off.
     CacheDays(u32),
+    /// The Skippers list's order, by scope. Empty: tree order.
+    SkippersOrder(&'a [String]),
 }
 
 /// Sets one `[skiff_agent]` key, keeping the rest of the file. The folder is
@@ -307,6 +309,16 @@ pub fn set_skiff_agent(key: SkiffAgentKey) -> Result<()> {
             SkiffAgentKey::ProjectModel(_) => ("project_model", model),
             // The default: the key goes.
             SkiffAgentKey::CacheDays(n) => ("cache_days", (n != crate::config::CACHE_DAYS).then(|| toml_edit::value(i64::from(n)))),
+            SkiffAgentKey::SkippersOrder(names) => {
+                let mut list = toml_edit::Array::new();
+                let mut seen = std::collections::HashSet::new();
+                for name in names.iter().map(|n| n.trim()).filter(|n| !n.is_empty()) {
+                    if seen.insert(name) {
+                        list.push(name);
+                    }
+                }
+                ("skippers_order", (!list.is_empty()).then(|| toml_edit::value(list)))
+            }
         };
         match v {
             Some(v) => t[k] = v,

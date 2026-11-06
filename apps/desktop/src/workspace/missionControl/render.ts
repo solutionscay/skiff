@@ -9,6 +9,7 @@ import { accent, place } from "../../app/stateQueries";
 import { h } from "../../ui/dom";
 import { ledgerTitle } from "../ledger";
 import * as G from "../missionLayout";
+import { numberedSkippers } from "../skipperOrder";
 import { projectBadge } from "../tree";
 import { t, tn } from "../../i18n";
 import { sinceText } from "./model";
@@ -100,7 +101,8 @@ export function createRenderer(missionState: BoardState, dom: { items: HTMLEleme
     if (missionState.lit && !missionState.placed.cards.has(missionState.lit) && !missionState.placed.clusters.has(missionState.lit)) missionState.lit = G.navParent(missionState.m.g, missionState.lit) ?? G.navFirst(missionState.m.g);
     if (!missionState.lit) missionState.lit = G.navFirst(missionState.m.g);
 
-    missionState.numbered = G.skipperOrder(missionState.m.g).filter((id) => missionState.placed.cards.has(id)).slice(0, 9);
+    // The list's numbers, also for a Skipper with no card: one number picks one Skipper in both places.
+    missionState.numbered = numberedSkippers().map((e) => e.s!.id);
     const seen = new Set<string>();
     // Cards: sessions, Skippers and Admiral.
     const putCard = (id: string, r: G.Rect, parts: HTMLElement[] | G.Rung, cls: string, pc: string, dim: boolean) => {

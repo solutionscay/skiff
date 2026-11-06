@@ -20,14 +20,15 @@ import { ledgerWorkTitle } from "./ledger";
 import { rowMenu, skiffAgentMenu } from "./menus";
 import { revealSession } from "./view";
 import { clearSelection, keepRow } from "./selection";
-import { fleetSkipperOf, openSkiffAgent, projectSkipperOf, projectWatch, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffAgentName, skiffAgentSession, skiffWatch, type WatchState } from "../app/skiffAgent";
-import { treeSections } from "./tree";
+import { openSkiffAgent, projectWatch, SKIFF_AGENT_KEY, skiffAgentChoice, skiffWatch, type WatchState } from "../app/skiffAgent";
+import { dragSkipper } from "./skipperDrag";
+import { numberedSkippers as numbered, skipperEntries, type Entry } from "./skipperOrder";
 import { accent } from "../app/stateQueries";
 import { DEFAULT_ACCENT, S } from "../app/state";
 import { $, h } from "../ui/dom";
 import { tally } from "../diagnostics/stalls";
 import { render } from "../app/renderRequest";
-import type { Project, SessionInfo } from "../platform/types";
+import type { SessionInfo } from "../platform/types";
 import { t } from "../i18n";
 
 type SidebarView = "tree" | "skippers";
@@ -57,24 +58,6 @@ export function setSidebarView(v: SidebarView) {
     /* the choice lasts for this run */
   }
   render("sidebar-view");
-}
-
-/** One Skipper in the list. `s` is null only for the Skiff agent with no session. */
-type Entry = { kind: "admiral" | "fleet" | "project"; s: SessionInfo | null; name: string; scope: string | null; project: Project | null };
-
-/** The Skiff agent, then each section's fleet Skipper and project Skippers, in tree order. */
-function skipperEntries(): Entry[] {
-  const out: Entry[] = [];
-  if (skiffAgentFolder()) out.push({ kind: "admiral", s: skiffAgentSession(), name: skiffAgentName(), scope: null, project: null });
-  for (const sec of treeSections()) {
-    const fs = sec.fleet ? fleetSkipperOf(sec.fleet) : null;
-    if (fs && sec.fleet) out.push({ kind: "fleet", s: fs, name: sec.fleet, scope: `fleet:${sec.fleet}`, project: null });
-    for (const p of sec.projects) {
-      const ps = projectSkipperOf(p.name);
-      if (ps) out.push({ kind: "project", s: ps, name: p.name, scope: p.name, project: p });
-    }
-  }
-  return out;
 }
 
 /** The Skippers that wait on the person: the count on the toggle. */
@@ -142,9 +125,6 @@ function openEntry(e: Entry) {
   requestAnimationFrame(() => keepRow(s!.id));
 }
 
-/** The fleet and project Skippers, less the Skiff agent, in list order: Ctrl+Shift+1 opens the first. */
-const numbered = () => skipperEntries().filter((e) => e.kind !== "admiral").slice(0, 9);
-
 /** Ctrl+Shift+1..9 in the Skippers list: the Skipper with that number. */
 export function pickSkipperRow(n: number) {
   const e = numbered()[n - 1];
@@ -201,12 +181,14 @@ function skipperRow(e: Entry, watch: { state: WatchState; text: string } | null,
   const face = skipperFace(e.kind === "admiral" ? null : e.scope, 40);
   face.classList.add("sk-face");
   row.append(face, text);
+  if (e.scope) row.dataset.scope = e.scope;
   const what = e.kind === "admiral" ? t("skippers.admiral", { name: e.name }) : t(e.kind === "fleet" ? "skipper.avatarFleet" : "skipper.avatarProject", { scope: scopeName(e.scope!), skipper: "Skipper" });
   const vars = { what, line: latestLine(e), state: s ? stateLabel(s) : t("skippers.notRunning"), watch: watch?.text ?? "" };
   row.setAttribute("aria-label", watch?.text ? t("skippers.rowLabelWatch", vars) : t("skippers.rowLabel", vars));
   if (watch?.text) row.title = watch.text;
   row.addEventListener("mousedown", (ev) => {
     if (ev.button === 0) row.focus();
+    if (e.scope) dragSkipper(ev, row, e.scope, name.textContent ?? "");
   });
   row.addEventListener("click", () => openEntry(e));
   row.addEventListener("contextmenu", (ev) => {
@@ -223,8 +205,9 @@ let kept = new Map<string, [sig: string, row: HTMLElement]>();
 export function renderSkippers(side: HTMLElement) {
   const next = new Map<string, [string, HTMLElement]>();
   const rows: HTMLElement[] = [];
-  const nums = numbered();
-  for (const e of skipperEntries()) {
+  const all = skipperEntries();
+  const nums = numbered(all);
+  for (const e of all) {
     const key = e.s?.id ?? SKIFF_AGENT_KEY;
     const watch = watchOf(e);
     const num = nums.indexOf(e) + 1;

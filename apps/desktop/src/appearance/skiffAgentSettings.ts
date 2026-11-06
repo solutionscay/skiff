@@ -31,7 +31,8 @@ export type SkiffAgentEdit =
   | { key: "add_task" | "task"; value: TaskEdit }
   | { key: "rename_task"; value: { from: string; to: string } }
   | { key: "remove_task"; value: string }
-  | { key: "cache_days"; value: number };
+  | { key: "cache_days"; value: number }
+  | { key: "skippers_order"; value: string[] };
 
 /** What a Skipper's row does with its instruction file. */
 interface InstructionActs {

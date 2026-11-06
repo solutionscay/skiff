@@ -55,6 +55,7 @@ pub fn settings(cfg: &Config) -> Result<skiff_host_api::HostSkipper> {
         continue_on_restore: a.continue_on_restore,
         project_agent: a.project_agent.clone(),
         project_model: a.project_model.clone(),
+        skippers_order: a.skippers_order.clone(),
         tasks,
         types,
         // A refused folder has no files to show.

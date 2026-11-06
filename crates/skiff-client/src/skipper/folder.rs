@@ -297,6 +297,7 @@ pub fn apply(edit: &skiff_host_api::SkipperEdit) -> Result<()> {
         E::ContinueOnRestore(on) => config::set_skiff_agent(K::ContinueOnRestore(*on)),
         E::ProjectAgent(v) => config::set_skiff_agent(K::ProjectAgent(v.as_deref())),
         E::ProjectModel(v) => config::set_skiff_agent(K::ProjectModel(v.as_deref())),
+        E::SkippersOrder(names) => config::set_skiff_agent(K::SkippersOrder(names)),
         E::AddTask(t) => config::add_task_type(&t.name, &t.agent, t.model.as_deref()),
         E::Task(t) => config::set_task_type(&t.name, &t.agent, t.model.as_deref()),
         E::RenameTask { from, to } => {

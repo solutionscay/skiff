@@ -52,6 +52,8 @@ export interface SkiffAgentSettings {
   project_agent: string | null;
   /** Their model. Null: the agent's default. */
   project_model: string | null;
+  /** The Skippers list's order, by scope. Absent or empty: tree order. */
+  skippers_order?: string[];
   /** `[skiff_agent.tasks]` in file order. */
   tasks: TaskType[];
   /** The folder of the task types' instruction files: `~/skiff-agent/types/`. */
