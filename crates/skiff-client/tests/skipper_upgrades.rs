@@ -153,6 +153,25 @@ fn an_edited_file_with_a_hash_stays_and_warns_only_when_the_template_changed() {
     assert!(msg.contains("Tell the user") && msg.contains("Do not apply"), "{msg}");
 }
 
+#[test]
+fn a_reset_of_an_unedited_older_agents_file_keeps_its_bytes_in_bak() {
+    let w = world("reset");
+    let bak = w.top.join("AGENTS.md.bak");
+    // A past template with no hash: setup alone would upgrade it.
+    let past = PAST.replace("{{name}}", "Skipper");
+    w.agents_file(&past, Some("1\n"));
+    skipper::reset_file(&w.cfg, &Scope::Skipper).unwrap();
+    assert_eq!(std::fs::read_to_string(&bak).unwrap(), past);
+    assert!(w.agents().contains("skiff skill path"));
+    // An older text with its hash: setup alone would upgrade it too.
+    let older = "the template of an older Skiff\n";
+    let h = older.bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3));
+    w.agents_file(older, Some(&format!("1\n{h:016x} AGENTS.md\n")));
+    skipper::reset_file(&w.cfg, &Scope::Skipper).unwrap();
+    assert_eq!(std::fs::read_to_string(&bak).unwrap(), older);
+    assert!(w.agents().contains("skiff skill path"));
+}
+
 /// A SKIPPER.md must not need a section of an AGENTS.md of another age.
 #[test]
 fn a_skipper_template_names_no_section_of_another_file() {

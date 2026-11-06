@@ -95,7 +95,22 @@ pub(super) fn unified(old: &str, new: &str, old_name: &str, new_name: &str) -> S
                 Op::Add => ('+', b[bi[s]]),
             };
             let _ = writeln!(out, "{mark}{}", line.strip_suffix('\n').unwrap_or(line));
+            if !line.ends_with('\n') {
+                out.push_str("\\ No newline at end of file\n");
+            }
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_change_of_only_the_final_newline_shows_the_marker() {
+        let mark = "\\ No newline at end of file\n";
+        assert_eq!(unified("x", "x\n", "file", "template"), format!("--- file\n+++ template\n@@ -1,1 +1,1 @@\n-x\n{mark}+x\n"));
+        assert_eq!(unified("x\n", "x", "file", "template"), format!("--- file\n+++ template\n@@ -1,1 +1,1 @@\n-x\n+x\n{mark}"));
+    }
 }

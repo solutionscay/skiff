@@ -47,12 +47,13 @@ pub async fn status(socket: &Path) -> Result<()> {
 }
 
 /// The instruction files that are edited and whose template changed. Reads
-/// only. A config or folder that Skiff cannot read gives none: status reports
-/// on the daemon, and other commands report those faults.
+/// only. A config, folder or file that Skiff cannot read gives no warning of
+/// its own: status reports on the daemon, and other commands report those
+/// faults. A file that cannot be read does not hide the others.
 fn stale_templates() -> Vec<skiff_client::skipper::FileStatus> {
     let Ok(cfg) = skiff_core::config::load() else { return Vec::new() };
-    let rows = skiff_client::skipper::instructions(&cfg).unwrap_or_default();
-    rows.into_iter().filter(|f| f.status == skiff_client::skipper::Status::EditedTemplateChanged).collect()
+    let rows = skiff_client::skipper::instructions_each(&cfg).unwrap_or_default();
+    rows.into_iter().flatten().filter(|f| f.status == skiff_client::skipper::Status::EditedTemplateChanged).collect()
 }
 
 /// `skiff status --json`: for a program, such as the app's check of a Host

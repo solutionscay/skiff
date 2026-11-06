@@ -108,6 +108,20 @@ fn status_warns_only_when_the_template_changed_and_writes_nothing() {
 }
 
 #[test]
+fn a_file_status_cannot_read_does_not_hide_another_warning() {
+    let w = world("unreadable");
+    w.ok(&["skipper", "template", "apply", "agents"]);
+    std::fs::write(w.top.join("AGENTS.md"), "my base\n").unwrap();
+    std::fs::write(w.top.join(".skiff-agent"), "1\n").unwrap();
+    // A folder in place of the file: a read fails for every user.
+    std::fs::create_dir_all(w.top.join("projects/app/SKIPPER.md")).unwrap();
+    let err = String::from_utf8(w.skiff(&["status"]).stderr).unwrap();
+    assert!(err.contains("AGENTS.md is edited and its template changed"), "{err}");
+    let json: serde_json::Value = serde_json::from_slice(&w.skiff(&["status", "--json"]).stdout).unwrap();
+    assert_eq!(json["templates"][0]["file"], "AGENTS.md", "{json}");
+}
+
+#[test]
 fn apply_writes_the_template_and_keeps_the_old_file_in_bak() {
     let w = world("apply");
     w.ok(&["skipper", "template", "apply", "project:app"]);

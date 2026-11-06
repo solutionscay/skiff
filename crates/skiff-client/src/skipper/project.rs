@@ -1,7 +1,7 @@
 //! Project and fleet Skipper setup and instructions.
 
 use super::diff;
-use super::folder::{ensure, folder, lock, setup_in, skill_file, sync_skill, template, AGENTS_FILE};
+use super::folder::{check_setup, ensure, folder, lock, setup_in, skill_file, sync_skill, template, AGENTS_FILE};
 use super::identity::{
     choose, continue_line, fleet_name, fleet_scope, name, project_name, with_model,
 };
@@ -281,6 +281,12 @@ fn status_in(top: &Path, scope: &Scope, text: &str) -> Result<FileStatus> {
 /// Every instruction file, in tree order: the Skipper, each fleet, then
 /// each open project, the projects in no fleet first.
 pub fn instructions(cfg: &Config) -> Result<Vec<FileStatus>> {
+    instructions_each(cfg)?.into_iter().collect()
+}
+
+/// [`instructions`] with a result for each file, so a file that cannot be
+/// read does not hide the others. Fails only when the folder is refused.
+pub fn instructions_each(cfg: &Config) -> Result<Vec<Result<FileStatus>>> {
     let top = folder(cfg)?;
     let open: Vec<&ProjectConfig> = cfg.projects.iter().filter(|p| !p.closed).collect();
     let mut fleets: Vec<&str> = Vec::new();
@@ -295,7 +301,7 @@ pub fn instructions(cfg: &Config) -> Result<Vec<FileStatus>> {
     for f in &fleets {
         scopes.extend(open.iter().filter(|p| p.fleet.as_deref() == Some(f)).map(|p| Scope::Project(p.name.clone())));
     }
-    scopes.iter().map(|s| status_in(&top, s, &s.template(cfg, &top)?)).collect()
+    Ok(scopes.iter().map(|s| status_in(&top, s, &s.template(cfg, &top)?)).collect())
 }
 
 /// Settings › Edit: the file's full path. A missing file is written from
@@ -312,17 +318,29 @@ pub fn edit_file(cfg: &Config, scope: &Scope) -> Result<PathBuf> {
 }
 
 /// Settings › Reset…: the template again. The old file goes to
-/// `<name>.bak`, which replaces the last one.
+/// `<name>.bak`, which replaces the last one. The file moves before setup,
+/// because setup upgrades an older `AGENTS.md`, and `.bak` must hold the bytes
+/// that were there at the start. So every check that can refuse comes first,
+/// and a setup that fails moves the file back.
 pub fn reset_file(cfg: &Config, scope: &Scope) -> Result<FileStatus> {
     let _lock = lock()?;
-    let top = setup_in(&folder(cfg)?, &name(cfg), &sync_skill()?)?;
+    let dir = folder(cfg)?;
+    check_setup(&dir)?;
+    scope.template(cfg, &dir)?;
+    let skill = sync_skill()?;
     let file = scope.file();
-    let text = scope.template(cfg, &top)?;
-    let path = top.join(&file);
-    if path.exists() {
-        let bak = path.with_file_name(format!("{}.bak", path.file_name().unwrap_or_default().to_string_lossy()));
+    let path = dir.join(&file);
+    let bak = path.with_file_name(format!("{}.bak", path.file_name().unwrap_or_default().to_string_lossy()));
+    let moved = path.exists();
+    if moved {
         std::fs::rename(&path, &bak).with_context(|| format!("move {} to {}", path.display(), bak.display()))?;
     }
+    let top = setup_in(&dir, &name(cfg), &skill).inspect_err(|_| {
+        if moved {
+            let _ = std::fs::rename(&bak, &path);
+        }
+    })?;
+    let text = scope.template(cfg, &top)?;
     write_file(&top, &file, &text)?;
     status_in(&top, scope, &text)
 }

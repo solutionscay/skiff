@@ -381,15 +381,20 @@ pub fn setup(dir: &Path, name: &str) -> Result<PathBuf> {
     setup_in(dir, name, &sync_skill()?)
 }
 
-/// [`setup`] for a caller that holds the lock. `skill` is the skill's copy.
-pub(crate) fn setup_in(dir: &Path, name: &str, skill: &Path) -> Result<PathBuf> {
+/// Refuses a folder that [`setup_in`] must not fill in. Changes nothing.
+pub(super) fn check_setup(dir: &Path) -> Result<()> {
     if dir.metadata().is_ok_and(|m| !m.is_dir()) {
         bail!("{} is not a folder", dir.display());
     }
     if dir.is_dir() && !dir.join(MARKER).exists() && std::fs::read_dir(dir)?.next().is_some() {
         bail!("{} holds other files. Move them, or choose another folder in Settings › Disk use › Folder", dir.display());
     }
+    Ok(())
+}
 
+/// [`setup`] for a caller that holds the lock. `skill` is the skill's copy.
+pub(crate) fn setup_in(dir: &Path, name: &str, skill: &Path) -> Result<PathBuf> {
+    check_setup(dir)?;
     std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
     let dir = dir.canonicalize().with_context(|| format!("find {}", dir.display()))?;
     // A broken link counts as there: setup does not replace what the user made.

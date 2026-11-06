@@ -21,7 +21,7 @@ mod watch;
 
 pub use identity::{choose, continue_line, fleet_name, fleet_scope, name, project_name, scope_fleet, with_model, DEFAULT_NAME, FLEET};
 pub use folder::{apply, cache_dir, configured, default_folder, ensure, folder, home, make_folder, no_folder, refuse_live_folder, setup, skill_file, skill_home, sync_skill, AGENTS_FILE};
-pub use project::{edit_file, file_status, first_message, fleet_agent, fleet_folder, fleet_projects, fleet_template, instructions, project, project_agent, project_folder, project_template, reset_file, template_diff, write_fleet, FileStatus, Scope, Status, SKIPPER_FILE};
+pub use project::{edit_file, file_status, first_message, fleet_agent, fleet_folder, fleet_projects, fleet_template, instructions, instructions_each, project, project_agent, project_folder, project_template, reset_file, template_diff, write_fleet, FileStatus, Scope, Status, SKIPPER_FILE};
 pub use project::{commanding_fleet, find_fleet, find_project, is_fleet, open, open_fleet, open_project, project_skippers_in, start_fleet, start_project, too_old_for_fleet, too_old_for_project, Open, ProjectSkipper, FLEET_SKIPPER_SINCE, PROJECT_SKIPPER_SINCE};
 pub use watch::{build_of, detach, is_watch_command, outliving, stale_holder, start_watch, unit_for, watch_lock, watch_status, write_holder, WatchHolder, WatchLock, WatchOutcome, CLI_VERSION, RESTART_WAIT};
 #[cfg(unix)]
