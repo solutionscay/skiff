@@ -258,6 +258,8 @@ fn a_copy_keeps_every_row_and_moves_the_result_paths() {
     assert_eq!(std::fs::read_to_string(to.join("notes.md")).unwrap(), "notes");
     assert_eq!(std::fs::read_to_string(to.join("results/bbbb0002.md")).unwrap(), "result bbbb0002");
     assert!(to.join(".skiff-agent").is_file() && to.join(".claude/skills/skiff-cli/SKILL.md").is_file());
+    // The marker's hashes come along too, so a moved file keeps its status.
+    assert_eq!(std::fs::read_to_string(to.join(".skiff-agent")).unwrap(), std::fs::read_to_string(old.join(".skiff-agent")).unwrap());
     assert_eq!(d.copied.unwrap().tasks, 3);
     // The old folder keeps every file, and gets MOVED.md.
     let mut after = snapshot(&old);

@@ -1,6 +1,7 @@
 //! Project and fleet Skipper setup and instructions.
 
-use super::folder::{ensure, folder, lock, setup_in, sync_skill, template, AGENTS_FILE};
+use super::diff;
+use super::folder::{ensure, folder, lock, setup_in, skill_file, sync_skill, template, AGENTS_FILE};
 use super::identity::{
     choose, continue_line, fleet_name, fleet_scope, name, project_name, with_model,
 };
@@ -13,7 +14,7 @@ use skiff_core::{
     session::{Role, SessionInfo, SessionSpec, SessionState},
 };
 
-use super::folder::{hash, refresh, write_file, written};
+use super::folder::{hash, past_agents, refresh, write_file, written};
 use crate::{Client, Coordinated, Coordinator};
 
 /// A project Skipper's `SKIPPER.md`: the project section only, as
@@ -49,6 +50,25 @@ impl Scope {
             Scope::Fleet(f) => format!("fleets/{f}/{SKIPPER_FILE}"),
             Scope::Project(p) => format!("projects/{p}/{SKIPPER_FILE}"),
         }
+    }
+
+    /// How `skiff skipper template` names it. Always the full spelling: a
+    /// bare name can be both a project and a fleet.
+    pub fn arg(&self) -> String {
+        match self {
+            Scope::Skipper => "agents".to_string(),
+            Scope::Fleet(f) => format!("fleet:{f}"),
+            Scope::Project(p) => format!("project:{p}"),
+        }
+    }
+
+    /// The command that shows how this file differs from its template, as a
+    /// shell reads it. A project or fleet name can hold a space.
+    pub fn diff_command(&self) -> String {
+        let arg = self.arg();
+        let plain = arg.chars().all(|c| c.is_ascii_alphanumeric() || "-_.:".contains(c));
+        let arg = if plain { arg } else { format!("'{}'", arg.replace('\'', "'\\''")) };
+        format!("skiff skipper template diff {arg}")
     }
 
     /// The text Skiff writes for it now.
@@ -185,6 +205,13 @@ pub fn fleet_agent<'a>(cfg: &Config, agents: &'a [AgentInfo]) -> Option<(&'a Age
 /// template (see [`refresh`]). Returns the folder. The app and the watcher
 /// call it when the fleet changes under a running fleet Skipper.
 pub fn write_fleet(cfg: &Config, fleet: &str) -> Result<PathBuf> {
+    let _lock = lock()?;
+    write_fleet_in(cfg, fleet)
+}
+
+/// [`write_fleet`] for a caller that holds [`lock`]: a write to the marker
+/// with no lock can lose another write's hash.
+fn write_fleet_in(cfg: &Config, fleet: &str) -> Result<PathBuf> {
     let top = folder(cfg)?;
     let dir = fleet_folder(cfg, fleet)?;
     std::fs::create_dir_all(dir.join("results")).with_context(|| format!("create {}", dir.join("results").display()))?;
@@ -192,15 +219,34 @@ pub fn write_fleet(cfg: &Config, fleet: &str) -> Result<PathBuf> {
     Ok(dir)
 }
 
-/// The first message a new project or fleet Skipper gets. It names both
-/// files: an agent in a project folder does not read the Skiff agent's
-/// `AGENTS.md` by itself.
-pub fn first_message(cfg: &Config, dir: &Path) -> Result<String> {
-    Ok(format!(
-        "Read {}, then {}. {SKIPPER_FILE} wins where the two differ. Then do the First steps.",
-        folder(cfg)?.join(AGENTS_FILE).display(),
-        dir.join(SKIPPER_FILE).display()
-    ))
+/// The first message a new project or fleet Skipper gets, built at each
+/// start. It names the skill's file and both instruction files: an agent in a
+/// project folder has no link to the skill and does not read the Skiff agent's
+/// `AGENTS.md` by itself. It is plain instructions, so an agent with no skills
+/// system can do it too, and one line: the send types it into the input box.
+/// Each path is in backticks: a path can hold a space. The caller does not
+/// hold [`lock`].
+pub fn first_message(cfg: &Config, scope: &Scope) -> Result<String> {
+    let top = folder(cfg)?;
+    let mut text = format!(
+        "Read the file `{}` before any skiff command: it is the skiff-cli skill. `skiff skill path` prints this path again. Read `{}`, then `{}`. {SKIPPER_FILE} wins where the two differ. Then do the First steps.",
+        skill_file()?.display(),
+        top.join(AGENTS_FILE).display(),
+        top.join(scope.file()).display()
+    );
+    let stale: Vec<String> = [Scope::Skipper, scope.clone()]
+        .iter()
+        .filter_map(|s| file_status(cfg, s).ok())
+        .filter(|f| f.status == Status::EditedTemplateChanged)
+        .map(|f| format!("{} (`{}`)", f.file, f.scope.diff_command()))
+        .collect();
+    if !stale.is_empty() {
+        text.push_str(&format!(
+            " Tell the user that these files are edited and their templates changed: {}. Do not apply a template unless the user says so.",
+            stale.join(", ")
+        ));
+    }
+    Ok(text)
 }
 
 /// The status of the file of `scope`. Reads only.
@@ -218,11 +264,12 @@ fn status_in(top: &Path, scope: &Scope, text: &str) -> Result<FileStatus> {
         Ok(now) => {
             let m = std::fs::metadata(&path)?;
             let at = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64);
-            // With no hash, Skiff did not write the file: it is the template only when it is the same.
+            // With no hash, the file is the template only when it is the same or a past template.
             let status = match written(top).get(&file) {
+                _ if now == text.as_bytes() => Status::Template,
                 Some(h) if *h == hash(&now) => Status::Template,
                 Some(h) if *h == hash(text.as_bytes()) => Status::Edited,
-                None if now == text.as_bytes() => Status::Template,
+                None if past_agents(&file, &now) => Status::Template,
                 _ => Status::EditedTemplateChanged,
             };
             (status, at, Some(m.len()))
@@ -278,6 +325,22 @@ pub fn reset_file(cfg: &Config, scope: &Scope) -> Result<FileStatus> {
     }
     write_file(&top, &file, &text)?;
     status_in(&top, scope, &text)
+}
+
+/// How the file of `scope` differs from its template, as a unified diff: `-`
+/// lines are the file, `+` lines the template. Empty when they are the same.
+/// A missing file counts as empty. Reads only.
+pub fn template_diff(cfg: &Config, scope: &Scope) -> Result<String> {
+    let top = folder(cfg)?;
+    let text = scope.template(cfg, &top)?;
+    let file = scope.file();
+    let path = top.join(&file);
+    let now = match std::fs::read(&path) {
+        Ok(b) => String::from_utf8_lossy(&b).into_owned(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e).with_context(|| format!("read {}", path.display())),
+    };
+    Ok(diff::unified(&now, &text, &file, "template"))
 }
 
 /// A project or fleet Skipper the CLI found or started.
@@ -448,7 +511,7 @@ pub async fn open_fleet(c: &Client, fleet: &str) -> Result<ProjectSkipper> {
     }
     let _lock = lock()?;
     setup_in(&folder(&cfg)?, &name(&cfg), &sync_skill()?)?;
-    let dir = write_fleet(&cfg, fleet)?;
+    let dir = write_fleet_in(&cfg, fleet)?;
     let all = c.list_sessions().await?;
     if let Some(s) = find_fleet(&all, fleet) {
         let want = fleet_name(&cfg, fleet);

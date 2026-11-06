@@ -315,14 +315,14 @@ pub(super) fn check_scope(caller: &Caller, s: &SessionInfo) -> Result<()> {
 
 /// What `handoff SCOPE` names: a project or a fleet, as an owner key.
 #[derive(Debug, PartialEq)]
-pub(super) enum Scope {
+pub(crate) enum Scope {
     Project(String),
     Fleet(String),
 }
 
 /// Reads SCOPE: `project:NAME`, `fleet:NAME`, or a bare name that is one
 /// of the two. A bare name that is both is refused with both spellings.
-pub(super) fn scope(cfg: &skiff_core::config::Config, arg: &str) -> Result<Scope> {
+pub(crate) fn scope(cfg: &skiff_core::config::Config, arg: &str) -> Result<Scope> {
     if let Some(p) = arg.strip_prefix("project:") {
         return Ok(Scope::Project(p.to_string()));
     }

@@ -7,6 +7,8 @@ description: Manage Skiff sessions and coordinate agent tasks with the skiff CLI
 
 `skiff` talks to `skiffd`, the daemon that owns every Skiff terminal. The app and the CLI see the same sessions and groups. A change from one shows in the other at once. `skiff COMMAND --help` gives the full flags and exit codes.
 
+`skiff skill path` prints the path of this file. It needs no daemon and no Skipper. Use it after a compaction, or in an agent that has no skills system. This file is plain text: read it as instructions.
+
 ## Boot sequence
 
 Do these steps once per task, before the first other command.
@@ -194,9 +196,9 @@ Work is a plan with its tasks, or a task with no plan. It is `working` while an 
 
 ### Project Skippers
 
-A project can have its own Skipper: one agent session in the project's folder, at most one per project. No Skipper starts by itself: the person starts it from the project menu, or a hand-off starts it. Its folder is always `projects/<project>/` in the Skipper folder (`~/skiff-agent/projects/<project>/` by default): its instructions are `SKIPPER.md` there, and its results go to `results/` there. `SKIPPER.md` holds the project section only. `AGENTS.md` in the Skipper folder is the base of every Skipper. Skiff writes `SKIPPER.md` once and never writes over the person's edit. Skiff writes nothing into the project. A restore brings its pane back as a plain shell. Its session is named `<project> Skipper`, such as `gesher Skipper` (a name set in Settings takes the place of `Skipper`), so `skiff send "gesher Skipper" ...` reaches it and never Admiral; the sidebar shows it as "Skipper" inside its project block.
+A project can have its own Skipper: one agent session in the project's folder, at most one per project. No Skipper starts by itself: the person starts it from the project menu, or a hand-off starts it. Its folder is always `projects/<project>/` in the Skipper folder (`~/skiff-agent/projects/<project>/` by default): its instructions are `SKIPPER.md` there, and its results go to `results/` there. `SKIPPER.md` holds the project section only. `AGENTS.md` in the Skipper folder is the base of every Skipper. Skiff never writes over the person's edit. Skiff writes nothing into the project. A restore brings its pane back as a plain shell. Its session is named `<project> Skipper`, such as `gesher Skipper` (a name set in Settings takes the place of `Skipper`), so `skiff send "gesher Skipper" ...` reaches it and never Admiral; the sidebar shows it as "Skipper" inside its project block.
 
-- `skiff skipper --project P` finds or starts it, and attaches. `--no-attach` prints its id. A new one gets one first message: read `AGENTS.md` in the Skipper folder, then `SKIPPER.md`, which wins where the two differ, then do the First steps.
+- `skiff skipper --project P` finds or starts it, and attaches. `--no-attach` prints its id. A new one gets one first message: read this skill's `SKILL.md` by its full path before any `skiff` command, read `AGENTS.md` in the Skipper folder, then `SKIPPER.md`, which wins where the two differ, then do the First steps. The message is plain instructions, so an agent with no skills system can do it. Skiff links the skill only into the Skipper folder, and a project Skipper starts in the project, so this message is how it finds the skill.
 - Admiral hands work to it with `skiff ledger handoff P "TASK" --title "..." [--parent UID]`. This adds a hand-off row that Admiral owns, with the project Skipper as its pane. It starts the project Skipper if none runs, and sends it the task. It exits with `send`'s code. A busy project Skipper keeps the row `pending`.
 - The project Skipper adds its tasks with `--parent UID` of the hand-off. Those rows are its own. When they are done, it reports the hand-off: `skiff ledger update UID --state done --result PATH`.
 - Admiral can cancel a hand-off: it is Admiral's row. It cannot change the project Skipper's tasks, or add tasks under a hand-off.
@@ -206,7 +208,7 @@ A project can have its own Skipper: one agent session in the project's folder, a
 
 ### Fleet Skippers
 
-A fleet can have one Skipper for all its projects. It is a project Skipper with a wider scope. Its folder is `fleets/<fleet>/` in the Skipper folder, with `SKIPPER.md` and `results/`, and it starts there. Its `SKIPPER.md` names no project: it runs `skiff projects --json` at the start of each turn. Its rows have the owner `fleet:<fleet>`. Its session is named `<fleet> Skipper`, such as `Harbor Skipper`. The sidebar shows it as "Skipper", the first row under its fleet head.
+A fleet can have one Skipper for all its projects. It is a project Skipper with a wider scope. Its folder is `fleets/<fleet>/` in the Skipper folder, with `SKIPPER.md` and `results/`, and it starts there. Its `SKIPPER.md` names no project: it runs `skiff projects --json` at the start of each turn. Its first message names this skill's `SKILL.md` too: the fleet folder has no link to the skill. Its rows have the owner `fleet:<fleet>`. Its session is named `<fleet> Skipper`, such as `Harbor Skipper`. The sidebar shows it as "Skipper", the first row under its fleet head.
 
 - `skiff skipper --fleet F` finds or starts it, and attaches. `--no-attach` prints its id. When project Skippers run in the fleet, it names them and asks y/N; `--yes` does not ask. With no terminal and no `--yes`, it refuses.
 - Admiral hands work to it with `skiff ledger handoff F "TASK" ...`. A name that is both a project and a fleet is refused: use `fleet:F` or `project:F`.
@@ -214,6 +216,16 @@ A fleet can have one Skipper for all its projects. It is a project Skipper with 
 - It does not hand off. One Skipper per project: while it runs, a project of its fleet has no project Skipper. `handoff PROJECT` and `skipper --project` for such a project are refused and name the fleet. `handoff F` while project Skippers run in the fleet and no fleet Skipper does is refused.
 - Takeover: a project with a project Skipper that joins a fleet whose Skipper runs, or a fleet Skipper that starts over project Skippers, takes the project Skippers over on the person's confirm. Every row they own moves to `fleet:<fleet>`. Each open hand-off to the project gets the fleet Skipper as its pane; `pending` and `blocked` become `pending`. The project Skipper loses its mark and ends when idle. Its ledger writes are refused. The fleet Skipper gets one `[watch]` line that names the project, the open tasks and the hand-offs.
 - When a project joins or leaves the fleet, the fleet Skipper gets `[watch] F changed: P joined. Read SKIPPER.md again.` Open tasks in a project that left stay its own.
+
+### Instruction files
+
+`AGENTS.md` and each `SKIPPER.md` start as a template. At each Skipper start, Skiff rewrites a file that it wrote itself when the template changed. It never overwrites a file that a person edited.
+
+- `skiff status` prints one warning for each file that is edited and whose template changed, with the command to run. It writes nothing. `--json` gives the same files in `templates`.
+- A new project or fleet Skipper gets one more sentence in its first message when its own files have this state.
+- `skiff skipper template ls` lists each file with its scope and status: `none`, `template`, `edited` or `edited-template-changed`.
+- `skiff skipper template diff SCOPE` shows the change. `-` lines are the file, `+` lines the template. SCOPE is `agents`, `project:NAME` or `fleet:NAME`.
+- `skiff skipper template apply SCOPE` replaces the file with its template, and the old file goes to `<name>.bak`. Run it only when the person asks.
 
 ### Ledger commands
 
