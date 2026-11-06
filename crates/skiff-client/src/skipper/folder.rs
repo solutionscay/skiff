@@ -24,24 +24,26 @@ const SKILL: &[(&str, &[u8], bool)] = &[
 pub(crate) const MARKER: &str = ".skiff-agent";
 
 /// The FNV hash ([`hash`]) of each `AGENTS.md` template in the repository's
-/// history up to the one that names the skill path, rendered with each default
-/// name, `Skipper` and `Admiral`, sorted. A file with no hash in the marker
-/// that matches one is Skiff's text, not the person's, so [`refresh`] upgrades
-/// it. A file with no hash comes from an install older than the marker's
-/// hashes, or a `--move-to` copy that lost them. This table does not grow:
-/// each write now records a hash, and a copy now keeps the marker.
+/// history up to v2.2.2, the last release before the one that names the skill
+/// path, rendered with each default name, `Skipper` and `Admiral`, sorted. A
+/// file with no hash in the marker that matches one is Skiff's text, not the
+/// person's, so [`refresh`] upgrades it. A file with no hash comes from an
+/// install older than the marker's hashes, or a `--move-to` copy that lost
+/// them. This table does not grow: each write now records a hash, and a copy
+/// now keeps the marker.
 const PAST_AGENTS: &[&str] = &[
-    "003fa3faa64c7b52", "0882afff6d4e71d7", "0ab950d5af5bab05", "1032f603a3f70b0b",
-    "193764bb63603739", "1eed6b4fc944e74e", "2422f8d7b7a9d167", "2495c5aa6a98b2bf",
-    "2ed314b4c0ea93c4", "2f56ab50b4a7251d", "3230464dd15b617a", "3655324c7814c3e5",
-    "3fd7750460cb37c2", "4492923517ecceae", "4719da4012c9164e", "490b9a3cfbaabc16",
-    "4c1440ded47852f3", "4cf90c42bd810887", "4fd5b3fc03f287be", "57c1950b011b47e3",
-    "60d4d674a4b2561e", "611f374ef388403b", "6225dbf5d2c3e272", "68e543477c6a836a",
-    "6bb837d917f3b84d", "6c97eba00255b8f9", "71070ce0c12c1535", "72604f03f8b3bfb7",
-    "736021c39b4e9c17", "76cefe71362ede4e", "76f72aca4330fdfd", "7d2caa90d9fa1b5f",
-    "85050dd1a413106b", "86a1b965dcfac679", "88cb2508c396b706", "8eb3ced724085191",
-    "964d0d0b101d450b", "96adb8b3fdf665f9", "9c9ba8b292e7a9e2", "a0681ee385ccddc6",
-    "a5e01eb63d076127", "aef97bbb04b19651", "b308fcd69c689e0a", "b39ab622c2884dbb",
+    "003fa3faa64c7b52", "07dc02fb987b00e3", "0882afff6d4e71d7", "0ab950d5af5bab05",
+    "1032f603a3f70b0b", "108e217bd6eae585", "193764bb63603739", "1eed6b4fc944e74e",
+    "2422f8d7b7a9d167", "2495c5aa6a98b2bf", "2ed314b4c0ea93c4", "2f56ab50b4a7251d",
+    "3230464dd15b617a", "3655324c7814c3e5", "3fd7750460cb37c2", "4492923517ecceae",
+    "4719da4012c9164e", "490b9a3cfbaabc16", "4c1440ded47852f3", "4cf90c42bd810887",
+    "4fd5b3fc03f287be", "57c1950b011b47e3", "60d4d674a4b2561e", "611f374ef388403b",
+    "6225dbf5d2c3e272", "68e543477c6a836a", "6bb837d917f3b84d", "6c97eba00255b8f9",
+    "71070ce0c12c1535", "72604f03f8b3bfb7", "736021c39b4e9c17", "76cefe71362ede4e",
+    "76f72aca4330fdfd", "7d2caa90d9fa1b5f", "85050dd1a413106b", "86a1b965dcfac679",
+    "88cb2508c396b706", "8b54081f14f25b87", "8eb3ced724085191", "964d0d0b101d450b",
+    "96adb8b3fdf665f9", "9c9ba8b292e7a9e2", "a0681ee385ccddc6", "a5e01eb63d076127",
+    "aef97bbb04b19651", "b06d0657ae241b49", "b308fcd69c689e0a", "b39ab622c2884dbb",
     "b401965272bbc67d", "b877c5650aaff601", "ba0c3b4f8496f0fb", "bfca8007f82dd7ea",
     "c5b2777932f4ca85", "cae0572f3b9a7c5f", "d853c55212d6460b", "e8275589878c6a87",
     "e9dac5334c51cbea", "edf8ee1bcbfefd60", "f42d17f55bdb366d", "fa6314dca044f9e3",

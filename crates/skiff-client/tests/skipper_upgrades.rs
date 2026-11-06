@@ -12,6 +12,9 @@ static TURN: Mutex<()> = Mutex::new(());
 /// The `AGENTS.md` template at 7fc4374b, from before Skiff recorded hashes.
 const PAST: &str = include_str!("fixtures/AGENTS-7fc4374b.md.tmpl");
 
+/// The `AGENTS.md` template of v2.2.2, the last release before the skill path.
+const V2_2_2: &str = include_str!("fixtures/AGENTS-v2.2.2.md.tmpl");
+
 struct World {
     _turn: MutexGuard<'static, ()>,
     root: PathBuf,
@@ -122,6 +125,24 @@ fn a_past_template_with_no_hash_is_rewritten_and_its_hash_recorded() {
     assert!(w.marker().lines().any(|l| l.ends_with(" AGENTS.md")));
     // An upgrade adds nothing to the message.
     assert!(!skipper::first_message(&w.cfg, &Scope::Project("app".into())).unwrap().contains("Tell the user"));
+}
+
+#[test]
+fn an_untouched_v2_2_2_file_upgrades_and_an_edited_one_stays() {
+    let w = world("v222");
+    for name in ["Skipper", "Admiral"] {
+        w.agents_file(&V2_2_2.replace("{{name}}", name), Some("1\n"));
+        assert_eq!(w.status(), Status::Template, "{name}");
+        skipper::ensure(&w.cfg).unwrap();
+        assert!(w.agents().contains("skiff skill path") && w.agents().contains("ledger stale"), "{name}");
+        assert!(w.marker().lines().any(|l| l.ends_with(" AGENTS.md")), "{name}");
+
+        let edited = V2_2_2.replace("{{name}}", name) + "\nMy rule.\n";
+        w.agents_file(&edited, Some("1\n"));
+        skipper::ensure(&w.cfg).unwrap();
+        assert_eq!(w.agents(), edited, "{name}");
+        assert_eq!(w.status(), Status::EditedTemplateChanged, "{name}");
+    }
 }
 
 #[test]
