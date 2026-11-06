@@ -35,6 +35,9 @@ A `v*` tag triggers `.github/workflows/release.yml`. CI builds the Linux package
    `unset SKIFF_SOCKET SKIFF_SESSION SKIFF_SHELL XDG_RUNTIME_DIR`, so no test reaches a live
    daemon. Run `cargo test --workspace --no-fail-fast`, all page tests (`cd apps/desktop &&
    pnpm test`) and, on v2, `python3 scripts/host-boundary/check.py`.
+   With a separate `CARGO_TARGET_DIR`, also set `SKIFF_TEST_DAEMON=$CARGO_TARGET_DIR/debug/skiffd`
+   and `SKIFF_TEST_CLI=$CARGO_TARGET_DIR/debug/skiff`, each an absolute path. The app's reload
+   tests look in the default target directory without them.
    The page tests need Node 22 (`--experimental-strip-types`). If `node -v` shows an older
    version, put a Node 22 `bin` first in `PATH` for the run
    (here: `~/.local/node-v22.23.4-linux-x64/bin`). If a test fails, stop and report it.
