@@ -102,6 +102,7 @@ impl SessionPool {
             unread: false,
             agent_exit: None,
             peek: spec.peek,
+            peek_owner: spec.peek_owner.filter(|_| spec.peek),
             interactive: false,
             input_gen: 0,
             coordinator: spec.coordinator,

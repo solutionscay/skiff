@@ -64,7 +64,7 @@ class El {
   }
 }
 
-function viewer(coverPanes = (_covered: boolean) => {}, stubs: Record<string, unknown> = {}) {
+function viewer(coverPanes = (_covered: boolean) => {}, stubs: Record<string, unknown> = {}, globals: Record<string, unknown> = {}) {
   const main = new El("main");
   const document = { activeElement: null as unknown, addEventListener() {} };
   const h = (tag: string, cls = "", text = "") => new El(tag, cls, text);
@@ -100,7 +100,7 @@ function viewer(coverPanes = (_covered: boolean) => {}, stubs: Record<string, un
       "./fileView": { fileBody: (f: { text: string }) => h("div", "diff-view-body", f.text) },
       ...stubs,
     },
-    { Promise, Map, Set, JSON, document, window: { setTimeout: () => 0 }, clearTimeout() {}, URL },
+    { Promise, Map, Set, JSON, document, window: { setTimeout: () => 0 }, clearTimeout() {}, URL, ...globals },
     "",
   );
   const text = (f: string) => ({ content: "text", text: f, truncated: false });
@@ -188,6 +188,32 @@ test("the latency trace's echo message does not reach a peek's terminal", async 
   channel!.onmessage({ wrote: 1, read: 2 });
   channel!.onmessage([104, 105]);
   assert.deepEqual(wrote, ["hi"]);
+});
+
+test("a peek session is cleaned up by its own app, or by any app once its owner has gone", async () => {
+  const killed = (v: ReturnType<typeof viewer>) => v.reads.filter((r) => r.cmd === "kill_session").map((r) => r.args.session);
+  const running = { interactive: true, state: "idle" };
+  const v = viewer();
+  v.mod.strayPeek({ id: "theirs", peek_owner: "other", ...running }, "me");
+  v.mod.strayPeek({ id: "theirs-done", peek_owner: "other", interactive: true, state: "done" }, "me");
+  assert.deepEqual(killed(v), []);
+  // Another app's command, before it took the terminal: this app must not hold it as its own app.
+  v.mod.strayPeek({ id: "starting", peek_owner: "other", interactive: false, state: "idle" }, "me");
+  v.mod.peekUpdated({ id: "starting", peek_owner: "other", interactive: true });
+  assert.deepEqual(killed(v), []);
+  v.mod.strayPeek({ id: "mine", peek_owner: "me", ...running }, "me");
+  v.mod.strayPeek({ id: "left", ...running }, "me");
+  assert.deepEqual(killed(v), ["mine", "left"]);
+});
+
+test("a page reload keeps its terminal tool until its owner has gone", async () => {
+  const store = { getItem: () => JSON.stringify({ tool: JSON.stringify(["file", "a.md", "/srv", "micro a.md", "/srv"]) }), setItem() {} };
+  const v = viewer(undefined, { "./peekTerminal": { newPeek: () => ({ term: { attachCustomKeyEventHandler() {}, onData() {} }, fit: { fit() {} } }), tookTerminal() {} } }, { sessionStorage: store });
+  v.mod.strayPeek({ id: "tool", peek_owner: "me", interactive: true, state: "idle" }, "me");
+  assert.deepEqual(v.reads, []);
+  // Its owner has gone: another run of the app reads no such session as its own.
+  v.mod.strayPeek({ id: "tool", peek_owner: null, interactive: true, state: "idle" }, "me");
+  assert.deepEqual(v.reads.map((r) => [r.cmd, r.args.session]), [["kill_session", "tool"]]);
 });
 
 test("covered panes skip queued and direct draws through renderer changes and late preview replies", async () => {

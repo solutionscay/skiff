@@ -18,6 +18,23 @@ pub(crate) use data_plane::{data_now, data_plane_status, data_read, data_write, 
 pub(crate) use daemon::{check_daemon, compare_versions, daemon_status, restart_daemon, restart_warning, status_now, __cmd__daemon_status, __cmd__restart_daemon, __tauri_command_name_daemon_status, __tauri_command_name_restart_daemon};
 pub(crate) use process::{bundled, daemon_binary};
 
+/// One id for this run of the app. It lives in this process, so a page reload
+/// keeps it and a new run gets another. It names a run; it is no secret, since
+/// each client of the socket is the same user.
+pub(crate) fn peek_owner_id() -> &'static str {
+    static ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    ID.get_or_init(|| {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+        format!("{}-{now:x}", std::process::id())
+    })
+}
+
+/// The id the page sends with each peek session it starts.
+#[tauri::command]
+pub(crate) fn peek_owner() -> &'static str {
+    peek_owner_id()
+}
+
 #[derive(Default)]
 pub(crate) struct App {
     pub(crate) host: Mutex<Option<Arc<SelectedHost>>>,

@@ -190,6 +190,9 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         follows: Option<Vec<SessionId>>,
     },
+    /// This connection belongs to app run `owner`. Its peek sessions have a
+    /// live owner while a connection names it, and for a short time after.
+    PeekOwner { owner: String },
 }
 
 /// Who answers a `ping`, from the daemon itself: never from a socket's peer
@@ -396,6 +399,7 @@ impl Request {
             Request::Watching { .. } => "watching",
             Request::Retire { .. } => "retire",
             Request::Rescope { .. } => "rescope",
+            Request::PeekOwner { .. } => "peek_owner",
         }
     }
 }

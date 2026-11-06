@@ -288,6 +288,11 @@ pub(crate) async fn ensure_host(app: &App) -> Result<(Arc<SelectedHost>, bool), 
             Check::Use => {
                 *app.failed.lock().unwrap() = None;
                 let host = Arc::new(c.activate().await.map_err(err)?);
+                // Each new connection names this app run: its peeks stay its own after a reload of skiffd.
+                let owner = skiff_core::protocol::Request::PeekOwner { owner: super::peek_owner_id().to_string() };
+                if let Err(e) = host.client().request(owner).await {
+                    eprintln!("peek owner: {e:#}");
+                }
                 *app.live.lock().unwrap() = Some(host.connection());
                 *guard = Some(host.clone());
                 return Ok((host, spawned));

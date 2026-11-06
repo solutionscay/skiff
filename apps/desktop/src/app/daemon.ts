@@ -20,7 +20,7 @@ import { deleteGroup, loadGroups, syncTemplateName } from "./groups";
 import { render, scheduleRender } from "./render";
 import { born, gone, OTHER, removeErrors, S, sessions, stateSince, upsert } from "./state";
 import { hasKeys, markSeen, quietSeen } from "./seen";
-import { peekExited, peekUpdated, previewToken, strayPeek } from "../terminal/peek";
+import { peekExited, peekOwner, peekUpdated, previewToken, strayPeek } from "../terminal/peek";
 import { activeGroupObj, awayPlaces, currentWorktree, place, shownIds } from "./stateQueries";
 import { agentKind } from "../appearance/agentIcon";
 import { heirOf, loadSkiffAgent, noteDaemon, skipperCreated } from "./skiffAgent";
@@ -521,7 +521,10 @@ export async function refreshSessions(): Promise<boolean> {
   }
   // Peek commands are not sessions to the user. One that is not the open
   // peek's was left behind, or is an app that runs on.
-  for (const s of list) if (s.peek) strayPeek(s);
+  if (list.some((s) => s.peek)) {
+    const me = await peekOwner();
+    for (const s of list) if (s.peek) strayPeek(s, me);
+  }
   list = list.filter((s) => !s.peek);
   const listed = new Set(list.map((s) => s.id));
   for (const s of list) if (!gone.has(s.id)) upsert(s);

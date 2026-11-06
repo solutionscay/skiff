@@ -35,6 +35,7 @@ mod input;
 mod launch;
 mod lifecycle;
 mod output;
+mod peek_owners;
 mod persistence;
 mod registry;
 pub(crate) mod reducer;
@@ -49,6 +50,7 @@ use attention::end_reports;
 use attention::live;
 pub use coordinator::{Ask, Coordinated};
 use input::{start_writer, Input};
+use peek_owners::PeekOwners;
 use lifecycle::default_shell;
 #[cfg(test)]
 use output::prints;
@@ -354,6 +356,8 @@ pub struct SessionPool {
     /// By connection and the session watched: one watcher process may
     /// register for several Skippers, each on its own session.
     watchers: Mutex<HashMap<(u64, SessionId), Watcher>>,
+    /// Which app runs have a connection here, for peek sessions.
+    peek_owners: Mutex<PeekOwners>,
 }
 
 /// One connection's [`Request::Watching`] registration.
@@ -384,6 +388,7 @@ impl Default for SessionPool {
             coordinator: Mutex::new(None),
             started_at: AtomicU64::new(now_ms()),
             watchers: Mutex::new(HashMap::new()),
+            peek_owners: Mutex::new(PeekOwners::new(Instant::now())),
         }
     }
 }

@@ -26,6 +26,9 @@ pub struct SessionSpec {
     /// A tool for the peek: not saved, restored or listed as a session.
     #[serde(default)]
     pub peek: bool,
+    /// The app run that opened this peek tool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peek_owner: Option<String>,
     #[serde(default = "default_cols")]
     pub cols: u16,
     #[serde(default = "default_rows")]

@@ -61,6 +61,9 @@ pub struct InventorySession {
     pub agent_exit: Option<i32>,
     #[serde(default)]
     pub peek: bool,
+    /// The app run that opened this peek tool. `None` when it has gone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peek_owner: Option<String>,
     #[serde(default)]
     pub interactive: bool,
     #[serde(default)]
