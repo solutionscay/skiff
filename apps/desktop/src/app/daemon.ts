@@ -1,11 +1,8 @@
 /** skiffd: sessions, projects, events. */
-import { placeInSlot } from "../workspace/canvas";
+import { newSession } from "./newSession";
 import { work } from "../diagnostics/stalls";
-import { filledOf, isSlot } from "../workspace/layoutSlots";
-import { agentCallsign } from "../appearance/agentNames";
-import { removePane, sessionsOf } from "../workspace/layout";
 
-import type { AgentInfo, Appearance, DaemonEvent, DaemonStatus, Project, Reloaded, SessionInfo, SplitDir } from "../platform/types";
+import type { AgentInfo, Appearance, DaemonEvent, DaemonStatus, Project, Reloaded, SessionInfo } from "../platform/types";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { $, h } from "../ui/dom";
@@ -16,20 +13,18 @@ import { reloadNote } from "./daemonNotice";
 import { reloadChanges } from "../workspace/changes";
 import { projectThemesFrom } from "../appearance/themes";
 import { filesFrom } from "../workspace/files";
-import { deleteGroup, loadGroups, syncTemplateName } from "./groups";
+import { loadGroups } from "./groups";
 import { render, scheduleRender } from "./render";
 import { born, gone, OTHER, removeErrors, S, sessions, stateSince, upsert } from "./state";
 import { hasKeys, markSeen, quietSeen } from "./seen";
-import { peekExited, peekOwner, peekUpdated, previewToken, strayPeek } from "../terminal/peek";
-import { activeGroupObj, awayPlaces, currentWorktree, place, shownIds } from "./stateQueries";
+import { peekExited, peekOwner, peekUpdated, strayPeek } from "../terminal/peek";
+import { awayPlaces, currentWorktree, place } from "./stateQueries";
 import { agentKind } from "../appearance/agentIcon";
-import { heirOf, loadSkiffAgent, noteDaemon, skipperCreated } from "./skiffAgent";
+import { loadSkiffAgent, noteDaemon, skipperCreated } from "./skiffAgent";
 import { isFolder, taskTitle } from "../workspace/model";
 import { loadSkipperAvatars } from "../workspace/skipperFace";
-import { panes } from "../terminal/terminalState";
 import { ptySized } from "../terminal/terminal";
 import { reattachPanes } from "../terminal/terminalRuntime";
-import { focusPane, inBackground, paneNear, revealSession, rowNear, showSingle, splitWith, unfocus } from "../workspace/view";
 import { t } from "../i18n";
 import { hostCan, hostInvoke, loadHostCaps } from "./hostCaps";
 import { hostName, isRemote, shownHost } from "./hosts";
@@ -41,6 +36,9 @@ import { loadLedger } from "../workspace/ledger";
 import { includeNew } from "../workspace/profile";
 import { muteInput } from "../terminal/terminalRuntime";
 import { connectAttempt, connectDone, connectFailed, connectWait } from "./connectPanel";
+import { dropSession } from "./sessionRemoval";
+
+export { newSession };
 
 export function setDaemon(status: DaemonStatus) {
   const dot = $("daemon").querySelector(".dot") as HTMLElement;
@@ -224,53 +222,6 @@ function pidCopy(pid: number): HTMLButtonElement {
     }, showError);
   });
   return b;
-}
-
-/** A new session is the single view, unless it came from a pane's Split menu. */
-export async function newSession(
-  cwd: string | null,
-  agent: string | null,
-  label: string,
-  role: "agent" | "shell",
-  where?: { target: string; dir: SplitDir } | { slot: string },
-  /** A fixed name, such as the Skiff agent's, in place of a call sign. */
-  name?: string,
-) {
-  // Projects list agents as command lines; the first word is the program.
-  const words = (agent ?? "").trim().split(/\s+/).filter(Boolean);
-  // The user owns the request until they move: a click or key elsewhere, or a new preview.
-  const mark = () => `${previewToken()} ${S.roveKey} ${S.focused} ${S.activeGroup}`;
-  const before = mark();
-  const visible = S.focused ? panes.get(S.focused) : undefined;
-  // Agent IDs are useful in the launch menu, but call signs make a new crew
-  // easier (and more fun) to tell apart once it is running.
-  const sessionLabel = name ?? (role === "agent" ? agentCallsign([...sessions.values()].map((s) => s.label)) : label);
-  const info = await hostInvoke<SessionInfo>("session_lifecycle", "create_session", {
-    spec: {
-      label: sessionLabel,
-      name: role === "agent" ? sessionLabel : null,
-      role,
-      cwd,
-      command: words[0] ?? null,
-      args: words.slice(1),
-      cols: visible?.term.cols ?? 120,
-      rows: visible?.term.rows ?? 40,
-    },
-  });
-  for (const b of born) b.add(info.id);
-  upsert(info);
-  // The user may have moved to a preview while it started: it shows under the preview.
-  const place = () => {
-    if (where && "slot" in where) placeInSlot(where.slot, info.id);
-    else if (where) splitWith(where.target, where.dir, info.id);
-    else showSingle(info.id);
-  };
-  // Not moved: it shows and takes the keys. Moved: it waits in the list, and a
-  // split or empty pane it was asked for still gets it, without the keys.
-  if (mark() === before) place();
-  else if (where) inBackground(place, true);
-  else render();
-  return info.id;
 }
 
 let projectsSeq = 0;
@@ -606,50 +557,4 @@ export function onEvent(e: DaemonEvent) {
       return;
   }
   scheduleRender(`event.${e.event}`);
-}
-
-/** The daemon pruned the session from its groups; groups_changed brings them. Here the view drops it at once. */
-function dropSession(id: string) {
-  inBackground(() => dropPane(id));
-}
-
-function dropPane(id: string) {
-  gone.add(id);
-  if (!sessions.has(id)) return;
-  // The keys go to a neighbor, picked while the pane and its row are still there:
-  // the pane beside it in a group, else the next session row in the list.
-  // A retiring project Skipper gives them to the fleet Skipper that took it over.
-  const heir = heirOf(id, S.focused === id);
-  const near = S.focused !== id || heir ? null : shownIds().length > 1 ? paneNear(id) : S.single === id ? rowNear(id) : null;
-  sessions.delete(id);
-  panes.get(id)?.term.dispose();
-  panes.get(id)?.el.remove();
-  panes.delete(id);
-  S.selection = S.selection.filter((x) => x !== id);
-  if (S.focused === id) S.focused = null;
-  for (const g of [...S.groups]) {
-    if (!sessionsOf(g.layout).includes(id)) continue;
-    let next = removePane(g.layout, id);
-    if (filledOf(next).length === 0) {
-      // The last session ended: the group has nothing left to show, so it goes.
-      deleteGroup(g);
-      continue;
-    }
-    if (next) {
-      g.layout = next;
-      syncTemplateName(g);
-    }
-    if (g.focus === id) g.focus = filledOf(next)[0] ?? null;
-  }
-  if (S.single === id) S.single = null;
-  const ids = shownIds();
-  if (S.focused && !ids.includes(S.focused)) S.focused = null;
-  if (heir && sessions.has(heir)) return revealSession(heir);
-  if (near && ids.includes(near)) return focusPane(near);
-  if (!ids.length) return near && sessions.has(near) ? revealSession(near) : unfocus();
-  if (!S.focused) {
-    const next = activeGroupObj()?.focus ?? ids.find((x) => !isSlot(x));
-    if (next) return focusPane(next);
-  }
-  render();
 }

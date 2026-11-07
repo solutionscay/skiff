@@ -54,8 +54,9 @@ pub fn choose<'a>(agents: &'a [AgentInfo], id: Option<&str>) -> Option<&'a Agent
 
 /// The line that continues the newest conversation in the folder, from each
 /// CLI's help (2026-10-13). Only the Skiff agent's own folder runs it: it
-/// holds no other conversation. A custom agent has none. Keep in step with
-/// `CONTINUE` in apps/desktop/src/terminal/resume.ts, which Settings shows.
+/// holds no other conversation. A custom agent has none. `CONTINUE` in
+/// apps/desktop/src/terminal/resume.ts repeats this for Settings, and
+/// skiff-core's tests/fixtures/agent-facts.json holds both to the same lines.
 pub fn continue_line(agent: &str, cmd: &str) -> Option<String> {
     let cmd = cmd.trim();
     // A subcommand goes after the program and before the user's flags.
@@ -116,6 +117,20 @@ mod tests {
         assert_eq!(continue_line("gemini", "agy --dangerously-skip-permissions").as_deref(), Some("agy --dangerously-skip-permissions --continue"));
         // The built-in line resumes with the agent's own prompts.
         assert_eq!(continue_line("gemini", "agy").as_deref(), Some("agy --continue"));
+    }
+
+    /// The desktop test agentFacts.test.ts reads the same table.
+    #[test]
+    fn continue_lines_match_the_shared_table() {
+        let facts: serde_json::Value = serde_json::from_str(include_str!("../../../skiff-core/tests/fixtures/agent-facts.json")).unwrap();
+        let cases = facts["continue"].as_array().unwrap();
+        for (id, _) in skiff_core::project::KNOWN_AGENTS {
+            assert!(cases.iter().any(|c| c["agent"] == id), "{id} has no case in agent-facts.json");
+        }
+        for c in cases {
+            let (agent, command) = (c["agent"].as_str().unwrap(), c["command"].as_str().unwrap());
+            assert_eq!(continue_line(agent, command).as_deref(), c["line"].as_str(), "{agent}: {command}");
+        }
     }
 
     #[test]

@@ -1,0 +1,31 @@
+{
+  "about": "Each built-in agent's model flag and continue line. skiff-core tasks, skiff-client identity and the desktop test agentFacts.test.ts all check their own code against this file.",
+  "model_flag": {
+    "claude": "--model",
+    "codex": "-m",
+    "gemini": "--model",
+    "grok": "-m",
+    "hermes": null,
+    "kimi": "-m",
+    "opencode": null,
+    "mine": null
+  },
+  "continue": [
+    { "agent": "claude", "command": "claude", "line": "claude --continue" },
+    { "agent": "claude", "command": "claude --model x", "line": "claude --model x --continue" },
+    { "agent": "claude", "command": "claude --dangerously-skip-permissions", "line": "claude --dangerously-skip-permissions --continue" },
+    { "agent": "codex", "command": "codex", "line": "codex resume --last" },
+    { "agent": "codex", "command": "codex --yolo", "line": "codex resume --last --yolo" },
+    { "agent": "codex", "command": "codex --yolo -m gpt-5", "line": "codex resume --last --yolo -m gpt-5" },
+    { "agent": "gemini", "command": "agy", "line": "agy --continue" },
+    { "agent": "gemini", "command": "agy --dangerously-skip-permissions", "line": "agy --dangerously-skip-permissions --continue" },
+    { "agent": "grok", "command": "grok", "line": "grok --continue" },
+    { "agent": "grok", "command": "grok --always-approve", "line": "grok --always-approve --continue" },
+    { "agent": "opencode", "command": "opencode", "line": "opencode --continue" },
+    { "agent": "opencode", "command": "opencode --auto", "line": "opencode --auto --continue" },
+    { "agent": "hermes", "command": "hermes", "line": "hermes --resume latest --in ." },
+    { "agent": "hermes", "command": "hermes --profile x", "line": "hermes --profile x --resume latest --in ." },
+    { "agent": "kimi", "command": "kimi", "line": null },
+    { "agent": "mine", "command": "mine", "line": null }
+  ]
+}

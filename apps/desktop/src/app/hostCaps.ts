@@ -112,13 +112,15 @@ let loading: Promise<void> | null = null;
 
 /** Asks the selected Host again: at launch and after the daemon reloads. */
 export function loadHostCaps(): Promise<void> {
-  const load = invoke<string[]>("host_capabilities").then((list) => {
-    caps = new Set(list);
-    offerReports(hostCan("program_status"));
-  });
-  loading = load.finally(() => {
-    if (loading === load) loading = null;
-  });
+  const load: Promise<void> = invoke<string[]>("host_capabilities")
+    .then((list) => {
+      caps = new Set(list);
+      offerReports(hostCan("program_status"));
+    })
+    .finally(() => {
+      if (loading === load) loading = null;
+    });
+  loading = load;
   return load;
 }
 

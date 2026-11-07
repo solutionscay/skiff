@@ -52,7 +52,10 @@ function sub(cmd: string, ...words: string[]): string {
 /**
  * The line that continues the newest conversation in the folder, from each
  * CLI's help (2026-10-13). Only the Skiff agent's own folder runs it on
- * restore: it holds no other conversation. A custom agent has none.
+ * restore: it holds no other conversation. A custom agent has none. It repeats
+ * `continue_line` in crates/skiff-client/src/skipper/identity.rs, which builds
+ * the line that runs. Both are held to the same lines by
+ * crates/skiff-core/tests/fixtures/agent-facts.json.
  */
 const CONTINUE: Record<string, (cmd: string) => string> = {
   claude: (cmd) => `${cmd} --continue`,

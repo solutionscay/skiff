@@ -13,42 +13,27 @@
 //! selected `projects.toml`, so both endpoints of one Host agree. Its
 //! `instance_id` is its own and changes on every start.
 pub mod folders;
+mod events;
+mod images;
+mod ledger;
 pub mod skipper;
+mod transport;
 
-use anyhow::{bail, Context};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::BTreeMap,
     path::Path,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, LazyLock, Mutex,
-    },
 };
 
 use skiff_core::{config::{self, ProjectConfig}, files, git, project, session::SessionInfo};
 use skiff_host_api::{
-    Capability, ChangeStatus, EntryKind, Envelope, Error, FileContent, Hello, Host, HostChange, HostDiff, HostEntry,
-    HostCacheImage, HostCacheUse, HostFile, HostBranch, HostBranches, HostFolder, HostId, HostImage, HostLedgerRow, HostListing, HostProject, HostWorktree, InstanceId, Limits, Message,
+    Capability, ChangeStatus, EntryKind, Error, FileContent, Hello, Host, HostChange, HostDiff, HostEntry,
+    HostFile, HostBranch, HostBranches, HostFolder, HostId, HostImage, HostListing, HostProject, HostWorktree, InstanceId, Limits,
     ProjectEdit, ReadPurpose, Request, Response, API_MAJOR,
 };
-use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
-    net::{UnixListener, UnixStream},
-    sync::{broadcast, mpsc, OwnedSemaphorePermit, Semaphore},
-    task::JoinSet,
-};
 
-/// The largest frame either side sends, newline included.
-pub const MAX_FRAME: usize = 8 * 1024 * 1024;
-/// Requests one connection may have admitted at once, until each reply is
-/// written. A client that sends more waits: the service reads no further.
-pub const MAX_IN_FLIGHT: usize = 16;
-/// In-progress framed drops. A service restart discards them; no partial file
-/// reaches the cache before the final frame.
-static UPLOADS: LazyLock<Mutex<HashMap<String, Upload>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
-const MAX_DROP: usize = 50 * 1024 * 1024;
-
-struct Upload { name: String, total: usize, bytes: Vec<u8> }
+pub use transport::{admitted, bind, handle, serve, BoundSocket, MAX_FRAME, MAX_IN_FLIGHT};
+use ledger::{ledger_result, ledger_rows};
+pub use ledger::set_this_mac;
 
 /// What this service offers.
 pub fn capabilities() -> Vec<Capability> {
@@ -106,287 +91,6 @@ fn version() -> String {
         Some(build) => format!("{}+{build}", skiff_core::VERSION),
         None => skiff_core::VERSION.into(),
     }
-}
-
-/// The socket file this service bound. Only it is ever removed:
-/// [`BoundSocket::release`] checks that the path still names it.
-pub struct BoundSocket {
-    path: std::path::PathBuf,
-    id: (u64, u64),
-}
-
-/// Binds the service socket at `path`. Only a folder it creates gets locked
-/// down (`0700`); the socket is `0600`. An entry already at `path` is:
-/// - a live socket: another service, so this one does not start
-/// - a stale socket of this account: a crash's leftover, removed
-/// - anything else (a file, a link, a folder, another account's socket):
-///   refused and left as it is
-pub async fn bind(path: &Path) -> anyhow::Result<(UnixListener, BoundSocket)> {
-    use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
-    if let Some(dir) = path.parent().filter(|d| !d.exists()) {
-        std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
-        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
-    }
-    match std::fs::symlink_metadata(path) {
-        Ok(found) => {
-            if !found.file_type().is_socket() {
-                bail!("{} exists and is not a socket; skiff-host leaves it as it is", path.display());
-            }
-            // SAFETY: geteuid takes no arguments and cannot fail.
-            if found.uid() != unsafe { libc::geteuid() } {
-                bail!("{} belongs to another account; skiff-host leaves it as it is", path.display());
-            }
-            if UnixStream::connect(path).await.is_ok() {
-                bail!("skiff-host is already running at {}", path.display());
-            }
-            // Still the same stale socket: nothing replaced it meanwhile.
-            let again = std::fs::symlink_metadata(path)?;
-            if (again.dev(), again.ino()) != (found.dev(), found.ino()) {
-                bail!("{} changed while skiff-host checked it", path.display());
-            }
-            std::fs::remove_file(path)?;
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e).with_context(|| format!("check {}", path.display())),
-    }
-    let listener = UnixListener::bind(path).with_context(|| format!("bind {}", path.display()))?;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
-    let meta = std::fs::symlink_metadata(path)?;
-    Ok((listener, BoundSocket { path: path.to_path_buf(), id: (meta.dev(), meta.ino()) }))
-}
-
-impl BoundSocket {
-    /// Removes the socket file only if the path still names the socket this
-    /// service bound: never a newer service's socket, nor anything else.
-    pub fn release(self) {
-        use std::os::unix::fs::{FileTypeExt, MetadataExt};
-        if let Ok(m) = std::fs::symlink_metadata(&self.path) {
-            // The inode alone is not proof: ext4 gives a newer socket at this
-            // path the freed number. This service no longer listens, so a
-            // listener that answers is another one's.
-            if m.file_type().is_socket()
-                && (m.dev(), m.ino()) == self.id
-                && std::os::unix::net::UnixStream::connect(&self.path).is_err()
-            {
-                let _ = std::fs::remove_file(&self.path);
-            }
-        }
-    }
-}
-
-/// Accepts connections until the listener fails. Each one is served on its
-/// own; dropping this future closes them all, as a stopped service does.
-pub async fn serve(listener: UnixListener, hello: Arc<Hello>) -> std::io::Result<()> {
-    let events = DataEvents::start();
-    let mut connections = tokio::task::JoinSet::new();
-    // Skipper's watcher is this service's to keep, as long as it runs.
-    connections.spawn(skipper::supervise());
-    loop {
-        tokio::select! {
-            accepted = listener.accept() => {
-                let (stream, _) = accepted?;
-                connections.spawn(handle(stream, hello.clone(), events.subscribe()));
-            }
-            Some(_) = connections.join_next() => {}
-        }
-    }
-}
-
-/// Requests admitted and not yet written back or abandoned, over every
-/// connection of this process. For diagnostics and tests.
-pub fn admitted() -> usize {
-    ADMITTED.load(Ordering::Relaxed)
-}
-static ADMITTED: AtomicUsize = AtomicUsize::new(0);
-
-/// Set when the app started this service for This Mac. Then a ledger result
-/// may also sit anywhere under the person's home folder. A service reached
-/// over SSH keeps the ledger folder only.
-static THIS_MAC: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// Says whether this service is This Mac's own. Off by default.
-pub fn set_this_mac(on: bool) {
-    THIS_MAC.store(on, Ordering::Relaxed);
-}
-
-/// One admitted request, from its frame until its reply is written. Its
-/// permit bounds what a connection holds: work, encoded replies and the
-/// reply being written, together.
-struct Admission(#[allow(dead_code)] OwnedSemaphorePermit);
-impl Admission {
-    fn new(permit: OwnedSemaphorePermit) -> Self {
-        ADMITTED.fetch_add(1, Ordering::Relaxed);
-        Self(permit)
-    }
-}
-impl Drop for Admission {
-    fn drop(&mut self) {
-        ADMITTED.fetch_sub(1, Ordering::Relaxed);
-    }
-}
-
-/// One client: newline-delimited envelopes in, replies out, in any order.
-///
-/// At most [`MAX_IN_FLIGHT`] requests are admitted at once, and one stays
-/// admitted until its reply is written. A client that stops reading stalls
-/// at that bound: no more frames are read, so nothing more is computed or
-/// queued for it. The work belongs to the connection: when the client is
-/// gone, or a frame is unreadable or oversize, what is left is dropped.
-/// Nothing is retried.
-pub async fn handle(stream: UnixStream, hello: Arc<Hello>, mut events: broadcast::Receiver<skiff_host_api::Event>) {
-    let (rd, mut wr) = stream.into_split();
-    let slots = Arc::new(Semaphore::new(MAX_IN_FLIGHT));
-    // Never full: every queued reply holds one of the permits.
-    let (tx, mut rx) = mpsc::channel::<Write>(256);
-    let writer = async move {
-        while let Some(item) = rx.recv().await {
-            let (line, admission) = match item { Write::Reply(line, admission) => (line, Some(admission)), Write::Event(line) => (line, None) };
-            if wr.write_all(&line).await.is_err() {
-                return;
-            }
-            drop(admission);
-        }
-    };
-    let events_tx = tx.clone();
-    let mut event_writer = tokio::spawn(async move {
-        loop {
-            let event = match events.recv().await {
-                Ok(event) => event,
-                Err(broadcast::error::RecvError::Lagged(_)) => skiff_host_api::Event::DataGap { sequence: 0 },
-                Err(broadcast::error::RecvError::Closed) => return,
-            };
-            let mut line = serde_json::to_vec(&Message::Event { event }).unwrap_or_default();
-            line.push(b'\n');
-            if events_tx.send(Write::Event(line)).await.is_err() { return; }
-        }
-    });
-    let reader = async move {
-        let mut work = JoinSet::new();
-        let mut reader = BufReader::new(rd);
-        loop {
-            // Finished requests leave the set; a read is never interrupted.
-            while work.try_join_next().is_some() {}
-            let mut line = Vec::new();
-            let read = (&mut reader).take(MAX_FRAME as u64 + 1).read_until(b'\n', &mut line).await;
-            match read {
-                // The client is done sending: finish what it asked for.
-                Ok(0) => break,
-                Err(_) => return,
-                Ok(_) if line.len() > MAX_FRAME || line.last() != Some(&b'\n') => return,
-                Ok(_) => {}
-            }
-            let Ok(Envelope { id, request }) = serde_json::from_slice::<Envelope>(&line) else {
-                return;
-            };
-            let Ok(permit) = slots.clone().acquire_owned().await else { return };
-            let admission = Admission::new(permit);
-            let (tx, hello) = (tx.clone(), hello.clone());
-            work.spawn(async move {
-                let result = answer(request, &hello).await;
-                let _ = tx.send(Write::Reply(encode(id, result), admission)).await;
-            });
-        }
-        while work.join_next().await.is_some() {}
-    };
-    tokio::pin!(writer);
-    tokio::select! {
-        // A closed reader stops events after admitted replies drain.
-        _ = reader => {
-            event_writer.abort();
-            let _ = event_writer.await;
-            writer.as_mut().await;
-        },
-        _ = &mut event_writer => {},
-        _ = &mut writer => event_writer.abort(),
-    }
-}
-
-enum Write { Reply(Vec<u8>, Admission), Event(Vec<u8>) }
-
-/// The service owns one bounded invalidation feed. It deliberately carries
-/// no deltas: file-system changes can coalesce, and clients recover every
-/// gap by reading the authoritative Host snapshots again.
-struct DataEvents {
-    tx: broadcast::Sender<skiff_host_api::Event>,
-}
-impl DataEvents {
-    fn start() -> Self {
-        let (tx, _) = broadcast::channel(256);
-        let watch = tx.clone();
-        tokio::spawn(async move {
-            let mut previous = tokio::task::spawn_blocking(data_snapshot).await.unwrap_or_default();
-            let mut sequence = 0u64;
-            let mut tick = tokio::time::interval(std::time::Duration::from_millis(500));
-            tick.tick().await;
-            loop {
-                tick.tick().await;
-                let next = tokio::task::spawn_blocking(data_snapshot).await.unwrap_or_default();
-                let projects = next.projects != previous.projects;
-                let ledger = next.ledger != previous.ledger;
-                let worktrees = next.worktrees.iter().filter_map(|(path, stamp)| {
-                    (previous.worktrees.get(path) != Some(stamp)).then(|| path.clone())
-                }).chain(previous.worktrees.keys().filter(|path| !next.worktrees.contains_key(*path)).cloned()).collect::<Vec<_>>();
-                if projects || ledger || !worktrees.is_empty() {
-                    sequence = sequence.wrapping_add(1);
-                    let _ = watch.send(skiff_host_api::Event::DataChanged { sequence, projects, worktrees, tasks: ledger });
-                }
-                previous = next;
-            }
-        });
-        Self { tx }
-    }
-    fn subscribe(&self) -> broadcast::Receiver<skiff_host_api::Event> { self.tx.subscribe() }
-}
-
-#[derive(Default)]
-struct DataSnapshot { projects: String, ledger: String, worktrees: BTreeMap<String, u64> }
-
-/// A cheap-enough invalidation stamp, not a content hash. A write that keeps
-/// mtimes is outside normal filesystem semantics; a reconnect snapshot still
-/// makes that harmless. `.git` is excluded from the tree walk, except for
-/// its index so a staged Git-only edit also invalidates its worktree.
-fn data_snapshot() -> DataSnapshot {
-    let projects = config::file_stamp(&config::config_path());
-    let ledger = skiff_client::ledger::path().ok().map(|p| skiff_client::ledger::stamp(&p)).unwrap_or_default();
-    let mut worktrees = BTreeMap::new();
-    if let Ok(rows) = project::list() {
-        for project in rows.into_iter().filter(|p| !p.closed) {
-            let mut paths = BTreeSet::new();
-            paths.insert(project.path);
-            for wt in project.worktrees { paths.insert(wt.path); }
-            for path in paths {
-                let mut stamp = 0xcbf29ce484222325u64;
-                for entry in walkdir::WalkDir::new(&path).into_iter().filter_entry(|e| e.file_name() != ".git").flatten() {
-                    if let Ok(meta) = entry.metadata() {
-                        for n in [meta.len(), meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos() as u64).unwrap_or(0)] {
-                            stamp ^= n; stamp = stamp.wrapping_mul(0x100000001b3);
-                        }
-                        for b in entry.path().as_os_str().as_encoded_bytes() { stamp ^= u64::from(*b); stamp = stamp.wrapping_mul(0x100000001b3); }
-                    }
-                }
-                if let Ok(meta) = std::fs::metadata(path.join(".git/index")) {
-                    stamp ^= meta.len(); stamp = stamp.wrapping_mul(0x100000001b3);
-                    let modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos() as u64).unwrap_or(0);
-                    stamp ^= modified; stamp = stamp.wrapping_mul(0x100000001b3);
-                }
-                worktrees.insert(path.to_string_lossy().into_owned(), stamp);
-            }
-        }
-    }
-    DataSnapshot { projects, ledger, worktrees }
-}
-
-fn encode(id: u64, result: Result<Response, Error>) -> Vec<u8> {
-    let mut line = serde_json::to_vec(&Message::Reply { id, result }).unwrap_or_default();
-    if line.len() >= MAX_FRAME {
-        line = serde_json::to_vec(&Message::Reply {
-            id,
-            result: Err(Error::OperationFailed { message: "the reply is larger than a frame".into() }),
-        })
-        .unwrap_or_default();
-    }
-    line.push(b'\n');
-    line
 }
 
 /// One request. A family this service does not offer is refused before it
@@ -499,66 +203,12 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         Request::FolderPlaces => Ok(Response::Places { places: folders::places()? }),
         Request::ProgramList { path } => Ok(Response::Programs { names: folders::programs(&path)? }),
         Request::FolderCreate { parent, name } => Ok(Response::Path { path: folders::create(&parent, &name)? }),
-        Request::DropPut { name, bytes, upload, total, offset, finish } => {
-            let cfg = config::load().map_err(failed)?;
-            let bytes = if let Some(upload) = upload {
-                let total = total.ok_or_else(|| Error::Invalid { message: "an upload needs its total size".into() })? as usize;
-                if total > MAX_DROP || bytes.len() > MAX_DROP || offset as usize > total || bytes.len() > total.saturating_sub(offset as usize) {
-                    return Err(Error::Invalid { message: "the upload is too large or out of range".into() });
-                }
-                let mut uploads = UPLOADS.lock().map_err(|_| Error::HostBusy)?;
-                let entry = uploads.entry(upload.clone()).or_insert_with(|| Upload { name: name.clone(), total, bytes: Vec::new() });
-                if entry.name != name || entry.total != total || entry.bytes.len() != offset as usize {
-                    uploads.remove(&upload);
-                    return Err(Error::Invalid { message: "the upload chunks are not in order".into() });
-                }
-                entry.bytes.extend_from_slice(&bytes);
-                if !finish {
-                    return Ok(Response::Path { path: String::new() });
-                }
-                if entry.bytes.len() != total {
-                    uploads.remove(&upload);
-                    return Err(Error::Invalid { message: "the upload ended before all bytes arrived".into() });
-                }
-                uploads.remove(&upload).expect("present").bytes
-            } else {
-                bytes
-            };
-            if bytes.len() > MAX_DROP { return Err(Error::Invalid { message: "the upload is larger than 50 MB".into() }); }
-            let path = skiff_client::cache::put(&cfg, &name, &bytes).map_err(refused)?;
-            Ok(Response::Path { path: path.to_string_lossy().into_owned() })
-        }
-        Request::ImageList => {
-            let cfg = config::load().map_err(failed)?;
-            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
-            Ok(Response::Images { images: skiff_client::cache::list(&dir).into_iter().map(host_cache_image).collect() })
-        }
-        Request::ImageRead { path } => {
-            let cfg = config::load().map_err(failed)?;
-            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
-            let (mime, bytes) = cache_image(&dir, &path)?;
-            Ok(Response::Image { image: HostImage { mime, bytes } })
-        }
-        Request::ImageDelete { paths } => {
-            let cfg = config::load().map_err(failed)?;
-            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
-            for path in paths { skiff_client::cache::delete(&dir, Path::new(&path)).map_err(refused)?; }
-            Ok(Response::Ok)
-        }
-        Request::ImagePin { paths, on } => {
-            let cfg = config::load().map_err(failed)?;
-            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
-            for path in paths { skiff_client::cache::pin(&dir, Path::new(&path), on).map_err(refused)?; }
-            Ok(Response::Ok)
-        }
-        Request::CacheUse => {
-            let cfg = config::load().map_err(failed)?;
-            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
-            let images = skiff_client::cache::list(&dir);
-            let image_bytes = images.iter().map(|image| image.size).sum();
-            let bytes = cache_bytes(&dir).map_err(failed)?;
-            Ok(Response::CacheUse { usage: HostCacheUse { bytes, images: images.len() as u64, image_bytes } })
-        }
+        Request::DropPut { name, bytes, upload, total, offset, finish } => images::drop_put(name, bytes, upload, total, offset, finish),
+        Request::ImageList => images::image_list(),
+        Request::ImageRead { path } => images::image_read(path),
+        Request::ImageDelete { paths } => images::image_delete(paths),
+        Request::ImagePin { paths, on } => images::image_pin(paths, on),
+        Request::CacheUse => images::cache_use(),
         Request::LedgerRows => Ok(Response::Ledger { rows: ledger_rows(ledger_sessions.as_deref())? }),
         Request::LedgerStamp => {
             let file = skiff_client::ledger::path().map_err(failed)?;
@@ -667,95 +317,6 @@ fn unread(e: anyhow::Error) -> Error {
         Some(files::Refused::Invalid(_)) => Error::Invalid { message },
         None => failed(e),
     }
-}
-
-/// The Ledger panel's rows from this Host's `ledger.db`, read-only. A pane
-/// is `elsewhere` when its socket is not this Host's skiffd; a result
-/// exists only when [`ledger_result`] would serve it. Each row carries its
-/// work's bucket from the sessions `all`, as `skiff ledger ls` gives it.
-fn ledger_rows(all: Option<&[SessionInfo]>) -> Result<Vec<HostLedgerRow>, Error> {
-    let file = skiff_client::ledger::path().map_err(failed)?;
-    let mut rows = skiff_client::ledger::panel(&file).map_err(ledger_unread)?;
-    skiff_client::ledger::mark_live(&skiff_core::state::socket(), all, &mut rows);
-    Ok(rows
-        .into_iter()
-        .map(|r| {
-            let elsewhere = r.elsewhere;
-            let bucket = r.bucket.unwrap_or(skiff_client::ledger::OPEN).to_string();
-            let result_exists = r.result_path.as_deref().is_some_and(|p| result_file(&file, p).is_ok());
-            HostLedgerRow {
-                id: r.id,
-                uid: r.uid,
-                kind: r.kind,
-                owner: r.owner,
-                parent: r.parent,
-                pane_id: r.pane_id,
-                pane_gen: r.pane_gen,
-                project: r.project,
-                task: r.task,
-                sent_at: r.sent_at,
-                title: r.title,
-                state: r.state,
-                updated_at: r.updated_at,
-                task_type: r.task_type,
-                reference: r.reference,
-                reported_at: r.reported_at,
-                closed_at: r.closed_at,
-                gone_at: r.gone_at,
-                bucket,
-                elsewhere,
-                result_exists,
-                flushed_at: r.flushed_at,
-            }
-        })
-        .collect())
-}
-
-/// A ledger older than the readers take is `invalid`: any `skiff ledger`
-/// command on the Host updates it. Anything else failed while it ran.
-fn ledger_unread(e: anyhow::Error) -> Error {
-    let message = format!("{e:#}");
-    if message.contains("skiff ledger") {
-        return Error::Invalid { message };
-    }
-    failed(e)
-}
-
-/// The result of the row `uid`, read on this Host as a preview. Only the
-/// path the row records is read, never one the client names, and only inside
-/// the ledger's own folder: see [`result_file`].
-fn ledger_result(uid: &str) -> Result<files::FileRead, Error> {
-    let file = skiff_client::ledger::path().map_err(failed)?;
-    let none = || Error::NotFound { message: format!("row {uid} has no result this Host can show") };
-    let row = skiff_client::ledger::by_uid(&file, uid).map_err(ledger_unread)?.ok_or_else(none)?;
-    let path = row.result_path.ok_or_else(none)?;
-    let (root, folder, rel) = result_file(&file, &path)?;
-    files::read_in(&root, &folder, &rel, files::Purpose::Preview).map_err(unread)
-}
-
-/// Where a result may be read: below the folder that holds `ledger`, where
-/// `skiff ledger` puts results, as [`files::hold_beneath`] allows. On This
-/// Mac it may also be anywhere under the person's home folder: a Skipper
-/// records a repo path when its pane cannot write outside its repo. Answers
-/// the held folder, its path and the result relative to it. A ledger with
-/// no folder of its own serves no result: never the root in its place.
-fn result_file(ledger: &Path, result: &str) -> Result<(git::Root, std::path::PathBuf, String), Error> {
-    let folder = ledger
-        .parent()
-        .filter(|f| f.is_absolute() && f.parent().is_some())
-        .ok_or_else(|| Error::NotFound { message: format!("{} has no folder to hold results", ledger.display()) })?
-        .to_path_buf();
-    let beneath = files::hold_beneath(&folder, Path::new(result));
-    let (root, folder, rel) = match beneath {
-        Ok((root, rel)) => (root, folder, rel),
-        Err(e) => {
-            let home = dirs::home_dir().filter(|h| THIS_MAC.load(Ordering::Relaxed) && h.is_absolute() && h.parent().is_some());
-            let Some(home) = home else { return Err(unread(e)) };
-            let (root, rel) = files::hold_beneath(&home, Path::new(result)).map_err(unread)?;
-            (root, home, rel)
-        }
-    };
-    Ok((root, folder, rel))
 }
 
 /// A folder the client names on this Host: absolute, or under its home as
@@ -912,43 +473,6 @@ pub fn host_listing(l: files::Listing) -> HostListing {
         truncated: l.truncated,
         next: l.next,
     }
-}
-
-fn host_cache_image(image: skiff_client::cache::Image) -> HostCacheImage {
-    HostCacheImage {
-        path: image.path,
-        file: image.entry.file,
-        name: image.entry.name,
-        session: image.entry.session,
-        title: image.entry.title,
-        project: image.entry.project,
-        at: image.entry.at,
-        pinned: image.entry.pinned,
-        size: image.size,
-    }
-}
-
-/// Reads only a direct image cache entry and gives the webview its MIME type.
-fn cache_image(dir: &Path, path: &str) -> Result<(String, Vec<u8>), Error> {
-    let bytes = skiff_client::cache::read(dir, Path::new(path)).map_err(refused)?;
-    let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or_default();
-    let mime = match ext.to_ascii_lowercase().as_str() {
-        "svg" => "image/svg+xml", "png" => "image/png", "jpg" => "image/jpeg", "gif" => "image/gif",
-        "webp" => "image/webp", "bmp" => "image/bmp", "tif" => "image/tiff", "heic" => "image/heic", "avif" => "image/avif",
-        _ => return Err(Error::NotFound { message: "the image is not in this Host's cache".into() }),
-    };
-    Ok((mime.into(), bytes))
-}
-
-fn cache_bytes(dir: &Path) -> anyhow::Result<u64> {
-    let mut bytes = 0;
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let meta = entry.metadata()?;
-        if meta.is_file() { bytes += meta.len(); }
-        if meta.is_dir() { bytes += cache_bytes(&entry.path())?; }
-    }
-    Ok(bytes)
 }
 
 /// Opens only a path held and checked above. On a headless Host this reports

@@ -59,6 +59,10 @@ const SPLIT: Record<string, Split> = {
   "../src/appearance/hostSettings.ts": { kind: "sibling", children: ["hostShared", "hostList", "hostCheck", "hostFixes", "hostForm"] },
   "../src/appearance/settings.ts": { kind: "sibling", children: ["settingsFocus", "settingsLanguage", "settingsAgents", "settingsFiles"] },
   "../src/terminal/peek.ts": { kind: "sibling", children: ["peekCard", "peekHostView", "peekTerminal"] },
+  "../src/app/daemon.ts": { kind: "sibling", children: ["sessionRemoval", "newSession"] },
+  "../src/workspace/ledger.ts": { kind: "sibling", children: ["ledgerStore", "ledgerModel"] },
+  "../src/workspace/treeDrag.ts": { kind: "sibling", children: ["rowDrag"] },
+  "../src/workspace/skipperDrag.ts": { kind: "sibling", children: ["rowDrag"] },
 };
 
 /** A folder child's specifier as the facade would write it: `../y` is `./y`, `../../z` is `../z`. */

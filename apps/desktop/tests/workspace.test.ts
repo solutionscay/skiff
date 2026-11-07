@@ -118,7 +118,7 @@ test("mixed-scope plans keep qualifying headings without excluded children", () 
     "../app/stateQueries": { shownIds: () => [], accent: () => "" },
   }, {
     document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
-  }, "\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units };\n");
+  }, "\nimport { rows } from \"./ledgerStore\";\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units };\n");
   const plan = (uid: string, project: string) => ({ id: 1, uid, task: uid, kind: "plan", project, state: "pending", closed_at: null });
   const task = (uid: string, parent: string, project: string) => ({ id: 2, uid, kind: "task", project, parent, state: "done", closed_at: null });
   const rows = [
@@ -146,7 +146,7 @@ test("a hand-off nests under its plan with its tasks, and the filter keeps one p
     "../app/stateQueries": { shownIds: () => [], accent: () => "" },
   }, {
     document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
-  }, "\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units, ledgerCounts };\n");
+  }, "\nimport { rows } from \"./ledgerStore\";\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units, ledgerCounts };\n");
   const row = (uid: string, kind: string, project: string, owner: string, parent: string | null, state = "sent") =>
     ({ id: 1, uid, kind, project, owner, parent, state, closed_at: null, pane_id: null, task: uid, title: null });
   ledger.review.setRows([
@@ -176,7 +176,7 @@ test("every row files by its work's bucket: a closed hand-off's tasks show in Fi
     "../app/stateQueries": { shownIds: () => [], accent: () => "" },
   }, {
     document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
-  }, "\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units, sections };\n");
+  }, "\nimport { rows } from \"./ledgerStore\";\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units, sections };\n");
   const row = (id: number, uid: string, kind: string, owner: string, parent: string | null, bucket: string, closed: string | null = null) =>
     ({ id, uid, kind, project: "skiff", owner, parent, state: "done", bucket, closed_at: closed, pane_id: null, task: uid, title: null, updated_at: "u" });
   ledger.review.setRows([
@@ -202,7 +202,7 @@ test("the fleet filter shows its Skipper's rows, the hand-offs to it and its pro
     "../app/stateQueries": { shownIds: () => [], accent: () => "" },
   }, {
     document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
-  }, "\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units, ledgerCounts, ledgerWorkTitle };\n");
+  }, "\nimport { rows } from \"./ledgerStore\";\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units, ledgerCounts, ledgerWorkTitle };\n");
   const row = (uid: string, kind: string, project: string, owner: string, parent: string | null, state = "sent") =>
     ({ id: 1, uid, kind, project, owner, parent, state, closed_at: null, pane_id: null, task: uid, title: null });
   ledger.review.setRows([

@@ -2117,7 +2117,7 @@ the Host stay the only ledger writers. No schema or ledger semantics change.
 
 ### The app
 
-- **Ledger panel** (`workspace/ledger.ts`): `ledger_rows` through
+- **Ledger panel** (`workspace/ledger.ts`, rows in `ledgerStore.ts`): `ledger_rows` through
   `hostInvoke("ledger", …)`, on This Mac too. It starts after the Host's
   capabilities load. A Host without `ledger` shows why, with no rows.
   Ownership, plan grouping, task states, the workspace filter and All work
