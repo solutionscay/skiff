@@ -149,7 +149,7 @@ test("the page draws the tree, and Flush asks with REMOVE and KEEP, then sends w
   const words = d.content.map((c: El) => c.text()).join(" ");
   assert.match(words, /Remove 401 files · 1000 B/);
   assert.match(words, /Keep 2 files · 60 B/);
-  assert.match(words, /A job that writes here again later can't be predicted\./);
+  assert.doesNotMatch(words, /predicted/, "the dialog has no commentary line");
   d.submit();
   for (let i = 0; i < 4; i++) await tick();
   assert.deepEqual(plain(calls[0]), ["flush_disk", { items: [{ path: "results/p1-ship/a1-review", bytes: 1000, files: 401, mtime: 1 }] }]);

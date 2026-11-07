@@ -248,7 +248,6 @@ body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset:
 .disk-line-names { color: var(--text-3); font-size: calc(11px * var(--zoom, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .disk-line-size { align-items: flex-end; font-variant-numeric: tabular-nums; color: var(--text-2); }
 .disk-line-files { color: var(--text-dim); font-size: calc(11px * var(--zoom, 1)); }
-.disk-limit { padding: calc(10 * var(--u)) calc(20 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); border-bottom: 1px solid var(--rule); }
 
 /* Sessions: one grid for the whole table. STATE, SESSION and PROGRAM size to their content; WORKSPACE and FOLDER share the rest. */
 .set-daemon { flex-shrink: 0; display: grid; grid-template-columns: fit-content(calc(120 * var(--u))) fit-content(calc(300 * var(--u))) fit-content(calc(140 * var(--u))) minmax(calc(112 * var(--u)), 1fr) minmax(calc(104 * var(--u)), 1fr) calc(80 * var(--u)) calc(52 * var(--u)) calc(88 * var(--u)); min-width: 0; }

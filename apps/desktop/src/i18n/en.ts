@@ -883,7 +883,6 @@ export const en = {
   "disk.in": "In {folder}",
   "disk.sectionRemove": "Remove",
   "disk.sectionKeep": "Keep",
-  "disk.limit": "A job that writes here again later can't be predicted.",
   "disk.removeTitle": "Remove {files} ({size})?",
   "disk.remove": "Remove",
   "disk.colName": "Name",

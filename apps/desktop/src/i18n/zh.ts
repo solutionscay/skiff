@@ -979,7 +979,6 @@ export const zh = {
   "disk.in": "位于 {folder}",
   "disk.sectionRemove": "移除",
   "disk.sectionKeep": "保留",
-  "disk.limit": "无法预知之后会再次写入此处的任务。",
   "disk.removeTitle": "移除 {files}（{size}）？",
   "disk.remove": "移除",
   "disk.colName": "名称",

@@ -161,11 +161,10 @@ function askFlush(s: DiskState, n: DiskNode, redraw: () => void) {
   const scope = h("div", "disk-scope mono", t("disk.in", { folder: `${s.usage?.shown ?? "~/skiff-agent"}/${n.path ? n.path + "/" : ""}` }));
   const list = h("div", "disk-list");
   list.append(...section(t("disk.sectionRemove"), go, n), ...section(t("disk.sectionKeep"), keep, n));
-  const limit = h("div", "disk-limit", t("disk.limit"));
   const back = () => document.querySelector<HTMLElement>(`.set-disk-row[data-path="${CSS.escape(n.path)}"]`)?.focus();
   actionDialog({
     title: t("disk.removeTitle", { files: count("disk.files", files), size: size(bytes) }),
-    content: [scope, list, limit],
+    content: [scope, list],
     action: t("disk.remove"),
     tone: "danger",
     // The dialog closes at once: the page shows the flush as it runs.

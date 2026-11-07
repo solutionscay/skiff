@@ -1021,7 +1021,6 @@ export const es = {
   "disk.in": "En {folder}",
   "disk.sectionRemove": "Eliminar",
   "disk.sectionKeep": "Conservar",
-  "disk.limit": "No se puede prever un trabajo que vuelva a escribir aquí más tarde.",
   "disk.removeTitle": "¿Eliminar {files} ({size})?",
   "disk.remove": "Eliminar",
   "disk.colName": "Nombre",
