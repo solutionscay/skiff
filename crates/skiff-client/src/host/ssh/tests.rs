@@ -38,6 +38,7 @@ fn the_forward_keeps_strict_trust_and_never_takes_the_destination_as_an_option()
             program: "ssh".into(),
             config: None,
         },
+        Carries::Data,
     );
     let args: Vec<String> = args.into_iter().map(|a| a.into_string().unwrap()).collect();
     for want in [
@@ -77,6 +78,7 @@ fn the_forward_keeps_strict_trust_and_never_takes_the_destination_as_an_option()
             program: "ssh".into(),
             config: Some("/fixture/ssh_config".into()),
         },
+        Carries::Data,
     );
     assert_eq!(
         with[..2],
@@ -88,7 +90,7 @@ fn the_forward_keeps_strict_trust_and_never_takes_the_destination_as_an_option()
         port: Some(2222),
         ..target()
     };
-    let args: Vec<String> = forward_args(&set, Path::new("/x"), &SshOptions::default())
+    let args: Vec<String> = forward_args(&set, Path::new("/x"), &SshOptions::default(), Carries::Data)
         .into_iter()
         .map(|a| a.into_string().unwrap())
         .collect();
@@ -106,6 +108,27 @@ fn the_forward_keeps_strict_trust_and_never_takes_the_destination_as_an_option()
     }
     .validate()
     .is_err());
+}
+
+/// sshd sets TCP_NODELAY only for a session with a pty. The typing link
+/// opens one, so an echo's later writes do not wait on Nagle.
+#[test]
+fn the_typing_forward_opens_a_pty_session_and_the_data_forward_none() {
+    let args = |carries| -> Vec<String> {
+        forward_args(&target(), Path::new("/x"), &SshOptions::default(), carries)
+            .into_iter()
+            .map(|a| a.into_string().unwrap())
+            .collect()
+    };
+    let typing = args(Carries::Typing);
+    assert!(!typing.contains(&"-N".to_string()));
+    assert!(typing.contains(&"RequestTTY=force".to_string()));
+    assert!(!typing.contains(&"RequestTTY=no".to_string()));
+    assert_eq!(&typing[typing.len() - 3..], ["--", "devbox", HOLD]);
+    let data = args(Carries::Data);
+    assert!(data.contains(&"-N".to_string()));
+    assert!(data.contains(&"RequestTTY=no".to_string()));
+    assert_eq!(data.last().unwrap(), "devbox");
 }
 
 #[test]
