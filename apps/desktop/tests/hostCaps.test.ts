@@ -85,3 +85,15 @@ test("each answer tells the report words whether the Host offers program_status@
   await mod.loadHostCaps();
   assert.deepEqual(told, [true, false]);
 });
+
+test("a first read that fails does not stick: the next call asks the Host again", async () => {
+  let down = true;
+  const { mod, calls } = caps(async () => {
+    if (down) throw new Error("no Host");
+    return LOCAL;
+  });
+  await assert.rejects(mod.hostInvoke("session_inventory", "list_sessions"), /no Host/);
+  down = false;
+  assert.equal(await mod.hostInvoke("session_inventory", "list_sessions"), "list_sessions done");
+  assert.deepEqual(calls.map(([c]) => c), ["host_capabilities", "host_capabilities", "list_sessions"]);
+});
