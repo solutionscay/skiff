@@ -72,11 +72,6 @@ export function awayPlaces(s: SessionInfo): readonly Place[] {
   return out;
 }
 
-/** Sessions from other worktrees that work in `w`. */
-export function visitors(w: Worktree): SessionInfo[] {
-  return [...sessions.values()].filter((s) => awayPlaces(s).some((a) => a.worktree === w)).sort(byStart);
-}
-
 export const currentProject = () => S.projects.find((p) => p.name === S.selectedProject) ?? null;
 
 export function worktreeSessions(w: Worktree): SessionInfo[] {
