@@ -1,6 +1,6 @@
 /**
  * Mission control's graph, the pure part: its types, the windows' sizes, the
- * keys' moves through the graph, the key map and the view math. No DOM, no
+ * keys' moves on the board, the key map and the view math. No DOM, no
  * state, no imports, so tests run it as it is. The layout and the connectors
  * are in missionControl/grid.ts. All lengths are in unzoomed px: the board
  * scales the whole world by the app zoom.
@@ -100,8 +100,6 @@ export interface Placed {
   trunk: number | null;
 }
 
-const allProjects = (g: Graph) => [...g.fleets.flatMap((f) => f.projects), ...g.projects];
-
 /** The box around everything placed. Empty: a zero box at the origin. */
 export function bounds(p: Placed): Rect {
   let x0 = Infinity;
@@ -168,64 +166,57 @@ export function edgeTick(v: View, r: Rect, vw: number, vh: number, size = 10): {
   return { x: Math.max(0, Math.min(vw - size, sx + sw / 2 - size / 2)), y: Math.max(0, Math.min(vh - size, sy + sh / 2 - size / 2)) };
 }
 
-// ---- The keys' moves through the graph ----
+// ---- The keys' moves on the board ----
 
-/** The node that stands for a fleet in the graph: its Skipper's card, else its frame. */
-const fleetNode = (f: GFleet) => f.skipper ?? f.key;
-const projectNode = (p: GProject) => p.skipper ?? p.key;
+export type Dir = "up" | "down" | "left" | "right";
+const mid = (r: Rect) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
 
-/** The node above `id`: a card's cluster, a cluster's Skipper or fleet, a Skipper's Admiral. `null` at the top. */
-export function navParent(g: Graph, id: string): string | null {
-  if (id === g.admiral) return null;
-  for (const f of g.fleets) {
-    if (id === f.skipper || id === f.key) return g.admiral;
-    for (const p of f.projects) {
-      if (id === p.skipper) return fleetNode(f);
-      if (id === p.key) return p.skipper ?? fleetNode(f);
-      if (p.cards.includes(id)) return p.key;
-    }
+/**
+ * The card an arrow lights: the nearest card in `dir` on the board. A card
+ * counts when its near edge is past the middle of the lit card. Its score is
+ * the gap along `dir` plus 3 × the gap across it. The gap across is measured
+ * from `at`, the line that a run of moves keeps: the column for Up/Down, the
+ * row for Left/Right. A card on that line has no gap across. `null`: no card
+ * that way, so the light stays.
+ */
+export function navMove(cards: Map<string, Rect>, from: string, dir: Dir, at: { x: number; y: number }): string | null {
+  const a = cards.get(from);
+  if (!a) return null;
+  const v = dir === "up" || dir === "down";
+  const s = dir === "down" || dir === "right" ? 1 : -1;
+  const lo = (r: Rect) => (v ? r.y : r.x);
+  const hi = (r: Rect) => (v ? r.y + r.h : r.x + r.w);
+  const middle = v ? mid(a).y : mid(a).x;
+  const line = v ? at.x : at.y;
+  let best: string | null = null;
+  let score = Infinity;
+  for (const [id, b] of cards) {
+    const near = s > 0 ? lo(b) : hi(b);
+    if (id === from || (near - middle) * s <= 0) continue;
+    const along = Math.max(0, (near - (s > 0 ? hi(a) : lo(a))) * s);
+    const start = v ? b.x : b.y;
+    const across = Math.max(0, start - line, line - (start + (v ? b.w : b.h)));
+    if (along + 3 * across < score) [best, score] = [id, along + 3 * across];
   }
-  for (const p of g.projects) {
-    if (id === p.skipper) return g.admiral;
-    if (id === p.key) return p.skipper ?? g.admiral;
-    if (p.cards.includes(id)) return p.key;
-  }
-  return null;
+  return best;
 }
 
-/** The nodes under `id`, left to right. */
-export function navChildren(g: Graph, id: string): string[] {
-  if (id === g.admiral) return [...g.fleets.map(fleetNode), ...g.projects.map(projectNode)];
-  for (const f of g.fleets) {
-    if (id === fleetNode(f)) return f.projects.map(projectNode);
-    for (const p of f.projects) if (id === p.skipper) return [p.key];
+/** The card nearest the point `p`, center to point. `inside`: only cards in that box. `null`: no such card. */
+export function navNearest(cards: Map<string, Rect>, p: { x: number; y: number }, inside?: Rect): string | null {
+  let best: string | null = null;
+  let d = Infinity;
+  for (const [id, r] of cards) {
+    if (inside && (r.x < inside.x || r.y < inside.y || r.x + r.w > inside.x + inside.w || r.y + r.h > inside.y + inside.h)) continue;
+    const e = Math.hypot(mid(r).x - p.x, mid(r).y - p.y);
+    if (e < d) [best, d] = [id, e];
   }
-  for (const p of g.projects) if (id === p.skipper) return [p.key];
-  const p = allProjects(g).find((p) => p.key === id);
-  return p ? p.cards : [];
-}
-
-/** The next (`dir` 1) or previous node beside `id`, under the same parent. The ends stay. */
-export function navSibling(g: Graph, id: string, dir: 1 | -1): string | null {
-  const parent = navParent(g, id);
-  const list = parent ? navChildren(g, parent) : [...(g.admiral ? [g.admiral] : []), ...(g.admiral ? [] : [...g.fleets.map(fleetNode), ...g.projects.map(projectNode)])];
-  const i = list.indexOf(id);
-  if (i < 0) return null;
-  return list[Math.max(0, Math.min(list.length - 1, i + dir))] ?? null;
-}
-
-/** The first node: Admiral, else the first block. */
-export function navFirst(g: Graph): string | null {
-  return g.admiral ?? g.fleets.map(fleetNode)[0] ?? g.projects.map(projectNode)[0] ?? null;
+  return best;
 }
 
 // ---- Keys ----
 
 export type BoardCommand =
-  | "parent"
-  | "child"
-  | "prev"
-  | "next"
+  | Dir
   | "go"
   | "go-max"
   | "fit"
@@ -251,10 +242,10 @@ const ACTIONS: Record<string, BoardCommand> = {
   "project-menu": "menu",
   settings: "settings",
   "skiff-agent": "skipper",
-  "session-next": "child",
-  "session-prev": "parent",
-  "list-project": "prev",
-  "list-back": "next",
+  "session-next": "down",
+  "session-prev": "up",
+  "list-project": "left",
+  "list-back": "right",
 };
 
 /**
@@ -268,11 +259,11 @@ export function boardCommand(key: string, action: string | null, inSearch: boole
   if (key === "Escape") return searchText ? "clear-search" : "close";
   if (key === "Enter") return "go";
   if (mods.ctrl || mods.shift || mods.alt || mods.meta) return null;
-  if (key === "ArrowDown") return "child";
-  if (key === "ArrowUp") return "parent";
+  if (key === "ArrowDown") return "down";
+  if (key === "ArrowUp") return "up";
   if (inSearch) return null;
-  if (key === "ArrowRight") return "next";
-  if (key === "ArrowLeft") return "prev";
+  if (key === "ArrowRight") return "right";
+  if (key === "ArrowLeft") return "left";
   if (key === "Home") return "fit";
   if (key === "=" || key === "+") return "zoom-in";
   if (key === "-") return "zoom-out";
