@@ -205,7 +205,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         Request::FolderCreate { parent, name } => Ok(Response::Path { path: folders::create(&parent, &name)? }),
         Request::DropPut { name, bytes, upload, total, offset, finish } => images::drop_put(name, bytes, upload, total, offset, finish),
         Request::ImageList => images::image_list(),
-        Request::ImageRead { path } => images::image_read(path),
+        Request::ImageRead { path, thumb } => images::image_read(path, thumb),
         Request::ImageDelete { paths } => images::image_delete(paths),
         Request::ImagePin { paths, on } => images::image_pin(paths, on),
         Request::CacheUse => images::cache_use(),

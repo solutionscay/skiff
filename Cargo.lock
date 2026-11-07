@@ -2117,6 +2117,8 @@ dependencies = [
  "num-traits",
  "png 0.18.1",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]
@@ -4164,6 +4166,7 @@ version = "2.2.4"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
+ "image",
  "libc",
  "rusqlite",
  "serde",

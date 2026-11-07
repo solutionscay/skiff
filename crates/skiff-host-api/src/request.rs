@@ -254,8 +254,14 @@ pub enum Request {
     },
     /// Answers the Host's image cache, newest first.
     ImageList,
-    /// Answers one Host cache image's validated bytes.
-    ImageRead { path: String },
+    /// Answers one Host cache image's validated bytes. `thumb`: a PNG or
+    /// JPEG comes back scaled to at most this many pixels on its long side,
+    /// in its own format. Absent, or a Host that predates it: the full image.
+    ImageRead {
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        thumb: Option<u32>,
+    },
     /// Deletes Host cache images. Each path must be one returned by
     /// `image_list`; an absent image is already deleted.
     ImageDelete { paths: Vec<String> },

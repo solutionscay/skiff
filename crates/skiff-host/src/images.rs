@@ -54,11 +54,37 @@ pub(super) fn image_list() -> Result<Response, Error> {
     Ok(Response::Images { images: skiff_client::cache::list(&dir).into_iter().map(host_cache_image).collect() })
 }
 
-pub(super) fn image_read(path: String) -> Result<Response, Error> {
+pub(super) fn image_read(path: String, thumb: Option<u32>) -> Result<Response, Error> {
     let cfg = config::load().map_err(failed)?;
     let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
     let (mime, bytes) = cache_image(&dir, &path)?;
+    let bytes = match thumb {
+        Some(size) => scaled(&mime, bytes, size.clamp(16, 1024)),
+        None => bytes,
+    };
     Ok(Response::Image { image: HostImage { mime, bytes } })
+}
+
+/// A PNG or JPEG at most `size` pixels on its long side, in its own format.
+/// Any other image, a smaller one, or one that does not decode: as it is.
+fn scaled(mime: &str, bytes: Vec<u8>, size: u32) -> Vec<u8> {
+    let format = match mime {
+        "image/png" => image::ImageFormat::Png,
+        "image/jpeg" => image::ImageFormat::Jpeg,
+        _ => return bytes,
+    };
+    let Ok(img) = image::load_from_memory_with_format(&bytes, format) else { return bytes };
+    if img.width().max(img.height()) <= size {
+        return bytes;
+    }
+    let small = img.thumbnail(size, size);
+    // JPEG has no alpha.
+    let small = if format == image::ImageFormat::Jpeg { image::DynamicImage::ImageRgb8(small.to_rgb8()) } else { small };
+    let mut out = std::io::Cursor::new(Vec::new());
+    match small.write_to(&mut out, format) {
+        Ok(()) if out.get_ref().len() < bytes.len() => out.into_inner(),
+        _ => bytes,
+    }
 }
 
 pub(super) fn image_delete(paths: Vec<String>) -> Result<Response, Error> {
@@ -119,4 +145,25 @@ fn cache_bytes(dir: &Path) -> anyhow::Result<u64> {
         if meta.is_dir() { bytes += cache_bytes(&entry.path())?; }
     }
     Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn png(w: u32, h: u32) -> Vec<u8> {
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(w, h).write_to(&mut out, image::ImageFormat::Png).unwrap();
+        out.into_inner()
+    }
+
+    #[test]
+    fn a_thumb_is_at_most_its_size_and_a_small_image_stays_as_it_is() {
+        let small = scaled("image/png", png(1600, 800), 160);
+        let img = image::load_from_memory_with_format(&small, image::ImageFormat::Png).unwrap();
+        assert_eq!((img.width(), img.height()), (160, 80));
+        let tiny = png(100, 50);
+        assert_eq!(scaled("image/png", tiny.clone(), 160), tiny);
+        assert_eq!(scaled("image/svg+xml", b"<svg/>".to_vec(), 160), b"<svg/>");
+    }
 }

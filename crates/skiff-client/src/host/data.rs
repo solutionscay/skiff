@@ -301,7 +301,17 @@ pub async fn image_list(c: &HostConnection) -> Result<Vec<HostCacheImage>, Error
 
 /// One Host cache image's bytes. `path` came from [`image_list`].
 pub async fn image_read(c: &HostConnection, path: &str) -> Result<HostImage, Error> {
-    match c.request(Request::ImageRead { path: path.into() }).await? {
+    image_get(c, path, None).await
+}
+
+/// One Host cache image scaled on the Host to at most `size` pixels on its
+/// long side. An older Host answers the full image.
+pub async fn image_thumb(c: &HostConnection, path: &str, size: u32) -> Result<HostImage, Error> {
+    image_get(c, path, Some(size)).await
+}
+
+async fn image_get(c: &HostConnection, path: &str, thumb: Option<u32>) -> Result<HostImage, Error> {
+    match c.request(Request::ImageRead { path: path.into(), thumb }).await? {
         Response::Image { image } => Ok(image),
         _ => unreachable!("checked by Request::accepts"),
     }

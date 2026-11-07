@@ -279,11 +279,13 @@ pub(crate) async fn image_delete(handle: AppHandle, app: State<'_, App>, paths: 
     done
 }
 
-/// A library image's bytes, for its thumbnail. Only files in the cache.
+/// A library image's bytes, for its thumbnail. Only files in the cache. A
+/// remote Host scales it to `size` pixels on its long side first, so the
+/// link carries kilobytes, not the full image.
 #[tauri::command]
-pub(crate) async fn image_thumb(app: State<'_, App>, path: PathBuf) -> Result<tauri::ipc::Response, String> {
+pub(crate) async fn image_thumb(app: State<'_, App>, path: PathBuf, size: u32) -> Result<tauri::ipc::Response, String> {
     if app.remote() {
-        let image = crate::connection::data_read(&app, |c| async move { data::image_read(&c, &path.to_string_lossy()).await }).await?;
+        let image = crate::connection::data_read(&app, |c| async move { data::image_thumb(&c, &path.to_string_lossy(), size).await }).await?;
         return Ok(tauri::ipc::Response::new(image.bytes));
     }
     let cfg = skiff_core::config::load().unwrap_or_default();
