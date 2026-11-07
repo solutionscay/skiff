@@ -14,33 +14,26 @@
 //! `instance_id` is its own and changes on every start.
 pub mod folders;
 mod events;
+mod images;
 mod ledger;
 pub mod skipper;
 mod transport;
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     path::Path,
-    sync::{LazyLock, Mutex},
 };
 
 use skiff_core::{config::{self, ProjectConfig}, files, git, project, session::SessionInfo};
 use skiff_host_api::{
     Capability, ChangeStatus, EntryKind, Error, FileContent, Hello, Host, HostChange, HostDiff, HostEntry,
-    HostCacheImage, HostCacheUse, HostFile, HostBranch, HostBranches, HostFolder, HostId, HostImage, HostListing, HostProject, HostWorktree, InstanceId, Limits,
+    HostFile, HostBranch, HostBranches, HostFolder, HostId, HostImage, HostListing, HostProject, HostWorktree, InstanceId, Limits,
     ProjectEdit, ReadPurpose, Request, Response, API_MAJOR,
 };
 
 pub use transport::{admitted, bind, handle, serve, BoundSocket, MAX_FRAME, MAX_IN_FLIGHT};
 use ledger::{ledger_result, ledger_rows};
 pub use ledger::set_this_mac;
-
-/// In-progress framed drops. A service restart discards them; no partial file
-/// reaches the cache before the final frame.
-static UPLOADS: LazyLock<Mutex<HashMap<String, Upload>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
-const MAX_DROP: usize = 50 * 1024 * 1024;
-
-struct Upload { name: String, total: usize, bytes: Vec<u8> }
 
 /// What this service offers.
 pub fn capabilities() -> Vec<Capability> {
@@ -210,66 +203,12 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         Request::FolderPlaces => Ok(Response::Places { places: folders::places()? }),
         Request::ProgramList { path } => Ok(Response::Programs { names: folders::programs(&path)? }),
         Request::FolderCreate { parent, name } => Ok(Response::Path { path: folders::create(&parent, &name)? }),
-        Request::DropPut { name, bytes, upload, total, offset, finish } => {
-            let cfg = config::load().map_err(failed)?;
-            let bytes = if let Some(upload) = upload {
-                let total = total.ok_or_else(|| Error::Invalid { message: "an upload needs its total size".into() })? as usize;
-                if total > MAX_DROP || bytes.len() > MAX_DROP || offset as usize > total || bytes.len() > total.saturating_sub(offset as usize) {
-                    return Err(Error::Invalid { message: "the upload is too large or out of range".into() });
-                }
-                let mut uploads = UPLOADS.lock().map_err(|_| Error::HostBusy)?;
-                let entry = uploads.entry(upload.clone()).or_insert_with(|| Upload { name: name.clone(), total, bytes: Vec::new() });
-                if entry.name != name || entry.total != total || entry.bytes.len() != offset as usize {
-                    uploads.remove(&upload);
-                    return Err(Error::Invalid { message: "the upload chunks are not in order".into() });
-                }
-                entry.bytes.extend_from_slice(&bytes);
-                if !finish {
-                    return Ok(Response::Path { path: String::new() });
-                }
-                if entry.bytes.len() != total {
-                    uploads.remove(&upload);
-                    return Err(Error::Invalid { message: "the upload ended before all bytes arrived".into() });
-                }
-                uploads.remove(&upload).expect("present").bytes
-            } else {
-                bytes
-            };
-            if bytes.len() > MAX_DROP { return Err(Error::Invalid { message: "the upload is larger than 50 MB".into() }); }
-            let path = skiff_client::cache::put(&cfg, &name, &bytes).map_err(refused)?;
-            Ok(Response::Path { path: path.to_string_lossy().into_owned() })
-        }
-        Request::ImageList => {
-            let cfg = config::load().map_err(failed)?;
-            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
-            Ok(Response::Images { images: skiff_client::cache::list(&dir).into_iter().map(host_cache_image).collect() })
-        }
-        Request::ImageRead { path } => {
-            let cfg = config::load().map_err(failed)?;
-            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
-            let (mime, bytes) = cache_image(&dir, &path)?;
-            Ok(Response::Image { image: HostImage { mime, bytes } })
-        }
-        Request::ImageDelete { paths } => {
-            let cfg = config::load().map_err(failed)?;
-            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
-            for path in paths { skiff_client::cache::delete(&dir, Path::new(&path)).map_err(refused)?; }
-            Ok(Response::Ok)
-        }
-        Request::ImagePin { paths, on } => {
-            let cfg = config::load().map_err(failed)?;
-            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
-            for path in paths { skiff_client::cache::pin(&dir, Path::new(&path), on).map_err(refused)?; }
-            Ok(Response::Ok)
-        }
-        Request::CacheUse => {
-            let cfg = config::load().map_err(failed)?;
-            let dir = skiff_client::cache::ensure(&cfg).map_err(failed)?;
-            let images = skiff_client::cache::list(&dir);
-            let image_bytes = images.iter().map(|image| image.size).sum();
-            let bytes = cache_bytes(&dir).map_err(failed)?;
-            Ok(Response::CacheUse { usage: HostCacheUse { bytes, images: images.len() as u64, image_bytes } })
-        }
+        Request::DropPut { name, bytes, upload, total, offset, finish } => images::drop_put(name, bytes, upload, total, offset, finish),
+        Request::ImageList => images::image_list(),
+        Request::ImageRead { path } => images::image_read(path),
+        Request::ImageDelete { paths } => images::image_delete(paths),
+        Request::ImagePin { paths, on } => images::image_pin(paths, on),
+        Request::CacheUse => images::cache_use(),
         Request::LedgerRows => Ok(Response::Ledger { rows: ledger_rows(ledger_sessions.as_deref())? }),
         Request::LedgerStamp => {
             let file = skiff_client::ledger::path().map_err(failed)?;
@@ -534,43 +473,6 @@ pub fn host_listing(l: files::Listing) -> HostListing {
         truncated: l.truncated,
         next: l.next,
     }
-}
-
-fn host_cache_image(image: skiff_client::cache::Image) -> HostCacheImage {
-    HostCacheImage {
-        path: image.path,
-        file: image.entry.file,
-        name: image.entry.name,
-        session: image.entry.session,
-        title: image.entry.title,
-        project: image.entry.project,
-        at: image.entry.at,
-        pinned: image.entry.pinned,
-        size: image.size,
-    }
-}
-
-/// Reads only a direct image cache entry and gives the webview its MIME type.
-fn cache_image(dir: &Path, path: &str) -> Result<(String, Vec<u8>), Error> {
-    let bytes = skiff_client::cache::read(dir, Path::new(path)).map_err(refused)?;
-    let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or_default();
-    let mime = match ext.to_ascii_lowercase().as_str() {
-        "svg" => "image/svg+xml", "png" => "image/png", "jpg" => "image/jpeg", "gif" => "image/gif",
-        "webp" => "image/webp", "bmp" => "image/bmp", "tif" => "image/tiff", "heic" => "image/heic", "avif" => "image/avif",
-        _ => return Err(Error::NotFound { message: "the image is not in this Host's cache".into() }),
-    };
-    Ok((mime.into(), bytes))
-}
-
-fn cache_bytes(dir: &Path) -> anyhow::Result<u64> {
-    let mut bytes = 0;
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let meta = entry.metadata()?;
-        if meta.is_file() { bytes += meta.len(); }
-        if meta.is_dir() { bytes += cache_bytes(&entry.path())?; }
-    }
-    Ok(bytes)
 }
 
 /// Opens only a path held and checked above. On a headless Host this reports
