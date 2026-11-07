@@ -150,14 +150,39 @@ test("the page draws the tree, and Flush asks with REMOVE and KEEP, then sends w
   assert.match(words, /Remove 401 files · 1000 B/);
   assert.match(words, /Keep 2 files · 60 B/);
   assert.match(words, /A job that writes here again later can't be predicted\./);
-  await d.submit();
+  d.submit();
+  for (let i = 0; i < 4; i++) await tick();
   assert.deepEqual(plain(calls[0]), ["flush_disk", { items: [{ path: "results/p1-ship/a1-review", bytes: 1000, files: 401, mtime: 1 }] }]);
+  assert.equal(calls[1][0], "disk_usage", "the page counts again after the flush");
   assert.equal(s.removed, "Removed 401 files, 1000 B. 1 ledger row now shows “Result flushed”.");
 });
+
+const tick = () => new Promise((r) => setImmediate(r));
+
+/** The page's head count, its table, its status line and its error lines. */
+function view(parts: El[]) {
+  const table = parts.find((p) => p.className.startsWith("set-disk"))!;
+  const foot = parts.find((p) => p.className === "set-disk-foot")!;
+  return {
+    head: parts[0].text(),
+    table,
+    flush: table.all().filter((e) => e.dataset.key?.startsWith("flush:")),
+    status: foot.children.find((e) => e.attrs.role === "status")!.textContent,
+    errors: foot.children.filter((e) => e.attrs.role === "alert").map((e) => e.textContent),
+  };
+}
+
+/** A promise the test settles. */
+function later<T>() {
+  let settle!: (v: T | Error) => void;
+  const p = new Promise<T | Error>((r) => (settle = r));
+  return { p, settle };
+}
 
 /** The page with `answer` for each command; `calls` gets each command. */
 function page(answer: (cmd: string) => unknown, local = true) {
   const calls: [string, any][] = [];
+  const dialogs: any[] = [];
   const peeks: [string, string, string][] = [];
   const P = moduleFromSource(
     "../src/appearance/diskUse.ts",
@@ -173,7 +198,7 @@ function page(answer: (cmd: string) => unknown, local = true) {
       "../ui/dom": { h: (tag: string, cls = "", text = "") => new El(tag, cls, text) },
       "../ui/controls": realControls((tag: string, cls = "", text = "") => new El(tag, cls, text)),
       "../app/hosts": { isRemote: () => false },
-      "../ui/dialogParts": { actionDialog: () => {} },
+      "../ui/dialogParts": { actionDialog: (o: any) => dialogs.push(o) },
       "../ui/runes": { rune: () => new El("svg") },
       "./skiffFolderDialog": { size },
       "./diskTree": T,
@@ -183,15 +208,12 @@ function page(answer: (cmd: string) => unknown, local = true) {
   );
   const s = P.diskState();
   s.usage = { shown: "~/skiff-agent", tree: tree(), now: NOW, daemon: true, ledger_error: null, unreadable: 0, cache_days: 30 };
-  const draw = () => {
-    const parts: El[] = P.diskUseSection(s, draw, () => {}, { local, peek: (script: string, cwd: string, name: string) => peeks.push([script, cwd, name]) });
-    return parts.find((p) => p.className === "set-disk")!.all().filter((e) => e.className.includes("set-disk-row"));
-  };
+  const parts = (): El[] => P.diskUseSection(s, () => {}, () => {}, { local, peek: (script: string, cwd: string, name: string) => peeks.push([script, cwd, name]) });
+  const draw = () => parts().find((p) => p.className.startsWith("set-disk"))!.all().filter((e) => e.className.includes("set-disk-row"));
   const row = (path: string) => draw().find((r) => r.dataset.path === path)!;
-  return { s, calls, peeks, row };
+  return { P, s, calls, dialogs, peeks, row, parts };
 }
 
-const tick = () => new Promise((r) => setImmediate(r));
 const reveal = (r: El) => r.all().find((e) => e.dataset.key?.startsWith("reveal:"));
 
 test("a click on a file row opens it through disk_open, as Open with says; a folder row's click only moves the row", async () => {
@@ -237,4 +259,65 @@ test("a folder row has Show in file manager, which sends the tree's path to disk
   remote.row("results/new.md").fire("click");
   await tick();
   assert.equal(remote.calls.length, 0);
+});
+
+test("the page says Calculating size… while it counts; a count again keeps the last numbers dim, with Flush off", async () => {
+  let count = later<unknown>();
+  const p = page((cmd) => (cmd === "disk_usage" ? count.p.then((v) => { if (v instanceof Error) throw v; return v; }) : null));
+  const usage = p.s.usage;
+  p.s.usage = null;
+  const first = p.P.countDisk(p.s, () => {});
+  assert.equal(p.P.countDisk(p.s, () => {}), first, "a second ask waits for the count that runs");
+  let v = view(p.parts());
+  assert.equal(v.head, "Disk use Calculating size…");
+  assert.match(v.table.text(), /Calculating size…/);
+  assert.equal(v.table.attrs["aria-busy"], "true");
+  count.settle(usage);
+  await first;
+  v = view(p.parts());
+  assert.match(v.head, /can flush/);
+  assert.equal(v.table.attrs["aria-busy"], "false");
+  assert.ok(v.flush.length && v.flush.every((b) => !b.disabled));
+
+  // Open again: the last tree shows dim, its Flush buttons wait.
+  count = later<unknown>();
+  const again = p.P.countDisk(p.s, () => {});
+  v = view(p.parts());
+  assert.equal(v.head, "Disk use Calculating size…");
+  assert.ok(v.table.className.includes("busy"));
+  assert.ok(v.flush.length && v.flush.every((b) => b.disabled));
+  count.settle(new Error("Skiff cannot read the folder"));
+  await again;
+  v = view(p.parts());
+  assert.deepEqual(plain(v.errors), ["Error: Skiff cannot read the folder"]);
+  assert.ok(v.flush.every((b) => !b.disabled), "the last numbers stay, and Flush works again");
+});
+
+test("a flush shows Removing… with Flush off, then what went, then counts again; a failed flush shows its error", async () => {
+  let flush = later<unknown>();
+  let usage: unknown;
+  const p = page((cmd) => (cmd === "flush_disk" ? flush.p.then((v) => { if (v instanceof Error) throw v; return v; }) : usage));
+  usage = p.s.usage;
+  view(p.parts()).flush.find((b) => b.dataset.key === "flush:results/p1-ship")!.fire("click");
+  p.dialogs[0].submit();
+  let v = view(p.parts());
+  assert.equal(v.status, "Removing 401 files (1000 B)…");
+  assert.ok(v.flush.every((b) => b.disabled), "no second flush while one runs");
+  assert.equal(v.table.attrs["aria-busy"], "true");
+  flush.settle({ files: 401, bytes: 1000, kept: 1, rows: 0, errors: [] });
+  for (let i = 0; i < 4; i++) await tick();
+  v = view(p.parts());
+  assert.equal(v.status, "Removed 401 files, 1000 B. Kept 1 item that changed since the count.");
+  assert.deepEqual(plain(p.calls.map(([c]) => c)), ["flush_disk", "disk_usage"]);
+  assert.ok(v.flush.every((b) => !b.disabled));
+
+  flush = later<unknown>();
+  view(p.parts()).flush[0].fire("click");
+  p.dialogs[1].submit();
+  flush.settle(new Error("Skiff cannot reach skiffd. A flush needs the session list."));
+  for (let i = 0; i < 4; i++) await tick();
+  v = view(p.parts());
+  assert.equal(v.status, "");
+  assert.deepEqual(plain(v.errors), ["Error: Skiff cannot reach skiffd. A flush needs the session list."]);
+  assert.equal(p.calls.at(-1)![0], "disk_usage", "the numbers come again after a failed flush too");
 });

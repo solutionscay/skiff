@@ -1304,6 +1304,8 @@ export const zh = {
   "settings.open.chooseApp": "选择应用…",
   "settings.open.gitDiff": "Git diff",
   "disk.total": "{size} · 可清理 {flush}",
+  "disk.counting": "正在计算大小…",
+  "disk.removing": "正在移除 {files}（{size}）…",
   "skipper.colSkipper": "Skipper",
   "skipper.addTask": "添加任务类型…",
   "skipper.all": "全部",

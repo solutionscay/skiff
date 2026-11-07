@@ -544,6 +544,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       // New random faces and colors for the Finish samples on each open; a redraw keeps them.
       sampleSeeds = [];
       onShowChange();
+      // Disk use shows at once and starts its count: the loads below can take a while.
+      if (tab === "disk") {
+        render();
+        void countDisk(disk, render);
+      }
       await look.load();
       openSet = await invoke<OpenSettings>("open_settings").catch(() => null);
       openFound = await invoke<OpenChoices>("open_choices").catch(() => ({}));

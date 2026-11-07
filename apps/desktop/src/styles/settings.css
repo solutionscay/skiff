@@ -200,6 +200,8 @@ body.kbd .set-folder .ctl-field:focus { box-shadow: inset 0 -1px 0 var(--rule-st
 .set-disk .set-cols > .c-num { font-size: calc(12px * var(--zoom, 1)); }
 .set-disk .c-num.disk-can { color: var(--text); font-weight: 600; }
 .set-disk .c-num.disk-zero { color: var(--text-dim); }
+/* A count or a flush runs: the last numbers show dim until the new ones come. */
+.set-disk.busy .set-disk-row, .set-disk.busy .set-disk-row .c-num.disk-can { color: var(--text-dim); }
 .set-disk-row { cursor: default; outline: 0; }
 .set-disk-row:hover { background: var(--bg-raised); }
 /* The current row: the current-row tint and bar. The focus line only after keys. */

@@ -1360,6 +1360,8 @@ export const es = {
   "settings.open.chooseApp": "Elegir app…",
   "settings.open.gitDiff": "Git diff",
   "disk.total": "{size} · se puede vaciar {flush}",
+  "disk.counting": "Calculando el tamaño…",
+  "disk.removing": "Eliminando {files} ({size})…",
   "skipper.colSkipper": "Skipper",
   "skipper.addTask": "Añadir tipo de tarea…",
   "skipper.all": "todos",
