@@ -122,7 +122,7 @@ pub fn install() -> Result<mpsc::UnboundedReceiver<Cause>> {
 /// The sender's command line for the log, or `?` when it is gone.
 fn command(pid: i32) -> String {
     let argv = crate::session::proc_argv(pid as u32);
-    if argv.is_empty() { "?".into() } else { crate::log_text::clean(&argv.join(" ")) }
+    if argv.is_empty() { "?".into() } else { argv.join(" ") }
 }
 
 extern "C" fn on_signal(signal: c_int, info: *mut libc::siginfo_t, _: *mut libc::c_void) {
