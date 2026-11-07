@@ -785,3 +785,29 @@ fn a_new_prompt_under_an_agent_keeps_its_work() {
     assert_eq!(s.info().state, SessionState::Working);
     pool.kill(&info.id).unwrap();
 }
+
+/// A program's first report can come before the foreground watcher has
+/// seen it start, while the shell is still taken to be in front. Another
+/// group than the shell's is in front, so the report counts.
+#[test]
+fn a_first_report_before_the_watcher_sees_its_program_counts() {
+    use crate::screen::StatusSignal;
+    use skiff_core::session::{SessionSpec, SessionState};
+    use std::time::{Duration, Instant};
+    let pool = super::SessionPool::new();
+    // `set -m`: sleep gets a group of its own and the terminal, as a program
+    // an interactive shell starts does.
+    let info = pool.create(SessionSpec { command: Some("/bin/sh".into()), args: vec!["-c".into(), "set -m; sleep 30; :".into()], cols: 80, rows: 24, ..Default::default() }).unwrap();
+    let s = pool.get(&info.id).unwrap();
+    pool.set_front(&s, Front::Shell);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while s.foreground_group().is_none_or(|g| Some(g) == info.pid) {
+        assert!(Instant::now() < deadline, "no program came in front");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    pool.apply_status_at(&s, vec![StatusSignal::Report(b"state=working:app=claude-code".to_vec())], now_ms());
+    let root = s.records.lock().unwrap().root().map(|r| r.state);
+    assert_eq!(root, Some(crate::program_status::State::Working));
+    assert_eq!(s.info().state, SessionState::Working);
+    pool.kill(&info.id).unwrap();
+}

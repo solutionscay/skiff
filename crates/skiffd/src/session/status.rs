@@ -23,15 +23,17 @@ impl SessionPool {
         }
         // A shell at its prompt reports nothing. A report while it is in
         // front comes from a command that is gone, or from printed text, and
-        // no return of the prompt would ever drop it.
+        // no return of the prompt would ever drop it. The group in front is
+        // read again first: a program that just started can report before
+        // the foreground watcher sees it.
         let front = session.front();
-        if front == Front::Shell {
+        let group = session.foreground_group().unwrap_or(0);
+        if front == Front::Shell && (group == 0 || Some(group) == session.info.lock().unwrap().pid) {
             return;
         }
         // Records belong to the process group in front when they came. A
         // report under another group is another program's: the old records
         // went with their program.
-        let group = session.foreground_group().unwrap_or(0);
         let mut records = session.records.lock().unwrap();
         if group != 0 && records.group != 0 && records.group != group {
             *records = Records::default();
