@@ -719,6 +719,8 @@ export const en = {
   "switcher.kind.worktree": "worktree",
   "status.permission": "asks for permission",
   "status.question": "asks a question",
+  "notify.title": "{name} · {project}",
+  "notify.waiting": "Waits for your answer.",
   "status.auth": "asks to sign in",
   "status.done": "finished",
   "status.failed": "failed",

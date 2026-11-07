@@ -703,6 +703,8 @@ export const es = {
   "switcher.kind.worktree": "worktree",
   "status.permission": "pide permiso",
   "status.question": "hace una pregunta",
+  "notify.title": "{name} · {project}",
+  "notify.waiting": "Espera tu respuesta.",
   "status.auth": "pide iniciar sesión",
   "status.done": "terminado",
   "status.failed": "falló",

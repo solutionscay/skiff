@@ -12,6 +12,7 @@ import { renderHeader } from "../workspace/header";
 import { renderCounts } from "../workspace/status";
 import { OTHER, S } from "./state";
 import { hasKeys, markSeen } from "./seen";
+import { paneSeen } from "./notify";
 
 import { savePlace } from "./stored";
 import { renderLayout } from "../terminal/terminal";
@@ -81,7 +82,10 @@ function renderAll() {
   step("render.app", applyApp);
   host.classList.toggle("group-picked", !!S.groupPicked && S.groupPicked === S.activeGroup);
   // The keys can reach a pane without a focus change: the group row lets go.
-  if (S.focused && hasKeys(S.focused)) markSeen(S.focused);
+  if (S.focused && hasKeys(S.focused)) {
+    markSeen(S.focused);
+    paneSeen(S.focused);
+  }
   // The last outside session ended: Other goes away, and the first project shows.
   if (S.selectedProject === OTHER && !worktreeLines(null).length) S.selectedProject = projectOrder()[0]?.name ?? null;
   step("render.sidebar", renderSidebar);
