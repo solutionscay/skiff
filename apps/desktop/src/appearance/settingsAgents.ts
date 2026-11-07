@@ -4,8 +4,6 @@
  */
 import { h } from "../ui/dom";
 import { picker, smallButton, switchButton } from "../ui/controls";
-import { promptAction } from "../ui/confirm";
-import { rune } from "../ui/runes";
 import { t, tn } from "../i18n";
 import { rowTable, sectionHead, type RowTableState } from "./rowTable";
 import { agentNameList, setAgentNameList } from "./agentNames";
@@ -191,29 +189,26 @@ function agentTable(o: AgentsPageOptions): HTMLElement {
   );
 }
 
-/** The words that make up the names of new agent sessions: a tile for each, one row high. */
+/** The words that make up the names of new agent sessions: one text area for each list, one word per line. */
 function callSigns(): HTMLElement {
   const box = h("div", "set-names-box");
   for (const [list, label] of [["ranks", t("settings.names.titles")], ["nouns", t("settings.names.names")]] as const) {
-    const names = agentNameList(list);
-    box.append(sectionHead(label, undefined, String(names.length)));
-    const grid = h("div", "set-names-grid");
-    const redraw = () => box.replaceWith(callSigns());
-    for (const name of names) {
-      const tile = h("div", "set-name-tile");
-      const rm = smallButton(t("table.remove"), () => { setAgentNameList(list, names.filter((n) => n !== name)); redraw(); }, { icon: rune("indicators-minus"), danger: true, label: t("table.removeRow", { id: name }) });
-      tile.append(h("span", "set-name-text", name), rm);
-      grid.append(tile);
-    }
-    const addName = smallButton(t("settings.names.add"), () => promptAction({
-      title: label,
-      placeholder: label,
-      action: t("settings.names.addAction"),
-      submit: async (name: string) => { setAgentNameList(list, [...names, name]); redraw(); },
-    }));
-    addName.classList.add("set-name-add");
-    grid.append(addName);
-    box.append(grid);
+    const col = h("div", "set-names-col");
+    const head = sectionHead(label, undefined, String(agentNameList(list).length));
+    const area = h("textarea", "mono");
+    area.spellcheck = false;
+    area.value = agentNameList(list).join("\n");
+    area.setAttribute("aria-label", label);
+    // Leaving the list saves it. Settings › close blurs it first.
+    area.addEventListener("blur", () => {
+      setAgentNameList(list, area.value.split("\n"));
+      const names = agentNameList(list);
+      area.value = names.join("\n");
+      const count = head.querySelector(".set-band-count");
+      if (count) count.textContent = String(names.length);
+    });
+    col.append(head, area);
+    box.append(col);
   }
   return box;
 }

@@ -39,7 +39,8 @@ export function redrawKeeping(root: HTMLElement, tab: string, draw: () => void) 
 /**
  * Plain arrows. On a tab, Up/Down change the section and Right goes into it.
  * In a section, Up/Down go to the nearest control above or below, and Left/Right
- * along the row. Text keeps its own keys: Left/Right move the caret.
+ * along the row. Text keeps its own keys: Left/Right move the caret, and a name
+ * list lets Up/Down out only from its first or last line.
  */
 export function arrowKeys(root: HTMLElement, hooks: { stepTab(dir: 1 | -1): void; enterSection(into: boolean): void; nextCard: NextCard }) {
   const { stepTab, enterSection, nextCard } = hooks;
@@ -58,13 +59,17 @@ export function arrowKeys(root: HTMLElement, hooks: { stepTab(dir: 1 | -1): void
     if (!el.closest(".set-main")) return;
     const text = el instanceof HTMLInputElement && el.type !== "range";
     // A text field moves its caret, and lets Left or Right out only at its start or end.
-    if (!vertical && el instanceof HTMLInputElement && !text) return;
+    if (!vertical && (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !text))) return;
     if (!vertical && text) {
       const edge = e.key === "ArrowLeft" ? 0 : el.value.length;
       if (el.selectionStart !== edge || el.selectionEnd !== edge) return;
     }
+    if (el instanceof HTMLTextAreaElement) {
+      const v = el.value;
+      if (up ? v.lastIndexOf("\n", el.selectionStart - 1) >= 0 : v.indexOf("\n", el.selectionEnd) >= 0) return;
+    }
     // The current skiffd session row is a stop too: Left/Right go between it and its Reveal.
-    const stops = [...root.querySelectorAll<HTMLElement>(".set-main :is(button, input, .set-daemon-row[tabindex='0']):not(:disabled, .set-x)")];
+    const stops = [...root.querySelectorAll<HTMLElement>(".set-main :is(button, input, textarea, .set-daemon-row[tabindex='0']):not(:disabled, .set-x)")];
     const at = stops.indexOf(el);
     if (at < 0) return;
     e.preventDefault();

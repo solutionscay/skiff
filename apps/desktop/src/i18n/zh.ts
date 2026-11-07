@@ -1297,7 +1297,6 @@ export const zh = {
   "settings.agents.noPrograms": "此文件夹中没有程序。",
   "settings.names.titles": "代理头衔",
   "settings.names.names": "代理名称",
-  "settings.names.add": "添加…",
   "settings.names.addAction": "添加",
   "settings.open.colWith": "打开方式",
   "settings.open.inPeek": "在预览中",
