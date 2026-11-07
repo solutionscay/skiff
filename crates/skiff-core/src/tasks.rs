@@ -16,8 +16,9 @@ pub const SETTINGS: &str = "Settings › Task types";
 /// claude 2.1.301, codex 0.162.1, grok 1.0.44; 2026-11-03: agy, gemini's
 /// command, `--model`, ids from `agy models`). kimi's is not checked here.
 /// An agent with no flag here (opencode, hermes: not checked) takes its model
-/// in its command, as a custom agent does. Keep in step with
-/// `MODEL_FLAGS` in apps/desktop/src/appearance/taskTypes.ts.
+/// in its command, as a custom agent does. `MODEL_FLAGS` in
+/// apps/desktop/src/appearance/taskTypes.ts repeats this table, and
+/// tests/fixtures/agent-facts.json holds both to the same facts.
 pub fn model_flag(agent: &str) -> Option<&'static str> {
     match agent {
         "claude" | "gemini" => Some("--model"),
@@ -408,6 +409,24 @@ mod tests {
             used_by: None,
             path: None,
             skip_approvals: Vec::new(),
+        }
+    }
+
+    /// The desktop test agentFacts.test.ts reads the same table.
+    #[test]
+    fn model_flags_match_the_shared_table() {
+        let facts: serde_json::Value = serde_json::from_str(include_str!("../tests/fixtures/agent-facts.json")).unwrap();
+        let flags = facts["model_flag"].as_object().unwrap();
+        for (id, _) in crate::project::KNOWN_AGENTS {
+            assert!(flags.contains_key(id), "{id} has no flag entry in agent-facts.json");
+        }
+        for (id, flag) in flags {
+            assert_eq!(model_flag(id), flag.as_str(), "{id}");
+            match flag.as_str() {
+                Some(flag) => assert_eq!(command(&agent(id, id, false), Some("m")).unwrap(), format!("{id} {flag} m")),
+                None => assert!(command(&agent(id, id, false), Some("m")).is_err(), "{id}"),
+            }
+            assert!(command(&agent(id, id, true), Some("m")).is_err(), "{id}, custom");
         }
     }
 

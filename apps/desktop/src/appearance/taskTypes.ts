@@ -2,9 +2,10 @@ import type { AgentInfo } from "../platform/types";
 import { t } from "../i18n";
 
 /**
- * Each known agent's model flag, from its `--help` (2026-10-15). Keep in step
- * with `model_flag` in crates/skiff-core/src/tasks.rs, which builds the line
- * that runs. Settings only shows a hint from this.
+ * Each known agent's model flag, from its `--help` (2026-10-15). It repeats
+ * `model_flag` in crates/skiff-core/src/tasks.rs, which builds the line that
+ * runs. Settings only shows a hint from this. Both are held to the same facts
+ * by crates/skiff-core/tests/fixtures/agent-facts.json.
  */
 const MODEL_FLAGS: Record<string, string> = { claude: "--model", gemini: "--model", codex: "-m", grok: "-m", kimi: "-m" };
 
