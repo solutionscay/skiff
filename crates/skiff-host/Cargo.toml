@@ -24,6 +24,8 @@ anyhow.workspace = true
 uuid.workspace = true
 libc = "0.2"
 walkdir = "2"
+# Scales Images thumbnails on the Host, so a remote picker gets kilobytes.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 [dev-dependencies]
 libc = "0.2"

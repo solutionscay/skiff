@@ -54,7 +54,7 @@ function thumb(path: string, size: number): Promise<string> {
   const key = `${size} ${path}`;
   let t = thumbs.get(key);
   if (!t) {
-    t = invoke<ArrayBuffer>("image_thumb", { path })
+    t = invoke<ArrayBuffer>("image_thumb", { path, size })
       .then((bytes) => new Promise<string>((done) => {
         const ext = path.split(".").pop()?.toLowerCase() ?? "";
         const url = URL.createObjectURL(new Blob([bytes], { type: MIME[ext] ?? "" }));
