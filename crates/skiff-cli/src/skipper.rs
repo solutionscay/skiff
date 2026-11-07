@@ -34,7 +34,7 @@ pub async fn run(socket: &Path, no_attach: bool) -> Result<()> {
         eprintln!("skiff: {e:#}");
     }
     let exe = std::env::current_exe().context("find this skiff binary")?;
-    if let Err(e) = skipper::start_watch(socket, &exe, &s.id) {
+    if let Err(e) = skipper::start_watch(socket, &exe, &s.id, true) {
         eprintln!("skiff: {name} runs, but its watcher did not start: {e:#}");
     }
     if no_attach {
@@ -76,7 +76,7 @@ pub async fn run_project(socket: &Path, project: &str, no_attach: bool) -> Resul
 pub async fn start_project(socket: &Path, c: &Client, project: &str) -> Result<skipper::ProjectSkipper> {
     let ps = skipper::open_project(c, project).await?;
     let exe = std::env::current_exe().context("find this skiff binary")?;
-    if let Err(e) = skipper::start_watch(socket, &exe, &ps.session.id) {
+    if let Err(e) = skipper::start_watch(socket, &exe, &ps.session.id, true) {
         eprintln!("skiff: the {project} Skipper runs, but the watcher did not start: {e:#}");
     }
     Ok(ps)
@@ -150,7 +150,7 @@ pub async fn start_fleet(socket: &Path, c: &Client, fleet: &str, over: Over) -> 
     }
     let ps = skipper::open_fleet(c, fleet).await?;
     let exe = std::env::current_exe().context("find this skiff binary")?;
-    if let Err(e) = skipper::start_watch(socket, &exe, &ps.session.id) {
+    if let Err(e) = skipper::start_watch(socket, &exe, &ps.session.id, true) {
         eprintln!("skiff: the {fleet} Skipper runs, but the watcher did not start: {e:#}");
     }
     let taken = if taken.is_empty() { taken } else { skiff_client::fleet::takeover(c, socket, fleet, None, !ps.created).await? };
