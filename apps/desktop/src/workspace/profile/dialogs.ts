@@ -78,7 +78,7 @@ export function editWorkspaceDialog(state: ReturnType<typeof createWorkspaceStat
   name.placeholder = t("workspace.untitled");
   name.spellcheck = false;
   nameLabel.append(h("span", "ws-label", t("workspace.name")), name);
-  body.append(nameLabel, h("div", "ws-note", t("workspace.editNote")));
+  body.append(nameLabel);
 
   const fleets = [...new Set(S.projects.map((p) => p.fleet).filter((f): f is string => !!f))];
   // One tree in the sidebar's order: projects in no fleet, then each fleet with its projects under it.

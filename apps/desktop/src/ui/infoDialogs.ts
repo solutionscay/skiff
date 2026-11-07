@@ -171,6 +171,5 @@ export async function showAbout() {
   row(t("about.socket"), status?.socket ?? "?");
   if (status?.pid) row(t("about.pid"), String(status.pid));
   row(t("about.config"), config);
-  table.appendChild(h("div", "keys-note", t("about.note")));
   infoDialog(t("about.title"), table);
 }
