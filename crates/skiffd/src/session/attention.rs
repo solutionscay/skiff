@@ -1,7 +1,7 @@
 //! Fallback attention policy.
 use super::output::Scan;
-use super::{Front, Session, SessionPool};
-use super::reducer::{self, Input};
+use super::{wait_log, Front, Session, SessionPool};
+use super::reducer::{self, Effects, Input};
 use crate::program_status::Records;
 use crate::screen::{title_state, TitleState};
 use skiff_core::protocol::Event;
@@ -13,30 +13,31 @@ use std::time::Duration;
 impl SessionPool {
     /// A bell from a shell is ignored; an unclaimed command may ring.
     pub(super) fn bell(&self, session: &Session) {
-        self.apply_policy(session, Input::Bell, "");
+        self.apply_policy(session, Input::Bell, None);
     }
 
     pub(super) fn apply_scan(&self, session: &Session, scan: Scan) {
         if !scan.scanned { return; }
         let asks = *session.title_state.lock().unwrap() == Some(TitleState::Action);
-        let detail = if asks && !scan.approval { title_detail(session) } else { String::new() };
+        *session.prompt_match.lock().unwrap() = scan.prompt;
         self.apply_policy(session, Input::Scan {
             work: scan.work, busy: scan.busy,
             approval: scan.approval, asks,
-        }, &detail);
+        }, None);
     }
 
     pub(super) fn apply_title(&self, session: &Session, title: Option<&str>) {
         let Front::Agent(agent) = session.front() else { return };
         let new = title.and_then(|t| title_state(agent, t));
         let old = std::mem::replace(&mut *session.title_state.lock().unwrap(), new);
-        self.apply_policy(session, Input::Title { old, new }, &title_detail(session));
+        // `info.title` still holds the title before this one.
+        self.apply_policy(session, Input::Title { old, new }, title);
     }
 
-    /// Sets `waiting` and records why. `detail` goes to the log only.
+    /// Sets `waiting` and records why.
     #[cfg(test)]
-    pub(super) fn wait(&self, session: &Session, cause: &'static str, detail: &str) {
-        self.move_state(session, SessionState::Waiting, Some((cause, detail)));
+    pub(super) fn wait(&self, session: &Session, cause: &'static str) {
+        self.move_state(session, SessionState::Waiting, Some(cause));
     }
 
     /// Sets any state but `waiting`, which [`Self::wait`] sets with its cause.
@@ -45,23 +46,21 @@ impl SessionPool {
         self.move_state(session, state, None);
     }
 
-    fn move_state(&self, session: &Session, target: SessionState, cause: Option<(&'static str, &str)>) {
-        self.apply_policy(session, Input::Move { target, cause: cause.map(|c| c.0) }, cause.map_or("", |c| c.1));
+    fn move_state(&self, session: &Session, target: SessionState, cause: Option<&'static str>) {
+        self.apply_policy(session, Input::Move { target, cause }, None);
     }
 
-    fn apply_policy(&self, session: &Session, input: Input, detail: &str) {
+    fn apply_policy(&self, session: &Session, input: Input, title: Option<&str>) {
         let now = now_ms();
         let (id, effects) = {
             let mut info = session.info.lock().unwrap();
-            let (next, effects) = reducer::reduce(snapshot(session, &info), input, now);
-            *info = next.info;
+            let effects = step(session, &mut info, input, now, title);
             if effects.work_started { session.work_started.store(now, Ordering::Relaxed); }
             if effects.last_work { session.last_work.store(now, Ordering::Relaxed); }
             if effects.busy_seen { session.busy_seen.store(true, Ordering::Relaxed); }
             if let Some(value) = effects.belled { session.belled.store(value, Ordering::Relaxed); }
             if let Some(value) = effects.raised { session.raised.store(value, Ordering::Relaxed); }
             if let Some(value) = effects.approval_since { session.approval_since.store(value, Ordering::Relaxed); }
-            if let Some(recorded) = effects.cause_recorded { log_cause(&info, session.front(), recorded, detail); }
             (info.id.clone(), effects)
         };
         if let Some(state) = effects.state { let _ = self.events.send(Event::State { session: id, state }); }
@@ -99,8 +98,7 @@ impl SessionPool {
         let (id, updated, effects) = {
             let mut info = s.info.lock().unwrap();
             let title = *s.title_state.lock().unwrap();
-            let (next, effects) = reducer::reduce(snapshot(s, &info), Input::Idle { title }, now);
-            *info = next.info;
+            let effects = step(s, &mut info, Input::Idle { title }, now, None);
             if effects.reset_fresh_busy {
                 s.fresh.store(false, Ordering::Relaxed);
                 s.busy_seen.store(false, Ordering::Relaxed);
@@ -138,15 +136,28 @@ pub(super) fn snapshot(session: &Session, info: &SessionInfo) -> reducer::State 
     }
 }
 
-pub(super) fn log_cause(info: &SessionInfo, front: Front, cause: &str, detail: &str) {
-    let program = info.foreground_program.as_deref().unwrap_or("?");
-    let sep = if detail.is_empty() { "" } else { ": " };
-    tracing::info!("session {} waits ({front:?}, {program}): {cause}{sep}{detail}", info.id);
-}
-
-/// The title that asked for an action, for the log.
-fn title_detail(session: &Session) -> String {
-    session.info.lock().unwrap().title.clone().unwrap_or_default()
+/// One step of the reducer that can change the state: applies it to `info`
+/// and writes the log's lines for a wait that starts or ends. `title` is the
+/// title that came with this step, when `info` does not hold it yet.
+pub(super) fn step(session: &Session, info: &mut SessionInfo, input: Input, now: u64, title: Option<&str>) -> Effects {
+    let old = info.state;
+    let ended_by = input.ended_by();
+    let (next, effects) = reducer::reduce(snapshot(session, info), input, now);
+    *info = next.info;
+    if old != SessionState::Waiting && info.state == SessionState::Waiting {
+        session.waiting_since.store(now, Ordering::Relaxed);
+    }
+    if let Some(cause) = effects.cause_recorded {
+        let prompt = session.prompt_match.lock().unwrap();
+        let last_report = session.last_report_at.load(Ordering::Relaxed);
+        let line = wait_log::waits_line(info, session.front(), cause, prompt.as_ref(), title, last_report, now);
+        tracing::info!("{line}");
+    }
+    if old == SessionState::Waiting && info.state != SessionState::Waiting {
+        let since = session.waiting_since.swap(0, Ordering::Relaxed);
+        tracing::info!("{}", wait_log::stops_line(&info.id, since, now, ended_by));
+    }
+    effects
 }
 
 /// A live report decides the state: one kept after its program left does not.

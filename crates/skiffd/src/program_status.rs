@@ -256,7 +256,7 @@ fn text(encoded: &str, max: usize) -> Option<String> {
 
 /// Bidi controls and zero-width characters: they can make text read as
 /// something other than what it is.
-fn hidden(c: char) -> bool {
+pub(crate) fn hidden(c: char) -> bool {
     matches!(c, '\u{061c}' | '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{2069}' | '\u{feff}')
 }
 
