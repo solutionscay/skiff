@@ -146,21 +146,24 @@ impl Default for SshOptions {
     }
 }
 
-/// What a forward carries.
+/// What a forward carries. Each opens a session on the Host that runs
+/// [`HOLD`] until this app's `ssh` ends: sshd sets TCP_NODELAY and an IPQoS
+/// class only for a session, never for `-N`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Carries {
-    /// Files and images: `-N`, no session on the Host.
+    /// Files and images. No pty: sshd marks what it sends with the bulk class
+    /// (CS1), and `IPQoS=cs1` marks what this side sends. On Wi-Fi, CS1 goes
+    /// in the background queue, so an image transfer does not hold up keys.
     Data,
-    /// Keys and their echo. sshd turns Nagle off (TCP_NODELAY) and marks the
-    /// link interactive only for a session with a pty. With `-N` it keeps
-    /// Nagle on, and each later write of an echo waits one round trip for
-    /// the ACK of the write before it. The session runs [`HOLD`] in a pty
-    /// until this app's `ssh` ends.
+    /// Keys and their echo. A pty: sshd marks the link interactive (AF21).
+    /// Without TCP_NODELAY each later write of an echo waits one round trip
+    /// for the ACK of the write before it.
     Typing,
 }
 
-/// The Typing forward's remote command. It reads ssh's stdin, which this app
-/// keeps open and never writes, so it does nothing until the link ends.
+/// The remote command of a forward's session. It reads ssh's stdin, which
+/// this app keeps open and never writes, so it does nothing until the link
+/// ends.
 pub const HOLD: &str = "exec cat >/dev/null";
 
 /// The arguments for one forward. Each `-o` here wins over ssh config.
@@ -197,10 +200,12 @@ pub fn forward_args(target: &SshTarget, local: &Path, options: &SshOptions, carr
         args.push(flag.into());
         args.push(value.into());
     }
-    args.extend(target.login_args());
+    // The typing link keeps ssh's own IPQoS (AF21, or what ssh config sets).
     if !typing {
-        args.push("-N".into());
+        args.push("-o".into());
+        args.push("IPQoS=cs1".into());
     }
+    args.extend(target.login_args());
     let mut spec = OsString::from(local);
     spec.push(":");
     spec.push(&target.socket);
@@ -208,9 +213,7 @@ pub fn forward_args(target: &SshTarget, local: &Path, options: &SshOptions, carr
     args.push(spec);
     args.push("--".into());
     args.push(target.destination.clone().into());
-    if typing {
-        args.push(HOLD.into());
-    }
+    args.push(HOLD.into());
     args
 }
 
@@ -608,7 +611,7 @@ pub fn classify(stderr: &str, target: &SshTarget) -> Option<SshError> {
 pub struct SshForward {
     target: SshTarget,
     child: Child,
-    /// A Typing forward's stdin, kept open so [`HOLD`] runs until the end.
+    /// ssh's stdin, kept open so [`HOLD`] runs until the end.
     _stdin: Option<ChildStdin>,
     dir: PathBuf,
     socket: PathBuf,
@@ -639,13 +642,9 @@ impl SshForward {
             own_dir(parent).map_err(|e| SshError::Setup(format!("{}: {e}", parent.display())))?;
         let socket = dir.join("skiffd.sock");
         connect_note(format!("ssh -v {}", target.destination));
-        let stdin = match carries {
-            Carries::Data => Stdio::null(),
-            Carries::Typing => Stdio::piped(),
-        };
         let child = Command::new(&options.program)
             .args(forward_args(target, &socket, options, carries))
-            .stdin(stdin)
+            .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
