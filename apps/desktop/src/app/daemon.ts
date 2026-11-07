@@ -37,6 +37,7 @@ import { includeNew } from "../workspace/profile";
 import { muteInput } from "../terminal/terminalRuntime";
 import { connectAttempt, connectDone, connectFailed, connectWait } from "./connectPanel";
 import { dropSession } from "./sessionRemoval";
+import { sessionGone, stateMoved } from "./notify";
 
 export { newSession };
 
@@ -503,6 +504,7 @@ export function onEvent(e: DaemonEvent) {
       const s = sessions.get(e.session);
       if (s) {
         s.state = e.state;
+        stateMoved(s.id, e.state);
         if (e.state === "working") {
           s.last_output_at = Date.now();
           if (windowAway) for (const p of worktreesOf(s)) workedAway.add(p);
@@ -546,6 +548,7 @@ export function onEvent(e: DaemonEvent) {
     }
     case "session_removed": {
       dropSession(e.session);
+      sessionGone(e.session);
       restartIfIdle();
       return;
     }

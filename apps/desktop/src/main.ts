@@ -39,6 +39,7 @@ import { nextUnread, nextWaiting, selectProject, showGroup, showSingle } from ".
 import { closeMission, goToSession } from "./workspace/missionMotion";
 import { missionOpen, restoreRunning } from "./workspace/missionControl";
 import { startLedger } from "./workspace/ledger";
+import { watchNotificationClicks } from "./app/notify";
 import "./terminal/fileDrop";
 import { startImages } from "./terminal/images";
 import { startWorkspaceQuitGuard, startWorkspaces } from "./workspace/profile";
@@ -145,6 +146,7 @@ async function boot() {
   await loadHostCaps().catch(console.error);
   // The selected Host's ledger (M6), This Mac's or a remote one's.
   startLedger();
+  watchNotificationClicks();
   await subscribeEvents();
 
   await refreshSessions();

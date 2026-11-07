@@ -68,6 +68,7 @@ pub async fn start_skiff_watch(app: State<'_, App>, session: String) -> Result<b
 /// not stop, keeps running, and only the log says so: the update is not
 /// finished, and nothing asks the user. One check runs at a time. It starts
 /// and signals processes, so only a local endpoint may: `_local` proves it.
+/// The watcher sends no desktop notification: the app sends them.
 pub(crate) async fn ensure_watch(app: &App, _local: &ProcessControl, cli: PathBuf, session: String) -> Result<bool, String> {
     let _one = app.watch_gate.lock().await;
     let mut known = app.watch_pids.lock().unwrap().clone();
@@ -78,7 +79,7 @@ pub(crate) async fn ensure_watch(app: &App, _local: &ProcessControl, cli: PathBu
     // not known to be this app's build.
     let tried = cli.is_absolute().then(|| app.watch_tried.clone());
     let socket = app.selection().socket().to_path_buf();
-    let out = blocking(move || skipper::ensure_watch(&socket, &cli, skipper::CLI_VERSION, &session, &known, tried.as_deref())).await?;
+    let out = blocking(move || skipper::ensure_watch(&socket, &cli, skipper::CLI_VERSION, &session, false, &known, tried.as_deref())).await?;
     match out {
         skipper::WatchOutcome::Started => Ok(true),
         skipper::WatchOutcome::Current => Ok(false),

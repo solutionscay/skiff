@@ -11,6 +11,10 @@
     "dialog:allow-save",
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",
-    "updater:default"
+    "updater:default",
+    "notification:default",
+    "core:window:allow-show",
+    "core:window:allow-unminimize",
+    "core:window:allow-set-focus"
   ]
 }

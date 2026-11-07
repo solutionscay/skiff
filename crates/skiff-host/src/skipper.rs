@@ -205,10 +205,11 @@ pub async fn supervise() {
 }
 
 /// Starts `skiff watch` for `session` unless one runs. True when it started
-/// one. A failure is said in this service's log too.
+/// one. A failure is said in this service's log too. The watcher sends no
+/// desktop notification: the app that uses this Host sends them.
 async fn ensure_watch(session: String) -> Result<bool, String> {
     let socket = skiff_core::state::socket();
-    let run = tokio::task::spawn_blocking(move || skipper::ensure_watch(&socket, &cli(), skipper::CLI_VERSION, &session, &[], None)).await;
+    let run = tokio::task::spawn_blocking(move || skipper::ensure_watch(&socket, &cli(), skipper::CLI_VERSION, &session, false, &[], None)).await;
     let out = match run {
         Ok(Ok(o)) => Ok(matches!(o, skipper::WatchOutcome::Started | skipper::WatchOutcome::Replaced { .. })),
         Ok(Err(e)) => Err(format!("{e:#}")),

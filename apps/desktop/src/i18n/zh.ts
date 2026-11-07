@@ -675,6 +675,8 @@ export const zh = {
   "switcher.kind.worktree": "worktree",
   "status.permission": "请求权限",
   "status.question": "提出问题",
+  "notify.title": "{name} · {project}",
+  "notify.waiting": "等待你的回答。",
   "status.auth": "请求登录",
   "status.done": "已完成",
   "status.failed": "失败",
