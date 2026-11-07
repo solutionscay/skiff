@@ -1,34 +1,68 @@
 //! Shared patterns for reading agent screens.
 use serde::{Deserialize, Serialize};
 
+/// The rule that recognized a prompt, for the log.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PromptRule {
+    pub name: &'static str,
+    /// Text the rule found, in `bottom_text`'s form: the row that holds it is
+    /// the evidence for the match.
+    pub needle: &'static str,
+    /// How many rows with text the rule reads.
+    pub rows: usize,
+}
+
+fn rule(name: &'static str, needle: &'static str, rows: usize) -> PromptRule {
+    PromptRule { name, needle, rows }
+}
+
 /// Whether `agent` shows a prompt that stops its turn until the user
 /// answers: an approval, a question, or the trust check at start. The
 /// agents ring no bell for it, so the daemon reads the screen.
+pub fn approval_prompt(agent: &str, bottom_text: impl Fn(usize) -> String) -> bool {
+    approval_rule(agent, bottom_text).is_some()
+}
+
+/// The rule that matches, if any: the one matcher that decides a prompt and
+/// tells why.
 ///
 /// Each agent draws the prompt in place of its input box, with a line of
 /// key hints at the bottom of the screen. The match reads only those last
 /// rows, so the same words in the conversation above do not count.
-pub fn approval_prompt(agent: &str, bottom_text: impl Fn(usize) -> String) -> bool {
+pub fn approval_rule(agent: &str, bottom_text: impl Fn(usize) -> String) -> Option<PromptRule> {
     match agent {
         // "Esc to cancel · Tab to amend", "Enter to confirm · Esc to cancel".
-        "claude" => bottom_text(2).contains("esctocancel"),
+        "claude" => bottom_text(2)
+            .contains("esctocancel")
+            .then_some(rule("claude-esc-to-cancel", "esctocancel", 2)),
         "codex" => {
             let t = bottom_text(2);
-            t.contains("pressentertoconfirmoresctocancel") || t.contains("entercontinue·escskip")
+            if t.contains("pressentertoconfirmoresctocancel") {
+                Some(rule("codex-confirm", "pressentertoconfirmoresctocancel", 2))
+            } else if t.contains("entercontinue·escskip") {
+                Some(rule("codex-update", "entercontinue·escskip", 2))
+            } else {
+                None
+            }
         }
         // "Allow once   Allow always   Reject".
         "opencode" => {
             let t = bottom_text(4);
-            t.contains("allowonce") && t.contains("reject")
+            (t.contains("allowonce") && t.contains("reject"))
+                .then_some(rule("opencode-allow", "allowonce", 4))
         }
         "gemini" => {
             // Antigravity (agy): "↑/↓ Navigate · tab Amend", "↑/↓ Navigate · enter Confirm".
             // Its slash-command menu shows "↑/↓ Navigate · enter Select · tab Complete".
             // Gemini CLI: "Allow once", "Allow for this session", "No, suggest changes (esc)".
             let t = bottom_text(10);
-            (t.contains("↑/↓navigate")
-                && (t.contains("tabamend") || t.contains("enterconfirm")))
-                || (t.contains("allowonce") && t.contains("suggestchanges"))
+            if t.contains("↑/↓navigate") && (t.contains("tabamend") || t.contains("enterconfirm")) {
+                Some(rule("gemini-navigate", "↑/↓navigate", 10))
+            } else if t.contains("allowonce") && t.contains("suggestchanges") {
+                Some(rule("gemini-allow", "allowonce", 10))
+            } else {
+                None
+            }
         }
         "copilot" => {
             // A tool's "Do you want to create …?" ends with "3. No, and tell
@@ -36,19 +70,30 @@ pub fn approval_prompt(agent: &str, bottom_text: impl Fn(usize) -> String) -> bo
             // dialog asks "Do you trust the files in this folder?". Both
             // close with "↑/↓ to navigate · enter to select · esc to cancel".
             let t = bottom_text(14);
-            t.contains("↑/↓tonavigate")
-                && (t.contains("no,andtellcopilotwhattododifferently")
-                    || t.contains("doyoutrustthefilesinthisfolder"))
+            if !t.contains("↑/↓tonavigate") {
+                None
+            } else if t.contains("no,andtellcopilotwhattododifferently") {
+                Some(rule("copilot-tool", "no,andtellcopilotwhattododifferently", 14))
+            } else if t.contains("doyoutrustthefilesinthisfolder") {
+                Some(rule("copilot-trust", "doyoutrustthefilesinthisfolder", 14))
+            } else {
+                None
+            }
         }
         "grok" => {
             // "1/4:select │ Tab:next option │ ...", or a command's
             // "Allow once", "Always allow this command", "Reject".
             let t = bottom_text(10);
             let hints = bottom_text(2);
-            (hints.contains(":select") && hints.contains("tab:nextoption"))
-                || (t.contains("allowonce") && t.contains("reject"))
+            if hints.contains(":select") && hints.contains("tab:nextoption") {
+                Some(rule("grok-select", ":select", 2))
+            } else if t.contains("allowonce") && t.contains("reject") {
+                Some(rule("grok-allow", "allowonce", 10))
+            } else {
+                None
+            }
         }
-        _ => false,
+        _ => None,
     }
 }
 

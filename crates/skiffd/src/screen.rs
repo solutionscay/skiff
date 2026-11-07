@@ -10,5 +10,6 @@ mod snapshot;
 mod terminal;
 
 pub use skiff_core::screen::{has_busy_line, title_state, TitleState};
+pub use inspect::PromptMatch;
 pub use signals::{Signals, StatusSignal};
 pub use terminal::Screen;

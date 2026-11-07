@@ -3,9 +3,19 @@ use super::terminal::Screen;
 use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::{Column, Line};
 use alacritty_terminal::term::cell::{Cell, Flags};
-use skiff_core::screen::{box_rule, codex_input};
+use skiff_core::screen::{approval_rule, box_rule, codex_input, PromptRule};
 #[cfg(test)]
 use skiff_core::screen::{title_state, TitleState};
+
+/// The rule that matched the screen and the row it matched, as the screen
+/// shows it. For the log, which cleans it: see [`crate::log_text`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PromptMatch {
+    pub rule: &'static str,
+    pub needle: &'static str,
+    /// `None` only if the row could not be found again.
+    pub row: Option<String>,
+}
 
 impl Screen {
     /// The last `n` rows of the screen that hold text, joined, in lower case
@@ -15,12 +25,7 @@ impl Screen {
         let grid = self.term.grid();
         let mut rows = Vec::with_capacity(n);
         for line in (0..grid.screen_lines() as i32).rev() {
-            let row = &grid[Line(line)];
-            let text: String = (0..grid.columns())
-                .map(|c| row[Column(c)].c)
-                .filter(|c| !c.is_whitespace() && *c != '\0')
-                .flat_map(char::to_lowercase)
-                .collect();
+            let text = folded(&grid[Line(line)], grid.columns());
             if !text.is_empty() {
                 rows.push(text);
                 if rows.len() == n {
@@ -34,6 +39,37 @@ impl Screen {
 
     pub fn approval_prompt(&self, agent: &str) -> bool {
         skiff_core::screen::approval_prompt(agent, |n| self.bottom_text(n))
+    }
+
+    /// What [`Self::approval_prompt`] matched, when it matches.
+    pub fn prompt_match(&self, agent: &str) -> Option<PromptMatch> {
+        let rule = approval_rule(agent, |n| self.bottom_text(n))?;
+        Some(PromptMatch { rule: rule.name, needle: rule.needle, row: self.matched_row(rule) })
+    }
+
+    /// The row with the rule's needle, nearest the bottom. A narrow pane wraps
+    /// a line anywhere: then the fewest rows in a row that hold it, joined.
+    fn matched_row(&self, rule: PromptRule) -> Option<String> {
+        let grid = self.term.grid();
+        let cols = grid.columns();
+        let rows: Vec<(String, String)> = (0..grid.screen_lines() as i32)
+            .rev()
+            .filter_map(|l| {
+                let row = &grid[Line(l)];
+                let text = folded(row, cols);
+                (!text.is_empty()).then(|| (text, row_text(row, cols)))
+            })
+            .take(rule.rows)
+            .collect();
+        for span in 1..=rows.len() {
+            for run in rows.windows(span) {
+                let text: String = run.iter().rev().map(|r| r.0.as_str()).collect();
+                if text.contains(rule.needle) {
+                    return Some(run.iter().rev().map(|r| r.1.trim()).collect::<Vec<_>>().join(" "));
+                }
+            }
+        }
+        None
     }
 
     pub fn busy_line(&self, agent: &str) -> bool {
@@ -63,6 +99,15 @@ impl Screen {
     }
 
 }
+/// A row's text as the screen rules read it: in lower case, no white space.
+fn folded(row: &alacritty_terminal::grid::Row<Cell>, cols: usize) -> String {
+    (0..cols)
+        .map(|c| row[Column(c)].c)
+        .filter(|c| !c.is_whitespace() && *c != '\0')
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
 /// A row's characters, trailing spaces dropped.
 fn row_text(row: &alacritty_terminal::grid::Row<Cell>, cols: usize) -> String {
     let mut s = String::with_capacity(cols);
@@ -254,6 +299,83 @@ mod tests {
         assert!(screen_with(&["• Working (3s • ctrl+c to interrupt)"]).busy_line("codex"));
         let grok_idle = ["  │ ❯                              │", "  ╰──── Grok 4.7 (high) · always-approve ─╯", "  Shift+Tab:mode  │  Ctrl+.:shortcuts"];
         assert!(!screen_with(&grok_idle).approval_prompt("grok"));
+    }
+
+    /// The matcher as it was before `approval_rule`, kept as it was: the rule
+    /// must not change what counts as a prompt.
+    fn old_matcher(agent: &str, bottom_text: impl Fn(usize) -> String) -> bool {
+        match agent {
+            "claude" => bottom_text(2).contains("esctocancel"),
+            "codex" => {
+                let t = bottom_text(2);
+                t.contains("pressentertoconfirmoresctocancel") || t.contains("entercontinue·escskip")
+            }
+            "opencode" => {
+                let t = bottom_text(4);
+                t.contains("allowonce") && t.contains("reject")
+            }
+            "gemini" => {
+                let t = bottom_text(10);
+                (t.contains("↑/↓navigate") && (t.contains("tabamend") || t.contains("enterconfirm")))
+                    || (t.contains("allowonce") && t.contains("suggestchanges"))
+            }
+            "copilot" => {
+                let t = bottom_text(14);
+                t.contains("↑/↓tonavigate")
+                    && (t.contains("no,andtellcopilotwhattododifferently") || t.contains("doyoutrustthefilesinthisfolder"))
+            }
+            "grok" => {
+                let t = bottom_text(10);
+                let hints = bottom_text(2);
+                (hints.contains(":select") && hints.contains("tab:nextoption"))
+                    || (t.contains("allowonce") && t.contains("reject"))
+            }
+            _ => false,
+        }
+    }
+
+    #[test]
+    fn each_rule_names_itself_and_decides_as_the_old_matcher_did() {
+        let copilot_hint = "│ ↑/↓ to navigate · enter to select · esc to cancel";
+        // Agent, screen, rule, the row it shows.
+        let prompts: [(&str, &[&str], &str, &str); 10] = [
+            ("claude", &[" Do you want to proceed?", " ❯ 1. Yes", "", " Esc to cancel · Tab to amend"], "claude-esc-to-cancel", "Esc to cancel · Tab to amend"),
+            ("codex", &["› 1. Yes, proceed (y)", "  Press enter to confirm or esc to cancel"], "codex-confirm", "Press enter to confirm or esc to cancel"),
+            ("codex", &["  2. Skip", "  enter continue · esc skip"], "codex-update", "enter continue · esc skip"),
+            ("opencode", &["  ┃  Allow once   Allow always   Reject      ⇆ select", "  ┃"], "opencode-allow", "┃  Allow once   Allow always   Reject      ⇆ select"),
+            ("gemini", &["> 1. Yes, run command", "  ↑/↓ Navigate · tab Amend", "esc to cancel"], "gemini-navigate", "↑/↓ Navigate · tab Amend"),
+            ("gemini", &["● 1. Allow once", "  3. No, suggest changes (esc)"], "gemini-allow", "● 1. Allow once"),
+            ("copilot", &["│ 3. No, and tell Copilot what to do differently", copilot_hint], "copilot-tool", "│ 3. No, and tell Copilot what to do differently"),
+            ("copilot", &["│ Do you trust the files in this folder?", "│ ❯ 1. Yes", copilot_hint], "copilot-trust", "│ Do you trust the files in this folder?"),
+            ("grok", &["  3 (○) No, reject", "  1/4:select  │  Tab:next option  │  Ctrl+c:cancel"], "grok-select", "1/4:select  │  Tab:next option  │  Ctrl+c:cancel"),
+            ("grok", &["$ rm -rf build", "  Allow once", "  Reject"], "grok-allow", "Allow once"),
+        ];
+        for (agent, rows, rule, row) in prompts {
+            let found = screen_with(rows).prompt_match(agent).expect(rule);
+            assert_eq!((found.rule, found.row.as_deref()), (rule, Some(row)));
+        }
+        let others: [&[&str]; 6] = [
+            &["› Ask Codex to do anything", "", "  ? for shortcuts"],
+            &["────────────", "❯ ", "────────────", "", "  ⏸ manual mode on"],
+            &[" Do you want to proceed?", " Esc to cancel · Tab to amend", "────────────", "❯ ", "────────────", "  ⏸ manual mode on"],
+            &["> /add-dir             Add a directory", "  ↑/↓ Navigate · enter Select · tab Complete", "esc to cancel"],
+            &["│ /model   Switch models", copilot_hint],
+            &["  Allow once", "  ↑/↓ Navigate"],
+        ];
+        let screens = prompts.iter().map(|p| p.1).chain(others);
+        for rows in screens {
+            let s = screen_with(rows);
+            for agent in ["claude", "codex", "opencode", "gemini", "copilot", "grok", "hermes", "bash"] {
+                assert_eq!(s.approval_prompt(agent), old_matcher(agent, |n| s.bottom_text(n)), "{agent}: {rows:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_wrapped_prompt_gives_all_its_rows() {
+        let mut s = Screen::new(24, 8);
+        s.feed(b"Press enter to confirm or esc to cancel");
+        assert_eq!(s.prompt_match("codex").unwrap().row.as_deref(), Some("Press enter to confirm o r esc to cancel"));
     }
 
     #[test]
