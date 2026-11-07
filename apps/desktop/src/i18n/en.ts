@@ -1371,7 +1371,6 @@ export const en = {
   "settings.agents.noPrograms": "This folder holds no programs.",
   "settings.names.titles": "Agent titles",
   "settings.names.names": "Agent names",
-  "settings.names.add": "Add…",
   "settings.names.addAction": "Add",
   "settings.open.colWith": "Opens with",
   "settings.open.inPeek": "In the peek",

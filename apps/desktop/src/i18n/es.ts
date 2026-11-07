@@ -1351,7 +1351,6 @@ export const es = {
   "settings.agents.noPrograms": "Esta carpeta no tiene programas.",
   "settings.names.titles": "Títulos de agente",
   "settings.names.names": "Nombres de agente",
-  "settings.names.add": "Añadir…",
   "settings.names.addAction": "Añadir",
   "settings.open.colWith": "Se abre con",
   "settings.open.inPeek": "En la vista rápida",

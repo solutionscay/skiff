@@ -85,13 +85,11 @@
 .g-agents .c-flags .ctl-pick { flex: 1 1 0; }
 .set-table.g-agents .set-row > .c-end { justify-content: flex-start; }
 .set-table.g-agents .c-end .c-remove { margin-left: auto; }
-/* Agent names: flush tiles, one row high. */
-.set-names-grid { flex-shrink: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(180 * var(--u)), 1fr)); }
-.set-name-tile, .set-name-add { height: var(--row); min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: calc(8 * var(--u)); padding: 0 calc(12 * var(--u)); border: 0; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); border-radius: 0; font: calc(13px * var(--zoom, 1)) var(--font); }
-.set-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.set-name-tile .ctl-btn { width: calc(22 * var(--u)); height: calc(22 * var(--u)); border: 0; color: var(--text-dim); }
-.set-name-add.ctl-btn { width: auto; justify-content: flex-start; background: transparent; color: var(--text-3); }
-.set-name-add.ctl-btn:hover { background: var(--bg-raised); }
+/* Agent titles and names: two text areas side by side, one word per line. */
+.set-names-box { flex: 1 0 auto; min-height: calc(320 * var(--u)); display: grid; grid-template-columns: 1fr 1fr; }
+.set-names-col { min-width: 0; display: flex; flex-direction: column; }
+.set-names-col + .set-names-col { border-left: 1px solid var(--rule); }
+.set-names-col textarea { flex: 1; min-height: 0; width: 100%; resize: none; border: 0; border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font-size: calc(13px * var(--zoom, 1)); padding: calc(8 * var(--u)) calc(12 * var(--u)); }
 
 /* Settings › Skippers: one grid for every row, Task types too. */
 .g-skip { flex-shrink: 0; display: flex; flex-direction: column; }
