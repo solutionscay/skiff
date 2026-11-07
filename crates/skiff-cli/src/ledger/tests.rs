@@ -1510,9 +1510,9 @@ fn stale_names_the_session_of_what_holds_old_work_and_says_why() {
     let (_, flushed, _, _) = insert(&mut db, &file, New { state: "done".into(), ..task("flushed") }).unwrap();
     flush_row(&db, &flushed);
     let (_, blocked, _, _) = insert(&mut db, &file, New { state: "blocked".into(), ..task("blocked") }).unwrap();
-    // A hand-off follows its task. Its working Skipper neither hides nor lists it.
+    // A hand-off with a task holds it until its Skipper reports it. Its working Skipper does not hide it.
     let (_, h, _, _) = insert(&mut db, &file, New { handoff: true, pane_id: Some("skipper00000".into()), project: "web".into(), ..task("h") }).unwrap();
-    let (_, under, _, _) = insert(&mut db, &file, New { parent: Some(h), owner: "web".into(), state: "done".into(), ..task("t") }).unwrap();
+    let (_, under, _, _) = insert(&mut db, &file, New { parent: Some(h.clone()), owner: "web".into(), state: "done".into(), ..task("t") }).unwrap();
     // A hand-off with no tasks follows its Skipper.
     let (_, alone, _, _) = insert(&mut db, &file, New { handoff: true, pane_id: Some("skipperidle0".into()), project: "web".into(), ..task("h") }).unwrap();
     // A task in a working session keeps its work out of the list.
@@ -1542,6 +1542,7 @@ fn stale_names_the_session_of_what_holds_old_work_and_says_why() {
             (done.clone(), format!("done, not reported, not flushed; {idle}")),
             (flushed.clone(), "every task is closed: it closes at the next ledger write".to_string()),
             (blocked.clone(), format!("blocked: no result recorded; {idle}")),
+            (h, "hand-off sent, its Skipper did not report it; session web Skipper working".to_string()),
             (under.clone(), format!("done, not reported, not flushed; {idle}")),
             (alone, "hand-off sent, no tasks under it; session web Skipper idle: close it to close the task".to_string()),
         ]
@@ -1640,7 +1641,7 @@ fn a_closed_session_closes_its_task_whatever_its_state_and_nothing_else_does() {
 }
 
 #[test]
-fn a_hand_off_follows_its_tasks_and_with_none_its_skippers_session() {
+fn a_hand_off_follows_its_skippers_session_and_then_its_tasks() {
     let dir = scratch("session-handoff");
     let file = dir.join("ledger.db");
     let mut db = open_at(&file).unwrap();
@@ -1649,13 +1650,16 @@ fn a_hand_off_follows_its_tasks_and_with_none_its_skippers_session() {
     let handoff = |st: &str| New { handoff: true, pane_id: Some("skipper00000".into()), project: "web".into(), state: st.into(), ..task("h") };
     let under = |h: &str, id: &str| New { parent: Some(h.into()), owner: "web".into(), pane_id: Some(id.into()), ..task("t") };
 
-    // Its Skipper runs. Its only task's session closes: the hand-off closes, with one note.
+    // Its only task's session closes: the Skipper runs, so the hand-off stays open.
+    // Then the Skipper's session closes: the hand-off closes, with one note.
     let (_, h, _, _) = insert(&mut db, &file, handoff("sent")).unwrap();
     let (_, t, _, _) = insert(&mut db, &file, under(&h, "task00000000")).unwrap();
     let task_pane = pane("task00000000", "agent", false);
     assert!(swept(&mut db, &file, &[skipper.clone(), task_pane]).is_empty());
     assert!(!closed(&db, &h));
-    let notes = swept(&mut db, &file, std::slice::from_ref(&skipper));
+    assert!(swept(&mut db, &file, std::slice::from_ref(&skipper)).is_empty());
+    assert!(!closed(&db, &h));
+    let notes = swept(&mut db, &file, &[]);
     assert!(closed(&db, &h));
     assert_eq!(notes.len(), 1);
     assert!(notes[0].contains(&format!("hand-off {h} unobserved")) && notes[0].contains(&format!("task {t} unobserved")));
@@ -1690,5 +1694,50 @@ fn a_hand_off_follows_its_tasks_and_with_none_its_skippers_session() {
     assert!(one(&db, &b).unwrap().state == "done" && !closed(&db, &p));
     swept(&mut db, &file, &[]);
     assert!(closed(&db, &p));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_hand_off_stays_open_between_its_tasks_while_its_skipper_runs() {
+    let dir = scratch("handoff-between");
+    let file = dir.join("ledger.db");
+    let mut db = open_at(&file).unwrap();
+    let closed = |db: &Connection, uid: &str| one(db, uid).unwrap().closed_at.is_some();
+    let skipper = pane("skipper00000", "agent", false);
+    let handoff = || New { handoff: true, pane_id: Some("skipper00000".into()), project: "web".into(), ..task("h") };
+    let under = |h: &str, id: &str| New { parent: Some(h.into()), owner: "web".into(), pane_id: Some(id.into()), ..task("t") };
+    let finish = |db: &Connection, uid: &str| db.execute("UPDATE tasks SET state = 'done', outcome = 'succeeded' WHERE uid = ?1", [uid]).unwrap();
+
+    // The Skipper's first task is done and its session closes. The Skipper runs on: the hand-off stays open.
+    let (_, h, _, _) = insert(&mut db, &file, handoff()).unwrap();
+    let (_, t1, _, _) = insert(&mut db, &file, under(&h, "task10000000")).unwrap();
+    finish(&db, &t1);
+    assert!(swept(&mut db, &file, std::slice::from_ref(&skipper)).is_empty());
+    assert!(!closed(&db, &h), "the hand-off closed between its tasks");
+    assert_eq!(one(&db, &h).unwrap().state, "sent");
+    // The watcher asks the Skipper to report it.
+    assert_eq!(handoffs_ready_in(&db).unwrap().iter().map(|r| r.row.uid.clone()).collect::<Vec<_>>(), [h.clone()]);
+    // A second task, done too: still open.
+    let (_, t2, _, _) = insert(&mut db, &file, under(&h, "task20000000")).unwrap();
+    finish(&db, &t2);
+    swept(&mut db, &file, std::slice::from_ref(&skipper));
+    assert!(!closed(&db, &h));
+    // The Skipper reports the hand-off: it closes, with no stamp, so the watcher tells Admiral.
+    db.execute("UPDATE tasks SET state = 'done', outcome = 'succeeded' WHERE uid = ?1", [&h]).unwrap();
+    assert_eq!(closed_uids(&mut db), [h.clone()]);
+    assert!(one(&db, &h).unwrap().reported_at.is_none());
+
+    // The Skipper's session closes before it reports: the hand-off closes, unobserved, with one note.
+    let (_, h2, _, _) = insert(&mut db, &file, handoff()).unwrap();
+    let (_, t3, _, _) = insert(&mut db, &file, under(&h2, "task30000000")).unwrap();
+    finish(&db, &t3);
+    swept(&mut db, &file, std::slice::from_ref(&skipper));
+    assert!(!closed(&db, &h2));
+    let notes = swept(&mut db, &file, &[]);
+    assert!(closed(&db, &h2));
+    let r = one(&db, &h2).unwrap();
+    assert_eq!((r.state.as_str(), r.outcome.as_deref()), ("done", Some("unobserved")));
+    assert_eq!(notes.len(), 1);
+    assert!(notes[0].contains(&format!("hand-off {h2} unobserved")), "{notes:?}");
     std::fs::remove_dir_all(&dir).unwrap();
 }

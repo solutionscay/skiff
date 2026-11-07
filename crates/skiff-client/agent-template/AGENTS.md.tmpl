@@ -97,8 +97,8 @@ the commands:
 - Skiff closes work by itself when every task in it is closed: done and
   reported, done and flushed by the user, or its session closed. This has the
   same effect as `close`. A plan with no task stays open. A hand-off with tasks
-  follows them, also while its Skipper runs. A hand-off with no tasks follows
-  its Skipper's session.
+  stays open until its Skipper reports it or its Skipper's session closes. Then
+  it follows its tasks. A hand-off with no tasks follows its Skipper's session.
 - A session closed means it no longer exists, or its program and shell exited.
   An open task then becomes done, `unobserved`, whatever its state was. An idle
   session is not closed, and neither is an `interrupted` or `elsewhere` one. Its

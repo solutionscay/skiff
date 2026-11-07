@@ -429,10 +429,11 @@ fn session_word(r: &Row, all: Option<&[SessionInfo]>) -> String {
     }
 }
 
-/// Why the row `r`, which holds its work open, does.
-fn stale_why(r: &Row, all: Option<&[SessionInfo]>) -> String {
+/// Why the row `r`, which holds its work open, does. `tasks`: a hand-off has tasks.
+fn stale_why(r: &Row, tasks: bool, all: Option<&[SessionInfo]>) -> String {
     let session = session_word(r, all);
     match (r.is_handoff(), r.state.as_str()) {
+        (true, st) if tasks => format!("hand-off {st}, its Skipper did not report it; {session}"),
         (true, "done") => format!("hand-off done, not reported, not flushed, no tasks under it; {session}"),
         (true, st) => format!("hand-off {st}, no tasks under it; {session}"),
         (_, "done") => format!("done, not reported, not flushed; {session}"),
@@ -474,7 +475,7 @@ pub(super) fn stale(rows: &[Row], held: &HashSet<String>, all: Option<&[SessionI
             add(h, "every task is closed: it closes at the next ledger write".into());
         }
         for r in open {
-            add(r, stale_why(r, all));
+            add(r, stale_why(r, with_tasks.contains(r.uid.as_str()), all));
         }
     }
     out
