@@ -192,7 +192,7 @@ Task states are `pending`, `sent`, `blocked` and `done`. A done task also has an
 
 A plan shows `done` when every task in it is done, else `sent`.
 
-Work is a plan with its tasks, or a task with no plan. It is `working` while an agent is on one of its tasks (the task is `sent`, and its pane works or ended its turn), `open` otherwise, and `finished` once closed. Done is not closed. Work closes by itself when every task in it is closed. A task is closed when it is done and reported, done and flushed by the person, or when its session closed. A session closed means it no longer exists, or its program and shell exited (state `done`). An idle session is not closed, so a blocked or finished task in an idle session stays open. A hand-off with tasks follows them, also while its Skipper runs. A hand-off with no tasks follows its Skipper's session. This has the same effect as `ledger close`. A plan with no task stays open. After `ledger reopen`, work stays open until a task in it changes state.
+Work is a plan with its tasks, or a task with no plan. It is `working` while an agent is on one of its tasks (the task is `sent`, and its pane works or ended its turn), `open` otherwise, and `finished` once closed. Done is not closed. Work closes by itself when every task in it is closed. A task is closed when it is done and reported, done and flushed by the person, or when its session closed. A session closed means it no longer exists, or its program and shell exited (state `done`). An idle session is not closed, so a blocked or finished task in an idle session stays open. A hand-off with tasks stays open until its Skipper reports it or its Skipper's session closes. Then it follows its tasks. A hand-off with no tasks follows its Skipper's session. This has the same effect as `ledger close`. A plan with no task stays open. After `ledger reopen`, work stays open until a task in it changes state.
 
 ### Project Skippers
 
@@ -243,7 +243,7 @@ A fleet can have one Skipper for all its projects. It is a project Skipper with 
 | `ledger show UID [--json]` | Show one row, with its delivery attempts: the session, the payload's bytes and SHA-256, and the evidence (`turn started`, `text accepted`, `no turn`, `refused` or `uncertain`). |
 | `ledger report UID... \| --all` | Mark done tasks as told to the person. |
 | `ledger close UID...` | Close work on the person's word, before each task is reported. |
-| `ledger stale [--older-than 7d] [--json]` | List each row that holds open work with no change for that age, with its session's name and why. Close an idle session to close its task. It closes nothing and writes nothing. A work item with a working session is left out. A hand-off with tasks follows them, so its own session is not read. |
+| `ledger stale [--older-than 7d] [--json]` | List each row that holds open work with no change for that age, with its session's name and why. Close an idle session to close its task. It closes nothing and writes nothing. A work item with a working session is left out. A hand-off with tasks is listed until its Skipper reports it; its session is the Skipper, so it does not leave the work out. |
 | `ledger reopen UID...` | Open closed work again, or keep open work open. Use it for work that waits on the person. |
 | `ledger prune [--older-than 7d] [--yes [--flush]]` | Remove closed work. Without `--yes` it only prints it. |
 | `ledger rm UID [--flush]` | Remove one row now. |

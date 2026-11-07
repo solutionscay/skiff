@@ -406,7 +406,9 @@ pub fn add_note(db: &Connection, text: &str) -> Result<()> {
 }
 
 /// The hand-offs with a task under them, a plan's in them included. Such a
-/// hand-off follows its tasks: its Skipper's session stays up, and says nothing.
+/// hand-off holds its work open until its Skipper reports it, or until skiff
+/// sets it done because the Skipper's session closed. Between its tasks the
+/// Skipper may still add more. Then it follows its tasks.
 pub fn handoffs_with_tasks(rows: &[Row]) -> std::collections::HashSet<&str> {
     let by: std::collections::HashMap<&str, &Row> = rows.iter().map(|r| (r.uid.as_str(), r)).collect();
     let above = |r: &Row| r.parent.as_deref().and_then(|p| by.get(p).copied());
@@ -422,8 +424,16 @@ pub fn handoffs_with_tasks(rows: &[Row]) -> std::collections::HashSet<&str> {
 }
 
 /// The row keeps its work open. `with_tasks`: from [`handoffs_with_tasks`].
+/// A hand-off with tasks holds it while it is not done; any other row, while
+/// it is not settled.
 pub fn holds_open(r: &Row, with_tasks: &std::collections::HashSet<&str>) -> bool {
-    !r.is_plan() && !with_tasks.contains(r.uid.as_str()) && !r.settled()
+    if r.is_plan() {
+        false
+    } else if with_tasks.contains(r.uid.as_str()) {
+        r.state != "done"
+    } else {
+        !r.settled()
+    }
 }
 
 /// Closes each open work item that no row holds open (see [`holds_open`]): a
