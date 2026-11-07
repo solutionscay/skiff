@@ -423,15 +423,12 @@ impl Records {
     }
 
     /// What is left to show once the program has left: a root `done` or
-    /// `error`, marked ended, without its children. The records are cleared.
+    /// `error`, marked ended, with the children that are `done` or `error`.
+    /// The records are cleared.
     pub fn end(&mut self) -> Option<ProgramStatus> {
-        let kept = self
-            .root()
-            .filter(|r| matches!(r.state, State::Done | State::Error))
-            .map(|r| ProgramStatus {
-                ended: true,
-                ..r.view()
-            });
+        self.list
+            .retain(|(_, r)| matches!(r.state, State::Done | State::Error));
+        let kept = self.view().map(|v| ProgramStatus { ended: true, ..v });
         self.clear();
         self.turns = Turns::default();
         kept

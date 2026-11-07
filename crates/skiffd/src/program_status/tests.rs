@@ -217,6 +217,14 @@ fn the_view_lists_children_and_only_a_result_outlives_its_program() {
         ("error", true, Some("boom"))
     );
     assert!(kept.children.is_empty() && r.is_empty());
+    // A child's done or error outlives the program too; its working does not.
+    for body in ["state=done", "state=done:id=s1", "state=error:id=s2", "state=working:id=s3"] {
+        r.apply(parse(body.as_bytes()).unwrap());
+    }
+    let kept = r.end().unwrap();
+    let ids: Vec<_> = kept.children.iter().map(|c| (c.id.as_str(), c.state.as_str())).collect();
+    assert_eq!(ids, [("s1", "done"), ("s2", "error")]);
+    assert!(r.is_empty());
     let mut a = view.clone();
     a.msg = Some("Thinking".into());
     assert!(Records::minor_change(&view, &a));
