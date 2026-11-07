@@ -1,14 +1,61 @@
 //! The walk of the folder into nodes, the names it keeps, and the fold of a big folder into one row.
 
 use super::{
-    checkout::{checkout, mtime},
+    checkout::{checkout, mtime, Checkout},
     model::{Kind, Node, Verdict, FOLD_FILES, KEEP},
 };
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Mutex,
+    },
+};
 
-/// A walk of `abs`, never through a link. Counts what it cannot read.
+/// A walk of `abs`, never through a link. Counts what it cannot read. The
+/// git checks of the checkouts in it run at the end, side by side: each
+/// one runs git a few times, and they are most of the count's time.
 pub(super) fn walk(abs: &Path, rel: &str, bad: &mut u64) -> Node {
+    let mut repos = Vec::new();
+    let mut n = walk_files(abs, rel, bad, &mut repos);
+    let states = checkouts(&repos);
+    set_checkouts(&mut n, &states);
+    n
+}
+
+/// The [`checkout`] state of each folder in `dirs`, a few at a time.
+fn checkouts(dirs: &[PathBuf]) -> HashMap<PathBuf, Checkout> {
+    let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).min(8);
+    let next = AtomicUsize::new(0);
+    let out = Mutex::new(HashMap::new());
+    std::thread::scope(|s| {
+        for _ in 0..threads.min(dirs.len()) {
+            s.spawn(|| {
+                while let Some(d) = dirs.get(next.fetch_add(1, Ordering::Relaxed)) {
+                    let c = checkout(d);
+                    out.lock().unwrap_or_else(|e| e.into_inner()).insert(d.clone(), c);
+                }
+            });
+        }
+    });
+    out.into_inner().unwrap_or_else(|e| e.into_inner())
+}
+
+fn set_checkouts(n: &mut Node, states: &HashMap<PathBuf, Checkout>) {
+    if let Some(c) = states.get(&n.abs) {
+        n.checkout = Some(*c);
+    }
+    for c in &mut n.children {
+        if c.dir {
+            set_checkouts(c, states);
+        }
+    }
+}
+
+/// [`walk`] without the git checks: the folders that hold a `.git` go to `repos`.
+fn walk_files(abs: &Path, rel: &str, bad: &mut u64, repos: &mut Vec<PathBuf>) -> Node {
     let name = abs.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let mut n = Node {
         name: name.clone(),
@@ -60,13 +107,13 @@ pub(super) fn walk(abs: &Path, rel: &str, bad: &mut u64) -> Node {
     }
     kids.sort();
     if kids.iter().any(|k| k.file_name().is_some_and(|f| f == ".git")) && !rel.is_empty() {
-        n.checkout = Some(checkout(abs));
+        repos.push(abs.to_path_buf());
     }
     let own = n.mtime;
     for k in kids {
         let kname = k.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
         let krel = if rel.is_empty() { kname } else { format!("{rel}/{kname}") };
-        let c = walk(&k, &krel, bad);
+        let c = walk_files(&k, &krel, bad, repos);
         n.bytes += c.bytes;
         n.files += c.files;
         n.children.push(c);

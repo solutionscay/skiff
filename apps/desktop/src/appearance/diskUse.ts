@@ -50,6 +50,10 @@ interface DiskOpen {
 interface DiskState {
   usage: DiskUsage | null;
   counting: boolean;
+  /** The count that runs: a second ask waits for it. */
+  pending: Promise<void> | null;
+  /** "Removing N files (X)…" while a flush runs. */
+  flushing: string | null;
   /** "Removed N files, X." after a flush. */
   removed: string | null;
   error: string | null;
@@ -59,24 +63,58 @@ interface DiskState {
   cur: string;
 }
 
-export const diskState = (): DiskState => ({ usage: null, counting: false, removed: null, error: null, open: null, cur: "" });
+export const diskState = (): DiskState => ({ usage: null, counting: false, pending: null, flushing: null, removed: null, error: null, open: null, cur: "" });
+
+/** A count or a flush runs: the page shows the last numbers, and Flush waits. */
+const busy = (s: DiskState) => s.counting || s.flushing !== null;
 
 /** A plural line with its count written as the locale writes numbers: "1,204 files". */
 const count = (key: PluralKey, n: number) => tn(key, n, { count: n.toLocaleString(locale()) });
 
-/** Counts the folder. The page shows "…" until the answer comes. */
-export async function countDisk(s: DiskState, redraw: () => void) {
+/**
+ * Counts the folder. The page says "Calculating size…" until the answer
+ * comes. A count that runs already is not started again. `keepError`: the
+ * error line of the flush before it stays.
+ */
+export function countDisk(s: DiskState, redraw: () => void, keepError = false): Promise<void> {
+  if (s.pending) return s.pending;
   s.counting = true;
   redraw();
+  s.pending = (async () => {
+    try {
+      s.usage = await invoke<DiskUsage>("disk_usage");
+      if (!keepError) s.error = null;
+    } catch (e) {
+      s.error = String(e);
+    } finally {
+      s.counting = false;
+      s.pending = null;
+      redraw();
+    }
+  })();
+  return s.pending;
+}
+
+/**
+ * Runs a flush from the dialog. While it runs, the status line says what it
+ * removes and every Flush waits. Then the line says what went, and the page
+ * counts again. A failed flush shows its error.
+ */
+async function runFlush(s: DiskState, items: Expected[], line: string, redraw: () => void) {
+  s.flushing = line;
+  s.removed = null;
+  s.error = null;
+  redraw();
   try {
-    s.usage = await invoke<DiskUsage>("disk_usage");
-    s.error = null;
+    const out = await invoke<Flushed>("flush_disk", { items });
+    s.removed = flushedLine(out);
+    s.error = out.errors.length ? out.errors.join("\n") : null;
   } catch (e) {
     s.error = String(e);
   } finally {
-    s.counting = false;
-    redraw();
+    s.flushing = null;
   }
+  await countDisk(s, redraw, true);
 }
 
 /** The status line after a flush. */
@@ -123,19 +161,14 @@ function askFlush(s: DiskState, n: DiskNode, redraw: () => void) {
   const scope = h("div", "disk-scope mono", t("disk.in", { folder: `${s.usage?.shown ?? "~/skiff-agent"}/${n.path ? n.path + "/" : ""}` }));
   const list = h("div", "disk-list");
   list.append(...section(t("disk.sectionRemove"), go, n), ...section(t("disk.sectionKeep"), keep, n));
-  const limit = h("div", "disk-limit", t("disk.limit"));
   const back = () => document.querySelector<HTMLElement>(`.set-disk-row[data-path="${CSS.escape(n.path)}"]`)?.focus();
   actionDialog({
     title: t("disk.removeTitle", { files: count("disk.files", files), size: size(bytes) }),
-    content: [scope, list, limit],
+    content: [scope, list],
     action: t("disk.remove"),
     tone: "danger",
-    submit: async () => {
-      const out = await invoke<Flushed>("flush_disk", { items });
-      s.removed = flushedLine(out);
-      s.error = out.errors.length ? out.errors.join("\n") : null;
-      void countDisk(s, redraw);
-    },
+    // The dialog closes at once: the page shows the flush as it runs.
+    submit: () => void runFlush(s, items, t("disk.removing", { files: count("disk.files", files), size: size(bytes) }), redraw),
     onClose: back,
   });
 }
@@ -179,9 +212,11 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
   const title = h("div", "set-h", t("settings.tab.disk"));
   title.id = "set-h-disk";
   head.append(title);
-  if (u) head.append(h("span", "set-band-count", t("disk.total", { size: size(u.tree.bytes), flush: size(canFlush(u.tree)) })));
+  if (s.counting) head.append(h("span", "set-band-count", t("disk.counting")));
+  else if (u) head.append(h("span", "set-band-count", t("disk.total", { size: size(u.tree.bytes), flush: size(canFlush(u.tree)) })));
 
-  const table = h("div", "set-disk");
+  const table = h("div", "set-disk" + (u && busy(s) ? " busy" : ""));
+  table.setAttribute("aria-busy", String(busy(s)));
   table.setAttribute("role", "treegrid");
   table.setAttribute("aria-labelledby", title.id);
   const cols = h("div", "set-row set-cols");
@@ -191,7 +226,7 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
 
   if (!u) {
     const r = h("div", "set-row set-agent set-disk-row");
-    r.append(h("span", "c-name", s.counting ? "…" : ""), h("span", "c-num", "…"), h("span", "c-num", "…"), h("span"), h("span"));
+    r.append(h("span", "c-name dim", s.counting ? t("disk.counting") : ""), h("span", "c-num", s.counting ? "…" : ""), h("span", "c-num", s.counting ? "…" : ""), h("span"), h("span"));
     table.append(r);
   } else {
     const tree = { ...u.tree, name: `${u.shown.split("/").pop() || u.shown}/` };
@@ -237,7 +272,7 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
       if (flush > 0) {
         const b = smallButton(t("disk.flushButton"), () => {}, { danger: true });
         b.dataset.key = `flush:${n.path}`;
-        b.disabled = s.counting;
+        b.disabled = busy(s);
         b.addEventListener("click", (e) => {
           e.stopPropagation();
           s.cur = n.path;
@@ -290,14 +325,14 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
       } else if (e.key === " " && n.children?.length) {
         e.preventDefault();
         toggle(n);
-      } else if (e.key === "Enter" && canFlush(n) > 0 && !s.counting) {
+      } else if (e.key === "Enter" && canFlush(n) > 0 && !busy(s)) {
         e.preventDefault();
         askFlush(s, n, redraw);
       }
     });
   }
 
-  const status = h("div", "set-hint", s.removed ?? (u && !s.counting && canFlush(u.tree) === 0 ? t("disk.nothing") : ""));
+  const status = h("div", "set-hint", s.flushing ?? s.removed ?? (u && !s.counting && canFlush(u.tree) === 0 ? t("disk.nothing") : ""));
   status.setAttribute("role", "status");
   if (s.removed) status.dataset.kind = "added";
   const errors = [
