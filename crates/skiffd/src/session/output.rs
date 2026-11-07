@@ -1,7 +1,7 @@
 //! Output from a session: batching, the screen scan, the probe reply and the deadlines of both.
 use super::{Chunk, Front, Piece, Session, HOLD, MAX_CHUNK, QUIET, SCAN};
 use crate::program_status;
-use crate::screen::{Screen, Signals};
+use crate::screen::{PromptMatch, Screen, Signals};
 use skiff_core::protocol::EchoTimes;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -41,6 +41,8 @@ pub(super) struct Scan {
     pub(super) work: bool,
     /// The agent in front shows its approval prompt.
     pub(super) approval: bool,
+    /// The rule behind `approval` and the row it matched. Only the log reads it.
+    pub(super) prompt: Option<PromptMatch>,
     /// The agent in front shows its busy line.
     pub(super) busy: bool,
 }
@@ -70,16 +72,16 @@ impl ScreenState {
 
     pub(super) fn scan(&mut self, front: Front) -> Scan {
         let changed = self.printed && self.screen.text_changed();
-        let (approval, busy) = match front {
-            Front::Agent(agent) => (self.screen.approval_prompt(agent), self.screen.busy_line(agent)),
-            _ => (false, false),
+        let (prompt, busy) = match front {
+            Front::Agent(agent) => (self.screen.prompt_match(agent), self.screen.busy_line(agent)),
+            _ => (None, false),
         };
         let work = changed && self.printed_work;
         self.last_scan = Instant::now();
         self.unscanned = false;
         self.printed = false;
         self.printed_work = false;
-        Scan { scanned: true, work, approval, busy }
+        Scan { scanned: true, work, approval: prompt.is_some(), prompt, busy }
     }
 }
 

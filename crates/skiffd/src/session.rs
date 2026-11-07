@@ -22,7 +22,7 @@ use tokio::sync::{broadcast, Notify};
 use crate::{
     program_status::Records,
     pty::Pty,
-    screen::TitleState,
+    screen::{PromptMatch, TitleState},
     workspace::{SavedSession, Workspace},
 };
 
@@ -41,6 +41,7 @@ mod registry;
 pub(crate) mod reducer;
 pub mod reload;
 mod status;
+mod wait_log;
 #[cfg(test)]
 use crate::screen::Screen;
 #[cfg(test)]
@@ -210,6 +211,14 @@ pub struct Session {
     approval_since: AtomicU64,
     /// That prompt made the session wait, over the report.
     raised: AtomicBool,
+    /// What the last scan's screen rule matched. Only the log reads it.
+    prompt_match: Mutex<Option<PromptMatch>>,
+    /// Unix ms of the last OSC 7501 report this daemon read for the session;
+    /// 0: none. Only the log reads it, and a reload does not keep it.
+    last_report_at: AtomicU64,
+    /// Unix ms when the wait began; 0 when it does not wait, or waited across
+    /// a reload. Only the log reads it.
+    waiting_since: AtomicU64,
     /// The report is marked stalled, so a read clears it without a lock.
     stalled: AtomicBool,
     /// Unix ms of the last update sent for a report, and a minor change
@@ -431,8 +440,7 @@ impl SessionPool {
             let mut changed = false;
             let mut ended = None;
             if front == Front::Shell {
-                let (next, effects) = reducer::reduce(attention::snapshot(session, &info), reducer::Input::Shell, now_ms());
-                *info = next.info;
+                let effects = attention::step(session, &mut info, reducer::Input::Shell, now_ms(), None);
                 state = effects.state.map(|_| info.id.clone());
                 changed = effects.update;
                 ended = effects.turn.then(|| info.id.clone());

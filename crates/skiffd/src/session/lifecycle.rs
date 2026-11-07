@@ -142,6 +142,9 @@ impl SessionPool {
             queried_at: AtomicU64::new(0),
             approval_since: AtomicU64::new(0),
             raised: AtomicBool::new(false),
+            prompt_match: Mutex::new(None),
+            last_report_at: AtomicU64::new(0),
+            waiting_since: AtomicU64::new(0),
             stalled: AtomicBool::new(false),
             status_sent_at: AtomicU64::new(0),
             status_dirty: AtomicBool::new(false),
@@ -366,8 +369,7 @@ impl SessionPool {
         let reported = {
             let mut records = session.records.lock().unwrap();
             let mut info = session.info.lock().unwrap();
-            let (next, _) = super::reducer::reduce(super::attention::snapshot(session, &info), super::reducer::Input::Exit { code }, now_ms());
-            *info = next.info;
+            super::attention::step(session, &mut info, super::reducer::Input::Exit { code }, now_ms(), None);
             end_reports(&mut records, &mut info)
         };
         session.set_reader_done();

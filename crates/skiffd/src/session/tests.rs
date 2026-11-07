@@ -337,7 +337,7 @@ fn deterministic_idle_boundary_and_waiting_cause() {
     assert_eq!(s.info().waiting_cause, None);
     { let mut info = s.info.lock().unwrap(); info.state = SessionState::Waiting; info.waiting_cause = None; }
     while events.try_recv().is_ok() {}
-    pool.wait(&s, super::attention::REPORT, "");
+    pool.wait(&s, super::attention::REPORT);
     assert_eq!(s.info().waiting_cause.as_deref(), Some("report"));
     assert!(matches!(events.try_recv().unwrap(), Event::SessionUpdated { .. }));
     assert!(events.try_recv().is_err());
@@ -696,5 +696,50 @@ async fn concurrent_resizes_announce_the_size_the_pty_has() {
     assert_eq!(last, Some(now), "the last event");
     assert_eq!((inventory.cols, inventory.rows), now, "the inventory");
     assert_eq!(now, (120, 40));
+    pool.kill(&info.id).unwrap();
+}
+
+/// With the rule behind it, each agent's prompt makes the wait a bare
+/// `approval` made before: the same state and the same cause.
+#[test]
+fn each_agents_prompt_waits_as_it_did_before_the_rule() {
+    use skiff_core::session::{SessionSpec, SessionState};
+    let hint = "| x\r\n\u{2502} \u{2191}/\u{2193} to navigate \u{b7} enter to select \u{b7} esc to cancel";
+    let copilot_tool = format!("No, and tell Copilot what to do differently {hint}");
+    let copilot_trust = format!("Do you trust the files in this folder? {hint}");
+    let prompts: [(&'static str, &str, &str); 10] = [
+        ("claude", " Esc to cancel \u{b7} Tab to amend", "claude-esc-to-cancel"),
+        ("codex", "Press enter to confirm or esc to cancel", "codex-confirm"),
+        ("codex", "enter continue \u{b7} esc skip", "codex-update"),
+        ("opencode", "Allow once   Allow always   Reject", "opencode-allow"),
+        ("gemini", "\u{2191}/\u{2193} Navigate \u{b7} tab Amend", "gemini-navigate"),
+        ("gemini", "Allow once\r\nNo, suggest changes (esc)", "gemini-allow"),
+        ("copilot", &copilot_tool, "copilot-tool"),
+        ("copilot", &copilot_trust, "copilot-trust"),
+        ("grok", "1/4:select  \u{2502}  Tab:next option", "grok-select"),
+        ("grok", "Allow once\r\nReject", "grok-allow"),
+    ];
+    let pool = super::SessionPool::new();
+    let info = pool.create(SessionSpec { command: Some("/bin/sleep".into()), args: vec!["30".into()], cols: 80, rows: 24, ..Default::default() }).unwrap();
+    let s = pool.get(&info.id).unwrap();
+    for (agent, screen, rule) in prompts {
+        pool.set_front(&s, Front::Agent(agent));
+        pool.set_state(&s, SessionState::Working);
+        let mut st = state();
+        st.screen = Screen::new(80, 16);
+        print(&mut st, screen.as_bytes(), false);
+        let scan = st.scan(Front::Agent(agent));
+        assert_eq!(scan.prompt.as_ref().map(|p| p.rule), Some(rule));
+        assert!(scan.approval, "{rule}");
+        pool.apply_scan(&s, scan);
+        let with_rule = s.info();
+        assert_eq!((with_rule.state, with_rule.waiting_cause.as_deref()), (SessionState::Waiting, Some("prompt")), "{rule}");
+        // The prompt goes, and a bare approval comes as before the rule.
+        pool.apply_scan(&s, super::output::Scan { scanned: true, ..Default::default() });
+        assert_eq!(s.info().state, SessionState::Working, "{rule}");
+        pool.apply_scan(&s, super::output::Scan { scanned: true, approval: true, ..Default::default() });
+        let bare = s.info();
+        assert_eq!((bare.state, bare.waiting_cause), (with_rule.state, with_rule.waiting_cause), "{rule}");
+    }
     pool.kill(&info.id).unwrap();
 }

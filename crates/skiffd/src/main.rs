@@ -1,4 +1,4 @@
-use std::{os::fd::{AsRawFd, FromRawFd}, path::PathBuf};
+use std::{os::fd::{AsFd, AsRawFd, FromRawFd}, path::PathBuf};
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
@@ -51,6 +51,13 @@ fn main() -> Result<()> {
 }
 
 async fn run(start: Start) -> Result<()> {
+    // The log can hold what programs print: only this account reads it. Only
+    // a regular file: `/dev/null` or a terminal on stderr is not the daemon's.
+    if let Ok(log) = std::io::stderr().as_fd().try_clone_to_owned().map(std::fs::File::from) {
+        if log.metadata().is_ok_and(|m| m.is_file()) {
+            let _ = log.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600));
+        }
+    }
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))

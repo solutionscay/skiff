@@ -1,9 +1,9 @@
 //! OSC 7501 session status policy.
-use super::attention::{end_reports, log_cause, snapshot};
-use super::reducer::{self, Input};
+use super::attention::{end_reports, step};
+use super::reducer::Input;
 use super::{Front, Session, SessionPool};
 use crate::program_status;
-use crate::program_status::Records;
+use crate::program_status::{Records, Report};
 use crate::screen::StatusSignal;
 use skiff_core::protocol::Event;
 use skiff_core::session::{now_ms, SessionState};
@@ -41,6 +41,9 @@ impl SessionPool {
                 StatusSignal::Reset => records.clear(),
                 StatusSignal::Report(body) => {
                     if let Some(report) = program_status::parse(&body) {
+                        if !matches!(report, Report::Probe) {
+                            session.last_report_at.store(now, Ordering::Relaxed);
+                        }
                         records.apply(report);
                     }
                 }
@@ -65,8 +68,7 @@ impl SessionPool {
                 .turns
                 .step(old, claim, now, info.input_gen, info.output_bytes);
             drop(records);
-            let (next, effects) = reducer::reduce(snapshot(session, &info), Input::Report { claim, view, ended }, now);
-            *info = next.info;
+            let effects = step(session, &mut info, Input::Report { claim, view, ended }, now, None);
             if let Some(value) = effects.stalled { session.stalled.store(value, Ordering::Relaxed); }
             if let Some(value) = effects.approval_since { session.approval_since.store(value, Ordering::Relaxed); }
             if let Some(value) = effects.raised { session.raised.store(value, Ordering::Relaxed); }
@@ -76,12 +78,6 @@ impl SessionPool {
             if effects.work_started { session.work_started.store(now, Ordering::Relaxed); }
             if effects.status_sent { session.status_sent_at.store(now, Ordering::Relaxed); }
             if let Some(value) = effects.status_dirty { session.status_dirty.store(value, Ordering::Relaxed); }
-            if let Some(cause) = effects.cause_recorded {
-                let detail = info.program_status.as_ref()
-                    .map(|p| [p.kind.as_deref(), p.msg.as_deref()].into_iter().flatten().collect::<Vec<_>>().join(": "))
-                    .unwrap_or_default();
-                log_cause(&info, session.front(), cause, &detail);
-            }
             (effects.state, effects.turn, info.id.clone(), effects.update)
         };
         if let Some(state) = state {
@@ -117,8 +113,7 @@ impl SessionPool {
                 return;
             }
             let changed = end_reports(&mut records, &mut info);
-            let (next, effects) = reducer::reduce(snapshot(session, &info), Input::ClaimLost, now_ms());
-            *info = next.info;
+            let effects = step(session, &mut info, Input::ClaimLost, now_ms(), None);
             let moved = effects.state.map(|state| (info.id.clone(), state));
             (moved, changed.then(|| info.clone()))
         };
@@ -140,13 +135,11 @@ impl SessionPool {
     pub(super) fn status_tick_at(&self, s: &Session, now: u64) {
         let (state, updated) = {
             let mut info = s.info.lock().unwrap();
-            let (next, effects) = reducer::reduce(snapshot(s, &info), Input::Tick, now);
-            *info = next.info;
+            let effects = step(s, &mut info, Input::Tick, now, None);
             if let Some(value) = effects.status_dirty { s.status_dirty.store(value, Ordering::Relaxed); }
             if effects.status_sent { s.status_sent_at.store(now, Ordering::Relaxed); }
             if let Some(value) = effects.stalled { s.stalled.store(value, Ordering::Relaxed); }
             if let Some(value) = effects.raised { s.raised.store(value, Ordering::Relaxed); }
-            if let Some(cause) = effects.cause_recorded { log_cause(&info, s.front(), cause, "under a working report"); }
             (effects.state.map(|value| (info.id.clone(), value)), effects.update)
         };
         if let Some((session, state)) = state {

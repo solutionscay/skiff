@@ -54,6 +54,26 @@ pub(super) enum Input {
     },
 }
 
+impl Input {
+    /// What this input is, in the log line that says what ended a wait.
+    pub(super) fn ended_by(&self) -> &'static str {
+        match self {
+            // Only a key press moves a session by hand: see `SessionPool::write`.
+            Input::Move { .. } => "input",
+            Input::Report { .. } => "report",
+            Input::ClaimLost => "program left",
+            Input::Shell => "shell prompt",
+            Input::Exit { .. } => "exit",
+            Input::Seen => "seen",
+            Input::Idle { .. } => "idle timer",
+            Input::Bell => "bell",
+            Input::Tick => "timer",
+            Input::Scan { .. } => "screen",
+            Input::Title { .. } => "title",
+        }
+    }
+}
+
 #[derive(Default)]
 pub(super) struct Effects {
     pub state: Option<SessionState>,

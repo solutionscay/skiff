@@ -3,6 +3,7 @@
 
 mod command;
 pub mod identity;
+mod log_text;
 pub mod paths;
 pub mod program_status;
 pub mod pty;
