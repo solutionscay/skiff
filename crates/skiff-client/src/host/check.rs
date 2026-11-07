@@ -286,11 +286,6 @@ pub async fn run_probe(target: &SshTarget, options: &SshOptions) -> Result<Probe
     })
 }
 
-/// A socket path that may go to the probe and to `-L`.
-pub fn valid_socket(s: &str) -> bool {
-    s.starts_with('/') && !s.contains(':') && !s.chars().any(|c| c.is_control())
-}
-
 /// Runs the check list. Rows after the first failure are skipped.
 pub async fn check(input: &CheckInput, options: &SshOptions) -> Report {
     let mut list = List { version: input.version.clone(), ..Default::default() };
