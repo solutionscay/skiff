@@ -253,7 +253,7 @@ export interface AgentInfo {
   used_by?: string | null;
   /** Where the program was found, in full, on the shown Host. Absent: not found, or an older Host. */
   path?: string | null;
-  /** The flags that make it skip its approval prompts. The first is the one to write. Absent: none listed. */
+  /** The flags that make it skip its approval prompts. The first is the one to write. One can be two words. Absent: none listed. */
   skip_approvals?: string[];
 }
 

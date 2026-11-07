@@ -56,7 +56,7 @@ export interface RowTableSpec<R> {
   rowClass?: (row: R) => string;
   /** What shows in the end cell before the −: the agent's status, or the row's own buttons. */
   status?: (row: R) => Node;
-  /** Why a row's − is off, short, after the status in the end cell: "Admiral +3". Null: it can go. */
+  /** What keeps a row's − off, short: "Admiral +3". The − says it, by tooltip, by description and when pressed. Null: it can go. */
   kept?: (row: R) => string | null;
   /** Why a row's new value cannot be saved, past the column's own check. */
   checkEdit?: (row: R, key: string, value: string) => string | null;
@@ -153,18 +153,21 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
     const end = h("span", "c-status c-end c-acts");
     end.setAttribute("role", "cell");
     if (spec.status) end.appendChild(spec.status(r));
-    const kept = spec.kept?.(r) ?? null;
-    if (kept !== null) {
-      const why = h("span", "c-kept", `· ${kept}`);
-      why.title = kept;
-      end.appendChild(why);
-    }
     if (spec.remove) {
-      const rm = smallButton(t("table.remove"), () => void remove(r, at), { icon: rune("indicators-minus"), danger: true, label: t("table.removeRow", { id }) });
+      const kept = spec.kept?.(r) ?? null;
+      const why = kept === null ? null : t("table.usedBy", { who: kept });
+      const rm = smallButton(t("table.remove"), () => void (why === null ? remove(r, at) : refuse(why, at)), { icon: rune("indicators-minus"), danger: true, label: t("table.removeRow", { id }) });
       rm.classList.add("c-remove");
-      rm.disabled = kept !== null;
-      if (kept !== null) rm.title = t("table.usedBy", { who: kept });
       end.appendChild(rm);
+      if (why !== null) {
+        // aria-disabled, not disabled: the keys and a screen reader must reach the reason.
+        rm.setAttribute("aria-disabled", "true");
+        rm.title = why;
+        const note = h("span", "visually-hidden", why);
+        note.id = `${spec.grid}-why-${at}`;
+        rm.setAttribute("aria-describedby", note.id);
+        end.appendChild(note);
+      }
     }
     row.appendChild(end);
     table.appendChild(row);
@@ -188,7 +191,18 @@ export function rowTable<R>(spec: RowTableSpec<R>, state: RowTableState, redraw:
   async function remove(r: R, at: number) {
     state.error = (await spec.remove?.(r)) ?? null;
     redraw();
-    const rms = [...document.querySelectorAll<HTMLButtonElement>(`[data-row-table="${spec.grid}"] .c-remove:not(:disabled)`)];
+    focusMinus(at);
+  }
+
+  /** A press of a − that is off: the error line says why, and nothing changes. */
+  function refuse(why: string, at: number) {
+    state.error = why;
+    redraw();
+    focusMinus(at);
+  }
+
+  function focusMinus(at: number) {
+    const rms = [...document.querySelectorAll<HTMLButtonElement>(`[data-row-table="${spec.grid}"] .c-remove`)];
     rms[Math.min(at, rms.length - 1)]?.focus();
   }
 }

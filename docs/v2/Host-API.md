@@ -1280,7 +1280,8 @@ local-only.
   lists that Host's agents read-only and says to change them on that Host.
 - **The found program and flags:** a `HostAgent` also carries `path`, where the
   Host found the program, and `skip_approvals`, the flags the Host's Skiff lists
-  for that agent. Both are optional, so an older Host still reads.
+  for that agent (one entry can be two words). Both are optional, so an older
+  Host still reads.
 - **`agent_programs@1`:** `program_list { path }` answers the names of the
   executable files in a Host folder, for Settings › Agents › Change… on a remote
   Host. It grants no change and no run.

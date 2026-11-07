@@ -28,14 +28,18 @@ pub fn model_flag(agent: &str) -> Option<&'static str> {
 }
 
 /// The flags that make a known agent skip its approval prompts, from its
-/// `--help` (2026-11-04: claude 2.1.301, codex 0.162.1, agy, grok 1.0.44,
-/// opencode). The first is the one Settings writes. codex also takes `--yolo`.
-/// hermes and kimi are not checked here: they have none.
+/// `--help` and docs (2026-11-06: claude, codex, agy, grok 1.0.77, opencode).
+/// The first is the one Settings writes. The others are other spellings, so
+/// Settings reads and removes them too. An entry can be two words.
+/// `--help` does not list `--yolo`. codex and grok still take it, and grok's
+/// docs call it an alias of `--always-approve`. hermes and kimi are not
+/// checked here: they have none.
 pub fn skip_flags(agent: &str) -> &'static [&'static str] {
     match agent {
-        "claude" | "gemini" => &["--dangerously-skip-permissions"],
-        "codex" => &["--dangerously-bypass-approvals-and-sandbox", "--yolo"],
-        "grok" => &["--always-approve"],
+        "claude" => &["--dangerously-skip-permissions", "--permission-mode bypassPermissions", "--permission-mode=bypassPermissions"],
+        "gemini" => &["--dangerously-skip-permissions", "-dangerously-skip-permissions"],
+        "codex" => &["--dangerously-bypass-approvals-and-sandbox", "--yolo", "--ask-for-approval never", "--ask-for-approval=never", "-a never"],
+        "grok" => &["--always-approve", "--yolo", "--permission-mode bypassPermissions", "--permission-mode=bypassPermissions"],
         "opencode" => &["--auto"],
         _ => &[],
     }
