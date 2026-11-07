@@ -271,8 +271,8 @@ async fn run(app: &App, plan: &Plan) -> Outcome {
             let lost = name(app.input.open_gate(None, |_| false));
             // The page keeps asking: a late answer still brings the sessions.
             let (message, restart) = match alive(plan.pid) {
-                true => (format!("{why}. It still runs and may answer later."), "Restarting stops it and its sessions."),
-                false => (format!("{why}. Its sessions may have ended."), "Restarting starts a new skiffd."),
+                true => (format!("{why}. It still runs."), "Restarting stops it and its sessions."),
+                false => (format!("{why}."), "Restarting starts a new skiffd."),
             };
             *app.failed.lock().unwrap() = Some(message.clone());
             *app.warning.lock().await = Some(Warning {

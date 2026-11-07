@@ -19,6 +19,8 @@ changing anything the user sees or presses: styles, menus, dialogs, keys, labels
 themes. Claude Code and Codex load the same rules as the `skiff-design` skill
 (`.agents/skills/skiff-design`).
 
+UI text states what something is or does: no commentary, caveats or predictions. The skill's Words section has the rule.
+
 ## README hero
 
 The README hero has the same headline and tagline as the website home hero. When you
