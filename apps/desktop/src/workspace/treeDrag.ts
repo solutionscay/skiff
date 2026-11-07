@@ -9,7 +9,7 @@
 import type { Project } from "../platform/types";
 
 import { applyDrop, nameFleet, type Drop } from "./fleets";
-import { treeDrag } from "./tree";
+import { rowDrag } from "./rowDrag";
 import { S } from "../app/state";
 import { render } from "../app/render";
 import { h } from "../ui/dom";
@@ -22,11 +22,7 @@ const fleetOf = (name: string) => S.projects.filter((p) => p.fleet === name);
 export function dragTree(down: MouseEvent, source: HTMLElement, moving: Project[], fleet: string | null) {
   if (down.button !== 0 || S.projects.length < 2) return;
   if ((down.target as Element).closest(".wt-plus, .tree-head-add")) return;
-  const sy = down.clientY;
   const p = fleet ? null : moving[0];
-  let drop: Drop | null = null;
-  let ghost: HTMLElement | null = null;
-  let active = false;
 
   const into = (name: string | null) => (name ? t("fleet.dropAdd", { name }) : p?.fleet ? t("fleet.dropOut", { name: p.fleet }) : "");
   const headOf = (name: string) => document.querySelector<HTMLElement>(`#sidebar-scroll .fleet-pick[data-key="${CSS.escape(`fleet:${name}`)}"]`)?.parentElement ?? null;
@@ -78,66 +74,27 @@ export function dragTree(down: MouseEvent, source: HTMLElement, moving: Project[
     return { anchor: first, side: "before", fleet: null, el, mark: "drop-after", label: into(null) };
   }
 
-  function mark() {
-    for (const el of document.querySelectorAll("#sidebar-scroll .drop-before, #sidebar-scroll .drop-after, #sidebar-scroll .drop-into")) el.classList.remove(...MARKS);
-    if (drop) drop.el.classList.add(drop.mark);
-  }
-
-  const place = (m: MouseEvent) => {
-    if (!ghost) return;
-    ghost.style.left = `${m.clientX + 12}px`;
-    ghost.style.top = `${m.clientY - ghost.offsetHeight / 2}px`;
-  };
-
-  const move = (m: MouseEvent) => {
-    if (!active) {
-      if (Math.abs(m.clientY - sy) < 5) return;
-      active = treeDrag.active = true;
-      source.classList.add("dragging");
-      document.body.classList.add("dragging-tree");
-      ghost = h("div", "tree-ghost");
+  rowDrag<Drop>(down, source, {
+    ghost() {
+      const ghost = h("div", "tree-ghost");
       ghost.append(h("span", "tree-ghost-name", fleet ?? p!.name), h("span", "tree-ghost-label"));
-      document.body.appendChild(ghost);
-    }
-    drop = dropAt(m.clientX, m.clientY);
-    const label = ghost!.querySelector<HTMLElement>(".tree-ghost-label")!;
-    label.textContent = drop?.label ?? "";
-    label.hidden = !drop?.label;
-    place(m);
-    mark();
-  };
-  const end = () => {
-    window.removeEventListener("mousemove", move);
-    window.removeEventListener("mouseup", up);
-    window.removeEventListener("keydown", esc, true);
-    if (!active) return null;
-    // The click that follows the release would fold the row.
-    const swallow = (c: Event) => c.stopPropagation();
-    window.addEventListener("click", swallow, true);
-    setTimeout(() => window.removeEventListener("click", swallow, true), 0);
-    document.body.classList.remove("dragging-tree");
-    source.classList.remove("dragging");
-    ghost?.remove();
-    const d = drop;
-    drop = null;
-    mark();
-    active = treeDrag.active = false;
-    return d;
-  };
-  const up = () => {
-    const d = end();
-    if (!d) return render();
-    const made = applyDrop(moving, d);
-    if (made) nameFleet(made);
-  };
-  const esc = (k: KeyboardEvent) => {
-    if (k.key !== "Escape") return;
-    k.preventDefault();
-    k.stopPropagation();
-    end();
-    render();
-  };
-  window.addEventListener("mousemove", move);
-  window.addEventListener("mouseup", up);
-  window.addEventListener("keydown", esc, true);
+      return ghost;
+    },
+    dropAt,
+    show(drop, ghost) {
+      const label = ghost.querySelector<HTMLElement>(".tree-ghost-label")!;
+      label.textContent = drop?.label ?? "";
+      label.hidden = !drop?.label;
+    },
+    mark(drop) {
+      for (const el of document.querySelectorAll("#sidebar-scroll .drop-before, #sidebar-scroll .drop-after, #sidebar-scroll .drop-into")) el.classList.remove(...MARKS);
+      if (drop) drop.el.classList.add(drop.mark);
+    },
+    release(drop) {
+      if (!drop) return render();
+      const made = applyDrop(moving, drop);
+      if (made) nameFleet(made);
+    },
+    cancel: () => render(),
+  });
 }
