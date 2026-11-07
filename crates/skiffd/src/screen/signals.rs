@@ -11,7 +11,7 @@ pub struct Signals {
     pub bell: bool,
     /// `Some(None)` when the program reset its title.
     pub title: Option<Option<String>>,
-    /// OSC 7501 bodies and full resets, in the order they came.
+    /// OSC 7501 bodies, full resets and new shell prompts, in the order they came.
     pub status: Vec<StatusSignal>,
     /// Queries the program sent that a terminal answers (DA1, DSR, colors,
     /// XTVERSION, DECRQSS). A client answers them; see `session::replies`.
@@ -43,6 +43,8 @@ pub enum StatusSignal {
     Report(Vec<u8>),
     /// A full reset (RIS): every record goes.
     Reset,
+    /// OSC 133;A: a shell prompt begins, so `working` and `blocked` records go.
+    PromptStart,
 }
 
 /// Whole OSC 7501 probes in `b`, and how far `b` is searched: up to the
@@ -66,7 +68,7 @@ pub(super) fn held_probes(b: &[u8]) -> (u32, usize) {
 }
 
 /// OSC 7501 bodies kept from one feed. A program that floods more is cut off;
-/// a reset always counts.
+/// a reset and a new prompt always count.
 const MAX_STATUS: usize = 64;
 
 #[derive(Clone, Default)]
@@ -84,6 +86,9 @@ impl EventListener for Listener {
             }
             TermEvent::Reset if s.status.last() != Some(&StatusSignal::Reset) => {
                 s.status.push(StatusSignal::Reset)
+            }
+            TermEvent::PromptStart if s.status.last() != Some(&StatusSignal::PromptStart) => {
+                s.status.push(StatusSignal::PromptStart)
             }
             TermEvent::PtyWrite(_)
             | TermEvent::ColorRequest(..)

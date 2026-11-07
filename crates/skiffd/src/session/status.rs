@@ -23,14 +23,17 @@ impl SessionPool {
         }
         // A shell at its prompt reports nothing. A report while it is in
         // front comes from a command that is gone, or from printed text, and
-        // no return of the prompt would ever drop it.
-        if session.front() == Front::Shell {
+        // no return of the prompt would ever drop it. The group in front is
+        // read again first: a program that just started can report before
+        // the foreground watcher sees it.
+        let front = session.front();
+        let group = session.foreground_group().unwrap_or(0);
+        if front == Front::Shell && (group == 0 || Some(group) == session.info.lock().unwrap().pid) {
             return;
         }
         // Records belong to the process group in front when they came. A
         // report under another group is another program's: the old records
         // went with their program.
-        let group = session.foreground_group().unwrap_or(0);
         let mut records = session.records.lock().unwrap();
         if group != 0 && records.group != 0 && records.group != group {
             *records = Records::default();
@@ -39,6 +42,11 @@ impl SessionPool {
         for signal in signals {
             match signal {
                 StatusSignal::Reset => records.clear(),
+                // A new prompt: the program that said it works or waits is
+                // gone, even with ssh still in front. A supported agent in
+                // front is still there; a prompt it shows is not its end.
+                StatusSignal::PromptStart if matches!(front, Front::Agent(_)) => {}
+                StatusSignal::PromptStart => records.finish(),
                 StatusSignal::Report(body) => {
                     if let Some(report) = program_status::parse(&body) {
                         if !matches!(report, Report::Probe) {

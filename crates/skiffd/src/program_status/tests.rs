@@ -81,6 +81,22 @@ fn ignores_what_the_spec_ignores() {
         set(&format!("state=idle:app={}", "a".repeat(33))).1.app,
         None
     );
+    // app is [A-Za-z0-9_.+-]{1,32}; outside it, app is absent.
+    assert_eq!(set("state=idle:app=a,b").1.app, None);
+    assert_eq!(set("state=idle:app=a/b").1.app, None);
+    assert_eq!(set("state=idle:app=claude-code_1.2+x").1.app.as_deref(), Some("claude-code_1.2+x"));
+    // A key over 16 bytes breaks a limit: the whole report goes.
+    assert_eq!(parse(b"state=working:abcdefghijklmnopq=1"), None);
+    assert!(parse(b"state=working:abcdefghijklmnop=1").is_some());
+}
+
+#[test]
+fn trims_whitespace_around_keys_and_values() {
+    let (id, r) = set(" state = blocked :\tkind=question : id= a/b :app= codex ");
+    assert_eq!(
+        (id.as_deref(), r.state, r.kind, r.app.as_deref()),
+        (Some("a/b"), State::Blocked, Some(Kind::Question), Some("codex"))
+    );
 }
 
 #[test]
@@ -201,6 +217,14 @@ fn the_view_lists_children_and_only_a_result_outlives_its_program() {
         ("error", true, Some("boom"))
     );
     assert!(kept.children.is_empty() && r.is_empty());
+    // A child's done or error outlives the program too; its working does not.
+    for body in ["state=done", "state=done:id=s1", "state=error:id=s2", "state=working:id=s3"] {
+        r.apply(parse(body.as_bytes()).unwrap());
+    }
+    let kept = r.end().unwrap();
+    let ids: Vec<_> = kept.children.iter().map(|c| (c.id.as_str(), c.state.as_str())).collect();
+    assert_eq!(ids, [("s1", "done"), ("s2", "error")]);
+    assert!(r.is_empty());
     let mut a = view.clone();
     a.msg = Some("Thinking".into());
     assert!(Records::minor_change(&view, &a));

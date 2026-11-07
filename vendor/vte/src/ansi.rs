@@ -673,6 +673,9 @@ pub trait Handler {
     /// sequence ended, so a reply can end the same way.
     fn program_status(&mut self, _body: &[u8], _bell_terminated: bool) {}
 
+    /// skiff: OSC 133;A, shell integration's mark that a new prompt begins.
+    fn prompt_start(&mut self) {}
+
     /// skiff: a query this parser does not answer, which a client's terminal
     /// may: XTVERSION (`CSI > q`) and DECRQSS (`DCS $ q … ST`).
     fn unanswered_query(&mut self) {}
@@ -1412,6 +1415,10 @@ where
             // skiff: Program Status Protocol. Its values hold no `;`, so the
             // params joined back are the body as sent.
             b"7501" => self.handler.program_status(&params[1..].join(&b';'), bell_terminated),
+
+            // skiff: shell integration. Only A, a new prompt, is read; its
+            // options (`A;k=s`) do not matter here.
+            b"133" if params.get(1) == Some(&&b"A"[..]) => self.handler.prompt_start(),
 
             // Set window title.
             b"0" | b"2" => {
