@@ -81,6 +81,22 @@ fn ignores_what_the_spec_ignores() {
         set(&format!("state=idle:app={}", "a".repeat(33))).1.app,
         None
     );
+    // app is [A-Za-z0-9_.+-]{1,32}; outside it, app is absent.
+    assert_eq!(set("state=idle:app=a,b").1.app, None);
+    assert_eq!(set("state=idle:app=a/b").1.app, None);
+    assert_eq!(set("state=idle:app=claude-code_1.2+x").1.app.as_deref(), Some("claude-code_1.2+x"));
+    // A key over 16 bytes breaks a limit: the whole report goes.
+    assert_eq!(parse(b"state=working:abcdefghijklmnopq=1"), None);
+    assert!(parse(b"state=working:abcdefghijklmnop=1").is_some());
+}
+
+#[test]
+fn trims_whitespace_around_keys_and_values() {
+    let (id, r) = set(" state = blocked :\tkind=question : id= a/b :app= codex ");
+    assert_eq!(
+        (id.as_deref(), r.state, r.kind, r.app.as_deref()),
+        (Some("a/b"), State::Blocked, Some(Kind::Question), Some("codex"))
+    );
 }
 
 #[test]

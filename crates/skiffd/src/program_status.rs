@@ -31,8 +31,8 @@ const MAX_ID: usize = 128;
 const MAX_ID_SEGMENT: usize = 32;
 const MAX_ID_DEPTH: usize = 8;
 /// Records kept per session. A new one past this drops the least recently
-/// updated. The spec asks terminals for at least 64.
-pub const MAX_RECORDS: usize = 64;
+/// updated. The spec's cap; it asks terminals for at least 64.
+pub const MAX_RECORDS: usize = 256;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum State {
@@ -113,7 +113,8 @@ pub enum Report {
 }
 
 /// Reads one body. `None` when the spec says to ignore the report: no state
-/// or an unknown one, a bad id, or a report over its size.
+/// or an unknown one, a bad id, a key over its size, or a report over its
+/// size.
 pub fn parse(body: &[u8]) -> Option<Report> {
     if is_probe(body) {
         return Some(Report::Probe);
@@ -127,14 +128,17 @@ pub fn parse(body: &[u8]) -> Option<Report> {
         let Some(eq) = pair.iter().position(|&b| b == b'=') else {
             continue;
         };
-        let (key, value) = (&pair[..eq], &pair[eq + 1..]);
+        let (key, value) = (pair[..eq].trim_ascii(), pair[eq + 1..].trim_ascii());
         // A bad id must not turn a child's report into the root's.
         if key == b"id" && !value.iter().all(|&b| value_byte(b)) {
             return None;
         }
+        // A key over its limit breaks a limit: the report goes whole.
+        if key.len() > MAX_KEY {
+            return None;
+        }
         // A pair with a bad key or value is skipped; the rest still counts.
         if key.is_empty()
-            || key.len() > MAX_KEY
             || !key.iter().all(u8::is_ascii_lowercase)
             || !value.iter().all(|&b| value_byte(b))
         {
@@ -189,9 +193,7 @@ pub fn parse(body: &[u8]) -> Option<Report> {
         msg: msg.and_then(|m| text(m, MAX_MSG)),
         title: title.and_then(|t| text(t, MAX_TITLE)),
         progress,
-        app: app
-            .filter(|a| !a.is_empty() && a.len() <= MAX_APP)
-            .map(str::to_string),
+        app: app.filter(|a| segment(a, MAX_APP)).map(str::to_string),
     };
     Some(Report::Set { id, record })
 }
@@ -212,12 +214,15 @@ fn valid_id(id: &str) -> Option<&str> {
     let ok = !id.is_empty()
         && id.len() <= MAX_ID
         && id.split('/').count() <= MAX_ID_DEPTH
-        && id.split('/').all(|s| {
-            (1..=MAX_ID_SEGMENT).contains(&s.len())
-                && s.bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b"_.+-".contains(&b))
-        });
+        && id.split('/').all(|s| segment(s, MAX_ID_SEGMENT));
     ok.then_some(id)
+}
+
+/// `[A-Za-z0-9_.+-]{1,max}`: an id segment, or an `app`.
+fn segment(s: &str, max: usize) -> bool {
+    (1..=max).contains(&s.len())
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_.+-".contains(&b))
 }
 
 /// Decodes a base64 text field into plain text for display: control
