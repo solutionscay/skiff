@@ -208,7 +208,7 @@ impl HostSelection {
                     }
                 },
             };
-            match SshForward::open(&target, &remote.options, &remote.dir).await {
+            match SshForward::open_for(&target, &remote.options, &remote.dir, ssh::Carries::Typing).await {
                 Ok(f) => {
                     *remote.retry.lock().unwrap() = (0, None);
                     *forward = Some(f);

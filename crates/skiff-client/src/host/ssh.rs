@@ -28,7 +28,7 @@ use std::{
 
 use tokio::{
     io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader},
-    process::{Child, Command},
+    process::{Child, ChildStdin, Command},
 };
 
 /// How long a forward's socket may refuse a connect while `ssh` runs: the
@@ -146,8 +146,29 @@ impl Default for SshOptions {
     }
 }
 
+/// What a forward carries. Each opens a session on the Host that runs
+/// [`HOLD`] until this app's `ssh` ends: sshd sets TCP_NODELAY and an IPQoS
+/// class only for a session, never for `-N`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Carries {
+    /// Files and images. No pty: sshd marks what it sends with the bulk class
+    /// (CS1), and `IPQoS=cs1` marks what this side sends. On Wi-Fi, CS1 goes
+    /// in the background queue, so an image transfer does not hold up keys.
+    Data,
+    /// Keys and their echo. A pty: sshd marks the link interactive (AF21).
+    /// Without TCP_NODELAY each later write of an echo waits one round trip
+    /// for the ACK of the write before it.
+    Typing,
+}
+
+/// The remote command of a forward's session. It reads ssh's stdin, which
+/// this app keeps open and never writes, so it does nothing until the link
+/// ends.
+pub const HOLD: &str = "exec cat >/dev/null";
+
 /// The arguments for one forward. Each `-o` here wins over ssh config.
-pub fn forward_args(target: &SshTarget, local: &Path, options: &SshOptions) -> Vec<OsString> {
+pub fn forward_args(target: &SshTarget, local: &Path, options: &SshOptions, carries: Carries) -> Vec<OsString> {
+    let typing = carries == Carries::Typing;
     let mut args: Vec<OsString> = Vec::new();
     if let Some(config) = &options.config {
         args.push("-F".into());
@@ -169,7 +190,9 @@ pub fn forward_args(target: &SshTarget, local: &Path, options: &SshOptions) -> V
         ("-o", "ForwardAgent=no"),
         ("-o", "ForwardX11=no"),
         ("-o", "PermitLocalCommand=no"),
-        ("-o", "RequestTTY=no"),
+        ("-o", if typing { "RequestTTY=force" } else { "RequestTTY=no" }),
+        // No escape character: nothing on stdin is ever read as a command.
+        ("-o", "EscapeChar=none"),
         // A failed channel is logged at INFO, which DEBUG1 keeps, for the
         // cause. DEBUG1 adds the lines a connect shows (`shown_line`).
         ("-o", "LogLevel=DEBUG1"),
@@ -177,8 +200,12 @@ pub fn forward_args(target: &SshTarget, local: &Path, options: &SshOptions) -> V
         args.push(flag.into());
         args.push(value.into());
     }
+    // The typing link keeps ssh's own IPQoS (AF21, or what ssh config sets).
+    if !typing {
+        args.push("-o".into());
+        args.push("IPQoS=cs1".into());
+    }
     args.extend(target.login_args());
-    args.push("-N".into());
     let mut spec = OsString::from(local);
     spec.push(":");
     spec.push(&target.socket);
@@ -186,6 +213,7 @@ pub fn forward_args(target: &SshTarget, local: &Path, options: &SshOptions) -> V
     args.push(spec);
     args.push("--".into());
     args.push(target.destination.clone().into());
+    args.push(HOLD.into());
     args
 }
 
@@ -583,18 +611,30 @@ pub fn classify(stderr: &str, target: &SshTarget) -> Option<SshError> {
 pub struct SshForward {
     target: SshTarget,
     child: Child,
+    /// ssh's stdin, kept open so [`HOLD`] runs until the end.
+    _stdin: Option<ChildStdin>,
     dir: PathBuf,
     socket: PathBuf,
     stderr: Arc<Mutex<String>>,
 }
 
 impl SshForward {
-    /// Starts `ssh` and waits until it listens on the local socket, which
-    /// lives in a new directory of its own inside the private `parent`.
+    /// A [`Carries::Data`] forward. See [`Self::open_for`].
     pub async fn open(
         target: &SshTarget,
         options: &SshOptions,
         parent: &Path,
+    ) -> Result<Self, SshError> {
+        Self::open_for(target, options, parent, Carries::Data).await
+    }
+
+    /// Starts `ssh` and waits until it listens on the local socket, which
+    /// lives in a new directory of its own inside the private `parent`.
+    pub async fn open_for(
+        target: &SshTarget,
+        options: &SshOptions,
+        parent: &Path,
+        carries: Carries,
     ) -> Result<Self, SshError> {
         target.validate().map_err(SshError::Setup)?;
         private_dir(parent).map_err(|e| SshError::Setup(format!("{}: {e}", parent.display())))?;
@@ -603,8 +643,8 @@ impl SshForward {
         let socket = dir.join("skiffd.sock");
         connect_note(format!("ssh -v {}", target.destination));
         let child = Command::new(&options.program)
-            .args(forward_args(target, &socket, options))
-            .stdin(Stdio::null())
+            .args(forward_args(target, &socket, options, carries))
+            .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
@@ -641,9 +681,11 @@ impl SshForward {
                 }
             });
         }
+        let stdin = child.stdin.take();
         let mut forward = Self {
             target: target.clone(),
             child,
+            _stdin: stdin,
             dir,
             socket,
             stderr,
