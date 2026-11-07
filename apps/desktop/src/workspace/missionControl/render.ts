@@ -96,10 +96,10 @@ export function createRenderer(missionState: BoardState, dom: { items: HTMLEleme
     const now = Date.now();
     missionState.drawnSig = boardSignature(now);
     missionState.m = model();
+    const was = missionState.placed.cards.get(missionState.lit ?? "");
     missionState.placed = placeGraph(missionState.m.g);
-    // The light: a card that left the board hands it to its parent, else the first node.
-    if (missionState.lit && !missionState.placed.cards.has(missionState.lit) && !missionState.placed.clusters.has(missionState.lit)) missionState.lit = G.navParent(missionState.m.g, missionState.lit) ?? G.navFirst(missionState.m.g);
-    if (!missionState.lit) missionState.lit = G.navFirst(missionState.m.g);
+    // The light is on a card. A card that left the board hands it to the card now nearest its place, else the top left.
+    if (!missionState.placed.cards.has(missionState.lit ?? "")) missionState.lit = G.navNearest(missionState.placed.cards, was ? { x: was.x + was.w / 2, y: was.y + was.h / 2 } : { x: 0, y: 0 });
 
     // The list's numbers, also for a Skipper with no card: one number picks one Skipper in both places.
     missionState.numbered = numberedSkippers().map((e) => e.s!.id);

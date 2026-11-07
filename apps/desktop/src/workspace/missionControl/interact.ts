@@ -59,7 +59,11 @@ export function attachPointer(missionState: BoardState, canvas: HTMLElement, roo
     missionState.pan = null;
     if (d.moved || e.type === "pointercancel") return;
     root.focus();
-    if (d.head) return light(d.head, false);
+    // A cluster is no stop: its head lights its first card.
+    if (d.head) {
+      const c = missionState.placed.clusters.get(d.head);
+      return c ? light(G.navNearest(missionState.placed.cards, c, c), false) : undefined;
+    }
     if (!d.id) return;
     light(d.id, false);
     go();
@@ -175,14 +179,13 @@ export function attachPointer(missionState: BoardState, canvas: HTMLElement, roo
     return ids[(i + 1) % ids.length];
   }
 
-  /** The lit node's session: a card's own, a cluster's first. `null` with nothing to go to. */
+  /** The lit card's session. `null` with nothing to go to. */
   function litSession(): string | null {
-    if (!missionState.lit) return null;
-    const id = isCluster(missionState.lit) ? (missionState.m.g.fleets.find((f) => f.key === missionState.lit)?.projects.flatMap((p) => p.cards)[0] ?? [...missionState.m.g.fleets.flatMap((f) => f.projects), ...missionState.m.g.projects].find((p) => p.key === missionState.lit)?.cards[0] ?? null) : missionState.lit;
+    const id = missionState.lit;
     return id && missionState.m.sess.has(id) ? id : null;
   }
 
-  /** To the lit node's session, maximized or not. */
+  /** To the lit card's session, maximized or not. */
   function go(max = false) {
     const id = litSession();
     if (id) closeMission(id, max);
@@ -215,14 +218,31 @@ export function attachPointer(missionState: BoardState, canvas: HTMLElement, roo
 }) {
   const { root, find, search } = dom;
   const { missionOpen, light, go, fit, zoomBy, draw, toggleRunning, nextWaitingCard, togglePanel, openMenu } = hooks;
+  /** The line that a run of arrow moves keeps, from the card it lit: Up/Down keep the column, Left/Right the row. */
+  let line: { id: string; x: number; y: number } | null = null;
+
+  /** An arrow: the nearest card that way on the board. At the edge, the light stays. */
+  function move(dir: G.Dir) {
+    const cards = missionState.placed.cards;
+    const r = cards.get(missionState.lit ?? "");
+    if (!r) return light(G.navNearest(cards, { x: 0, y: 0 }));
+    const at = line?.id === missionState.lit ? line : { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+    const id = G.navMove(cards, missionState.lit!, dir, at);
+    const n = id ? cards.get(id) : null;
+    if (!id || !n) return;
+    const v = dir === "up" || dir === "down";
+    line = { id, x: v ? at.x : n.x + n.w / 2, y: v ? n.y + n.h / 2 : at.y };
+    light(id);
+  }
+
   /** Runs a board command. `false`: the board has no such command. */
   function run(cmd: G.BoardCommand | null): boolean {
     if (!cmd) return false;
     switch (cmd) {
-      case "parent": light(missionState.lit ? G.navParent(missionState.m.g, missionState.lit) : null); break;
-      case "child": light(missionState.lit ? (G.navChildren(missionState.m.g, missionState.lit)[0] ?? null) : null); break;
-      case "prev": light(missionState.lit ? G.navSibling(missionState.m.g, missionState.lit, -1) : null); break;
-      case "next": light(missionState.lit ? G.navSibling(missionState.m.g, missionState.lit, 1) : null); break;
+      case "up":
+      case "down":
+      case "left":
+      case "right": move(cmd); break;
       case "go": go(); break;
       case "go-max": go(true); break;
       case "fit": fit(); break;

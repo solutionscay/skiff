@@ -1,4 +1,4 @@
-// Mission control's graph: the layout, the connectors, the keys' moves and the key map.
+// Mission control's graph: the layout, the connectors, the arrows' moves and the key map.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as G from "../src/workspace/missionLayout.ts";
@@ -56,46 +56,55 @@ test("the clusters flow in a fixed grid: ceil(√n) to a row, at most 4, wrappin
   assert.ok([web, skiff, gesher, other].every((x) => x.x > p.trunk!));
 });
 
-test("the keys move along the tree: parent, children, siblings", () => {
+test("the arrows light the nearest card on the board; a cluster is never lit", () => {
   const g = graph();
-  assert.deepEqual(G.navChildren(g, "ad"), ["sk-web", "sk-skiff", "project:gesher", "project:other"]);
-  assert.deepEqual(G.navChildren(g, "sk-web"), ["project:storefront", "project:checkout"]);
-  assert.deepEqual(G.navChildren(g, "sk-skiff"), ["project:skiff"]);
-  assert.deepEqual(G.navChildren(g, "project:storefront"), ["s1", "s2", "s3"]);
-  assert.equal(G.navParent(g, "s4"), "project:checkout");
-  assert.equal(G.navParent(g, "project:checkout"), "sk-web");
-  assert.equal(G.navParent(g, "sk-web"), "ad");
-  assert.equal(G.navParent(g, "project:skiff"), "sk-skiff");
-  assert.equal(G.navParent(g, "project:gesher"), "ad");
-  assert.equal(G.navParent(g, "ad"), null);
-  assert.equal(G.navSibling(g, "s1", 1), "s2");
-  assert.equal(G.navSibling(g, "s1", -1), "s1", "the first stays at the start");
-  assert.equal(G.navSibling(g, "s3", 1), "s3", "the last stays at the end");
-  assert.equal(G.navSibling(g, "sk-skiff", 1), "project:gesher");
-  assert.equal(G.navSibling(g, "project:storefront", 1), "project:checkout");
-  // Up then Down comes back to the first child; every node's parent lists it.
-  for (const id of ["s1", "s4", "s6", "s9", "s11", "project:storefront", "project:gesher", "sk-web", "sk-skiff"]) {
-    const up = G.navParent(g, id)!;
-    assert.ok(G.navChildren(g, up).includes(id), `${up} lists ${id}`);
+  const { cards } = Grid.placeGraph(g);
+  const mid = (id: string) => ({ x: cards.get(id)!.x + cards.get(id)!.w / 2, y: cards.get(id)!.y + cards.get(id)!.h / 2 });
+  const go = (id: string, dir: G.Dir, at = mid(id)) => G.navMove(cards, id, dir, at);
+  // Down within a project: the next card below, never the project's cluster.
+  assert.equal(go("s1", "down"), "s3", "the next card on screen, in its plan's order");
+  assert.equal(go("s3", "down"), "s2");
+  assert.equal(go("s6", "down"), "s7");
+  assert.equal(go("sk-skiff", "down"), "s6", "a Skipper's Down is its first card");
+  assert.equal(go("sk-web", "down"), "s1");
+  // Across projects and clusters.
+  assert.equal(go("s2", "down"), "s4", "past the end of one project into the next");
+  assert.equal(go("s5", "down"), "s9", "into the cluster below");
+  assert.equal(go("s2", "up"), "s3");
+  assert.equal(go("s6", "up"), "sk-skiff");
+  assert.equal(go("sk-web", "up"), "ad");
+  assert.equal(go("s11", "up"), "s8", "the same column wins over a nearer card beside it");
+  assert.equal(go("s3", "right"), "s8", "the card on the same row");
+  assert.equal(go("sk-web", "right"), "sk-skiff");
+  assert.equal(go("s7", "left"), "s1", "the card on the same row");
+  // At an edge the light stays.
+  assert.equal(go("ad", "up"), null);
+  assert.equal(go("ad", "left"), null);
+  assert.equal(go("s10", "down"), null);
+  assert.equal(go("s11", "right"), null);
+  // A run keeps its line: Right from s2 lands on s8, the nearest to its row; Left goes back to s2, by s2's row.
+  assert.equal(go("s2", "right"), "s8");
+  assert.equal(go("s8", "left", { x: mid("s8").x, y: mid("s2").y }), "s2");
+  assert.equal(go("s8", "left"), "s3", "a fresh run takes s8's own row");
+  // No move, from any card, lands on a cluster.
+  for (const id of cards.keys()) for (const dir of ["up", "down", "left", "right"] as G.Dir[]) {
+    const to = go(id, dir);
+    assert.ok(to === null || cards.has(to), `${id} ${dir} -> ${to}`);
   }
-  // Without Admiral, the top blocks are each other's siblings and have no parent.
-  const alone: G.Graph = { ...g, admiral: null };
-  assert.equal(G.navFirst(alone), "sk-web");
-  assert.equal(G.navParent(alone, "sk-web"), null);
-  assert.equal(G.navSibling(alone, "sk-web", 1), "sk-skiff");
-  // A fleet with no Skipper is its own node.
-  const noSk: G.Graph = { ...g, fleets: [{ ...g.fleets[0], skipper: null }] };
-  assert.deepEqual(G.navChildren(noSk, "ad")[0], "fleet:Web");
-  assert.equal(G.navParent(noSk, "project:checkout"), "fleet:Web");
+  // A cluster head and a card that left the board hand the light to a card.
+  const { clusters } = Grid.placeGraph(g);
+  assert.equal(G.navNearest(cards, clusters.get("project:storefront")!, clusters.get("project:storefront")!), "s1");
+  assert.equal(G.navNearest(cards, clusters.get("fleet:Web")!, clusters.get("fleet:Web")!), "sk-web");
+  assert.equal(G.navNearest(cards, { x: 0, y: 0 }), "ad");
 });
 
 test("the key map: plain keys on the board, the caret's keys in the search, action keys everywhere", () => {
   const none = { ctrl: false, shift: false, alt: false, meta: false };
   const on = (key: string, action: string | null = null, inSearch = false, text = false) => G.boardCommand(key, action, inSearch, text, none);
-  assert.equal(on("ArrowDown"), "child");
-  assert.equal(on("ArrowUp"), "parent");
-  assert.equal(on("ArrowRight"), "next");
-  assert.equal(on("ArrowLeft"), "prev");
+  assert.equal(on("ArrowDown"), "down");
+  assert.equal(on("ArrowUp"), "up");
+  assert.equal(on("ArrowRight"), "right");
+  assert.equal(on("ArrowLeft"), "left");
   assert.equal(on(" "), null);
   assert.equal(on("Enter"), "go");
   assert.equal(on("Home"), "fit");
@@ -106,10 +115,10 @@ test("the key map: plain keys on the board, the caret's keys in the search, acti
   assert.equal(on("Escape", null, true, true), "clear-search");
   // In the search, Left, Right, Space and Home move the caret; Up and Down still move on the board.
   for (const k of ["ArrowLeft", "ArrowRight", " ", "Home", "-"]) assert.equal(on(k, null, true), null, k);
-  assert.equal(on("ArrowDown", null, true), "child");
+  assert.equal(on("ArrowDown", null, true), "down");
   assert.equal(on("Enter", null, true), "go");
   // The action keys keep their meaning in both places.
-  const acts: [string, G.BoardCommand][] = [["palette", "search"], ["mission-control", "close"], ["maximize", "go-max"], ["focus-mode", "running"], ["next-waiting", "next-waiting"], ["ledger", "panel"], ["project-menu", "menu"], ["settings", "settings"], ["skiff-agent", "skipper"], ["session-next", "child"], ["session-prev", "parent"], ["list-project", "prev"], ["list-back", "next"]];
+  const acts: [string, G.BoardCommand][] = [["palette", "search"], ["mission-control", "close"], ["maximize", "go-max"], ["focus-mode", "running"], ["next-waiting", "next-waiting"], ["ledger", "panel"], ["project-menu", "menu"], ["settings", "settings"], ["skiff-agent", "skipper"], ["session-next", "down"], ["session-prev", "up"], ["list-project", "left"], ["list-back", "right"]];
   for (const [a, cmd] of acts) {
     assert.equal(on("x", a), cmd, a);
     assert.equal(on("x", a, true), cmd, `${a} in the search`);
