@@ -10,6 +10,7 @@
 "apps/desktop/src/app/dataPlane.ts" = "Coordinates the selected Host data-plane connection."
 "apps/desktop/src/app/hostCaps.ts" = "Gates UI IPC by the selected Host capabilities."
 "apps/desktop/src/app/hosts.ts" = "Stores the client's known Host list and selection."
+"apps/desktop/src/app/notify.ts" = "Shows this desktop's notifications and brings its window forward."
 "apps/desktop/src/app/panels.ts" = "Stores client window panel state."
 "apps/desktop/src/app/skiffAgent.ts" = "Renders Host-supplied agent state and client dialogs."
 "apps/desktop/src/app/updater.ts" = "Updates this desktop application only."

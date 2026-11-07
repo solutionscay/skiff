@@ -59,6 +59,7 @@ function app(projects: { name: string; path: string; fleet: string | null }[], r
     "../terminal/terminal": { ptySized() {} },
     "./daemonRestart": { restartIfIdle() {} },
     "./render": { render() {}, scheduleRender() {} },
+    "./notify": { stateMoved() {}, sessionGone() {} },
   }, globals, "");
   const add = (s: any) => daemon.onEvent({ event: "session_created", session: { state: "idle", ...s } });
   const end = (id: string) => daemon.onEvent({ event: "session_removed", session: id });
