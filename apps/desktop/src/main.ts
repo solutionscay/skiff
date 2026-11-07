@@ -220,4 +220,8 @@ function restorePlace() {
 // Show the app once the first data is in. A slow daemon does not hold it past 2 s.
 const reveal = () => document.body.classList.add("ready");
 setTimeout(reveal, 2000);
-boot().catch(showError).finally(reveal);
+// A boot that stops half way leaves a window that answers clicks but has no
+// event stream, poll or projects. Try again loads the page, so boot runs in full.
+boot()
+  .catch((e) => showError(e, { label: t("connect.tryAgain"), run: async () => location.reload() }))
+  .finally(reveal);
