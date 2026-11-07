@@ -6,7 +6,7 @@ import { h } from "../ui/dom";
 import { picker, smallButton, switchButton } from "../ui/controls";
 import { promptAction } from "../ui/confirm";
 import { rune } from "../ui/runes";
-import { t } from "../i18n";
+import { t, tn } from "../i18n";
 import { rowTable, sectionHead, type RowTableState } from "./rowTable";
 import { agentNameList, setAgentNameList } from "./agentNames";
 import { pickProgram } from "./programPicker";
@@ -75,36 +75,72 @@ async function add(o: AgentsPageOptions, path: string) {
 /** The words of a command after its program. */
 const flagsOf = (a: AgentInfo) => a.command.trim().split(/\s+/).slice(1);
 
-/** The Flags cell: a menu for the flags Skiff knows, and any other flag read only. It stays in projects.toml. */
+/**
+ * The command's flags, split: does it hold a flag that skips approvals, and the
+ * other flags. A listed flag can be two words: `--permission-mode bypassPermissions`.
+ */
+function splitFlags(a: AgentInfo): { skip: boolean; rest: string[] } {
+  const words = flagsOf(a);
+  const known = (a.skip_approvals ?? []).map((k) => k.split(" "));
+  const rest: string[] = [];
+  let skip = false;
+  for (let at = 0; at < words.length;) {
+    const hit = known.find((k) => k.every((w, n) => words[at + n] === w));
+    if (hit) {
+      skip = true;
+      at += hit.length;
+    } else rest.push(words[at++]);
+  }
+  return { skip, rest };
+}
+
+/**
+ * The Flags cell: one menu, which fills the cell. Other flags stay in
+ * projects.toml. They show in the menu's tooltip and in a line of its open
+ * menu, and a screen reader reads them as the menu's description. A row with
+ * nothing to pick still gets a menu when it has other flags, so the keys reach them.
+ */
 export function flagsCell(o: AgentsPageOptions, a: AgentInfo): HTMLElement {
   const known = a.skip_approvals ?? [];
-  const words = flagsOf(a);
-  const rest = words.filter((w) => !known.includes(w));
+  const { skip, rest } = splitFlags(a);
   const cell = h("span", "c-flags");
-  if (known.length) {
-    const skip = words.some((w) => known.includes(w));
-    cell.append(picker({
-      label: t("settings.agents.flagsOf", { id: a.id }),
-      value: skip ? "skip" : "ask",
-      disabled: !a.installed,
-      entries: () => [{ value: "ask", label: t("settings.agents.flagAsk") }, { value: "skip", label: t("settings.agents.flagSkip") }],
-      pick: (v) => {
-        const program = a.command.trim().split(/\s+/)[0];
-        const command = [program, ...rest, ...(v === "skip" ? [known[0]] : [])].join(" ");
-        void o.edit("set_agent_command", { agent: a.id, command }).then((err) => { o.table.error = err; o.render(); });
-      },
-    }));
+  const other = rest.length ? t("settings.agents.otherFlags", { flags: rest.join(" ") }) : null;
+  const choices = known.length ? [{ value: "ask", label: t("settings.agents.flagAsk") }, { value: "skip", label: t("settings.agents.flagSkip") }] : [];
+  const value = skip ? "skip" : "ask";
+  const canPick = known.length > 0 && a.installed;
+  if (!known.length && !other) return cell;
+  const menu = picker({
+    label: t("settings.agents.flagsOf", { id: a.id }),
+    value,
+    shows: canPick ? undefined : (choices.find((c) => c.value === value)?.label ?? tn("settings.agents.flagCount", rest.length)),
+    quiet: !canPick,
+    disabled: !canPick && !other,
+    // With no choice the line is an item that does nothing: a menu needs one to take the keys.
+    entries: () => (canPick ? [...choices, ...(other ? [{ head: other }] : [])] : other ? [{ label: other, run: () => {} }] : []),
+    pick: (v) => {
+      const program = a.command.trim().split(/\s+/)[0];
+      const command = [program, ...rest, ...(v === "skip" ? [known[0]] : [])].join(" ");
+      void o.edit("set_agent_command", { agent: a.id, command }).then((err) => { o.table.error = err; o.render(); });
+    },
+  });
+  cell.append(menu);
+  if (other) {
+    menu.title = other;
+    const note = h("span", "visually-hidden", other);
+    note.id = `set-flags-${a.id.replace(/\s+/g, "-")}`;
+    menu.setAttribute("aria-describedby", note.id);
+    cell.append(note);
   }
-  if (rest.length) cell.append(h("span", "c-flags-rest mono", rest.join(" ")));
   return cell;
 }
 
-/** The Program cell: where it was found, read only, and the picker. */
+/** The Program cell: where it was found, read only, and the picker. A long path keeps its end. */
 function programCell(o: AgentsPageOptions, a: AgentInfo): HTMLElement {
   const cell = h("span", "c-prog");
   const first = a.command.trim().split(/\s+/)[0] ?? "";
   const where = a.installed ? shortPath(a.path ?? first) : "";
-  const path = h("span", "c-prog-path mono", where);
+  const path = h("span", "c-prog-path mono");
+  path.append(h("bdi", "", where));
   path.title = a.path ?? "";
   const change = () => void pickProgram(t("settings.agents.colProgram"), (p) => {
     void o.edit("set_agent_command", { agent: a.id, command: [p, ...flagsOf(a)].join(" ") }).then((err) => { o.table.error = err; o.render(); });
@@ -145,7 +181,7 @@ function agentTable(o: AgentsPageOptions): HTMLElement {
         return status;
       },
       // − takes any agent away that nothing starts: a default goes to `[agents] removed`.
-      // "Used by Admiral and 3 more" shows as "Admiral +3" in the STATUS cell.
+      // "Used by Admiral and 3 more" reads as "Admiral +3" on the − that is off.
       kept: (a) => a.used_by?.replace(/^Used by /, "").replace(/ and (\d+) more$/, " +$1") ?? null,
       edit: (a, _key, v) => o.edit("rename_agent", { agent: a.id, name: v }),
       remove: (a) => o.edit("remove_agent", { agent: a.id }),

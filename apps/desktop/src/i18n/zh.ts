@@ -1287,6 +1287,8 @@ export const zh = {
   "settings.agents.flagAsk": "请求批准",
   "settings.agents.flagSkip": "跳过批准",
   "settings.agents.flagsOf": "{id} 的参数",
+  "settings.agents.otherFlags": "其他参数:{flags}",
+  "settings.agents.flagCount#other": "{count} 个参数",
   "settings.agents.programOf": "{id} 的程序",
   "settings.agents.notListed": "skiffd 未列出 {name}：它的版本低于此应用。",
   "settings.agents.useFolder": "显示程序",
