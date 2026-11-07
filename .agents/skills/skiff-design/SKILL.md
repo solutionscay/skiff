@@ -79,6 +79,7 @@ Themes are location cues. One look tells you which project or session you are in
 - Use the Glossary terms. Do not invent synonyms.
 - Write in Simplified Technical English: short sentences, active voice, one idea per sentence.
 - No help text. A screen shows labels, counts and one error line for each fault. It has no notes and no advice lines.
+- UI text states what something is or does. No commentary, caveats or predictions. Keep a line only if the user needs it to act: a label, what an action does, what it removes or changes, an error and its fix.
 - Use sentence case. An item that opens a dialog or more choices ends in "…".
 - Name the scope: "Session theme", "Project theme", "Close the pane. The session keeps running."
 - Keep the tone plain and dry. Leave out hype.
