@@ -175,6 +175,9 @@ fn waiting_causes_and_front_event_order() {
     let pool = super::SessionPool::new();
     let info = pool.create(SessionSpec { command: Some("/bin/sleep".into()), args: vec!["30".into()], cols: 80, rows: 24, ..Default::default() }).unwrap();
     let s = pool.get(&info.id).unwrap();
+    // The test sets every input by hand. A new agent in front wakes the
+    // reader to scan the screen, and that scan would set a cause of its own.
+    s.pause_reader(Instant::now() + std::time::Duration::from_secs(5)).unwrap();
     pool.set_front(&s, Front::Shell);
     pool.bell(&s);
     assert_eq!(s.info().state, SessionState::Idle);
@@ -198,6 +201,7 @@ fn waiting_causes_and_front_event_order() {
     assert!(matches!(events.try_recv().unwrap(), Event::TurnEnded { .. }));
     assert!(matches!(events.try_recv().unwrap(), Event::SessionUpdated { .. }));
     assert!(events.try_recv().is_err());
+    s.resume_reader();
     pool.kill(&info.id).unwrap();
 }
 
