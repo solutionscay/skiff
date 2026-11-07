@@ -115,6 +115,11 @@ async function load() {
   }
   const live = new Set(list.map((i) => i.path));
   for (const k of thumbs.keys()) if (!live.has(k.slice(k.indexOf(" ") + 1))) thumbs.delete(k);
+  changed();
+}
+
+/** Redraws the header buttons, Settings › Images and an open library from `list`. */
+function changed() {
   scheduleRender("images");
   watchers.forEach((f) => f());
   if (!lib.hidden) {
@@ -395,8 +400,15 @@ function pin(i: Image) {
   return pinImages([i], !i.pinned);
 }
 
+/** The rows go at once; the load after the delete brings back any that stay. */
 export async function deleteImages(imgs: readonly Image[]) {
-  await invoke("image_delete", { paths: imgs.map((i) => i.path) }).catch(showError);
+  const gone = new Set(imgs.map((i) => i.path));
+  list = list.filter((i) => !gone.has(i.path));
+  changed();
+  await invoke("image_delete", { paths: [...gone] }).catch((e) => {
+    showError(e);
+    void load();
+  });
 }
 
 async function remove(i: Image) {
