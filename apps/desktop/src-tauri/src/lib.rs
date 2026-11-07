@@ -13,6 +13,7 @@ mod host_files;
 mod hosts;
 mod input;
 mod ledger;
+mod notify;
 mod projects_watch;
 mod quit;
 mod reload;
@@ -97,6 +98,7 @@ pub fn run() {
             std::thread::spawn(move || skiff_agent::sync(&handle.state::<App>()));
             let handle = app.handle().clone();
             ledger::watch(handle);
+            notify::install(app.handle());
             // Edits to the Host's projects.toml from outside the app.
             projects_watch::watch(app.handle().clone());
             hosts::watch(app.handle().clone());
@@ -128,6 +130,8 @@ pub fn run() {
             native_menu::set_menu,
             quit::quit_app,
             quit::guard_quit,
+            notify::notify_show,
+            notify::notify_remove,
             updater::update_off,
             updater::relaunch_app,
             native_menu::menu_layout,
@@ -382,7 +386,9 @@ mod tests {
             "disk_usage", "flush_disk", "set_cache_days",
             "drop_files", "clipboard_image", "images", "image_thumb", "image_insert", "image_pin", "image_delete", "open_image", "agent_cache_flags",
             // This app's own updater and restart, whichever Host is shown.
-            "update_off", "relaunch_app"];
+            "update_off", "relaunch_app",
+            // This desktop's own notifications, whichever Host is shown.
+            "notify_show", "notify_remove"];
         for c in &all {
             assert!(super::LOCAL_ONLY.contains(&c.as_str()) || allowed.contains(&c.as_str()), "{c}: decide whether a remote Host may run it");
         }
