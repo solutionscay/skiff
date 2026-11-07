@@ -466,6 +466,19 @@ test("skippers: a drop that changes nothing stores nothing and renders, and the 
   }
 });
 
+test("skippers: a drop right after the row before it is its own place, so nothing is stored", () => {
+  const t = skippers();
+  t.down(2, 150);
+  t.over(t.rows[1]);
+  t.fire("mousemove", ev(50, 110));
+  assert.equal(t.rows[1].cls.has("drop-after"), true, "the bottom half of the row before it");
+  t.fire("mouseup", {});
+  assert.deepEqual(t.moved, []);
+  assert.deepEqual(t.log, ["render(skippers-order) active=false body=false ghost=false listeners=0"]);
+  assert.equal(t.clickReaches(), false);
+  t.clean(t.rows[2]);
+});
+
 test("skippers: Esc cancels at the capture stage, before and during the drag; another key does nothing", () => {
   const t = skippers();
   t.down(1, 90);
