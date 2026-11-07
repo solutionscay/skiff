@@ -33,7 +33,7 @@ function ledger(caps: string[], reply?: () => Promise<unknown>, epoch = () => 0)
       "./model": { taskTitle: () => "" },
     },
     { Promise, JSON, Map, Set, document: { getElementById: () => null, addEventListener() {} } },
-    "\nexports.rowsNow = () => rows; exports.errorNow = () => error; exports.taskActs = taskActs; exports.result = result;",
+    "\nimport { rows } from \"./ledgerStore\";\nexports.rowsNow = () => rows; exports.errorNow = () => error; exports.taskActs = taskActs; exports.result = result;",
   );
   return { mod, calls, shown };
 }

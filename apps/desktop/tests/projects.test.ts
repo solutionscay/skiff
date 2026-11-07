@@ -164,7 +164,7 @@ function hostModules(caps: string[], S: any, sessions: Map<string, any>, dataPla
       "../app/skiffAgent": skiffAgent,
     },
     { Promise, JSON, Map, Set, document: { getElementById: () => null, addEventListener() {} } },
-    "\nexports.rowsNow = () => rows; exports.errorNow = () => error;",
+    "\nimport { rows } from \"./ledgerStore\";\nexports.rowsNow = () => rows; exports.errorNow = () => error;",
   );
   return { skiffAgent, ledger, asked };
 }
