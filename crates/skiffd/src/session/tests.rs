@@ -743,3 +743,45 @@ fn each_agents_prompt_waits_as_it_did_before_the_rule() {
     }
     pool.kill(&info.id).unwrap();
 }
+
+/// OSC 133;A, a new shell prompt, drops the `working` and `blocked` records
+/// and keeps `done`, as with ssh in front after the agent behind it left.
+/// It ends no turn.
+#[test]
+fn a_new_prompt_drops_blocked_and_keeps_done() {
+    use skiff_core::{protocol::Event, session::{SessionSpec, SessionState}};
+    let pool = super::SessionPool::new();
+    let info = pool.create(SessionSpec { command: Some("/bin/sleep".into()), args: vec!["30".into()], cols: 80, rows: 24, ..Default::default() }).unwrap();
+    let s = pool.get(&info.id).unwrap();
+    pool.set_front(&s, Front::Command);
+    pool.on_output(&s, &info.id, b"\x1b]7501;state=done:id=build\x1b\\\x1b]7501;state=blocked:kind=question\x1b\\");
+    assert_eq!(s.info().state, SessionState::Waiting);
+    let mut events = pool.events.subscribe();
+    pool.on_output(&s, &info.id, b"\x1b]133;A\x07$ ");
+    let records = s.records.lock().unwrap().clone();
+    assert_eq!(records.root(), None);
+    assert_eq!(records.get("build").map(|r| r.state), Some(crate::program_status::State::Done));
+    assert_ne!(s.info().state, SessionState::Waiting);
+    while let Ok(e) = events.try_recv() {
+        assert!(!matches!(e, Event::TurnEnded { .. }), "a new prompt ended a turn");
+    }
+    pool.kill(&info.id).unwrap();
+}
+
+/// A shell command an agent runs (Claude Code's `!`) must not end the
+/// agent's work. Were its OSC 133;A to reach the pane, the agent in front
+/// still owns it.
+#[test]
+fn a_new_prompt_under_an_agent_keeps_its_work() {
+    use skiff_core::session::{SessionSpec, SessionState};
+    let pool = super::SessionPool::new();
+    let info = pool.create(SessionSpec { command: Some("/bin/sleep".into()), args: vec!["30".into()], cols: 80, rows: 24, ..Default::default() }).unwrap();
+    let s = pool.get(&info.id).unwrap();
+    pool.set_front(&s, Front::Agent("claude"));
+    pool.on_output(&s, &info.id, b"\x1b]7501;state=working:app=claude-code\x07");
+    pool.on_output(&s, &info.id, b"\x1b]133;A;cl=m;aid=7\x1b\\% \x1b]133;B\x1b\\");
+    let root = s.records.lock().unwrap().root().map(|r| r.state);
+    assert_eq!(root, Some(crate::program_status::State::Working));
+    assert_eq!(s.info().state, SessionState::Working);
+    pool.kill(&info.id).unwrap();
+}

@@ -400,6 +400,13 @@ impl Records {
         self.list.clear();
     }
 
+    /// A new shell prompt began (OSC 133;A): the `working` and `blocked`
+    /// records go, for every id. `idle`, `done` and `error` stay.
+    pub fn finish(&mut self) {
+        self.list
+            .retain(|(_, r)| !matches!(r.state, State::Working | State::Blocked));
+    }
+
     /// The root record with the others under it, by id. `None` with no root:
     /// only the root speaks for the program.
     pub fn view(&self) -> Option<ProgramStatus> {

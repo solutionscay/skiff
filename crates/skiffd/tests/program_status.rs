@@ -71,6 +71,7 @@ fn replay(reads: &[Vec<u8>], untyped: usize) -> Heard {
             let old = records.root().cloned();
             match signal {
                 StatusSignal::Reset => records.clear(),
+                StatusSignal::PromptStart => records.finish(),
                 StatusSignal::Report(body) if program_status::is_probe(&body) => heard.probes += 1,
                 StatusSignal::Report(body) => {
                     if let Some(report) = program_status::parse(&body) {

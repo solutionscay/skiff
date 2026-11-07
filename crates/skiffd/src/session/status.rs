@@ -24,7 +24,8 @@ impl SessionPool {
         // A shell at its prompt reports nothing. A report while it is in
         // front comes from a command that is gone, or from printed text, and
         // no return of the prompt would ever drop it.
-        if session.front() == Front::Shell {
+        let front = session.front();
+        if front == Front::Shell {
             return;
         }
         // Records belong to the process group in front when they came. A
@@ -39,6 +40,11 @@ impl SessionPool {
         for signal in signals {
             match signal {
                 StatusSignal::Reset => records.clear(),
+                // A new prompt: the program that said it works or waits is
+                // gone, even with ssh still in front. A supported agent in
+                // front is still there; a prompt it shows is not its end.
+                StatusSignal::PromptStart if matches!(front, Front::Agent(_)) => {}
+                StatusSignal::PromptStart => records.finish(),
                 StatusSignal::Report(body) => {
                     if let Some(report) = program_status::parse(&body) {
                         if !matches!(report, Report::Probe) {
