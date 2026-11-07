@@ -702,6 +702,7 @@ export const es = {
   "status.permission": "pide permiso",
   "status.question": "hace una pregunta",
   "notify.title": "{name} · {project}",
+  "notify.subtitle": "{project} · {dir}",
   "notify.waiting": "Espera tu respuesta.",
   "status.auth": "pide iniciar sesión",
   "status.done": "terminado",

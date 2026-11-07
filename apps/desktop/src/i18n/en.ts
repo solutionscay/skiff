@@ -718,6 +718,7 @@ export const en = {
   "status.permission": "asks for permission",
   "status.question": "asks a question",
   "notify.title": "{name} · {project}",
+  "notify.subtitle": "{project} · {dir}",
   "notify.waiting": "Waits for your answer.",
   "status.auth": "asks to sign in",
   "status.done": "finished",
