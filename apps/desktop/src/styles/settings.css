@@ -64,7 +64,6 @@
 .set-band { height: var(--row); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: calc(12 * var(--u)); padding: 0 calc(12 * var(--u)); background: var(--bg-raised); border-bottom: 1px solid var(--rule); }
 .set-band-title { font-size: calc(12px * var(--zoom, 1)); font-weight: 500; color: var(--text-2); }
 .set-band-count { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.set-band-act .set-band-count { margin-left: auto; }
 /* Settings tables (appearance/rowTable.ts). Each cell is a span; a control fills its cell. */
 .set-table { flex-shrink: 0; display: flex; flex-direction: column; }
 .set-table .set-row > .c-note { padding: 0 calc(12 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); }
