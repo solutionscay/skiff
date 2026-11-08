@@ -18,10 +18,10 @@ use std::{
     fmt,
     os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
-    process::Stdio,
+    process::{ExitStatus, Stdio},
     sync::{
         atomic::{AtomicU64, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, MutexGuard, PoisonError, Weak,
     },
     time::{Duration, Instant},
 };
@@ -309,19 +309,22 @@ pub async fn run_batch_steps(
             *a = "LogLevel=DEBUG1".into();
         }
     }
-    let mut child = Command::new(&options.program)
-        .args(args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| SshError::Run(format!("Skiff cannot run ssh: {e}")))?;
-    let mut input = child.stdin.take().expect("piped");
-    let (mut stdout, stderr) = (
-        child.stdout.take().expect("piped"),
-        child.stderr.take().expect("piped"),
-    );
+    let child = SshChild::spawn(
+        Command::new(&options.program)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped()),
+    )
+    .map_err(|e| SshError::Run(format!("Skiff cannot run ssh: {e}")))?;
+    let (mut input, mut stdout, stderr) = {
+        let mut c = child.lock();
+        (
+            c.stdin.take().expect("piped"),
+            c.stdout.take().expect("piped"),
+            c.stderr.take().expect("piped"),
+        )
+    };
     let emit = |e: BatchEvent| {
         if let Some(f) = show {
             f(e)
@@ -372,7 +375,7 @@ pub async fn run_batch_steps(
     let (status, out, err) = match tokio::time::timeout(timeout, run).await {
         Ok(Ok(done)) => done,
         Ok(Err(error)) => {
-            let _ = child.kill().await;
+            let _ = child.lock().start_kill();
             let _ = child.wait().await;
             return Err(error);
         }
@@ -606,13 +609,93 @@ pub fn classify(stderr: &str, target: &SshTarget) -> Option<SshError> {
     }
 }
 
+/// How long [`end_all`] waits on quit for ssh to exit after SIGTERM, before
+/// it sends SIGKILL to what still runs.
+pub const QUIT_WAIT: Duration = Duration::from_millis(400);
+
+/// Every ssh child this app runs to a Host: the forwards and the batch runs.
+/// Tauri leaves by `std::process::exit`, so no drop ends them on quit; the
+/// quit path calls [`end_all`].
+static CHILDREN: Mutex<Vec<Weak<Mutex<Child>>>> = Mutex::new(Vec::new());
+
+fn lock(child: &Mutex<Child>) -> MutexGuard<'_, Child> {
+    child.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// One ssh child, listed for [`end_all`] while it lives. Dropping it kills it.
+struct SshChild(Arc<Mutex<Child>>);
+
+impl SshChild {
+    fn spawn(cmd: &mut Command) -> std::io::Result<Self> {
+        let child = Arc::new(Mutex::new(cmd.kill_on_drop(true).spawn()?));
+        let mut all = CHILDREN.lock().unwrap_or_else(PoisonError::into_inner);
+        all.retain(|c| c.strong_count() > 0);
+        all.push(Arc::downgrade(&child));
+        Ok(Self(child))
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Child> {
+        lock(&self.0)
+    }
+
+    /// The exit status, never holding the lock across an await, so
+    /// [`end_all`] can always reach the child.
+    async fn wait(&self) -> std::io::Result<ExitStatus> {
+        loop {
+            if let Some(status) = self.lock().try_wait()? {
+                return Ok(status);
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+}
+
+/// Ends every ssh child of this app, for the quit path: SIGTERM, so ssh
+/// closes its connection to the Host, then SIGKILL for any that still runs
+/// after `wait`. It returns within `wait` and a few milliseconds.
+pub fn end_all(wait: Duration) {
+    let all: Vec<Arc<Mutex<Child>>> = CHILDREN
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .filter_map(Weak::upgrade)
+        .collect();
+    let running = |c: &Mutex<Child>| matches!(lock(c).try_wait(), Ok(None));
+    for c in &all {
+        let mut child = lock(c);
+        if let (Ok(None), Some(pid)) = (child.try_wait(), child.id()) {
+            // SAFETY: kill(2) on our own unreaped child: the pid is still ours.
+            unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
+        }
+    }
+    let until = Instant::now() + wait;
+    while Instant::now() < until && all.iter().any(|c| running(c)) {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    for c in &all {
+        if running(c) {
+            let _ = lock(c).start_kill();
+        }
+    }
+}
+
+/// The typing link's stdin comes through this feeder. On a pty, sshd never
+/// passes ssh's stdin EOF on to [`HOLD`], so if this app dies without ending
+/// ssh (a crash, a force quit), `cat` on the Host and ssh here run on. When
+/// the app's end of the feeder's stdin closes, the feeder writes one ^D,
+/// which the Host's pty reads as EOF: `cat` ends, and ssh exits with it.
+const FEED_EOF: &str = "cat >/dev/null; printf '\\004'";
+
 /// A running forward. Dropping it stops this app's `ssh` and removes its own
-/// directory; it never signals anything on the Host.
+/// directory; it never signals anything on the Host. If the app dies first,
+/// ssh sees its stdin close and exits: [`HOLD`] ends on the Host.
 pub struct SshForward {
     target: SshTarget,
-    child: Child,
-    /// ssh's stdin, kept open so [`HOLD`] runs until the end.
+    child: SshChild,
+    /// ssh's stdin, or the [`FEED_EOF`] feeder's on the typing link, kept
+    /// open so [`HOLD`] runs until the end.
     _stdin: Option<ChildStdin>,
+    _feeder: Option<Child>,
     dir: PathBuf,
     socket: PathBuf,
     stderr: Arc<Mutex<String>>,
@@ -642,25 +725,44 @@ impl SshForward {
             own_dir(parent).map_err(|e| SshError::Setup(format!("{}: {e}", parent.display())))?;
         let socket = dir.join("skiffd.sock");
         connect_note(format!("ssh -v {}", target.destination));
-        let child = Command::new(&options.program)
-            .args(forward_args(target, &socket, options, carries))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn();
-        let mut child = match child {
-            Ok(child) => child,
-            Err(e) => {
-                let _ = std::fs::remove_dir(&dir);
-                return Err(SshError::Setup(format!(
-                    "run {}: {e}",
-                    options.program.display()
-                )));
+        let setup = |what: &Path, e: std::io::Error| {
+            let _ = std::fs::remove_dir(&dir);
+            SshError::Setup(format!("run {}: {e}", what.display()))
+        };
+        let (mut feeder, input) = match carries {
+            Carries::Data => (None, Stdio::piped()),
+            Carries::Typing => {
+                let sh = Path::new("/bin/sh");
+                let mut feeder = Command::new(sh)
+                    .args(["-c", FEED_EOF])
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::null())
+                    .kill_on_drop(true)
+                    .spawn()
+                    .map_err(|e| setup(sh, e))?;
+                let out: Stdio = feeder.stdout.take().expect("piped").try_into().map_err(|e| setup(sh, e))?;
+                (Some(feeder), out)
             }
         };
+        let child = SshChild::spawn(
+            Command::new(&options.program)
+                .args(forward_args(target, &socket, options, carries))
+                .stdin(input)
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped()),
+        );
+        let child = child.map_err(|e| setup(&options.program, e))?;
+        let (err, stdin) = {
+            let mut c = child.lock();
+            (c.stderr.take(), c.stdin.take())
+        };
+        let stdin = match &mut feeder {
+            Some(f) => f.stdin.take(),
+            None => stdin,
+        };
         let stderr = Arc::new(Mutex::new(String::new()));
-        if let Some(err) = child.stderr.take() {
+        if let Some(err) = err {
             let keep = stderr.clone();
             tokio::spawn(async move {
                 let mut lines = BufReader::new(err).lines();
@@ -681,18 +783,19 @@ impl SshForward {
                 }
             });
         }
-        let stdin = child.stdin.take();
-        let mut forward = Self {
+        let forward = Self {
             target: target.clone(),
             child,
             _stdin: stdin,
+            _feeder: feeder,
             dir,
             socket,
             stderr,
         };
         let until = Instant::now() + OPEN_TIMEOUT;
         loop {
-            if let Ok(Some(status)) = forward.child.try_wait() {
+            let exited = forward.child.lock().try_wait();
+            if let Ok(Some(status)) = exited {
                 // Let the stderr reader catch the last lines.
                 tokio::time::sleep(Duration::from_millis(50)).await;
                 return Err(forward.diagnose().unwrap_or(SshError::Exited {
@@ -738,7 +841,7 @@ impl SshForward {
 
     /// `ssh` still runs.
     pub fn is_alive(&mut self) -> bool {
-        matches!(self.child.try_wait(), Ok(None))
+        matches!(self.child.lock().try_wait(), Ok(None))
     }
 
     /// The known cause in ssh's output so far, if any.
@@ -749,7 +852,7 @@ impl SshForward {
 
 impl Drop for SshForward {
     fn drop(&mut self) {
-        let _ = self.child.start_kill();
+        let _ = self.child.lock().start_kill();
         let _ = std::fs::remove_file(&self.socket);
         let _ = std::fs::remove_dir(&self.dir);
     }
