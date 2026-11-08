@@ -20,6 +20,11 @@ export function dirname(p: string): string {
   return i < 0 ? "" : p.slice(0, i);
 }
 
+/** A path with the home folder shown as `~`. */
+export function homeShort(p: string): string {
+  return p.replace(/^\/(home|Users)\/[^/]+(?=\/|$)/, "~");
+}
+
 export function splitPath(p: string): { name: string; dir: string } {
   return { name: p.slice(p.lastIndexOf("/") + 1), dir: dirname(p) };
 }

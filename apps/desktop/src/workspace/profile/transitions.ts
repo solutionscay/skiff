@@ -10,6 +10,7 @@ import { t } from "../../i18n";
 import { canon, emptyProfile, trimPath, type Doc, type Profile, type createWorkspaceState } from "./state";
 import { fileName, forget, forgetLast, read, recents, remember, revision, write as writeFile, type Loaded } from "./storage";
 import { choose } from "./dialogs";
+import { homeShort } from "../paths";
 
 type State = ReturnType<typeof createWorkspaceState>;
 export function createTransitions(state: State, hooks: { announce: (text: string) => void; changed: () => void; home: () => HTMLElement | null; editWorkspace: () => void }) {
@@ -160,10 +161,11 @@ export function createTransitions(state: State, hooks: { announce: (text: string
     const restore = () => requestAnimationFrame(() => (back?.isConnected ? back : home())?.focus());
     return exclusive(async () => {
       if (workspaceEdited()) {
-        const where = state.doc!.path ?? t("workspace.notSavedYet");
+        // A saved workspace is named by its file: that is what Save writes.
+        const path = state.doc!.path;
         const c = await choose({
-          title: t("workspace.saveTitle", { name: workspaceName() }),
-          body: t("workspace.saveBody", { where, what }),
+          title: t("workspace.saveTitle", { name: path ? fileName(path).replace(new RegExp(`\\.${EXT}$`), "") : workspaceName() }),
+          body: path ? t("workspace.saveBodyFile", { what, file: homeShort(path) }) : t("workspace.saveBodyNew", { what }),
           choices: [
             { id: "save", label: t("workspace.save"), tone: "go" },
             { id: "discard", label: t("workspace.dontSave"), tone: "plain" },
