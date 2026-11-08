@@ -308,7 +308,10 @@ pub fn run() {
             if let tauri::RunEvent::ExitRequested { api, .. } = &_event {
                 quit::requested(_app, api);
             }
+            // Tauri then leaves by `std::process::exit`: no drop ends the
+            // ssh links, so they end here.
             if let tauri::RunEvent::Exit = &_event {
+                skiff_client::host::ssh::end_all(skiff_client::host::ssh::QUIT_WAIT);
                 copies::cleanup();
             }
             // A workspace file opened from Finder while Skiff runs, or to start it.

@@ -64,10 +64,12 @@ pub(crate) fn update_off(app: AppHandle) -> Option<&'static str> {
 /// Called after the update is installed and the page's workspace save guard
 /// succeeded. `AppHandle::restart` works on any thread: on the main thread it
 /// restarts at once, elsewhere it asks the event loop to exit, which the
-/// approval lets through.
+/// approval lets through. On the main thread no `RunEvent::Exit` comes, so
+/// the ssh links end here first.
 #[tauri::command]
 pub(crate) fn relaunch_app(app: AppHandle, guard: State<'_, Guard>) {
     guard.approve();
+    skiff_client::host::ssh::end_all(skiff_client::host::ssh::QUIT_WAIT);
     app.restart();
 }
 
