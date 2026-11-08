@@ -8,8 +8,8 @@
  * One document at a time: its path (null: Untitled), the profile in memory,
  * the profile last read or saved (the baseline), and the file's revision on
  * disk. Edited: the profile differs from the baseline. Name, inclusions,
- * repairs, and the user's folds and project picks are edits. Automatic opens
- * and picks are not.
+ * repairs and the user's folds are edits. Automatic opens are not. The
+ * selected project is no edit: Save writes it, a read restores it.
  *
  * Every way out of an edited workspace (New, Open, a recent, Close, a file
  * from the OS, Quit, the window's close) asks Save / Don't Save / Cancel.
