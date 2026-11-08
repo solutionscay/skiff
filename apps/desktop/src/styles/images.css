@@ -13,6 +13,9 @@
 .cell:not(.focused) .cell-head:not(.hover) .head-btn.head-images.done { visibility: visible; }
 .head-images[aria-expanded="true"] { background: color-mix(in srgb, var(--pc) 22%, transparent); box-shadow: inset 0 -2px 0 var(--pc); }
 .file-drop .drag-ghost { gap: calc(8 * var(--u)); padding-left: calc(4 * var(--u)); }
+/* A drop or paste to a remote Host: its upload line, in the pane's bottom left corner. */
+.upload-line { position: absolute; left: calc(8 * var(--u)); bottom: calc(8 * var(--u)); z-index: 5; padding: calc(6 * var(--u)) calc(8 * var(--u)); background: var(--bg-deep); border: 1px solid var(--rule-strong); color: var(--text-2); font: calc(12px * var(--zoom, 1)) var(--font); pointer-events: none; }
+.upload-line.failed { border-color: var(--error); color: var(--error); }
 .file-drop .head-mini, .lib-ghost .head-mini { width: calc(30 * var(--u)); height: calc(20 * var(--u)); outline: 0; }
 
 #images-lib {

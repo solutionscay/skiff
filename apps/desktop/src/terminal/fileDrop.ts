@@ -18,6 +18,7 @@ import { previewOnScreen } from "./peek";
 import { type Typed, typeFiles, whoOf } from "./terminalClipboard";
 import { panes } from "./terminalState";
 import { view } from "./terminal";
+import { UploadLine } from "./uploadProgress";
 import { t, tn } from "../i18n";
 
 const overlay = document.createElement("div");
@@ -80,10 +81,14 @@ export function endImageDrag(x: number, y: number): string | null {
 
 async function drop(id: string, paths: string[]) {
   if (id !== S.focused) focusPane(id);
+  // A local Host copies at disk speed: no line.
+  const line = isRemote() ? new UploadLine(id, paths.length) : null;
   try {
-    const typed = await invoke<Typed>("drop_files", { who: whoOf(id), paths, host: isRemote() ? hostName() : null });
+    const typed = await invoke<Typed>("drop_files", { who: whoOf(id), paths, host: isRemote() ? hostName() : null, upload: line?.id ?? null });
+    line?.end(true);
     typeFiles(id, typed);
   } catch (e) {
+    line?.end(false);
     showError(e);
   }
 }

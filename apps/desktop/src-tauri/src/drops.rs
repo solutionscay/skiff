@@ -36,6 +36,25 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Sen
 /// Every header button and open library redraws on this.
 pub(crate) const IMAGES_CHANGED: &str = "skiff:images-changed";
 
+/// The page's upload line for one drop or paste to a remote Host. Local to
+/// this app: it is counted from the Host's replies.
+const UPLOAD: &str = "skiff:upload";
+
+/// How far one upload is. `id` is the page's name for the drop.
+#[derive(Clone, serde::Serialize)]
+struct Upload<'a> {
+    id: &'a str,
+    /// Files the Host took, of `count`.
+    done: usize,
+    count: usize,
+    /// Bytes the Host took, of `size`.
+    sent: u64,
+    size: u64,
+}
+
+/// Where `to_host` reports: the app and the page's id for the drop.
+type Report<'a> = Option<(&'a AppHandle, &'a str)>;
+
 /// A picture selected for a project on a remote Host. The Host owns the
 /// resulting cache path; the desktop never writes that Host's projects.toml.
 #[tauri::command]
@@ -80,14 +99,14 @@ fn cache_dir() -> anyhow::Result<PathBuf> {
 /// Files dropped on a session's pane, in drop order. `host` names a remote
 /// Host for its messages.
 #[tauri::command]
-pub(crate) async fn drop_files(handle: AppHandle, app: State<'_, App>, who: Who, paths: Vec<PathBuf>, host: Option<String>) -> Result<Typed, String> {
+pub(crate) async fn drop_files(handle: AppHandle, app: State<'_, App>, who: Who, paths: Vec<PathBuf>, host: Option<String>, upload: Option<String>) -> Result<Typed, String> {
     let t = if app.remote() {
         let mut files = Vec::new();
         for p in &paths {
             files.push(data::drop_file(p, host.as_deref()).await?);
         }
         let names = paths.iter().map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).collect();
-        to_host(&app, files, names, host.as_deref()).await?
+        to_host(&app, files, names, host.as_deref(), upload.as_deref().map(|id| (&handle, id))).await?
     } else {
         blocking(move || cache::files(&cache_dir()?, &paths)).await?
     };
@@ -96,14 +115,24 @@ pub(crate) async fn drop_files(handle: AppHandle, app: State<'_, App>, who: Who,
 
 /// Sends each file to the remote Host and types its Host path. An image
 /// is kept here too, for Images. `names`: each file's own name for Images,
-/// `None` for a paste.
-async fn to_host(app: &App, files: Vec<(String, Vec<u8>)>, names: Vec<Option<String>>, host: Option<&str>) -> Result<cache::Typed, String> {
+/// `None` for a paste. `report`: the page's upload line, told after each
+/// frame the Host takes.
+async fn to_host(app: &App, files: Vec<(String, Vec<u8>)>, names: Vec<Option<String>>, host: Option<&str>, report: Report<'_>) -> Result<cache::Typed, String> {
+    let mut at = Upload { id: report.map_or("", |r| r.1), done: 0, count: files.len(), sent: 0, size: files.iter().map(|f| f.1.len() as u64).sum() };
+    let tell = |at: &Upload| if let Some((handle, _)) = report { let _ = handle.emit(UPLOAD, at.clone()); };
+    tell(&at);
     let c = data_now(app).await?;
     let mut out = cache::Typed::default();
     for ((name, bytes), own) in files.into_iter().zip(names) {
         let ext = Path::new(&name).extension().and_then(|e| e.to_str()).map(str::to_string);
         let local = cache::image_ext(&bytes, ext.as_deref()).map(|ext| (ext, bytes.clone()));
-        let path = data::drop_send(&c, &name, bytes, host).await?;
+        let last = bytes.len() as u64 + at.sent;
+        let path = data::drop_send_progress(&c, &name, bytes, host, |n| {
+            at.sent += n as u64;
+            if at.sent < last { tell(&at); }
+        }).await?;
+        at.done += 1;
+        tell(&at);
         if let Some((ext, bytes)) = local {
             let stored = blocking(move || cache::store(&cache_dir()?, &bytes, ext)).await?;
             out.images.push(cache::Stored { path: stored, name: own });
@@ -123,7 +152,8 @@ enum Clip {
 /// Skiff's Paste with no text on the clipboard: a file list does what a
 /// drop does; an image is saved as PNG in the cache. `None`: neither.
 #[tauri::command]
-pub(crate) async fn clipboard_image(handle: AppHandle, app: State<'_, App>, who: Who, host: Option<String>) -> Result<Option<Typed>, String> {
+pub(crate) async fn clipboard_image(handle: AppHandle, app: State<'_, App>, who: Who, host: Option<String>, upload: Option<String>) -> Result<Option<Typed>, String> {
+    let report = upload.as_deref().map(|id| (&handle, id));
     let t = match read_clip(&handle).await? {
         Clip::Nothing => return Ok(None),
         Clip::Files(paths) if app.remote() => {
@@ -132,9 +162,9 @@ pub(crate) async fn clipboard_image(handle: AppHandle, app: State<'_, App>, who:
                 files.push(data::drop_file(p, host.as_deref()).await?);
             }
             let names = paths.iter().map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).collect();
-            to_host(&app, files, names, host.as_deref()).await?
+            to_host(&app, files, names, host.as_deref(), report).await?
         }
-        Clip::Png(bytes) if app.remote() => to_host(&app, vec![("clipboard.png".into(), bytes)], vec![None], host.as_deref()).await?,
+        Clip::Png(bytes) if app.remote() => to_host(&app, vec![("clipboard.png".into(), bytes)], vec![None], host.as_deref(), report).await?,
         Clip::Files(paths) => blocking(move || cache::files(&cache_dir()?, &paths)).await?,
         Clip::Png(bytes) => {
             blocking(move || {
