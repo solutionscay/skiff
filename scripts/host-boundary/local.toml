@@ -34,6 +34,7 @@
 "apps/desktop/src/platform/os.ts" = "Uses desktop OS services such as opening URLs and applications."
 "apps/desktop/src/terminal/fileDrop.ts" = "Handles files dropped into this desktop window."
 "apps/desktop/src/terminal/images.ts" = "Caches image bytes on this desktop for rendering."
+"apps/desktop/src/terminal/uploadProgress.ts" = "Shows this desktop's upload counts for a drop; the Rust drop path sends them."
 "apps/desktop/src/terminal/peek.ts" = "Runs a local viewer only for local or fetched content."
 "apps/desktop/src/terminal/resume.ts" = "Opens a client confirmation before a selected-Host action."
 "apps/desktop/src/terminal/terminalClipboard.ts" = "Writes this computer's clipboard under the Host consent policy."

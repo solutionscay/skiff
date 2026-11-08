@@ -524,9 +524,19 @@ pub async fn drop_file(p: &std::path::Path, on: Option<&str>) -> Result<(String,
 
 /// [`drop_put`] with the message to show when it fails. `on` names the Host.
 pub async fn drop_send(c: &HostConnection, name: &str, bytes: Vec<u8>, on: Option<&str>) -> Result<String, String> {
+    drop_send_progress(c, name, bytes, on, |_| {}).await
+}
+
+/// [`drop_send`] that calls `sent` with the bytes of each frame the Host
+/// took. A file up to [`DROP_CHUNK`] is one frame. Nothing more crosses the
+/// link: the count comes from the replies.
+pub async fn drop_send_progress(c: &HostConnection, name: &str, bytes: Vec<u8>, on: Option<&str>, mut sent: impl FnMut(usize)) -> Result<String, String> {
     let put = async {
         if bytes.len() <= DROP_CHUNK {
-            return drop_put(c, name, bytes).await;
+            let n = bytes.len();
+            let path = drop_put(c, name, bytes).await?;
+            sent(n);
+            return Ok(path);
         }
         let upload = uuid::Uuid::new_v4().to_string();
         let total = bytes.len() as u64;
@@ -537,6 +547,7 @@ pub async fn drop_send(c: &HostConnection, name: &str, bytes: Vec<u8>, on: Optio
             let reply = c.request(Request::DropPut {
                 name: name.into(), bytes: bytes[offset..end].to_vec(), upload: Some(upload.clone()), total: Some(total), offset: offset as u64, finish,
             }).await?;
+            sent(end - offset);
             if finish {
                 return match reply { Response::Path { path } => Ok(path), _ => unreachable!("checked by Request::accepts") };
             }

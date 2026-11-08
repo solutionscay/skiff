@@ -13,6 +13,7 @@ import { taskTitle } from "../workspace/model";
 
 import { signalButton, signalLine } from "./insertSignal";
 import { panes } from "./terminalState";
+import { UploadLine } from "./uploadProgress";
 
 let copyNoticeTimer: number | undefined;
 
@@ -78,10 +79,14 @@ export async function pasteClipboard() {
   if (!id || !pane) return;
   const text = await pasteText().catch(() => "");
   if (text) return pane.term.paste(text);
+  // The clipboard may hold no image: the line counts one until the Host says more.
+  const line = isRemote() ? new UploadLine(id, 1) : null;
   try {
-    const t = await invoke<Typed | null>("clipboard_image", { who: whoOf(id), host: isRemote() ? hostName() : null });
+    const t = await invoke<Typed | null>("clipboard_image", { who: whoOf(id), host: isRemote() ? hostName() : null, upload: line?.id ?? null });
+    line?.end(true);
     if (t) typeFiles(id, t);
   } catch (e) {
+    line?.end(false);
     showError(e);
   }
 }
