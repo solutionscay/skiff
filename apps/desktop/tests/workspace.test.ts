@@ -105,6 +105,31 @@ test("a clean native quit needs no prompt", async () => {
   assert.equal(h.elements().some((el) => el.textContent === "Don't Save"), false);
 });
 
+test("a pick asks nothing on leave; Save writes it; a real change still asks", async () => {
+  const h = workspaceHarness();
+  await h.profile.startWorkspaceQuitGuard();
+  await h.profile.startWorkspaces();
+  h.fixture("/work.skiffw", ["/a", "/b"]);
+  h.files.get("/work.skiffw").profile.selected = "/a";
+  await h.profile.openWorkspace("/work.skiffw");
+  // A pane in another project takes the keys: a click, or a session that ended.
+  h.profile.noteSelected("B");
+  assert.equal(h.profile.workspaceEdited(), false);
+  h.events.get("skiff:quit-requested")!();
+  await flush();
+  assert.equal(h.elements().some((el) => el.textContent === "Don't Save"), false);
+  assert.equal(h.calls.approvedExits, 1);
+  h.profile.saveWorkspace();
+  await flush();
+  assert.equal(h.files.get("/work.skiffw").profile.selected, "/b");
+  h.profile.editWorkspace();
+  h.elements().find((el) => el.type === "text")!.value = "Renamed";
+  h.button("Apply").click();
+  assert.equal(h.profile.workspaceEdited(), true);
+  h.events.get("skiff:quit-requested")!();
+  assert.equal(h.elements().filter((el) => el.textContent === "Don't Save").length, 1);
+});
+
 /** The scope helpers of workspace/model.ts the Ledger uses. */
 const fleetOf = (scope: string | null | undefined) => (scope?.startsWith("fleet:") ? scope.slice(6) : null);
 const MODEL = { scopeFleet: fleetOf, scopeName: (scope: string) => fleetOf(scope) ?? scope, taskTitle: () => "" };

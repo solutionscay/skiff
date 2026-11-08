@@ -37,7 +37,12 @@ export interface Doc {
 export const trimPath = (p: string) => (p.length > 1 ? p.replace(/\/+$/, "") : p);
 const uniq = (xs: string[]) => [...new Set(xs)].sort();
 
-/** The profile as a value: order and repeats do not count. */
+/**
+ * The profile as a value, for Edited: order and repeats do not count. The
+ * selected project does not count either: it follows the keys (a click, a
+ * session that ended), so it changes in plain use. Save writes it and a read
+ * restores it.
+ */
 export function canon(p: Profile): string {
   return JSON.stringify([
     p.name.trim(),
@@ -45,7 +50,6 @@ export function canon(p: Profile): string {
     uniq(p.fleets),
     uniq(p.folded_projects.map(trimPath)),
     uniq(p.folded_fleets),
-    p.selected ? trimPath(p.selected) : null,
   ]);
 }
 
@@ -166,7 +170,7 @@ export function createWorkspaceState() {
     },
   };
 
-  /** The user picked a project. In a workspace that includes it, that is an edit. */
+  /** The user picked a project. In a workspace that includes it, the next Save writes it. It is no edit. */
   function noteSelected(name: string) {
     if (!doc || !ready || quiet || saving) return;
     const p = S.projects.find((x) => x.name === name);
