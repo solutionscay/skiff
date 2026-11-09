@@ -60,6 +60,11 @@ has the details: [Skiff agent](https://github.com/solutionscay/skiff/wiki/Skiff-
 [Open with](https://github.com/solutionscay/skiff/wiki/Open-with),
 [skiffd](https://github.com/solutionscay/skiff/wiki/skiffd).
 
+The website has the [user guide](https://skiff.solutionscay.com/guides/skiff-user-guide/) and
+three guides on the work Skiff is for: [run coding agents in parallel](https://skiff.solutionscay.com/guides/run-coding-agents-in-parallel/),
+[Git worktrees for coding agents](https://skiff.solutionscay.com/guides/git-worktrees-for-coding-agents/) and
+[keep agent sessions running](https://skiff.solutionscay.com/guides/keep-agent-sessions-running/).
+
 ## Layout
 
 ```

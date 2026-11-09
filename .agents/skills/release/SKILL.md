@@ -54,7 +54,8 @@ A `v*` tag triggers `.github/workflows/release.yml`. CI builds the Linux package
 11. Write the release notes in the format of the last release's notes
    (`gh release view <last tag> --json body -q .body`): `## Changes`, one `###` group per
    area, one line per change with its PR number, a line on skiffd (new version, restart,
-   protocol) and the `**Full Changelog**` link. Set them on the draft:
+   protocol), the line `Guides and downloads: https://skiff.solutionscay.com/` and the
+   `**Full Changelog**` link. Set them on the draft:
    `gh release edit vX.Y.Z --notes-file FILE`.
 12. Publish only when the operator says so: `gh release edit vX.Y.Z --draft=false --latest`.
 
