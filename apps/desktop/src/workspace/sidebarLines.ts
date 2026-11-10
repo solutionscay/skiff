@@ -7,8 +7,7 @@ import { S, sessions } from "../app/state";
 import { awayPlaces, place } from "../app/stateQueries";
 
 import { groupHome } from "./view";
-import { fleetSkipperOf, projectSkipperOf, projectSkippers, skiffAgentSession } from "../app/skiffAgent";
-import { treeSections } from "./tree";
+import { projectSkipperOf, projectSkippers, skiffAgentSession } from "../app/skiffAgent";
 /** One line in a session list: a session, a group's header, or a pointer to a session from another worktree that works here. */
 export type Line =
   | { session: SessionInfo; branch?: boolean; group?: undefined; pointer?: undefined; in?: Group; groupRail?: boolean }
@@ -77,27 +76,21 @@ export function worktreeLines(w: Worktree | null, index: LineIndex = lineIndex()
 }
 
 /**
- * Every live session in tree order, folds aside: the Skiff agent, then each
- * section's fleet Skipper and its projects (the project Skipper, then each
- * worktree's lines), then Other. An open workspace leaves out the projects
- * it does not show. Each session once.
+ * The live sessions of a Skipper's scope, in tree order, folds aside. A
+ * project: its Skipper, then each worktree's lines (groups, then loose
+ * sessions). "fleet:<name>": each project of that fleet, the same way. Each
+ * session once.
  */
-export function treeOrder(index: LineIndex = lineIndex()): string[] {
+export function scopeOrder(scope: string, index: LineIndex = lineIndex()): string[] {
+  const fleet = scope.startsWith("fleet:") ? scope.slice("fleet:".length) : null;
+  const projects = S.projects.filter((p) => (fleet ? p.fleet === fleet : p.name === scope));
   const out: string[] = [];
   const add = (id: string | undefined) => {
     if (id && sessions.has(id) && !out.includes(id)) out.push(id);
   };
-  const lines = (w: Worktree | null) => {
-    for (const l of worktreeLines(w, index)) if ("session" in l) add(l.session.id);
-  };
-  add(index.agent);
-  for (const sec of treeSections()) {
-    if (sec.fleet) add(fleetSkipperOf(sec.fleet)?.id);
-    for (const p of sec.projects) {
-      add(projectSkipperOf(p.name)?.id);
-      for (const w of p.worktrees ?? []) lines(w);
-    }
+  for (const p of projects) {
+    add(projectSkipperOf(p.name)?.id);
+    for (const w of p.worktrees ?? []) for (const l of worktreeLines(w, index)) if ("session" in l) add(l.session.id);
   }
-  lines(null);
   return out;
 }

@@ -1,7 +1,7 @@
 /**
  * The Skipper split: a Skipper's pane at the left, one child pane at the
- * right, the Ledger beside them. A child is any other live session, in tree
- * order (`treeOrder`). The split is a view of the single view: no group is
+ * right, the Ledger beside them. A child is a live session of the
+ * Skipper's scope (`splitChildren`). The split is a view of the single view: no group is
  * made, and the child session keeps running when the split closes.
  *
  * It opens from the split button on the Skipper's head, the next-child key,
@@ -18,7 +18,8 @@ import type { Layout } from "../platform/types";
 import { leaf, replacePane, sessionsOf } from "./layout";
 import { isSlot } from "./layoutSlots";
 import { ledgerRows, ledgerTitle } from "./ledgerStore";
-import { treeOrder } from "./sidebarLines";
+import { ownPanes } from "./ledgerModel";
+import { scopeOrder } from "./sidebarLines";
 import { focusPane } from "./view";
 
 /** The Skipper whose view can hold a split: its pane is the single view. */
@@ -38,10 +39,23 @@ function paneTask(id: string): string {
   return r ? ledgerTitle(r) : "";
 }
 
-/** The children of the Skipper on screen: every other live session, in tree order. */
+/**
+ * The children of the Skipper on screen. A project Skipper: every live
+ * session of its project, shells too, in tree order. A fleet Skipper: the
+ * same over its fleet's projects. The Skiff agent: its Ledger panes
+ * (`ownPanes`). Never the Skipper's own pane, the Skiff agent, or a
+ * Skipper of another scope.
+ */
 export function splitChildren(): { id: string; title: string }[] {
   const sk = splitSkipper();
-  return sk ? treeOrder().filter((id) => id !== sk).map((id) => ({ id, title: paneTask(id) })) : [];
+  const scope = sk && coordinatorOf(sk);
+  if (!sk || !scope) return [];
+  if (scope === "grand") return ownPanes(sk);
+  const inScope = (id: string) => {
+    const c = coordinatorOf(id);
+    return !c || c === scope || S.projects.some((p) => p.name === c && scope === `fleet:${p.fleet}`);
+  };
+  return scopeOrder(scope).filter((id) => id !== sk && inScope(id)).map((id) => ({ id, title: paneTask(id) }));
 }
 
 /** True when `id` can show in the split: a Skipper view is on screen and `id` is another live pane. */
