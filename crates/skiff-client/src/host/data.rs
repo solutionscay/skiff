@@ -17,7 +17,7 @@ use std::{
 
 use skiff_host_api::{
     AgentEdit, Error, FolderListing, FolderPlaces, Hello, HostBranches, HostCacheImage, HostCacheUse, HostAgent, HostChanges, HostDiff, HostFile, HostFolder, HostId, HostImage, HostLedgerRow,
-    HostFileScope, HostListing, HostProject, HostSkipper, HostSkipperFile, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response, SkipperEdit, SkipperFolderDone,
+    HostFileScope, HostListing, HostProject, HostCronPreview, HostSchedule, HostSkipper, HostSkipperFile, HostWorktree, ProjectEdit, ProjectFleet, ReadPurpose, Request, Response, SkipperEdit, SkipperFolderDone,
     SkipperFolderMode, SkipperFolderPreview, SkipperOpened, InventorySession, TakenSkipper,
 };
 use tokio::{net::UnixStream, sync::broadcast};
@@ -353,6 +353,27 @@ pub async fn ledger_stamp(c: &HostConnection) -> Result<String, Error> {
         Response::LedgerStamp { stamp } => Ok(stamp),
         _ => unreachable!("checked by Request::accepts"),
     }
+}
+
+/// Every schedule with its newest runs (`schedules@1`).
+pub async fn schedule_list(c: &HostConnection) -> Result<Vec<HostSchedule>, Error> {
+    match c.request(Request::ScheduleList).await? {
+        Response::Schedules { schedules } => Ok(schedules),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// A cron line checked on the Host: its next runs, or its error line.
+pub async fn cron_preview(c: &HostConnection, cron: &str) -> Result<HostCronPreview, Error> {
+    match c.request(Request::CronPreview { cron: cron.into() }).await? {
+        Response::CronPreview { preview } => Ok(preview),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// `skiff schedule ARGS` on the Host. A refusal is `invalid` with its line.
+pub async fn schedule_call(c: &HostConnection, args: Vec<String>) -> Result<(), Error> {
+    c.request(Request::ScheduleCall { args }).await.map(|_| ())
 }
 
 /// A value that changes with the Host's `projects.toml` (`projects@2`).

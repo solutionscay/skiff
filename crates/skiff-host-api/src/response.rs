@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    FolderListing, FolderPlaces, Group, Hello, HostAgent, HostBranches, HostCacheImage, HostCacheUse, HostChange, HostDiff, HostFile, HostFolder, HostImage, HostLedgerRow, HostListing, HostProject, HostSkipper, HostSkipperFile,
+    FolderListing, FolderPlaces, Group, Hello, HostAgent, HostBranches, HostCacheImage, HostCacheUse, HostChange, HostDiff, HostFile, HostFolder, HostImage, HostLedgerRow, HostListing, HostSchedule, HostCronPreview, HostProject, HostSkipper, HostSkipperFile,
     HostWorktree, InventorySession, SkipperFolderDone, SkipperFolderPreview, SkipperOpened, TakenSkipper,
 };
 
@@ -50,6 +50,8 @@ pub enum Response {
     Places { places: FolderPlaces },
     Ledger { rows: Vec<HostLedgerRow> },
     LedgerStamp { stamp: String },
+    Schedules { schedules: Vec<HostSchedule> },
+    CronPreview { preview: HostCronPreview },
     ProjectsStamp { stamp: String },
     /// Boxed, as `Project`. Same JSON.
     Skipper {

@@ -16,6 +16,7 @@ pub mod folders;
 mod events;
 mod images;
 mod ledger;
+mod schedules;
 pub mod skipper;
 mod transport;
 
@@ -50,6 +51,7 @@ pub fn capabilities() -> Vec<Capability> {
         Capability::project_assets(),
         Capability::folders(),
         Capability::ledger_read(),
+        Capability::schedules(),
         Capability::skipper_settings(),
         Capability::skipper_config(),
         Capability::skipper_file(),
@@ -108,7 +110,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
     // The ledger's buckets need them too. Without them, a sent task counts as
     // worked on, as in `skiff ledger ls`.
     let ledger_sessions = match &request {
-        Request::LedgerRows => live_sessions().await.ok(),
+        Request::LedgerRows | Request::ScheduleList => live_sessions().await.ok(),
         _ => None,
     };
     if matches!(request, Request::FolderPlaces) {
@@ -210,6 +212,9 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         Request::ImagePin { paths, on } => images::image_pin(paths, on),
         Request::CacheUse => images::cache_use(),
         Request::LedgerRows => Ok(Response::Ledger { rows: ledger_rows(ledger_sessions.as_deref())? }),
+        Request::ScheduleList => Ok(Response::Schedules { schedules: schedules::schedule_list(ledger_sessions.as_deref())? }),
+        Request::CronPreview { cron } => Ok(Response::CronPreview { preview: schedules::cron_preview(&cron) }),
+        Request::ScheduleCall { args } => schedules::schedule_call(&args).map(|_| Response::Ok),
         Request::LedgerStamp => {
             let file = skiff_client::ledger::path().map_err(failed)?;
             Ok(Response::LedgerStamp { stamp: skiff_client::ledger::stamp(&file) })

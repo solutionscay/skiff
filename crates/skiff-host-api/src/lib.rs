@@ -25,14 +25,14 @@ pub use folders::{FolderEntry, FolderKind, FolderListing, FolderPlaces, FolderRe
 pub use groups::Group;
 pub use inventory::InventorySession;
 pub use coordinator::{
-    HostFileScope, HostInstruction, HostLedgerRow, HostSkipper, HostSkipperFile, HostTaskType, SkipperEdit, SkipperFolderCounts, SkipperFolderDone, SkipperFolderMode, SkipperFolderPreview,
+    HostCronPreview, HostFileScope, HostInstruction, HostLedgerRow, HostSchedule, HostScheduleRun, HostSkipper, HostSkipperFile, HostTaskType, SkipperEdit, SkipperFolderCounts, SkipperFolderDone, SkipperFolderMode, SkipperFolderPreview,
     SkipperOpened, SkipperRunningTask, TakenSkipper, TakenTask, TaskEdit,
 };
 pub use lifecycle::SessionSpec;
 pub use projects::{ChangeStatus, HostBranch, HostBranches, HostChange, HostChanges, HostDiff, HostFolder, HostProject, HostWorktree, ProjectEdit, ProjectFleet};
 pub use terminal::{EchoTimes, TerminalFrame};
 pub use updates::SessionUpdate;
-pub use capability::{Capability, AGENT_CONFIG, AGENT_PROGRAMS, CONNECTION_STATUS, DATA_EVENTS, DROPS, FILES, FILE_REVEAL, FOLDERS, GIT_DIFF, GIT_STATUS, IMAGE_CACHE, LEDGER, PROGRAM_STATUS, PROJECTS, PROJECT_ASSETS, PROJECT_CONFIG, SESSION_AGENTS, SESSION_GROUPS, SESSION_INVENTORY, SESSION_LIFECYCLE, SESSION_SCREEN, SESSION_TERMINAL, SESSION_UPDATES, SKIPPER, SKIPPER_CONFIG, SKIPPER_FILE, SKIPPER_RUN, WORKTREES};
+pub use capability::{Capability, AGENT_CONFIG, AGENT_PROGRAMS, CONNECTION_STATUS, DATA_EVENTS, DROPS, FILES, FILE_REVEAL, FOLDERS, GIT_DIFF, GIT_STATUS, IMAGE_CACHE, LEDGER, PROGRAM_STATUS, PROJECTS, PROJECT_ASSETS, PROJECT_CONFIG, SCHEDULES, SESSION_AGENTS, SESSION_GROUPS, SESSION_INVENTORY, SESSION_LIFECYCLE, SESSION_SCREEN, SESSION_TERMINAL, SESSION_UPDATES, SKIPPER, SKIPPER_CONFIG, SKIPPER_FILE, SKIPPER_RUN, WORKTREES};
 pub use error::Error;
 pub use hello::{Hello, Limits, API_MAJOR};
 pub use host::{Endpoint, Host, HostId, InstanceId};

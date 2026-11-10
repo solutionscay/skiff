@@ -29,6 +29,7 @@ pub const DROPS: &str = "drops";
 pub const IMAGE_CACHE: &str = "image_cache";
 pub const PROGRAM_STATUS: &str = "program_status";
 pub const DATA_EVENTS: &str = "data_events";
+pub const SCHEDULES: &str = "schedules";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Capability {
@@ -128,6 +129,12 @@ impl Capability {
     /// file outside the ledger's folder.
     pub fn ledger_read() -> Self {
         Self::new(LEDGER, 1)
+    }
+    /// Read the Host's schedules with their newest runs, check a cron line,
+    /// and change schedules through `skiff schedule` on the Host, its only
+    /// writer. Data plane; grants no other ledger write.
+    pub fn schedules() -> Self {
+        Self::new(SCHEDULES, 1)
     }
     /// Read the Host's `[skiff_agent]` settings and task types. Data plane;
     /// grants no settings change, no Skipper launch and no watcher control.

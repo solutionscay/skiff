@@ -31,6 +31,7 @@ impl Request {
             Self::DropPut { .. } => Some(Capability::drops()),
             Self::ImageList | Self::ImageRead { .. } | Self::ImageDelete { .. } | Self::ImagePin { .. } | Self::CacheUse => Some(Capability::image_cache()),
             Self::LedgerRows | Self::LedgerStamp | Self::LedgerResult { .. } => Some(Capability::ledger_read()),
+            Self::ScheduleList | Self::CronPreview { .. } | Self::ScheduleCall { .. } => Some(Capability::schedules()),
             Self::SkipperSettings => Some(Capability::skipper_settings()),
             Self::SkipperEdit { .. } | Self::SkipperFolderPreview { .. } | Self::SkipperFolderChange { .. } => {
                 Some(Capability::skipper_config())
@@ -97,6 +98,8 @@ impl Request {
                 | (Self::FolderPlaces, Response::Places { .. })
                 | (Self::LedgerRows, Response::Ledger { .. })
                 | (Self::LedgerStamp, Response::LedgerStamp { .. })
+                | (Self::ScheduleList, Response::Schedules { .. })
+                | (Self::CronPreview { .. }, Response::CronPreview { .. })
                 | (Self::ProjectsStamp, Response::ProjectsStamp { .. })
                 | (Self::LedgerResult { .. }, Response::File { .. })
                 | (Self::SkipperSettings | Self::SkipperEdit { .. } | Self::SkipperFileReset { .. }, Response::Skipper { .. })
@@ -150,6 +153,8 @@ impl Request {
                 | Self::CacheUse
                 | Self::LedgerRows
                 | Self::LedgerStamp
+                | Self::ScheduleList
+                | Self::CronPreview { .. }
                 | Self::ProjectsStamp
                 | Self::LedgerResult { .. }
                 | Self::SkipperSettings

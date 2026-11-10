@@ -25,43 +25,45 @@ pub(super) fn ledger_rows(all: Option<&[SessionInfo]>) -> Result<Vec<HostLedgerR
     let file = skiff_client::ledger::path().map_err(failed)?;
     let mut rows = skiff_client::ledger::panel(&file).map_err(ledger_unread)?;
     skiff_client::ledger::mark_live(&skiff_core::state::socket(), all, &mut rows);
-    Ok(rows
-        .into_iter()
-        .map(|r| {
-            let elsewhere = r.elsewhere;
-            let bucket = r.bucket.unwrap_or(skiff_client::ledger::OPEN).to_string();
-            let result_exists = r.result_path.as_deref().is_some_and(|p| result_file(&file, p).is_ok());
-            HostLedgerRow {
-                id: r.id,
-                uid: r.uid,
-                kind: r.kind,
-                owner: r.owner,
-                parent: r.parent,
-                pane_id: r.pane_id,
-                pane_gen: r.pane_gen,
-                project: r.project,
-                task: r.task,
-                sent_at: r.sent_at,
-                title: r.title,
-                state: r.state,
-                updated_at: r.updated_at,
-                task_type: r.task_type,
-                reference: r.reference,
-                reported_at: r.reported_at,
-                closed_at: r.closed_at,
-                gone_at: r.gone_at,
-                bucket,
-                elsewhere,
-                result_exists,
-                flushed_at: r.flushed_at,
-            }
-        })
-        .collect())
+    Ok(rows.into_iter().map(|r| host_row(&file, r)).collect())
+}
+
+/// A ledger row as the app takes it. `file`: the ledger, for the result check.
+pub(super) fn host_row(file: &Path, r: skiff_client::ledger::Row) -> HostLedgerRow {
+    let elsewhere = r.elsewhere;
+    let bucket = r.bucket.unwrap_or(skiff_client::ledger::OPEN).to_string();
+    let result_exists = r.result_path.as_deref().is_some_and(|p| result_file(file, p).is_ok());
+    HostLedgerRow {
+        id: r.id,
+        uid: r.uid,
+        kind: r.kind,
+        owner: r.owner,
+        parent: r.parent,
+        pane_id: r.pane_id,
+        pane_gen: r.pane_gen,
+        project: r.project,
+        task: r.task,
+        sent_at: r.sent_at,
+        title: r.title,
+        state: r.state,
+        updated_at: r.updated_at,
+        task_type: r.task_type,
+        reference: r.reference,
+        reported_at: r.reported_at,
+        closed_at: r.closed_at,
+        gone_at: r.gone_at,
+        bucket,
+        elsewhere,
+        result_exists,
+        flushed_at: r.flushed_at,
+        outcome: r.outcome,
+        schedule: r.schedule,
+    }
 }
 
 /// A ledger older than the readers take is `invalid`: any `skiff ledger`
 /// command on the Host updates it. Anything else failed while it ran.
-fn ledger_unread(e: anyhow::Error) -> Error {
+pub(super) fn ledger_unread(e: anyhow::Error) -> Error {
     let message = format!("{e:#}");
     if message.contains("skiff ledger") {
         return Error::Invalid { message };

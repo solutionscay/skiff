@@ -71,6 +71,88 @@ pub struct HostLedgerRow {
     /// Host that predates it: a `ledger@1` reply without it stays readable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flushed_at: Option<String>,
+    /// How a done task ended: `succeeded`, `failed`, `interrupted` or
+    /// `unobserved`. Absent from an older Host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<String>,
+    /// A schedule's run: the schedule's uid (`schedules@1`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<String>,
+}
+
+/// One schedule as the Ledger's Schedules tab and Settings › Schedules show
+/// it (`schedules@1`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HostSchedule {
+    pub uid: String,
+    pub name: String,
+    pub cron: String,
+    /// The When sentence in words.
+    pub when: String,
+    /// No sentence shows the cron: it shows after the words.
+    #[serde(default)]
+    pub custom: bool,
+    #[serde(default)]
+    pub command: Option<String>,
+    /// Seconds. Absent: 600.
+    #[serde(default)]
+    pub timeout: Option<i64>,
+    /// `always`, `on-fail` or `on-output`.
+    #[serde(default)]
+    pub gate: Option<String>,
+    /// `type`, `pane` or `skipper`. Absent: command only.
+    #[serde(default)]
+    pub target: Option<String>,
+    #[serde(default)]
+    pub project: Option<String>,
+    #[serde(default, rename = "type")]
+    pub task_type: Option<String>,
+    #[serde(default)]
+    pub pane: Option<String>,
+    /// `grand` or a project, for a Skipper target.
+    #[serde(default)]
+    pub owner: Option<String>,
+    #[serde(default)]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub paused_at: Option<String>,
+    /// The next run in the Host's local time. Absent while paused.
+    #[serde(default)]
+    pub next: Option<String>,
+    /// `succeeded`, `failed`, `running`, `pending` or `skipped`. Absent: no run yet.
+    #[serde(default)]
+    pub last: Option<String>,
+    /// A run is open: Run now is off.
+    #[serde(default)]
+    pub open: bool,
+    /// The newest runs, newest first.
+    #[serde(default)]
+    pub runs: Vec<HostScheduleRun>,
+}
+
+/// A run: an ordinary ledger row, its status, and the agent step under it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HostScheduleRun {
+    pub row: HostLedgerRow,
+    /// `pending`, `running`, `failed` or `succeeded`.
+    pub status: String,
+    /// The start in the Host's local time.
+    pub at: String,
+    #[serde(default)]
+    pub kids: Vec<HostLedgerRow>,
+}
+
+/// A cron line checked on the Host: its next runs in local time, or the one
+/// error line.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HostCronPreview {
+    #[serde(default)]
+    pub next: Vec<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+    pub when: String,
+    #[serde(default)]
+    pub custom: bool,
 }
 
 fn grand() -> String {

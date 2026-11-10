@@ -289,6 +289,18 @@ pub enum Request {
     LedgerResult {
         uid: String,
     },
+    /// Answers `schedules`: every schedule by name, each with its newest runs.
+    ScheduleList,
+    /// Answers `cron_preview`: the next 3 runs of `cron`, or its error line.
+    CronPreview {
+        cron: String,
+    },
+    /// Runs `skiff schedule ARGS --person` on the Host and answers `ok`. A
+    /// refusal is `invalid` with the CLI's line. The first argument is one
+    /// of add, edit, rm, pause, resume, run-now.
+    ScheduleCall {
+        args: Vec<String>,
+    },
     /// Answers `skipper`.
     SkipperSettings,
     /// Changes one setting, then answers `skipper`, read again.
