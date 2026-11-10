@@ -32,13 +32,23 @@ interface ImagesState {
 export const imagesState = (): ImagesState => ({ query: "", sel: new Set(), anchor: null, now: null, keys: null, scroll: 0, moving: null });
 
 
+/** The Images dialog's mode: one current tile, and Enter or a click inserts it into `target`. */
+export interface Pick {
+  /** The pane Insert types into. Null: Insert is off. */
+  target: () => string | null;
+}
+
 /**
  * Settings › Images: the library as a gallery. Search, select as in a file
  * manager, and act on the selection: Open, Insert, Pin, Delete.
  * Insert closes Settings, so the pane shows the insert signals. `close`
  * closes Settings.
+ *
+ * With `pick`, the Images dialog: the current tile is the selection. Enter or
+ * a click inserts it into the pick's target and closes. Esc closes.
  */
-export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
+export function imagesSection(st: ImagesState, close: () => void, pick?: Pick): HTMLElement {
+  const target = pick ? pick.target : insertTarget;
   const main = h("div", "set-main img-page");
   const head = h("div", "set-head");
   head.append(h("div", "set-h", t("images.title")));
@@ -61,7 +71,8 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
   const pinB = btn("", () => void pin());
   const delB = btn(" del", () => void remove());
   delB.textContent = t("images.delete");
-  tools.append(find, openB, insB, pinB, delB);
+  if (pick) tools.append(find, insB, pinB, delB);
+  else tools.append(find, openB, insB, pinB, delB);
 
   const scroll = h("div", "img-scroll");
   scroll.tabIndex = 0;
@@ -92,6 +103,12 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
     for (const p of st.sel) if (!live.has(p)) st.sel.delete(p);
     if (st.anchor && !live.has(st.anchor)) st.anchor = null;
     if (st.now && !live.has(st.now)) st.now = shown[0]?.path ?? null;
+    if (pick) {
+      // The dialog always has a current tile; it is the selection.
+      st.now = st.now ?? shown[0]?.path ?? null;
+      st.sel = new Set(st.now ? [st.now] : []);
+      st.anchor = st.now;
+    }
     seen.disconnect();
     tiles.clear();
     const kids: HTMLElement[] = [];
@@ -135,9 +152,13 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
     t.append(pic, cap);
     t.addEventListener("click", (e) => {
       e.stopPropagation();
+      if (pick) {
+        move(i.path, false);
+        return void insert();
+      }
       click(i.path, e.ctrlKey || e.metaKey, e.shiftKey);
     });
-    t.addEventListener("dblclick", () => openAll());
+    if (!pick) t.addEventListener("dblclick", () => openAll());
     tiles.set(i.path, t);
     return t;
   }
@@ -152,14 +173,14 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
     }
     const sel = picked();
     const words = queryWords(st.query);
-    count.textContent = countText(shown.length, words) + (sel.length ? ` · ${t("images.selected", { n: sel.length })}` : "");
+    count.textContent = countText(shown.length, words) + (sel.length && !pick ? ` · ${t("images.selected", { n: sel.length })}` : "");
     const none = !sel.length;
     openB.disabled = none;
     pinB.disabled = none;
     delB.disabled = none;
     pinB.textContent = t(sel.length && sel.every((i) => i.pinned) ? "images.unpin" : "images.pin");
     // The label names the target: the project letters in their color, then the session title.
-    const id = insertTarget();
+    const id = target();
     const s = id ? sessions.get(id) : undefined;
     insB.replaceChildren();
     insB.disabled = none || !id;
@@ -232,7 +253,7 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
   }
 
   async function insert() {
-    const id = insertTarget();
+    const id = target();
     const sel = picked();
     if (!id || !sel.length) return;
     // Close first: the keys go to that pane, where the signals show.
@@ -277,8 +298,14 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
     await deleteImages(sel);
   }
 
-  /** Esc: clear the selection. With none, Esc goes on to Settings, which closes. */
+  /** Esc: clear the selection. With none, Esc goes on to Settings, which closes. The dialog closes at once. */
   function escape(e: KeyboardEvent): boolean {
+    if (pick) {
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+      return true;
+    }
     if (!st.sel.size) return false;
     st.sel.clear();
     paint();
@@ -289,11 +316,18 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
 
   field.addEventListener("input", () => {
     st.query = field.value;
+    // The dialog lights the first match, so Enter inserts it.
+    if (pick) st.now = null;
     build();
     scroll.scrollTop = 0;
   });
   field.addEventListener("keydown", (e) => {
     if (e.key === "Escape") return void escape(e);
+    if (pick && e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      return void insert();
+    }
     if (e.key !== "ArrowDown" || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
     e.preventDefault();
     e.stopPropagation();
@@ -303,7 +337,7 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
   });
 
   scroll.addEventListener("click", () => {
-    if (!st.sel.size) return;
+    if (pick || !st.sel.size) return;
     st.sel.clear();
     paint();
   });
@@ -322,7 +356,7 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
     const now = st.now ?? shown[0]?.path ?? null;
     if (e.key === "Escape") return void escape(e);
     if (e.altKey || (e.ctrlKey && !mod) || (e.metaKey && !mod)) return;
-    if (mod && k === "a") {
+    if (mod && k === "a" && !pick) {
       st.sel = new Set(shown.map((i) => i.path));
       paint();
     } else if (mod) return;
@@ -333,18 +367,21 @@ export function imagesSection(st: ImagesState, close: () => void): HTMLElement {
       const left = r && shown[n] && Math.abs((tiles.get(shown[n].path)?.getBoundingClientRect().top ?? 0) - r.top) > 1;
       // Left from the first column goes back to the tab.
       if (e.key === "ArrowLeft" && (n < 0 || left) && !e.shiftKey) {
-        document.querySelector<HTMLElement>("#settings .set-tab.active")?.focus();
-      } else move(shown[Math.max(0, Math.min(n, shown.length - 1))].path, e.shiftKey);
+        if (!pick) document.querySelector<HTMLElement>("#settings .set-tab.active")?.focus();
+      } else move(shown[Math.max(0, Math.min(n, shown.length - 1))].path, e.shiftKey && !pick);
     } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       const to = vertical(now, e.key === "ArrowUp" ? -1 : 1);
       // Up from the top row goes back to the search field.
       if (!to && e.key === "ArrowUp" && !e.shiftKey) field.focus();
-      else move(to, e.shiftKey);
-    } else if (e.key === " ") {
+      else move(to, e.shiftKey && !pick);
+    } else if (e.key === " " && !pick) {
       if (!st.sel.delete(now)) st.sel.add(now);
       st.now = st.anchor = now;
       paint();
-    } else if (e.key === "Enter") openAll();
+    } else if (e.key === "Enter") {
+      if (pick) void insert();
+      else openAll();
+    }
     else if (k === "i") void insert();
     else if (k === "p") void pin();
     else if (e.key === "Delete") void remove();

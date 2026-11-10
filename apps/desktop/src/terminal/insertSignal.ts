@@ -1,29 +1,10 @@
 /**
- * The two signals of a typed image path: the pane's Images button shows the
- * image with a check for 1.5 s, and the cursor row gets a green tint for 1 s.
+ * The signal of a typed image path: the cursor row gets a green tint for 1 s.
  * Skiff does not read the agent's input. The tint belongs to the buffer row,
  * so an agent that redraws "[Image #N]" in place keeps it, and a clear or a
  * trim of the row takes it away at once.
  */
 import type { Terminal } from "@xterm/xterm";
-
-import { scheduleRender } from "../app/render";
-
-/** Pane id → the image its header button shows with the check. */
-const shown = new Map<string, { image: string; timer: number }>();
-
-/** The image with the check on `id`'s Images button, while it shows. */
-export const insertShown = (id: string): string | null => shown.get(id)?.image ?? null;
-
-export function signalButton(id: string, image: string) {
-  clearTimeout(shown.get(id)?.timer);
-  const timer = window.setTimeout(() => {
-    shown.delete(id);
-    scheduleRender("insert");
-  }, 1500);
-  shown.set(id, { image, timer });
-  scheduleRender("insert");
-}
 
 /** `color` at `alpha` over `bg`, as #rrggbb: xterm takes no other format. */
 function mix(color: string, alpha: number, bg: string): string {

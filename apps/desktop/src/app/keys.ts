@@ -76,8 +76,9 @@ export const DEFAULTS: Record<Action, string> = {
   // The Skipper split's children. Bare Ctrl+PageUp/PageDown stay with the terminal.
   "child-next": "ctrl+shift+pagedown",
   "child-prev": "ctrl+shift+pageup",
-  // No default key: the palette and the pane menu have it. `[keys]` can set one.
-  images: "",
+  // Ctrl+Shift+U is the input method's Unicode key on Linux.
+  images: "ctrl+shift+alt+i",
+  // No default key: the palette and the menu bar have it. `[keys]` can set one.
   "images-gallery": "",
 };
 
@@ -189,11 +190,11 @@ export const DESCRIBE: [KeySection, Action][] = [
   ["file", "new-session"],
   ["file", "new-worktree"],
   ["file", "add-project"],
+  ["file", "images"],
   ["file", "settings"],
   ["file", "quit"],
   ["edit", "copy"],
   ["edit", "paste"],
-  ["edit", "images"],
   ["edit", "images-gallery"],
   ["edit", "find"],
   ["edit", "rename"],

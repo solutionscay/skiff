@@ -33,7 +33,6 @@ import { modeKeyBlocked } from "./modes";
 import { ledgerFolded, ledgerShown } from "../workspace/ledger";
 import { splitChild, splitChildren } from "../workspace/skipperSplit";
 import { skippersOn } from "../workspace/skippersView";
-import { imageCount } from "../terminal/images";
 import {
   closeWorkspace, editWorkspace, keepWorkspace, ledgerAllWork, newWorkspace, openWorkspace, recentWorkspacesMenu, reloadWorkspace,
   saveWorkspace, saveWorkspaceAs, setLedgerAllWork, workspaceNotice, workspaceOpen,
@@ -87,12 +86,12 @@ function drafts(): Draft[] {
     { section: "file", id: "cmd.reloadWorkspace", key: "", run: reloadWorkspace, off: ws.disk !== "changed" },
     { section: "file", id: "cmd.keepWorkspace", key: "", run: keepWorkspace, off: !ws.disk },
     { section: "file", id: "cmd.repairWorkspace", key: "", run: editWorkspace, off: !ws.missing },
+    { section: "file", id: "cmd.images", key: k("images"), action: "images", run: act("images") },
     { section: "file", id: "cmd.settings", key: k("settings"), action: "settings", run: act("settings") },
     { section: "file", id: "cmd.quit", key: k("quit"), action: "quit", run: act("quit") },
     // In Settings, they act on the text field with the keys.
     { section: "edit", id: "cmd.copy", key: k("copy"), action: "copy", run: act("copy"), off: !s && !settings.isOpen },
     { section: "edit", id: "cmd.paste", key: k("paste"), action: "paste", run: act("paste"), off: !s && !settings.isOpen },
-    { section: "edit", id: "cmd.images", key: k("images"), action: "images", run: act("images"), off: !imageCount() || !s },
     { section: "edit", id: "cmd.imagesGallery", key: k("images-gallery"), action: "images-gallery", run: act("images-gallery") },
     { section: "edit", id: "cmd.find", key: k("find"), action: "find", run: act("find"), off: !shown },
     { section: "edit", id: "cmd.rename", key: k("rename"), action: "rename", run: act("rename"), off: !s || isSkiffAgent(s.id) || isProjectSkipper(s) || !hostCan("session_lifecycle") },
@@ -156,7 +155,7 @@ function drafts(): Draft[] {
 const ISSUES_URL = "https://github.com/solutionscay/skiff/issues/new";
 
 /** Where a group of commands starts a new block in its menu. */
-const BREAK_BEFORE = new Set(["cmd.projectMenu", "cmd.newWorkspace", "cmd.settings", "cmd.copy", "cmd.rename", "cmd.palette", "cmd.splitRight", "cmd.nextWaiting", "cmd.focusMode", "cmd.fontBigger", "cmd.openConfig", "cmd.checkUpdates"]);
+const BREAK_BEFORE = new Set(["cmd.projectMenu", "cmd.newWorkspace", "cmd.images", "cmd.settings", "cmd.copy", "cmd.rename", "cmd.palette", "cmd.splitRight", "cmd.nextWaiting", "cmd.focusMode", "cmd.fontBigger", "cmd.openConfig", "cmd.checkUpdates"]);
 
 interface MenuItem { id?: string; label?: string; accel?: string; enabled?: boolean; native?: string }
 

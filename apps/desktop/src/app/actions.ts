@@ -23,7 +23,7 @@ import { paneCenter } from "../terminal/terminal";
 import { openFind } from "../terminal/terminalSearch";
 import { closePreview, previewOnScreen } from "../terminal/peek";
 import { copySelection, pasteClipboard } from "../terminal/terminalClipboard";
-import { openImages } from "../terminal/images";
+import { openImages } from "../appearance/imagesDialog";
 import { fontTarget, setFontSize, stepPaneFont } from "../terminal/terminalFont";
 
 import { modeGate, modeKeyBlocked, toggleFocusMode, toggleMaximize } from "./modes";

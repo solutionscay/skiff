@@ -359,9 +359,9 @@ export const en = {
   "fixed.ledger.open": "Open the row's pane or result",
   "fixed.ledger.back": "Back to {skiff-agent}'s pane",
   "fixed.images.search": "Search images",
-  "fixed.images.toList": "Go from the search to the list, and back",
-  "fixed.images.step": "Next or previous image",
-  "fixed.images.actions": "Open, Insert, Pin, Delete (in the list)",
+  "fixed.images.toList": "Go from the search to the images, and back",
+  "fixed.images.step": "Move to the next image",
+  "fixed.images.actions": "Insert and close, Pin, Delete",
   "fixed.images.close": "Close Images",
   "fixed.gallery.select": "Select one more image, or a range",
   "fixed.gallery.move": "Move, or extend the selection",
@@ -973,7 +973,7 @@ export const en = {
   "sink.action#one": "Sink {count} session",
   "sink.action#other": "Sink {count} sessions",
 
-  // Images: the drop-down (terminal/images.ts) and Settings › Images (appearance/imagesPage.ts).
+  // Images: the dialog (appearance/imagesDialog.ts) and Settings › Images (appearance/imagesPage.ts).
   "images.title": "Images",
   "images.search": "Search",
   "images.pasted": "Pasted image",

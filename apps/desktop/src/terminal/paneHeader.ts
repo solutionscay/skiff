@@ -21,8 +21,6 @@ import { accent, awayPlaces, inShownGroup, place, shownIds } from "../app/stateQ
 import { closePane, dragSessions, focusPane } from "./paneActions";
 import { showChild, splitChild, splitChildren, splitSkipper, stepChild, toggleSplit } from "../workspace/skipperSplit";
 import { resumeOffer, resumePane } from "./resume";
-import { imagesButton, newestImage } from "./images";
-import { insertShown } from "./insertSignal";
 import { t } from "../i18n";
 /** One pane header: the agent icon, the title, then the close button. */
 export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
@@ -57,7 +55,7 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   const split = splitHead(id);
   const away = s ? awayPlaces(s).map((a) => branchName(a.worktree)).join(", ") : "";
   // Rebuild only on change, so a click that spans a daemon event still lands.
-  const sig = s ? JSON.stringify([s.state, s.exit_code, s.agent_exit, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, grouped, away, resumeOffer(s), newestImage(), insertShown(id), faceSig(s.coordinator ? null : (s.skipper ?? null)), statusSig(s), split]) : "";
+  const sig = s ? JSON.stringify([s.state, s.exit_code, s.agent_exit, s.unread, S.maximized === id, S.focusMode, at?.project.name, taskTitle(s), agentKind(s), multi, grouped, away, resumeOffer(s), faceSig(s.coordinator ? null : (s.skipper ?? null)), statusSig(s), split]) : "";
   if (head.dataset.sig === sig) return;
   head.dataset.sig = sig;
   head.replaceChildren();
@@ -100,8 +98,6 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   }
   if (split?.kind === "child") head.append(...cycleButtons(split.at, split.n));
   if (split?.kind === "skipper") head.appendChild(splitButton(split.n, split.on));
-  const images = imagesButton(id);
-  if (images) head.appendChild(images);
   // Mouse controls for the two view modes. The pane is focused first: they act on the focused pane.
   const viewBtn = (name: RuneName, label: string, key: Action, run: () => void) => {
     const b = button("head-btn", "", () => {

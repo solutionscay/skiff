@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { flush, moduleFromSource } from "./workspaceHarness.ts";
 
 // The real images.ts and imagesPage.ts. Pin and Unpin move an image to its
-// section at once; Insert does not reorder the open drop-down.
+// section at once. The Images dialog inserts into the pane it opened over, then closes.
 type Node = El | string;
 class El {
   tag: string;
@@ -92,7 +92,9 @@ async function app() {
     { path: "/c/d.png", file: "d.png", name: "green cat.png", at: 100, pinned: true },
   ].map((i) => ({ ...i, session: null, title: null, project: null, size: 1 }));
   let changed = () => {};
+  const inserted: string[] = [];
   const invoke = async (cmd: string, a: any) => {
+    if (cmd === "image_insert") inserted.push(a.who.session);
     if (cmd === "images") return store.map((i) => ({ ...i })).sort((x, y) => y.at - x.at);
     if (cmd === "image_pin") for (const i of store) if (a.paths.includes(i.path)) i.pinned = a.on;
     if (cmd === "image_insert") for (const i of store) if (a.paths.includes(i.path)) i.at = 500;
@@ -111,74 +113,16 @@ async function app() {
     "../platform/clipboard": { copyText: async () => {} },
     "../ui/alerts": { showError: (e: unknown) => { throw e; } },
     "../ui/dom": { h, button },
-    "../ui/icons": { icon: () => h("svg") },
-    "../ui/menu": { menuOpened() {} },
-    "../workspace/view": { refocusTerminal() {} },
-    "./fileDrop": {},
-    "./insertSignal": { insertShown: () => null },
-    "./paneActions": {},
-    "./terminalClipboard": { typeFiles() {}, whoOf: () => ({}) },
+    "./terminalClipboard": { typeFiles() {}, whoOf: (session: string) => ({ session }) },
     "./terminalState": { panes: new Map([["s1", {}]]) },
-  }, globals, `
-exports.__t = { openAt, rows, field, lit: () => lit };`);
+  }, globals, "");
   lib.startImages();
   await flush();
-  const t = lib.__t;
-  const rows = t.rows as El;
-  /** The drop-down as text: "PINNED d | RECENT a b c". */
-  const menu = () => rows.children.map((c) => {
-    const e = c as El;
-    return e.classes().includes("lib-sec") ? (e.children[0] as string) : e.dataset.path.slice(3, 4);
-  }).join(" ").replace(" RECENT", " | RECENT");
-  const row = (p: string) => rows.querySelectorAll(".lib-row").find((r) => r.dataset.path === `/c/${p}.png`)!;
-  const act = (p: string, label: string) => row(p).all().find((e) => e.tag === "button" && e.textContent === label)!;
-  const key = (k: string) => rows.fire("keydown", { key: k });
   const settle = async () => { for (let n = 0; n < 4; n++) await flush(); };
-  return { lib, t, rows, menu, row, act, key, settle, store };
+  return { lib, settle, store, inserted };
 }
 
-test("drop-down: Pin moves the row to PINNED at once; the light and the query stay", async () => {
-  const a = await app();
-  a.t.openAt({ right: 0, bottom: 0 });
-  assert.equal(a.menu(), "PINNED d | RECENT a b c");
-  // The mouse: Pin on row c.
-  a.act("c", "Pin").fire("click");
-  await a.settle();
-  assert.equal(a.menu(), "PINNED c d | RECENT a b");
-  assert.equal(a.t.lit(), "/c/c.png");
-  assert.ok(a.row("c").classes().includes("lit"));
-  assert.ok(a.row("c").scrolled > 0);
-  // The keys: P on the lit row unpins it, and it goes back to RECENT.
-  a.key("p");
-  await a.settle();
-  assert.equal(a.menu(), "PINNED d | RECENT a b c");
-  assert.equal(a.t.lit(), "/c/c.png");
-  // With a query: the query stays, and the row moves in the filtered list.
-  a.t.field.value = "red";
-  a.t.field.fire("input");
-  assert.equal(a.menu(), "a c");
-  a.act("c", "Pin").fire("click");
-  await a.settle();
-  assert.equal(a.t.field.value, "red");
-  assert.equal(a.menu(), "PINNED c | RECENT a");
-  assert.equal(a.t.lit(), "/c/c.png");
-});
-
-test("drop-down: Insert does not reorder RECENT while it is open", async () => {
-  const a = await app();
-  a.t.openAt({ right: 0, bottom: 0 });
-  a.act("c", "Insert").fire("click");
-  await a.settle();
-  assert.equal(a.store.find((i) => i.file === "c.png")!.at, 500);
-  assert.equal(a.menu(), "PINNED d | RECENT a b c");
-  assert.match(a.row("c").text(), /Inserted/);
-  // The next open shows the new order.
-  a.lib.closeImages(false);
-  a.t.openAt({ right: 0, bottom: 0 });
-  assert.equal(a.menu(), "PINNED d | RECENT c a b");
-});
-
-async function gallery() {
+async function gallery(mode?: { target: () => string | null }) {
   const a = await app();
   const page = moduleFromSource("../src/appearance/imagesPage.ts", {
     "../app/keys": { isMac: false },
@@ -195,9 +139,9 @@ async function gallery() {
   }, globals, "");
   const st = page.imagesState();
   let open = true;
-  let main: El = page.imagesSection(st, () => (open = false));
+  let main: El = page.imagesSection(st, () => (open = false), mode);
   // As Settings does: a library change redraws the open gallery.
-  a.lib.onImagesChanged(() => { if (open) main = page.imagesSection(st, () => (open = false)); });
+  a.lib.onImagesChanged(() => { if (open) main = page.imagesSection(st, () => (open = false), mode); });
   const scroll = () => main.querySelector("img-scroll")!;
   /** The gallery as text: "PINNED d | RECENT a b c". */
   const grid = () => scroll().children.map((c) => {
@@ -235,4 +179,23 @@ test("gallery: Insert closes Settings and does not reorder the gallery", async (
   await g.settle();
   assert.equal(g.open(), false);
   assert.equal(g.grid(), "Pinned d | Recent a b c");
+});
+
+test("dialog: a click inserts into the pane it opened over, then closes", async () => {
+  const g = await gallery({ target: () => "s9" });
+  g.pick("b");
+  await g.settle();
+  assert.deepEqual(g.inserted, ["s9"]);
+  assert.equal(g.open(), false);
+});
+
+test("dialog: with no target pane, Insert is off and a click keeps it open", async () => {
+  const g = await gallery({ target: () => null });
+  assert.equal(g.st.now, "/c/d.png");
+  assert.ok(g.main().querySelector("ins").disabled);
+  g.pick("b");
+  g.main().querySelector("img-scroll").fire("keydown", { key: "Enter" });
+  await g.settle();
+  assert.deepEqual(g.inserted, []);
+  assert.equal(g.open(), true);
 });

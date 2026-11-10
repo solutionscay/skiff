@@ -11,7 +11,7 @@ import { isRemote, hostName } from "../app/hosts";
 import { place } from "../app/stateQueries";
 import { taskTitle } from "../workspace/model";
 
-import { signalButton, signalLine } from "./insertSignal";
+import { signalLine } from "./insertSignal";
 import { panes } from "./terminalState";
 import { UploadLine } from "./uploadProgress";
 
@@ -57,13 +57,10 @@ export function whoOf(id: string) {
 }
 
 /** Types the words as a paste, so an agent attaches a pasted image path.
- *  Never presses Enter. An image shows the insert signals. */
+ *  Never presses Enter. An image shows the insert signal. */
 export function typeFiles(id: string, t: Typed) {
   const pane = panes.get(id);
-  if (pane && t.image) {
-    signalLine(pane.term, pane.el);
-    signalButton(id, t.image);
-  }
+  if (pane && t.image) signalLine(pane.term, pane.el);
   pane?.term.paste(t.text);
   if (t.warning) showError(t.warning);
 }
