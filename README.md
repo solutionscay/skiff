@@ -54,8 +54,9 @@ See the [CLI](https://github.com/solutionscay/skiff/wiki/CLI) page.
 
 <p align="center"><img src="docs/readme/app.webp" width="1600" alt="The Skiff window. First, the side panel shows the Tree tab, and the Rate limits group shows in a 2x2 split: three Claude Code sessions and one Codex session work on rate limits for atlas-api. Then the side panel shows the Skippers tab, and the main area shows the Platform Skipper: it reads the ledger, checks its tasks, marks one done and sends the next. The Ledger panel shows the same tasks on the right."><br><sub>The Tree tab with the Rate limits group, then the Skippers tab with the Platform Skipper at work.</sub></p>
 
-Press F1 for every key. Press Ctrl+Shift+A for Mission control, the whole agent hierarchy as a graph. The [wiki](https://github.com/solutionscay/skiff/wiki) has the
-details: [Skiff agent](https://github.com/solutionscay/skiff/wiki/Skiff-agent),
+Press F1 for every key. Press Ctrl+Shift+A (Cmd+Shift+A on macOS) for Mission control,
+the whole agent hierarchy as a graph. The [wiki](https://github.com/solutionscay/skiff/wiki)
+has the details: [Skiff agent](https://github.com/solutionscay/skiff/wiki/Skiff-agent),
 [Open with](https://github.com/solutionscay/skiff/wiki/Open-with),
 [skiffd](https://github.com/solutionscay/skiff/wiki/skiffd).
 
@@ -92,7 +93,7 @@ state, known Hosts and local Open with applications.
 ```
 cd apps/desktop && pnpm install && pnpm tauri dev
 CARGO_BUILD_JOBS=8 cargo test -p CRATE TEST_NAME
-cd apps/desktop && pnpm bundle   # packages for this OS, with skiffd inside
+cd apps/desktop && pnpm bundle   # packages for this OS, with skiffd, skiff and skiff-host inside
 ```
 
 During a task, run only the tests for the code you changed. See
@@ -106,7 +107,7 @@ metadata changes, raise `HANDOVER` in `crates/skiffd/src/session/reload.rs`. Set
 `SKIFF_SOCKET` to another path for a test daemon with its own state. See
 [skiffd › Development](https://github.com/solutionscay/skiff/wiki/skiffd#development).
 
-A `v*` tag builds every package in CI and attaches them to a draft release.
+A `v*` tag builds every package and the signed server bundles in CI. It attaches them to a draft release.
 
 ## License
 
