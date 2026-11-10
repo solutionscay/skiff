@@ -44,8 +44,9 @@ export interface Pick {
  * Insert closes Settings, so the pane shows the insert signals. `close`
  * closes Settings.
  *
- * With `pick`, the Images dialog: the current tile is the selection. Enter or
- * a click inserts it into the pick's target and closes. Esc closes.
+ * With `pick`, the Images dialog: selection works as in Settings. Insert,
+ * Enter or a double-click inserts the selection into the pick's target and
+ * closes. Esc closes.
  */
 export function imagesSection(st: ImagesState, close: () => void, pick?: Pick): HTMLElement {
   const target = pick ? pick.target : insertTarget;
@@ -103,12 +104,6 @@ export function imagesSection(st: ImagesState, close: () => void, pick?: Pick): 
     for (const p of st.sel) if (!live.has(p)) st.sel.delete(p);
     if (st.anchor && !live.has(st.anchor)) st.anchor = null;
     if (st.now && !live.has(st.now)) st.now = shown[0]?.path ?? null;
-    if (pick) {
-      // The dialog always has a current tile; it is the selection.
-      st.now = st.now ?? shown[0]?.path ?? null;
-      st.sel = new Set(st.now ? [st.now] : []);
-      st.anchor = st.now;
-    }
     seen.disconnect();
     tiles.clear();
     const kids: HTMLElement[] = [];
@@ -152,13 +147,14 @@ export function imagesSection(st: ImagesState, close: () => void, pick?: Pick): 
     t.append(pic, cap);
     t.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (pick) {
-        move(i.path, false);
-        return void insert();
-      }
       click(i.path, e.ctrlKey || e.metaKey, e.shiftKey);
     });
-    if (!pick) t.addEventListener("dblclick", () => openAll());
+    t.addEventListener("dblclick", () => {
+      if (!pick) return openAll();
+      // The first click of the two selected the tile; a double-click on a tile outside the selection inserts that tile.
+      if (!st.sel.has(i.path)) click(i.path, false, false);
+      void insert();
+    });
     tiles.set(i.path, t);
     return t;
   }
@@ -173,7 +169,7 @@ export function imagesSection(st: ImagesState, close: () => void, pick?: Pick): 
     }
     const sel = picked();
     const words = queryWords(st.query);
-    count.textContent = countText(shown.length, words) + (sel.length && !pick ? ` · ${t("images.selected", { n: sel.length })}` : "");
+    count.textContent = countText(shown.length, words) + (sel.length ? ` · ${t("images.selected", { n: sel.length })}` : "");
     const none = !sel.length;
     openB.disabled = none;
     pinB.disabled = none;
@@ -316,8 +312,6 @@ export function imagesSection(st: ImagesState, close: () => void, pick?: Pick): 
 
   field.addEventListener("input", () => {
     st.query = field.value;
-    // The dialog lights the first match, so Enter inserts it.
-    if (pick) st.now = null;
     build();
     scroll.scrollTop = 0;
   });
@@ -337,7 +331,7 @@ export function imagesSection(st: ImagesState, close: () => void, pick?: Pick): 
   });
 
   scroll.addEventListener("click", () => {
-    if (pick || !st.sel.size) return;
+    if (!st.sel.size) return;
     st.sel.clear();
     paint();
   });
@@ -356,7 +350,7 @@ export function imagesSection(st: ImagesState, close: () => void, pick?: Pick): 
     const now = st.now ?? shown[0]?.path ?? null;
     if (e.key === "Escape") return void escape(e);
     if (e.altKey || (e.ctrlKey && !mod) || (e.metaKey && !mod)) return;
-    if (mod && k === "a" && !pick) {
+    if (mod && k === "a") {
       st.sel = new Set(shown.map((i) => i.path));
       paint();
     } else if (mod) return;
@@ -368,13 +362,13 @@ export function imagesSection(st: ImagesState, close: () => void, pick?: Pick): 
       // Left from the first column goes back to the tab.
       if (e.key === "ArrowLeft" && (n < 0 || left) && !e.shiftKey) {
         if (!pick) document.querySelector<HTMLElement>("#settings .set-tab.active")?.focus();
-      } else move(shown[Math.max(0, Math.min(n, shown.length - 1))].path, e.shiftKey && !pick);
+      } else move(shown[Math.max(0, Math.min(n, shown.length - 1))].path, e.shiftKey);
     } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       const to = vertical(now, e.key === "ArrowUp" ? -1 : 1);
       // Up from the top row goes back to the search field.
       if (!to && e.key === "ArrowUp" && !e.shiftKey) field.focus();
-      else move(to, e.shiftKey && !pick);
-    } else if (e.key === " " && !pick) {
+      else move(to, e.shiftKey);
+    } else if (e.key === " ") {
       if (!st.sel.delete(now)) st.sel.add(now);
       st.now = st.anchor = now;
       paint();

@@ -350,7 +350,7 @@ export const es = {
   "fixed.images.search": "Buscar imágenes",
   "fixed.images.toList": "Ir de la búsqueda a las imágenes, y volver",
   "fixed.images.step": "Ir a la imagen siguiente",
-  "fixed.images.actions": "Insertar y cerrar, Fijar, Borrar",
+  "fixed.images.actions": "Insertar la selección y cerrar, Fijar, Borrar",
   "fixed.images.close": "Cerrar Imágenes",
   "fixed.gallery.select": "Seleccionar una imagen más, o un rango",
   "fixed.gallery.move": "Moverse, o ampliar la selección",

@@ -343,7 +343,7 @@ export const zh = {
   "fixed.images.search": "搜索图片",
   "fixed.images.toList": "从搜索框到图片，再返回",
   "fixed.images.step": "移到下一张图片",
-  "fixed.images.actions": "插入并关闭、固定、删除",
+  "fixed.images.actions": "插入选中项并关闭、固定、删除",
   "fixed.images.close": "关闭图片",
   "fixed.gallery.select": "再选择一张图片，或一个范围",
   "fixed.gallery.move": "移动，或扩展选择",

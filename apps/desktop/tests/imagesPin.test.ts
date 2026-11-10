@@ -92,9 +92,9 @@ async function app() {
     { path: "/c/d.png", file: "d.png", name: "green cat.png", at: 100, pinned: true },
   ].map((i) => ({ ...i, session: null, title: null, project: null, size: 1 }));
   let changed = () => {};
-  const inserted: string[] = [];
+  const inserted: string[][] = [];
   const invoke = async (cmd: string, a: any) => {
-    if (cmd === "image_insert") inserted.push(a.who.session);
+    if (cmd === "image_insert") inserted.push([...a.paths]);
     if (cmd === "images") return store.map((i) => ({ ...i })).sort((x, y) => y.at - x.at);
     if (cmd === "image_pin") for (const i of store) if (a.paths.includes(i.path)) i.pinned = a.on;
     if (cmd === "image_insert") for (const i of store) if (a.paths.includes(i.path)) i.at = 500;
@@ -181,21 +181,35 @@ test("gallery: Insert closes Settings and does not reorder the gallery", async (
   assert.equal(g.grid(), "Pinned d | Recent a b c");
 });
 
-test("dialog: a click inserts into the pane it opened over, then closes", async () => {
+test("dialog: a click selects; Pin acts on the selection and keeps it open; Insert sends the selection in grid order, then closes", async () => {
   const g = await gallery({ target: () => "s9" });
-  g.pick("b");
-  await g.settle();
-  assert.deepEqual(g.inserted, ["s9"]);
-  assert.equal(g.open(), false);
-});
-
-test("dialog: with no target pane, Insert is off and a click keeps it open", async () => {
-  const g = await gallery({ target: () => null });
-  assert.equal(g.st.now, "/c/d.png");
-  assert.ok(g.main().querySelector("ins").disabled);
-  g.pick("b");
-  g.main().querySelector("img-scroll").fire("keydown", { key: "Enter" });
+  g.pick("c");
+  g.tile("a").fire("click", { ctrlKey: true });
   await g.settle();
   assert.deepEqual(g.inserted, []);
   assert.equal(g.open(), true);
+  assert.deepEqual([...g.st.sel].sort(), ["/c/a.png", "/c/c.png"]);
+  g.btn("Pin").fire("click");
+  await g.settle();
+  assert.equal(g.open(), true);
+  assert.equal(g.grid(), "Pinned a c d | Recent b");
+  g.scroll().fire("keydown", { key: "Enter" });
+  await g.settle();
+  assert.deepEqual(g.inserted, [["/c/a.png", "/c/c.png"]]);
+  assert.equal(g.open(), false);
+});
+
+test("dialog: a double-click inserts that tile; with no target pane, Insert is off and the dialog stays open", async () => {
+  const g = await gallery({ target: () => "s9" });
+  g.tile("b").fire("dblclick");
+  await g.settle();
+  assert.deepEqual(g.inserted, [["/c/b.png"]]);
+  assert.equal(g.open(), false);
+  const n = await gallery({ target: () => null });
+  n.pick("b");
+  assert.ok(n.main().querySelector("ins").disabled);
+  n.scroll().fire("keydown", { key: "Enter" });
+  await n.settle();
+  assert.deepEqual(n.inserted, []);
+  assert.equal(n.open(), true);
 });

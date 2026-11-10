@@ -361,7 +361,7 @@ export const en = {
   "fixed.images.search": "Search images",
   "fixed.images.toList": "Go from the search to the images, and back",
   "fixed.images.step": "Move to the next image",
-  "fixed.images.actions": "Insert and close, Pin, Delete",
+  "fixed.images.actions": "Insert the selection and close, Pin, Delete",
   "fixed.images.close": "Close Images",
   "fixed.gallery.select": "Select one more image, or a range",
   "fixed.gallery.move": "Move, or extend the selection",
