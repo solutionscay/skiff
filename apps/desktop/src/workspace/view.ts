@@ -1,6 +1,6 @@
 /** What the terminal area shows and which pane has the keys. */
 import { noteSelected } from "./profile";
-import { isSkiffAgent } from "../app/skiffAgent";
+import { coordinatorOf, isSkiffAgent } from "../app/skiffAgent";
 import { beginDrag, type DropTarget, type RowTarget } from "./drag";
 import { build, type Direction, leaf, neighbor, removePane, replacePane, sessionsOf, shape, splitPane, swapPanes } from "./layout";
 
@@ -15,13 +15,13 @@ import { autoName, deleteGroup, moveGroup, saveGroup } from "../app/groups";
 import { render } from "../app/render";
 import { clearSelection } from "./selection";
 import { fullHint, MAX_PANES, OTHER, S, selectedWorktree, sessions } from "../app/state";
-import { activeGroupObj, currentLayout, groupOf, inShownGroup, place, shownIds, splitFull, worktreeSessions } from "../app/stateQueries";
+import { activeGroupObj, currentLayout, groupOf, inShownGroup, place, shownIds, skipperSplit, splitFull, worktreeSessions } from "../app/stateQueries";
 import { panes } from "../terminal/terminalState";
 import { previewOnScreen } from "../terminal/peek";
 import { currentRow, listItems } from "../app/keyboard";
 import { worktreeRowKey } from "./tree";
 import { view } from "../terminal/terminal";
-import { closeSplit, splitChild } from "./skipperSplit";
+import { closeSplit, keepSplit, splitChild } from "./skipperSplit";
 import { t, tn } from "../i18n";
 
 let background = 0;
@@ -109,6 +109,7 @@ export function showSingle(id: string) {
 export function showGroup(id: string, pick = false, focus?: string) {
   const g = S.groups.find((x) => x.id === id);
   if (!g) return;
+  if (skipperPair(g, focus)) return;
   S.activeGroup = id;
   S.single = null;
   S.skipperSplit = null;
@@ -132,6 +133,26 @@ export function showGroup(id: string, pick = false, focus?: string) {
   if (pick) {
     requestAnimationFrame(() => document.querySelector<HTMLElement>(`#sidebar-scroll .group-pick[data-group="${id}"]`)?.focus());
   }
+}
+
+/**
+ * A group of one Skipper and one other session shows as the Skipper split, and
+ * the group goes. A pane drag in the split made such groups before 2026-11.
+ * The view is the same, with the Ledger beside it.
+ */
+function skipperPair(g: Group, focus?: string): boolean {
+  const ids = sessionsOf(g.layout);
+  if (ids.length !== 2 || !ids.every((x) => sessions.has(x))) return false;
+  const skippers = ids.filter((x) => coordinatorOf(x));
+  if (skippers.length !== 1) return false;
+  const sk = skippers[0];
+  const child = ids.find((x) => x !== sk)!;
+  deleteGroup(g);
+  S.activeGroup = null;
+  S.single = sk;
+  S.skipperSplit = { skipper: sk, child, layout: g.layout };
+  focusPane(focus && ids.includes(focus) ? focus : g.focus && ids.includes(g.focus) ? g.focus : sk);
+  return true;
 }
 
 /**
@@ -225,7 +246,9 @@ export function splitWith(target: string | null, dir: SplitDir, id: string) {
   if (!base) return showSingle(id);
   const ids = sessionsOf(base);
   const t = target && ids.includes(target) ? target : ids[0];
-  applyLayout(splitPane(base, t, dir, id), id);
+  const next = splitPane(base, t, dir, id);
+  // In a Skipper split the panes move, and the Skipper view and its Ledger stay.
+  if (!keepSplit(next, id)) applyLayout(next, id);
 }
 
 /** Click on a session: focus it where it is shown, else show its group, else show it alone. A click never changes a group. */
@@ -334,6 +357,13 @@ function groupGains(groupId: string, ids: string[]) {
 function dropOn(t: DropTarget, dragged: string[]) {
   const ids = dragged.filter((id) => sessions.has(id));
   if (!ids.length) return;
+  // The child of a Skipper split goes into a group: the split ends, and the Skipper view and its Ledger stay.
+  const sp = skipperSplit();
+  if (sp && ids.includes(sp.child) && !ids.includes(sp.skipper) && (t.group || t.pair)) {
+    if (t.group) addToGroup(t.group, ids);
+    else pairUp(t.pair!, ids);
+    return showSingle(sp.skipper);
+  }
   if (t.group) return addToGroup(t.group, ids);
   if (t.swap) return swapInGroup(ids[0], t.swap);
   if (t.pair) return pairUp(t.pair, ids);
@@ -345,7 +375,8 @@ function dropOn(t: DropTarget, dragged: string[]) {
   const next = dropLayout(t, ids);
   if (!next) return;
   clearSelection();
-  applyLayout(next, ids[0]);
+  // In a Skipper split the panes move, and the Skipper view and its Ledger stay.
+  if (!keepSplit(next, ids[0])) applyLayout(next, ids[0]);
 }
 
 /** Drop sessions on a group row: they fill its empty panes, then split in. A full group takes no more. */

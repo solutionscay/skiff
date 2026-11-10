@@ -331,35 +331,37 @@ test("with no workspace open, an outside add changes nothing (#229)", async () =
   assert.equal(h.profile.shows(h.S.projects[2]), false);
 });
 
-test("Skipper split children: live panes of the Skipper's rows in every bucket, Ledger order, each pane once, no Skipper pane", () => {
-  const pane = (id: string, state: string) => [id, { id, state, started_at: "s" }] as const;
-  const sessions = new Map<string, unknown>(["sk", "p1", "p2", "p3", "p4", "p5", "p6", "p7"].map((id) => pane(id, id === "p3" ? "waiting" : id === "p1" ? "done" : "working")));
-  const ledger = moduleFromSource("../src/workspace/ledger.ts", {
-    "../app/skiffAgent": { skipperWord: () => "Skipper", coordinatorOf: (id: string) => (id === "sk" ? "grand" : null), projectSkipperOf: () => null, skiffAgentSession: () => null },
-    "./model": MODEL,
-    "./profile": { ledgerScope: () => null },
-    "../app/state": { S: { projects: [] }, sessions },
-    "../app/stateQueries": { shownIds: () => [], skipperSplit: () => null, accent: () => "" },
-  }, {
-    document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
-  }, "\nimport { rows } from \"./ledgerStore\";\nimport { childPanes } from \"./ledgerModel\";\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, childPanes };\n");
-  let id = 0;
-  const row = (uid: string, pane_id: string | null, state: string, o: { kind?: string; parent?: string; owner?: string; closed?: string } = {}) =>
-    ({ id: ++id, uid, kind: o.kind ?? "task", project: "", owner: o.owner ?? "grand", parent: o.parent ?? null, state, bucket: o.closed ? "finished" : "open",
-      closed_at: o.closed ?? null, updated_at: "x", pane_id, pane_gen: null, task: uid, title: null });
-  ledger.review.setRows([
-    row("done-live", "p1", "done"),
-    row("working", "p2", "sent"),
-    row("pending", null, "pending"),
-    row("same-pane", "p2", "sent"),
-    row("gone", "p9", "sent"),
-    row("asks", "p3", "sent"),
-    row("closed-older", "p4", "done", { closed: "2026-01-01" }),
-    row("closed-newer", "p6", "done", { closed: "2026-02-01" }),
-    row("handoff", "sk", "sent", { kind: "handoff" }),
-    row("handed", "p5", "sent", { parent: "handoff", owner: "proj" }),
-    row("not-mine", "p7", "sent", { owner: "other" }),
-  ]);
-  // Working, then Open (needs the person, then done), then Finished newest first. Another Skipper's row is no child.
-  assert.deepEqual(Array.from(ledger.review.childPanes("sk"), (c: any) => c.id), ["p2", "p5", "p3", "p1", "p6", "p4"]);
+test("Skipper split children: every other live session, in tree order, each once", () => {
+  // Projects A (worktrees a1, a2) and B in fleet F, a session in no project, and the Skiff agent.
+  const wt = (path: string) => ({ path });
+  const a1 = wt("/a1"), a2 = wt("/a2"), b1 = wt("/b1");
+  const A = { name: "A", worktrees: [a1, a2] }, B = { name: "B", worktrees: [b1] };
+  const home: Record<string, unknown> = { agent: null, ask: null, fsk: null, a1x: a1, a1y: a1, a2x: a2, bsk: b1, b1x: b1, b1g: b1, loose: null };
+  const order = ["a1y", "a1x", "a2x", "agent", "ask", "fsk", "bsk", "b1x", "b1g", "loose"];
+  const sessions = new Map<string, unknown>(order.map((id) => [id, { id, started_at: String(order.indexOf(id)) }]));
+  const S = { groups: [{ id: "g", layout: { type: "pane", session: "b1g" } }] };
+  const skipperOf: Record<string, string> = { A: "ask", B: "bsk", "fleet:F": "fsk" };
+  const lines = moduleFromSource("../src/workspace/sidebarLines.ts", {
+    "./layout": { sessionsOf: (l: any) => (l ? [l.session] : []) },
+    "./model": { byStart: (x: any, y: any) => x.started_at.localeCompare(y.started_at) },
+    "../app/state": { S, sessions },
+    "../app/stateQueries": { place: (s: any) => (home[s.id] ? { worktree: home[s.id] } : null), awayPlaces: () => [] },
+    "./view": { groupHome: () => b1 },
+    "../app/skiffAgent": {
+      skiffAgentSession: () => sessions.get("agent"), projectSkippers: () => ["ask", "bsk", "fsk"].map((id) => sessions.get(id)),
+      projectSkipperOf: (n: string) => sessions.get(skipperOf[n]) ?? null, fleetSkipperOf: (f: string) => sessions.get(skipperOf[`fleet:${f}`]) ?? null,
+    },
+    "./tree": { treeSections: () => [{ fleet: null, projects: [A] }, { fleet: "F", projects: [B] }] },
+  }, {}, "");
+  const split = moduleFromSource("../src/workspace/skipperSplit.ts", {
+    "./sidebarLines": lines,
+    "../app/state": { S: {}, sessions },
+    "../app/stateQueries": { skipperSplit: () => ({ skipper: "bsk", child: "a1x", layout: {} }) },
+    "./ledgerStore": { ledgerRows: () => [{ pane_id: "a1x", title: "Old" }, { pane_id: "a1x", title: "New" }], ledgerTitle: (r: any) => r.title },
+    "../app/skiffAgent": { coordinatorOf: () => null }, "./view": {}, "./layout": {}, "./layoutSlots": {}, "../app/renderRequest": {},
+  }, {}, "");
+  // The agent, then A's Skipper and worktrees, then fleet F's Skipper, B's grouped and loose sessions, then Other. The Skipper on screen is no child.
+  const kids = split.splitChildren();
+  assert.deepEqual(Array.from(kids, (c: any) => c.id), ["agent", "ask", "a1y", "a1x", "a2x", "fsk", "b1g", "b1x", "loose"]);
+  assert.equal(kids.find((c: any) => c.id === "a1x").title, "New");
 });

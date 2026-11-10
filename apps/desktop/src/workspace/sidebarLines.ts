@@ -7,7 +7,8 @@ import { S, sessions } from "../app/state";
 import { awayPlaces, place } from "../app/stateQueries";
 
 import { groupHome } from "./view";
-import { projectSkippers, skiffAgentSession } from "../app/skiffAgent";
+import { fleetSkipperOf, projectSkipperOf, projectSkippers, skiffAgentSession } from "../app/skiffAgent";
+import { treeSections } from "./tree";
 /** One line in a session list: a session, a group's header, or a pointer to a session from another worktree that works here. */
 export type Line =
   | { session: SessionInfo; branch?: boolean; group?: undefined; pointer?: undefined; in?: Group; groupRail?: boolean }
@@ -73,4 +74,30 @@ export function worktreeLines(w: Worktree | null, index: LineIndex = lineIndex()
   for (const m of loose) if (!index.grouped.has(m.id) && m.id !== index.agent && !index.skippers.has(m.id)) lines.push({ session: m });
   if (w) for (const m of index.visitors.get(w) ?? []) lines.push({ pointer: m });
   return lines;
+}
+
+/**
+ * Every live session in tree order, folds aside: the Skiff agent, then each
+ * section's fleet Skipper and its projects (the project Skipper, then each
+ * worktree's lines), then Other. An open workspace leaves out the projects
+ * it does not show. Each session once.
+ */
+export function treeOrder(index: LineIndex = lineIndex()): string[] {
+  const out: string[] = [];
+  const add = (id: string | undefined) => {
+    if (id && sessions.has(id) && !out.includes(id)) out.push(id);
+  };
+  const lines = (w: Worktree | null) => {
+    for (const l of worktreeLines(w, index)) if ("session" in l) add(l.session.id);
+  };
+  add(index.agent);
+  for (const sec of treeSections()) {
+    if (sec.fleet) add(fleetSkipperOf(sec.fleet)?.id);
+    for (const p of sec.projects) {
+      add(projectSkipperOf(p.name)?.id);
+      for (const w of p.worktrees ?? []) lines(w);
+    }
+  }
+  lines(null);
+  return out;
 }

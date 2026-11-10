@@ -11,7 +11,7 @@ import { isSlot } from "./layoutSlots";
 import { scopeFleet, scopeName, taskTitle } from "./model";
 import { ledgerScope } from "./profile";
 import { language, t, type MessageKey } from "../i18n";
-import { byUid, children, generation, indexRows, paneIds, rows, titleOf, type Entry } from "./ledgerStore";
+import { byUid, children, generation, indexRows, paneIds, rows, type Entry } from "./ledgerStore";
 
 /** Where a task stands, from its row and its pane. */
 export type State = "pending" | "sent" | "approval" | "blocked" | "interrupted" | "gone" | "exited" | "done";
@@ -270,26 +270,3 @@ export function filter(): string | null {
 
 /** The task's pane is live, so a click can open it. */
 export const opens = (l: Look) => !!l.pane && l.st !== "gone";
-
-/**
- * The Skipper split's children: the live panes of this Skipper's rows, its
- * own rows and the tasks under its hand-offs, in every bucket. Ledger order:
- * Working, Open, then Finished, most recent first. Each pane once. The
- * Skipper's own pane is no child. The panel's filter does not apply.
- */
-export function childPanes(skipper: string): { id: string; title: string }[] {
-  const owner = coordinatorOf(skipper);
-  const x = sections(units(null));
-  const out: { id: string; title: string }[] = [];
-  for (const u of [...x.working, ...x.open, ...x.finished]) {
-    for (const l of u.kids ?? (u.look ? [u.look] : [])) {
-      const handedOff = l.r.kind === "handoff" && l.r.owner === owner;
-      for (const k of flat(l)) {
-        if (k.r.owner !== owner && !(handedOff && k !== l)) continue;
-        if (!opens(k) || k.pane!.id === skipper || out.some((c) => c.id === k.pane!.id)) continue;
-        out.push({ id: k.pane!.id, title: titleOf(k.r) });
-      }
-    }
-  }
-  return out;
-}
