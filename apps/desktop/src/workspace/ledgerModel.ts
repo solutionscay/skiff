@@ -272,17 +272,23 @@ export function filter(): string | null {
 export const opens = (l: Look) => !!l.pane && l.st !== "gone";
 
 /**
- * The Skipper split's children: the live panes of the open rows the panel
- * shows, hand-offs' tasks included, in Ledger order (Working, then Open).
- * Each pane once. The Skipper's own pane is no child.
+ * The Skipper split's children: the live panes of this Skipper's rows, its
+ * own rows and the tasks under its hand-offs, in every bucket. Ledger order:
+ * Working, Open, then Finished, most recent first. Each pane once. The
+ * Skipper's own pane is no child. The panel's filter does not apply.
  */
 export function childPanes(skipper: string): { id: string; title: string }[] {
-  const x = sections(units());
+  const owner = coordinatorOf(skipper);
+  const x = sections(units(null));
   const out: { id: string; title: string }[] = [];
-  for (const u of [...x.working, ...x.open]) {
-    for (const l of (u.kids ?? (u.look ? [u.look] : [])).flatMap(flat)) {
-      if (!opens(l) || l.pane!.id === skipper || out.some((c) => c.id === l.pane!.id)) continue;
-      out.push({ id: l.pane!.id, title: titleOf(l.r) });
+  for (const u of [...x.working, ...x.open, ...x.finished]) {
+    for (const l of u.kids ?? (u.look ? [u.look] : [])) {
+      const handedOff = l.r.kind === "handoff" && l.r.owner === owner;
+      for (const k of flat(l)) {
+        if (k.r.owner !== owner && !(handedOff && k !== l)) continue;
+        if (!opens(k) || k.pane!.id === skipper || out.some((c) => c.id === k.pane!.id)) continue;
+        out.push({ id: k.pane!.id, title: titleOf(k.r) });
+      }
     }
   }
   return out;

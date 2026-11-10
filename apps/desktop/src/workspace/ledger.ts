@@ -167,13 +167,14 @@ const result = (r: Entry) =>
  * A task's actions. Running, approval, blocked, pending, exited: the click
  * opens the pane. Restarted: the pane, and a result icon when the file
  * exists. Gone: the result, else its owning Skipper. Done: the result, with a pane
- * icon. Finished: the result only.
+ * icon. Finished: the pane while it runs, with a result icon; else the result.
  */
 function taskActs(l: Look, fin: boolean): Acts {
   const r = l.r;
   const res = result(r);
   const pane = opens(l) ? () => openPane(l.pane!) : null;
-  if (fin) return { click: res, icons: [] };
+  // Finished work whose pane still runs: the click shows the pane, the icon the result.
+  if (fin) return pane ? { click: pane, icons: res ? [["result", t("ledger.openResult"), res]] : [] } : { click: res, icons: [] };
   if (l.st === "done") {
     const icons: Acts["icons"] = [];
     if (pane) icons.push(["pane", t("ledger.openPane"), pane]);
@@ -249,15 +250,15 @@ function mark(r: Entry): HTMLElement {
 const progress = (kids: Look[]) => (kids.length ? `${kids.filter((k) => k.st === "done").length}/${kids.length}` : "");
 
 /** The project color of the row whose pane shows in the Skipper split, else undefined. */
-function shownBar(l: Look, fin: boolean): string | undefined {
-  if (fin || !l.pane || l.pane.id !== splitChild()) return undefined;
-  return accent(place(l.pane)?.project);
+function shownBar(l: Look): string | undefined {
+  if (!opens(l) || l.pane!.id !== splitChild()) return undefined;
+  return accent(place(l.pane!)?.project);
 }
 
 /** A task, or a hand-off with its tasks one step under it. `depth`: 0 at the top, 1 under a plan. */
 function taskRows(l: Look, depth: 0 | 1, fin: boolean): HTMLElement[] {
-  const row = line(l.r, l.st, (!fin && needWord(l.st)) || l.where, taskActs(l, fin), { kid: depth === 1, fin, count: l.kids ? progress(l.kids) : undefined, shown: shownBar(l, fin) });
-  const kids = (l.kids ?? []).map((k) => line(k.r, k.st, (!fin && needWord(k.st)) || k.where, taskActs(k, fin), { kid: depth === 0, kid2: depth === 1, fin, shown: shownBar(k, fin) }));
+  const row = line(l.r, l.st, (!fin && needWord(l.st)) || l.where, taskActs(l, fin), { kid: depth === 1, fin, count: l.kids ? progress(l.kids) : undefined, shown: shownBar(l) });
+  const kids = (l.kids ?? []).map((k) => line(k.r, k.st, (!fin && needWord(k.st)) || k.where, taskActs(k, fin), { kid: depth === 0, kid2: depth === 1, fin, shown: shownBar(k) }));
   return [row, ...kids];
 }
 

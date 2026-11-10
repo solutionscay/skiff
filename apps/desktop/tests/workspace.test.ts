@@ -331,11 +331,11 @@ test("with no workspace open, an outside add changes nothing (#229)", async () =
   assert.equal(h.profile.shows(h.S.projects[2]), false);
 });
 
-test("Skipper split children: live panes of open rows in Ledger order, each pane once, no Skipper pane", () => {
+test("Skipper split children: live panes of the Skipper's rows in every bucket, Ledger order, each pane once, no Skipper pane", () => {
   const pane = (id: string, state: string) => [id, { id, state, started_at: "s" }] as const;
-  const sessions = new Map<string, unknown>([pane("sk", "idle"), pane("p1", "done"), pane("p2", "working"), pane("p3", "waiting"), pane("p4", "working"), pane("p5", "working")]);
+  const sessions = new Map<string, unknown>(["sk", "p1", "p2", "p3", "p4", "p5", "p6", "p7"].map((id) => pane(id, id === "p3" ? "waiting" : id === "p1" ? "done" : "working")));
   const ledger = moduleFromSource("../src/workspace/ledger.ts", {
-    "../app/skiffAgent": { skipperWord: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
+    "../app/skiffAgent": { skipperWord: () => "Skipper", coordinatorOf: (id: string) => (id === "sk" ? "grand" : null), projectSkipperOf: () => null, skiffAgentSession: () => null },
     "./model": MODEL,
     "./profile": { ledgerScope: () => null },
     "../app/state": { S: { projects: [] }, sessions },
@@ -344,8 +344,9 @@ test("Skipper split children: live panes of open rows in Ledger order, each pane
     document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
   }, "\nimport { rows } from \"./ledgerStore\";\nimport { childPanes } from \"./ledgerModel\";\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, childPanes };\n");
   let id = 0;
-  const row = (uid: string, pane_id: string | null, state: string, o: { kind?: string; parent?: string; bucket?: string } = {}) =>
-    ({ id: ++id, uid, kind: o.kind ?? "task", project: "", owner: "grand", parent: o.parent ?? null, state, bucket: o.bucket ?? "open", closed_at: null, updated_at: "x", pane_id, pane_gen: null, task: uid, title: null });
+  const row = (uid: string, pane_id: string | null, state: string, o: { kind?: string; parent?: string; owner?: string; closed?: string } = {}) =>
+    ({ id: ++id, uid, kind: o.kind ?? "task", project: "", owner: o.owner ?? "grand", parent: o.parent ?? null, state, bucket: o.closed ? "finished" : "open",
+      closed_at: o.closed ?? null, updated_at: "x", pane_id, pane_gen: null, task: uid, title: null });
   ledger.review.setRows([
     row("done-live", "p1", "done"),
     row("working", "p2", "sent"),
@@ -353,10 +354,12 @@ test("Skipper split children: live panes of open rows in Ledger order, each pane
     row("same-pane", "p2", "sent"),
     row("gone", "p9", "sent"),
     row("asks", "p3", "sent"),
-    row("finished", "p4", "done", { bucket: "finished" }),
+    row("closed-older", "p4", "done", { closed: "2026-01-01" }),
+    row("closed-newer", "p6", "done", { closed: "2026-02-01" }),
     row("handoff", "sk", "sent", { kind: "handoff" }),
-    row("handed", "p5", "sent", { parent: "handoff" }),
+    row("handed", "p5", "sent", { parent: "handoff", owner: "proj" }),
+    row("not-mine", "p7", "sent", { owner: "other" }),
   ]);
-  // Working (send order), then Open (needs the person, then done). The done task keeps its pane while its row is open.
-  assert.deepEqual(Array.from(ledger.review.childPanes("sk"), (c: any) => c.id), ["p2", "p5", "p3", "p1"]);
+  // Working, then Open (needs the person, then done), then Finished newest first. Another Skipper's row is no child.
+  assert.deepEqual(Array.from(ledger.review.childPanes("sk"), (c: any) => c.id), ["p2", "p5", "p3", "p1", "p6", "p4"]);
 });
