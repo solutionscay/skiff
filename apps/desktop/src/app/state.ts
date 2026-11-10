@@ -73,7 +73,12 @@ export const S = {
    * right, the Ledger beside them. It shows while the Skipper is the single view.
    * `layout` keeps the divider where the person put it.
    */
-  skipperSplit: null as { skipper: string; child: string; layout: Layout } | null,
+  /**
+   * Each Skipper's split, by its pane id: the shown child (null: closed) and
+   * the two-pane tree, which keeps the divider and the last child's place.
+   * App memory only.
+   */
+  skipperSplits: new Map<string, { child: string | null; layout: Layout }>(),
   /** The group whose name is an input, and what is typed in it. */
   renaming: null as { id: string; name: string } | null,
   /** The session whose title is an input for renaming. */

@@ -21,7 +21,7 @@ import { previewOnScreen } from "../terminal/peek";
 import { currentRow, listItems } from "../app/keyboard";
 import { worktreeRowKey } from "./tree";
 import { view } from "../terminal/terminal";
-import { closeSplit, keepSplit, splitChild } from "./skipperSplit";
+import { closeSplit, keepSplit, restoreSplit, splitChild } from "./skipperSplit";
 import { t, tn } from "../i18n";
 
 let background = 0;
@@ -98,8 +98,8 @@ export function refocusTerminal() {
 
 /** One session fills the area. Any group stays in the sidebar. */
 export function showSingle(id: string) {
-  // Another single view ends the Skipper split.
-  if (S.skipperSplit?.skipper !== id) S.skipperSplit = null;
+  // Each Skipper keeps its own split: this one's comes back, checked against its children now.
+  restoreSplit(id);
   S.activeGroup = null;
   S.single = id;
   focusPane(id);
@@ -112,7 +112,6 @@ export function showGroup(id: string, pick = false, focus?: string) {
   if (skipperPair(g, focus)) return;
   S.activeGroup = id;
   S.single = null;
-  S.skipperSplit = null;
   const ids = sessionsOf(g.layout).filter((x) => !isSlot(x));
   if (pick) {
     S.groupPicked = id;
@@ -150,7 +149,7 @@ function skipperPair(g: Group, focus?: string): boolean {
   deleteGroup(g);
   S.activeGroup = null;
   S.single = sk;
-  S.skipperSplit = { skipper: sk, child, layout: g.layout };
+  S.skipperSplits.set(sk, { child, layout: g.layout });
   focusPane(focus && ids.includes(focus) ? focus : g.focus && ids.includes(g.focus) ? g.focus : sk);
   return true;
 }
@@ -163,8 +162,9 @@ export function applyLayout(next: Layout | null, focus: string | null) {
   const ids = sessionsOf(next);
   const g = activeGroupObj();
   const f = focus && ids.includes(focus) ? focus : ids[0] ?? null;
-  // A new tree replaces the Skipper split; a split of its two panes becomes a group.
-  S.skipperSplit = null;
+  // A new tree replaces the Skipper split on screen; a split of its two panes becomes a group.
+  const sp = skipperSplit();
+  if (sp) S.skipperSplits.delete(sp.skipper);
   if (next && (ids.length >= 2 || g)) {
     S.single = null;
     let target = g;
@@ -190,6 +190,7 @@ export function applyLayout(next: Layout | null, focus: string | null) {
       return focusFirstSlot();
     }
     S.activeGroup = null;
+    if (f) restoreSplit(f);
     S.single = f;
   }
   if (f) focusPane(f);
@@ -628,7 +629,6 @@ export function selectWorktree(project: Project, w: Worktree) {
 /** No session has the keys: hide every pane and offer to start one here. */
 export function unfocus() {
   S.focused = null;
-  S.skipperSplit = null;
   S.single = null;
   S.activeGroup = null;
   const keep = quiet();

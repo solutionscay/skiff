@@ -391,3 +391,29 @@ test("Skipper split children by scope: project and fleet in tree order, the Skif
   shown = "agent";
   assert.deepEqual(kids(), ["bsk", "a1x", "c1x"]);
 });
+
+test("Skipper split per Skipper: each keeps its own child; back on a Skipper, its child returns, else the next child", () => {
+  const sessions = new Map<string, unknown>(["ask", "a1", "a2", "bsk", "b1"].map((id) => [id, { id }]));
+  const S: any = { single: null, activeGroup: null, focused: null, projects: [], skipperSplits: new Map() };
+  const scopeOf: Record<string, string> = { ask: "A", bsk: "B" };
+  const queries = moduleFromSource("../src/app/stateQueries.ts", { "./state": { S, sessions } }, {}, "");
+  const split = moduleFromSource("../src/workspace/skipperSplit.ts", {
+    "../app/state": { S, sessions }, "../app/stateQueries": queries,
+    "./sidebarLines": { scopeOrder: (scope: string) => (scope === "A" ? ["ask", "a1", "a2"] : ["bsk", "b1"]).filter((id) => sessions.has(id)) },
+    "./ledgerModel": { ownPanes: () => [] }, "./ledgerStore": { ledgerRows: () => [], ledgerTitle: () => "" },
+    "../app/skiffAgent": { coordinatorOf: (id: string) => scopeOf[id] ?? null },
+    "./layout": { leaf: (session: string) => ({ type: "pane", session }), sessionsOf: (l: any) => (l.type === "pane" ? [l.session] : [l.a.session, l.b.session]), replacePane: (l: any, id: string, f: any) => ({ ...l, a: l.a.session === id ? f(l.a) : l.a, b: l.b.session === id ? f(l.b) : l.b }) },
+    "./layoutSlots": { isSlot: () => false }, "./view": { focusPane() {} }, "../app/renderRequest": { render() {} },
+  }, {}, "");
+  const go = (sk: string) => { S.single = sk; split.restoreSplit(sk); };
+  go("ask"); split.showChild("a2");
+  go("bsk"); assert.equal(split.splitChild(), null, "A's child does not follow to B");
+  split.showChild("b1");
+  go("ask"); assert.equal(split.splitChild(), "a2");
+  go("bsk"); assert.equal(split.splitChild(), "b1");
+  // A's child went while B was on screen: back on A, the next child shows.
+  const after = split.splitLoses("a2"); sessions.delete("a2"); after();
+  go("ask"); assert.equal(split.splitChild(), "a1");
+  // Closed stays closed.
+  split.closeSplit(); go("bsk"); go("ask"); assert.equal(split.splitChild(), null);
+});

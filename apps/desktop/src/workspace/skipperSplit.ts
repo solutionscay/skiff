@@ -46,8 +46,7 @@ function paneTask(id: string): string {
  * (`ownPanes`). Never the Skipper's own pane, the Skiff agent, or a
  * Skipper of another scope.
  */
-export function splitChildren(): { id: string; title: string }[] {
-  const sk = splitSkipper();
+export function splitChildren(sk: string | null = splitSkipper()): { id: string; title: string }[] {
   const scope = sk && coordinatorOf(sk);
   if (!sk || !scope) return [];
   if (scope === "grand") return ownPanes(sk);
@@ -69,9 +68,7 @@ export function showChild(id: string, focus = false) {
   const sk = splitSkipper();
   if (!sk || id === sk || !sessions.has(id)) return;
   const was = skipperSplit();
-  // The new child takes the old one's place: a moved or resized split keeps its shape.
-  const layout: Layout = was ? replacePane(was.layout, was.child, () => leaf(id)) : { type: "split", dir: "row", ratio: 0.5, a: leaf(sk), b: leaf(id) };
-  S.skipperSplit = { skipper: sk, child: id, layout };
+  S.skipperSplits.set(sk, { child: id, layout: childIn(sk, id) });
   // The keys were in the child that leaves: they go to the new one.
   if (focus || (was && S.focused === was.child)) return focusPane(id);
   render();
@@ -80,7 +77,8 @@ export function showChild(id: string, focus = false) {
 /** Closes the split. The child session keeps running; the Skipper's pane takes the keys if the child had them. */
 export function closeSplit() {
   const sp = skipperSplit();
-  S.skipperSplit = null;
+  // Closed, it keeps its tree: the divider and the child's place come back on the next open.
+  if (sp) S.skipperSplits.set(sp.skipper, { child: null, layout: sp.layout });
   if (sp && S.focused === sp.child) return focusPane(sp.skipper);
   render();
 }
@@ -108,24 +106,48 @@ export function stepChild(dir: 1 | -1): boolean {
   return true;
 }
 
+/** The Skipper's saved tree with `child` in the last child's place: a moved or resized split keeps its shape. */
+function childIn(sk: string, child: string): Layout {
+  const saved = S.skipperSplits.get(sk)?.layout;
+  const old = saved && sessionsOf(saved).find((x) => x !== sk);
+  return saved && old ? replacePane(saved, old, () => leaf(child)) : { type: "split", dir: "row", ratio: 0.5, a: leaf(sk), b: leaf(child) };
+}
+
+/**
+ * `sk` comes on screen. Its split comes back with its child while that one
+ * is live and a child; else the first child takes its place; with none, it
+ * closes. A closed split stays closed.
+ */
+export function restoreSplit(sk: string) {
+  const sp = S.skipperSplits.get(sk);
+  if (!sp?.child) return;
+  const list = splitChildren(sk).map((c) => c.id);
+  if (list.includes(sp.child) && sessions.has(sp.child)) return;
+  const next = list.find((x) => sessions.has(x));
+  S.skipperSplits.set(sk, next ? { child: next, layout: childIn(sk, next) } : { ...sp, child: null });
+}
+
 /**
  * A session is about to go. Call before it leaves `sessions`; run the answer
- * after. The child that goes gives its place to the next child; with no
- * other child the split closes. The Skipper that goes takes its split along.
+ * after. In each Skipper's split, the child that goes gives its place to the
+ * next child; with no other child the split closes. A Skipper that goes
+ * takes its split along.
  */
 export function splitLoses(id: string): () => void {
-  const sp = S.skipperSplit;
-  if (!sp) return () => {};
-  if (sp.skipper === id) return () => void (S.skipperSplit = null);
-  if (sp.child !== id) return () => {};
-  const list = skipperSplit() ? splitChildren().map((c) => c.id) : [];
-  const i = list.indexOf(id);
-  const rest = list.filter((x) => x !== id);
-  const next = rest.length ? rest[(i < 0 ? 0 : i) % rest.length] : null;
-  return () => {
-    if (S.skipperSplit !== sp) return;
-    S.skipperSplit = next && sessions.has(next) ? { ...sp, child: next, layout: replacePane(sp.layout, sp.child, () => leaf(next)) } : null;
-  };
+  const after: (() => void)[] = [];
+  if (S.skipperSplits.has(id)) after.push(() => void S.skipperSplits.delete(id));
+  for (const [sk, sp] of S.skipperSplits) {
+    if (sp.child !== id) continue;
+    const list = splitChildren(sk).map((c) => c.id);
+    const i = list.indexOf(id);
+    const rest = list.filter((x) => x !== id);
+    const next = rest.length ? rest[(i < 0 ? 0 : i) % rest.length] : null;
+    after.push(() => {
+      if (S.skipperSplits.get(sk) !== sp) return;
+      S.skipperSplits.set(sk, next && sessions.has(next) ? { child: next, layout: childIn(sk, next) } : { ...sp, child: null });
+    });
+  }
+  return () => after.forEach((f) => f());
 }
 
 /**
@@ -150,7 +172,7 @@ export function keepSplit(next: Layout | null, focus: string | null): boolean {
     showChild(add, focus === add);
     return true;
   }
-  S.skipperSplit = { ...sp, child: others[0], layout: next };
+  S.skipperSplits.set(sp.skipper, { child: others[0], layout: next });
   focusPane(focus && ids.includes(focus) ? focus : others[0]);
   return true;
 }

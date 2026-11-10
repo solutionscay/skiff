@@ -84,8 +84,9 @@ export const activeGroupObj = () => S.groups.find((g) => g.id === S.activeGroup)
 
 /** The Skipper split, while it shows: its Skipper is the single view and its child pane is live. */
 export function skipperSplit(): { skipper: string; child: string; layout: Layout } | null {
-  const sp = S.skipperSplit;
-  return sp && !S.activeGroup && S.single === sp.skipper && sessions.has(sp.child) ? sp : null;
+  if (S.activeGroup || !S.single) return null;
+  const sp = S.skipperSplits.get(S.single);
+  return sp?.child && sessions.has(sp.child) ? { skipper: S.single, child: sp.child, layout: sp.layout } : null;
 }
 
 /** The saved view: the active group's tree, else the single session, with its child pane in a Skipper split. */
