@@ -16,6 +16,12 @@
 .lm-item.danger { color: var(--error-text); }
 .lm-title { height: calc(32 * var(--u)); display: flex; align-items: center; padding: 0 calc(16 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; color: var(--text-3); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .lm-item { width: 100%; height: var(--row); display: flex; align-items: center; gap: calc(12 * var(--u)); padding: 0 calc(16 * var(--u)); border: 0; background: transparent; color: var(--text); text-align: left; }
+.lm-item[hidden] { display: none; }
+/* An item with a state mark (the split's children): the name keeps its room, the task title after it gives way. */
+#ctx-menu .lm-item:has(.lm-mark) .lm-name { flex: 0 0 auto; max-width: 55%; }
+#ctx-menu .lm-item:has(.lm-mark) .lm-hint { flex: 1 1 0; min-width: 0; text-align: right; }
+/* The item in use (the pane on screen): the 2px bar without the tint. */
+.lm-item.current { box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); }
 .lm-item:disabled, .lm-item:disabled:hover { opacity: 0.4; cursor: default; background-image: none; }
 /* Section heads and separators carry the only breaks between items. */
 .lm-item + .lm-head { border-top: 1px solid var(--rule); }

@@ -18,6 +18,10 @@ export type MenuEntry =
       danger?: boolean;
       disabled?: boolean;
       hover?: () => void;
+      /** Drawn after the name, such as a state icon. */
+      mark?: HTMLElement;
+      /** The item in use: a 2px bar, no tint. */
+      current?: boolean;
     };
 
 /** One right-click menu for session rows, panes, and groups. Esc or a click outside closes it. */
@@ -60,6 +64,11 @@ export function createMenu(onClose: () => void) {
   /** The open menu's entries, so a hint key can reach an item in a submenu. */
   let shown: MenuEntry[] = [];
   let hoverTimer = 0;
+
+  /** Type-to-filter: on for menus opened with `filter`. Typed text hides the items whose name lacks it. */
+  let filterOn = false;
+  let query = "";
+  let title = "";
 
   /** Called once when the menu closes without a pick (Esc, click outside, another menu). */
   let dismiss: (() => void) | null = null;
@@ -108,7 +117,12 @@ export function createMenu(onClose: () => void) {
       const name = flip ? e.icon!.slice(0, -5) : e.icon ?? "";
       if (isRune(name)) k.append(rune(name, 14, flip));
       else k.textContent = e.icon ?? "";
-      b.append(e.glyph ?? k, n, hint);
+      if (e.mark) e.mark.classList.add("lm-mark");
+      b.append(e.glyph ?? k, n, ...(e.mark ? [e.mark] : []), hint);
+      if (e.current) {
+        b.classList.add("current");
+        b.setAttribute("aria-current", "true");
+      }
       if (e.sub) b.setAttribute("aria-haspopup", "menu");
       if (e.hover) {
         b.addEventListener("mouseenter", e.hover);
@@ -151,10 +165,25 @@ export function createMenu(onClose: () => void) {
     if (focus) fly.querySelector<HTMLButtonElement>(".lm-item:not(:disabled)")?.focus();
   }
 
-  function open(x: number, y: number, title: string, entries: MenuEntry[], onDismiss?: () => void) {
+  /** Hides the items whose name lacks the typed text; the title shows the text. */
+  function applyFilter() {
+    const q = query.toLowerCase();
+    for (const b of menu.querySelectorAll<HTMLButtonElement>(".lm-item")) {
+      b.hidden = !!q && !(b.querySelector(".lm-name")?.textContent ?? "").toLowerCase().includes(q);
+    }
+    const t = menu.querySelector(".lm-title");
+    if (t) t.textContent = q ? `${title}: ${query}` : title;
+    const cur = document.activeElement as HTMLElement | null;
+    if (!cur || cur.hidden || !menu.contains(cur)) menu.querySelector<HTMLButtonElement>(".lm-item:not(:disabled):not([hidden])")?.focus();
+  }
+
+  function open(x: number, y: number, heading: string, entries: MenuEntry[], onDismiss?: () => void, o: { filter?: boolean } = {}) {
     if (!menu.hidden) close(false);
     menuOpened();
     dismiss = onDismiss ?? null;
+    filterOn = !!o.filter;
+    query = "";
+    title = heading;
     const t = document.createElement("div");
     t.className = "lm-title";
     t.textContent = title;
@@ -170,7 +199,7 @@ export function createMenu(onClose: () => void) {
   }
 
   const nav = (root: HTMLElement, e: KeyboardEvent) => {
-    const items = [...root.querySelectorAll<HTMLButtonElement>(".lm-item:not(:disabled)")];
+    const items = [...root.querySelectorAll<HTMLButtonElement>(".lm-item:not(:disabled):not([hidden])")];
     const i = items.indexOf(document.activeElement as HTMLButtonElement);
     if (e.key === "ArrowDown") items[(i + 1) % items.length]?.focus();
     else if (e.key === "ArrowUp") items[(i - 1 + items.length) % items.length]?.focus();
@@ -202,8 +231,12 @@ export function createMenu(onClose: () => void) {
 
   menu.addEventListener("keydown", (e) => {
     const cur = document.activeElement as HTMLButtonElement | null;
+    const typed = filterOn && !e.ctrlKey && !e.metaKey && !e.altKey && ((e.key.length === 1 && e.key !== " ") || (e.key === "Backspace" && query));
     if (e.key === "Escape") close();
-    else if ((e.key === "ArrowRight" || e.key === "Enter" || e.key === " ") && cur?.getAttribute("aria-haspopup")) {
+    else if (typed) {
+      query = e.key === "Backspace" ? query.slice(0, -1) : query + e.key;
+      applyFilter();
+    } else if ((e.key === "ArrowRight" || e.key === "Enter" || e.key === " ") && cur?.getAttribute("aria-haspopup")) {
       // Enter and Space also click the button; the click opens the flyout without focus, so open it here with focus.
       const sub = flyOwner === cur && !fly.hidden ? null : cur;
       if (sub) sub.click();

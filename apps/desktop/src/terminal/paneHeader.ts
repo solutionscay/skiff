@@ -19,7 +19,9 @@ import { S, sessions } from "../app/state";
 import { accent, awayPlaces, inShownGroup, place, shownIds } from "../app/stateQueries";
 
 import { closePane, dragSessions, focusPane } from "./paneActions";
-import { showChild, splitChild, splitChildren, splitSkipper, stepChild, toggleSplit } from "../workspace/skipperSplit";
+import { showChild, splitChild, splitChildren, splitSkipper, toggleSplit } from "../workspace/skipperSplit";
+import { ctxMenu } from "../ui/contextMenu";
+import type { MenuEntry } from "../ui/menu";
 import { resumeOffer, resumePane } from "./resume";
 import { t } from "../i18n";
 /** One pane header: the agent icon, the title, then the close button. */
@@ -51,7 +53,7 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   cell.classList.toggle("selected", S.selection.includes(id));
   const multi = shownIds().length > 1;
   const grouped = inShownGroup(id);
-  // The Skipper split: the Skipper's head has the split button, the child's head the cycle and ×.
+  // The Skipper split: the Skipper's head has the split button, the child's head the children list and ×.
   const split = splitHead(id);
   const away = s ? awayPlaces(s).map((a) => branchName(a.worktree)).join(", ") : "";
   // Rebuild only on change, so a click that spans a daemon event still lands.
@@ -63,7 +65,8 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   head.classList.toggle("st-waiting", s.state === "waiting");
   head.classList.toggle("st-done", s.state === "done");
   // The state reads with the name it belongs to, not with the buttons.
-  head.append(agentIcon(s), headTitle(s), stateIcon(s));
+  // The child's title opens the list of children.
+  head.append(agentIcon(s), split?.kind === "child" ? childPicker(id, s) : headTitle(s), stateIcon(s));
   // What the program reports: what it waits for and asks, how its turn ended.
   const note = statusNote(s);
   if (note) head.appendChild(h("span", "where status-note", note));
@@ -96,7 +99,6 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
     r.title = t("pane.resumeTip", { agent: offer.agent });
     head.appendChild(r);
   }
-  if (split?.kind === "child") head.append(...cycleButtons(split.at, split.n));
   if (split?.kind === "skipper") head.appendChild(splitButton(split.n, split.on));
   // Mouse controls for the two view modes. The pane is focused first: they act on the focused pane.
   const viewBtn = (name: RuneName, label: string, key: Action, run: () => void) => {
@@ -139,8 +141,8 @@ function headTitle(s: SessionInfo): HTMLElement {
   return title;
 }
 
-/** What the Skipper split adds to a head: the split button on its Skipper, the cycle on its child. */
-type SplitHead = { kind: "skipper"; n: number; on: boolean } | { kind: "child"; at: number; n: number; title: string };
+/** What the Skipper split adds to a head: the split button on its Skipper, the children list on its child. */
+type SplitHead = { kind: "skipper"; n: number; on: boolean } | { kind: "child"; title: string };
 
 function splitHead(id: string): SplitHead | null {
   const sk = splitSkipper();
@@ -149,8 +151,7 @@ function splitHead(id: string): SplitHead | null {
   if (id !== sk && id !== child) return null;
   const list = splitChildren();
   if (id === sk) return { kind: "skipper", n: list.length, on: !!child };
-  const at = list.findIndex((c) => c.id === id);
-  return { kind: "child", at, n: list.length, title: at < 0 ? "" : list[at].title };
+  return { kind: "child", title: list.find((c) => c.id === id)?.title ?? "" };
 }
 
 /** The split button with the child count: "◫ 4". With no children it is dim and does nothing. */
@@ -167,26 +168,30 @@ function splitButton(n: number, on: boolean): HTMLElement {
   return b;
 }
 
-/** ‹ 2 / 4 › on the child's head. A child that left the cycle shows "– / 4". The keys stay where they are. */
-function cycleButtons(at: number, n: number): HTMLElement[] {
-  const step = (dir: 1 | -1, action: Action, label: string, d: string) => {
-    const b = button("head-btn head-cycle", "", () => {
-      // A child that left the list: the arrows go to the first or last child.
-      if (at < 0) {
-        const list = splitChildren();
-        const c = list[dir === 1 ? 0 : list.length - 1];
-        if (c) showChild(c.id);
-      } else stepChild(dir);
-    });
-    b.title = `${label} (${keyLabel(action)})`;
-    b.setAttribute("aria-label", label);
-    b.disabled = !n || (n === 1 && at === 0);
-    b.appendChild(icon(`<path d="${d}"></path>`));
-    return b;
-  };
-  return [
-    step(-1, "child-prev", t("pane.prevChild"), "M15 6l-6 6 6 6"),
-    h("span", "head-cycle-n", `${at < 0 ? "–" : at + 1} / ${n}`),
-    step(1, "child-next", t("pane.nextChild"), "M9 6l6 6-6 6"),
-  ];
+/** The child's title with a chevron: it opens the list of children. */
+function childPicker(id: string, s: SessionInfo): HTMLElement {
+  const b = button("head-pick", "", () => childMenu(id, b));
+  b.setAttribute("aria-haspopup", "menu");
+  b.setAttribute("aria-label", t("pane.children"));
+  b.append(headTitle(s), icon('<path d="M6 9l6 6 6-6"></path>'));
+  return b;
+}
+
+/**
+ * The split's children in their order: agent, name, state, newest task. The
+ * shown one is marked. A pane outside the children shows in the head.
+ * Typing filters; a pick shows that child.
+ */
+function childMenu(id: string, b: HTMLElement) {
+  const r = b.getBoundingClientRect();
+  const list = splitChildren();
+  const now = sessions.get(id);
+  const entries: MenuEntry[] = [];
+  if (now && !list.some((c) => c.id === id)) entries.push({ head: t("pane.splitShown", { name: taskTitle(now) }) });
+  for (const c of list) {
+    const x = sessions.get(c.id);
+    if (!x) continue;
+    entries.push({ glyph: agentIcon(x), label: taskTitle(x), mark: stateIcon(x), hint: c.title, current: c.id === id, run: () => showChild(c.id) });
+  }
+  ctxMenu.open(r.left, r.bottom, t("pane.children"), entries, undefined, { filter: true });
 }
