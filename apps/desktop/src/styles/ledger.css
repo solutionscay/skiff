@@ -22,7 +22,7 @@ body.ledger-keys .cell.focused .cell-head { background: var(--bg-panel); }
   font-size: calc(13px * var(--zoom, 1)); font-weight: 600; color: var(--text);
 }
 .lg-name { flex: 1; }
-.lg-need { padding: 0; border: 0; background: none; cursor: pointer; font-family: var(--mono); font-size: calc(11px * var(--zoom, 1)); font-weight: 400; color: var(--state-waiting-text); }
+.lg-need { flex-shrink: 0; white-space: nowrap; padding: 0; border: 0; background: none; cursor: pointer; font-family: var(--mono); font-size: calc(11px * var(--zoom, 1)); font-weight: 400; color: var(--state-waiting-text); }
 .lg-need[hidden] { display: none; }
 .lg-need:hover { text-decoration: underline; }
 /* The fold chevron: at the right edge of the header, and on top of the rail. */
@@ -137,7 +137,9 @@ body.ledger-keys .cell.focused .cell-head { background: var(--bg-panel); }
 .lg-row.shown, .lg-row.need.shown { box-shadow: inset 2px 0 0 var(--pc); }
 
 /* Tasks | Schedules in the head (#262): the tab on screen is bold, with a 2px bar under it. */
-.lg-tabs { flex: 1; min-width: 0; display: flex; align-items: stretch; align-self: stretch; gap: calc(16 * var(--u)); }
+.lg-tabs { flex: 1 0 auto; display: flex; align-items: stretch; align-self: stretch; gap: calc(14 * var(--u)); }
+/* The tabs keep their words: the filter gives way first. */
+.lg-head .lg-filter { flex-shrink: 1; }
 .lg-tab { display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0; border: 0; background: none; cursor: pointer; font: 400 calc(13px * var(--zoom, 1)) var(--font); color: var(--text-3); }
 .lg-tab[hidden] { display: none; }
 .lg-tab:hover { color: var(--text); }

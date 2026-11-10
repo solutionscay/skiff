@@ -212,35 +212,35 @@ function row(label: string, content: Node, end?: Node, cls = ""): HTMLElement {
 }
 
 const EVERY_LABEL = (v: string): string => {
-  if (v.endsWith("m")) return t("schedules.everyMin", { n: v.slice(0, -1) });
-  if (v.endsWith("h")) return t("schedules.everyHour", { n: v.slice(0, -1) });
+  const n = /^(\d+)([mh])$/.exec(v);
+  if (n) return t(n[2] === "m" ? "schedules.everyMin" : "schedules.everyHour", { n: n[1] });
   return t(`schedules.every.${v}` as MessageKey);
 };
 
-/** The days menu: a click checks or clears a day, and the menu opens again in place. */
-function daysEntries(days: number, set: (d: number) => void, reopen: () => void): MenuEntry[] {
-  const hints = ["M", "T", "W", "H", "F", "S", "U"];
+/** The days menu: a click checks or clears a day, and the menu opens again in place once the Host has the change. */
+function daysEntries(days: number, set: (d: number) => Promise<void>): MenuEntry[] {
+  const reopen = () => document.querySelector<HTMLButtonElement>('#settings .pk[data-pick="days"]')?.click();
   const flip = (d: number) => () => {
     const next = days ^ d;
     // A week keeps one day at least.
-    if (next) set(next);
-    requestAnimationFrame(reopen);
+    if (next) void set(next).then(() => requestAnimationFrame(reopen));
+    else requestAnimationFrame(reopen);
   };
   return [
-    ...WEEK.map(([n, name], i) => choice(name, !!(days & (1 << n)), flip(1 << n), hints[i])),
+    ...WEEK.map(([n, name]) => choice(name, !!(days & (1 << n)), flip(1 << n))),
     { sep: true },
-    choice(t("schedules.monFri"), days === MON_FRI, () => set(MON_FRI), "D"),
-    choice(t("schedules.everyDay"), days === ALL_DAYS, () => set(ALL_DAYS), "A"),
+    choice(t("schedules.monFri"), days === MON_FRI, () => void set(MON_FRI)),
+    choice(t("schedules.everyDay"), days === ALL_DAYS, () => void set(ALL_DAYS)),
   ];
 }
 
 /** The When sentence. `save` stores a new cron line. */
-function whenSentence(st: SchedulesState, cron: string, save: (cron: string) => void): HTMLElement {
+function whenSentence(st: SchedulesState, cron: string, save: (cron: string) => Promise<void>): HTMLElement {
   const w = fromCron(cron);
   const sent = h("div", "sent");
   const put = (next: When) => {
     st.whenError = null;
-    save(toCron(next));
+    return save(toCron(next));
   };
   const firstEntries = (): MenuEntry[] => {
     const now = every(w);
@@ -294,7 +294,7 @@ function whenSentence(st: SchedulesState, cron: string, save: (cron: string) => 
     });
     f.addEventListener("blur", () => {
       const v = f.value.trim().split(/\s+/).join(" ");
-      if (v !== w.cron) save(v);
+      if (v !== w.cron) void save(v);
     });
     sent.append(f);
     return sent;
@@ -302,7 +302,8 @@ function whenSentence(st: SchedulesState, cron: string, save: (cron: string) => 
   sent.append(word(t("schedules.everyWord")), first);
   if (w.kind === "day" || w.kind === "weekday") sent.append(word(t("schedules.at")), time(w.at, (at) => ({ ...w, at })));
   if (w.kind === "week") {
-    const days = pk(t("schedules.days"), weekWords(w.days), () => daysEntries(w.days, (d) => put(weekOf(d, w.at)), () => days.click()));
+    const days = pk(t("schedules.days"), weekWords(w.days), () => daysEntries(w.days, (d) => put(weekOf(d, w.at))));
+    days.dataset.pick = "days";
     sent.append(word(t("schedules.on")), days, word(t("schedules.at")), time(w.at, (at) => ({ ...w, at })));
   }
   if (w.kind === "month") {
@@ -323,7 +324,8 @@ function whenSentence(st: SchedulesState, cron: string, save: (cron: string) => 
         pk(t("schedules.to"), hour(z), () => Array.from({ length: 24 - a }, (_, i) => a + 1 + i).map((n) => choice(hour(n), n === z, () => put({ ...w, window: [a, n] }))), { mono: true }),
       );
     }
-    const days = pk(t("schedules.days"), weekWords(w.days), () => daysEntries(w.days, (d) => put({ ...w, days: d }), () => days.click()));
+    const days = pk(t("schedules.days"), weekWords(w.days), () => daysEntries(w.days, (d) => put({ ...w, days: d })));
+    days.dataset.pick = "days";
     sent.append(word(t("schedules.on")), days);
   }
   return sent;
@@ -417,7 +419,7 @@ function editPage(main: HTMLElement, head: HTMLElement, st: SchedulesState, ctx:
   // When.
   main.append(sectionHead(t("schedules.bandWhen")));
   main.append(row(t("schedules.colName"), textBox({ label: t("schedules.colName"), value: d.name, name: true, save: (v) => void save(["--name", v], (x) => void (x.name = v)) })));
-  const when = whenSentence(st, d.cron, (cron) => void save(["--cron", cron], (x) => void (x.cron = cron)));
+  const when = whenSentence(st, d.cron, (cron) => save(["--cron", cron], (x) => void (x.cron = cron)));
   main.append(row(t("schedules.when"), when, whenEnd(st, ctx, d.cron), "sent-row"));
 
   // Command.
