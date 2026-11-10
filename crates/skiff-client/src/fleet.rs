@@ -164,7 +164,9 @@ pub fn move_rows(file: &Path, socket: &Path, fleet: &str, fs: &SessionInfo, t: &
 
 /// A restarted project or fleet Skipper takes its interrupted hand-offs
 /// back as pending. Keep their owner, and leave one resend note per owner.
-pub fn restart_rows(file: &Path, scope: &str, skipper: &SessionInfo, all: &[SessionInfo]) -> Result<()> {
+/// `fresh`: a new agent started in the Skipper's pane, so every hand-off
+/// at work counts as interrupted.
+pub fn restart_rows(file: &Path, scope: &str, skipper: &SessionInfo, all: &[SessionInfo], fresh: bool) -> Result<()> {
     if !file.exists() {
         return Ok(());
     }
@@ -173,7 +175,7 @@ pub fn restart_rows(file: &Path, scope: &str, skipper: &SessionInfo, all: &[Sess
     let mut owners = std::collections::BTreeMap::<String, Vec<String>>::new();
     for r in ledger::rows(&tx, "WHERE kind = 'handoff' AND project = ?1 AND state IN ('sent', 'blocked')", Some(&scope))? {
         let old = all.iter().find(|s| Some(s.id.as_str()) == r.pane_id.as_deref());
-        if !r.interrupted_in(old) {
+        if !fresh && !r.interrupted_in(old) {
             continue;
         }
         tx.execute(

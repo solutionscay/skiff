@@ -135,6 +135,9 @@ pub struct Wake {
     pub task: Option<String>,
     /// An idle pane whose program reported its turn ended in an error (OSC 7501).
     pub failed: bool,
+    /// The scope of the project or fleet Skipper that exited or restarted
+    /// with hand-offs at work: `task` holds them. `None` for any other pane.
+    pub skipper: Option<String>,
 }
 
 impl Wake {
@@ -143,6 +146,13 @@ impl Wake {
     }
 
     pub(super) fn tail(&self) -> String {
+        if self.skipper.is_some() {
+            return match &self.task {
+                Some(t) if t.contains(", ") => format!(": hand-offs {t} are open"),
+                Some(t) => format!(": hand-off {t} is open"),
+                None => String::new(),
+            };
+        }
         match (&self.task, self.fact) {
             (Some(t), Fact::Pending) => format!(": task {t} is pending: skiff ledger send {t} --enter"),
             (Some(t), Fact::Gone) if t.contains(", ") => format!(": tasks {t} are open"),
@@ -155,8 +165,44 @@ impl Wake {
     }
 }
 
-/// The one line the agent gets for all held wakes.
+/// The one line the agent gets for all held wakes. A Skipper that exited
+/// or restarted comes last, in its own sentence.
 pub fn wake_line(wakes: &[Wake]) -> String {
+    let skippers: Vec<String> = wakes.iter().filter_map(|w| w.skipper.as_deref().map(|scope| skipper_part(w, scope))).collect();
+    let rest: Vec<Wake> = wakes.iter().filter(|w| w.skipper.is_none()).cloned().collect();
+    let Some((first, more)) = skippers.split_first() else { return pane_line(&rest) };
+    let more: Vec<String> = more.iter().map(|p| upper_first(p)).collect();
+    let mine = std::iter::once(first.clone()).chain(more).collect::<Vec<_>>().join(" ");
+    if rest.is_empty() {
+        format!("[watch] {mine}")
+    } else {
+        format!("{} {}", pane_line(&rest), upper_first(&mine))
+    }
+}
+
+/// The sentence for a Skipper that exited or restarted with hand-offs at
+/// work. The person decides on the restart; the restart moves the
+/// hand-offs back to pending.
+fn skipper_part(w: &Wake, scope: &str) -> String {
+    let quote = |n: &str| if n.contains(char::is_whitespace) { format!("\"{n}\"") } else { n.to_string() };
+    let start = match skiff_client::skipper::scope_fleet(scope) {
+        Some(f) => format!("--fleet {}", quote(f)),
+        None => format!("--project {}", quote(scope)),
+    };
+    let send = match w.task.as_deref() {
+        Some(t) if !t.contains(", ") => format!("resend it with skiff ledger send {t} --enter"),
+        _ => "resend each with skiff ledger send <uid> --enter".to_string(),
+    };
+    format!("the {} {}{}. Tell the person. Start it again with skiff skipper {start} --no-attach, then {send}.", w.name, w.phrase(), w.tail())
+}
+
+fn upper_first(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
+}
+
+/// The line for the held wakes of panes, not Skippers.
+fn pane_line(wakes: &[Wake]) -> String {
     let told_fact = |w: &&Wake| matches!(w.fact, Fact::Closed | Fact::Reported);
     let parts: Vec<String> = wakes
         .iter()

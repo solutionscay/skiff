@@ -26,14 +26,14 @@ fn idle_counts_after_work_or_while_unread_and_is_told_once() {
 
 #[test]
 fn held_wakes_make_one_line() {
-    let w = |fact, name: &str, id: &str| Wake { fact, pane: id.into(), name: name.into(), id: id.into(), task: None, failed: false };
+    let w = |fact, name: &str, id: &str| Wake { fact, pane: id.into(), name: name.into(), id: id.into(), task: None, failed: false, skipper: None };
     assert_eq!(wake_line(&[w(Fact::Idle, "api", "abc12345xyz")]), "[watch] pane api abc12345 is idle. Read it, then mark it seen.");
     assert_eq!(
         wake_line(&[w(Fact::Idle, "api", "abc12345"), w(Fact::Gone, "", "def67890")]),
         "[watch] pane api abc12345 is idle; pane def67890 is gone. Read them, then mark each seen."
     );
     // A gone pane with open tasks: they are reassigned or marked done, not marked seen.
-    let gone = |id: &str, t: &str| Wake { fact: Fact::Gone, pane: id.into(), name: String::new(), id: id.into(), task: Some(t.into()), failed: false };
+    let gone = |id: &str, t: &str| Wake { fact: Fact::Gone, pane: id.into(), name: String::new(), id: id.into(), task: Some(t.into()), failed: false, skipper: None };
     assert_eq!(
         wake_line(&[gone("4ac9e7a1", "d0e7b2f4")]),
         "[watch] pane 4ac9e7a1 is gone: task d0e7b2f4 is open. Reassign it or mark it done."
@@ -329,8 +329,8 @@ fn a_task_skiff_closed_for_a_gone_pane_is_told_once_after_the_start() {
     w.closed(&[done("d0e7b2f4", "5b1c9e2a")]);
     assert!(w.held.is_empty());
     // With other lines, the others come first.
-    let idle = Wake { fact: Fact::Idle, pane: "abc12345".into(), name: "api".into(), id: "abc12345".into(), task: None, failed: false };
-    let closed = Wake { fact: Fact::Closed, pane: "gone:4ac9e7a1".into(), name: String::new(), id: "4ac9e7a1".into(), task: Some("d0e7b2f4".into()), failed: false };
+    let idle = Wake { fact: Fact::Idle, pane: "abc12345".into(), name: "api".into(), id: "abc12345".into(), task: None, failed: false, skipper: None };
+    let closed = Wake { fact: Fact::Closed, pane: "gone:4ac9e7a1".into(), name: String::new(), id: "4ac9e7a1".into(), task: Some("d0e7b2f4".into()), failed: false, skipper: None };
     assert_eq!(
         wake_line(&[closed, idle]),
         "[watch] pane api abc12345 is idle; pane 4ac9e7a1 is gone: task d0e7b2f4 is done with it. Read it, then mark it seen. Tell the person, then run skiff ledger report d0e7b2f4."
@@ -748,4 +748,43 @@ fn a_ready_hand_off_wakes_its_own_skipper_once_and_never_the_grand_one() {
     // The child's report goes to Admiral, which records its delivery on the hand-off.
     assert_eq!(ws["grand"].reports_ready(), ["u3"]);
     assert!(ws["gesher"].reports_ready().is_empty());
+}
+
+#[test]
+fn admiral_hears_once_when_its_skipper_exits_or_restarts() {
+    let mut grand = info("aaaa1111", "idle", false);
+    grand.coordinator = true;
+    let mut skiff = born(info("bbbb2222", "working", false), 1);
+    skiff.skipper = Some("skiff".into());
+    skiff.name = Some("skiff Skipper".into());
+    let hand = |uid: &str| ledger::Row { kind: "handoff".into(), project: "skiff".into(), ..row(1, uid, "bbbb2222", "sent", Some(1)) };
+    let rows = [hand("a1b2c3d4"), hand("e5f6a7b8")];
+    let step = |ws: &mut Watchers, s: &SessionInfo| {
+        let all = [grand.clone(), s.clone()];
+        let told = route(ws, &targets(&all), &rows, &[], &[], &[], &all);
+        told.into_iter().map(|(o, w)| (o, w.fact)).collect::<Vec<_>>()
+    };
+    let mut ws = Watchers::default();
+    assert!(step(&mut ws, &skiff).is_empty());
+    // A turn end is no line.
+    ws.get_mut("grand").unwrap().note(&Event::TurnEnded { session: "bbbb2222".into() });
+    skiff.state = SessionState::Idle;
+    skiff.unread = true;
+    assert!(step(&mut ws, &skiff).is_empty());
+    // The agent exits: one line, with every hand-off, to Admiral.
+    skiff.agent_exit = Some(0);
+    assert_eq!(step(&mut ws, &skiff), [("grand".to_string(), Fact::Exit)]);
+    assert_eq!(
+        wake_line(&ws["grand"].held),
+        "[watch] the skiff Skipper exited: hand-offs a1b2c3d4, e5f6a7b8 are open. Tell the person. Start it again with skiff skipper --project skiff --no-attach, then resend each with skiff ledger send <uid> --enter."
+    );
+    assert!(step(&mut ws, &skiff).is_empty());
+    // A restart: a new generation, a bare shell. One line.
+    ws.get_mut("grand").unwrap().held.clear();
+    let mut back = born(skiff.clone(), 2);
+    back.agent_exit = None;
+    back.resume = Some(skiff_core::session::Was { agent: "claude".into(), title: None });
+    assert_eq!(step(&mut ws, &back), [("grand".to_string(), Fact::Interrupted)]);
+    assert!(wake_line(&ws["grand"].held).starts_with("[watch] the skiff Skipper restarted: hand-offs a1b2c3d4, e5f6a7b8 are open."));
+    assert!(step(&mut ws, &back).is_empty());
 }

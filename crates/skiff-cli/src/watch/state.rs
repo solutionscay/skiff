@@ -180,37 +180,55 @@ pub(super) struct Group<'a> {
     pub(super) pending: Vec<String>,
     /// All its open uids, oldest first: what a gone pane leaves open.
     pub(super) open: Vec<String>,
+    /// The scope of the project or fleet Skipper whose live pane holds
+    /// hand-offs at work (`sent` or `blocked`). Only its exit and its
+    /// restart are told: a Skipper ends many turns while it coordinates.
+    pub(super) skipper: Option<String>,
+    /// Those hand-offs, oldest first.
+    pub(super) handoffs: Vec<String>,
+    /// One of them was sent before the pane restarted.
+    pub(super) restarted: bool,
 }
 
 /// The open rows by pane, and the interrupted tasks apart. Rows that resolve
 /// to one session (a full id and an imported prefix) make one group. The
-/// coordinators' own panes are skipped: a hand-off at work is followed by
-/// its row, not its pane. A pending hand-off is not: its project Skipper's
-/// idle pane names it.
+/// coordinators' own panes are skipped, but for their hand-offs: a pending
+/// one is named by the Skipper's idle pane, and one at work makes the pane
+/// a Skipper group, which tells its exit and its restart.
 pub(super) fn group<'a>(tasks: &'a [ledger::Row], all: &'a [SessionInfo], coordinators: &[&str]) -> (Vec<Group<'a>>, Vec<(&'a str, &'a SessionInfo)>) {
     let (mut groups, mut interrupted) = (Vec::<Group>::new(), Vec::new());
     for t in tasks {
         let Some(pane) = t.pane_id.as_deref() else { continue };
         let s = resolve::session(all, pane).ok();
-        if s.is_some_and(|s| coordinators.contains(&s.id.as_str())) && !(t.is_handoff() && t.state == "pending") {
+        if s.is_some_and(|s| coordinators.contains(&s.id.as_str())) && !t.is_handoff() {
             continue;
         }
-        if let Some(s) = s.filter(|s| t.interrupted_in(Some(s))) {
-            interrupted.push((t.uid.as_str(), s));
-            continue;
+        // A gone Skipper is told as any gone pane: the close path follows.
+        let at_work = s.is_some() && t.is_handoff() && matches!(t.state.as_str(), "sent" | "blocked");
+        if !at_work {
+            if let Some(s) = s.filter(|s| t.interrupted_in(Some(s))) {
+                interrupted.push((t.uid.as_str(), s));
+                continue;
+            }
         }
         let key = s.map_or(pane, |s| s.id.as_str());
         let i = match groups.iter().position(|g| g.key == key) {
             Some(i) => i,
             None => {
-                groups.push(Group { key: key.to_string(), s, pending: Vec::new(), open: Vec::new() });
+                groups.push(Group { key: key.to_string(), s, pending: Vec::new(), open: Vec::new(), skipper: None, handoffs: Vec::new(), restarted: false });
                 groups.len() - 1
             }
         };
-        if t.state == "pending" {
-            groups[i].pending.push(t.uid.clone());
+        let g = &mut groups[i];
+        if at_work {
+            g.skipper = Some(t.project.clone());
+            g.handoffs.push(t.uid.clone());
+            g.restarted |= t.interrupted_in(s);
         }
-        groups[i].open.push(t.uid.clone());
+        if t.state == "pending" {
+            g.pending.push(t.uid.clone());
+        }
+        g.open.push(t.uid.clone());
     }
     (groups, interrupted)
 }
@@ -218,7 +236,8 @@ pub(super) fn group<'a>(tasks: &'a [ledger::Row], all: &'a [SessionInfo], coordi
 /// The live panes the groups follow, sorted: what the app shows as work to
 /// watch. A gone pane and an interrupted task are told once, not followed.
 pub(super) fn follows(groups: &[Group]) -> Vec<String> {
-    let mut ids: Vec<String> = groups.iter().filter_map(|g| g.s.map(|s| s.id.clone())).collect();
+    // A Skipper's pane is no task pane: its hand-off is followed by its row.
+    let mut ids: Vec<String> = groups.iter().filter(|g| g.skipper.is_none()).filter_map(|g| g.s.map(|s| s.id.clone())).collect();
     ids.sort_unstable();
     ids
 }
@@ -302,12 +321,49 @@ impl Watcher {
         // The program said its turn ended in an error: say so, not idle.
         let failed = fact == Fact::Idle
             && s.and_then(|s| s.program_status.as_ref()).is_some_and(|p| p.state == "error");
-        let wake = Wake { fact, pane: key.to_string(), name: pane.name.clone(), id, task, failed };
+        let wake = Wake { fact, pane: key.to_string(), name: pane.name.clone(), id, task, failed, skipper: None };
         if fact != Fact::Waiting {
             // The newest fact for a pane replaces an older one still held.
             self.held.retain(|h| h.pane != key);
             self.held.push(wake.clone());
         }
+        Some(wake)
+    }
+
+    /// Takes the live pane of a Skipper with hand-offs at work. Its exit, and
+    /// its restart while it is a bare shell, are told once, with every
+    /// hand-off. A Skipper that comes back (an agent in front again, or the
+    /// hand-offs moved to a new pane) clears the told fact. Idle and waiting
+    /// are not told; a pending hand-off on the same pane keeps its line.
+    fn skipper(&mut self, g: &Group, scope: &str, s: &SessionInfo) -> Option<Wake> {
+        let bare = s.agent_exit.is_some() || s.resume.is_some();
+        let now = match Now::of(Some(s), false) {
+            Now::Exit => Now::Exit,
+            _ if g.restarted && bare => Now::Interrupted,
+            _ => {
+                if let Some(p) = self.panes.get_mut(&g.key).filter(|p| matches!(p.told, Some(Fact::Exit | Fact::Interrupted))) {
+                    p.told = None;
+                }
+                if g.pending.is_empty() {
+                    return None;
+                }
+                return self.track(&g.key, g.s, &g.pending).filter(|w| w.fact == Fact::Pending);
+            }
+        };
+        let pane = self.panes.entry(g.key.clone()).or_default();
+        pane.name = resolve::display_name(s).to_string();
+        let fact = pane.observe(now)?;
+        let wake = Wake {
+            fact,
+            pane: g.key.clone(),
+            name: pane.name.clone(),
+            id: s.id.clone(),
+            task: Some(g.handoffs.join(", ")),
+            failed: false,
+            skipper: Some(scope.to_string()),
+        };
+        self.held.retain(|h| h.pane != g.key);
+        self.held.push(wake.clone());
         Some(wake)
     }
 
@@ -319,7 +375,7 @@ impl Watcher {
         let pane = self.panes.entry(key.clone()).or_default();
         pane.name = resolve::display_name(s).to_string();
         let fact = pane.observe(Now::Interrupted)?;
-        let wake = Wake { fact, pane: key, name: pane.name.clone(), id: s.id.clone(), task: Some(uid.to_string()), failed: false };
+        let wake = Wake { fact, pane: key, name: pane.name.clone(), id: s.id.clone(), task: Some(uid.to_string()), failed: false, skipper: None };
         self.held.push(wake.clone());
         Some(wake)
     }
@@ -335,6 +391,10 @@ impl Watcher {
         }
         for g in groups {
             open.insert(g.key.clone());
+            if let (Some(scope), Some(s)) = (&g.skipper, g.s) {
+                wakes.extend(self.skipper(g, scope, s));
+                continue;
+            }
             let mut wake = self.track(&g.key, g.s, &g.pending);
             // A gone pane cannot be marked seen: the line names its open tasks.
             if let Some(w) = wake.as_mut().filter(|w| w.fact == Fact::Gone && !g.open.is_empty()) {
@@ -375,6 +435,7 @@ impl Watcher {
                     id: pane,
                     task: Some(r.uid.clone()),
                     failed: false,
+                    skipper: None,
                 }),
             }
         }
@@ -407,6 +468,7 @@ impl Watcher {
                 id: r.pane_id.clone().unwrap_or_default(),
                 task: Some(r.uid.clone()),
                 failed: false,
+                skipper: None,
             })
             .collect();
         self.held.extend(wakes.iter().cloned());

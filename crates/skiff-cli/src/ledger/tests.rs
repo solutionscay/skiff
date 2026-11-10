@@ -972,7 +972,7 @@ fn a_restarted_skipper_recovers_only_interrupted_handoffs_once() {
             let (_, uid, _, _) = insert(&mut db, &file, n).unwrap();
             unchanged.push((uid.clone(), one(&db, &uid).unwrap()));
         }
-        skiff_client::fleet::restart_rows(&file, scope, &new, &[old.clone()]).unwrap();
+        skiff_client::fleet::restart_rows(&file, scope, &new, &[old.clone()], false).unwrap();
         for uid in [&sent, &blocked] {
             let r = one(&db, uid).unwrap();
             assert_eq!((r.state.as_str(), r.pane_id.as_deref(), r.pane_gen), ("pending", Some(new.id.as_str()), Some(3000)));
@@ -986,7 +986,7 @@ fn a_restarted_skipper_recovers_only_interrupted_handoffs_once() {
         let notes = skiff_client::ledger::notes(&file, GRAND).unwrap();
         assert_eq!(notes.len(), 1);
         assert!(notes[0].1.contains(&sent) && notes[0].1.contains(&blocked) && notes[0].1.contains("Resend"));
-        skiff_client::fleet::restart_rows(&file, scope, &new, &[old.clone(), new.clone()]).unwrap();
+        skiff_client::fleet::restart_rows(&file, scope, &new, &[old.clone(), new.clone()], false).unwrap();
         assert_eq!(skiff_client::ledger::notes(&file, GRAND).unwrap(), notes);
         skiff_client::ledger::drop_notes(&file, &[notes[0].0]).unwrap();
     }

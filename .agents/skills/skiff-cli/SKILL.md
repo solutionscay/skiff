@@ -284,6 +284,7 @@ A plan holds the turn ends of its tasks. While a task in the plan still runs, a 
 5. On `[watch] the P Skipper reported hand-off UID`, read the hand-off's result, tell the person, then run `skiff ledger report UID`. That also stamps the tasks under it.
 6. On `[watch] Closed KIND UID with no report`, tell the person what it names. It comes once. A hand-off in it that a Skipper reports later gives its normal line.
 7. On `[watch] plan UID: N of M tasks ended`, read each pane it names and mark it seen. Set each task `done` with its result, tell the person in one report, then run `skiff ledger report UID`.
+8. On `[watch] the P Skipper exited: hand-off UID is open` (or `restarted`), tell the person. Do not start the Skipper yourself. `skiff skipper --project P --no-attach` (`--fleet F` for a fleet) starts a new agent in its shell, or a new session, and sets its open hand-offs `pending`; resend each with `skiff ledger send UID --enter`. A Skipper's turn ends and idle time give no line.
 
 ### The Ledger panel
 

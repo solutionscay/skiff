@@ -423,8 +423,22 @@ pub fn too_old_for_project(version: &str) -> bool {
     skiff_core::compare_versions(version, PROJECT_SKIPPER_SINCE).is_lt()
 }
 
+/// A Skipper whose agent exited, or that a restore brought back, is a bare
+/// shell: `agent_exit` or `resume` stays set until an agent is in front.
+pub fn is_bare(s: &SessionInfo) -> bool {
+    s.agent_exit.is_some() || s.resume.is_some()
+}
+
+/// Types the start line of `agent` into the bare shell of the Skipper `s`.
+/// True when it typed: a line the person typed first stays theirs.
+async fn start_in_shell(c: &Client, cfg: &Config, s: &SessionInfo, agent: &AgentInfo, model: Option<&str>) -> Result<bool> {
+    let line = format!("{}{}", with_model(agent, model), crate::cache::flags_typed(cfg, agent));
+    c.submit(&s.id, line.into_bytes(), false, true, s.input_gen).await
+}
+
 /// Finds the live project Skipper of `project`, or starts one in the
-/// project's folder. The setup lock keeps two starts apart, so a project
+/// project's folder. A bare shell gets a new agent, which takes the
+/// hand-offs at work back as pending. The setup lock keeps two starts apart, so a project
 /// has at most one. Refuses before anything starts when skiffd is too old
 /// to mark one.
 pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipper> {
@@ -439,8 +453,14 @@ pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipp
     if let Some(s) = find_project(&all, &p.name) {
         let want = self::project_name(&cfg, &p.name);
         let session = if s.name.as_deref() == Some(&want) { s.clone() } else { c.rename_session(&s.id, &want).await? };
-        crate::fleet::restart_rows(&crate::ledger::path()?, &p.name, &session, &all)?;
-        return Ok(ProjectSkipper { session, created: false, dir: setup_project(&cfg, p)? });
+        let dir = setup_project(&cfg, p)?;
+        let typed = is_bare(&session) && {
+            let agents = c.list_agents().await?;
+            let Some((agent, model)) = project_agent(&cfg, &agents, p) else { bail!("No agent is on. Turn one on in Settings › Agents") };
+            start_in_shell(c, &cfg, &session, agent, model.as_deref()).await?
+        };
+        crate::fleet::restart_rows(&crate::ledger::path()?, &p.name, &session, &all, typed)?;
+        return Ok(ProjectSkipper { session, created: typed, dir });
     }
     // One Skipper per project: a running fleet Skipper commands this one.
     if let Some(fleet) = commanding_fleet(&cfg, &all, &p.name) {
@@ -461,7 +481,7 @@ pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipp
         let _ = c.kill(&info.id).await;
         bail!("skiffd did not mark the project Skipper. Nothing started. Update skiffd first");
     }
-    crate::fleet::restart_rows(&crate::ledger::path()?, &p.name, &info, &all)?;
+    crate::fleet::restart_rows(&crate::ledger::path()?, &p.name, &info, &all, false)?;
     Ok(ProjectSkipper { session: info, created: true, dir })
 }
 
@@ -514,7 +534,8 @@ pub fn too_old_for_fleet(version: &str) -> bool {
     skiff_core::compare_versions(version, FLEET_SKIPPER_SINCE).is_lt()
 }
 
-/// Finds the live fleet Skipper of `fleet`, or starts one in its folder.
+/// Finds the live fleet Skipper of `fleet`, or starts one in its folder. A
+/// bare shell gets a new agent, as for a project Skipper.
 /// It refuses before anything starts when skiffd is too old for a
 /// takeover. It does not look at project Skippers in the fleet: the caller
 /// takes them over first (see [`crate::fleet::takeover`]).
@@ -534,8 +555,13 @@ pub async fn open_fleet(c: &Client, fleet: &str) -> Result<ProjectSkipper> {
     if let Some(s) = find_fleet(&all, fleet) {
         let want = fleet_name(&cfg, fleet);
         let session = if s.name.as_deref() == Some(&want) { s.clone() } else { c.rename_session(&s.id, &want).await? };
-        crate::fleet::restart_rows(&crate::ledger::path()?, &fleet_scope(fleet), &session, &all)?;
-        return Ok(ProjectSkipper { session, created: false, dir });
+        let typed = is_bare(&session) && {
+            let agents = c.list_agents().await?;
+            let Some((agent, model)) = fleet_agent(&cfg, &agents) else { bail!("No agent is on. Turn one on in Settings › Agents") };
+            start_in_shell(c, &cfg, &session, agent, model.as_deref()).await?
+        };
+        crate::fleet::restart_rows(&crate::ledger::path()?, &fleet_scope(fleet), &session, &all, typed)?;
+        return Ok(ProjectSkipper { session, created: typed, dir });
     }
     let agents = c.list_agents().await?;
     let Some((agent, model)) = fleet_agent(&cfg, &agents) else { bail!("No agent is on. Turn one on in Settings › Agents") };
@@ -548,7 +574,7 @@ pub async fn open_fleet(c: &Client, fleet: &str) -> Result<ProjectSkipper> {
     if info.skipper.as_deref() != Some(fleet_scope(fleet).as_str()) {
         bail!("skiffd is too old to mark a fleet Skipper. Run `skiff daemon reload`. Session {} runs as a plain agent", info.id);
     }
-    crate::fleet::restart_rows(&crate::ledger::path()?, &fleet_scope(fleet), &info, &all)?;
+    crate::fleet::restart_rows(&crate::ledger::path()?, &fleet_scope(fleet), &info, &all, false)?;
     Ok(ProjectSkipper { session: info, created: true, dir })
 }
 

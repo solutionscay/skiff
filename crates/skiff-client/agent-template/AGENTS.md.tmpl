@@ -170,6 +170,12 @@ projects. Hand work to one when it stays in that project or that fleet:
 - When that Skipper reports the hand-off, you get one `[watch]` line. Read
   its result, tell the person, then run `skiff ledger report UID`. That also
   reports the tasks under it.
+- When that Skipper exits or restarts with a hand-off open, you get one
+  `[watch]` line that names the hand-off. Tell the person. Do not start the
+  Skipper yourself. The person, or your next hand-off, starts it with
+  `skiff skipper --project P --no-attach` (`--fleet F` for a fleet). Its open
+  hand-offs then go back to pending: resend each with
+  `skiff ledger send UID --enter`.
 - Its tasks' `[watch]` lines go to it, not to you.
 - A project in a fleet whose Skipper runs has no project Skipper. A hand-off
   to that project is refused: hand off to the fleet.
