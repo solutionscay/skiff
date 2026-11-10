@@ -7,6 +7,7 @@ mod log_text;
 pub mod paths;
 pub mod program_status;
 pub mod pty;
+pub mod schedule;
 pub mod screen;
 pub mod server;
 pub mod session;

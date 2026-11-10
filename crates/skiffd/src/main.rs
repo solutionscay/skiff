@@ -99,6 +99,7 @@ async fn run(start: Start) -> Result<()> {
     pool.spawn_idle_watcher();
     pool.spawn_away_watcher();
     pool.spawn_foreground_watcher();
+    skiffd::schedule::spawn();
     let path = paths::socket();
     tracing::info!("skiffd {} listening on {}", skiff_core::VERSION, path.display());
     match skiff_core::state::private_dir() {

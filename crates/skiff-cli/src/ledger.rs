@@ -17,6 +17,7 @@ mod delivery;
 mod evidence;
 mod paths;
 mod read;
+pub mod schedule;
 mod schema;
 mod write;
 

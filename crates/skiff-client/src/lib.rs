@@ -27,6 +27,7 @@ pub mod fleet;
 pub mod host;
 pub mod ledger;
 mod requests;
+pub mod schedule;
 pub mod skipper;
 pub mod transport;
 pub mod update;

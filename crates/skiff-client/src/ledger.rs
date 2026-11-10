@@ -24,10 +24,11 @@ pub const GONE: &str = "gone";
 /// `tasks.closed_at`, 8 added `tasks.gone_at`, 9 added `tasks.owner` and the
 /// `handoff` kind, 10 added `tasks.reopened_at`, 11 added `tasks.work_dir`
 /// and `tasks.flushed_at`, 12 added `tasks.outcome`, `tasks.expects` and
-/// `tasks.commit_ref`, 13 added the `deliveries` table; an older file from version 3 on takes each in place,
+/// `tasks.commit_ref`, 13 added the `deliveries` table, 14 added the `schedules`
+/// table and `tasks.schedule`; an older file from version 3 on takes each in place,
 /// with its rows. The readers take a version 10 file: the version 11 and 12
 /// columns read as empty there.
-pub const VERSION: i64 = 13;
+pub const VERSION: i64 = 14;
 
 pub const COLUMNS: &str = "id, uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, reported_at, title, closed_at, gone_at, owner";
 
@@ -41,6 +42,12 @@ fn columns_11(db: &Connection) -> rusqlite::Result<&'static str> {
 fn columns_12(db: &Connection) -> rusqlite::Result<&'static str> {
     let n: i64 = db.query_row("SELECT count(*) FROM pragma_table_info('tasks') WHERE name IN ('outcome', 'expects', 'commit_ref')", [], |r| r.get(0))?;
     Ok(if n == 3 { "outcome, expects, commit_ref" } else { "NULL, NULL, NULL" })
+}
+
+/// The version 14 column, or an empty value on an older file.
+fn columns_14(db: &Connection) -> rusqlite::Result<&'static str> {
+    let n: i64 = db.query_row("SELECT count(*) FROM pragma_table_info('tasks') WHERE name = 'schedule'", [], |r| r.get(0))?;
+    Ok(if n == 1 { "schedule" } else { "NULL" })
 }
 
 /// How a done task ended, beside its state. Only a done task has one; a
@@ -133,6 +140,10 @@ pub struct Row {
     pub expects: Option<String>,
     /// The commit the task names as its evidence, with `--expect commit`.
     pub commit_ref: Option<String>,
+    /// A schedule's run: the schedule's uid. `None` for any other row, the
+    /// agent step under a run included.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<String>,
     /// [`WORKING`], [`OPEN`] or [`FINISHED`], for the whole work. Set by
     /// [`buckets`].
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -342,7 +353,15 @@ pub fn open_read(file: &Path) -> Result<Connection> {
 }
 
 pub fn rows(db: &Connection, where_: &str, arg: Option<&dyn rusqlite::ToSql>) -> Result<Vec<Row>> {
-    let sql = format!("SELECT {COLUMNS}, {}, {} FROM tasks {where_} ORDER BY id", columns_11(db)?, columns_12(db)?);
+    match arg {
+        Some(a) => rows_with(db, where_, &[a]),
+        None => rows_with(db, where_, &[]),
+    }
+}
+
+/// [`rows`] with any number of parameters.
+pub fn rows_with(db: &Connection, where_: &str, args: &[&dyn rusqlite::ToSql]) -> Result<Vec<Row>> {
+    let sql = format!("SELECT {COLUMNS}, {}, {}, {} FROM tasks {where_} ORDER BY id", columns_11(db)?, columns_12(db)?, columns_14(db)?);
     let mut st = db.prepare(&sql)?;
     let map = |r: &rusqlite::Row| {
         Ok(Row {
@@ -371,6 +390,7 @@ pub fn rows(db: &Connection, where_: &str, arg: Option<&dyn rusqlite::ToSql>) ->
             outcome: r.get(22)?,
             expects: r.get(23)?,
             commit_ref: r.get(24)?,
+            schedule: r.get(25)?,
             bucket: None,
             agent_on: false,
             elsewhere: false,
@@ -378,10 +398,7 @@ pub fn rows(db: &Connection, where_: &str, arg: Option<&dyn rusqlite::ToSql>) ->
             interrupted: None,
         })
     };
-    let out = match arg {
-        Some(a) => st.query_map([a], map)?.collect::<rusqlite::Result<Vec<_>>>()?,
-        None => st.query_map([], map)?.collect::<rusqlite::Result<Vec<_>>>()?,
-    };
+    let out = st.query_map(args, map)?.collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(out)
 }
 
@@ -503,7 +520,8 @@ pub const PANEL_KEEP: i64 = 100;
 /// The rows the panel shows: all work not closed, and the last
 /// [`PANEL_KEEP`] closed work heads with their tasks, a hand-off's tasks
 /// included. Older closed work stays in the file. The head of a hand-off's
-/// task is two steps up.
+/// task is two steps up. A schedule's runs show in the Schedules tab, not
+/// here: [`panel`] leaves them out, and the agent steps of closed runs.
 const PANEL: &str = "WHERE coalesce((SELECT h.parent FROM tasks h WHERE h.uid = tasks.parent), parent, uid) NOT IN (SELECT uid FROM tasks WHERE closed_at IS NOT NULL) \
      OR coalesce((SELECT h.parent FROM tasks h WHERE h.uid = tasks.parent), parent, uid) IN (SELECT uid FROM tasks WHERE closed_at IS NOT NULL ORDER BY closed_at DESC, id DESC LIMIT ?1)";
 
@@ -514,7 +532,15 @@ pub fn panel(file: &Path) -> Result<Vec<Row>> {
         return Ok(Vec::new());
     }
     let db = open_read(file)?;
-    let mut rows = rows(&db, PANEL, Some(&PANEL_KEEP))?;
+    let filter = if columns_14(&db)? == "schedule" {
+        PANEL
+            .replacen("WHERE ", "WHERE schedule IS NULL AND (", 1)
+            .replace("WHERE closed_at IS NOT NULL ORDER BY", "WHERE closed_at IS NOT NULL AND schedule IS NULL ORDER BY")
+            + ")"
+    } else {
+        PANEL.to_string()
+    };
+    let mut rows = rows(&db, &filter, Some(&PANEL_KEEP))?;
     roll_up(&mut rows);
     Ok(rows)
 }

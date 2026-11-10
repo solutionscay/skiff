@@ -44,7 +44,16 @@ pub(super) struct New {
 /// Returns the id, the uid, the result path and the plan's uid.
 pub(super) fn insert(db: &mut Connection, file: &Path, n: New) -> Result<(i64, String, String, Option<String>)> {
     let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let parent = n.parent.as_deref().map(|p| if n.handoff { join_handoff(&tx, file, p) } else { join(&tx, file, p) }).transpose()?;
+    // A schedule's run takes its agent step as it is: no plan wraps the run.
+    let parent = n
+        .parent
+        .as_deref()
+        .map(|p| match one(&tx, p) {
+            Ok(run) if run.schedule.is_some() => Ok(run),
+            _ if n.handoff => join_handoff(&tx, file, p),
+            _ => join(&tx, file, p),
+        })
+        .transpose()?;
     let uid = new_uid(&tx)?;
     // A hand-off's folder goes with the project Skipper's, not in the plan's folder.
     let (results, above) = if n.handoff { (results_dir(file, &n.project), None) } else { (results_dir(file, &n.owner), parent.as_ref()) };

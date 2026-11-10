@@ -40,9 +40,10 @@ fn task(t: &str) -> New {
 #[test]
 fn supported_ledger_schemas_keep_their_columns_and_version() {
     let columns = [
-        "id", "uid", "kind", "parent", "pane_id", "pane_gen", "project", "task", "sent_at", "state", "result_path", "ref", "updated_at", "type", "socket", "reported_at", "title", "closed_at", "gone_at", "owner", "reopened_at", "work_dir", "flushed_at", "outcome", "expects", "commit_ref",
+        "id", "uid", "kind", "parent", "pane_id", "pane_gen", "project", "task", "sent_at", "state", "result_path", "ref", "updated_at", "type", "socket", "reported_at", "title", "closed_at", "gone_at", "owner", "reopened_at", "work_dir", "flushed_at", "outcome", "expects", "commit_ref", "schedule",
     ];
-    let v11 = TASKS.replace(",\n  outcome     TEXT,\n  expects     TEXT,\n  commit_ref  TEXT", "");
+    let v13 = TASKS.replace(",\n  schedule    TEXT", "");
+    let v11 = v13.replace(",\n  outcome     TEXT,\n  expects     TEXT,\n  commit_ref  TEXT", "");
     let fixtures = [
         (3, v11.replace(",\n  socket      TEXT,\n  reported_at TEXT,\n  title       TEXT,\n  closed_at   TEXT,\n  gone_at     TEXT,\n  owner       TEXT NOT NULL DEFAULT 'grand',\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
         (4, v11.replace(",\n  reported_at TEXT,\n  title       TEXT,\n  closed_at   TEXT,\n  gone_at     TEXT,\n  owner       TEXT NOT NULL DEFAULT 'grand',\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
@@ -51,7 +52,9 @@ fn supported_ledger_schemas_keep_their_columns_and_version() {
         (9, v11.replace(",\n  reopened_at TEXT,\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
         (10, v11.replace(",\n  work_dir    TEXT,\n  flushed_at  TEXT", "")),
         (11, v11.clone()),
-        (12, TASKS.to_string()),
+        (12, v13.clone()),
+        (13, v13.clone()),
+        (14, TASKS.to_string()),
     ];
     for (version, schema) in fixtures {
         let dir = scratch(&format!("schema-v{version}"));
@@ -70,6 +73,8 @@ fn supported_ledger_schemas_keep_their_columns_and_version() {
         assert_eq!(got, columns);
         let deliveries: i64 = db.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'deliveries'", [], |r| r.get(0)).unwrap();
         assert_eq!(deliveries, 1);
+        let schedules: i64 = db.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'schedules'", [], |r| r.get(0)).unwrap();
+        assert_eq!(schedules, 1);
         assert_eq!(db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0)).unwrap(), VERSION);
         std::fs::remove_dir_all(&dir).unwrap();
     }

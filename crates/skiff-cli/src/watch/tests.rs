@@ -364,6 +364,7 @@ pub(crate) fn row(id: i64, uid: &str, pane: &str, state: &str, gen: Option<i64>)
         outcome: None,
         expects: None,
         commit_ref: None,
+        schedule: None,
         bucket: None,
         agent_on: false,
         elsewhere: false,
