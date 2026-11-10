@@ -28,6 +28,7 @@ type HostCap =
   | "project_assets"
   | "drops"
   | "ledger"
+  | "schedules"
   | "skipper"
   | "skipper_config"
   | "skipper_file"
@@ -60,6 +61,7 @@ const MAJOR: Record<HostCap, number> = {
   project_assets: 1,
   drops: 1,
   ledger: 1,
+  schedules: 1,
   skipper: 1,
   skipper_config: 1,
   skipper_file: 1,
@@ -96,6 +98,7 @@ const OFFERS: Record<HostCap, MessageKey> = {
   project_assets: "hostCaps.project_assets",
   drops: "hostCaps.project_assets",
   ledger: "hostCaps.ledger",
+  schedules: "hostCaps.schedules",
   skipper: "hostCaps.skipper",
   skipper_config: "hostCaps.skipper_config",
   skipper_file: "hostCaps.skipper_file",

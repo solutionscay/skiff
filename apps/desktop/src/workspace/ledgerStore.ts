@@ -37,6 +37,13 @@ export interface Entry {
   result_exists: boolean;
   /** When Settings › Disk use flushed the row's work folder. */
   flushed_at?: string | null;
+  /** The task type. */
+  type?: string | null;
+  /** Free text; a schedule's run says how its command ended: `exit 0`. */
+  ref?: string | null;
+  outcome?: string | null;
+  /** A schedule's run: the schedule's uid. */
+  schedule?: string | null;
 }
 
 export let rows: Entry[] = [];

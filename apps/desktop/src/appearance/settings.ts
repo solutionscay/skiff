@@ -31,6 +31,8 @@ import { arrowKeys, redrawKeeping } from "./settingsFocus";
 import { createSettingsFiles, type FilesState } from "./settingsFiles";
 import { agentsPage } from "./settingsAgents";
 import { languageRow, type MenuLayout, menuLayout } from "./settingsLanguage";
+import { loadSchedulesPage, schedulesPage, schedulesState } from "./schedulesPage";
+import { schedules } from "../workspace/scheduleStore";
 
 /**
  * Settings over the sidebar and terminal. Two groups. The shown Host's pages:
@@ -56,13 +58,13 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   document.getElementById("body")!.appendChild(root);
 
   let agents: AgentInfo[] = [];
-  const HOST_TABS = ["agents", "skippers", "task-types", "activity", "disk", "images"] as const;
+  const HOST_TABS = ["agents", "skippers", "task-types", "schedules", "activity", "disk", "images"] as const;
   const APP_TABS = ["appearance", "open", "hosts"] as const;
   const TABS = [...HOST_TABS, ...APP_TABS] as const;
   type Tab = (typeof TABS)[number];
   let tab: Tab = "agents";
   const TAB_NAMES: Record<Tab, MessageKey> = {
-    agents: "settings.tab.agents", skippers: "settings.tab.skippers", "task-types": "settings.tab.taskTypes", images: "settings.tab.images",
+    agents: "settings.tab.agents", skippers: "settings.tab.skippers", "task-types": "settings.tab.taskTypes", schedules: "settings.tab.schedules", images: "settings.tab.images",
     disk: "settings.tab.disk", activity: "settings.tab.activity", appearance: "settings.tab.appearance", open: "settings.tab.open", hosts: "settings.tab.hosts",
   };
   /** The sections that moved: each old id opens the page that holds it now. */
@@ -72,6 +74,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     if (id === "agents") return agents.length ? t("settings.ofCount", { on: agents.filter((a) => a.enabled).length, all: agents.length }) : "";
     if (id === "skippers") return fs.files.length ? String(fs.files.length) : "";
     if (id === "task-types") return agentSet ? String((agentSet.tasks ?? []).length) : "";
+    if (id === "schedules") return hostCan("schedules") ? String(schedules.length) : "";
     if (id === "activity") return String([...sessions.values()].filter((x) => !x.peek).length);
     if (id === "disk") return disk.usage ? byteSize(disk.usage.tree.bytes) : "";
     if (id === "images") return String(imageCount());
@@ -95,6 +98,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   const agentsTable = tableState();
   const tasksTable = tableState();
   const hostsTab = createHostsTab(() => render());
+  const sched = schedulesState();
+  const schedCtx = { render: () => render(), taskTypes: () => (agentSet?.tasks ?? []).map((x) => x.type), mainName: () => mainName(agentSet?.name) };
   const { loadFiles, editFile, loadTypes, editTypeFile, resetFile } = createSettingsFiles<InstructionFile, SkiffAgentSettings, TaskType>({
     ask: invoke,
     peek: peekText,
@@ -189,6 +194,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         draw();
         if (tab === "skippers") void loadFiles();
         if (tab === "task-types") void loadTypes();
+        if (tab === "schedules") void loadSchedulesPage(schedCtx);
         if (tab === "disk") void countDisk(disk, render);
         if (tab === "activity") startActivity(activity, render);
         if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
@@ -210,6 +216,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     }
     if (tab === "task-types") {
       root.replaceChildren(nav, pinClose(taskTypes()));
+      return;
+    }
+    if (tab === "schedules") {
+      root.replaceChildren(nav, pinClose(schedulesPage(sched, schedCtx)));
       return;
     }
     if (tab === "hosts") {
@@ -467,6 +477,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     draw();
     if (tab === "skippers") void loadFiles();
     if (tab === "task-types") void loadTypes();
+    if (tab === "schedules") void loadSchedulesPage(schedCtx);
     if (tab === "disk") void countDisk(disk, render);
     if (tab === "activity") startActivity(activity, render);
     document.body.classList.add("kbd");
@@ -563,6 +574,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       render();
       if (tab === "hosts") hostsTab.focusServer();
       if (tab === "skippers") void loadFiles();
+      if (tab === "schedules") void loadSchedulesPage(schedCtx);
       if (tab === "disk") void countDisk(disk, render);
       if (tab === "activity") startActivity(activity, render);
       if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();

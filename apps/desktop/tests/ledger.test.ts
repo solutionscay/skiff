@@ -16,6 +16,7 @@ function ledger(caps: string[], reply?: () => Promise<unknown>, epoch = () => 0)
       "@tauri-apps/api/core": { invoke: (cmd: string) => calls.push(`invoke ${cmd}`) },
       "@tauri-apps/api/event": { listen: () => Promise.resolve(() => {}) },
       "../app/hostCaps": {
+        hostCan: (cap: string) => caps.includes(cap),
         hostInvoke: (cap: string, cmd: string, args: unknown) => {
           if (!caps.includes(cap)) return Promise.reject(new Error(`This Host does not offer ${cap}.`));
           calls.push(`${cap} ${cmd} ${JSON.stringify(args ?? null)}`);
@@ -220,7 +221,7 @@ test("ledger projections survive unchanged reads and follow session, scope and l
   let scope: { names: Set<string> } | null = null;
   let reply = [{ ...ROW, owner: "A", project: "A", state: "sent", pane_id: pane.id, pane_gen: 1, bucket: "working", title: "First" }];
   const mod = moduleFromSource("../src/workspace/ledger.ts", {
-    "../app/hostCaps": { hostInvoke: async () => structuredClone(reply) },
+    "../app/hostCaps": { hostCan: () => false, hostInvoke: async () => structuredClone(reply) },
     "../app/dataPlane": { dataEpoch: () => 1 },
     "../app/renderRequest": { render() {} },
     "../app/state": { S, sessions },

@@ -135,3 +135,55 @@ body.ledger-keys .cell.focused .cell-head { background: var(--bg-panel); }
 
 /* The row of the child pane in the Skipper split: the 2px bar, no tint. */
 .lg-row.shown, .lg-row.need.shown { box-shadow: inset 2px 0 0 var(--pc); }
+
+/* Tasks | Schedules in the head (#262): the tab on screen is bold, with a 2px bar under it. */
+.lg-tabs { flex: 1; min-width: 0; display: flex; align-items: stretch; align-self: stretch; gap: calc(16 * var(--u)); }
+.lg-tab { display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0; border: 0; background: none; cursor: pointer; font: 400 calc(13px * var(--zoom, 1)) var(--font); color: var(--text-3); }
+.lg-tab[hidden] { display: none; }
+.lg-tab:hover { color: var(--text); }
+.lg-tab.on { font-weight: 600; color: var(--text); box-shadow: inset 0 -2px 0 var(--pc, var(--project-default)); }
+.lg-tab-n { font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); }
+body.ledger-keys #ledger .lg-tabs { color: inherit; }
+body.ledger-keys #ledger .lg-tab.on { color: var(--pc, var(--project-default)); }
+
+/* The Schedules list: one schedule is two 20px lines on one column grid. */
+.sc-cols, .lg-row.sc-row { display: grid; grid-template-columns: calc(15 * var(--u)) minmax(0, 1fr) calc(64 * var(--u)) calc(72 * var(--u)) calc(12 * var(--u)); column-gap: calc(8 * var(--u)); padding: 0 calc(16 * var(--u)); }
+.sc-cols { height: calc(20 * var(--u)); align-items: center; font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); border-bottom: 1px solid var(--rule); }
+.lg-list > .sc-cols:first-child { margin-top: calc(-6 * var(--u)); }
+.lg-row.sc-row { height: calc(40 * var(--u)); grid-template-rows: calc(20 * var(--u)) calc(20 * var(--u)); align-items: center; gap: 0 calc(8 * var(--u)); border-bottom: 1px solid var(--rule); }
+.sc-row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-dot { grid-row: 1; grid-column: 1; width: calc(7 * var(--u)); height: calc(7 * var(--u)); border-radius: 50%; }
+.sc-dot.ok { background: var(--state-done); }
+.sc-dot.run { background: var(--state-working); }
+.sc-dot.bad { background: var(--error); }
+.sc-dot.none { box-shadow: inset 0 0 0 1px var(--text-dim); }
+.sc-name { grid-row: 1; grid-column: 2; color: var(--text); font-weight: 500; }
+.sc-when { grid-row: 2; grid-column: 2; font-size: calc(11px * var(--zoom, 1)); color: var(--text-3); }
+.sc-next { grid-row: 1; grid-column: 3; font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-2); }
+.sc-target { grid-row: 2; grid-column: 3 / span 2; display: flex; align-items: center; gap: calc(5 * var(--u)); font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
+.sc-target .lg-tag { margin: 0; }
+.sc-target-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sc-last { grid-row: 1; grid-column: 4; font-size: calc(11px * var(--zoom, 1)); }
+.sc-last.ok { color: var(--text-3); }
+.sc-last.run { color: var(--state-working); }
+.sc-last.bad { color: var(--error-text); }
+.sc-last.none { color: var(--text-dim); }
+.sc-chev { grid-row: 1 / span 2; grid-column: 5; display: grid; place-items: center; color: var(--text-dim); }
+.sc-chev svg { width: calc(9 * var(--u)); height: calc(9 * var(--u)); }
+.sc-row.paused :is(.sc-name, .sc-when, .sc-target) { color: var(--text-dim); }
+.sc-row.paused .sc-next { color: var(--text-dim); font-family: var(--font); }
+
+/* A schedule's series: the head over the runs. */
+.sr-head { height: calc(40 * var(--u)); flex-shrink: 0; display: grid; grid-template-columns: calc(15 * var(--u)) minmax(0, 1fr) auto; grid-template-rows: calc(20 * var(--u)) calc(20 * var(--u)); column-gap: calc(8 * var(--u)); align-items: center; padding: 0 calc(16 * var(--u)); border-bottom: 1px solid var(--rule); }
+.sr-back { grid-row: 1 / span 2; width: calc(15 * var(--u)); height: 100%; padding: 0; border: 0; background: none; display: grid; place-items: center; color: var(--text-3); cursor: pointer; }
+.sr-back:hover { color: var(--text); }
+.sr-back svg { width: calc(9 * var(--u)); height: calc(9 * var(--u)); }
+.sr-name { grid-row: 1; grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; }
+.sr-next { grid-row: 1; grid-column: 3; font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-2); }
+.sr-when { grid-row: 2; grid-column: 2 / span 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(11px * var(--zoom, 1)); color: var(--text-3); }
+.lg-row.sr-run.ok .lg-dot { background: var(--state-done); }
+.lg-row.sr-run.ok :is(.lg-title, .lg-pane) { color: var(--text-3); }
+.lg-row.sr-run.run .lg-dot { background: var(--state-working); }
+.lg-row.sr-run.bad .lg-dot { background: var(--error); }
+.lg-row.sr-run.bad .lg-pane { color: var(--error-text); }
+.lg-row.sr-run.none .lg-dot { box-shadow: inset 0 0 0 1px var(--text-dim); }

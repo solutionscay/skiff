@@ -62,10 +62,54 @@ import { keepRow } from "./selection";
 import { revealSession } from "./view";
 import { ledgerAllWork, setLedgerAllWork, workspaceName, workspaceOpen } from "./profile";
 import { language, t, tn, upper } from "../i18n";
-import { byUid, error, ledgerRows, ledgerTitle, ledgerWorkTitle, loaded, loadLedger, titleOf, type Entry } from "./ledgerStore";
+import { byUid, error, ledgerRows, ledgerTitle, ledgerWorkTitle, loaded, loadLedger as loadRows, titleOf, type Entry } from "./ledgerStore";
+import { loadSchedules, scheduleError, scheduleGeneration } from "./scheduleStore";
+import { scheduleView, shownSchedules } from "./ledgerSchedules";
+import { hostCan } from "../app/hostCaps";
 import { filter, filters, ledgerCounts, ledgerNeeds, NEED, needing, needWord, opens, projectionKey, sections, shownOwner, taskState, units, type Look, type State, type Unit } from "./ledgerModel";
 
-export { ledgerCounts, ledgerNeeds, ledgerRows, ledgerTitle, ledgerWorkTitle, loadLedger, needWord, taskState };
+export { ledgerCounts, ledgerNeeds, ledgerRows, ledgerTitle, ledgerWorkTitle, needWord, taskState };
+
+/** Reads the rows and the schedules again. */
+export async function loadLedger() {
+  await Promise.all([loadRows(), loadSchedules()]);
+}
+
+/** The tab on screen: the tasks, or the schedules. It lasts on this machine. */
+type Tab = "tasks" | "schedules";
+const TAB_KEY = "skiff.ledgerTab";
+let tab: Tab = (() => {
+  try {
+    return localStorage.getItem(TAB_KEY) === "schedules" ? "schedules" : "tasks";
+  } catch {
+    return "tasks";
+  }
+})();
+/** The schedule whose series shows in the Schedules tab. Null: the list. */
+let series: string | null = null;
+
+function setTab(next: Tab) {
+  if (tab === next) return;
+  tab = next;
+  series = null;
+  lit = null;
+  try {
+    localStorage.setItem(TAB_KEY, next);
+  } catch {
+    /* the tab lasts for this run */
+  }
+  render();
+}
+
+/** The Schedules tab shows: the Host offers schedules. */
+const scheduleTab = () => tab === "schedules" && hostCan("schedules");
+
+function openSeries(uid: string | null) {
+  series = uid;
+  lit = null;
+  render();
+  if (keys) requestAnimationFrame(light);
+}
 export type { Entry, State };
 
 /** Reads the ledger now and on each change. main.ts calls it once. */
@@ -382,6 +426,19 @@ function filterMenu(b: HTMLElement) {
   ]);
 }
 
+/** The head's tabs: the one on screen, and each tab's count. A Host without schedules shows Tasks alone. */
+function tabHead(panel: HTMLElement, tasks: number) {
+  const on = hostCan("schedules");
+  for (const b of panel.querySelectorAll<HTMLElement>(".lg-head .lg-tab")) {
+    const id = b.dataset.tab as Tab;
+    const shows = id === "tasks" ? !on || tab === "tasks" : on && tab === "schedules";
+    b.classList.toggle("on", shows);
+    setAttr(b, "aria-pressed", String(shows));
+    if (id === "schedules") setHidden(b, !on);
+    setText(b.querySelector<HTMLElement>(".lg-tab-n")!, String(id === "tasks" ? tasks : shownSchedules(filter()).length));
+  }
+}
+
 /** Runs on each render, before the modes: shows, hides and fills the panel. */
 export function renderLedger() {
   const panel = document.getElementById("ledger");
@@ -401,7 +458,7 @@ export function renderLedger() {
     return;
   }
   rowContext = presentationKey();
-  const sig = JSON.stringify([projectionKey(), rowContext, scopeLabel(), filter(), loaded, error, splitChild()]);
+  const sig = JSON.stringify([projectionKey(), rowContext, scopeLabel(), filter(), loaded, error, splitChild(), tab, series, scheduleGeneration, hostCan("schedules")]);
   let list = panel.querySelector<HTMLElement>(".lg-list");
   let need = panel.querySelector<HTMLElement>(".lg-need");
   const fold = panel.querySelector<HTMLElement>(".lg-head .lg-fold");
@@ -434,24 +491,59 @@ export function renderLedger() {
     keepKeys(pick);
     pick.addEventListener("click", () => filterMenu(pick));
     filterButton(pick);
-    head.append(h("span", "lg-name", "Ledger"), pick, scope, need, fold);
+    const tabs = h("div", "lg-tabs lg-name");
+    for (const id of ["tasks", "schedules"] as const) {
+      const b = h("button", "lg-tab");
+      (b as HTMLButtonElement).type = "button";
+      b.dataset.tab = id;
+      keepKeys(b);
+      b.addEventListener("click", () => setTab(id));
+      b.append(h("span", "lg-tab-name", t(id === "tasks" ? "ledger.tabTasks" : "ledger.tabSchedules")), h("span", "lg-tab-n"));
+      tabs.append(b);
+    }
+    head.append(tabs, pick, scope, need, fold);
     list = h("div", "lg-list");
     panel.replaceChildren(head, list);
   }
   const n = needing(us);
   setHidden(need, !n);
   setText(need, tn("ledger.needsYou", n));
+  tabHead(panel, us.length);
+  const onSchedules = scheduleTab();
+  let seriesHead = panel.querySelector(".sr-head");
 
   const move = drawn && loaded && !still();
   const out: HTMLElement[] = [];
-  if (error) out.push(h("div", "lg-empty", error));
-  else if (!x.working.length && !x.open.length && !x.finished.length && filter() !== null) {
+  if (onSchedules) {
+    const v = scheduleView(filter(), series, {
+      open: (uid) => openSeries(uid),
+      back: () => openSeries(null),
+      result,
+      pane: (r) => {
+        const s = r.pane_id ? sessions.get(r.pane_id) : null;
+        return s ? () => openPane(s) : null;
+      },
+    });
+    if (scheduleError) out.push(h("div", "lg-empty", scheduleError));
+    out.push(...v.rows);
+    if (v.head) {
+      if (seriesHead) seriesHead.replaceWith(v.head);
+      else list.before(v.head);
+      seriesHead = v.head;
+    } else seriesHead?.remove();
+  } else {
+    seriesHead?.remove();
+  }
+  if (!onSchedules && error) out.push(h("div", "lg-empty", error));
+  else if (onSchedules) {
+    // The schedule rows are in `out` already.
+  } else if (!x.working.length && !x.open.length && !x.finished.length && filter() !== null) {
     out.push(h("div", "lg-empty", t("ledger.noWorkIn", { name: filterLabel() })));
   } else if (!x.working.length && !x.open.length && !x.finished.length && scopeLabel() && !ledgerAllWork()) {
     out.push(h("div", "lg-empty", t("ledger.noWorkHere")));
   }
   for (const [label, part, fin] of [[t("ledger.working"), x.working, false], [t("ledger.open"), x.open, false], [t("ledger.finished"), x.finished, true]] as const) {
-    if (!part.length) continue;
+    if (!part.length || onSchedules) continue;
     let heading = sectionRows.get(label);
     if (!heading) sectionRows.set(label, heading = h("div", "lg-sec", label));
     out.push(heading);
@@ -553,6 +645,7 @@ function rowKey(e: KeyboardEvent) {
   const r = (e.target as HTMLElement).closest<HTMLElement>(".lg-row[data-key]");
   if (!r) return;
   if (e.key === "ArrowDown" || e.key === "ArrowUp") step(e.key === "ArrowDown" ? 1 : -1);
+  else if (scheduleTab() && series && (e.key === "ArrowLeft" || e.key === "Escape")) openSeries(null);
   else if (e.key === "Enter") r.click();
   else if (e.key === "Escape") leave();
   else return;

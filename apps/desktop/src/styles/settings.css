@@ -301,3 +301,46 @@ body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset:
   .set-folder { grid-template-columns: var(--set-label) minmax(0, 1fr) max-content; }
 }
 @container set-main (max-width: 600px) { .set-main > * { --set-label: calc(120 * var(--u)); --set-end: calc(200 * var(--u)); --set-acts: calc(120 * var(--u)); } }
+
+/* Settings › Schedules (#262): state, name, when, target, next run, last run, actions. */
+.set-table.g-sched .set-row { grid-template-columns: calc(40 * var(--u)) calc(170 * var(--u)) minmax(0, 1fr) calc(190 * var(--u)) calc(130 * var(--u)) calc(130 * var(--u)) calc(300 * var(--u)); }
+.set-table.g-sched .set-row > * { overflow: hidden; white-space: nowrap; }
+.g-sched .c-lead { justify-content: center; padding: 0; }
+.g-sched .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--ok); }
+.g-sched .sq.off { background: var(--rule-strong); }
+.g-sched .c-name { font-size: calc(13px * var(--zoom, 1)); font-weight: 500; text-overflow: ellipsis; }
+.g-sched .c-words { gap: calc(10 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); }
+.g-sched .c-words-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.g-sched .c-cron { flex-shrink: 0; font: calc(12px * var(--zoom, 1)) var(--mono); color: var(--text-3); }
+.g-sched .c-tgt { gap: calc(8 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); }
+.g-sched .c-tgt .lg-tag { margin: 0; }
+.g-sched .c-mono { font: calc(12px * var(--zoom, 1)) var(--mono); color: var(--text-2); }
+.g-sched .c-last { gap: calc(8 * var(--u)); font-size: calc(12px * var(--zoom, 1)); }
+.g-sched .c-last .d { width: calc(7 * var(--u)); height: calc(7 * var(--u)); border-radius: 50%; flex-shrink: 0; }
+.g-sched .c-last .d.ok { background: var(--state-done); }
+.g-sched .c-last .d.run { background: var(--state-working); }
+.g-sched .c-last .d.bad { background: var(--error); }
+.g-sched .c-last .d.none { box-shadow: inset 0 0 0 1px var(--text-dim); }
+.g-sched .set-row.paused :is(.c-name, .c-words, .c-tgt) { color: var(--text-dim); }
+
+/* The edit page: label, content, end column. A sentence row holds words and pickers. */
+.set-main > .set-row > .c-label { font-size: calc(13px * var(--zoom, 1)); }
+.set-main > .set-row > .c-end-note { font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); }
+.set-main > .set-row.tall { height: calc(120 * var(--u)); align-items: stretch; }
+.set-main > .set-row.tall > .c-label { align-items: flex-start; padding-top: calc(12 * var(--u)); }
+.set-area { width: 100%; height: 100%; resize: none; border: 0; border-radius: 0; outline: 0; padding: calc(10 * var(--u)) calc(12 * var(--u)); background: var(--bg-deep); color: var(--text); font: calc(13px * var(--zoom, 1)) / calc(20 * var(--u)) var(--font); }
+.sent { width: 100%; height: 100%; display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(12 * var(--u)); font-size: calc(13px * var(--zoom, 1)); color: var(--text-3); white-space: nowrap; overflow: hidden; }
+.sent-arrow { color: var(--text-dim); }
+.pk { display: inline-flex; align-items: center; gap: calc(5 * var(--u)); padding: 0; border: 0; border-bottom: 1px solid var(--rule-strong); background: none; color: var(--text); cursor: pointer; font: inherit; line-height: calc(18 * var(--u)); }
+.pk:hover, .pk:focus-visible { border-bottom-color: var(--text-3); outline: none; }
+.pk.open { border-bottom-color: var(--pc, var(--project-default)); }
+.pk.mono { font: calc(12px * var(--zoom, 1)) var(--mono); }
+.pk::after { content: ""; width: calc(4 * var(--u)); height: calc(4 * var(--u)); margin-left: 1px; border-right: 1.2px solid var(--text-dim); border-bottom: 1.2px solid var(--text-dim); transform: rotate(45deg) translateY(-2px); }
+/* The typed time and the Custom cron: inline mono fields. A bad value has a red underline. */
+.sent-time, .sent-cron { height: calc(20 * var(--u)); padding: 0 calc(4 * var(--u)); border: 0; border-radius: 0; outline: 0; background: var(--bg-deep); color: var(--text); font: calc(13px * var(--zoom, 1)) var(--mono); }
+.sent-time { width: calc(56 * var(--u)); text-align: center; }
+.sent-cron { flex: 1; align-self: stretch; height: auto; margin: 0 calc(-12 * var(--u)) 0 calc(6 * var(--u)); padding: 0 calc(12 * var(--u)); }
+.sent-time.bad, .sent-cron.bad { box-shadow: inset 0 -2px 0 var(--error); }
+.nexts { display: flex; align-items: center; gap: calc(16 * var(--u)); font: calc(12px * var(--zoom, 1)) var(--mono); color: var(--text-3); white-space: nowrap; overflow: hidden; }
+.nexts b { font-family: var(--font); font-weight: 400; color: var(--text-dim); }
+.c-err { color: var(--error-text); font-family: var(--font); }
