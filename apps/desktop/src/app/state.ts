@@ -1,6 +1,6 @@
 /** Shared app state. Query functions live in stateQueries.ts. */
 
-import type { AgentInfo, Group, Project, SessionInfo, TerminalTheme } from "../platform/types";
+import type { AgentInfo, Group, Layout, Project, SessionInfo, TerminalTheme } from "../platform/types";
 import type { SkiffAgentSettings } from "./skiffAgent";
 import { t } from "../i18n";
 
@@ -68,6 +68,12 @@ export const S = {
   groups: [] as Group[],
   activeGroup: null as string | null,
   single: null as string | null,
+  /**
+   * The Skipper split: the Skipper's pane at the left, one child pane at the
+   * right, the Ledger beside them. It shows while the Skipper is the single view.
+   * `layout` keeps the divider where the person put it.
+   */
+  skipperSplit: null as { skipper: string; child: string; layout: Layout } | null,
   /** The group whose name is an input, and what is typed in it. */
   renaming: null as { id: string; name: string } | null,
   /** The session whose title is an input for renaming. */

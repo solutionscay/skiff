@@ -5,13 +5,13 @@
  */
 import { coordinatorOf, skipperWord } from "../app/skiffAgent";
 import { S, sessions } from "../app/state";
-import { shownIds } from "../app/stateQueries";
+import { shownIds, skipperSplit } from "../app/stateQueries";
 import type { SessionInfo } from "../platform/types";
 import { isSlot } from "./layoutSlots";
 import { scopeFleet, scopeName, taskTitle } from "./model";
 import { ledgerScope } from "./profile";
 import { language, t, type MessageKey } from "../i18n";
-import { byUid, children, generation, indexRows, paneIds, rows, type Entry } from "./ledgerStore";
+import { byUid, children, generation, indexRows, paneIds, rows, titleOf, type Entry } from "./ledgerStore";
 
 /** Where a task stands, from its row and its pane. */
 export type State = "pending" | "sent" | "approval" | "blocked" | "interrupted" | "gone" | "exited" | "done";
@@ -250,8 +250,10 @@ function ledgerSummary() {
   return counts = { need, owners };
 }
 
-/** The coordinator whose pane is the one pane on screen: "grand" or a project. */
+/** The coordinator whose pane is the one pane on screen, or the left pane of its Skipper split: "grand" or a project. */
 export function shownOwner(): string | null {
+  const sp = skipperSplit();
+  if (sp) return coordinatorOf(sp.skipper);
   const ids = shownIds().filter((id) => !isSlot(id));
   return ids.length === 1 ? coordinatorOf(ids[0]) : null;
 }
@@ -264,4 +266,24 @@ export function filter(): string | null {
   const o = shownOwner();
   if (!o) return null;
   return filters.has(o) ? filters.get(o)! : o === "grand" ? null : o;
+}
+
+/** The task's pane is live, so a click can open it. */
+export const opens = (l: Look) => !!l.pane && l.st !== "gone";
+
+/**
+ * The Skipper split's children: the live panes of the open rows the panel
+ * shows, hand-offs' tasks included, in Ledger order (Working, then Open).
+ * Each pane once. The Skipper's own pane is no child.
+ */
+export function childPanes(skipper: string): { id: string; title: string }[] {
+  const x = sections(units());
+  const out: { id: string; title: string }[] = [];
+  for (const u of [...x.working, ...x.open]) {
+    for (const l of (u.kids ?? (u.look ? [u.look] : [])).flatMap(flat)) {
+      if (!opens(l) || l.pane!.id === skipper || out.some((c) => c.id === l.pane!.id)) continue;
+      out.push({ id: l.pane!.id, title: titleOf(l.r) });
+    }
+  }
+  return out;
 }

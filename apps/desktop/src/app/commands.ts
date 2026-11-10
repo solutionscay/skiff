@@ -31,6 +31,7 @@ import { accent, activeGroupObj, currentProject, currentWorktree, inShownGroup, 
 import { sessionThemeMenu } from "../appearance/themes";
 import { modeKeyBlocked } from "./modes";
 import { ledgerFolded, ledgerShown } from "../workspace/ledger";
+import { splitChild, splitChildren } from "../workspace/skipperSplit";
 import { skippersOn } from "../workspace/skippersView";
 import { imageCount } from "../terminal/images";
 import {
@@ -106,7 +107,9 @@ function drafts(): Draft[] {
     { section: "view", id: "cmd.listMain", key: k("list-main"), action: "list-main", run: act("list-main") },
     { section: "view", id: "cmd.splitRight", key: k("split-right"), action: "split-right", run: act("split-right"), off: !shown || splitFull() || isSkiffAgent(S.focused) || !hostCan("session_lifecycle") },
     { section: "view", id: "cmd.splitDown", key: k("split-down"), action: "split-down", run: act("split-down"), off: !shown || splitFull() || isSkiffAgent(S.focused) || !hostCan("session_lifecycle") },
-    { section: "view", id: "cmd.removeFromGroup", key: k("close-pane"), action: "close-pane", run: act("close-pane"), off: !(S.focused && inShownGroup(S.focused)) || !hostCan("session_groups") },
+    S.focused && splitChild() === S.focused
+      ? { section: "view", id: "cmd.closeSplit", key: k("close-pane"), action: "close-pane", run: act("close-pane") }
+      : { section: "view", id: "cmd.removeFromGroup", key: k("close-pane"), action: "close-pane", run: act("close-pane"), off: !(S.focused && inShownGroup(S.focused)) || !hostCan("session_groups") },
     ...groupCloseEntries(g).map((entry): Draft => ({
       section: "view", id: entry.label, label: entry.label, key: "", run: () => entry.run?.(), off: entry.disabled,
     })),
@@ -118,6 +121,8 @@ function drafts(): Draft[] {
     },
     { section: "view", id: "cmd.showTree", label: t(skippersOn() ? "cmd.showTree" : "cmd.showSkippers"), key: k("sidebar-view"), action: "sidebar-view", run: act("sidebar-view") },
     { section: "view", id: "cmd.showLedger", label: t(ledgerFolded() ? "cmd.showLedger" : "cmd.hideLedger"), key: k("ledger"), action: "ledger", run: act("ledger"), off: !ledgerShown() },
+    { section: "view", id: "cmd.childNext", key: k("child-next"), action: "child-next", run: act("child-next"), off: !splitChildren().length },
+    { section: "view", id: "cmd.childPrev", key: k("child-prev"), action: "child-prev", run: act("child-prev"), off: !splitChildren().length },
     {
       section: "view", id: "cmd.ledgerAllWork", label: t(ledgerAllWork() ? "cmd.ledgerWorkspaceWork" : "cmd.ledgerAllWork"), key: "",
       run: () => setLedgerAllWork(!ledgerAllWork()), off: !workspaceOpen(),

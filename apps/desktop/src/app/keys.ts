@@ -20,7 +20,8 @@ export type Action =
   | "focus-left" | "focus-right" | "focus-up" | "focus-down"
   | "project-menu" | "project-folder" | "project-copy-path" | "project-color" | "project-changes" | "project-files"
   | "region-next" | "region-prev" | "session-next" | "session-prev" | "list-project" | "list-back" | "list-main" | "shortcuts"
-  | "focus-mode" | "maximize" | "mission-control" | "skiff-agent" | "ledger" | "sidebar-view" | "images" | "images-gallery";
+  | "focus-mode" | "maximize" | "mission-control" | "skiff-agent" | "ledger" | "sidebar-view" | "images" | "images-gallery"
+  | "child-next" | "child-prev";
 
 export const isMac = navigator.userAgent.includes("Macintosh");
 
@@ -72,6 +73,9 @@ export const DEFAULTS: Record<Action, string> = {
   "skiff-agent": "ctrl+shift+l",
   ledger: "ctrl+shift+alt+l",
   "sidebar-view": "ctrl+shift+alt+s",
+  // The Skipper split's children. Bare Ctrl+PageUp/PageDown stay with the terminal.
+  "child-next": "ctrl+shift+pagedown",
+  "child-prev": "ctrl+shift+pageup",
   // No default key: the palette and the pane menu have it. `[keys]` can set one.
   images: "",
   "images-gallery": "",
@@ -144,7 +148,7 @@ export function actionFor(e: KeyboardEvent): Action | null {
 }
 
 function label(c: Combo): string {
-  const k = c.key.startsWith("arrow") ? c.key.slice(5)[0].toUpperCase() + c.key.slice(6) : c.key.length === 1 || /^f\d+$/.test(c.key) ? c.key.toUpperCase() : c.key[0].toUpperCase() + c.key.slice(1);
+  const k = c.key.startsWith("arrow") ? c.key.slice(5)[0].toUpperCase() + c.key.slice(6) : c.key.startsWith("page") ? "Page" + c.key[4].toUpperCase() + c.key.slice(5) : c.key.length === 1 || /^f\d+$/.test(c.key) ? c.key.toUpperCase() : c.key[0].toUpperCase() + c.key.slice(1);
   return [c.ctrl && (isMac ? "⌘" : "Ctrl"), c.alt && "Alt", c.shift && "Shift", k].filter(Boolean).join("+");
 }
 
@@ -158,7 +162,7 @@ export function keyLabel(action: Action): string {
   return labels[action] ?? "";
 }
 
-const MENU_KEYS: Record<string, string> = { "=": "Equal", "-": "Minus", ",": "Comma", " ": "Space", escape: "Escape", enter: "Enter", home: "Home", end: "End" };
+const MENU_KEYS: Record<string, string> = { "=": "Equal", "-": "Minus", ",": "Comma", " ": "Space", escape: "Escape", enter: "Enter", home: "Home", end: "End", pageup: "PageUp", pagedown: "PageDown" };
 
 /** The action's key as the menu bar spells it ("Ctrl+Shift+T"), or "" for none. */
 export function menuAccel(action: Action): string {
@@ -208,6 +212,8 @@ export const DESCRIBE: [KeySection, Action][] = [
   ["view", "next-waiting"],
   ["view", "skiff-agent"],
   ["view", "ledger"],
+  ["view", "child-next"],
+  ["view", "child-prev"],
   ["view", "sidebar-view"],
   ["view", "back"],
   ["view", "session-next"],

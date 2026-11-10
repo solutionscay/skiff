@@ -54,6 +54,7 @@ function app(projects: { name: string; path: string; fleet: string | null }[], r
       },
     },
     "../workspace/layout": { sessionsOf: () => [] },
+    "../workspace/skipperSplit": { splitLoses: () => () => {} },
     "../terminal/terminalState": { panes: new Map() },
     "../terminal/peek": { peekExited: () => false },
     "../terminal/terminal": { ptySized() {} },

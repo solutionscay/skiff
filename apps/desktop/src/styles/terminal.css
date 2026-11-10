@@ -134,6 +134,17 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .cell:not(.focused) .cell-head:not(.hover) .head-btn { visibility: hidden; }
 .head-btn + .head-btn { margin-left: calc(-10 * var(--u)); }
 .head-btn:hover { background: color-mix(in srgb, var(--text) 14%, transparent); color: var(--text); }
+/* The Skipper split: the split button with its child count, and the child's cycle. Shown on every pane, focused or not. */
+.cell:not(.focused) .cell-head:not(.hover) :is(.head-split, .head-cycle, .head-cycle-n, .head-close-split) { visibility: visible; }
+/* The child's task title gives up its room before the pane name does. */
+.cell-head .split-task { flex-shrink: 100; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.head-split { width: auto; gap: calc(6 * var(--u)); padding: 0 calc(12 * var(--u)); font-size: calc(12px * var(--zoom, 1)); font-variant-numeric: tabular-nums; }
+.head-split.on { color: var(--text); }
+.head-split:disabled { color: var(--text-dim); opacity: 0.6; cursor: default; }
+.head-split:disabled:hover, .head-cycle:disabled:hover { background: transparent; color: var(--text-dim); }
+.head-cycle { width: calc(28 * var(--u)); }
+.head-cycle:disabled { color: var(--text-dim); cursor: default; }
+.head-cycle-n { flex-shrink: 0; color: var(--text-3); font-size: calc(12px * var(--zoom, 1)); font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Shown on every restored pane, focused or not: it needs a look. */
 .head-resume { height: calc(24 * var(--u)); flex-shrink: 0; margin-right: calc(8 * var(--u)); padding: 0 calc(10 * var(--u)); border: 1px solid var(--rule-strong); background: transparent; color: var(--text); font-size: calc(12px * var(--zoom, 1)); }
 .head-resume:hover { background: color-mix(in srgb, var(--pc) 22%, transparent); border-color: var(--pc); }

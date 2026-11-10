@@ -2,8 +2,9 @@ import { animate } from "./ledgerMotion";
 import { still } from "../ui/motion";
 /**
  * The Ledger: Skipper's tasks, in a panel at the right of its pane. It shows
- * only while Skipper's pane is the one pane on screen. Focus mode keeps it;
- * maximize hides it with the other chrome.
+ * only while Skipper's pane is the one pane on screen, or the left pane of its
+ * Skipper split (`skipperSplit.ts`). Focus mode keeps it; maximize hides it
+ * with the other chrome.
  *
  * Three sections, each shown when it has work. Working: an agent is on the
  * work now (a sent task whose pane works or ended its turn), in send order.
@@ -20,7 +21,7 @@ import { still } from "../ui/motion";
  * Skipper's pane. The lit row stays across redraws.
  *
  * A click on a row does the main action for its state: open the pane or the
- * result. Small icons at the right edge do the rest, only when they apply:
+ * result. A live pane opens in the Skipper split, so the Skipper view stays. Small icons at the right edge do the rest, only when they apply:
  * the pane or the result. The panel never writes: only Skipper changes rows.
  * No row has a menu. The rows come read-only from the selected Host
  * (`ledger@1`), again on each change to its ledger. A result shows in the
@@ -46,7 +47,8 @@ import { listen } from "@tauri-apps/api/event";
 import { keyLabel } from "../app/keys";
 import { render } from "../app/renderRequest";
 import { coordinatorOf, projectSkipperOf, skiffAgentSession } from "../app/skiffAgent";
-import { accent } from "../app/stateQueries";
+import { accent, place } from "../app/stateQueries";
+import { canSplitWith, showChild, splitChild } from "./skipperSplit";
 import { ctxMenu } from "../ui/contextMenu";
 import { S, sessions } from "../app/state";
 import type { SessionInfo } from "../platform/types";
@@ -61,7 +63,7 @@ import { revealSession } from "./view";
 import { ledgerAllWork, setLedgerAllWork, workspaceName, workspaceOpen } from "./profile";
 import { language, t, tn, upper } from "../i18n";
 import { byUid, error, ledgerRows, ledgerTitle, ledgerWorkTitle, loaded, loadLedger, titleOf, type Entry } from "./ledgerStore";
-import { filter, filters, ledgerCounts, ledgerNeeds, NEED, needing, needWord, projectionKey, sections, shownOwner, taskState, units, type Look, type State, type Unit } from "./ledgerModel";
+import { filter, filters, ledgerCounts, ledgerNeeds, NEED, needing, needWord, opens, projectionKey, sections, shownOwner, taskState, units, type Look, type State, type Unit } from "./ledgerModel";
 
 export { ledgerCounts, ledgerNeeds, ledgerRows, ledgerTitle, ledgerWorkTitle, loadLedger, needWord, taskState };
 export type { Entry, State };
@@ -128,13 +130,12 @@ function flashNeed(panel: HTMLElement) {
   r.classList.add("flash");
 }
 
-function openPane(s: SessionInfo) {
-  revealSession(s.id);
+/** A task's live pane shows in the Skipper split, and the Skipper view stays. `split` false: leave for the pane. */
+function openPane(s: SessionInfo, split = true) {
+  if (split && canSplitWith(s.id)) showChild(s.id, true);
+  else revealSession(s.id);
   requestAnimationFrame(() => keepRow(s.id));
 }
-
-/** The task's pane is live, so a click can open it. */
-const opens = (l: Look) => !!l.pane && l.st !== "gone";
 
 /** The row icons, at the stroke weight of the tree icons. */
 const ICON = {
@@ -180,7 +181,7 @@ function taskActs(l: Look, fin: boolean): Acts {
   }
   if (l.st === "gone") {
     const skipper = r.owner === "grand" ? skiffAgentSession() : projectSkipperOf(r.owner);
-    return { click: res ?? (skipper ? () => openPane(skipper) : null), icons: [] };
+    return { click: res ?? (skipper ? () => openPane(skipper, false) : null), icons: [] };
   }
   const icons: Acts["icons"] = l.st === "interrupted" && res ? [["result", t("ledger.openResult"), res]] : [];
   return { click: pane, icons };
@@ -190,12 +191,14 @@ const keptRows = new Map<string, { sig: string; row: HTMLElement }>();
 let rowContext = "";
 
 /** One 20px line, with its actions. */
-function line(r: Entry, st: State, label: string, a: Acts, o: { plan?: boolean; kid?: boolean; kid2?: boolean; fin?: boolean; count?: string }): HTMLElement {
+function line(r: Entry, st: State, label: string, a: Acts, o: { plan?: boolean; kid?: boolean; kid2?: boolean; fin?: boolean; count?: string; shown?: string }): HTMLElement {
   const sig = JSON.stringify([r, byUid.get(r.parent ?? "")?.kind, st, label, o, rowContext, !!a.click, a.icons.map(([name, tip]) => [name, tip])]);
   const kept = keptRows.get(r.uid);
   if (kept?.sig === sig) return kept.row;
   const need = !o.fin && !!NEED[st];
-  const row = h("div", `lg-row s-${st}` + (need ? " need" : "") + (o.plan ? " plan" : "") + (o.kid ? " kid" : "") + (o.kid2 ? " kid2" : "") + (o.fin ? " fin" : "") + (a.click ? "" : " dead"));
+  const row = h("div", `lg-row s-${st}` + (need ? " need" : "") + (o.plan ? " plan" : "") + (o.kid ? " kid" : "") + (o.kid2 ? " kid2" : "") + (o.fin ? " fin" : "") + (o.shown ? " shown" : "") + (a.click ? "" : " dead"));
+  // The child pane on screen: the 2px bar in its project color, no tint.
+  if (o.shown) row.style.setProperty("--pc", o.shown);
   row.dataset.key = r.uid;
   row.tabIndex = -1;
   // No tooltip: the title names the row for a screen reader.
@@ -245,10 +248,16 @@ function mark(r: Entry): HTMLElement {
 /** "done/all" of a hand-off's tasks. */
 const progress = (kids: Look[]) => (kids.length ? `${kids.filter((k) => k.st === "done").length}/${kids.length}` : "");
 
+/** The project color of the row whose pane shows in the Skipper split, else undefined. */
+function shownBar(l: Look, fin: boolean): string | undefined {
+  if (fin || !l.pane || l.pane.id !== splitChild()) return undefined;
+  return accent(place(l.pane)?.project);
+}
+
 /** A task, or a hand-off with its tasks one step under it. `depth`: 0 at the top, 1 under a plan. */
 function taskRows(l: Look, depth: 0 | 1, fin: boolean): HTMLElement[] {
-  const row = line(l.r, l.st, (!fin && needWord(l.st)) || l.where, taskActs(l, fin), { kid: depth === 1, fin, count: l.kids ? progress(l.kids) : undefined });
-  const kids = (l.kids ?? []).map((k) => line(k.r, k.st, (!fin && needWord(k.st)) || k.where, taskActs(k, fin), { kid: depth === 0, kid2: depth === 1, fin }));
+  const row = line(l.r, l.st, (!fin && needWord(l.st)) || l.where, taskActs(l, fin), { kid: depth === 1, fin, count: l.kids ? progress(l.kids) : undefined, shown: shownBar(l, fin) });
+  const kids = (l.kids ?? []).map((k) => line(k.r, k.st, (!fin && needWord(k.st)) || k.where, taskActs(k, fin), { kid: depth === 0, kid2: depth === 1, fin, shown: shownBar(k, fin) }));
   return [row, ...kids];
 }
 
@@ -391,7 +400,7 @@ export function renderLedger() {
     return;
   }
   rowContext = presentationKey();
-  const sig = JSON.stringify([projectionKey(), rowContext, scopeLabel(), filter(), loaded, error]);
+  const sig = JSON.stringify([projectionKey(), rowContext, scopeLabel(), filter(), loaded, error, splitChild()]);
   let list = panel.querySelector<HTMLElement>(".lg-list");
   let need = panel.querySelector<HTMLElement>(".lg-need");
   const fold = panel.querySelector<HTMLElement>(".lg-head .lg-fold");

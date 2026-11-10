@@ -36,6 +36,7 @@ import { showShortcuts } from "../ui/infoDialogs";
 import { isSkiffAgent, openSkiffAgent, skiffAgentSession } from "./skiffAgent";
 import { groupThemeMenu, projectThemeMenu, sessionThemeMenu } from "../appearance/themes";
 import { toggleLedger } from "../workspace/ledger";
+import { stepChild } from "../workspace/skipperSplit";
 import { setSidebarView, skippersOn } from "../workspace/skippersView";
 import { quitApp } from "../workspace/profile";
 function openNewSession() {
@@ -137,6 +138,8 @@ export function runAction(a: Action) {
       return openSkiffAgent();
     }
     case "ledger": return toggleLedger();
+    case "child-next": return void stepChild(1);
+    case "child-prev": return void stepChild(-1);
     case "sidebar-view": return setSidebarView(skippersOn() ? "tree" : "skippers");
     case "mission-control": return toggleMission();
     case "back": return goBack();

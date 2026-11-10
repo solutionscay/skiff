@@ -82,11 +82,17 @@ export function worktreeSessions(w: Worktree): SessionInfo[] {
 
 export const activeGroupObj = () => S.groups.find((g) => g.id === S.activeGroup) ?? null;
 
-/** The saved view: the active group's tree, else the single session. */
+/** The Skipper split, while it shows: its Skipper is the single view and its child pane is live. */
+export function skipperSplit(): { skipper: string; child: string; layout: Layout } | null {
+  const sp = S.skipperSplit;
+  return sp && !S.activeGroup && S.single === sp.skipper && sessions.has(sp.child) ? sp : null;
+}
+
+/** The saved view: the active group's tree, else the single session, with its child pane in a Skipper split. */
 export function currentLayout(): Layout | null {
   const g = activeGroupObj();
   if (g) return g.layout;
-  return S.single ? leaf(S.single) : null;
+  return S.single ? skipperSplit()?.layout ?? leaf(S.single) : null;
 }
 
 export const shownIds = () => sessionsOf(currentLayout());

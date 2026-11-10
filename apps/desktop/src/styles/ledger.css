@@ -132,3 +132,6 @@ body.ledger-keys .cell.focused .cell-head { background: var(--bg-panel); }
 .lg-filter-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lg-filter-chev { display: grid; place-items: center; }
 .lg-filter-chev svg { width: calc(9 * var(--u)); height: calc(9 * var(--u)); }
+
+/* The row of the child pane in the Skipper split: the 2px bar, no tint. */
+.lg-row.shown, .lg-row.need.shown { box-shadow: inset 2px 0 0 var(--pc); }

@@ -140,7 +140,7 @@ test("mixed-scope plans keep qualifying headings without excluded children", () 
     "./model": MODEL,
     "./profile": { ledgerScope: () => ({ names: new Set(["A"]) }) },
     "../app/state": { S: { projects: [] }, sessions: new Map() },
-    "../app/stateQueries": { shownIds: () => [], accent: () => "" },
+    "../app/stateQueries": { shownIds: () => [], skipperSplit: () => null, accent: () => "" },
   }, {
     document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
   }, "\nimport { rows } from \"./ledgerStore\";\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units };\n");
@@ -168,7 +168,7 @@ test("a hand-off nests under its plan with its tasks, and the filter keeps one p
     "./model": MODEL,
     "./profile": { ledgerScope: () => null },
     "../app/state": { S: { projects: [] }, sessions: new Map() },
-    "../app/stateQueries": { shownIds: () => [], accent: () => "" },
+    "../app/stateQueries": { shownIds: () => [], skipperSplit: () => null, accent: () => "" },
   }, {
     document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
   }, "\nimport { rows } from \"./ledgerStore\";\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units, ledgerCounts };\n");
@@ -198,7 +198,7 @@ test("every row files by its work's bucket: a closed hand-off's tasks show in Fi
     "./model": MODEL,
     "./profile": { ledgerScope: () => null },
     "../app/state": { S: { projects: [] }, sessions: new Map() },
-    "../app/stateQueries": { shownIds: () => [], accent: () => "" },
+    "../app/stateQueries": { shownIds: () => [], skipperSplit: () => null, accent: () => "" },
   }, {
     document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
   }, "\nimport { rows } from \"./ledgerStore\";\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units, sections };\n");
@@ -224,7 +224,7 @@ test("the fleet filter shows its Skipper's rows, the hand-offs to it and its pro
     "./model": MODEL,
     "./profile": { ledgerScope: () => null },
     "../app/state": { S: { projects }, sessions: new Map() },
-    "../app/stateQueries": { shownIds: () => [], accent: () => "" },
+    "../app/stateQueries": { shownIds: () => [], skipperSplit: () => null, accent: () => "" },
   }, {
     document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
   }, "\nimport { rows } from \"./ledgerStore\";\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, units, ledgerCounts, ledgerWorkTitle };\n");
@@ -329,4 +329,34 @@ test("with no workspace open, an outside add changes nothing (#229)", async () =
   h.fixture("/work.skiffw", ["/a"]);
   await h.profile.openWorkspace("/work.skiffw");
   assert.equal(h.profile.shows(h.S.projects[2]), false);
+});
+
+test("Skipper split children: live panes of open rows in Ledger order, each pane once, no Skipper pane", () => {
+  const pane = (id: string, state: string) => [id, { id, state, started_at: "s" }] as const;
+  const sessions = new Map<string, unknown>([pane("sk", "idle"), pane("p1", "done"), pane("p2", "working"), pane("p3", "waiting"), pane("p4", "working"), pane("p5", "working")]);
+  const ledger = moduleFromSource("../src/workspace/ledger.ts", {
+    "../app/skiffAgent": { skipperWord: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
+    "./model": MODEL,
+    "./profile": { ledgerScope: () => null },
+    "../app/state": { S: { projects: [] }, sessions },
+    "../app/stateQueries": { shownIds: () => [], skipperSplit: () => null, accent: () => "" },
+  }, {
+    document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
+  }, "\nimport { rows } from \"./ledgerStore\";\nimport { childPanes } from \"./ledgerModel\";\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, childPanes };\n");
+  let id = 0;
+  const row = (uid: string, pane_id: string | null, state: string, o: { kind?: string; parent?: string; bucket?: string } = {}) =>
+    ({ id: ++id, uid, kind: o.kind ?? "task", project: "", owner: "grand", parent: o.parent ?? null, state, bucket: o.bucket ?? "open", closed_at: null, updated_at: "x", pane_id, pane_gen: null, task: uid, title: null });
+  ledger.review.setRows([
+    row("done-live", "p1", "done"),
+    row("working", "p2", "sent"),
+    row("pending", null, "pending"),
+    row("same-pane", "p2", "sent"),
+    row("gone", "p9", "sent"),
+    row("asks", "p3", "sent"),
+    row("finished", "p4", "done", { bucket: "finished" }),
+    row("handoff", "sk", "sent", { kind: "handoff" }),
+    row("handed", "p5", "sent", { parent: "handoff" }),
+  ]);
+  // Working (send order), then Open (needs the person, then done). The done task keeps its pane while its row is open.
+  assert.deepEqual(Array.from(ledger.review.childPanes("sk"), (c: any) => c.id), ["p2", "p5", "p3", "p1"]);
 });

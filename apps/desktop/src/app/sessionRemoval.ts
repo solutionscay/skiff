@@ -7,6 +7,7 @@ import { gone, S, sessions } from "./state";
 import { activeGroupObj, shownIds } from "./stateQueries";
 import { heirOf } from "./skiffAgent";
 import { panes } from "../terminal/terminalState";
+import { splitLoses } from "../workspace/skipperSplit";
 import { focusPane, inBackground, paneNear, revealSession, rowNear, unfocus } from "../workspace/view";
 
 /** The daemon pruned the session from its groups; groups_changed brings them. Here the view drops it at once. */
@@ -22,7 +23,9 @@ function dropPane(id: string) {
   // A retiring project Skipper gives them to the fleet Skipper that took it over.
   const heir = heirOf(id, S.focused === id);
   const near = S.focused !== id || heir ? null : shownIds().length > 1 ? paneNear(id) : S.single === id ? rowNear(id) : null;
+  const split = splitLoses(id);
   sessions.delete(id);
+  split();
   panes.get(id)?.term.dispose();
   panes.get(id)?.el.remove();
   panes.delete(id);
