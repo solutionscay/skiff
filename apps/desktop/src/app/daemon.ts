@@ -17,7 +17,7 @@ import { loadGroups } from "./groups";
 import { render, scheduleRender } from "./render";
 import { born, gone, OTHER, removeErrors, S, sessions, stateSince, upsert } from "./state";
 import { hasKeys, markSeen, quietSeen } from "./seen";
-import { peekExited, peekOwner, peekUpdated, strayPeek } from "../terminal/peek";
+import { peekExited, peekOwner, peekUpdated, reattachPeeks, strayPeek } from "../terminal/peek";
 import { awayPlaces, currentWorktree, place } from "./stateQueries";
 import { agentKind } from "../appearance/agentIcon";
 import { loadSkiffAgent, noteDaemon, skipperCreated } from "./skiffAgent";
@@ -128,6 +128,7 @@ async function runReload(command: "reload_daemon" | "update_daemon"): Promise<Da
       await refreshSessions().catch(console.error);
       await loadGroups().catch(console.error);
       reattachPanes();
+      reattachPeeks();
     }
     setDaemon(r.status);
     const note = reloadNote(r);
@@ -189,6 +190,7 @@ export async function reconnectRemote(): Promise<void> {
     if (hostCan("session_groups")) await loadGroups();
     if (hostCan("session_agents")) S.agents = await hostInvoke<AgentInfo[]>("session_agents", "list_agents");
     reattachPanes();
+    reattachPeeks();
     setDaemon(status);
     render();
   } finally {

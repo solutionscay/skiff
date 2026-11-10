@@ -693,6 +693,16 @@ async function follow(p: Peek, session: string) {
   await hostInvoke("session_terminal", "subscribe_output", { session, stream: n, onOutput: channel }).catch(showError);
 }
 
+/**
+ * After a daemon reload: each running command follows its session again on
+ * the new connection, as a shown pane does. The snapshot redraws the
+ * terminal; the tool and its unsaved text stay.
+ */
+export function reattachPeeks() {
+  const live = new Set([open, held?.p, ...parked.values()]);
+  for (const p of live) if (p?.session && !p.exited) follow(p, p.session).catch(console.error);
+}
+
 /** skiffd changed a peek session: the command took the terminal. */
 export function peekUpdated(info: SessionInfo) {
   if (!info.interactive) return;
