@@ -141,17 +141,25 @@ pub fn project_folder(cfg: &Config, project: &str) -> Result<PathBuf> {
     Ok(folder(cfg)?.join("projects").join(project))
 }
 
-/// The agent a project Skipper starts, with its model: the project's
-/// `skipper_agent` with the agent's default model, else `[skiff_agent]
-/// project_agent`, else the Skipper's agent (see [`choose`]), each with
-/// `project_model`. One that is not installed and on falls through to the
-/// next.
+/// The agent a project Skipper starts, with its model: its own row in
+/// `[skiff_agent.skippers]`, else what every project and fleet Skipper
+/// starts (see [`shared_agent`]).
 pub fn project_agent<'a>(cfg: &Config, agents: &'a [AgentInfo], p: &ProjectConfig) -> Option<(&'a AgentInfo, Option<String>)> {
-    let usable = |id: Option<&str>| agents.iter().find(|a| Some(a.id.as_str()) == id && a.installed && (a.enabled || a.custom));
-    match usable(p.skipper_agent.as_deref()) {
-        Some(a) => Some((a, None)),
-        None => fleet_agent(cfg, agents),
-    }
+    skipper_agent(cfg, agents, &p.name)
+}
+
+/// The agent the Skipper of `scope` (a project's name or `fleet:<name>`)
+/// starts, with its model: its row in `[skiff_agent.skippers]` with that
+/// row's model, else [`shared_agent`]. A row whose agent is not installed
+/// and on falls through.
+fn skipper_agent<'a>(cfg: &Config, agents: &'a [AgentInfo], scope: &str) -> Option<(&'a AgentInfo, Option<String>)> {
+    let own = cfg.skiff_agent.skippers.get(scope).and_then(|r| usable(agents, Some(&r.agent)).map(|a| (a, r.model.clone())));
+    own.or_else(|| shared_agent(cfg, agents))
+}
+
+/// An installed agent that is on (or the user's own), by id.
+fn usable<'a>(agents: &'a [AgentInfo], id: Option<&str>) -> Option<&'a AgentInfo> {
+    agents.iter().find(|a| Some(a.id.as_str()) == id && a.installed && (a.enabled || a.custom))
 }
 
 /// Makes a project Skipper's folder ready: the Skiff agent's folder first,
@@ -189,14 +197,17 @@ pub fn fleet_template(cfg: &Config, fleet: &str, dir: &Path, folder: &Path) -> S
         .replace("{{folder}}", &folder.display().to_string())
 }
 
-/// The agent a fleet Skipper starts, with its model: `[skiff_agent]
-/// project_agent`, else the Skipper's agent, with `project_model`. A
-/// project's `skipper_agent` is for its project Skipper only.
-pub fn fleet_agent<'a>(cfg: &Config, agents: &'a [AgentInfo]) -> Option<(&'a AgentInfo, Option<String>)> {
-    let a = agents
-        .iter()
-        .find(|a| Some(a.id.as_str()) == cfg.skiff_agent.project_agent.as_deref() && a.installed && (a.enabled || a.custom))
-        .or_else(|| choose(agents, cfg.skiff_agent.agent.as_deref()))?;
+/// The agent the fleet Skipper of `fleet` starts, with its model: its own
+/// row in `[skiff_agent.skippers]` (`fleet:<name>`), else [`shared_agent`].
+pub fn fleet_agent<'a>(cfg: &Config, agents: &'a [AgentInfo], fleet: &str) -> Option<(&'a AgentInfo, Option<String>)> {
+    skipper_agent(cfg, agents, &fleet_scope(fleet))
+}
+
+/// What a project or fleet Skipper with no row of its own starts:
+/// `[skiff_agent] project_agent`, else the main Skipper's agent, with
+/// `project_model`.
+fn shared_agent<'a>(cfg: &Config, agents: &'a [AgentInfo]) -> Option<(&'a AgentInfo, Option<String>)> {
+    let a = usable(agents, cfg.skiff_agent.project_agent.as_deref()).or_else(|| choose(agents, cfg.skiff_agent.agent.as_deref()))?;
     Some((a, cfg.skiff_agent.project_model.clone()))
 }
 
@@ -557,14 +568,14 @@ pub async fn open_fleet(c: &Client, fleet: &str) -> Result<ProjectSkipper> {
         let session = if s.name.as_deref() == Some(&want) { s.clone() } else { c.rename_session(&s.id, &want).await? };
         let typed = is_bare(&session) && {
             let agents = c.list_agents().await?;
-            let Some((agent, model)) = fleet_agent(&cfg, &agents) else { bail!("No agent is on. Turn one on in Settings › Agents") };
+            let Some((agent, model)) = fleet_agent(&cfg, &agents, fleet) else { bail!("No agent is on. Turn one on in Settings › Agents") };
             start_in_shell(c, &cfg, &session, agent, model.as_deref()).await?
         };
         crate::fleet::restart_rows(&crate::ledger::path()?, &fleet_scope(fleet), &session, &all, typed)?;
         return Ok(ProjectSkipper { session, created: typed, dir });
     }
     let agents = c.list_agents().await?;
-    let Some((agent, model)) = fleet_agent(&cfg, &agents) else { bail!("No agent is on. Turn one on in Settings › Agents") };
+    let Some((agent, model)) = fleet_agent(&cfg, &agents, fleet) else { bail!("No agent is on. Turn one on in Settings › Agents") };
     let mut s = spec(&with_model(agent, model.as_deref()), &fleet_name(&cfg, fleet), dir.clone());
     crate::cache::add_flags(&cfg, std::slice::from_ref(agent), &mut s);
     s.skipper = Some(fleet_scope(fleet));
@@ -634,5 +645,33 @@ mod tests {
         assert!(!too_old_for_project(PROJECT_SKIPPER_SINCE));
         assert!(!too_old_for_project(skiff_core::VERSION), "this skiffd marks project Skippers");
         assert!(!too_old_for_project("0.7.0"));
+    }
+
+    /// A Skipper's own row wins; one with no row, or a row whose agent is
+    /// off, starts `project_agent` with `project_model`.
+    #[test]
+    fn a_skipper_row_wins_over_the_shared_agent() {
+        let agent = |id: &str, enabled: bool| AgentInfo {
+            id: id.into(),
+            command: id.into(),
+            default_command: id.into(),
+            custom: false,
+            installed: true,
+            enabled,
+            used_by: None,
+            path: None,
+            skip_approvals: Vec::new(),
+        };
+        let agents = [agent("claude", true), agent("codex", true), agent("grok", false)];
+        let mut cfg = Config::default();
+        cfg.skiff_agent.project_agent = Some("claude".into());
+        cfg.skiff_agent.project_model = Some("sonnet".into());
+        let row = |a: &str, m: Option<&str>| skiff_core::config::TaskRow { agent: a.into(), model: m.map(Into::into) };
+        cfg.skiff_agent.skippers.insert("fleet:web".into(), row("codex", Some("gpt-5")));
+        cfg.skiff_agent.skippers.insert("gesher".into(), row("grok", None));
+        let pick = |scope: &str| skipper_agent(&cfg, &agents, scope).map(|(a, m)| (a.id.clone(), m));
+        assert_eq!(pick("fleet:web"), Some(("codex".into(), Some("gpt-5".into()))));
+        assert_eq!(pick("gesher"), Some(("claude".into(), Some("sonnet".into()))));
+        assert_eq!(pick("skiff"), Some(("claude".into(), Some("sonnet".into()))));
     }
 }

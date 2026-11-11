@@ -239,7 +239,13 @@ pub fn load_from(path: &Path) -> Result<Config> {
 }
 
 pub fn parse(text: &str) -> Result<Config> {
-    let mut cfg: Config = toml::from_str(text)?;
+    let mut cfg: Config = if text.contains("skipper_agent") {
+        let mut doc: toml_edit::DocumentMut = text.parse()?;
+        move_skipper_agents(&mut doc);
+        toml::from_str(&doc.to_string())?
+    } else {
+        toml::from_str(text)?
+    };
     for p in &mut cfg.projects {
         p.path = expand_home(&p.path);
     }
@@ -253,10 +259,12 @@ pub fn parse(text: &str) -> Result<Config> {
 /// every write takes them out: Skippers are always on.
 pub(super) const DROPPED: [&str; 2] = ["enabled", "project_skippers"];
 
-/// Writes `doc` to `file` as [`write_atomic`] does, without the
-/// [`DROPPED`] keys, and without `instructions` in a `[skiff_agent.tasks]`
+/// Writes `doc` to `file` as [`write_atomic`] does, with each
+/// `[[project]] skipper_agent` moved (see [`move_skipper_agents`]), without
+/// the [`DROPPED`] keys, and without `instructions` in a `[skiff_agent.tasks]`
 /// row: a type's file is `types/<type>.md` in the agent's folder now.
 pub(super) fn write_doc(file: &Path, doc: &mut toml_edit::DocumentMut) -> Result<()> {
+    move_skipper_agents(doc);
     if let Some(t) = doc.get_mut("skiff_agent").and_then(|t| t.as_table_like_mut()) {
         for k in DROPPED {
             t.remove(k);
@@ -386,5 +394,50 @@ mod tests {
         std::fs::remove_file(&file).unwrap();
         assert_eq!(file_stamp(&file), "none");
         std::fs::remove_dir_all(&d).unwrap();
+    }
+}
+
+/// Moves an older Skiff's `[[project]] skipper_agent = "codex"` into
+/// `[skiff_agent.skippers]` as `<project> = { agent = "codex" }`. A row
+/// that is there already wins. The read moves it in memory; the next write
+/// saves the move.
+fn move_skipper_agents(doc: &mut toml_edit::DocumentMut) {
+    let mut moved = Vec::new();
+    if let Some(list) = doc.get_mut("project").and_then(|p| p.as_array_of_tables_mut()) {
+        for p in list.iter_mut() {
+            let Some(agent) = p.remove("skipper_agent") else { continue };
+            let (Some(name), Some(agent)) = (p.get("name").and_then(|v| v.as_str()), agent.as_str().map(str::trim)) else { continue };
+            if !agent.is_empty() {
+                moved.push((name.to_string(), agent.to_string()));
+            }
+        }
+    }
+    if moved.is_empty() {
+        return;
+    }
+    let Some(top) = doc
+        .entry("skiff_agent")
+        .or_insert_with(|| toml_edit::Item::Table(toml_edit::Table::new()))
+        .as_table_mut()
+    else {
+        return;
+    };
+    let Some(rows) = top
+        .entry("skippers")
+        .or_insert_with(|| {
+            let mut t = toml_edit::Table::new();
+            t.set_implicit(false);
+            toml_edit::Item::Table(t)
+        })
+        .as_table_mut()
+    else {
+        return;
+    };
+    for (name, agent) in moved {
+        if !rows.contains_key(&name) {
+            let mut row = toml_edit::InlineTable::new();
+            row.insert("agent", agent.into());
+            rows.insert(&name, toml_edit::value(row));
+        }
     }
 }

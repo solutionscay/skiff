@@ -76,13 +76,17 @@ pub fn rename_agent(id: &str, name: &str) -> Result<()> {
         }
         Ok(())
     })?;
-    // Task types that start the agent follow it to its new name.
-    if super::load()?.skiff_agent.tasks.0.iter().any(|(_, r)| r.agent == id) {
+    // Task types and Skipper rows that start the agent follow it to its new name.
+    let a = super::load()?.skiff_agent;
+    if a.tasks.0.iter().any(|(_, r)| r.agent == id) || a.skippers.values().any(|r| r.agent == id) {
         edit_table("skiff_agent", |t| {
-            for (_, row) in tasks(t)?.iter_mut() {
-                if let Some(r) = row.as_value_mut().and_then(|v| v.as_inline_table_mut()) {
-                    if r.get("agent").and_then(|v| v.as_str()) == Some(id) {
-                        r.insert("agent", name.into());
+            for key in ["tasks", "skippers"] {
+                let Some(rows) = t.get_mut(key).and_then(|v| v.as_table_mut()) else { continue };
+                for (_, row) in rows.iter_mut() {
+                    if let Some(r) = row.as_value_mut().and_then(|v| v.as_inline_table_mut()) {
+                        if r.get("agent").and_then(|v| v.as_str()) == Some(id) {
+                            r.insert("agent", name.into());
+                        }
                     }
                 }
             }
@@ -395,6 +399,46 @@ pub fn remove_task_type(name: &str) -> Result<()> {
     })
 }
 
+/// Sets one project or fleet Skipper's own agent and model in
+/// `[skiff_agent.skippers]`, by scope: a project's name or `fleet:<name>`.
+/// `None` takes the row out, so the Skipper starts `project_agent` again.
+pub fn set_skipper_agent(scope: &str, agent: Option<&str>, model: Option<&str>) -> Result<()> {
+    let scope = scope.trim();
+    if scope.is_empty() || scope == "fleet:" {
+        anyhow::bail!("a Skipper row needs a project or fleet");
+    }
+    let row = agent.map(str::trim).filter(|a| !a.is_empty()).map(|a| task_row(a, model)).transpose()?;
+    edit_table("skiff_agent", |t| {
+        match row {
+            Some(row) => {
+                table(t, "skippers")?.insert(scope, toml_edit::value(row));
+            }
+            None => {
+                if let Some(rows) = t.get_mut("skippers").and_then(|v| v.as_table_mut()) {
+                    rows.remove(scope);
+                }
+            }
+        }
+        drop_empty(t, "skippers");
+        Ok(())
+    })
+}
+
+/// Moves a Skipper's row in `[skiff_agent.skippers]` from scope `from` to
+/// `to`, as Rename fleet… moves `fleet:<old>`. No row: nothing changes.
+pub fn rename_skipper_scope(from: &str, to: &str) -> Result<()> {
+    if !super::load()?.skiff_agent.skippers.contains_key(from) {
+        return Ok(());
+    }
+    edit_table("skiff_agent", |t| {
+        let rows = table(t, "skippers")?;
+        if let Some(row) = rows.remove(from) {
+            rows.insert(to, row);
+        }
+        Ok(())
+    })
+}
+
 /// `{ agent = "claude", model = "opus" }` for an agent Skiff lists.
 fn task_row(agent: &str, model: Option<&str>) -> Result<toml_edit::InlineTable> {
     let agent = agent.trim();
@@ -414,14 +458,26 @@ fn task_row(agent: &str, model: Option<&str>) -> Result<toml_edit::InlineTable> 
 
 /// `[skiff_agent.tasks]`, made on first use.
 fn tasks(t: &mut toml_edit::Table) -> Result<&mut toml_edit::Table> {
-    t.entry("tasks")
+    table(t, "tasks")
+}
+
+/// `[skiff_agent.<key>]`, made on first use.
+fn table<'a>(t: &'a mut toml_edit::Table, key: &str) -> Result<&'a mut toml_edit::Table> {
+    t.entry(key)
         .or_insert_with(|| {
             let mut c = toml_edit::Table::new();
             c.set_implicit(false);
             toml_edit::Item::Table(c)
         })
         .as_table_mut()
-        .ok_or_else(|| anyhow::anyhow!("`skiff_agent.tasks` is not a table"))
+        .ok_or_else(|| anyhow::anyhow!("`skiff_agent.{key}` is not a table"))
+}
+
+/// Takes `[skiff_agent.<key>]` out when it has no rows.
+fn drop_empty(t: &mut toml_edit::Table, key: &str) {
+    if t.get(key).and_then(|v| v.as_table()).is_some_and(|v| v.is_empty()) {
+        t.remove(key);
+    }
 }
 
 fn edit_agents(f: impl FnOnce(&mut toml_edit::Table) -> Result<()>) -> Result<()> {

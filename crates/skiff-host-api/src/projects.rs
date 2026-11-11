@@ -83,10 +83,6 @@ pub struct HostProject {
     /// Shows a Files tree under each worktree. Left out when off.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub files: bool,
-    /// The agent this project's Skipper starts, by hand in the Host's
-    /// `projects.toml`. Absent: the one all project Skippers share.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub skipper_agent: Option<String>,
 }
 
 /// What the Host would add for a folder of its own, before anything is written.

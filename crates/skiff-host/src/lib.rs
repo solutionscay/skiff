@@ -413,7 +413,6 @@ pub fn host_project(p: project::Project) -> HostProject {
         changes: p.changes,
         theme: p.theme,
         files: p.files,
-        skipper_agent: p.skipper_agent,
     }
 }
 

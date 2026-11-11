@@ -450,6 +450,8 @@ mod tests {
         assert!(matches!(edit(serde_json::json!({ "key": "name", "value": null })), Edit::Name(None)));
         assert!(matches!(edit(serde_json::json!({ "key": "model", "value": "opus" })), Edit::Model(Some(m)) if m == "opus"));
         assert!(matches!(edit(serde_json::json!({ "key": "project_model", "value": null })), Edit::ProjectModel(None)));
+        let row = edit(serde_json::json!({ "key": "skipper", "value": { "scope": "fleet:web", "agent": "codex", "model": null } }));
+        assert!(matches!(row, Edit::Skipper(e) if e.scope == "fleet:web" && e.agent.as_deref() == Some("codex") && e.model.is_none()));
         // The keys Skippers dropped.
         assert!(serde_json::from_value::<Edit>(serde_json::json!({ "key": "enabled", "value": true })).is_err());
         assert!(serde_json::from_value::<Edit>(serde_json::json!({ "key": "project_skippers", "value": true })).is_err());

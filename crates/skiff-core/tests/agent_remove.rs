@@ -33,6 +33,9 @@ fn an_agent_goes_only_when_nothing_starts_it() {
     let ids: Vec<String> = project::agents().into_iter().map(|a| a.id).collect();
     assert!(!ids.iter().any(|i| i == "hermes" || i == "aider"), "{ids:?}");
     assert_eq!(config::load().unwrap().agents.removed, ["hermes"]);
+    // An older `[[project]] skipper_agent` moved into `[skiff_agent.skippers]` at the write.
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(!text.contains("skipper_agent") && text.contains("[skiff_agent.skippers]\ngesher = { agent = \"claude\" }"), "{text}");
     // Restore defaults brings hermes back; the custom agent stays gone.
     config::restore_agents().unwrap();
     let ids: Vec<String> = project::agents().into_iter().map(|a| a.id).collect();

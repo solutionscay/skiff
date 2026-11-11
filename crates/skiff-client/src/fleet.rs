@@ -273,6 +273,8 @@ pub async fn rename(c: &Client, old: &str, new: &str) -> Result<()> {
     let members: Vec<(String, String)> = skipper::fleet_projects(&cfg, old).into_iter().map(|p| (p.name.clone(), new.to_string())).collect();
     let order: Vec<String> = cfg.projects.iter().map(|p| p.name.clone()).collect();
     config::arrange_projects(&order, &members)?;
+    // The fleet Skipper's own agent follows the fleet.
+    config::rename_skipper_scope(&a, &b)?;
     if fs.is_some() {
         skipper::write_fleet(&config::load()?, new)?;
     }

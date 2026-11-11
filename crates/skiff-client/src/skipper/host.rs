@@ -56,6 +56,7 @@ pub fn settings(cfg: &Config) -> Result<skiff_host_api::HostSkipper> {
         project_agent: a.project_agent.clone(),
         project_model: a.project_model.clone(),
         skippers_order: a.skippers_order.clone(),
+        skippers: a.skippers.iter().map(|(k, r)| (k.clone(), skiff_host_api::SkipperAgent { agent: r.agent.clone(), model: r.model.clone() })).collect(),
         tasks,
         types,
         // A refused folder has no files to show.

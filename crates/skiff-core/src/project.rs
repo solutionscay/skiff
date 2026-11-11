@@ -60,10 +60,6 @@ pub struct Project {
     /// The fleet it sits in on the rail. Absent: on the rail by itself.
     #[serde(default)]
     pub fleet: Option<String>,
-    /// The agent this project's Skipper starts, in place of the one all
-    /// project Skippers share. Only by hand, in `projects.toml`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub skipper_agent: Option<String>,
     /// `changes = false`: the Changes section is hidden. Absent: shown.
     #[serde(default)]
     pub changes: Option<bool>,
@@ -111,7 +107,6 @@ impl Project {
             error,
             closed: p.closed,
             fleet: p.fleet.clone().filter(|f| !f.trim().is_empty()),
-            skipper_agent: p.skipper_agent.clone().filter(|a| !a.trim().is_empty()),
             changes: p.changes,
             theme: p.theme.clone(),
             files: p.files.unwrap_or(kind == ProjectKind::Folder),
@@ -438,7 +433,7 @@ pub struct AgentInfo {
 }
 
 /// What in `cfg` starts agent `id`, in this order: the main Skipper, project and
-/// fleet Skippers, a project's own Skipper (`skipper_agent`), a task type.
+/// fleet Skippers, one Skipper's own row (`[skiff_agent.skippers]`), a task type.
 pub fn agent_uses(cfg: &crate::config::Config, id: &str) -> Vec<String> {
     let a = &cfg.skiff_agent;
     let is = |v: &Option<String>| v.as_deref().map(str::trim) == Some(id);
@@ -449,7 +444,10 @@ pub fn agent_uses(cfg: &crate::config::Config, id: &str) -> Vec<String> {
     if is(&a.project_agent) {
         uses.push("Project and fleet Skippers".into());
     }
-    uses.extend(cfg.projects.iter().filter(|p| is(&p.skipper_agent)).map(|p| format!("project {}", p.name)));
+    uses.extend(a.skippers.iter().filter(|(_, r)| r.agent.trim() == id).map(|(s, _)| match s.strip_prefix("fleet:") {
+        Some(f) => format!("fleet {f}"),
+        None => format!("project {s}"),
+    }));
     uses.extend(a.tasks.0.iter().filter(|(_, r)| r.agent.trim() == id).map(|(t, _)| format!("task type {t}")));
     uses
 }

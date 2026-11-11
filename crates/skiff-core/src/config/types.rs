@@ -78,7 +78,7 @@ pub struct SkiffAgent {
     #[serde(default)]
     pub continue_on_restore: bool,
     /// The agent id project and fleet Skippers start. Absent: the
-    /// Skipper's agent. A project's `skipper_agent` wins over it.
+    /// Skipper's agent. A row in `skippers` wins over it.
     pub project_agent: Option<String>,
     /// The model project and fleet Skippers start with. Absent: the agent's
     /// default.
@@ -89,6 +89,11 @@ pub struct SkiffAgent {
     /// its place back. Absent: tree order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub skippers_order: Vec<String>,
+    /// `[skiff_agent.skippers]`: the agent and model one project or fleet
+    /// Skipper starts, by scope: a project's name or `fleet:<name>`. A
+    /// Skipper with no row starts `project_agent` with `project_model`.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub skippers: std::collections::BTreeMap<String, TaskRow>,
     /// `[skiff_agent.tasks]`: the agent and model each task type starts.
     #[serde(default, skip_serializing_if = "TaskTypes::is_empty")]
     pub tasks: TaskTypes,
@@ -129,7 +134,8 @@ impl SkiffAgent {
     }
 }
 
-/// One `[skiff_agent.tasks]` row: `review = { agent = "claude", model = "opus" }`.
+/// One `[skiff_agent.tasks]` or `[skiff_agent.skippers]` row:
+/// `review = { agent = "claude", model = "opus" }`.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 pub struct TaskRow {
     /// An agent id from `[agents]`.
@@ -228,9 +234,6 @@ pub struct ProjectConfig {
     pub closed: bool,
     /// The fleet this project sits in on the rail. Absent: on the rail by itself.
     pub fleet: Option<String>,
-    /// The agent id this project's Skipper starts, in place of
-    /// `[skiff_agent] project_agent`. Only by hand: Settings has no row for it.
-    pub skipper_agent: Option<String>,
 }
 
 impl ProjectConfig {

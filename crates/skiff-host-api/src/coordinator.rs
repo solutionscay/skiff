@@ -222,6 +222,11 @@ pub struct HostSkipper {
     /// older Host.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub skippers_order: Vec<String>,
+    /// One project or fleet Skipper's own agent and model, by scope: a
+    /// project's name or `fleet:<name>`. A Skipper with no row starts
+    /// `project_agent`. Empty: none, also from an older Host.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub skippers: std::collections::BTreeMap<String, SkipperAgent>,
     /// `[skiff_agent.tasks]` in file order.
     pub tasks: Vec<HostTaskType>,
     /// The folder of the task types' files, as `~/…/types/`. Empty from an
@@ -292,12 +297,34 @@ pub enum SkipperEdit {
     ProjectModel(Option<String>),
     /// The Skippers list's order, by scope. Empty: tree order.
     SkippersOrder(Vec<String>),
+    /// One project or fleet Skipper's own agent. No agent: the row goes.
+    Skipper(SkipperAgentEdit),
     /// A new row at the end of Task types.
     AddTask(TaskEdit),
     /// A row's agent or model.
     Task(TaskEdit),
     RenameTask { from: String, to: String },
     RemoveTask(String),
+}
+
+/// A project or fleet Skipper's own agent and model. Absent model: the
+/// agent's default.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkipperAgent {
+    pub agent: String,
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
+/// One Skipper row's change, by scope. No agent: the Skipper follows
+/// `project_agent` again.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkipperAgentEdit {
+    pub scope: String,
+    #[serde(default)]
+    pub agent: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 /// A task type row. An empty or absent model is the agent's default.

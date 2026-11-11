@@ -191,7 +191,6 @@ pub fn add_project(
         theme: Some(theme),
         closed: false,
         fleet,
-        skipper_agent: None,
     })
 }
 
