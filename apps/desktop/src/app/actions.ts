@@ -21,7 +21,7 @@ import { currentProject, currentWorktree, shownIds, splitFull } from "./stateQue
 import { paneCenter } from "../terminal/terminal";
 
 import { openFind } from "../terminal/terminalSearch";
-import { closePreview, previewOnScreen } from "../terminal/peek";
+import { closePreview, peekOverSettingsShown, previewOnScreen } from "../terminal/peek";
 import { copySelection, pasteClipboard } from "../terminal/terminalClipboard";
 import { openImages } from "../appearance/imagesDialog";
 import { fontTarget, setFontSize, stepPaneFont } from "../terminal/terminalFont";
@@ -60,6 +60,8 @@ function openNewSession() {
 }
 
 export function runAction(a: Action) {
+  // A tool over Settings takes Close pane. Quit still runs; every other key waits, Settings' own too.
+  if (peekOverSettingsShown() && a !== "quit") return a === "close-pane" ? closePreview() : undefined;
   const shown = S.focused && shownIds().includes(S.focused);
   // Mission control holds the keys as a dialog does. Its own key closes it; maximize goes to the lit session;
   // the palette key searches the board; the focus mode key switches Running / All; the list keys move

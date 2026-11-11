@@ -19,7 +19,7 @@ import { collapsed, S, selectedWorktree, sessions } from "./state";
 
 import { panes } from "../terminal/terminalState";
 import { revealSession, selectProject, showGroup } from "../workspace/view";
-import { closePreview, enterPreview, giveKeys, peekBlocksAction, previewOnScreen, startPreview } from "../terminal/peek";
+import { closePreview, enterPreview, giveKeys, peekBlocksAction, peekOverSettingsShown, previewOnScreen, startPreview } from "../terminal/peek";
 import { rowActs } from "../workspace/rowActs";
 import { worktreeLines } from "../workspace/sidebarLines";
 import { ledgerKey } from "../workspace/ledger";
@@ -78,12 +78,14 @@ window.addEventListener("keydown", (e) => {
   // An open menu or dialog keeps the keys until it closes. Holding Ctrl+Shift
   // from the shortcut that opened it, then pressing Enter, picks the item
   // instead of running Maximize.
-  if (modalOpen(false)) return;
+  if (modalOpen(false) && !peekOverSettingsShown()) return;
   const key = appKey(e);
   if (key === null) return;
   if (peekBlocksAction(key) && !(e.target as Element).closest?.("#sidebar-scroll")) return;
   e.preventDefault();
   e.stopPropagation();
+  // Over Settings, a project key has no tree to move.
+  if (typeof key === "number" && peekOverSettingsShown()) return;
   // The Ledger's lit row takes Ctrl+Shift+Enter before the tree row can block it.
   if (key === "maximize" && ledgerKey(key)) return;
   if (typeof key === "string" && modeKeyBlocked(key)) return;

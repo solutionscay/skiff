@@ -176,6 +176,16 @@ export function strayPeek(s: SessionInfo, me: string) {
   else released.add(s.id);
 }
 
+/**
+ * A tool that Settings sent shows over it. It takes Close pane, which closes
+ * it as in any peek. The leave keys have nowhere to go but Settings, and a
+ * tool left there would end with its edits, so they do nothing. Settings and
+ * the tree behind take no keys.
+ */
+export function peekOverSettingsShown(): boolean {
+  return !!afterPeek && !!open?.shown && live(open.gen);
+}
+
 /** Navigation can leave a tool. Other app keys stay out of its terminal. */
 export function peekBlocksAction(action: Action | number | null): boolean {
   if (!open?.shown || open.exited || !live(open.gen)) return false;
