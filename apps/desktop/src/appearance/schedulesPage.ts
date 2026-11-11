@@ -55,9 +55,11 @@ export interface SchedulesState {
   preview: Preview | null;
   /** The Prompt row's one error line, such as no app for the file. */
   promptError: string | null;
+  /** The edit page's change in flight: Run now waits for it. */
+  saving: Promise<void> | null;
 }
 
-export const schedulesState = (): SchedulesState => ({ editing: null, draft: null, error: null, whenError: null, preview: null, promptError: null });
+export const schedulesState = (): SchedulesState => ({ editing: null, draft: null, error: null, whenError: null, preview: null, promptError: null, saving: null });
 
 export interface SchedulesCtx {
   render: () => void;
@@ -381,7 +383,18 @@ function editPage(main: HTMLElement, head: HTMLElement, st: SchedulesState, ctx:
   head.append(back, h("div", "set-h", s ? s.name : t("schedules.new")));
   if (s) {
     const acts = h("div", "set-head-acts");
-    const now = smallButton(t("schedules.runNow"), () => void run(st, ctx, ["run-now", s.name]));
+    // Run now saves the field in edit, as leaving the page does, then starts
+    // the run and goes back to the list, which shows it. A refusal stays here.
+    const now = smallButton(t("schedules.runNow"), async () => {
+      (document.activeElement as HTMLElement | null)?.blur();
+      await st.saving;
+      const name = schedules.find((x) => x.uid === s.uid)?.name ?? s.name;
+      if (!(await run(st, ctx, ["run-now", name]))) return;
+      st.editing = null;
+      st.draft = null;
+      st.whenError = null;
+      ctx.render();
+    });
     now.disabled = s.open;
     acts.append(
       now,
@@ -392,7 +405,14 @@ function editPage(main: HTMLElement, head: HTMLElement, st: SchedulesState, ctx:
   }
 
   /** One change: `edit` on a saved schedule; on a new one, `add` once Name and When are valid. */
-  const save = async (flags: string[], apply: (d: Draft) => void) => {
+  const save = (flags: string[], apply: (d: Draft) => void): Promise<void> => {
+    const p = change(flags, apply);
+    st.saving = p;
+    return p.finally(() => {
+      if (st.saving === p) st.saving = null;
+    });
+  };
+  const change = async (flags: string[], apply: (d: Draft) => void) => {
     apply(d);
     if (s) {
       // A project in a fleet shows as its fleet's Skipper: the next save stores the fleet.
