@@ -10,6 +10,7 @@ import { branchName, locate, scopeFleet, scopeName, taskTitle } from "../workspa
 import type { DaemonMetrics, DaemonStatus, SessionInfo } from "../platform/types";
 import { abandonShip, emptyPick, keepLive, moveTo, type Pick, pickAll, picked, pickedText, pickRow, sinkLabel } from "./sessionPick";
 import { type MessageKey, t, tn } from "../i18n";
+import { skipperEndLines } from "../workspace/skipperEnd";
 
 interface ActivityState { list: SessionInfo[]; metrics: DaemonMetrics | null; version: string | null; error: string | null; timer: number | null; pick: Pick; }
 export const activityState = (): ActivityState => ({ list: [], metrics: null, version: null, error: null, timer: null, pick: emptyPick() });
@@ -203,7 +204,7 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
     const ids = picked(p, order);
     if (!ids.length) return;
     const names = ids.map((id) => taskTitle(rows.find((x) => x.id === id)!));
-    const ok = await confirmAction(abandonShip(names));
+    const ok = await confirmAction({ ...abandonShip(names), content: skipperEndLines(ids) });
     // A refresh can rebuild the list while the dialog is open: the keys go to the new copy.
     const back = (sel: string) => document.querySelector<HTMLElement>(sel)?.focus();
     if (!ok) return back(".set-daemon-band .set-sink");

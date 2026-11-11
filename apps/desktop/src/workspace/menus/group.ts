@@ -1,6 +1,7 @@
 import { ctxMenu } from "../../ui/contextMenu";
 import { launchIcon } from "../../appearance/agentIcon";
 import { confirmAction } from "../../ui/confirm";
+import { skipperEndLines } from "../skipperEnd";
 import { keyLabel } from "../../app/keys";
 import { t, tn, upper } from "../../i18n";
 import { type MenuEntry } from "../../ui/menu";
@@ -82,6 +83,7 @@ export async function killGroup(id: string) {
       title: t("killGroup.title"),
       body: tn("killGroup.body", running.length),
       action: t("killGroup.action"),
+      content: skipperEndLines(running),
     });
     if (!ok) return refocusTerminal();
   }

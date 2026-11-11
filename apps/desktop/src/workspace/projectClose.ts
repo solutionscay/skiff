@@ -19,6 +19,7 @@ import { worktreeSessions } from "../app/stateQueries";
 import { refocusTerminal, selectProject } from "./view";
 import { t, tn } from "../i18n";
 import { hostInvoke } from "../app/hostCaps";
+import { skipperEndLines } from "./skipperEnd";
 
 /** The project's sessions, and one line per worktree that has any, for a confirmation. */
 function projectSessions(p: Project) {
@@ -78,6 +79,7 @@ export async function closeProject(p: Project) {
       title: t("project.closeTitle", { name: p.name }),
       body: tn("project.closeBody", running.length, { list }),
       action: tn("project.closeAction", running.length),
+      content: skipperEndLines(running),
     });
     if (!ok) return refocusTerminal();
   }
@@ -97,6 +99,7 @@ export async function removeProject(p: Project) {
     title: t("project.removeTitle", { name: p.name }),
     body: running.length ? tn("project.removeBodyRunning", running.length, { path: p.path, list }) : t("project.removeBody", { path: p.path }),
     action: running.length ? tn("project.removeAction", running.length) : t("project.removeProject"),
+    content: skipperEndLines(running),
   });
   if (!ok) return refocusTerminal();
   if (!(await endAll(ids))) return;

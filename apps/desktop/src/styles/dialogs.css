@@ -3,6 +3,10 @@
 .confirm-overlay { transform: translateZ(0); isolation: isolate; position: fixed; inset: 0; z-index: 66; display: flex; align-items: center; justify-content: center; background: var(--scrim); }
 .confirm-panel { width: calc(480 * var(--u)); max-width: calc(100vw - calc(32 * var(--u))); display: flex; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--rule-strong); }
 .confirm-title { height: calc(56 * var(--u)); display: flex; align-items: center; padding: 0 calc(20 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(16px * var(--zoom, 1)); font-weight: 700; }
+.confirm-title > .skipper-face { margin-right: calc(12 * var(--u)); flex: none; }
+.confirm-skippers { border-bottom: 1px solid var(--rule); }
+.confirm-skipper { height: calc(40 * var(--u)); display: flex; align-items: center; gap: calc(10 * var(--u)); padding: 0 calc(20 * var(--u)); font-size: calc(13px * var(--zoom, 1)); color: var(--text); }
+.confirm-skipper + .confirm-skipper { border-top: 1px solid var(--rule); }
 .confirm-body { padding: calc(16 * var(--u)) calc(20 * var(--u)); font-size: calc(13px * var(--zoom, 1)); line-height: 1.6; color: var(--text-2); border-bottom: 1px solid var(--rule); white-space: pre-line; }
 .confirm-foot { height: calc(56 * var(--u)); display: flex; }
 /* The buttons split the foot evenly. */

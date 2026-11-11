@@ -11,6 +11,7 @@ import { render } from "../../app/render";
 import { sessionThemeMenu } from "../../appearance/themes";
 import { refocusTerminal } from "../view";
 import { hostCan, hostInvoke } from "../../app/hostCaps";
+import { skipperEndConfirm, skipperEndLines } from "../skipperEnd";
 
 export function sessionLabel(s: SessionInfo) {
   return `${agentName(s)} · ${taskTitle(s)}`;
@@ -46,9 +47,9 @@ export function endEntry(s: SessionInfo): MenuEntry {
     hint: keyLabel("end-session"),
     danger: true,
     disabled: !hostCan("session_lifecycle"),
-    // A running agent loses its work: ask once more.
+    // A running agent loses its work: ask once more. A Skipper's confirm names it as one.
     run: async () => {
-      const ok = await confirmAction({
+      const ok = await confirmAction(skipperEndConfirm(s.id) ?? {
         title: t("endSession.title", { name: taskTitle(s) }),
         body: t("endSession.body", { agent: agentName(s) }),
         action: t("endSession.action"),
@@ -85,6 +86,7 @@ function endManyEntry(ids: string[], label: string, title: string): MenuEntry {
         title,
         body: tn("endSessions.body", running.length),
         action: t("endSessions.action"),
+        content: skipperEndLines(running),
       });
       if (ok) end();
       else refocusTerminal();

@@ -54,10 +54,13 @@ export function actionDialog(o: {
   onClose?: () => void;
   /** Takes the keys when the dialog opens. Default: the action. */
   focus?: HTMLElement;
+  /** A face before the title: a Skipper's avatar. */
+  face?: HTMLElement;
 }) {
   const back = document.activeElement as HTMLElement | null;
   const { overlay, panel } = dialogFrame("confirm-panel", o.tone === "danger" ? "alertdialog" : "dialog", o.title);
   const title = h("div", "confirm-title", o.title);
+  if (o.face) title.prepend(o.face);
   const error = h("div", "prompt-error");
   error.setAttribute("role", "alert");
   const { foot, cancel, act } = dialogActions(o.action, o.tone === "go" ? "confirm-act go" : "confirm-act");

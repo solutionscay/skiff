@@ -10,6 +10,7 @@ import type { Fleet } from "../fleets";
 import { refocusTerminal } from "../view";
 import { hostCan } from "../../app/hostCaps";
 import { endSession } from "./end";
+import { skipperEndConfirm } from "../skipperEnd";
 
 /**
  * The fleet head's Skipper items, as a project row has them: Start fleet
@@ -29,7 +30,8 @@ export function fleetSkipperEntries(f: Fleet): MenuEntry[] {
       label: t("menu.stopFleetSkipper"),
       danger: true,
       run: async () => {
-        if (await confirmAction({ title: t("stopSkipper.title", { name: f.name }), body: "", action: t("stopFleetSkipper.action") })) void endSession(s.id);
+        const c = skipperEndConfirm(s.id);
+        if (await confirmAction({ title: t("stopSkipper.title", { name: f.name }), body: c?.body ?? "", face: c?.face, action: t("stopFleetSkipper.action") })) void endSession(s.id);
         else refocusTerminal();
       },
     },
@@ -67,9 +69,11 @@ export function projectSkipperEntries(p: Project, start = true): MenuEntry[] {
     label: t("menu.stopProjectSkipper"),
     danger: true,
     run: async () => {
+      const c = skipperEndConfirm(s.id);
       const ok = await confirmAction({
         title: t("stopSkipper.title", { name: p.name }),
-        body: t("stopProjectSkipper.body", { agent: agentName(s) }),
+        body: c?.body ?? t("stopProjectSkipper.body", { agent: agentName(s) }),
+        face: c?.face,
         action: t("stopProjectSkipper.action"),
       });
       if (ok) void endSession(s.id);

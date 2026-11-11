@@ -6,7 +6,7 @@ import { t } from "../i18n";
  * One modal for actions that cannot be undone. Resolves true on the action,
  * false on Cancel, Esc, or a click outside. Enter runs the action.
  */
-export function confirmAction(o: { title: string; body: string; action: string }): Promise<boolean> {
+export function confirmAction(o: { title: string; body: string; action: string; face?: HTMLElement; content?: HTMLElement[] }): Promise<boolean> {
   return new Promise((resolve) => {
     let ok = false;
     const back = document.activeElement as HTMLElement | null;
