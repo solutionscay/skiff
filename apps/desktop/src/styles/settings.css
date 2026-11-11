@@ -326,9 +326,19 @@ body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset:
 /* The edit page: label, content, end column. A sentence row holds words and pickers. */
 .set-main > .set-row > .c-label { font-size: calc(13px * var(--zoom, 1)); }
 .set-main > .set-row > .c-end-note { font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); }
-.set-main > .set-row.tall { height: calc(120 * var(--u)); align-items: stretch; }
-.set-main > .set-row.tall > .c-label { align-items: flex-start; padding-top: calc(12 * var(--u)); }
-.set-area { width: 100%; height: 100%; resize: none; border: 0; border-radius: 0; outline: 0; padding: calc(10 * var(--u)) calc(12 * var(--u)); background: var(--bg-deep); color: var(--text); font: calc(13px * var(--zoom, 1)) / calc(20 * var(--u)) var(--font); }
+/* A command from the CLI: read-only, in the row's mono text. */
+.set-main > .set-row.ro > .c-field { padding: 0 calc(12 * var(--u)); }
+.c-ro { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.c-ro.mono { font: calc(13px * var(--zoom, 1)) var(--mono); }
+/* The prompt file, as a task type's instructions: the square, the size or none, then the file. */
+.set-main > .set-row.prompt-row > .c-field { padding: 0 calc(12 * var(--u)); }
+.prompt-row .c-state { display: flex; align-items: center; gap: calc(8 * var(--u)); min-width: 0; font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
+.prompt-row .c-state .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--ok); }
+.prompt-row .c-state.none { color: var(--text-dim); }
+.prompt-row .c-state.none .sq { background: var(--rule-strong); }
+.prompt-row .c-file { min-width: 0; overflow: hidden; text-overflow: ellipsis; font: calc(12px * var(--zoom, 1)) var(--mono); color: var(--text-3); }
+.prompt-row .c-acts { width: 100%; display: flex; align-items: center; justify-content: flex-end; gap: calc(8 * var(--u)); }
+.prompt-row .c-acts .c-err { margin-right: auto; }
 .sent { width: 100%; height: 100%; display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(12 * var(--u)); font-size: calc(13px * var(--zoom, 1)); color: var(--text-3); white-space: nowrap; overflow: hidden; }
 .sent-arrow { color: var(--text-dim); }
 .pk { display: inline-flex; align-items: center; gap: calc(5 * var(--u)); padding: 0; border: 0; border-bottom: 1px solid var(--rule-strong); background: none; color: var(--text); cursor: pointer; font: inherit; line-height: calc(18 * var(--u)); }

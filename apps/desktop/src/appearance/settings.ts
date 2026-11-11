@@ -32,7 +32,7 @@ import { createSettingsFiles, type FilesState } from "./settingsFiles";
 import { agentsPage } from "./settingsAgents";
 import { languageRow, type MenuLayout, menuLayout } from "./settingsLanguage";
 import { loadSchedulesPage, schedulesPage, schedulesState } from "./schedulesPage";
-import { schedules } from "../workspace/scheduleStore";
+import { schedules, type Schedule } from "../workspace/scheduleStore";
 
 /**
  * Settings over the sidebar and terminal. Two groups. The shown Host's pages:
@@ -99,7 +99,28 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   const tasksTable = tableState();
   const hostsTab = createHostsTab(() => render());
   const sched = schedulesState();
-  const schedCtx = { render: () => render(), taskTypes: () => (agentSet?.tasks ?? []).map((x) => x.type), mainName: () => mainName(agentSet?.name) };
+  const schedCtx = { render: () => render(), taskTypes: () => (agentSet?.tasks ?? []).map((x) => x.type), mainName: () => mainName(agentSet?.name), editPrompt };
+
+  /**
+   * Schedules › Prompt › Edit: the schedule's file opens as Open with ›
+   * Text files says, as Task types › Edit does, with its `# <name>` line
+   * written first when there is none. In the peek, Settings closes and
+   * opens again on this page when the peek ends.
+   */
+  async function editPrompt(s: Schedule): Promise<string | null> {
+    let o: { kind: "run"; script: string; cwd: string } | { kind: "default" } | { kind: "no_app"; message: string };
+    try {
+      o = await invoke("edit_schedule_prompt", { uid: s.uid });
+    } catch (e) {
+      return String(e);
+    }
+    if (o.kind === "run") {
+      close();
+      peekText(o.script, o.cwd, `${o.cwd}/${s.uid}.md`, () => void settings.open("schedules"));
+      return null;
+    }
+    return o.kind === "no_app" ? t("settings.noApp", { file: `${s.uid}.md` }) : null;
+  }
   const { loadFiles, editFile, loadTypes, editTypeFile, resetFile } = createSettingsFiles<InstructionFile, SkiffAgentSettings, TaskType>({
     ask: invoke,
     peek: peekText,
@@ -535,6 +556,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   window.addEventListener("focus", () => {
     if (!root.hidden && tab === "skippers") void loadFiles();
     if (!root.hidden && tab === "task-types") void loadTypes();
+    if (!root.hidden && tab === "schedules") void loadSchedulesPage(schedCtx);
   });
 
   const settings = {

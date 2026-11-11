@@ -33,7 +33,10 @@ export interface Schedule {
   type: string | null;
   pane: string | null;
   owner: string | null;
-  text: string | null;
+  /** The prompt file in the Host's Skipper folder: `schedules/<uid>.md`. */
+  prompt_file: string;
+  /** The prompt's size in bytes. Null: no prompt. */
+  prompt: number | null;
   paused_at: string | null;
   /** The next run in the Host's local time, `Nov 11 01:30`. Null while paused. */
   next: string | null;

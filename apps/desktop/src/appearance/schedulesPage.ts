@@ -1,8 +1,12 @@
 /**
  * Settings › Schedules (#262): a Host page. The list has one row for each
  * schedule with Run now, Pause or Resume, Edit and −. Add… and Edit open the
- * edit page: Name, When, Command, Time limit, Agent and Prompt, in three
- * bands. When and Agent are each one sentence: a picker is its value as text
+ * edit page: Name and When, then Agent and Prompt, in two bands. A schedule
+ * in the app is When + an agent step. A command that `skiff schedule` gave
+ * a schedule shows in one read-only row, and an edit keeps it. The prompt is
+ * a file, `schedules/<uid>.md`, as a task type's instructions are: its row
+ * shows the size and Edit opens it as Open with says.
+ * When and Agent are each one sentence: a picker is its value as text
  * with a faint underline, and a click opens the app menu. The time is a typed
  * HH:MM field. Leaving a field saves it. A new schedule saves once its name
  * and its cron are valid. Each change runs `skiff schedule` on the Host.
@@ -20,21 +24,20 @@ import { rune } from "../ui/runes";
 import { lastWord, targetText } from "../workspace/ledgerSchedules";
 import { loadSchedules, scheduleCall, schedules, targetProject, type Schedule } from "../workspace/scheduleStore";
 import { sectionHead } from "./rowTable";
+import { fileSize } from "./taskTypes";
 import { ALL_DAYS, every, fromCron, HOURS, hhmm, MINUTES, MON_FRI, parseTime, toCron, WEEK, weekOf, withEvery, type When } from "./whenSentence";
 
 /** The fields of a schedule, as the edit page holds a new one. */
 interface Draft {
   name: string;
   cron: string;
+  /** Read-only here: only `skiff schedule` sets a command. */
   command: string | null;
-  timeout: number | null;
-  gate: Schedule["gate"];
   target: Schedule["target"];
   project: string | null;
   type: string | null;
   pane: string | null;
   owner: string | null;
-  text: string | null;
 }
 
 interface Preview {
@@ -52,9 +55,11 @@ export interface SchedulesState {
   /** The When row's own error line: a bad time or a bad cron. */
   whenError: string | null;
   preview: Preview | null;
+  /** The Prompt row's one error line, such as no app for the file. */
+  promptError: string | null;
 }
 
-export const schedulesState = (): SchedulesState => ({ editing: null, draft: null, error: null, whenError: null, preview: null });
+export const schedulesState = (): SchedulesState => ({ editing: null, draft: null, error: null, whenError: null, preview: null, promptError: null });
 
 export interface SchedulesCtx {
   render: () => void;
@@ -62,9 +67,11 @@ export interface SchedulesCtx {
   taskTypes: () => string[];
   /** The grand Skipper's name: Admiral, or the name Settings gives it. */
   mainName: () => string;
+  /** Opens the schedule's prompt file as Task types › Edit opens a type's. Answers the error line, or null. */
+  editPrompt: (s: Schedule) => Promise<string | null>;
 }
 
-const empty = (): Draft => ({ name: "", cron: "0 9 * * *", command: null, timeout: null, gate: null, target: null, project: null, type: null, pane: null, owner: null, text: null });
+const empty = (): Draft => ({ name: "", cron: "0 9 * * *", command: null, target: "skipper", project: null, type: null, pane: null, owner: "grand" });
 
 /** Runs a change, then redraws. A refusal shows as the page's error line. */
 async function run(st: SchedulesState, ctx: SchedulesCtx, args: string[]): Promise<boolean> {
@@ -399,15 +406,11 @@ function editPage(main: HTMLElement, head: HTMLElement, st: SchedulesState, ctx:
     st.draft = d;
     if (!d.name) return ctx.render();
     const args = ["add", d.name, "--cron", d.cron];
-    if (d.command) args.push("--command", d.command);
-    if (d.timeout) args.push("--timeout", String(d.timeout));
     if (d.project) args.push("--project", d.project);
     if (d.target) args.push("--to", d.target);
-    if (d.gate) args.push("--gate", d.gate);
     if (d.type) args.push("--type", d.type);
     if (d.pane) args.push("--pane", d.pane);
     if (d.owner) args.push("--skipper", d.owner);
-    if (d.text) args.push("--text", d.text);
     if (await run(st, ctx, args)) {
       st.editing = schedules.find((x) => x.name === d.name)?.uid ?? null;
       st.draft = null;
@@ -422,48 +425,44 @@ function editPage(main: HTMLElement, head: HTMLElement, st: SchedulesState, ctx:
   const when = whenSentence(st, d.cron, (cron) => save(["--cron", cron], (x) => void (x.cron = cron)));
   main.append(row(t("schedules.when"), when, whenEnd(st, ctx, d.cron), "sent-row"));
 
-  // Command.
-  main.append(sectionHead(t("schedules.bandCommand")));
-  const projectWords = d.project ?? t("schedules.homeFolder");
-  const where = h("div", "sent");
-  where.append(word(t("schedules.in")), pk(t("schedules.project"), projectWords, () => [
-    choice(t("schedules.homeFolder"), !d.project, () => void save(["--project", ""], (x) => void (x.project = null))),
-    { sep: true },
-    ...S.projects.map((p) => choice(p.name, d.project === p.name, () => void save(["--project", p.name], (x) => void (x.project = p.name)))),
-  ]));
-  main.append(row(t("schedules.command"), textBox({ label: t("schedules.command"), value: d.command ?? "", mono: true, save: (v) => void save(["--command", v], (x) => void (x.command = v || null)) }), where));
-  main.append(row(t("schedules.timeLimit"), textBox({
-    label: t("schedules.timeLimit"),
-    value: String(d.timeout ?? 600),
-    mono: true,
-    save: (v) => {
-      const n = Number(v || "600");
-      if (!Number.isInteger(n) || n <= 0) {
-        st.error = t("schedules.badTimeout");
-        return ctx.render();
-      }
-      void save(["--timeout", String(n)], (x) => void (x.timeout = n));
-    },
-  })));
-
   // Agent step.
   main.append(sectionHead(t("schedules.bandAgent")));
+  if (s?.command) main.append(commandRow(s));
   main.append(row(t("schedules.agent"), agentSentence(d, ctx, save), undefined, "sent-row"));
-  if (d.target) {
-    const area = h("textarea", "set-area") as HTMLTextAreaElement;
-    area.rows = 3;
-    area.value = d.text ?? "";
-    area.setAttribute("aria-label", t("schedules.prompt"));
-    area.addEventListener("blur", () => {
-      const v = area.value.trim();
-      if (v !== (d.text ?? "")) void save(["--text", v], (x) => void (x.text = v || null));
-    });
-    main.append(row(t("schedules.prompt"), area, undefined, "tall"));
-  }
+  if (d.target) main.append(promptRow(st, ctx, s));
   return main;
 }
 
-/** The Agent sentence: [gate] → [target] [what] in [project]. */
+/** A command from `skiff schedule`: read-only, with its gate and time limit, so nothing is hidden. */
+function commandRow(s: Schedule): HTMLElement {
+  const gate = s.target ? t(`schedules.gate.${s.gate ?? "always"}` as MessageKey) : null;
+  const end = [gate, t("schedules.seconds", { n: String(s.timeout ?? 600) })].filter(Boolean).join(" · ");
+  return row(t("schedules.command"), h("span", "c-ro mono", s.command ?? ""), h("span", "", end), "ro");
+}
+
+/** The prompt file, as Task types shows a type's instructions: its size or none, and Edit. */
+function promptRow(st: SchedulesState, ctx: SchedulesCtx, s: Schedule | null): HTMLElement {
+  const none = !s || s.prompt == null;
+  const state = h("span", "c-state" + (none ? " none" : ""));
+  state.append(h("span", "sq"), none ? t("tasks.none") : fileSize(s!.prompt!));
+  if (s) state.append(h("span", "c-file", s.prompt_file));
+  const end = h("span", "c-acts");
+  if (st.promptError) end.append(h("span", "c-err", st.promptError));
+  const edit = smallButton(t("skipper.edit"), () => {
+    if (!s) return;
+    st.promptError = null;
+    void ctx.editPrompt(s).then((e) => {
+      st.promptError = e;
+      return loadSchedulesPage(ctx);
+    });
+  }, { label: t("schedules.editPrompt", { name: s?.name ?? "" }) });
+  // A new schedule has no file until it saves.
+  edit.disabled = !s;
+  end.append(edit);
+  return row(t("schedules.prompt"), state, end, "prompt-row");
+}
+
+/** The Agent sentence: [target] [what] in [project]. */
 function agentSentence(d: Draft, ctx: SchedulesCtx, save: (flags: string[], apply: (d: Draft) => void) => Promise<void>): HTMLElement {
   const sent = h("div", "sent");
   const TARGETS: [Draft["target"], MessageKey][] = [[null, "schedules.target.none"], ["type", "schedules.target.type"], ["pane", "schedules.target.pane"], ["skipper", "schedules.target.skipper"]];
@@ -484,12 +483,9 @@ function agentSentence(d: Draft, ctx: SchedulesCtx, save: (flags: string[], appl
     }
     return void save(["--to", "skipper", "--skipper", d.owner ?? "grand"], (x) => Object.assign(x, { target: v, owner: x.owner ?? "grand" }));
   };
-  if (d.command && d.target) {
-    const GATES: [string, MessageKey][] = [["always", "schedules.gate.always"], ["on-fail", "schedules.gate.on-fail"], ["on-output", "schedules.gate.on-output"]];
-    const g = d.gate ?? "always";
-    sent.append(pk(t("schedules.gate"), t(GATES.find(([x]) => x === g)![1]), () => GATES.map(([v, k]) => choice(t(k), v === g, () => void save(["--gate", v], (x) => void (x.gate = v as Draft["gate"]))))), word("→", "sent-arrow"));
-  }
-  sent.append(pk(t("schedules.target"), label(d.target), () => TARGETS.map(([v, k]) => choice(t(k), v === d.target, () => setTarget(v)))));
+  // A schedule in the app is an agent step. None stays for a command from the CLI.
+  const targets = TARGETS.filter(([v]) => v !== null || d.command);
+  sent.append(pk(t("schedules.target"), label(d.target), () => targets.map(([v, k]) => choice(t(k), v === d.target, () => setTarget(v)))));
   if (d.target === "type") {
     sent.append(
       pk(t("schedules.taskType"), d.type ?? "", () => ctx.taskTypes().map((x) => choice(x, x === d.type, () => void save(["--type", x], (y) => void (y.type = x))))),
