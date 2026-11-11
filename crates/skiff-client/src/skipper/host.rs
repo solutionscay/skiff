@@ -97,6 +97,7 @@ pub fn scope_of(s: &skiff_host_api::HostFileScope) -> Result<Scope> {
         H::Fleet(n) => Scope::Fleet(n.clone()),
         H::Project(n) => Scope::Project(n.clone()),
         H::Type(t) => bail!("The task type {t} has no template."),
+        H::Schedule(_) => bail!("A schedule's prompt has no template."),
     })
 }
 
@@ -104,6 +105,10 @@ pub fn scope_of(s: &skiff_host_api::HostFileScope) -> Result<Scope> {
 pub fn host_file(s: &skiff_host_api::HostFileScope) -> Result<String> {
     Ok(match s {
         skiff_host_api::HostFileScope::Type(t) => format!("types/{}.md", skiff_core::tasks::check_name(t)?),
+        skiff_host_api::HostFileScope::Schedule(uid) => {
+            crate::schedule::prompt_file(Path::new(""), uid)?;
+            format!("{}/{uid}.md", crate::schedule::PROMPTS)
+        }
         s => {
             let scope = scope_of(s)?;
             if let Scope::Fleet(n) | Scope::Project(n) = &scope {
@@ -124,6 +129,7 @@ pub const FILE_MAX: usize = 1 << 20;
 fn host_path(cfg: &Config, s: &skiff_host_api::HostFileScope) -> Result<PathBuf> {
     match s {
         skiff_host_api::HostFileScope::Type(t) => Ok(folder(cfg)?.join("types").join(format!("{}.md", skiff_core::tasks::check_name(t)?))),
+        skiff_host_api::HostFileScope::Schedule(uid) => crate::schedule::prompt_file(&folder(cfg)?, uid),
         s => {
             let scope = scope_of(s)?;
             scope.template(cfg, &folder(cfg)?)?;
@@ -143,8 +149,20 @@ fn revision(path: &Path) -> String {
 pub fn edit_host_file(cfg: &Config, s: &skiff_host_api::HostFileScope) -> Result<PathBuf> {
     match s {
         skiff_host_api::HostFileScope::Type(t) => skiff_core::tasks::edit_file(&folder(cfg)?, t),
+        skiff_host_api::HostFileScope::Schedule(uid) => crate::schedule::edit_prompt_file(&folder(cfg)?, uid, &schedule_name(uid)),
         s => edit_file(cfg, &scope_of(s)?),
     }
+}
+
+/// The name of schedule `uid`, for its file's heading line. The uid when
+/// the ledger has no such schedule.
+fn schedule_name(uid: &str) -> String {
+    let named = || -> Option<String> {
+        let file = crate::ledger::path().ok()?;
+        let db = crate::ledger::open_read(&file).ok()?;
+        crate::schedule::get(&db, uid).ok()?.map(|s| s.name)
+    };
+    named().unwrap_or_else(|| uid.to_string())
 }
 
 /// `skipper_file@1` read: the file and its revision. A missing file is

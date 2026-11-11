@@ -23,7 +23,8 @@ pub(super) fn schedule_list(all: Option<&[SessionInfo]>) -> Result<Vec<HostSched
         return Ok(Vec::new());
     }
     let db = skiff_client::ledger::open_read(&file).map_err(ledger_unread)?;
-    let list = sched::summaries(&db, all, RUNS).map_err(failed)?;
+    let dir = file.parent().ok_or_else(|| failed("the ledger has no folder"))?;
+    let list = sched::summaries(&db, dir, all, RUNS).map_err(failed)?;
     Ok(list
         .into_iter()
         .map(|s| {
@@ -52,7 +53,8 @@ pub(super) fn schedule_list(all: Option<&[SessionInfo]>) -> Result<Vec<HostSched
                 task_type: x.task_type,
                 pane: x.pane,
                 owner: x.owner,
-                text: x.text,
+                prompt_file: s.prompt_file,
+                prompt: s.prompt,
                 paused_at: x.paused_at,
                 next: s.next,
                 last: s.last.map(Into::into),

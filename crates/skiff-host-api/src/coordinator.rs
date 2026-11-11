@@ -112,8 +112,14 @@ pub struct HostSchedule {
     /// `grand` or a project, for a Skipper target.
     #[serde(default)]
     pub owner: Option<String>,
+    /// The prompt file in the Host's Skipper folder, for display:
+    /// `schedules/<uid>.md`.
     #[serde(default)]
-    pub text: Option<String>,
+    pub prompt_file: String,
+    /// The prompt's size in bytes. Absent: none (missing, empty, or its
+    /// `# <name>` line alone).
+    #[serde(default)]
+    pub prompt: Option<u64>,
     #[serde(default)]
     pub paused_at: Option<String>,
     /// The next run in the Host's local time. Absent while paused.
@@ -241,6 +247,8 @@ pub enum HostFileScope {
     Project(String),
     /// A task type's instructions.
     Type(String),
+    /// A schedule's prompt, by the schedule's uid (`schedules@1`).
+    Schedule(String),
 }
 
 /// One row of Settings › Skippers › Instructions.

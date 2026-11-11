@@ -219,6 +219,13 @@ pub async fn edit_task_type_file(app: State<'_, App>, handle: AppHandle, name: S
     edit_skipper_file(app, handle, skiff_host_api::HostFileScope::Type(name)).await
 }
 
+/// Settings › Schedules › Prompt: the schedule's `schedules/<uid>.md`, as
+/// Task types › Edit opens a type's file.
+#[tauri::command]
+pub async fn edit_schedule_prompt(app: State<'_, App>, handle: AppHandle, uid: String) -> Result<crate::commands::Opened, String> {
+    edit_skipper_file(app, handle, skiff_host_api::HostFileScope::Schedule(uid)).await
+}
+
 /// Settings › Skippers › Instructions: each Skipper's file and its
 /// status, on the selected Host (`skipper@1` carries them for a remote one).
 #[tauri::command]
