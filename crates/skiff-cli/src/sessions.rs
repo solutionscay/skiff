@@ -578,7 +578,7 @@ fn confirm_skippers(all: &[SessionInfo], ids: &[String]) -> Result<bool> {
     let open = ledger::open_tasks().unwrap_or_default();
     for s in skippers {
         let scope = skipper_scope(s);
-        let n = open.iter().filter(|r| r.kind == "task" && r.owner == scope).count();
+        let n = open.iter().filter(|r| r.owner == scope).count();
         if !crate::skipper::ask(&skipper_question(s, n))? {
             return Ok(false);
         }

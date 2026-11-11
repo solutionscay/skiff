@@ -16,9 +16,9 @@ import { skipperFace } from "./skipperFace";
 /** The Skipper's scope, else null: "grand", a project's name, or "fleet:<fleet>". */
 const scopeOf = (id: string) => coordinatorOf(id);
 
-/** Open Ledger tasks the scope owns: not done, in work that is not closed. */
+/** Open Ledger tasks and hand-offs the scope owns: not done, in work that is not closed. */
 export function openTasks(scope: string): number {
-  return ledgerRows().filter((r) => r.kind === "task" && r.owner === scope && r.state !== "done" && !r.closed_at && r.bucket !== "finished").length;
+  return ledgerRows().filter((r) => r.kind !== "plan" && r.owner === scope && r.state !== "done" && !r.closed_at && r.bucket !== "finished").length;
 }
 
 /** "the skiff Skipper", "the Harbor fleet Skipper", "Skiff, the Skiff agent". */
