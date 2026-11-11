@@ -726,6 +726,9 @@ fn each_agents_prompt_waits_as_it_did_before_the_rule() {
     let pool = super::SessionPool::new();
     let info = pool.create(SessionSpec { command: Some("/bin/sleep".into()), args: vec!["30".into()], cols: 80, rows: 24, ..Default::default() }).unwrap();
     let s = pool.get(&info.id).unwrap();
+    // The test sets every scan by hand. A new agent in front wakes the
+    // reader to scan the blank screen, and that scan would end the wait.
+    s.pause_reader(Instant::now() + std::time::Duration::from_secs(5)).unwrap();
     for (agent, screen, rule) in prompts {
         pool.set_front(&s, Front::Agent(agent));
         pool.set_state(&s, SessionState::Working);
@@ -745,6 +748,7 @@ fn each_agents_prompt_waits_as_it_did_before_the_rule() {
         let bare = s.info();
         assert_eq!((bare.state, bare.waiting_cause), (with_rule.state, with_rule.waiting_cause), "{rule}");
     }
+    s.resume_reader();
     pool.kill(&info.id).unwrap();
 }
 
