@@ -27,7 +27,8 @@ export function scheduleInView(s: Schedule, filter: string | null): boolean {
   if (filter === null) return true;
   const ps = [s.project, targetProject(s)].filter((p): p is string => !!p);
   const fleet = scopeFleet(filter);
-  if (fleet !== null) return ps.some((p) => S.projects.find((x) => x.name === p)?.fleet === fleet);
+  // A fleet Skipper's schedule shows under its fleet.
+  if (fleet !== null) return s.owner === filter || ps.some((p) => S.projects.find((x) => x.name === p)?.fleet === fleet);
   return ps.includes(filter);
 }
 
