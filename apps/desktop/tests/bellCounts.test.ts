@@ -183,7 +183,7 @@ function ledger(rows: unknown[]) {
     {
       "@tauri-apps/api/core": { invoke: () => Promise.resolve() },
       "@tauri-apps/api/event": { listen: () => Promise.resolve(() => {}) },
-      "../app/hostCaps": { hostInvoke: () => Promise.resolve(rows) },
+      "../app/hostCaps": { hostCan: () => false, hostInvoke: () => Promise.resolve(rows) },
       "../app/dataPlane": { dataEpoch: () => 0 },
       "../terminal/peek": { openLedgerResult() {}, openPath() {}, previewToken: () => 1 },
       "../app/renderRequest": { render() {} },

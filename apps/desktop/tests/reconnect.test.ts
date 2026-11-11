@@ -44,7 +44,7 @@ function recovery() {
       "./seen": { quietSeen() {} },
       "../terminal/terminalRuntime": { muteInput() {}, reattachPanes() {} },
       "./groups": { loadGroups: async () => {} },
-      "../terminal/peek": { previewToken: () => "" },
+      "../terminal/peek": { previewToken: () => "", reattachPeeks() {} },
       "../terminal/terminalState": { panes: new Map() },
       "../workspace/view": { showSingle() {} },
       "../appearance/agentNames": { agentCallsign: () => "Ada" },

@@ -157,7 +157,7 @@ function hostModules(caps: string[], S: any, sessions: Map<string, any>, dataPla
     "../src/workspace/ledger.ts",
     {
       "@tauri-apps/api/event": { listen: () => Promise.resolve(() => {}) },
-      "../app/hostCaps": { hostInvoke },
+      "../app/hostCaps": { hostCan: () => false, hostInvoke },
       "../app/dataPlane": dataPlane,
       "../app/renderRequest": { render() {} },
       "../app/state": { S, sessions },
