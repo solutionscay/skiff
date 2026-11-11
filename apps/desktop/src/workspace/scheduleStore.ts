@@ -92,10 +92,10 @@ export async function scheduleCall(args: string[]): Promise<void> {
 }
 
 /** The target in words: `type fix`, `pane brief`, `Skipper`, `command`. The project shows apart, as its letters. */
-export function targetWords(s: Schedule, words: { skipper: string; fleet: (fleet: string) => string; command: string; nothing: string }): string {
+export function targetWords(s: Schedule, words: { skipper: (owner: string) => string; command: string; nothing: string }): string {
   if (s.target === "type") return `type ${s.type ?? ""}`;
   if (s.target === "pane") return `pane ${s.pane ?? ""}`;
-  if (s.target === "skipper") return s.owner?.startsWith("fleet:") ? words.fleet(s.owner.slice(6)) : words.skipper;
+  if (s.target === "skipper") return words.skipper(s.owner ?? "grand");
   return s.command ? words.command : words.nothing;
 }
 

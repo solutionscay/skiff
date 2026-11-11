@@ -99,7 +99,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   const tasksTable = tableState();
   const hostsTab = createHostsTab(() => render());
   const sched = schedulesState();
-  const schedCtx = { render: () => render(), taskTypes: () => (agentSet?.tasks ?? []).map((x) => x.type), mainName: () => mainName(agentSet?.name), editPrompt };
+  const schedCtx = { render: () => render(), mainName: () => mainName(agentSet?.name), editPrompt };
 
   /**
    * Schedules › Prompt › Edit: the schedule's file opens as Open with ›

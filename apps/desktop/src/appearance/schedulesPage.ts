@@ -1,17 +1,18 @@
 /**
  * Settings › Schedules (#262): a Host page. The list has one row for each
  * schedule with Run now, Pause or Resume, Edit and −. Add… and Edit open the
- * edit page: Name and When, then Agent and Prompt, in two bands. A schedule
- * in the app is When + an agent step. A command that `skiff schedule` gave
- * a schedule shows in one read-only row, and an edit keeps it. The prompt is
- * a file, `schedules/<uid>.md`, as a task type's instructions are: its row
+ * edit page: Name and When, then Skipper and Prompt, in two bands. A
+ * schedule in the app is When + a prompt to a Skipper, which coordinates
+ * the rest. A command, a task type or a pane that `skiff schedule` gave a
+ * schedule shows in a read-only row, and an edit keeps it. The prompt is a
+ * file, `schedules/<uid>.md`, as a task type's instructions are: its row
  * shows the size and Edit opens it as Open with says.
- * When and Agent are each one sentence: a picker is its value as text
- * with a faint underline, and a click opens the app menu. The time is a typed
+ * When is one sentence: a picker is its value as text with a faint
+ * underline, and a click opens the app menu. The time is a typed
  * HH:MM field. Leaving a field saves it. A new schedule saves once its name
  * and its cron are valid. Each change runs `skiff schedule` on the Host.
  */
-import { S, sessions } from "../app/state";
+import { S } from "../app/state";
 import { accent } from "../app/stateQueries";
 import { hostCan, hostInvoke } from "../app/hostCaps";
 import { type MessageKey, t } from "../i18n";
@@ -30,17 +31,11 @@ import { sectionHead } from "./rowTable";
 import { fileSize } from "./taskTypes";
 import { ALL_DAYS, every, fromCron, HOURS, hhmm, MINUTES, MON_FRI, parseTime, toCron, WEEK, weekOf, withEvery, type When } from "./whenSentence";
 
-/** The fields of a schedule, as the edit page holds a new one. */
+/** The fields of a schedule that the edit page sets. `owner`: the Skipper's owner key. */
 interface Draft {
   name: string;
   cron: string;
-  /** Read-only here: only `skiff schedule` sets a command. */
-  command: string | null;
-  target: Schedule["target"];
-  project: string | null;
-  type: string | null;
-  pane: string | null;
-  owner: string | null;
+  owner: string;
 }
 
 interface Preview {
@@ -66,15 +61,13 @@ export const schedulesState = (): SchedulesState => ({ editing: null, draft: nul
 
 export interface SchedulesCtx {
   render: () => void;
-  /** The Host's task types. */
-  taskTypes: () => string[];
   /** The grand Skipper's name: Admiral, or the name Settings gives it. */
   mainName: () => string;
   /** Opens the schedule's prompt file as Task types › Edit opens a type's. Answers the error line, or null. */
   editPrompt: (s: Schedule) => Promise<string | null>;
 }
 
-const empty = (): Draft => ({ name: "", cron: "0 9 * * *", command: null, target: "skipper", project: null, type: null, pane: null, owner: "grand" });
+const empty = (): Draft => ({ name: "", cron: "0 9 * * *", owner: "grand" });
 
 /** Runs a change, then redraws. A refusal shows as the page's error line. */
 async function run(st: SchedulesState, ctx: SchedulesCtx, args: string[]): Promise<boolean> {
@@ -375,7 +368,7 @@ function whenEnd(st: SchedulesState, ctx: SchedulesCtx, cron: string): HTMLEleme
 }
 
 function editPage(main: HTMLElement, head: HTMLElement, st: SchedulesState, ctx: SchedulesCtx, s: Schedule | null) {
-  const d: Draft = s ? { ...s, owner: skipperScope(s.owner) } : (st.draft ??= empty());
+  const d: Draft = s ? { name: s.name, cron: s.cron, owner: skipperScope(s.owner ?? "grand") } : (st.draft ??= empty());
   const back = h("button", "set-back", `‹ ${t("settings.tab.schedules")}`) as HTMLButtonElement;
   back.type = "button";
   back.addEventListener("click", () => {
@@ -403,19 +396,14 @@ function editPage(main: HTMLElement, head: HTMLElement, st: SchedulesState, ctx:
     apply(d);
     if (s) {
       // A project in a fleet shows as its fleet's Skipper: the next save stores the fleet.
-      const owner = d.target === "skipper" && d.owner !== s.owner && !flags.includes("--skipper") ? ["--skipper", d.owner ?? "grand"] : [];
+      const owner = s.target === "skipper" && d.owner !== s.owner && !flags.includes("--skipper") ? ["--skipper", d.owner] : [];
       await run(st, ctx, ["edit", s.name, ...flags, ...owner]);
       // A rename keeps the page on the same schedule: it goes by uid.
       return;
     }
     st.draft = d;
     if (!d.name) return ctx.render();
-    const args = ["add", d.name, "--cron", d.cron];
-    if (d.project) args.push("--project", d.project);
-    if (d.target) args.push("--to", d.target);
-    if (d.type) args.push("--type", d.type);
-    if (d.pane) args.push("--pane", d.pane);
-    if (d.owner) args.push("--skipper", d.owner);
+    const args = ["add", d.name, "--cron", d.cron, "--to", "skipper", "--skipper", d.owner];
     if (await run(st, ctx, args)) {
       st.editing = schedules.find((x) => x.name === d.name)?.uid ?? null;
       st.draft = null;
@@ -433,8 +421,10 @@ function editPage(main: HTMLElement, head: HTMLElement, st: SchedulesState, ctx:
   // Agent step.
   main.append(sectionHead(t("schedules.bandAgent")));
   if (s?.command) main.append(commandRow(s));
-  main.append(row(t("schedules.agent"), agentSentence(d, ctx, save), undefined, "sent-row"));
-  if (d.target) main.append(promptRow(st, ctx, s));
+  // A task type, a pane or no agent step comes only from `skiff schedule`: it shows as it is.
+  if (s && s.target !== "skipper") main.append(agentRow(s));
+  else main.append(row(t("schedules.skipperScope"), skipperPicker(d, ctx, save), undefined, "sent-row"));
+  if (!s || s.target) main.append(promptRow(st, ctx, s));
   return main;
 }
 
@@ -467,49 +457,25 @@ function promptRow(st: SchedulesState, ctx: SchedulesCtx, s: Schedule | null): H
   return row(t("schedules.prompt"), state, end, "prompt-row");
 }
 
-/** The Agent sentence: [target] [what] in [project]. */
-function agentSentence(d: Draft, ctx: SchedulesCtx, save: (flags: string[], apply: (d: Draft) => void) => Promise<void>): HTMLElement {
+/** An agent step from `skiff schedule` that is not a Skipper's: read-only, with its project. */
+function agentRow(s: Schedule): HTMLElement {
+  const c = h("span", "c-ro agent");
+  const tg = tag(s.target === "type" ? s.project : null);
+  if (tg) c.append(tg);
+  c.append(h("span", "", targetText(s)));
+  return row(t("schedules.agent"), c, undefined, "ro");
+}
+
+/** The Skipper picker: one list of every Skipper, running or not. Fire starts it. */
+function skipperPicker(d: Draft, ctx: SchedulesCtx, save: (flags: string[], apply: (d: Draft) => void) => Promise<void>): HTMLElement {
   const sent = h("div", "sent");
-  const TARGETS: [Draft["target"], MessageKey][] = [[null, "schedules.target.none"], ["type", "schedules.target.type"], ["pane", "schedules.target.pane"], ["skipper", "schedules.target.skipper"]];
-  const label = (v: Draft["target"]) => t(TARGETS.find(([x]) => x === v)![1]);
-  const panes = () => [...sessions.values()].filter((x) => !x.peek && x.name).map((x) => x.name!) as string[];
-  const firstProject = () => d.project ?? S.projects[0]?.name ?? "";
-  /** A new target takes defaults for what it needs, so the Host takes it. */
-  const setTarget = (v: Draft["target"]) => {
-    if (v === null) return void save(["--to", "none"], (x) => void (x.target = null));
-    if (v === "type") {
-      const type = d.type ?? ctx.taskTypes()[0] ?? "";
-      const project = firstProject();
-      return void save(["--to", "type", "--type", type, "--project", project], (x) => Object.assign(x, { target: v, type, project }));
-    }
-    if (v === "pane") {
-      const pane = d.pane ?? panes()[0] ?? "";
-      return void save(["--to", "pane", "--pane", pane], (x) => Object.assign(x, { target: v, pane }));
-    }
-    return void save(["--to", "skipper", "--skipper", d.owner ?? "grand"], (x) => Object.assign(x, { target: v, owner: x.owner ?? "grand" }));
-  };
-  // A schedule in the app is an agent step. None stays for a command from the CLI.
-  const targets = TARGETS.filter(([v]) => v !== null || d.command);
-  sent.append(pk(t("schedules.target"), label(d.target), () => targets.map(([v, k]) => choice(t(k), v === d.target, () => setTarget(v)))));
-  if (d.target === "type") {
-    sent.append(
-      pk(t("schedules.taskType"), d.type ?? "", () => ctx.taskTypes().map((x) => choice(x, x === d.type, () => void save(["--type", x], (y) => void (y.type = x))))),
-      word(t("schedules.in")),
-      pk(t("schedules.project"), d.project ?? "", () => S.projects.map((p) => choice(p.name, p.name === d.project, () => void save(["--project", p.name], (y) => void (y.project = p.name))))),
-    );
-  }
-  if (d.target === "pane") {
-    sent.append(pk(t("schedules.pane"), d.pane ?? "", () => panes().map((x) => choice(x, x === d.pane, () => void save(["--pane", x], (y) => void (y.pane = x))))));
-  }
-  if (d.target === "skipper") {
-    const o = d.owner ?? "grand";
-    const skippers = skipperChoices(ctx);
-    const shows = skippers.find((x) => x.scope === o)?.name ?? skipperName(ctx, o);
-    // The face takes the check's place: the current Skipper gets the bar.
-    const item = (x: SkipperChoice): MenuEntry => ({ label: x.name, current: x.scope === o, glyph: skipperFace(x.scope === "grand" ? null : x.scope, 16), run: () => void save(["--skipper", x.arg], (y) => void (y.owner = x.scope)) });
-    const groups = [skippers.filter((x) => x.scope === "grand"), skippers.filter((x) => x.scope.startsWith("fleet:")), skippers.filter((x) => x.scope !== "grand" && !x.scope.startsWith("fleet:"))].filter((g) => g.length);
-    sent.append(pk(t("schedules.skipperScope"), shows, () => groups.flatMap((g, i): MenuEntry[] => [...(i ? [{ sep: true as const }] : []), ...g.map(item)])));
-  }
+  const o = d.owner;
+  const skippers = skipperChoices(ctx);
+  const shows = skippers.find((x) => x.scope === o)?.name ?? skipperName(ctx, o);
+  // The face takes the check's place: the current Skipper gets the bar.
+  const item = (x: SkipperChoice): MenuEntry => ({ label: x.name, current: x.scope === o, glyph: skipperFace(x.scope === "grand" ? null : x.scope, 16), run: () => void save(["--skipper", x.arg], (y) => void (y.owner = x.scope)) });
+  const groups = [skippers.filter((x) => x.scope === "grand"), skippers.filter((x) => x.scope.startsWith("fleet:")), skippers.filter((x) => x.scope !== "grand" && !x.scope.startsWith("fleet:"))].filter((g) => g.length);
+  sent.append(pk(t("schedules.skipperScope"), shows, () => groups.flatMap((g, i): MenuEntry[] => [...(i ? [{ sep: true as const }] : []), ...g.map(item)])));
   return sent;
 }
 
@@ -543,7 +509,7 @@ function skipperName(ctx: SchedulesCtx, scope: string): string {
 }
 
 /** The owner the page shows: a project in a fleet goes to its fleet's Skipper. */
-function skipperScope(owner: string | null): string | null {
+function skipperScope(owner: string): string {
   const fleet = owner ? S.projects.find((p) => p.name === owner)?.fleet : null;
   return fleet ? `fleet:${fleet}` : owner;
 }

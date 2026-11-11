@@ -10,7 +10,7 @@
  * child row under it. A click on a run opens its result; on an agent step,
  * its pane while it runs, else its result. ← or Esc goes back to the list.
  */
-import { skipperWord } from "../app/skiffAgent";
+import { skiffAgentName, skipperWord } from "../app/skiffAgent";
 import { S, sessions } from "../app/state";
 import { accent } from "../app/stateQueries";
 import { type MessageKey, t } from "../i18n";
@@ -74,7 +74,13 @@ export const lastWord = (last: Schedule["last"] | Run["status"]) => (last ? t(`s
 /** A fleet Skipper's name, as its session has it: "Harbor Skipper". */
 export const fleetSkipperName = (fleet: string) => `${fleet} ${skipperWord()}`;
 
-export const targetText = (s: Schedule) => targetWords(s, { skipper: t("schedules.skipper"), fleet: fleetSkipperName, command: t("schedules.targetCommand"), nothing: t("schedules.nothing") });
+/** A Skipper by its owner key, as its session is named: "Admiral", "Harbor Skipper", "gesher Skipper". */
+export function skipperOwnerName(owner: string): string {
+  if (owner === "grand") return skiffAgentName();
+  return owner.startsWith("fleet:") ? fleetSkipperName(owner.slice(6)) : `${owner} ${skipperWord()}`;
+}
+
+export const targetText = (s: Schedule) => targetWords(s, { skipper: skipperOwnerName, command: t("schedules.targetCommand"), nothing: t("schedules.nothing") });
 
 /** One schedule: two 20px lines on the tab's column grid. */
 function item(s: Schedule, open: (uid: string) => void): HTMLElement {
