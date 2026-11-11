@@ -47,6 +47,8 @@ function settingsPage(backend?: (cmd: string, args: any) => unknown) {
     "./hostSettings": { createHostsTab: () => ({ draw: () => h("div"), load: async () => {}, open() {}, focusServer() {} }) },
     "./diskUse": { diskState: () => ({}) },
     "./imagesPage": { imagesState: () => ({}) },
+    "./schedulesPage": { schedulesState: () => ({}), schedulesPage: () => h("div"), loadSchedulesPage: async () => {} },
+    "../workspace/scheduleStore": { schedules: [] },
     "./daemonActivity": { activityState: () => ({}), stopActivity() {} },
     "../ui/controls": { ...controls, picker },
     "./openWithSettings": moduleFromSource("../src/appearance/openWithSettings.ts", { "../ui/dom": { h }, "../ui/controls": { ...controls, picker }, "@tauri-apps/plugin-dialog": {} }, {}, ""),
@@ -80,7 +82,7 @@ test("Task types is its own page, and the nav names the Host and the App", async
   const s = settingsPage();
   await s.settings.open("task-types");
   const names = s.root.all().filter((e) => e.className === "set-tab-name").map((e) => e.textContent);
-  assert.equal(names.join(), "Agents,Skippers,Task types,Sessions,Disk use,Images,Appearance,Open with,Hosts");
+  assert.equal(names.join(), "Agents,Skippers,Task types,Schedules,Sessions,Disk use,Images,Appearance,Open with,Hosts");
   assert.equal(s.root.all().filter((e) => e.className === "set-band-title").map((e) => e.textContent).slice(0, 2).join(), "This computer (devbox),App");
   assert.ok(s.root.all().some((e) => e.className === "set-h" && e.textContent === "Task types"));
 });
