@@ -305,7 +305,7 @@ enum Cmd {
     },
     /// Schedules: commands and agent steps that skiffd runs at set times,
     /// also while the app is closed. Each run is a ledger task.
-    #[command(after_help = "A schedule is when + an optional command + an optional agent step.\nWhen: --every day --at 02:00, --every weekday --at 08:00, --every week --on mon,thu --at 09:00, --every month --day 1 --at 06:00, --every 30m --between 09:00-18:00 --on mon-fri, or --cron \"0 9 1,15 * *\". Times are this computer's local time.\nThe command runs in the project folder with a time limit (--timeout, default 600 s). Its output is the run's result. With --gate on-fail or on-output, the agent step runs only when the command failed or printed something.\nThe agent step: --to type (a new session of a task type), --to pane (a send to a named session; a busy session keeps the run pending until it is idle) or --to skipper (a hand-off to Admiral or a project Skipper).\nA schedule has at most one open run: a due time while a run is open is skipped. A run missed while skiffd was not running is not caught up.")]
+    #[command(after_help = "A schedule is when + an optional command + an optional agent step.\nWhen: --every day --at 02:00, --every weekday --at 08:00, --every week --on mon,thu --at 09:00, --every month --day 1 --at 06:00, --every 30m --between 09:00-18:00 --on mon-fri, or --cron \"0 9 1,15 * *\". Times are this computer's local time.\nThe command runs in the project folder with a time limit (--timeout, default 600 s). Its output is the run's result. With --gate on-fail or on-output, the agent step runs only when the command failed or printed something.\nThe agent step: --to type (a new session of a task type), --to pane (a send to a named session; a busy session keeps the run pending until it is idle) or --to skipper (a hand-off to Admiral, a fleet Skipper or a project Skipper; a project in a fleet with a running fleet Skipper goes to the fleet Skipper).\nA schedule has at most one open run: a due time while a run is open is skipped. A run missed while skiffd was not running is not caught up.")]
     Schedule {
         /// From a shell outside Skiff: I am a person, not an agent.
         #[arg(long, global = true)]
@@ -394,7 +394,8 @@ pub struct ScheduleSpec {
     /// With --to pane: the session's name.
     #[arg(long, value_name = "NAME")]
     pub pane: Option<String>,
-    /// With --to skipper: grand (Admiral) or a project. Default: grand.
+    /// With --to skipper: Admiral, a project or fleet:NAME. A name that is both a
+    /// project and a fleet needs project:NAME or fleet:NAME. Default: Admiral.
     #[arg(long, value_name = "SCOPE")]
     pub skipper: Option<String>,
     /// The prompt for the agent step. `-` reads it from stdin.

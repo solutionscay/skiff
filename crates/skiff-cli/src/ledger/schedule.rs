@@ -22,7 +22,8 @@ use skiff_core::session::SessionInfo;
 use super::paths::new_uid;
 use super::read::{full_list, one, project_of};
 use super::schema::{open, open_at, NOW};
-use super::write::{check_writer, insert, message, read_stdin, send_row, New, SendOpts};
+use super::write::{check_writer, insert, message, read_stdin, scope, send_row, New, Scope, SendOpts};
+use skiff_client::skipper;
 use crate::{print, resolve, ScheduleCmd, ScheduleGate, ScheduleSpec, ScheduleTarget};
 
 /// A due time older than this when skiffd sees it was missed: the computer
@@ -231,7 +232,7 @@ fn apply(d: &mut Draft, spec: ScheduleSpec, adding: bool) -> Result<()> {
         d.pane = some(p);
     }
     if let Some(o) = spec.skipper {
-        d.owner = some(o);
+        d.owner = some(o).map(|o| owner(&o)).transpose()?;
     }
     if let Some(t) = spec.text {
         // Empty text clears the prompt: the file keeps its heading line only.
@@ -253,6 +254,20 @@ fn apply(d: &mut Draft, spec: ScheduleSpec, adding: bool) -> Result<()> {
         d.gate = None;
     }
     Ok(())
+}
+
+/// The owner key of `--skipper`: `grand` for Admiral, a project's name, or
+/// `fleet:<fleet>`. A bare name that is a project and a fleet is refused, as
+/// `skiff ledger handoff` refuses it.
+fn owner(arg: &str) -> Result<String> {
+    if arg.eq_ignore_ascii_case(GRAND) || arg.eq_ignore_ascii_case(skiff_core::config::ADMIRAL) {
+        return Ok(GRAND.into());
+    }
+    let cfg = skiff_core::config::load()?;
+    Ok(match scope(&cfg, arg)? {
+        Scope::Project(p) => p,
+        Scope::Fleet(f) => skipper::fleet_scope(&f),
+    })
 }
 
 /// A name: letters, digits, `.`, `_` and `-`, starting with a letter or a digit.
@@ -291,25 +306,27 @@ fn check(d: &Draft) -> Result<()> {
             }
         }
         Some("pane") if d.pane.is_none() => bail!("--to pane needs --pane NAME. Nothing changed"),
-        Some("skipper") => {
-            if let Some(o) = d.owner.as_deref().filter(|o| *o != GRAND) {
-                project(o)?;
+        Some("skipper") => match d.owner.as_deref().map(|o| (o, skipper::scope_fleet(o))) {
+            Some((_, Some(f))) if !skipper::is_fleet(&cfg, f) => {
+                bail!("no fleet {f:?} in {}. Nothing changed", skiff_core::config::config_path().display())
             }
-        }
+            Some((o, None)) if o != GRAND => project(o)?,
+            _ => {}
+        },
         _ => {}
     }
     Ok(())
 }
 
 /// The target in words: `type fix`, `pane brief`, `Skipper`, `web Skipper`,
-/// `command`.
+/// `Harbor Skipper` (a fleet), `command`.
 pub fn target_words(s: &Schedule) -> String {
     match s.target.as_deref() {
         Some("type") => format!("type {}", s.task_type.as_deref().unwrap_or("?")),
         Some("pane") => format!("pane {}", s.pane.as_deref().unwrap_or("?")),
         Some("skipper") => match s.owner.as_deref() {
             None | Some(GRAND) => "Skipper".into(),
-            Some(p) => format!("{p} Skipper"),
+            Some(o) => format!("{} Skipper", skipper::scope_fleet(o).unwrap_or(o)),
         },
         _ if s.command.is_some() => "command".into(),
         _ => "nothing".into(),
@@ -702,10 +719,11 @@ fn one_line(text: &str) -> String {
 }
 
 /// The agent step's row under `run`, for the session `pane`.
-fn add_step(db: &mut Connection, file: &Path, socket: &Path, s: &Schedule, run: &Row, pane: &SessionInfo, task: String, handoff: bool) -> Result<Row> {
-    let project = match (handoff, &s.owner, &s.project) {
-        (true, Some(o), _) => o.clone(),
-        (_, _, Some(p)) => p.clone(),
+/// `handoff`: the Skipper's owner key, for a hand-off.
+fn add_step(db: &mut Connection, file: &Path, socket: &Path, s: &Schedule, run: &Row, pane: &SessionInfo, task: String, handoff: Option<&str>) -> Result<Row> {
+    let project = match (handoff, &s.project) {
+        (Some(o), _) => o.to_string(),
+        (_, Some(p)) => p.clone(),
         _ => project_of(pane),
     };
     let n = New {
@@ -722,7 +740,7 @@ fn add_step(db: &mut Connection, file: &Path, socket: &Path, s: &Schedule, run: 
         task_type: s.task_type.clone(),
         socket: Some(socket.display().to_string()),
         owner: GRAND.into(),
-        handoff,
+        handoff: handoff.is_some(),
         expects: None,
     };
     let (_, uid, _, _) = insert(db, file, n)?;
@@ -742,7 +760,7 @@ async fn agent_step(socket: &Path, db: &mut Connection, file: &Path, s: &Schedul
             let name = s.pane.as_deref().unwrap_or_default();
             let all = c.list_sessions().await?;
             let pane = resolve::session(&all, name).map_err(|_| anyhow::anyhow!("the session {name} is gone"))?.clone();
-            let step = add_step(db, file, socket, s, run, &pane, prompt, false)?;
+            let step = add_step(db, file, socket, s, run, &pane, prompt, None)?;
             deliver(socket, db, &step, None).await
         }
         (Some("type"), _) => {
@@ -753,7 +771,7 @@ async fn agent_step(socket: &Path, db: &mut Connection, file: &Path, s: &Schedul
             let spec = crate::sessions::spec(&c, o).await?;
             let info = c.create_session(spec).await?;
             let pane = crate::skipper::ready(&c, &info.id).await?;
-            let step = add_step(db, file, socket, s, run, &pane, prompt, false)?;
+            let step = add_step(db, file, socket, s, run, &pane, prompt, None)?;
             deliver(socket, db, &step, None).await
         }
         (Some("skipper"), None | Some(GRAND)) => {
@@ -766,16 +784,26 @@ async fn agent_step(socket: &Path, db: &mut Connection, file: &Path, s: &Schedul
                 let _ = skiff_client::skipper::start_watch(socket, &exe, &id, true);
             }
             let pane = if found.created || found.typed { crate::skipper::ready(&c, &id).await? } else { found.session };
-            let step = add_step(db, file, socket, s, run, &pane, prompt, false)?;
+            let step = add_step(db, file, socket, s, run, &pane, prompt, None)?;
             deliver(socket, db, &step, None).await
         }
-        (Some("skipper"), Some(project)) => {
-            let ps = crate::skipper::start_project(socket, &c, project).await?;
-            let step = add_step(db, file, socket, s, run, &ps.session, prompt, true)?;
+        (Some("skipper"), Some(o)) => {
+            // As `skiff ledger handoff`: a project whose fleet has a running
+            // fleet Skipper hands off to the fleet Skipper.
+            let cfg = skiff_core::config::load()?;
+            let fleet = match skipper::scope_fleet(o) {
+                Some(f) => Some(f.to_string()),
+                None => skipper::commanding_fleet(&cfg, &c.list_sessions().await?, o).map(str::to_string),
+            };
+            let (ps, key, scope) = match fleet {
+                // A hand-off cannot stop agents: project Skippers in the fleet fail the run.
+                Some(f) => (crate::skipper::start_fleet(socket, &c, &f, crate::skipper::Over::Refuse).await?.skipper, skipper::fleet_scope(&f), skipper::Scope::Fleet(f)),
+                None => (crate::skipper::start_project(socket, &c, o).await?, o.to_string(), skipper::Scope::Project(o.to_string())),
+            };
+            let step = add_step(db, file, socket, s, run, &ps.session, prompt, Some(&key))?;
             let mut text = None;
             if ps.created {
-                let cfg = skiff_core::config::load()?;
-                let first = skiff_client::skipper::first_message(&cfg, &skiff_client::skipper::Scope::Project(project.to_string()))?;
+                let first = skipper::first_message(&cfg, &scope)?;
                 text = Some(format!("{first} Then take this hand-off. {}", message(&step)));
                 crate::skipper::ready(&c, &ps.session.id).await?;
             }
