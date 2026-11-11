@@ -210,6 +210,7 @@ test("a second loss during recovery runs the whole recovery again before input i
         },
         reattachPanes: () => attaches++,
       },
+      "../terminal/peek": { reattachPeeks: noop },
       "./hostCaps": {
         loadHostCaps: async () => {},
         hostCan: () => false,
