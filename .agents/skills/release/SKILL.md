@@ -40,7 +40,7 @@ A `v*` tag triggers `.github/workflows/release.yml`. CI builds the Linux package
    tests look in the default target directory without them.
    The page tests need Node 22 (`--experimental-strip-types`). If `node -v` shows an older
    version, put a Node 22 `bin` first in `PATH` for the run
-   (here: `~/.local/node-v22.23.4-linux-x64/bin`). If a test fails, stop and report it.
+   (here: `~/.nvm/versions/node/v22.22.3/bin`). If a test fails, stop and report it.
 8. Tag and push: `git tag vX.Y.Z && git push origin main vX.Y.Z`.
 9. Wait for the run: `gh run watch` (about 10 minutes).
 10. Check the assets: `gh release view vX.Y.Z --json isDraft,assets`.
