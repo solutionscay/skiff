@@ -21,7 +21,10 @@ import { smallButton, textBox } from "../ui/controls";
 import { h } from "../ui/dom";
 import type { MenuEntry } from "../ui/menu";
 import { rune } from "../ui/runes";
-import { lastWord, targetText } from "../workspace/ledgerSchedules";
+import { skipperWord } from "../app/skiffAgent";
+import { fleetSkipperName, lastWord, targetText } from "../workspace/ledgerSchedules";
+import { skipperFace } from "../workspace/skipperFace";
+import { treeSections } from "../workspace/tree";
 import { loadSchedules, scheduleCall, schedules, targetProject, type Schedule } from "../workspace/scheduleStore";
 import { sectionHead } from "./rowTable";
 import { fileSize } from "./taskTypes";
@@ -372,7 +375,7 @@ function whenEnd(st: SchedulesState, ctx: SchedulesCtx, cron: string): HTMLEleme
 }
 
 function editPage(main: HTMLElement, head: HTMLElement, st: SchedulesState, ctx: SchedulesCtx, s: Schedule | null) {
-  const d: Draft = s ? { ...s } : (st.draft ??= empty());
+  const d: Draft = s ? { ...s, owner: skipperScope(s.owner) } : (st.draft ??= empty());
   const back = h("button", "set-back", `‹ ${t("settings.tab.schedules")}`) as HTMLButtonElement;
   back.type = "button";
   back.addEventListener("click", () => {
@@ -399,7 +402,9 @@ function editPage(main: HTMLElement, head: HTMLElement, st: SchedulesState, ctx:
   const save = async (flags: string[], apply: (d: Draft) => void) => {
     apply(d);
     if (s) {
-      await run(st, ctx, ["edit", s.name, ...flags]);
+      // A project in a fleet shows as its fleet's Skipper: the next save stores the fleet.
+      const owner = d.target === "skipper" && d.owner !== s.owner && !flags.includes("--skipper") ? ["--skipper", d.owner ?? "grand"] : [];
+      await run(st, ctx, ["edit", s.name, ...flags, ...owner]);
       // A rename keeps the page on the same schedule: it goes by uid.
       return;
     }
@@ -498,13 +503,49 @@ function agentSentence(d: Draft, ctx: SchedulesCtx, save: (flags: string[], appl
   }
   if (d.target === "skipper") {
     const o = d.owner ?? "grand";
-    sent.append(pk(t("schedules.skipperScope"), o === "grand" ? ctx.mainName() : o, () => [
-      choice(ctx.mainName(), o === "grand", () => void save(["--skipper", "grand"], (y) => void (y.owner = "grand"))),
-      { sep: true },
-      ...S.projects.map((p) => choice(p.name, p.name === o, () => void save(["--skipper", p.name], (y) => void (y.owner = p.name)))),
-    ]));
+    const skippers = skipperChoices(ctx);
+    const shows = skippers.find((x) => x.scope === o)?.name ?? skipperName(ctx, o);
+    // The face takes the check's place: the current Skipper gets the bar.
+    const item = (x: SkipperChoice): MenuEntry => ({ label: x.name, current: x.scope === o, glyph: skipperFace(x.scope === "grand" ? null : x.scope, 16), run: () => void save(["--skipper", x.arg], (y) => void (y.owner = x.scope)) });
+    const groups = [skippers.filter((x) => x.scope === "grand"), skippers.filter((x) => x.scope.startsWith("fleet:")), skippers.filter((x) => x.scope !== "grand" && !x.scope.startsWith("fleet:"))].filter((g) => g.length);
+    sent.append(pk(t("schedules.skipperScope"), shows, () => groups.flatMap((g, i): MenuEntry[] => [...(i ? [{ sep: true as const }] : []), ...g.map(item)])));
   }
   return sent;
+}
+
+/** A Skipper the agent step can go to. `scope`: the owner key the ledger keeps. `arg`: what `--skipper` takes. */
+interface SkipperChoice {
+  scope: string;
+  arg: string;
+  name: string;
+}
+
+/**
+ * The Skippers in tree order: Admiral, each fleet's Skipper, then the
+ * Skipper of each project in no fleet. A project in a fleet is not listed:
+ * its fleet's Skipper takes its work.
+ */
+function skipperChoices(ctx: SchedulesCtx): SkipperChoice[] {
+  const sections = treeSections();
+  const fleets = new Set(sections.flatMap((x) => (x.fleet ? [x.fleet] : [])));
+  return [
+    { scope: "grand", arg: "grand", name: ctx.mainName() },
+    ...sections.flatMap((x) => (x.fleet ? [{ scope: `fleet:${x.fleet}`, arg: `fleet:${x.fleet}`, name: fleetSkipperName(x.fleet) }] : [])),
+    // A project that shares a fleet's name needs the prefix.
+    ...(sections.find((x) => !x.fleet)?.projects ?? []).map((p) => ({ scope: p.name, arg: fleets.has(p.name) ? `project:${p.name}` : p.name, name: `${p.name} ${skipperWord()}` })),
+  ];
+}
+
+/** An owner key as the Agent sentence names it. */
+function skipperName(ctx: SchedulesCtx, scope: string): string {
+  if (scope === "grand") return ctx.mainName();
+  return scope.startsWith("fleet:") ? fleetSkipperName(scope.slice(6)) : `${scope} ${skipperWord()}`;
+}
+
+/** The owner the page shows: a project in a fleet goes to its fleet's Skipper. */
+function skipperScope(owner: string | null): string | null {
+  const fleet = owner ? S.projects.find((p) => p.name === owner)?.fleet : null;
+  return fleet ? `fleet:${fleet}` : owner;
 }
 
 /** Reads the schedules for the page, then redraws it. */

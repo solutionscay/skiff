@@ -92,12 +92,12 @@ export async function scheduleCall(args: string[]): Promise<void> {
 }
 
 /** The target in words: `type fix`, `pane brief`, `Skipper`, `command`. The project shows apart, as its letters. */
-export function targetWords(s: Schedule, words: { skipper: string; command: string; nothing: string }): string {
+export function targetWords(s: Schedule, words: { skipper: string; fleet: (fleet: string) => string; command: string; nothing: string }): string {
   if (s.target === "type") return `type ${s.type ?? ""}`;
   if (s.target === "pane") return `pane ${s.pane ?? ""}`;
-  if (s.target === "skipper") return words.skipper;
+  if (s.target === "skipper") return s.owner?.startsWith("fleet:") ? words.fleet(s.owner.slice(6)) : words.skipper;
   return s.command ? words.command : words.nothing;
 }
 
 /** The project whose letters lead the target: a project Skipper's, else the schedule's. */
-export const targetProject = (s: Schedule): string | null => (s.target === "skipper" ? (s.owner && s.owner !== "grand" ? s.owner : null) : s.project);
+export const targetProject = (s: Schedule): string | null => (s.target === "skipper" ? (s.owner && s.owner !== "grand" && !s.owner.startsWith("fleet:") ? s.owner : null) : s.project);

@@ -10,6 +10,7 @@
  * child row under it. A click on a run opens its result; on an agent step,
  * its pane while it runs, else its result. ← or Esc goes back to the list.
  */
+import { skipperWord } from "../app/skiffAgent";
 import { S, sessions } from "../app/state";
 import { accent } from "../app/stateQueries";
 import { type MessageKey, t } from "../i18n";
@@ -70,7 +71,10 @@ function tag(project: string | null): HTMLElement | null {
 
 export const lastWord = (last: Schedule["last"] | Run["status"]) => (last ? t(`schedules.last.${last}` as MessageKey) : t("schedules.noRun"));
 
-export const targetText = (s: Schedule) => targetWords(s, { skipper: t("schedules.skipper"), command: t("schedules.targetCommand"), nothing: t("schedules.nothing") });
+/** A fleet Skipper's name, as its session has it: "Harbor Skipper". */
+export const fleetSkipperName = (fleet: string) => `${fleet} ${skipperWord()}`;
+
+export const targetText = (s: Schedule) => targetWords(s, { skipper: t("schedules.skipper"), fleet: fleetSkipperName, command: t("schedules.targetCommand"), nothing: t("schedules.nothing") });
 
 /** One schedule: two 20px lines on the tab's column grid. */
 function item(s: Schedule, open: (uid: string) => void): HTMLElement {
