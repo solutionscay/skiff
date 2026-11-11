@@ -102,10 +102,26 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   const schedCtx = { render: () => render(), mainName: () => mainName(agentSet?.name), editPrompt };
 
   /**
+   * An Edit's file in the peek over Settings. Settings stays on its page.
+   * When the peek ends, `done` reads the page again, and the keys go back to
+   * the button that opened the file, else to the page's tab.
+   */
+  function peekOver(script: string, cwd: string, path: string, done: () => unknown) {
+    const label = document.activeElement instanceof HTMLElement && root.contains(document.activeElement) ? document.activeElement.getAttribute("aria-label") : null;
+    peekText(script, cwd, path, () => {
+      void Promise.resolve(done()).then(() => {
+        if (root.hidden) return;
+        const back = label ? [...root.querySelectorAll<HTMLElement>("[aria-label]")].find((el) => el.getAttribute("aria-label") === label) : null;
+        (back ?? root.querySelector<HTMLElement>(".set-tab.active"))?.focus();
+      });
+    });
+  }
+
+  /**
    * Schedules › Prompt › Edit: the schedule's file opens as Open with ›
    * Text files says, as Task types › Edit does, with its `# <name>` line
-   * written first when there is none. In the peek, Settings closes and
-   * opens again on this page when the peek ends.
+   * written first when there is none. A terminal tool runs in the peek over
+   * this page, and the size reads again when it ends.
    */
   async function editPrompt(s: Schedule): Promise<string | null> {
     let o: { kind: "run"; script: string; cwd: string } | { kind: "default" } | { kind: "no_app"; message: string };
@@ -115,8 +131,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       return String(e);
     }
     if (o.kind === "run") {
-      close();
-      peekText(o.script, o.cwd, `${o.cwd}/${s.uid}.md`, () => void settings.open("schedules"));
+      peekOver(o.script, o.cwd, `${o.cwd}/${s.uid}.md`, () => loadSchedulesPage(schedCtx));
       return null;
     }
     // The file is new or saved: read its size again, as Task types › Edit does.
@@ -125,10 +140,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   }
   const { loadFiles, editFile, loadTypes, editTypeFile, resetFile } = createSettingsFiles<InstructionFile, SkiffAgentSettings, TaskType>({
     ask: invoke,
-    peek: peekText,
+    peek: peekOver,
     hostName,
-    close: () => close(),
-    reopen: (at) => void settings.open(at),
     showing: (at) => !root.hidden && tab === (OLD_TABS[at] ?? at),
     render: () => render(),
     setError: (e) => { error = e; },
@@ -255,14 +268,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     }
     if (tab === "disk") {
       const main = h("div", "set-main");
-      // A file opens as Settings › Open with says. In the peek, Settings
-      // closes and opens again on this tab when the peek ends.
+      // A file opens as Settings › Open with says: a terminal tool in the peek over this tab.
       const opener = {
         local: !isRemote(),
-        peek: (script: string, cwd: string, name: string) => {
-          close();
-          peekText(script, cwd, `${cwd}/${name}`, () => void settings.open("disk"));
-        },
+        peek: (script: string, cwd: string, name: string) => peekOver(script, cwd, `${cwd}/${name}`, () => countDisk(disk, render)),
       };
       main.append(...diskUseSection(disk, render, (days) => void setCacheDays(days), opener, agentSet && !(isRemote() && !hostCan("skipper_config")) ? folderRows(agentSet, changeFolder) : []));
       root.replaceChildren(nav, pinClose(main));
@@ -528,6 +537,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
 
   /** The list keys, and copy and paste in a text field, as Settings reads them. True when Settings used the key. */
   function runKey(a: Action | null): boolean {
+    // A tool in the peek over Settings keeps its keys.
+    if (document.activeElement?.closest(".peek")) return false;
     const f = a === "copy" || a === "paste" ? field() : null;
     if (f) void editField(f, a as "copy" | "paste");
     else if (a === "session-next" || a === "session-prev") stepTab(a === "session-next" ? 1 : -1);
@@ -541,6 +552,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   // settings stop the key first.
   window.addEventListener("keydown", (e) => {
     if (root.hidden || e.defaultPrevented || document.querySelector("#ctx-menu:not([hidden]), #launch-menu:not([hidden]), .confirm-overlay")) return;
+    if (e.target instanceof Element && e.target.closest(".peek")) return;
     if (runKey(actionFor(e))) return e.preventDefault();
     // Cut on macOS. The webview needs an Edit menu item for it.
     const edit = fieldEditKey(e, isMac);

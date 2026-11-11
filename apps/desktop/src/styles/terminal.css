@@ -2,6 +2,8 @@
 /* The peek: a read-only view over the whole terminal area. Not a pane. */
 /* Under Settings (12) and the menus (15), over the panes. */
 .peek { position: absolute; inset: 0; z-index: 11; display: flex; flex-direction: column; background: var(--bg-deep); }
+/* A file that Settings sent: over Settings (12), under the menus (15). */
+#body > .peek { z-index: 13; --pc: var(--project-default); }
 /* A command that has not shown what it is yet: laid out, so its terminal has a size, but not seen. */
 .peek.pending { visibility: hidden; pointer-events: none; }
 .peek-head {

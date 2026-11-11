@@ -6,9 +6,9 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import { keyLabel } from "../app/keys";
-import { $, h } from "../ui/dom";
+import { h } from "../ui/dom";
 import { t } from "../i18n";
-import { peekHead } from "./peekCard";
+import { peekHead, peekRoot } from "./peekCard";
 
 export interface Peek {
   /** The preview this command belongs to. */
@@ -62,7 +62,7 @@ export function newPeek(o: NewPeek): Peek {
   const head = peekHead(o.kind, o.title, o.where, o.close);
   const box = h("div", "peek-body");
   el.append(head, box);
-  $("main").appendChild(el);
+  peekRoot().appendChild(el);
 
   const term = new Terminal({
     theme: o.theme,

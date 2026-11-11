@@ -35,13 +35,9 @@ type TabName = "skippers" | "task-types";
 export interface FilesEnv<A> {
   /** A command on the app side. */
   ask<T>(cmd: string, args?: Record<string, unknown>): Promise<T>;
-  /** Shows a file in the peek; `done` runs when the peek ends. */
-  peek(script: string, cwd: string, file: string, done: () => void): void;
+  /** Shows a file in the peek over Settings; `done` runs when the peek ends. */
+  peek(script: string, cwd: string, file: string, done: () => unknown): void;
   hostName(): string;
-  /** Closes Settings. */
-  close(): void;
-  /** Opens Settings again on a tab. */
-  reopen(tab: TabName): void;
   /** True when Settings is open on this tab. */
   showing(tab: TabName): boolean;
   render(): void;
@@ -70,8 +66,8 @@ export function createSettingsFiles<F extends FileRow, A, T extends TypeRow>(env
 
   /**
    * Edit: the file opens as Open with › Text files says, written from the
-   * template first when there is none. In the peek, Settings closes and
-   * opens again on this tab when the peek ends.
+   * template first when there is none. A terminal tool runs in the peek over
+   * Settings, and the status reads again when it ends.
    */
   async function editFile(f: F) {
     st.fileErrors.delete(f.file);
@@ -82,10 +78,7 @@ export function createSettingsFiles<F extends FileRow, A, T extends TypeRow>(env
       st.fileErrors.set(f.file, String(e));
       return void loadFiles();
     }
-    if (o.kind === "run") {
-      env.close();
-      return env.peek(o.script, o.cwd, `${o.cwd}/${basename(f.file)}`, () => env.reopen("skippers"));
-    }
+    if (o.kind === "run") return env.peek(o.script, o.cwd, `${o.cwd}/${basename(f.file)}`, loadFiles);
     if (o.kind === "no_app") st.fileErrors.set(f.file, t("settings.noApp", { file: f.file }));
     void loadFiles();
   }
@@ -99,8 +92,8 @@ export function createSettingsFiles<F extends FileRow, A, T extends TypeRow>(env
 
   /**
    * Task types › Edit: the file opens as Open with › Text files says, with
-   * its `# <type>` line written first when there is none. In the peek,
-   * Settings closes and opens again on this tab when the peek ends.
+   * its `# <type>` line written first when there is none. A terminal tool
+   * runs in the peek over Settings, and the size reads again when it ends.
    */
   async function editTypeFile(task: T) {
     st.typeErrors.delete(task.type);
@@ -111,10 +104,7 @@ export function createSettingsFiles<F extends FileRow, A, T extends TypeRow>(env
       st.typeErrors.set(task.type, String(e));
       return void loadTypes();
     }
-    if (o.kind === "run") {
-      env.close();
-      return env.peek(o.script, o.cwd, task.file, () => env.reopen("task-types"));
-    }
+    if (o.kind === "run") return env.peek(o.script, o.cwd, task.file, loadTypes);
     if (o.kind === "no_app") st.typeErrors.set(task.type, t("settings.noApp", { file: `${task.type}.md` }));
     void loadTypes();
   }

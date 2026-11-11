@@ -87,9 +87,18 @@ export function mountCard(el: HTMLElement, hooks: { close(): void; fold(): void 
   const hadKeys = !!slot.el && slot.el.contains(document.activeElement);
   clearCard();
   slot.el = el;
-  $("main").appendChild(el);
+  peekRoot().appendChild(el);
   return hadKeys;
 }
+
+/** True while a file that Settings sent shows: the peek covers Settings, not only the panes. */
+let overSettings = false;
+export function peekOverSettings(on: boolean) {
+  overSettings = on;
+}
+
+/** Where the peek and its card go: `#body` over Settings, else `#main` over the panes. */
+export const peekRoot = () => $(overSettings ? "body" : "main");
 
 /** The whole-worktree diff's title: what it counts from, when not HEAD. */
 export const allChanges = (base?: string) => (base ? t("peek.allChangesSince", { base }) : t("peek.allChanges"));

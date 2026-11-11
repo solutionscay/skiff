@@ -42,7 +42,7 @@ import { hostInvoke } from "../app/hostCaps";
 import { dataEpoch } from "../app/dataPlane";
 import { hostName } from "../app/hosts";
 import type { HostDiff, HostFile } from "../platform/types";
-import { allChanges, buildCard, cardAction, cardFrame, clearCard, mountCard, slot } from "./peekCard";
+import { allChanges, buildCard, cardAction, cardFrame, clearCard, mountCard, peekOverSettings, peekRoot, slot } from "./peekCard";
 import { diffBody } from "./diffView";
 import { exitAction, newPeek, tookTerminal, type Peek } from "./peekTerminal";
 import { hostFileFrame, renderHostFile, showHostView, type Gate } from "./peekHostView";
@@ -77,11 +77,13 @@ let gen = 0;
 /** Runs once when the peek of {@link peekText} leaves the screen. */
 let afterPeek: (() => void) | null = null;
 
-/** The peek left the screen: Settings opens again when it sent the file. */
-function peekEnded() {
+/** The peek left the screen. True when Settings sent the file: Settings reads its page again and keeps the keys. */
+function peekEnded(): boolean {
   const f = afterPeek;
   afterPeek = null;
+  peekOverSettings(false);
   f?.();
+  return !!f;
 }
 /** The command of the active preview. */
 let open: Peek | null = null;
@@ -297,14 +299,15 @@ function claim(): Active {
 }
 
 /**
- * Settings › Skippers › Edit with Open with › Text files in the peek: runs
- * `script` over the current row. `ended` runs once when the peek leaves the
- * screen.
+ * An Edit in Settings with Open with › Text files in the peek: runs `script`
+ * over Settings, which stays open under it. `ended` runs once when the peek
+ * leaves the screen. An app opens its own window, and the peek never shows.
  */
 export function peekText(script: string, cwd: string, path: string, ended: () => void) {
   const a = claim();
   if (open) open.gen = a.gen;
   afterPeek = ended;
+  peekOverSettings(true);
   const { name, dir } = splitPath(path);
   handle({ kind: "run", script, cwd }, "file", name, dir);
 }
@@ -371,8 +374,7 @@ function closePeek(hold = false) {
   if (active) active.closed = true;
   clearCard();
   repaintPanes();
-  peekEnded();
-  if (!hadKeys) return;
+  if (peekEnded() || !hadKeys) return;
   // The keys go back to the row the user left.
   const row = currentRow();
   if (row) row.focus();
@@ -394,8 +396,7 @@ export function closePreview() {
   if (p) drop(p, p.shown);
   repaintPanes();
   render();
-  peekEnded();
-  if (!hadKeys) return;
+  if (peekEnded() || !hadKeys) return;
   const row = currentRow();
   if (row) row.focus();
   else if (S.focused) panes.get(S.focused)?.term.focus();
@@ -596,6 +597,9 @@ function show(p: Peek) {
   if (open !== p || !live(p.gen)) return;
   if (p.shown && !p.el.hidden) return;
   coverPanes(true);
+  // A parked tool shows again over Settings, or over the panes.
+  const root = peekRoot();
+  if (p.el.parentElement !== root) root.appendChild(p.el);
   p.el.hidden = false;
   p.shown = true;
   clearTimeout(p.timer);
