@@ -23,9 +23,11 @@ function dropPane(id: string) {
   // A retiring project Skipper gives them to the fleet Skipper that took it over.
   const heir = heirOf(id, S.focused === id);
   const near = S.focused !== id || heir ? null : shownIds().length > 1 ? paneNear(id) : S.single === id ? rowNear(id) : null;
+  const had = S.focused === id;
   const split = splitLoses(id);
   sessions.delete(id);
-  split();
+  // A split child that goes gives its place, and the keys, to the next child.
+  const child = split();
   panes.get(id)?.term.dispose();
   panes.get(id)?.el.remove();
   panes.delete(id);
@@ -49,6 +51,7 @@ function dropPane(id: string) {
   const ids = shownIds();
   if (S.focused && !ids.includes(S.focused)) S.focused = null;
   if (heir && sessions.has(heir)) return revealSession(heir);
+  if (had && child && ids.includes(child)) return focusPane(child);
   if (near && ids.includes(near)) return focusPane(near);
   if (!ids.length) return near && sessions.has(near) ? revealSession(near) : unfocus();
   if (!S.focused) {

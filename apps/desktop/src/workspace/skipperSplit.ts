@@ -63,7 +63,10 @@ export function canSplitWith(id: string): boolean {
   return !!sk && id !== sk && sessions.has(id);
 }
 
-/** Shows `id` as the child. `focus`: the child takes the keys; else the keys stay where they are. */
+/**
+ * Shows `id` as the child. `focus`: the child takes the keys and its row; else
+ * the keys stay where they are, unless the child that leaves had them.
+ */
 export function showChild(id: string, focus = false) {
   const sk = splitSkipper();
   if (!sk || id === sk || !sessions.has(id)) return;
@@ -92,8 +95,9 @@ export function toggleSplit() {
 
 /**
  * The next or previous child, wrapping. With the split closed, the next key
- * opens it on the first child and the previous key on the last. False when
- * no Skipper view is on screen, so the key does nothing.
+ * opens it on the first child and the previous key on the last. The child
+ * takes the keys, so the next key goes to the pane on screen. False when no
+ * Skipper view is on screen, so the key does nothing.
  */
 export function stepChild(dir: 1 | -1): boolean {
   if (!splitSkipper()) return false;
@@ -102,7 +106,7 @@ export function stepChild(dir: 1 | -1): boolean {
   const now = splitChild();
   const i = now ? list.indexOf(now) : -1;
   const next = i < 0 ? list[dir === 1 ? 0 : list.length - 1] : list[(i + dir + list.length) % list.length];
-  if (next !== now) showChild(next);
+  if (next !== now) showChild(next, true);
   return true;
 }
 
@@ -131,10 +135,13 @@ export function restoreSplit(sk: string) {
  * A session is about to go. Call before it leaves `sessions`; run the answer
  * after. In each Skipper's split, the child that goes gives its place to the
  * next child; with no other child the split closes. A Skipper that goes
- * takes its split along.
+ * takes its split along. The answer returns the child that took `id`'s place
+ * in the split on screen, else null.
  */
-export function splitLoses(id: string): () => void {
+export function splitLoses(id: string): () => string | null {
   const after: (() => void)[] = [];
+  const shown = skipperSplit();
+  let heir: string | null = null;
   if (S.skipperSplits.has(id)) after.push(() => void S.skipperSplits.delete(id));
   for (const [sk, sp] of S.skipperSplits) {
     if (sp.child !== id) continue;
@@ -144,10 +151,15 @@ export function splitLoses(id: string): () => void {
     const next = rest.length ? rest[(i < 0 ? 0 : i) % rest.length] : null;
     after.push(() => {
       if (S.skipperSplits.get(sk) !== sp) return;
-      S.skipperSplits.set(sk, next && sessions.has(next) ? { child: next, layout: childIn(sk, next) } : { ...sp, child: null });
+      const live = next && sessions.has(next) ? next : null;
+      S.skipperSplits.set(sk, live ? { child: live, layout: childIn(sk, live) } : { ...sp, child: null });
+      if (live && shown?.skipper === sk) heir = live;
     });
   }
-  return () => after.forEach((f) => f());
+  return () => {
+    after.forEach((f) => f());
+    return heir;
+  };
 }
 
 /**

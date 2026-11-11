@@ -180,7 +180,7 @@ function childPicker(id: string, s: SessionInfo): HTMLElement {
 /**
  * The split's children in their order: agent, name, state, newest task. The
  * shown one is marked. A pane outside the children shows in the head.
- * Typing filters; a pick shows that child.
+ * Typing filters; a pick shows that child and gives it the keys.
  */
 function childMenu(id: string, b: HTMLElement) {
   const r = b.getBoundingClientRect();
@@ -191,7 +191,7 @@ function childMenu(id: string, b: HTMLElement) {
   for (const c of list) {
     const x = sessions.get(c.id);
     if (!x) continue;
-    entries.push({ glyph: agentIcon(x), label: taskTitle(x), mark: stateIcon(x), hint: c.title, current: c.id === id, run: () => showChild(c.id) });
+    entries.push({ glyph: agentIcon(x), label: taskTitle(x), mark: stateIcon(x), hint: c.title, current: c.id === id, run: () => showChild(c.id, true) });
   }
   ctxMenu.open(r.left, r.bottom, t("pane.children"), entries, undefined, { filter: true });
 }
