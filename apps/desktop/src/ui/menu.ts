@@ -73,6 +73,10 @@ export function createMenu(onClose: () => void) {
   /** Called once when the menu closes without a pick (Esc, click outside, another menu). */
   let dismiss: (() => void) | null = null;
 
+  /** The control whose click opened the menu. A press on it does not close the
+   *  menu as a click outside; its click then closes it, so the control toggles. */
+  let owner: Element | null = null;
+
   function closeFly() {
     clearTimeout(hoverTimer);
     fly.hidden = true;
@@ -84,6 +88,8 @@ export function createMenu(onClose: () => void) {
     if (menu.hidden) return;
     closeFly();
     menu.hidden = true;
+    owner?.setAttribute("aria-expanded", "false");
+    owner = null;
     const d = dismiss;
     dismiss = null;
     d?.();
@@ -178,7 +184,12 @@ export function createMenu(onClose: () => void) {
   }
 
   function open(x: number, y: number, heading: string, entries: MenuEntry[], onDismiss?: () => void, o: { filter?: boolean } = {}) {
+    const by = opener();
+    // A second click on the control that opened the menu closes it.
+    if (by && !menu.hidden && by === owner) return close(false);
     if (!menu.hidden) close(false);
+    owner = by;
+    owner?.setAttribute("aria-expanded", "true");
     menuOpened();
     dismiss = onDismiss ?? null;
     filterOn = !!o.filter;
@@ -256,10 +267,25 @@ export function createMenu(onClose: () => void) {
     e.stopPropagation();
   });
 
+  /** The control a click pressed just now, outside the menu: the opener of a
+   *  menu that opens from that click, also after an await. */
+  let pressed: { el: Element; at: number } | null = null;
+  const press = (e: Event) => {
+    const t = e.target instanceof Element ? e.target : null;
+    const el = t?.closest("button, [role=button], a, [tabindex]") ?? t;
+    pressed = el && !menu.contains(el) && !fly.contains(el) ? { el, at: performance.now() } : null;
+  };
+  const opener = () => (pressed && pressed.el.isConnected && performance.now() - pressed.at < 1000 ? pressed.el : null);
+
+  // A press outside closes the menu, but not a press on its opener: that click
+  // toggles it in `open`. Closing on the press would let the click open it again.
   document.addEventListener("mousedown", (e) => {
     const t = e.target as Node;
-    if (!menu.hidden && !menu.contains(t) && !fly.contains(t)) close(false);
+    if (!menu.hidden && !menu.contains(t) && !fly.contains(t) && !owner?.contains(t)) close(false);
   }, true);
+  document.addEventListener("click", press, true);
+  // A right-click or a key opens a menu with no opener: those open it again.
+  for (const type of ["contextmenu", "keydown"]) document.addEventListener(type, () => (pressed = null), true);
 
   return { open, close, get isOpen() { return !menu.hidden; } };
 }
