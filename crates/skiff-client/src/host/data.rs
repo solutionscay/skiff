@@ -193,22 +193,43 @@ pub fn release(version: &str) -> &str {
     version.split_once('+').map_or(version, |(v, _)| v)
 }
 
-/// The build in a service version: `1a2b…` of `0.6.26+1a2b…`.
+/// The build in a service version: `1a2b…` of `0.6.26+1a2b…` and of
+/// `0.6.26+1a2b….debug`.
 pub fn build(version: &str) -> Option<&str> {
-    version.split_once('+').map(|(_, b)| b)
+    version.split_once('+').map(|(_, b)| b.strip_suffix(DEBUG).unwrap_or(b))
+}
+
+/// The tail of a debug build's service version: `0.6.26+1a2b….debug`.
+pub const DEBUG: &str = ".debug";
+
+/// The service version reports a debug build.
+pub fn is_debug(version: &str) -> bool {
+    version.split_once('+').is_some_and(|(_, b)| b.ends_with(DEBUG))
 }
 
 pub use crate::skipper::build_of;
 
-/// The local `skiff-host` that reports `theirs` is not the build of the
-/// program at `bin`, of `version`: an older version, or this version from
-/// another build or from a build that did not name it. A newer version is
-/// never stale, nor is any when `bin` cannot be read.
-pub fn stale_service(theirs: &str, version: &str, bin: &Path) -> bool {
+/// The local `skiff-host` that reports `theirs` is not the one the app
+/// would start, the program at `bin` of `version`. Two apps can share one
+/// skiffd socket, such as the installed app and a dev app; the rule keeps
+/// them from replacing each other's service in turn:
+/// - a debug app (`debug_app`) replaces any service of another build,
+///   whatever its version: a dev build always runs its own;
+/// - a release app replaces an older version, and this version from another
+///   release build or from one that did not name its build. It never
+///   replaces a newer version or a debug build.
+///
+/// None is stale when `bin` cannot be read, except an older version for a
+/// release app.
+pub fn stale_service(theirs: &str, version: &str, bin: &Path, debug_app: bool) -> bool {
+    let other_build = || build_of(bin).is_some_and(|mine| build(theirs) != Some(mine.as_str()));
+    if debug_app {
+        return other_build();
+    }
     match skiff_core::compare_versions(release(theirs), version) {
         std::cmp::Ordering::Less => true,
         std::cmp::Ordering::Greater => false,
-        std::cmp::Ordering::Equal => build_of(bin).is_some_and(|mine| build(theirs) != Some(mine.as_str())),
+        std::cmp::Ordering::Equal => !is_debug(theirs) && other_build(),
     }
 }
 
@@ -758,14 +779,23 @@ mod tests {
         let bin = std::env::temp_dir().join(format!("skiff-host-build-{}", std::process::id()));
         std::fs::write(&bin, "a build").unwrap();
         let mine = super::build_of(&bin).unwrap();
-        let stale = |theirs: &str| super::stale_service(theirs, "0.6.26", &bin);
+        let stale = |theirs: &str| super::stale_service(theirs, "0.6.26", &bin, false);
         assert!(stale("0.6.25"));
         assert!(stale(&format!("0.6.25+{mine}")));
         assert!(stale("0.6.26"));
         assert!(stale("0.6.26+0000000000000000"));
         assert!(!stale(&format!("0.6.26+{mine}")));
         assert!(!stale("0.6.27"));
-        assert!(!super::stale_service("0.6.26+0000000000000000", "0.6.26", &bin.with_extension("gone")));
+        assert!(!super::stale_service("0.6.26+0000000000000000", "0.6.26", &bin.with_extension("gone"), false));
+        // Two apps on one socket: a release app leaves a dev build's service
+        // alone, and a dev app replaces any service but its own.
+        assert!(!stale("0.6.26+0000000000000000.debug"));
+        let dev = |theirs: &str| super::stale_service(theirs, "0.6.26", &bin, true);
+        assert!(dev("0.6.26+0000000000000000"));
+        assert!(dev("0.6.27+0000000000000000"));
+        assert!(dev("0.6.26"));
+        assert!(!dev(&format!("0.6.26+{mine}.debug")));
+        assert!(!dev(&format!("0.6.26+{mine}")));
         let _ = std::fs::remove_file(&bin);
     }
 }

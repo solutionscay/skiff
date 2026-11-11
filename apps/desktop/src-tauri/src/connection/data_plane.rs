@@ -10,14 +10,18 @@ use super::process::{data_binary, spawn_daemon, spawn_data_service, DATA_START_W
 use super::remote::connect_remote;
 
 
-/// One skiff-host per computer, from this app's build: a local service of an
-/// older version, or of this version from another build, is stopped with
-/// SIGTERM and the bundled one started, once per app run, as the `skiff
-/// watch` watcher is (`skipper::stale_holder`). So is one whose reply was
-/// unreadable. It holds no session, so nothing is lost. A newer version
-/// stays. One that does not stop is used as it is. One that does not come
-/// back within 5 s is an error for this read: the next read starts it as for
-/// any missing service. Only for a local endpoint (`_local` proves it).
+/// One skiff-host per computer, from this app's build: a stale local service
+/// (`data::stale_service`) is stopped with SIGTERM and the bundled one
+/// started, as the `skiff watch` watcher is (`skipper::stale_holder`). So is
+/// one whose reply was unreadable. It holds no session, so nothing is lost.
+/// A release app replaces an older version, or this version from another
+/// release build, once per run; a newer version and a debug build stay. A
+/// debug app (`pnpm tauri dev`) replaces any service of another build, up
+/// to `DEBUG_REPLACES` times per run: the installed app on the same socket
+/// may put its own back once. One that does not stop is used as it is. One
+/// that does not come back within 5 s is an error for this read: the next
+/// read starts it as for any missing service. Only for a local endpoint
+/// (`_local` proves it).
 pub(super) async fn replace_older_data_service(app: &App, _local: &ProcessControl, selection: &HostSelection, host: &skiff_host_api::HostId, plane: DataPlane) -> Result<DataPlane, String> {
     let theirs = plane.connection().hello().service_versions.get("skiff-host").cloned().unwrap_or_default();
     let Some(pid) = plane.pid() else { return Ok(plane) };
@@ -25,14 +29,20 @@ pub(super) async fn replace_older_data_service(app: &App, _local: &ProcessContro
     if !unreadable && !stale_service(&theirs).await {
         return Ok(plane);
     }
-    if app.data_replaced.swap(true, Ordering::SeqCst) {
+    let most = if cfg!(debug_assertions) { DEBUG_REPLACES } else { 1 };
+    if app.data_replaces.fetch_add(1, Ordering::SeqCst) >= most {
         return Ok(plane);
     }
+    app.data_replaced.store(true, Ordering::SeqCst);
     app.data_unreadable.store(false, Ordering::SeqCst);
     eprintln!("skiff-host {theirs} is not this app's build ({}): replacing it", skiff_core::VERSION);
     drop(plane);
     restart_data_service(app, _local, selection, host, pid).await
 }
+
+/// How many times a debug app replaces a local `skiff-host` of another build
+/// in one run.
+const DEBUG_REPLACES: u32 = 3;
 
 /// Stops this computer's `skiff-host` at `pid` and starts the bundled one.
 pub(super) async fn restart_data_service(app: &App, _local: &ProcessControl, selection: &HostSelection, host: &skiff_host_api::HostId, pid: u32) -> Result<DataPlane, String> {
@@ -53,13 +63,11 @@ pub(super) async fn restart_data_service(app: &App, _local: &ProcessControl, sel
     Err(last.map(|e| data_failure(&e, selection)).unwrap_or_else(|| "The new projects service on this computer did not answer. Skiff checks again on its own.".into()))
 }
 
-/// The local `skiff-host` that reports `theirs` is not this app's: an older
-/// version, or this version from another build or from a build that did not
-/// name its build. A newer version is never replaced, nor is any when this
-/// app's `skiff-host` cannot be read.
+/// The local `skiff-host` that reports `theirs` is not this app's, by the
+/// rule for two apps on one socket in `data::stale_service`.
 async fn stale_service(theirs: &str) -> bool {
     let (theirs, bin) = (theirs.to_string(), data_binary());
-    tauri::async_runtime::spawn_blocking(move || skiff_client::host::data::stale_service(&theirs, skiff_core::VERSION, &bin)).await.unwrap_or(false)
+    tauri::async_runtime::spawn_blocking(move || skiff_client::host::data::stale_service(&theirs, skiff_core::VERSION, &bin, cfg!(debug_assertions))).await.unwrap_or(false)
 }
 
 /// The Hello of a data service this app cannot use: another Host API, or

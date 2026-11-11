@@ -44,6 +44,11 @@ pub(crate) struct App {
     /// This run replaced a local `skiff-host` of another build already:
     /// once per run.
     pub(crate) data_replaced: AtomicBool,
+    /// How many times this run replaced a local `skiff-host` that was not
+    /// its build. A release app does it once; a debug app up to
+    /// `DEBUG_REPLACES`, so an installed app that put its own back once is
+    /// replaced again, and two dev builds do not loop.
+    pub(crate) data_replaces: std::sync::atomic::AtomicU32,
     /// A reply from the local `skiff-host` was unreadable: the next
     /// connection replaces it, whatever its build.
     pub(crate) data_unreadable: AtomicBool,

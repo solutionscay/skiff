@@ -86,11 +86,13 @@ pub fn hello() -> anyhow::Result<Hello> {
 }
 
 /// This service's version, with its build as SemVer build metadata
-/// (`0.6.26+<build id>`): the app replaces a service of its own version
-/// from another build.
+/// (`0.6.26+<build id>`, `0.6.26+<build id>.debug` from a debug build): the
+/// app replaces a service of its own version from another build, and a
+/// release app leaves a debug build's alone (`data::stale_service`).
 fn version() -> String {
+    let debug = if cfg!(debug_assertions) { skiff_client::host::data::DEBUG } else { "" };
     match std::env::current_exe().ok().as_deref().and_then(skiff_client::skipper::build_of) {
-        Some(build) => format!("{}+{build}", skiff_core::VERSION),
+        Some(build) => format!("{}+{build}{debug}", skiff_core::VERSION),
         None => skiff_core::VERSION.into(),
     }
 }
