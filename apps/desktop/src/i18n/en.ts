@@ -839,6 +839,7 @@ export const en = {
   "skipper.projectAgent": "Project and fleet Skippers' agent",
   "skipper.projectModel": "Project and fleet Skippers' model",
   "skipper.sameAs": "Same as {name}",
+  "skipper.sameAsAll": "Same as all",
   "skipper.status.none": "none",
   "skipper.status.template": "template",
   "skipper.status.edited": "edited",

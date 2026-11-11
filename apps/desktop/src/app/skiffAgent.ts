@@ -54,6 +54,10 @@ export interface SkiffAgentSettings {
   project_model: string | null;
   /** The Skippers list's order, by scope. Absent or empty: tree order. */
   skippers_order?: string[];
+  /** One project or fleet Skipper's own agent and model, by scope: a
+   *  project's name or `fleet:<name>`. A Skipper with no row starts
+   *  `project_agent`. Absent: none, also from an older Host. */
+  skippers?: Record<string, { agent: string; model: string | null }>;
   /** `[skiff_agent.tasks]` in file order. */
   tasks: TaskType[];
   /** The folder of the task types' instruction files: `~/skiff-agent/types/`. */

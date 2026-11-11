@@ -941,6 +941,7 @@ export const zh = {
   "skipper.projectAgent": "项目和舰队 Skipper 的代理",
   "skipper.projectModel": "项目和舰队 Skipper 的模型",
   "skipper.sameAs": "与 {name} 相同",
+  "skipper.sameAsAll": "与全部相同",
   "skipper.status.none": "无",
   "skipper.status.template": "模板",
   "skipper.status.edited": "已编辑",

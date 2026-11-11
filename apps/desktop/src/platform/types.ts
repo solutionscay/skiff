@@ -177,8 +177,6 @@ export interface Project {
   closed?: boolean;
   /** The fleet it sits in. Absent: under Projects, in no fleet. */
   fleet?: string | null;
-  /** The agent its Skipper starts, by hand in the Host's projects.toml. Absent: the shared one. */
-  skipper_agent?: string | null;
   /** `changes = false` in the Host's projects.toml: no Changes section. Absent: shown. */
   changes?: boolean | null;
   /** The project's own theme id. Absent: the app theme. */

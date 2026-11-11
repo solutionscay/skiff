@@ -983,6 +983,7 @@ export const es = {
   "skipper.projectAgent": "Agente de los Skippers de proyecto y flota",
   "skipper.projectModel": "Modelo de los Skippers de proyecto y flota",
   "skipper.sameAs": "Igual que {name}",
+  "skipper.sameAsAll": "Igual que todos",
   "skipper.status.none": "ninguno",
   "skipper.status.template": "plantilla",
   "skipper.status.edited": "editado",

@@ -11,7 +11,6 @@ import { t } from "../i18n";
 import { badTaskTypeName, fileSize, modelError, modelFlag, TASK_TYPE_NAME } from "./taskTypes";
 import { reveal } from "../platform/fileActions";
 import { isRemote } from "../app/hosts";
-import { S } from "../app/state";
 import { avatarFinish, avatarScopes, setAvatarDialog, setAvatarFinish, skipperFace } from "../workspace/skipperFace";
 import { FINISHES, parseFinish } from "./skipperAvatar";
 import { scopeName } from "../workspace/model";
@@ -32,7 +31,9 @@ export type SkiffAgentEdit =
   | { key: "rename_task"; value: { from: string; to: string } }
   | { key: "remove_task"; value: string }
   | { key: "cache_days"; value: number }
-  | { key: "skippers_order"; value: string[] };
+  | { key: "skippers_order"; value: string[] }
+  /** One Skipper's own agent and model, by scope. Null agent: the row goes. */
+  | { key: "skipper"; value: { scope: string; agent: string | null; model: string | null } };
 
 /** What a Skipper's row does with its instruction file. */
 interface InstructionActs {
@@ -208,9 +209,8 @@ function errorLine(why: string): HTMLElement {
  * Settings › Skippers: one table, one row for each Skipper: its face, name,
  * agent, model and instructions. The Admiral first, then the row all project
  * and fleet Skippers take their agent and model from, then each of them, in
- * tree order. A dim value comes from the all row. A project's `skipper_agent`
- * in projects.toml wins for its project Skipper: its row shows it bright, read
- * only.
+ * tree order. A row with its own agent (`[skiff_agent.skippers]`) shows it
+ * bright; a row with none shows the all row's agent and model dim.
  */
 export function skippersPage(set: SkiffAgentSettings, agents: AgentInfo[], a: SkippersPageActs): HTMLElement {
   // Enabled agents and the user's own. A custom agent is on when the user added it.
@@ -305,22 +305,59 @@ export function skippersPage(set: SkiffAgentSettings, agents: AgentInfo[], a: Sk
       b.addEventListener("click", () => setAvatarDialog(scope, title, a.redraw));
       cell = b;
     }
-    // A project's own agent starts with the agent's default model, while that agent is on.
-    const over = S.projects.find((p) => p.name === scope)?.skipper_agent;
-    const overAgent = over ? choices.find((x) => x.id === over) : undefined;
     const f = fileOf(scope);
     const r = h("div", "set-row set-agent on");
-    r.append(
-      cell,
-      h("span", overAgent ? "c-own" : "c-dim", overAgent?.id ?? shared?.id ?? ""),
-      h("span", "c-dim", overAgent || !set.project_model ? t("skipper.agentDefault") : set.project_model),
-      fileCell(f),
-      fileActs(f, a.files),
-    );
+    r.append(cell, ...ownAgentCells(scope, name, set, choices, agents, shared, a.save), fileCell(f), fileActs(f, a.files));
     table.append(r, ...errorsOf(f));
   }
 
   return table;
+}
+
+/**
+ * A project or fleet Skipper's Agent and Model cells. With a row of its own,
+ * both show it bright. With none, both show the all row's choice dim, and a
+ * model typed there makes a row with the all row's agent. "Same as all" in
+ * the picker takes the row out.
+ */
+function ownAgentCells(
+  scope: string,
+  name: string,
+  set: SkiffAgentSettings,
+  choices: AgentInfo[],
+  agents: AgentInfo[],
+  shared: AgentInfo | undefined,
+  save: (e: SkiffAgentEdit) => void,
+): HTMLElement[] {
+  const own = set.skippers?.[scope];
+  const ownAgent = own ? choices.find((x) => x.id === own.agent) : undefined;
+  const put = (agent: string | null, model: string | null) => save({ key: "skipper", value: { scope, agent, model } });
+  // An agent that is off or gone still shows, so the picker shows the truth. The Skipper starts the all row's.
+  const shows = !own ? shared?.id ?? "" : ownAgent ? undefined : t(agents.some((x) => x.id === own.agent) ? "tasks.agentOff" : "tasks.agentGone", { id: own.agent });
+  const pick = fieldCell(picker({
+    label: t("skipper.agentOf", { name }),
+    value: own?.agent ?? "",
+    shows,
+    quiet: !own,
+    disabled: !choices.length,
+    entries: () => agentEntries(choices, t("skipper.sameAsAll")),
+    // A new agent starts with its default model.
+    pick: (v) => put(v || null, null),
+  }));
+  const modelLabel = t("skipper.modelOf", { name });
+  if (own) return [pick, modelCell(ownAgent, own.model, modelLabel, (v) => put(own.agent, v))];
+  if (!modelFlag(shared)) return [pick, h("span", "c-dim", shared ? t("skipper.inCommand") : "")];
+  return [pick, fieldCell(textBox({
+    label: modelLabel,
+    value: "",
+    placeholder: set.project_model ?? t("skipper.agentDefault"),
+    mono: true,
+    save: (v) => {
+      const bad = modelError(v);
+      if (bad) return void showError(bad);
+      if (v && shared) put(shared.id, v);
+    },
+  }))];
 }
 
 /** Settings › Task types › Add task type…: asks for the name. The new row starts the Admiral's agent. */
