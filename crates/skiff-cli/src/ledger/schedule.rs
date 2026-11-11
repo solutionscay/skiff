@@ -61,16 +61,19 @@ pub async fn run(socket: &Path, cmd: ScheduleCmd, person: bool) -> Result<i32> {
             let next = next_of(&d.cron);
             tx.execute(
                 &format!(
-                    "INSERT INTO schedules (uid, name, cron, command, timeout, gate, target, project, type, pane, owner, text, created_at, next_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, {NOW}, ?13)"
+                    "INSERT INTO schedules (uid, name, cron, command, timeout, gate, target, project, type, pane, owner, created_at, next_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, {NOW}, ?12)"
                 ),
-                params![uid, d.name, d.cron, d.command, d.timeout, d.gate, d.target, d.project, d.task_type, d.pane, d.owner, d.text, next],
+                params![uid, d.name, d.cron, d.command, d.timeout, d.gate, d.target, d.project, d.task_type, d.pane, d.owner, next],
             )?;
+            // The prompt file first: a schedule never fires without the prompt it was given.
+            let prompt = sched::write_prompt(&agent_dir(&file)?, &uid, &d.name, d.text.as_deref().unwrap_or_default())?;
             tx.commit()?;
             println!("added schedule {} ({uid}): {}", d.name, when::When::from_cron(&d.cron).words());
             if let Some(n) = next.as_deref().map(sched::local_of) {
                 println!("next run {n}");
             }
+            println!("prompt {}", prompt.display());
         }
         ScheduleCmd::Edit { name, rename, spec } => {
             let s = find(&db, &name)?;
@@ -86,15 +89,24 @@ pub async fn run(socket: &Path, cmd: ScheduleCmd, person: bool) -> Result<i32> {
             }
             let next = if d.cron != old_cron || s.next_at.is_none() { next_of(&d.cron) } else { s.next_at.clone() };
             db.execute(
-                "UPDATE schedules SET name = ?2, cron = ?3, command = ?4, timeout = ?5, gate = ?6, target = ?7, project = ?8, type = ?9, pane = ?10, owner = ?11, text = ?12, next_at = ?13 WHERE id = ?1",
-                params![s.id, d.name, d.cron, d.command, d.timeout, d.gate, d.target, d.project, d.task_type, d.pane, d.owner, d.text, next],
+                "UPDATE schedules SET name = ?2, cron = ?3, command = ?4, timeout = ?5, gate = ?6, target = ?7, project = ?8, type = ?9, pane = ?10, owner = ?11, next_at = ?12 WHERE id = ?1",
+                params![s.id, d.name, d.cron, d.command, d.timeout, d.gate, d.target, d.project, d.task_type, d.pane, d.owner, next],
             )?;
+            // --text writes the file. Without it, the file stays as the person wrote it.
+            if let Some(t) = &d.text {
+                let f = sched::write_prompt(&agent_dir(&file)?, &s.uid, &d.name, t)?;
+                println!("prompt {}", f.display());
+            }
             println!("changed schedule {}", d.name);
         }
         ScheduleCmd::Rm { name } => {
             let s = find(&db, &name)?;
             db.execute("DELETE FROM schedules WHERE id = ?1", [s.id])?;
             println!("deleted schedule {}. Its runs stay in the ledger", s.name);
+            let f = sched::prompt_file(&agent_dir(&file)?, &s.uid)?;
+            if f.exists() {
+                println!("its prompt file stays: {}", f.display());
+            }
         }
         ScheduleCmd::Pause { name } => {
             let s = find(&db, &name)?;
@@ -125,6 +137,11 @@ fn find(db: &Connection, name: &str) -> Result<Schedule> {
     sched::get(db, name)?.with_context(|| format!("no schedule named {name}. skiff schedule ls lists them"))
 }
 
+/// The Skiff agent's folder: the ledger's, where `schedules/` holds the prompts.
+fn agent_dir(file: &Path) -> Result<PathBuf> {
+    file.parent().map(Path::to_path_buf).context("the ledger has no folder")
+}
+
 fn next_of(cron: &str) -> Option<String> {
     Cron::parse(cron).ok().and_then(|c| c.next_after(now())).map(cron::utc)
 }
@@ -142,6 +159,7 @@ struct Draft {
     task_type: Option<String>,
     pane: Option<String>,
     owner: Option<String>,
+    /// The prompt `--text` gave, for the file. `None`: not given.
     text: Option<String>,
 }
 
@@ -158,7 +176,7 @@ impl Draft {
             task_type: s.task_type.clone(),
             pane: s.pane.clone(),
             owner: s.owner.clone(),
-            text: s.text.clone(),
+            text: None,
         }
     }
 }
@@ -216,7 +234,8 @@ fn apply(d: &mut Draft, spec: ScheduleSpec, adding: bool) -> Result<()> {
         d.owner = some(o);
     }
     if let Some(t) = spec.text {
-        d.text = if t == "-" { some(read_stdin()?) } else { some(t) };
+        // Empty text clears the prompt: the file keeps its heading line only.
+        d.text = Some(if t == "-" { read_stdin()? } else { t });
     }
     // Only what the target uses stays.
     let target = d.target.clone();
@@ -300,7 +319,7 @@ pub fn target_words(s: &Schedule) -> String {
 async fn ls(socket: &Path, json: bool) -> Result<()> {
     let db = open()?;
     let all = full_list(socket).await;
-    let list = sched::summaries(&db, all.as_deref(), 0)?;
+    let list = sched::summaries(&db, &agent_dir(&path()?)?, all.as_deref(), 0)?;
     if json {
         return print::json(&list);
     }
@@ -326,7 +345,7 @@ async fn show(socket: &Path, name: &str, json: bool) -> Result<()> {
     let db = open()?;
     let all = full_list(socket).await;
     let s = find(&db, name)?;
-    let sum = sched::summary(&db, s, all.as_deref(), SHOW_RUNS)?;
+    let sum = sched::summary(&db, &agent_dir(&path()?)?, s, all.as_deref(), SHOW_RUNS)?;
     if json {
         return print::json(&sum);
     }
@@ -340,8 +359,11 @@ async fn show(socket: &Path, name: &str, json: bool) -> Result<()> {
         let project = s.project.as_deref().filter(|_| s.target.as_deref() == Some("type")).map(|p| format!(" in {p}")).unwrap_or_default();
         println!("agent    {gate}{}{project}", target_words(s));
     }
-    if let Some(t) = &s.text {
-        println!("prompt   {t}");
+    let dir = agent_dir(&path()?)?;
+    let f = sched::prompt_file(&dir, &s.uid)?;
+    match sum.prompt {
+        Some(n) => println!("prompt   {} ({n} bytes)", f.display()),
+        None => println!("prompt   {} (none)", f.display()),
     }
     println!("next     {}", sum.next.as_deref().unwrap_or("paused"));
     if s.skipped > 0 {
@@ -708,7 +730,9 @@ fn add_step(db: &mut Connection, file: &Path, socket: &Path, s: &Schedule, run: 
 }
 
 async fn agent_step(socket: &Path, db: &mut Connection, file: &Path, s: &Schedule, run: &Row, note: &str) -> Result<Step> {
-    let prompt = one_line(&format!("{}{note}", s.text.as_deref().unwrap_or_default()));
+    // Read now: an edit of the file takes effect at the next run.
+    let text = sched::prompt(&agent_dir(file)?, &s.uid).unwrap_or_default();
+    let prompt = one_line(&format!("{text}{note}"));
     if prompt.is_empty() {
         bail!("the agent step has no prompt");
     }

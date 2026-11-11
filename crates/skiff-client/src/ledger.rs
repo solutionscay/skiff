@@ -25,10 +25,10 @@ pub const GONE: &str = "gone";
 /// `handoff` kind, 10 added `tasks.reopened_at`, 11 added `tasks.work_dir`
 /// and `tasks.flushed_at`, 12 added `tasks.outcome`, `tasks.expects` and
 /// `tasks.commit_ref`, 13 added the `deliveries` table, 14 added the `schedules`
-/// table and `tasks.schedule`; an older file from version 3 on takes each in place,
+/// table and `tasks.schedule`, 15 moved each schedule's prompt to its file; an older file from version 3 on takes each in place,
 /// with its rows. The readers take a version 10 file: the version 11 and 12
 /// columns read as empty there.
-pub const VERSION: i64 = 14;
+pub const VERSION: i64 = 15;
 
 pub const COLUMNS: &str = "id, uid, kind, parent, pane_id, pane_gen, project, task, sent_at, state, result_path, ref, updated_at, type, socket, reported_at, title, closed_at, gone_at, owner";
 

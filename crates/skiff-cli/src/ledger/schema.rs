@@ -135,6 +135,7 @@ pub(super) fn open_at(file: &Path) -> Result<Connection> {
     // 13 to 14: the table, empty, and `tasks.schedule` (in `migrate`). No
     // row before it is a run.
     db.execute_batch(skiff_client::schedule::SCHEDULES)?;
+    move_prompts(&mut db, file)?;
     // Only up: an older skiff that opens the file stamps its own version, and
     // must not undo a newer one's. The columns, not the stamp, tell the shape.
     let v: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
@@ -187,6 +188,36 @@ fn migrate(db: &mut Connection) -> Result<()> {
     add_column(db, "expects", |_| Ok(()))?;
     add_column(db, "commit_ref", |_| Ok(()))?;
     add_column(db, "schedule", |_| Ok(()))
+}
+
+/// The 14 to 15 step: each schedule's `text` goes to its prompt file,
+/// `schedules/<uid>.md` beside the ledger, then the column goes. A file that
+/// is there already stays as it is. One transaction, so a second open finds
+/// no column and does nothing.
+fn move_prompts(db: &mut Connection, file: &Path) -> Result<()> {
+    let has = |db: &Connection| -> rusqlite::Result<bool> {
+        db.query_row("SELECT count(*) FROM pragma_table_info('schedules') WHERE name = 'text'", [], |r| r.get::<_, i64>(0)).map(|n| n > 0)
+    };
+    if !has(db)? {
+        return Ok(());
+    }
+    let dir = file.parent().context("the ledger has no folder")?;
+    let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    if has(&tx)? {
+        let rows: Vec<(String, String, String)> = {
+            let mut st = tx.prepare("SELECT uid, name, text FROM schedules WHERE text IS NOT NULL AND trim(text) <> ''")?;
+            let out = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<rusqlite::Result<_>>()?;
+            out
+        };
+        for (uid, name, text) in rows {
+            if !skiff_client::schedule::prompt_file(dir, &uid)?.exists() {
+                skiff_client::schedule::write_prompt(dir, &uid, &name, &text)?;
+            }
+        }
+        tx.execute_batch("ALTER TABLE schedules DROP COLUMN text")?;
+    }
+    tx.commit()?;
+    Ok(())
 }
 
 /// The 8 to 9 step. SQLite cannot change a CHECK in place, so the rows move

@@ -7,7 +7,9 @@
 pub mod cron;
 pub mod when;
 
-use anyhow::Result;
+use std::path::{Path, PathBuf};
+
+use anyhow::{bail, Context, Result};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use skiff_core::session::{SessionInfo, SessionState};
@@ -15,7 +17,8 @@ use skiff_core::session::{SessionInfo, SessionState};
 use crate::ledger::{rows_with, session_of, Row, FAILED, INTERRUPTED_OUTCOME, UNOBSERVED};
 pub use when::When;
 
-/// The table, as `skiff schedule` makes it. Ledger version 14.
+/// The table, as `skiff schedule` makes it. Ledger version 14 made it with a
+/// `text` column; version 15 moved each prompt to its file (see [`prompt_file`]).
 pub const SCHEDULES: &str = "
 CREATE TABLE IF NOT EXISTS schedules (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,7 +33,6 @@ CREATE TABLE IF NOT EXISTS schedules (
   type         TEXT,
   pane         TEXT,
   owner        TEXT,
-  text         TEXT,
   paused_at    TEXT,
   created_at   TEXT NOT NULL,
   next_at      TEXT,
@@ -63,8 +65,6 @@ pub struct Schedule {
     pub pane: Option<String>,
     /// `grand` or a project, for a Skipper target.
     pub owner: Option<String>,
-    /// The prompt.
-    pub text: Option<String>,
     pub paused_at: Option<String>,
     pub created_at: String,
     /// Set by the scheduler: the next run, UTC.
@@ -74,7 +74,7 @@ pub struct Schedule {
     pub last_skip_at: Option<String>,
 }
 
-const COLUMNS: &str = "id, uid, name, cron, command, timeout, gate, target, project, type, pane, owner, text, paused_at, created_at, next_at, skipped, last_skip_at";
+const COLUMNS: &str = "id, uid, name, cron, command, timeout, gate, target, project, type, pane, owner, paused_at, created_at, next_at, skipped, last_skip_at";
 
 fn map(r: &rusqlite::Row) -> rusqlite::Result<Schedule> {
     Ok(Schedule {
@@ -90,17 +90,86 @@ fn map(r: &rusqlite::Row) -> rusqlite::Result<Schedule> {
         task_type: r.get(9)?,
         pane: r.get(10)?,
         owner: r.get(11)?,
-        text: r.get(12)?,
-        paused_at: r.get(13)?,
-        created_at: r.get(14)?,
-        next_at: r.get(15)?,
-        skipped: r.get(16)?,
-        last_skip_at: r.get(17)?,
+        paused_at: r.get(12)?,
+        created_at: r.get(13)?,
+        next_at: r.get(14)?,
+        skipped: r.get(15)?,
+        last_skip_at: r.get(16)?,
     })
 }
 
 fn has_table(db: &Connection) -> rusqlite::Result<bool> {
     db.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'schedules'", [], |r| r.get::<_, i64>(0)).map(|n| n > 0)
+}
+
+/// The folder of the prompt files, in the Skiff agent's folder, beside `types/`.
+pub const PROMPTS: &str = "schedules";
+
+/// A schedule's prompt file: `schedules/<uid>.md` in the agent's folder `dir`.
+/// The uid never changes, so a rename keeps the file. Skiff names the file.
+/// The person writes it.
+pub fn prompt_file(dir: &Path, uid: &str) -> Result<PathBuf> {
+    if uid.is_empty() || uid.len() > 16 || !uid.chars().all(|c| c.is_ascii_alphanumeric()) {
+        bail!("{uid:?} is not a schedule uid");
+    }
+    Ok(dir.join(PROMPTS).join(format!("{uid}.md")))
+}
+
+/// What Edit writes when the file is missing: a `# <name>` line. A heading
+/// line is not part of the prompt.
+pub fn stub(name: &str) -> String {
+    format!("# {name}
+")
+}
+
+/// The prompt in `text`: the file's text without a first `# ` heading line.
+/// `None`: empty, or the heading alone.
+pub fn prompt_of(text: &str) -> Option<String> {
+    let t = text.trim_start();
+    let body = match t.strip_prefix("# ") {
+        Some(rest) => rest.split_once('\n').map(|(_, b)| b).unwrap_or_default(),
+        None => t,
+    };
+    let body = body.trim();
+    (!body.is_empty()).then(|| body.to_string())
+}
+
+/// The prompt of schedule `uid`, read from its file now. `None`: no file, or
+/// no prompt in it.
+pub fn prompt(dir: &Path, uid: &str) -> Option<String> {
+    let bytes = std::fs::read(prompt_file(dir, uid).ok()?).ok()?;
+    prompt_of(&String::from_utf8_lossy(&bytes))
+}
+
+/// The prompt's size in bytes, for the page. `None`: no prompt.
+pub fn prompt_size(dir: &Path, uid: &str) -> Option<u64> {
+    prompt(dir, uid).map(|p| p.len() as u64)
+}
+
+/// Makes the file with its stub when it is missing, for Edit. Keeps a file
+/// that is there. Returns the file.
+pub fn edit_prompt_file(dir: &Path, uid: &str, name: &str) -> Result<PathBuf> {
+    let f = prompt_file(dir, uid)?;
+    let folder = dir.join(PROMPTS);
+    std::fs::create_dir_all(&folder).with_context(|| format!("make {}", folder.display()))?;
+    match std::fs::OpenOptions::new().write(true).create_new(true).open(&f) {
+        Ok(mut out) => std::io::Write::write_all(&mut out, stub(name).as_bytes()).with_context(|| format!("write {}", f.display()))?,
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e).with_context(|| format!("make {}", f.display())),
+    }
+    Ok(f)
+}
+
+/// Writes `text` as the prompt of schedule `uid`, under its `# <name>` line.
+/// Empty text leaves the stub alone: no prompt.
+pub fn write_prompt(dir: &Path, uid: &str, name: &str, text: &str) -> Result<PathBuf> {
+    let f = prompt_file(dir, uid)?;
+    let folder = dir.join(PROMPTS);
+    std::fs::create_dir_all(&folder).with_context(|| format!("make {}", folder.display()))?;
+    let body = text.trim();
+    let all = if body.is_empty() { stub(name) } else { format!("{}\n{body}\n", stub(name)) };
+    std::fs::write(&f, all).with_context(|| format!("write {}", f.display()))?;
+    Ok(f)
 }
 
 /// Every schedule, by name. A ledger from before schedules has none.
@@ -205,6 +274,10 @@ pub struct Summary {
     pub last: Option<&'static str>,
     /// A run is open: Run now is off.
     pub open: bool,
+    /// The prompt file, relative to the agent's folder: `schedules/<uid>.md`.
+    pub prompt_file: String,
+    /// The prompt's size in bytes. `None`: no prompt.
+    pub prompt: Option<u64>,
     /// The newest runs, newest first, each with its child rows.
     pub runs: Vec<RunView>,
 }
@@ -227,11 +300,12 @@ pub fn local_of(utc: &str) -> String {
 
 /// Every schedule with its words, next run, last outcome and its newest
 /// `keep` runs. `all`: the Host's sessions, for running agent steps.
-pub fn summaries(db: &Connection, all: Option<&[SessionInfo]>, keep: i64) -> Result<Vec<Summary>> {
-    list(db)?.into_iter().map(|s| summary(db, s, all, keep)).collect()
+/// `dir`: the agent's folder, for the prompt files.
+pub fn summaries(db: &Connection, dir: &Path, all: Option<&[SessionInfo]>, keep: i64) -> Result<Vec<Summary>> {
+    list(db)?.into_iter().map(|s| summary(db, dir, s, all, keep)).collect()
 }
 
-pub fn summary(db: &Connection, s: Schedule, all: Option<&[SessionInfo]>, keep: i64) -> Result<Summary> {
+pub fn summary(db: &Connection, dir: &Path, s: Schedule, all: Option<&[SessionInfo]>, keep: i64) -> Result<Summary> {
     let w = When::from_cron(&s.cron);
     let runs: Vec<RunView> = runs(db, &s.uid, keep.max(1))?
         .into_iter()
@@ -247,5 +321,22 @@ pub fn summary(db: &Connection, s: Schedule, all: Option<&[SessionInfo]>, keep: 
     let last = if skipped_last && !open { Some(SKIPPED) } else { newest.map(|r| r.status) };
     let next = if s.paused_at.is_some() { None } else { s.next_at.as_deref().map(local_of) };
     let runs = if keep == 0 { Vec::new() } else { runs };
-    Ok(Summary { when: w.words(), custom: w.is_custom(), next, last, open, runs, schedule: s })
+    let prompt_file = format!("{PROMPTS}/{}.md", s.uid);
+    let prompt = prompt_size(dir, &s.uid);
+    Ok(Summary { when: w.words(), custom: w.is_custom(), next, last, open, runs, prompt_file, prompt, schedule: s })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The heading line is the file's name for the person; the prompt is the rest.
+    #[test]
+    fn the_prompt_is_the_file_without_its_heading() {
+        assert_eq!(prompt_of("# nightly\n"), None);
+        assert_eq!(prompt_of("# nightly\n\nFix the tests.\n"), Some("Fix the tests.".into()));
+        assert_eq!(prompt_of("Fix the tests."), Some("Fix the tests.".into()));
+        assert_eq!(prompt_of("  \n"), None);
+        assert!(prompt_file(Path::new("/a"), "../x").is_err());
+    }
 }
