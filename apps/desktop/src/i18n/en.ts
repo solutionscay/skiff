@@ -493,8 +493,6 @@ export const en = {
   "ledger.workspaceTip": "Only {name} work shows. Show all work.",
   "ledger.allWorkAria": "All work. Show only {name} work",
   "ledger.workspaceAria": "{name} work. Show all work",
-  "ledger.allProjects": "All projects",
-  "ledger.filterAria": "Ledger filter: {name}. Change it",
   "ledger.firstNeed": "Go to the first row that needs you",
   "ledger.needsYou#one": "{count} needs you",
   "ledger.needsYou#other": "{count} need you",

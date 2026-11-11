@@ -258,14 +258,14 @@ export function shownOwner(): string | null {
   return ids.length === 1 ? coordinatorOf(ids[0]) : null;
 }
 
-/** The project the filter picked for each coordinator's panel. Absent: its default. */
-export const filters = new Map<string, string | null>();
-
-/** The panel's project filter: null for all projects. The Skipper's panel opens on all, a project Skipper's on its project. */
+/**
+ * The panel's scope, from the Skipper it sits beside: null (all projects)
+ * for the Skiff agent, `fleet:NAME` for a fleet Skipper, the project for a
+ * project Skipper. Both tabs show only that scope.
+ */
 export function filter(): string | null {
   const o = shownOwner();
-  if (!o) return null;
-  return filters.has(o) ? filters.get(o)! : o === "grand" ? null : o;
+  return !o || o === "grand" ? null : o;
 }
 
 /** The task's pane is live, so a click can open it. */

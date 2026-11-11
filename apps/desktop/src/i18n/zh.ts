@@ -466,8 +466,6 @@ export const zh = {
   "ledger.workspaceTip": "只显示 {name} 的工作。显示全部工作。",
   "ledger.allWorkAria": "全部工作。只显示 {name} 的工作",
   "ledger.workspaceAria": "{name} 的工作。显示全部工作",
-  "ledger.allProjects": "全部项目",
-  "ledger.filterAria": "Ledger 筛选：{name}。更改",
   "ledger.firstNeed": "转到第一个需要你的行",
   "ledger.needsYou#other": "{count} 个需要你",
   "ledger.noWorkIn": "{name} 中没有工作。",

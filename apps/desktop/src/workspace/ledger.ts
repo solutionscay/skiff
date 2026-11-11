@@ -33,8 +33,9 @@ import { still } from "../ui/motion";
  * The filter is a view: no row changes.
  *
  * Project Skippers (#project-skippers): the panel also shows beside a
- * project Skipper's pane. Its head filter shows all projects or one: the
- * Skipper's panel opens on all, a project Skipper's on its project. A
+ * project Skipper's pane. It shows the scope of the Skipper beside it: all
+ * projects for the Skiff agent, the fleet for a fleet Skipper, the project
+ * for a project Skipper. A
  * hand-off nests under its plan with its project's letters in place of the
  * dot, and its tasks nest one more step. A project Skipper's own rows show
  * the letters too.
@@ -49,7 +50,6 @@ import { render } from "../app/renderRequest";
 import { coordinatorOf, projectSkipperOf, skiffAgentSession } from "../app/skiffAgent";
 import { accent, place } from "../app/stateQueries";
 import { canSplitWith, showChild, splitChild } from "./skipperSplit";
-import { ctxMenu } from "../ui/contextMenu";
 import { S, sessions } from "../app/state";
 import type { SessionInfo } from "../platform/types";
 import { openLedgerResult, previewToken } from "../terminal/peek";
@@ -61,12 +61,12 @@ import { scopeFleet, scopeName } from "./model";
 import { keepRow } from "./selection";
 import { revealSession } from "./view";
 import { ledgerAllWork, setLedgerAllWork, workspaceName, workspaceOpen } from "./profile";
-import { language, t, tn, upper } from "../i18n";
+import { language, t, tn } from "../i18n";
 import { byUid, error, ledgerRows, ledgerTitle, ledgerWorkTitle, loaded, loadLedger as loadRows, titleOf, type Entry } from "./ledgerStore";
 import { loadSchedules, scheduleError, scheduleGeneration } from "./scheduleStore";
 import { scheduleView, shownSchedules } from "./ledgerSchedules";
 import { hostCan } from "../app/hostCaps";
-import { filter, filters, ledgerCounts, ledgerNeeds, NEED, needing, needWord, opens, projectionKey, sections, shownOwner, taskState, units, type Look, type State, type Unit } from "./ledgerModel";
+import { filter, ledgerCounts, ledgerNeeds, NEED, needing, needWord, opens, projectionKey, sections, shownOwner, taskState, units, type Look, type State, type Unit } from "./ledgerModel";
 
 export { ledgerCounts, ledgerNeeds, ledgerRows, ledgerTitle, ledgerWorkTitle, needWord, taskState };
 
@@ -184,7 +184,6 @@ function openPane(s: SessionInfo, split = true) {
 /** The row icons, at the stroke weight of the tree icons. */
 const ICON = {
   fold: '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3.5 1.5 7 5 3.5 8.5"/></svg>',
-  down: '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 3.5 5 7l3.5-3.5"/></svg>',
   unfold: '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M6.5 1.5 3 5l3.5 3.5"/></svg>',
   pane: '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><rect x=".65" y="1.15" width="8.7" height="7.7"/><path d="M2.6 3.8 4.2 5 2.6 6.2M5.2 6.4h2"/></svg>',
   result: '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 .65h4L8.35 3v6.35H2z"/><path d="M5.8.65V3.2h2.55"/></svg>',
@@ -388,44 +387,6 @@ function scopeButton(b: HTMLElement) {
   setAttr(b, "aria-label", all ? t("ledger.allWorkAria", { name }) : t("ledger.workspaceAria", { name }));
 }
 
-/** What the head's filter says: All projects, the fleet, or the project. */
-const filterLabel = () => {
-  const f = filter();
-  return f === null ? t("ledger.allProjects") : scopeName(f);
-};
-
-/** The head's filter: a quiet text button with a chevron. A click lists All projects and each project. */
-function filterButton(b: HTMLElement) {
-  // Each render calls it: the button is rebuilt only when its label changes.
-  if (b.dataset.label === filterLabel()) return;
-  b.dataset.label = filterLabel();
-  b.replaceChildren(h("span", "lg-filter-name", filterLabel()));
-  const chev = h("span", "lg-filter-chev");
-  chev.innerHTML = ICON.down;
-  b.append(chev);
-  b.setAttribute("aria-label", t("ledger.filterAria", { name: filterLabel() }));
-}
-
-function filterMenu(b: HTMLElement) {
-  const o = shownOwner();
-  if (!o) return;
-  const now = filter();
-  const fleets = [...new Set(S.projects.map((p) => p.fleet).filter((f): f is string => !!f))];
-  const pick = (v: string | null) => () => {
-    filters.set(o, v);
-    render();
-  };
-  const r = b.getBoundingClientRect();
-  ctxMenu.open(r.left, r.bottom, upper(t("section.ledger")), [
-    { icon: now === null ? "indicators-check" : "", label: t("ledger.allProjects"), run: pick(null) },
-    { sep: true },
-    // The fleets, then the projects.
-    ...fleets.map((f) => ({ icon: now === `fleet:${f}` ? "indicators-check" : "", label: f, run: pick(`fleet:${f}`) })),
-    ...(fleets.length ? [{ sep: true as const }] : []),
-    ...S.projects.map((p) => ({ icon: now === p.name ? "indicators-check" : "", label: p.name, run: pick(p.name) })),
-  ]);
-}
-
 /** The head's tabs: the one on screen, and each tab's count. A Host without schedules shows Tasks alone. */
 function tabHead(panel: HTMLElement, tasks: number) {
   const on = hostCan("schedules");
@@ -465,8 +426,6 @@ export function renderLedger() {
   if (fold) foldTip(fold, t("ledger.hide"));
   const scope = panel.querySelector<HTMLElement>(".lg-head .lg-scope");
   if (scope) scopeButton(scope);
-  const pick = panel.querySelector<HTMLElement>(".lg-head .lg-filter");
-  if (pick) filterButton(pick);
   if (drawn && list && panel.dataset.sig === sig) return;
   panel.dataset.sig = sig;
   const us = units();
@@ -485,12 +444,6 @@ export function renderLedger() {
     keepKeys(scope);
     scope.addEventListener("click", () => setLedgerAllWork(!ledgerAllWork()));
     scopeButton(scope);
-    const pick = h("button", "lg-filter");
-    (pick as HTMLButtonElement).type = "button";
-    pick.setAttribute("aria-haspopup", "menu");
-    keepKeys(pick);
-    pick.addEventListener("click", () => filterMenu(pick));
-    filterButton(pick);
     const tabs = h("div", "lg-tabs lg-name");
     for (const id of ["tasks", "schedules"] as const) {
       const b = h("button", "lg-tab");
@@ -501,7 +454,7 @@ export function renderLedger() {
       b.append(h("span", "lg-tab-name", t(id === "tasks" ? "ledger.tabTasks" : "ledger.tabSchedules")), h("span", "lg-tab-n"));
       tabs.append(b);
     }
-    head.append(tabs, pick, scope, need, fold);
+    head.append(tabs, scope, need, fold);
     list = h("div", "lg-list");
     panel.replaceChildren(head, list);
   }
@@ -538,7 +491,7 @@ export function renderLedger() {
   else if (onSchedules) {
     // The schedule rows are in `out` already.
   } else if (!x.working.length && !x.open.length && !x.finished.length && filter() !== null) {
-    out.push(h("div", "lg-empty", t("ledger.noWorkIn", { name: filterLabel() })));
+    out.push(h("div", "lg-empty", t("ledger.noWorkIn", { name: scopeName(filter()!) })));
   } else if (!x.working.length && !x.open.length && !x.finished.length && scopeLabel() && !ledgerAllWork()) {
     out.push(h("div", "lg-empty", t("ledger.noWorkHere")));
   }

@@ -479,8 +479,6 @@ export const es = {
   "ledger.workspaceTip": "Solo se ve el trabajo de {name}. Mostrar todo el trabajo.",
   "ledger.allWorkAria": "Todo el trabajo. Mostrar solo el trabajo de {name}",
   "ledger.workspaceAria": "Trabajo de {name}. Mostrar todo el trabajo",
-  "ledger.allProjects": "Todos los proyectos",
-  "ledger.filterAria": "Filtro del Ledger: {name}. Cambiarlo",
   "ledger.firstNeed": "Ir a la primera fila que te necesita",
   "ledger.needsYou#one": "{count} te necesita",
   "ledger.needsYou#other": "{count} te necesitan",
