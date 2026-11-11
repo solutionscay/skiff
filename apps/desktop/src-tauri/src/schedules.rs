@@ -1,5 +1,5 @@
 //! Schedules (#262) for the Ledger's Schedules tab and Settings › Schedules,
-//! from the selected Host (`schedules@1`). The app writes nothing itself:
+//! from the selected Host (`schedules@2`). The app writes nothing itself:
 //! each change runs `skiff schedule` on the Host, its ledger's only writer.
 
 use skiff_client::host::data;

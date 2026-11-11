@@ -355,7 +355,7 @@ pub async fn ledger_stamp(c: &HostConnection) -> Result<String, Error> {
     }
 }
 
-/// Every schedule with its newest runs (`schedules@1`).
+/// Every schedule with its newest runs (`schedules@2`).
 pub async fn schedule_list(c: &HostConnection) -> Result<Vec<HostSchedule>, Error> {
     match c.request(Request::ScheduleList).await? {
         Response::Schedules { schedules } => Ok(schedules),

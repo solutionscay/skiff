@@ -1,5 +1,5 @@
 /**
- * The selected Host's schedules (#262, `schedules@1`), each with its newest
+ * The selected Host's schedules (#262, `schedules@2`), each with its newest
  * runs. Read with the ledger: a run, an edit and a pause each change the
  * ledger's stamp. Nothing here draws.
  */
@@ -52,7 +52,7 @@ export let scheduleError: string | null = null;
 let data = "";
 let asked = 0;
 
-/** Reads the schedules again. A Host without `schedules@1` has none. */
+/** Reads the schedules again. A Host without `schedules@2` has none. */
 export async function loadSchedules() {
   if (!hostCan("schedules")) {
     if (schedules.length) {

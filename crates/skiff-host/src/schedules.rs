@@ -1,4 +1,4 @@
-//! `schedules@1` (#262): the Host's schedules with their newest runs, read
+//! `schedules@2` (#262): the Host's schedules with their newest runs, read
 //! from its own `ledger.db`, a cron check, and changes through `skiff
 //! schedule` on the Host, the only writer of its ledger (M6).
 

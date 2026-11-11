@@ -119,6 +119,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       peekText(o.script, o.cwd, `${o.cwd}/${s.uid}.md`, () => void settings.open("schedules"));
       return null;
     }
+    // The file is new or saved: read its size again, as Task types › Edit does.
+    void loadSchedulesPage(schedCtx);
     return o.kind === "no_app" ? t("settings.noApp", { file: `${s.uid}.md` }) : null;
   }
   const { loadFiles, editFile, loadTypes, editTypeFile, resetFile } = createSettingsFiles<InstructionFile, SkiffAgentSettings, TaskType>({

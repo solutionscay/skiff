@@ -61,7 +61,7 @@ const MAJOR: Record<HostCap, number> = {
   project_assets: 1,
   drops: 1,
   ledger: 1,
-  schedules: 1,
+  schedules: 2,
   skipper: 1,
   skipper_config: 1,
   skipper_file: 1,

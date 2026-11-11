@@ -132,9 +132,10 @@ impl Capability {
     }
     /// Read the Host's schedules with their newest runs, check a cron line,
     /// and change schedules through `skiff schedule` on the Host, its only
-    /// writer. Data plane; grants no other ledger write.
+    /// writer. Data plane; grants no other ledger write. Major 2: the
+    /// prompt is a file, and a schedule gives its path and size, not its text.
     pub fn schedules() -> Self {
-        Self::new(SCHEDULES, 1)
+        Self::new(SCHEDULES, 2)
     }
     /// Read the Host's `[skiff_agent]` settings and task types. Data plane;
     /// grants no settings change, no Skipper launch and no watcher control.

@@ -75,13 +75,13 @@ pub struct HostLedgerRow {
     /// `unobserved`. Absent from an older Host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<String>,
-    /// A schedule's run: the schedule's uid (`schedules@1`).
+    /// A schedule's run: the schedule's uid (`schedules@2`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schedule: Option<String>,
 }
 
 /// One schedule as the Ledger's Schedules tab and Settings › Schedules show
-/// it (`schedules@1`).
+/// it (`schedules@2`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HostSchedule {
     pub uid: String,
@@ -247,7 +247,7 @@ pub enum HostFileScope {
     Project(String),
     /// A task type's instructions.
     Type(String),
-    /// A schedule's prompt, by the schedule's uid (`schedules@1`).
+    /// A schedule's prompt, by the schedule's uid (`schedules@2`).
     Schedule(String),
 }
 
