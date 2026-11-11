@@ -452,7 +452,8 @@ fn preview_text(p: &Preview, skipper_runs: bool, main: &str) -> String {
 }
 
 /// A yes or no on the terminal. No is the default.
-fn ask(question: &str) -> Result<bool> {
+/// Asks `question` on the terminal. True on y or yes.
+pub(crate) fn ask(question: &str) -> Result<bool> {
     use std::io::Write;
     eprint!("{question} [y/N] ");
     std::io::stderr().flush()?;

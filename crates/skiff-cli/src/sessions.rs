@@ -549,6 +549,10 @@ pub async fn kill(c: &Client, socket: &Path, args: &[String], force: bool) -> Re
             return Ok(KILL_HELD);
         }
     }
+    if !confirm_skippers(&all, &ids)? {
+        eprintln!("skiff: nothing killed.");
+        return Ok(1);
+    }
     let mut failed = 0;
     for id in &ids {
         if let Err(e) = c.kill(id).await {
@@ -560,6 +564,49 @@ pub async fn kill(c: &Client, socket: &Path, args: &[String], force: bool) -> Re
         bail!("{failed} of {} sessions not killed", ids.len());
     }
     Ok(0)
+}
+
+/// With a terminal, asks y/N for each Skipper in `ids`: Admiral, a project
+/// Skipper or a fleet Skipper. With no terminal, kills as before. False on a no.
+fn confirm_skippers(all: &[SessionInfo], ids: &[String]) -> Result<bool> {
+    use std::io::IsTerminal;
+    let skippers: Vec<&SessionInfo> = ids.iter().filter_map(|id| all.iter().find(|s| &s.id == id)).filter(|s| is_coordinator(s)).collect();
+    if skippers.is_empty() || !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
+        return Ok(true);
+    }
+    // The count is extra: a ledger that cannot be read leaves it out.
+    let open = ledger::open_tasks().unwrap_or_default();
+    for s in skippers {
+        let scope = skipper_scope(s);
+        let n = open.iter().filter(|r| r.kind == "task" && r.owner == scope).count();
+        if !crate::skipper::ask(&skipper_question(s, n))? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// The ledger owner of a Skipper: `grand` for Admiral, else its project or `fleet:<fleet>`.
+fn skipper_scope(s: &SessionInfo) -> &str {
+    if s.coordinator { ledger::GRAND } else { s.skipper.as_deref().unwrap_or_default() }
+}
+
+/// "Kill the skiff Skipper (1a2b3c4d), with 3 open ledger tasks?"
+fn skipper_question(s: &SessionInfo, open: usize) -> String {
+    let scope = skipper_scope(s);
+    let what = if scope == ledger::GRAND {
+        format!("{}, the Skiff agent", resolve::display_name(s))
+    } else if let Some(fleet) = scope.strip_prefix("fleet:") {
+        format!("the {fleet} fleet Skipper")
+    } else {
+        format!("the {scope} Skipper")
+    };
+    let tasks = match open {
+        0 => String::new(),
+        1 => ", with 1 open ledger task".into(),
+        n => format!(", with {n} open ledger tasks"),
+    };
+    format!("Kill {what} ({}){tasks}?", print::short_id(&s.id))
 }
 
 /// Each of `ids` with an open task in `open` on this socket. A stored pane id
@@ -579,7 +626,7 @@ mod tests {
     use skiff_core::session::{SessionInfo, SessionState};
     use std::path::Path;
 
-    use super::{agent_line, front_refusal, held, is_coordinator, numbered, refusal, New};
+    use super::{agent_line, front_refusal, held, is_coordinator, numbered, refusal, skipper_question, New};
     use skiff_core::{
         config::{TaskRow, TaskTypes},
         project::AgentInfo,
@@ -613,6 +660,15 @@ mod tests {
         let fleet = SessionInfo { skipper: Some("fleet:work".into()), ..agent.clone() };
         assert!(!is_coordinator(&shell) && !is_coordinator(&agent));
         assert!(is_coordinator(&admiral) && is_coordinator(&project) && is_coordinator(&fleet));
+    }
+
+    #[test]
+    fn kill_names_a_skipper() {
+        let agent = SessionInfo { id: "1a2b3c4d5e6f".into(), ..s("agent", SessionState::Idle, None) };
+        let project = SessionInfo { skipper: Some("skiff".into()), ..agent.clone() };
+        let fleet = SessionInfo { skipper: Some("fleet:work".into()), ..agent.clone() };
+        assert_eq!(skipper_question(&project, 3), "Kill the skiff Skipper (1a2b3c4d), with 3 open ledger tasks?");
+        assert_eq!(skipper_question(&fleet, 0), "Kill the work fleet Skipper (1a2b3c4d)?");
     }
 
     #[test]

@@ -260,7 +260,7 @@ enum Cmd {
     Seen { session: String },
     /// Stop sessions.
     #[command(
-        after_help = "kill refuses a session that has an open ledger task (pending, sent, blocked or interrupted), from any Skipper. It names each such session with the task's uid and title, and stops none of the sessions. Close the task with `skiff ledger update UID --state done`, or use --force.\nExit codes:\n  0  killed\n  1  error\n  10  a session has an open ledger task. Nothing was killed."
+        after_help = "kill refuses a session that has an open ledger task (pending, sent, blocked or interrupted), from any Skipper. It names each such session with the task's uid and title, and stops none of the sessions. Close the task with `skiff ledger update UID --state done`, or use --force.\nWith a terminal, kill asks y/N for each Skipper among the sessions: Admiral, a project Skipper or a fleet Skipper. The line names it and counts its open ledger tasks. A no kills nothing. With no terminal, it does not ask.\nExit codes:\n  0  killed\n  1  error, or a no to a Skipper\n  10  a session has an open ledger task. Nothing was killed."
     )]
     Kill {
         #[arg(required = true)]
