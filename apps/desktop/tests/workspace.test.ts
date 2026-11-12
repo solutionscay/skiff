@@ -351,7 +351,7 @@ test("Skipper split children by scope: project and fleet in tree order, the Skif
   const S = { groups: [{ id: "g", layout: ["agent", "a1g"] }], projects: [{ name: "A", fleet: null, worktrees: [a1, a2] }, { name: "B", fleet: "F", worktrees: [b1] }, { name: "C", fleet: "F", worktrees: [c1] }] };
   const home: Record<string, unknown> = { agent: a1, a1g: a1, ask: a1, sh: a1, a1x: a1, a2x: a2, fsk: b1, bsk: b1, b1x: b1, c1x: c1 };
   const order = ["a1x", "sh", "a2x", "a1g", "agent", "ask", "fsk", "bsk", "b1x", "c1x"];
-  const sessions = new Map<string, unknown>(order.map((id) => [id, { id, state: "working", started_at: String(order.indexOf(id)) }]));
+  const sessions = new Map<string, unknown>(order.map((id) => [id, { id, state: "working", started_at: String(order.indexOf(id)), role: id === "sh" ? "shell" : "agent" }]));
   const scopeOf: Record<string, string> = { agent: "grand", ask: "A", bsk: "B", fsk: "fleet:F" };
   const coordinatorOf = (id: string) => scopeOf[id] ?? null;
   const skipperOf = (n: string) => sessions.get(Object.keys(scopeOf).find((id) => scopeOf[id] === n) ?? "") ?? null;
@@ -401,8 +401,9 @@ test("Skipper split children by scope: project and fleet in tree order, the Skif
   shown = "fsk";
   assert.deepEqual(kids(), ["bsk", "b1x", "c1x"]);
   // The Skiff agent: its own rows in Ledger order, the Skipper it handed off to included; others' rows are no child.
+  // Then each live shell, which has no Ledger row.
   shown = "agent";
-  assert.deepEqual(kids(), ["bsk", "a1x", "c1x"]);
+  assert.deepEqual(kids(), ["bsk", "a1x", "c1x", "sh"]);
 });
 
 test("Skipper split per Skipper: each keeps its own child; back on a Skipper, its child returns, else the next child", () => {

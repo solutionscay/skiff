@@ -19,7 +19,7 @@ import { leaf, replacePane, sessionsOf } from "./layout";
 import { isSlot } from "./layoutSlots";
 import { ledgerRows, ledgerTitle } from "./ledgerStore";
 import { ownPanes } from "./ledgerModel";
-import { scopeOrder } from "./sidebarLines";
+import { scopeOrder, worktreeLines } from "./sidebarLines";
 import { focusPane } from "./view";
 
 /** The Skipper whose view can hold a split: its pane is the single view. */
@@ -43,13 +43,19 @@ function paneTask(id: string): string {
  * The children of the Skipper on screen. A project Skipper: every live
  * session of its project, shells too, in tree order. A fleet Skipper: the
  * same over its fleet's projects. The Skiff agent: its Ledger panes
- * (`ownPanes`). Never the Skipper's own pane, the Skiff agent, or a
+ * (`ownPanes`), then every live shell in tree order. Never the Skipper's own pane, the Skiff agent, or a
  * Skipper of another scope.
  */
 export function splitChildren(sk: string | null = splitSkipper()): { id: string; title: string }[] {
   const scope = sk && coordinatorOf(sk);
   if (!sk || !scope) return [];
-  if (scope === "grand") return ownPanes(sk);
+  if (scope === "grand") {
+    const own = ownPanes(sk);
+    // Shells have no Ledger row: each live shell of every project, then those in no project.
+    const ids = [...S.projects.flatMap((p) => scopeOrder(p.name)), ...worktreeLines(null).flatMap((l) => ("session" in l ? [l.session.id] : []))];
+    const shells = ids.filter((id, i) => ids.indexOf(id) === i && sessions.get(id)?.role === "shell" && !own.some((c) => c.id === id));
+    return [...own, ...shells.map((id) => ({ id, title: paneTask(id) }))];
+  }
   const inScope = (id: string) => {
     const c = coordinatorOf(id);
     return !c || c === scope || S.projects.some((p) => p.name === c && scope === `fleet:${p.fleet}`);
