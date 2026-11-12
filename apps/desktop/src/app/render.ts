@@ -15,6 +15,7 @@ import { hasKeys, markSeen } from "./seen";
 import { paneSeen } from "./notify";
 
 import { savePlace } from "./stored";
+import { skipperSplit } from "./stateQueries";
 import { renderLayout } from "../terminal/terminal";
 import { renderLedger } from "../workspace/ledger";
 
@@ -109,5 +110,6 @@ function renderAll() {
     group: S.activeGroup,
     picked: !!S.groupPicked && S.groupPicked === S.activeGroup,
     mode: S.maximized ? "maximize" : S.focusMode ? "focus" : null,
+    split: skipperSplit(),
   });
 }

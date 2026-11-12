@@ -26,7 +26,7 @@ import { initTrace } from "./diagnostics/latency";
 import { initPanels, settings } from "./app/panels";
 import { render, scheduleRender } from "./app/render";
 import { FONT_DEFAULT, S, sessions } from "./app/state";
-import { groupOf } from "./app/stateQueries";
+import { groupOf, shownIds } from "./app/stateQueries";
 
 import { setFontSize } from "./terminal/terminalFont";
 import { warmPanes } from "./terminal/terminalRuntime";
@@ -196,7 +196,13 @@ function restorePlace() {
   const s = last.session ? sessions.get(last.session) : undefined;
   const lastGroup = last.group ? S.groups.find((x) => x.id === last.group) : undefined;
   const hasProject = !!last.project && S.projects.some((p) => p.name === last.project);
-  if (lastGroup && (last.picked || !s)) showGroup(lastGroup.id, !!last.picked, s?.id);
+  const split = last.split && sessions.has(last.split.skipper) ? last.split : null;
+  if (split) {
+    // The Skipper split comes back with its child; the keys go to the pane that had them.
+    S.skipperSplits.set(split.skipper, { child: split.child, layout: split.layout });
+    showSingle(split.skipper);
+    if (s && shownIds().includes(s.id) && S.focused !== s.id) focusPane(s.id);
+  } else if (lastGroup && (last.picked || !s)) showGroup(lastGroup.id, !!last.picked, s?.id);
   else if (s) {
     const g = groupOf(s.id);
     if (g) showGroup(g.id, false, s.id);

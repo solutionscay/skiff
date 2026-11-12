@@ -19,8 +19,8 @@ export function createTransitions(state: State, hooks: { announce: (text: string
   const workspaceName = state.workspaceName;
   const EXT = "skiffw";
   const clone = (p: Profile): Profile => JSON.parse(JSON.stringify(p));
-  /** Makes the read file the document, Clean, and shows it. */
-  function commit(l: Loaded | null, focus = true) {
+  /** Makes the read file the document, Clean, and shows it. `keep`: the app start, where the restored place stays when it shows. */
+  function commit(l: Loaded | null, focus = true, keep = false) {
     state.doc = l
       ? { path: l.path, profile: l.profile, base: canon(l.profile), revision: l.revision, disk: "ok", kept: false, answered: false }
       : null;
@@ -29,7 +29,7 @@ export function createTransitions(state: State, hooks: { announce: (text: string
     useTreeView(state.doc ? state.treeView : null);
     if (l) remember(l.path);
     state.wasEdited = workspaceEdited();
-    showView(focus);
+    showView(focus, keep);
   }
 
   /** A new Untitled workspace: empty, Clean, no file. */
@@ -43,10 +43,11 @@ export function createTransitions(state: State, hooks: { announce: (text: string
     showView();
   }
 
-  /** After a switch: the saved pick if it shows, else the first project that shows, else none. The keys go to the sidebar's current row. */
-  function showView(focus = true) {
+  /** After a switch: the saved pick if it shows, else the first project that shows, else none. The keys go to the sidebar's current row. `keep`: the project on screen stays when it shows. */
+  function showView(focus = true, keep = false) {
     const shown = treeSections().flatMap((s) => s.projects);
-    const want = state.doc?.profile.selected ? shown.find((p) => trimPath(p.path) === trimPath(state.doc!.profile.selected!)) : undefined;
+    const here = keep && !!S.selectedProject && shown.some((p) => p.name === S.selectedProject);
+    const want = here ? undefined : state.doc?.profile.selected ? shown.find((p) => trimPath(p.path) === trimPath(state.doc!.profile.selected!)) : undefined;
     const target = want ?? (S.selectedProject && shown.some((p) => p.name === S.selectedProject) ? undefined : shown[0]);
     state.quietly(() => {
       if (target) selectProject(target.name);

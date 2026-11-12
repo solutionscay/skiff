@@ -130,6 +130,19 @@ test("a pick asks nothing on leave; Save writes it; a real change still asks", a
   assert.equal(h.elements().filter((el) => el.textContent === "Don't Save").length, 1);
 });
 
+test("the app start keeps the restored project; the workspace's saved pick does not move it", async () => {
+  const h = workspaceHarness();
+  await h.profile.startWorkspaces();
+  h.fixture("/work.skiffw", ["/a", "/b"]);
+  h.files.get("/work.skiffw").profile.selected = "/a";
+  await h.profile.openWorkspace("/work.skiffw");
+  assert.equal(h.S.selectedProject, "A");
+  // The next start: the saved place put B on screen before the workspace opens.
+  h.S.selectedProject = "B";
+  await h.profile.startWorkspaces();
+  assert.equal(h.S.selectedProject, "B");
+});
+
 /** The scope helpers of workspace/model.ts the Ledger uses. */
 const fleetOf = (scope: string | null | undefined) => (scope?.startsWith("fleet:") ? scope.slice(6) : null);
 const MODEL = { scopeFleet: fleetOf, scopeName: (scope: string) => fleetOf(scope) ?? scope, taskTitle: () => "" };

@@ -159,7 +159,7 @@ export function createStatus(state: ReturnType<typeof createWorkspaceState>, tra
     const path = launch ?? last;
     if (path) {
       try {
-        commit(await read(path), false);
+        commit(await read(path), false, true);
       } catch (e) {
         forgetLast();
         const known = recents().includes(path);

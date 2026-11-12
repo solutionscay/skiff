@@ -1,4 +1,5 @@
 /** View state kept in localStorage, so it survives a restart of the app. */
+import type { Layout } from "../platform/types";
 
 /** A set of strings saved under `key` on every change. */
 export function storedSet(key: string): Set<string> {
@@ -29,7 +30,15 @@ export function storedSet(key: string): Set<string> {
 }
 
 /** Where the user was when the app last drew: restored at the next start. */
-export type Place = { project: string | null; session: string | null; group: string | null; picked: boolean; mode: "focus" | "maximize" | null };
+export type Place = {
+  project: string | null;
+  session: string | null;
+  group: string | null;
+  picked: boolean;
+  mode: "focus" | "maximize" | null;
+  /** The Skipper split on screen: its Skipper, its child pane and their tree. */
+  split?: { skipper: string; child: string; layout: Layout } | null;
+};
 
 const PLACE_KEY = "skiff.place";
 /** Off until the start has restored the saved place, so the first empty draw does not overwrite it. */
