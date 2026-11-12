@@ -17,7 +17,7 @@ import { switcher } from "./app/commands";
 import { failureLine, followDataPlane, hostOnline, loadProjects, reconnectRemote, refreshSessions, reloadDaemon, setDaemon, subscribeDataEvents, subscribeEvents, untilConnected } from "./app/daemon";
 import { connectAttempt, connectDone, connectFailed } from "./app/connectPanel";
 import { isRemote, loadHosts, onHostsChanged, onManageHosts, setHostConnected, watchHostLink, watchHosts } from "./app/hosts";
-import { muteInput } from "./terminal/terminalRuntime";
+import { muteInput, openPane, panesDrawn, warmPanes } from "./terminal/terminalRuntime";
 import { loadHostCaps } from "./app/hostCaps";
 import { $ } from "./ui/dom";
 import { showError } from "./ui/alerts";
@@ -27,9 +27,10 @@ import { initPanels, settings } from "./app/panels";
 import { render, scheduleRender } from "./app/render";
 import { FONT_DEFAULT, S, sessions } from "./app/state";
 import { groupOf, shownIds } from "./app/stateQueries";
+import { isSlot } from "./workspace/layoutSlots";
+import { skipperFace } from "./workspace/skipperFace";
 
 import { setFontSize } from "./terminal/terminalFont";
-import { warmPanes } from "./terminal/terminalRuntime";
 import { loadThemes } from "./appearance/themes";
 import { loadPlace, trackPlace } from "./app/stored";
 import { startMemory } from "./diagnostics/memory";
@@ -225,11 +226,34 @@ function restorePlace() {
   }
 }
 
-// Show the app once the first data is in. A slow daemon does not hold it past 2 s.
-const reveal = () => document.body.classList.add("ready");
-setTimeout(reveal, 2000);
+/** The most the start screen waits for skiffd. After it, the app shows as it is: connecting, or not connected. */
+const START_LIMIT = 3000;
+/** The most frames the start screen waits for the restored panes to write their screens. */
+const DRAW_FRAMES = 12;
+const frame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+
+/** The panes of the restored view are open, have written their screens (or DRAW_FRAMES went by), and that frame painted. */
+async function restoredDrawn() {
+  const ids = shownIds().filter((id) => !isSlot(id) && sessions.has(id));
+  await Promise.all(ids.map((id) => openPane(id).catch(() => null)));
+  for (let left = DRAW_FRAMES; left > 0 && !panesDrawn(); left--) await frame();
+  await frame();
+}
+
+// The start screen: the Admiral's face on the app background. The app takes its
+// place in one step, already in the restored view, with no fixed wait.
+$("start").append(skipperFace(null, 120));
+let revealed = false;
+const reveal = () => {
+  if (revealed) return;
+  revealed = true;
+  document.body.classList.add("ready");
+  document.getElementById("start")?.remove();
+};
+setTimeout(reveal, START_LIMIT);
 // A boot that stops half way leaves a window that answers clicks but has no
 // event stream, poll or projects. Try again loads the page, so boot runs in full.
 boot()
+  .then(restoredDrawn)
   .catch((e) => showError(e, { label: t("connect.tryAgain"), run: async () => location.reload() }))
   .finally(reveal);

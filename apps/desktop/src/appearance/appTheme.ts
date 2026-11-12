@@ -54,9 +54,20 @@ const VARS = [
  * the foreground, text steps back, and the states take the theme's blue,
  * yellow, and red. `null` returns to the stylesheet defaults.
  */
+/** The app background for the next start screen, so the first paint has this run's color. */
+function keepStartBg(bg: string | undefined) {
+  try {
+    if (bg) localStorage.setItem("skiff.startBg", bg);
+    else localStorage.removeItem("skiff.startBg");
+  } catch {
+    /* the next start paints Harbor's */
+  }
+}
+
 export function applyAppTheme(t: TerminalTheme | null) {
   const root = document.documentElement.style;
   if (!t) {
+    keepStartBg(undefined);
     for (const v of VARS) root.removeProperty(v);
     root.removeProperty("color-scheme");
     surfaces = ["#0f1216", "#13171c", "#1b2129"];
@@ -66,6 +77,7 @@ export function applyAppTheme(t: TerminalTheme | null) {
     return;
   }
   const set = themeVars(t);
+  keepStartBg(set["--bg"]);
   inked.clear();
   for (const [k, v] of Object.entries(set)) root.setProperty(k, v);
   root.setProperty("color-scheme", lightScheme ? "light" : "dark");

@@ -4,11 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Skiff</title>
-    <!-- First paint: Harbor's background, and no app until main.ts has styled and filled it. -->
-    <style>html, body { margin: 0; background: #0f1216; } body:not(.ready) #app { visibility: hidden; }</style>
+    <!-- First paint: the app background of the last run (Harbor's before one), and no app until main.ts has styled, filled and drawn it. -->
+    <script>try { var b = localStorage.getItem("skiff.startBg"); if (b) document.documentElement.style.setProperty("--start-bg", b); } catch (e) {}</script>
+    <style>
+      html, body { margin: 0; background: var(--start-bg, #0f1216); }
+      body:not(.ready) #app { visibility: hidden; }
+      #start { position: fixed; inset: 0; display: grid; place-items: center; background: var(--start-bg, #0f1216); }
+      body.ready #start { display: none; }
+    </style>
     <script type="module" src="/src/entry.ts" defer></script>
   </head>
   <body>
+    <div id="start" aria-hidden="true"></div>
     <div id="app">
       <header id="topbar">
         <div class="tb-cell wordmark">SKIFF</div>
