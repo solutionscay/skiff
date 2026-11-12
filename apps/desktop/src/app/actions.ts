@@ -16,7 +16,7 @@ import { addProject, launchMenu, settings } from "./panels";
 import { renameListItem, startRename, startSessionRename } from "../workspace/rename";
 
 import { FONT_DEFAULT, S, sessions } from "./state";
-import { currentProject, currentWorktree, shownIds, splitFull } from "./stateQueries";
+import { currentProject, currentWorktree, noAddPane, shownIds } from "./stateQueries";
 
 import { paneCenter } from "../terminal/terminal";
 
@@ -125,7 +125,7 @@ export function runAction(a: Action) {
     }
     case "split-right":
     case "split-down": {
-      if (!S.focused || !shown || splitFull() || isSkiffAgent(S.focused)) return;
+      if (!S.focused || !shown || noAddPane(S.focused) || isSkiffAgent(S.focused)) return;
       const [x, y] = paneCenter();
       return splitMenu(S.focused, a === "split-right" ? "row" : "col", x, y);
     }

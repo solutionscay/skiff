@@ -109,6 +109,9 @@ export function viewLayout(): Layout | null {
 
 export const splitFull = () => shownIds().length >= MAX_PANES;
 
+/** True when no pane can be added beside `id`: the view is full, or `id` is the child pane of a Skipper split. */
+export const noAddPane = (id: string | null) => splitFull() || (!!id && skipperSplit()?.child === id);
+
 export function groupOf(id: string): Group | null {
   return S.groups.find((g) => sessionsOf(g.layout).includes(id)) ?? null;
 }

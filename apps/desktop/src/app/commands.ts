@@ -26,7 +26,7 @@ import { closedProjectsMenu, closeProject, openClosedProject, removeProject } fr
 
 import { scheduleRender } from "./render";
 import { S, sessions } from "./state";
-import { accent, activeGroupObj, currentProject, currentWorktree, inShownGroup, place, shownIds, splitFull, worktreeSessions } from "./stateQueries";
+import { accent, activeGroupObj, currentProject, currentWorktree, inShownGroup, noAddPane, place, shownIds, worktreeSessions } from "./stateQueries";
 
 import { sessionThemeMenu } from "../appearance/themes";
 import { modeKeyBlocked } from "./modes";
@@ -104,8 +104,8 @@ function drafts(): Draft[] {
     { section: "view", id: "cmd.sessionNext", key: k("session-next"), action: "session-next", run: act("session-next") },
     { section: "view", id: "cmd.sessionPrev", key: k("session-prev"), action: "session-prev", run: act("session-prev") },
     { section: "view", id: "cmd.listMain", key: k("list-main"), action: "list-main", run: act("list-main") },
-    { section: "view", id: "cmd.splitRight", key: k("split-right"), action: "split-right", run: act("split-right"), off: !shown || splitFull() || isSkiffAgent(S.focused) || !hostCan("session_lifecycle") },
-    { section: "view", id: "cmd.splitDown", key: k("split-down"), action: "split-down", run: act("split-down"), off: !shown || splitFull() || isSkiffAgent(S.focused) || !hostCan("session_lifecycle") },
+    { section: "view", id: "cmd.splitRight", key: k("split-right"), action: "split-right", run: act("split-right"), off: !shown || noAddPane(S.focused) || isSkiffAgent(S.focused) || !hostCan("session_lifecycle") },
+    { section: "view", id: "cmd.splitDown", key: k("split-down"), action: "split-down", run: act("split-down"), off: !shown || noAddPane(S.focused) || isSkiffAgent(S.focused) || !hostCan("session_lifecycle") },
     S.focused && splitChild() === S.focused
       ? { section: "view", id: "cmd.closeSplit", key: k("close-pane"), action: "close-pane", run: act("close-pane") }
       : { section: "view", id: "cmd.removeFromGroup", key: k("close-pane"), action: "close-pane", run: act("close-pane"), off: !(S.focused && inShownGroup(S.focused)) || !hostCan("session_groups") },

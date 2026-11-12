@@ -15,7 +15,7 @@ import { newSession } from "../../app/daemon";
 import { showError } from "../../ui/alerts";
 import { startSessionRename } from "../rename";
 import { S, sessions } from "../../app/state";
-import { launchChoices, launchDigit, place, shownIds, splitFull } from "../../app/stateQueries";
+import { launchChoices, launchDigit, place, shownIds, skipperSplit, splitFull } from "../../app/stateQueries";
 import { focusPane, removeFromGroup } from "../view";
 import { resumeOffer, resumePane } from "../../terminal/resume";
 import { ledgerFolded, ledgerShown, toggleLedger } from "../ledger";
@@ -27,10 +27,12 @@ export function paneMenu(id: string, x: number, y: number) {
   if (!s) return;
   if (id !== S.focused) focusPane(id);
   if (isSkiffAgent(id)) return skiffAgentMenu(s, x, y);
-  const full = splitFull();
   const entries: MenuEntry[] = [
-    { icon: "layouts-panel-left:flip", label: t("cmd.splitRight"), hint: keyLabel("split-right"), disabled: full || !hostCan("session_lifecycle"), run: () => splitMenu(id, "row", x, y) },
-    { icon: "layouts-panel-bottom", label: t("cmd.splitDown"), hint: keyLabel("split-down"), disabled: full || !hostCan("session_lifecycle"), run: () => splitMenu(id, "col", x, y) },
+    // The child pane of a Skipper split takes no new panes.
+    ...(skipperSplit()?.child === id ? [] : [
+      { icon: "layouts-panel-left:flip", label: t("cmd.splitRight"), hint: keyLabel("split-right"), disabled: splitFull() || !hostCan("session_lifecycle"), run: () => splitMenu(id, "row", x, y) },
+      { icon: "layouts-panel-bottom", label: t("cmd.splitDown"), hint: keyLabel("split-down"), disabled: splitFull() || !hostCan("session_lifecycle"), run: () => splitMenu(id, "col", x, y) },
+    ]),
     ...(isProjectSkipper(s) ? [] : [{ icon: "tools-pencil", label: t("menu.rename"), hint: keyLabel("rename"), disabled: !hostCan("session_lifecycle"), run: () => startSessionRename(id) }]),
   ];
   const offer = resumeOffer(s);
