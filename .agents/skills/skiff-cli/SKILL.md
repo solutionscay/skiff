@@ -184,7 +184,7 @@ The ledger is `ledger.db` in that folder. Use only `skiff ledger` to read or cha
 - `ls`, `show` and `stale` work from anywhere.
 - Each row has an id and an 8-character uid. Neither is used again. Every ID argument takes both. Use the uid when you name a task.
 
-Task states are `pending`, `sent`, `blocked` and `done`. A done task also has an outcome: `succeeded`, `failed`, `interrupted` or `unobserved`. A task whose pane is gone is `unobserved`, never `succeeded`. `ls` shows an OUTCOME column when a row has one. `ls` and `show` also print:
+Task states are `pending`, `sent`, `blocked` and `done`. `blocked` means the pane needs the user, and the app shows it as "needs you". A task that a newer task replaced is not blocked: send the new task with `--replace`. A done task also has an outcome: `succeeded`, `failed`, `interrupted` or `unobserved`. A task whose pane is gone is `unobserved`, never `succeeded`. `ls` shows an OUTCOME column when a row has one. `ls` and `show` also print:
 
 - `interrupted`: the pane restarted after the send. A restore runs a new shell under the old id, so the task does not run.
 - `gone`: the session closed. Skiff sets the task `done`, `unobserved`, on the next `ledger ls`, `ledger show` or watcher step, whatever its state was, and its work closes when nothing else holds it. An `interrupted` or `elsewhere` task, or an unanswered session list, closes nothing. A skiffd that had a failed load closes nothing either, and does not write its workspace file, until someone clears the fault and restarts skiffd. A failed load is a file that cannot be read or parsed, or a file with saved sessions of which none started. If at least one started, a saved session that cannot start is closed: its task closes, and its entry leaves the file at the next save. Each ledger read says so on stderr, and each watcher says so in one `[watch]` line. Tell the person. An interrupted task whose session closes later takes this path. The files stay until a flush. `--json` shows `state` `done` and a `gone_at` stamp.
@@ -236,7 +236,7 @@ A fleet can have one Skipper for all its projects. It is a project Skipper with 
 | `ledger add --plan --task "..." --title "..." [--ref TEXT]` | Add a plan for work with more than one task. |
 | `ledger handoff SCOPE "TASK" --title "..." [--parent UID] [--no-brief]` | Hand a task to a project's or a fleet's Skipper. SCOPE: `NAME`, `project:NAME` or `fleet:NAME`. Admiral only. TASK `-` reads stdin, as `add --task -` does. `--parent` may name an earlier hand-off. |
 | `ledger brief UID [--json]` | Print a hand-off's brief as of now. It writes nothing. Exit 1: the row is not a hand-off. |
-| `ledger send UID --enter` | Send a `pending` or `interrupted` task. |
+| `ledger send UID --enter [--replace]` | Send a `pending` or `interrupted` task. |
 | `ledger update UID [--state S] [--pane S] [--title T] [--result PATH] [--parent UID] ...` | Change only the given fields. |
 | `ledger update UID --outcome O [--commit REF]` | Set how a task ended: `succeeded`, `failed`, `interrupted` or `unobserved`. It sets the task `done`. `--state done` alone gives `succeeded`, or `unobserved` when the evidence the task expects (`add --expect result\|commit`) is missing. |
 | `ledger ls [--state S] [--all \| --closed \| --unreported] [--json]` | Show the work that is not closed: working, then open. |
@@ -253,6 +253,7 @@ A fleet can have one Skipper for all its projects. It is a project Skipper with 
 - `--send` and `ledger send` add " Put everything for this task in FOLDER: the result, screenshots, scratch copies and worktrees. Write your result to PATH." to the task text. Do not put the folder or the path in `--task`.
 - Both run every `send` check and exit with its code. Exit 0 sets `sent`. Exit 8 sets `blocked`. A refusal leaves the task `pending`.
 - `ledger send` exits 1 and types nothing for a task that is `sent`, `blocked` or `done`, for a plan, for a gone pane, or for a task on another daemon.
+- A pane works on one task. `ledger send` and `add --send` exit 1 and type nothing when the pane holds another of your tasks, `sent` or `blocked`. The refusal names it. `add --send` then adds no row. Set that task done first, or pass `--replace`: once the new task is sent, the old one is `done`, outcome `interrupted`, and reported. A refused send leaves it as it was. A hand-off and a schedule step hold no pane.
 - Give every task and plan a `--title` of 3 to 6 words, such as `--title "Fix found-set count"`. Without one, the Ledger panel uses the first sentence of the task.
 - `--type T` records the task type. `--ref TEXT` stores a URL or a ticket key. Skiff stores both and does not act on them.
 - `--parent UID` joins a task to its work: a plan or any task in it, or a task with no plan. A task with no plan goes into a new plan with its title, project, ref and type, and `add` prints the plan's uid. A plan cannot be under a plan. A task added or moved under closed work opens it again.

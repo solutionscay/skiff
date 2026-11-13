@@ -7,7 +7,7 @@ use crate::{resolve, sessions};
 use anyhow::Context;
 use anyhow::{bail, Result};
 use rusqlite::{params, Connection, TransactionBehavior};
-use skiff_client::ledger::{gen, heads, path, rows, Row, GRAND, UNOBSERVED};
+use skiff_client::ledger::{gen, heads, path, rows, Row, GRAND, INTERRUPTED_OUTCOME, UNOBSERVED};
 use skiff_core::{
     session::{Role, SessionInfo},
     state,
@@ -375,6 +375,54 @@ pub(super) fn unsendable(row: &Row, s: Option<&SessionInfo>) -> Option<String> {
         return Some(format!("task {} is {}, not pending or interrupted. Nothing was sent", row.uid, row.state));
     }
     s.is_none().then(|| format!("the pane of task {} is gone. Nothing was sent", row.uid))
+}
+
+/// The open tasks of `owner` that hold the pane `pane` on `socket`: sent or
+/// blocked, other than the row `except`. A hand-off holds nothing, and
+/// neither does a schedule step: a Skipper's pane takes many hand-offs, and
+/// a schedule sends each run to the same pane.
+pub(super) fn holders(db: &Connection, pane: &str, socket: &Path, owner: &str, except: Option<i64>) -> Result<Vec<Row>> {
+    let all = rows(
+        db,
+        "WHERE kind = 'task' AND state IN ('sent', 'blocked') AND pane_id = ?1
+         AND (parent IS NULL OR parent NOT IN (SELECT uid FROM tasks WHERE schedule IS NOT NULL))",
+        Some(&pane),
+    )?;
+    Ok(all.into_iter().filter(|r| r.owner == owner && Some(r.id) != except && r.socket_other_than(socket).is_none()).collect())
+}
+
+/// Refuses a send to a pane that `held` names: one pane works on one task.
+pub(super) fn check_free(held: &[Row], replace: bool) -> Result<()> {
+    if replace || held.is_empty() {
+        return Ok(());
+    }
+    let named: Vec<String> = held
+        .iter()
+        .map(|r| format!("task {}{} ({})", r.uid, r.title.as_deref().map(|t| format!(" \"{t}\"")).unwrap_or_default(), r.state))
+        .collect();
+    let first = &held[0].uid;
+    bail!(
+        "the pane holds {}. Set it done first (skiff ledger update {first} --outcome O), or pass --replace to close it as interrupted. Nothing was sent",
+        named.join(", ")
+    )
+}
+
+/// Closes the tasks `held` as replaced, in one transaction: done, outcome
+/// interrupted, and reported, since the coordinator chose it. A row that
+/// left sent or blocked since the read keeps its own state.
+pub(super) fn replace(db: &mut Connection, held: &[Row]) -> Result<()> {
+    let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    for r in held {
+        let n = tx.execute(
+            &format!("UPDATE tasks SET state = 'done', outcome = ?2, reported_at = {NOW}, updated_at = {NOW} WHERE id = ?1 AND state IN ('sent', 'blocked')"),
+            params![r.id, INTERRUPTED_OUTCOME],
+        )?;
+        if n == 1 {
+            println!("replaced task {}: done, interrupted", r.uid);
+        }
+    }
+    tx.commit()?;
+    Ok(())
 }
 
 /// The text a task goes out with when no text is given. A hand-off says how

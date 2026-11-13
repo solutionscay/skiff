@@ -74,9 +74,9 @@ the commands:
 | Command | When |
 |---|---|
 | `skiff ledger add --pane S --task "..." --title "..." --send --enter [--parent UID] [--ref TEXT] [--expect result\|commit]` | You hand a task to a pane. It adds the row, sends the task with its result path, and prints the id, the uid and the result path. With `--parent`, it also prints the plan's uid. With `--expect`, `update --state done` checks that the result file exists, or that the commit given with `--commit REF` is in the project's repository, and says what that shows. |
-| `skiff ledger send UID --enter` | A task is `pending` or `interrupted`. |
+| `skiff ledger send UID --enter [--replace]` | A task is `pending` or `interrupted`. A pane works on one task: a send to a pane that holds another of your tasks, `sent` or `blocked`, is refused. `--replace` closes that task as `done`, outcome `interrupted`. |
 | `skiff ledger add --plan --task "..." --title "..." [--ref TEXT]` | Work needs more than one task. It prints the plan's uid and its `plan.md`. |
-| `skiff ledger update ID --state S [--result PATH]` | You mark a task `blocked` or `done`. |
+| `skiff ledger update ID --state S [--result PATH]` | You mark a task `blocked` or `done`. `blocked` means the pane needs the user: the app shows it as "needs you". A task that a newer task replaced is not blocked: send the new task with `--replace`. |
 | `skiff ledger update ID --outcome O` | A task ended: `succeeded`, `failed`, `interrupted` or `unobserved`. It sets the task `done`. `--state done` alone gives `succeeded`, or `unobserved` when the evidence it expects is missing. |
 | `skiff ledger ls [--state S] [--json]` | You start a turn or report on work. |
 | `skiff ledger show ID` | You need one row. |

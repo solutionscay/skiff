@@ -6,8 +6,8 @@ use super::read::{
 use super::{brief, delivery, evidence};
 use super::schema::{open, open_at, NOW};
 use super::write::{
-    add_state, age, check_scope, check_writer, close, flush_folders, folder_size, insert,
-    kind_word, message, prune, read_stdin, reopen, report, restate, rows_word, scope, send_row, who, work_word,
+    add_state, age, check_free, check_scope, check_writer, close, holders, flush_folders, folder_size, insert,
+    kind_word, message, prune, read_stdin, reopen, replace, report, restate, rows_word, scope, send_row, state_after, who, work_word,
     Caller, New, Scope, SendOpts,
 };
 use crate::{print, resolve, LedgerCmd};
@@ -16,6 +16,15 @@ use anyhow::{bail, Result};
 use rusqlite::{params, TransactionBehavior};
 use skiff_client::ledger::{gen, mark_live, path, roll_up, rows, GONE, GRAND, INTERRUPTED};
 use std::path::{Path, PathBuf};
+
+/// Closes the tasks `held` once the send that replaces them went out: a
+/// refused send leaves them as they were. Passes the send's code on.
+fn replaced(db: &mut rusqlite::Connection, held: &[skiff_client::ledger::Row], code: i32) -> Result<i32> {
+    if state_after(code).is_some() {
+        replace(db, held)?;
+    }
+    Ok(code)
+}
 
 /// The task text: `-` reads it from stdin, as `skiff send -` does.
 fn task_text(task: String) -> Result<String> {
@@ -27,7 +36,7 @@ fn task_text(task: String) -> Result<String> {
 
 pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Result<i32> {
     match cmd {
-        LedgerCmd::Add { pane: p, task, title, plan: is_plan, parent, project, state: st, result, reference, task_type, expect, send, enter, shell } => {
+        LedgerCmd::Add { pane: p, task, title, plan: is_plan, parent, project, state: st, result, reference, task_type, expect, send, enter, shell, replace } => {
             let task_type = task_type.as_deref().map(skiff_core::tasks::check_name).transpose()?.map(str::to_string);
             let expects = expect.as_deref().map(evidence::expects).transpose()?.map(str::to_string);
             let task = task_text(task)?;
@@ -54,6 +63,12 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                 Some(p) => caller.check_parent(&container(&db, p)?)?,
                 None => caller.owner().to_string(),
             };
+            // One pane, one task: refuse before the row exists.
+            let held = match (&pane_id, send) {
+                (Some(p), true) => holders(&db, p, socket, &owner, None)?,
+                _ => Vec::new(),
+            };
+            check_free(&held, replace)?;
             let new = New { plan: is_plan, parent, pane_id, pane_gen, project, task, title, state: st, result, reference, task_type, socket: here, owner, handoff: false, expects };
             let (id, uid, result, plan) = insert(&mut db, &file, new)?;
             let dir = one(&db, &uid)?.work_dir.unwrap_or_default();
@@ -64,7 +79,8 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
             }
             if send {
                 let row = one(&db, &uid)?;
-                return send_row(socket, &db, &row, SendOpts { text: Vec::new(), enter, shell }).await;
+                let code = send_row(socket, &db, &row, SendOpts { text: Vec::new(), enter, shell }).await?;
+                return replaced(&mut db, &held, code);
             }
         }
         LedgerCmd::Handoff { project, task, title, parent, expect, no_brief } => {
@@ -163,12 +179,19 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                 }
             }
         }
-        LedgerCmd::Send { id, text, enter, shell } => {
-            let db = open()?;
+        LedgerCmd::Send { id, text, enter, shell, replace } => {
+            let mut db = open()?;
             let caller = check_writer(socket, &db, person).await?;
             let row = one(&db, &id)?;
             caller.check(&row)?;
-            return send_row(socket, &db, &row, SendOpts { text, enter, shell }).await;
+            // A hand-off goes to a Skipper, which holds many.
+            let held = match row.pane_id.as_deref().filter(|_| row.kind == "task") {
+                Some(p) => holders(&db, p, socket, &row.owner, Some(row.id))?,
+                None => Vec::new(),
+            };
+            check_free(&held, replace)?;
+            let code = send_row(socket, &db, &row, SendOpts { text, enter, shell }).await?;
+            return replaced(&mut db, &held, code);
         }
         LedgerCmd::Update { id, state: st, result, task, title, pane: p, project, parent, reference, task_type, outcome, expect, commit } => {
             let mut st = st.as_deref().map(state).transpose()?;

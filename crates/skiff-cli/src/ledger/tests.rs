@@ -1746,3 +1746,26 @@ fn a_hand_off_stays_open_between_its_tasks_while_its_skipper_runs() {
     assert!(notes[0].contains(&format!("hand-off {h2} unobserved")), "{notes:?}");
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn a_send_to_a_pane_that_holds_a_task_is_refused_and_replace_closes_it_as_interrupted() {
+    let dir = scratch("replace");
+    let file = dir.join("ledger.db");
+    let here = Path::new("/tmp/here.sock");
+    let mut db = open_at(&file).unwrap();
+    let (_, old, _, _) = insert(&mut db, &file, New { title: Some("Old work".into()), ..task("old") }).unwrap();
+    // Neither a hand-off nor another owner's task holds the pane.
+    insert(&mut db, &file, New { handoff: true, ..task("hand-off") }).unwrap();
+    insert(&mut db, &file, New { owner: "app".into(), ..task("theirs") }).unwrap();
+    let (new_id, _, _, _) = insert(&mut db, &file, New { state: "pending".into(), ..task("new") }).unwrap();
+    let held = holders(&db, "abc123456789", here, GRAND, Some(new_id)).unwrap();
+    assert_eq!(held.iter().map(|r| r.uid.as_str()).collect::<Vec<_>>(), [old.as_str()]);
+    let err = check_free(&held, false).unwrap_err().to_string();
+    assert!(err.contains(&format!("task {old} \"Old work\" (sent)")), "{err}");
+    check_free(&held, true).unwrap();
+    replace(&mut db, &held).unwrap();
+    let r = one(&db, &old).unwrap();
+    assert_eq!((r.state.as_str(), r.outcome.as_deref(), r.reported_at.is_some()), ("done", Some("interrupted"), true));
+    assert!(holders(&db, "abc123456789", here, GRAND, Some(new_id)).unwrap().is_empty());
+    std::fs::remove_dir_all(&dir).unwrap();
+}

@@ -504,6 +504,10 @@ pub enum LedgerCmd {
         /// With --send: as `send --shell`.
         #[arg(long, requires = "send")]
         shell: bool,
+        /// With --send: close the sent or blocked task that holds the pane
+        /// as done, outcome interrupted, and reported.
+        #[arg(long, requires = "send")]
+        replace: bool,
     },
     /// Hand a task to a project's or a fleet's Skipper: add a hand-off row,
     /// start that Skipper if none runs, and send it the task. Exits with
@@ -536,7 +540,7 @@ pub enum LedgerCmd {
     /// Send a pending or interrupted task to its pane, then mark it sent.
     /// Exits with `send`'s code.
     #[command(
-        after_help = "Only a pending or interrupted task with a live pane is sent. Else it exits 1 and sends nothing.\nThe text defaults to the task and its result path. `-` reads the text from stdin.\nIt runs every `send` check. On exit 0 the task is sent. On exit 8 (no turn started) it is blocked: the text can be in the input box. On a refusal it keeps its state, and `skiff watch` names it again when the pane is idle."
+        after_help = "Only a pending or interrupted task with a live pane is sent. Else it exits 1 and sends nothing.\nThe text defaults to the task and its result path. `-` reads the text from stdin.\nIt runs every `send` check. On exit 0 the task is sent. On exit 8 (no turn started) it is blocked: the text can be in the input box. On a refusal it keeps its state, and `skiff watch` names it again when the pane is idle.\nA pane works on one task. A send to a pane that holds another of your tasks, sent or blocked, exits 1, names that task and sends nothing. Set that task done first, or pass --replace: it closes as done, outcome interrupted, and reported, once the new task is sent. `add --send` refuses the same way, and adds no row. A hand-off and a schedule step hold no pane."
     )]
     Send {
         id: String,
@@ -548,6 +552,10 @@ pub enum LedgerCmd {
         /// As `send --shell`.
         #[arg(long)]
         shell: bool,
+        /// Close the sent or blocked task that holds the pane as done,
+        /// outcome interrupted, and reported.
+        #[arg(long)]
+        replace: bool,
     },
     /// Change a task. Only the given fields change. A new pane, or the state
     /// sent, records the pane's current generation.
