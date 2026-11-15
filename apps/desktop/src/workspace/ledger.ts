@@ -66,9 +66,9 @@ import { byUid, error, ledgerRows, ledgerTitle, ledgerWorkTitle, loaded, loadLed
 import { loadSchedules, scheduleError, scheduleGeneration } from "./scheduleStore";
 import { scheduleView, shownSchedules } from "./ledgerSchedules";
 import { hostCan } from "../app/hostCaps";
-import { filter, ledgerCounts, ledgerNeeds, NEED, needing, needWord, opens, projectionKey, sections, shownOwner, taskState, units, type Look, type State, type Unit } from "./ledgerModel";
+import { filter, ledgerCounts, ledgerNeeds, ledgerOpen, NEED, needing, needWord, opens, projectionKey, sections, shownOwner, taskState, units, type Look, type State, type Unit } from "./ledgerModel";
 
-export { ledgerCounts, ledgerNeeds, ledgerRows, ledgerTitle, ledgerWorkTitle, needWord, taskState };
+export { ledgerCounts, ledgerNeeds, ledgerOpen, ledgerRows, ledgerTitle, ledgerWorkTitle, needWord, taskState };
 
 /** Reads the rows and the schedules again. */
 export async function loadLedger() {

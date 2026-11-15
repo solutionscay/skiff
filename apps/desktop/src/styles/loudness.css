@@ -32,8 +32,7 @@
 .session-row .title, .session-row .agent, .wt-pick { color: var(--text-3); }
 .tree-project .wt-pick svg { color: var(--text-dim); }
 .skiff-agent-row .title, .project-skipper-row .title { color: var(--text-dim); }
-.sk-row .sk-line .title { color: var(--text-dim); }
-.session-row.unread-row .title, .sk-row.unread-row .sk-line .title { color: var(--text); font-weight: 500; }
+.session-row.unread-row .title { color: var(--text); font-weight: 500; }
 .tree-icon { background: color-mix(in srgb, var(--pc) 10%, transparent); font-weight: 500; }
 
 /* ---- 5. Marks: one grey for what needs no one. Shape and motion still tell them apart ---- */

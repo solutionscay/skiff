@@ -6,21 +6,23 @@
  * Enter opens its pane. The rows are session rows, so the list keys work as
  * in the tree.
  *
- * Each row starts with the Skipper's face, then its model's icon. The icon
- * carries the state, as on the tree's rows: teal or red for the watcher,
- * turning while the watcher follows open work, and the skiff under way while
- * the Skipper works.
+ * Line 1 is the face, the model's icon in its own color, the name and the
+ * fleet tag. Line 2 is one state word, then the work. The most urgent state
+ * wins (`wordOf`). The number shows only while Ctrl+Shift is held. The time
+ * of the last output is in the tooltip.
  */
-import { agentFailed, agentName, scopeName } from "./model";
+import { agentName, scopeName } from "./model";
 import { faceSig, skipperFace } from "./skipperFace";
-import { FLAG, stateIcon } from "../appearance/stateIcon";
+import { BELL, FAILED, FLAG, workingIcon } from "../appearance/stateIcon";
 import { icon } from "../ui/icons";
 import { agentIcon, launchIcon } from "../appearance/agentIcon";
-import { ledgerWorkTitle } from "./ledger";
+import { ledgerOpen, ledgerWorkTitle } from "./ledger";
+import { reported } from "./programStatus";
+import { isMac } from "../app/keys";
 import { rowMenu, skiffAgentMenu } from "./menus";
 import { revealSession } from "./view";
 import { clearSelection, keepRow } from "./selection";
-import { openSkiffAgent, projectWatch, SKIFF_AGENT_KEY, skiffAgentChoice, skiffWatch, type WatchState } from "../app/skiffAgent";
+import { openSkiffAgent, projectWatch, SKIFF_AGENT_KEY, skiffAgentChoice, skiffWatch, watcherFailed, type WatchState } from "../app/skiffAgent";
 import { dragSkipper } from "./skipperDrag";
 import { numberedSkippers as numbered, skipperEntries, type Entry } from "./skipperOrder";
 import { accent } from "../app/stateQueries";
@@ -28,8 +30,7 @@ import { DEFAULT_ACCENT, S } from "../app/state";
 import { $, h } from "../ui/dom";
 import { tally } from "../diagnostics/stalls";
 import { render } from "../app/renderRequest";
-import type { SessionInfo } from "../platform/types";
-import { t } from "../i18n";
+import { t, tn } from "../i18n";
 
 type SidebarView = "tree" | "skippers";
 
@@ -63,15 +64,52 @@ export function setSidebarView(v: SidebarView) {
 /** The Skippers that wait on the person: the count on the toggle. */
 const waitingSkippers = () => skipperEntries().filter((e) => e.s?.state === "waiting").length;
 
-/** The latest line of a Skipper's work: its newest open hand-off or task, else the title its agent set. */
+/** The ledger owner of a Skipper: "grand" for the Skiff agent, else its project or fleet scope. */
+const ownerOf = (e: Entry) => (e.kind === "admiral" ? "grand" : e.scope);
+
+/**
+ * The latest line of a Skipper's work: its newest open ledger work, else the
+ * message its program reported for the last turn, else the terminal title,
+ * else the agent's name. The Skiff agent's work is the ledger's "grand" rows.
+ */
 function latestLine(e: Entry): string {
   const s = e.s;
   if (!s) {
     const a = skiffAgentChoice();
     return a ? t("sidebar.agentStart", { agent: a.id }) : t("sidebar.noAgentOn");
   }
-  const work = e.scope ? ledgerWorkTitle(e.scope) : null;
-  return work ?? s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? agentName(s);
+  const owner = ownerOf(e);
+  const work = owner ? ledgerWorkTitle(owner) : null;
+  const msg = reported(s)?.msg?.trim();
+  const title = s.title?.replace(/^[^\p{L}\p{N}]+/u, "").trim();
+  return work || msg || title || agentName(s);
+}
+
+const CLOCK = '<circle cx="12" cy="12" r="10"></circle><path d="M12 7v5l3 2"></path>';
+const SHELL = '<path d="M4 17l6-5-6-5"></path><path d="M12 19h8"></path>';
+
+type Word = { key: string; text: string; mark: () => HTMLElement | null };
+
+const mark = (paths: string) => () => icon(paths) as unknown as HTMLElement;
+
+/**
+ * The row's one state word. The most urgent wins: Needs you, Watcher failed,
+ * Working, Waiting on N, Done, Idle, Agent exited. Waiting on N: the watcher
+ * runs, the Skipper is idle, and N of its ledger tasks are open.
+ */
+function wordOf(e: Entry, watch: { state: WatchState } | null): Word {
+  const s = e.s;
+  if (!s) return { key: "off", text: t("skippers.wordOff"), mark: () => null };
+  if (s.state === "waiting") return { key: "needs", text: t("skippers.wordNeeds"), mark: mark(BELL) };
+  if (watcherFailed(s)) return { key: "watch-failed", text: t("skippers.wordWatchFailed"), mark: mark(FAILED) };
+  if (s.state === "working") return { key: "working", text: t("skippers.wordWorking"), mark: workingIcon };
+  const exited = s.state === "done" || s.agent_exit != null;
+  const owner = ownerOf(e);
+  const open = owner ? ledgerOpen(owner) : 0;
+  if (!exited && watch?.state === "runs" && open > 0) return { key: "waiting-on", text: tn("skippers.wordWaitingOn", open), mark: mark(CLOCK) };
+  if (s.unread) return { key: "done", text: t("skippers.wordDone"), mark: mark(FLAG) };
+  if (!exited) return { key: "idle", text: t("skippers.wordIdle"), mark: () => null };
+  return { key: "exited", text: t("skippers.wordExited"), mark: mark(SHELL) };
 }
 
 /** `HH:MM` today, else the day: "Oct 29". */
@@ -89,26 +127,12 @@ function watchOf(e: Entry): { state: WatchState; text: string } | null {
   return e.kind === "admiral" ? skiffWatch(e.s) : projectWatch(e.s);
 }
 
-/** The frame's state: the session state, with done split into exited and failed, and idle into unread. */
-/** frameState in words, for a screen reader. */
-function stateLabel(s: SessionInfo): string {
-  const st = frameState(s);
-  return st === "failed" ? t("skippers.failed") : st === "unread" ? t("skippers.unread") : t(`state.${s.state}`);
-}
-
-function frameState(s: SessionInfo | null): string {
-  if (!s) return "off";
-  if (agentFailed(s) || (s.state === "done" && s.exit_code && s.exit_code !== 0)) return "failed";
-  if (s.state === "idle" && s.unread) return "unread";
-  return s.state;
-}
-
 /** What a row shows, so an unchanged row is kept and its loops keep their phase. */
 function rowSig(e: Entry, watch: { state: WatchState; text: string } | null, num: number): string {
   const s = e.s;
   return JSON.stringify([
     e.kind, e.name, s?.id ?? null, s?.state ?? null, s?.unread ?? false, s?.exit_code ?? null, s?.agent_exit ?? null,
-    latestLine(e), when(s?.last_output_at ?? 0), watch, s?.watch?.follows?.length ?? 0, s ? S.selection.includes(s.id) : false,
+    latestLine(e), wordOf(e, watch).text, when(s?.last_output_at ?? 0), watch, s ? S.selection.includes(s.id) : false,
     faceSig(e.kind === "admiral" ? null : e.scope), num,
   ]);
 }
@@ -150,42 +174,32 @@ function skipperRow(e: Entry, watch: { state: WatchState; text: string } | null,
   row.style.setProperty("--pc", color);
   if (s) row.dataset.session = s.id;
   else row.dataset.key = SKIFF_AGENT_KEY;
-  const turning = watch?.state === "runs" && s?.state === "idle" && (s.watch?.follows?.length ?? 0) > 0;
   const name = h("span", "sk-name", e.kind === "fleet" ? scopeName(e.scope!) : e.name);
   const top = h("span", "sk-top");
+  // The number key shows only while Ctrl+Shift is held (body.mods-held).
   if (num) top.appendChild(h("span", "sk-num", String(num)));
-  // The model beside the face, as the tree shows it: the running agent, or the one a start runs.
-  // The model beside the face carries the state, as on the tree's rows: the
-  // watcher's color and turn on the icon, the skiff under way while it works.
-  const model = s ? agentIcon(s) : launchIcon(skiffAgentChoice());
-  top.append(model, ...(s?.state === "working" ? [stateIcon(s)] : []), name);
+  // The model beside the face, as the tree shows it: the running agent, or the one a start runs. Its own color.
+  top.append(s ? agentIcon(s) : launchIcon(skiffAgentChoice()), name);
   if (e.kind === "fleet") top.appendChild(h("span", "sk-tag", "fleet"));
-  top.appendChild(h("span", "sk-time", when(s?.last_output_at ?? 0)));
+  const word = wordOf(e, watch);
+  const state = h("span", `sk-state w-${word.key}`);
+  const m = word.mark();
+  if (m) state.appendChild(m);
+  state.appendChild(document.createTextNode(word.text));
   const line = h("span", "sk-line");
-  line.appendChild(h("span", "title", latestLine(e)));
-  if (s?.unread) {
-    // The tree's unread flag, at the end of the line.
-    const mark = h("span", "unread");
-    mark.appendChild(icon(FLAG));
-    line.appendChild(mark);
-    row.classList.add("unread-row");
-  }
+  line.append(state, h("span", "title", latestLine(e)));
   const text = h("span", "sk-text");
   text.append(top, line);
-  if (watch?.state === "runs") row.classList.add("watch-on");
-  if (watch?.state === "failed" || watch?.state === "missing") row.classList.add("watch-error");
-  if (turning) {
-    row.classList.add("watch-turn");
-    row.style.setProperty("--turn-delay", `${-(performance.now() % 8000)}ms`);
-  }
   const face = skipperFace(e.kind === "admiral" ? null : e.scope, 40);
   face.classList.add("sk-face");
   row.append(face, text);
   if (e.scope) row.dataset.scope = e.scope;
   const what = e.kind === "admiral" ? t("skippers.admiral", { name: e.name }) : t(e.kind === "fleet" ? "skipper.avatarFleet" : "skipper.avatarProject", { scope: scopeName(e.scope!), skipper: "Skipper" });
-  const vars = { what, line: latestLine(e), state: s ? stateLabel(s) : t("skippers.notRunning"), watch: watch?.text ?? "" };
+  const vars = { what, line: latestLine(e), state: word.text, watch: watch?.text ?? "" };
   row.setAttribute("aria-label", watch?.text ? t("skippers.rowLabelWatch", vars) : t("skippers.rowLabel", vars));
-  if (watch?.text) row.title = watch.text;
+  const last = when(s?.last_output_at ?? 0);
+  const tip = [last ? t("skippers.lastOutput", { time: last }) : "", watch?.text ?? ""].filter(Boolean).join("\n");
+  if (tip) row.title = tip;
   row.addEventListener("mousedown", (ev) => {
     if (ev.button === 0) row.focus();
     if (e.scope) dragSkipper(ev, row, e.scope, name.textContent ?? "");
@@ -198,6 +212,15 @@ function skipperRow(e: Entry, watch: { state: WatchState; text: string } | null,
   });
   return row;
 }
+
+/** Ctrl+Shift (⌘+Shift on macOS) held: the rows show their number keys. */
+function syncMods(e: KeyboardEvent) {
+  const held = (isMac ? e.metaKey : e.ctrlKey) && e.shiftKey;
+  if (document.body.classList.contains("mods-held") !== held) document.body.classList.toggle("mods-held", held);
+}
+window.addEventListener("keydown", syncMods, true);
+window.addEventListener("keyup", syncMods, true);
+window.addEventListener("blur", () => document.body.classList.remove("mods-held"));
 
 let kept = new Map<string, [sig: string, row: HTMLElement]>();
 

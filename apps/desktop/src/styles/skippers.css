@@ -15,8 +15,8 @@
 .sv-tab.on { color: var(--text); background: var(--bg-raised); }
 .sv-count { color: var(--state-waiting-text); font-family: var(--mono); letter-spacing: 0; }
 
-/* A Skipper: 60px, three lines of the row grid. The avatar, then the name
-   with the time, and the latest line of its work. */
+/* A Skipper: 60px, three lines of the row grid. The face; line 1 is the
+   model, the name and the fleet tag; line 2 is the state word, then the work. */
 .session-row.sk-row {
   height: calc(60 * var(--u)); gap: calc(10 * var(--u));
   padding: 0 calc(16 * var(--u)) 0 calc(12 * var(--u));
@@ -27,12 +27,18 @@
 .sk-top > .agent-icon { align-self: center; }
 .sk-name { font-size: calc(13px * var(--zoom, 1)); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sk-tag { font: calc(10px * var(--zoom, 1)) var(--mono); color: var(--text-dim); flex-shrink: 0; }
-.sk-num { flex-shrink: 0; font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); font-variant-numeric: tabular-nums; }
-.sk-time { margin-left: auto; flex-shrink: 0; font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); font-variant-numeric: tabular-nums; }
-.sk-row.st-waiting .sk-time { color: var(--state-waiting-text); }
-.sk-row .sk-line .title { color: var(--text-3); }
-.sk-row .sk-line .unread { align-self: center; height: calc(12 * var(--u)); }
-.sk-row.unread-row .sk-line .title { color: var(--text-2); font-weight: 600; }
+/* The number key: only while Ctrl+Shift is held. */
+.sk-num { display: none; align-self: center; flex-shrink: 0; padding: 0 calc(3 * var(--u)); border: 1px solid var(--rule-strong); font: calc(11px * var(--zoom, 1)) var(--mono); line-height: calc(14 * var(--u)); color: var(--text-2); font-variant-numeric: tabular-nums; }
+body.mods-held .sk-num { display: inline-block; }
+/* The state word: its icon and word in the state's color. */
+.sk-state { flex-shrink: 0; display: inline-flex; align-items: center; gap: calc(4 * var(--u)); align-self: center; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; white-space: nowrap; color: var(--text-2); }
+.sk-state > svg { width: calc(12 * var(--u)); height: calc(12 * var(--u)); flex-shrink: 0; }
+.sk-state.w-needs { color: var(--state-waiting-text); }
+.sk-state.w-watch-failed { color: var(--error-text, var(--error)); }
+.sk-state.w-working { color: var(--state-working); }
+.sk-state:is(.w-done, .w-waiting-on) { color: var(--text-2); }
+.sk-state:is(.w-idle, .w-exited, .w-off) { color: var(--text-3); font-weight: 500; }
+.sk-row .sk-line .title { min-width: 0; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #sidebar-scroll .sk-row.current .sk-line .title { color: var(--text-2); }
 
 /* A Skipper's face (skipperFace.ts): the SVG or a picture, --face px at zoom 1. */

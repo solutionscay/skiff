@@ -55,7 +55,7 @@ let projectionInputs = "";
 let projectionVersion = 0;
 const paneInputs = new Map<string, { state: SessionInfo["state"] | undefined; started: SessionInfo["started_at"] | undefined; title: string | null }>();
 const projections = new Map<string | null, Unit[]>();
-let counts: { need: number; owners: Map<string, { need: number; working: number }> } | null = null;
+let counts: { need: number; owners: Map<string, { need: number; working: number }>; open: Map<string, number> } | null = null;
 
 /** Session events can change a task without a ledger write. Read only the
  *  session fields and workspace membership that affect the projection. */
@@ -235,19 +235,26 @@ export function ledgerCounts(project: string): { need: number; working: number }
   return ledgerSummary().owners.get(project) ?? { need: 0, working: 0 };
 }
 
+/** A coordinator's open tasks: "grand" for the Skiff agent, else its project or fleet scope. */
+export function ledgerOpen(owner: string): number {
+  return ledgerSummary().open.get(owner) ?? 0;
+}
+
 /** Share one count pass across the tree signatures, rows, and the panel. */
 function ledgerSummary() {
   projectionKey();
   if (counts) return counts;
   const owners = new Map<string, { need: number; working: number }>();
+  const open = new Map<string, number>();
   let need = 0;
   for (const l of openLooks(units(null))) {
+    open.set(l.r.owner, (open.get(l.r.owner) ?? 0) + 1);
     const count = owners.get(l.r.owner) ?? { need: 0, working: 0 };
     if (NEED[l.st]) { count.need++; need++; }
     if (l.st === "sent") count.working++;
     owners.set(l.r.owner, count);
   }
-  return counts = { need, owners };
+  return counts = { need, owners, open };
 }
 
 /** The coordinator whose pane is the one pane on screen, or the left pane of its Skipper split: "grand" or a project. */
