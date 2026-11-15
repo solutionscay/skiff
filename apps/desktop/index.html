@@ -8,8 +8,9 @@
     <script>try { var b = localStorage.getItem("skiff.startBg"); if (b) document.documentElement.style.setProperty("--start-bg", b); } catch (e) {}</script>
     <style>
       html, body { margin: 0; background: var(--start-bg, #0f1216); }
-      body:not(.ready) #app { visibility: hidden; }
-      #start { position: fixed; inset: 0; display: grid; place-items: center; background: var(--start-bg, #0f1216); }
+      /* Every node: a child that sets visibility: visible (the Projects +) would show through a hidden parent. */
+      body:not(.ready) #app, body:not(.ready) #app * { visibility: hidden !important; }
+      #start { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: var(--start-bg, #0f1216); }
       body.ready #start { display: none; }
     </style>
     <script type="module" src="/src/entry.ts" defer></script>
