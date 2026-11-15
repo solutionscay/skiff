@@ -8,7 +8,9 @@
  * its frame. The clusters flow left to right in a grid of equal cells,
  * `perRow` to a row, then wrap; a row is as tall as its tallest cluster.
  * Admiral sits top left. Its trunk runs down from the bottom of its face
- * along the left edge and turns right into each row's bus.
+ * along the left edge and turns right into each row's bus. From the bus an
+ * Admiral line drops down the lane left of its target's cluster and comes in
+ * through the frame's left edge, so it crosses no card and no cluster head.
  *
  * Only the data places things: the graph's order is the sidebar tree's, and
  * the window size is never an input. A new session can change a
@@ -200,11 +202,14 @@ export function route(p: Placed, from: string, to: string): string | null {
   const src = p.at.get(from);
   // Admiral's lines, or a source with no cluster, keep the trunk, the bus and the rail.
   const own = fRung === "admiral" || !src?.cell || !info.cell;
-  // Into a cluster's top window: down to the row's bus, across, down into the face. Admiral comes down its trunk.
+  // Admiral's lines go around the cards: down the trunk to the row's bus, along it to the lane left of the target's
+  // cluster, down the lane, then right through the frame's edge into the face or the card. No line crosses a head.
+  if (own && info.cell) return orth([a, { x: a.x, y: info.bus }, { x: info.cell.lane, y: info.bus }, { x: info.cell.lane, y: end.y }, end]);
+  // A source with no cluster, into a cluster's top window: down to the row's bus, across, down into the face.
   if (info.head && own) return orth([a, { x: a.x, y: info.bus }, { x: end.x, y: info.bus }, end]);
   // Work under this Skipper: down its own rail, then right.
   if (info.owners.includes(from)) return orth([a, { x: a.x, y: end.y }, end]);
-  // Anything else from Admiral: the bus to the cluster's rail, down it, then right.
+  // Anything else with no cluster: the bus to the cluster's rail, down it, then right.
   if (own) return orth([a, { x: a.x, y: info.bus }, { x: info.rail, y: info.bus }, { x: info.rail, y: end.y }, end]);
   // Any other line: out under its own window into its cluster's gutter, then the lanes, a few px off Admiral's.
   const sc = src!.cell!;

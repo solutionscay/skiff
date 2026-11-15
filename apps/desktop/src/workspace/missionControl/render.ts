@@ -202,19 +202,37 @@ export function createRenderer(missionState: BoardState, dom: { items: HTMLEleme
     drawPanel();
   }
 
-  /** The connectors: one per link, from its owner to the child. */
+  /**
+   * The connectors: one per link, from its owner to the child. Solid: work runs on the child's side. Dotted: the parent
+   * waits on a hand-off it sent, or on a task whose child ended its turn, or holds a result it has not reported yet.
+   * The color is the child's state word. A child that needs you, or has work under it that needs you, draws amber, so
+   * Needs you traces up to its Skipper and to Admiral.
+   */
   function drawStrings() {
     const links: Link[] = [];
     const done = new Set<string>();
-    for (const st of missionState.m.strs) {
+    const strs = missionState.m.strs;
+    const needs = new Map<string, boolean>();
+    const needsYou = (id: string): boolean => {
+      const known = needs.get(id);
+      if (known !== undefined) return known;
+      needs.set(id, false);
+      const on = missionState.m.sess.get(id)?.state === "waiting" || strs.some((x) => x.from === id && x.row.state !== "done" && needsYou(x.to));
+      needs.set(id, on);
+      return on;
+    };
+    // Two rows to one child: the open one draws, a result waits under it.
+    for (const st of [...strs].sort((a, b) => Number(a.row.state === "done") - Number(b.row.state === "done"))) {
       const to = missionState.placed.cards.has(st.to) ? st.to : null;
       const d = to ? route(missionState.placed, st.from, to) : null;
       const key = `${st.from}>${to}`;
       if (!to || !d || done.has(key)) continue;
       done.add(key);
       const child = missionState.m.sess.get(st.to)!;
-      const state = child.state === "waiting" ? "waiting" : child.state === "working" ? "working" : child.state === "done" ? "done" : "idle";
-      links.push({ key, d, state, dim: dimmed(child) });
+      const r = st.row;
+      const line: Link["line"] = r.state === "done" ? "result" : r.kind === "handoff" ? (r.state === "sent" ? "wait" : "solid") : child.state === "working" || child.state === "waiting" ? "solid" : "wait";
+      const state: Link["state"] = line === "result" ? "done" : needsYou(st.to) ? "waiting" : child.state === "working" ? "working" : child.state === "done" ? "done" : "idle";
+      links.push({ key, d, state, line, dim: dimmed(child) });
     }
     drawConnectors(links);
     // The box holds every connector, so WebKit repaints them as its own content.

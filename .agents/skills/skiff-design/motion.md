@@ -18,6 +18,8 @@ The rules:
 | Ledger row moves to its new place | `--motion-move` | `workspace/ledgerMotion.ts` |
 | Ledger row comes or goes | `--motion-fade` | `workspace/ledgerMotion.ts` |
 | Ledger row flash, when the count is pressed | `--motion-move` | `styles/ledger.css` |
+| Mission control result dot: one dot runs once from the child up its dotted line to the parent | 5 × `--motion-move` | `workspace/missionControl/connectors.ts` |
+| Mission control result dot: one dot runs once from the child up its dotted line to the parent | 5 × `--motion-move` | `workspace/missionControl/connectors.ts` |
 
 ## Loops
 

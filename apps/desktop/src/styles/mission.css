@@ -15,11 +15,19 @@
 /* Layers: cluster frames, windows, connectors, faces, cards. A connector runs over a frame and a window, under a face and a card. */
 .mission-strings { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 3; }
 .mission-strings path { fill: none; stroke: var(--rule-strong); stroke-width: 2; }
-/* Connectors (missionControl/connectors.ts): solid, in the state colors. No march: it needs dashes. Waiting draws over working over idle. */
+/* Connectors (missionControl/connectors.ts): solid or dotted, in the state colors. No march. Waiting draws over working over idle. */
 .mission-strings path.working { stroke: var(--state-working); }
 .mission-strings path.waiting { stroke: var(--state-waiting); }
 .mission-strings path.done, .mission-strings path.idle { stroke-width: 1.5; }
+/* Dotted: the parent waits on the child, or holds its result not yet reported. Round dots, in the child's state color. */
+.mission-strings path.dotted { stroke-width: 2; stroke-dasharray: 0 6; stroke-linecap: round; }
+.mission-strings path.dotted.idle { stroke: var(--state-idle); }
+.mission-strings path.dotted.done { stroke: var(--state-done); }
 .mission-strings path.dim { opacity: 0.25; }
+/* The one dot a result sends along its line to the parent (connectors.ts). */
+.mission-strings circle.pulse { fill: var(--state-done); }
+.mission-strings circle.pulse.waiting { fill: var(--state-waiting); }
+.mission-strings circle.pulse.working { fill: var(--state-working); }
 
 /* A cluster: a project's frame, or a fleet's. */
 .mission-cluster { position: absolute; z-index: 1; box-sizing: border-box; border: 1px solid var(--rule-strong); background: color-mix(in srgb, var(--pc) 5%, var(--bg)); }

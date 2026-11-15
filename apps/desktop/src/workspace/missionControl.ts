@@ -213,6 +213,8 @@ interface Str {
   /** The session the string goes to; its card is where it ends. */
   to: string;
   label: string;
+  /** The ledger row that ties them. */
+  row: Entry;
 }
 
 interface Model {
@@ -287,12 +289,13 @@ function model(): Model {
   if (found) for (const s of sess.values()) if (s.coordinator || !!s.skipper) if (fuzzy(q, `${cardName(s)} ${s.state}`) >= 0) found.add(s.id);
 
   // The strings. A hand-off ties Admiral to the Skipper it went to; a task ties its owner to its pane.
+  // A result the parent reported has no string.
   const strs: Str[] = [];
   for (const r of ledger) {
-    if (!r.pane_id || !sess.has(r.pane_id)) continue;
+    if (!r.pane_id || !sess.has(r.pane_id) || (r.state === "done" && r.reported_at)) continue;
     const from = r.kind === "handoff" ? admiral : r.kind === "task" ? ownerOf(r.owner, admiral) : null;
     if (!from || !sess.has(from.id) || from.id === r.pane_id) continue;
-    strs.push({ from: from.id, to: r.pane_id, label: r.kind === "handoff" ? ledgerTitle(r) : "" });
+    strs.push({ from: from.id, to: r.pane_id, label: r.kind === "handoff" ? ledgerTitle(r) : "", row: r });
   }
   return { g, sess, projects, members, rows, strs, found, idx: indexLedger(ledger) };
 }

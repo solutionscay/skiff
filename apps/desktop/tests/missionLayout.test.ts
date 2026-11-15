@@ -150,7 +150,7 @@ test("the view: fit, zoom at a point, center, the edge tick", () => {
   assert.deepEqual(G.edgeTick(c, { x: 100, y: 5000, w: 200, h: 100 }, 1000, 600), { x: 495, y: 590 });
 });
 
-test("a connector: down the trunk and the bus into a Skipper's face, down a rail into a card, or the bus to another cluster's rail", () => {
+test("a connector: Admiral's down the trunk, the bus and the lane left of the cluster into a Skipper's face; a Skipper's down its rail into a card", () => {
   const p = Grid.placeGraph(graph());
   const face = (id: string) => G.faceBox(p.cards.get(id)!, p.rungs.get(id)!);
   const mid = (id: string) => ({ x: face(id).x + face(id).w / 2, y: face(id).y + face(id).h / 2 });
@@ -159,12 +159,13 @@ test("a connector: down the trunk and the bus into a Skipper's face, down a rail
   assert.ok(toWeb.startsWith(`M${p.trunk} ${ad.y + ad.h - 4}`), "from the bottom of Admiral's face, on the trunk");
   assert.ok(toWeb.endsWith(`L${mid("sk-web").x} ${mid("sk-web").y}`), "into the middle of the Skipper's face");
   assert.ok(toWeb.includes(` ${p.at.get("sk-web")!.bus}`), "along the row's bus");
+  assert.ok(toWeb.includes(`L${p.at.get("sk-web")!.cell!.lane} `), "down the lane left of the cluster, so it crosses no head");
   const s4 = p.cards.get("s4")!;
   const own = Grid.route(p, "sk-web", "s4")!;
   assert.ok(own.startsWith(`M${mid("sk-web").x} `), "down the Skipper's own rail");
   assert.ok(own.endsWith(`L${s4.x} ${s4.y + s4.h / 2}`), "into the card's left edge");
-  // Admiral's own task in a cluster with no Skipper: the bus, then that cluster's rail.
-  assert.ok(Grid.route(p, "ad", "s9")!.includes(`${p.at.get("s9")!.rail} `));
+  // Admiral's own task in a cluster with no Skipper: the bus, then the lane left of that cluster.
+  assert.ok(Grid.route(p, "ad", "s9")!.includes(`${p.at.get("s9")!.cell!.lane} `));
   assert.equal(Grid.route(p, "ad", "nobody"), null);
   // Right angles only: every move is along x or along y, turned with a quarter curve.
   assert.ok(!/[CA]/.test(own + toWeb));

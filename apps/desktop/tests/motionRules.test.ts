@@ -25,5 +25,5 @@ test("the only one-off motion uses the tokens, with opacity and transform (#267)
 
 test("no terminal, pane or panel animates from code (#267)", () => {
   const animated = read(".ts").filter(([, code]) => /\.animate\(/.test(code)).map(([name]) => name).sort();
-  assert.deepEqual(animated, ["workspace/ledgerMotion.ts", "workspace/missionMotion.ts"]);
+  assert.deepEqual(animated, ["workspace/ledgerMotion.ts", "workspace/missionControl/connectors.ts", "workspace/missionMotion.ts"]);
 });

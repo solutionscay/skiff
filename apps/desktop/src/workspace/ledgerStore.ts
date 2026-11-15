@@ -24,6 +24,8 @@ export interface Entry {
   title: string | null;
   state: "sent" | "pending" | "blocked" | "done";
   updated_at: string;
+  /** When the parent reported the result. `null`: not yet. Missing from a Host that predates it: not yet. */
+  reported_at?: string | null;
   /** When the person, or Skiff once every task was done, and reported or flushed, closed the work. Only a work head has it. */
   closed_at: string | null;
   /** The work's bucket, as `skiff ledger ls` gives it. Every row of one work has the same one.
