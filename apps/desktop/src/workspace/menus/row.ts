@@ -1,5 +1,5 @@
 import { ctxMenu } from "../../ui/contextMenu";
-import { isSkiffAgent, skipperWord } from "../../app/skiffAgent";
+import { canRestartWatch, isSkiffAgent, restartWatch, skipperWord, watcherFailed } from "../../app/skiffAgent";
 import { keyLabel } from "../../app/keys";
 import { t, tn } from "../../i18n";
 import { type MenuEntry } from "../../ui/menu";
@@ -22,6 +22,7 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
   const ids = S.selection.filter((id) => sessions.has(id));
   if (ids.length > 1 && ids.includes(s.id)) return selectionMenu(ids, x, y);
   ctxMenu.open(x, y, sessionLabel(s), [
+    ...(isProjectSkipper(s) && watcherFailed(s) && canRestartWatch() ? [{ icon: "schedule-refresh-cw", label: t("menu.restartWatcher"), run: () => restartWatch(s.id) }] : []),
     ...(groupOf(s.id)
       ? [{ icon: "code-ungroup", label: t("cmd.removeFromGroup"), hint: keyLabel("close-pane"), disabled: !hostCan("session_groups"), run: () => removeFromGroup(s.id) }]
       : []),

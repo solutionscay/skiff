@@ -422,6 +422,25 @@ function noteAsk(id: string, error: string | null) {
   graceRender();
 }
 
+/** The waits before each try to bring back a failed or missing watcher. After the last, the rows show Watcher failed. */
+const RETRY_WAITS = [5_000, 15_000, 45_000];
+
+/** For each Skipper whose watcher is failed or missing: the tries so far, and when the next one may run. */
+const retries = new Map<string, { tries: number; next: number }>();
+let retryTimer = 0;
+
+/** True after Skiff's own tries to bring back this Skipper's watcher failed. */
+function gaveUp(id: string): boolean {
+  const r = retries.get(id);
+  return !!r && r.tries >= RETRY_WAITS.length && Date.now() >= r.next;
+}
+
+/** True after Skiff's own tries for the Skiff agent's watcher failed: the 30 s asks stop. */
+const watchGaveUp = () => {
+  const s = skiffAgentSession();
+  return !!s && gaveUp(s.id);
+};
+
 /**
  * Starts `skiff watch` for the Skiff agent's session: on start, and again after
  * an app restart or a daemon restart. The backend starts none while one runs,
@@ -430,9 +449,13 @@ function noteAsk(id: string, error: string | null) {
 function watch(id: string, now = false) {
   // A remote Host's skiff-host keeps its own watcher: this app asks there only for Start watcher.
   if (isRemote() && !now) return;
-  if (!now && watchAsked.id === id && Date.now() - watchAsked.at < 30_000) return;
+  if (!now && ((watchAsked.id === id && Date.now() - watchAsked.at < 30_000) || watchGaveUp())) return;
   noteAsk(id, startError);
   const ask = isRemote() ? hostInvoke<boolean>("skipper_run", "start_skiff_watch", { session: id }) : invoke<boolean>("start_skiff_watch", { session: id });
+  settle(ask, now);
+}
+
+function settle(ask: Promise<unknown>, now: boolean) {
   ask
     .then(() => {
       if (startError === null) return;
@@ -447,10 +470,65 @@ function watch(id: string, now = false) {
     });
 }
 
+/**
+ * Brings back a failed or missing watcher by itself: a few tries, each after
+ * a longer wait. On a remote Host, its skiff-host does this, and the tries only
+ * wait. One watcher follows every Skipper, so one call serves every
+ * Skipper that is due. A missing one is started; a failed one is stopped and
+ * started again. A watcher that runs clean ends the fault. Runs on each render.
+ */
+function heal(admiral: SessionInfo | null) {
+  const at = Date.now();
+  const due: string[] = [];
+  let restart = false;
+  const seen = new Set<string>();
+  for (const s of [...(admiral ? [admiral] : []), ...projectSkippers()]) {
+    const state = s === admiral ? skiffWatch(s).state : projectWatch(s).state;
+    if (state !== "failed" && state !== "missing") continue;
+    seen.add(s.id);
+    const r = retries.get(s.id) ?? { tries: 0, next: at + RETRY_WAITS[0] };
+    retries.set(s.id, r);
+    if (r.tries >= RETRY_WAITS.length || at < r.next) continue;
+    r.tries++;
+    r.next = at + (RETRY_WAITS[r.tries] ?? RETRY_WAITS[RETRY_WAITS.length - 1]);
+    due.push(s.id);
+    if (state === "failed") restart = true;
+  }
+  for (const id of [...retries.keys()]) if (!seen.has(id)) retries.delete(id);
+  const next = Math.min(...[...retries.values()].filter((r) => r.next > at).map((r) => r.next));
+  if (Number.isFinite(next)) {
+    clearTimeout(retryTimer);
+    retryTimer = window.setTimeout(() => render("watcher"), next - at + 100);
+  }
+  // A remote Host's skiff-host keeps its own watcher: there the tries only wait, and Restart watcher asks.
+  if (!due.length || isRemote()) return;
+  const target = admiral?.id ?? due[0];
+  noteAsk(target, startError);
+  settle(restartCall(target, restart), false);
+}
+
+/** Asks for a watcher. `restart` stops a running one first: only on this Mac. A remote Host only starts a missing one. */
+function restartCall(id: string, restart: boolean): Promise<unknown> {
+  if (isRemote()) return hostInvoke<boolean>("skipper_run", "start_skiff_watch", { session: id });
+  return invoke<boolean>(restart ? "restart_skiff_watch" : "start_skiff_watch", { session: id });
+}
+
 /** The row menu's Start watcher. */
 export function startSkiffWatch() {
   const s = skiffAgentSession();
   if (s) watch(s.id, true);
+}
+
+/** The row menu's Restart watcher, after Skiff's own tries failed. `id`: the row's Skipper, used when no Skiff agent runs. */
+export function restartWatch(id: string) {
+  const session = skiffAgentSession()?.id ?? id;
+  for (const r of retries.values()) {
+    r.tries = 0;
+    r.next = Date.now() + RETRY_WAITS[0];
+  }
+  noteAsk(session, null);
+  settle(restartCall(session, true), true);
+  render("watcher");
 }
 
 /** The row menu's Open watch log in the page's Host-file viewer. */
@@ -528,6 +606,20 @@ export function projectWatch(s: SessionInfo): { state: WatchState; text: string 
   return { state, text: watchText(state, s, projectSkipperName(s), null) };
 }
 
+/**
+ * The row shows Watcher failed: the watcher is failed or missing, and Skiff's
+ * own tries to bring it back failed.
+ */
+export function watcherFailed(s: SessionInfo): boolean {
+  const admiral = isSkiffAgent(s.id);
+  const state = admiral ? skiffWatch(s).state : projectWatch(s).state;
+  if (state !== "failed" && state !== "missing") return false;
+  return gaveUp(s.id);
+}
+
+/** Restart watcher fits here: this Mac, or a Host that runs Skipper. */
+export const canRestartWatch = () => !isRemote() || hostCan("skipper_run");
+
 /** A project or fleet Skipper's session name: its project or fleet, then the Skipper word ("gesher Skipper", "Harbor Skipper"). */
 function projectSkipperName(s: SessionInfo): string {
   return `${scopeName(skipperProject(s) ?? s.skipper ?? "")} ${skipperWord()}`;
@@ -558,6 +650,7 @@ export function syncSkiffAgent() {
   }
   shownName = name;
   shownWord = word;
+  heal(s);
   if (!s) return;
   watch(s.id);
   if ((isRemote() && !hostCan("skipper_run")) || !S.skiffAgent.continue_on_restore || !s.resume || continued.has(s.id) || agentKind(s) !== "shell") return;

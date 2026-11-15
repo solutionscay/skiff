@@ -62,6 +62,21 @@ pub async fn start_skiff_watch(app: State<'_, App>, session: String) -> Result<b
     ensure_watch(&app, &local, cli(), session).await
 }
 
+/// The row menu's Restart watcher, after the page's own tries failed: stops
+/// the watcher that holds this daemon's lock and starts one for `session`.
+/// It signals only a live `skiff watch` for this socket. A remote Host keeps
+/// its own watcher, so there it only asks for one, as Start watcher does.
+#[tauri::command]
+pub async fn restart_skiff_watch(app: State<'_, App>, session: String) -> Result<bool, String> {
+    if app.selection().process_control().is_none() {
+        return data_write(&app, |c| async move { data::skipper_watch(&c, &session).await }).await;
+    }
+    let _one = app.watch_gate.lock().await;
+    let socket = app.selection().socket().to_path_buf();
+    let cli = cli();
+    blocking(move || skipper::restart_watch(&socket, &cli, &session, false)).await
+}
+
 /// One current watcher for the agent's session. A watcher of an older CLI,
 /// as after an update, gets one replacement attempt per app run when it is
 /// proven to be this daemon's `skiff watch`. One that is not, or that does
