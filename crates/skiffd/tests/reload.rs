@@ -43,6 +43,9 @@ async fn start(name: &str) -> (Daemon, PathBuf) {
         .env("SKIFF_CONFIG", dir.join("projects.toml"))
         .env("SKIFF_LEDGER", dir.join("ledger.db"))
         .env("SKIFF_SHELL_ENV", "0")
+        // The schedule clock ticks at once on each start, an adopt included,
+        // and runs the `skiff` beside the binary: its pipes would be counted.
+        .env("SKIFF_SCHEDULES", "0")
         .env("SHELL", "/bin/sh")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
