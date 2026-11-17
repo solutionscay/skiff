@@ -80,13 +80,13 @@ fn parse_line(line: &str, now: u64) -> Option<skiff_host_api::UsageWindow> {
     Some(window(group, minutes, used, resets_at))
 }
 
-/// "Nov 23 at 9am" or "Nov 23 at 8:59am" in `zone`, with no year: the year
+/// "Nov 23 at 9am", "Nov 23 at 8:59am" or "Nov 23, 8:59am" in `zone`, with no year: the year
 /// that puts it in the next 8 days. "9am" alone is its next time after now.
 fn reset_time(when: &str, zone: &str, now: u64) -> Option<u64> {
     let tz = TimeZone::get(zone.trim()).ok()?;
     let now_ts = Timestamp::from_millisecond(i64::try_from(now).ok()?).ok()?;
     let today = now_ts.to_zoned(tz.clone());
-    let (date, time) = match when.split_once(" at ") {
+    let (date, time) = match when.split_once(" at ").or_else(|| when.split_once(", ")) {
         Some((date, time)) => (Some(date), time),
         None => (None, when),
     };
@@ -223,6 +223,14 @@ mod tests {
         let mut err = fixture("9am");
         err["is_error"] = json!(true);
         assert!(parse(&err, now()).is_err());
+    }
+
+    #[test]
+    fn a_comma_between_date_and_time() {
+        let read = parse(&with_result("Current week (all models): 9% used · resets Nov 23, 8:59am (America/Chicago)"), now()).unwrap();
+        let w = &read.windows[0];
+        assert_eq!((w.group.as_deref(), w.minutes, w.used), (None, WEEK, 9));
+        assert_eq!(w.resets_at, Some(at("2026-11-23T08:59[America/Chicago]")));
     }
 
     #[test]
