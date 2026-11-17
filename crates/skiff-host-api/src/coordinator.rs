@@ -125,6 +125,10 @@ pub struct HostSchedule {
     /// The next run in the Host's local time. Absent while paused.
     #[serde(default)]
     pub next: Option<String>,
+    /// The next run in UTC, `2026-11-11T01:30:00Z`, for the app to show in
+    /// its own time zone. Absent while paused, and from an older Host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_at: Option<String>,
     /// `succeeded`, `failed`, `running`, `pending` or `skipped`. Absent: no run yet.
     #[serde(default)]
     pub last: Option<String>,
@@ -154,6 +158,10 @@ pub struct HostScheduleRun {
 pub struct HostCronPreview {
     #[serde(default)]
     pub next: Vec<String>,
+    /// The same runs in UTC, for the app to show in its own time zone.
+    /// Empty from an older Host.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub next_at: Vec<String>,
     #[serde(default)]
     pub error: Option<String>,
     pub when: String,

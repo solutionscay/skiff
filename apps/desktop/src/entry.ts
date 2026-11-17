@@ -6,10 +6,12 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { setLanguage } from "./i18n";
+import { setTimeDisplay } from "./i18n/time";
 import type { Appearance } from "./platform/types";
 
 void (async () => {
   const look = await invoke<Appearance>("get_appearance").catch(() => null);
   setLanguage(look?.language ?? navigator.language);
+  setTimeDisplay(look?.time_zone, look?.clock);
   await import("./main");
 })();

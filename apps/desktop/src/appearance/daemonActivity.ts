@@ -10,6 +10,7 @@ import { branchName, locate, scopeFleet, scopeName, taskTitle } from "../workspa
 import type { DaemonMetrics, DaemonStatus, SessionInfo } from "../platform/types";
 import { abandonShip, emptyPick, keepLive, moveTo, type Pick, pickAll, picked, pickedText, pickRow, sinkLabel } from "./sessionPick";
 import { type MessageKey, t, tn } from "../i18n";
+import { fullDateTime } from "../i18n/time";
 import { skipperEndLines } from "../workspace/skipperEnd";
 
 interface ActivityState { list: SessionInfo[]; metrics: DaemonMetrics | null; version: string | null; error: string | null; timer: number | null; pick: Pick; }
@@ -152,7 +153,7 @@ export function daemonActivitySection(s: ActivityState, redraw: () => void, reve
     // The sidebar's state mark, in its state color.
     const state = h("span", "c-state"); state.setAttribute("role", "gridcell"); state.append(h("span", `dot ${item.state}`), h("span", "", t(`state.${item.state}`)));
     // The name alone, as the sidebar shows it. Hover shows the session id.
-    row.append(state, cell(taskTitle(item), "c-name", `${taskTitle(item)} · ${item.id}`), cell(program(item)), cell(w.text, w.out ? "bad" : ""), cell(folder(item.cwd), "", item.cwd), cell(item.output_bytes ? bytes(item.output_bytes) : "—", "c-num"), cell(age(item.started_at), "c-num", item.started_at ? new Date(item.started_at).toLocaleString() : ""));
+    row.append(state, cell(taskTitle(item), "c-name", `${taskTitle(item)} · ${item.id}`), cell(program(item)), cell(w.text, w.out ? "bad" : ""), cell(folder(item.cwd), "", item.cwd), cell(item.output_bytes ? bytes(item.output_bytes) : "—", "c-num"), cell(age(item.started_at), "c-num", item.started_at ? fullDateTime(item.started_at) : ""));
     const acts = h("span", "c-acts"); acts.setAttribute("role", "gridcell");
     const show = h("button", "set-reveal", t("activity.reveal")); show.type = "button"; show.disabled = item.skipper != null && !item.coordinator && w.out; show.addEventListener("click", () => reveal(item.id, !!locate(S.closedProjects, item.cwd))); acts.append(show);
     row.append(acts); table.append(row);

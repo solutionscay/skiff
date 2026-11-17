@@ -263,6 +263,10 @@ export interface Appearance {
   mission_filter?: string | null;
   /** The app's language, such as `es`. Absent: the system language. */
   language?: string | null;
+  /** The time zone times show in, such as `Europe/Madrid`. Absent: the system's. */
+  time_zone?: string | null;
+  /** `24` or `12`. Absent: the clock of the app language. */
+  clock?: string | null;
 }
 
 export interface DaemonStatus {

@@ -400,6 +400,18 @@ pub(crate) async fn set_language(language: Option<String>) -> Result<(), String>
     blocking(move || config::set_language(language.as_deref())).await
 }
 
+/// Sets the time zone the app shows times in: an IANA name, or `null` for the system's.
+#[tauri::command]
+pub(crate) async fn set_time_zone(zone: Option<String>) -> Result<(), String> {
+    blocking(move || config::set_time_zone(zone.as_deref())).await
+}
+
+/// Sets the clock: `24`, `12`, or `null` for the clock of the app language.
+#[tauri::command]
+pub(crate) async fn set_clock(clock: Option<String>) -> Result<(), String> {
+    blocking(move || config::set_clock(clock.as_deref())).await
+}
+
 /// This Mac's agent list, from the projects.toml this app writes, so a change
 /// reads back whatever skiffd build runs. Whether an agent is installed
 /// depends on the sessions' PATH and aliases, which the app does not have:

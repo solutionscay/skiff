@@ -64,7 +64,7 @@ test("a Host with agent_usage: readers wait for their first read, the rest have 
 test("a read shows its windows as percent used, and the count names the agents with a reader", () => {
   const now = Date.now();
   const p = page(true, [{ agent: "codex", plan: "Pro Lite", read_at: now, windows: [{ minutes: 10080, used: 2, threshold: 80, resets_at: now + 3_600_000 }], credits: { balance: 75000 }, reading: false }]);
-  assert.match(p.text, /Pro Lite · read \d\d:\d\d/);
+  assert.match(p.text, /Pro Lite · read \d{1,2}:\d\d/);
   assert.match(p.text, /Weekly/);
   assert.match(p.text, /2%/);
   assert.equal(p.root.all().find((e) => e.className === "u-meter")?.title, "2% used · 98% left");

@@ -9,6 +9,7 @@ use skiff_client::Client;
 use skiff_client::ledger::{add_note, auto_close, handoffs_with_tasks, heads, holds_open, rows, session_closed, session_of, untold_note, NOTES, OPEN, OUTCOMES, WORKING};
 use skiff_core::session::{SessionInfo, SessionState};
 
+use crate::clock::clock;
 use crate::{print, resolve};
 
 use super::{path, Row, GRAND, NOW};
@@ -582,7 +583,7 @@ pub(super) fn print_rows(rows: &[(Row, usize)], closed: bool) {
                 },
                 if r.is_plan() { "-".into() } else if r.elsewhere { "elsewhere".into() } else { yn(r.live).to_string() },
                 r.project.clone(),
-                r.sent_at.clone(),
+                clock().stamp_utc(&r.sent_at),
                 r.result_path.as_deref().map(shown_path).unwrap_or_default(),
             ]);
             if refs {
@@ -598,7 +599,7 @@ pub(super) fn print_rows(rows: &[(Row, usize)], closed: bool) {
                 row.push(r.owner.clone());
             }
             if closed {
-                row.push(r.closed_at.clone().unwrap_or_default());
+                row.push(r.closed_at.as_deref().map(|c| clock().stamp_utc(c)).unwrap_or_default());
             }
             row.push(one_line(&r.task));
             row
@@ -655,11 +656,11 @@ pub(super) fn print_one(r: &Row, closed: Option<&str>) {
     f.extend([
         ("owner", r.owner.clone()),
         ("project", r.project.clone()),
-        ("sent", r.sent_at.clone()),
-        ("updated", r.updated_at.clone()),
-        ("reported", r.reported_at.clone().unwrap_or_else(|| "no".into())),
+        ("sent", clock().stamp_utc(&r.sent_at)),
+        ("updated", clock().stamp_utc(&r.updated_at)),
+        ("reported", r.reported_at.as_deref().map_or_else(|| "no".into(), |x| clock().stamp_utc(x))),
         ("work", r.bucket.unwrap_or_default().to_string()),
-        ("closed", closed.unwrap_or("no").to_string()),
+        ("closed", closed.map_or_else(|| "no".into(), |x| clock().stamp_utc(x))),
     ]);
     if let Some(d) = &r.work_dir {
         f.push(("folder", d.clone()));
@@ -674,7 +675,7 @@ pub(super) fn print_one(r: &Row, closed: Option<&str>) {
         f.push(("commit", x.clone()));
     }
     if let Some(x) = &r.flushed_at {
-        f.push(("flushed", x.clone()));
+        f.push(("flushed", clock().stamp_utc(x)));
     }
     if let Some(x) = &r.title {
         f.push(("title", x.clone()));
@@ -706,7 +707,7 @@ pub(super) fn print_attempts(attempts: &[super::delivery::Attempt]) {
                 a.session_gen.map(|g| g.to_string()).unwrap_or_default(),
                 a.bytes.to_string(),
                 a.sha256.chars().take(12).collect(),
-                a.started_at.clone(),
+                clock().stamp_utc(&a.started_at),
                 a.shown_evidence().to_string(),
                 a.code.map(|c| c.to_string()).unwrap_or_default(),
             ]

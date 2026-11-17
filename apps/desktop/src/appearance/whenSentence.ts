@@ -4,6 +4,7 @@
  * `crates/skiff-client/src/schedule/when.rs`; keep the two in step. A cron
  * line no shape shows is Custom.
  */
+import { hour12, wallClock } from "../i18n/time";
 
 /** Weekdays as a bit set on cron numbers: bit 0 is Sunday. */
 export const ALL_DAYS = 0x7f;
@@ -115,16 +116,28 @@ export function toCron(w: When): string {
   }
 }
 
-/** `08:00`. */
-export const hhmm = (at: At) => `${String(at[0]).padStart(2, "0")}:${String(at[1]).padStart(2, "0")}`;
+/**
+ * `08:00` or `8:00 AM`, by the Clock setting. A cron time is the Host's wall
+ * clock, so no time zone applies. Hour 24 is the end of a day's window.
+ */
+export const hhmm = (at: At) => (at[0] === 24 && !hour12() ? "24:00" : wallClock(at[0], at[1]));
 
-/** `HH:MM`, 00:00 to 23:59, else null. */
+/** `HH:MM` from 00:00 to 23:59, or a 12-hour time: `9:30 PM`, `9 pm`, `9:30 p. m.`, `下午9:30`. Else null. */
 export function parseTime(text: string): At | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(text.trim());
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  return h <= 23 && min <= 59 ? [h, min] : null;
+  const s = text.trim().toLowerCase();
+  const m24 = /^(\d{1,2}):(\d{2})$/.exec(s);
+  if (m24) {
+    const h = Number(m24[1]);
+    const min = Number(m24[2]);
+    return h <= 23 && min <= 59 ? [h, min] : null;
+  }
+  const m12 = /^(上午|下午)?\s*(\d{1,2})(?::(\d{2}))?\s*(?:([ap])\.?\s*m?\.?)?$/.exec(s);
+  const half = m12?.[1] === "下午" || m12?.[4] === "p" ? "pm" : m12?.[1] === "上午" || m12?.[4] === "a" ? "am" : null;
+  if (!m12 || !half) return null;
+  const h = Number(m12[2]);
+  const min = Number(m12[3] ?? 0);
+  if (h < 1 || h > 12 || min > 59) return null;
+  return [(h % 12) + (half === "pm" ? 12 : 0), min];
 }
 
 /** The first picker's value: `day`, `weekday`, `week`, `month`, `30m`, `2h` or `custom`. */

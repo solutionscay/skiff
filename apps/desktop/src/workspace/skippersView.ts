@@ -31,6 +31,7 @@ import { $, h } from "../ui/dom";
 import { tally } from "../diagnostics/stalls";
 import { render } from "../app/renderRequest";
 import { t, tn } from "../i18n";
+import { compactWhen } from "../i18n/time";
 
 type SidebarView = "tree" | "skippers";
 
@@ -112,14 +113,8 @@ function wordOf(e: Entry, watch: { state: WatchState } | null): Word {
   return { key: "exited", text: t("skippers.wordExited"), mark: mark(SHELL) };
 }
 
-/** `HH:MM` today, else the day: "Oct 29". */
-function when(ms: number): string {
-  if (!ms) return "";
-  const d = new Date(ms);
-  return d.toDateString() === new Date().toDateString()
-    ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })
-    : d.toLocaleDateString([], { month: "short", day: "numeric" });
-}
+/** The time today, else the day: "Oct 29". */
+const when = (ms: number) => (ms ? compactWhen(ms) : "");
 
 /** The watcher, as the tree's Skipper rows read it. */
 function watchOf(e: Entry): { state: WatchState; text: string } | null {

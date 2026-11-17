@@ -15,7 +15,8 @@ import { showError } from "../ui/alerts";
 import { h } from "../ui/dom";
 import { type Typed, typeFiles, whoOf } from "./terminalClipboard";
 import { panes } from "./terminalState";
-import { locale, t } from "../i18n";
+import { t } from "../i18n";
+import { compactWhen } from "../i18n/time";
 
 /** One library image, as `images` answers. */
 export interface Image {
@@ -167,12 +168,8 @@ export function marked(text: string, words: string[]): (string | HTMLElement)[] 
   return out;
 }
 
-export function when(at: number): string {
-  const d = new Date(at);
-  const now = new Date();
-  if (d.toDateString() === now.toDateString()) return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  return d.toLocaleDateString(locale(), { month: "short", day: "numeric" });
-}
+/** The time today, else the day: "Oct 29". */
+export const when = (at: number) => compactWhen(at);
 
 /** Line 2: the project letters in its color and the session title. Dim once that session ended. */
 export function whoLine(i: Image, words: string[] = []): HTMLElement {

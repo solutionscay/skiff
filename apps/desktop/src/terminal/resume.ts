@@ -8,7 +8,8 @@ import { showError } from "../ui/alerts";
 import { ctxMenu } from "../ui/contextMenu";
 import type { MenuEntry } from "../ui/menu";
 import { basename, branchName, samePath } from "../workspace/model";
-import { locale, t, tn } from "../i18n";
+import { t, tn } from "../i18n";
+import { recentWhen } from "../i18n/time";
 import { hostInvoke } from "../app/hostCaps";
 
 /**
@@ -149,19 +150,8 @@ function uuidTime(id: string): number | null {
   return hex.length === 32 && hex[12] === "7" ? parseInt(hex.slice(0, 12), 16) : null;
 }
 
-// English keeps "3:42 PM"; other languages take their own clock.
-const clock = new Intl.DateTimeFormat(locale(), { hour: "numeric", minute: "2-digit" });
-const date = new Intl.DateTimeFormat(locale(), { month: "short", day: "numeric" });
-
-/** "3:42 PM" today, "Yesterday 3:42 PM", else "Sep 30, 3:42 PM". */
-function when(r: Recent): string {
-  if (r.updated == null) return r.day ?? "";
-  const at = new Date(r.updated);
-  const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(at).setHours(0, 0, 0, 0)) / 86400000);
-  if (days === 0) return clock.format(at);
-  if (days === 1) return t("resume.yesterday", { time: clock.format(at) });
-  return t("resume.dateTime", { date: date.format(at), time: clock.format(at) });
-}
+/** "15:42" today, "Yesterday 15:42", else "Sep 30, 15:42". */
+const when = (r: Recent) => (r.updated == null ? r.day ?? "" : recentWhen(r.updated));
 
 /** Where the list opens: a menu point, or under a button with its right edge. */
 type Anchor = { x: number; y: number; right?: number };

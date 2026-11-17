@@ -774,6 +774,12 @@ export const es = {
   "settings.language": "Idioma",
   "settings.languageAuto": "Auto ({name})",
   "settings.onRestart": "Al reiniciar",
+  "settings.timeZone": "Zona horaria",
+  "settings.timeZoneAuto": "Auto ({zone})",
+  "settings.clock": "Reloj",
+  "settings.clockAuto": "Auto ({clock})",
+  "settings.clock24": "24 horas",
+  "settings.clock12": "12 horas",
 
   // Terminal y sistema.
   "peek.kindFile": "archivo",
@@ -806,8 +812,7 @@ export const es = {
   "resume.lastTitle": "último título · {when}",
   "resume.none": "No hay sesiones en esta carpeta",
   "resume.showMore": "Mostrar más…",
-  "resume.yesterday": "Ayer {time}",
-  "resume.dateTime": "{date}, {time}",
+  "time.yesterday": "Ayer {time}",
   "resume.sessions#one": "Reanudar {count} sesión",
   "resume.sessions#other": "Reanudar {count} sesiones",
   "search.find": "Buscar",

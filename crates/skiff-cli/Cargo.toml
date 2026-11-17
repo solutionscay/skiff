@@ -23,4 +23,6 @@ uuid.workspace = true
 alacritty_terminal = "0.26"
 libc = "0.2"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
+# Times in the zone and clock of Settings › Appearance.
+jiff = "0.2"
 sha2 = "0.10"

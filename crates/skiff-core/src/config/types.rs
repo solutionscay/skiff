@@ -34,6 +34,11 @@ pub struct Appearance {
     /// words for shows English. Absent: the system language. The app reads
     /// it when the window opens.
     pub language: Option<String>,
+    /// The time zone the app and the CLI show times in, as an IANA name
+    /// such as `Europe/Madrid`. Absent: the system's. Stored times stay UTC.
+    pub time_zone: Option<String>,
+    /// `24` or `12`. Absent: the clock of the app language.
+    pub clock: Option<String>,
 }
 
 /// Which apps Skiff hands things to.

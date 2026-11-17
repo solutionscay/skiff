@@ -114,7 +114,10 @@ export const realControls = (h: unknown, ctxMenu: unknown = { open() {} }) =>
 
 // The UI words: the real English catalog, unless a test passes its own.
 let catalog: { en: any; i18n: any } | undefined;
-function words(name: string) {
+let clock: unknown;
+function words(name: string): any {
+  // The real time formatter, over the real catalog.
+  if (/(^|\/)i18n\/time$/.test(name)) return (clock ??= moduleFromSource("../src/i18n/time.ts", { "./index": words("i18n") }, {}, ""));
   if (!/(^|\/)i18n(\/en)?$/.test(name)) return undefined;
   if (!catalog) {
     const en = moduleFromSource("../src/i18n/en.ts", {}, {}, "");

@@ -16,7 +16,8 @@ import type { SessionInfo } from "../../platform/types";
 import { hostCan } from "../../app/hostCaps";
 import { sessions } from "../../app/state";
 import { h } from "../../ui/dom";
-import { type MessageKey, locale, t, tn } from "../../i18n";
+import { type MessageKey, t, tn } from "../../i18n";
+import { clockTime } from "../../i18n/time";
 import { type Entry, ledgerTitle } from "../ledger";
 import { sinceAt, sinceText } from "./model";
 
@@ -35,7 +36,7 @@ function detail(s: SessionInfo, now: number): string {
   if (s.state === "working") return sinceText(s, now);
   if (s.state === "waiting") return s.waiting_cause && CAUSE[s.waiting_cause] ? t(CAUSE[s.waiting_cause]) : "";
   const at = sinceAt(s);
-  if (s.state === "done" && at !== undefined) return new Date(at).toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" });
+  if (s.state === "done" && at !== undefined) return clockTime(at);
   return "";
 }
 

@@ -4084,6 +4084,7 @@ dependencies = [
  "anyhow",
  "clap",
  "dirs 6.0.0",
+ "jiff",
  "libc",
  "rusqlite",
  "serde",

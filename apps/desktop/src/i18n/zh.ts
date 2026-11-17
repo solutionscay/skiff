@@ -739,6 +739,12 @@ export const zh = {
   "settings.language": "语言",
   "settings.languageAuto": "自动（{name}）",
   "settings.onRestart": "重启后生效",
+  "settings.timeZone": "时区",
+  "settings.timeZoneAuto": "自动（{zone}）",
+  "settings.clock": "时钟",
+  "settings.clockAuto": "自动（{clock}）",
+  "settings.clock24": "24 小时制",
+  "settings.clock12": "12 小时制",
 
   // 终端与系统。
   "peek.kindFile": "文件",
@@ -771,8 +777,7 @@ export const zh = {
   "resume.lastTitle": "上次标题 · {when}",
   "resume.none": "此文件夹中没有会话",
   "resume.showMore": "显示更多…",
-  "resume.yesterday": "昨天 {time}",
-  "resume.dateTime": "{date} {time}",
+  "time.yesterday": "昨天 {time}",
   "resume.sessions#other": "恢复 {count} 个会话",
   "search.find": "查找",
   "font.app": "应用 {percent}",

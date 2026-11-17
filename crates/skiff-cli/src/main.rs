@@ -9,6 +9,7 @@ mod args;
 mod attach;
 mod drops;
 mod callsign;
+mod clock;
 mod daemon;
 mod events;
 mod groups;

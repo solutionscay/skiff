@@ -4,6 +4,7 @@
  * Host's readers turned "left" into "used" already.
  */
 import { t } from "../i18n";
+import { clockTime, weekdayTime } from "../i18n/time";
 
 export interface UsageWindow {
   /** The vendor's group or model name: "Gemini Models", "Fable". */
@@ -80,18 +81,11 @@ export function pace(w: UsageWindow, now: number): number | null {
 /** "2% used · 98% left". */
 export const usedLeft = (used: number) => t("usage.usedLeft", { used, left: 100 - used });
 
-/** The local clock time of a reset: "Wed 09:44". */
-export function resetClock(ms: number, locale?: string): string {
-  const d = new Date(ms);
-  const day = d.toLocaleDateString(locale, { weekday: "short" });
-  return `${day} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
+/** The clock time of a reset: "Wed 09:44". */
+export const resetClock = (ms: number) => weekdayTime(ms);
 
 /** The time of a read: "05:10". */
-export const readClock = (ms: number) => {
-  const d = new Date(ms);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-};
+export const readClock = (ms: number) => clockTime(ms);
 
 /** The time to a reset: "in 1 d 4 h", "in 21 h", "in 12 min". */
 export function countdown(ms: number, now: number): string {
@@ -114,7 +108,7 @@ interface Hot {
  * is the agent with the highest % used, `more` the count of other agents.
  * `null` at rest: the cell is not there.
  */
-export function cellOf(list: AgentUsage[], now: number, locale?: string): { agent: string; w: UsageWindow; more: number; tip: string } | null {
+export function cellOf(list: AgentUsage[], now: number): { agent: string; w: UsageWindow; more: number; tip: string } | null {
   const hot: Hot[] = list.flatMap((a) => a.windows.filter((w) => live(w, now) && level(w) !== "ok").map((w) => ({ agent: a.agent, w })));
   if (!hot.length) return null;
   // Highest % first; the order of the list breaks a tie.
@@ -124,7 +118,7 @@ export function cellOf(list: AgentUsage[], now: number, locale?: string): { agen
     .map(({ agent, w }) => {
       const lead = w.group ? `${productName(agent)} ${w.group}` : productName(agent);
       const line = t("usage.tip.window", { window: inlineName(w, lead), usedLeft: usedLeft(w.used) });
-      return w.resets_at === undefined ? line : `${line} ${t("usage.tip.resets", { time: resetClock(w.resets_at, locale) })}`;
+      return w.resets_at === undefined ? line : `${line} ${t("usage.tip.resets", { time: resetClock(w.resets_at) })}`;
     })
     .join("\n");
   return { agent: top.agent, w: top.w, more: agents.size - 1, tip };

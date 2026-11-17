@@ -1,7 +1,7 @@
 import { isUnread } from "./model";
 
 import { $, h, setHidden, setText } from "../ui/dom";
-import { locale, tn } from "../i18n";
+import { tn } from "../i18n";
 import { ring } from "../ui/ring";
 import { type AgentUsage, cellOf, level, productName, resetClock } from "../app/usageModel";
 
@@ -64,7 +64,7 @@ export function watchStatusbar() {
  * nothing. A click opens Settings › Usage, as the Usage key does.
  */
 export function renderUsage(list: AgentUsage[], open: () => void) {
-  const cell = cellOf(list, Date.now(), locale());
+  const cell = cellOf(list, Date.now());
   let el = document.getElementById("usage-cell");
   if (!cell) return el?.remove();
   if (!el) {
@@ -76,7 +76,7 @@ export function renderUsage(list: AgentUsage[], open: () => void) {
   }
   const lvl = level(cell.w);
   const num = h("span", `num ${lvl}`, `${cell.w.used}%`);
-  if (lvl === "limit" && cell.w.resets_at !== undefined) num.textContent += ` · ${resetClock(cell.w.resets_at, locale())}`;
+  if (lvl === "limit" && cell.w.resets_at !== undefined) num.textContent += ` · ${resetClock(cell.w.resets_at)}`;
   const ringEl = h("span", "ring");
   ringEl.append(ring(cell.w.used, lvl));
   el.replaceChildren(ringEl, h("span", "label", productName(cell.agent)), num, h("span", "more", cell.more ? `+${cell.more}` : ""));

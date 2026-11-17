@@ -26,6 +26,8 @@ export interface PickOptions {
   disabled?: boolean;
   /** Shows dim: a default, not a choice the person made. */
   quiet?: boolean;
+  /** Typed text filters a long menu. */
+  filter?: boolean;
   pick: (value: string) => void;
 }
 
@@ -60,7 +62,7 @@ export function picker(o: PickOptions): HTMLButtonElement {
       }
       return e;
     });
-    ctxMenu.open(r.left, r.bottom, o.label, items, () => b.focus());
+    ctxMenu.open(r.left, r.bottom, o.label, items, () => b.focus(), { filter: o.filter });
   });
   return b;
 }

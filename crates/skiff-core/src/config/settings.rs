@@ -214,6 +214,43 @@ pub fn set_language(language: Option<&str>) -> Result<()> {
     })
 }
 
+/// Sets `[appearance] time_zone` to an IANA name such as `Europe/Madrid`,
+/// or removes it for the system's zone.
+pub fn set_time_zone(zone: Option<&str>) -> Result<()> {
+    if let Some(v) = zone.filter(|v| v.is_empty() || !v.chars().all(|c| c.is_ascii_alphanumeric() || "/_+-".contains(c))) {
+        anyhow::bail!("not a time zone: {v}");
+    }
+    super::client::edit_table("appearance", |t| {
+        match zone {
+            Some(v) => t["time_zone"] = toml_edit::value(v),
+            None => {
+                t.remove("time_zone");
+            }
+        }
+        Ok(())
+    })
+}
+
+/// The values `[appearance] clock` takes.
+pub const CLOCKS: [&str; 2] = ["24", "12"];
+
+/// Sets `[appearance] clock` to `24` or `12`, or removes it for the clock
+/// of the app language.
+pub fn set_clock(clock: Option<&str>) -> Result<()> {
+    if let Some(v) = clock.filter(|v| !CLOCKS.contains(v)) {
+        anyhow::bail!("unknown clock: {v}");
+    }
+    super::client::edit_table("appearance", |t| {
+        match clock {
+            Some(v) => t["clock"] = toml_edit::value(v),
+            None => {
+                t.remove("clock");
+            }
+        }
+        Ok(())
+    })
+}
+
 /// The values `[appearance] menu_layout` takes.
 pub const MENU_LAYOUTS: [&str; 2] = ["header-bar", "menu-bar"];
 

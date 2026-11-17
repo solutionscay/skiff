@@ -15,7 +15,8 @@ import { checkShownHost, hostName, isRemote } from "./hosts";
 import { actionDialog } from "../ui/dialogParts";
 import { h } from "../ui/dom";
 import { scopeName } from "../workspace/model";
-import { locale, t, tn } from "../i18n";
+import { t, tn } from "../i18n";
+import { clockTime } from "../i18n/time";
 
 /** The main Skipper's name until Settings has one. skiffd's setup keeps the same default. */
 export const DEFAULT_NAME = "Admiral";
@@ -552,8 +553,8 @@ function watchMark(s: SessionInfo | null, protocol: number | null, lastAsk: numb
   return now - lastAsk < WATCH_GRACE ? "starting" : "missing";
 }
 
-/** Local `HH:MM`. */
-const clock = (ms: number) => new Date(ms).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit", hour12: false });
+/** The time of day: "14:05". */
+const clock = (ms: number) => clockTime(ms);
 
 /** The tooltip text for a state. Empty for starting and unknown. */
 export function watchText(state: WatchState, s: SessionInfo, name: string, error: string | null): string {

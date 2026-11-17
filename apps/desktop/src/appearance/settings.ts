@@ -30,7 +30,9 @@ import { S, sessions } from "../app/state";
 import { arrowKeys, redrawKeeping } from "./settingsFocus";
 import { createSettingsFiles, type FilesState } from "./settingsFiles";
 import { agentsPage } from "./settingsAgents";
-import { languageRow, type MenuLayout, menuLayout } from "./settingsLanguage";
+import { clockRow, languageRow, type MenuLayout, menuLayout, timeZoneRow } from "./settingsLanguage";
+import { setTimeDisplay } from "../i18n/time";
+import { render as renderApp } from "../app/renderRequest";
 import { loadSchedulesPage, schedulesPage, schedulesState } from "./schedulesPage";
 import { schedules, type Schedule } from "../workspace/scheduleStore";
 import { usageCount, usageSection } from "./usagePage";
@@ -90,6 +92,9 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   let menuSet: MenuLayout | null = null;
   /** `[appearance] language`: a code, or null for the system language. */
   let langSet: string | null = null;
+  /** `[appearance] time_zone` and `clock`: null for Auto. */
+  let zoneSet: string | null = null;
+  let clockSet: string | null = null;
   let agentSet: SkiffAgentSettings | null = null;
   /** The random faces of Settings › Appearance › Finish: one set per open. */
   let sampleSeeds: number[] = [];
@@ -336,7 +341,12 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         },
       }),
     );
-    main.append(intro, languageRow(langSet, (code) => void setLanguageSetting(code)));
+    main.append(
+      intro,
+      languageRow(langSet, (code) => void setLanguageSetting(code)),
+      timeZoneRow(zoneSet, (zone) => void setTimeSetting("set_time_zone", { zone }, () => (zoneSet = zone))),
+      clockRow(clockSet, (clock) => void setTimeSetting("set_clock", { clock }, () => (clockSet = clock))),
+    );
     if (menuSet?.available) main.appendChild(menuLayout(menuSet, (v) => void setMenuLayout(v)));
     if (error) {
       const err = h("div", "set-error", error);
@@ -354,6 +364,20 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     try {
       await invoke("set_language", { language: code });
       langSet = code;
+    } catch (e) {
+      error = String(e);
+    }
+    render();
+  }
+
+  /** Saves the time zone or the clock, then draws every time again in it. */
+  async function setTimeSetting(command: string, args: Record<string, string | null>, keep: () => void) {
+    error = null;
+    try {
+      await invoke(command, args);
+      keep();
+      setTimeDisplay(zoneSet, clockSet);
+      renderApp("time");
     } catch (e) {
       error = String(e);
     }
@@ -627,7 +651,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       openSet = await invoke<OpenSettings>("open_settings").catch(() => null);
       openFound = await invoke<OpenChoices>("open_choices").catch(() => ({}));
       menuSet = await invoke<MenuLayout>("menu_layout").catch(() => null);
-      langSet = (await invoke<Appearance>("get_appearance").catch(() => null))?.language ?? null;
+      const app = await invoke<Appearance>("get_appearance").catch(() => null);
+      langSet = app?.language ?? null;
+      zoneSet = app?.time_zone ?? null;
+      clockSet = app?.clock ?? null;
       agentSet = await hostInvoke<SkiffAgentSettings>("skipper", "get_skiff_agent").catch(() => null);
       agents = await loadAgents().catch((e) => {
         error = String(e);

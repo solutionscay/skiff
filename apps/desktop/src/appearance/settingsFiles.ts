@@ -4,6 +4,7 @@
  * state and passes every Host call and window action in as `env`.
  */
 import { t } from "../i18n";
+import { fullDate } from "../i18n/time";
 import { confirmAction } from "../ui/confirm";
 import { basename } from "../workspace/paths";
 import { fileSize } from "./taskTypes";
@@ -112,7 +113,7 @@ export function createSettingsFiles<F extends FileRow, A, T extends TypeRow>(env
   /** Reset…: asks, with the file's date and size, then writes the template again. */
   async function resetFile(f: F) {
     const base = basename(f.file);
-    const date = f.modified ? new Date(f.modified).toISOString().slice(0, 10) : "";
+    const date = f.modified ? fullDate(f.modified) : "";
     const who = f.scope.kind === "skipper" ? t("settings.reset.everySkipper") : t("settings.reset.oneSkipper", { name: f.scope.name });
     const ok = await confirmAction({
       title: t("settings.reset.title", { file: f.file }),

@@ -23,6 +23,7 @@ import type { MenuEntry } from "../ui/menu";
 import { rune } from "../ui/runes";
 import { skipperWord } from "../app/skiffAgent";
 import { fleetSkipperName, lastWord, tag, targetText } from "../workspace/ledgerSchedules";
+import { dateTime, parseUtc } from "../i18n/time";
 import { skipperFace } from "../workspace/skipperFace";
 import { treeSections } from "../workspace/tree";
 import { loadSchedules, scheduleCall, schedules, targetProject, type Schedule } from "../workspace/scheduleStore";
@@ -120,6 +121,12 @@ function errorLine(text: string): HTMLElement {
 
 const TONE: Record<string, string> = { succeeded: "ok", running: "run", failed: "bad", pending: "none", skipped: "none" };
 
+/** The next run in the app's time zone: "Nov 11, 01:30". An older Host's own text otherwise. */
+function nextRun(s: Schedule): string {
+  const at = parseUtc(s.next_at);
+  return Number.isNaN(at) ? s.next ?? "" : dateTime(at);
+}
+
 function listTable(st: SchedulesState, ctx: SchedulesCtx): HTMLElement {
   const table = h("div", "set-table g-sched");
   table.setAttribute("role", "table");
@@ -155,7 +162,7 @@ function listTable(st: SchedulesState, ctx: SchedulesCtx): HTMLElement {
     );
     const rm = smallButton(t("table.remove"), () => void remove(st, ctx, s), { icon: rune("indicators-minus"), danger: true, label: t("schedules.deleteTitle", { name: s.name }) });
     end.append(rm);
-    row.append(lead, h("span", "c-name", s.name), words, target, h("span", "c-mono", s.next ?? t("schedules.paused")), last, end);
+    row.append(lead, h("span", "c-name", s.name), words, target, h("span", "c-mono", s.next ? nextRun(s) : t("schedules.paused")), last, end);
     table.append(row);
   }
   return table;
@@ -349,8 +356,10 @@ function whenEnd(st: SchedulesState, ctx: SchedulesCtx, cron: string): HTMLEleme
   }
   const p = st.preview;
   if (!p || p.cron !== cron) {
-    void hostInvoke<{ next: string[]; error: string | null }>("schedules", "cron_preview", { cron }).then((r) => {
-      st.preview = { cron, next: r.next, error: r.error };
+    void hostInvoke<{ next: string[]; next_at?: string[]; error: string | null }>("schedules", "cron_preview", { cron }).then((r) => {
+      // The runs in the app's time zone; an older Host sends its own times only.
+      const next = r.next_at?.length ? r.next_at.map((x) => dateTime(parseUtc(x))) : r.next;
+      st.preview = { cron, next, error: r.error };
       ctx.render();
     }).catch(() => {});
     return end;

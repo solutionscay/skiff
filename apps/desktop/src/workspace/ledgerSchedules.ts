@@ -14,6 +14,7 @@ import { skiffAgentName, skipperWord } from "../app/skiffAgent";
 import { S, sessions } from "../app/state";
 import { accent } from "../app/stateQueries";
 import { type MessageKey, t } from "../i18n";
+import { aheadWhen, dateTime, parseUtc } from "../i18n/time";
 import { h } from "../ui/dom";
 import { scopeFleet } from "./model";
 import { titleOf, type Entry } from "./ledgerStore";
@@ -45,7 +46,23 @@ function tone(last: Schedule["last"] | Run["status"]): string {
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/** `Nov 11 01:30` short: the time today, the weekday and time this week, else the date. */
+/**
+ * The next run, short, in the app's time zone: the time today, the weekday
+ * and time this week, else the date. The cron runs on the Host's clock.
+ */
+export function nextText(s: Pick<Schedule, "next" | "next_at">): string {
+  const at = parseUtc(s.next_at);
+  if (!Number.isNaN(at)) return aheadWhen(at);
+  return s.next ? shortNext(s.next) : "";
+}
+
+/** A run's start in the app's time zone: "Nov 11, 01:30". An older Host's own text otherwise. */
+export function runAt(r: Run): string {
+  const at = parseUtc(r.row.sent_at);
+  return Number.isNaN(at) ? r.at : dateTime(at);
+}
+
+/** An older Host's `Nov 11 01:30` short: the time today, the weekday and time this week, else the date. */
 export function shortNext(next: string): string {
   const m = /^([A-Z][a-z]{2}) (\d{1,2}) (\d{2}:\d{2})$/.exec(next);
   if (!m) return next;
@@ -98,7 +115,7 @@ function item(s: Schedule, open: (uid: string) => void): HTMLElement {
   row.append(
     h("span", `sc-dot ${s.paused_at ? "none" : tone(s.last)}`),
     h("span", "sc-name", s.name),
-    h("span", "sc-next", s.next ? shortNext(s.next) : t("schedules.paused")),
+    h("span", "sc-next", s.next ? nextText(s) : t("schedules.paused")),
     h("span", `sc-last ${tone(s.last)}`, s.last ? lastWord(s.last) : ""),
     h("span", "sc-when", s.when),
     target,
@@ -134,8 +151,8 @@ function runRow(r: Run, a: SeriesActs): HTMLElement[] {
   const row = h("div", `lg-row sr-run ${tone(r.status)}` + (click ? "" : " dead"));
   row.dataset.key = r.row.uid;
   row.tabIndex = -1;
-  row.setAttribute("aria-label", r.at);
-  row.append(h("span", "lg-dot"), h("span", "lg-title", r.at), h("span", "lg-pane", runWord(r)));
+  row.setAttribute("aria-label", runAt(r));
+  row.append(h("span", "lg-dot"), h("span", "lg-title", runAt(r)), h("span", "lg-pane", runWord(r)));
   if (click) row.addEventListener("click", click);
   const kids = r.kids.map((k) => {
     const live = k.state !== "done" ? a.pane(k) : null;
@@ -166,7 +183,7 @@ function seriesHead(s: Schedule, back: () => void): HTMLElement {
   head.append(
     b,
     h("span", "sr-name", s.name),
-    h("span", "sr-next", s.next ? t("schedules.nextAt", { at: shortNext(s.next) }) : t("schedules.paused")),
+    h("span", "sr-next", s.next ? t("schedules.nextAt", { at: nextText(s) }) : t("schedules.paused")),
     h("span", "sr-when", `${s.when} · ${what}`),
   );
   return head;

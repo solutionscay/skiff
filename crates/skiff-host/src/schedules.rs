@@ -39,6 +39,7 @@ pub(super) fn schedule_list(all: Option<&[SessionInfo]>) -> Result<Vec<HostSched
                 })
                 .collect();
             let x = s.schedule;
+            let next_at = if x.paused_at.is_some() { None } else { x.next_at.clone() };
             HostSchedule {
                 uid: x.uid,
                 name: x.name,
@@ -57,6 +58,7 @@ pub(super) fn schedule_list(all: Option<&[SessionInfo]>) -> Result<Vec<HostSched
                 prompt: s.prompt,
                 paused_at: x.paused_at,
                 next: s.next,
+                next_at,
                 last: s.last.map(Into::into),
                 open: s.open,
                 runs,
@@ -70,9 +72,16 @@ pub(super) fn cron_preview(cron: &str) -> HostCronPreview {
     match Cron::parse(cron) {
         Ok(c) => {
             let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or_default();
-            HostCronPreview { next: c.next_runs(now, 3).into_iter().map(sched::cron::short_time).collect(), error: None, when: w.words(), custom: w.is_custom() }
+            let runs = c.next_runs(now, 3);
+            HostCronPreview {
+                next: runs.iter().copied().map(sched::cron::short_time).collect(),
+                next_at: runs.into_iter().map(sched::cron::utc).collect(),
+                error: None,
+                when: w.words(),
+                custom: w.is_custom(),
+            }
         }
-        Err(e) => HostCronPreview { next: Vec::new(), error: Some(e), when: w.words(), custom: true },
+        Err(e) => HostCronPreview { next: Vec::new(), next_at: Vec::new(), error: Some(e), when: w.words(), custom: true },
     }
 }
 

@@ -40,6 +40,8 @@ export interface Schedule {
   paused_at: string | null;
   /** The next run in the Host's local time, `Nov 11 01:30`. Null while paused. */
   next: string | null;
+  /** The next run in UTC, for the app's time zone. Absent from an older Host. */
+  next_at?: string | null;
   last: "succeeded" | "failed" | "running" | "pending" | "skipped" | null;
   /** A run is open: Run now is off. */
   open: boolean;

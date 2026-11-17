@@ -1,6 +1,7 @@
 /** The folder picker's pure parts: crumbs, names, times and filtering. */
 import type { FolderEntry, FolderRepo } from "../platform/types";
 import { t, tn } from "../i18n";
+import { daysAgo, fullDate } from "../i18n/time";
 import { basename } from "./paths";
 
 /** One row of the picker's main list. `path` is the Host's. */
@@ -64,9 +65,9 @@ export function whenText(seconds: number | null | undefined, now = Date.now()): 
   const ago = Math.max(0, now / 1000 - seconds);
   if (ago < 3600) return tn("disk.agoMin", Math.max(1, Math.round(ago / 60)));
   if (ago < 6 * 3600) return tn("disk.agoHours", Math.round(ago / 3600));
-  const day = (ms: number) => new Date(ms).toDateString();
-  if (day(seconds * 1000) === day(now)) return t("picker.today");
-  if (day(seconds * 1000) === day(now - 86_400_000)) return t("picker.yesterday");
+  const days = daysAgo(seconds * 1000, now);
+  if (days === 0) return t("picker.today");
+  if (days === 1) return t("picker.yesterday");
   if (ago < 30 * 86_400) return tn("disk.agoDays", Math.round(ago / 86_400));
-  return new Date(seconds * 1000).toISOString().slice(0, 10);
+  return fullDate(seconds * 1000);
 }

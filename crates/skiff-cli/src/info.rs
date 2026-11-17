@@ -116,15 +116,9 @@ fn watch_lock_held(socket: &Path) -> bool {
         .is_ok_and(|f| matches!(f.try_lock(), Err(std::fs::TryLockError::WouldBlock)))
 }
 
-/// Unix ms as local `HH:MM`.
+/// Unix ms as `HH:MM` in the zone and clock of Settings › Appearance.
 fn clock(ms: u64) -> String {
-    let t = (ms / 1000) as libc::time_t;
-    // SAFETY: localtime_r writes only into `tm`.
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    if unsafe { libc::localtime_r(&t, &mut tm) }.is_null() {
-        return "?".into();
-    }
-    format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
+    crate::clock::clock().time_ms(ms)
 }
 
 /// Why the `skiff` a shell runs is not `exe`: another one comes first on

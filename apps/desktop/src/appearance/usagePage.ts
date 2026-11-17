@@ -114,7 +114,7 @@ function windowRow(w: UsageWindow, now: number): HTMLElement {
     pct.className = `u-pct ${lvl}`;
     pct.textContent = `${w.used}%`;
     meter.title = usedLeft(w.used);
-    if (w.resets_at !== undefined) resets.append(resetClock(w.resets_at, locale()), h("span", "u-in", countdown(w.resets_at, now)));
+    if (w.resets_at !== undefined) resets.append(resetClock(w.resets_at), h("span", "u-in", countdown(w.resets_at, now)));
     else resets.append(h("span", "u-in", "–"));
   } else {
     // After a reset with no new read: never the old %.

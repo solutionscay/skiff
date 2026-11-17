@@ -24,6 +24,7 @@ use super::read::{full_list, one, project_of};
 use super::schema::{open, open_at, NOW};
 use super::write::{check_writer, insert, message, read_stdin, scope, send_row, New, Scope, SendOpts};
 use skiff_client::skipper;
+use crate::clock::clock;
 use crate::{print, resolve, ScheduleCmd, ScheduleGate, ScheduleSpec, ScheduleTarget};
 
 /// A due time older than this when skiffd sees it was missed: the computer
@@ -71,7 +72,7 @@ pub async fn run(socket: &Path, cmd: ScheduleCmd, person: bool) -> Result<i32> {
             let prompt = sched::write_prompt(&agent_dir(&file)?, &uid, &d.name, d.text.as_deref().unwrap_or_default())?;
             tx.commit()?;
             println!("added schedule {} ({uid}): {}", d.name, when::When::from_cron(&d.cron).words());
-            if let Some(n) = next.as_deref().map(sched::local_of) {
+            if let Some(n) = next.as_deref().map(|n| clock().stamp_utc(n)) {
                 println!("next run {n}");
             }
             println!("prompt {}", prompt.display());
@@ -349,13 +350,21 @@ async fn ls(socket: &Path, json: bool) -> Result<()> {
         Some(p) => format!("{p} · {}", target_words(&s.schedule)),
         None => target_words(&s.schedule),
     };
-    let next = |s: &Summary| s.next.clone().unwrap_or_else(|| "paused".into());
+    let next = |s: &Summary| next_text(s).unwrap_or_else(|| "paused".into());
     let (wn, ww, wt, wx) = (w(&|s| s.schedule.name.clone(), 4), w(&|s| s.when.clone(), 4), w(&target, 6), w(&next, 4));
     println!("{:wn$}  {:ww$}  {:wt$}  {:wx$}  LAST", "NAME", "WHEN", "TARGET", "NEXT");
     for s in &list {
         println!("{:wn$}  {:ww$}  {:wt$}  {:wx$}  {}", s.schedule.name, s.when, target(s), next(s), s.last.unwrap_or("-"));
     }
     Ok(())
+}
+
+/// The next run in the zone and clock of Settings › Appearance. `None` while paused.
+fn next_text(s: &Summary) -> Option<String> {
+    if s.schedule.paused_at.is_some() {
+        return None;
+    }
+    s.schedule.next_at.as_deref().map(|n| clock().stamp_utc(n))
 }
 
 async fn show(socket: &Path, name: &str, json: bool) -> Result<()> {
@@ -382,7 +391,7 @@ async fn show(socket: &Path, name: &str, json: bool) -> Result<()> {
         Some(n) => println!("prompt   {} ({n} bytes)", f.display()),
         None => println!("prompt   {} (none)", f.display()),
     }
-    println!("next     {}", sum.next.as_deref().unwrap_or("paused"));
+    println!("next     {}", next_text(&sum).as_deref().unwrap_or("paused"));
     if s.skipped > 0 {
         println!("skipped  {} (a run was open)", s.skipped);
     }
@@ -392,7 +401,7 @@ async fn show(socket: &Path, name: &str, json: bool) -> Result<()> {
     }
     println!("RUNS");
     for r in &sum.runs {
-        println!("{}  {:9}  {:10}  {}", r.at, r.status, r.row.reference.as_deref().unwrap_or(""), r.row.uid);
+        println!("{}  {:9}  {:10}  {}", clock().stamp_utc(&r.row.sent_at), r.status, r.row.reference.as_deref().unwrap_or(""), r.row.uid);
         for k in &r.kids {
             println!("  └ {} {}  {}  {}", super::write::kind_word(&k.kind), k.uid, k.shown_state(), k.title.as_deref().unwrap_or(""));
         }
