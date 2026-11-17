@@ -27,6 +27,12 @@ body.header-bar #topbar .search { display: none; }
 #topbar .nx-waiting svg { color: var(--state-waiting); }
 #topbar .nx-waiting .num { color: var(--state-waiting-text); }
 #topbar .nx-unread svg, #topbar .nx-unread .num { color: var(--diff-add); }
+/* The usage cell (#276): only near or at a limit. The ring and the % take the level's color. */
+#topbar .nx-usage .ring { display: flex; }
+#topbar .nx-usage .num.near { color: var(--state-waiting-text); }
+#topbar .nx-usage .num.limit { color: var(--error-text); }
+#topbar .nx-usage .more { font: calc(12px * var(--zoom, 1)) var(--mono); color: var(--text-3); }
+#topbar .nx-usage .more:empty { display: none; }
 /* A narrow window: the wordmark and the Host's name give way first, then the counts drop their words. The gear always shows. */
 #topbar { min-width: 0; overflow: hidden; }
 #topbar .wordmark { min-width: min-content; }

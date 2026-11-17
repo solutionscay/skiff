@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     FolderListing, FolderPlaces, Group, Hello, HostAgent, HostBranches, HostCacheImage, HostCacheUse, HostChange, HostDiff, HostFile, HostFolder, HostImage, HostLedgerRow, HostListing, HostSchedule, HostCronPreview, HostProject, HostSkipper, HostSkipperFile,
-    HostWorktree, InventorySession, SkipperFolderDone, SkipperFolderPreview, SkipperOpened, TakenSkipper,
+    HostWorktree, InventorySession, AgentUsage, SkipperFolderDone, SkipperFolderPreview, SkipperOpened, TakenSkipper,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -47,6 +47,8 @@ pub enum Response {
     Folders { listing: FolderListing },
     /// The names of the programs in a Host folder.
     Programs { names: Vec<String> },
+    /// Each agent with a usage reader on the Host, in Settings › Agents order.
+    Usage { agents: Vec<AgentUsage> },
     Places { places: FolderPlaces },
     Ledger { rows: Vec<HostLedgerRow> },
     LedgerStamp { stamp: String },

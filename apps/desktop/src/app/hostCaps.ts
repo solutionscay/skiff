@@ -36,7 +36,8 @@ type HostCap =
   | "skipper_fleets"
   | "skipper_watch_log"
   | "agent_config"
-  | "agent_programs";
+  | "agent_programs"
+  | "agent_usage";
 
 /** The major of each capability that this page speaks. */
 const MAJOR: Record<HostCap, number> = {
@@ -70,6 +71,7 @@ const MAJOR: Record<HostCap, number> = {
   skipper_watch_log: 1,
   agent_config: 1,
   agent_programs: 1,
+  agent_usage: 1,
 };
 
 /** A capability the page names apart from its wire name: fleet Skippers are `skipper_run@2`. */
@@ -107,6 +109,7 @@ const OFFERS: Record<HostCap, MessageKey> = {
   skipper_watch_log: "hostCaps.skipper_watch_log",
   agent_config: "hostCaps.agent_config",
   agent_programs: "hostCaps.agent_programs",
+  agent_usage: "hostCaps.agent_usage",
 };
 
 /** `name@major` of the selected Host. `null` until the first answer. */

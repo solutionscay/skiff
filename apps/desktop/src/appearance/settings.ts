@@ -33,6 +33,8 @@ import { agentsPage } from "./settingsAgents";
 import { languageRow, type MenuLayout, menuLayout } from "./settingsLanguage";
 import { loadSchedulesPage, schedulesPage, schedulesState } from "./schedulesPage";
 import { schedules, type Schedule } from "../workspace/scheduleStore";
+import { usageCount, usageSection } from "./usagePage";
+import { onUsage, usagePage } from "../app/usage";
 
 /**
  * Settings over the sidebar and terminal. Two groups. The shown Host's pages:
@@ -58,13 +60,13 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   document.getElementById("body")!.appendChild(root);
 
   let agents: AgentInfo[] = [];
-  const HOST_TABS = ["agents", "skippers", "task-types", "schedules", "activity", "disk", "images"] as const;
+  const HOST_TABS = ["agents", "usage", "skippers", "task-types", "schedules", "activity", "disk", "images"] as const;
   const APP_TABS = ["appearance", "open", "hosts"] as const;
   const TABS = [...HOST_TABS, ...APP_TABS] as const;
   type Tab = (typeof TABS)[number];
   let tab: Tab = "agents";
   const TAB_NAMES: Record<Tab, MessageKey> = {
-    agents: "settings.tab.agents", skippers: "settings.tab.skippers", "task-types": "settings.tab.taskTypes", schedules: "settings.tab.schedules", images: "settings.tab.images",
+    agents: "settings.tab.agents", usage: "settings.tab.usage", skippers: "settings.tab.skippers", "task-types": "settings.tab.taskTypes", schedules: "settings.tab.schedules", images: "settings.tab.images",
     disk: "settings.tab.disk", activity: "settings.tab.activity", appearance: "settings.tab.appearance", open: "settings.tab.open", hosts: "settings.tab.hosts",
   };
   /** The sections that moved: each old id opens the page that holds it now. */
@@ -72,6 +74,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   /** A count on a page's row, when Skiff knows it without a read. */
   const tabCount = (id: Tab): string => {
     if (id === "agents") return agents.length ? t("settings.ofCount", { on: agents.filter((a) => a.enabled).length, all: agents.length }) : "";
+    if (id === "usage") return usageCount(agents);
     if (id === "skippers") return fs.files.length ? String(fs.files.length) : "";
     if (id === "task-types") return agentSet ? String((agentSet.tasks ?? []).length) : "";
     if (id === "schedules") return hostCan("schedules") ? String(schedules.length) : "";
@@ -226,6 +229,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       b.type = "button";
       b.addEventListener("click", () => {
         if (tab === "activity") stopActivity(activity);
+        if (tab === "usage" && id !== "usage") usagePage(false);
         tab = id;
         draw();
         if (tab === "skippers") void loadFiles();
@@ -233,6 +237,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         if (tab === "schedules") void loadSchedulesPage(schedCtx);
         if (tab === "disk") void countDisk(disk, render);
         if (tab === "activity") startActivity(activity, render);
+        if (tab === "usage") usagePage(true);
         if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
       });
       return b;
@@ -275,6 +280,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       };
       main.append(...diskUseSection(disk, render, (days) => void setCacheDays(days), opener, agentSet && !(isRemote() && !hostCan("skipper_config")) ? folderRows(agentSet, changeFolder) : []));
       root.replaceChildren(nav, pinClose(main));
+      return;
+    }
+    if (tab === "usage") {
+      root.replaceChildren(nav, pinClose(usageSection(agents)));
       return;
     }
     if (tab === "activity") {
@@ -495,6 +504,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     if (document.activeElement instanceof HTMLTextAreaElement) document.activeElement.blur();
     root.hidden = true;
     stopActivity(activity);
+    usagePage(false);
     gallery.keys = null;
     onClose();
     onShowChange();
@@ -504,8 +514,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   function stepTab(dir: 1 | -1) {
     // Leaving a field saves it, as a click on a tab does.
     (document.activeElement as HTMLElement | null)?.blur();
+    if (tab === "usage") usagePage(false);
     tab = TABS[(TABS.indexOf(tab) + dir + TABS.length) % TABS.length];
     if (tab !== "activity") stopActivity(activity);
+    if (tab === "usage") usagePage(true);
     draw();
     if (tab === "skippers") void loadFiles();
     if (tab === "task-types") void loadTypes();
@@ -543,6 +555,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     if (f) void editField(f, a as "copy" | "paste");
     else if (a === "session-next" || a === "session-prev") stepTab(a === "session-next" ? 1 : -1);
     else if (a === "list-project" || a === "list-back") enterSection(a === "list-back");
+    // The Usage key on the open Usage page closes Settings; on another page it shows Usage (decision 9).
+    else if (a === "usage") {
+      if (tab === "usage") close();
+      else void settings.open("usage");
+    }
     else return false;
     return true;
   }
@@ -565,6 +582,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     e.preventDefault();
     close();
   }, true);
+
+  // A new answer from the Host redraws the page, and its count.
+  onUsage(() => {
+    if (!root.hidden && tab === "usage") render();
+  });
 
   // An external app saved a file: its status shows when the window has the keys again.
   window.addEventListener("focus", () => {
@@ -596,6 +618,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         render();
         void countDisk(disk, render);
       }
+      // Usage shows the last values at once and reads the stale agents.
+      if (tab === "usage") {
+        render();
+        usagePage(true);
+      }
       await look.load();
       openSet = await invoke<OpenSettings>("open_settings").catch(() => null);
       openFound = await invoke<OpenChoices>("open_choices").catch(() => ({}));
@@ -622,6 +649,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     runKey: (a: Action) => !root.hidden && runKey(a),
     get isOpen() {
       return !root.hidden;
+    },
+    /** The page Settings shows. */
+    get tab(): Tab {
+      return tab;
     },
   };
   return settings;

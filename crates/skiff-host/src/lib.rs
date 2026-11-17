@@ -2,7 +2,8 @@
 //! envelope on its own socket beside skiffd's and answers projects, Git
 //! status, diff text, worktree files (M5), project backgrounds, and
 //! Skipper's ledger, results and settings (M6) from the Host's own config,
-//! disk and git, the account's folders for the picker (`folders@1`), and is
+//! disk and git, the account's folders for the picker (`folders@1`), each
+//! agent's plan usage from its own usage command (`agent_usage@1`), and is
 //! the writer of the Host's `[[project]]` tables, `[agents]`, `[skiff_agent]`
 //! and project worktrees, the starter of Skipper's session there and the
 //! keeper of its watcher ([`skipper`]), through
@@ -19,6 +20,7 @@ mod ledger;
 mod schedules;
 pub mod skipper;
 mod transport;
+mod usage;
 
 use std::{
     collections::BTreeMap,
@@ -60,6 +62,7 @@ pub fn capabilities() -> Vec<Capability> {
         Capability::skipper_watch_log(),
         Capability::agent_config(),
         Capability::agent_programs(),
+        Capability::agent_usage(),
         Capability::drops(),
         Capability::image_cache(),
     ]
@@ -115,6 +118,9 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         Request::LedgerRows | Request::ScheduleList => live_sessions().await.ok(),
         _ => None,
     };
+    if let Request::UsageRead { refresh } = request {
+        return Ok(Response::Usage { agents: usage::answer(refresh).await });
+    }
     if matches!(request, Request::FolderPlaces) {
         note_in_use().await;
     }

@@ -17,7 +17,7 @@ use tokio::{
     task::JoinSet,
 };
 
-use super::{answer, events::DataEvents, skipper};
+use super::{answer, events::DataEvents, skipper, usage};
 
 /// The largest frame either side sends, newline included.
 pub const MAX_FRAME: usize = 8 * 1024 * 1024;
@@ -98,6 +98,8 @@ pub async fn serve(listener: UnixListener, hello: Arc<Hello>) -> std::io::Result
     let mut connections = tokio::task::JoinSet::new();
     // Skipper's watcher is this service's to keep, as long as it runs.
     connections.spawn(skipper::supervise());
+    // The usage reads follow skiffd's turn ends and running panes.
+    usage::watch();
     loop {
         tokio::select! {
             accepted = listener.accept() => {

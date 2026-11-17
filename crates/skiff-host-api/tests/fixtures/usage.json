@@ -1,0 +1,37 @@
+{
+  "capability": { "name": "agent_usage", "version": 1 },
+  "requests": [
+    { "cmd": "usage_read", "refresh": "none" },
+    { "cmd": "usage_read", "refresh": "stale" },
+    { "cmd": "usage_read", "refresh": "all" }
+  ],
+  "reply": {
+    "kind": "usage",
+    "agents": [
+      {
+        "agent": "claude",
+        "read_at": 1795000000000,
+        "windows": [
+          { "minutes": 10080, "used": 5, "resets_at": 1795417140000, "threshold": 80 },
+          { "group": "Fable", "minutes": 10080, "used": 0, "resets_at": 1795417140000, "threshold": 80 }
+        ],
+        "error": { "at": 1795000900000, "message": "claude -p /usage output has no usage line." },
+        "reading": false
+      },
+      {
+        "agent": "codex",
+        "plan": "Pro Lite",
+        "read_at": 1795000000000,
+        "windows": [ { "minutes": 10080, "used": 2, "resets_at": 1795016698000, "threshold": 80 } ],
+        "credits": { "balance": 75000.0 },
+        "reading": true
+      },
+      {
+        "agent": "grok",
+        "plan": "SuperGrok",
+        "windows": [ { "minutes": 10080, "credits": true, "used": 21, "threshold": 80 } ],
+        "reading": false
+      }
+    ]
+  }
+}

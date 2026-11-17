@@ -44,6 +44,7 @@ impl Request {
             }
             Self::AgentConfig | Self::AgentEdit { .. } => Some(Capability::agent_config()),
             Self::ProgramList { .. } => Some(Capability::agent_programs()),
+            Self::UsageRead { .. } => Some(Capability::agent_usage()),
             Self::ProjectInspect { .. }
             | Self::ProjectInit { .. }
             | Self::ProjectAdd { .. }
@@ -95,6 +96,7 @@ impl Request {
                 | (Self::FolderHome | Self::FolderCreate { .. } | Self::DropPut { .. }, Response::Path { .. })
                 | (Self::FolderList { .. }, Response::Folders { .. })
                 | (Self::ProgramList { .. }, Response::Programs { .. })
+                | (Self::UsageRead { .. }, Response::Usage { .. })
                 | (Self::FolderPlaces, Response::Places { .. })
                 | (Self::LedgerRows, Response::Ledger { .. })
                 | (Self::LedgerStamp, Response::LedgerStamp { .. })
@@ -143,6 +145,7 @@ impl Request {
                 | Self::FolderHome
                 | Self::FolderList { .. }
                 | Self::ProgramList { .. }
+                | Self::UsageRead { .. }
                 | Self::FolderPlaces
                 | Self::FolderCreate { .. }
                 | Self::DropPut { .. }

@@ -35,7 +35,7 @@ pub use requests::{
     image_thumb, image_delete, image_pin, cache_use, ledger_rows, ledger_stamp,
     schedule_list, cron_preview, schedule_call, projects_stamp, ledger_result, skipper_settings,
     skipper_watch_log, skipper_file_read, skipper_file_write, skipper_file_reset, skipper_folder_preview, agent_config,
-    project_inspect, project_init, folder_home, folder_list, program_list, folder_places,
+    project_inspect, project_init, folder_home, folder_list, program_list, usage_read, folder_places,
     folder_create, project_add, project_edit, project_arrange, project_remove, worktree_add,
     branch_list, worktree_remove, skipper_edit, skipper_folder_change, skipper_open, skipper_watch,
     skipper_project, skipper_fleet, fleet_takeover_preview, fleet_takeover, fleet_rename, agent_edit,

@@ -262,6 +262,11 @@ export function attachPointer(missionState: BoardState, canvas: HTMLElement, roo
         closeMission();
         void settings.open();
         break;
+      // Settings › Usage, as the top bar cell opens it.
+      case "usage":
+        closeMission();
+        void settings.open("usage");
+        break;
       case "skipper": {
         const s = skiffAgentSession();
         if (s) goToSession(s.id);

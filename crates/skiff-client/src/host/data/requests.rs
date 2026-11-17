@@ -4,7 +4,7 @@ use skiff_host_api::{
     HostImage, HostLedgerRow, HostFileScope, HostListing, HostProject, HostCronPreview,
     HostSchedule, HostSkipper, HostSkipperFile, HostWorktree, ProjectEdit, ProjectFleet,
     ReadPurpose, Request, Response, SkipperEdit, SkipperFolderDone, SkipperFolderMode,
-    SkipperFolderPreview, SkipperOpened, InventorySession, TakenSkipper,
+    SkipperFolderPreview, SkipperOpened, InventorySession, TakenSkipper, AgentUsage, UsageRefresh,
 };
 
 use crate::host::HostConnection;
@@ -290,6 +290,15 @@ pub async fn folder_list(c: &HostConnection, path: &str, hidden: bool, filter: O
 pub async fn program_list(c: &HostConnection, path: &str) -> Result<Vec<String>, Error> {
     match c.request(Request::ProgramList { path: path.into() }).await? {
         Response::Programs { names } => Ok(names),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
+/// Each agent's last plan usage on the Host, after starting the reads
+/// `refresh` asks for (`agent_usage@1`). It never waits for a read.
+pub async fn usage_read(c: &HostConnection, refresh: UsageRefresh) -> Result<Vec<AgentUsage>, Error> {
+    match c.request(Request::UsageRead { refresh }).await? {
+        Response::Usage { agents } => Ok(agents),
         _ => unreachable!("checked by Request::accepts"),
     }
 }

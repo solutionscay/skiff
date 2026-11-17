@@ -59,6 +59,17 @@ function openNewSession() {
   launchMenu.open(plus ?? $("sidebar-scroll"), at.p, at.w);
 }
 
+/**
+ * Settings › Usage, from the top bar cell and the Usage key: one code for
+ * both. On the open Usage page it closes Settings (decision 9). It closes
+ * mission control first, as Settings does.
+ */
+export function toggleUsage() {
+  if (missionOpen()) closeMission();
+  if (settings.isOpen && settings.tab === "usage") settings.close();
+  else void settings.open("usage");
+}
+
 export function runAction(a: Action) {
   // A tool over Settings takes Close pane. Quit still runs; every other key waits, Settings' own too.
   if (peekOverSettingsShown() && a !== "quit") return a === "close-pane" ? closePreview() : undefined;
@@ -74,7 +85,7 @@ export function runAction(a: Action) {
   if (missionKey(a)) return;
   // The top bar shows over the board, so its actions work there: Next waiting leaves the board on that session; Settings closes the board.
   // The Skiff agent's key leaves the board on its pane, or closes the board and starts it.
-  if (missionOpen() && (a === "settings" || (a === "skiff-agent" && !skiffAgentSession()))) closeMission();
+  if (missionOpen() && (a === "settings" || a === "usage" || (a === "skiff-agent" && !skiffAgentSession()))) closeMission();
   else if (missionOpen() && a !== "mission-control" && a !== "quit" && a !== "next-waiting" && a !== "skiff-agent") return;
   // The Ledger takes the list keys while it has the keys, and Ctrl+Shift+Right into it. Focus mode keeps it.
   if (ledgerKey(a)) return;
@@ -165,6 +176,7 @@ export function runAction(a: Action) {
     case "app-font-smaller": return setFontSize(S.fontSize - 1);
     case "app-font-reset": return setFontSize(FONT_DEFAULT);
     case "settings": return void settings.open();
+    case "usage": return toggleUsage();
     case "quit": return quitApp();
     case "focus-left": return moveFocus("left");
     case "focus-right": return moveFocus("right");

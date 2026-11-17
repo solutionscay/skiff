@@ -1,0 +1,24 @@
+{
+ "initialize_first_300_chars": "{\"jsonrpc\": \"2.0\", \"id\": 1, \"result\": {\"protocolVersion\": 1, \"agentCapabilities\": {\"loadSession\": true, \"promptCapabilities\": {\"image\": true, \"audio\": false, \"embeddedContext\": true}, \"mcpCapabilities\": {\"http\": true, \"sse\": true}, \"sessionCapabilities\": {\"list\": {}, \"resume\": {}, \"close\": {}}, \"aut",
+ "billing": {
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+   "config": {
+    "creditUsagePercent": 21.0,
+    "currentPeriod": {
+     "type": "USAGE_PERIOD_TYPE_WEEKLY",
+     "start": "2026-11-11T08:31:28.960+00:00",
+     "end": "2026-11-18T08:31:28.960+00:00"
+    },
+    "prepaidBalance": {
+     "val": 0
+    },
+    "isUnifiedBillingUser": true,
+    "billingPeriodStart": "2026-11-11T08:31:28.960+00:00",
+    "billingPeriodEnd": "2026-11-18T08:31:28.960+00:00"
+   },
+   "subscription_tier": "SuperGrok"
+  }
+ }
+}

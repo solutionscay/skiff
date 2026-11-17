@@ -25,6 +25,7 @@ pub const SKIPPER_RUN: &str = "skipper_run";
 pub const SKIPPER_WATCH_LOG: &str = "skipper_watch_log";
 pub const AGENT_CONFIG: &str = "agent_config";
 pub const AGENT_PROGRAMS: &str = "agent_programs";
+pub const AGENT_USAGE: &str = "agent_usage";
 pub const DROPS: &str = "drops";
 pub const IMAGE_CACHE: &str = "image_cache";
 pub const PROGRAM_STATUS: &str = "program_status";
@@ -188,6 +189,13 @@ impl Capability {
     /// no change and no run.
     pub fn agent_programs() -> Self {
         Self::new(AGENT_PROGRAMS, 1)
+    }
+    /// Each agent's plan usage, as the agent's own usage command reports it
+    /// on the Host, and a read of it now. Read-only: the Host runs only the
+    /// agents' own commands, opens no credential file and calls no vendor
+    /// endpoint itself. Grants no session and no setting.
+    pub fn agent_usage() -> Self {
+        Self::new(AGENT_USAGE, 1)
     }
     /// Put a file dropped or pasted on a pane into the Host's image cache, so
     /// the pane can type its Host path. Data plane; grants no read, no other

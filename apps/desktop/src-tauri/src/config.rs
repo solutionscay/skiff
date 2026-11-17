@@ -173,6 +173,14 @@ pub(crate) async fn program_list(app: State<'_, App>, path: String) -> Result<Ve
     folder_call(&app, |c| async move { data::program_list(&c, &path).await }).await
 }
 
+/// Each agent's plan usage on the shown Host, for Settings › Usage and the
+/// top bar cell. `refresh`: "none", "stale" (the page opened) or "all"
+/// (Read now). The Host runs the reads; this Mac runs none.
+#[tauri::command]
+pub(crate) async fn usage_read(app: State<'_, App>, refresh: skiff_host_api::UsageRefresh) -> Result<Vec<skiff_host_api::AgentUsage>, skiff_host_api::Error> {
+    folder_call(&app, |c| async move { data::usage_read(&c, refresh).await }).await
+}
+
 /// The picker's Recent and Git repos, from the Host.
 #[tauri::command]
 pub(crate) async fn folder_places(app: State<'_, App>) -> Result<skiff_host_api::FolderPlaces, skiff_host_api::Error> {

@@ -355,3 +355,27 @@ body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset:
 .nexts { display: flex; align-items: center; gap: calc(16 * var(--u)); font: calc(12px * var(--zoom, 1)) var(--mono); color: var(--text-3); white-space: nowrap; overflow: hidden; }
 .nexts b { font-family: var(--font); font-weight: 400; color: var(--text-dim); }
 .c-err { color: var(--error-text); font-family: var(--font); }
+/* Settings › Usage (#276): a band per agent, a row per window. Limit · Used · Resets. */
+.u-page .set-row { grid-template-columns: calc(280 * var(--u)) minmax(0, 1fr) calc(380 * var(--u)); }
+/* The error band keeps the 40px grid: its 1px rule is inside the row. */
+.u-page .set-error { height: var(--row); line-height: calc(var(--row) - 1px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.u-page .set-cols { position: sticky; top: var(--row); z-index: 1; background: var(--bg); }
+.u-band .set-band-title { display: flex; align-items: center; gap: calc(8 * var(--u)); min-width: 0; }
+.u-name { color: var(--text); font-size: calc(13px * var(--zoom, 1)); }
+.u-cmd { font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); }
+.u-page .set-row.note > :first-child { grid-column: 1 / -1; font-size: calc(12px * var(--zoom, 1)); color: var(--text-dim); }
+.u-win { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: calc(13px * var(--zoom, 1)); }
+.u-grp { color: var(--text-3); margin-right: calc(6 * var(--u)); }
+.u-meter { gap: calc(12 * var(--u)); }
+/* The fill is the share used; the 1px tick, the share of the window gone. */
+.u-bar { position: relative; flex-grow: 1; height: calc(6 * var(--u)); background: var(--bg-raised); box-shadow: inset 0 0 0 1px var(--rule); }
+.u-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--text-3); }
+.u-fill.near { background: var(--state-waiting); }
+.u-fill.limit { background: var(--error); }
+.u-tick { position: absolute; top: calc(-5 * var(--u)); bottom: calc(-5 * var(--u)); width: 1px; background: var(--text); }
+.u-pct { width: calc(44 * var(--u)); flex-shrink: 0; text-align: right; font: calc(12px * var(--zoom, 1)) var(--mono); font-variant-numeric: tabular-nums; color: var(--text-2); }
+.u-pct.near { color: var(--state-waiting-text); }
+.u-pct.limit { color: var(--error-text); font-weight: 700; }
+.u-reset { gap: calc(8 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); white-space: nowrap; }
+.u-in { color: var(--text-3); }
+.u-text { font: calc(12px * var(--zoom, 1)) var(--mono); color: var(--text-2); }
