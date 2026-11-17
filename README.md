@@ -112,6 +112,20 @@ metadata changes, raise `HANDOVER` in `crates/skiffd/src/session/reload.rs`. Set
 `SKIFF_SOCKET` to another path for a test daemon with its own state. See
 [skiffd › Development](https://github.com/solutionscay/skiff/wiki/skiffd#development).
 
+To try a Host feature from your build (Settings › Usage, for example), run the dev
+app on a private socket. `tauri dev` builds `skiffd`, `skiff` and `skiff-host` first,
+and the app starts those builds on that socket, with their own state. The installed
+`skiffd`, its `skiff-host` and your sessions keep running as they are:
+
+```
+cd apps/desktop && SKIFF_SOCKET=/tmp/skiff-dev/skiffd.sock pnpm tauri dev
+```
+
+Without `SKIFF_SOCKET`, the dev app connects to the running daemon and uses its
+`skiff-host`, which may not have the new feature. The dev server takes port 1421. A
+second dev app needs another port:
+`--config '{"build":{"devUrl":"http://127.0.0.1:1431","beforeDevCommand":"cargo build -p skiffd -p skiff-cli -p skiff-host && pnpm dev --port 1431"}}'`.
+
 A `v*` tag builds every package and the signed server bundles in CI. It attaches them to a draft release.
 
 ## License
