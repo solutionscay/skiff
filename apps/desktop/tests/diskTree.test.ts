@@ -74,6 +74,11 @@ test("rows sort by CAN FLUSH, then name; a closed folder hides its rows; the idl
   assert.equal(T.idleReason(T.find(t, "ledger.db"), NOW), "Nothing to flush");
 });
 
+/** Tauri's Channel: the test sends what the command would. */
+class Channel {
+  onmessage: (m: unknown) => void = () => {};
+}
+
 // A small DOM for the page.
 class El {
   tag: string;
@@ -112,6 +117,7 @@ test("the page draws the tree, and Flush asks with REMOVE and KEEP, then sends w
     "../src/appearance/diskUse.ts",
     {
       "@tauri-apps/api/core": {
+        Channel,
         invoke: async (cmd: string, args: any) => {
           calls.push([cmd, args]);
           return cmd === "flush_disk" ? { files: 401, bytes: 1000, kept: 0, rows: 1, errors: [] } : usage;
@@ -188,6 +194,7 @@ function page(answer: (cmd: string) => unknown, local = true) {
     "../src/appearance/diskUse.ts",
     {
       "@tauri-apps/api/core": {
+        Channel,
         invoke: async (cmd: string, args: any) => {
           calls.push([cmd, args]);
           const out = answer(cmd);
@@ -261,29 +268,48 @@ test("a folder row has Show in file manager, which sends the tree's path to disk
   assert.equal(remote.calls.length, 0);
 });
 
-test("the page says Calculating size… while it counts; a count again keeps the last numbers dim, with Flush off", async () => {
+test("while it counts, the page says what the count does with its running totals; a count again keeps the last numbers dim, with Flush off", async () => {
   let count = later<unknown>();
   const p = page((cmd) => (cmd === "disk_usage" ? count.p.then((v) => { if (v instanceof Error) throw v; return v; }) : null));
   const usage = p.s.usage;
   p.s.usage = null;
   const first = p.P.countDisk(p.s, () => {});
   assert.equal(p.P.countDisk(p.s, () => {}), first, "a second ask waits for the count that runs");
-  let v = view(p.parts());
-  assert.equal(v.head, "Disk use Calculating size…");
-  assert.match(v.table.text(), /Calculating size…/);
+  const parts = p.parts();
+  let v = view(parts);
+  assert.equal(v.head, "Disk use Counting…");
   assert.equal(v.table.attrs["aria-busy"], "true");
+  const auto = parts.find((e) => e.className.includes("set-disk-auto"))!;
+  assert.ok(!auto.all().some((e) => e.tag === "button"), "Auto flush has no switch until the count says its setting");
+
+  // The totals come: the drawn page changes in place, with no redraw.
+  const totals = p.calls.find(([c]) => c === "disk_usage")![1].onProgress;
+  totals.onmessage({ shown: "~/skiff-agent", files: 48210, bytes: 2100, repos: 3, checked: 1, walked: false });
+  v = view(parts);
+  assert.equal(v.head, "Disk use Counting ~/skiff-agent… 48,210 files · 2100 B");
+  assert.equal(v.table.text(), "Name Size Can flush State skiff-agent/ 2100 B Counting ~/skiff-agent…");
+  totals.onmessage({ shown: "~/skiff-agent", files: 120000, bytes: 7000, repos: 3, checked: 1, walked: true });
+  v = view(parts);
+  assert.equal(v.head, "Disk use Checking git worktrees: 1 of 3 · 120,000 files · 7000 B");
+  assert.match(v.table.text(), /7000 B Checking git worktrees: 1 of 3$/);
+
   count.settle(usage);
   await first;
   v = view(p.parts());
   assert.match(v.head, /can flush/);
   assert.equal(v.table.attrs["aria-busy"], "false");
   assert.ok(v.flush.length && v.flush.every((b) => !b.disabled));
+  totals.onmessage({ shown: "~/skiff-agent", files: 1, bytes: 1, repos: 0, checked: 0, walked: false });
+  assert.match(view(p.parts()).head, /can flush/, "totals after the answer change nothing");
 
   // Open again: the last tree shows dim, its Flush buttons wait.
   count = later<unknown>();
   const again = p.P.countDisk(p.s, () => {});
+  const parts2 = p.parts();
+  totals.onmessage({ shown: "~/skiff-agent", files: 9, bytes: 9, repos: 0, checked: 0, walked: false });
+  assert.equal(view(parts2).head, "Disk use Counting…", "the first count's late totals do not show in the second");
   v = view(p.parts());
-  assert.equal(v.head, "Disk use Calculating size…");
+  assert.equal(v.head, "Disk use Counting…");
   assert.ok(v.table.className.includes("busy"));
   assert.ok(v.flush.length && v.flush.every((b) => b.disabled));
   count.settle(new Error("Skiff cannot read the folder"));

@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { h } from "../ui/dom";
 import { smallButton, switchButton } from "../ui/controls";
 import { isRemote } from "../app/hosts";
@@ -22,6 +22,19 @@ interface DiskUsage {
   unreadable: number;
   /** Auto flush's age in days. 0: off. */
   cache_days: number;
+}
+
+/** `disk_usage`'s running totals, sent while it counts. */
+interface Counting {
+  /** The folder with `~` for home. */
+  shown: string;
+  files: number;
+  bytes: number;
+  /** Git checkouts found, and checked. */
+  repos: number;
+  checked: number;
+  /** The walk is done: only git checks remain. */
+  walked: boolean;
 }
 
 /** `flush_disk`'s answer. */
@@ -50,6 +63,10 @@ interface DiskOpen {
 interface DiskState {
   usage: DiskUsage | null;
   counting: boolean;
+  /** The running totals of the count that runs. `null` until the first comes. */
+  progress: Counting | null;
+  /** Writes new totals into the drawn page, without a redraw. */
+  paint: (() => void) | null;
   /** The count that runs: a second ask waits for it. */
   pending: Promise<void> | null;
   /** "Removing N files (X)…" while a flush runs. */
@@ -63,7 +80,7 @@ interface DiskState {
   cur: string;
 }
 
-export const diskState = (): DiskState => ({ usage: null, counting: false, pending: null, flushing: null, removed: null, error: null, open: null, cur: "" });
+export const diskState = (): DiskState => ({ usage: null, counting: false, progress: null, paint: null, pending: null, flushing: null, removed: null, error: null, open: null, cur: "" });
 
 /** A count or a flush runs: the page shows the last numbers, and Flush waits. */
 const busy = (s: DiskState) => s.counting || s.flushing !== null;
@@ -71,23 +88,51 @@ const busy = (s: DiskState) => s.counting || s.flushing !== null;
 /** A plural line with its count written as the locale writes numbers: "1,204 files". */
 const count = (key: PluralKey, n: number) => tn(key, n, { count: n.toLocaleString(locale()) });
 
+/** Only git checks remain. */
+const checking = (p: Counting | null) => !!p && p.walked && p.repos > p.checked;
+
+/** What the count does now: "Counting ~/skiff-agent…" or "Checking git worktrees: 12 of 36". */
+function phase(p: Counting | null): string {
+  if (!p) return t("disk.countingStart");
+  if (checking(p)) return t("disk.checking", { done: p.checked.toLocaleString(locale()), all: p.repos.toLocaleString(locale()) });
+  return t("disk.counting", { folder: p.shown });
+}
+
+/** The head while it counts: "Counting ~/skiff-agent… 48,210 files · 2.1 GB", "Checking git worktrees: 12 of 36 · 120,013 files · 7.3 GB". */
+function countingLine(p: Counting | null): string {
+  if (!p) return phase(p);
+  return `${phase(p)}${checking(p) ? " · " : " "}${count("disk.files", p.files)} · ${size(p.bytes)}`;
+}
+
 /**
- * Counts the folder. The page says "Calculating size…" until the answer
- * comes. A count that runs already is not started again. `keepError`: the
- * error line of the flush before it stays.
+ * Counts the folder. Until the answer comes, the page says what the count
+ * does and the files and bytes it has walked. A count that runs already is
+ * not started again. `keepError`: the error line of the flush before it stays.
  */
 export function countDisk(s: DiskState, redraw: () => void, keepError = false): Promise<void> {
   if (s.pending) return s.pending;
   s.counting = true;
+  s.progress = null;
   redraw();
+  // Totals from this count only: a late one after its answer changes nothing.
+  let runs = true;
+  const totals = new Channel<Counting>();
+  totals.onmessage = (p) => {
+    if (!runs) return;
+    // The drawn page takes the new totals in place.
+    s.progress = p;
+    s.paint?.();
+  };
   s.pending = (async () => {
     try {
-      s.usage = await invoke<DiskUsage>("disk_usage");
+      s.usage = await invoke<DiskUsage>("disk_usage", { onProgress: totals });
       if (!keepError) s.error = null;
     } catch (e) {
       s.error = String(e);
     } finally {
+      runs = false;
       s.counting = false;
+      s.progress = null;
       s.pending = null;
       redraw();
     }
@@ -212,7 +257,15 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
   const title = h("div", "set-h", t("settings.tab.disk"));
   title.id = "set-h-disk";
   head.append(title);
-  if (s.counting) head.append(h("span", "set-band-count", t("disk.counting")));
+  // While it counts, the head and the first row show the running totals.
+  const live: [HTMLElement, () => string][] = [];
+  const shows = (el: HTMLElement, text: () => string) => {
+    el.textContent = text();
+    live.push([el, text]);
+    return el;
+  };
+  s.paint = s.counting ? () => live.forEach(([el, text]) => (el.textContent = text())) : null;
+  if (s.counting) head.append(shows(h("span", "set-band-count"), () => countingLine(s.progress)));
   else if (u) head.append(h("span", "set-band-count", t("disk.total", { size: size(u.tree.bytes), flush: size(canFlush(u.tree)) })));
 
   const table = h("div", "set-disk" + (u && busy(s) ? " busy" : ""));
@@ -226,7 +279,13 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
 
   if (!u) {
     const r = h("div", "set-row set-agent set-disk-row");
-    r.append(h("span", "c-name dim", s.counting ? t("disk.counting") : ""), h("span", "c-num", s.counting ? "…" : ""), h("span", "c-num", s.counting ? "…" : ""), h("span"), h("span"));
+    r.setAttribute("role", "row");
+    const name = h("span", "c-name");
+    name.style.paddingLeft = `calc(12 * var(--u))`;
+    name.append(h("span", "disk-leaf"), shows(h("span", "disk-name mono dim"), () => (s.progress ? `${s.progress.shown.split("/").pop() || s.progress.shown}/` : "")));
+    const state = h("span", "c-state");
+    state.append(shows(h("span", "disk-state dim"), () => (s.counting ? phase(s.progress) : "")));
+    r.append(name, shows(h("span", "c-num dim"), () => (s.progress ? size(s.progress.bytes) : "")), h("span", "c-num"), state, h("span"));
     table.append(r);
   } else {
     const tree = { ...u.tree, name: `${u.shown.split("/").pop() || u.shown}/` };
@@ -351,10 +410,11 @@ export function diskUseSection(s: DiskState, redraw: () => void, setDays: (days:
   const days = u?.cache_days ?? 0;
   const on = days > 0;
   const auto = h("div", "set-row set-open set-agent set-disk-auto" + (on ? " on" : ""));
+  // The setting comes with the count: until then the row has no switch.
   auto.append(
     h("span", "c-name", t("disk.auto")),
     h("span", "c-cmd", on ? count("disk.days", days) : ""),
-    switchButton({ label: t(on ? "disk.autoOn" : "disk.autoOff"), on, disabled: !u, toggle: () => setDays(on ? 0 : 30) }),
+    u ? switchButton({ label: t(on ? "disk.autoOn" : "disk.autoOff"), on, toggle: () => setDays(on ? 0 : 30) }) : h("span"),
   );
 
   // The status and the errors stay at the bottom as the tree scrolls.
