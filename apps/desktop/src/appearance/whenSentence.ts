@@ -127,13 +127,6 @@ export function parseTime(text: string): At | null {
   return h <= 23 && min <= 59 ? [h, min] : null;
 }
 
-/** `Mon–Fri`, `Mon, Thu`, `Mon–Sun`. */
-export function daysWords(days: number): string {
-  if (days === ALL_DAYS) return "Mon–Sun";
-  if (days === MON_FRI) return "Mon–Fri";
-  return WEEK.filter(([n]) => days & (1 << n)).map(([, s]) => s).join(", ");
-}
-
 /** The first picker's value: `day`, `weekday`, `week`, `month`, `30m`, `2h` or `custom`. */
 export function every(w: When): string {
   if (w.kind === "interval") return w.minutes < 60 ? `${w.minutes}m` : `${w.minutes / 60}h`;

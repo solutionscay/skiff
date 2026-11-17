@@ -802,7 +802,6 @@ export const es = {
   "resume.sessions#other": "Reanudar {count} sesiones",
   "search.find": "Buscar",
   "font.app": "App {percent}",
-  "drop.insert": "Insertar la ruta",
   "drop.type#one": "Escribir la ruta",
   "drop.type#other": "Escribir {count} rutas",
   "upload.sending#one": "Subiendo 1 archivo ({sent} de {size})…",

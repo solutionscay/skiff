@@ -4,7 +4,8 @@
 use anyhow::{Result, bail};
 use skiff_core::config::{self, OPEN_KEYS};
 
-use crate::{OpenWithCmd, print};
+use crate::args::OpenWithCmd;
+use crate::print;
 
 #[derive(serde::Serialize)]
 struct Row {

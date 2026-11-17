@@ -284,6 +284,15 @@ pub(super) fn write_doc(file: &Path, doc: &mut toml_edit::DocumentMut) -> Result
     write_atomic(file, &doc.to_string())
 }
 
+pub(super) fn read_doc(file: &Path) -> Result<toml_edit::DocumentMut> {
+    let text = std::fs::read_to_string(file).with_context(|| format!("read {}", file.display()))?;
+    text.parse().with_context(|| format!("parse {}", file.display()))
+}
+
+pub(super) fn read_doc_or_default(file: &Path) -> Result<toml_edit::DocumentMut> {
+    if file.exists() { read_doc(file) } else { Ok(toml_edit::DocumentMut::default()) }
+}
+
 /// Opens a top-level table in the config file, creating it above the projects.
 pub(super) fn edit_table(name: &str, f: impl FnOnce(&mut toml_edit::Table) -> Result<()>) -> Result<()> {
     edit_table_in(&config_path(), name, f)
@@ -293,14 +302,7 @@ pub(super) fn edit_table(name: &str, f: impl FnOnce(&mut toml_edit::Table) -> Re
 pub(super) fn edit_table_in(file: &Path, name: &str, f: impl FnOnce(&mut toml_edit::Table) -> Result<()>) -> Result<()> {
     let _edit = edit_lock_for(file)?;
     let file = file.to_path_buf();
-    let text = if file.exists() {
-        std::fs::read_to_string(&file).with_context(|| format!("read {}", file.display()))?
-    } else {
-        String::new()
-    };
-    let mut doc: toml_edit::DocumentMut = text
-        .parse()
-        .with_context(|| format!("parse {}", file.display()))?;
+    let mut doc = read_doc_or_default(&file)?;
     let created = !doc.contains_key(name);
     let item = doc
         .entry(name)
