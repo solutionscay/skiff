@@ -502,20 +502,7 @@ pub async fn open_project(c: &Client, project_name: &str) -> Result<ProjectSkipp
 /// one the same way. Returns the session id. It waits for a new agent's
 /// input box, so it can take a while.
 pub fn start_project(socket: &Path, cli: &Path, project: &str) -> Result<String> {
-    let out = std::process::Command::new(cli)
-        .arg("--socket")
-        .arg(socket)
-        .args(["skipper", "--project", project, "--no-attach"])
-        // The caller is the person, not a pane.
-        .env_remove("SKIFF_SESSION")
-        .stdin(std::process::Stdio::null())
-        .output()
-        .with_context(|| format!("run {}", cli.display()))?;
-    if !out.status.success() {
-        let msg = String::from_utf8_lossy(&out.stderr);
-        bail!("{}", msg.trim().trim_start_matches("skiff: ").trim_start_matches("Error: "));
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).lines().last().unwrap_or_default().trim().to_string())
+    start_cli(socket, cli, &["skipper", "--project", project, "--no-attach"])
 }
 
 /// Runs `skiff skipper --fleet F --no-attach --yes` with `cli` on `socket`:
@@ -524,10 +511,14 @@ pub fn start_project(socket: &Path, cli: &Path, project: &str) -> Result<String>
 /// and starts the watcher. The app and `skiff-host` share it. Returns the
 /// session id.
 pub fn start_fleet(socket: &Path, cli: &Path, fleet: &str) -> Result<String> {
+    start_cli(socket, cli, &["skipper", "--fleet", fleet, "--no-attach", "--yes"])
+}
+
+fn start_cli(socket: &Path, cli: &Path, args: &[&str]) -> Result<String> {
     let out = std::process::Command::new(cli)
         .arg("--socket")
         .arg(socket)
-        .args(["skipper", "--fleet", fleet, "--no-attach", "--yes"])
+        .args(args)
         // The caller is the person, not a pane.
         .env_remove("SKIFF_SESSION")
         .stdin(std::process::Stdio::null())
