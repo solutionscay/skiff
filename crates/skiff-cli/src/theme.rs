@@ -3,7 +3,8 @@
 use anyhow::{Result, bail};
 use skiff_client::Client;
 
-use crate::{AppThemeCmd, ProjectThemeCmd, SessionThemeCmd, print, resolve};
+use crate::args::{AppThemeCmd, ProjectThemeCmd, SessionThemeCmd};
+use crate::{print, resolve};
 
 /// Lists the theme catalogue available from this configuration folder.
 pub fn ls(json: bool) -> Result<()> {
