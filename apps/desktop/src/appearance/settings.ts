@@ -645,6 +645,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     get isOpen() {
       return !root.hidden;
     },
+    /** The page Settings shows. */
+    get tab(): Tab {
+      return tab;
+    },
   };
   return settings;
 }

@@ -59,6 +59,17 @@ function openNewSession() {
   launchMenu.open(plus ?? $("sidebar-scroll"), at.p, at.w);
 }
 
+/**
+ * Settings › Usage, from the top bar cell and the Usage key: one code for
+ * both. On the open Usage page it closes Settings (decision 9). It closes
+ * mission control first, as Settings does.
+ */
+export function toggleUsage() {
+  if (missionOpen()) closeMission();
+  if (settings.isOpen && settings.tab === "usage") settings.close();
+  else void settings.open("usage");
+}
+
 export function runAction(a: Action) {
   // A tool over Settings takes Close pane. Quit still runs; every other key waits, Settings' own too.
   if (peekOverSettingsShown() && a !== "quit") return a === "close-pane" ? closePreview() : undefined;

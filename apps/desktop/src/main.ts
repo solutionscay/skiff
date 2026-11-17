@@ -2,7 +2,7 @@ import { configureRender } from "./app/renderRequest";
 import { configurePaneActions } from "./terminal/paneActions";
 import { configureActionDispatch } from "./app/actionDispatch";
 import { configureCommandUi } from "./app/commandUi";
-import { runAction } from "./app/actions";
+import { runAction, toggleUsage } from "./app/actions";
 import { focusPane, closePane, dragSessions } from "./workspace/view";
 import "@xterm/xterm/css/xterm.css";
 import "./styles/fonts.css";
@@ -19,6 +19,7 @@ import { connectAttempt, connectDone, connectFailed } from "./app/connectPanel";
 import { isRemote, loadHosts, onHostsChanged, onManageHosts, setHostConnected, watchHostLink, watchHosts } from "./app/hosts";
 import { muteInput, openPane, panesDrawn, warmPanes } from "./terminal/terminalRuntime";
 import { loadHostCaps } from "./app/hostCaps";
+import { onUsage, startUsage, usage } from "./app/usage";
 import { $ } from "./ui/dom";
 import { showError } from "./ui/alerts";
 import { loadGroups } from "./app/groups";
@@ -33,7 +34,7 @@ import { setFontSize } from "./terminal/terminalFont";
 import { loadThemes } from "./appearance/themes";
 import { loadPlace, trackPlace } from "./app/stored";
 import { startMemory } from "./diagnostics/memory";
-import { watchStatusbar } from "./workspace/status";
+import { renderUsage, watchStatusbar } from "./workspace/status";
 import { toggleFocusMode, toggleMaximize } from "./app/modes";
 import { nextUnread, nextWaiting, selectProject, showGroup, showSingle } from "./workspace/view";
 import { closeMission, goToSession } from "./workspace/missionMotion";
@@ -144,6 +145,9 @@ async function boot() {
 
   // What the selected Host offers decides which session surfaces it gets.
   await loadHostCaps().catch(console.error);
+  // Agent usage on the shown Host: the top bar cell near a limit (#276).
+  onUsage(() => renderUsage(usage, toggleUsage));
+  startUsage();
   // The selected Host's ledger (M6), This Mac's or a remote one's.
   startLedger();
   watchNotificationClicks();
