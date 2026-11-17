@@ -26,6 +26,8 @@ mod native_menu;
 mod open_apps;
 #[cfg(target_os = "linux")]
 mod header_bar;
+#[cfg(target_os = "linux")]
+mod ime_keys;
 
 use connection::App;
 use tauri::{Emitter, Manager};
@@ -121,6 +123,8 @@ pub fn run() {
             if header_bar::wanted() {
                 header_bar::install(app.handle(), &window)?;
             }
+            #[cfg(target_os = "linux")]
+            ime_keys::install(app.handle(), &window)?;
             window.show()?;
             Ok(())
         })

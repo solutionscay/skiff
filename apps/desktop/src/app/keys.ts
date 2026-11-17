@@ -81,6 +81,7 @@ export const DEFAULTS: Record<Action, string> = {
   // No default key: the palette and the menu bar have it. `[keys]` can set one.
   "images-gallery": "",
   // Settings › Usage (#276). Ctrl+Shift+U is the input method's Unicode key on Linux, so Linux takes the Alt tier.
+  // The input method ignores Alt there too: the window catches this key first (ime_keys.rs).
   usage: isMac ? "ctrl+shift+u" : "ctrl+shift+alt+u",
 };
 
