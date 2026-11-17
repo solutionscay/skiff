@@ -1,7 +1,7 @@
 use std::path::Path;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use super::types::{FolderInfo, ProjectConfig, short_name};
-use super::persistence::{load, config_path, edit_lock, expand_home, write_doc, check_label, Refused};
+use super::persistence::{load, config_path, edit_lock, expand_home, write_doc, read_doc, read_doc_or_default, check_label, Refused};
 
 /// Accent colors for new projects. Kept clear of the state colors.
 const PALETTE: [&str; 8] = [
@@ -136,14 +136,7 @@ pub fn add_project(
     });
 
     let file = config_path();
-    let text = if file.exists() {
-        std::fs::read_to_string(&file).with_context(|| format!("read {}", file.display()))?
-    } else {
-        String::new()
-    };
-    let mut doc: toml_edit::DocumentMut = text
-        .parse()
-        .with_context(|| format!("parse {}", file.display()))?;
+    let mut doc = read_doc_or_default(&file)?;
     let mut table = toml_edit::Table::new();
     table["name"] = toml_edit::value(name.as_str());
     if let Some(short) = &short {
@@ -271,10 +264,7 @@ pub fn set_project_closed(project: &str, closed: bool) -> Result<()> {
 pub fn remove_project(project: &str) -> Result<()> {
     let _edit = edit_lock()?;
     let file = config_path();
-    let text = std::fs::read_to_string(&file).with_context(|| format!("read {}", file.display()))?;
-    let mut doc: toml_edit::DocumentMut = text
-        .parse()
-        .with_context(|| format!("parse {}", file.display()))?;
+    let mut doc = read_doc(&file)?;
     let tables = doc
         .get_mut("project")
         .and_then(|i| i.as_array_of_tables_mut())
@@ -304,10 +294,7 @@ pub fn arrange_projects(order: &[String], fleets: &[(String, String)]) -> Result
     }
     let _edit = edit_lock()?;
     let file = config_path();
-    let text = std::fs::read_to_string(&file).with_context(|| format!("read {}", file.display()))?;
-    let mut doc: toml_edit::DocumentMut = text
-        .parse()
-        .with_context(|| format!("parse {}", file.display()))?;
+    let mut doc = read_doc(&file)?;
     let tables = doc
         .get_mut("project")
         .and_then(|i| i.as_array_of_tables_mut())
@@ -354,10 +341,7 @@ fn set_project_key(project: &str, key: &str, value: Option<impl Into<toml_edit::
 /// [`set_project_key`] for a caller that holds the edit lock.
 fn set_key_locked(project: &str, key: &str, value: Option<impl Into<toml_edit::Value>>) -> Result<()> {
     let file = config_path();
-    let text = std::fs::read_to_string(&file).with_context(|| format!("read {}", file.display()))?;
-    let mut doc: toml_edit::DocumentMut = text
-        .parse()
-        .with_context(|| format!("parse {}", file.display()))?;
+    let mut doc = read_doc(&file)?;
     let tables = doc
         .get_mut("project")
         .and_then(|i| i.as_array_of_tables_mut())
