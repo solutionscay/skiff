@@ -1,7 +1,7 @@
 import { isUnread } from "./model";
 
 import { $, h, setHidden, setText } from "../ui/dom";
-import { locale } from "../i18n";
+import { locale, tn } from "../i18n";
 import { ring } from "../ui/ring";
 import { type AgentUsage, cellOf, level, productName, resetClock } from "../app/usageModel";
 
@@ -13,7 +13,12 @@ export function renderCounts() {
   const waiting = all.filter((s) => s.state === "waiting").length;
   const working = all.filter((s) => s.state === "working").length;
   const unread = all.filter(isUnread).length;
-  setText($("counts"), `${all.length} sessions · ${waiting} waiting · ${unread} unread · ${working} working`);
+  setText($("counts"), [
+    tn("status.sessions", all.length),
+    tn("status.waiting", waiting),
+    tn("status.unread", unread),
+    tn("status.working", working),
+  ].join(" · "));
   setHidden($("next-waiting"), waiting === 0);
   setText($("waiting-count"), String(waiting));
   setHidden($("next-unread"), unread === 0);

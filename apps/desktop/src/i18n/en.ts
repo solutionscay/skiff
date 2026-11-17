@@ -664,6 +664,14 @@ export const en = {
   "view.fileLong": "The file is longer than {kib} KiB. Only its start shows.",
   "view.imageLarge": "Image, {size}. Skiff shows images up to {mib} MiB.",
   "status.connecting": "connecting to skiffd",
+  "status.sessions#one": "{count} session",
+  "status.sessions#other": "{count} sessions",
+  "status.waiting#one": "{count} waiting",
+  "status.waiting#other": "{count} waiting",
+  "status.unread#one": "{count} unread",
+  "status.unread#other": "{count} unread",
+  "status.working#one": "{count} working",
+  "status.working#other": "{count} working",
 
   // Dialogs that the menus open.
   "dialog.imageFiles": "Images",
@@ -1325,6 +1333,7 @@ export const en = {
   "connect.connecting": "Connecting to {host}",
   "connect.cannot": "Cannot connect to {host}",
   "connect.nextTry": "Next try in {n} s",
+  "connect.elapsed": "{n} s",
   "connect.check": "Check…",
   "connect.tryAgain": "Try again",
   "connect.copyOutput": "Copy output",

@@ -626,6 +626,10 @@ export const zh = {
   "view.fileLong": "文件超过 {kib} KiB。仅显示开头部分。",
   "view.imageLarge": "图片，{size}。Skiff 显示不超过 {mib} MiB 的图片。",
   "status.connecting": "正在连接 skiffd",
+  "status.sessions#other": "{count} 个会话",
+  "status.waiting#other": "{count} 个等待中",
+  "status.unread#other": "{count} 个未读",
+  "status.working#other": "{count} 个工作中",
 
   "dialog.imageFiles": "图片",
   "color.title": "{name} 的颜色",
@@ -1245,6 +1249,7 @@ export const zh = {
   "connect.connecting": "正在连接 {host}",
   "connect.cannot": "无法连接 {host}",
   "connect.nextTry": "{n} 秒后重试",
+  "connect.elapsed": "{n} 秒",
   "connect.check": "检查…",
   "connect.tryAgain": "重试",
   "connect.copyOutput": "复制输出",

@@ -100,7 +100,7 @@ function render() {
   if (failed) {
     if (label) label.textContent = t("connect.attention", { host });
   } else if (label) {
-    label.textContent = `${newest ?? t("connect.connecting", { host })} · ${Math.floor(elapsed / 1000)} s`;
+    label.textContent = `${newest ?? t("connect.connecting", { host })} · ${t("connect.elapsed", { n: Math.floor(elapsed / 1000) })}`;
   }
   if (!failed && elapsed < QUIET_MS) return;
   const main = document.getElementById("main");
@@ -115,7 +115,7 @@ function render() {
   const time = panel.querySelector(".cp-time");
   const when = failed
     ? t("connect.nextTry", { n: Math.max(0, Math.ceil((failed.next - Date.now()) / 1000)) })
-    : `${Math.floor(elapsed / 1000)} s`;
+    : t("connect.elapsed", { n: Math.floor(elapsed / 1000) });
   // A failed panel keeps its buttons, and the keys on them: only the clock moves.
   if (failed && panel.classList.contains("failed") && time && panel.querySelector(".cp-acts")) {
     time.textContent = when;
