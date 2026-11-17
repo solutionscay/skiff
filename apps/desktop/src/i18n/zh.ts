@@ -772,7 +772,6 @@ export const zh = {
   "resume.sessions#other": "恢复 {count} 个会话",
   "search.find": "查找",
   "font.app": "应用 {percent}",
-  "drop.insert": "插入路径",
   "drop.type#other": "输入 {count} 个路径",
   "upload.sending#other": "正在上传第 {current} 个文件，共 {count} 个（{sent} / {size}）…",
   "upload.done#other": "已上传 {count} 个文件（{size}）。",

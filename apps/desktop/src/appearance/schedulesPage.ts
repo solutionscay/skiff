@@ -13,7 +13,6 @@
  * and its cron are valid. Each change runs `skiff schedule` on the Host.
  */
 import { S } from "../app/state";
-import { accent } from "../app/stateQueries";
 import { hostCan, hostInvoke } from "../app/hostCaps";
 import { type MessageKey, t } from "../i18n";
 import { ctxMenu } from "../ui/contextMenu";
@@ -23,7 +22,7 @@ import { h } from "../ui/dom";
 import type { MenuEntry } from "../ui/menu";
 import { rune } from "../ui/runes";
 import { skipperWord } from "../app/skiffAgent";
-import { fleetSkipperName, lastWord, targetText } from "../workspace/ledgerSchedules";
+import { fleetSkipperName, lastWord, tag, targetText } from "../workspace/ledgerSchedules";
 import { skipperFace } from "../workspace/skipperFace";
 import { treeSections } from "../workspace/tree";
 import { loadSchedules, scheduleCall, schedules, targetProject, type Schedule } from "../workspace/scheduleStore";
@@ -118,14 +117,6 @@ function errorLine(text: string): HTMLElement {
   return e;
 }
 
-/** The project's letters in its color. */
-function tag(project: string | null): HTMLElement | null {
-  const p = project ? S.projects.find((x) => x.name === project) : null;
-  if (!p) return null;
-  const el = h("span", "lg-tag", p.short);
-  el.style.setProperty("--pc", accent(p));
-  return el;
-}
 
 const TONE: Record<string, string> = { succeeded: "ok", running: "run", failed: "bad", pending: "none", skipped: "none" };
 

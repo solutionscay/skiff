@@ -55,19 +55,8 @@ impl ScreenSource for LegacyReadOnly {
                 Ok(skiff_core::protocol::Response::Error { message }) => {
                     Err(Error::OperationFailed { message })
                 }
-                Ok(other) => Err(Error::MalformedContract {
-                    message: format!("unexpected reply: {other:?}"),
-                }),
-                Err(e) if e.downcast_ref::<crate::ReplyTimeout>().is_some() => Err(Error::TimedOut),
-                Err(e) if e.downcast_ref::<crate::ReplyDecodeError>().is_some() => {
-                    Err(Error::MalformedContract {
-                        message: e.to_string(),
-                    })
-                }
-                Err(_) if self.0.is_closed() => Err(Error::TransportLost),
-                Err(e) => Err(Error::MalformedContract {
-                    message: format!("{e:#}"),
-                }),
+                Ok(other) => Err(unexpected(other)),
+                Err(e) => Err(legacy_transport_error(&self.0, e)),
             }
         })
     }
@@ -94,19 +83,8 @@ impl InventorySource for LegacyReadOnly {
                 Ok(skiff_core::protocol::Response::Error { message }) => {
                     Err(Error::OperationFailed { message })
                 }
-                Ok(other) => Err(Error::MalformedContract {
-                    message: format!("unexpected reply: {other:?}"),
-                }),
-                Err(e) if e.downcast_ref::<crate::ReplyTimeout>().is_some() => Err(Error::TimedOut),
-                Err(e) if e.downcast_ref::<crate::ReplyDecodeError>().is_some() => {
-                    Err(Error::MalformedContract {
-                        message: e.to_string(),
-                    })
-                }
-                Err(_) if self.0.is_closed() => Err(Error::TransportLost),
-                Err(e) => Err(Error::MalformedContract {
-                    message: format!("{e:#}"),
-                }),
+                Ok(other) => Err(unexpected(other)),
+                Err(e) => Err(legacy_transport_error(&self.0, e)),
             }
         })
     }

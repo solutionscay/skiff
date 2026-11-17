@@ -1,12 +1,8 @@
-/* Images: a thumbnail dropped onto a pane, Settings › Images and the Images dialog. */
-.head-mini { position: relative; width: calc(24 * var(--u)); height: calc(16 * var(--u)); flex-shrink: 0; overflow: hidden; outline: 1px solid var(--rule-strong); background: var(--bg-deep); }
-.head-mini[hidden] { display: none; }
-.head-mini img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Images: Settings › Images and the Images dialog. */
 .file-drop .drag-ghost { gap: calc(8 * var(--u)); padding-left: calc(4 * var(--u)); }
 /* A drop or paste to a remote Host: its upload line, in the pane's bottom left corner. */
 .upload-line { position: absolute; left: calc(8 * var(--u)); bottom: calc(8 * var(--u)); z-index: 5; padding: calc(6 * var(--u)) calc(8 * var(--u)); background: var(--bg-deep); border: 1px solid var(--rule-strong); color: var(--text-2); font: calc(12px * var(--zoom, 1)) var(--font); pointer-events: none; }
 .upload-line.failed { border-color: var(--error); color: var(--error); }
-.file-drop .head-mini { width: calc(30 * var(--u)); height: calc(20 * var(--u)); outline: 0; }
 
 /* The search row: icon, field, count. The gallery's tool row starts with the same three. */
 .lib-head { height: var(--row); flex-shrink: 0; display: flex; align-items: center; border-bottom: 1px solid var(--rule); }

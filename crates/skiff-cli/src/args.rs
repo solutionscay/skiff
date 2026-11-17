@@ -1,0 +1,888 @@
+use std::path::PathBuf;
+
+use clap::{Parser, Subcommand};
+use skiff_core::session::Role;
+
+use crate::{layout::Side, wait};
+
+#[derive(Parser)]
+#[command(
+    name = "skiff",
+    version,
+    about = "Command-line client for one Skiff Host's session service",
+    after_help = "The CLI controls the Host whose skiffd socket it reaches. The desktop selects local and SSH Hosts; this command stays on the Host that owns its socket. A session is a full id, a unique id prefix, or the name the sidebar shows. A group is an id, prefix or name.\nInside a Skiff pane, `.` is this pane's session, or the group that holds it."
+)]
+pub(super) struct Cli {
+    /// The skiffd socket. Default: $SKIFF_SOCKET, else the daemon's own default.
+    #[arg(long, global = true, value_name = "PATH")]
+    pub(super) socket: Option<PathBuf>,
+    #[command(subcommand)]
+    pub(super) cmd: Cmd,
+}
+
+#[derive(Subcommand)]
+pub enum SkillCmd {
+    /// Print the path of the skill's SKILL.md, the copy that this skiff
+    /// keeps. The file exists when this prints. Read it before any skiff
+    /// command when your agent cannot load the skill.
+    Path,
+}
+
+#[derive(Subcommand)]
+pub enum SkipperCmd {
+    /// See and apply the template of a Skipper instruction file.
+    #[command(subcommand)]
+    Template(TemplateCmd),
+}
+
+#[derive(Subcommand)]
+#[command(after_help = "SCOPE is `agents` for AGENTS.md, or project:NAME or fleet:NAME for a SKIPPER.md. A bare NAME is a project or a fleet, and a NAME that is both is refused.")]
+pub enum TemplateCmd {
+    /// List each instruction file with its scope and status: none, template,
+    /// edited or edited-template-changed.
+    Ls,
+    /// Show how a file differs from its template: `-` lines are the file,
+    /// `+` lines the template. Changes nothing.
+    Diff { scope: String },
+    /// Replace a file with its template. The old file goes to <name>.bak,
+    /// which replaces the last .bak. A file that is the same as the template
+    /// stays as it is. Run this only when the person asks.
+    Apply { scope: String },
+}
+
+#[derive(Subcommand)]
+pub(super) enum Cmd {
+    /// Show this skiff's version and path, and the daemon's version,
+    /// protocol, pid and socket. Warns when another skiff comes first on
+    /// PATH, or skiffd's version is not the one this skiff was built for.
+    #[command(after_help = "It also prints one warning for each Skipper instruction file (AGENTS.md or a SKIPPER.md) that is edited and whose template changed, with the command that shows the change. It writes no file.\n--json prints one object and no warnings:\n  {\"skiff\":VERSION,\"protocol\":N,\"socket\":PATH,\"skiffd\":{\"version\":V,\"protocol\":N,\"pid\":PID,\"host_id\":ID},\"templates\":[{\"file\":PATH,\"scope\":SCOPE,\"command\":COMMAND}]}\nskiffd is null when no skiffd answers on the socket; the exit code is then 1. templates lists those same files.")]
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Manage the daemon itself.
+    #[command(subcommand)]
+    Daemon(DaemonCmd),
+    /// List sessions.
+    #[command(
+        after_help = "STATE adds what a program reports about itself (OSC 7501): `waiting (permission)`, `waiting (question)` or `waiting (auth)` for what it waits for, `idle (done)` or `idle (failed)` for how its turn ended, `working 40%` for its progress, `working (no output)` after 5 minutes without output.\nWith --json, each session carries `program_status` while its program reports: {state, kind, msg, title, progress, app, stalled, ended, children}. `ended`: the program left, and a done or error stays until the pane is seen."
+    )]
+    Ls {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Start a session and print its id.
+    #[command(
+        after_help = "--type starts a task type from Settings › Task types ([skiff_agent.tasks] in projects.toml): its agent, with its model flag. With no --name, the session takes the type's name, numbered when one runs (review, review 2).\nFrom a Skipper (Admiral, a project or a fleet Skipper), new and `group new` need --name: with none, they exit 2 and start nothing. Name a session for one issue `#N feature`, such as `#136 kanban and calendar`; any other session 2 to 4 words that say the task, without the project name; a group after the work it holds.\nWith no row for the type, it exits 1 and starts nothing.\n--model replaces the row's model for this session. With --agent ID, --model adds the agent's model flag to its command. A custom agent, opencode and hermes take their model in the command, so they refuse --model: it exits 1 and starts nothing.\nThe type's instruction file, types/TYPE.md in the agent folder, goes to the agent at start: claude --append-system-prompt-file, codex -c developer_instructions, grok --rules, opencode OPENCODE_CONFIG_CONTENT, kimi --agent-file. An empty file is none. gemini, hermes and custom agents cannot take one: --type exits 1 and starts nothing.\n`skiff agents` lists the types with the command each one starts."
+    )]
+    New {
+        /// The session's name.
+        #[arg(long)]
+        name: Option<String>,
+        /// Working directory. Default: the current directory.
+        #[arg(long, value_name = "DIR")]
+        cwd: Option<PathBuf>,
+        /// Start this agent, as the app's + menu does.
+        #[arg(long, value_name = "ID", conflicts_with = "command")]
+        agent: Option<String>,
+        /// Start this task type's agent with its model and instruction file. Not with --agent.
+        #[arg(long = "type", value_name = "TYPE", conflicts_with_all = ["agent", "command"])]
+        task_type: Option<String>,
+        /// With --type: this model in place of the type's model. With --agent: the agent's model flag. Not with a command.
+        #[arg(long, value_name = "MODEL", conflicts_with = "command")]
+        model: Option<String>,
+        /// Default: agent with --agent or --type, else shell.
+        #[arg(long, value_enum)]
+        role: Option<RoleArg>,
+        /// Put the new session into this group.
+        #[arg(long, value_name = "GROUP")]
+        group: Option<String>,
+        /// With --group: the side of the focused pane it goes on. Default:
+        /// the group's next template shape.
+        #[arg(long, value_enum, requires = "group")]
+        split: Option<Side>,
+        /// Print the new session as JSON.
+        #[arg(long)]
+        json: bool,
+        /// Program and arguments, after `--`. Default: the login shell.
+        #[arg(last = true, value_name = "CMD")]
+        command: Vec<String>,
+    },
+    /// Type text into an idle session. `-` reads the text from stdin. Put
+    /// text that starts with `-` after `--`.
+    #[command(
+        after_help = "send checks the session before it types any bytes. Exit codes:\n  0  sent\n  1  error\n  3  the session is waiting (approval prompt or bell). A person answers it in the pane. No flag overrides this.\n  4  the session is working. Skiff does not type into a busy session.\n  5  a shell or an unknown program is in front. Use --shell only to type a shell command. A program started with `skiff new -- CMD` or a custom agent shows its launch shell, so a send to it needs --shell.\n  6  the session is done\n  7  the session is your own ($SKIFF_SESSION)\n  8  --enter went to a known agent, but no turn started in 5 seconds. The text can be in its input box. Run `skiff peek` on the session.\n  9  a known agent shows text in its input box or its busy line, or the session took input after the check. Nothing was typed. A second send after exit 8 gets this code while the text is still in the box."
+    )]
+    Send {
+        session: String,
+        #[arg(required = true)]
+        text: Vec<String>,
+        /// Press Enter after the text.
+        #[arg(long)]
+        enter: bool,
+        /// Send the bytes as they are. Default: newlines become Enter.
+        #[arg(long)]
+        raw: bool,
+        /// Permit an idle session with a shell or an unknown program in
+        /// front. It does not override any other refusal.
+        #[arg(long)]
+        shell: bool,
+    },
+    /// Rename a session. An empty name clears it.
+    Rename { session: String, name: String },
+    /// Run a session in this terminal. Ctrl-\ detaches. The session
+    /// takes this terminal's size, in the app too, and gets its own size
+    /// back on detach. A quick second Ctrl-C is held back once.
+    Attach {
+        session: String,
+        /// A remote Host from Settings › Hosts: its name, id or ssh destination.
+        #[arg(long, value_name = "HOST")]
+        host: Option<String>,
+    },
+    /// Attach to the Skiff agent (Admiral). Start it first if it does not
+    /// run. Ctrl-\ detaches; the agent keeps running.
+    #[command(
+        after_help = "Reads [skiff_agent] in projects.toml: the folder, the name, the agent and whether it is on.\nWith no Skiff agent session, it sets up the folder (missing files come back, existing ones stay), starts the agent, and starts `skiff watch` for it. One watcher runs per daemon.\nA Skiff agent session that is a bare shell (after a restore, or after its agent quit) gets the agent again: its last conversation when Settings continues on restore, else a new one.\nWith no skiffd running, it starts one, as the app does.\nThe app and this command find the same session: skiffd marks it, and two starts at once give one.\nAttach gives the session this terminal's size, in the app too, until you detach. Then the pane gets its own size back.\n--move-to resolves a relative PATH against this shell's folder and stores the full path. The old folder keeps every file and gets MOVED.md; Skiff never deletes it. The conversation does not move. Admiral's session ends first, and tasks that still run stop the change unless you confirm."
+    )]
+    #[command(args_conflicts_with_subcommands = true)]
+    Skipper {
+        #[command(subcommand)]
+        cmd: Option<SkipperCmd>,
+        /// Do not attach. Print the session id.
+        #[arg(long)]
+        no_attach: bool,
+        /// Change the Skiff agent's folder to PATH, as Settings › Disk use ›
+        /// Folder does: copy, check and switch to a new or empty folder, or
+        /// switch to a Skiff folder. It shows the preview and asks first.
+        #[arg(long, value_name = "PATH", conflicts_with = "no_attach")]
+        move_to: Option<std::path::PathBuf>,
+        /// The project Skipper of PROJECT in place of Admiral: find it,
+        /// or start it in the project's folder with SKIPPER.md as its first
+        /// message.
+        #[arg(long, value_name = "PROJECT", conflicts_with = "move_to")]
+        project: Option<String>,
+        /// The fleet Skipper of FLEET: find it, or start it in its folder
+        /// with SKIPPER.md as its first message. When project Skippers run
+        /// in the fleet, it names them and asks: the fleet Skipper takes
+        /// their work over and they stop when idle.
+        #[arg(long, value_name = "FLEET", conflicts_with_all = ["move_to", "project"])]
+        fleet: Option<String>,
+        /// With --fleet: take the project Skippers over without asking.
+        #[arg(long, requires = "fleet")]
+        yes: bool,
+        /// With --move-to: set up a new ledger in place of a copy.
+        #[arg(long, requires = "move_to")]
+        empty: bool,
+        /// With --move-to: show the preview and change nothing.
+        #[arg(long, requires = "move_to")]
+        dry_run: bool,
+    },
+    /// Find the skiff-cli skill, with no Skipper and no daemon.
+    #[command(subcommand)]
+    Skill(SkillCmd),
+    /// Print a session's screen as plain text.
+    Peek {
+        session: String,
+        /// The last N lines of history and screen. Default: the screen.
+        #[arg(long, short = 'n', value_name = "N")]
+        lines: Option<usize>,
+    },
+    /// Wait until sessions reach a state. Exit 0 when all do, 1 on timeout,
+    /// 2 when one closes or exits first, 3 when one is waiting, 4 when a
+    /// turn ended in an error.
+    #[command(
+        after_help = "Exit codes:\n  0  every session reached the state. With --any: one session reached it. Its id, name and state print on stdout.\n  1  timeout\n  2  a session closed or exited before it reached the state. With --any: every session did.\n  3  a session is waiting (approval prompt or bell). A person answers it in its pane.\n  4  with --for turn: a turn ended in an error the program reported.\n--for turn waits until each turn ends, a result to read: the program reported done or error (OSC 7501), or the pane's turn ended and is unread. A session whose turn ended and is not read counts at once.\nWith --for idle, done, any-not-working or turn, wait stops at once when any session is waiting. --for waiting is not changed.\nWith --for idle, a known agent that is quiet but shows its busy line (\"esc to interrupt\") is not idle yet.\nIn a Skiff pane ($SKIFF_SESSION), or with no terminal on stdout, the timeout defaults to 45 seconds and is at most 60.\nAfter exit 0, read the screen with `skiff peek`: idle does not prove that an agent finished."
+    )]
+    Wait {
+        #[arg(required = true)]
+        sessions: Vec<String>,
+        #[arg(long = "for", value_enum, value_name = "STATE")]
+        target: wait::Target,
+        /// Stop when the first session reaches the state.
+        #[arg(long)]
+        any: bool,
+        /// Give up after this many seconds. For an agent: default 45, at most 60.
+        #[arg(long, value_name = "SECS")]
+        timeout: Option<f64>,
+    },
+    /// Print each state change, exit, removal, program status and turn end
+    /// as one line, for every session or for the named ones. Runs until Ctrl+C or --timeout.
+    #[command(
+        after_help = "Lines: a state change prints the new state, an exit prints `exit` and the code, a closed session prints `removed`. No output or screen text prints.\nWith --json, each line is one JSON object:\n  {\"event\":\"state\",\"session\":ID,\"name\":NAME,\"state\":\"idle\"}\n  {\"event\":\"exit\",\"session\":ID,\"name\":NAME,\"code\":0}\n  {\"event\":\"removed\",\"session\":ID,\"name\":NAME}\n  {\"event\":\"status\",\"session\":ID,\"name\":NAME,\"program_status\":{\"state\":\"blocked\",\"kind\":\"permission\",\"msg\":\"…\"}}\n  {\"event\":\"turn\",\"session\":ID,\"name\":NAME}\nA `status` line prints when what the program reports (OSC 7501) changes its state, what it waits for or its message: `status blocked (permission): MSG`, `status done`, `status none` once it reports nothing. `program_status` is null then. A `turn` line (`turn ended`) prints when a turn ends: a result to read.\nExit codes:\n  0  --timeout ran out, or every named session was removed\n  1  error\n  2  a name matches no session\nRun it in the background so your own turn stays free. idle means quiet, not done. After any line, read the screen with `skiff peek`."
+    )]
+    Events {
+        /// Default: every session, also the ones started later.
+        sessions: Vec<String>,
+        /// One JSON object for each line.
+        #[arg(long)]
+        json: bool,
+        /// Stop after this many seconds.
+        #[arg(long, value_name = "SECS")]
+        timeout: Option<f64>,
+    },
+    /// Follow the open tasks in the Skiff agent's ledger for that agent.
+    /// Skiff starts it with the agent's session; it stops when that session
+    /// ends. One runs per daemon.
+    #[command(
+        after_help = "A pane in an open ledger row (sent, pending, blocked) that:\n  waits (bell, prompt, title or report): the person gets a desktop notification, unless --no-notify. The agent gets nothing. The app starts it with --no-notify and sends its own.\n  ends a turn, goes idle after a prompt, exits or is gone: the agent gets one line, typed while it is idle and its input box is empty. Lines that wait for it are joined.\n  is idle with a pending row: the line names the oldest pending uid and its `skiff ledger send` command, once per idle stretch. The row is read again just before the line is typed, and the line is dropped if the task left pending.\n  restarted since the send: the agent gets one line that names the task as interrupted, once per run.\n  is gone with open rows: the line names their uids. A gone pane cannot be marked seen: reassign each task with `ledger update UID --pane ID --state pending`, or mark it done.\nskiffd types a line only if the person typed nothing in the agent's pane since the check. If no turn starts, the log says undelivered and Enter is not pressed again.\nA pane stays unread until the agent or the person marks it seen, so a new run tells it again, as it does a pending row.\nIt logs one line for each thing it does."
+    )]
+    Watch {
+        /// The Skiff agent's session.
+        skipper: String,
+        /// Do not send desktop notifications.
+        #[arg(long)]
+        no_notify: bool,
+    },
+    /// Mark a session seen, as focusing its pane does.
+    Seen { session: String },
+    /// Stop sessions.
+    #[command(
+        after_help = "kill refuses a session that has an open ledger task (pending, sent, blocked or interrupted), from any Skipper. It names each such session with the task's uid and title, and stops none of the sessions. Close the task with `skiff ledger update UID --state done`, or use --force.\nWith a terminal, kill asks y/N for each Skipper among the sessions: Admiral, a project Skipper or a fleet Skipper. The line names it and counts its open ledger tasks. A no kills nothing. With no terminal, it does not ask.\nExit codes:\n  0  killed\n  1  error, or a no to a Skipper\n  10  a session has an open ledger task. Nothing was killed."
+    )]
+    Kill {
+        #[arg(required = true)]
+        sessions: Vec<String>,
+        /// Kill even a session that has an open ledger task.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Named splits of sessions.
+    #[command(subcommand, visible_alias = "g")]
+    Group(GroupCmd),
+    /// List the agents skiffd knows.
+    Agents {
+        #[arg(long)]
+        json: bool,
+    },
+    /// List the projects in projects.toml, or add or remove one.
+    #[command(
+        args_conflicts_with_subcommands = true,
+        after_help = "add and remove write projects.toml, as Add project and Remove do in the app. The app shows the change within a second or two."
+    )]
+    Projects {
+        #[arg(long)]
+        json: bool,
+        #[command(subcommand)]
+        cmd: Option<ProjectsCmd>,
+    },
+    /// List and assign terminal color themes.
+    #[command(after_help = "A session theme overrides its project's theme. A project theme overrides the app theme. Clear returns to the next setting.")]
+    Theme {
+        #[command(subcommand)]
+        cmd: ThemeCmd,
+    },
+    /// Show and set the command that opens a diff or a file.
+    #[command(
+        name = "open-with",
+        after_help = "Keys: diff, text, markdown, html, image. `{path}` in a command becomes the file; without it the file goes at the end. `{target}` in the diff command becomes what to compare.\nA terminal tool shows in the peek over the panes. An app with its own window just starts. A file with no command opens in the system's default app.\nOPENS IN is what selecting a file does: peek runs the command, app shows an Open button. An explicit Open always runs it. diff always opens in the peek. image always opens in an app.\nChanges apply to the next file or diff the app opens."
+    )]
+    OpenWith {
+        #[command(subcommand)]
+        cmd: OpenWithCmd,
+    },
+    /// Schedules: commands and agent steps that skiffd runs at set times,
+    /// also while the app is closed. Each run is a ledger task.
+    #[command(after_help = "A schedule is when + an optional command + an optional agent step.\nWhen: --every day --at 02:00, --every weekday --at 08:00, --every week --on mon,thu --at 09:00, --every month --day 1 --at 06:00, --every 30m --between 09:00-18:00 --on mon-fri, or --cron \"0 9 1,15 * *\". Times are this computer's local time.\nThe command runs in the project folder with a time limit (--timeout, default 600 s). Its output is the run's result. With --gate on-fail or on-output, the agent step runs only when the command failed or printed something.\nThe agent step: --to type (a new session of a task type), --to pane (a send to a named session; a busy session keeps the run pending until it is idle) or --to skipper (a hand-off to Admiral, a fleet Skipper or a project Skipper; a project in a fleet with a running fleet Skipper goes to the fleet Skipper).\nA schedule has at most one open run: a due time while a run is open is skipped. A run missed while skiffd was not running is not caught up.")]
+    Schedule {
+        /// From a shell outside Skiff: I am a person, not an agent.
+        #[arg(long, global = true)]
+        person: bool,
+        #[command(subcommand)]
+        cmd: ScheduleCmd,
+    },
+    /// The Skiff agent's task ledger: ledger.db in its folder.
+    #[command(after_help = "States: sent, pending (not delivered: the pane was working), blocked (the pane needs the user), done.\nls and show print interrupted for a sent or blocked task whose pane restarted since the send: a restore runs a new shell under the old pane id. They print gone for an open task whose pane no longer exists. A task sent on another daemon shows elsewhere in LIVE and its socket: it is never gone from here, and send refuses it. A plan with tasks shows done when every task is done, else sent.\nID is the row number or the 8-character uid that add prints. Neither is ever reused.\nWork folders: add and handoff make one folder for each row, <uid>-<slug>/, in results/ next to the ledger, or in projects/<project>/results/ for a project Skipper's rows and a hand-off to it, or in fleets/<fleet>/results/ for a fleet Skipper's. A task in a plan, or under a hand-off, gets its folder in that row's folder. The result is result.md in the folder (plan.md for a plan). add prints the folder and the path, and makes no file in the folder. dir prints the folder. A row from before work folders keeps its result path and has no folder. rm and prune keep the files; with --flush they flush the work folders by the Disk use rule.\nWork: a plan with its tasks, or a task with no plan. Work is working while an agent is on one of its tasks (the task is sent, and its pane works or ended its turn), open otherwise, and finished once closed. close stamps it on the person's word; reopen clears the stamp. Skiff also closes work by itself when every task in it is closed. A task is closed when it is done and reported, or done and flushed by a person (a person's flush is their word; auto flush takes only closed work), or when its session closed: the session no longer exists, or its program and shell exited. An idle session is not closed. A session closed in any state sets an open task done, unobserved, on the next ledger ls, ledger show or watcher step. An interrupted pane, a task on another daemon and an unanswered session list close nothing. A skiffd that failed to load its workspace, or that does not report its load, also closes nothing until it restarts healthy or updates: these commands say so on stderr and show LIVE as ?. A saved session that cannot start at a restore is closed: its task closes. If no saved session starts, that is a failed load. A hand-off with tasks stays open until its Skipper reports it or its Skipper's session closes. Then it follows its tasks. A hand-off with no tasks follows its Skipper's session. A task that was not reported and did not succeed goes to Admiral in one [watch] line. stale lists what stays open, and closes nothing. A task added or moved under closed work, or set from done to another state, reopens it.\nReported: report stamps a done task once the person was told. An update to a state other than done clears the stamp. A flush needs no report. ls --unreported lists the done tasks not yet reported and not flushed.\nThe ledger is ~/skiff-agent/ledger.db, or ledger.db in the [skiff_agent] folder override. On a socket other than the live one, it is in the socket's private state. SKIFF_LEDGER overrides the path.\nOwners: each row is Admiral's (grand), a project Skipper's (its project) or a fleet Skipper's (fleet:<fleet>). add, send, update, report, close, reopen, prune and rm refuse unless the caller owns the row: the Skiff agent session that owns the ledger for Admiral's rows, a project or fleet Skipper for its own. A project or fleet Skipper may also set the state and result of the hand-off it was given. A fleet Skipper's add and update --pane refuse a pane outside its fleet's projects. A Skipper a fleet Skipper took over is refused. skiff skipper and the agent's watcher record the Skipper's session; a new Skiff agent session on the owner's daemon, or on the live daemon, takes it over. The refusal names the owner. A shell pane is a person and may change rows. A shell outside Skiff has no SKIFF_SESSION, and an agent there looks the same, so it is refused too: a person there passes --person. ls, show and stale work from anywhere.\nA ledger from before version 3 moves aside to ledger.db.old on first use, and a new one starts empty.")]
+    Ledger {
+        /// From a shell outside Skiff: I am a person, not an agent. Without
+        /// it, add, send, update, report, close, reopen, prune and rm refuse
+        /// there.
+        #[arg(long, global = true)]
+        person: bool,
+        #[command(subcommand)]
+        cmd: LedgerCmd,
+    },
+}
+
+/// The agent step's target.
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum ScheduleTarget {
+    /// A new session of a task type in a project. Each run starts fresh.
+    Type,
+    /// A send to a named session. A busy session keeps the run pending.
+    Pane,
+    /// A hand-off to a Skipper: Admiral (grand) or a project's Skipper.
+    Skipper,
+    /// No agent step: command only.
+    None,
+}
+
+/// When the agent step runs after the command.
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum ScheduleGate {
+    Always,
+    OnFail,
+    OnOutput,
+}
+
+/// What `schedule add` and `schedule edit` set. On edit, an empty value
+/// clears a text field.
+#[derive(clap::Args, Default)]
+pub struct ScheduleSpec {
+    /// day, weekday, week, month, or an interval: 5m, 10m, 15m, 20m, 30m,
+    /// 1h, 2h, 3h, 4h, 6h, 8h, 12h.
+    #[arg(long, value_name = "WHEN", conflicts_with = "cron")]
+    pub every: Option<String>,
+    /// The time, HH:MM: with day, weekday, week and month.
+    #[arg(long, value_name = "HH:MM")]
+    pub at: Option<String>,
+    /// The days: mon,thu or mon-fri. With week, and with an interval
+    /// (default: every day).
+    #[arg(long, value_name = "DAYS")]
+    pub on: Option<String>,
+    /// The day of the month, 1 to 28: with month.
+    #[arg(long, value_name = "N")]
+    pub day: Option<u8>,
+    /// Whole hours, 09:00-18:00: with an interval. No run starts at the end
+    /// hour. Default: all day.
+    #[arg(long, value_name = "HH:MM-HH:MM")]
+    pub between: Option<String>,
+    /// A 5-field cron line in this computer's local time, or @hourly,
+    /// @daily, @weekly, @monthly.
+    #[arg(long, value_name = "CRON")]
+    pub cron: Option<String>,
+    /// A command skiffd runs in the project folder. Its output is the run's result.
+    #[arg(long, value_name = "CMD")]
+    pub command: Option<String>,
+    /// The command's time limit in seconds. Default: 600.
+    #[arg(long, value_name = "SECS")]
+    pub timeout: Option<i64>,
+    /// With a command and an agent step: when the agent step runs. Default: always.
+    #[arg(long, value_enum)]
+    pub gate: Option<ScheduleGate>,
+    /// The agent step's target.
+    #[arg(long = "to", value_enum)]
+    pub to: Option<ScheduleTarget>,
+    /// With --to type: the task type.
+    #[arg(long = "type", value_name = "TYPE")]
+    pub task_type: Option<String>,
+    /// The project: the command's folder, and the new session's for --to type.
+    #[arg(long, value_name = "PROJECT")]
+    pub project: Option<String>,
+    /// With --to pane: the session's name.
+    #[arg(long, value_name = "NAME")]
+    pub pane: Option<String>,
+    /// With --to skipper: Admiral, a project or fleet:NAME. A name that is both a
+    /// project and a fleet needs project:NAME or fleet:NAME. Default: Admiral.
+    #[arg(long, value_name = "SCOPE")]
+    pub skipper: Option<String>,
+    /// The prompt for the agent step. `-` reads it from stdin.
+    #[arg(long)]
+    pub text: Option<String>,
+}
+
+#[derive(Subcommand)]
+pub enum ScheduleCmd {
+    /// Add a schedule. Give the time with --every and its words, or with --cron.
+    Add {
+        name: String,
+        #[command(flatten)]
+        spec: ScheduleSpec,
+    },
+    /// Change a schedule. Only the flags given change.
+    Edit {
+        name: String,
+        /// A new name.
+        #[arg(long = "name", value_name = "NAME")]
+        rename: Option<String>,
+        #[command(flatten)]
+        spec: ScheduleSpec,
+    },
+    /// List the schedules: when, target, next run and the last run.
+    Ls {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show a schedule and its runs, newest first.
+    Show {
+        name: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Delete a schedule. Its runs stay in the ledger.
+    Rm { name: String },
+    /// Stop a schedule's runs until resume.
+    Pause { name: String },
+    /// Start a paused schedule's runs again from the next due time.
+    Resume { name: String },
+    /// Start a run now. Refused while a run is open.
+    RunNow { name: String },
+    /// skiffd runs this each half minute: it starts the due runs and sends
+    /// the pending agent steps again.
+    #[command(hide = true)]
+    Tick,
+    /// One run, started by tick or run-now.
+    #[command(hide = true)]
+    Fire { run: String },
+}
+
+#[derive(Subcommand)]
+pub enum LedgerCmd {
+    /// Add a task, or a plan with --plan, and make its work folder. Prints
+    /// its id, uid, folder and result path, and the plan's uid for a task in
+    /// a plan.
+    Add {
+        /// The pane the task went to: an id, a unique prefix or a name. It
+        /// must exist. A plan has no pane.
+        #[arg(long, required_unless_present = "plan", conflicts_with = "plan")]
+        pane: Option<String>,
+        /// The task text. `-` reads it from stdin.
+        #[arg(long)]
+        task: String,
+        /// A short title for the app's Ledger panel: 3 to 6 words. Default:
+        /// the panel takes one from the task text.
+        #[arg(long, value_name = "TEXT")]
+        title: Option<String>,
+        /// A plan: a row with no pane that groups tasks under it.
+        #[arg(long)]
+        plan: bool,
+        /// The work this task joins: a plan or any task in it, or a task with
+        /// no plan, which a new plan then wraps. Its id or uid. Closed work
+        /// opens again.
+        #[arg(long, value_name = "ID", conflicts_with = "plan")]
+        parent: Option<String>,
+        /// Default: the project that holds the pane's folder.
+        #[arg(long)]
+        project: Option<String>,
+        /// Default: pending for a task, sent for a plan.
+        #[arg(long)]
+        state: Option<String>,
+        /// Where the child writes its result. Default: result.md in the row's work folder.
+        #[arg(long, value_name = "PATH")]
+        result: Option<String>,
+        /// Free text that names the work elsewhere: a URL, a ticket key,
+        /// anything. Skiff stores it and never reads it.
+        #[arg(long = "ref", value_name = "TEXT")]
+        reference: Option<String>,
+        /// The task type the task went out as, from `skiff agents`. Skiff
+        /// stores it and never acts on it.
+        #[arg(long = "type", value_name = "TYPE")]
+        task_type: Option<String>,
+        /// The evidence the task should leave: result (its result file) or
+        /// commit (a commit, named at the end with update --commit).
+        /// `update --state done` checks it.
+        #[arg(long, value_name = "EVIDENCE")]
+        expect: Option<String>,
+        /// Add the task as pending and send it at once, as `ledger send` does.
+        #[arg(long, conflicts_with_all = ["plan", "state"])]
+        send: bool,
+        /// With --send: press Enter after the text.
+        #[arg(long, requires = "send")]
+        enter: bool,
+        /// With --send: as `send --shell`.
+        #[arg(long, requires = "send")]
+        shell: bool,
+        /// With --send: close the sent or blocked task that holds the pane
+        /// as done, outcome interrupted, and reported.
+        #[arg(long, requires = "send")]
+        replace: bool,
+    },
+    /// Hand a task to a project's or a fleet's Skipper: add a hand-off row,
+    /// start that Skipper if none runs, and send it the task. Exits with
+    /// `send`'s code.
+    #[command(
+        after_help = "SCOPE is a project or a fleet, by its name in `skiff projects`. A name that is both is refused: use project:NAME or fleet:NAME. Both spellings always work.\nThe hand-off row is Admiral's: its pane is the project or fleet Skipper, and its result path is in that Skipper's results folder. That Skipper adds its own tasks under it with --parent UID, and reports it with `skiff ledger update UID --state done --result PATH`. A project or fleet Skipper cannot hand off.\nA project in a fleet whose Skipper runs is refused: hand off to the fleet. A fleet with project Skippers and no fleet Skipper is refused: the person starts the fleet Skipper, which takes them over.\nA new Skipper gets SKIPPER.md as its first message, with the task after it. A busy one keeps the row pending: `skiff watch` names it when that Skipper is idle.\n--parent may name a hand-off for a follow-up: the new hand-off joins its plan, or a new plan of Admiral's wraps both.\nSkiff writes brief.md in the hand-off's folder: the state of the rows the hand-off cites or joins, and the open work of the scope, at most 8 KiB. The message names it when the brief differs from the last one this Skipper got, and always for a new Skipper. `skiff ledger brief UID` prints it as of now."
+    )]
+    Handoff {
+        /// The project or the fleet: NAME, project:NAME or fleet:NAME.
+        #[arg(value_name = "SCOPE")]
+        project: String,
+        /// The task text. `-` reads it from stdin.
+        task: String,
+        /// A short title for the app's Ledger panel: 3 to 6 words.
+        #[arg(long, value_name = "TEXT")]
+        title: Option<String>,
+        /// The work it joins: a plan of yours, any task in it, or an
+        /// earlier hand-off that this one follows up.
+        #[arg(long, value_name = "ID")]
+        parent: Option<String>,
+        /// The evidence the task should leave: result (its result file) or
+        /// commit (a commit, named at the end with update --commit).
+        /// `update --state done` checks it.
+        #[arg(long, value_name = "EVIDENCE")]
+        expect: Option<String>,
+        /// Write no brief.md, and name none in the message.
+        #[arg(long)]
+        no_brief: bool,
+    },
+    /// Send a pending or interrupted task to its pane, then mark it sent.
+    /// Exits with `send`'s code.
+    #[command(
+        after_help = "Only a pending or interrupted task with a live pane is sent. Else it exits 1 and sends nothing.\nThe text defaults to the task and its result path. `-` reads the text from stdin.\nIt runs every `send` check. On exit 0 the task is sent. On exit 8 (no turn started) it is blocked: the text can be in the input box. On a refusal it keeps its state, and `skiff watch` names it again when the pane is idle.\nA pane works on one task. A send to a pane that holds another of your tasks, sent or blocked, exits 1, names that task and sends nothing. Set that task done first, or pass --replace: it closes as done, outcome interrupted, and reported, once the new task is sent. `add --send` refuses the same way, and adds no row. A hand-off and a schedule step hold no pane."
+    )]
+    Send {
+        id: String,
+        /// Default: the task and its result path.
+        text: Vec<String>,
+        /// Press Enter after the text.
+        #[arg(long)]
+        enter: bool,
+        /// As `send --shell`.
+        #[arg(long)]
+        shell: bool,
+        /// Close the sent or blocked task that holds the pane as done,
+        /// outcome interrupted, and reported.
+        #[arg(long)]
+        replace: bool,
+    },
+    /// Change a task. Only the given fields change. A new pane, or the state
+    /// sent, records the pane's current generation.
+    Update {
+        id: String,
+        #[arg(long)]
+        state: Option<String>,
+        #[arg(long, value_name = "PATH")]
+        result: Option<String>,
+        #[arg(long)]
+        task: Option<String>,
+        /// The short title for the app's Ledger panel.
+        #[arg(long, value_name = "TEXT")]
+        title: Option<String>,
+        #[arg(long)]
+        pane: Option<String>,
+        #[arg(long)]
+        project: Option<String>,
+        /// Move the task into this work, as add --parent does.
+        #[arg(long, value_name = "ID")]
+        parent: Option<String>,
+        #[arg(long = "ref", value_name = "TEXT")]
+        reference: Option<String>,
+        #[arg(long = "type", value_name = "TYPE")]
+        task_type: Option<String>,
+        /// How the task ended: succeeded, failed, interrupted or unobserved.
+        /// An outcome sets the task done. Default with --state done:
+        /// succeeded, or unobserved when its expected evidence is missing.
+        #[arg(long)]
+        outcome: Option<String>,
+        /// The evidence the task should leave: result (its result file) or
+        /// commit (a commit, named at the end with update --commit).
+        /// `update --state done` checks it.
+        #[arg(long, value_name = "EVIDENCE")]
+        expect: Option<String>,
+        /// The commit the task leaves, for --expect commit.
+        #[arg(long, value_name = "REF")]
+        commit: Option<String>,
+    },
+    /// List the work that is not closed: working first, then open, oldest
+    /// first, each plan's tasks under it. WORK names the group. LIVE says if
+    /// the pane still exists. An open task whose pane is gone is set done
+    /// first, and shows `gone`.
+    #[command(after_help = "--state filters inside the list. --json adds bucket (working, open or finished), closed_at and gone_at to each row.")]
+    Ls {
+        /// sent, pending, blocked, done, interrupted or gone.
+        #[arg(long)]
+        state: Option<String>,
+        /// Every row, closed work included.
+        #[arg(long, conflicts_with_all = ["closed", "unreported"])]
+        all: bool,
+        /// Only closed work.
+        #[arg(long, conflicts_with = "unreported")]
+        closed: bool,
+        /// Only done tasks not yet reported, under their plans.
+        #[arg(long)]
+        unreported: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show one task, and each attempt to deliver its text: the session and
+    /// its generation, the payload's bytes and SHA-256, and what came of it.
+    #[command(
+        after_help = "Each send by ledger send, add --send and handoff records an attempt before the text goes in, then its evidence: turn started, text accepted, no turn (exit 8), refused (with send's exit code), or uncertain. Uncertain: the send failed after it could have typed, or the process ended before the evidence. A child's report that skiff watch types into its parent is recorded on its hand-off the same way. An attempt is kept, never retried or guessed. --json adds deliveries."
+    )]
+    Show {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Mark done tasks as told to the person.
+    #[command(
+        after_help = "A task that is not done is refused, and nothing changes. A reported task keeps its first stamp.\nA plan's ID reports its done tasks and leaves its open ones. A hand-off's ID also stamps the done tasks under it, whoever owns them, and names each that failed, was interrupted or is unobserved on stderr."
+    )]
+    Report {
+        #[arg(required_unless_present = "all", value_name = "ID")]
+        ids: Vec<String>,
+        /// Every done task not yet reported.
+        #[arg(long, conflicts_with = "ids")]
+        all: bool,
+    },
+    /// List what stays open, and why. It closes nothing and writes nothing.
+    #[command(after_help = "It lists each row that holds open work with no change for the given age: a done row not reported and not flushed with a live session, a blocked, sent or pending task, a hand-off with no tasks, and a hand-off with tasks that its Skipper did not report. It also lists work that ledger reopen holds. WHY says the reason, the session's name and its state: close an idle session to close its task. A work item with a working session is left out. The session of a hand-off with tasks is the Skipper: it does not leave the work out.\n--json prints work, uid, kind, state, outcome, owner, project, pane, session, changed and why.")]
+    Stale {
+        /// List work with no change for this long: 7d, 12h, 30m.
+        #[arg(long, value_name = "AGE", default_value = "7d")]
+        older_than: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Close work on the person's word: a plan, or a task with no plan. It
+    /// stamps the done tasks not yet reported too.
+    #[command(after_help = "Work with a task that is not done is refused, and nothing changes: set the task done or remove it first. A task in a plan is refused: close its plan. Closed work keeps its first stamp.")]
+    Close {
+        #[arg(required = true, value_name = "ID")]
+        ids: Vec<String>,
+    },
+    /// Open closed work again: a plan, or a task with no plan.
+    Reopen {
+        #[arg(required = true, value_name = "ID")]
+        ids: Vec<String>,
+    },
+    /// Remove closed work, with its tasks. Open work stays. Without --yes, it
+    /// prints the rows and the size of their work folders, and changes nothing.
+    #[command(after_help = "The work folders stay unless you add --flush. --flush removes each folder that Settings › Disk use would flush: the work is done, its pane is not working, nothing in it changed in the last 15 minutes, and no git checkout in it has changes or unpushed commits. A folder in use stays, and the output says why.")]
+    Prune {
+        /// Remove work closed longer ago than this: 7d, 12h, 30m.
+        #[arg(long, value_name = "AGE", default_value = "7d")]
+        older_than: String,
+        #[arg(long)]
+        yes: bool,
+        /// Also flush the rows' work folders, by the Disk use rule.
+        #[arg(long, requires = "yes")]
+        flush: bool,
+    },
+    /// Take a row out of the ledger now. Its work folder and result file stay
+    /// unless you add --flush. For finished work, use close, and later prune.
+    Rm {
+        id: String,
+        /// Also flush the row's work folder, by the Disk use rule.
+        #[arg(long)]
+        flush: bool,
+    },
+    /// Print a hand-off's brief as of now: the state of the rows it cites or
+    /// joins, and the open work of its scope. It writes nothing.
+    #[command(after_help = "Exit 0: printed, or the hand-off has no cited work and no open work. Exit 1: no such row, or the row is not a hand-off.\n--json prints uid, scope, bytes, items and left_out.")]
+    Brief {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print a row's work folder: everything for the task goes in it.
+    #[command(after_help = "A row from before work folders has none: it exits 1 and names its result path.")]
+    Dir { id: String },
+}
+
+#[derive(Subcommand)]
+pub(super) enum DaemonCmd {
+    /// Move skiffd onto a new binary and keep every session, with its
+    /// process, screen and scrollback. Checks afterwards that each one survived.
+    Reload {
+        /// The skiffd to run. Default: the running daemon's executable as it
+        /// is on disk now, for example after a rebuild.
+        #[arg(long, value_name = "PATH")]
+        binary: Option<PathBuf>,
+    },
+    /// Stop skiffd. It saves the layout and ends every session. From a
+    /// pane, this is the way to stop it: skiffd ignores SIGTERM and SIGINT
+    /// from its own sessions.
+    Stop,
+}
+
+#[derive(Subcommand)]
+pub(super) enum GroupCmd {
+    /// List groups with their panes. `*` marks the focused pane.
+    Ls {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Make a group and print its id. With no sessions it holds one empty pane.
+    New {
+        /// Default: its agents' names, as the app names a group.
+        #[arg(long)]
+        name: Option<String>,
+        sessions: Vec<String>,
+        /// Put every pane in one line. Default: the app's shapes.
+        #[arg(long, value_enum)]
+        dir: Option<DirArg>,
+        /// The group's folder, where its empty panes start sessions.
+        #[arg(long, value_name = "DIR")]
+        cwd: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Put a session into a group. It fills an empty pane, else the group
+    /// takes its next template shape. The session leaves any other group.
+    Add {
+        group: String,
+        session: String,
+        /// Split the target pane in half, on this side. Default: the next
+        /// template shape.
+        #[arg(long, value_enum)]
+        split: Option<Side>,
+        /// Split this pane instead of the focused one.
+        #[arg(long, value_name = "SESSION")]
+        of: Option<String>,
+    },
+    /// Take a session out of a group. The session keeps running.
+    Rm { group: String, session: String },
+    /// Rename a group.
+    Rename { group: String, name: String },
+    /// Delete groups. Their sessions keep running.
+    Delete {
+        #[arg(required = true)]
+        groups: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub(super) enum OpenWithCmd {
+    /// List each key and its command.
+    Ls {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Set a key's command, where it opens, or both.
+    #[command(override_usage = "skiff open-with set <KEY> [COMMAND] [--peek | --app]", group = clap::ArgGroup::new("what").required(true).multiple(true).args(["command", "peek", "app"]))]
+    Set {
+        #[arg(value_enum)]
+        key: OpenKey,
+        /// The command, quoted as one argument.
+        command: Option<String>,
+        /// Selecting the file runs the command in the peek.
+        #[arg(long, conflicts_with = "app")]
+        peek: bool,
+        /// Selecting the file shows an Open button.
+        #[arg(long)]
+        app: bool,
+    },
+    /// Clear a key. The default applies.
+    Clear {
+        #[arg(value_enum)]
+        key: OpenKey,
+    },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub(super) enum OpenKey {
+    Diff,
+    Text,
+    Markdown,
+    Html,
+    Image,
+}
+
+impl OpenKey {
+    pub(super) fn name(self) -> &'static str {
+        match self {
+            OpenKey::Diff => "diff",
+            OpenKey::Text => "text",
+            OpenKey::Markdown => "markdown",
+            OpenKey::Html => "html",
+            OpenKey::Image => "image",
+        }
+    }
+}
+
+#[derive(Subcommand)]
+pub(super) enum ProjectsCmd {
+    /// Add the git repository that holds PATH, or the folder itself when it
+    /// is in no repository. A folder in a linked worktree adds the main
+    /// worktree. Defaults: the folder's name, a free color, a theme of its
+    /// own. A closed project for the folder opens again with its own
+    /// settings; --name and --fleet do not apply to it.
+    Add {
+        path: PathBuf,
+        /// The project's name. Default: the folder's name.
+        #[arg(long)]
+        name: Option<String>,
+        /// Put the project in this fleet on the rail.
+        #[arg(long)]
+        fleet: Option<String>,
+        /// Print the project as one item of `skiff projects --json`.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove the project and its settings. The folder and its worktrees
+    /// stay on disk. With running sessions in the project, it refuses and
+    /// names them.
+    #[command(visible_alias = "rm")]
+    Remove {
+        name: String,
+        /// End the project's sessions first, then remove it.
+        #[arg(long)]
+        end_sessions: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub(super) enum ThemeCmd {
+    /// List available themes.
+    Ls {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Set or clear the app theme.
+    App {
+        #[command(subcommand)]
+        cmd: AppThemeCmd,
+    },
+    /// Set or clear a project's theme.
+    Project {
+        #[command(subcommand)]
+        cmd: ProjectThemeCmd,
+    },
+    /// Set or clear a session's theme override.
+    #[command(visible_alias = "terminal")]
+    Session {
+        #[command(subcommand)]
+        cmd: SessionThemeCmd,
+    },
+}
+
+#[derive(Subcommand)]
+pub(super) enum AppThemeCmd {
+    /// Set the app theme.
+    Set { theme: String },
+    /// Clear the app theme. The default applies.
+    Clear,
+}
+
+#[derive(Subcommand)]
+pub(super) enum ProjectThemeCmd {
+    /// Set the project theme.
+    Set { project: String, theme: String },
+    /// Clear the project theme. The app theme applies.
+    Clear { project: String },
+}
+
+#[derive(Subcommand)]
+pub(super) enum SessionThemeCmd {
+    /// Set the session theme override.
+    Set { session: String, theme: String },
+    /// Clear the session theme override. The project or app theme applies.
+    Clear { session: String },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub(super) enum DirArg {
+    /// Side by side.
+    Row,
+    /// Stacked.
+    Col,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub(super) enum RoleArg {
+    Agent,
+    Task,
+    Server,
+    Shell,
+}
+
+impl From<RoleArg> for Role {
+    fn from(r: RoleArg) -> Self {
+        match r {
+            RoleArg::Agent => Role::Agent,
+            RoleArg::Task => Role::Task,
+            RoleArg::Server => Role::Server,
+            RoleArg::Shell => Role::Shell,
+        }
+    }
+}

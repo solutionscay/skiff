@@ -89,7 +89,6 @@ let loadError: string | null = null;
 export const imagesError = () => loadError;
 
 export const imageCount = () => list.length;
-export const newestImage = (): string | null => list[0]?.path ?? null;
 export const allImages = (): readonly Image[] => list;
 
 /** Called after each load, so Settings › Images redraws too. */
