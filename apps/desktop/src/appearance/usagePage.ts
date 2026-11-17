@@ -20,6 +20,8 @@ const program = (a: AgentInfo) => (a.command.trim().split(/\s+/)[0] ?? a.id).spl
 
 /** The installed agents. A count for the page row: "4 of 6", agents with a reader of agents shown. */
 export function usageCount(agents: AgentInfo[]): string {
+  // A Host without usage reads gives no count.
+  if (!hostCan("agent_usage")) return "";
   const shown = agents.filter((a) => a.installed);
   if (!shown.length) return "";
   return t("settings.ofCount", { on: shown.filter((a) => usage.some((u) => u.agent === a.id)).length, all: shown.length });
@@ -37,10 +39,14 @@ export function usageSection(agents: AgentInfo[]): HTMLElement {
     err.setAttribute("role", "alert");
     main.append(err);
   }
+  // A Host without usage reads: its refusal only. It cannot say which agent has a usage command.
+  if (!hostCan("agent_usage")) {
+    main.append(h("div", "set-note", t("hostCaps.refusal", { what: t("hostCaps.agent_usage") })));
+    return main;
+  }
   const cols = h("div", "set-row set-cols");
   cols.append(h("span", "", t("usage.col.limit")), h("span", "", t("usage.col.used")), h("span", "", t("usage.col.resets")));
   main.append(cols);
-  if (!hostCan("agent_usage")) main.append(h("div", "set-note", t("hostCaps.refusal", { what: t("hostCaps.agent_usage") })));
   const now = Date.now();
   // Not installed: not shown, as Settings › Agents "Not found".
   for (const a of agents.filter((x) => x.installed)) main.append(...agentRows(a, usage.find((u) => u.agent === a.id), now));
@@ -54,8 +60,8 @@ function agentRows(a: AgentInfo, u: AgentUsage | undefined, now: number): HTMLEl
   const title = h("span", "set-band-title");
   title.append(launchIcon(a), h("span", "u-name", name), h("span", "u-cmd", program(a)));
   band.append(title);
-  // A reader whose first answer has not come: the band alone.
-  if (!u) return READERS.has(a.id) && hostCan("agent_usage") ? [band] : [band, note(t("usage.noSource", { name }))];
+  // A reader whose first answer has not come: the band alone. No reader: the note.
+  if (!u) return READERS.has(a.id) ? [band] : [band, note(t("usage.noSource", { name }))];
   const right = [u.plan, u.read_at ? t("usage.readAt", { time: readClock(u.read_at) }) : ""].filter(Boolean).join(" · ");
   band.append(h("span", "set-band-count", right));
   const rows: HTMLElement[] = [band];
