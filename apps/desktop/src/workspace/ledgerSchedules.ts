@@ -62,7 +62,7 @@ export function shortNext(next: string): string {
 }
 
 /** The project's letters in its color, else nothing. */
-function tag(project: string | null): HTMLElement | null {
+export function tag(project: string | null): HTMLElement | null {
   const p = project ? S.projects.find((x) => x.name === project) : null;
   if (!p) return null;
   const el = h("span", "lg-tag", p.short);
