@@ -25,6 +25,7 @@ function hosts(answer: Answer, live = { clipboard: answer.clipboard }) {
       "@tauri-apps/api/event": { listen: async (name: string, run: () => void) => void listeners.set(name, run) },
       "../ui/contextMenu": { ctxMenu: { open() {} } },
       "../ui/confirm": { confirmAction: async () => true },
+      "./badge": { linkLost() {} },
       "../ui/dom": { h: () => ({}) },
       "../ui/alerts": { showError(e: unknown) { throw e; } },
     },
@@ -179,6 +180,7 @@ test("a second loss during recovery runs the whole recovery again before input i
     {
       "@tauri-apps/api/core": { invoke: async () => ({ selected: "fixture", hosts: [] }) },
       "@tauri-apps/api/event": { listen: async (_: string, cb: () => void) => void (lost = cb) },
+      "./badge": { linkLost() {} },
     },
     { document: { title: "", getElementById: () => null }, Promise, setTimeout: immediate, console: { error() {} } },
     "",
@@ -193,6 +195,8 @@ test("a second loss during recovery runs the whole recovery again before input i
   const daemon = moduleFromSource(
     "../src/app/daemon.ts",
     {
+      "./badge": { linkLost() {}, listRead() {} },
+      "../workspace/status": { waitingNow: () => 0 },
       "./connectPanel": { connectAttempt() {}, connectDone() {}, connectFailed() {}, connectWait: async () => {} },
       "@tauri-apps/api/core": { invoke: async () => ({ connected: true }), Channel: class {} },
       "@tauri-apps/api/event": { listen: async () => {} },

@@ -26,6 +26,8 @@ function recovery() {
   const mod = moduleFromSource(
     "../src/app/daemon.ts",
     {
+      "./badge": { linkLost() {}, listRead() {} },
+      "../workspace/status": { waitingNow: () => 0 },
       "./connectPanel": { connectAttempt() {}, connectDone() {}, connectFailed() {}, connectWait: async () => {} },
       "@tauri-apps/api/core": {
         invoke: async () => {

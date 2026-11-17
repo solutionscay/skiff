@@ -6,11 +6,15 @@ import { ring } from "../ui/ring";
 import { type AgentUsage, cellOf, level, productName, resetClock } from "../app/usageModel";
 
 import { sessions } from "../app/state";
+import { waitingCount } from "../app/badge";
 
 import { renderWelcome } from "./welcome";
+/** The top bar's Waiting count; the app icon shows the same number. */
+export const waitingNow = () => [...sessions.values()].filter((s) => s.state === "waiting").length;
+
 export function renderCounts() {
   const all = [...sessions.values()];
-  const waiting = all.filter((s) => s.state === "waiting").length;
+  const waiting = waitingNow();
   const working = all.filter((s) => s.state === "working").length;
   const unread = all.filter(isUnread).length;
   setText($("counts"), [
@@ -21,6 +25,7 @@ export function renderCounts() {
   ].join(" · "));
   setHidden($("next-waiting"), waiting === 0);
   setText($("waiting-count"), String(waiting));
+  waitingCount(waiting);
   setHidden($("next-unread"), unread === 0);
   setText($("unread-count"), String(unread));
 

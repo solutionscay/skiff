@@ -61,6 +61,8 @@ function app(projects: { name: string; path: string; fleet: string | null }[], r
     "./daemonRestart": { restartIfIdle() {} },
     "./render": { render() {}, scheduleRender() {} },
     "./notify": { stateMoved() {}, sessionGone() {} },
+    "./badge": { linkLost() {}, listRead() {} },
+    "../workspace/status": { waitingNow: () => 0 },
   }, globals, "");
   const add = (s: any) => daemon.onEvent({ event: "session_created", session: { state: "idle", ...s } });
   const end = (id: string) => daemon.onEvent({ event: "session_removed", session: id });

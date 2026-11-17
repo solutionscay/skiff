@@ -11,6 +11,7 @@ import { confirmAction } from "../ui/confirm";
 import { h } from "../ui/dom";
 import { showError, showNotice } from "../ui/alerts";
 import { t } from "../i18n";
+import { linkLost } from "./badge";
 
 export interface KnownHost {
   id: string;
@@ -142,6 +143,7 @@ export async function clipboardWrites(): Promise<boolean> {
 /** The link to the shown Host is up or down. While down, input is off. */
 export function setHostConnected(up: boolean) {
   connected = up;
+  if (!up) linkLost();
   renderHostLabel();
 }
 

@@ -3,6 +3,7 @@
 # behind HostConnection; a new direct user must be classified here deliberately.
 [local]
 "apps/desktop/src/app/actions.ts" = "Runs local Open with actions on fetched copies, never a Host path."
+"apps/desktop/src/app/badge.ts" = "Shows the waiting count on this desktop's app icon."
 "apps/desktop/src/app/commands.ts" = "Bridges UI commands and window events to the selected Host."
 "apps/desktop/src/app/connectPanel.ts" = "Listens for client-side connection progress events."
 "apps/desktop/src/app/daemon.ts" = "Shows this app's local service lifecycle, not Host data."

@@ -1,5 +1,6 @@
 //! The desktop app is a client of `skiffd`. It owns no PTY.
 
+mod badge;
 mod cli_path;
 mod clipboard;
 mod connection;
@@ -137,6 +138,7 @@ pub fn run() {
             quit::guard_quit,
             notify::notify_show,
             notify::notify_remove,
+            badge::set_waiting_badge,
             updater::update_off,
             updater::relaunch_app,
             native_menu::menu_layout,
@@ -326,6 +328,7 @@ pub fn run() {
             if let tauri::RunEvent::Exit = &_event {
                 skiff_client::host::ssh::end_all(skiff_client::host::ssh::QUIT_WAIT);
                 copies::cleanup();
+                badge::clear();
             }
             // A workspace file opened from Finder while Skiff runs, or to start it.
             #[cfg(target_os = "macos")]
@@ -404,7 +407,9 @@ mod tests {
             // This app's own updater and restart, whichever Host is shown.
             "update_off", "relaunch_app",
             // This desktop's own notifications, whichever Host is shown.
-            "notify_show", "notify_remove"];
+            "notify_show", "notify_remove",
+            // This desktop's app icon count, whichever Host is shown.
+            "set_waiting_badge"];
         for c in &all {
             assert!(super::LOCAL_ONLY.contains(&c.as_str()) || allowed.contains(&c.as_str()), "{c}: decide whether a remote Host may run it");
         }
