@@ -259,7 +259,7 @@ export const zh = {
   "keys.title": "键盘快捷键",
   "keys.search": "查找快捷键",
   "keys.none": "没有匹配的快捷键。",
-  "keys.note": "在 projects.toml 中更改操作的按键。例如：[keys] palette = \"ctrl+shift+k\"。",
+  "keys.note": "在 client.toml 中更改操作的按键；没有 client.toml 时，在 projects.toml 中更改。例如：[keys] palette = \"ctrl+shift+k\"。",
 
   "about.title": "关于 Skiff",
   "about.app": "应用",

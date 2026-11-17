@@ -274,7 +274,7 @@ export const en = {
   "keys.title": "Keyboard shortcuts",
   "keys.search": "Find a shortcut",
   "keys.none": "No shortcuts match.",
-  "keys.note": "Change an action key in projects.toml. For example: [keys] palette = \"ctrl+shift+k\".",
+  "keys.note": "Change an action key in client.toml, or in projects.toml while there is no client.toml. For example: [keys] palette = \"ctrl+shift+k\".",
 
   // About.
   "about.title": "About Skiff",

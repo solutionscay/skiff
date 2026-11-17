@@ -266,7 +266,7 @@ export const es = {
   "keys.title": "Atajos de teclado",
   "keys.search": "Buscar un atajo",
   "keys.none": "Ningún atajo coincide.",
-  "keys.note": "Cambia la tecla de una acción en projects.toml. Por ejemplo: [keys] palette = \"ctrl+shift+k\".",
+  "keys.note": "Cambia la tecla de una acción en client.toml, o en projects.toml si no hay client.toml. Por ejemplo: [keys] palette = \"ctrl+shift+k\".",
 
   "about.title": "Acerca de Skiff",
   "about.app": "App",
