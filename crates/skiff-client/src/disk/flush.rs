@@ -597,6 +597,34 @@ mod tests {
         std::fs::remove_dir_all(&outside).unwrap();
     }
 
+    #[test]
+    fn the_running_totals_add_up_to_the_tree_and_each_checkout_found_is_checked() {
+        let dir = scratch("progress");
+        let l = ledger(&dir, &[]);
+        // Many entries and several subfolders: the walk shares them with other threads.
+        for i in 0..80 {
+            write(&dir.join(format!("results/f{i}.md")), "abc", 0);
+        }
+        for d in ["a", "b", "c"] {
+            write(&dir.join(format!("results/{d}/x/y.md")), "hello", 0);
+        }
+        let repo = dir.join("results/b/copy");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q"]);
+        let p = crate::disk::Progress::default();
+        let u = crate::disk::usage(&dir, &dir.join("cache"), &l, Some(&[]), Path::new(SOCK), &p);
+        let c = p.now();
+        assert_eq!((c.files, c.bytes), (u.tree.files, u.tree.bytes));
+        assert_eq!((c.repos, c.checked, c.walked), (1, 1, true));
+        assert_eq!(state_of(&u, "results/b/copy"), (Kind::Prot, "no-upstream"));
+        // The rows keep their name order.
+        let paths: Vec<String> = find(&u.tree, "results").unwrap().children.iter().map(|c| c.path.clone()).collect();
+        let mut sorted = paths.clone();
+        sorted.sort();
+        assert_eq!(paths, sorted);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     fn git(dir: &Path, args: &[&str]) {
         let ok = Command::new("git")
             .arg("-C")

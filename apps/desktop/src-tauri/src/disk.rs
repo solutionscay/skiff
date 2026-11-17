@@ -43,7 +43,7 @@ fn places() -> anyhow::Result<(std::path::PathBuf, std::path::PathBuf, std::path
 
 fn count(sessions: Option<Vec<SessionInfo>>) -> anyhow::Result<Usage> {
     let (folder, cache, ledger, cache_days) = places()?;
-    let usage = disk::usage(&folder, &cache, &ledger, sessions.as_deref(), &skiff_core::state::socket());
+    let usage = disk::usage(&folder, &cache, &ledger, sessions.as_deref(), &skiff_core::state::socket(), &disk::Progress::default());
     let home = skipper::home().ok();
     let shown = match home.as_deref().and_then(|h| usage.folder.strip_prefix(h).ok()) {
         Some(rel) if rel.as_os_str().is_empty() => "~".to_string(),

@@ -3,6 +3,7 @@
 use super::{
     checkout::{now_secs, Checkout},
     model::{Kind, Node, Usage, Verdict, Work, HOLD_LOOSE, HOLD_WORK},
+    progress::Progress,
     tree::{fold, is_frame, is_home, kept_name, walk},
 };
 
@@ -251,14 +252,20 @@ fn unsure(n: &mut Node, why: &'static str) {
 
 /// Counts and judges `folder`. `cache`: the image cache. `ledger`: the
 /// ledger file. `sessions`: the daemon's list, `None` when it did not answer.
-pub fn usage(folder: &Path, cache: &Path, ledger_file: &Path, sessions: Option<&[SessionInfo]>, socket: &Path) -> Usage {
-    let mut u = raw(folder, cache, ledger_file, sessions, socket, now_secs());
+/// `progress`: the running totals, for a page that shows them.
+pub fn usage(folder: &Path, cache: &Path, ledger_file: &Path, sessions: Option<&[SessionInfo]>, socket: &Path, progress: &Progress) -> Usage {
+    let mut u = counted(folder, cache, ledger_file, sessions, socket, now_secs(), progress);
     fold(&mut u.tree);
     u
 }
 
 /// [`usage`] at `now`, unfolded: the flush finds every path in it.
 pub(super) fn raw(folder: &Path, cache: &Path, ledger_file: &Path, sessions: Option<&[SessionInfo]>, socket: &Path, now: i64) -> Usage {
+    counted(folder, cache, ledger_file, sessions, socket, now, &Progress::default())
+}
+
+/// [`raw`], with the running totals in `progress`.
+fn counted(folder: &Path, cache: &Path, ledger_file: &Path, sessions: Option<&[SessionInfo]>, socket: &Path, now: i64, progress: &Progress) -> Usage {
     let root = folder.canonicalize().unwrap_or_else(|_| folder.to_path_buf());
     let (rows, ledger_error) = if ledger_file.exists() {
         match ledger::open_read(ledger_file).and_then(|db| ledger::rows(&db, "", None)) {
@@ -291,7 +298,7 @@ pub(super) fn raw(folder: &Path, cache: &Path, ledger_file: &Path, sessions: Opt
         },
     };
     let mut bad = 0;
-    let mut tree = walk(&root, "", &mut bad);
+    let mut tree = walk(&root, "", &mut bad, progress);
     tree.name = String::new();
     judge(&mut tree, &sig, None);
     if let Some(why) = sig.sure {

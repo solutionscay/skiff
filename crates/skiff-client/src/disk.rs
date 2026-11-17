@@ -23,8 +23,10 @@ mod checkout;
 mod flush;
 mod model;
 mod policy;
+mod progress;
 mod tree;
 
 pub use flush::{flush, flush_old, flush_work};
 pub use model::{words, Expected, Flushed, Kind, Node, Usage, Verdict, Work, HOLD_LOOSE, HOLD_WORK};
 pub use policy::usage;
+pub use progress::{Counted, Progress};
