@@ -225,12 +225,13 @@ export const finishDefs = () => `<svg id="${FINISH_DEFS_ID}" width="0" height="0
   <stop offset="0" stop-color="#fff" stop-opacity=".16"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/>
 </linearGradient>
 <radialGradient id="sk-shade-gummy" gradientUnits="userSpaceOnUse" cx="12" cy="10" r="19">
-  <stop offset="0" stop-color="#cfcfcf"/><stop offset=".35" stop-color="#808080"/>
-  <stop offset=".7" stop-color="#6e6e6e"/><stop offset="1" stop-color="#2a2a2a"/>
+  <stop offset="0" stop-color="#a8a8a8"/><stop offset=".35" stop-color="#868686"/>
+  <stop offset=".7" stop-color="#767676"/><stop offset="1" stop-color="#3a3a3a"/>
 </radialGradient>
+<!-- The shades blend hard-light: 50 % grey changes nothing. Keep the centre at or just over it, so only the rim darkens. -->
 <radialGradient id="sk-shade-plush" gradientUnits="userSpaceOnUse" cx="13.5" cy="11.5" r="17.5">
-  <stop offset="0" stop-color="#b8b8b8"/><stop offset=".45" stop-color="#808080"/>
-  <stop offset=".75" stop-color="#6c6c6c"/><stop offset="1" stop-color="#3a3a3a"/>
+  <stop offset="0" stop-color="#a4a4a4"/><stop offset=".55" stop-color="#8a8a8a"/>
+  <stop offset=".8" stop-color="#7e7e7e"/><stop offset="1" stop-color="#585858"/>
 </radialGradient>
 <filter id="sk-gummy" x="-25%" y="-25%" width="150%" height="160%" color-interpolation-filters="sRGB">
   <feGaussianBlur in="SourceAlpha" stdDeviation="1.6" result="soft"/>
@@ -247,7 +248,7 @@ export const finishDefs = () => `<svg id="${FINISH_DEFS_ID}" width="0" height="0
   <feFlood flood-color="#000" flood-opacity=".3"/>
   <feComposite in2="toprim" operator="in" result="dark"/>
   <feGaussianBlur in="SourceAlpha" stdDeviation="3.2" result="bump"/>
-  <feSpecularLighting in="bump" surfaceScale="2.4" specularConstant=".85" specularExponent="14" lighting-color="#fff" result="spec">
+  <feSpecularLighting in="bump" surfaceScale="2.4" specularConstant=".75" specularExponent="34" lighting-color="#fff" result="spec">
     <fePointLight x="10" y="4" z="22"/>
   </feSpecularLighting>
   <feGaussianBlur in="spec" stdDeviation=".5" result="spec2"/>
@@ -273,7 +274,8 @@ export const finishDefs = () => `<svg id="${FINISH_DEFS_ID}" width="0" height="0
   <feColorMatrix in="grain" type="saturate" values="0" result="gg"/>
   <feGaussianBlur in="gg" stdDeviation=".2" result="gb"/>
   <feComponentTransfer in="gb" result="g"><feFuncR type="linear" slope=".55" intercept=".22"/><feFuncG type="linear" slope=".55" intercept=".22"/><feFuncB type="linear" slope=".55" intercept=".22"/></feComponentTransfer>
-  <feBlend in="fluff" in2="g" mode="soft-light" result="furred"/>
+  <!-- The grain on top of the color: in2 is the backdrop. The other way the grey grain is the base and the color only tints it. -->
+  <feBlend in="g" in2="fluff" mode="soft-light" result="furred"/>
   <feComposite in="furred" in2="fluff" operator="in" result="toy"/>
   <feGaussianBlur in="SourceAlpha" stdDeviation="1.8" result="sb"/>
   <feOffset in="sb" dy="1.8" result="so"/>
@@ -293,7 +295,7 @@ export const finishDefs = () => `<svg id="${FINISH_DEFS_ID}" width="0" height="0
   <feColorMatrix in="grain" type="saturate" values="0" result="gg"/>
   <feGaussianBlur in="gg" stdDeviation=".12" result="gb"/>
   <feComponentTransfer in="gb" result="g"><feFuncR type="linear" slope=".6" intercept=".2"/><feFuncG type="linear" slope=".6" intercept=".2"/><feFuncB type="linear" slope=".6" intercept=".2"/></feComponentTransfer>
-  <feBlend in="fluff" in2="g" mode="soft-light" result="furred"/>
+  <feBlend in="g" in2="fluff" mode="soft-light" result="furred"/>
   <feComposite in="furred" in2="fluff" operator="in" result="toy"/>
   <feGaussianBlur in="SourceAlpha" stdDeviation=".6" result="sb"/>
   <feOffset in="sb" dy=".6" result="so"/>
