@@ -3,44 +3,70 @@
 use super::{
     checkout::{checkout, mtime, Checkout},
     model::{Kind, Node, Verdict, FOLD_FILES, KEEP},
+    progress::Progress,
 };
 
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicUsize, Ordering},
-        Mutex,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+        mpsc, Mutex,
     },
 };
 
+/// Threads for the walk and for the git checks.
+fn threads() -> usize {
+    std::thread::available_parallelism().map_or(4, |n| n.get()).min(8)
+}
+
 /// A walk of `abs`, never through a link. Counts what it cannot read. The
-/// git checks of the checkouts in it run at the end, side by side: each
-/// one runs git a few times, and they are most of the count's time.
-pub(super) fn walk(abs: &Path, rel: &str, bad: &mut u64) -> Node {
-    let mut repos = Vec::new();
-    let mut n = walk_files(abs, rel, bad, &mut repos);
-    let states = checkouts(&repos);
-    set_checkouts(&mut n, &states);
+/// walk lists folders on several threads. Each git checkout it finds is
+/// checked at once, on other threads, while the walk goes on: each check
+/// runs git a few times. `p` gets the running totals.
+pub(super) fn walk(abs: &Path, rel: &str, bad: &mut u64, p: &Progress) -> Node {
+    let (tx, rx) = mpsc::channel::<PathBuf>();
+    let rx = Mutex::new(rx);
+    let states = Mutex::new(HashMap::new());
+    let unread = AtomicU64::new(0);
+    let mut n = std::thread::scope(|s| {
+        for _ in 0..threads() {
+            s.spawn(|| loop {
+                // The lock is held only to take the next folder.
+                let next = rx.lock().unwrap_or_else(|e| e.into_inner()).recv();
+                let Ok(d) = next else { return };
+                let c = checkout(&d);
+                states.lock().unwrap_or_else(|e| e.into_inner()).insert(d, c);
+                p.checked();
+            });
+        }
+        let w = Walk { bad: &unread, repos: tx, p, spare: AtomicUsize::new(threads().saturating_sub(1)) };
+        let n = walk_files(abs, rel, &w);
+        p.walked();
+        // The last sender goes: the git threads end when the queue is empty.
+        drop(w);
+        n
+    });
+    *bad += unread.into_inner();
+    set_checkouts(&mut n, &states.into_inner().unwrap_or_else(|e| e.into_inner()));
     n
 }
 
-/// The [`checkout`] state of each folder in `dirs`, a few at a time.
-fn checkouts(dirs: &[PathBuf]) -> HashMap<PathBuf, Checkout> {
-    let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).min(8);
-    let next = AtomicUsize::new(0);
-    let out = Mutex::new(HashMap::new());
-    std::thread::scope(|s| {
-        for _ in 0..threads.min(dirs.len()) {
-            s.spawn(|| {
-                while let Some(d) = dirs.get(next.fetch_add(1, Ordering::Relaxed)) {
-                    let c = checkout(d);
-                    out.lock().unwrap_or_else(|e| e.into_inner()).insert(d.clone(), c);
-                }
-            });
-        }
-    });
-    out.into_inner().unwrap_or_else(|e| e.into_inner())
+/// What every folder of one walk shares.
+struct Walk<'a> {
+    bad: &'a AtomicU64,
+    /// The folders that hold a `.git`, for the git threads.
+    repos: mpsc::Sender<PathBuf>,
+    p: &'a Progress,
+    /// Threads the walk may still start. A thread gives its place back when it ends.
+    spare: AtomicUsize,
+}
+
+impl Walk<'_> {
+    /// One place for a thread, when one is free.
+    fn take(&self) -> bool {
+        self.spare.fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_sub(1)).is_ok()
+    }
 }
 
 fn set_checkouts(n: &mut Node, states: &HashMap<PathBuf, Checkout>) {
@@ -54,8 +80,40 @@ fn set_checkouts(n: &mut Node, states: &HashMap<PathBuf, Checkout>) {
     }
 }
 
-/// [`walk`] without the git checks: the folders that hold a `.git` go to `repos`.
-fn walk_files(abs: &Path, rel: &str, bad: &mut u64, repos: &mut Vec<PathBuf>) -> Node {
+/// A folder's entry: its path, its path in the tree, and whether it is a folder.
+type Kid = (PathBuf, String, bool);
+
+/// The nodes of `kids`, in their order. A folder with two subfolders or
+/// more, or with many entries, shares them with the threads that are free.
+fn walk_kids(kids: &[Kid], w: &Walk) -> Vec<Node> {
+    let dirs = kids.iter().filter(|k| k.2).count();
+    if dirs < 2 && kids.len() < 64 {
+        return kids.iter().map(|(k, r, _)| walk_files(k, r, w)).collect();
+    }
+    let next = AtomicUsize::new(0);
+    let slots: Vec<Mutex<Option<Node>>> = kids.iter().map(|_| Mutex::new(None)).collect();
+    let work = || loop {
+        let i = next.fetch_add(1, Ordering::Relaxed);
+        let Some((k, r, _)) = kids.get(i) else { return };
+        let n = walk_files(k, r, w);
+        *slots[i].lock().unwrap_or_else(|e| e.into_inner()) = Some(n);
+    };
+    std::thread::scope(|s| {
+        let mut helpers = 1;
+        while helpers < kids.len() && w.take() {
+            helpers += 1;
+            s.spawn(|| {
+                work();
+                w.spare.fetch_add(1, Ordering::AcqRel);
+            });
+        }
+        work();
+    });
+    slots.into_iter().filter_map(|m| m.into_inner().unwrap_or_else(|e| e.into_inner())).collect()
+}
+
+/// [`walk`] of one file or folder: the git checks go to the git threads.
+fn walk_files(abs: &Path, rel: &str, w: &Walk) -> Node {
     let name = abs.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let mut n = Node {
         name: name.clone(),
@@ -71,53 +129,48 @@ fn walk_files(abs: &Path, rel: &str, bad: &mut u64, repos: &mut Vec<PathBuf>) ->
         checkout: None,
         abs: abs.to_path_buf(),
     };
-    let meta = match std::fs::symlink_metadata(abs) {
-        Ok(m) => m,
-        Err(_) => {
-            *bad += 1;
-            n.state = Some(Verdict::new(Kind::Prot, "unreadable"));
-            n.files = 1;
-            return n;
-        }
+    let unreadable = |mut n: Node| {
+        w.bad.fetch_add(1, Ordering::Relaxed);
+        w.p.file(0);
+        n.state = Some(Verdict::new(Kind::Prot, "unreadable"));
+        n.files = 1;
+        n
     };
+    let Ok(meta) = std::fs::symlink_metadata(abs) else { return unreadable(n) };
     n.mtime = mtime(&meta);
     if !meta.is_dir() {
         n.files = 1;
         n.bytes = if meta.file_type().is_symlink() { 0 } else { meta.len() };
+        w.p.file(n.bytes);
         return n;
     }
     n.dir = true;
     n.name.push('/');
-    let rd = match std::fs::read_dir(abs) {
-        Ok(rd) => rd,
-        Err(_) => {
-            // A folder Skiff cannot list: one protected row.
-            *bad += 1;
-            n.state = Some(Verdict::new(Kind::Prot, "unreadable"));
-            n.files = 1;
-            return n;
-        }
-    };
-    let mut kids: Vec<PathBuf> = Vec::new();
+    // A folder Skiff cannot list: one protected row.
+    let Ok(rd) = std::fs::read_dir(abs) else { return unreadable(n) };
+    let mut kids: Vec<Kid> = Vec::new();
     for e in rd {
         match e {
-            Ok(e) => kids.push(e.path()),
-            Err(_) => *bad += 1,
+            Ok(e) => {
+                let kname = e.file_name().to_string_lossy().into_owned();
+                let krel = if rel.is_empty() { kname } else { format!("{rel}/{kname}") };
+                // The entry's type from the listing: a link is not a folder.
+                kids.push((e.path(), krel, e.file_type().is_ok_and(|t| t.is_dir())));
+            }
+            Err(_) => {
+                w.bad.fetch_add(1, Ordering::Relaxed);
+            }
         }
     }
     kids.sort();
-    if kids.iter().any(|k| k.file_name().is_some_and(|f| f == ".git")) && !rel.is_empty() {
-        repos.push(abs.to_path_buf());
+    if kids.iter().any(|k| k.0.file_name().is_some_and(|f| f == ".git")) && !rel.is_empty() {
+        w.p.repo();
+        let _ = w.repos.send(abs.to_path_buf());
     }
     let own = n.mtime;
-    for k in kids {
-        let kname = k.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-        let krel = if rel.is_empty() { kname } else { format!("{rel}/{kname}") };
-        let c = walk_files(&k, &krel, bad, repos);
-        n.bytes += c.bytes;
-        n.files += c.files;
-        n.children.push(c);
-    }
+    n.children = walk_kids(&kids, w);
+    n.bytes = n.children.iter().map(|c| c.bytes).sum();
+    n.files = n.children.iter().map(|c| c.files).sum();
     n.mtime = n.children.iter().filter(|c| c.files > 0).map(|c| c.mtime).max().unwrap_or(own);
     n
 }

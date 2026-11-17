@@ -9,7 +9,7 @@ use skiff_client::{
     ledger, skipper,
 };
 use skiff_core::{config, session::SessionInfo};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{ipc::Channel, AppHandle, Emitter, State};
 
 use crate::{commands::Opened, connection::App};
 
@@ -35,23 +35,42 @@ async fn sessions(app: &App) -> Option<Vec<SessionInfo>> {
 }
 
 /// The folder, its cache and the ledger. Makes the folder when it is missing.
-fn places() -> anyhow::Result<(std::path::PathBuf, std::path::PathBuf, std::path::PathBuf, u32)> {
+type Places = (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf, u32);
+
+fn places() -> anyhow::Result<Places> {
     let cfg = config::load()?;
     let folder = skipper::make_folder(&cfg)?;
     Ok((folder.clone(), skipper::cache_dir(&cfg)?, ledger::path()?, cfg.skiff_agent.cache_days()))
 }
 
-fn count(sessions: Option<Vec<SessionInfo>>) -> anyhow::Result<Usage> {
-    let (folder, cache, ledger, cache_days) = places()?;
-    let usage = disk::usage(&folder, &cache, &ledger, sessions.as_deref(), &skiff_core::state::socket());
+/// The folder with `~` for home.
+fn shown(folder: &std::path::Path) -> String {
     let home = skipper::home().ok();
-    let shown = match home.as_deref().and_then(|h| usage.folder.strip_prefix(h).ok()) {
+    match home.as_deref().and_then(|h| folder.strip_prefix(h).ok()) {
         Some(rel) if rel.as_os_str().is_empty() => "~".to_string(),
         Some(rel) => format!("~/{}", rel.display()),
-        None => usage.folder.display().to_string(),
-    };
-    Ok(Usage { usage, shown, cache_days })
+        None => folder.display().to_string(),
+    }
 }
+
+fn count(sessions: Option<Vec<SessionInfo>>, places: Places, progress: &disk::Progress) -> Usage {
+    let (folder, cache, ledger, cache_days) = places;
+    let usage = disk::usage(&folder, &cache, &ledger, sessions.as_deref(), &skiff_core::state::socket(), progress);
+    let shown = shown(&usage.folder);
+    Usage { usage, shown, cache_days }
+}
+
+/// The count's running totals, sent while it runs.
+#[derive(Serialize)]
+pub struct Counting {
+    /// The folder with `~` for home.
+    shown: String,
+    #[serde(flatten)]
+    counted: disk::Counted,
+}
+
+/// How often the page gets the running totals.
+const TICK: std::time::Duration = std::time::Duration::from_millis(150);
 
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> Result<T, String> {
     tauri::async_runtime::spawn_blocking(f)
@@ -60,8 +79,10 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Sen
         .map_err(|e| format!("{e:#}"))
 }
 
+/// The tree. `on_progress` gets the running totals at once and then each
+/// [`TICK`] until the tree is sent.
 #[tauri::command]
-pub async fn disk_usage(app: State<'_, App>) -> Result<serde_json::Value, String> {
+pub async fn disk_usage(app: State<'_, App>, on_progress: Channel<Counting>) -> Result<serde_json::Value, String> {
     if app.remote() {
         let usage = crate::connection::data_read(&app, |c| async move { skiff_client::host::data::cache_use(&c).await }).await?;
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
@@ -81,9 +102,23 @@ pub async fn disk_usage(app: State<'_, App>) -> Result<serde_json::Value, String
             "now": now, "daemon": true, "ledger_error": null, "unreadable": 0
         }));
     }
+    let at = blocking(places).await?;
+    let progress = std::sync::Arc::new(disk::Progress::default());
+    let ticks = {
+        let (progress, shown) = (progress.clone(), shown(&at.0));
+        tauri::async_runtime::spawn(async move {
+            loop {
+                if on_progress.send(Counting { shown: shown.clone(), counted: progress.now() }).is_err() {
+                    return;
+                }
+                tokio::time::sleep(TICK).await;
+            }
+        })
+    };
     let s = sessions(&app).await;
-    let usage = blocking(move || count(s)).await?;
-    serde_json::to_value(usage).map_err(|e| e.to_string())
+    let usage = blocking(move || Ok(count(s, at, &progress))).await;
+    ticks.abort();
+    serde_json::to_value(usage?).map_err(|e| e.to_string())
 }
 
 /// Auto flush's age in days, in this computer's projects.toml. `0`: off.
