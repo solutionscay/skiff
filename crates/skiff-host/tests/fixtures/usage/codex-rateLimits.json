@@ -1,0 +1,111 @@
+{
+ "initialize": {
+  "id": 1,
+  "result": {
+   "userAgent": "probe/0.169.0 (Mac OS 26.0.1; arm64) xterm-256color (probe; 0)",
+   "codexHome": "~/.codex",
+   "platformFamily": "unix",
+   "platformOs": "macos"
+  }
+ },
+ "rateLimits": {
+  "id": 2,
+  "result": {
+   "ordinaryUsageAllowed": true,
+   "rateLimits": {
+    "limitId": "codex",
+    "limitName": null,
+    "normalModelSlug": null,
+    "primary": {
+     "usedPercent": 2,
+     "windowDurationMins": 10080,
+     "resetsAt": 1795016698
+    },
+    "secondary": null,
+    "credits": {
+     "hasCredits": true,
+     "unlimited": false,
+     "balance": "75000.0000000000"
+    },
+    "individualLimit": null,
+    "spendControlReached": false,
+    "planType": "prolite",
+    "rateLimitReachedType": null
+   },
+   "rateLimitsByLimitId": {
+    "codex": {
+     "limitId": "codex",
+     "limitName": null,
+     "normalModelSlug": null,
+     "primary": {
+      "usedPercent": 2,
+      "windowDurationMins": 10080,
+      "resetsAt": 1795016698
+     },
+     "secondary": null,
+     "credits": {
+      "hasCredits": true,
+      "unlimited": false,
+      "balance": "75000.0000000000"
+     },
+     "individualLimit": null,
+     "spendControlReached": false,
+     "planType": "prolite",
+     "rateLimitReachedType": null
+    }
+   },
+   "rateLimitResetCredits": {
+    "availableCount": 3,
+    "credits": [
+     {
+      "id": "RateLimitResetCredit_<redacted>",
+      "resetType": "codexRateLimits",
+      "status": "available",
+      "grantedAt": 1793476159,
+      "expiresAt": 1796068159,
+      "title": "Full reset",
+      "description": "Thanks for using Codex! You've been granted one free rate limit reset."
+     },
+     {
+      "id": "RateLimitResetCredit_<redacted>",
+      "resetType": "codexRateLimits",
+      "status": "available",
+      "grantedAt": 1793571861,
+      "expiresAt": 1796163861,
+      "title": "Full reset",
+      "description": "Thanks for using Codex! You've been granted one free rate limit reset."
+     },
+     {
+      "id": "RateLimitResetCredit_<redacted>",
+      "resetType": "codexRateLimits",
+      "status": "available",
+      "grantedAt": 1794521980,
+      "expiresAt": 1797113980,
+      "title": "Full reset",
+      "description": "Thanks for using Codex! You've been granted one free rate limit reset."
+     }
+    ]
+   },
+   "accountId": "<redacted>",
+   "rateLimitUpsell": null
+  }
+ },
+ "account": {
+  "id": 3,
+  "result": {
+   "account": {
+    "type": "chatgpt",
+    "email": "<redacted>",
+    "planType": "prolite",
+    "workspaceName": null
+   },
+   "userId": "<redacted>",
+   "requiresOpenaiAuth": true,
+   "workspaceRouting": {
+    "chatgptAccountId": "<redacted>",
+    "backendOrigin": "https://chatgpt.com",
+    "accountRoutingOverride": "NO_CONSTRAINT"
+   }
+  }
+ }
+}

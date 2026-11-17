@@ -518,6 +518,15 @@ pub async fn program_list(c: &HostConnection, path: &str) -> Result<Vec<String>,
     }
 }
 
+/// Each agent's last plan usage on the Host, after starting the reads
+/// `refresh` asks for (`agent_usage@1`). It never waits for a read.
+pub async fn usage_read(c: &HostConnection, refresh: skiff_host_api::UsageRefresh) -> Result<Vec<skiff_host_api::AgentUsage>, Error> {
+    match c.request(Request::UsageRead { refresh }).await? {
+        Response::Usage { agents } => Ok(agents),
+        _ => unreachable!("checked by Request::accepts"),
+    }
+}
+
 /// Recent and the Host's git repositories under home (`folders@1`).
 pub async fn folder_places(c: &HostConnection) -> Result<FolderPlaces, Error> {
     match c.request(Request::FolderPlaces).await? {

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::wire::bytes;
-use crate::{AgentEdit, Group, HostFileScope, ProjectEdit, ProjectFleet, ReadPurpose, SessionSpec, SkipperEdit, SkipperFolderMode};
+use crate::{AgentEdit, Group, HostFileScope, ProjectEdit, ProjectFleet, ReadPurpose, SessionSpec, SkipperEdit, SkipperFolderMode, UsageRefresh};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
@@ -220,6 +220,12 @@ pub enum Request {
     /// Answers `programs`: the names of the executable files in `path`, a
     /// full Host path, sorted. A path that is not a folder is `not_found`.
     ProgramList { path: String },
+    /// Answers `usage` with each agent's last usage values, and starts the
+    /// reads `refresh` asks for. It never waits for a read.
+    UsageRead {
+        #[serde(default)]
+        refresh: UsageRefresh,
+    },
     /// Answers `places`: the Recent list, and the git repositories a
     /// bounded scan of home found (depth 4, 5 s, 200 repositories, no
     /// hidden folder, `node_modules`, `target`, `vendor` or `.cache`). The

@@ -1,0 +1,68 @@
+{
+ "is_error": false,
+ "duration_api_ms": 0,
+ "num_turns": 0,
+ "stop_reason": null,
+ "session_id": "<redacted>",
+ "total_cost_usd": 0,
+ "usage": {
+  "output_tokens_details": {
+   "thinking_tokens": 0
+  },
+  "input_tokens": 0,
+  "cache_creation_input_tokens": 0,
+  "cache_read_input_tokens": 0,
+  "output_tokens": 0,
+  "server_tool_use": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "service_tier": "standard",
+  "cache_creation": {
+   "ephemeral_1h_input_tokens": 0,
+   "ephemeral_5m_input_tokens": 0
+  },
+  "inference_geo": "",
+  "iterations": [],
+  "speed": "standard",
+  "fallback_credit": null
+ },
+ "modelUsage": {},
+ "permission_denials": [],
+ "fast_mode_state": "off",
+ "fast_mode_disabled_reason": "sdk_opt_in_required",
+ "subagent_stats": {
+  "spawned": 0,
+  "requested": {
+   "background": 0,
+   "foreground": 0,
+   "unset": 0
+  },
+  "started_in_background": 0,
+  "max_depth": 0,
+  "spawned_by_subagents": 0,
+  "completed": 0,
+  "failed": 0,
+  "killed": {
+   "parent": 0,
+   "user": 0,
+   "system": 0
+  },
+  "refused": {
+   "depth_limit": 0,
+   "concurrency_limit": 0,
+   "budget": 0
+  },
+  "by_type": {}
+ },
+ "safety_stops": 0,
+ "subtype": "success",
+ "result": "You are currently using your subscription to power your Claude Code usage\n\nCurrent week (all models): 5% used · resets Nov 23 at 9am (America/Chicago)\nCurrent week (Fable): 0% used · resets Nov 23 at 9am (America/Chicago)\n\nWhat's contributing to your usage?\nApproximate · sessions on this machine only · shares overlap\n\nLast 24h · 1254 requests · 26 sessions\n  46%  Run fewer sessions at once · up to 10 at once\n  38%  Start fresh when you switch tasks · run /clear\n  29%  Turn off skills you don't use · 16k tokens per request\n  15%  Check which model \"general-purpose\" subagents use\n  12%  Run /skiff-design on a cheaper model\n  Top skills: /skiff-design 12%, /skiff-cli 1%\n  Top subagents: general-purpose 15%\n\nLast 7d · 3387 requests · 95 sessions\n  60%  Start fresh when you switch tasks · run /clear\n  40%  Run fewer sessions at once · up to 29 at once\n  26%  Turn off skills you don't use · 16k tokens per request\n  14%  Review sessions active over many hours · whole sessions with requests in 8 or more separate hours\n  Top skills: /git-development 7%, /skiff-design 4%, /sc-humanizer 2%, /design-review 2%, /skiff-cli 1%\n  Top subagents: general-purpose 5%",
+ "local_command": "usage",
+ "type": "result",
+ "duration_ms": 1347,
+ "uuid": "<redacted>",
+ "queued_turn_count": 0,
+ "result_index": 0,
+ "credential_expires_at": "<redacted>"
+}

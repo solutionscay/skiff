@@ -4167,6 +4167,7 @@ dependencies = [
  "anyhow",
  "dirs 6.0.0",
  "image",
+ "jiff",
  "libc",
  "rusqlite",
  "serde",

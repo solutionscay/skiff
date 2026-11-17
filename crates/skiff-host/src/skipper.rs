@@ -266,7 +266,7 @@ async fn agents() -> Result<Vec<skiff_host_api::HostAgent>, Error> {
 }
 
 /// The skiffd this service is paired with.
-async fn connect() -> Result<Client, Error> {
+pub(crate) async fn connect() -> Result<Client, Error> {
     let socket = skiff_core::state::socket();
     match tokio::time::timeout(SESSIONS_TIMEOUT, Client::connect(&socket)).await {
         Ok(Ok(c)) => Ok(c),

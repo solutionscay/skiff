@@ -24,6 +24,8 @@ anyhow.workspace = true
 uuid.workspace = true
 libc = "0.2"
 walkdir = "2"
+# Reset times of the usage readers: RFC 3339, and Claude Code's local time in a named zone.
+jiff = "0.2"
 # Scales Images thumbnails on the Host, so a remote picker gets kilobytes.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 

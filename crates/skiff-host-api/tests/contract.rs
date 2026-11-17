@@ -823,3 +823,25 @@ fn projects_stamp_is_projects_major_2_apart_from_major_1() {
     assert!(!Request::LedgerStamp.accepts(&stamp));
     assert!(!Request::ProjectList.accepts(&stamp));
 }
+
+/// #276: `usage_read` is `agent_usage@1`, answers only `usage`, and keeps
+/// its shape: percent used, a length in minutes, an optional reset time.
+#[test]
+fn usage_read_is_agent_usage() {
+    let fixture: Value = serde_json::from_str(include_str!("fixtures/usage.json")).unwrap();
+    let cap = Capability::agent_usage();
+    assert_eq!(serde_json::to_value(&cap).unwrap(), fixture["capability"]);
+    let reply: Response = serde_json::from_value(fixture["reply"].clone()).unwrap();
+    assert_eq!(serde_json::to_value(&reply).unwrap(), fixture["reply"]);
+    for value in fixture["requests"].as_array().unwrap() {
+        let request: Request = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&request).unwrap(), *value);
+        assert_eq!(request.capability(), Some(cap.clone()));
+        assert!(request.accepts(&reply));
+        assert!(!request.accepts(&Response::Ok));
+        assert!(!request.accepts(&Response::Programs { names: vec![] }));
+    }
+    // No refresh named reads nothing.
+    let bare: Request = serde_json::from_value(json!({"cmd":"usage_read"})).unwrap();
+    assert_eq!(bare, Request::UsageRead { refresh: UsageRefresh::None });
+}
