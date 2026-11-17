@@ -1164,7 +1164,6 @@ export const en = {
   "resume.sessions#other": "Resume {count} sessions",
   "search.find": "Find",
   "font.app": "App {percent}",
-  "drop.insert": "Insert the path",
   "drop.type#one": "Type the path",
   "drop.type#other": "Type {count} paths",
   "upload.sending#one": "Uploading 1 file ({sent} of {size})…",
