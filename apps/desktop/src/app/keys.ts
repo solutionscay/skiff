@@ -21,7 +21,7 @@ export type Action =
   | "project-menu" | "project-folder" | "project-copy-path" | "project-color" | "project-changes" | "project-files"
   | "region-next" | "region-prev" | "session-next" | "session-prev" | "list-project" | "list-back" | "list-main" | "shortcuts"
   | "focus-mode" | "maximize" | "mission-control" | "skiff-agent" | "ledger" | "sidebar-view" | "images" | "images-gallery"
-  | "child-next" | "child-prev";
+  | "child-next" | "child-prev" | "usage";
 
 export const isMac = navigator.userAgent.includes("Macintosh");
 
@@ -80,6 +80,8 @@ export const DEFAULTS: Record<Action, string> = {
   images: "ctrl+shift+alt+i",
   // No default key: the palette and the menu bar have it. `[keys]` can set one.
   "images-gallery": "",
+  // Settings › Usage (#276). Ctrl+Shift+U is the input method's Unicode key on Linux, so Linux takes the Alt tier.
+  usage: isMac ? "ctrl+shift+u" : "ctrl+shift+alt+u",
 };
 
 interface Combo { ctrl: boolean; shift: boolean; alt: boolean; key: string }
@@ -229,6 +231,7 @@ export const DESCRIBE: [KeySection, Action][] = [
   ["view", "focus-mode"],
   ["view", "maximize"],
   ["view", "mission-control"],
+  ["view", "usage"],
   ["view", "font-bigger"],
   ["view", "font-smaller"],
   ["view", "font-reset"],

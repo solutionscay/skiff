@@ -113,6 +113,7 @@ function drafts(): Draft[] {
       section: "view", id: entry.label, label: entry.label, key: "", run: () => entry.run?.(), off: entry.disabled,
     })),
     { section: "view", id: "cmd.missionControl", key: k("mission-control"), action: "mission-control", run: act("mission-control"), off: !hostCan("session_screen") },
+    { section: "view", id: "cmd.usage", key: k("usage"), action: "usage", run: act("usage") },
     { section: "view", id: "cmd.nextWaiting", key: k("next-waiting"), action: "next-waiting", run: act("next-waiting") },
     {
       section: "view", id: "cmd.showSkiffAgent", label: t(skiffAgentSession() ? "cmd.showSkiffAgent" : "cmd.startSkiffAgent", { name: skiffAgentName() }), key: k("skiff-agent"), action: "skiff-agent",

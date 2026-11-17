@@ -229,7 +229,7 @@ export type BoardCommand =
   | "next-waiting"
   | "panel"
   | "menu"
-  | "settings"
+  | "settings" | "usage"
   | "skipper";
 
 const ACTIONS: Record<string, BoardCommand> = {
@@ -241,6 +241,7 @@ const ACTIONS: Record<string, BoardCommand> = {
   ledger: "panel",
   "project-menu": "menu",
   settings: "settings",
+  usage: "usage",
   "skiff-agent": "skipper",
   "session-next": "down",
   "session-prev": "up",

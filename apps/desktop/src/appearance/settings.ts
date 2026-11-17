@@ -555,6 +555,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     if (f) void editField(f, a as "copy" | "paste");
     else if (a === "session-next" || a === "session-prev") stepTab(a === "session-next" ? 1 : -1);
     else if (a === "list-project" || a === "list-back") enterSection(a === "list-back");
+    // The Usage key on the open Usage page closes Settings; on another page it shows Usage (decision 9).
+    else if (a === "usage") {
+      if (tab === "usage") close();
+      else void settings.open("usage");
+    }
     else return false;
     return true;
   }
