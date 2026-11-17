@@ -250,9 +250,7 @@ pub fn batch_args(target: &SshTarget, options: &SshOptions, command: String) -> 
 }
 
 /// One shell word in single quotes, for sh, bash, zsh and fish alike.
-pub fn quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
-}
+pub use skiff_core::shell::shell_quote as quote;
 
 /// What one batch run gave.
 pub enum BatchRun {
