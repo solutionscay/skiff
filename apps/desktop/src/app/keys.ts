@@ -76,20 +76,18 @@ export const DEFAULTS: Record<Action, string> = {
   // The Skipper split's children. Bare Ctrl+PageUp/PageDown stay with the terminal.
   "child-next": "ctrl+shift+pagedown",
   "child-prev": "ctrl+shift+pageup",
-  // Ctrl+Shift+U is the input method's Unicode key on Linux.
   images: "ctrl+shift+alt+i",
   // No default key: the palette and the menu bar have it. `[keys]` can set one.
   "images-gallery": "",
-  // Settings › Usage (#276). Ctrl+Shift+U is the input method's Unicode key on Linux, so Linux takes the Alt tier.
-  // The input method ignores Alt there too: the window catches this key first (ime_keys.rs).
-  usage: isMac ? "ctrl+shift+u" : "ctrl+shift+alt+u",
+  // Settings › Usage (#276). Ctrl+Shift+U is the input method's Unicode key on Linux, so Usage takes the period.
+  usage: "ctrl+shift+.",
 };
 
 interface Combo { ctrl: boolean; shift: boolean; alt: boolean; key: string }
 
 const ALIASES: Record<string, string> = {
   left: "arrowleft", right: "arrowright", up: "arrowup", down: "arrowdown",
-  plus: "=", "+": "=", minus: "-", comma: ",", esc: "escape", space: " ",
+  plus: "=", "+": "=", minus: "-", comma: ",", period: ".", esc: "escape", space: " ",
 };
 
 function parse(spec: string): Combo | null {
@@ -113,6 +111,8 @@ function eventKey(e: KeyboardEvent): string {
   if (e.code === "Equal") return "=";
   if (e.code === "Minus") return "-";
   if (e.code === "Comma") return ",";
+  // With Shift held, the period key gives ">" on US and other layouts.
+  if (e.code === "Period") return ".";
   return e.key.toLowerCase();
 }
 
@@ -166,7 +166,7 @@ export function keyLabel(action: Action): string {
   return labels[action] ?? "";
 }
 
-const MENU_KEYS: Record<string, string> = { "=": "Equal", "-": "Minus", ",": "Comma", " ": "Space", escape: "Escape", enter: "Enter", home: "Home", end: "End", pageup: "PageUp", pagedown: "PageDown" };
+const MENU_KEYS: Record<string, string> = { "=": "Equal", "-": "Minus", ",": "Comma", ".": "Period", " ": "Space", escape: "Escape", enter: "Enter", home: "Home", end: "End", pageup: "PageUp", pagedown: "PageDown" };
 
 /** The action's key as the menu bar spells it ("Ctrl+Shift+T"), or "" for none. */
 export function menuAccel(action: Action): string {

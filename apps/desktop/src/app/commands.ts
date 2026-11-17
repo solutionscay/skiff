@@ -220,13 +220,6 @@ function syncMenu() {
 void listen<string>("skiff:menu", (e) => menuRuns.get(e.payload)?.());
 // The search button in the GNOME header bar.
 void listen("skiff:search", () => runAction("palette"));
-// Linux: the window catches Ctrl+Shift+Alt+U before the input method takes it for
-// Unicode entry (ime_keys.rs). It runs as the keydown it was, through the keymap.
-if (!isMac) void listen<string>("skiff:ime-key", (e) => {
-  (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown", {
-    code: e.payload, key: e.payload.slice(3), ctrlKey: true, shiftKey: true, altKey: true, bubbles: true, cancelable: true,
-  }));
-});
 
 async function installCli() {
   const ok = await confirmAction({
