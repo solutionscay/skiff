@@ -117,15 +117,16 @@ const visorLight = (at: string, finish: Finish) => (finish === "flat" ? "" : `<r
  * The body. Gummy and plush add an opaque shade over it, so the fill and the
  * 3-unit stroke, which overlap inside the edge, paint once, and put both in
  * the finish's filter. Gummy blends its grey shade hard-light. Plush blends
- * multiply: white changes nothing, so its centre keeps the color and only the
- * rim darkens. WebKitGTK blends hard-light in linear light, where 50 % grey
- * (#808080) darkens by a sixth; multiply over white is neutral in any space.
+ * overlay: the body's own color leads, so a light top-left and a dark rim
+ * shape the toy and the color keeps its strength. WebKitGTK blends in linear
+ * light, where the neutral grey is #bcbcbc, not #808080 (#808080 darkens by
+ * a sixth), so the plush shade centres on #bcbcbc.
  */
 function body(shape: string, finish: Finish): string {
   const flat = `<path d="${shape}" style="fill:${FILL};stroke:${FILL}" stroke-width="3" stroke-linejoin="round"/>`;
   if (finish === "flat") return flat;
   const g = `url(#sk-shade-${finish})`;
-  return `<g filter="url(#sk-${finish})">${flat}<path d="${shape}" fill="${g}" stroke="${g}" stroke-width="3" stroke-linejoin="round" style="mix-blend-mode:${finish === "plush" ? "multiply" : "hard-light"}"/></g>`;
+  return `<g filter="url(#sk-${finish})">${flat}<path d="${shape}" fill="${g}" stroke="${g}" stroke-width="3" stroke-linejoin="round" style="mix-blend-mode:${finish === "plush" ? "overlay" : "hard-light"}"/></g>`;
 }
 
 /** FNV-1a: the same name gives the same avatar on every machine. */
@@ -231,10 +232,10 @@ export const finishDefs = () => `<svg id="${FINISH_DEFS_ID}" width="0" height="0
   <stop offset="0" stop-color="#a8a8a8"/><stop offset=".35" stop-color="#868686"/>
   <stop offset=".7" stop-color="#767676"/><stop offset="1" stop-color="#3a3a3a"/>
 </radialGradient>
-<!-- Plush blends multiply: white changes nothing, so only the rim darkens. Gummy blends hard-light, which WebKitGTK does in linear light: there #bcbcbc, not #808080, changes nothing. -->
+<!-- WebKitGTK blends these in linear light: #bcbcbc, not #808080, changes nothing. Plush (overlay): lit top-left over it, neutral through the middle, a dark rim. -->
 <radialGradient id="sk-shade-plush" gradientUnits="userSpaceOnUse" cx="13.5" cy="11.5" r="17.5">
-  <stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#f8f8f8"/>
-  <stop offset=".8" stop-color="#e8e8e8"/><stop offset="1" stop-color="#c0c0c0"/>
+  <stop offset="0" stop-color="#ffffff"/><stop offset=".3" stop-color="#d8d8d8"/><stop offset=".55" stop-color="#bcbcbc"/>
+  <stop offset=".8" stop-color="#8c8c8c"/><stop offset="1" stop-color="#4a4a4a"/>
 </radialGradient>
 <filter id="sk-gummy" x="-25%" y="-25%" width="150%" height="160%" color-interpolation-filters="sRGB">
   <feGaussianBlur in="SourceAlpha" stdDeviation="1.6" result="soft"/>
