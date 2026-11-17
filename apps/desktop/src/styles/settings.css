@@ -357,6 +357,8 @@ body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset:
 .c-err { color: var(--error-text); font-family: var(--font); }
 /* Settings › Usage (#276): a band per agent, a row per window. Limit · Used · Resets. */
 .u-page .set-row { grid-template-columns: calc(280 * var(--u)) minmax(0, 1fr) calc(380 * var(--u)); }
+/* The error band keeps the 40px grid: its 1px rule is inside the row. */
+.u-page .set-error { height: var(--row); line-height: calc(var(--row) - 1px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .u-page .set-cols { position: sticky; top: var(--row); z-index: 1; background: var(--bg); }
 .u-band .set-band-title { display: flex; align-items: center; gap: calc(8 * var(--u)); min-width: 0; }
 .u-name { color: var(--text); font-size: calc(13px * var(--zoom, 1)); }
