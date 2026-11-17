@@ -44,7 +44,6 @@ import "./terminal/fileDrop";
 import { startImages } from "./terminal/images";
 import { startWorkspaceQuitGuard, startWorkspaces } from "./workspace/profile";
 import { startUpdates } from "./app/updater";
-import { startMascot } from "./app/startMascot";
 
 initPanels();
 configureRender(render);
@@ -240,9 +239,8 @@ async function restoredDrawn() {
   await frame();
 }
 
-// The start screen: the mascot on the app background. The app takes its place
-// in one step, already in the restored view, with no fixed wait.
-startMascot($("start"));
+// The start screen: the mascot on the app background (index.html). The app takes
+// its place in one step, already in the restored view, with no fixed wait.
 let revealed = false;
 const reveal = () => {
   if (revealed) return;

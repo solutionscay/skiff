@@ -1,16 +1,33 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mascotSources } from "../src/app/startMascot.ts";
+import { readFileSync } from "node:fs";
 
-/** The start screen plays one ordinary clip: H.264 first, which WKWebView and
- *  WebView2 play, then VP9 for a WebKitGTK without H.264. Reduced motion keeps the still. */
+/** The start screen plays one ordinary clip from index.html, without the app's code:
+ *  H.264 first, which WKWebView and WebView2 play, then VP9 for a WebKitGTK without
+ *  H.264. The still is the poster, and reduced motion keeps the still. */
 
-test("the clip tries H.264, then VP9", () => {
-  assert.deepEqual(mascotSources(false).map((s) => s.type), ["video/mp4", "video/webm"]);
-  assert.match(mascotSources(false)[0].src, /start-mascot\.mp4$/);
-  assert.match(mascotSources(false)[1].src, /start-mascot\.webm$/);
+const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const start = html.slice(html.indexOf('<div id="start"'), html.indexOf('<div id="app"'));
+
+test("the clip is in index.html and tries H.264, then VP9", () => {
+  const sources = [...start.matchAll(/<source src="([^"]+)" type="([^"]+)"/g)].map((m) => [m[1], m[2]]);
+  assert.deepEqual(sources, [
+    ["./src/assets/start-mascot.mp4", "video/mp4"],
+    ["./src/assets/start-mascot.webm", "video/webm"],
+  ]);
+  const video = start.match(/<video [^>]*>/)?.[0] ?? "";
+  for (const attr of ["muted", "loop", "autoplay", "playsinline"]) assert.match(video, new RegExp(` ${attr}[ >]`));
+  assert.doesNotMatch(video, / controls/);
+});
+
+test("the poster is the still", () => {
+  assert.match(start, /<video [^>]*poster="\.\/src\/assets\/start-mascot\.jpg"/);
 });
 
 test("reduced motion keeps the still", () => {
-  assert.deepEqual(mascotSources(true), []);
+  assert.match(start, /matchMedia\("\(prefers-reduced-motion: reduce\)"\)\.matches\) return; v\.pause\(\);.*i\.src = v\.poster;.*v\.replaceWith\(i\)/);
+});
+
+test("the app's code does not swap the mascot", () => {
+  assert.doesNotMatch(readFileSync(new URL("../src/main.ts", import.meta.url), "utf8"), /startMascot/);
 });

@@ -13,6 +13,7 @@
       #start { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: var(--start-bg, #0f1216); }
       body.ready #start { display: none; }
       /* The promo porthole, at a 144px clip: the original clip on its own blue, in a circle. The drop shadow is softer than the promo's, for light themes. */
+      @media (prefers-reduced-motion: reduce) { #start video { visibility: hidden; } }
       #start img, #start video { display: block; box-sizing: content-box; width: 144px; height: 144px; border-radius: 50%; object-fit: cover; background: #4c9ff0;
         border: 4px solid #1a0f2a; outline: 2px solid #b62fe8;
         box-shadow: 0 0 0 7px rgba(182, 47, 232, 0.1), 0 8px 20px rgba(0, 0, 0, 0.28), 0 0 28px rgba(182, 47, 232, 0.3); }
@@ -20,7 +21,15 @@
     <script type="module" src="/src/entry.ts" defer></script>
   </head>
   <body>
-    <div id="start" aria-hidden="true"><img src="./src/assets/start-mascot.jpg" alt="" width="144" height="144" /></div>
+    <!-- The start screen: the clip from the first paint, before the app's code loads. H.264 plays in WKWebView and WebView2; WebKitGTK without an H.264 decoder plays the VP9. The still is the poster. -->
+    <div id="start" aria-hidden="true">
+      <video id="start-mascot" muted loop autoplay playsinline disablepictureinpicture preload="auto" poster="./src/assets/start-mascot.jpg" width="144" height="144">
+        <source src="./src/assets/start-mascot.mp4" type="video/mp4" />
+        <source src="./src/assets/start-mascot.webm" type="video/webm" />
+      </video>
+      <!-- Reduced motion: the still in place of the clip. -->
+      <script>(function () { var v = document.getElementById("start-mascot"); if (!matchMedia("(prefers-reduced-motion: reduce)").matches) return; v.pause(); var i = document.createElement("img"); i.src = v.poster; i.alt = ""; i.width = i.height = 144; v.replaceWith(i); })();</script>
+    </div>
     <div id="app">
       <header id="topbar">
         <div class="tb-cell wordmark">SKIFF</div>

@@ -31,4 +31,4 @@ Each loop uses `steps()`. Reduced motion stops each loop.
 | Idle watcher icon | 8s | `styles/tree-project.css` |
 | Skipper face | blink 5s, head turn 42s | `styles/skippers.css` |
 | Diagnostics progress sweep | 1.2s | `styles/diagnostics-alerts.css` |
-| Start screen mascot: the promo clip in its porthole (H.264, VP9 fallback); the still under reduced motion | 5.2s | `app/startMascot.ts` |
+| Start screen mascot: the promo clip in its porthole (H.264, VP9 fallback); the still under reduced motion | 5.2s | `index.html` |
