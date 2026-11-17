@@ -3,8 +3,8 @@
  * `seed` picks another one for Shuffle. Returns an SVG on a 32×32 grid with
  * no size, so the CSS sets it.
  *
- * The body is the element's --pc, the signature color of the Skipper's theme, else --project-default,
- * so a color or theme change repaints it. Black mixed in keeps the white eyes
+ * The body is the element's --pc, the face's color (`avatarColor`), else
+ * --project-default, so a color or theme change repaints it. Black mixed in keeps the white eyes
  * readable on a pale color. The eyes sit on a visor in the Skiff black, the
  * mascot's visor color, which follows the eye style and the face's tilt.
  *
@@ -33,7 +33,52 @@ export const DEFAULT_FINISH: Finish = "plush";
 /** A stored finish, else the default. */
 export const parseFinish = (v: unknown): Finish => (FINISHES.includes(v as Finish) ? (v as Finish) : DEFAULT_FINISH);
 
-const FILL = "color-mix(in srgb, var(--pc, var(--project-default)) 72%, #000)";
+/**
+ * The avatar colors: twelve vivid swatches around the hue circle, at one
+ * lightness and strength, so any mix of them reads as one set on a dark and
+ * on a light theme. The body mixes black into the color (FILL), so a pale
+ * color comes out grey: the swatches stay out of the pale end.
+ */
+export const AVATAR_SWATCHES: readonly string[] = [
+  "#ff4f4f", "#ff8a3d", "#ffbf2e", "#a8d930", "#3fcf7a", "#24c9b4",
+  "#3cb4f5", "#4f7fff", "#8466ff", "#b35cff", "#f25fd0", "#ff5f94",
+];
+
+/** A stored avatar color: "#rrggbb" in lower case, else null. */
+export const parseAvatarColor = (v: unknown): string | null =>
+  typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : null;
+
+/** Hue in degrees and saturation, 0 to 1, of "#rrggbb". */
+function hueSat(hex: string): [number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => v / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min, l = (max + min) / 2;
+  if (!d) return [0, 0];
+  const hue = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [hue * 60, d / (1 - Math.abs(2 * l - 1))];
+}
+
+/**
+ * The face's color. A stored color wins. Else a swatch: the theme's color
+ * picks the nearest swatch by hue, and the Skipper's name picks that swatch
+ * or one of its two neighbours, so the faces in one theme differ but stay in
+ * its color family. A grey theme color (saturation under 0.25) has no hue:
+ * the name picks from all twelve.
+ */
+export function avatarColor(name: string, stored: string | null, themeColor: string | null): string {
+  const own = parseAvatarColor(stored);
+  if (own) return own;
+  const h = hash(name);
+  const theme = parseAvatarColor(themeColor);
+  const [hue, sat] = theme ? hueSat(theme) : [0, 0];
+  const n = AVATAR_SWATCHES.length;
+  if (sat < 0.25) return AVATAR_SWATCHES[h % n];
+  const gap = (c: string) => { const d = Math.abs(hueSat(c)[0] - hue) % 360; return Math.min(d, 360 - d); };
+  const near = AVATAR_SWATCHES.reduce((best, c, i) => (gap(c) < gap(AVATAR_SWATCHES[best]) ? i : best), 0);
+  return AVATAR_SWATCHES[(near + (h % 3) - 1 + n) % n];
+}
+
+const FILL = "color-mix(in srgb, var(--pc, var(--project-default)) 85%, #000)";
 const VISOR = "#192230";
 
 /** Bodies, each with the height of its eye line. A round 3-unit stroke softens every corner. */

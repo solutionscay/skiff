@@ -204,9 +204,12 @@ pub(crate) async fn set_project_icon(handle: AppHandle, app: State<'_, App>, pro
 pub(crate) struct SkipperAvatar {
     scope: String,
     seed: u32,
+    /// The color picked in Avatar…, `#rrggbb`. None: the page derives one.
+    color: Option<String>,
 }
 
-/// In each Skipper's own folder: `avatar = "gen:N"`.
+/// In each Skipper's own folder: `avatar = "gen:N"`, and `color = "#rrggbb"`
+/// when a color is picked.
 const AVATAR_FILE: &str = "avatar.toml";
 
 /// The Skipper's own folder: the Skiff agent's folder, `fleets/<fleet>/` or `projects/<project>/` in it.
@@ -219,13 +222,22 @@ fn skipper_dir(cfg: &config::Config, scope: &str) -> anyhow::Result<PathBuf> {
     }
 }
 
-fn write_avatar(dir: &Path, seed: u32) -> std::io::Result<()> {
-    std::fs::write(dir.join(AVATAR_FILE), format!("avatar = \"gen:{seed}\"\n"))
+fn write_avatar(dir: &Path, seed: u32, color: Option<&str>) -> std::io::Result<()> {
+    let color = color.map(|c| format!("color = \"{c}\"\n")).unwrap_or_default();
+    std::fs::write(dir.join(AVATAR_FILE), format!("avatar = \"gen:{seed}\"\n{color}"))
 }
 
-fn read_avatar(dir: &Path) -> Option<u32> {
+/// The seed and the picked color. A color that is not `#rrggbb` reads as none.
+fn read_avatar(dir: &Path) -> Option<(u32, Option<String>)> {
     let table: toml::Table = std::fs::read_to_string(dir.join(AVATAR_FILE)).ok()?.parse().ok()?;
-    table.get("avatar")?.as_str()?.strip_prefix("gen:")?.parse().ok()
+    let seed = table.get("avatar")?.as_str()?.strip_prefix("gen:")?.parse().ok()?;
+    let color = table.get("color").and_then(|c| c.as_str()).and_then(avatar_color);
+    Some((seed, color))
+}
+
+/// `#rrggbb`, in lower case, else None.
+fn avatar_color(c: &str) -> Option<String> {
+    (c.len() == 7 && c.starts_with('#') && c[1..].bytes().all(|b| b.is_ascii_hexdigit())).then(|| c.to_ascii_lowercase())
 }
 
 /// A random generated avatar, 1 to 9999, for a Skipper's first face.
@@ -257,9 +269,10 @@ pub(crate) async fn skipper_avatars() -> Result<Vec<SkipperAvatar>, String> {
             .filter_map(|scope| {
                 let dir = skipper_dir(&cfg, &scope).ok().filter(|d| d.is_dir())?;
                 if !dir.join(AVATAR_FILE).exists() {
-                    write_avatar(&dir, random_seed(&scope)).ok()?;
+                    write_avatar(&dir, random_seed(&scope), None).ok()?;
                 }
-                Some(SkipperAvatar { seed: read_avatar(&dir)?, scope })
+                let (seed, color) = read_avatar(&dir)?;
+                Some(SkipperAvatar { seed, color, scope })
             })
             .collect())
     })
@@ -273,7 +286,26 @@ pub(crate) async fn set_skipper_avatar(handle: AppHandle, scope: String, seed: u
         use anyhow::Context;
         let dir = skipper_dir(&config::load()?, &scope)?;
         std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
-        write_avatar(&dir, seed).with_context(|| format!("write {}", dir.join(AVATAR_FILE).display()))
+        let color = read_avatar(&dir).and_then(|(_, c)| c);
+        write_avatar(&dir, seed, color.as_deref()).with_context(|| format!("write {}", dir.join(AVATAR_FILE).display()))
+    })
+    .await
+}
+
+/// This Mac only, as the icon: the Skipper's avatar color, `#rrggbb`. None
+/// removes it, so the face takes its derived color again. The face stays.
+#[tauri::command]
+pub(crate) async fn set_skipper_avatar_color(handle: AppHandle, scope: String, color: Option<String>) -> Result<(), String> {
+    local_edit(&handle, move || {
+        use anyhow::Context;
+        let color = match color.as_deref() {
+            None => None,
+            Some(c) => Some(avatar_color(c).with_context(|| format!("not a #rrggbb color: {c}"))?),
+        };
+        let dir = skipper_dir(&config::load()?, &scope)?;
+        std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+        let seed = read_avatar(&dir).map_or_else(|| random_seed(&scope), |(s, _)| s);
+        write_avatar(&dir, seed, color.as_deref()).with_context(|| format!("write {}", dir.join(AVATAR_FILE).display()))
     })
     .await
 }

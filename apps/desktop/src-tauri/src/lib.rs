@@ -60,7 +60,7 @@ fn disable_dmabuf_where_broken() {
 /// selected they are refused here, in one place, so a page bug cannot show
 /// this Mac's data under a remote Host's name. M4–M6 move them behind Host APIs.
 const LOCAL_ONLY: &[&str] = &[
-    "init_repository", "skipper_avatars", "set_skipper_avatar",
+    "init_repository", "skipper_avatars", "set_skipper_avatar", "set_skipper_avatar_color",
     "open_diff", "preview_file", "open_file", "reveal_file", "open_path", "disk_open", "disk_reveal",
     "list_agent_sessions", "config_path", "open_config", "install_cli", "restart_daemon", "reload_daemon", "update_daemon",
 ];
@@ -240,6 +240,7 @@ pub fn run() {
             config::set_project_icon,
             config::skipper_avatars,
             config::set_skipper_avatar,
+            config::set_skipper_avatar_color,
             config::set_project_short,
             config::set_project_fleet,
             config::set_project_color,

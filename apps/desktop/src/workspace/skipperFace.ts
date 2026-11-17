@@ -4,14 +4,15 @@
  * `projects/<project>/`). Skiff writes a random one there the first time it
  * reads a Skipper's folder, so each face stays. Until then, and on a remote
  * Host, the face is generated from the name, and the Admiral's is the
- * bicorne. The face sets --pc to the signature color of the theme its Skipper's pane
- * wears, so the body follows a theme change.
+ * bicorne. The same file keeps the color picked in Avatar… (`color`). With
+ * none, the face takes a swatch near the color of the theme its Skipper's
+ * pane wears (`avatarColor`), so the body follows a theme change.
  *
  * The choices are this Mac's, as project icons are: a remote Host shows the
  * generated faces.
  */
 import { invoke } from "@tauri-apps/api/core";
-import { admiralAvatar, avatarStyle, DEFAULT_FINISH, FINISH_DEFS_ID, finishDefs, parseFinish, skipperAvatar, type Finish } from "../appearance/skipperAvatar";
+import { admiralAvatar, AVATAR_SWATCHES, avatarColor, avatarStyle, DEFAULT_FINISH, FINISH_DEFS_ID, finishDefs, parseFinish, skipperAvatar, type Finish } from "../appearance/skipperAvatar";
 import { place } from "../app/stateQueries";
 import { S } from "../app/state";
 import { projectSkipperOf, skiffAgentSession } from "../app/skiffAgent";
@@ -19,10 +20,12 @@ import { appThemeOf, signatureColor, themeIdFor } from "../appearance/themes";
 import { DEFAULT_THEME } from "../appearance/colors";
 import { render } from "../app/renderRequest";
 import { dialogFrame, dialogHeader } from "../ui/dialogParts";
+import { pickColor } from "../appearance/colorPicker";
 import { button, h } from "../ui/dom";
 import { t } from "../i18n";
 
-let chosen = new Map<string, number>();
+type Choice = { seed: number; color: string | null };
+let chosen = new Map<string, Choice>();
 
 /** Face geometry and static finish images. Bound the cache for Avatar… shuffles. */
 const faces = new Map<string, SVGElement>();
@@ -111,8 +114,8 @@ export const avatarScopes = () => [...chosen.keys()];
 
 /** Reads the choices again, then draws. Called with every projects read. */
 export async function loadSkipperAvatars() {
-  const list = await invoke<{ scope: string; seed: number }[]>("skipper_avatars").catch(() => []);
-  const next = new Map(list.map((a) => [a.scope, a.seed]));
+  const list = await invoke<{ scope: string; seed: number; color?: string | null }[]>("skipper_avatars").catch(() => []);
+  const next = new Map(list.map((a): [string, Choice] => [a.scope, { seed: a.seed, color: a.color ?? null }]));
   if (JSON.stringify([...next]) === JSON.stringify([...chosen])) return;
   chosen = next;
   render("skipper-avatars");
@@ -121,7 +124,8 @@ export async function loadSkipperAvatars() {
 const projectOf = (scope: string) => S.projects.find((p) => p.name === scope) ?? null;
 
 /**
- * The face's color: the signature color (its main color, else its
+ * The face's color: the color picked in Avatar…, else a swatch near the
+ * theme's (`avatarColor`). The theme's color is the signature color (its main color, else its
  * foreground) of the theme the Skipper's pane wears, as a themed session's
  * agent icon shows it. Not the theme's --accent: a theme with no `ui`
  * block gives its magenta there, the same purple for nearly every theme. Its
@@ -136,7 +140,7 @@ function faceColor(scope: string | null): string {
   const t = s && (s.theme || place(s)) ? S.themes.find((x) => x.id === themeIdFor(s)) : appThemeOf(scope === null ? null : projectOf(scope));
   const own = t ?? S.themes.find((x) => x.id === DEFAULT_THEME);
   // A literal, never var(--accent): an ancestor (a Mission control lane, the app in a pane's theme) may set that.
-  return own ? signatureColor(own) : STYLESHEET_ACCENT;
+  return avatarColor(scope ?? "Admiral", chosen.get(scope ?? "")?.color ?? null, own ? signatureColor(own) : STYLESHEET_ACCENT);
 }
 
 /** The stylesheet's accent, before any theme loads. */
@@ -178,16 +182,19 @@ function ensureDefs() {
 }
 
 /** What a face shows, for the row signatures. */
-export const faceSig = (scope: string | null) => [chosen.get(scope ?? "") ?? null, faceColor(scope), finish];
+export const faceSig = (scope: string | null) => [chosen.get(scope ?? "")?.seed ?? null, faceColor(scope), finish];
 
-/** `scope`: a project's name, `fleet:<name>`, or null for the Admiral. `px` at zoom 1. `seed`: a face to show in place of the chosen one. */
-export function skipperFace(scope: string | null, px: number, seed?: number): HTMLElement {
+/**
+ * `scope`: a project's name, `fleet:<name>`, or null for the Admiral. `px` at zoom 1.
+ * `seed`: a face to show in place of the chosen one. `paint`: a color in place of its own.
+ */
+export function skipperFace(scope: string | null, px: number, seed?: number, paint?: string): HTMLElement {
   const face = h("span", "skipper-face");
   face.style.setProperty("--face", String(px));
-  const color = faceColor(scope);
+  const color = paint ?? faceColor(scope);
   face.style.setProperty("--pc", color);
   const key = scope ?? "";
-  const n = seed ?? chosen.get(key);
+  const n = seed ?? chosen.get(key)?.seed;
   // A new Skipper's folder gets its random face on the next read.
   if (seed === undefined && n === undefined && !asked.has(key)) {
     asked.add(key);
@@ -202,18 +209,21 @@ export function skipperFace(scope: string | null, px: number, seed?: number): HT
 }
 
 /**
- * Avatar…: twelve generated faces. A click picks one and closes; Shuffle
- * draws twelve more. Esc or a click outside closes with no change. The keys
- * go back to what held them.
+ * Avatar…: twelve generated faces, then the twelve color swatches. A click on
+ * a face picks it and closes; Shuffle draws twelve more. A click on a swatch
+ * sets the color and stays open, so the faces show it; Custom color… opens
+ * the color picker, and Reset color goes back to the theme's swatch. Esc or a
+ * click outside closes. The keys go back to what held them.
  */
-export function setAvatarDialog(scope: string | null, title: string, done: () => void) {
+export function setAvatarDialog(scope: string | null, name: string, done: () => void) {
+  const title = t("skipper.avatarTitle", { name });
   const back = document.activeElement as HTMLElement | null;
   const { overlay, panel } = dialogFrame("confirm-panel av-panel", "dialog", title);
   const close = () => {
     overlay.remove();
     back?.focus?.();
   };
-  const now = chosen.get(scope ?? "") ?? 1;
+  const now = chosen.get(scope ?? "")?.seed ?? 1;
   let base = Math.floor((now - 1) / 12) * 12;
   const grid = h("div", "av-grid");
   const error = h("div", "prompt-error");
@@ -244,7 +254,35 @@ export function setAvatarDialog(scope: string | null, title: string, done: () =>
     draw();
     grid.querySelector<HTMLButtonElement>(".av-opt")?.focus();
   });
-  panel.append(dialogHeader(title, close), grid, shuffle, error);
+  const swatches = h("div", "av-swatches");
+  const custom = button("av-act", t("avatar.customColor"), () =>
+    pickColor({ title: t("avatar.colorTitle", { name }), start: faceColor(scope), action: t("color.action"), submit: (hex) => setColor(hex) }));
+  const reset = button("av-act", t("avatar.resetColor"), () => void setColor(null).then(() => swatches.querySelector<HTMLButtonElement>(".av-swatch")?.focus()).catch((e) => (error.textContent = String(e))));
+  const setColor = async (color: string | null) => {
+    await invoke("set_skipper_avatar_color", { scope: scope ?? "", color });
+    await loadSkipperAvatars();
+    paintColors();
+    draw();
+    done();
+  };
+  const paintColors = () => {
+    const own = chosen.get(scope ?? "")?.color ?? null;
+    reset.disabled = !own;
+    swatches.replaceChildren(
+      ...AVATAR_SWATCHES.map((c) => {
+        const b = button("av-swatch", "", () => void setColor(c).then(() => swatches.querySelector<HTMLButtonElement>(`[data-color="${c}"]`)?.focus()).catch((e) => (error.textContent = String(e))));
+        b.dataset.color = c;
+        b.style.setProperty("--sw", c);
+        b.setAttribute("aria-label", t("avatar.color", { color: c }));
+        b.setAttribute("aria-pressed", String(own === c));
+        return b;
+      }),
+    );
+  };
+  paintColors();
+  const acts = h("div", "av-acts");
+  acts.append(shuffle, custom, reset);
+  panel.append(dialogHeader(title, close), grid, swatches, acts, error);
   overlay.appendChild(panel);
   overlay.addEventListener("mousedown", (e) => {
     if (e.target === overlay) close();

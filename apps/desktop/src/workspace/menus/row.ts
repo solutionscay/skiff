@@ -29,7 +29,7 @@ export function rowMenu(s: SessionInfo, x: number, y: number) {
     // A project Skipper's name is derived from the Skiff agent's name and its project: nothing to type.
     ...(isProjectSkipper(s) ? [] : [{ icon: "tools-pencil", label: t("menu.rename"), hint: keyLabel("rename"), disabled: !hostCan("session_lifecycle"), run: () => startSessionRename(s.id) }]),
     themeEntry(s),
-    ...(isProjectSkipper(s) && s.skipper ? [avatarEntry(s.skipper, t("skipper.avatarTitle", { name: t(s.skipper.startsWith("fleet:") ? "skipper.avatarFleet" : "skipper.avatarProject", { scope: scopeName(s.skipper), skipper: skipperWord() }) }))] : []),
+    ...(isProjectSkipper(s) && s.skipper ? [avatarEntry(s.skipper, t(s.skipper.startsWith("fleet:") ? "skipper.avatarFleet" : "skipper.avatarProject", { scope: scopeName(s.skipper), skipper: skipperWord() }))] : []),
     endEntry(s),
   ]);
 }
@@ -89,6 +89,6 @@ export function deleteKeyMenu(el: HTMLElement) {
 }
 
 /** A Skipper's face: `scope` "fleet:<name>" or a project. Kept in its folder on this Mac. The Admiral wears the mascot's head. */
-function avatarEntry(scope: string, title: string): MenuEntry {
-  return { icon: "playback-image", label: t("menu.avatar"), disabled: isRemote(), run: () => setAvatarDialog(scope, title, () => {}) };
+function avatarEntry(scope: string, name: string): MenuEntry {
+  return { icon: "playback-image", label: t("menu.avatar"), disabled: isRemote(), run: () => setAvatarDialog(scope, name, () => {}) };
 }

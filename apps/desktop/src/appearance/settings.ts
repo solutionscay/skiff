@@ -353,9 +353,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       err.setAttribute("role", "alert");
       main.appendChild(err);
     }
-    // The sample faces wear the theme colors Skippers get: each theme's main color.
-    const colors = look.themes().flatMap((t) => (t.main_color ? [t.main_color] : []));
-    main.append(finishRow(draw, sampleSeeds, colors), sectionHead(t("settings.appTheme"), undefined, String(look.themes().length)), cards);
+    main.append(finishRow(draw, sampleSeeds), sectionHead(t("settings.appTheme"), undefined, String(look.themes().length)), cards);
     return main;
   }
 

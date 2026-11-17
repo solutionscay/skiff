@@ -12,9 +12,8 @@ import { badTaskTypeName, fileSize, modelError, modelFlag, TASK_TYPE_NAME } from
 import { reveal } from "../platform/fileActions";
 import { isRemote } from "../app/hosts";
 import { avatarFinish, avatarScopes, setAvatarDialog, setAvatarFinish, skipperFace } from "../workspace/skipperFace";
-import { FINISHES, parseFinish } from "./skipperAvatar";
+import { AVATAR_SWATCHES, FINISHES, parseFinish } from "./skipperAvatar";
 import { scopeName } from "../workspace/model";
-import { vividPalette } from "./colors";
 
 /** A task type row as `set_skiff_agent` takes it. Null model: the agent's default. */
 export interface TaskEdit {
@@ -72,9 +71,9 @@ export interface TaskTypesPageActs {
  * Settings › Appearance: the Finish of every face (plush, gummy or flat), an
  * app look kept in localStorage, then sample faces in it, in one row. It
  * changes every face at once. `seeds`: the strip's random faces, one per face;
- * the strip adds seeds as it needs more. `colors`: the theme colors the faces wear.
+ * the strip adds seeds as it needs more.
  */
-export function finishRow(redraw: () => void, seeds: number[], colors: string[]): HTMLElement {
+export function finishRow(redraw: () => void, seeds: number[]): HTMLElement {
   const row = h("div", "set-row set-open set-agent on set-finish");
   row.append(
     h("span", "c-name", t("skipper.finish")),
@@ -87,7 +86,7 @@ export function finishRow(redraw: () => void, seeds: number[], colors: string[])
         redraw();
       },
     })),
-    finishSamples(seeds, colors),
+    finishSamples(seeds),
   );
   return row;
 }
@@ -95,11 +94,11 @@ export function finishRow(redraw: () => void, seeds: number[], colors: string[])
 /**
  * The sample strip: the Admiral, then random crew faces, in the finish, at
  * one row's size. As many faces as fit the strip's width, on one line; a resize
- * or a zoom adds or drops faces. Each crew face wears another vivid one of
- * `colors`, in an order the first seed shuffles.
+ * or a zoom adds or drops faces. Each crew face wears another avatar swatch,
+ * in an order the first seed shuffles.
  */
 const SAMPLE_PX = 28;
-function finishSamples(seeds: number[], colors: string[]): HTMLElement {
+function finishSamples(seeds: number[]): HTMLElement {
   const strip = h("div", "set-finish-faces");
   const admiral = skipperFace(null, SAMPLE_PX);
   strip.append(admiral);
@@ -112,12 +111,10 @@ function finishSamples(seeds: number[], colors: string[]): HTMLElement {
     if (!face) return;
     const crew = Math.max(0, Math.floor((room + gap) / (face + gap)) - 1);
     while (seeds.length < Math.max(crew, 1)) seeds.push(1 + Math.floor(Math.random() * 0xffffff));
-    const order = shuffled(vividPalette(colors), seeds[0]);
+    const order = shuffled([...AVATAR_SWATCHES], seeds[0]);
     while (strip.children.length > crew + 1) strip.lastElementChild!.remove();
     for (let i = strip.children.length - 1; i < crew; i++) {
-      const f = skipperFace("", SAMPLE_PX, seeds[i]);
-      if (order.length) f.style.setProperty("--pc", order[i % order.length]);
-      strip.append(f);
+      strip.append(skipperFace("", SAMPLE_PX, seeds[i], order[i % order.length]));
     }
   };
   // The strip for its width, the Admiral for the zoom.
@@ -302,7 +299,7 @@ export function skippersPage(set: SkiffAgentSettings, agents: AgentInfo[], a: Sk
       b.title = title;
       b.setAttribute("aria-label", title);
       b.append(face, label);
-      b.addEventListener("click", () => setAvatarDialog(scope, title, a.redraw));
+      b.addEventListener("click", () => setAvatarDialog(scope, name, a.redraw));
       cell = b;
     }
     const f = fileOf(scope);
