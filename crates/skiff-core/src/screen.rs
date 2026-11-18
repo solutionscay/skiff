@@ -41,6 +41,8 @@ pub fn approval_rule(agent: &str, bottom_text: impl Fn(usize) -> String) -> Opti
                 Some(rule("codex-confirm", "pressentertoconfirmoresctocancel", 2))
             } else if t.contains("entercontinue·escskip") {
                 Some(rule("codex-update", "entercontinue·escskip", 2))
+            } else if t.contains("entercontinue·escback") {
+                Some(rule("codex-trust", "entercontinue·escback", 2))
             } else {
                 None
             }

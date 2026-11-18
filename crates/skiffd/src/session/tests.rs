@@ -711,10 +711,11 @@ fn each_agents_prompt_waits_as_it_did_before_the_rule() {
     let hint = "| x\r\n\u{2502} \u{2191}/\u{2193} to navigate \u{b7} enter to select \u{b7} esc to cancel";
     let copilot_tool = format!("No, and tell Copilot what to do differently {hint}");
     let copilot_trust = format!("Do you trust the files in this folder? {hint}");
-    let prompts: [(&'static str, &str, &str); 10] = [
+    let prompts: [(&'static str, &str, &str); 11] = [
         ("claude", " Esc to cancel \u{b7} Tab to amend", "claude-esc-to-cancel"),
         ("codex", "Press enter to confirm or esc to cancel", "codex-confirm"),
         ("codex", "enter continue \u{b7} esc skip", "codex-update"),
+        ("codex", "› 1. Trust and continue\r\n  2. Back to Agent Command Center\r\n  enter continue · esc back", "codex-trust"),
         ("opencode", "Allow once   Allow always   Reject", "opencode-allow"),
         ("gemini", "\u{2191}/\u{2193} Navigate \u{b7} tab Amend", "gemini-navigate"),
         ("gemini", "Allow once\r\nNo, suggest changes (esc)", "gemini-allow"),
