@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use gtk::prelude::*;
 use tauri::{AppHandle, Emitter, WebviewWindow};
 
-use crate::native_menu::MenuSpec;
+use crate::native_menu::{MenuItemSpec, MenuSpec};
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 
@@ -91,23 +91,7 @@ pub(crate) fn set_menu(app: &AppHandle, menus: Vec<MenuSpec>) -> Result<(), Stri
     app.run_on_main_thread(move || {
         let root = gtk::Menu::new();
         for m in &menus {
-            let sub = gtk::Menu::new();
-            for it in &m.items {
-                let Some(id) = it.id.clone() else {
-                    sub.append(&gtk::SeparatorMenuItem::new());
-                    continue;
-                };
-                let item = gtk::MenuItem::with_label(&it.label);
-                item.set_sensitive(it.enabled);
-                if let (Some((key, mods)), Some(label)) = (gtk_accel(&it.accel), item.child().and_then(|c| c.downcast::<gtk::AccelLabel>().ok())) {
-                    label.set_accel(key, mods);
-                }
-                let a = a.clone();
-                item.connect_activate(move |_| {
-                    let _ = a.emit("skiff:menu", &id);
-                });
-                sub.append(&item);
-            }
+            let sub = gtk_menu(&a, &m.items);
             let top = gtk::MenuItem::with_label(&m.title);
             top.set_submenu(Some(&sub));
             root.append(&top);
@@ -120,6 +104,33 @@ pub(crate) fn set_menu(app: &AppHandle, menus: Vec<MenuSpec>) -> Result<(), Stri
         });
     })
     .map_err(|e| e.to_string())
+}
+
+/// One menu of the main menu, or a submenu inside one.
+fn gtk_menu(app: &AppHandle, items: &[MenuItemSpec]) -> gtk::Menu {
+    let menu = gtk::Menu::new();
+    for it in items {
+        let Some(id) = it.id.clone() else {
+            menu.append(&gtk::SeparatorMenuItem::new());
+            continue;
+        };
+        let item = gtk::MenuItem::with_label(&it.label);
+        item.set_sensitive(it.enabled);
+        if let Some(children) = &it.items {
+            item.set_submenu(Some(&gtk_menu(app, children)));
+            menu.append(&item);
+            continue;
+        }
+        if let (Some((key, mods)), Some(label)) = (gtk_accel(&it.accel), item.child().and_then(|c| c.downcast::<gtk::AccelLabel>().ok())) {
+            label.set_accel(key, mods);
+        }
+        let a = app.clone();
+        item.connect_activate(move |_| {
+            let _ = a.emit("skiff:menu", &id);
+        });
+        menu.append(&item);
+    }
+    menu
 }
 
 /// The page's menu key ("CmdOrCtrl+Shift+ArrowUp") as a GTK accelerator.

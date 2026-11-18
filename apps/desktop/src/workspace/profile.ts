@@ -73,4 +73,4 @@ export function editWorkspace() {
 const home = () => document.querySelector<HTMLElement>('#sidebar-scroll [tabindex="0"]');
 
 const status = createStatus(state, transitions, { home, editWorkspace });
-export const { recentWorkspacesMenu, workspaceNotice, reloadWorkspace, keepWorkspace, renderWorkspaceStatus, startWorkspaceQuitGuard, startWorkspaces } = status;
+export const { recentWorkspaceEntries, workspaceNotice, reloadWorkspace, keepWorkspace, renderWorkspaceStatus, startWorkspaceQuitGuard, startWorkspaces } = status;

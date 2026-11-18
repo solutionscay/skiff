@@ -6,7 +6,6 @@
 import { projectOrder } from "./fleets";
 import { confirmAction } from "../ui/confirm";
 import type { MenuEntry } from "../ui/menu";
-import { ctxMenu } from "../ui/contextMenu";
 import { agentName, branchName, taskTitle } from "./model";
 import type { Project } from "../platform/types";
 import { loadProjects } from "../app/daemon";
@@ -134,7 +133,7 @@ export function closeEntries(p: Project): MenuEntry[] {
 }
 
 /** File › Open closed project: each closed project, to open or remove. */
-export function closedProjectsMenu(x: number, y: number) {
+export function closedProjectEntries(): MenuEntry[] {
   const entries: MenuEntry[] = S.closedProjects.map((p) => ({
     icon: "documents-folder-open",
     label: p.name,
@@ -144,5 +143,5 @@ export function closedProjectsMenu(x: number, y: number) {
     ],
   }));
   if (!entries.length) entries.push({ label: t("closed.none"), disabled: true });
-  ctxMenu.open(x, y, t("closed.title"), entries);
+  return entries;
 }

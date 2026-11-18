@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder}};
+use tauri::{AppHandle, Wry, menu::{MenuBuilder, MenuItemBuilder, Submenu, SubmenuBuilder}};
 #[cfg(target_os = "macos")]
 use tauri::menu::PredefinedMenuItem;
 
@@ -22,6 +22,9 @@ pub(crate) struct MenuItemSpec {
     /// A system item of the macOS app menu: `hide`, `hide-others` or `show-all`.
     #[serde(default)]
     pub(crate) native: Option<String>,
+    /// A submenu: these items open beside this one, and the item itself runs nothing.
+    #[serde(default)]
+    pub(crate) items: Option<Vec<MenuItemSpec>>,
 }
 
 /// The menu bar. The page owns the command list and sends it whole on every
@@ -34,39 +37,48 @@ pub(crate) fn set_menu(app: AppHandle, menus: Vec<MenuSpec>) -> Result<(), Strin
     }
     let mut bar = MenuBuilder::new(&app);
     for m in &menus {
-        let mut sub = SubmenuBuilder::new(&app, &m.title);
-        for it in &m.items {
-            #[cfg(target_os = "macos")]
-            if let Some(native) = &it.native {
-                let item = match native.as_str() {
-                    "hide" => PredefinedMenuItem::hide(&app, None),
-                    "hide-others" => PredefinedMenuItem::hide_others(&app, None),
-                    "show-all" => PredefinedMenuItem::show_all(&app, None),
-                    _ => continue,
-                };
-                sub = sub.item(&item.map_err(|e| e.to_string())?);
-                continue;
-            }
-            #[cfg(not(target_os = "macos"))]
-            if it.native.is_some() {
-                continue;
-            }
-            let Some(id) = &it.id else {
-                sub = sub.separator();
-                continue;
-            };
-            let item = |accel: &str| {
-                let b = MenuItemBuilder::with_id(id, &it.label).enabled(it.enabled);
-                if accel.is_empty() { b.build(&app) } else { b.accelerator(accel).build(&app) }
-            };
-            // A key the menu cannot parse stays with the page, which still handles it.
-            let item = item(&it.accel).or_else(|_| item("")).map_err(|e| e.to_string())?;
-            sub = sub.item(&item);
-        }
-        bar = bar.item(&sub.build().map_err(|e| e.to_string())?);
+        bar = bar.item(&submenu(&app, &m.title, true, &m.items)?);
     }
     app.set_menu(bar.build().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// One menu of the bar, or a submenu inside one.
+fn submenu(app: &AppHandle, title: &str, enabled: bool, items: &[MenuItemSpec]) -> Result<Submenu<Wry>, String> {
+    let mut sub = SubmenuBuilder::new(app, title).enabled(enabled);
+    for it in items {
+        #[cfg(target_os = "macos")]
+        if let Some(native) = &it.native {
+            let item = match native.as_str() {
+                "hide" => PredefinedMenuItem::hide(app, None),
+                "hide-others" => PredefinedMenuItem::hide_others(app, None),
+                "show-all" => PredefinedMenuItem::show_all(app, None),
+                _ => continue,
+            };
+            sub = sub.item(&item.map_err(|e| e.to_string())?);
+            continue;
+        }
+        #[cfg(not(target_os = "macos"))]
+        if it.native.is_some() {
+            continue;
+        }
+        let Some(id) = &it.id else {
+            sub = sub.separator();
+            continue;
+        };
+        if let Some(children) = &it.items {
+            sub = sub.item(&submenu(app, &it.label, it.enabled, children)?);
+            continue;
+        }
+        let item = |accel: &str| {
+            let b = MenuItemBuilder::with_id(id, &it.label).enabled(it.enabled);
+            if accel.is_empty() { b.build(app) } else { b.accelerator(accel).build(app) }
+        };
+        // A key the menu cannot parse stays with the page, which still handles it.
+        let item = item(&it.accel).or_else(|_| item("")).map_err(|e| e.to_string())?;
+        sub = sub.item(&item);
+    }
+    sub.build().map_err(|e| e.to_string())
 }
 
 #[derive(Serialize)]

@@ -9,6 +9,7 @@ import { type Action, isMac, keyLabel, menuAccel } from "./keys";
 import { agentName, branchName, bySessionPriority, isFolder, taskTitle, isProjectSkipper } from "../workspace/model";
 import { createSwitcher, type SwitchItem } from "../ui/switcher";
 import { type MessageKey, t, tn } from "../i18n";
+import type { MenuEntry } from "../ui/menu";
 
 import { invoke } from "@tauri-apps/api/core";
 import { hostCan } from "./hostCaps";
@@ -22,7 +23,7 @@ import { confirmAction } from "../ui/confirm";
 import { copyReport, hasReport, startTrace, stopTrace, tracing } from "../diagnostics/latency";
 import { groupCloseEntries } from "../workspace/menus";
 
-import { closedProjectsMenu, closeProject, openClosedProject, removeProject } from "../workspace/projectClose";
+import { closedProjectEntries, closeProject, openClosedProject, removeProject } from "../workspace/projectClose";
 
 import { scheduleRender } from "./render";
 import { S, sessions } from "./state";
@@ -34,7 +35,7 @@ import { ledgerFolded, ledgerShown } from "../workspace/ledger";
 import { splitChild, splitChildren } from "../workspace/skipperSplit";
 import { skippersOn } from "../workspace/skippersView";
 import {
-  closeWorkspace, editWorkspace, keepWorkspace, ledgerAllWork, newWorkspace, openWorkspace, recentWorkspacesMenu, reloadWorkspace,
+  closeWorkspace, editWorkspace, keepWorkspace, ledgerAllWork, newWorkspace, openWorkspace, recentWorkspaceEntries, reloadWorkspace,
   saveWorkspace, saveWorkspaceAs, setLedgerAllWork, workspaceNotice, workspaceOpen,
 } from "../workspace/profile";
 import { refocusTerminal, revealSession, selectWorktree } from "../workspace/view";
@@ -49,6 +50,8 @@ interface Cmd {
   /** The keymap action, so the menu bar can show and bind its key. */
   action?: Action;
   run: () => void;
+  /** A submenu instead of a leaf: the menu bar shows these entries beside the item; the palette lists each leaf. */
+  sub?: MenuEntry[];
   /** Shown greyed out in the menu, left out of the palette. */
   off?: boolean;
 }
@@ -71,13 +74,13 @@ function drafts(): Draft[] {
     { section: "file", id: "cmd.newSession", key: k("new-session"), action: "new-session", run: act("new-session"), off: (!currentWorktree() && !isRemote()) || !hostCan("session_lifecycle") },
     { section: "file", id: "cmd.newWorktree", key: k("new-worktree"), action: "new-worktree", run: act("new-worktree"), off: !currentProject() || isFolder(currentProject()!) },
     { section: "file", id: "cmd.addProject", key: k("add-project"), action: "add-project", run: act("add-project") },
-    { section: "file", id: "cmd.openClosedProject", key: "", run: openClosedMenu, off: !S.closedProjects.length },
+    { section: "file", id: "cmd.openClosedProject", key: "", run: () => {}, sub: closedProjectEntries(), off: !S.closedProjects.length },
     { section: "file", id: "cmd.projectMenu", key: "", run: openProjectMenu, off: !currentProject() },
     { section: "file", id: "cmd.closeProject", key: "", run: () => withProject(closeProject), off: !currentProject() },
     { section: "file", id: "cmd.removeProject", key: "", run: () => withProject(removeProject), off: !currentProject() },
     { section: "file", id: "cmd.newWorkspace", key: "", run: newWorkspace },
     { section: "file", id: "cmd.openWorkspace", key: "", run: () => void openWorkspace() },
-    { section: "file", id: "cmd.openRecentWorkspace", key: "", run: recentWorkspacesMenu },
+    { section: "file", id: "cmd.openRecentWorkspace", key: "", run: () => {}, sub: recentWorkspaceEntries() },
     { section: "file", id: "cmd.editWorkspace", key: "", run: editWorkspace, off: !workspaceOpen() },
     { section: "file", id: "cmd.saveWorkspace", key: "", run: saveWorkspace, off: !workspaceOpen() },
     { section: "file", id: "cmd.saveWorkspaceAs", key: "", run: saveWorkspaceAs, off: !workspaceOpen() },
@@ -158,7 +161,7 @@ const ISSUES_URL = "https://github.com/solutionscay/skiff/issues/new";
 /** Where a group of commands starts a new block in its menu. */
 const BREAK_BEFORE = new Set(["cmd.projectMenu", "cmd.newWorkspace", "cmd.images", "cmd.settings", "cmd.copy", "cmd.rename", "cmd.palette", "cmd.splitRight", "cmd.nextWaiting", "cmd.focusMode", "cmd.fontBigger", "cmd.openConfig", "cmd.checkUpdates"]);
 
-interface MenuItem { id?: string; label?: string; accel?: string; enabled?: boolean; native?: string }
+interface MenuItem { id?: string; label?: string; accel?: string; enabled?: boolean; native?: string; items?: MenuItem[] }
 
 /** On macOS these commands move from File and Help to the app menu, with the Mac names. */
 const APP_MENU: Record<string, MessageKey> = { "cmd.about": "cmd.about", "cmd.settings": "cmd.settingsMac", "cmd.quit": "cmd.quitMac" };
@@ -188,8 +191,10 @@ function syncMenu() {
   const app: Record<string, MenuItem> = {};
   for (const [i, c] of commands().entries()) {
     const id = `cmd:${i}`;
-    runs.set(id, c.run);
-    const item = { id, label: c.label, accel: c.action ? menuAccel(c.action) : "", enabled: !c.off };
+    const item: MenuItem = c.sub
+      ? { id, label: c.label, enabled: !c.off, items: subItems(c.sub, id, runs) }
+      : { id, label: c.label, accel: c.action ? menuAccel(c.action) : "", enabled: !c.off };
+    if (!c.sub) runs.set(id, c.run);
     const appLabel = isMac ? APP_MENU[c.id] : undefined;
     if (appLabel) {
       app[c.id] = { ...item, label: t(appLabel) };
@@ -215,6 +220,18 @@ function syncMenu() {
   if (json === menuSent) return;
   menuSent = json;
   invoke("set_menu", { menus }).catch(console.error);
+}
+
+/** A command's submenu entries as menu bar items: a head shows as a greyed item; each leaf gets its own id. */
+function subItems(entries: MenuEntry[], prefix: string, runs: Map<string, () => void>): MenuItem[] {
+  return entries.map((e, j): MenuItem => {
+    if ("sep" in e) return {};
+    const id = `${prefix}:${j}`;
+    if ("head" in e) return { id, label: e.head, enabled: false };
+    if (e.sub) return { id, label: e.label, enabled: !e.disabled, items: subItems(e.sub, id, runs) };
+    if (e.run) runs.set(id, e.run);
+    return { id, label: e.label, enabled: !e.disabled && !!e.run };
+  });
 }
 
 void listen<string>("skiff:menu", (e) => menuRuns.get(e.payload)?.());
@@ -244,18 +261,23 @@ async function openConfig() {
 function paletteCommands(): SwitchItem[] {
   return commands()
     .filter((c) => !c.off && c.action !== "palette")
-    .map((c) => {
+    .flatMap((c) => {
       const section = t(`section.${c.section}`);
-      return {
-        kind: "command" as const,
-        color: "var(--text-3)",
-        primary: c.label,
-        secondary: section,
-        meta: c.key,
-        text: `${section} ${c.label}`,
-        run: c.run,
-      };
+      const leaves = c.sub ? subLeaves(c.sub, [c.label]) : [{ path: [c.label], run: c.run }];
+      return leaves.map(({ path, run }) => {
+        const primary = path.join(" › ");
+        return { kind: "command" as const, color: "var(--text-3)", primary, secondary: section, meta: c.sub ? "" : c.key, text: `${section} ${primary}`, run };
+      });
     });
+}
+
+/** Each enabled leaf of a submenu, with the labels that lead to it. */
+function subLeaves(entries: MenuEntry[], path: string[]): { path: string[]; run: () => void }[] {
+  return entries.flatMap((e) => {
+    if ("sep" in e || "head" in e || e.disabled) return [];
+    if (e.sub) return subLeaves(e.sub, [...path, e.label]);
+    return e.run ? [{ path: [...path, e.label], run: e.run }] : [];
+  });
 }
 
 export const switcher = createSwitcher(() => {
@@ -311,8 +333,3 @@ const withProject = (f: (p: NonNullable<ReturnType<typeof currentProject>>) => P
   if (p) void f(p);
 };
 
-/** The closed projects, under the tree's Projects head. */
-function openClosedMenu() {
-  const r = document.querySelector<HTMLElement>("#sidebar-scroll .projects-head")?.getBoundingClientRect();
-  closedProjectsMenu(r ? r.left + 24 : 80, r ? r.bottom : 80);
-}

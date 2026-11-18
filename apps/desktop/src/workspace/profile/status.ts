@@ -22,12 +22,10 @@ export function createStatus(state: ReturnType<typeof createWorkspaceState>, tra
       run: () => void openWorkspace(path),
     }));
 
-  /** File › Open recent workspace…: the recent files, under the Projects head as Open closed project does. */
-  function recentWorkspacesMenu() {
-    const r = document.querySelector<HTMLElement>("#sidebar-scroll .projects-head")?.getBoundingClientRect();
+  /** File › Open recent workspace: the recent files, the open one marked. */
+  function recentWorkspaceEntries(): MenuEntry[] {
     const entries = recentEntries();
-    if (!entries.length) entries.push({ label: t("workspace.noRecent"), disabled: true });
-    ctxMenu.open(r ? r.left + 24 : 80, r ? r.bottom : 80, t("workspace.recentTitle"), entries);
+    return entries.length ? entries : [{ label: t("workspace.noRecent"), disabled: true }];
   }
 
   /** What the open workspace needs a look for, for the File menu: a disk change, and missing references. */
@@ -173,5 +171,5 @@ export function createStatus(state: ReturnType<typeof createWorkspaceState>, tra
     if (late) void openWorkspace(late);
   }
 
-    return { recentWorkspacesMenu, workspaceNotice, reloadWorkspace, keepWorkspace, renderWorkspaceStatus, startWorkspaceQuitGuard, startWorkspaces, workspaceMenu };
+    return { recentWorkspaceEntries, workspaceNotice, reloadWorkspace, keepWorkspace, renderWorkspaceStatus, startWorkspaceQuitGuard, startWorkspaces, workspaceMenu };
 }
