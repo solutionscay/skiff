@@ -208,6 +208,17 @@ mod tests {
     }
 
     #[test]
+    fn codex_trust_prompt_waits_for_input() {
+        let rows = [
+            "› 1. Trust and continue",
+            "  2. Back to Agent Command Center",
+            "  enter continue · esc back",
+        ];
+        let found = screen_with(&rows).prompt_match("codex").unwrap();
+        assert_eq!(found.rule, "codex-trust");
+    }
+
+    #[test]
     fn a_wrapped_prompt_still_matches() {
         let mut s = Screen::new(24, 8);
         s.feed(b"Would you like to run the following command?\r\n\r\nPress enter to confirm or esc to cancel");
