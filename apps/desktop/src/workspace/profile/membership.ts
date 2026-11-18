@@ -18,9 +18,9 @@ export function createMembership(state: ReturnType<typeof createWorkspaceState>,
   const fleetNames = () => [...new Set(S.projects.map((p) => p.fleet).filter((f): f is string => !!f))];
   const listed = (p: Project) => !!state.doc && state.doc.profile.projects.some((x) => trimPath(x) === trimPath(p.path));
 
-  /** Puts a project or fleet in the open workspace, or takes it out. An edit, like a change in the Edit dialog. */
+  /** Puts a project or fleet in the open workspace, or takes it out, and saves it. */
   function setIncluded(kind: "project" | "fleet", ref: string, on: boolean) {
-    if (!state.doc || state.saving) return;
+    if (!state.doc) return;
     const d = state.doc;
     const shownBefore = new Set(S.projects.filter(state.shows).map((p) => trimPath(p.path)));
     if (kind === "project") {
@@ -75,7 +75,7 @@ export function createMembership(state: ReturnType<typeof createWorkspaceState>,
 
   /** A renamed fleet stays in the workspace, folded or open as it was. */
   function renameWorkspaceFleet(from: string, to: string) {
-    if (!state.doc || state.saving || from === to) return;
+    if (!state.doc || from === to) return;
     const d = state.doc.profile;
     if (!d.fleets.includes(from) && !d.folded_fleets.includes(from)) return;
     const swap = (xs: string[]) => [...new Set(xs.map((x) => (x === from ? to : x)))];

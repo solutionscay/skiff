@@ -4,21 +4,21 @@ import { flush, moduleFromSource, workspaceHarness } from "./workspaceHarness.ts
 
 const values = (set: Set<string>) => [...set];
 
-test("Edit → Apply preserves overlapping explicit project and fleet inclusions", async () => {
+const nameField = (h: ReturnType<typeof workspaceHarness>) => h.elements().find((el) => el.type === "text")!;
+
+test("Edit → Done keeps overlapping explicit project and fleet inclusions, saved at once", async () => {
   const h = workspaceHarness();
   h.fixture("/work.skiffw", ["/a"], ["F"]);
   await h.profile.openWorkspace("/work.skiffw");
   h.profile.editWorkspace();
-  h.button("Apply").click();
-  assert.equal(h.profile.workspaceEdited(), false);
-  h.profile.saveWorkspace();
+  h.button("Done").click();
   await flush();
   assert.deepEqual(h.files.get("/work.skiffw").profile.projects, ["/a"]);
   h.S.projects[0].fleet = null;
   assert.equal(h.profile.shows(h.S.projects[0]), true);
 });
 
-test("removing fleet coverage preserves explicit projects but not fleet-only projects", async () => {
+test("removing fleet coverage keeps explicit projects but not fleet-only projects", async () => {
   const h = workspaceHarness();
   h.S.projects[1].fleet = "F";
   h.fixture("/work.skiffw", ["/a"], ["F"]);
@@ -27,12 +27,14 @@ test("removing fleet coverage preserves explicit projects but not fleet-only pro
   const fleet = h.elements().find((el) => el.tag === "label" && el.children.some((c) => c.textContent === "F"))!.children[0];
   fleet.checked = false;
   fleet.fire("change");
-  h.button("Apply").click();
+  h.button("Done").click();
+  await flush();
   assert.equal(h.profile.shows(h.S.projects[0]), true);
   assert.equal(h.profile.shows(h.S.projects[1]), false);
+  assert.deepEqual(h.files.get("/work.skiffw").profile.fleets, []);
 });
 
-test("opening and creating a workspace reset All work; a rejected open preserves it", async () => {
+test("opening and creating a workspace reset All work; a rejected open keeps it", async () => {
   const h = workspaceHarness();
   h.fixture("/a.skiffw");
   h.fixture("/b.skiffw", ["/b"]);
@@ -45,89 +47,112 @@ test("opening and creating a workspace reset All work; a rejected open preserves
   assert.deepEqual(values(h.profile.ledgerScope().names), ["B"]);
   h.profile.setLedgerAllWork(true);
   h.profile.newWorkspace();
+  nameField(h).value = "Fresh";
+  h.button("Done").click();
   await flush();
   assert.equal(h.profile.ledgerAllWork(), false);
   assert.deepEqual(values(h.profile.ledgerScope().names), []);
 });
 
-test("All work toggles preserve edits and never show the leave prompt", async () => {
+test("New puts the file in Skiff's folder under its name; an empty or taken name says so", async () => {
   const h = workspaceHarness();
-  h.fixture("/work.skiffw");
-  await h.profile.openWorkspace("/work.skiffw");
-  h.profile.editWorkspace();
-  h.elements().find((el) => el.type === "text")!.value = "Edited";
-  h.button("Apply").click();
-  h.profile.setLedgerAllWork(true);
-  h.profile.setLedgerAllWork(false);
-  assert.equal(h.profile.workspaceEdited(), true);
-  assert.equal(h.elements().some((el) => el.textContent === "Don't Save"), false);
-});
-
-for (const route of ["skiff:quit-requested", "window-close"]) {
-  for (const decision of ["Cancel", "Don't Save", "Save", "failed Save", "cancelled Save As"]) {
-    test(`${route}: ${decision} uses the workspace leave guard`, async () => {
-      const h = workspaceHarness();
-      await h.profile.startWorkspaceQuitGuard();
-      await h.profile.startWorkspaces();
-      assert.equal(h.calls.guarded, true);
-      if (decision === "cancelled Save As") {
-        h.profile.newWorkspace();
-        await flush();
-      } else {
-        h.fixture("/work.skiffw");
-        await h.profile.openWorkspace("/work.skiffw");
-        h.profile.editWorkspace();
-      }
-      h.elements().find((el) => el.type === "text")!.value = "Edited";
-      h.button("Apply").click();
-      h.calls.failSave = decision === "failed Save";
-      h.events.get(route)!();
-      // A duplicate native/window request must not open another prompt or exit.
-      h.events.get(route)!();
-      assert.equal(h.elements().filter((el) => el.textContent === "Don't Save").length, 1);
-      h.button(decision.includes("Save") && decision !== "Don't Save" ? "Save" : decision).click();
-      await flush();
-      const exits = decision === "Save" || decision === "Don't Save";
-      assert.equal(h.calls.approvedExits, exits ? 1 : 0);
-      assert.equal(h.profile.workspaceEdited(), decision !== "Save");
-      assert.equal(h.calls.saves, decision === "Save" || decision === "failed Save" ? 1 : 0);
-    });
-  }
-}
-
-test("a clean native quit needs no prompt", async () => {
-  const h = workspaceHarness();
-  await h.profile.startWorkspaceQuitGuard();
-  await h.profile.startWorkspaces();
-  h.events.get("skiff:quit-requested")!();
+  h.fixture("/own/Work.skiffw");
+  h.profile.newWorkspace();
+  h.button("Done").click();
   await flush();
-  assert.equal(h.calls.approvedExits, 1);
-  assert.equal(h.elements().some((el) => el.textContent === "Don't Save"), false);
+  assert.ok(h.elements().some((el) => el.textContent === "The name is empty."));
+  nameField(h).value = "Work";
+  h.button("Done").click();
+  await flush();
+  assert.ok(h.elements().some((el) => el.textContent === "A workspace named Work exists."));
+  assert.equal(h.profile.workspaceOpen(), false);
+  nameField(h).value = "Client/A";
+  h.button("Done").click();
+  await flush();
+  assert.ok(h.files.has("/own/Client-A.skiffw"));
+  assert.equal(h.profile.workspaceName(), "Client-A");
 });
 
-test("a pick asks nothing on leave; Save writes it; a real change still asks", async () => {
+test("Edit renames the file; the recent list follows it", async () => {
   const h = workspaceHarness();
-  await h.profile.startWorkspaceQuitGuard();
+  h.fixture("/own/Work.skiffw");
+  await h.profile.openWorkspace("/own/Work.skiffw");
+  h.profile.editWorkspace();
+  nameField(h).value = "Clients";
+  h.button("Done").click();
+  await flush();
+  assert.equal(h.files.has("/own/Work.skiffw"), false);
+  assert.ok(h.files.has("/own/Clients.skiffw"));
+  assert.equal(h.profile.workspaceName(), "Clients");
+  const labels = Array.from(h.profile.recentWorkspaceEntries(), (e: any) => e.label);
+  assert.deepEqual(labels, ["Clients (open)"]);
+});
+
+test("a pick and a fold are saved at once, with no prompt", async () => {
+  const h = workspaceHarness();
   await h.profile.startWorkspaces();
   h.fixture("/work.skiffw", ["/a", "/b"]);
   h.files.get("/work.skiffw").profile.selected = "/a";
   await h.profile.openWorkspace("/work.skiffw");
-  // A pane in another project takes the keys: a click, or a session that ended.
   h.profile.noteSelected("B");
-  assert.equal(h.profile.workspaceEdited(), false);
-  h.events.get("skiff:quit-requested")!();
-  await flush();
-  assert.equal(h.elements().some((el) => el.textContent === "Don't Save"), false);
-  assert.equal(h.calls.approvedExits, 1);
-  h.profile.saveWorkspace();
   await flush();
   assert.equal(h.files.get("/work.skiffw").profile.selected, "/b");
+  assert.equal(h.elements().some((el) => el.tag === "button" && el.textContent === "Don't Save"), false);
+});
+
+test("a change on disk is read back; a gone file shows its mark and holds changes until Save it again", async () => {
+  const h = workspaceHarness();
+  h.fixture("/work.skiffw", ["/a"]);
+  await h.profile.openWorkspace("/work.skiffw");
+  await h.profile.startWorkspaces();
+  h.files.get("/work.skiffw").profile.projects = ["/a", "/b"];
+  h.files.get("/work.skiffw").revision = "other window";
+  h.events.get("focus")!();
+  await flush();
+  assert.equal(h.profile.shows(h.S.projects[1]), true);
+  h.files.delete("/work.skiffw");
+  h.events.get("focus")!();
+  await flush();
+  assert.equal(h.profile.workspaceNotice().missing, true);
+  h.profile.noteSelected("B");
+  await flush();
+  assert.equal(h.files.has("/work.skiffw"), false, "no write while the file is gone");
+  h.profile.review.workspaceMenu(h.h("button"));
+  h.menus.at(-1)!.entries.find((e: any) => e.label === "Save it again").run();
+  await flush();
+  assert.deepEqual(h.files.get("/work.skiffw").profile.projects, ["/a", "/b"]);
+  assert.equal(h.profile.workspaceNotice().missing, false);
+});
+
+test("a failed write says so once, keeps the change, and the next change writes it", async () => {
+  const h = workspaceHarness();
+  await h.profile.startWorkspaces();
+  h.fixture("/work.skiffw", ["/a", "/b"]);
+  await h.profile.openWorkspace("/work.skiffw");
+  h.calls.failSave = true;
+  h.profile.noteSelected("B");
+  await flush();
+  h.profile.noteSelected("A");
+  await flush();
+  assert.equal(h.calls.errors.length, 1);
+  assert.equal(h.profile.workspaceNotice().failed, "disk full");
+  h.calls.failSave = false;
+  h.profile.noteSelected("B");
+  await flush();
+  assert.equal(h.files.get("/work.skiffw").profile.selected, "/b");
+  assert.equal(h.profile.workspaceNotice().failed, null);
+});
+
+test("Remove on a reference that is not found takes it out on Done", async () => {
+  const h = workspaceHarness();
+  h.fixture("/work.skiffw", ["/a", "/gone"]);
+  await h.profile.openWorkspace("/work.skiffw");
+  assert.equal(h.profile.workspaceNotice().notFound, 1);
   h.profile.editWorkspace();
-  h.elements().find((el) => el.type === "text")!.value = "Renamed";
-  h.button("Apply").click();
-  assert.equal(h.profile.workspaceEdited(), true);
-  h.events.get("skiff:quit-requested")!();
-  assert.equal(h.elements().filter((el) => el.textContent === "Don't Save").length, 1);
+  h.button("Remove").click();
+  h.button("Done").click();
+  await flush();
+  assert.deepEqual(h.files.get("/work.skiffw").profile.projects, ["/a"]);
 });
 
 test("the app start keeps the restored project; the workspace's saved pick does not move it", async () => {
@@ -141,6 +166,15 @@ test("the app start keeps the restored project; the workspace's saved pick does 
   h.S.selectedProject = "B";
   await h.profile.startWorkspaces();
   assert.equal(h.S.selectedProject, "B");
+});
+
+test("closing the workspace status menu returns focus to its button", () => {
+  const h = workspaceHarness();
+  const button = h.h("button");
+  h.document.body.append(button);
+  h.profile.review.workspaceMenu(button);
+  h.menus.at(-1)!.done();
+  assert.equal(h.document.activeElement, button);
 });
 
 /** The scope helpers of workspace/model.ts the Ledger uses. */
@@ -273,7 +307,8 @@ test("a project taken out of a fleet the workspace names stays in by its folder"
   h.profile.keepInView(a, null);
   a.fleet = null;
   assert.equal(h.profile.shows(a), true);
-  assert.equal(h.profile.workspaceEdited(), true);
+  await flush();
+  assert.deepEqual([...h.files.get("/work.skiffw").profile.projects], ["/a"]);
 });
 
 test("a project added outside the app joins the open workspace; one it leaves out stays out (#229)", async () => {
@@ -282,16 +317,14 @@ test("a project added outside the app joins the open workspace; one it leaves ou
   await h.profile.openWorkspace("/work.skiffw");
   // The first read only learns the folders: B was there before and stays out.
   h.profile.includeNew("", h.S.projects);
-  assert.equal(h.profile.workspaceEdited(), false);
+  assert.equal(h.calls.saves, 0);
   // `skiff projects add`: C is new in projects.toml since the last read.
   h.S.projects.push({ name: "C", path: "/c", fleet: null });
   h.profile.includeNew("", h.S.projects);
   assert.equal(h.profile.shows(h.S.projects[2]), true);
   assert.equal(h.profile.shows(h.S.projects[1]), false, "B was left out on purpose");
-  assert.equal(h.profile.workspaceEdited(), true);
   // The next read: nothing new, no second add.
   h.profile.includeNew("", h.S.projects);
-  h.profile.saveWorkspace();
   await flush();
   assert.deepEqual([...h.files.get("/work.skiffw").profile.projects], ["/a", "/c"]);
 });
@@ -304,7 +337,7 @@ test("a Host switch only learns its folders: none joins the workspace (#229)", a
   h.S.projects.push({ name: "C", path: "/c", fleet: null });
   h.profile.includeNew("remote-host", h.S.projects);
   assert.equal(h.profile.shows(h.S.projects[2]), false);
-  assert.equal(h.profile.workspaceEdited(), false);
+  assert.equal(h.calls.saves, 0);
 });
 
 test("workspace history is separate for each Host", () => {
@@ -337,7 +370,7 @@ test("with no workspace open, an outside add changes nothing (#229)", async () =
   h.S.projects.push({ name: "C", path: "/c", fleet: null });
   h.profile.includeNew("", h.S.projects);
   assert.equal(h.profile.workspaceOpen(), false);
-  assert.equal(h.profile.workspaceEdited(), false);
+  assert.equal(h.calls.saves, 0);
   // A workspace opened later is as its file says.
   h.fixture("/work.skiffw", ["/a"]);
   await h.profile.openWorkspace("/work.skiffw");

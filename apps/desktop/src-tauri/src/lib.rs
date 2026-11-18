@@ -79,7 +79,6 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .manage(App::default())
-        .manage(quit::Guard::default())
         // The window starts hidden: GTK takes a header bar only before it shows.
         .setup(|app| {
             // Copies of Host files left by an app that did not quit cleanly.
@@ -131,7 +130,6 @@ pub fn run() {
         .invoke_handler(local_only(tauri::generate_handler![
             native_menu::set_menu,
             quit::quit_app,
-            quit::guard_quit,
             notify::notify_show,
             notify::notify_remove,
             badge::set_waiting_badge,
@@ -313,13 +311,13 @@ pub fn run() {
             workspace_file::workspace_write,
             workspace_file::workspace_launch_file,
             workspace_file::workspace_took,
+            workspace_file::workspace_dir,
+            workspace_file::workspace_list,
+            workspace_file::workspace_rename,
         ]))
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|_app, _event| {
-            if let tauri::RunEvent::ExitRequested { api, .. } = &_event {
-                quit::requested(_app, api);
-            }
             // Tauri then leaves by `std::process::exit`: no drop ends the
             // ssh links, so they end here.
             if let tauri::RunEvent::Exit = &_event {
@@ -388,7 +386,7 @@ mod tests {
             assert!(super::LOCAL_ONLY.contains(&local), "{local}");
         }
         // A command added later must be placed on one side or the other.
-        let allowed = ["set_menu", "quit_app", "guard_quit", "menu_layout", "set_menu_layout", "set_window_dark", "clipboard_write", "clipboard_read",
+        let allowed = ["set_menu", "quit_app", "menu_layout", "set_menu_layout", "set_window_dark", "clipboard_write", "clipboard_read",
             "peek_owner", "daemon_status", "host_capabilities", "list_hosts", "add_host", "edit_host", "rename_host", "remove_host", "uninstall_preview", "ssh_aliases", "resolve_ssh", "check_host", "host_key_scan", "host_key_trust", "make_key", "unlock_key", "show_public_key", "install_key", "fix_permissions", "install_skiff", "cancel_install", "start_skiff", "turn_on_linger", "update_skiff", "set_host_auto_update", "select_host", "set_host_clipboard", "host_clipboard", "accept_host_identity",
             "list_sessions", "daemon_metrics", "create_session", "pty_write", "pty_resize", "session_seen", "kill_session", "rename_session", "set_session_theme", "list_agents", "list_projects", "get_project", "git_changes", "git_diff", "data_plane_status", "list_files", "read_file", "reveal_host_file", "open_file_copy", "project_background", "project_image_upload",
             "ledger_rows", "ledger_result", "schedule_list", "cron_preview", "schedule_call", "skipper_watch_log", "get_skiff_agent", "add_worktree", "list_branches", "remove_worktree", "add_project", "inspect_folder", "init_host_repository", "folder_home", "folder_list", "folder_create", "folder_places", "set_project_short", "set_project_fleet", "set_project_color", "set_project_closed", "remove_project", "set_project_icon", "set_project_background", "set_project_background_opacity", "set_project_changes", "set_project_files", "set_project_theme", "reorder_projects",
@@ -397,7 +395,7 @@ mod tests {
             "open_settings", "set_open", "set_open_peek", "open_choices", "set_open_app", "program_list", "usage_read", "open_url", "list_themes", "import_themes", "open_theme_folder", "get_appearance",
             "memory_usage", "get_keys", "trace_info", "trace_write", "trace_set", "system_load", "set_appearance", "set_language", "set_time_zone", "set_clock", "set_font_size", "set_mission_filter",
             "list_groups", "session_screen", "save_group", "delete_group", "order_groups", "subscribe_output", "ack_output", "unsubscribe_output", "subscribe_events", "subscribe_data_events",
-            "workspace_read", "workspace_revision", "workspace_write", "workspace_launch_file", "workspace_took",
+            "workspace_read", "workspace_revision", "workspace_write", "workspace_launch_file", "workspace_took", "workspace_dir", "workspace_list", "workspace_rename",
             // This computer's Disk use and Images, whichever Host is shown. A drop or an Insert on a remote Host's pane goes to that Host.
             "disk_usage", "flush_disk", "set_cache_days",
             "drop_files", "clipboard_image", "images", "image_thumb", "image_insert", "image_pin", "image_delete", "open_image", "agent_cache_flags",

@@ -4,7 +4,7 @@
 #ws-status:hover .ws-status-name { color: var(--text); }
 .ws-status-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ws-status-mark { flex-shrink: 0; color: var(--text-3); }
-.ws-status-mark.edited { color: var(--state-waiting-text); }
+.ws-status-mark.warn { color: var(--state-waiting-text); }
 body.kbd #ws-status:focus-visible { outline: 1px solid var(--text-3); outline-offset: -1px; }
 
 .ws-edit { width: calc(560 * var(--u)); max-height: calc(100vh - calc(64 * var(--u))); }
@@ -27,7 +27,8 @@ label.ws-sec:has(input) { gap: calc(8 * var(--u)); cursor: pointer; }
 .ws-missing { display: grid; grid-template-columns: 1fr; gap: calc(4 * var(--u)); padding: calc(8 * var(--u)) calc(20 * var(--u)); border-top: 1px solid var(--rule); font-size: calc(12px * var(--zoom, 1)); }
 .ws-missing-ref { font-family: var(--mono); color: var(--text-2); overflow-wrap: anywhere; }
 .ws-missing-why { color: var(--text-3); }
-.ws-repair { height: calc(28 * var(--u)); border: 1px solid var(--rule-strong); border-radius: 0; background: var(--bg-deep); color: var(--text); font: inherit; }
+.ws-missing-acts { height: calc(28 * var(--u)); display: flex; gap: calc(8 * var(--u)); }
+.ws-missing-acts .ctl-pick { flex-grow: 1; border: 1px solid var(--rule-strong); }
 
 /* The Ledger's scope: the workspace's work, or All work. */
 .lg-scope { min-width: 0; max-width: calc(120 * var(--u)); padding: 0; border: 0; background: none; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: calc(11px * var(--zoom, 1)); font-weight: 400; color: var(--text-dim); }

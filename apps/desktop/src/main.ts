@@ -43,7 +43,7 @@ import { startLedger } from "./workspace/ledger";
 import { watchNotificationClicks } from "./app/notify";
 import "./terminal/fileDrop";
 import { startImages } from "./terminal/images";
-import { startWorkspaceQuitGuard, startWorkspaces } from "./workspace/profile";
+import { startWorkspaces } from "./workspace/profile";
 import { startUpdates } from "./app/updater";
 
 initPanels();
@@ -87,7 +87,6 @@ function staticText() {
 
 async function boot() {
   staticText();
-  await startWorkspaceQuitGuard();
   // Which Host this window shows decides everything below.
   await loadHosts().catch(showError);
   watchHosts();

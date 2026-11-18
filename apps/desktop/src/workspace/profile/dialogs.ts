@@ -1,12 +1,14 @@
-/** The choice dialog and its Tab trap. */
+/** The workspace dialog: New and Edit. */
 import { dialogFrame } from "../../ui/dialogParts";
 import { button, h } from "../../ui/dom";
+import { picker, smallButton } from "../../ui/controls";
 import { t } from "../../i18n";
 import type { Project } from "../../platform/types";
-import type { Profile, createWorkspaceState } from "./state";
+import { emptyProfile, type Profile, type createWorkspaceState } from "./state";
+import type { NameFault } from "./transitions";
 import type { S as AppState } from "../../app/state";
 
-// ── Choice dialog ──────────────────────────────────────────────────────────
+// ── Workspace dialog ───────────────────────────────────────────────────────
 
 function trapTab(panel: HTMLElement, e: KeyboardEvent) {
   const stops = [...panel.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled)")];
@@ -15,70 +17,35 @@ function trapTab(panel: HTMLElement, e: KeyboardEvent) {
 }
 
 /**
- * A modal with Cancel and the given choices. Cancel has the keys, and Enter
- * on anything but a choice is Cancel. Esc or a click outside is Cancel.
+ * New (`isNew`) or Edit: the name, the projects and fleets, and for each
+ * reference that is not found, Remove or Use instead. Done creates the
+ * workspace, or renames it and changes it; each is saved at once.
  */
-export function choose(o: { title: string; body: string; choices: { id: string; label: string; tone: "go" | "danger" | "plain" }[] }): Promise<string> {
-  return new Promise((resolve) => {
-    const { overlay, panel } = dialogFrame("confirm-panel", "alertdialog", o.title);
-    const title = h("div", "confirm-title", o.title);
-    const body = h("div", "confirm-body", o.body);
-    title.id = "ws-choose-title";
-    body.id = "ws-choose-body";
-    panel.setAttribute("aria-labelledby", title.id);
-    panel.setAttribute("aria-describedby", body.id);
-    panel.removeAttribute("aria-label");
-    const foot = h("div", "confirm-foot");
-    const done = (id: string) => {
-      overlay.remove();
-      resolve(id);
-    };
-    const cancel = button("confirm-cancel", t("workspace.cancel"), () => done("cancel"));
-    foot.append(cancel);
-    for (const c of o.choices) {
-      const cls = c.tone === "go" ? "confirm-act go" : c.tone === "danger" ? "confirm-act" : "confirm-cancel";
-      foot.append(button(cls, c.label, () => done(c.id)));
-    }
-    panel.append(title, body, foot);
-    overlay.append(panel);
-    document.body.append(overlay);
-    overlay.addEventListener("mousedown", (e) => e.target === overlay && done("cancel"));
-    overlay.addEventListener("keydown", (e) => {
-      e.stopPropagation();
-      if (e.key === "Escape") done("cancel");
-      else if (e.key === "Enter") {
-        // Enter presses the button with the keys; anywhere else it cancels.
-        const b = document.activeElement;
-        if (b instanceof HTMLButtonElement && panel.contains(b)) b.click();
-        else done("cancel");
-      } else if (e.key === "Tab") trapTab(panel, e);
-      else return;
-      e.preventDefault();
-    });
-    cancel.focus();
-  });
-}
-
-/** Name, projects, fleets, and a repair or remove for each missing reference. Apply changes the profile in memory. */
-export function editWorkspaceDialog(state: ReturnType<typeof createWorkspaceState>, hooks: { home: () => HTMLElement | null; changed: () => void; showView: () => void; S: typeof AppState; trimPath: (path: string) => string }) {
-  const { home, changed, showView, S, trimPath } = hooks;
-  const workspaceName = state.workspaceName;
+export function workspaceDialog(state: ReturnType<typeof createWorkspaceState>, isNew: boolean, hooks: {
+  home: () => HTMLElement | null; changed: () => void; showView: () => void; S: typeof AppState; trimPath: (path: string) => string;
+  create: (name: string, profile: Profile) => Promise<NameFault | null>; renameTo: (name: string) => Promise<NameFault | null>;
+}) {
+  const { home, changed, showView, S, trimPath, create, renameTo } = hooks;
   const shows = state.shows;
   const clone = (p: Profile): Profile => JSON.parse(JSON.stringify(p));
-  if (!state.doc || state.saving) return;
-  const d = state.doc;
+  const d = isNew ? null : state.doc;
+  if (!isNew && !d) return;
+  const base: Profile = d ? d.profile : emptyProfile();
   const back = document.activeElement as HTMLElement | null;
-  const { overlay, panel } = dialogFrame("confirm-panel ws-edit", "dialog", t("workspace.editLabel", { name: workspaceName() }));
-  const title = h("div", "confirm-title", t("workspace.editTitle"));
+  const heading = isNew ? t("workspace.newTitle") : t("workspace.editTitle");
+  const { overlay, panel } = dialogFrame("confirm-panel ws-edit", "dialog", heading);
+  const title = h("div", "confirm-title", heading);
   const body = h("div", "ws-edit-body");
   const nameLabel = h("label", "ws-field");
   const name = h("input", "prompt-input");
   name.type = "text";
-  name.value = d.profile.name;
-  name.placeholder = t("workspace.untitled");
+  name.value = isNew ? "" : state.workspaceName();
   name.spellcheck = false;
   nameLabel.append(h("span", "ws-label", t("workspace.name")), name);
-  body.append(nameLabel);
+  const fault = h("div", "prompt-error");
+  fault.setAttribute("role", "alert");
+  fault.hidden = true;
+  body.append(nameLabel, fault);
 
   const fleets = [...new Set(S.projects.map((p) => p.fleet).filter((f): f is string => !!f))];
   // One tree in the sidebar's order: projects in no fleet, then each fleet with its projects under it.
@@ -93,13 +60,13 @@ export function editWorkspaceDialog(state: ReturnType<typeof createWorkspaceStat
   const fleetBoxes = new Map<string, HTMLInputElement>();
   const projectBoxes = new Map<string, HTMLInputElement>();
   // Fleet coverage changes the checkbox display, not an explicit inclusion.
-  const explicitProjects = new Set(d.profile.projects.map(trimPath));
+  const explicitProjects = new Set(base.projects.map(trimPath));
   const kidsOf = new Map<string, HTMLInputElement[]>();
   const loose: HTMLInputElement[] = [];
   const tree = h("div", "ws-tree");
   tree.setAttribute("role", "group");
   tree.setAttribute("aria-label", t("workspace.treeLabel"));
-  const inList = (p: Project) => d.profile.projects.some((x) => trimPath(x) === trimPath(p.path));
+  const inList = (p: Project) => base.projects.some((x) => trimPath(x) === trimPath(p.path));
   const projectBox = (p: Project, nested: boolean) => {
     const { l, c } = box(p.name, inList(p), nested);
     c.value = trimPath(p.path);
@@ -114,7 +81,7 @@ export function editWorkspaceDialog(state: ReturnType<typeof createWorkspaceStat
   };
   for (const p of S.projects) if (!p.fleet) loose.push(projectBox(p, false));
   for (const f of fleets) {
-    const { l, c } = box(f, d.profile.fleets.includes(f));
+    const { l, c } = box(f, base.fleets.includes(f));
     fleetBoxes.set(f, c);
     tree.append(l);
     kidsOf.set(f, S.projects.filter((p) => p.fleet === f).map((p) => projectBox(p, true)));
@@ -180,31 +147,43 @@ export function editWorkspaceDialog(state: ReturnType<typeof createWorkspaceStat
   body.append(head);
   if (!S.projects.length) body.append(h("div", "ws-note", t("workspace.noProjects")));
   body.append(tree);
-  const repairs = new Map<ReturnType<typeof state.missing>[number], HTMLSelectElement>();
-  const lost = state.missing();
+  /** What Done does with each reference that is not found: null keeps it, "" removes it, else the folder or fleet to use instead. */
+  const repairs = new Map<ReturnType<typeof state.missing>[number], string | null>();
+  const lost = isNew ? [] : state.missing();
   if (lost.length) {
-    body.append(h("div", "ws-sec", t("workspace.missing")));
+    const sec = h("div", "ws-sec", t("workspace.notFound"));
+    body.append(sec);
     for (const m of lost) {
       const row = h("div", "ws-missing");
-      const sel = h("select", "ws-repair");
-      sel.setAttribute("aria-label", t("workspace.repairLabel", { ref: m.ref }));
-      const opt = (value: string, text: string) => {
-        const o = h("option", "", text);
-        o.value = value;
-        sel.append(o);
-      };
-      opt("keep", t("workspace.keepUnresolved"));
-      opt("remove", t("workspace.removeProject"));
-      if (m.kind === "project") for (const p of S.projects) opt(`use:${trimPath(p.path)}`, t("workspace.useProject", { name: p.name, path: p.path }));
-      else for (const f of fleets) opt(`use:${f}`, t("workspace.useFleet", { name: f }));
-      row.append(h("span", "ws-missing-ref", m.ref), h("span", "ws-missing-why", m.why), sel);
-      repairs.set(m, sel);
+      repairs.set(m, null);
+      const choices = m.kind === "project"
+        ? S.projects.map((p) => ({ value: trimPath(p.path), label: t("workspace.useProject", { name: p.name, path: p.path }) }))
+        : fleets.map((f) => ({ value: f, label: t("workspace.useFleet", { name: f }) }));
+      const use = picker({
+        label: t("workspace.useInsteadLabel", { ref: m.ref }),
+        value: "",
+        shows: t("workspace.useInstead"),
+        entries: () => choices,
+        pick: (value) => {
+          repairs.set(m, value);
+          const shown = use.querySelector(".ctl-pick-value");
+          if (shown) shown.textContent = choices.find((c) => c.value === value)?.label ?? value;
+        },
+      });
+      const remove = smallButton(t("workspace.remove"), () => {
+        repairs.set(m, "");
+        row.remove();
+        if ([...repairs.values()].every((v) => v === "")) sec.remove();
+      }, { label: t("workspace.removeLabel", { ref: m.ref }) });
+      const acts = h("div", "ws-missing-acts");
+      acts.append(use, remove);
+      row.append(h("span", "ws-missing-ref", m.ref), h("span", "ws-missing-why", m.why), acts);
       body.append(row);
     }
   }
   const foot = h("div", "confirm-foot");
   const cancel = button("confirm-cancel", t("workspace.cancel"), () => close());
-  const apply = button("confirm-act go", t("workspace.apply"), () => submit());
+  const apply = button("confirm-act go", t("workspace.done"), () => void submit());
   foot.append(cancel, apply);
   panel.append(title, body, foot);
   overlay.append(panel);
@@ -214,24 +193,24 @@ export function editWorkspaceDialog(state: ReturnType<typeof createWorkspaceStat
     overlay.remove();
     (back?.isConnected ? back : home())?.focus();
   }
-  function submit() {
-    if (state.doc !== d || state.saving) return close();
-    const next = clone(d.profile);
-    next.name = name.value.trim();
+  let busy = false;
+  async function submit() {
+    if (busy) return;
+    if (d && state.doc !== d) return close();
+    const next = clone(base);
     const shownBefore = new Set(S.projects.filter(shows).map((p) => trimPath(p.path)));
-    // Missing references keep their place unless repaired or removed.
-    let projects = d.profile.projects.filter((x) => !S.projects.some((p) => trimPath(p.path) === trimPath(x)));
-    let fleetsNext = d.profile.fleets.filter((f) => !fleets.includes(f));
+    // References that are not found keep their place unless changed or removed.
+    let projects = base.projects.filter((x) => !S.projects.some((p) => trimPath(p.path) === trimPath(x)));
+    let fleetsNext = base.fleets.filter((f) => !fleets.includes(f));
     for (const path of projectBoxes.keys()) if (explicitProjects.has(path)) projects.push(path);
     for (const [f, c] of fleetBoxes) if (c.checked) fleetsNext.push(f);
-    for (const [m, sel] of repairs) {
-      if (sel.value === "keep") continue;
-      const to = sel.value.startsWith("use:") ? sel.value.slice(4) : null;
+    for (const [m, to] of repairs) {
+      if (to === null) continue;
       if (m.kind === "project") {
         projects = projects.filter((x) => x !== m.ref);
         if (to) projects.push(to);
         next.folded_projects = next.folded_projects.map((x) => (x === m.ref && to ? to : x)).filter((x) => x !== m.ref);
-        if (next.selected === m.ref) next.selected = to;
+        if (next.selected === m.ref) next.selected = to || null;
       } else {
         fleetsNext = fleetsNext.filter((x) => x !== m.ref);
         if (to) fleetsNext.push(to);
@@ -240,13 +219,23 @@ export function editWorkspaceDialog(state: ReturnType<typeof createWorkspaceStat
     }
     next.projects = [...new Set(projects)];
     next.fleets = [...new Set(fleetsNext)];
+    busy = true;
+    const why = isNew ? await create(name.value, next) : await renameTo(name.value);
+    busy = false;
+    if (why) {
+      fault.textContent = why === "empty" ? t("workspace.nameEmpty") : t("workspace.nameTaken", { name: name.value.trim() });
+      fault.hidden = false;
+      name.focus();
+      return;
+    }
+    overlay.remove();
+    if (!d || state.doc !== d) return;
     d.profile = next;
     // A project that left the view takes its fold and pick with it.
     const shownNow = new Set(S.projects.filter(shows).map((p) => trimPath(p.path)));
     const left = (x: string) => shownBefore.has(trimPath(x)) && !shownNow.has(trimPath(x));
     next.folded_projects = next.folded_projects.filter((x) => !left(x));
     if (next.selected && left(next.selected)) next.selected = null;
-    overlay.remove();
     changed();
     showView();
   }
@@ -254,7 +243,7 @@ export function editWorkspaceDialog(state: ReturnType<typeof createWorkspaceStat
   overlay.addEventListener("keydown", (e) => {
     e.stopPropagation();
     if (e.key === "Escape") close();
-    else if (e.key === "Enter" && e.target === name) submit();
+    else if (e.key === "Enter" && e.target === name) void submit();
     else if (e.key === "Tab") trapTab(panel, e);
     else return;
     e.preventDefault();

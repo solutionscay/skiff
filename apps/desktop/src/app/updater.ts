@@ -10,7 +10,6 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "../platform/os";
 import { $, button, h } from "../ui/dom";
-import { leave } from "../workspace/profile";
 import { failLine, notesLines, progressText, releasePage } from "./updateNotice";
 import { t } from "../i18n";
 
@@ -92,15 +91,14 @@ async function download() {
 }
 
 /**
- * Relaunch: the workspace save guard first, then the install, then the
- * restart. Cancel at the guard installs nothing. A failed install, such as a
+ * Relaunch: the install, then the restart. A failed install, such as a
  * cancelled password prompt for a .deb or .rpm, keeps this app running.
  */
 function relaunch() {
   const u = update;
   if (!u) return;
   closePop();
-  void leave(t("update.restartsLeave"), async () => {
+  void (async () => {
     try {
       await u.install();
     } catch (e) {
@@ -109,20 +107,18 @@ function relaunch() {
       line = failLine("install", e);
       openPop();
       set("error");
-      return false;
+      return;
     }
     try {
       await invoke("relaunch_app");
-      return true;
     } catch (e) {
       console.error(e);
       failed = "install";
       line = String(e instanceof Error ? e.message : e);
       openPop();
       set("error");
-      return false;
     }
-  });
+  })();
 }
 
 function retry() {

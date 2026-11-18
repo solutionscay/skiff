@@ -1,4 +1,4 @@
-/** The workspace file on disk (read, write, revision) and the recent list in localStorage. */
+/** The workspace file on disk (read, write, revision, rename), Skiff's own workspace folder, and the recent list in localStorage. */
 import { invoke } from "@tauri-apps/api/core";
 import type { Profile } from "./state";
 import { basename } from "../paths";
@@ -50,7 +50,27 @@ export function forget(path: string, render: () => void) {
   render();
 }
 
+/** A file that moved: its place in the recent list and as the last one follow it. */
+export function moved(from: string, to: string) {
+  store(hostKey(RECENT_KEY), JSON.stringify(recents().map((x) => (x === from ? to : x))));
+  if (last() === from) store(hostKey(LAST_KEY), to);
+}
+
 export const fileName = basename;
+
+/** Skiff's own workspace folder, where New puts a workspace. */
+export async function ownDir() {
+  return invoke<string>("workspace_dir");
+}
+
+/** The workspace files in Skiff's own folder. */
+export async function ownList() {
+  return invoke<string[]>("workspace_list");
+}
+
+export async function rename(from: string, to: string) {
+  return invoke<void>("workspace_rename", { from, to });
+}
 
 export async function read(path: string): Promise<Loaded> {
   return invoke<Loaded>("workspace_read", { path });

@@ -5,24 +5,18 @@
  * workspace changes what shows, never a project, a fleet, a session or the
  * ledger. With none open, the tree shows All projects.
  *
- * One document at a time: its path (null: Untitled), the profile in memory,
- * the profile last read or saved (the baseline), and the file's revision on
- * disk. Edited: the profile differs from the baseline. Name, inclusions,
- * repairs and the user's folds are edits. Automatic opens are not. The
- * selected project is no edit: Save writes it, a read restores it.
- *
- * Every way out of an edited workspace (New, Open, a recent, Close, a file
- * from the OS, Quit, the window's close) asks Save / Don't Save / Cancel.
- * Saves are atomic and check the revision first. An outside change to the
- * file shows a notice and never reloads by itself.
+ * The file name is the workspace's name. New puts the file in Skiff's own
+ * folder. Each change is saved at once: membership, folds and the last pick.
+ * There is no unsaved state and no prompt. A change to the file from outside
+ * is read back on the next disk check; a file that is gone shows a mark, and
+ * changes wait until it is saved again.
  */
 
 import { render } from "../app/renderRequest";
 import { S } from "../app/state";
-import { t } from "../i18n";
 import { createMembership } from "./profile/membership";
-import { createWorkspaceState, trimPath } from "./profile/state";
-import { editWorkspaceDialog } from "./profile/dialogs";
+import { createWorkspaceState, trimPath, type Profile } from "./profile/state";
+import { workspaceDialog } from "./profile/dialogs";
 import { createTransitions } from "./profile/transitions";
 import { createStatus } from "./profile/status";
 export type { Profile } from "./profile/state";
@@ -31,7 +25,6 @@ const state = createWorkspaceState();
 const membership = createMembership(state, { announce, changed, showView: (focus) => transitions.showView(focus) });
 export const workspaceOpen = state.workspaceOpen;
 export const workspaceName = state.workspaceName;
-export const workspaceEdited = state.workspaceEdited;
 export const shows = state.shows;
 export const ledgerScope = state.ledgerScope;
 export const ledgerAllWork = state.ledgerAllWork;
@@ -47,30 +40,42 @@ function announce(text: string) {
   requestAnimationFrame(() => (live.textContent = text));
 }
 
-/** The profile changed in memory. */
+/** The profile changed in memory: show it and save it. */
 function changed() {
-  const now = workspaceEdited();
-  if (now !== state.wasEdited) announce(t(now ? "workspace.editedSay" : "workspace.cleanSay", { name: workspaceName() }));
-  state.wasEdited = now;
   render();
+  void transitions.save();
 }
 
 state.setHooks({ announce, changed });
 
 // ── Files ──────────────────────────────────────────────────────────────────
 
-const transitions = createTransitions(state, { announce, changed, home: () => home(), editWorkspace });
-const { showView } = transitions;
-export const { leave, openWorkspace, newWorkspace, closeWorkspace, saveWorkspace, saveWorkspaceAs, quitApp } = transitions;
-
-export function editWorkspace() {
-  editWorkspaceDialog(state, { home, changed, showView, S, trimPath });
-}
-
-// ── Menus and the status bar ───────────────────────────────────────────────
-
 /** Where the keys go when what had them is gone: the sidebar's current row. */
 const home = () => document.querySelector<HTMLElement>('#sidebar-scroll [tabindex="0"]');
 
-const status = createStatus(state, transitions, { home, editWorkspace });
-export const { recentWorkspaceEntries, workspaceNotice, reloadWorkspace, keepWorkspace, renderWorkspaceStatus, startWorkspaceQuitGuard, startWorkspaces } = status;
+const transitions = createTransitions(state, { announce, home });
+export const { openWorkspace, closeWorkspace } = transitions;
+
+function dialog(isNew: boolean) {
+  workspaceDialog(state, isNew, {
+    home, changed, showView: () => transitions.showView(), S, trimPath,
+    create: async (name: string, profile: Profile) => {
+      const why = await transitions.create(name, profile);
+      if (!why) void status.refreshOwn();
+      return why;
+    },
+    renameTo: async (name: string) => {
+      const why = await transitions.renameTo(name);
+      if (!why) void status.refreshOwn();
+      return why;
+    },
+  });
+}
+
+export const newWorkspace = () => dialog(true);
+export const editWorkspace = () => dialog(false);
+
+// ── Menus and the status bar ───────────────────────────────────────────────
+
+const status = createStatus(state, transitions, { home, newWorkspace, editWorkspace });
+export const { recentWorkspaceEntries, workspaceNotice, renderWorkspaceStatus, startWorkspaces } = status;

@@ -1,46 +1,35 @@
-/** File transitions and their leave guard. */
-import { invoke } from "@tauri-apps/api/core";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+/** Opening, creating, renaming and closing workspaces, the save after each change, and changes made on disk. */
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { render } from "../../app/renderRequest";
 import { S } from "../../app/state";
 import { showError } from "../../ui/alerts";
 import { treeSections, useTreeView } from "../tree";
 import { selectProject } from "../view";
 import { t } from "../../i18n";
-import { canon, emptyProfile, trimPath, type Doc, type Profile, type createWorkspaceState } from "./state";
-import { fileName, forget, forgetLast, read, recents, remember, revision, write as writeFile, type Loaded } from "./storage";
-import { choose } from "./dialogs";
-import { homeShort } from "../paths";
+import { dirname } from "../paths";
+import { EXT, nameOf, trimPath, type Profile, type createWorkspaceState } from "./state";
+import { fileName, forget, forgetLast, moved, ownDir, read, recents, remember, rename, revision, write as writeFile, type Loaded } from "./storage";
 
 type State = ReturnType<typeof createWorkspaceState>;
-export function createTransitions(state: State, hooks: { announce: (text: string) => void; changed: () => void; home: () => HTMLElement | null; editWorkspace: () => void }) {
-  const { announce, changed, home, editWorkspace } = hooks;
-  const workspaceEdited = state.workspaceEdited;
-  const workspaceName = state.workspaceName;
-  const EXT = "skiffw";
+
+/** Why a name cannot be used: empty, or another workspace has it. */
+export type NameFault = "empty" | "taken";
+
+/** A name as a file name: no folder separators, no leading dot. */
+const safeName = (name: string) => name.trim().replace(/[/\\]/g, "-").replace(/^\.+/, "");
+
+export function createTransitions(state: State, hooks: { announce: (text: string) => void; home: () => HTMLElement | null }) {
+  const { announce, home } = hooks;
   const clone = (p: Profile): Profile => JSON.parse(JSON.stringify(p));
-  /** Makes the read file the document, Clean, and shows it. `keep`: the app start, where the restored place stays when it shows. */
+
+  /** Makes the read file the open workspace and shows it. `keep`: the app start, where the restored place stays when it shows. */
   function commit(l: Loaded | null, focus = true, keep = false) {
-    state.doc = l
-      ? { path: l.path, profile: l.profile, base: canon(l.profile), revision: l.revision, disk: "ok", kept: false, answered: false }
-      : null;
+    state.doc = l ? { path: l.path, profile: l.profile, revision: l.revision, written: JSON.stringify(l.profile), missing: false, failed: null } : null;
     state.autoOpened.clear();
     state.allWork = false;
     useTreeView(state.doc ? state.treeView : null);
     if (l) remember(l.path);
-    state.wasEdited = workspaceEdited();
     showView(focus, keep);
-  }
-
-  /** A new Untitled workspace: empty, Clean, no file. */
-  function commitUntitled() {
-    state.doc = { path: null, profile: emptyProfile(), base: canon(emptyProfile()), revision: null, disk: "ok", kept: false, answered: false };
-    state.autoOpened.clear();
-    state.allWork = false;
-    useTreeView(state.treeView);
-    forgetLast();
-    state.wasEdited = false;
-    showView();
   }
 
   /** After a switch: the saved pick if it shows, else the first project that shows, else none. The keys go to the sidebar's current row. `keep`: the project on screen stays when it shows. */
@@ -53,135 +42,120 @@ export function createTransitions(state: State, hooks: { announce: (text: string
       if (target) selectProject(target.name);
       render();
     });
-    announce(state.doc ? t("workspace.openedSay", { name: workspaceName() }) : t("workspace.allProjects"));
+    announce(state.doc ? t("workspace.openedSay", { name: state.workspaceName() }) : t("workspace.allProjects"));
     if (focus) requestAnimationFrame(() => home()?.focus());
   }
 
-  /** Writes the document to `path`. `expect`: the revision there now, null for no file. */
-  async function write(path: string, expect: string | null): Promise<boolean> {
-    if (!state.doc) return false;
-    const d = state.doc;
-    const snap = clone(d.profile);
-    state.saving = true;
-    render();
-    announce(t("workspace.savingSay"));
-    try {
-      const revision = await writeFile(path, snap, expect);
-      d.path = path;
-      d.revision = revision;
-      d.base = canon(snap);
-      d.disk = "ok";
-      d.kept = false;
-      d.answered = false;
-      remember(path);
-      announce(t("workspace.savedSay", { file: fileName(path) }));
-      return true;
-    } catch (e) {
-      const text = String(e);
-      if (text.startsWith("conflict:") && path === d.path) d.disk = "changed";
-      announce(t("workspace.notSavedSay", { error: text }));
-      showError(t("workspace.notSaved", { error: text.replace(/^conflict: /, "") }));
-      return false;
-    } finally {
-      state.saving = false;
-      changed();
-    }
-  }
+  // ── Save ───────────────────────────────────────────────────────────────────
 
-  /** Save: to the file, else Save As. A file that changed on disk or is gone goes to Save As too. */
-  async function saveNow(): Promise<boolean> {
-    if (!state.doc) return false;
-    if (!state.doc.path || state.doc.disk !== "ok") return saveAsNow();
-    const path = state.doc.path;
-    const ok = await write(path, state.doc.revision);
-    // The file changed under the save: keep it, and offer another file.
-    if (!ok && state.doc.disk !== "ok") return saveAsNow();
-    return ok;
-  }
-
-  async function saveAsNow(): Promise<boolean> {
-    if (!state.doc) return false;
-    const name = workspaceName().replace(/[/\\]/g, "-");
-    const picked = await saveDialog({
-      title: t("workspace.saveAsTitle"),
-      defaultPath: state.doc.path ?? `${name}.${EXT}`,
-      filters: [{ name: t("workspace.fileType"), extensions: [EXT] }],
-    }).catch((e) => {
-      showError(e);
-      return null;
-    });
-    if (!picked) return false;
-    const path = picked.endsWith(`.${EXT}`) ? picked : `${picked}.${EXT}`;
-    if (path === state.doc.path) {
-      if (state.doc.disk !== "ok") {
-        showError(t("workspace.changedOrGone", { file: fileName(path) }));
-        return false;
-      }
-      return write(path, state.doc.revision);
-    }
-    let expect: string | null;
-    try {
-      expect = await revision(path);
-    } catch (e) {
-      showError(e);
-      return false;
-    }
-    // The file dialog asked about `picked`. With the extension added, the file it replaces was never named.
-    if (expect !== null && path !== picked) {
-      const ok = await choose({
-        title: t("workspace.replaceTitle"),
-        body: t("workspace.replaceBody", { path }),
-        choices: [{ id: "replace", label: t("workspace.replace"), tone: "danger" }],
-      });
-      if (ok !== "replace") return false;
-    }
-    return write(path, expect);
-  }
-
-  // ── The guard ──────────────────────────────────────────────────────────────
-
-  /** Runs `f` alone: a request while another runs is dropped. */
-  async function exclusive(f: () => Promise<boolean>): Promise<boolean> {
-    if (state.busy) return false;
-    state.busy = true;
-    try {
-      return await f();
-    } finally {
-      state.busy = false;
-    }
-  }
+  let writing = false;
+  let again = false;
 
   /**
-   * Leaves the document: asks first when it is Edited. Quit and the restart
-   * after an update use it too. `go` does the transition and reports success.
-   * Save runs first and must succeed; Cancel, a closed dialog or a failed
-   * write stops here and the keys go back.
+   * Writes the open workspace when it differs from the file. One write runs
+   * at a time; a change during it writes again after. A file another window
+   * wrote is replaced: the last write wins. A failure keeps the change in
+   * memory, says so once, and the next change or disk check tries again.
    */
-  function leave(what: string, go: () => Promise<boolean>): Promise<boolean> {
-    const back = document.activeElement as HTMLElement | null;
-    const restore = () => requestAnimationFrame(() => (back?.isConnected ? back : home())?.focus());
-    return exclusive(async () => {
-      if (workspaceEdited()) {
-        // A saved workspace is named by its file: that is what Save writes.
-        const path = state.doc!.path;
-        const c = await choose({
-          title: t("workspace.saveTitle", { name: path ? fileName(path).replace(new RegExp(`\\.${EXT}$`), "") : workspaceName() }),
-          body: path ? t("workspace.saveBodyFile", { what, file: homeShort(path) }) : t("workspace.saveBodyNew", { what }),
-          choices: [
-            { id: "save", label: t("workspace.save"), tone: "go" },
-            { id: "discard", label: t("workspace.dontSave"), tone: "plain" },
-          ],
-        });
-        if (c === "cancel") return (restore(), false);
-        if (c === "save" && !(await saveNow())) return (restore(), false);
+  async function save() {
+    const d = state.doc;
+    if (!d || d.missing) return;
+    if (writing) {
+      again = true;
+      return;
+    }
+    const snap = clone(d.profile);
+    const json = JSON.stringify(snap);
+    if (json === d.written && !d.failed) return;
+    writing = true;
+    try {
+      let rev: string;
+      try {
+        rev = await writeFile(d.path, snap, d.revision);
+      } catch (e) {
+        if (!String(e).startsWith("conflict:")) throw e;
+        const now = await revision(d.path);
+        if (now === null) {
+          d.missing = true;
+          return;
+        }
+        rev = await writeFile(d.path, snap, now);
       }
-      const ok = await go();
-      if (!ok) restore();
-      return ok;
-    });
+      d.revision = rev;
+      d.written = json;
+      d.failed = null;
+    } catch (e) {
+      const error = String(e).replace(/^conflict: /, "");
+      if (!d.failed) {
+        showError(t("workspace.cannotSave", { name: nameOf(d.path), error }));
+        announce(t("workspace.notSavedSay", { error }));
+      }
+      d.failed = error;
+    } finally {
+      writing = false;
+      render();
+      if (again) {
+        again = false;
+        void save();
+      }
+    }
   }
 
-  /** Reads `path` and opens it. A bad file leaves the document as it was. */
+  /** The file was gone: write the workspace to it again. */
+  function saveAgain() {
+    const d = state.doc;
+    if (!d) return;
+    d.missing = false;
+    d.revision = null;
+    d.written = "";
+    void save();
+  }
+
+  // ── Create, rename, open, close ────────────────────────────────────────────
+
+  /** A new workspace in Skiff's own folder, opened. A name another workspace there has is refused. */
+  async function create(name: string, profile: Profile): Promise<NameFault | null> {
+    const safe = safeName(name);
+    if (!safe) return "empty";
+    let path: string;
+    let rev: string;
+    try {
+      path = `${await ownDir()}/${safe}.${EXT}`;
+      rev = await writeFile(path, profile, null);
+    } catch (e) {
+      if (String(e).startsWith("conflict:")) return "taken";
+      showError(e);
+      return null;
+    }
+    commit({ path, profile, revision: rev });
+    return null;
+  }
+
+  /** Renames the open workspace's file in its folder. */
+  async function renameTo(name: string): Promise<NameFault | null> {
+    const d = state.doc;
+    if (!d) return null;
+    const safe = safeName(name);
+    if (!safe) return "empty";
+    const to = `${dirname(d.path)}/${safe}.${EXT}`;
+    if (to === d.path) return null;
+    try {
+      await rename(d.path, to);
+    } catch (e) {
+      if (String(e).endsWith(" exists")) return "taken";
+      showError(e);
+      return null;
+    }
+    moved(d.path, to);
+    d.path = to;
+    remember(to);
+    // The file keeps a copy of its name for older Skiff builds: write it again under the new one.
+    d.written = "";
+    void save();
+    return null;
+  }
+
+  /** Reads `path` and opens it. A bad file leaves the open workspace as it was. */
   async function openNow(path: string): Promise<boolean> {
     let l: Loaded;
     try {
@@ -195,115 +169,70 @@ export function createTransitions(state: State, hooks: { announce: (text: string
     return true;
   }
 
-  function newWorkspace() {
-    void leave(t("workspace.leaveNew"), async () => {
-      commitUntitled();
-      return true;
-    }).then((ok) => ok && editWorkspace());
-  }
+  let picking = false;
 
   async function openWorkspace(path?: string) {
-    if (state.busy || state.picking) return;
+    if (picking) return;
     let target: string | string[] | null = path ?? null;
     if (!target) {
-      state.picking = true;
+      picking = true;
       target = await openDialog({ title: t("workspace.openTitle"), filters: [{ name: t("workspace.fileType"), extensions: [EXT] }], multiple: false, directory: false })
         .catch((e) => {
           showError(e);
           return null;
         })
-        .finally(() => (state.picking = false));
+        .finally(() => (picking = false));
     }
     if (typeof target !== "string") return;
-    await leave(t("workspace.leaveOpen", { file: fileName(target) }), () => openNow(target));
+    await openNow(target);
   }
 
-  /** Close workspace: back to All projects. */
+  /** Show all projects: no workspace open. */
   function closeWorkspace() {
     if (!state.doc) return;
-    void leave(t("workspace.leaveClose"), async () => {
-      commit(null);
-      forgetLast();
-      return true;
-    });
+    commit(null);
+    forgetLast();
   }
 
-  function saveWorkspace() {
-    void exclusive(saveNow);
-  }
+  // ── Changes on disk ────────────────────────────────────────────────────────
 
-  function saveWorkspaceAs() {
-    void exclusive(saveAsNow);
-  }
-
-  /** Quit and the window's close: the same guard. Sessions keep running in skiffd. */
-  function quitApp() {
-    void leave(t("workspace.leaveQuit"), async () => {
-      try {
-        await invoke("quit_app");
-        return true;
-      } catch (e) {
-        showError(e);
-        return false;
-      }
-    });
-  }
-
-  // ── Outside changes ────────────────────────────────────────────────────────
-
+  /** Reads the file again when something else changed it. Gone or unreadable: the mark says so, and changes wait. */
   async function checkDisk() {
-    if (!state.doc?.path || state.saving || state.busy) return;
     const d = state.doc;
-    let now: Doc["disk"];
+    if (!d || writing) return;
+    let now: string | null;
     try {
-      const rev = await revision(d.path!);
-      now = rev === null ? "missing" : rev === d.revision ? "ok" : "changed";
+      now = await revision(d.path);
     } catch {
-      now = "missing";
+      now = null;
     }
-    if (state.doc !== d || state.saving || now === d.disk) return;
-    d.disk = now;
-    d.answered = false;
-    if (now === "changed") announce(t("workspace.changedSay", { file: fileName(d.path!) }));
-    else if (now === "missing") announce(t("workspace.unavailableSay", { file: fileName(d.path!) }));
-    changed();
-  }
-
-  /** Reload from disk: read and check first, then ask before edits go. */
-  async function reload() {
-    await exclusive(async () => {
-      if (!state.doc?.path) return false;
+    if (state.doc !== d || writing) return;
+    if (now === null) {
+      if (d.missing) return;
+      d.missing = true;
+      announce(t("workspace.unavailableSay", { file: fileName(d.path) }));
+      render();
+      return;
+    }
+    if (now !== d.revision || d.missing) {
       let l: Loaded;
       try {
-        l = await read(state.doc.path);
-      } catch (e) {
-        showError(t("workspace.cannotReload", { error: String(e) }));
-        return false;
+        l = await read(d.path);
+      } catch {
+        return;
       }
-      if (workspaceEdited()) {
-        const c = await choose({
-          title: t("workspace.reloadTitle", { name: workspaceName() }),
-          body: t("workspace.reloadBody", { path: state.doc.path }),
-          choices: [{ id: "reload", label: t("workspace.reload"), tone: "danger" }],
-        });
-        if (c !== "reload") return false;
-      }
-      commit(l);
-      return true;
-    });
+      if (state.doc !== d || writing) return;
+      d.profile = l.profile;
+      d.revision = l.revision;
+      d.written = JSON.stringify(l.profile);
+      d.missing = false;
+      d.failed = null;
+      announce(t("workspace.reloadedSay", { name: nameOf(d.path) }));
+      showView(false, true);
+      return;
+    }
+    if (d.failed) void save();
   }
 
-  /** Keep current: the view stays. While the disk differs, it counts as an edit. */
-  function keepCurrent() {
-    if (!state.doc) return;
-    state.doc.kept = true;
-    state.doc.answered = true;
-    changed();
-    requestAnimationFrame(() => home()?.focus());
-  }
-
-  // ── Edit dialog ────────────────────────────────────────────────────────────
-
-
-    return { commit, showView, leave, openWorkspace, newWorkspace, closeWorkspace, saveWorkspace, saveWorkspaceAs, quitApp, checkDisk, reload, keepCurrent };
+  return { commit, showView, save, saveAgain, create, renameTo, openWorkspace, closeWorkspace, checkDisk };
 }

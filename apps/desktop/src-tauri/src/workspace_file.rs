@@ -1,14 +1,15 @@
-//! Workspace files (`.skiffw`, #154): a named view that shows some projects
-//! and fleets in the tree and filters the Ledger to their work. The file
-//! holds references only. It never holds a project's settings, a fleet's
-//! members, a session or a ledger row. The app reads and writes it here; the
-//! page owns the document (path, edits, baseline).
+//! Workspace files (`.skiffw`, #154): a view that shows some projects and
+//! fleets in the tree and filters the Ledger to their work. The file name is
+//! the workspace's name. The file holds references only. It never holds a
+//! project's settings, a fleet's members, a session or a ledger row. The app
+//! reads and writes it here; the page saves each change as it happens.
+//! New workspaces go to Skiff's own folder ([`workspace_dir`]).
 //!
 //! Format, version 1 (TOML):
 //!
 //! ```toml
 //! version = 1
-//! name = "Client work"
+//! name = "Client work"               # the file name, without .skiffw
 //! projects = ["/home/me/code/api"]   # project folders, absolute
 //! fleets = ["Clients"]               # fleet names, as in projects.toml
 //!
@@ -25,6 +26,9 @@
 //! - A fleet is named by its name: fleets have no other id. A fleet includes
 //!   the projects in it now.
 //! - Empty `projects` and `fleets` mean an empty view, never all projects.
+//! - `name` is written on every save as the file name without `.skiffw`,
+//!   so older Skiff builds, which require it, open the file. On read it is
+//!   ignored: the file name is the only name.
 //! - Unknown keys and any other `version` are refused, so an older Skiff
 //!   never shows a newer file wrong. A later version adds `host = "<host id>"`
 //!   (epic #155 §5): the projects then live on that Host. A version 1 file
@@ -53,7 +57,6 @@ const OPEN_EVENT: &str = "skiff:open-workspace";
 /// The profile as the page holds it. Lists are kept in file order.
 #[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq)]
 pub(crate) struct Profile {
-    pub(crate) name: String,
     pub(crate) projects: Vec<String>,
     pub(crate) fleets: Vec<String>,
     pub(crate) folded_projects: Vec<String>,
@@ -65,6 +68,8 @@ pub(crate) struct Profile {
 #[serde(deny_unknown_fields)]
 struct FileV1 {
     version: i64,
+    /// The file name without `.skiffw` when written. Ignored on read.
+    #[serde(default)]
     name: String,
     #[serde(default)]
     projects: Vec<String>,
@@ -115,7 +120,6 @@ pub(crate) fn parse(text: &str) -> Result<Profile, String> {
     }
     let f: FileV1 = toml::from_str(text).map_err(|e| format!("not a valid workspace file: {}", e.message()))?;
     Ok(Profile {
-        name: f.name.trim().to_string(),
         projects: paths(f.projects)?,
         fleets: f.fleets,
         folded_projects: paths(f.view.folded_projects)?,
@@ -124,10 +128,11 @@ pub(crate) fn parse(text: &str) -> Result<Profile, String> {
     })
 }
 
-pub(crate) fn serialize(p: &Profile) -> Result<String, String> {
+/// The file's text. `name`: the file name without `.skiffw`.
+pub(crate) fn serialize(p: &Profile, name: &str) -> Result<String, String> {
     let f = FileV1 {
         version: VERSION,
-        name: p.name.trim().to_string(),
+        name: name.to_string(),
         projects: paths(p.projects.clone())?,
         fleets: p.fleets.clone(),
         view: View {
@@ -199,7 +204,8 @@ fn write(path: &Path, profile: &Profile, expect: Option<&str>) -> Result<String,
     if path.extension().and_then(|e| e.to_str()) != Some(EXT) {
         return Err(format!("a workspace file ends in .{EXT}"));
     }
-    let text = serialize(profile)?;
+    let stem = path.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let text = serialize(profile, &stem)?;
     let now = current_revision(path)?;
     if now.as_deref() != expect {
         return Err(format!("conflict: {} changed on disk", path.display()));
@@ -230,6 +236,67 @@ fn write(path: &Path, profile: &Profile, expect: Option<&str>) -> Result<String,
         return Err(format!("cannot save {}: {e}", path.display()));
     }
     Ok(revision(text.as_bytes()))
+}
+
+/// Skiff's own workspace folder, beside its config. New workspaces go here.
+fn own_dir() -> Result<PathBuf, String> {
+    let dir = skiff_core::config::config_path()
+        .parent()
+        .map(|d| d.join("workspaces"))
+        .ok_or("Skiff has no config folder")?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    Ok(dir)
+}
+
+/// The folder for new workspaces. Made when it is not there.
+#[tauri::command]
+pub(crate) fn workspace_dir() -> Result<String, String> {
+    Ok(own_dir()?.to_string_lossy().into_owned())
+}
+
+/// The workspace files in Skiff's own folder, by name.
+#[tauri::command]
+pub(crate) fn workspace_list() -> Result<Vec<String>, String> {
+    let dir = own_dir()?;
+    let mut out: Vec<String> = std::fs::read_dir(&dir)
+        .map_err(|e| format!("cannot read {}: {e}", dir.display()))?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.is_file() && p.extension().and_then(|e| e.to_str()) == Some(EXT))
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    out.sort_by_key(|p| p.to_lowercase());
+    Ok(out)
+}
+
+/// Renames a workspace file in its folder. Refuses a name that is taken.
+#[tauri::command]
+pub(crate) fn workspace_rename(from: String, to: String) -> Result<(), String> {
+    rename(Path::new(&from), Path::new(&to))
+}
+
+fn rename(from: &Path, to: &Path) -> Result<(), String> {
+    if to.extension().and_then(|e| e.to_str()) != Some(EXT) {
+        return Err(format!("a workspace file ends in .{EXT}"));
+    }
+    if from == to {
+        return Ok(());
+    }
+    // On a case-insensitive disk, a change of case names the same file: that rename goes ahead.
+    if to.symlink_metadata().is_ok() && !same_file(from, to) {
+        return Err(format!("{} exists", to.display()));
+    }
+    std::fs::rename(from, to).map_err(|e| format!("cannot rename {}: {e}", from.display()))
+}
+
+#[cfg(unix)]
+fn same_file(a: &Path, b: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    matches!((std::fs::metadata(a), std::fs::metadata(b)), (Ok(x), Ok(y)) if x.dev() == y.dev() && x.ino() == y.ino())
+}
+
+#[cfg(not(unix))]
+fn same_file(_: &Path, _: &Path) -> bool {
+    false
 }
 
 /// Workspace files the OS asked the app to open. Held until the page asks.
@@ -278,7 +345,7 @@ pub(crate) fn workspace_launch_file() -> Option<String> {
 }
 
 /// The OS asks to open files (macOS: a double-click in Finder). The page
-/// takes a workspace through its unsaved-changes guard.
+/// opens each one.
 #[allow(dead_code)]
 pub(crate) fn os_open(app: &AppHandle, urls: impl IntoIterator<Item = String>) {
     for u in urls {
@@ -304,7 +371,6 @@ mod tests {
 
     fn sample() -> Profile {
         Profile {
-            name: "Client work".into(),
             projects: vec!["/home/me/api".into()],
             fleets: vec!["Clients".into()],
             folded_projects: vec!["/home/me/api".into()],
@@ -320,6 +386,22 @@ mod tests {
         assert!(parse("version = 1\nname = \"x\"\nhost = \"h\"\n").is_err());
         assert!(parse("version = 1\nname = \"x\"\nprojects = [\"rel/path\"]\n").unwrap_err().contains("absolute"));
         assert!(parse("version = 1\nname = ").is_err());
+    }
+
+    #[test]
+    fn writes_the_file_stem_as_name_and_ignores_a_stored_name() {
+        let dir = std::env::temp_dir().join(format!("skiffw-name-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("Client work.skiffw");
+        let _ = std::fs::remove_file(&file);
+        std::fs::write(&file, "version = 1\nname = \"Old\"\nprojects = [\"/a\"]\n").unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        let p = parse(&text).unwrap();
+        assert_eq!(p, Profile { projects: vec!["/a".into()], ..Profile::default() });
+        write(&file, &p, Some(&revision(text.as_bytes()))).unwrap();
+        let table: toml::Table = toml::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+        assert_eq!(table["name"].as_str(), Some("Client work"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

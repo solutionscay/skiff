@@ -200,26 +200,28 @@ test("Enter, Space, Left and Right fold the Projects head, and the head keeps th
   assert.equal(a.S.roveKey, pick.dataset.key, "the head is the current row");
 });
 
-test("in a workspace the Projects fold goes in folded_fleets, as an edit of that file only", () => {
+test("in a workspace the Projects fold goes in folded_fleets, saved to that file only", () => {
   const a = app();
   const profileState = moduleFromSource("../src/workspace/profile/state.ts", withStubs({
     "../../app/state": { S: a.S }, "../tree": a.tree,
   }), {}, "");
   const ws = profileState.createWorkspaceState();
-  const profile = { name: "w", projects: ["/web", "/site"], fleets: [], folded_projects: [], folded_fleets: [], selected: null };
-  ws.doc = { path: "/w.skiffw", profile, base: profileState.canon(profile), revision: "r", disk: "ok", kept: false, answered: false };
+  let saves = 0;
+  ws.setHooks({ announce() {}, changed: () => saves++ });
+  const profile = { projects: ["/web", "/site"], fleets: [], folded_projects: [], folded_fleets: [], selected: null };
+  ws.doc = { path: "/w.skiffw", profile, revision: "r", written: JSON.stringify(profile), missing: false, failed: null };
   a.tree.useTreeView(ws.treeView);
   assert.deepEqual([...a.tree.treeSections()[0].projects.map((p: any) => p.name)], ["web"]);
 
   a.head().find("fleet-pick")!.click();
   assert.deepEqual([...profile.folded_fleets], [""]);
-  assert.equal(ws.workspaceEdited(), true);
+  assert.equal(saves, 1);
   assert.equal(a.head().find("fleet-pick")!.attrs["aria-expanded"], "false");
   assert.deepEqual([...ws.treeView.keys()], [a.tree.sectionKey(null)]);
   assert.equal(a.stored.get("skiff.tree.folded") ?? "[]", "[]", "All projects keeps its own folds");
   assert.deepEqual([...a.tree.visibleProjects().map((p: any) => p.name)], ["site"]);
 
-  // The session on screen opens it with no edit to the file.
+  // The session on screen opens it with no change to the file.
   a.S.focused = "web-1";
   a.tree.openToFocused();
   assert.equal(a.tree.isOpen(a.tree.sectionKey(null)), true);

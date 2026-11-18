@@ -45,6 +45,8 @@ class Element {
   }
   get isConnected(): boolean { return this.tag === "body" || !!this.parent?.isConnected; }
   querySelectorAll() { return []; }
+  querySelector() { return null; }
+  getBoundingClientRect() { return { left: 0, top: 0, right: 0, bottom: 0 }; }
 }
 
 // Split facades: `x.ts` keeps its public names and loads children. Tests load the facade alone,
@@ -160,30 +162,36 @@ export function workspaceHarness() {
     projects: [{ name: "A", path: "/a", fleet: "F" as string | null }, { name: "B", path: "/b", fleet: null as string | null }],
     closedProjects: [], selectedProject: null as string | null,
   };
-  const calls = { approvedExits: 0, saves: 0, guarded: false, failSave: false };
-  const menus: (() => void)[] = [];
-  const window = {
-    onCloseRequested: async (run: (e: { preventDefault(): void }) => void) => {
-      events.set("window-close", () => run({ preventDefault() {} }));
-      return () => {};
-    },
-  };
+  const calls = { saves: 0, failSave: false, errors: [] as string[] };
+  const menus: { title: string; entries: any[]; done: () => void }[] = [];
   let profile: any;
+  let rev = 0;
+  // Tauri rejects with the command's error string, so the stand-in throws strings too.
   const invoke = async (command: string, args: any) => {
     switch (command) {
-      case "guard_quit": calls.guarded = events.has("skiff:quit-requested"); return;
-      case "quit_app": calls.approvedExits++; return;
       case "workspace_launch_file": return null;
+      case "workspace_dir": return "/own";
+      case "workspace_list": return [...files.keys()].filter((path) => path.startsWith("/own/"));
       case "workspace_read": {
         const value = files.get(args.path);
-        if (!value) throw new Error("file missing");
+        if (!value) throw "file missing";
         return structuredClone(value);
       }
-      case "workspace_write":
+      case "workspace_revision": return files.get(args.path)?.revision ?? null;
+      case "workspace_write": {
         calls.saves++;
-        if (calls.failSave) throw new Error("disk full");
-        files.set(args.path, { path: args.path, profile: structuredClone(args.profile), revision: "saved" });
-        return "saved";
+        if (calls.failSave) throw "disk full";
+        if ((files.get(args.path)?.revision ?? null) !== args.expect) throw `conflict: ${args.path} changed on disk`;
+        const revision = `w${++rev}`;
+        files.set(args.path, { path: args.path, profile: structuredClone(args.profile), revision });
+        return revision;
+      }
+      case "workspace_rename": {
+        if (files.has(args.to)) throw `${args.to} exists`;
+        files.set(args.to, { ...files.get(args.from), path: args.to });
+        files.delete(args.from);
+        return;
+      }
       default: throw new Error(`Unexpected command: ${command}`);
     }
   };
@@ -191,33 +199,37 @@ export function workspaceHarness() {
     fleetKey: (name: string) => `fleet:${name}`, projectKey: (name: string) => `project:${name}`,
     useTreeView() {}, treeSections: () => [{ projects: S.projects.filter((p) => profile.shows(p)) }],
   };
+  const button = (cls: string, text: string, run: () => void) => { const b = h("button", cls, text); b.addEventListener("click", run); return b; };
+  const ctxMenu = { open(_x: number, _y: number, title: string, entries: any[], done: () => void) { menus.push({ title, entries, done }); } };
+  const controls = {
+    picker: (o: { shows?: string; pick: (value: string) => void }) => { const b = h("button", "ctl-pick", o.shows ?? ""); (b as any).pick = o.pick; return b; },
+    smallButton: (text: string, run: () => void) => button("ctl-btn", text, run),
+  };
   const profileState = moduleFromSource("../src/workspace/profile/state.ts", {
     "../../app/renderRequest": { render() {} }, "../../app/state": { S }, "../tree": tree,
   }, {}, "");
   const profileMembership = moduleFromSource("../src/workspace/profile/membership.ts", {
-    "../../app/state": { S }, "../../ui/contextMenu": { ctxMenu: { open(_x: number, _y: number, _title: string, _entries: unknown, done: () => void) { menus.push(done); } } },
+    "../../app/state": { S }, "../../ui/contextMenu": { ctxMenu },
   }, {}, "");
   const hosts = { shownHost: () => null };
+  const localStorage = { getItem: (key: string) => stored.get(key) ?? null,
+    setItem: (key: string, value: string) => stored.set(key, value), removeItem: (key: string) => stored.delete(key) };
   const profileStorage = moduleFromSource("../src/workspace/profile/storage.ts", {
     "@tauri-apps/api/core": { invoke }, "./state": profileState, "../../app/hosts": hosts,
-  }, { localStorage: { getItem: (key: string) => stored.get(key) ?? null,
-    setItem: (key: string, value: string) => stored.set(key, value), removeItem: (key: string) => stored.delete(key) } }, "");
+  }, { localStorage }, "");
   const profileDialogs = moduleFromSource("../src/workspace/profile/dialogs.ts", {
     "../../ui/dialogParts": { dialogFrame: () => ({ overlay: h("div"), panel: h("div") }) },
-    "../../ui/dom": { h, button: (cls: string, text: string, run: () => void) => { const b = h("button", cls, text); b.addEventListener("click", run); return b; } },
+    "../../ui/dom": { h, button }, "../../ui/controls": controls, "./state": profileState,
   }, { document, HTMLButtonElement: Element }, "");
   const imports = {
     "@tauri-apps/api/core": { invoke },
     "@tauri-apps/api/event": { listen: async (name: string, run: () => void) => { events.set(name, run); return () => {}; } },
-    "@tauri-apps/api/window": { getCurrentWindow: () => window },
-    "@tauri-apps/plugin-dialog": { save: async () => null },
+    "@tauri-apps/plugin-dialog": { open: async () => null },
     "../app/state": { S },
     "../app/renderRequest": { render() {} },
-    "../ui/alerts": { showError() {} },
-    "../ui/contextMenu": { ctxMenu: { open(_x: number, _y: number, _title: string, _entries: unknown, done: () => void) { menus.push(done); } } },
-    "../ui/dom": { h, button: (cls: string, text: string, run: () => void) => {
-      const b = h("button", cls, text); b.addEventListener("click", run); return b;
-    } },
+    "../ui/alerts": { showError: (e: unknown) => calls.errors.push(String(e)) },
+    "../ui/contextMenu": { ctxMenu },
+    "../ui/dom": { h, button, setHidden() {} },
     "../ui/dialogParts": { dialogFrame: () => ({ overlay: h("div"), panel: h("div") }) },
     "./tree": tree,
     "./view": { selectProject: (name: string) => { S.selectedProject = name; } },
@@ -226,12 +238,11 @@ export function workspaceHarness() {
     "./profile/storage": profileStorage,
     "./profile/dialogs": profileDialogs,
   };
-  const globals = { document, requestAnimationFrame: (run: () => void) => run(), window: { addEventListener() {} }, setInterval() {},
-    localStorage: { getItem: (key: string) => stored.get(key) ?? null,
-      setItem: (key: string, value: string) => stored.set(key, value), removeItem: (key: string) => stored.delete(key) } };
+  const globals = { document, requestAnimationFrame: (run: () => void) => run(),
+    window: { addEventListener: (name: string, run: () => void) => events.set(name, run) }, setInterval() {}, localStorage };
   const childImports = {
     "@tauri-apps/api/core": imports["@tauri-apps/api/core"], "@tauri-apps/api/event": imports["@tauri-apps/api/event"],
-    "@tauri-apps/api/window": imports["@tauri-apps/api/window"], "@tauri-apps/plugin-dialog": imports["@tauri-apps/plugin-dialog"],
+    "@tauri-apps/plugin-dialog": imports["@tauri-apps/plugin-dialog"],
     "../../app/state": imports["../app/state"], "../../app/renderRequest": imports["../app/renderRequest"],
     "../../ui/alerts": imports["../ui/alerts"], "../../ui/contextMenu": imports["../ui/contextMenu"], "../../ui/dom": imports["../ui/dom"],
     "../tree": tree, "../view": imports["./view"], "./state": profileState, "./storage": profileStorage, "./dialogs": profileDialogs, "../../app/hosts": hosts,
@@ -239,25 +250,20 @@ export function workspaceHarness() {
   const transitions = moduleFromSource("../src/workspace/profile/transitions.ts", childImports, globals, "");
   const status = moduleFromSource("../src/workspace/profile/status.ts", childImports, globals, "");
   Object.assign(imports, { "./profile/transitions": transitions, "./profile/status": status });
-  profile = moduleFromSource("../src/workspace/profile.ts", imports, {
-    document, requestAnimationFrame: (run: () => void) => run(),
-    window: { addEventListener() {} }, setInterval() {},
-    localStorage: { getItem: (key: string) => stored.get(key) ?? null,
-      setItem: (key: string, value: string) => stored.set(key, value), removeItem: (key: string) => stored.delete(key) },
-  }, "");
+  profile = moduleFromSource("../src/workspace/profile.ts", imports, globals, "\nexport const review = { workspaceMenu: status.workspaceMenu };\n");
   const elements = (): Element[] => {
     const walk = (el: Element): Element[] => [el, ...el.children.flatMap(walk)];
     return walk(document.body);
   };
-  const button = (label: string) => {
+  const find = (label: string) => {
     const found = elements().find((el) => el.tag === "button" && el.textContent === label);
     if (!found) throw new Error(`No button: ${label}`);
     return found;
   };
   const fixture = (path: string, projects = ["/a"], fleets: string[] = []) => {
     files.set(path, { path, revision: "read", profile: {
-      name: path, projects, fleets, folded_projects: [], folded_fleets: [], selected: null,
+      projects, fleets, folded_projects: [], folded_fleets: [], selected: null,
     } });
   };
-  return { profile, S, calls, files, events, button, elements, fixture };
+  return { profile, S, calls, files, events, button: find, elements, fixture, menus, document, h };
 }

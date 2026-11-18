@@ -34,10 +34,7 @@ import { modeKeyBlocked } from "./modes";
 import { ledgerFolded, ledgerShown } from "../workspace/ledger";
 import { splitChild, splitChildren } from "../workspace/skipperSplit";
 import { skippersOn } from "../workspace/skippersView";
-import {
-  closeWorkspace, editWorkspace, keepWorkspace, ledgerAllWork, newWorkspace, openWorkspace, recentWorkspaceEntries, reloadWorkspace,
-  saveWorkspace, saveWorkspaceAs, setLedgerAllWork, workspaceNotice, workspaceOpen,
-} from "../workspace/profile";
+import { closeWorkspace, editWorkspace, newWorkspace, openWorkspace, recentWorkspaceEntries, workspaceOpen } from "../workspace/profile";
 import { refocusTerminal, revealSession, selectWorktree } from "../workspace/view";
 import { step } from "../diagnostics/stalls";
 
@@ -69,7 +66,6 @@ function drafts(): Draft[] {
   const g = activeGroupObj();
   const k = (a: Action) => keyLabel(a);
   const act = (a: Action) => () => runAction(a);
-  const ws = workspaceNotice();
   return [
     { section: "file", id: "cmd.newSession", key: k("new-session"), action: "new-session", run: act("new-session"), off: (!currentWorktree() && !isRemote()) || !hostCan("session_lifecycle") },
     { section: "file", id: "cmd.newWorktree", key: k("new-worktree"), action: "new-worktree", run: act("new-worktree"), off: !currentProject() || isFolder(currentProject()!) },
@@ -82,13 +78,7 @@ function drafts(): Draft[] {
     { section: "file", id: "cmd.openWorkspace", key: "", run: () => void openWorkspace() },
     { section: "file", id: "cmd.openRecentWorkspace", key: "", run: () => {}, sub: recentWorkspaceEntries() },
     { section: "file", id: "cmd.editWorkspace", key: "", run: editWorkspace, off: !workspaceOpen() },
-    { section: "file", id: "cmd.saveWorkspace", key: "", run: saveWorkspace, off: !workspaceOpen() },
-    { section: "file", id: "cmd.saveWorkspaceAs", key: "", run: saveWorkspaceAs, off: !workspaceOpen() },
-    { section: "file", id: "cmd.closeWorkspace", key: "", run: closeWorkspace, off: !workspaceOpen() },
-    // While the file changed on disk or names something that is gone: the way to answer it.
-    { section: "file", id: "cmd.reloadWorkspace", key: "", run: reloadWorkspace, off: ws.disk !== "changed" },
-    { section: "file", id: "cmd.keepWorkspace", key: "", run: keepWorkspace, off: !ws.disk },
-    { section: "file", id: "cmd.repairWorkspace", key: "", run: editWorkspace, off: !ws.missing },
+    { section: "file", id: "cmd.showAllProjects", key: "", run: closeWorkspace, off: !workspaceOpen() },
     { section: "file", id: "cmd.images", key: k("images"), action: "images", run: act("images") },
     { section: "file", id: "cmd.settings", key: k("settings"), action: "settings", run: act("settings") },
     { section: "file", id: "cmd.quit", key: k("quit"), action: "quit", run: act("quit") },
@@ -126,10 +116,6 @@ function drafts(): Draft[] {
     { section: "view", id: "cmd.showLedger", label: t(ledgerFolded() ? "cmd.showLedger" : "cmd.hideLedger"), key: k("ledger"), action: "ledger", run: act("ledger"), off: !ledgerShown() },
     { section: "view", id: "cmd.childNext", key: k("child-next"), action: "child-next", run: act("child-next"), off: !splitChildren().length },
     { section: "view", id: "cmd.childPrev", key: k("child-prev"), action: "child-prev", run: act("child-prev"), off: !splitChildren().length },
-    {
-      section: "view", id: "cmd.ledgerAllWork", label: t(ledgerAllWork() ? "cmd.ledgerWorkspaceWork" : "cmd.ledgerAllWork"), key: "",
-      run: () => setLedgerAllWork(!ledgerAllWork()), off: !workspaceOpen(),
-    },
     { section: "view", id: "cmd.back", key: k("back"), action: "back", run: act("back"), off: !S.previous },
     { section: "view", id: "cmd.focusMode", label: t(S.focusMode ? "cmd.leaveFocusMode" : "cmd.focusMode"), key: k("focus-mode"), action: "focus-mode", run: act("focus-mode"), off: (!S.focusMode && !shown) || modeKeyBlocked("focus-mode") },
     { section: "view", id: "cmd.maximize", label: t(S.maximized ? "cmd.restore" : "cmd.maximize"), key: k("maximize"), action: "maximize", run: act("maximize"), off: (!S.maximized && !shown) || modeKeyBlocked("maximize") },

@@ -1,95 +1,101 @@
-/** Workspace status, menus and startup. */
+/** The workspace list, the status bar switcher and the start. */
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { render } from "../../app/renderRequest";
+import { shownHost } from "../../app/hosts";
 import { showError } from "../../ui/alerts";
 import { ctxMenu } from "../../ui/contextMenu";
 import { h, setHidden } from "../../ui/dom";
 import type { MenuEntry } from "../../ui/menu";
 import { t, tn, upper } from "../../i18n";
-import type { createWorkspaceState } from "./state";
-import { fileName, forget, forgetLast, last as lastPath, read, recents } from "./storage";
+import { nameOf, type createWorkspaceState } from "./state";
+import { forget, forgetLast, last as lastPath, ownList, read, recents } from "./storage";
 import type { createTransitions } from "./transitions";
 
-export function createStatus(state: ReturnType<typeof createWorkspaceState>, transitions: ReturnType<typeof createTransitions>, hooks: { home: () => HTMLElement | null; editWorkspace: () => void }) {
-  const { home, editWorkspace } = hooks;
-  const { commit, checkDisk, reload, keepCurrent, quitApp, newWorkspace, openWorkspace, saveWorkspace, saveWorkspaceAs, closeWorkspace } = transitions;
-  const { workspaceName, workspaceEdited, setLedgerAllWork } = state;
-  const recentEntries = (): MenuEntry[] =>
-    recents().map((path) => ({
-      label: path === state.doc?.path ? t("workspace.recentOpen", { file: fileName(path) }) : fileName(path),
+export function createStatus(state: ReturnType<typeof createWorkspaceState>, transitions: ReturnType<typeof createTransitions>, hooks: {
+  home: () => HTMLElement | null; newWorkspace: () => void; editWorkspace: () => void;
+}) {
+  const { home, newWorkspace, editWorkspace } = hooks;
+  const { commit, checkDisk, openWorkspace, closeWorkspace, saveAgain } = transitions;
+
+  /** The files in Skiff's own folder, read at start, on focus and after a change. */
+  let own: string[] = [];
+  async function refreshOwn() {
+    // The own folder is this computer's: a remote Host's list is its recent files alone.
+    const next = shownHost() ? [] : await ownList().catch(() => []);
+    if (JSON.stringify(next) === JSON.stringify(own)) return;
+    own = next;
+    render();
+  }
+
+  /** Every workspace to switch to: Skiff's own folder and the recent files, by name. */
+  function workspacePaths(): string[] {
+    const open = state.doc?.path;
+    const all = [...new Set([...own, ...recents(), ...(open ? [open] : [])])];
+    return all.sort((a, b) => nameOf(a).localeCompare(nameOf(b), undefined, { sensitivity: "base" }));
+  }
+
+  /** File › Open recent workspace: each workspace, the open one marked. */
+  function recentWorkspaceEntries(): MenuEntry[] {
+    const open = state.doc?.path;
+    const entries: MenuEntry[] = workspacePaths().map((path) => ({
+      label: path === open ? t("workspace.recentOpen", { file: nameOf(path) }) : nameOf(path),
       run: () => void openWorkspace(path),
     }));
-
-  /** File › Open recent workspace: the recent files, the open one marked. */
-  function recentWorkspaceEntries(): MenuEntry[] {
-    const entries = recentEntries();
     return entries.length ? entries : [{ label: t("workspace.noRecent"), disabled: true }];
   }
 
-  /** What the open workspace needs a look for, for the File menu: a disk change, and missing references. */
-  function workspaceNotice(): { disk: "changed" | "missing" | null; missing: number } {
-    return { disk: state.doc && state.doc.disk !== "ok" && !state.doc.answered ? state.doc.disk : null, missing: state.missing().length };
+  /** What the status mark and the menu say: the file is gone, the last write failed, references not found. */
+  function workspaceNotice(): { missing: boolean; failed: string | null; notFound: number } {
+    const d = state.doc;
+    return { missing: !!d?.missing, failed: d?.failed ?? null, notFound: state.missing().length };
   }
 
-  const reloadWorkspace = () => void reload();
-  const keepWorkspace = () => keepCurrent();
-
-  /** The status bar item's menu: the same workspace commands as the File menu. */
+  /** The status bar item's menu: switch workspace, or edit, make or open one. */
   function workspaceMenu(at: HTMLElement) {
     const r = at.getBoundingClientRect();
     // The keys come back to the item: on Esc, and before a pick runs, so its dialog returns them here.
     const back = () => (at.isConnected && !at.hidden ? at : home())?.focus();
-    const wrap = (es: MenuEntry[]): MenuEntry[] =>
-      es.map((e) => ("head" in e || "sep" in e ? e : { ...e, run: e.run && (() => (back(), e.run!())), sub: e.sub && wrap(e.sub) }));
-    ctxMenu.open(r.left, r.top, state.doc?.path ?? workspaceName(), wrap(menuEntries()), () => requestAnimationFrame(back));
+    const wrap = (es: MenuEntry[]): MenuEntry[] => es.map((e) => ("head" in e || "sep" in e ? e : { ...e, run: e.run && (() => (back(), e.run!())) }));
+    ctxMenu.open(r.left, r.top, t("workspace.headList"), wrap(menuEntries()), () => requestAnimationFrame(back));
   }
 
   function menuEntries(): MenuEntry[] {
-    const on = !!state.doc;
-    const recent = recentEntries();
+    const open = state.doc?.path ?? null;
     const n = workspaceNotice();
-    const notice: MenuEntry[] = [];
-    if (n.disk) {
-      notice.push({ head: upper(t(n.disk === "changed" ? "workspace.changedOnDisk" : "workspace.fileMissing")) });
-      if (n.disk === "changed") notice.push({ label: t("workspace.reloadFromDisk"), run: reloadWorkspace });
-      notice.push({ label: t("workspace.keepCurrent"), run: keepWorkspace });
+    const out: MenuEntry[] = [];
+    if (n.missing) {
+      out.push({ head: upper(t("workspace.fileMissing")) });
+      out.push({ label: t("workspace.saveAgain"), run: saveAgain });
+      out.push({ sep: true });
     }
-    if (n.missing) notice.push({ icon: "tools-pencil", label: tn("workspace.repair", n.missing), run: editWorkspace });
-    if (notice.length) notice.push({ head: upper(t("workspace.head")) });
-    return [
-      ...notice,
-      { icon: "indicators-plus", label: t("cmd.newWorkspace"), run: newWorkspace },
-      { icon: "documents-folder-open", label: t("cmd.openWorkspace"), run: () => void openWorkspace() },
-      { icon: "documents-folder-open", label: t("workspace.openRecent"), sub: recent.length ? recent : [{ label: t("workspace.noRecent"), disabled: true }], disabled: !recent.length },
-      { icon: "tools-pencil", label: t("cmd.editWorkspace"), run: editWorkspace, disabled: !on },
-      { label: t("workspace.save"), run: saveWorkspace, disabled: !on },
-      { label: t("workspace.saveAs"), run: saveWorkspaceAs, disabled: !on },
-      { icon: "code-ungroup", label: t("workspace.closeToAll"), run: closeWorkspace, disabled: !on },
-      { label: state.allWork ? t("workspace.ledgerShowWorkspace") : t("workspace.ledgerShowAll"), run: () => setLedgerAllWork(!state.allWork), disabled: !on },
-    ];
+    out.push({ head: upper(t("workspace.headList")) });
+    for (const path of workspacePaths()) {
+      out.push({ label: nameOf(path), current: path === open, ...(path === open ? { icon: "indicators-check" } : {}), run: () => void (path !== open && openWorkspace(path)) });
+    }
+    out.push({ label: t("workspace.allProjects"), current: !open, ...(!open ? { icon: "indicators-check" } : {}), run: closeWorkspace });
+    out.push({ sep: true });
+    if (open) {
+      const name = state.workspaceName();
+      out.push({ icon: "tools-pencil", label: n.notFound ? tn("workspace.editNamedNotFound", n.notFound, { name }) : t("workspace.editNamed", { name }), run: editWorkspace });
+    }
+    out.push({ icon: "indicators-plus", label: t("cmd.newWorkspace"), run: newWorkspace });
+    out.push({ icon: "documents-folder-open", label: t("cmd.openWorkspace"), run: () => void openWorkspace() });
+    return out;
   }
 
   /** The one short mark beside the name: what needs a look first. */
-  function markOf(lost: number): { text: string; cls: string; say: string } | null {
-    if (state.saving) return { text: t("workspace.markSaving"), cls: "", say: t("workspace.saySaving") };
-    if (state.doc && state.doc.disk !== "ok" && !state.doc.answered) {
-      const changedOnDisk = state.doc.disk === "changed";
-      return {
-        text: t(changedOnDisk ? "workspace.changedOnDisk" : "workspace.fileMissing"),
-        cls: "edited",
-        say: t(changedOnDisk ? "workspace.sayChanged" : "workspace.sayFileMissing"),
-      };
-    }
-    if (workspaceEdited()) return { text: t("workspace.markEdited"), cls: "edited", say: t("workspace.sayEdited") };
-    if (lost) return { text: tn("workspace.markMissing", lost), cls: "", say: tn("workspace.sayMissing", lost) };
-    return state.doc ? { text: "", cls: "", say: t("workspace.saySaved") } : null;
+  function markOf(): { text: string; cls: string; say: string } | null {
+    const n = workspaceNotice();
+    if (n.missing) return { text: t("workspace.fileMissing"), cls: "warn", say: t("workspace.sayFileMissing") };
+    if (n.failed) return { text: t("workspace.markNotSaved"), cls: "warn", say: t("workspace.sayNotSaved") };
+    if (n.notFound) return { text: tn("workspace.markNotFound", n.notFound), cls: "", say: tn("workspace.sayNotFound", n.notFound) };
+    return null;
   }
 
   /**
-   * The status bar's sign that a workspace is open: its name and one mark.
-   * Hidden in All projects. A click opens the workspace menu. Runs on each render.
+   * The status bar's sign of the workspace: its name and one mark, or All
+   * projects. A click opens the switcher. Runs on each render.
    */
   function renderWorkspaceStatus() {
     if (!document.getElementById("ws-live")) {
@@ -101,18 +107,17 @@ export function createStatus(state: ReturnType<typeof createWorkspaceState>, tra
     }
     const el = document.getElementById("ws-status");
     if (!el) return;
-    setHidden(el, !state.doc);
-    if (!state.doc) return;
-    const lost = state.missing();
-    const mark = markOf(lost.length);
-    const name = workspaceName();
-    const why = lost.map((m) => t(m.kind === "project" ? "workspace.missingProject" : "workspace.missingFleet", { ref: m.ref, why: m.why }));
-    const sig = JSON.stringify([name, state.doc.path, mark, why]);
+    setHidden(el, false);
+    const d = state.doc;
+    const mark = markOf();
+    const name = state.workspaceName();
+    const lost = state.missing().map((m) => t(m.kind === "project" ? "workspace.missingProject" : "workspace.missingFleet", { ref: m.ref, why: m.why }));
+    const sig = JSON.stringify([name, d?.path, mark, lost, d?.failed]);
     if (el.dataset.sig === sig) return;
     el.dataset.sig = sig;
     el.replaceChildren(h("span", "ws-status-name", name));
-    if (mark?.text) el.append(h("span", `ws-status-mark ${mark.cls}`.trim(), mark.text));
-    el.title = [state.doc.path ?? t("workspace.notSavedYet"), ...why].join("\n");
+    if (mark) el.append(h("span", `ws-status-mark ${mark.cls}`.trim(), mark.text));
+    el.title = d ? [d.path, ...(d.failed ? [d.failed] : []), ...lost].join("\n") : name;
     el.setAttribute("aria-label", mark ? t("workspace.statusLabelSay", { name, state: mark.say }) : t("workspace.statusLabel", { name }));
     if (!el.dataset.wired) {
       el.dataset.wired = "1";
@@ -122,20 +127,10 @@ export function createStatus(state: ReturnType<typeof createWorkspaceState>, tra
 
   // ── Start ──────────────────────────────────────────────────────────────────
 
-  /** Register both exit routes before menus or documents become interactive. */
-  async function startWorkspaceQuitGuard() {
-    await listen("skiff:quit-requested", () => quitApp());
-    await getCurrentWindow().onCloseRequested((e) => {
-      e.preventDefault();
-      quitApp();
-    });
-    await invoke("guard_quit");
-  }
-
   /**
    * At start, once projects are in: the file the app was started with, else
-   * the last saved workspace, read from disk as Clean. A file that cannot
-   * open says why and leaves All projects; its recent entry stays.
+   * the last workspace. A file that cannot open says why and leaves All
+   * projects; its recent entry stays.
    */
   async function startWorkspaces() {
     void listen<string>("skiff:open-workspace", (e) => {
@@ -144,8 +139,12 @@ export function createStatus(state: ReturnType<typeof createWorkspaceState>, tra
       void invoke("workspace_took", { path: e.payload }).catch(() => null);
       void openWorkspace(e.payload);
     });
-    window.addEventListener("focus", () => void checkDisk());
+    window.addEventListener("focus", () => {
+      void checkDisk();
+      void refreshOwn();
+    });
     setInterval(() => void checkDisk(), 2000);
+    void refreshOwn();
 
     const launch = await invoke<string | null>("workspace_launch_file").catch(() => null);
     let last: string | null = null;
@@ -171,5 +170,5 @@ export function createStatus(state: ReturnType<typeof createWorkspaceState>, tra
     if (late) void openWorkspace(late);
   }
 
-    return { recentWorkspaceEntries, workspaceNotice, reloadWorkspace, keepWorkspace, renderWorkspaceStatus, startWorkspaceQuitGuard, startWorkspaces, workspaceMenu };
+  return { recentWorkspaceEntries, workspaceNotice, renderWorkspaceStatus, startWorkspaces, workspaceMenu, refreshOwn };
 }

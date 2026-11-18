@@ -1,4 +1,6 @@
 import { type Action } from "./keys";
+import { invoke } from "@tauri-apps/api/core";
+import { showError } from "../ui/alerts";
 
 import { $ } from "../ui/dom";
 import { projectKey } from "../workspace/tree";
@@ -38,7 +40,6 @@ import { groupThemeMenu, projectThemeMenu, sessionThemeMenu } from "../appearanc
 import { toggleLedger } from "../workspace/ledger";
 import { stepChild } from "../workspace/skipperSplit";
 import { setSidebarView, skippersOn } from "../workspace/skippersView";
-import { quitApp } from "../workspace/profile";
 function openNewSession() {
   // Its key works from inside a menu, such as the worktree menu that shows it: that menu goes.
   ctxMenu.close(false);
@@ -177,7 +178,7 @@ export function runAction(a: Action) {
     case "app-font-reset": return setFontSize(FONT_DEFAULT);
     case "settings": return void settings.open();
     case "usage": return toggleUsage();
-    case "quit": return quitApp();
+    case "quit": return void invoke("quit_app").catch(showError);
     case "focus-left": return moveFocus("left");
     case "focus-right": return moveFocus("right");
     case "focus-up": return moveFocus("up");

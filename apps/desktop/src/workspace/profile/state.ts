@@ -1,13 +1,13 @@
-/** The one workspace document and what follows from it: the profile, edited, shows, the ledger scope, missing references and the tree view. */
+/** The one open workspace and what follows from it: the profile, shows, the ledger scope, missing references and the tree view. */
 import { render } from "../../app/renderRequest";
 import { S } from "../../app/state";
 import type { Project } from "../../platform/types";
 import { fleetKey, projectKey } from "../tree";
 import { t } from "../../i18n";
+import { basename } from "../paths";
 
 /** The profile as `workspace_read` gives it and `workspace_write` takes it. */
 export interface Profile {
-  name: string;
   /** Project folders. */
   projects: string[];
   /** Fleet names. */
@@ -20,50 +20,32 @@ export interface Profile {
 }
 
 export interface Doc {
-  path: string | null;
+  path: string;
   profile: Profile;
-  /** `canon` of the profile last read or saved. */
-  base: string;
-  /** The revision last read or written. null: no file yet. */
+  /** The revision last read or written. */
   revision: string | null;
-  /** The file on disk: as read, changed by something else, or gone or unreadable. */
-  disk: "ok" | "changed" | "missing";
-  /** The person chose Keep current while the disk differs: that counts as an edit. */
-  kept: boolean;
-  /** The notice for this disk state was answered. A new change shows it again. */
-  answered: boolean;
+  /** `JSON` of the profile last read or written: a change from it is saved. */
+  written: string;
+  /** The file is gone or cannot be read. Changes wait until it is saved again. */
+  missing: boolean;
+  /** The last write failed with this error. The next change tries again. */
+  failed: string | null;
 }
 
+export const EXT = "skiffw";
 export const trimPath = (p: string) => (p.length > 1 ? p.replace(/\/+$/, "") : p);
-const uniq = (xs: string[]) => [...new Set(xs)].sort();
+/** The workspace's name: its file name without `.skiffw`. */
+export const nameOf = (path: string) => basename(path).replace(new RegExp(`\\.${EXT}$`), "");
 
-/**
- * The profile as a value, for Edited: order and repeats do not count. The
- * selected project does not count either: it follows the keys (a click, a
- * session that ended), so it changes in plain use. Save writes it and a read
- * restores it.
- */
-export function canon(p: Profile): string {
-  return JSON.stringify([
-    p.name.trim(),
-    uniq(p.projects.map(trimPath)),
-    uniq(p.fleets),
-    uniq(p.folded_projects.map(trimPath)),
-    uniq(p.folded_fleets),
-  ]);
-}
-
-export const emptyProfile = (): Profile => ({ name: "", projects: [], fleets: [], folded_projects: [], folded_fleets: [], selected: null });
+export const emptyProfile = (): Profile => ({ projects: [], fleets: [], folded_projects: [], folded_fleets: [], selected: null });
 
 export function createWorkspaceState() {
   let doc: Doc | null = null;
-  /** Rows the screen opened in this workspace. Not saved, not an edit. */
+  /** Rows the screen opened in this workspace. Not saved. */
   const autoOpened = new Set<string>();
-  /** A save is writing. Edits wait: a fold or pick now would miss the file. */
-  let saving = false;
   /** Above 0 while the app, not the user, moves the selection. */
   let quiet = 0;
-  /** Off until the launch has opened its workspace: the first restore is no edit. */
+  /** Off until the launch has opened its workspace: the first restore is no change. */
   let ready = false;
   /** The Ledger shows every row, whatever the workspace. Never saved. */
   let allWork = false;
@@ -71,11 +53,7 @@ export function createWorkspaceState() {
   let changed = () => {};
 
   const workspaceOpen = () => doc !== null;
-  const workspaceName = () => (doc ? doc.profile.name.trim() || t("workspace.untitled") : t("workspace.allProjects"));
-
-  function workspaceEdited(): boolean {
-    return !!doc && (canon(doc.profile) !== doc.base || (doc.kept && doc.disk !== "ok"));
-  }
+  const workspaceName = () => (doc ? nameOf(doc.path) : t("workspace.allProjects"));
 
   // ── What shows ─────────────────────────────────────────────────────────────
 
@@ -98,7 +76,7 @@ export function createWorkspaceState() {
 
   const ledgerAllWork = () => allWork;
 
-  /** All work, or back to the workspace's work. No edit, no prompt. */
+  /** All work, or back to the workspace's work. Not saved. */
   function setLedgerAllWork(on: boolean) {
     if (allWork === on) return;
     allWork = on;
@@ -106,7 +84,7 @@ export function createWorkspaceState() {
     render();
   }
 
-  /** A reference with nothing to point at. It stays in the file until the user repairs or removes it. */
+  /** A reference with nothing to point at. It stays in the file until the user changes or removes it. */
   interface Missing {
     kind: "project" | "fleet";
     ref: string;
@@ -151,7 +129,7 @@ export function createWorkspaceState() {
     },
     fold(key: string, fold: boolean) {
       const r = doc && refOf(key);
-      if (!r || saving) return;
+      if (!r) return;
       autoOpened.delete(key);
       const list = doc!.profile[r.list].filter((x) => x !== r.ref);
       if (fold) list.push(r.ref);
@@ -170,9 +148,9 @@ export function createWorkspaceState() {
     },
   };
 
-  /** The user picked a project. In a workspace that includes it, the next Save writes it. It is no edit. */
+  /** The user picked a project. In a workspace that shows it, the pick is saved. */
   function noteSelected(name: string) {
-    if (!doc || !ready || quiet || saving) return;
+    if (!doc || !ready || quiet) return;
     const p = S.projects.find((x) => x.name === name);
     if (!p || !shows(p)) return;
     const path = trimPath(p.path);
@@ -191,19 +169,14 @@ export function createWorkspaceState() {
   }
 
   return {
-    busy: false,
-    wasEdited: false,
-    picking: false,
     get doc() { return doc; },
     set doc(next: Doc | null) { doc = next; },
-    get saving() { return saving; },
-    set saving(next: boolean) { saving = next; },
     get ready() { return ready; },
     set ready(next: boolean) { ready = next; },
     get allWork() { return allWork; },
     set allWork(next: boolean) { allWork = next; },
     setHooks(next: { announce: (text: string) => void; changed: () => void }) { ({ announce, changed } = next); },
-    autoOpened, workspaceOpen, workspaceName, workspaceEdited, shows, ledgerScope, ledgerAllWork, setLedgerAllWork,
+    autoOpened, workspaceOpen, workspaceName, shows, ledgerScope, ledgerAllWork, setLedgerAllWork,
     missing, treeView, noteSelected, quietly,
   };
 }

@@ -1,11 +1,9 @@
 //! Self-update: where the updater plugin may replace the app, and the
 //! restart that finishes an update. The new app hands skiffd, the skiff CLI
 //! and `skiff watch` over at its launch, as after any install.
-use tauri::{AppHandle, State};
+use tauri::AppHandle;
 #[cfg(target_os = "linux")]
 use tauri::Manager;
-
-use crate::quit::Guard;
 
 /// A path inside a mounted disk image or a translocated copy. The app there
 /// is read-only, and a link into it breaks later.
@@ -61,14 +59,12 @@ pub(crate) fn update_off(app: AppHandle) -> Option<&'static str> {
     off(pubkey, cfg!(debug_assertions), kind(appimage), &exe)
 }
 
-/// Called after the update is installed and the page's workspace save guard
-/// succeeded. `AppHandle::restart` works on any thread: on the main thread it
-/// restarts at once, elsewhere it asks the event loop to exit, which the
-/// approval lets through. On the main thread no `RunEvent::Exit` comes, so
-/// the ssh links end here first.
+/// Called after the update is installed. `AppHandle::restart` works on any
+/// thread: on the main thread it restarts at once, elsewhere it asks the event
+/// loop to exit. On the main thread no `RunEvent::Exit` comes, so the ssh
+/// links end here first.
 #[tauri::command]
-pub(crate) fn relaunch_app(app: AppHandle, guard: State<'_, Guard>) {
-    guard.approve();
+pub(crate) fn relaunch_app(app: AppHandle) {
     skiff_client::host::ssh::end_all(skiff_client::host::ssh::QUIT_WAIT);
     app.restart();
 }
