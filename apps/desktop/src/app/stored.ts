@@ -40,31 +40,43 @@ export type Place = {
   split?: { skipper: string; child: string; layout: Layout } | null;
 };
 
-const PLACE_KEY = "skiff.place";
+const LEGACY_PLACE_KEY = "skiff.place";
+const placeKey = (host: string | null) => host === null ? "skiff.place.local" : `skiff.place.host.${host}`;
 /** Off until the start has restored the saved place, so the first empty draw does not overwrite it. */
-let tracking = false;
+let trackedPlaceKey: string | null = null;
 let placeSig = "";
 
-export function loadPlace(): Partial<Place> {
+export function loadPlace(host: string | null): Partial<Place> {
+  const key = placeKey(host);
   try {
-    const v: unknown = JSON.parse(localStorage.getItem(PLACE_KEY) ?? "{}");
-    return v && typeof v === "object" ? (v as Partial<Place>) : {};
+    const saved = localStorage.getItem(key);
+    const legacy = saved === null && host === null ? localStorage.getItem(LEGACY_PLACE_KEY) : null;
+    const v: unknown = JSON.parse(saved ?? legacy ?? "{}");
+    if (!v || typeof v !== "object") return {};
+    if (legacy !== null) {
+      try {
+        localStorage.setItem(key, legacy);
+      } catch {
+        /* the legacy place can still be restored */
+      }
+    }
+    return v as Partial<Place>;
   } catch {
     return {};
   }
 }
 
-export function trackPlace() {
-  tracking = true;
+export function trackPlace(host: string | null) {
+  trackedPlaceKey ??= placeKey(host);
 }
 
 export function savePlace(p: Place) {
-  if (!tracking) return;
+  if (trackedPlaceKey === null) return;
   const sig = JSON.stringify(p);
   if (sig === placeSig) return;
   placeSig = sig;
   try {
-    localStorage.setItem(PLACE_KEY, sig);
+    localStorage.setItem(trackedPlaceKey, sig);
   } catch {
     /* the place lasts for this run */
   }
