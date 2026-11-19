@@ -251,8 +251,8 @@ A fleet can have one Skipper for all its projects. It is a project Skipper with 
 
 - `add` makes the row's work folder and prints the id, the uid, the folder and the result path. It makes no file in the folder. A task needs `--pane`. A plan has none.
 - `--send` and `ledger send` add " Put everything for this task in FOLDER: the result, screenshots, scratch copies and worktrees. Write your result to PATH." to the task text. Do not put the folder or the path in `--task`.
-- Both run every `send` check and exit with its code. Exit 0 sets `sent`. Exit 8 sets `blocked`. A refusal leaves the task `pending`.
-- `ledger send` exits 1 and types nothing for a task that is `sent`, `blocked` or `done`, for a plan, for a gone pane, or for a task on another daemon.
+- Both run every `send` check and exit with its code. Exit 0 sets `sent`. Exit 8 sets `blocked`. Exit 9 for a draft in the box sets `blocked` ("needs you"): after the person clears the box, `skiff ledger send UID --enter` sends it again. Any other refusal leaves the task `pending`.
+- `ledger send` exits 1 and types nothing for a task that is `sent`, `blocked` (unless a draft refused its last send) or `done`, for a plan, for a gone pane, or for a task on another daemon.
 - A pane works on one task. `ledger send` and `add --send` exit 1 and type nothing when the pane holds another of your tasks, `sent` or `blocked`. The refusal names it. `add --send` then adds no row. Set that task done first, or pass `--replace`: once the new task is sent, the old one is `done`, outcome `interrupted`, and reported. A refused send leaves it as it was. A hand-off and a schedule step hold no pane.
 - Give every task and plan a `--title` of 3 to 6 words, such as `--title "Fix found-set count"`. Without one, the Ledger panel uses the first sentence of the task.
 - `--type T` records the task type. `--ref TEXT` stores a URL or a ticket key. Skiff stores both and does not act on them.

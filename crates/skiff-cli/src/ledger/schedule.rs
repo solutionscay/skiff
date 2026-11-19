@@ -553,7 +553,7 @@ enum Step {
 /// waits, or has text in its box) keeps it pending. Any other refusal ends
 /// the step: done, failed, so it holds no work open.
 async fn deliver(socket: &Path, db: &Connection, row: &Row, text: Option<String>) -> Result<Step> {
-    let sent = send_row(socket, db, row, SendOpts { text: text.into_iter().collect(), enter: true, shell: false }).await;
+    let sent = send_row(socket, db, row, SendOpts { text: text.into_iter().collect(), enter: true, shell: false, draft_blocks: false }).await;
     let refused = match sent {
         Ok(0 | 8) => return Ok(Step::Sent),
         Ok(3 | 4 | 9) => return Ok(Step::Pending),

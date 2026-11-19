@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 /// Closes the tasks `held` once the send that replaces them went out: a
 /// refused send leaves them as they were. Passes the send's code on.
 fn replaced(db: &mut rusqlite::Connection, held: &[skiff_client::ledger::Row], code: i32) -> Result<i32> {
-    if state_after(code).is_some() {
+    if state_after(code, false).is_some() {
         replace(db, held)?;
     }
     Ok(code)
@@ -79,7 +79,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
             }
             if send {
                 let row = one(&db, &uid)?;
-                let code = send_row(socket, &db, &row, SendOpts { text: Vec::new(), enter, shell }).await?;
+                let code = send_row(socket, &db, &row, SendOpts { text: Vec::new(), enter, shell, draft_blocks: true }).await?;
                 return replaced(&mut db, &held, code);
             }
         }
@@ -158,7 +158,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                 crate::skipper::ready(&c, &s.id).await?;
                 println!("started the {name} Skipper");
             }
-            return send_row(socket, &db, &row, SendOpts { text: vec![text], enter: true, shell: false }).await;
+            return send_row(socket, &db, &row, SendOpts { text: vec![text], enter: true, shell: false, draft_blocks: true }).await;
         }
         LedgerCmd::Brief { id, json } => {
             let db = open()?;
@@ -190,7 +190,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                 None => Vec::new(),
             };
             check_free(&held, replace)?;
-            let code = send_row(socket, &db, &row, SendOpts { text, enter, shell }).await?;
+            let code = send_row(socket, &db, &row, SendOpts { text, enter, shell, draft_blocks: true }).await?;
             return replaced(&mut db, &held, code);
         }
         LedgerCmd::Update { id, state: st, result, task, title, pane: p, project, parent, reference, task_type, outcome, expect, commit } => {

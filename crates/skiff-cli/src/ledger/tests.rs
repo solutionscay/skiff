@@ -492,7 +492,7 @@ async fn a_task_on_another_socket_is_never_gone_and_is_not_sent_from_here() {
     let mut t = r(&theirs);
     t.live = None;
     assert_eq!(t.shown_state(), "pending");
-    let err = send_row(here, &db, &r(&theirs), SendOpts { text: vec![], enter: true, shell: false }).await.unwrap_err().to_string();
+    let err = send_row(here, &db, &r(&theirs), SendOpts { text: vec![], enter: true, shell: false, draft_blocks: true }).await.unwrap_err().to_string();
     assert!(err.contains("/tmp/other.sock") && !err.contains("gone"), "{err}");
     assert_eq!(one(&db, &theirs).unwrap().state, "pending");
     std::fs::remove_dir_all(&dir).unwrap();
@@ -909,8 +909,8 @@ fn only_a_pending_task_is_sent_and_a_refusal_keeps_it_pending() {
         .unwrap()
     };
     let (same, restarted) = (pane(1000), pane(2000));
-    assert_eq!(unsendable(&r, Some(&same)), None);
-    assert!(unsendable(&r, None).unwrap().contains("gone"));
+    assert_eq!(unsendable(&r, Some(&same), false), None);
+    assert!(unsendable(&r, None, false).unwrap().contains("gone"));
     let folder = dir.join("results").join(format!("{uid}-fix-the-tests"));
     assert_eq!(result, folder.join("result.md").display().to_string());
     assert_eq!(
@@ -921,14 +921,20 @@ fn only_a_pending_task_is_sent_and_a_refusal_keeps_it_pending() {
     let old = Row { work_dir: None, ..r.clone() };
     assert_eq!(message(&old), format!("fix the tests Write your result to {result}."));
     r.state = "sent".into();
-    assert!(unsendable(&r, Some(&same)).unwrap().contains("not pending"));
+    assert!(unsendable(&r, Some(&same), false).unwrap().contains("not pending"));
     // A restart interrupted it: it can go again.
-    assert_eq!(unsendable(&r, Some(&restarted)), None);
-    assert!(unsendable(&one(&db, &plan_uid).unwrap(), Some(&same)).unwrap().contains("plan"));
-    assert_eq!(state_after(0), Some("sent"));
-    assert_eq!(state_after(8), Some("blocked"));
+    assert_eq!(unsendable(&r, Some(&restarted), false), None);
+    assert!(unsendable(&one(&db, &plan_uid).unwrap(), Some(&same), false).unwrap().contains("plan"));
+    // A refused send to a blocked task typed nothing: it can go again.
+    r.state = "blocked".into();
+    assert!(unsendable(&r, Some(&same), false).unwrap().contains("not pending"));
+    assert_eq!(unsendable(&r, Some(&same), true), None);
+    assert_eq!(state_after(0, false), Some("sent"));
+    assert_eq!(state_after(8, false), Some("blocked"));
+    // A draft needs the person. The busy line and the input race do not.
+    assert_eq!(state_after(9, true), Some("blocked"));
     for refused in [1, 3, 4, 5, 6, 7, 9] {
-        assert_eq!(state_after(refused), None);
+        assert_eq!(state_after(refused, false), None);
     }
 }
 

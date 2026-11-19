@@ -363,15 +363,20 @@ pub struct SendOpts {
     pub text: Vec<String>,
     pub enter: bool,
     pub shell: bool,
+    /// A draft in the agent's box sets the task blocked: the person sends or
+    /// clears it. False keeps it pending, for a schedule step that retries.
+    pub draft_blocks: bool,
 }
 
-/// Why `row`, whose pane is `s` now, cannot be sent: only a pending task, or
-/// one a restart interrupted, has a send to make.
-pub(super) fn unsendable(row: &Row, s: Option<&SessionInfo>) -> Option<String> {
+/// Why `row`, whose pane is `s` now, cannot be sent: only a pending task,
+/// one a restart interrupted, or a blocked one whose last attempt was
+/// refused (`last_refused`: a draft typed nothing) has a send to make.
+pub(super) fn unsendable(row: &Row, s: Option<&SessionInfo>, last_refused: bool) -> Option<String> {
     if row.is_plan() {
         return Some(format!("ledger row {} is a plan: it has no pane to send to", row.uid));
     }
-    if row.state != "pending" && !row.interrupted_in(s) {
+    let retry = row.state == "blocked" && last_refused;
+    if row.state != "pending" && !retry && !row.interrupted_in(s) {
         return Some(format!("task {} is {}, not pending or interrupted. Nothing was sent", row.uid, row.state));
     }
     s.is_none().then(|| format!("the pane of task {} is gone. Nothing was sent", row.uid))
@@ -447,11 +452,13 @@ pub(super) fn message(row: &Row) -> String {
 
 /// The state a task takes after `send` exits with `code`. A refusal typed
 /// nothing, so the task stays pending. Exit 8 typed the text but started no
-/// turn: the pane needs the person.
-pub(super) fn state_after(code: i32) -> Option<&'static str> {
+/// turn, and a `draft` refusal (exit 9) found the person's text in the box:
+/// both need the person.
+pub(super) fn state_after(code: i32, draft: bool) -> Option<&'static str> {
     match code {
         0 => Some("sent"),
         8 => Some("blocked"),
+        9 if draft => Some("blocked"),
         _ => None,
     }
 }
@@ -465,7 +472,8 @@ pub(super) async fn send_row(socket: &Path, db: &Connection, row: &Row, o: SendO
     let c = crate::connect(socket).await?;
     let all = c.list_sessions().await?;
     let s = row.pane_id.as_deref().and_then(|p| resolve::session(&all, p).ok());
-    if let Some(why) = unsendable(row, s) {
+    let last_refused = delivery::of(db, &row.uid)?.last().is_some_and(|a| a.evidence.as_deref() == Some("refused"));
+    if let Some(why) = unsendable(row, s, last_refused) {
         bail!(why);
     }
     let s = s.expect("checked");
@@ -478,8 +486,8 @@ pub(super) async fn send_row(socket: &Path, db: &Connection, row: &Row, o: SendO
     let attempt = delivery::start(db, &row.uid, "send", &s.id, gen(s), &text)?;
     // The text is read already: `-` here is the text itself, not stdin.
     let sent = sessions::send_to(&c, s, sessions::Send { text: std::slice::from_ref(&text), enter: o.enter, raw: false, shell: o.shell, stdin: false }).await;
-    let code = match sent {
-        Ok(code) => code,
+    let (code, draft) = match sent {
+        Ok(sent) => (sent.code, sent.draft && o.draft_blocks),
         Err(e) => {
             // It may have typed before it failed: neither sent nor not.
             delivery::end_uncertain(db, attempt, &format!("{e:#}"))?;
@@ -490,14 +498,16 @@ pub(super) async fn send_row(socket: &Path, db: &Connection, row: &Row, o: SendO
     delivery::end(db, attempt, e)?;
     let (bytes, sha) = delivery::identity(&text);
     println!("delivery {attempt}: {bytes} bytes, sha256 {}, {}", &sha[..12], e.word());
-    match state_after(code) {
+    match state_after(code, draft) {
         Some(st) => {
             // Only from the state read: a send that raced this one keeps its own.
             db.execute(
                 &format!("UPDATE tasks SET state = ?2, pane_gen = ?3, updated_at = {NOW} WHERE id = ?1 AND state = ?4"),
                 params![row.id, st, gen(s), row.state],
             )?;
-            if st != "sent" {
+            if draft {
+                eprintln!("skiff: task {} is blocked until the person sends or clears the draft in its pane", row.uid);
+            } else if st != "sent" {
                 eprintln!("skiff: task {} is {st}", row.uid);
             }
         }
