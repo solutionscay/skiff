@@ -5,7 +5,8 @@ use std::process::Stdio;
 use alacritty_terminal::{
     grid::Dimensions,
     index::{Column, Line},
-    term::cell::Flags,
+    term::cell::{Cell, Flags},
+    vte::ansi::{Color, NamedColor},
 };
 use anyhow::Result;
 use skiff_client::Client;
@@ -27,11 +28,11 @@ pub enum Front {
     NoBox,
 }
 
-pub(super) fn front(rows: &[(String, String)], agent: &str) -> Front {
-    if busy_line(rows) {
+pub(super) fn front(screen: &Screen, agent: &str) -> Front {
+    if busy_line(&screen.rows) {
         return Front::Busy;
     }
-    match input_box(rows, agent) {
+    match input_box(screen, agent) {
         Some(false) => Front::Ready,
         Some(true) => Front::Draft,
         None => Front::NoBox,
@@ -55,16 +56,39 @@ pub(super) fn busy_line(rows: &[(String, String)]) -> bool {
     })
 }
 
-/// The visible rows: all text, and the text without dim cells. An agent
-/// draws the hint in an empty input box dim.
-pub fn rows_of(data: &[u8], cols: u16, rows: u16) -> Vec<(String, String)> {
+/// The visible screen, read for [`front`].
+pub struct Screen {
+    /// Per row: all text, and the text without dim cells.
+    pub rows: Vec<(String, String)>,
+    /// Per row: the text without dim or colored cells: what the person can
+    /// have typed. An agent draws a hint dim (Claude Code) or colored (agy).
+    pub plain: Vec<String>,
+    /// The cursor: its row, and its char index in that row's text.
+    pub cursor: (usize, usize),
+}
+
+/// Whether `cell` can be text the person typed: not dim, and in the
+/// terminal's default foreground.
+fn typed(cell: &Cell) -> bool {
+    !cell.flags.contains(Flags::DIM) && cell.fg == Color::Named(NamedColor::Foreground)
+}
+
+/// Reads the visible screen of a snapshot. skiffd's snapshot ends with the
+/// real cursor position, hidden or not.
+pub fn rows_of(data: &[u8], cols: u16, rows: u16) -> Screen {
     let term = peek::term(data, cols, rows);
     let grid = term.grid();
-    (0..grid.screen_lines() as i32)
+    let point = grid.cursor.point;
+    let mut cursor = (point.line.0.max(0) as usize, 0);
+    let mut plain = Vec::new();
+    let rows = (0..grid.screen_lines() as i32)
         .map(|l| {
             let row = &grid[Line(l)];
-            let (mut all, mut solid) = (String::new(), String::new());
+            let (mut all, mut solid, mut text) = (String::new(), String::new(), String::new());
             for c in 0..grid.columns() {
+                if l == point.line.0 && c == point.column.0 {
+                    cursor.1 = all.chars().count();
+                }
                 let cell = &row[Column(c)];
                 if cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
                     continue;
@@ -72,10 +96,13 @@ pub fn rows_of(data: &[u8], cols: u16, rows: u16) -> Vec<(String, String)> {
                 let ch = if cell.c == '\0' { ' ' } else { cell.c };
                 all.push(ch);
                 solid.push(if cell.flags.contains(Flags::DIM) { ' ' } else { ch });
+                text.push(if typed(cell) { ch } else { ' ' });
             }
+            plain.push(text.trim_end().to_string());
             (all.trim_end().to_string(), solid.trim_end().to_string())
         })
-        .collect()
+        .collect();
+    Screen { rows, plain, cursor }
 }
 
 /// Whether the agent's input box holds a draft. `None` when no input box
@@ -84,13 +111,32 @@ pub fn rows_of(data: &[u8], cols: u16, rows: u16) -> Vec<(String, String)> {
 /// Codex marks its input line with `›`. The others draw the box between two
 /// rules of box-drawing characters (Claude Code's `───`, Gemini's `╭──╮` and
 /// `╰──╯`): the last two such rows on the screen.
-pub(super) fn input_box(rows: &[(String, String)], agent: &str) -> Option<bool> {
-    let content = |s: &str| {
-        let t = s.trim().trim_matches(|c| c == '│' || c == '┃').trim();
-        t.trim_start_matches(['>', '❯', '›']).trim().to_string()
-    };
+///
+/// With the cursor in the box, any text before the cursor is a draft, in any
+/// color: Claude Code draws its bash mode `!` pink. At or after the cursor,
+/// only plain text is: a hint there is dim or colored. With the cursor
+/// elsewhere, only dim text is a hint: a doubt refuses the send.
+pub(super) fn input_box(screen: &Screen, agent: &str) -> Option<bool> {
+    let border = |s: &str| s.trim().trim_matches(|c| c == '│' || c == '┃').trim().to_string();
+    let content = |s: &str| border(s).trim_start_matches(['>', '❯', '›']).trim().to_string();
+    let rows = &screen.rows;
     let range = input_box_rows(rows, agent)?;
-    Some(rows[range].iter().any(|(_, solid)| !content(solid).is_empty()))
+    let (line, col) = screen.cursor;
+    if !range.contains(&line) {
+        return Some(rows[range].iter().any(|(_, solid)| !content(solid).is_empty()));
+    }
+    let before = (range.start..=line).any(|i| {
+        let all = &rows[i].0;
+        let text: String = if i == line { all.chars().take(col).collect() } else { all.clone() };
+        let rest = if i == range.start { content(&text) } else { border(&text) };
+        !rest.is_empty()
+    });
+    let after = (line..range.end).any(|i| {
+        let plain = &screen.plain[i];
+        let text: String = if i == line { plain.chars().skip(col).collect() } else { plain.clone() };
+        !border(&text).is_empty()
+    });
+    Some(before || after)
 }
 
 /// The visible row range inside the agent's input box.

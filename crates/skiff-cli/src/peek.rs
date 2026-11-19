@@ -66,7 +66,7 @@ pub fn term(bytes: &[u8], cols: u16, rows: u16) -> Term<VoidListener> {
 /// text back out of its grid.
 fn render(bytes: &[u8], cols: u16, rows: u16, lines: Option<usize>, agent: Option<&str>) -> Vec<String> {
     let term = term(bytes, cols, rows);
-    let blank = agent.and_then(|agent| watch::input_box_rows(&watch::rows_of(bytes, cols, rows), agent));
+    let blank = agent.and_then(|agent| watch::input_box_rows(&watch::rows_of(bytes, cols, rows).rows, agent));
     let grid = term.grid();
     let top = if lines.is_some() { grid.topmost_line().0 } else { 0 };
     let bottom = grid.bottommost_line().0;
