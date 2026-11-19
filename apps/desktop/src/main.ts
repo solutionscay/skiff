@@ -16,7 +16,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { switcher } from "./app/commands";
 import { failureLine, followDataPlane, hostOnline, loadProjects, reconnectRemote, refreshSessions, reloadDaemon, setDaemon, subscribeDataEvents, subscribeEvents, untilConnected } from "./app/daemon";
 import { connectAttempt, connectDone, connectFailed } from "./app/connectPanel";
-import { isRemote, loadHosts, onHostsChanged, onManageHosts, setHostConnected, watchHostLink, watchHosts } from "./app/hosts";
+import { isRemote, loadHosts, onHostsChanged, onManageHosts, setHostConnected, shownHost, watchHostLink, watchHosts } from "./app/hosts";
 import { muteInput, openPane, panesDrawn, warmPanes } from "./terminal/terminalRuntime";
 import { loadHostCaps } from "./app/hostCaps";
 import { onUsage, startUsage, usage } from "./app/usage";
@@ -90,6 +90,7 @@ async function boot() {
   await startWorkspaceQuitGuard();
   // Which Host this window shows decides everything below.
   await loadHosts().catch(showError);
+  const placeHost = shownHost();
   watchHosts();
   // `tauri dev` build: a badge in the status bar tells it apart from an installed Skiff.
   if (import.meta.env.DEV) {
@@ -177,9 +178,9 @@ async function boot() {
   followDataPlane();
   await subscribeDataEvents().catch(console.error);
   await loadGroups();
-  restorePlace();
+  restorePlace(placeHost);
   await startWorkspaces();
-  trackPlace();
+  trackPlace(placeHost);
   warmPanes();
   startUpdates();
 
@@ -195,8 +196,8 @@ async function boot() {
 
 /** Back to the project, session and group open when the app last ran. Without
  *  one, the first session by priority. */
-function restorePlace() {
-  const last = loadPlace();
+function restorePlace(host: string | null) {
+  const last = loadPlace(host);
   const s = last.session ? sessions.get(last.session) : undefined;
   const lastGroup = last.group ? S.groups.find((x) => x.id === last.group) : undefined;
   const hasProject = !!last.project && S.projects.some((p) => p.name === last.project);
