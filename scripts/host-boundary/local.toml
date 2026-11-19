@@ -26,6 +26,7 @@
 "apps/desktop/src/appearance/skiffFolderDialog.ts" = "Chooses a folder for an explicit Host request."
 "apps/desktop/src/appearance/themeCards.ts" = "Imports and previews client theme files."
 "apps/desktop/src/appearance/themes.ts" = "Stores this person's application themes."
+"apps/desktop/src/diagnostics/clipTrace.ts" = "Reads this computer's clipboard back for the local trace file."
 "apps/desktop/src/diagnostics/latency.ts" = "Reads client diagnostics only."
 "apps/desktop/src/diagnostics/memory.ts" = "Reads this desktop process diagnostics only."
 "apps/desktop/src/entry.ts" = "Starts the desktop renderer."
