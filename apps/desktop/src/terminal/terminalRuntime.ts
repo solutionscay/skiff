@@ -13,6 +13,7 @@ import { toBytes } from "../platform/ipcBytes";
 import { appKey } from "../app/keyboard";
 import { traceEcho, traceGl, traceKey, traceOutput, traceRender, traceSend } from "../diagnostics/latency";
 import { work } from "../diagnostics/stalls";
+import { markClear, watchSelection } from "../diagnostics/clipTrace";
 
 import { FONT_DEFAULT, S, sessions } from "../app/state";
 import { paneFontSize } from "./terminalFont";
@@ -149,7 +150,7 @@ async function createPane(id: string): Promise<Pane> {
     scrollback: 2000,
     allowProposedApi: true,
   });
-  handleOsc52(term);
+  handleOsc52(term, id);
   const fit = new FitAddon();
   term.loadAddon(fit);
   const search = new SearchAddon();
@@ -158,6 +159,7 @@ async function createPane(id: string): Promise<Pane> {
   box.className = "term-box";
   el.appendChild(box);
   term.open(box);
+  watchSelection(id, term);
   gatePaneRendering(term);
 
   // Returning false keeps the key out of the PTY. The window listener acts on it.
@@ -210,6 +212,7 @@ function streamOutput(id: string, pane: Pane, fromBottom = 0): Promise<void> {
   const n = ++pane.stream;
   const channel = new Channel<unknown>();
   let parsing = 0;
+  let first = true;
   channel.onmessage = (m) => {
     // A chunk can still arrive after a park, or after session_removed
     // disposed the terminal.
@@ -218,6 +221,9 @@ function streamOutput(id: string, pane: Pane, fromBottom = 0): Promise<void> {
     // skiffd's times for the next chunk, sent while the trace runs.
     if (traceEcho(id, m)) return;
     const bytes = toBytes(m);
+    // The first chunk of a stream is the snapshot, which redraws the screen.
+    if (first) markClear(pane.term, "snapshot");
+    first = false;
     const traced = traceOutput(id, bytes.length);
     parsing++;
     const queued = performance.now();

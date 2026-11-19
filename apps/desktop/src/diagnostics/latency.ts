@@ -182,6 +182,11 @@ export function traceGl(sid: string, ctor: number, load: number, warm: boolean) 
   if (on) lines.push(JSON.stringify({ at: Date.now(), sid, gl: { ctor, load, warm } }));
 }
 
+/** A line of another trace (see clipTrace.ts), written to the same file while this one runs. */
+export function traceLine(o: object) {
+  if (on) lines.push(JSON.stringify({ at: Date.now(), ...o }));
+}
+
 export function stopTrace() {
   if (!on) return;
   on = false;

@@ -3,6 +3,7 @@ import { isSkiffAgent, projectSkipperOf } from "./skiffAgent";
 import { pickSkipperRow, skippersOn } from "../workspace/skippersView";
 import { type Action, actionFor, isMac } from "./keys";
 import { runAction } from "./actionDispatch";
+import { noteRoute } from "../diagnostics/clipTrace";
 import { switcher } from "./commandUi";
 import { modeKeyBlocked } from "./modes";
 import { $, modalOpen } from "../ui/dom";
@@ -92,6 +93,7 @@ window.addEventListener("keydown", (e) => {
   if (typeof key === "number") {
     pickProject(key);
   } else {
+    if (key === "copy" || key === "paste") noteRoute("key");
     runAction(key);
   }
 }, true);

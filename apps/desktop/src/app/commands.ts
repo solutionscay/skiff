@@ -37,6 +37,7 @@ import { skippersOn } from "../workspace/skippersView";
 import { closeWorkspace, editWorkspace, newWorkspace, openWorkspace, recentWorkspaceEntries, workspaceOpen } from "../workspace/profile";
 import { refocusTerminal, revealSession, selectWorktree } from "../workspace/view";
 import { step } from "../diagnostics/stalls";
+import { noteRoute } from "../diagnostics/clipTrace";
 
 interface Cmd {
   section: "file" | "edit" | "view" | "help";
@@ -220,7 +221,10 @@ function subItems(entries: MenuEntry[], prefix: string, runs: Map<string, () => 
   });
 }
 
-void listen<string>("skiff:menu", (e) => menuRuns.get(e.payload)?.());
+void listen<string>("skiff:menu", (e) => {
+  noteRoute("menu");
+  menuRuns.get(e.payload)?.();
+});
 // The search button in the GNOME header bar.
 void listen("skiff:search", () => runAction("palette"));
 
