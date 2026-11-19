@@ -12,28 +12,49 @@
 import { invoke } from "@tauri-apps/api/core";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 
-export async function copyText(text: string): Promise<void> {
+/** For the clipboard trace: the path that ran, and the errors of the paths tried before it. */
+export interface ClipTry {
+  path?: "gtk" | "webview" | "plugin";
+  failed: string[];
+}
+
+const note = (tr: ClipTry | undefined, path: ClipTry["path"], e: unknown) => tr?.failed.push(`${path}: ${String(e)}`);
+
+export async function copyText(text: string, tr?: ClipTry): Promise<void> {
   try {
-    return await invoke("clipboard_write", { text });
-  } catch {
+    await invoke("clipboard_write", { text });
+    if (tr) tr.path = "gtk";
+    return;
+  } catch (e) {
     /* not Linux */
+    note(tr, "gtk", e);
   }
   try {
     await navigator.clipboard.writeText(text);
-  } catch {
+    if (tr) tr.path = "webview";
+  } catch (e) {
+    note(tr, "webview", e);
+    if (tr) tr.path = "plugin";
     await writeText(text);
   }
 }
 
-export async function pasteText(): Promise<string> {
+export async function pasteText(tr?: ClipTry): Promise<string> {
   try {
-    return await invoke<string>("clipboard_read");
-  } catch {
+    const text = await invoke<string>("clipboard_read");
+    if (tr) tr.path = "gtk";
+    return text;
+  } catch (e) {
     /* not Linux */
+    note(tr, "gtk", e);
   }
   try {
-    return await readText();
-  } catch {
+    const text = await readText();
+    if (tr) tr.path = "plugin";
+    return text;
+  } catch (e) {
+    note(tr, "plugin", e);
+    if (tr) tr.path = "webview";
     return navigator.clipboard.readText();
   }
 }

@@ -11,11 +11,13 @@ import type { Terminal } from "@xterm/xterm";
 import { copyText } from "../platform/clipboard";
 import { showError } from "../ui/alerts";
 import { clipboardWrites } from "../app/hosts";
+import { traceCopy, traceOsc52Refused } from "../diagnostics/clipTrace";
 
 /** The most base64 a program may send: about 6 MB of text. */
 const MAX = 8 << 20;
 
-export function handleOsc52(term: Terminal) {
+/** `sid`: the session in the terminal, for the clipboard trace. */
+export function handleOsc52(term: Terminal, sid: string | null = null) {
   term.parser.registerOscHandler(52, (data) => {
     const payload = data.slice(data.indexOf(";") + 1);
     if (!data.includes(";") || !payload || payload === "?" || payload.length > MAX) return true;
@@ -28,7 +30,14 @@ export function handleOsc52(term: Terminal) {
     }
     // A remote Host's programs write this Mac's clipboard only when allowed.
     void clipboardWrites()
-      .then((ok) => (ok ? copyText(text) : undefined))
+      .then((ok) => {
+        if (!ok) return traceOsc52Refused(sid, text);
+        const traced = traceCopy(sid, term, text, "osc52");
+        return copyText(text, traced?.tr).then(() => traced?.end(), (e) => {
+          traced?.end(e);
+          throw e;
+        });
+      })
       .catch(showError);
     return true;
   });

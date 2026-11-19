@@ -22,6 +22,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { handleOsc52 } from "./osc52";
 import { copyText, pasteText } from "../platform/clipboard";
+import { traceCopy, tracePaste } from "../diagnostics/clipTrace";
 import { showError } from "../ui/alerts";
 import { appKey, currentRow, itemKey } from "../app/keyboard";
 import { render } from "../app/renderRequest";
@@ -588,8 +589,14 @@ function frame(mine: number, kind: string, title: string, where: string, program
     const key = appKey(e);
     if (key === "copy" || key === "paste") {
       e.preventDefault();
-      if (key === "copy") void copyText(term.getSelection()).catch(showError);
-      else void pasteText().then((text) => text && term.paste(text), showError);
+      if (key === "copy") {
+        const text = term.getSelection();
+        const traced = traceCopy(p.session ?? null, term, text, "peek");
+        void copyText(text, traced?.tr).then(() => traced?.end(), (e) => (traced?.end(e), showError(e)));
+      } else {
+        const traced = tracePaste(p.session ?? null, "peek");
+        void pasteText(traced?.tr).then((text) => (traced?.end(text), text && term.paste(text)), (e) => (traced?.end("", e), showError(e)));
+      }
       return false;
     }
     return key === null;

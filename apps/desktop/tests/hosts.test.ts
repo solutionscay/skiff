@@ -48,6 +48,7 @@ function osc52(hostsMod: unknown) {
       "../platform/clipboard": { copyText: async (t: string) => void copied.push(t) },
       "../ui/alerts": { showError(e: unknown) { throw e; } },
       "../app/hosts": hostsMod,
+      "../diagnostics/clipTrace": { traceCopy: () => undefined, traceOsc52Refused() {} },
     },
     { atob, TextDecoder, Uint8Array },
     "",

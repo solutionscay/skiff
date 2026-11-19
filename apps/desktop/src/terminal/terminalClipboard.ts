@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { copyText, pasteText } from "../platform/clipboard";
+import { traceCopy, traceEmptyCopy, tracePaste } from "../diagnostics/clipTrace";
 
 import { h } from "../ui/dom";
 
@@ -32,12 +33,16 @@ function showCopyConfirmation(id: string) {
 
 export async function copySelection() {
   const id = S.focused;
-  const text = id ? panes.get(id)?.term.getSelection() : "";
-  if (!text) return;
+  const term = id ? panes.get(id)?.term : undefined;
+  const text = term?.getSelection() ?? "";
+  if (!text) return traceEmptyCopy(id, term);
+  const traced = traceCopy(id, term, text);
   try {
-    await copyText(text);
+    await copyText(text, traced?.tr);
     showCopyConfirmation(id!);
+    traced?.end();
   } catch (e) {
+    traced?.end(e);
     showError(e);
   }
 }
@@ -74,7 +79,10 @@ export async function pasteClipboard() {
   const id = S.focused;
   const pane = id ? panes.get(id) : undefined;
   if (!id || !pane) return;
-  const text = await pasteText().catch(() => "");
+  const traced = tracePaste(id);
+  let failure: unknown;
+  const text = await pasteText(traced?.tr).catch((e) => ((failure = e), ""));
+  traced?.end(text, failure);
   if (text) return pane.term.paste(text);
   // The clipboard may hold no image: the line counts one until the Host says more.
   const line = isRemote() ? new UploadLine(id, 1) : null;
