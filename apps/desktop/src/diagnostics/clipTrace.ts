@@ -2,7 +2,7 @@
  * Clipboard trace (#280). While the latency trace runs (SKIFF_TRACE, or
  * Help → Start latency trace), each copy, paste and cleared selection
  * appends a `clip` line to the same file. A line holds lengths and short
- * hashes, never the text. When the trace is off, each hook returns at once.
+ * hashes seeded per launch, never the text. When the trace is off, each hook returns at once.
  *
  *   {"clip":"copy","route":"menu","sid":…,"remote":true,"len":12,"hash":"…",
  *    "mouse":"none","path":"gtk","failed":[],"ok":true}
@@ -36,9 +36,13 @@ function takeRoute(): ClipRoute {
   return n && performance.now() - n.at < 500 ? n.route : "other";
 }
 
-/** FNV-1a, 32 bits, in hex: enough to tell two texts apart in a trace. */
+/** A random seed for this launch, kept in memory only: a hash in the file
+ *  compares texts within one run, but cannot be used to guess a short text. */
+const SEED = crypto.getRandomValues(new Uint32Array(1))[0];
+
+/** FNV-1a, 32 bits, seeded, in hex: enough to tell two texts apart in a trace. */
 export function shortHash(s: string): string {
-  let h = 0x811c9dc5;
+  let h = (0x811c9dc5 ^ SEED) >>> 0;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
     h = Math.imul(h, 0x01000193);

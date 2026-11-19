@@ -13,7 +13,7 @@ test("the clipboard trace never writes the copied or pasted text", async () => {
       "../app/hosts": { isRemote: () => true },
       "./latency": { tracing: () => true, traceLine: (o: object) => lines.push(JSON.stringify(o)) },
     },
-    { performance, window: { setTimeout: () => 0 } },
+    { performance, crypto, window: { setTimeout: () => 0 } },
     "",
   );
   const term = { modes: { mouseTrackingMode: "none" }, buffer: { active: { type: "normal" } } };
