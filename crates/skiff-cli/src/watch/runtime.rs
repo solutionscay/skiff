@@ -492,23 +492,25 @@ fn delivery_evidence(d: Delivery) -> ledger::Evidence {
     }
 }
 
-/// Types `line` into the agent's pane and presses Enter. The check before it
-/// read the screen. The daemon refuses the line if the person typed after
-/// the list this step read.
+/// Types `line` into the agent's pane and presses Enter, each step
+/// confirmed as `skiff send` confirms it. The check before it read the
+/// screen. The daemon refuses the line if the person typed after the list
+/// this step read; a refused line waits.
 pub(super) async fn submit(c: &Client, skipper: &SessionInfo, line: &str) -> Result<Delivery> {
-    let events = c.events();
-    Ok(if !c.submit(&skipper.id, line.as_bytes().to_vec(), true, true, skipper.input_gen).await? {
-        Delivery::Refused
-    } else if sessions::turn_started(c, &skipper.id, events).await? {
-        Delivery::Taken
-    } else {
-        Delivery::NoTurn
+    Ok(match sessions::agent_send(c, skipper, line.as_bytes().to_vec(), line, true).await? {
+        0 => Delivery::Taken,
+        sessions::NO_TURN | sessions::PASTE_UNSEEN => Delivery::NoTurn,
+        _ => Delivery::Refused,
     })
 }
 
 /// The agent can take a line: it is idle, an agent Skiff knows is in front,
-/// its input box shows, and no busy line. A shell in front holds the line.
+/// its input box shows, and no busy line. A shell in front holds the line,
+/// and so does a person who typed since its last turn ended.
 pub(super) async fn ready(c: &Client, s: &SessionInfo) -> bool {
-    s.state == SessionState::Idle && sessions::is_agent(s) && read_front(c, s).await.ok() == Some(Front::Ready)
+    s.state == SessionState::Idle
+        && !s.typed_since_turn
+        && sessions::is_agent(s)
+        && read_front(c, s).await.ok() == Some(Front::Ready)
 }
 

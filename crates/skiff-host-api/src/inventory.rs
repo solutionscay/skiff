@@ -86,6 +86,9 @@ pub struct InventorySession {
     /// Why the session waits. Absent while it does not, or from an older Host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waiting_cause: Option<String>,
+    /// A person typed into the session since its last turn ended. False from an older Host.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub typed_since_turn: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

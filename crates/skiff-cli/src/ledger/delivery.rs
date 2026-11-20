@@ -95,6 +95,7 @@ impl Evidence {
             Evidence::Refused(6) => "the session's program exited",
             Evidence::Refused(7) => "the session is the sender's own",
             Evidence::Refused(9) => "input after the check",
+            Evidence::Refused(12) => "a person is typing in it",
             Evidence::Refused(_) => "send refused it",
         })
     }

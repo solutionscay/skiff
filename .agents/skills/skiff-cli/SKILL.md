@@ -118,6 +118,7 @@ Skiff has no message queue. A refused send types nothing. Do not wait and retry.
 | 6 | The session is `done` | Its program exited. Start a new session. |
 | 5 | A shell or an unknown program is in front | Add `--shell` only to type a shell command. A `skiff new -- CMD` session or a custom agent shows its launch shell, so it needs `--shell`. |
 | 9 | The session took input after the check | Nothing was typed. Do as for exit 4. |
+| 12 | A person typed into the agent since its last turn ended | Nothing was typed. Their text can be in the box. Tell the user which pane. Do not retry: the person's Enter or the next turn end clears it. A `ledger` task stays `pending`. |
 | 0 | Sent and confirmed | |
 | 1 | Error, for example no match or more than one | |
 

@@ -289,6 +289,9 @@ pub fn refusal(s: &SessionInfo, here: Option<&str>, shell_ok: bool, caller_shell
         SessionState::Done => return Some((6, format!("{who} is done. Its program exited."))),
         SessionState::Idle => {}
     }
+    if s.typed_since_turn && is_agent(s) {
+        return Some((TYPING, format!("{who}: a person is typing in it. Nothing was typed.")));
+    }
     if shell_ok {
         return None;
     }
@@ -352,6 +355,10 @@ pub const PASTE_UNSEEN: i32 = 11;
 /// `send`'s exit code when Enter went to a known agent, but no turn started.
 pub const NO_TURN: i32 = 8;
 
+/// `send`'s exit code when a person typed into the agent since its last
+/// turn ended: their text can be in its input box. Nothing is typed.
+pub const TYPING: i32 = 12;
+
 /// The step of a send that the agent's screen or state did not confirm.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Unconfirmed {
@@ -380,7 +387,8 @@ impl Unconfirmed {
 
 /// Exit codes: 0 when sent and confirmed; 3 waiting, 4 working (its state or
 /// its busy line), 5 a shell or unknown program in front, 6 done, 7 own
-/// session, 9 input after the check. A refusal types nothing.
+/// session, 9 input after the check, 12 ([`TYPING`]) a person typed into the
+/// agent since its last turn ended. A refusal types nothing.
 /// 11 ([`PASTE_UNSEEN`]): the paste did not show on the agent's screen, and
 /// Enter was not pressed. 8 ([`NO_TURN`]): Enter went in, but no turn started.
 /// After 11 or 8 the pane waits for the person.
@@ -408,16 +416,6 @@ pub async fn send_to(c: &Client, s: &SessionInfo, o: Send<'_>) -> Result<i32> {
     // Only a known agent proves a turn by its state, and only its screen
     // shows the paste. A shell command can finish with no output.
     let agent = !raw && is_agent(s);
-    let before = if agent {
-        let rows = watch::read_rows(c, &s.id).await?;
-        if watch::front(&rows, s.foreground_program.as_deref().unwrap_or("")) == watch::Front::Busy {
-            eprintln!("skiff: {who} shows its busy line. Skiff does not type into a working agent.");
-            return Ok(4);
-        }
-        rows
-    } else {
-        Vec::new()
-    };
     let mut data = if o.stdin && o.text == ["-"] {
         let mut buf = Vec::new();
         std::io::stdin().read_to_end(&mut buf).context("read stdin")?;
@@ -436,14 +434,30 @@ pub async fn send_to(c: &Client, s: &SessionInfo, o: Send<'_>) -> Result<i32> {
             data.pop();
         }
     }
-    if !agent {
-        // A paste, so the program keeps the text's newlines as text. skiffd
-        // types it only if the session took no input since the list.
-        if !c.submit(&s.id, data, !raw, enter, s.input_gen).await? {
-            eprintln!("skiff: {who} took input after the check. Nothing was typed.");
-            return Ok(9);
-        }
-        return Ok(0);
+    if agent {
+        return agent_send(c, s, data, &text, enter).await;
+    }
+    // A paste, so the program keeps the text's newlines as text. skiffd
+    // types it only if the session took no input since the list.
+    if !c.submit(&s.id, data, !raw, enter, s.input_gen).await? {
+        eprintln!("skiff: {who} took input after the check. Nothing was typed.");
+        return Ok(9);
+    }
+    Ok(0)
+}
+
+/// Types `data` (the text `text` as keys) into the known agent `s`, from a
+/// list read just now, in two confirmed steps: the paste shows on the
+/// screen, then with `enter` a turn starts. The watcher's lines take the
+/// same path. Returns `send`'s exit code: 0, 4 (busy line), 9 (input after
+/// the check), [`PASTE_UNSEEN`] or [`NO_TURN`]. The last two set the pane to
+/// need the person.
+pub async fn agent_send(c: &Client, s: &SessionInfo, data: Vec<u8>, text: &str, enter: bool) -> Result<i32> {
+    let who = format!("{} ({})", resolve::display_name(s), print::short_id(&s.id));
+    let before = watch::read_rows(c, &s.id).await?;
+    if watch::front(&before, s.foreground_program.as_deref().unwrap_or("")) == watch::Front::Busy {
+        eprintln!("skiff: {who} shows its busy line. Skiff does not type into a working agent.");
+        return Ok(4);
     }
     // 1. The paste, alone. Enter waits for the screen to show it.
     let typed = !data.is_empty();
@@ -452,7 +466,7 @@ pub async fn send_to(c: &Client, s: &SessionInfo, o: Send<'_>) -> Result<i32> {
         return Ok(9);
     }
     let (pasted, after) = if typed {
-        match paste_shows(c, &s.id, &before, &text).await? {
+        match paste_shows(c, &s.id, &before, text).await? {
             Some(seen) => seen,
             None => {
                 eprintln!("skiff: {who}: the pasted text did not show on its screen. Enter was not pressed. Check its pane.");
@@ -610,47 +624,11 @@ fn upper_first(s: &str) -> String {
     c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
 }
 
-/// How long an agent has to start a turn after Enter.
-const TURN_WAIT: Duration = Duration::from_secs(5);
-
 /// The program in front is an agent Skiff knows. The daemon names a known
 /// agent by its id ("claude", "codex"...), whatever binary runs it.
 pub fn is_agent(s: &SessionInfo) -> bool {
     let prog = s.foreground_program.as_deref().map(basename).unwrap_or("");
     skiff_core::project::KNOWN_AGENTS.iter().any(|(id, _)| *id == prog)
-}
-
-/// True when the session leaves idle within `TURN_WAIT`: the agent took the
-/// message. An exit or a removal also counts, as the program reacted.
-pub async fn turn_started(
-    c: &Client,
-    id: &str,
-    mut events: tokio::sync::broadcast::Receiver<skiff_core::protocol::Event>,
-) -> Result<bool> {
-    use skiff_core::protocol::Event;
-    use tokio::sync::broadcast::error::RecvError;
-    let deadline = tokio::time::Instant::now() + TURN_WAIT;
-    loop {
-        match tokio::time::timeout_at(deadline, events.recv()).await {
-            Err(_) => break,
-            Ok(Ok(Event::State { session, state })) if session == id && state != SessionState::Idle => {
-                return Ok(true)
-            }
-            Ok(Ok(Event::Exit { session, .. } | Event::SessionRemoved { session })) if session == id => {
-                return Ok(true)
-            }
-            Ok(Ok(_)) => {}
-            // Missed events: read the state again.
-            Ok(Err(RecvError::Lagged(_))) => {
-                if !still_idle(c, id).await? {
-                    return Ok(true);
-                }
-            }
-            Ok(Err(RecvError::Closed)) => bail!("skiffd closed the connection"),
-        }
-    }
-    // The paste can start work before the listener exists. Read the state.
-    Ok(!still_idle(c, id).await?)
 }
 
 async fn still_idle(c: &Client, id: &str) -> Result<bool> {
@@ -970,6 +948,11 @@ mod tests {
         assert_eq!(code(&s("agent", Working, None), None, true, None), 4);
         assert_eq!(code(&s("shell", Done, None), None, true, None), 6);
         assert_eq!(code(&idle, Some("other"), false, None), 0);
+        // A person typed into the agent since its turn ended: nothing goes in.
+        let typing = SessionInfo { typed_since_turn: true, ..idle.clone() };
+        assert_eq!(code(&typing, None, false, None), 12);
+        assert_eq!(code(&typing, None, true, None), 12);
+        assert_eq!(code(&SessionInfo { typed_since_turn: true, ..s("agent", Idle, Some("bash")) }, None, true, None), 0);
     }
 
     #[test]

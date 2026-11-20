@@ -194,6 +194,14 @@ pub struct SessionInfo {
     /// not wait, or from a daemon older than this field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub waiting_cause: Option<String>,
+    /// A person typed into the session (the app's keys, `skiff attach`)
+    /// since its last turn ended. A send from a program does not set it, nor
+    /// does an answer to a terminal query, a focus or a mouse report. The end
+    /// of a turn (the session goes idle) and the person's Enter clear it.
+    /// `skiff send` types nothing while it is set. `false` from a daemon
+    /// older than this field.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub typed_since_turn: bool,
 }
 
 /// A program's own report of its state, from OSC 7501. Strings, not enums,

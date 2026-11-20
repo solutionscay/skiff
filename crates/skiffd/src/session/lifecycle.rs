@@ -111,6 +111,7 @@ impl SessionPool {
             watch: None,
             program_status: None,
             waiting_cause: None,
+            typed_since_turn: false,
         };
 
         let (input, queued, wrote) = start_writer(&id, &pty)?;

@@ -74,11 +74,21 @@ impl SessionPool {
             session.reply(data);
             return Ok(());
         }
-        {
+        let typed = {
             // The info lock orders this write against a submit's check.
             let mut info = session.info.lock().unwrap();
             info.input_gen += 1;
             session.send(id, vec![Input::Bytes(data.to_vec())])?;
+            // The person's Enter sends what they typed. Other keys hold
+            // `skiff send` off until the turn ends.
+            let typed = if data.ends_with(b"\r") { false } else { info.typed_since_turn || typing(data) };
+            (typed != info.typed_since_turn).then(|| {
+                info.typed_since_turn = typed;
+                info.clone()
+            })
+        };
+        if let Some(session) = typed {
+            let _ = self.events.send(skiff_core::protocol::Event::SessionUpdated { session });
         }
         // Input answers a bell. An agent's prompt goes when the screen says so.
         if session.belled.swap(false, Ordering::Relaxed) {
@@ -135,6 +145,29 @@ impl SessionPool {
         self.write(id, &bracketed(data))
     }
 
+}
+
+/// `data` is keys a person typed: not only focus reports (`ESC [ I`,
+/// `ESC [ O`) or mouse reports (SGR `ESC [ < … M/m`, X10 `ESC [ M` and three
+/// bytes), which the terminal sends without a key.
+fn typing(data: &[u8]) -> bool {
+    let mut rest = data;
+    while !rest.is_empty() {
+        let len = if rest.starts_with(b"\x1b[I") || rest.starts_with(b"\x1b[O") {
+            3
+        } else if rest.starts_with(b"\x1b[<") {
+            match rest.iter().position(|&b| b == b'M' || b == b'm') {
+                Some(end) if rest[3..end].iter().all(|b| b.is_ascii_digit() || *b == b';') => end + 1,
+                _ => return true,
+            }
+        } else if rest.starts_with(b"\x1b[M") && rest.len() >= 6 {
+            6
+        } else {
+            return true;
+        };
+        rest = &rest[len..];
+    }
+    false
 }
 
 /// One item for the writer thread. A pause holds the input behind it, so a
@@ -349,6 +382,36 @@ mod tests {
         pool.write(&info.id, b"\x1b[3;1R").unwrap();
         let now = session.info();
         assert_eq!((now.state, now.input_gen), (SessionState::Working, 1));
+        pool.kill(&info.id).unwrap();
+    }
+
+    /// A person's keys set `typed_since_turn`; a submit, a query's answer and
+    /// a focus or mouse report do not. The end of a turn and the person's
+    /// Enter clear it.
+    #[test]
+    fn a_person_typing_holds_sends_until_the_turn_ends() {
+        use skiff_core::session::{SessionSpec, SessionState};
+        let pool = super::SessionPool::new();
+        let info = pool
+            .create(SessionSpec { command: Some("/bin/sleep".into()), args: vec!["30".into()], ..Default::default() })
+            .unwrap();
+        let session = pool.get(&info.id).unwrap();
+        let typed = || session.info().typed_since_turn;
+        assert!(!typed(), "set at the start");
+        assert!(pool.submit(&info.id, b"a task", true, true, 0).unwrap());
+        pool.write(&info.id, b"\x1b[I\x1b[<64;10;5M\x1b[O").unwrap();
+        pool.on_output(&session, &info.id, b"\x1b[c");
+        pool.write(&info.id, b"\x1b[?1;2c").unwrap();
+        assert!(!typed(), "a submit, a report or a reply set it");
+        pool.write(&info.id, b"f").unwrap();
+        assert!(typed());
+        pool.write(&info.id, b"\r").unwrap();
+        assert!(!typed(), "the person's Enter kept it");
+        pool.write(&info.id, b"fix").unwrap();
+        pool.set_state(&session, SessionState::Working);
+        assert!(typed());
+        pool.set_state(&session, SessionState::Idle);
+        assert!(!typed(), "the turn's end kept it");
         pool.kill(&info.id).unwrap();
     }
 
