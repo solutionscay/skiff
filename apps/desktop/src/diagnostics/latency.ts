@@ -108,16 +108,52 @@ const recent = new Map<string, { t: number; n: number }[]>();
 export const tracing = () => on;
 export const hasReport = () => rows.length > 0 || stalls.length > 0;
 
-/** Starts the trace at launch when SKIFF_TRACE is set. */
+/** The window's trace is on. A page reload (a Host switch, a daemon restart)
+ *  keeps it, with the lines not yet written: only stopTrace() ends a trace. */
+const ON_KEY = "skiff.trace";
+const LINES_KEY = "skiff.traceLines";
+
+function keep(key: string, value: string | null) {
+  try {
+    if (value === null) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, value);
+  } catch {}
+}
+
+function kept(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/** Starts the trace at launch when SKIFF_TRACE is set, or again after a
+ *  reload of a window that traced. */
 export async function initTrace() {
   const [path, fromEnv] = await invoke<[string, boolean]>("trace_info").catch(() => ["", false] as [string, boolean]);
   file = path;
-  if (fromEnv) startTrace();
+  const carried = kept(LINES_KEY);
+  keep(LINES_KEY, null);
+  if (carried) {
+    try {
+      lines.push(...(JSON.parse(carried) as string[]));
+    } catch {}
+  }
+  if (fromEnv || kept(ON_KEY)) startTrace();
+  else if (lines.length) flush();
+}
+
+/** The page goes away: keep the lines that flush() has not sent yet. */
+function keepLines() {
+  if (lines.length) keep(LINES_KEY, JSON.stringify(lines));
 }
 
 export function startTrace() {
   if (on) return;
   on = true;
+  keep(ON_KEY, "1");
+  window.addEventListener("pagehide", keepLines);
   startedAt = Date.now();
   rows = [];
   stalls = [];
@@ -190,6 +226,8 @@ export function traceLine(o: object) {
 export function stopTrace() {
   if (!on) return;
   on = false;
+  keep(ON_KEY, null);
+  window.removeEventListener("pagehide", keepLines);
   timers.forEach(clearInterval);
   timers = [];
   lastKey.clear();
