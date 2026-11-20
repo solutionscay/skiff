@@ -46,8 +46,8 @@
 .set-row > .c-acts > .ctl-btn:first-of-type { margin-left: auto; }
 /* A switch at the end of a row sits at the row's right edge. */
 .set-row > .ctl-switch:last-child { justify-content: flex-end; padding: 0 calc(12 * var(--u)); }
-/* Words, as in the tree. One size for every column head. */
-.set-cols, .set-cols > * { font: 500 calc(12px * var(--zoom, 1)) var(--font); color: var(--text-3); white-space: nowrap; }
+/* Words, as in the tree. One size for every column head. A head longer than its column wraps inside the row, in any language. */
+.set-cols, .set-cols > * { font: 500 calc(12px * var(--zoom, 1)) var(--font); line-height: 1.2; color: var(--text-3); overflow-wrap: anywhere; }
 .set-agent { color: var(--text-3); }
 .set-agent.on { color: var(--text); }
 .set-row .c-on { width: 100%; height: 100%; }
@@ -297,7 +297,7 @@ body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset:
   .g-skip .set-row.set-cont { grid-template-columns: minmax(0, 1fr) calc(350 * var(--u)); }
   .g-skip .set-cont .c-line { display: none; }
   .g-skip .c-state .dim { display: none; }
-  .set-table.g-hosts .set-row { grid-template-columns: calc(32 * var(--u)) minmax(0, 1fr) minmax(0, 0.8fr) calc(150 * var(--u)) calc(92 * var(--u)) calc(140 * var(--u)) calc(32 * var(--u)); }
+  .set-table.g-hosts .set-row { grid-template-columns: calc(32 * var(--u)) minmax(0, 1fr) minmax(0, 0.8fr) calc(150 * var(--u)) calc(110 * var(--u)) calc(140 * var(--u)) calc(32 * var(--u)); }
   .set-folder { grid-template-columns: var(--set-label) minmax(0, 1fr) max-content; }
 }
 @container set-main (max-width: 600px) { .set-main > * { --set-label: calc(120 * var(--u)); --set-end: calc(200 * var(--u)); --set-acts: calc(120 * var(--u)); } }
