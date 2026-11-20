@@ -146,6 +146,18 @@ the commands:
   seen, set each task `done`, give the user one report, then run
   `skiff ledger report UID`. A pane that exits, restarts, is gone or waits on
   a pending task still gets its own line at once.
+- A `pending` task does not hold its plan. When the sent tasks have ended, the
+  line names the pending tasks: `[watch] plan UID: N of M sent tasks ended:
+  ...; K pending: UID2`. Set only the ended tasks `done`. Do not report the
+  plan yet. Send each pending task when it is ready. The plan line comes again
+  when the sent tasks end.
+- To wait for one pane, read `skiff ls --json` first (`state`,
+  `program_status`). Then run `skiff wait S --for turn --timeout N`. It
+  returns at once for a turn that ended and is unread.
+- Do not pipe `skiff events` into `grep -m1`. The pipeline ends only when
+  `events` writes again.
+- An empty prompt in `skiff peek`, or a bare idle, proves neither work nor
+  completion. Read the result on the screen.
 - A `[watch]` line that says a pane is gone names the tasks skiff set `done`
   with it. A gone pane cannot be marked seen. Tell the user, then run
   `skiff ledger report UID...`. To run a task again, reassign it with

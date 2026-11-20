@@ -135,11 +135,15 @@ Skiff has no message queue. A refused send types nothing. Do not wait and retry.
 
 Keep monitoring after a send when the user wants the result. A request only to deliver a message ends when the send exits 0.
 
+- Before a wait, read `skiff ls --json` for the pane's `state` and `program_status`. If the turn looks ended, read the screen first.
+- For one pane, use `skiff wait S --for turn --timeout N`. It returns at once for a turn that ended and is unread.
 - Run one `skiff wait S --for idle` at a time. Finish an open shell call before you start another wait.
 - In a Skiff pane, or with no terminal on stdout, `wait` stops after 45 seconds. A `--timeout` above 60 becomes 60. On a timeout, read the screen and wait again while the task runs.
 - For several children, use `skiff wait S1 S2 S3 --any --for idle`. It prints the id, name and state of the first one. Read that screen, then wait on the rest.
-- To keep your turn free, run `skiff events --json [S...]` as a background job. It has no time limit. In the foreground, give `--timeout`. With no names, it follows every session, new ones too.
+- To keep your turn free, run `skiff events --json [S...]` as a background job. It has no time limit. In the foreground, give `--timeout`. With no names, it follows every session, new ones too. `events` prints only what happens after it starts: a turn that ended before gives no line.
+- Do not pipe `skiff events` into `grep -m1`. The pipeline ends only when `events` writes again.
 - After each `wait` exit 0 and each event, run `peek`. `idle` means quiet, not done.
+- An empty prompt in `peek`, or a bare `idle`, proves neither work nor completion. Read the result on the screen.
 - An agent that reports its state (OSC 7501: Claude Code, Codex, Grok, Antigravity) says more. In `ls --json`, `program_status.state` is `working`, `blocked` (with `kind`: `permission`, `question` or `auth`, and `msg`), `idle`, `done` or `error`. `done` and `error` end a turn. `skiff wait S --for turn` waits for that end, and exits 4 when it was an error. Still read the screen: the report says the turn ended, not what it did.
 - Collect the result, the checks and any blocker. Do not report a task as done from the state alone.
 - For a deployment, get the agent's deployment result before you call it live. Keep local checks apart from production checks.
@@ -276,15 +280,15 @@ Work folders: `add` and `handoff` make one folder for each row, in `results/` in
 
 `skiff watch` runs while a Skipper runs: the Skiff agent, or a project or fleet Skipper. Each `[watch]` line goes to the coordinator that owns the task. A project Skipper hears of its own tasks; Admiral hears of its own, and once of each hand-off a project Skipper reports. It types one `[watch]` line into the coordinator when a ledger pane ends a turn, exits, restarts or is gone, or is idle with a pending task. It types only while the agent is idle and its input box is empty. A `waiting` pane gives the person a desktop notification and gives the agent nothing. The app sends that notification itself and starts the watcher with `--no-notify`.
 
-A plan holds the turn ends of its tasks. While a task in the plan still runs, a pane that ends its turn on a `sent` task of the plan gives no line. When every task in the plan has ended, the watcher types one line for the plan: `[watch] plan UID: 3 of 3 tasks ended: pane NAME ID, ...`. A task has ended when it is `done` or `blocked`, or `sent` and its pane is idle, exited, restarted or gone. A `pending` task, a pane that works or waits, and a hand-off that is not done still run. A pane that exits, restarts or is gone, or is idle with a pending task, still gives its own line at once. A task with no plan works as before.
+A plan holds the turn ends of its tasks. While a task in the plan still runs, a pane that ends its turn on a `sent` task of the plan gives no line. When every task in the plan has ended, the watcher types one line for the plan: `[watch] plan UID: 3 of 3 tasks ended: pane NAME ID, ...`. A task has ended when it is `done` or `blocked`, or `sent` and its pane is idle, exited, restarted or gone. A pane that works or waits, and a hand-off that is not done, still run. A `pending` task does not hold the plan. When the other tasks have ended, the line names the pending tasks: `[watch] plan UID: 1 of 1 sent task ended: pane NAME ID; 1 pending: UID2`. Set each ended task `done`, and send each pending task when it is ready. The plan line comes again when the sent tasks end. A plan with only pending tasks gives no plan line. A pane that exits, restarts or is gone, or is idle with a pending task, still gives its own line at once. A task with no plan works as before.
 
 1. Read each pane that a `[watch]` line names with `skiff peek`.
-2. Then run `skiff seen S`. An unread pane is named again on the next run.
+2. Then run `skiff seen S`. An unread pane is named again on the next run. A watcher that starts again (an app update) names each idle pane with a `sent` task again.
 3. A gone pane cannot be marked seen. The `[watch]` line names the tasks that skiff set `done` with it. Tell the person, then run `skiff ledger report UID...`. To run a task again, reassign it with `skiff ledger update UID --pane S --state pending`.
 4. On `[watch] N done tasks not reported`, run `skiff ledger ls --unreported` and report them.
 5. On `[watch] the P Skipper reported hand-off UID`, read the hand-off's result, tell the person, then run `skiff ledger report UID`. That also stamps the tasks under it.
 6. On `[watch] Closed KIND UID with no report`, tell the person what it names. It comes once. A hand-off in it that a Skipper reports later gives its normal line.
-7. On `[watch] plan UID: N of M tasks ended`, read each pane it names and mark it seen. Set each task `done` with its result, tell the person in one report, then run `skiff ledger report UID`.
+7. On `[watch] plan UID: N of M tasks ended`, read each pane it names and mark it seen. Set each task `done` with its result, tell the person in one report, then run `skiff ledger report UID`. If the line names pending tasks, set only the ended tasks `done` and do not report the plan yet.
 8. On `[watch] the P Skipper exited: hand-off UID is open` (or `restarted`), tell the person. Do not start the Skipper yourself. `skiff skipper --project P --no-attach` (`--fleet F` for a fleet) starts a new agent in its shell, or a new session, and sets its open hand-offs `pending`; resend each with `skiff ledger send UID --enter`. A Skipper's turn ends and idle time give no line.
 
 ### The Ledger panel
