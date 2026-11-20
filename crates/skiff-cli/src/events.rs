@@ -65,6 +65,9 @@ pub async fn events(c: &Client, args: &[String], json: bool, timeout: Option<f64
     // Listen before the list, so no change falls between the two.
     let mut events = c.events();
     let all = sessions::sorted(c).await?;
+    // Events queued before the list reply are older than the list. Drained
+    // at once: an event that comes while the names resolve is printed.
+    while !matches!(events.try_recv(), Err(TryRecvError::Empty | TryRecvError::Closed)) {}
     let mut only: Option<Vec<String>> = None;
     if !args.is_empty() {
         let mut ids = Vec::new();
@@ -96,8 +99,6 @@ pub async fn events(c: &Client, args: &[String], json: bool, timeout: Option<f64
     let deadline = timeout
         .and_then(|t| Duration::try_from_secs_f64(t.max(0.0)).ok())
         .and_then(|d| Instant::now().checked_add(d));
-    // Events queued before the list reply are older than the list.
-    while !matches!(events.try_recv(), Err(TryRecvError::Empty | TryRecvError::Closed)) {}
     let emit = |id: &str, name: Option<&String>, line: Line| {
         let name = name.map_or("", String::as_str);
         if json {
