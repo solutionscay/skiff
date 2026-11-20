@@ -60,7 +60,8 @@ Name every session and group you start: `skiff new --name` and
 ## Queue policy
 
 Skiff has no message queue. A refused send types nothing, and the task stays
-`pending`. Do not wait for the pane and retry the send, and do not interrupt
+`pending`. A draft in the pane's input box sets it `blocked`: after the person
+clears the box, send it again with `skiff ledger send UID --enter`. Do not wait for the pane and retry the send, and do not interrupt
 the pane to make room for the message. Tell the user that the task waits for
 that pane. When the pane is idle, a `[watch]` line names the task and the
 command that sends it.
@@ -74,7 +75,7 @@ the commands:
 | Command | When |
 |---|---|
 | `skiff ledger add --pane S --task "..." --title "..." --send --enter [--parent UID] [--ref TEXT] [--expect result\|commit]` | You hand a task to a pane. It adds the row, sends the task with its result path, and prints the id, the uid and the result path. With `--parent`, it also prints the plan's uid. With `--expect`, `update --state done` checks that the result file exists, or that the commit given with `--commit REF` is in the project's repository, and says what that shows. |
-| `skiff ledger send UID --enter [--replace]` | A task is `pending` or `interrupted`. A pane works on one task: a send to a pane that holds another of your tasks, `sent` or `blocked`, is refused. `--replace` closes that task as `done`, outcome `interrupted`. |
+| `skiff ledger send UID --enter [--replace]` | A task is `pending` or `interrupted`, or `blocked` because a draft refused its last send. A pane works on one task: a send to a pane that holds another of your tasks, `sent` or `blocked`, is refused. `--replace` closes that task as `done`, outcome `interrupted`. |
 | `skiff ledger add --plan --task "..." --title "..." [--ref TEXT]` | Work needs more than one task. It prints the plan's uid and its `plan.md`. |
 | `skiff ledger update ID --state S [--result PATH]` | You mark a task `blocked` or `done`. `blocked` means the pane needs the user: the app shows it as "needs you". A task that a newer task replaced is not blocked: send the new task with `--replace`. |
 | `skiff ledger update ID --outcome O` | A task ended: `succeeded`, `failed`, `interrupted` or `unobserved`. It sets the task `done`. `--state done` alone gives `succeeded`, or `unobserved` when the evidence it expects is missing. |
@@ -144,8 +145,8 @@ the commands:
   turns. When every task in the plan has ended, you get one line:
   `[watch] plan UID: N of M tasks ended`. Read each pane it names and mark it
   seen, set each task `done`, give the user one report, then run
-  `skiff ledger report UID`. A pane that exits, restarts, is gone or waits on
-  a pending task still gets its own line at once.
+  `skiff ledger report UID`. A pane that exits, restarts or is gone, or is idle
+  with a pending task, still gets its own line at once.
 - A `pending` task does not hold its plan. When the sent tasks have ended, the
   line names the pending tasks: `[watch] plan UID: N of M sent tasks ended:
   ...; K pending: UID2`. Set only the ended tasks `done`. Do not report the
@@ -225,10 +226,11 @@ Task types is the list of types. This file lists none.
 - `skiff ledger prune` and `rm` keep the work folders and result files. Add
   `--flush` only when the user asks to remove the files too.
 - Do not report a task as done from the pane state alone. Read the result.
-- Claude Code shows a prompt suggestion in gray in an empty input box. `peek`
-  shows no color, so the suggestion looks like typed text after `❯`. It is not
-  a draft, and the person did not type it. Do not report a draft from `peek`.
-  Send: only exit 9 tells you that the box holds a real draft.
+- An agent can show a prompt suggestion in an empty input box. `peek` hides a
+  dim suggestion (Claude Code), but prints a colored one (Antigravity) as
+  text after the prompt mark. It is not a draft, and the person did not type
+  it. Do not report a draft from `peek`. Send: only exit 9 tells you that the
+  box holds a real draft.
 
 ## Sends to you
 

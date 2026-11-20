@@ -348,7 +348,7 @@ pub struct Send<'a> {
 
 /// What [`send_to`] came to: `send`'s exit code, and whether a draft in the
 /// agent's input box refused it (exit 9).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy)]
 pub struct Sent {
     pub code: i32,
     pub draft: bool,

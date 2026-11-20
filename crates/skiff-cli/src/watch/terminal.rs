@@ -62,9 +62,9 @@ pub struct Screen {
     pub rows: Vec<(String, String)>,
     /// Per row: the text without dim or colored cells: what the person can
     /// have typed. An agent draws a hint dim (Claude Code) or colored (agy).
-    pub plain: Vec<String>,
+    pub(super) plain: Vec<String>,
     /// The cursor: its row, and its char index in that row's text.
-    pub cursor: (usize, usize),
+    pub(super) cursor: (usize, usize),
 }
 
 /// Whether `cell` can be text the person typed: not dim, and in the

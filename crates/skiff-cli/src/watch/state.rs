@@ -423,8 +423,8 @@ impl Watcher {
                 wakes.extend(self.skipper(g, scope, s));
                 continue;
             }
-            // The first read: a sent task on an idle pane counts as a turn
-            // that ended, so its line comes again after a restart.
+            // The first read, or the first after a lag: a sent task on an
+            // idle pane counts as a turn that ended, so its line comes again.
             if let Some(s) = g.s.filter(|_| recall && g.sent) {
                 self.turned.insert(s.id.clone());
             }

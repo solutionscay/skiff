@@ -451,7 +451,7 @@ pub(super) fn message(row: &Row) -> String {
 }
 
 /// The state a task takes after `send` exits with `code`. A refusal typed
-/// nothing, so the task stays pending. Exit 8 typed the text but started no
+/// nothing, so the task keeps its state. Exit 8 typed the text but started no
 /// turn, and a `draft` refusal (exit 9) found the person's text in the box:
 /// both need the person.
 pub(super) fn state_after(code: i32, draft: bool) -> Option<&'static str> {
@@ -463,7 +463,7 @@ pub(super) fn state_after(code: i32, draft: bool) -> Option<&'static str> {
     }
 }
 
-/// Sends the pending task `row` to its pane with `send`'s checks, then
+/// Sends the task `row` to its pane with `send`'s checks, then
 /// records the outcome. Returns `send`'s exit code.
 pub(super) async fn send_row(socket: &Path, db: &Connection, row: &Row, o: SendOpts) -> Result<i32> {
     if let Some(other) = row.socket_other_than(socket) {
