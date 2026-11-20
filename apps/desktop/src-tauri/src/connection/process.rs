@@ -112,7 +112,15 @@ pub(super) fn reap(mut child: std::process::Child) {
 /// A control for this Mac, for the tests of the process helpers.
 #[cfg(test)]
 pub(super) fn local_control() -> ProcessControl {
-    super::App::default().selection().process_control().unwrap()
+    super::local_selection().process_control().unwrap()
+}
+
+/// An app that shows this Mac, whatever the user's `hosts.toml` selects.
+#[cfg(test)]
+pub(super) fn local_app() -> super::App {
+    let app = super::App::default();
+    app.set_selection(super::local_selection());
+    app
 }
 
 #[cfg(test)]

@@ -249,7 +249,7 @@ pub(crate) async fn daemon_status(app: State<'_, App>) -> Result<DaemonStatus, S
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::process::local_control;
+    use super::super::process::{local_app, local_control};
     use skiff_client::host::local::HostSelection;
     use std::{path::PathBuf, cmp::Ordering::*};
 
@@ -336,7 +336,7 @@ mod tests {
         let other = skiff_core::PROTOCOL + 1;
         for (version, replaced) in [("99.0.0", false), ("0.0.1", true)] {
             let mut stand_in = std::process::Command::new("sleep").arg("30").spawn().unwrap();
-            let app = super::App::default();
+            let app = local_app();
             let check = rt.block_on(async {
                 let c = fake_daemon(&dir, version, other, stand_in.id(), false).await;
                 super::check_daemon(&app, &c, true).await
@@ -376,7 +376,7 @@ mod tests {
         let mut outcome = Vec::new();
         for (version, want) in [("0.0.1", "reload"), ("99.0.0", "newer"), (skiff_core::VERSION, "same")] {
             let mut stand_in = std::process::Command::new("sleep").arg("30").spawn().unwrap();
-            let app = super::App::default();
+            let app = local_app();
             let check = rt.block_on(async {
                 let c = fake_daemon(&dir, version, skiff_core::PROTOCOL, stand_in.id(), true).await;
                 super::check_daemon(&app, &c, true).await
@@ -447,7 +447,7 @@ mod tests {
         let old_daemon = std::env::var_os("SKIFF_DAEMON");
         std::env::set_var("SKIFF_DAEMON", &bin);
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let app = super::App::default();
+        let app = local_app();
         rt.block_on(async {
             let c = fake_daemon(&dir, "0.0.1", skiff_core::PROTOCOL, std::process::id(), true).await;
             super::check_daemon(&app, &c, false).await
