@@ -95,6 +95,13 @@ pub enum Request {
     Seen {
         session: SessionId,
     },
+    /// The session needs the person: it waits, with `cause` as its
+    /// `waiting_cause`. The person's next input ends the wait, as after a
+    /// bell. `skiff send` sets it when it cannot confirm its send.
+    NeedsYou {
+        session: SessionId,
+        cause: String,
+    },
     /// The last `rows` rows of the session's text above the agent's input
     /// box, for mission control. Answers [`Response::Screen`].
     Screen {
@@ -410,6 +417,7 @@ impl Request {
             Request::RenameSession { .. } => "rename_session",
             Request::SetSessionTheme { .. } => "set_session_theme",
             Request::Seen { .. } => "seen",
+            Request::NeedsYou { .. } => "needs_you",
             Request::Screen { .. } => "screen",
             Request::Kill { .. } => "kill",
             Request::ListAgents => "list_agents",

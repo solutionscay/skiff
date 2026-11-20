@@ -207,15 +207,15 @@ fn template_scope(cfg: &skiff_core::config::Config, arg: &str) -> Result<skipper
 /// How long a new agent has to show its input box.
 const READY: Duration = Duration::from_secs(90);
 
-/// Waits until the new agent in `id` shows an empty input box, then sends
+/// Waits until the new agent in `id` shows its input box, then sends
 /// `text` with Enter. Returns `send`'s exit code.
 pub async fn greet(c: &Client, id: &str, text: &str) -> Result<i32> {
     let s = ready(c, id).await?;
-    crate::sessions::send_to(c, &s, crate::sessions::Send { text: &[text.to_string()], enter: true, raw: false, shell: false, stdin: false }).await.map(|sent| sent.code)
+    crate::sessions::send_to(c, &s, crate::sessions::Send { text: &[text.to_string()], enter: true, raw: false, shell: false, stdin: false }).await
 }
 
-/// The session `id` once a known agent is in front, idle, with an empty
-/// input box. Fails when it ends, or after [`READY`].
+/// The session `id` once a known agent is in front, idle, with its input
+/// box showing. Fails when it ends, or after [`READY`].
 pub async fn ready(c: &Client, id: &str) -> Result<skiff_core::session::SessionInfo> {
     use skiff_core::session::SessionState;
     let since = Instant::now();

@@ -10,6 +10,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use super::NOW;
+use crate::sessions;
 
 /// One attempt, as `ledger show` prints it.
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -52,6 +53,9 @@ pub enum Evidence {
     Accepted,
     /// The text and Enter went in, but no turn started in time: exit 8.
     NoTurn,
+    /// The text went in, but did not show on the agent's screen, so Enter
+    /// was not pressed: exit 11.
+    PasteUnseen,
     /// Nothing was typed: a refusal, with `send`'s exit code.
     Refused(i32),
 }
@@ -63,7 +67,8 @@ impl Evidence {
         match code {
             0 if turn => Evidence::TurnStarted,
             0 => Evidence::Accepted,
-            8 => Evidence::NoTurn,
+            sessions::NO_TURN => Evidence::NoTurn,
+            sessions::PASTE_UNSEEN => Evidence::PasteUnseen,
             c => Evidence::Refused(c),
         }
     }
@@ -73,6 +78,7 @@ impl Evidence {
             Evidence::TurnStarted => "turn started",
             Evidence::Accepted => "text accepted",
             Evidence::NoTurn => "no turn",
+            Evidence::PasteUnseen => "paste not confirmed",
             Evidence::Refused(_) => "refused",
         }
     }
@@ -81,13 +87,14 @@ impl Evidence {
     pub fn failure(self) -> Option<&'static str> {
         Some(match self {
             Evidence::TurnStarted | Evidence::Accepted => return None,
-            Evidence::NoTurn => "text sent, but no turn started: it can be in the input box",
+            Evidence::NoTurn => "send not confirmed: enter: no turn started; the text can be in the input box",
+            Evidence::PasteUnseen => "send not confirmed: paste: the text did not show on the screen; Enter was not pressed",
             Evidence::Refused(3) => "the session waits for the person",
-            Evidence::Refused(4) => "the session is working",
+            Evidence::Refused(4) => "the session is working, or shows its busy line",
             Evidence::Refused(5) => "a shell or an unknown program is in front",
             Evidence::Refused(6) => "the session's program exited",
             Evidence::Refused(7) => "the session is the sender's own",
-            Evidence::Refused(9) => "a draft or the busy line, or input after the check",
+            Evidence::Refused(9) => "input after the check",
             Evidence::Refused(_) => "send refused it",
         })
     }
@@ -96,10 +103,17 @@ impl Evidence {
     pub fn code(self) -> i32 {
         match self {
             Evidence::TurnStarted | Evidence::Accepted => 0,
-            Evidence::NoTurn => 8,
+            Evidence::NoTurn => sessions::NO_TURN,
+            Evidence::PasteUnseen => sessions::PASTE_UNSEEN,
             Evidence::Refused(c) => c,
         }
     }
+}
+
+/// An attempt with this evidence word delivered nothing the agent took:
+/// refused, or not confirmed. Its task can be sent again.
+pub fn undelivered(word: &str) -> bool {
+    matches!(word, "refused" | "no turn" | "paste not confirmed")
 }
 
 /// The payload's size and SHA-256, in hex: the text exactly as it was

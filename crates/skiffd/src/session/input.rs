@@ -81,10 +81,21 @@ impl SessionPool {
             session.send(id, vec![Input::Bytes(data.to_vec())])?;
         }
         // Input answers a bell. An agent's prompt goes when the screen says so.
-        if session.belled.swap(false, Ordering::Relaxed)
-            && session.info.lock().unwrap().state == SessionState::Waiting
-        {
-            self.set_state(&session, SessionState::Working);
+        if session.belled.swap(false, Ordering::Relaxed) {
+            let (state, report) = {
+                let info = session.info.lock().unwrap();
+                (info.state, info.program_status.as_ref().filter(|p| !p.ended).map(|p| p.state.clone()))
+            };
+            // A program that reports its state decides it, as a report
+            // does: a wait `needs_you` set ends at its claim.
+            let target = match report.as_deref() {
+                None | Some("working") => Some(SessionState::Working),
+                Some("blocked") => None,
+                Some(_) => Some(SessionState::Idle),
+            };
+            if let (SessionState::Waiting, Some(target)) = (state, target) {
+                self.set_state(&session, target);
+            }
         }
         Ok(())
     }

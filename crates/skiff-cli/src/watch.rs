@@ -56,8 +56,8 @@ use state::*;
 #[cfg(test)]
 use std::fs::File;
 #[cfg(test)]
-use terminal::{busy_line, front, input_box, Screen};
-pub use terminal::{input_box_rows, read_front, rows_of, Front};
+use terminal::busy_line;
+pub use terminal::{desktop_notify, front, input_box_rows, read_front, read_rows, rows_of, Front};
 
 /// How often the ledger and the session list are read again without an event.
 const TICK: Duration = Duration::from_secs(2);

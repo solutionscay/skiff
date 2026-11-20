@@ -60,11 +60,29 @@ Name every session and group you start: `skiff new --name` and
 ## Queue policy
 
 Skiff has no message queue. A refused send types nothing, and the task stays
-`pending`. A draft in the pane's input box sets it `blocked`: after the person
-clears the box, send it again with `skiff ledger send UID --enter`. Do not wait for the pane and retry the send, and do not interrupt
+`pending`. Do not wait for the pane and retry the send, and do not interrupt
 the pane to make room for the message. Tell the user that the task waits for
 that pane. When the pane is idle, a `[watch]` line names the task and the
 command that sends it.
+
+## Confirmed send
+
+A send to a known agent has two steps. First it pastes the text and confirms
+that the screen shows it. Then it presses Enter and confirms that a turn
+starts. A step that is not confirmed is not delivered: exit 11 for the paste,
+exit 8 for Enter. The task goes `blocked`, and the pane shows "needs you" with
+the cause `send not confirmed: paste` or `send not confirmed: enter`.
+
+When a send is not delivered:
+
+1. Report it to the user at once. Name the pane (its name and id) and the
+   failed step.
+2. Do not end your turn silently, and do not send again.
+3. After the user has handled the pane, send it again with
+   `skiff ledger send UID --enter`.
+
+A `[watch]` line also tells you, and Admiral, about each send that was not
+delivered.
 
 ## Ledger
 
@@ -75,7 +93,7 @@ the commands:
 | Command | When |
 |---|---|
 | `skiff ledger add --pane S --task "..." --title "..." --send --enter [--parent UID] [--ref TEXT] [--expect result\|commit]` | You hand a task to a pane. It adds the row, sends the task with its result path, and prints the id, the uid and the result path. With `--parent`, it also prints the plan's uid. With `--expect`, `update --state done` checks that the result file exists, or that the commit given with `--commit REF` is in the project's repository, and says what that shows. |
-| `skiff ledger send UID --enter [--replace]` | A task is `pending` or `interrupted`, or `blocked` because a draft refused its last send. A pane works on one task: a send to a pane that holds another of your tasks, `sent` or `blocked`, is refused. `--replace` closes that task as `done`, outcome `interrupted`. |
+| `skiff ledger send UID --enter [--replace]` | A task is `pending` or `interrupted`, or `blocked` because its last send was not delivered and the user has handled the pane. A pane works on one task: a send to a pane that holds another of your tasks, `sent` or `blocked`, is refused. `--replace` closes that task as `done`, outcome `interrupted`. |
 | `skiff ledger add --plan --task "..." --title "..." [--ref TEXT]` | Work needs more than one task. It prints the plan's uid and its `plan.md`. |
 | `skiff ledger update ID --state S [--result PATH]` | You mark a task `blocked` or `done`. `blocked` means the pane needs the user: the app shows it as "needs you". A task that a newer task replaced is not blocked: send the new task with `--replace`. |
 | `skiff ledger update ID --outcome O` | A task ended: `succeeded`, `failed`, `interrupted` or `unobserved`. It sets the task `done`. `--state done` alone gives `succeeded`, or `unobserved` when the evidence it expects is missing. |
@@ -228,9 +246,7 @@ Task types is the list of types. This file lists none.
 - Do not report a task as done from the pane state alone. Read the result.
 - An agent can show a prompt suggestion in an empty input box. `peek` hides a
   dim suggestion (Claude Code), but prints a colored one (Antigravity) as
-  text after the prompt mark. It is not a draft, and the person did not type
-  it. Do not report a draft from `peek`. Send: only exit 9 tells you that the
-  box holds a real draft.
+  text after the prompt mark. The person did not type it.
 
 ## Sends to you
 

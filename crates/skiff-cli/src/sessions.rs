@@ -346,51 +346,78 @@ pub struct Send<'a> {
     pub stdin: bool,
 }
 
-/// What [`send_to`] came to: `send`'s exit code, and whether a draft in the
-/// agent's input box refused it (exit 9).
-#[derive(Debug, Clone, Copy)]
-pub struct Sent {
-    pub code: i32,
-    pub draft: bool,
+/// `send`'s exit code when the pasted text did not show on the agent's
+/// screen. Enter was not pressed.
+pub const PASTE_UNSEEN: i32 = 11;
+/// `send`'s exit code when Enter went to a known agent, but no turn started.
+pub const NO_TURN: i32 = 8;
+
+/// The step of a send that the agent's screen or state did not confirm.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Unconfirmed {
+    Paste,
+    Enter,
 }
 
-impl From<i32> for Sent {
-    fn from(code: i32) -> Self {
-        Sent { code, draft: false }
+impl Unconfirmed {
+    /// The step as `send` exits for it.
+    pub fn of(code: i32) -> Option<Unconfirmed> {
+        match code {
+            PASTE_UNSEEN => Some(Unconfirmed::Paste),
+            NO_TURN => Some(Unconfirmed::Enter),
+            _ => None,
+        }
+    }
+
+    /// The pane's waiting cause, and the delivery record's failure.
+    pub fn cause(self) -> &'static str {
+        match self {
+            Unconfirmed::Paste => "send not confirmed: paste",
+            Unconfirmed::Enter => "send not confirmed: enter",
+        }
     }
 }
 
-/// Exit codes: 0 when sent; 3 waiting, 4 working, 5 a shell or unknown
-/// program in front, 6 done, 7 own session, 9 a draft or the busy line in a
-/// known agent, or input after the check. A refusal types nothing.
-/// 8: Enter went to a known agent, but no turn started.
+/// Exit codes: 0 when sent and confirmed; 3 waiting, 4 working (its state or
+/// its busy line), 5 a shell or unknown program in front, 6 done, 7 own
+/// session, 9 input after the check. A refusal types nothing.
+/// 11 ([`PASTE_UNSEEN`]): the paste did not show on the agent's screen, and
+/// Enter was not pressed. 8 ([`NO_TURN`]): Enter went in, but no turn started.
+/// After 11 or 8 the pane waits for the person.
 pub async fn send(c: &Client, arg: &str, o: Send<'_>) -> Result<i32> {
     let all = c.list_sessions().await?;
     let s = resolve::session(&all, arg)?;
-    Ok(send_to(c, s, o).await?.code)
+    send_to(c, s, o).await
 }
 
 /// [`send`] to a session from a list read just now: its `input_gen` guards
-/// the submit.
-pub async fn send_to(c: &Client, s: &SessionInfo, o: Send<'_>) -> Result<Sent> {
+/// the paste and the Enter.
+///
+/// To a known agent, a send has two steps, each confirmed before the next:
+/// the paste shows on the screen, then Enter starts a turn. Skiff does not
+/// guess whether the input box holds text before it pastes.
+pub async fn send_to(c: &Client, s: &SessionInfo, o: Send<'_>) -> Result<i32> {
     let here = std::env::var("SKIFF_SESSION").ok().filter(|h| !h.is_empty());
     let caller_shell = std::env::var("SHELL").ok();
     if let Some((code, msg)) = refusal(s, here.as_deref(), o.shell, caller_shell.as_deref()) {
         eprintln!("skiff: {msg}");
-        return Ok(code.into());
+        return Ok(code);
     }
     let who = format!("{} ({})", resolve::display_name(s), print::short_id(&s.id));
     let (enter, raw) = (o.enter, o.raw);
     // Only a known agent proves a turn by its state, and only its screen
-    // shows a draft. A shell command can finish with no output.
+    // shows the paste. A shell command can finish with no output.
     let agent = !raw && is_agent(s);
-    if agent {
-        let front = watch::read_front(c, s).await?;
-        if let Some(msg) = front_refusal(front) {
-            eprintln!("skiff: {who} {msg}");
-            return Ok(Sent { code: 9, draft: front == watch::Front::Draft });
+    let before = if agent {
+        let rows = watch::read_rows(c, &s.id).await?;
+        if watch::front(&rows, s.foreground_program.as_deref().unwrap_or("")) == watch::Front::Busy {
+            eprintln!("skiff: {who} shows its busy line. Skiff does not type into a working agent.");
+            return Ok(4);
         }
-    }
+        rows
+    } else {
+        Vec::new()
+    };
     let mut data = if o.stdin && o.text == ["-"] {
         let mut buf = Vec::new();
         std::io::stdin().read_to_end(&mut buf).context("read stdin")?;
@@ -398,6 +425,7 @@ pub async fn send_to(c: &Client, s: &SessionInfo, o: Send<'_>) -> Result<Sent> {
     } else {
         o.text.join(" ").into_bytes()
     };
+    let text = String::from_utf8_lossy(&data).into_owned();
     if !raw {
         data = enter_keys(&data);
     }
@@ -408,30 +436,178 @@ pub async fn send_to(c: &Client, s: &SessionInfo, o: Send<'_>) -> Result<Sent> {
             data.pop();
         }
     }
-    // Listen before the submit, so no change falls before the listener.
-    let events = (agent && enter).then(|| c.events());
-    // A paste, so the program keeps the text's newlines as text. skiffd
-    // types it only if the session took no input since the list.
-    if !c.submit(&s.id, data, !raw, enter, s.input_gen).await? {
+    if !agent {
+        // A paste, so the program keeps the text's newlines as text. skiffd
+        // types it only if the session took no input since the list.
+        if !c.submit(&s.id, data, !raw, enter, s.input_gen).await? {
+            eprintln!("skiff: {who} took input after the check. Nothing was typed.");
+            return Ok(9);
+        }
+        return Ok(0);
+    }
+    // 1. The paste, alone. Enter waits for the screen to show it.
+    let typed = !data.is_empty();
+    if typed && !c.submit(&s.id, data, true, false, s.input_gen).await? {
         eprintln!("skiff: {who} took input after the check. Nothing was typed.");
-        return Ok(9.into());
+        return Ok(9);
     }
-    let Some(events) = events else { return Ok(0.into()) };
-    if turn_started(c, &s.id, events).await? {
-        return Ok(0.into());
+    let (pasted, after) = if typed {
+        match paste_shows(c, &s.id, &before, &text).await? {
+            Some(seen) => seen,
+            None => {
+                eprintln!("skiff: {who}: the pasted text did not show on its screen. Enter was not pressed. Check its pane.");
+                not_delivered(c, s, &who, Unconfirmed::Paste).await;
+                return Ok(PASTE_UNSEEN);
+            }
+        }
+    } else {
+        (Vec::new(), before)
+    };
+    if !enter {
+        return Ok(0);
     }
-    // Never press Enter again: it can submit twice or add a blank line.
+    // 2. Enter. Listen before it, so no change falls before the listener.
+    let events = c.events();
+    let gen = s.input_gen + u64::from(typed);
+    if !c.submit(&s.id, b"\r".to_vec(), false, false, gen).await? {
+        eprintln!("skiff: {who} took input after the paste. Enter was not pressed. The text can be in its input box. Check its pane.");
+        not_delivered(c, s, &who, Unconfirmed::Enter).await;
+        return Ok(NO_TURN);
+    }
+    if enter_took(c, &s.id, events, &pasted, &after).await? {
+        return Ok(0);
+    }
+    // Never press Enter again: it can submit twice or answer a menu.
     eprintln!("skiff: {who}: text sent, but no turn started. It can be in the input box. Check its pane.");
-    Ok(8.into())
+    not_delivered(c, s, &who, Unconfirmed::Enter).await;
+    Ok(NO_TURN)
 }
 
-/// Why `send` must not type into a known agent whose screen shows `f`.
-pub fn front_refusal(f: watch::Front) -> Option<&'static str> {
-    match f {
-        watch::Front::Draft => Some("has text in its input box. Skiff does not add to a draft. The person sends or clears it."),
-        watch::Front::Busy => Some("shows its busy line. Skiff does not type into a working agent."),
-        watch::Front::Ready | watch::Front::NoBox => None,
+/// How long the paste has to show on the screen.
+const PASTE_WAIT: Duration = Duration::from_secs(2);
+/// How long an agent has to start a turn after a confirmed paste and Enter.
+const ENTER_WAIT: Duration = Duration::from_secs(10);
+/// How often a send reads the screen while it waits.
+const SCREEN_POLL: Duration = Duration::from_millis(250);
+
+/// Reads the screen until the paste of `text` shows, or [`PASTE_WAIT`] ends.
+/// Returns the rows that show it, and the screen then.
+async fn paste_shows(c: &Client, id: &str, before: &[String], text: &str) -> Result<Option<(Vec<String>, Vec<String>)>> {
+    let deadline = tokio::time::Instant::now() + PASTE_WAIT;
+    loop {
+        tokio::time::sleep(SCREEN_POLL).await;
+        let now = watch::read_rows(c, id).await?;
+        let rows = paste_rows(before, &now, text);
+        if !rows.is_empty() {
+            return Ok(Some((rows, now)));
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Ok(None);
+        }
     }
+}
+
+/// The rows of `after` that show the paste of `text` and that `before` did
+/// not have as many times: a row with the start of the text's first
+/// non-blank line, or a paste placeholder (Claude Code's `[Pasted text #1
+/// +12 lines]`). Spaces do not count: an agent can wrap or indent the text.
+fn paste_rows(before: &[String], after: &[String], text: &str) -> Vec<String> {
+    let needle = needle(text);
+    let shows = |row: &str| {
+        let row = squeeze(row);
+        (!needle.is_empty() && row.contains(&needle)) || row.to_lowercase().contains("[pasted")
+    };
+    let count = |rows: &[String], r: &String| rows.iter().filter(|x| *x == r).count();
+    let mut out: Vec<String> = Vec::new();
+    for r in after.iter().filter(|r| shows(r)) {
+        if !out.contains(r) && count(after, r) > count(before, r) {
+            out.push(r.clone());
+        }
+    }
+    out
+}
+
+/// The first [`NEEDLE`] characters of the text's first non-blank line, without spaces.
+fn needle(text: &str) -> String {
+    let line = text.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
+    squeeze(line).chars().take(NEEDLE).collect()
+}
+
+/// Enough of the text to tell it from the rest of the screen, and short
+/// enough to fit one row.
+const NEEDLE: usize = 24;
+
+fn squeeze(s: &str) -> String {
+    s.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
+/// True when a turn starts within [`ENTER_WAIT`] after Enter: the session
+/// leaves idle, its program reports work (OSC 7501), or the rows that showed
+/// the paste leave the screen. An exit or a removal also counts.
+async fn enter_took(
+    c: &Client,
+    id: &str,
+    mut events: tokio::sync::broadcast::Receiver<skiff_core::protocol::Event>,
+    pasted: &[String],
+    after: &[String],
+) -> Result<bool> {
+    use skiff_core::protocol::Event;
+    use tokio::sync::broadcast::error::RecvError;
+    let deadline = tokio::time::Instant::now() + ENTER_WAIT;
+    let mut poll = tokio::time::interval(SCREEN_POLL);
+    poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    poll.tick().await;
+    loop {
+        tokio::select! {
+            _ = tokio::time::sleep_until(deadline) => break,
+            e = events.recv() => match e {
+                Ok(Event::State { session, state }) if session == id && state != SessionState::Idle => return Ok(true),
+                Ok(Event::SessionUpdated { session }) if session.id == id && reports_work(&session) => return Ok(true),
+                Ok(Event::Exit { session, .. } | Event::SessionRemoved { session }) if session == id => return Ok(true),
+                Ok(_) => {}
+                Err(RecvError::Lagged(_)) => {
+                    if !still_idle(c, id).await? {
+                        return Ok(true);
+                    }
+                }
+                Err(RecvError::Closed) => bail!("skiffd closed the connection"),
+            },
+            _ = poll.tick(), if !pasted.is_empty() => {
+                if paste_left(after, &watch::read_rows(c, id).await?, pasted) {
+                    return Ok(true);
+                }
+            }
+        }
+    }
+    // The Enter can start work before the listener reads it. Read the state.
+    Ok(!still_idle(c, id).await?)
+}
+
+/// The program in front reports work now (OSC 7501).
+fn reports_work(s: &SessionInfo) -> bool {
+    s.program_status.as_ref().is_some_and(|p| p.state == "working" && !p.ended)
+}
+
+/// A row that showed the paste shows fewer times on `now` than on `after`:
+/// the text left the input box.
+fn paste_left(after: &[String], now: &[String], pasted: &[String]) -> bool {
+    let count = |rows: &[String], r: &String| rows.iter().filter(|x| *x == r).count();
+    pasted.iter().any(|r| count(now, r) < count(after, r))
+}
+
+/// A send that did not deliver: the pane waits for the person with the
+/// failed step as its cause, and the desktop says so. Best effort: an older
+/// skiffd has no request for it.
+async fn not_delivered(c: &Client, s: &SessionInfo, who: &str, step: Unconfirmed) {
+    if let Err(e) = c.needs_you(&s.id, step.cause()).await {
+        eprintln!("skiff: cannot set {who} to need you: {e:#}");
+    }
+    watch::desktop_notify(&format!("{who} needs you"), &format!("{}. Check its pane.", upper_first(step.cause())));
+}
+
+fn upper_first(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
 }
 
 /// How long an agent has to start a turn after Enter.
@@ -641,7 +817,7 @@ mod tests {
     use skiff_core::session::{SessionInfo, SessionState};
     use std::path::Path;
 
-    use super::{agent_line, front_refusal, held, is_coordinator, numbered, refusal, skipper_question, New};
+    use super::{agent_line, held, paste_left, paste_rows, is_coordinator, numbered, refusal, skipper_question, New};
     use skiff_core::{
         config::{TaskRow, TaskTypes},
         project::AgentInfo,
@@ -814,14 +990,32 @@ mod tests {
         assert_eq!(code(&s("shell", Idle, Some("codex")), None, false, Some("/bin/bash")), 0);
     }
 
+    fn screen(lines: &[&str]) -> Vec<String> {
+        lines.iter().map(|l| l.to_string()).collect()
+    }
+
     #[test]
-    fn a_draft_or_the_busy_line_refuses_and_an_empty_box_sends() {
-        use crate::watch::Front;
-        assert!(front_refusal(Front::Draft).is_some());
-        assert!(front_refusal(Front::Busy).is_some());
-        assert!(front_refusal(Front::Ready).is_none());
-        // No box to read: the state checks decide, as before.
-        assert!(front_refusal(Front::NoBox).is_none());
+    fn the_paste_is_confirmed_by_new_rows_with_its_text() {
+        let rule = "─".repeat(40);
+        let before = screen(&["❯ Reply with ok.", "ok", &rule, "❯", &rule, "  ? for shortcuts"]);
+        // The same text again: the input row is new, though the transcript has the text.
+        let typed = screen(&["❯ Reply with ok.", "ok", &rule, "❯ Reply  with ok.", &rule]);
+        assert_eq!(paste_rows(&before, &typed, "Reply with ok.\n"), ["❯ Reply  with ok."]);
+        let placeholder = screen(&["ok", &rule, "❯ [Pasted text #1 +12 lines]", &rule]);
+        assert_eq!(paste_rows(&before, &placeholder, "line one\nline two"), ["❯ [Pasted text #1 +12 lines]"]);
+        // agy's colored hint, and a screen with no change: not confirmed.
+        let hint = screen(&["╭──────────────╮", "│ > Auto mode: edits auto-approved │", "╰──────────────╯"]);
+        assert!(paste_rows(&hint, &hint, "Reply with ok.").is_empty());
+        assert!(paste_rows(&before, &before, "Reply with ok.").is_empty());
+    }
+
+    #[test]
+    fn enter_is_confirmed_when_the_pasted_row_leaves() {
+        let rule = "─".repeat(40);
+        let after = screen(&["ok", &rule, "❯ Reply with ok.", &rule]);
+        let pasted = screen(&["❯ Reply with ok."]);
+        assert!(paste_left(&after, &screen(&["ok", "", &rule, "❯", &rule]), &pasted));
+        assert!(!paste_left(&after, &after, &pasted));
     }
 
     #[test]

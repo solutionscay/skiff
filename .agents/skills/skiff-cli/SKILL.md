@@ -98,11 +98,11 @@ States: `working`, `waiting`, `idle`, `done`.
 ## Send a task
 
 1. Find the pane in the JSON. Use its id. Confirm its working directory.
-2. Run `skiff peek S -n 40`. Check the current result and the input box. If the task already runs or is complete, report that. Do not send it again. A known agent can show a prompt suggestion in an empty input box. `peek` hides a dim suggestion (Claude Code), but prints a colored one (Antigravity) as text. Do not report a draft from `peek` alone. Send: only exit 9 tells you that the box holds a real draft.
+2. Run `skiff peek S -n 40`. Check the current result and the input box. If the task already runs or is complete, report that. Do not send it again. A known agent can show a prompt suggestion in an empty input box. `peek` hides a dim suggestion (Claude Code), but prints a colored one (Antigravity) as text. The person did not type it.
 3. Write a clear task: the result, the scope, the context, the permitted actions, and what to report. An investigation request permits an investigation only. Pass on a permission to fix or deploy only when the user gave it.
 4. For a long prompt, write a file and send it with `skiff send S - --enter < file`. Keep shell syntax and user text apart.
 
-`send` types the text as a paste. Newlines stay in the text. `--enter` presses Enter once, after the text.
+`send` types the text as a paste. Newlines stay in the text. To a known agent, `send` confirms each step before the next. First it pastes, and the screen must show the text or a paste placeholder within 2 seconds. Then, with `--enter`, it presses Enter once, and a turn must start within 10 seconds. A step that is not confirmed is not delivered: the pane goes to "needs you", with the cause `send not confirmed: paste` or `send not confirmed: enter`, and a desktop notification shows.
 
 Skiff has no message queue. A refused send types nothing. Do not wait and retry. Do not interrupt the pane to make room. Report that the task was not delivered.
 
@@ -114,22 +114,24 @@ Skiff has no message queue. A refused send types nothing. Do not wait and retry.
 |---|---|---|
 | 7 | The session is your own (`$SKIFF_SESSION`), by any name | Send to another session. |
 | 3 | The session is `waiting` | Tell the user which pane needs them. End the turn. |
-| 4 | The session is `working` | Do not wait and do not retry. |
+| 4 | The session is `working`, or a known agent shows its busy line | Do not wait and do not retry. |
 | 6 | The session is `done` | Its program exited. Start a new session. |
 | 5 | A shell or an unknown program is in front | Add `--shell` only to type a shell command. A `skiff new -- CMD` session or a custom agent shows its launch shell, so it needs `--shell`. |
-| 9 | A known agent shows a draft or its busy line, or the session took input after the check | For a draft, tell the user which pane holds it. For the busy line, do as for exit 4. A dim or colored prompt suggestion is not a draft. `send` exits 0 for it. |
-| 0 | Sent | |
+| 9 | The session took input after the check | Nothing was typed. Do as for exit 4. |
+| 0 | Sent and confirmed | |
 | 1 | Error, for example no match or more than one | |
 
-`--shell` relaxes only exit 5. After the text goes in, one more check applies:
+`--shell` relaxes only exit 5. After the text goes in to a known agent (Claude Code, Codex, Gemini, Antigravity, Grok, opencode, Hermes), two more checks apply:
 
 | Exit | Condition | What to do |
 |---|---|---|
-| 8 | `--enter` went to a known agent (Claude Code, Codex, Gemini, Grok, opencode, Hermes), but no turn started in 5 seconds | Run `skiff peek S`. If the text is in the input box, tell the user which pane, with its name and id. |
+| 11 | Send not confirmed: paste. The pasted text did not show on the screen. Enter was not pressed. | Report it at once: name the pane (name and id) and the failed step. The pane needs the user. Do not end your turn silently. |
+| 8 | Send not confirmed: enter. Enter went in, but no turn started in 10 seconds | Report it at once: name the pane (name and id) and the failed step. The text can be in the input box. Do not end your turn silently. |
 
-- `send` never presses Enter a second time. A second send while the text is in the box gets exit 9.
-- There is no exit 8 without `--enter`, with `--raw`, or when the program in front is not a known agent.
-- A turn that starts and ends in under 5 seconds with no output can also give exit 8.
+- After exit 11 or 8 the pane shows "needs you". Do not send again until the user has handled the pane.
+- `send` never presses Enter a second time.
+- There is no exit 11 or 8 with `--raw`, or when the program in front is not a known agent. There is no exit 8 without `--enter`.
+- A turn that starts and ends in under 10 seconds with no output and no change on the screen can also give exit 8.
 
 ## Monitor and collect the result
 
@@ -255,8 +257,8 @@ A fleet can have one Skipper for all its projects. It is a project Skipper with 
 
 - `add` makes the row's work folder and prints the id, the uid, the folder and the result path. It makes no file in the folder. A task needs `--pane`. A plan has none.
 - `--send` and `ledger send` add " Put everything for this task in FOLDER: the result, screenshots, scratch copies and worktrees. Write your result to PATH." to the task text. Do not put the folder or the path in `--task`.
-- Both run every `send` check and exit with its code. Exit 0 sets `sent`. Exit 8 sets `blocked`. Exit 9 for a draft in the box sets `blocked` ("needs you"): after the person clears the box, `skiff ledger send UID --enter` sends it again. Any other refusal leaves the task as it was.
-- `ledger send` exits 1 and types nothing for a task that is `sent`, `blocked` (unless a draft refused its last send) or `done`, for a plan, for a gone pane, or for a task on another daemon.
+- Both run every `send` check and exit with its code. Exit 0 sets `sent`. Exit 11 (paste not confirmed) and exit 8 (Enter not confirmed) set `blocked`, and the delivery row in `ledger show` names the failed step. The pane goes to "needs you". The Skipper that owns the task, and Admiral, get a `[watch]` line that names the task, the pane and the step. After the person handles the pane, `skiff ledger send UID --enter` sends it again. Any other refusal leaves the task as it was.
+- `ledger send` exits 1 and types nothing for a task that is `sent`, `blocked` (unless its last send was not delivered) or `done`, for a plan, for a gone pane, or for a task on another daemon.
 - A pane works on one task. `ledger send` and `add --send` exit 1 and type nothing when the pane holds another of your tasks, `sent` or `blocked`. The refusal names it. `add --send` then adds no row. Set that task done first, or pass `--replace`: once the new task is sent, the old one is `done`, outcome `interrupted`, and reported. A refused send leaves it as it was. A hand-off and a schedule step hold no pane.
 - Give every task and plan a `--title` of 3 to 6 words, such as `--title "Fix found-set count"`. Without one, the Ledger panel uses the first sentence of the task.
 - `--type T` records the task type. `--ref TEXT` stores a URL or a ticket key. Skiff stores both and does not act on them.

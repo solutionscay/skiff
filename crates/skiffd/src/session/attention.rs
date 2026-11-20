@@ -34,6 +34,35 @@ impl SessionPool {
         self.apply_policy(session, Input::Title { old, new }, title);
     }
 
+    /// Sets the session waiting for the person, with `cause`, as a client
+    /// asks: a send it could not confirm. Held as a bell is: the person's
+    /// next input ends it.
+    pub fn needs_you(&self, id: &str, cause: String) -> anyhow::Result<()> {
+        let _change = self.change()?;
+        let session = self.get(id).ok_or_else(|| anyhow::anyhow!("no such session: {id}"))?;
+        let now = now_ms();
+        let (changed, info) = {
+            let mut info = session.info.lock().unwrap();
+            if info.state == SessionState::Done {
+                anyhow::bail!("session {id} has exited");
+            }
+            let changed = info.state != SessionState::Waiting;
+            if changed {
+                session.waiting_since.store(now, Ordering::Relaxed);
+            }
+            tracing::info!("session {id} waits: {cause}");
+            info.state = SessionState::Waiting;
+            info.waiting_cause = Some(cause);
+            session.belled.store(true, Ordering::Relaxed);
+            (changed, info.clone())
+        };
+        if changed {
+            let _ = self.events.send(Event::State { session: info.id.clone(), state: SessionState::Waiting });
+        }
+        let _ = self.events.send(Event::SessionUpdated { session: info });
+        Ok(())
+    }
+
     /// Sets `waiting` and records why.
     #[cfg(test)]
     pub(super) fn wait(&self, session: &Session, cause: &'static str) {

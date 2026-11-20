@@ -492,7 +492,7 @@ async fn a_task_on_another_socket_is_never_gone_and_is_not_sent_from_here() {
     let mut t = r(&theirs);
     t.live = None;
     assert_eq!(t.shown_state(), "pending");
-    let err = send_row(here, &db, &r(&theirs), SendOpts { text: vec![], enter: true, shell: false, draft_blocks: true }).await.unwrap_err().to_string();
+    let err = send_row(here, &db, &r(&theirs), SendOpts { text: vec![], enter: true, shell: false }).await.unwrap_err().to_string();
     assert!(err.contains("/tmp/other.sock") && !err.contains("gone"), "{err}");
     assert_eq!(one(&db, &theirs).unwrap().state, "pending");
     std::fs::remove_dir_all(&dir).unwrap();
@@ -925,16 +925,16 @@ fn only_a_pending_task_is_sent_and_a_refusal_keeps_it_pending() {
     // A restart interrupted it: it can go again.
     assert_eq!(unsendable(&r, Some(&restarted), false), None);
     assert!(unsendable(&one(&db, &plan_uid).unwrap(), Some(&same), false).unwrap().contains("plan"));
-    // A refused send to a blocked task typed nothing: it can go again.
+    // A blocked task whose last send was not delivered can go again.
     r.state = "blocked".into();
     assert!(unsendable(&r, Some(&same), false).unwrap().contains("not pending"));
     assert_eq!(unsendable(&r, Some(&same), true), None);
-    assert_eq!(state_after(0, false), Some("sent"));
-    assert_eq!(state_after(8, false), Some("blocked"));
-    // A draft needs the person. The busy line and the input race do not.
-    assert_eq!(state_after(9, true), Some("blocked"));
+    assert_eq!(state_after(0), Some("sent"));
+    // A send not confirmed needs the person: Enter (8) or the paste (11).
+    assert_eq!(state_after(8), Some("blocked"));
+    assert_eq!(state_after(11), Some("blocked"));
     for refused in [1, 3, 4, 5, 6, 7, 9] {
-        assert_eq!(state_after(refused, false), None);
+        assert_eq!(state_after(refused), None);
     }
 }
 
@@ -1222,7 +1222,7 @@ fn a_delivery_is_recorded_before_and_settled_after() {
     let got = of(&db, &uid).unwrap();
     let seen: Vec<(&str, &str, Option<i64>)> = got.iter().map(|a| (a.kind.as_str(), a.shown_evidence(), a.code)).collect();
     assert_eq!(seen, [("send", "turn started", Some(0)), ("send", "no turn", Some(8)), ("send", "refused", Some(4)), ("report", UNCERTAIN, None)]);
-    assert_eq!(got[2].failure.as_deref(), Some("the session is working"));
+    assert_eq!(got[2].failure.as_deref(), Some("the session is working, or shows its busy line"));
     // Text in without Enter to a known agent: accepted, not a turn.
     assert_eq!(Evidence::of(0, false).word(), "text accepted");
     // A removed row takes its attempts with it.

@@ -206,6 +206,16 @@ impl Client {
     }
 
     /// The session's pane has the keys. Clears its unread flag and agent exit.
+    /// Sets the session waiting for the person, with `cause`. See
+    /// [`Request::NeedsYou`].
+    pub async fn needs_you(&self, session: &str, cause: &str) -> Result<()> {
+        self.expect_ok(Request::NeedsYou {
+            session: session.to_string(),
+            cause: cause.to_string(),
+        })
+        .await
+    }
+
     pub async fn seen(&self, session: &str) -> Result<()> {
         self.expect_ok(Request::Seen {
             session: session.to_string(),

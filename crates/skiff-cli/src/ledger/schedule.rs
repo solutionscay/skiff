@@ -550,12 +550,13 @@ enum Step {
 }
 
 /// Sends the agent step `row`. A send that cannot go now (the session works,
-/// waits, or has text in its box) keeps it pending. Any other refusal ends
+/// waits, or took input after the check) keeps it pending. Any other refusal ends
 /// the step: done, failed, so it holds no work open.
 async fn deliver(socket: &Path, db: &Connection, row: &Row, text: Option<String>) -> Result<Step> {
-    let sent = send_row(socket, db, row, SendOpts { text: text.into_iter().collect(), enter: true, shell: false, draft_blocks: false }).await;
+    let sent = send_row(socket, db, row, SendOpts { text: text.into_iter().collect(), enter: true, shell: false }).await;
     let refused = match sent {
-        Ok(0 | 8) => return Ok(Step::Sent),
+        // 8 and 11 typed into the pane and set it to need the person.
+        Ok(0 | 8 | 11) => return Ok(Step::Sent),
         Ok(3 | 4 | 9) => return Ok(Step::Pending),
         Ok(c) => anyhow::anyhow!("the send was refused (exit {c})"),
         Err(e) => e,

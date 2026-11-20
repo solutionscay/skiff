@@ -726,72 +726,22 @@ fn a_pending_line_is_held_when_refused_and_dropped_with_no_turn() {
     assert_eq!(run(&mut w, &rows, &a), []);
 }
 
-fn rows(lines: &[&str]) -> Vec<(String, String)> {
-    lines.iter().map(|l| (l.to_string(), l.to_string())).collect()
-}
-
-/// A screen of `rows` with the cursor outside any input box.
-fn scr(rows: Vec<(String, String)>) -> Screen {
-    let plain = rows.iter().map(|(_, solid)| solid.clone()).collect();
-    Screen { rows, plain, cursor: (usize::MAX, 0) }
+fn rows(lines: &[&str]) -> Vec<String> {
+    lines.iter().map(|l| l.to_string()).collect()
 }
 
 #[test]
-fn finds_an_empty_box_and_a_draft() {
+fn finds_the_input_box_and_the_busy_line() {
     let rule = "─".repeat(40);
-    let at = |lines: &[&str], agent| input_box(&scr(rows(lines)), agent);
-    assert_eq!(at(&["done.", &rule, "❯", &rule, "  ? for shortcuts"], "claude"), Some(false));
-    let mut tall = rows(&[&rule, "❯ x", &rule]);
-    tall.extend(rows(&[""; 30]));
-    assert_eq!(input_box(&scr(tall), "claude"), Some(true));
-    assert_eq!(at(&["done.", &rule, "❯ fix the", "  tests", &rule], "claude"), Some(true));
-    // The dim hint is not a draft.
-    let hint = vec![(rule.clone(), rule.clone()), ("❯ Try \"fix lint\"".into(), "❯".into()), (rule.clone(), rule.clone())];
-    assert_eq!(input_box(&scr(hint), "claude"), Some(false));
-    assert_eq!(at(&["$ ls", "a b"], "claude"), None);
-    assert!(busy_line(&rows(&["* Working (2s · esc to interrupt)", &rule, "❯", &rule])));
+    let fr = |lines: &[&str], agent| front(&rows(lines), agent);
+    assert_eq!(fr(&["done.", &rule, "❯", &rule, "  ? for shortcuts"], "claude"), Front::Ready);
+    // Text in the box is no refusal: the send confirms its own paste.
+    assert_eq!(fr(&["done.", &rule, "❯ fix the", "  tests", &rule], "claude"), Front::Ready);
+    // The busy line wins over the box.
+    assert_eq!(fr(&["* Working (2s · esc to interrupt)", &rule, "❯", &rule], "claude"), Front::Busy);
+    assert_eq!(fr(&["$ ls", "a b"], "claude"), Front::NoBox);
+    assert_eq!(fr(&["text", "› hello", ""], "codex"), Front::Ready);
     assert!(!busy_line(&rows(&["done.", &rule, "❯", &rule])));
-    assert_eq!(at(&["text", "›", "", "  ? for shortcuts"], "codex"), Some(false));
-    assert_eq!(at(&["text", "› hello", ""], "codex"), Some(true));
-    let fr = |lines: &[&str]| front(&scr(rows(lines)), "claude");
-    assert_eq!(fr(&["done.", &rule, "❯", &rule]), Front::Ready);
-    assert_eq!(fr(&["done.", &rule, "❯ fix the", &rule]), Front::Draft);
-    // The busy line wins over an empty box.
-    assert_eq!(fr(&["* Working (2s · esc to interrupt)", &rule, "❯", &rule]), Front::Busy);
-    assert_eq!(fr(&["$ ls", "a b"]), Front::NoBox);
-}
-
-#[test]
-fn the_cursor_tells_a_hint_from_a_draft() {
-    // The input row as the agents draw it, then the cursor (1-based column)
-    // in it, as skiffd's snapshot ends.
-    let rule = "\x1b[38;2;136;136;136m".to_string() + &"─".repeat(40) + "\x1b[39m";
-    let at = |input: &str, row: usize, col: usize| {
-        let text = format!("done.\r\n{rule}\r\n{input}\r\n{rule}\r\n\x1b[2m? for shortcuts\x1b[22m\x1b[{row};{col}H");
-        rows_of(text.as_bytes(), 120, 10)
-    };
-    let screen = |input: &str, col: usize| at(input, 3, col);
-    let agy = "\x1b[38;2;122;162;247m>\x1b[m ";
-    let hint = "\x1b[38;2;154;165;206mAuto mode: edits & safe commands auto-approved (shift+tab to cycle)\x1b[m";
-    // 1. agy's truecolor hint after the cursor.
-    assert_eq!(front(&screen(&format!("{agy}{hint}"), 3), "gemini"), Front::Ready);
-    // 2. agy, typed in the default color.
-    assert_eq!(front(&screen(&format!("{agy}fix zq"), 9), "gemini"), Front::Draft);
-    // 3. Claude Code's dim suggestion after the cursor.
-    assert_eq!(front(&screen("❯\u{a0}\x1b[2mTry \"how does main.rs work?\"\x1b[22m", 3), "claude"), Front::Ready);
-    // 4. Claude Code, typed.
-    assert_eq!(front(&screen("❯\u{a0}fix the tests", 16), "claude"), Front::Draft);
-    // 5. Claude Code's bash mode: a pink `!` before the cursor, a dim hint after it.
-    let bang = "\x1b[38;2;253;93;177m!\u{a0}\x1b[39m\x1b[2mTry \"write a test\"\x1b[22m";
-    assert_eq!(front(&screen(bang, 3), "claude"), Front::Draft);
-    // A draft with the cursor moved to its start.
-    assert_eq!(front(&screen("❯\u{a0}fix the tests", 3), "claude"), Front::Draft);
-    // The cursor outside the box: colored text counts as typed.
-    assert_eq!(front(&at(&format!("{agy}{hint}"), 5, 16), "gemini"), Front::Draft);
-    // Codex: the same rule on its `›` line.
-    let codex = |input: &str, col: usize| rows_of(format!("text\r\n{input}\r\n\r\n\x1b[2m? for shortcuts\x1b[22m\x1b[2;{col}H").as_bytes(), 120, 10);
-    assert_eq!(front(&codex("› \x1b[2mTry this\x1b[22m", 3), "codex"), Front::Ready);
-    assert_eq!(front(&codex("› hello", 8), "codex"), Front::Draft);
 }
 
 #[test]

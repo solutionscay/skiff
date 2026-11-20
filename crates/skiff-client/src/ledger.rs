@@ -418,7 +418,13 @@ pub fn untold_note(head: &Row, rows: &[&Row]) -> String {
 
 /// Leaves `text` for the grand Skipper's watcher. Run [`NOTES`] first.
 pub fn add_note(db: &Connection, text: &str) -> Result<()> {
-    db.execute(&format!("INSERT INTO notes (owner, text, at) VALUES (?1, ?2, {NOW})"), params![GRAND, text])?;
+    add_note_for(db, GRAND, text)
+}
+
+/// Leaves `text` for the watcher of `owner`'s Skipper: it types the note as
+/// a `[watch]` line when the Skipper can take it. Run [`NOTES`] first.
+pub fn add_note_for(db: &Connection, owner: &str, text: &str) -> Result<()> {
+    db.execute(&format!("INSERT INTO notes (owner, text, at) VALUES (?1, ?2, {NOW})"), params![owner, text])?;
     Ok(())
 }
 
