@@ -61,8 +61,9 @@ pub(super) struct Watcher {
     /// Each plan in `plan_of`: how many of its sent tasks ended, of how
     /// many, and its pending uids. A pending task does not hold the plan.
     pub(super) plans: HashMap<String, Plan>,
-    /// The first read of this run is done. The first read tells an idle
-    /// pane with a sent task, though seen: a line held before a restart is lost.
+    /// The first read of this run, or after a lag, is done. That read tells
+    /// an idle pane with a sent task, though seen: a line held before a
+    /// restart is lost, and a lag can lose a turn end.
     recalled: bool,
 }
 
@@ -71,6 +72,12 @@ pub(super) struct Watcher {
 pub(super) type Plan = (usize, usize, Vec<String>);
 
 impl Watcher {
+    /// Events from skiffd were lost: the next read tells each idle pane with
+    /// a sent task, as the first read of a run does.
+    pub(super) fn lagged(&mut self) {
+        self.recalled = false;
+    }
+
     /// Notes that the fleet `fleet` has `now` for projects. A change since
     /// the last read holds one line. True on a change: the caller writes
     /// `SKIPPER.md` again.

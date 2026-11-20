@@ -157,6 +157,12 @@ pub(super) async fn follow(c: &Client, o: &Options, ws: &mut Watchers, build: &m
     let mut tick = interval(TICK);
     tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
     let note = |ws: &mut Watchers, e: &Event| ws.values_mut().for_each(|w| w.note(e));
+    // The step reads the list again, but a turn end can be lost: the next
+    // read tells each idle pane with a sent task.
+    let lagged = |ws: &mut Watchers, n: u64| {
+        log(format!("lagged: {n} events from skiffd were lost"));
+        ws.values_mut().for_each(Watcher::lagged);
+    };
     loop {
         if let Some(b) = build.as_ref().filter(|b| b.replaced()) {
             log(format!("{} is a new build: it takes over", b.path.display()));
@@ -172,14 +178,13 @@ pub(super) async fn follow(c: &Client, o: &Options, ws: &mut Watchers, build: &m
                 match e {
                     Err(RecvError::Closed) => bail!("skiffd closed the connection"),
                     Ok(e) => note(ws, &e),
-                    // The step reads the list again, but a turn end can be lost.
-                    Err(RecvError::Lagged(n)) => log(format!("lagged: {n} events from skiffd were lost")),
+                    Err(RecvError::Lagged(n)) => lagged(ws, n),
                 }
                 // One step reads everything, so a burst counts once.
                 loop {
                     match events.try_recv() {
                         Ok(e) => note(ws, &e),
-                        Err(TryRecvError::Lagged(n)) => log(format!("lagged: {n} events from skiffd were lost")),
+                        Err(TryRecvError::Lagged(n)) => lagged(ws, n),
                         Err(TryRecvError::Closed) => bail!("skiffd closed the connection"),
                         Err(TryRecvError::Empty) => break,
                     }

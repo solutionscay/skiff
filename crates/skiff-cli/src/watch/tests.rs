@@ -595,6 +595,21 @@ fn state_events_between_two_lists_count() {
 }
 
 #[test]
+fn a_lag_tells_a_seen_idle_pane_with_a_sent_task_again_once() {
+    let seen = [info("a", "idle", false)];
+    let sent = [row(1, "s1", "a", "sent", None)];
+    let mut w = Watcher::default();
+    assert_eq!(run(&mut w, &sent, &seen), [Fact::Idle]);
+    w.delivered(Delivery::Taken, "");
+    assert_eq!(run(&mut w, &sent, &seen), []);
+    // Events were lost: the next read tells it again, once.
+    w.lagged();
+    assert_eq!(run(&mut w, &sent, &seen), [Fact::Idle]);
+    w.delivered(Delivery::Taken, "");
+    assert_eq!(run(&mut w, &sent, &seen), []);
+}
+
+#[test]
 fn a_row_changed_after_the_wake_is_dropped_before_the_line() {
     let mut w = Watcher::default();
     let all = [info("a", "idle", false), info("b", "idle", true)];
