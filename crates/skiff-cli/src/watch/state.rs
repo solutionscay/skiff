@@ -58,9 +58,17 @@ pub(super) struct Watcher {
     /// The plan of each pane whose open tasks are all `sent` and in one plan,
     /// by pane key, as last read. Its idle line waits for the plan.
     plan_of: HashMap<String, String>,
-    /// Each plan in `plan_of`: how many of its tasks ended, of how many.
-    pub(super) plans: HashMap<String, (usize, usize)>,
+    /// Each plan in `plan_of`: how many of its sent tasks ended, of how
+    /// many, and its pending uids. A pending task does not hold the plan.
+    pub(super) plans: HashMap<String, Plan>,
+    /// The first read of this run is done. The first read tells an idle
+    /// pane with a sent task, though seen: a line held before a restart is lost.
+    recalled: bool,
 }
+
+/// How far a plan is: its tasks that ended, of its tasks not pending, and
+/// its pending uids, oldest first.
+pub(super) type Plan = (usize, usize, Vec<String>);
 
 impl Watcher {
     /// Notes that the fleet `fleet` has `now` for projects. A change since
@@ -115,10 +123,10 @@ fn plan_of(g: &Group, tasks: &[ledger::Row], plans: &HashSet<&str>) -> Option<St
     (first.state == "sent" && rows.all(|t| t.state == "sent" && t.parent.as_deref() == Some(plan))).then(|| plan.to_string())
 }
 
-/// The line for a plan whose tasks all ended, with the panes whose idle
-/// lines waited for it.
-fn plan_line(plan: &str, (ended, total): (usize, usize), wakes: &[&Wake]) -> String {
-    let tasks = if total == 1 { "task" } else { "tasks" };
+/// The line for a plan whose tasks all ended, but the pending ones, with
+/// the panes whose idle lines waited for it.
+fn plan_line(plan: &str, (ended, total, pending): &Plan, wakes: &[&Wake]) -> String {
+    let tasks = if *total == 1 { "task" } else { "tasks" };
     let panes: Vec<String> = wakes
         .iter()
         .map(|w| {
@@ -127,9 +135,18 @@ fn plan_line(plan: &str, (ended, total): (usize, usize), wakes: &[&Wake]) -> Str
         })
         .collect();
     let seen = if panes.len() == 1 { "mark its pane seen" } else { "mark each pane seen" };
+    if pending.is_empty() {
+        return format!(
+            "plan {plan}: {ended} of {total} {tasks} ended: {}. Read the results, {seen} and set each task done, then run skiff ledger report {plan}.",
+            panes.join(", ")
+        );
+    }
+    // The report waits for the pending tasks: the plan line comes again.
     format!(
-        "plan {plan}: {ended} of {total} {tasks} ended: {}. Read the results, {seen} and set each task done, then run skiff ledger report {plan}.",
-        panes.join(", ")
+        "plan {plan}: {ended} of {total} sent {tasks} ended: {}; {} pending: {}. Read the results, {seen} and set each ended task done. Send each pending task when it is ready.",
+        panes.join(", "),
+        pending.len(),
+        pending.join(", ")
     )
 }
 
@@ -186,6 +203,8 @@ pub(super) struct Group<'a> {
     pub(super) skipper: Option<String>,
     /// Those hand-offs, oldest first.
     pub(super) handoffs: Vec<String>,
+    /// One of its open tasks is `sent`.
+    pub(super) sent: bool,
     /// One of them was sent before the pane restarted.
     pub(super) restarted: bool,
 }
@@ -215,7 +234,7 @@ pub(super) fn group<'a>(tasks: &'a [ledger::Row], all: &'a [SessionInfo], coordi
         let i = match groups.iter().position(|g| g.key == key) {
             Some(i) => i,
             None => {
-                groups.push(Group { key: key.to_string(), s, pending: Vec::new(), open: Vec::new(), skipper: None, handoffs: Vec::new(), restarted: false });
+                groups.push(Group { key: key.to_string(), s, pending: Vec::new(), open: Vec::new(), skipper: None, handoffs: Vec::new(), sent: false, restarted: false });
                 groups.len() - 1
             }
         };
@@ -228,6 +247,7 @@ pub(super) fn group<'a>(tasks: &'a [ledger::Row], all: &'a [SessionInfo], coordi
         if t.state == "pending" {
             g.pending.push(t.uid.clone());
         }
+        g.sent |= t.state == "sent";
         g.open.push(t.uid.clone());
     }
     (groups, interrupted)
@@ -389,11 +409,17 @@ impl Watcher {
             open.insert(format!("task:{uid}"));
             wakes.extend(self.interrupted(uid, s));
         }
+        let recall = !std::mem::replace(&mut self.recalled, true);
         for g in groups {
             open.insert(g.key.clone());
             if let (Some(scope), Some(s)) = (&g.skipper, g.s) {
                 wakes.extend(self.skipper(g, scope, s));
                 continue;
+            }
+            // The first read: a sent task on an idle pane counts as a turn
+            // that ended, so its line comes again after a restart.
+            if let Some(s) = g.s.filter(|_| recall && g.sent) {
+                self.turned.insert(s.id.clone());
             }
             let mut wake = self.track(&g.key, g.s, &g.pending);
             // A gone pane cannot be marked seen: the line names its open tasks.
@@ -506,17 +532,19 @@ impl Watcher {
             .plan_of
             .values()
             .map(|p| {
-                let rows: Vec<&ledger::Row> = plan_rows.iter().filter(|r| r.parent.as_deref() == Some(p.as_str())).collect();
-                (p.clone(), (rows.iter().filter(|r| ended(r, all)).count(), rows.len()))
+                let (pending, rows): (Vec<&ledger::Row>, Vec<&ledger::Row>) =
+                    plan_rows.iter().filter(|r| r.parent.as_deref() == Some(p.as_str())).partition(|r| r.state == "pending");
+                let pending = pending.iter().map(|r| r.uid.clone()).collect();
+                (p.clone(), (rows.iter().filter(|r| ended(r, all)).count(), rows.len(), pending))
             })
             .collect();
     }
 
     /// The plan a held line waits for: an idle line of a pane in a plan
-    /// whose tasks have not all ended. `None`: the line can go.
+    /// whose tasks not pending have not all ended. `None`: the line can go.
     pub(super) fn waits_for(&self, h: &Wake) -> Option<&str> {
         let p = self.plan_held(h)?;
-        self.plans.get(p).is_none_or(|(n, total)| n < total).then_some(p)
+        self.plans.get(p).is_none_or(|(n, total, _)| n < total).then_some(p)
     }
 
     /// The plan whose line carries the held line `h`: an idle line, not a
@@ -549,7 +577,7 @@ impl Watcher {
         if plans.is_empty() && rest.is_empty() {
             return None;
         }
-        let parts: Vec<String> = plans.iter().map(|(p, ws)| plan_line(p, self.plans[*p], ws)).collect();
+        let parts: Vec<String> = plans.iter().map(|(p, ws)| plan_line(p, &self.plans[*p], ws)).collect();
         Some(if rest.is_empty() { format!("[watch] {}", parts.join(" ")) } else if parts.is_empty() { wake_line(&rest) } else { format!("{} {}", wake_line(&rest), parts.join(" ")) })
     }
 

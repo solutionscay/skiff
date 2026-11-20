@@ -188,6 +188,46 @@ fn a_plan_gives_one_line_when_every_task_ended() {
 }
 
 #[test]
+fn a_pending_task_does_not_hold_its_plan() {
+    let mut grand = info("aaaa1111", "idle", false);
+    grand.coordinator = true;
+    let in_plan = |id, uid: &str, pane: &str, state| ledger::Row { parent: Some("p1".into()), ..row(id, uid, pane, state, None) };
+    let only_pending = [in_plan(2, "t2", "dddd4444", "pending")];
+    let mut ws = Watchers::default();
+    // Only a pending task: no plan line.
+    let all = [grand.clone(), info("dddd4444", "idle", false)];
+    route(&mut ws, &targets(&all), &only_pending, &[], &[], &only_pending, &all);
+    assert!(!ws["grand"].ready_line().unwrap_or_default().contains("plan p1"));
+    ws.get_mut("grand").unwrap().held.clear();
+    // The sent task ends: the plan line names the pending task.
+    let tasks = [in_plan(1, "t1", "cccc3333", "sent"), in_plan(2, "t2", "dddd4444", "pending")];
+    let all = [grand.clone(), info("cccc3333", "working", false), info("dddd4444", "working", false)];
+    route(&mut ws, &targets(&all), &tasks, &[], &[], &tasks, &all);
+    let all = [grand.clone(), info("cccc3333", "idle", true), info("dddd4444", "working", false)];
+    route(&mut ws, &targets(&all), &tasks, &[], &[], &tasks, &all);
+    assert_eq!(
+        ws["grand"].ready_line().as_deref(),
+        Some(
+            "[watch] plan p1: 1 of 1 sent task ended: pane cccc3333 cccc3333; 1 pending: t2. \
+             Read the results, mark its pane seen and set each ended task done. Send each pending task when it is ready."
+        )
+    );
+    ws.get_mut("grand").unwrap().delivered(Delivery::Taken, "");
+    // t2 is sent and ends: the plan line comes again.
+    let tasks = [in_plan(1, "t1", "cccc3333", "done"), in_plan(2, "t2", "dddd4444", "sent")];
+    let open = [tasks[1].clone()];
+    route(&mut ws, &targets(&all), &open, &[], &[], &tasks, &all);
+    let all = [grand.clone(), info("cccc3333", "idle", false), info("dddd4444", "idle", true)];
+    route(&mut ws, &targets(&all), &open, &[], &[], &tasks, &all);
+    assert!(ws["grand"].ready_line().unwrap().starts_with("[watch] plan p1: 2 of 2 tasks ended: pane dddd4444 dddd4444."));
+    // A new run (an exec of a new build): the seen pane with a sent task is told again.
+    let mut ws = Watchers::default();
+    let all = [grand, info("dddd4444", "idle", false)];
+    route(&mut ws, &targets(&all), &open, &[], &[], &tasks, &all);
+    assert!(ws["grand"].ready_line().unwrap().starts_with("[watch] plan p1: 2 of 2 tasks ended: pane dddd4444 dddd4444."));
+}
+
+#[test]
 fn the_grand_skipper_never_hears_a_project_row() {
     let mut grand = info("aaaa1111", "idle", false);
     grand.coordinator = true;
@@ -531,6 +571,9 @@ fn state_events_between_two_lists_count() {
     // A prompt shown and answered between two seen-idle lists, no turn.
     let mut w = Watcher::default();
     let sent = [row(1, "s1", "a", "sent", None)];
+    // The first read tells a sent task on a seen idle pane: a restart lost its line.
+    assert_eq!(run(&mut w, &sent, &seen), [Fact::Idle]);
+    w.delivered(Delivery::Taken, "");
     assert_eq!(run(&mut w, &sent, &seen), []);
     state(&mut w, "a", &[Waiting, Working, Idle]);
     assert_eq!(run(&mut w, &sent, &seen), [Fact::Idle]);

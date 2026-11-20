@@ -172,13 +172,14 @@ pub(super) async fn follow(c: &Client, o: &Options, ws: &mut Watchers, build: &m
                 match e {
                     Err(RecvError::Closed) => bail!("skiffd closed the connection"),
                     Ok(e) => note(ws, &e),
-                    Err(RecvError::Lagged(_)) => {}
+                    // The step reads the list again, but a turn end can be lost.
+                    Err(RecvError::Lagged(n)) => log(format!("lagged: {n} events from skiffd were lost")),
                 }
                 // One step reads everything, so a burst counts once.
                 loop {
                     match events.try_recv() {
                         Ok(e) => note(ws, &e),
-                        Err(TryRecvError::Lagged(_)) => continue,
+                        Err(TryRecvError::Lagged(n)) => log(format!("lagged: {n} events from skiffd were lost")),
                         Err(TryRecvError::Closed) => bail!("skiffd closed the connection"),
                         Err(TryRecvError::Empty) => break,
                     }
