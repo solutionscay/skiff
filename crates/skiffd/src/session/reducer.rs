@@ -108,13 +108,7 @@ fn auth_held(info: &SessionInfo, now: u64) -> bool {
 /// All time is supplied by the caller. The returned effects describe work to
 /// perform after releasing the session lock.
 pub(super) fn reduce(state: State, input: Input, now: u64) -> (State, Effects) {
-    let was = state.info.state;
-    let (mut next, effects) = reduce_step(state, input, now);
-    // The end of a turn ends what the person typed for it.
-    if next.info.state == SessionState::Idle && was != SessionState::Idle {
-        next.info.typed_since_turn = false;
-    }
-    (next, effects)
+    reduce_step(state, input, now)
 }
 
 fn reduce_step(mut state: State, input: Input, now: u64) -> (State, Effects) {

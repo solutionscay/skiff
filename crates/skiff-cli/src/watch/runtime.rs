@@ -505,11 +505,9 @@ pub(super) async fn submit(c: &Client, skipper: &SessionInfo, line: &str) -> Res
 }
 
 /// The agent can take a line: it is idle, an agent Skiff knows is in front,
-/// its input box shows, and no busy line. A shell in front holds the line,
-/// and so does a person who typed since its last turn ended.
+/// its input box shows, and no busy line. A shell in front holds the line.
 pub(super) async fn ready(c: &Client, s: &SessionInfo) -> bool {
     s.state == SessionState::Idle
-        && !s.typed_since_turn
         && sessions::is_agent(s)
         && read_front(c, s).await.ok() == Some(Front::Ready)
 }

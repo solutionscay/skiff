@@ -74,7 +74,7 @@ impl SessionPool {
             session.reply(data);
             return Ok(());
         }
-        let typed = {
+        {
             // The info lock orders this write against a submit's check.
             let mut info = session.info.lock().unwrap();
             // Focus and mouse reports are not keys: they cannot change the
@@ -83,16 +83,6 @@ impl SessionPool {
                 info.input_gen += 1;
             }
             session.send(id, vec![Input::Bytes(data.to_vec())])?;
-            // The person's Enter sends what they typed. Other keys hold
-            // `skiff send` off until the turn ends.
-            let typed = if data.ends_with(b"\r") { false } else { info.typed_since_turn || typing(data) };
-            (typed != info.typed_since_turn).then(|| {
-                info.typed_since_turn = typed;
-                info.clone()
-            })
-        };
-        if let Some(session) = typed {
-            let _ = self.events.send(skiff_core::protocol::Event::SessionUpdated { session });
         }
         // Input answers a bell. An agent's prompt goes when the screen says so.
         if session.belled.swap(false, Ordering::Relaxed) {
@@ -389,9 +379,7 @@ mod tests {
         pool.kill(&info.id).unwrap();
     }
 
-    /// A person's keys set `typed_since_turn`; a submit, a query's answer and
-    /// a focus or mouse report do not. The end of a turn and the person's
-    /// Enter clear it.
+    /// A focus or mouse report does not move `input_gen`; a key does.
     #[test]
     fn a_focus_report_does_not_refuse_a_sends_enter() {
         use skiff_core::session::SessionSpec;
@@ -407,31 +395,5 @@ mod tests {
         pool.kill(&info.id).unwrap();
     }
 
-    #[test]
-    fn a_person_typing_holds_sends_until_the_turn_ends() {
-        use skiff_core::session::{SessionSpec, SessionState};
-        let pool = super::SessionPool::new();
-        let info = pool
-            .create(SessionSpec { command: Some("/bin/sleep".into()), args: vec!["30".into()], ..Default::default() })
-            .unwrap();
-        let session = pool.get(&info.id).unwrap();
-        let typed = || session.info().typed_since_turn;
-        assert!(!typed(), "set at the start");
-        assert!(pool.submit(&info.id, b"a task", true, true, 0).unwrap());
-        pool.write(&info.id, b"\x1b[I\x1b[<64;10;5M\x1b[O").unwrap();
-        pool.on_output(&session, &info.id, b"\x1b[c");
-        pool.write(&info.id, b"\x1b[?1;2c").unwrap();
-        assert!(!typed(), "a submit, a report or a reply set it");
-        pool.write(&info.id, b"f").unwrap();
-        assert!(typed());
-        pool.write(&info.id, b"\r").unwrap();
-        assert!(!typed(), "the person's Enter kept it");
-        pool.write(&info.id, b"fix").unwrap();
-        pool.set_state(&session, SessionState::Working);
-        assert!(typed());
-        pool.set_state(&session, SessionState::Idle);
-        assert!(!typed(), "the turn's end kept it");
-        pool.kill(&info.id).unwrap();
-    }
 
 }

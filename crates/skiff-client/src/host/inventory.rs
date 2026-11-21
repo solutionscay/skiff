@@ -47,7 +47,6 @@ pub fn project_session(value: core::SessionInfo) -> Result<api::InventorySession
         watch,
         program_status,
         waiting_cause,
-        typed_since_turn,
     } = value;
     Ok(api::InventorySession {
         id,
@@ -86,7 +85,6 @@ pub fn project_session(value: core::SessionInfo) -> Result<api::InventorySession
         watch: watch.map(project_watch),
         program_status: program_status.map(project_program_status),
         waiting_cause,
-        typed_since_turn,
     })
 }
 
@@ -222,7 +220,6 @@ pub fn restore_session(value: api::InventorySession) -> core::SessionInfo {
         watch,
         program_status,
         waiting_cause,
-        typed_since_turn,
     } = value;
     core::SessionInfo {
         id,
@@ -258,7 +255,6 @@ pub fn restore_session(value: api::InventorySession) -> core::SessionInfo {
         watch: watch.map(restore_watch),
         program_status: program_status.map(restore_program_status),
         waiting_cause,
-        typed_since_turn,
     }
 }
 

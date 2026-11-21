@@ -289,9 +289,6 @@ pub fn refusal(s: &SessionInfo, here: Option<&str>, shell_ok: bool, caller_shell
         SessionState::Done => return Some((6, format!("{who} is done. Its program exited."))),
         SessionState::Idle => {}
     }
-    if s.typed_since_turn && is_agent(s) {
-        return Some((TYPING, format!("{who}: a person is typing in it. Nothing was typed.")));
-    }
     if shell_ok {
         return None;
     }
@@ -355,10 +352,6 @@ pub const PASTE_UNSEEN: i32 = 11;
 /// `send`'s exit code when Enter went to a known agent, but no turn started.
 pub const NO_TURN: i32 = 8;
 
-/// `send`'s exit code when a person typed into the agent since its last
-/// turn ended: their text can be in its input box. Nothing is typed.
-pub const TYPING: i32 = 12;
-
 /// The step of a send that the agent's screen or state did not confirm.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Unconfirmed {
@@ -387,8 +380,7 @@ impl Unconfirmed {
 
 /// Exit codes: 0 when sent and confirmed; 3 waiting, 4 working (its state or
 /// its busy line), 5 a shell or unknown program in front, 6 done, 7 own
-/// session, 9 input after the check, 12 ([`TYPING`]) a person typed into the
-/// agent since its last turn ended. A refusal types nothing.
+/// session, 9 input after the check. A refusal types nothing.
 /// 11 ([`PASTE_UNSEEN`]): the paste did not show on the agent's screen, and
 /// Enter was not pressed. 8 ([`NO_TURN`]): Enter went in, but no turn started.
 /// After 11 or 8 the pane waits for the person.
@@ -948,11 +940,6 @@ mod tests {
         assert_eq!(code(&s("agent", Working, None), None, true, None), 4);
         assert_eq!(code(&s("shell", Done, None), None, true, None), 6);
         assert_eq!(code(&idle, Some("other"), false, None), 0);
-        // A person typed into the agent since its turn ended: nothing goes in.
-        let typing = SessionInfo { typed_since_turn: true, ..idle.clone() };
-        assert_eq!(code(&typing, None, false, None), 12);
-        assert_eq!(code(&typing, None, true, None), 12);
-        assert_eq!(code(&SessionInfo { typed_since_turn: true, ..s("agent", Idle, Some("bash")) }, None, true, None), 0);
     }
 
     #[test]
