@@ -77,7 +77,11 @@ impl SessionPool {
         let typed = {
             // The info lock orders this write against a submit's check.
             let mut info = session.info.lock().unwrap();
-            info.input_gen += 1;
+            // Focus and mouse reports are not keys: they cannot change the
+            // input box, so they must not refuse a send's Enter.
+            if typing(data) {
+                info.input_gen += 1;
+            }
             session.send(id, vec![Input::Bytes(data.to_vec())])?;
             // The person's Enter sends what they typed. Other keys hold
             // `skiff send` off until the turn ends.
@@ -388,6 +392,21 @@ mod tests {
     /// A person's keys set `typed_since_turn`; a submit, a query's answer and
     /// a focus or mouse report do not. The end of a turn and the person's
     /// Enter clear it.
+    #[test]
+    fn a_focus_report_does_not_refuse_a_sends_enter() {
+        use skiff_core::session::SessionSpec;
+        let pool = super::SessionPool::new();
+        let info = pool
+            .create(SessionSpec { command: Some("/bin/sleep".into()), args: vec!["30".into()], ..Default::default() })
+            .unwrap();
+        let gen = pool.get(&info.id).unwrap().info().input_gen;
+        pool.write(&info.id, b"\x1b[I\x1b[<64;10;5M\x1b[O").unwrap();
+        assert!(pool.submit(&info.id, b"\r", false, false, gen).unwrap(), "a report is not input");
+        pool.write(&info.id, b"f").unwrap();
+        assert!(!pool.submit(&info.id, b"\r", false, false, gen + 1).unwrap(), "a key is input");
+        pool.kill(&info.id).unwrap();
+    }
+
     #[test]
     fn a_person_typing_holds_sends_until_the_turn_ends() {
         use skiff_core::session::{SessionSpec, SessionState};
