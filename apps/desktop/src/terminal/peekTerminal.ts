@@ -9,6 +9,7 @@ import { keyLabel } from "../app/keys";
 import { h } from "../ui/dom";
 import { t } from "../i18n";
 import { peekHead, peekRoot } from "./peekCard";
+import { guardPasteEvents } from "./pasteClean";
 
 export interface Peek {
   /** The preview this command belongs to. */
@@ -77,6 +78,7 @@ export function newPeek(o: NewPeek): Peek {
   const fit = new FitAddon();
   term.loadAddon(fit);
   term.open(box);
+  guardPasteEvents(term, box);
   const p: Peek = {
     gen: o.gen, kind: o.kind, request: o.request, el, term, fit, resize: new ResizeObserver(() => o.onResize(p)),
     session: null, program: o.program, shown: false, exited: false, interactive: false, got: false, timer: 0,

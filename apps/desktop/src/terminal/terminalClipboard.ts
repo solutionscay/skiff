@@ -13,6 +13,7 @@ import { place } from "../app/stateQueries";
 import { taskTitle } from "../workspace/model";
 
 import { signalLine } from "./insertSignal";
+import { pasteInto } from "./pasteClean";
 import { panes } from "./terminalState";
 import { UploadLine } from "./uploadProgress";
 import { t as tr } from "../i18n";
@@ -68,7 +69,7 @@ export function whoOf(id: string) {
 export function typeFiles(id: string, t: Typed) {
   const pane = panes.get(id);
   if (pane && t.image) signalLine(pane.term, pane.el);
-  pane?.term.paste(t.text);
+  if (pane) pasteInto(pane.term, t.text);
   if (t.tooLarge) showError(tr("files.tooLarge", { mb: t.tooLarge }));
 }
 
@@ -85,7 +86,7 @@ export async function pasteClipboard() {
   let failure: unknown;
   const text = await pasteText(traced?.tr).catch((e) => ((failure = e), ""));
   traced?.end(text, failure);
-  if (text) return pane.term.paste(text);
+  if (text) return pasteInto(pane.term, text);
   // The clipboard may hold no image: the line counts one until the Host says more.
   const line = isRemote() ? new UploadLine(id, 1) : null;
   try {

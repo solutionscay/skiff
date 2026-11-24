@@ -284,18 +284,29 @@ fn replies(data: &[u8]) -> Option<u32> {
 
 /// `data` between bracketed paste marks. An end mark inside the data would
 /// end the paste early and let the rest run as keys, so it is taken out.
+/// Taking one out can join the bytes around it into a new one, so the passes
+/// repeat until none is left (#289).
 fn bracketed(data: &[u8]) -> Vec<u8> {
     const END: &[u8] = b"\x1b[201~";
-    let mut out = b"\x1b[200~".to_vec();
-    let mut i = 0;
-    while i < data.len() {
-        if data[i..].starts_with(END) {
-            i += END.len();
-        } else {
-            out.push(data[i]);
-            i += 1;
+    let mut body = data.to_vec();
+    loop {
+        let mut out = Vec::with_capacity(body.len());
+        let mut i = 0;
+        while i < body.len() {
+            if body[i..].starts_with(END) {
+                i += END.len();
+            } else {
+                out.push(body[i]);
+                i += 1;
+            }
         }
+        if out.len() == body.len() {
+            break;
+        }
+        body = out;
     }
+    let mut out = b"\x1b[200~".to_vec();
+    out.extend_from_slice(&body);
     out.extend_from_slice(END);
     out
 }
@@ -395,5 +406,11 @@ mod tests {
         pool.kill(&info.id).unwrap();
     }
 
-
+    #[test]
+    fn a_nested_end_mark_does_not_end_a_paste() {
+        let out = bracketed(b"echo a\x1b[20\x1b[201~1~id\r");
+        assert_eq!(out, b"\x1b[200~echo aid\r\x1b[201~");
+        let end = b"\x1b[201~";
+        assert_eq!(out.windows(end.len()).filter(|w| w == end).count(), 1);
+    }
 }
