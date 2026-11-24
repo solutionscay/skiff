@@ -26,6 +26,25 @@ function unreadMark(row: HTMLElement, s: SessionInfo): HTMLElement {
   return mark;
 }
 
+/** Show the watcher's state on a Skipper row. */
+function watchStyle(row: HTMLElement, s: SessionInfo, watch: ReturnType<typeof skiffWatch>, missingIsError: boolean) {
+  if (watch.state === "runs") row.classList.add("watch-on");
+  if (watch.state === "runs" && s.state === "idle" && (s.watch?.follows?.length ?? 0) > 0) {
+    row.classList.add("watch-turn");
+    // Keep the animation phase when the row is rebuilt.
+    row.style.setProperty("--turn-delay", `${-(performance.now() % 8000)}ms`);
+  }
+  if (watch.state === "failed" || (missingIsError && watch.state === "missing")) row.classList.add("watch-error");
+  if (watch.text) row.title = watch.text;
+}
+
+function appendNeeds(row: HTMLElement, count: number) {
+  if (!count) return;
+  const c = h("span", "ledger-count", String(count));
+  c.title = tn("ledger.tasksNeedYou", count);
+  row.append(c);
+}
+
 /**
  * The Skiff agent: one fixed row above the projects, with its name from
  * Settings, its agent's glyph and title, and its state mark. Its session is
@@ -60,25 +79,14 @@ export function skiffAgentRow(): HTMLElement {
   // task, so the turn means "watching work". An older watcher does not say
   // what it follows: still. Red while none runs or the last line failed.
   const watch = skiffWatch(s);
-  if (watch.state === "runs") row.classList.add("watch-on");
-  if (watch.state === "runs" && s.state === "idle" && (s.watch?.follows?.length ?? 0) > 0) {
-    row.classList.add("watch-turn");
-    // The row is rebuilt often. Start the turn at the elapsed phase, not at its first frame.
-    row.style.setProperty("--turn-delay", `${-(performance.now() % 8000)}ms`);
-  }
-  if (watch.state === "missing" || watch.state === "failed") row.classList.add("watch-error");
-  if (watch.text) row.title = watch.text;
+  watchStyle(row, s, watch, true);
   const vars = { name, title: s.title ?? agentName(s), state: t(`state.${s.state}`), watch: watch.text };
   row.setAttribute("aria-label", watch.text ? t("sidebar.agentLabelWatch", vars) : t("sidebar.agentLabel", vars));
   // Its face, 24 px and centered on the row, then the agent icon with the watcher. The state mark is at the row's end.
   row.append(skipperFace(null, 24), agentIcon(s), h("span", "skiff-agent-name", name), h("span", "title", s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? ""));
   // One amber count, only while ledger tasks need the person.
   const needs = ledgerNeeds();
-  if (needs) {
-    const c = h("span", "ledger-count", String(needs));
-    c.title = tn("ledger.tasksNeedYou", needs);
-    row.append(c);
-  }
+  appendNeeds(row, needs);
   row.append(unreadMark(row, s));
   row.addEventListener("mousedown", (e) => {
     if (e.button === 0) row.focus();
@@ -133,13 +141,7 @@ export function projectSkipperRow(scope: string, s: SessionInfo): HTMLElement {
   // while the Skipper is idle and the watcher follows a pane with an open
   // task of this project, red when its last line failed.
   const watch = projectWatch(s);
-  if (watch.state === "runs") row.classList.add("watch-on");
-  if (watch.state === "runs" && s.state === "idle" && (s.watch?.follows?.length ?? 0) > 0) {
-    row.classList.add("watch-turn");
-    row.style.setProperty("--turn-delay", `${-(performance.now() % 8000)}ms`);
-  }
-  if (watch.state === "failed") row.classList.add("watch-error");
-  if (watch.text) row.title = watch.text;
+  watchStyle(row, s, watch, false);
   const title = ledgerWorkTitle(scope) ?? s.title?.replace(/^[^\p{L}\p{N}]+/u, "") ?? "";
   const { need, working } = ledgerCounts(scope);
   const vars = { scope: scopeName(scope), skipper: name, title: title || t(`state.${s.state}`), watch: watch.text };
@@ -149,11 +151,7 @@ export function projectSkipperRow(scope: string, s: SessionInfo): HTMLElement {
   const roll = rollCounts(0, working);
   if (roll) row.append(roll);
   // One amber count, only while its ledger tasks need the person, as on the Skiff agent's row.
-  if (need) {
-    const c = h("span", "ledger-count", String(need));
-    c.title = tn("ledger.tasksNeedYou", need);
-    row.append(c);
-  }
+  appendNeeds(row, need);
   row.append(unreadMark(row, s));
   row.addEventListener("mousedown", (e) => {
     if (e.button === 0) row.focus();
