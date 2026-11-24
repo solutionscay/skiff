@@ -242,17 +242,22 @@ pub async fn rename(c: &Client, old: &str, new: &str) -> Result<()> {
         tx.execute("UPDATE tasks SET owner = ?2 WHERE owner = ?1", params![a, b])?;
         tx.execute("UPDATE tasks SET project = ?2 WHERE project = ?1", params![a, b])?;
         tx.execute("UPDATE notes SET owner = ?2 WHERE owner = ?1", params![a, b])?;
-        let (pa, pb) = (from.display().to_string(), to.display().to_string());
-        tx.execute(
-            "UPDATE tasks SET result_path = ?2 || substr(result_path, length(?1) + 1) WHERE substr(result_path, 1, length(?1) + 1) = ?1 || '/'",
-            params![pa, pb],
-        )?;
+        let pb = to.display().to_string();
+        // A row stores its paths full (older rows) or relative to the agent's folder.
+        let root = file.parent();
+        let pairs = [(from.display().to_string(), pb.clone()), (ledger::stored(root, &from.display().to_string()), ledger::stored(root, &pb))];
         let work_dirs: i64 = tx.query_row("SELECT count(*) FROM pragma_table_info('tasks') WHERE name = 'work_dir'", [], |r| r.get(0))?;
-        if work_dirs > 0 {
+        for (pa, pb) in pairs.iter().take(if pairs[0] == pairs[1] { 1 } else { 2 }) {
             tx.execute(
-                "UPDATE tasks SET work_dir = ?2 || substr(work_dir, length(?1) + 1) WHERE substr(work_dir, 1, length(?1) + 1) = ?1 || '/'",
+                "UPDATE tasks SET result_path = ?2 || substr(result_path, length(?1) + 1) WHERE substr(result_path, 1, length(?1) + 1) = ?1 || '/'",
                 params![pa, pb],
             )?;
+            if work_dirs > 0 {
+                tx.execute(
+                    "UPDATE tasks SET work_dir = ?2 || substr(work_dir, length(?1) + 1) WHERE substr(work_dir, 1, length(?1) + 1) = ?1 || '/'",
+                    params![pa, pb],
+                )?;
+            }
         }
         if fs.is_some() {
             let text = format!("The fleet {old} is {new} now. Your folder is {pb}. Read SKIPPER.md there again.");

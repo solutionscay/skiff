@@ -6,7 +6,7 @@ use super::read::{
 use super::{brief, delivery, evidence};
 use super::schema::{open, open_at, NOW};
 use super::write::{
-    add_state, age, check_free, check_scope, check_writer, close, holders, flush_folders, folder_size, insert,
+    absolute, add_state, age, check_free, check_scope, check_writer, close, holders, flush_folders, folder_size, insert,
     kind_word, message, prune, read_stdin, reopen, replace, report, restate, rows_word, scope, send_row, state_after, who, work_word,
     Caller, New, Scope, SendOpts,
 };
@@ -14,7 +14,7 @@ use crate::{print, resolve, LedgerCmd};
 use anyhow::Context;
 use anyhow::{bail, Result};
 use rusqlite::{params, TransactionBehavior};
-use skiff_client::ledger::{gen, mark_live, path, roll_up, rows, GONE, GRAND, INTERRUPTED};
+use skiff_client::ledger::{gen, mark_live, path, roll_up, rows, stored, GONE, GRAND, INTERRUPTED};
 use std::path::{Path, PathBuf};
 
 /// Closes the tasks `held` once the send that replaces them went out: a
@@ -256,7 +256,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                      closed_at = CASE WHEN ?7 IS NULL THEN closed_at END, gone_at = CASE WHEN ?2 IS NULL AND ?5 IS NULL THEN gone_at END,
                      updated_at = {NOW} WHERE id = ?1"
                 ),
-                params![row.id, st, result, task, pane_id, project, parent, reference, gen.is_some(), gen.flatten(), task_type, here, title],
+                params![row.id, st, result.as_deref().map(|r| stored(file.parent(), &absolute(r))), task, pane_id, project, parent, reference, gen.is_some(), gen.flatten(), task_type, here, title],
             )?;
             tx.execute(
                 "UPDATE tasks SET expects = coalesce(?2, expects), commit_ref = coalesce(?3, commit_ref) WHERE id = ?1",

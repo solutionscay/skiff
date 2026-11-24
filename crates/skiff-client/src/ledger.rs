@@ -359,10 +359,40 @@ pub fn rows(db: &Connection, where_: &str, arg: Option<&dyn rusqlite::ToSql>) ->
     }
 }
 
-/// [`rows`] with any number of parameters.
+/// The root of a ledger's paths: the folder that holds the ledger file,
+/// which is the agent's folder (`[skiff_agent] folder`). `None` for a
+/// ledger in memory.
+pub fn root(db: &Connection) -> Option<PathBuf> {
+    db.path().filter(|p| !p.is_empty()).and_then(|p| Path::new(p).parent()).map(Path::to_path_buf)
+}
+
+/// A path as the ledger stores it: relative to `root` when it lies inside
+/// it, else as written. So the agent's folder can move and its rows go
+/// with it.
+pub fn stored(root: Option<&Path>, path: &str) -> String {
+    match root.and_then(|r| Path::new(path).strip_prefix(r).ok()) {
+        Some(rel) if !rel.as_os_str().is_empty() => rel.display().to_string(),
+        _ => path.to_string(),
+    }
+}
+
+/// A stored path as a full path: a relative path joins `root`, an absolute
+/// path is used as written. Rows from before relative paths have absolute
+/// paths.
+pub fn full(root: Option<&Path>, path: Option<String>) -> Option<String> {
+    match (root, path) {
+        (Some(r), Some(p)) if Path::new(&p).is_relative() => Some(r.join(p).display().to_string()),
+        (_, p) => p,
+    }
+}
+
+/// [`rows`] with any number of parameters. The paths of each row are full
+/// paths (see [`full`]).
 pub fn rows_with(db: &Connection, where_: &str, args: &[&dyn rusqlite::ToSql]) -> Result<Vec<Row>> {
     let sql = format!("SELECT {COLUMNS}, {}, {}, {} FROM tasks {where_} ORDER BY id", columns_11(db)?, columns_12(db)?, columns_14(db)?);
     let mut st = db.prepare(&sql)?;
+    let root = root(db);
+    let root = root.as_deref();
     let map = |r: &rusqlite::Row| {
         Ok(Row {
             id: r.get(0)?,
@@ -375,7 +405,7 @@ pub fn rows_with(db: &Connection, where_: &str, args: &[&dyn rusqlite::ToSql]) -
             task: r.get(7)?,
             sent_at: r.get(8)?,
             state: r.get(9)?,
-            result_path: r.get(10)?,
+            result_path: full(root, r.get(10)?),
             reference: r.get(11)?,
             updated_at: r.get(12)?,
             task_type: r.get(13)?,
@@ -385,7 +415,7 @@ pub fn rows_with(db: &Connection, where_: &str, args: &[&dyn rusqlite::ToSql]) -
             closed_at: r.get(17)?,
             gone_at: r.get(18)?,
             owner: r.get(19)?,
-            work_dir: r.get(20)?,
+            work_dir: full(root, r.get(20)?),
             flushed_at: r.get(21)?,
             outcome: r.get(22)?,
             expects: r.get(23)?,
@@ -662,6 +692,18 @@ pub fn mark_live(socket: &Path, all: Option<&[SessionInfo]>, rows: &mut [Row]) {
 
 #[cfg(test)]
 mod tests {
+
+    /// #288: a path in the agent's folder is stored relative to it and read
+    /// back full under the folder's new place; one outside stays as written.
+    #[test]
+    fn paths_in_the_folder_are_stored_relative_and_read_back_full() {
+        let (old, new) = (std::path::Path::new("/a/skiff-agent"), std::path::Path::new("/b/skiff-agent"));
+        let rel = stored(Some(old), "/a/skiff-agent/results/x1-t/result.md");
+        assert_eq!(rel, "results/x1-t/result.md");
+        assert_eq!(full(Some(new), Some(rel)).as_deref(), Some("/b/skiff-agent/results/x1-t/result.md"));
+        assert_eq!(stored(Some(old), "/elsewhere/r.md"), "/elsewhere/r.md");
+        assert_eq!(full(Some(new), Some("/elsewhere/r.md".into())).as_deref(), Some("/elsewhere/r.md"));
+    }
     use super::*;
 
     #[test]

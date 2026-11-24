@@ -7,7 +7,7 @@ use crate::{resolve, sessions};
 use anyhow::Context;
 use anyhow::{bail, Result};
 use rusqlite::{params, Connection, TransactionBehavior};
-use skiff_client::ledger::{gen, heads, path, rows, Row, GRAND, INTERRUPTED_OUTCOME, UNOBSERVED};
+use skiff_client::ledger::{gen, heads, path, rows, stored, Row, GRAND, INTERRUPTED_OUTCOME, UNOBSERVED};
 use skiff_core::{
     session::{Role, SessionInfo},
     state,
@@ -59,7 +59,7 @@ pub(super) fn insert(db: &mut Connection, file: &Path, n: New) -> Result<(i64, S
     let (results, above) = if n.handoff { (results_dir(file, &n.project), None) } else { (results_dir(file, &n.owner), parent.as_ref()) };
     let dir = work_folder(&results, &uid, label(n.title.as_deref(), &n.task), above);
     make_work_folder(&dir)?;
-    let result = n.result.unwrap_or_else(|| result_in(&dir, n.plan).display().to_string());
+    let result = n.result.map(|r| absolute(&r)).unwrap_or_else(|| result_in(&dir, n.plan).display().to_string());
     let kind = match (n.plan, n.handoff) {
         (true, _) => "plan",
         (_, true) => "handoff",
@@ -79,19 +79,26 @@ pub(super) fn insert(db: &mut Connection, file: &Path, n: New) -> Result<(i64, S
             n.project,
             n.task,
             n.state,
-            result,
+            stored(file.parent(), &result),
             n.reference,
             n.task_type,
             n.socket,
             n.title,
             n.owner,
-            dir.display().to_string(),
+            stored(file.parent(), &dir.display().to_string()),
             n.expects
         ],
     )?;
     let id = tx.last_insert_rowid();
     tx.commit()?;
     Ok((id, uid, result, parent.map(|p| p.uid)))
+}
+
+/// A result path the caller named, as a full path: a relative one is from
+/// the caller's folder. The ledger then stores it relative to the agent's
+/// folder when it lies inside it (see [`stored`]).
+pub(super) fn absolute(path: &str) -> String {
+    std::path::absolute(path).map(|p| p.display().to_string()).unwrap_or_else(|_| path.to_string())
 }
 
 /// The session that owns the ledger, and its socket.

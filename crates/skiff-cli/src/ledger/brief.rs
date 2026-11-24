@@ -242,7 +242,8 @@ pub fn file(h: &Row) -> Option<PathBuf> {
 pub fn last_sent(db: &Connection, h: &Row, pane: &str) -> Result<Option<String>> {
     let mut st = db.prepare("SELECT work_dir FROM tasks WHERE kind = 'handoff' AND pane_id = ?1 AND id < ?2 AND work_dir IS NOT NULL ORDER BY id DESC")?;
     let dirs = st.query_map(rusqlite::params![pane, h.id], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(dirs.into_iter().find_map(|d| std::fs::read_to_string(Path::new(&d).join(FILE)).ok()))
+    let root = skiff_client::ledger::root(db);
+    Ok(dirs.into_iter().filter_map(|d| skiff_client::ledger::full(root.as_deref(), Some(d))).find_map(|d| std::fs::read_to_string(Path::new(&d).join(FILE)).ok()))
 }
 
 /// Writes `b` for hand-off `h` unless the Skipper session already got the

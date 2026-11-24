@@ -6,7 +6,7 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use rusqlite::{params, Connection, TransactionBehavior};
 use skiff_client::Client;
-use skiff_client::ledger::{add_note, auto_close, handoffs_with_tasks, heads, holds_open, rows, session_closed, session_of, untold_note, NOTES, OPEN, OUTCOMES, WORKING};
+use skiff_client::ledger::{add_note, auto_close, stored, handoffs_with_tasks, heads, holds_open, rows, session_closed, session_of, untold_note, NOTES, OPEN, OUTCOMES, WORKING};
 use skiff_core::session::{SessionInfo, SessionState};
 
 use crate::clock::clock;
@@ -365,7 +365,7 @@ fn wrap(db: &Connection, file: &Path, r: &Row) -> Result<Row> {
             "INSERT INTO tasks (uid, kind, project, task, sent_at, state, result_path, ref, updated_at, type, title, owner, work_dir)
              VALUES (?1, 'plan', ?2, ?3, ?4, 'sent', ?5, ?6, {NOW}, ?7, ?8, ?9, ?10)"
         ),
-        params![uid, r.project, r.task, r.sent_at, result, r.reference, r.task_type, r.title, r.owner, dir.display().to_string()],
+        params![uid, r.project, r.task, r.sent_at, stored(file.parent(), &result), r.reference, r.task_type, r.title, r.owner, stored(file.parent(), &dir.display().to_string())],
     )?;
     db.execute(&format!("UPDATE tasks SET parent = ?2, closed_at = NULL, updated_at = {NOW} WHERE id = ?1"), params![r.id, uid])?;
     one(db, &uid)
