@@ -59,18 +59,8 @@ button.file-preview-key:active:not(:disabled) { background-image: none; box-shad
 .diff-text .dl-add { color: var(--diff-add); }
 .diff-text .dl-del { color: var(--diff-del); }
 #main { --pc: var(--project-default); }
-#banner {
-  height: var(--row); flex-shrink: 0; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(16 * var(--u));
-  background: color-mix(in srgb, var(--pc) 8%, transparent);
-  box-shadow: inset 3px 0 0 var(--pc), inset 0 -1px 0 var(--rule);
-  color: var(--text-3); font-size: calc(12px * var(--zoom, 1));
-}
-#banner #focus-label { color: var(--text); font-size: calc(13px * var(--zoom, 1)); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* The pane head already names the focused session and the layout. The element stays for the code that fills it. */
-#banner { display: none; padding-right: 0; }
-#banner #focus-label { padding-right: calc(16 * var(--u)); }
-#group-label { display: flex; align-items: center; gap: calc(8 * var(--u)); padding-right: calc(16 * var(--u)); color: var(--text-2); font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
-#group-label:empty { display: none; }
+/* The pane head names the focused session and layout. The hidden element stays for the code that fills it. */
+#banner { display: none; }
 
 #terminal-host { flex-grow: 1; min-height: 0; position: relative; background: var(--bg-deep); }
 #terminal-host .park { display: none; }
