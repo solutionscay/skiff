@@ -76,7 +76,7 @@ const DEFAULTS: Record<Action, string> = {
   // The Skipper split's children. Bare Ctrl+PageUp/PageDown stay with the terminal.
   "child-next": "ctrl+shift+pagedown",
   "child-prev": "ctrl+shift+pageup",
-  images: "ctrl+shift+alt+i",
+  images: "ctrl+shift+alt+f",
   // No default key: the palette and the menu bar have it. `[keys]` can set one.
   "images-gallery": "",
   // Settings › Usage (#276). Ctrl+Shift+U is the input method's Unicode key on Linux, so Usage takes the period.
