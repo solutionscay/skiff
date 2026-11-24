@@ -8,17 +8,16 @@
 .mission-fault[hidden] { display: none; }
 
 /* The canvas: pan by drag or wheel, zoom by Ctrl+wheel. Plain board color. */
-.mission-canvas { flex: 1; min-height: 0; position: relative; overflow: hidden; cursor: grab; background-color: var(--bg-deep); touch-action: none; }
+.mission-canvas { flex: 1; min-height: 0; position: relative; overflow: hidden; cursor: grab; touch-action: none; }
 .mission-canvas.panning { cursor: grabbing; }
 /* The world is laid out in unzoomed px and scaled as one: the app zoom goes into the transform. */
 .mission-world { --zoom: 1; --u: 1px; position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
 /* Layers: cluster frames, windows, connectors, faces, cards. A connector runs over a frame and a window, under a face and a card. */
 .mission-strings { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 3; }
-.mission-strings path { fill: none; stroke: var(--rule-strong); stroke-width: 2; }
+.mission-strings path { fill: none; stroke: var(--rule-strong); }
 /* Connectors (missionControl/connectors.ts): solid or dotted, in the state colors. No march. Waiting draws over working over idle. */
 .mission-strings path.working { stroke: var(--state-working); }
 .mission-strings path.waiting { stroke: var(--state-waiting); }
-.mission-strings path.done, .mission-strings path.idle { stroke-width: 1.5; }
 /* Dotted: the parent waits on the child, or holds its result not yet reported. Round dots, in the child's state color. */
 .mission-strings path.dotted { stroke-width: 2; stroke-dasharray: 0 6; stroke-linecap: round; }
 .mission-strings path.dotted.idle { stroke: var(--state-idle); }
@@ -30,10 +29,9 @@
 .mission-strings circle.pulse.working { fill: var(--state-working); }
 
 /* A cluster: a project's frame, or a fleet's. */
-.mission-cluster { position: absolute; z-index: 1; box-sizing: border-box; border: 1px solid var(--rule-strong); background: color-mix(in srgb, var(--pc) 5%, var(--bg)); }
-.mission-cluster.fleet { --pc: var(--accent); background: color-mix(in srgb, var(--accent) 4%, var(--bg)); }
-.mission-cluster-head { height: 20px; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-bottom: 1px solid var(--rule-strong); background: color-mix(in srgb, var(--pc) 22%, var(--bg-panel)); font-size: 11px; font-weight: 600; color: var(--text); cursor: pointer; white-space: nowrap; user-select: none; }
-.mission-cluster.fleet > .mission-cluster-head { text-transform: uppercase; letter-spacing: 0.08em; }
+.mission-cluster { position: absolute; z-index: 1; box-sizing: border-box; border: 1px solid var(--rule-strong); }
+.mission-cluster.fleet { --pc: var(--accent); }
+.mission-cluster-head { height: 20px; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-bottom: 1px solid var(--rule-strong); font-size: 11px; cursor: pointer; white-space: nowrap; user-select: none; }
 .mission-cluster-head .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .mission-cluster-head .tree-icon, .mission-card .head .tree-icon { width: 14px; height: 14px; flex-shrink: 0; display: grid; place-items: center; font-family: var(--mono); font-size: 7px; font-weight: 500; color: var(--bg); background: var(--pc); overflow: hidden; }
 .mission-cluster-head .tree-icon img, .mission-card .head .tree-icon img { width: 14px; height: 14px; }
@@ -49,14 +47,14 @@
 
 /* A card: a 20px head in the project tint, a 40px body. Square, flush, no shadow. */
 .mission-card { position: absolute; z-index: 5; box-sizing: border-box; width: 224px; height: 62px; border: 1px solid var(--rule-strong); background: var(--bg-panel); color: var(--text); cursor: pointer; user-select: none; display: flex; flex-direction: column; text-align: left; font: inherit; padding: 0; }
-.mission-card .head { height: 20px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-bottom: 1px solid var(--rule); background: color-mix(in srgb, var(--pc) 22%, var(--bg-panel)); font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; }
+.mission-card .head { height: 20px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-bottom: 1px solid var(--rule); font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; }
 .mission-card .head .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 .mission-card .head .num { flex-shrink: 0; font-family: var(--mono); font-size: 10px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .mission-card .head .at { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .mission-card.waiting .head .at { color: var(--state-waiting); }
 .mission-card .body { height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 10px; }
 .mission-card .tx { min-width: 0; flex: 1; display: flex; flex-direction: column; justify-content: center; line-height: 1.2; }
-.mission-card .t { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mission-card .t { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mission-card .m { font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .mission-card .m .w { color: var(--state-waiting-text); }
 .mission-card .m .g { color: var(--state-working); }
@@ -91,7 +89,6 @@
 .win-head .title { flex-shrink: 0; max-width: 70%; color: var(--text-3); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
 .win-head .status-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-3); }
 .mission-card.window.waiting .win-head .status-note { color: var(--state-waiting-text); }
-.mission-card.window.lit .win-head { background: color-mix(in srgb, var(--pc) 12%, var(--bg-panel)); }
 .mission-card.window.lit .win-head .title { color: var(--text); font-weight: 600; }
 .win-body { flex: 1; min-height: 0; display: flex; }
 .win-face { flex-shrink: 0; box-sizing: border-box; border-right: 1px solid var(--rule); }
@@ -142,7 +139,7 @@ body.kbd .mission:focus { outline: 0; }
 .mission-screen { flex: 3; min-width: 0; margin: 0; padding: calc(8 * var(--u)) calc(12 * var(--u)); overflow: hidden; white-space: pre; font-family: var(--mono); font-size: calc(10px * var(--zoom, 1)); line-height: calc(14 * var(--u)); color: var(--text-3); background: var(--bg-deep); }
 .mission-screen.note { color: var(--text-dim); white-space: normal; font-family: var(--font); }
 .mission-side { flex: 2; min-width: 0; border-left: 1px solid var(--rule); display: flex; flex-direction: column; }
-.mission-side-head { height: calc(20 * var(--u)); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 calc(12 * var(--u)); font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-2); border-bottom: 1px solid var(--rule); }
+.mission-side-head { height: calc(20 * var(--u)); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 calc(12 * var(--u)); font-size: calc(11px * var(--zoom, 1)); border-bottom: 1px solid var(--rule); }
 .mission-side-head .mono { font-family: var(--mono); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--text-dim); }
 .mission-task { padding: calc(6 * var(--u)) calc(12 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); line-height: 1.4; overflow: auto; flex: 1; min-height: 0; }
 .mission-task.none { color: var(--text-dim); }
@@ -153,7 +150,7 @@ body.kbd .mission:focus { outline: 0; }
 .mission-kv .w { color: var(--state-waiting-text); }
 
 /* The search takes the palette field's place in the top bar while the board is open. What it leaves out hides. */
-#topbar .tb-cell.mission-find { display: none; flex-grow: 1; min-width: 0; max-width: calc(560 * var(--u)); gap: calc(10 * var(--u)); margin-left: max(0px, calc(50vw - 280 * var(--u) - 356 * var(--u))); border-left: 1px solid var(--rule); background: var(--bg-raised); color: var(--text-3); cursor: text; }
+#topbar .tb-cell.mission-find { display: none; flex-grow: 1; max-width: calc(560 * var(--u)); gap: calc(10 * var(--u)); margin-left: max(0px, calc(50vw - 280 * var(--u) - 356 * var(--u))); border-left: 1px solid var(--rule); background: var(--bg-raised); color: var(--text-3); cursor: text; }
 body:has(#mission-control:not([hidden])) #topbar .tb-cell.mission-find { display: flex; }
 body:has(#mission-control:not([hidden])) #open-switcher { display: none; }
 /* Focus mode and maximize hide the top bar; the board brings it back. */

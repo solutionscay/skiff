@@ -60,8 +60,7 @@ button.file-preview-key:active:not(:disabled) { background-image: none; box-shad
 .diff-text .dl-del { color: var(--diff-del); }
 #main { --pc: var(--project-default); }
 #banner {
-  height: var(--row); flex-shrink: 0;
-  display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(16 * var(--u));
+  height: var(--row); flex-shrink: 0; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(16 * var(--u));
   background: color-mix(in srgb, var(--pc) 8%, transparent);
   box-shadow: inset 3px 0 0 var(--pc), inset 0 -1px 0 var(--rule);
   color: var(--text-3); font-size: calc(12px * var(--zoom, 1));
@@ -110,7 +109,6 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
   background: var(--bg-panel); border-bottom: 1px solid var(--rule);
   font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); white-space: nowrap; overflow: hidden;
 }
-.cell.focused .cell-head { background: color-mix(in srgb, var(--pc) 12%, var(--bg-panel)); }
 /* Picked in the list: the same tint and bar as its session row. */
 .cell.selected .cell-head { background: color-mix(in srgb, var(--state-working) 16%, var(--bg-panel)); box-shadow: inset 2px 0 0 var(--state-working); }
 .cell.selected .cell-head .title { color: var(--text); }
@@ -119,7 +117,7 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 #terminal-host.group-picked .cell.focused::after { display: none; }
 /* A pane picked in the list gets the frame in the selection blue, wherever the keys are. */
 .cell.selected::after, #terminal-host.group-picked .cell.selected::after { content: ""; display: block; position: absolute; inset: 0; border: calc(2 * var(--u)) solid var(--state-working); pointer-events: none; z-index: 5; }
-.cell-head .title { color: var(--text); font-size: calc(16px * var(--zoom, 1)); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cell-head .title { color: var(--text); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* A project Skipper's head: "Skipper · gesher", with the project's icon or letters before the project. */
 .cell:not(.focused) .cell-head .title { color: var(--text-3); font-weight: 500; }
 .cell-head .head-gap { flex-grow: 1; }

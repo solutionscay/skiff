@@ -2,7 +2,7 @@
   height: calc(32 * var(--u)); flex-shrink: 0;
   display: flex; align-items: center; gap: calc(20 * var(--u)); padding: 0 calc(16 * var(--u));
   background: var(--bg-deep); border-top: 1px solid var(--rule);
-  font-size: calc(12px * var(--zoom, 1)); color: var(--text-2);
+  font-size: calc(12px * var(--zoom, 1));
 }
 /* Items never wrap. status.ts drops whole items when the bar runs out of room. */
 #statusbar { overflow: hidden; }

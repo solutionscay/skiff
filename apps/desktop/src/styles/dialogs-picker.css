@@ -30,4 +30,3 @@
 .fp-note { min-height: calc(20 * var(--u)); flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(20 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); border-bottom: 1px solid var(--rule); }
 .fp-note:empty { display: none; }
 .fp-path { height: calc(32 * var(--u)); flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(20 * var(--u)); border-bottom: 1px solid var(--rule); font: calc(12px * var(--zoom, 1)) var(--mono); color: var(--text); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.confirm-cancel:disabled { color: var(--text-dim); cursor: default; background: transparent; }

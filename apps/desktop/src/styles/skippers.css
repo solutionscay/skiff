@@ -7,12 +7,10 @@
 }
 .sv-tab {
   display: flex; align-items: center; justify-content: center; gap: calc(6 * var(--u));
-  border: 0; border-radius: 0; background: transparent; color: var(--text-dim);
-  font: 600 calc(11px * var(--zoom, 1)) var(--font); letter-spacing: 0.06em; text-transform: uppercase;
+  border: 0; border-radius: 0; color: var(--text-dim);
 }
 .sv-tab + .sv-tab { border-left: 1px solid var(--rule); }
 .sv-tab:hover { color: var(--text-2); }
-.sv-tab.on { color: var(--text); background: var(--bg-raised); }
 .sv-count { color: var(--state-waiting-text); font-family: var(--mono); letter-spacing: 0; }
 
 /* A Skipper: 60px, three lines of the row grid. The face; line 1 is the
@@ -25,7 +23,7 @@
 .sk-text { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: calc(3 * var(--u)); }
 .sk-top, .sk-line { display: flex; align-items: baseline; gap: calc(8 * var(--u)); min-width: 0; }
 .sk-top > .agent-icon { align-self: center; }
-.sk-name { font-size: calc(13px * var(--zoom, 1)); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sk-name { font-size: calc(13px * var(--zoom, 1)); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sk-tag { font: calc(10px * var(--zoom, 1)) var(--mono); color: var(--text-dim); flex-shrink: 0; }
 /* The number key: only while Ctrl+Shift is held. */
 .sk-num { display: none; align-self: center; flex-shrink: 0; padding: 0 calc(3 * var(--u)); border: 1px solid var(--rule-strong); font: calc(11px * var(--zoom, 1)) var(--mono); line-height: calc(14 * var(--u)); color: var(--text-2); font-variant-numeric: tabular-nums; }

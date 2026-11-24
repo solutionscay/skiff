@@ -3,8 +3,7 @@
   height: calc(20 * var(--u)); width: 100%; flex-shrink: 0;
   display: flex; align-items: center; gap: calc(6 * var(--u));
   margin-top: calc(12 * var(--u)); padding: 0 0 0 calc(16 * var(--u));
-  border: 0; background: transparent; text-align: left;
-  font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim);
+  border: 0; background: transparent; text-align: left; color: var(--text-dim);
 }
 .tree-head-name { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fleet-pick { padding-left: calc(10 * var(--u)); padding-right: calc(12 * var(--u)); }
@@ -36,17 +35,16 @@
 .tree-icon {
   width: calc(20 * var(--u)); height: calc(20 * var(--u)); flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; overflow: hidden;
-  font-family: var(--mono); font-size: calc(10px * var(--zoom, 1)); font-weight: 700; color: var(--pc);
-  background: color-mix(in srgb, var(--pc) 14%, transparent);
+  font-family: var(--mono); font-size: calc(10px * var(--zoom, 1)); color: var(--pc);
 }
 .tree-icon:has(img) { background: transparent; }
 .tree-icon img { width: calc(16 * var(--u)); height: calc(16 * var(--u)); object-fit: contain; }
-.project-row .project-name { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(13px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
+.project-row .project-name { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(13px * var(--zoom, 1)); color: var(--text); }
 .project-meta { flex-shrink: 0; font-size: calc(11px * var(--zoom, 1)); color: var(--error); }
 .project-row .wt-plus { visibility: hidden; }
 .project-row:hover .wt-plus, .project-row > .current ~ .wt-plus, .project-row .wt-plus[aria-expanded="true"] { visibility: visible; }
 /* The project row is current: the whole row lights, its buttons included. */
-#sidebar-scroll .project-row:has(> .project-pick.current) { background: color-mix(in srgb, var(--pc) 22%, var(--bg-panel)); box-shadow: inset 2px 0 0 var(--pc); }
+#sidebar-scroll .project-row:has(> .project-pick.current) { box-shadow: inset 2px 0 0 var(--pc); }
 #sidebar-scroll .project-pick.current, body.kbd #sidebar-scroll .project-pick.current:focus { background: transparent; box-shadow: none; }
 body.kbd #sidebar-scroll .project-row:has(> .project-pick.current:focus) { outline: 1px solid var(--rule-strong); outline-offset: -1px; }
 
@@ -88,10 +86,10 @@ body.kbd #sidebar-scroll .project-row:has(> .project-pick.current:focus) { outli
    8px in from the panel's edges, with an 8px dark gutter between boxes. The head is a plain 40px row in the box;
    the head draws the frame's top and sides, the rows under it the sides and bottom. No wrapper: the blocks stay keyed.
    Projects in a box part with a 1px rule, the first one from the head too. Worktree rows keep the 20px child grid. */
-#sidebar-scroll:has(> .tree-head) { background: var(--bg-deep); padding-bottom: calc(8 * var(--u)); }
+#sidebar-scroll:has(> .tree-head) { padding-bottom: calc(8 * var(--u)); }
 #sidebar-scroll > .tree-head {
   width: auto; height: var(--row); margin: calc(8 * var(--u)) calc(8 * var(--u)) 0; padding: 0 0 0 calc(8 * var(--u)); align-items: center;
-  background: var(--bg-panel); color: var(--text-3);
+  background: var(--bg-panel);
   border: 1px solid var(--rule-strong);
 }
 #sidebar-scroll > .tree-head:has(+ :is(.tree-kids, .sessions-block)) { border-bottom: 0; }
@@ -159,11 +157,11 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 /* The Skiff agent (#95): one session row above the projects, in line with the section heads. */
 /* The Skiff agent: a full row, flush at the top, above the section boxes. Its own --rule-strong line closes it.
    It takes the Admiral's size in the Skippers list: a 60px tinted row with a 40px face, 13px words. */
-.session-row.skiff-agent-row { height: calc(60 * var(--u)); gap: calc(10 * var(--u)); padding-left: calc(12 * var(--u)); background-color: var(--bg-raised); border-bottom: 1px solid var(--rule-strong); }
+.session-row.skiff-agent-row { height: calc(60 * var(--u)); gap: calc(10 * var(--u)); padding-left: calc(12 * var(--u)); border-bottom: 1px solid var(--rule-strong); }
 .skiff-agent-row > .skipper-face { width: calc(40 * var(--u)); height: calc(40 * var(--u)); }
 /* The size ladder, as h1 to p: Admiral 60px row, 40px face, 15px name; fleet Skipper 40, 28, 14px;
    project Skipper 30, 20, 13px; session rows 20px with 12px words. */
-.skiff-agent-row .skiff-agent-name { flex-shrink: 0; font-size: calc(15px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
+.skiff-agent-row .skiff-agent-name { flex-shrink: 0; color: var(--text); }
 .skiff-agent-row .title { font-size: calc(13px * var(--zoom, 1)); color: var(--text-3); }
 .skiff-agent-row:not([data-session]) .title { color: var(--text-dim); }
 /* The Skiff agent's watcher, on its agent icon. Runs: teal. The icon turns
@@ -191,7 +189,7 @@ body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-sel
 #sidebar-scroll > .tree-kids > .session-row.project-skipper-row { padding-left: calc(8 * var(--u)); --pc: var(--project-default); }
 .session-row.project-skipper-row { height: var(--row); }
 .project-skipper-row > .skipper-face { width: calc(28 * var(--u)); height: calc(28 * var(--u)); }
-.project-skipper-row .skiff-agent-name { flex-shrink: 0; font-size: calc(14px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
+.project-skipper-row .skiff-agent-name { flex-shrink: 0; color: var(--text); }
 .project-skipper-row .title { font-size: calc(13px * var(--zoom, 1)); color: var(--text-3); }
 /* A project Skipper: the first child of its project. Its face sits 18px out from the worktree column, between the
    project icon and the session icons, so it reads a level above them. The worktrees and loose sessions under it
