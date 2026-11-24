@@ -138,7 +138,7 @@ body.ledger-keys #ledger .lg-tab.on { color: var(--pc, var(--project-default)); 
 .sc-cols, .lg-row.sc-row { display: grid; grid-template-columns: calc(15 * var(--u)) minmax(0, 1fr) calc(64 * var(--u)) calc(72 * var(--u)) calc(12 * var(--u)); column-gap: calc(8 * var(--u)); padding: 0 calc(16 * var(--u)); }
 .sc-cols { height: calc(20 * var(--u)); align-items: center; font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); border-bottom: 1px solid var(--rule); }
 .lg-list > .sc-cols:first-child { margin-top: calc(-6 * var(--u)); }
-.lg-row.sc-row { height: calc(40 * var(--u)); grid-template-rows: calc(20 * var(--u)) calc(20 * var(--u)); align-items: center; gap: 0 calc(8 * var(--u)); border-bottom: 1px solid var(--rule); }
+.lg-row.sc-row { height: var(--row); grid-template-rows: calc(20 * var(--u)) calc(20 * var(--u)); align-items: center; gap: 0 calc(8 * var(--u)); border-bottom: 1px solid var(--rule); }
 .sc-row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sc-dot { grid-row: 1; grid-column: 1; width: calc(7 * var(--u)); height: calc(7 * var(--u)); border-radius: 50%; }
 .sc-dot.ok { background: var(--state-done); }
@@ -161,7 +161,7 @@ body.ledger-keys #ledger .lg-tab.on { color: var(--pc, var(--project-default)); 
 .sc-row.paused .sc-next { color: var(--text-dim); font-family: var(--font); }
 
 /* A schedule's series: the head over the runs. */
-.sr-head { height: calc(40 * var(--u)); flex-shrink: 0; display: grid; grid-template-columns: calc(15 * var(--u)) minmax(0, 1fr) auto; grid-template-rows: calc(20 * var(--u)) calc(20 * var(--u)); column-gap: calc(8 * var(--u)); align-items: center; padding: 0 calc(16 * var(--u)); border-bottom: 1px solid var(--rule); }
+.sr-head { height: var(--row); flex-shrink: 0; display: grid; grid-template-columns: calc(15 * var(--u)) minmax(0, 1fr) auto; grid-template-rows: calc(20 * var(--u)) calc(20 * var(--u)); column-gap: calc(8 * var(--u)); align-items: center; padding: 0 calc(16 * var(--u)); border-bottom: 1px solid var(--rule); }
 .sr-back { grid-row: 1 / span 2; width: calc(15 * var(--u)); height: 100%; padding: 0; border: 0; background: none; display: grid; place-items: center; color: var(--text-3); cursor: pointer; }
 .sr-back:hover { color: var(--text); }
 .sr-name { grid-row: 1; grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--zoom, 1)); font-weight: 600; }
