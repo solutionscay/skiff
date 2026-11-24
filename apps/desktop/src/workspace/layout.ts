@@ -66,7 +66,7 @@ export function shapeName(l: Layout): string | null {
   return null;
 }
 
-export interface Rect { session: string; x: number; y: number; w: number; h: number }
+interface Rect { session: string; x: number; y: number; w: number; h: number }
 
 export function rects(l: Layout, x: number, y: number, w: number, h: number, out: Rect[] = []): Rect[] {
   if (l.type === "pane") {

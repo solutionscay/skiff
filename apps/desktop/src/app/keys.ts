@@ -25,7 +25,7 @@ export type Action =
 
 export const isMac = navigator.userAgent.includes("Macintosh");
 
-export const DEFAULTS: Record<Action, string> = {
+const DEFAULTS: Record<Action, string> = {
   palette: "ctrl+shift+p",
   "new-session": "ctrl+shift+t",
   "new-worktree": "ctrl+shift+n",
