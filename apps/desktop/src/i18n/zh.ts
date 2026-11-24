@@ -305,7 +305,7 @@ export const zh = {
   "fixed.ledger.open": "打开该行的窗格或结果",
   "fixed.ledger.back": "返回 {skiff-agent} 的窗格",
   "fixed.images.search": "搜索文件",
-  "fixed.images.toList": "从搜索框到图片，再返回",
+  "fixed.images.toList": "从搜索框到文件，再返回",
   "fixed.images.step": "移到下一个文件",
   "fixed.images.actions": "插入选中项并关闭、固定、复制路径、删除",
   "fixed.images.close": "关闭文件",
@@ -1047,7 +1047,7 @@ export const zh = {
   "sink.lost": "其终端中未保存的工作将丢失。",
   "sink.action#other": "击沉 {count} 个会话",
 
-  // Images.
+  // Files: the dialog and Settings › Files. Keys keep their images.* names.
   "images.title": "文件",
   "images.search": "搜索",
   "images.pasted": "粘贴的图片",

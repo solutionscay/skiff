@@ -312,7 +312,7 @@ export const es = {
   "fixed.ledger.open": "Abrir el panel o el resultado de la fila",
   "fixed.ledger.back": "Volver al panel de {skiff-agent}",
   "fixed.images.search": "Buscar archivos",
-  "fixed.images.toList": "Ir de la búsqueda a las imágenes, y volver",
+  "fixed.images.toList": "Ir de la búsqueda a los archivos, y volver",
   "fixed.images.step": "Ir al archivo siguiente",
   "fixed.images.actions": "Insertar la selección y cerrar, Fijar, Copiar ruta, Borrar",
   "fixed.images.close": "Cerrar Archivos",
@@ -1103,7 +1103,7 @@ export const es = {
   "sink.action#one": "Hundir {count} sesión",
   "sink.action#other": "Hundir {count} sesiones",
 
-  // Images.
+  // Files: the dialog and Settings › Files. Keys keep their images.* names.
   "images.title": "Archivos",
   "images.search": "Buscar",
   "images.pasted": "Imagen pegada",
