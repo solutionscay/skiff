@@ -1186,8 +1186,6 @@ export const es = {
   "opacity.action": "Aplicar opacidad",
   "color.hex": "Color hex",
   "files.empty": "Vacía",
-  "files.truncated#one": "Solo se muestra la primera entrada.",
-  "files.truncated#other": "Solo se muestran las primeras {count} entradas.",
   "files.tooMany": "No se muestra ninguna entrada. La carpeta tiene demasiadas para listarlas.",
   "files.more": "Mostrar más",
   "changes.since": "Cambios desde {base}",

@@ -1128,7 +1128,6 @@ export const zh = {
   "opacity.action": "设置不透明度",
   "color.hex": "十六进制颜色",
   "files.empty": "空",
-  "files.truncated#other": "仅显示前 {count} 个条目。",
   "files.tooMany": "未显示任何条目。文件夹中的条目太多，无法列出。",
   "files.more": "显示更多",
   "changes.since": "自 {base} 以来的更改",
