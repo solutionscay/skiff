@@ -383,6 +383,7 @@ pub async fn start(target: &SshTarget, options: &SshOptions) -> Result<Outcome, 
     let out = run(target, options, "sh -s -- start".to_string(), SERVER.as_bytes(), &|_| {}).await?;
     match value(&out, "skiff-start") {
         "missing" => Err("Skiff is not installed there any more. Check again.".into()),
+        "unsafe" => Err(format!("{} on the server is not a private folder of this account. Skiff does not start there.", value(&out, "folder"))),
         _ => Ok(started(&out)),
     }
 }
