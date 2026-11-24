@@ -1,5 +1,28 @@
 use super::*;
 
+#[cfg(unix)]
+struct TestTree(PathBuf);
+
+#[cfg(unix)]
+impl TestTree {
+    fn new(tag: &str) -> (Self, PathBuf, PathBuf) {
+        let base = std::env::temp_dir().join(format!("skiff-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (root, outside) = (base.join("repo"), base.join("outside"));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        assert!(Command::new("git").arg("-C").arg(&root).args(["init", "-q"]).status().unwrap().success());
+        (Self(base), root, outside)
+    }
+}
+
+#[cfg(unix)]
+impl Drop for TestTree {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
 fn git_quoted_names_come_back_real() {
     assert_eq!(unquote(b"./plain.txt"), "./plain.txt");
@@ -145,20 +168,7 @@ fn a_branch_counts_its_commits_from_the_fork_point() {
 #[test]
 fn untracked_links_fifos_and_large_files_are_never_followed_or_read() {
     use std::os::unix::fs::symlink;
-    let base = std::env::temp_dir().join(format!("skiff-count-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
-    struct Gone(PathBuf);
-    impl Drop for Gone {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-    let _gone = Gone(base.clone());
-    let (root, outside) = (base.join("repo"), base.join("outside"));
-    std::fs::create_dir_all(&root).unwrap();
-    std::fs::create_dir_all(&outside).unwrap();
-    let run = |args: &[&str]| assert!(Command::new("git").arg("-C").arg(&root).args(args).status().unwrap().success());
-    run(&["init", "-q"]);
+    let (_tree, root, outside) = TestTree::new("count");
     std::fs::write(outside.join("secret.txt"), "1\n2\n3\n").unwrap();
     let mkfifo = |p: &Path| {
         let c = std::ffi::CString::new(p.as_os_str().as_encoded_bytes()).unwrap();
@@ -225,20 +235,8 @@ fn a_root_whose_path_names_another_folder_is_refused() {
 #[test]
 fn diff_text_is_bounded_plain_and_stays_in_the_worktree() {
     use std::os::unix::fs::symlink;
-    let base = std::env::temp_dir().join(format!("skiff-difftext-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&base);
-    struct Gone(PathBuf);
-    impl Drop for Gone {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-    let _gone = Gone(base.clone());
-    let (root, outside) = (base.join("repo"), base.join("outside"));
-    std::fs::create_dir_all(&root).unwrap();
-    std::fs::create_dir_all(&outside).unwrap();
+    let (_tree, root, outside) = TestTree::new("difftext");
     let run = |args: &[&str]| assert!(Command::new("git").arg("-C").arg(&root).args(args).status().unwrap().success());
-    run(&["init", "-q"]);
     // No commit yet: an added file is compared with the empty tree.
     std::fs::write(root.join("a.txt"), "1\n2\n").unwrap();
     run(&["add", "a.txt"]);
@@ -308,7 +306,7 @@ fn diff_text_is_bounded_plain_and_stays_in_the_worktree() {
         assert!(diff_in(&held, &root, Some(bad)).is_err(), "{bad}");
     }
     // The root swapped for a link: refused, never the other folder's.
-    std::fs::rename(&root, base.join("moved")).unwrap();
+    std::fs::rename(&root, _tree.0.join("moved")).unwrap();
     symlink(&outside, &root).unwrap();
     assert!(diff_in(&held, &root, Some("new.txt")).is_err_and(|e| e.to_string().contains("replaced")));
 }
