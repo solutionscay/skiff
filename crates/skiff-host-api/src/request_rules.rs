@@ -33,9 +33,8 @@ impl Request {
             Self::LedgerRows | Self::LedgerStamp | Self::LedgerResult { .. } => Some(Capability::ledger_read()),
             Self::ScheduleList | Self::CronPreview { .. } | Self::ScheduleCall { .. } => Some(Capability::schedules()),
             Self::SkipperSettings => Some(Capability::skipper_settings()),
-            Self::SkipperEdit { .. } | Self::SkipperFolderPreview { .. } | Self::SkipperFolderChange { .. } => {
-                Some(Capability::skipper_config())
-            }
+            Self::SkipperEdit { .. } => Some(Capability::skipper_config()),
+            Self::SkipperFolderMove { .. } => Some(Capability::skipper_config_move()),
             Self::SkipperFileRead { .. } | Self::SkipperFileWrite { .. } | Self::SkipperFileReset { .. } => Some(Capability::skipper_file()),
             Self::SkipperOpen { .. } | Self::SkipperWatch { .. } | Self::SkipperProject { .. } => Some(Capability::skipper_run()),
             Self::SkipperWatchLog => Some(Capability::skipper_watch_log()),
@@ -106,8 +105,7 @@ impl Request {
                 | (Self::LedgerResult { .. }, Response::File { .. })
                 | (Self::SkipperSettings | Self::SkipperEdit { .. } | Self::SkipperFileReset { .. }, Response::Skipper { .. })
                 | (Self::SkipperFileRead { .. } | Self::SkipperFileWrite { .. }, Response::SkipperFile { .. })
-                | (Self::SkipperFolderPreview { .. }, Response::SkipperFolder { .. })
-                | (Self::SkipperFolderChange { .. }, Response::SkipperFolderDone { .. })
+                | (Self::SkipperFolderMove { .. }, Response::SkipperFolderMoved { .. })
                 | (Self::SkipperOpen { .. }, Response::SkipperOpened { .. })
                 | (Self::SkipperWatch { .. }, Response::Watch { .. })
                 | (Self::SkipperWatchLog, Response::File { .. })
@@ -165,8 +163,7 @@ impl Request {
                 | Self::SkipperFileRead { .. }
                 | Self::SkipperFileWrite { .. }
                 | Self::SkipperFileReset { .. }
-                | Self::SkipperFolderPreview { .. }
-                | Self::SkipperFolderChange { .. }
+                | Self::SkipperFolderMove { .. }
                 | Self::SkipperWatch { .. }
                 | Self::SkipperWatchLog
                 | Self::SkipperProject { .. }

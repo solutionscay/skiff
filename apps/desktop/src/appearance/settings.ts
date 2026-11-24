@@ -12,7 +12,7 @@ import { editField, fieldEditKey, textField } from "../ui/fieldClipboard";
 import { mainName, type InstructionFile, type SkiffAgentSettings, type TaskType } from "../app/skiffAgent";
 import { addTaskButton, finishRow, folderRows, type SkiffAgentEdit, skippersPage, taskTable } from "./skiffAgentSettings";
 import { peekText } from "../terminal/peek";
-import { changeSkiffFolder } from "./skiffFolderDialog";
+import { moveSkiffFolder } from "./skiffFolderDialog";
 import { sectionHead, tableState } from "./rowTable";
 import { type HostsPage, hostName, isRemote, knownHosts } from "../app/hosts";
 import { createHostsTab } from "./hostSettings";
@@ -283,7 +283,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         local: !isRemote(),
         peek: (script: string, cwd: string, name: string) => peekOver(script, cwd, `${cwd}/${name}`, () => countDisk(disk, render)),
       };
-      main.append(...diskUseSection(disk, render, (days) => void setCacheDays(days), opener, agentSet && !(isRemote() && !hostCan("skipper_config")) ? folderRows(agentSet, changeFolder) : []));
+      main.append(...diskUseSection(disk, render, (days) => void setCacheDays(days), opener, agentSet && !(isRemote() && !hostCan("skipper_config")) ? folderRows(agentSet, hostCan("skipper_folder_move") ? moveFolder : null) : []));
       root.replaceChildren(nav, pinClose(main));
       return;
     }
@@ -451,10 +451,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     render();
   }
 
-  /** Settings › Disk use › Folder › Change…. The page reads the folder again after a change. */
-  function changeFolder() {
+  /** Settings › Disk use › Folder › Move…. The page reads the folder again after a move. */
+  function moveFolder() {
     if (!agentSet) return;
-    changeSkiffFolder({
+    moveSkiffFolder({
       current: agentSet.configured,
       changed: async () => {
         agentSet = await hostInvoke<SkiffAgentSettings>("skipper", "get_skiff_agent").catch(() => agentSet);
@@ -562,7 +562,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
 
   /**
    * The text field with the keys, in Settings or in a dialog over it, such as
-   * Folder › Change…. The native menu sends copy and paste here while a dialog is open.
+   * Folder › Move…. The native menu sends copy and paste here while a dialog is open.
    */
   const field = () => {
     const f = textField(document.activeElement);

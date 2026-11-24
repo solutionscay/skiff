@@ -309,6 +309,10 @@ pub async fn handle(stream: UnixStream, pool: Arc<SessionPool>) -> Result<()> {
                 Ok(()) => Response::Ok,
                 Err(e) => error(e),
             },
+            Request::Refolder { from, to } => match pool.refolder(&from, &to) {
+                Ok(_) => Response::Ok,
+                Err(e) => error(e),
+            },
             Request::Rescope { session, scope, name } => match pool.rescope(&session, &scope, &name) {
                 Ok(session) => Response::Session { session },
                 Err(e) => error(e),

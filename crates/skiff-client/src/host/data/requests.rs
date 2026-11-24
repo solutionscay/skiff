@@ -3,8 +3,7 @@ use skiff_host_api::{
     HostCacheUse, HostAgent, HostChanges, HostDiff, HostFile, HostFolder,
     HostImage, HostLedgerRow, HostFileScope, HostListing, HostProject, HostCronPreview,
     HostSchedule, HostSkipper, HostSkipperFile, HostWorktree, ProjectEdit, ProjectFleet,
-    ReadPurpose, Request, Response, SkipperEdit, SkipperFolderDone, SkipperFolderMode,
-    SkipperFolderPreview, SkipperOpened, InventorySession, TakenSkipper, AgentUsage, UsageRefresh,
+    ReadPurpose, Request, Response, SkipperEdit, SkipperFolderMoved, SkipperOpened, InventorySession, TakenSkipper, AgentUsage, UsageRefresh,
 };
 
 use crate::host::HostConnection;
@@ -230,13 +229,6 @@ pub async fn skipper_file_reset(c: &HostConnection, scope: HostFileScope) -> Res
     c.request(Request::SkipperFileReset { scope }).await.map(drop)
 }
 
-/// What a change of Skipper's folder to `path` would do on the Host.
-pub async fn skipper_folder_preview(c: &HostConnection, path: &str) -> Result<SkipperFolderPreview, Error> {
-    match c.request(Request::SkipperFolderPreview { path: path.into() }).await? {
-        Response::SkipperFolder { preview } => Ok(*preview),
-        _ => unreachable!("checked by Request::accepts"),
-    }
-}
 
 /// The Host's agents and the `[agents]` revision they were read at (`agent_config@1`).
 pub async fn agent_config(c: &HostConnection) -> Result<(Vec<HostAgent>, String), Error> {
@@ -393,16 +385,10 @@ pub async fn skipper_edit(c: &HostConnection, edit: SkipperEdit) -> Result<HostS
     }
 }
 
-/// Changes Skipper's folder on the Host to `path`, a preview's `to`.
-pub async fn skipper_folder_change(
-    c: &HostConnection,
-    path: &str,
-    mode: SkipperFolderMode,
-    end_skipper: bool,
-    anyway: bool,
-) -> Result<SkipperFolderDone, Error> {
-    match c.request(Request::SkipperFolderChange { path: path.into(), mode, end_skipper, anyway }).await? {
-        Response::SkipperFolderDone { done } => Ok(done),
+/// Moves the agent's folder on the Host to `path`.
+pub async fn skipper_folder_move(c: &HostConnection, path: &str) -> Result<SkipperFolderMoved, Error> {
+    match c.request(Request::SkipperFolderMove { path: path.into() }).await? {
+        Response::SkipperFolderMoved { moved } => Ok(moved),
         _ => unreachable!("checked by Request::accepts"),
     }
 }

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::wire::bytes;
-use crate::{AgentEdit, Group, HostFileScope, ProjectEdit, ProjectFleet, ReadPurpose, SessionSpec, SkipperEdit, SkipperFolderMode, UsageRefresh};
+use crate::{AgentEdit, Group, HostFileScope, ProjectEdit, ProjectFleet, ReadPurpose, SessionSpec, SkipperEdit, UsageRefresh};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
@@ -334,22 +334,13 @@ pub enum Request {
     SkipperFileReset {
         scope: HostFileScope,
     },
-    /// Answers `skipper_folder`: what a change to `path` would do. A full
-    /// Host path, or one under home as `~/`. Writes nothing.
-    SkipperFolderPreview {
+    /// Moves the agent's folder to `path`: a full Host path, or one under
+    /// home as `~/`. The target must be new or empty. Refused while ledger
+    /// work is open or an agent session works. Ends the Skipper sessions
+    /// first. Answers `skipper_folder_moved`. Not retried: files may have
+    /// moved.
+    SkipperFolderMove {
         path: String,
-    },
-    /// Changes Skipper's folder to `path`, the preview's `to`. A running
-    /// Skipper session is ended first when `end_skipper`, else it refuses
-    /// the change (`conflict`). `anyway` runs it while tasks still run.
-    /// Answers `skipper_folder_done`. Not retried: files may have moved.
-    SkipperFolderChange {
-        path: String,
-        mode: SkipperFolderMode,
-        #[serde(default)]
-        end_skipper: bool,
-        #[serde(default)]
-        anyway: bool,
     },
     /// Finds Skipper's session or starts it, and its watcher. With
     /// `restore`, the `input_gen` the client read: only continue a restored

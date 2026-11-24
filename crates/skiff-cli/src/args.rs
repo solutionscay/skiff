@@ -142,7 +142,7 @@ pub(super) enum Cmd {
     /// Attach to the Skiff agent (Admiral). Start it first if it does not
     /// run. Ctrl-\ detaches; the agent keeps running.
     #[command(
-        after_help = "Reads [skiff_agent] in projects.toml: the folder, the name, the agent and whether it is on.\nWith no Skiff agent session, it sets up the folder (missing files come back, existing ones stay), starts the agent, and starts `skiff watch` for it. One watcher runs per daemon.\nA Skiff agent session that is a bare shell (after a restore, or after its agent quit) gets the agent again: its last conversation when Settings continues on restore, else a new one.\nWith no skiffd running, it starts one, as the app does.\nThe app and this command find the same session: skiffd marks it, and two starts at once give one.\nAttach gives the session this terminal's size, in the app too, until you detach. Then the pane gets its own size back.\n--move-to resolves a relative PATH against this shell's folder and stores the full path. The old folder keeps every file and gets MOVED.md; Skiff never deletes it. The conversation does not move. Admiral's session ends first, and tasks that still run stop the change unless you confirm."
+        after_help = "Reads [skiff_agent] in projects.toml: the folder, the name, the agent and whether it is on.\nWith no Skiff agent session, it sets up the folder (missing files come back, existing ones stay), starts the agent, and starts `skiff watch` for it. One watcher runs per daemon.\nA Skiff agent session that is a bare shell (after a restore, or after its agent quit) gets the agent again: its last conversation when Settings continues on restore, else a new one.\nWith no skiffd running, it starts one, as the app does.\nThe app and this command find the same session: skiffd marks it, and two starts at once give one.\nAttach gives the session this terminal's size, in the app too, until you detach. Then the pane gets its own size back.\n--move-to resolves a relative PATH against this shell's folder and stores the full path. The target must be new or empty. It refuses while ledger work is open or an agent session works. The folder moves whole: nothing stays at the old path. The Skipper sessions end first, and Admiral starts a new conversation in the new folder."
     )]
     #[command(args_conflicts_with_subcommands = true)]
     Skipper {
@@ -151,9 +151,8 @@ pub(super) enum Cmd {
         /// Do not attach. Print the session id.
         #[arg(long)]
         no_attach: bool,
-        /// Change the Skiff agent's folder to PATH, as Settings › Disk use ›
-        /// Folder does: copy, check and switch to a new or empty folder, or
-        /// switch to a Skiff folder. It shows the preview and asks first.
+        /// Move the Skiff agent's folder to PATH, a new or empty folder, as
+        /// Settings › Disk use › Folder › Move… does. It asks first.
         #[arg(long, value_name = "PATH", conflicts_with = "no_attach")]
         move_to: Option<std::path::PathBuf>,
         /// The project Skipper of PROJECT in place of Admiral: find it,
@@ -170,10 +169,7 @@ pub(super) enum Cmd {
         /// With --fleet: take the project Skippers over without asking.
         #[arg(long, requires = "fleet")]
         yes: bool,
-        /// With --move-to: set up a new ledger in place of a copy.
-        #[arg(long, requires = "move_to")]
-        empty: bool,
-        /// With --move-to: show the preview and change nothing.
+        /// With --move-to: run the checks and change nothing.
         #[arg(long, requires = "move_to")]
         dry_run: bool,
     },

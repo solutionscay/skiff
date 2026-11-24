@@ -265,7 +265,7 @@ fn check(dir: &Path, home: &Path, cfg: &Config) -> Result<()> {
 /// `p` made canonical: `.` and `..` gone and links resolved. For a path
 /// that does not exist yet, the nearest existing parent is made canonical
 /// and the rest added to it. `p` is absolute.
-pub(crate) fn real(p: &Path) -> PathBuf {
+pub fn real(p: &Path) -> PathBuf {
     use std::path::Component;
     let mut out = PathBuf::new();
     for c in p.components() {

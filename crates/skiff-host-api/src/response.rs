@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     FolderListing, FolderPlaces, Group, Hello, HostAgent, HostBranches, HostCacheImage, HostCacheUse, HostChange, HostDiff, HostFile, HostFolder, HostImage, HostLedgerRow, HostListing, HostSchedule, HostCronPreview, HostProject, HostSkipper, HostSkipperFile,
-    HostWorktree, InventorySession, AgentUsage, SkipperFolderDone, SkipperFolderPreview, SkipperOpened, TakenSkipper,
+    HostWorktree, InventorySession, AgentUsage, SkipperFolderMoved, SkipperOpened, TakenSkipper,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -62,8 +62,7 @@ pub enum Response {
     },
     SkipperFile { file: HostSkipperFile },
     /// Boxed, as `Project`. Same JSON.
-    SkipperFolder { preview: Box<SkipperFolderPreview> },
-    SkipperFolderDone { done: SkipperFolderDone },
+    SkipperFolderMoved { moved: SkipperFolderMoved },
     /// Boxed, as `Session`. Same JSON.
     SkipperOpened { opened: Box<SkipperOpened> },
     /// `started`: this request started a watcher. False: one ran already.

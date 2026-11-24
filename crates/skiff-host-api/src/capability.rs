@@ -143,12 +143,17 @@ impl Capability {
     pub fn skipper_settings() -> Self {
         Self::new(SKIPPER, 1)
     }
-    /// Change the Host's `[skiff_agent]` settings and task types, preview a
-    /// new Skipper folder and change to it (copy, start empty or switch), as
+    /// Change the Host's `[skiff_agent]` settings and task types, as
     /// Settings does on the Host's own desktop. Data plane; grants no
     /// Skipper launch, no watcher control and no ledger write.
     pub fn skipper_config() -> Self {
         Self::new(SKIPPER_CONFIG, 1)
+    }
+    /// What `skipper_config@1` grants, and moving the agent's folder on the
+    /// Host, which ends its Skipper sessions. A Host that offers it offers
+    /// `skipper_config@1` too.
+    pub fn skipper_config_move() -> Self {
+        Self::new(SKIPPER_CONFIG, 2)
     }
     /// Read, write and reset the Host's instruction files by what they are
     /// for, never by path: `AGENTS.md`, each `SKIPPER.md` and each task

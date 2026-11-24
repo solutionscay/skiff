@@ -162,6 +162,11 @@ impl Client {
         self.expect_ok(Request::Retire { session: session.to_string() }).await
     }
 
+    /// The agent's folder moved: see [`Request::Refolder`].
+    pub async fn refolder(&self, from: &std::path::Path, to: &std::path::Path) -> Result<()> {
+        self.expect_ok(Request::Refolder { from: from.to_path_buf(), to: to.to_path_buf() }).await
+    }
+
     /// A fleet's rename: see [`Request::Rescope`].
     pub async fn rescope(&self, session: &str, scope: &str, name: &str) -> Result<SessionInfo> {
         let req = Request::Rescope { session: session.to_string(), scope: scope.to_string(), name: name.to_string() };

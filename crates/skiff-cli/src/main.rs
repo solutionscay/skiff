@@ -94,7 +94,7 @@ async fn run(cli: Cli) -> Result<i32> {
         }
         Cmd::Skipper { cmd: Some(SkipperCmd::Template(cmd)), .. } => return skipper::template(cmd).map(|_| 0),
         // Starts skiffd when it does not run.
-        Cmd::Skipper { move_to: Some(to), empty, dry_run, .. } => return skipper::move_to(&socket, &to, empty, dry_run).await.map(|_| 0),
+        Cmd::Skipper { move_to: Some(to), dry_run, .. } => return skipper::move_to(&socket, &to, dry_run).await.map(|_| 0),
         Cmd::Skipper { project: Some(p), no_attach, .. } => return skipper::run_project(&socket, &p, no_attach).await.map(|_| 0),
         Cmd::Skipper { fleet: Some(f), no_attach, yes, .. } => return skipper::run_fleet(&socket, &f, no_attach, yes).await.map(|_| 0),
         Cmd::Skipper { no_attach, .. } => return skipper::run(&socket, no_attach).await.map(|_| 0),

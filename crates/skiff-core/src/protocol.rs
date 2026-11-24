@@ -183,6 +183,13 @@ pub enum Request {
         scope: String,
         name: String,
     },
+    /// The agent's folder moved from `from` to `to`: each session whose
+    /// folder lies in `from` gets the same folder in `to`, and the saved
+    /// workspace with it. Answers [`Response::Ok`].
+    Refolder {
+        from: PathBuf,
+        to: PathBuf,
+    },
     /// This connection watches `session` for the Skiff agent. The
     /// registration lasts until the connection closes. A second call on the
     /// same connection replaces it: the watcher sends it again to report or
@@ -432,6 +439,7 @@ impl Request {
             Request::Watching { .. } => "watching",
             Request::Retire { .. } => "retire",
             Request::Rescope { .. } => "rescope",
+            Request::Refolder { .. } => "refolder",
             Request::PeekOwner { .. } => "peek_owner",
         }
     }

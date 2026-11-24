@@ -67,33 +67,12 @@ pub async fn answer(request: Request) -> Result<Response, Error> {
             .await?;
             Ok(Response::Skipper { settings: Box::new(settings) })
         }
-        Request::SkipperFolderPreview { path } => {
-            let (panes, skipper) = live().await;
-            let preview = blocking(move || {
-                let home = skipper::home().map_err(failed)?;
-                let to = agent_folder::resolve(&path, &home, &home).map_err(invalid)?;
-                let cfg = config::load().map_err(failed)?;
-                agent_folder::preview(&cfg, &to, &panes).map_err(failed)
-            })
-            .await?;
-            Ok(Response::SkipperFolder { preview: Box::new(preview.to_host(skipper.is_some())) })
-        }
-        Request::SkipperFolderChange { path, mode, end_skipper, anyway } => {
-            let (mut panes, skipper) = live().await;
-            if let Some(s) = skipper {
-                if !end_skipper {
-                    return Err(Error::Conflict { message: "Skipper runs. It ends before the change.".into() });
-                }
-                let c = connect().await?;
-                c.kill(&s.id).await.map_err(failed)?;
-                panes.remove(&s.id);
-            }
-            let done = blocking(move || {
-                let cfg = config::load().map_err(failed)?;
-                agent_folder::change(&cfg, &PathBuf::from(path), mode.into(), &panes, anyway).map_err(failed)
-            })
-            .await?;
-            Ok(Response::SkipperFolderDone { done: done.to_host() })
+        Request::SkipperFolderMove { path } => {
+            let home = skipper::home().map_err(failed)?;
+            let to = agent_folder::resolve(&path, &home, &home).map_err(invalid)?;
+            let c = connect().await?;
+            let moved = agent_folder::run(&c, &to).await.map_err(failed)?;
+            Ok(Response::SkipperFolderMoved { moved: moved.to_host() })
         }
         Request::SkipperOpen { restore } => {
             let c = connect().await?;
@@ -323,15 +302,6 @@ async fn coordinator() -> Result<Option<SessionInfo>, Error> {
     let c = connect().await?;
     let all = tokio::time::timeout(SESSIONS_TIMEOUT, c.list_sessions()).await.map_err(|_| Error::TimedOut)?.map_err(failed)?;
     Ok(all.into_iter().find(|s| s.coordinator && s.state != SessionState::Done))
-}
-
-/// The live panes and Skipper's session. With no skiffd, none run.
-async fn live() -> (agent_folder::Panes, Option<SessionInfo>) {
-    let Ok(c) = connect().await else { return Default::default() };
-    match tokio::time::timeout(SESSIONS_TIMEOUT, agent_folder::sessions(&c)).await {
-        Ok(Ok(found)) => found,
-        _ => Default::default(),
-    }
 }
 
 /// The agents as this Host's skiffd lists them: installed from its PATH.

@@ -56,6 +56,7 @@ pub fn capabilities() -> Vec<Capability> {
         Capability::schedules(),
         Capability::skipper_settings(),
         Capability::skipper_config(),
+        Capability::skipper_config_move(),
         Capability::skipper_file(),
         Capability::skipper_run(),
         Capability::skipper_run_fleets(),
@@ -130,8 +131,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             | Request::SkipperFileRead { .. }
             | Request::SkipperFileWrite { .. }
             | Request::SkipperFileReset { .. }
-            | Request::SkipperFolderPreview { .. }
-            | Request::SkipperFolderChange { .. }
+            | Request::SkipperFolderMove { .. }
             | Request::SkipperOpen { .. }
             | Request::SkipperWatch { .. }
             | Request::SkipperWatchLog

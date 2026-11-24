@@ -452,13 +452,13 @@ export function taskTable(set: SkiffAgentSettings, agents: AgentInfo[], a: TaskT
 }
 
 /**
- * Settings › Disk use › Folder: the path, Show in file manager and Change…. A
- * 40px error row under it says why only when the folder is not usable; the
- * counts and safety checks show in the Change… preview. The path is a read-only
- * text field, so it selects and copies as any field does, with the keys and the
- * field's own right-click menu. Only Change… sets the folder, after its preview.
+ * Settings › Disk use › Folder: the path, Show in file manager and Move….
+ * A 40px error row under it says why only when the folder is not usable. The
+ * path is a read-only text field, so it selects and copies as any field does,
+ * with the keys and the field's own right-click menu. Only Move… changes the
+ * folder. `move` is null when the Host cannot move it.
  */
-export function folderRows(set: SkiffAgentSettings, change: () => void): HTMLElement[] {
+export function folderRows(set: SkiffAgentSettings, move: (() => void) | null): HTMLElement[] {
   const row = h("div", "set-row set-open set-agent set-folder on");
   const path = h("input", "ctl-field mono set-path");
   path.type = "text";
@@ -470,7 +470,7 @@ export function folderRows(set: SkiffAgentSettings, change: () => void): HTMLEle
   const acts = h("span", "c-acts");
   // A remote Host's folder is on that Host: no file manager here opens it.
   if (set.folder_status === "ready" && !isRemote()) acts.append(smallButton(t("menu.showInFileManager"), () => reveal(set.configured)));
-  acts.append(smallButton(t("skipper.change"), change));
+  if (move) acts.append(smallButton(t("skipper.move"), move));
   row.append(h("span", "c-name", t("skipper.folder")), fieldCell(path), acts);
   const why =
     set.folder_status === "other"

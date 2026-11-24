@@ -27,6 +27,7 @@ pub use watch::{build_of, detach, is_watch_command, outliving, stale_holder, sta
 #[cfg(unix)]
 pub use watch::{ensure_watch, restart_watch};
 pub use host::{edit_host_file, host_file, host_instructions, host_read, host_write, scope_of, settings, Wrote, FILE_MAX};
-pub(crate) use folder::{lock, move_record, real, refusal, setup_in, template, MARKER};
+pub(crate) use folder::{lock, move_record, refusal, MARKER};
+pub use folder::real;
 #[cfg(test)]
 use project::spec;

@@ -6,13 +6,13 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 use skiff_client::{
-    agent_folder::{self, Mode},
+    agent_folder,
     fleet,
     host::data,
     skipper,
 };
 use skiff_core::{config, session::SessionInfo};
-use skiff_host_api::{HostSkipper, SkipperEdit, SkipperFolderDone, SkipperFolderPreview, TakenSkipper};
+use skiff_host_api::{HostSkipper, SkipperEdit, SkipperFolderMoved, TakenSkipper};
 use tauri::{AppHandle, State};
 
 use crate::{
@@ -343,61 +343,21 @@ pub async fn rename_fleet(app: State<'_, App>, handle: AppHandle, old: String, n
     }
 }
 
-/// The chosen folder, resolved and read on the selected Host. A relative
-/// path resolves against the Host's home folder. Changes nothing.
+/// Settings › Disk use › Folder › Move…: moves the agent's folder on the
+/// selected Host to `path`, a new or empty folder. A relative path resolves
+/// against the Host's home folder. The Host refuses while ledger work is
+/// open or an agent session works, and ends the Skipper sessions first.
 #[tauri::command]
-pub async fn preview_skiff_folder(app: State<'_, App>, path: String) -> Result<SkipperFolderPreview, String> {
-    if app.remote() {
-        return crate::connection::data_read(&app, |c| async move { data::skipper_folder_preview(&c, &path).await }).await;
-    }
-    let (panes, skipper) = live(&app).await;
-    blocking(move || {
-        let home = skipper::home()?;
-        let to = agent_folder::resolve(&path, &home, &home)?;
-        let preview = agent_folder::preview(&config::load()?, &to, &panes)?;
-        Ok(preview.to_host(skipper.is_some()))
-    })
-    .await
-}
-
-/// The live panes and Skipper's session. With no daemon, none run.
-async fn live(app: &App) -> (agent_folder::Panes, Option<SessionInfo>) {
-    match ensure_client(app).await {
-        Ok((c, _)) => agent_folder::sessions(&c).await.unwrap_or_default(),
-        Err(_) => Default::default(),
-    }
-}
-
-/// Copy, check and switch, start empty, or switch to a Skiff folder. `path`
-/// is the preview's resolved folder. Skipper's session ends first when
-/// `end_skipper`, else a running one stops the change. `anyway` lets the
-/// change run while tasks still run. A remote Host runs it there.
-#[tauri::command]
-pub async fn change_skiff_folder(
-    app: State<'_, App>,
-    handle: AppHandle,
-    path: PathBuf,
-    mode: Mode,
-    end_skipper: bool,
-    anyway: bool,
-) -> Result<SkipperFolderDone, String> {
+pub async fn move_skiff_folder(app: State<'_, App>, handle: AppHandle, path: String) -> Result<SkipperFolderMoved, String> {
     let _own = OwnEdit::begin(&handle);
     if app.remote() {
-        let path = path.to_string_lossy().into_owned();
-        let done = data_write(&app, |c| async move { data::skipper_folder_change(&c, &path, mode.into(), end_skipper, anyway).await }).await?;
-        return Ok(done);
+        return data_write(&app, |c| async move { data::skipper_folder_move(&c, &path).await }).await;
     }
-    let (mut panes, skipper) = live(&app).await;
-    if let Some(s) = skipper {
-        if !end_skipper {
-            return Err("Admiral runs. It ends before the change.".into());
-        }
-        let c = crate::connection::host_now(&app).await?;
-        skiff_client::host::local::legacy_kill(&c, &s.id).await.map_err(err)?;
-        panes.remove(&s.id);
-    }
-    let done = blocking(move || agent_folder::change(&config::load()?, &path, mode, &panes, anyway)).await?;
-    Ok(done.to_host())
+    let home = skipper::home().map_err(err)?;
+    let to = agent_folder::resolve(&path, &home, &home).map_err(err)?;
+    let (c, _) = ensure_client(&app).await?;
+    let moved = agent_folder::run(&c, &to).await.map_err(err)?;
+    Ok(moved.to_host())
 }
 
 #[cfg(test)]

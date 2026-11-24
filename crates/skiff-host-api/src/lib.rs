@@ -26,8 +26,8 @@ pub use folders::{FolderEntry, FolderKind, FolderListing, FolderPlaces, FolderRe
 pub use groups::Group;
 pub use inventory::InventorySession;
 pub use coordinator::{
-    HostCronPreview, HostFileScope, HostInstruction, HostLedgerRow, HostSchedule, HostScheduleRun, HostSkipper, HostSkipperFile, HostTaskType, SkipperEdit, SkipperFolderCounts, SkipperFolderDone, SkipperFolderMode, SkipperFolderPreview,
-    SkipperAgent, SkipperAgentEdit, SkipperOpened, SkipperRunningTask, TakenSkipper, TakenTask, TaskEdit,
+    HostCronPreview, HostFileScope, HostInstruction, HostLedgerRow, HostSchedule, HostScheduleRun, HostSkipper, HostSkipperFile, HostTaskType, SkipperEdit, SkipperFolderMoved,
+    SkipperAgent, SkipperAgentEdit, SkipperOpened, TakenSkipper, TakenTask, TaskEdit,
 };
 pub use lifecycle::SessionSpec;
 pub use projects::{ChangeStatus, HostBranch, HostBranches, HostChange, HostChanges, HostDiff, HostFolder, HostProject, HostWorktree, ProjectEdit, ProjectFleet};

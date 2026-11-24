@@ -544,6 +544,35 @@ impl SessionPool {
         Ok(info)
     }
 
+    /// Gives each session whose folder lies in `from` the same folder in
+    /// `to`, as the agent's folder moved: the saved workspace then restores
+    /// it there. Returns how many changed.
+    pub fn refolder(&self, from: &Path, to: &Path) -> Result<usize> {
+        let _change = self.change()?;
+        let all: Vec<Arc<Session>> = self.sessions.read().unwrap().values().cloned().collect();
+        let mut n = 0;
+        for session in all {
+            let moved = {
+                let mut info = session.info.lock().unwrap();
+                match info.cwd.strip_prefix(from) {
+                    Ok(rest) => {
+                        info.cwd = to.join(rest);
+                        true
+                    }
+                    Err(_) => false,
+                }
+            };
+            if moved {
+                n += 1;
+                let _ = self.events.send(Event::SessionUpdated { session: session.info() });
+            }
+        }
+        if n > 0 {
+            self.dirty.notify_one();
+        }
+        Ok(n)
+    }
+
     /// The retiring sessions that are idle or done. A waiting one keeps its
     /// prompt for the person; a working one finishes its turn.
     fn retired(&self) -> Vec<String> {

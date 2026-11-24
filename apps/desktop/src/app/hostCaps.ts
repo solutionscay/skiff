@@ -34,6 +34,7 @@ type HostCap =
   | "skipper_file"
   | "skipper_run"
   | "skipper_fleets"
+  | "skipper_folder_move"
   | "skipper_watch_log"
   | "agent_config"
   | "agent_programs"
@@ -68,14 +69,15 @@ const MAJOR: Record<HostCap, number> = {
   skipper_file: 1,
   skipper_run: 1,
   skipper_fleets: 2,
+  skipper_folder_move: 2,
   skipper_watch_log: 1,
   agent_config: 1,
   agent_programs: 1,
   agent_usage: 1,
 };
 
-/** A capability the page names apart from its wire name: fleet Skippers are `skipper_run@2`. */
-const WIRE: Partial<Record<HostCap, string>> = { skipper_fleets: "skipper_run" };
+/** A capability the page names apart from its wire name: fleet Skippers are `skipper_run@2`, the folder move `skipper_config@2`. */
+const WIRE: Partial<Record<HostCap, string>> = { skipper_fleets: "skipper_run", skipper_folder_move: "skipper_config" };
 
 /** What each capability offers, for the refusal. */
 const OFFERS: Record<HostCap, MessageKey> = {
@@ -106,6 +108,7 @@ const OFFERS: Record<HostCap, MessageKey> = {
   skipper_file: "hostCaps.skipper_file",
   skipper_run: "hostCaps.skipper_run",
   skipper_fleets: "hostCaps.skipper_fleets",
+  skipper_folder_move: "hostCaps.skipper_folder_move",
   skipper_watch_log: "hostCaps.skipper_watch_log",
   agent_config: "hostCaps.agent_config",
   agent_programs: "hostCaps.agent_programs",
