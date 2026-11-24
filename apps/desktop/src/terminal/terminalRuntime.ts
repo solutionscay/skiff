@@ -21,6 +21,7 @@ import { place, shownIds } from "../app/stateQueries";
 import { bySessionPriority } from "../workspace/model";
 import { isSlot } from "../workspace/layoutSlots";
 import type { SessionInfo } from "../platform/types";
+import { guardPasteEvents } from "./pasteClean";
 import { opening, type Pane, panes } from "./terminalState";
 import { hostInvoke } from "../app/hostCaps";
 
@@ -159,6 +160,7 @@ async function createPane(id: string): Promise<Pane> {
   box.className = "term-box";
   el.appendChild(box);
   term.open(box);
+  guardPasteEvents(term, box);
   watchSelection(id, term);
   gatePaneRendering(term);
 

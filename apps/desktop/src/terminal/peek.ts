@@ -35,6 +35,7 @@ import { openUrl } from "../platform/os";
 import type { Preview } from "../workspace/rowActs";
 import { rowActs } from "../workspace/rowActs";
 
+import { pasteInto } from "./pasteClean";
 import { panes } from "./terminalState";
 import { fitShown } from "./terminal";
 import { coverPanes, FONT, TERM_THEME } from "./terminalRuntime";
@@ -558,7 +559,7 @@ function frame(mine: number, kind: string, title: string, where: string, program
         void copyText(text, traced?.tr).then(() => traced?.end(), (e) => (traced?.end(e), showError(e)));
       } else {
         const traced = tracePaste(p.session ?? null, "peek");
-        void pasteText(traced?.tr).then((text) => (traced?.end(text), text && term.paste(text)), (e) => (traced?.end("", e), showError(e)));
+        void pasteText(traced?.tr).then((text) => (traced?.end(text), text && pasteInto(term, text)), (e) => (traced?.end("", e), showError(e)));
       }
       return false;
     }
