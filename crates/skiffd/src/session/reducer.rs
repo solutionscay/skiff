@@ -111,6 +111,15 @@ pub(super) fn reduce(state: State, input: Input, now: u64) -> (State, Effects) {
     reduce_step(state, input, now)
 }
 
+fn move_with_effects(state: State, target: SessionState, cause: Option<&'static str>, now: u64, mut effects: Effects) -> (State, Effects) {
+    let (next, result) = reduce(state, Input::Move { target, cause }, now);
+    effects.state = result.state;
+    effects.update = result.update;
+    effects.work_started = result.work_started;
+    effects.cause_recorded = result.cause_recorded;
+    (next, effects)
+}
+
 fn reduce_step(mut state: State, input: Input, now: u64) -> (State, Effects) {
     let mut effects = Effects::default();
     match input {
@@ -339,19 +348,7 @@ fn reduce_step(mut state: State, input: Input, now: u64) -> (State, Effects) {
                 target = Some((SessionState::Working, None));
             }
             if let Some((target, cause)) = target {
-                let (next, result) = reduce(
-                    state,
-                    Input::Move {
-                        target,
-                        cause,
-                    },
-                    now,
-                );
-                effects.state = result.state;
-                effects.update = result.update;
-                effects.work_started = result.work_started;
-                effects.cause_recorded = result.cause_recorded;
-                return (next, effects);
+                return move_with_effects(state, target, cause, now, effects);
             }
         }
         Input::Title { old, new } => {
@@ -376,19 +373,7 @@ fn reduce_step(mut state: State, input: Input, now: u64) -> (State, Effects) {
                 }
             };
             if let Some((target, cause)) = target {
-                let (next, result) = reduce(
-                    state,
-                    Input::Move {
-                        target,
-                        cause,
-                    },
-                    now,
-                );
-                effects.state = result.state;
-                effects.update = result.update;
-                effects.work_started = result.work_started;
-                effects.cause_recorded = result.cause_recorded;
-                return (next, effects);
+                return move_with_effects(state, target, cause, now, effects);
             }
         }
         Input::Idle { title } => {
