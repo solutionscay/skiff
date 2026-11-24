@@ -26,6 +26,17 @@ fn replaced(db: &mut rusqlite::Connection, held: &[skiff_client::ledger::Row], c
     Ok(code)
 }
 
+fn insert_and_print(db: &mut rusqlite::Connection, file: &Path, new: New) -> Result<String> {
+    let (id, uid, result, plan) = insert(db, file, new)?;
+    let dir = one(db, &uid)?.work_dir.unwrap_or_default();
+    println!("id {id}\nuid {uid}\nfolder {dir}\nresult {result}");
+    if let Some(p) = plan {
+        // A task under a hand-off names the hand-off.
+        println!("{} {p}", one(db, &p).map(|r| r.kind).unwrap_or_else(|_| "plan".into()));
+    }
+    Ok(uid)
+}
+
 /// The task text: `-` reads it from stdin, as `skiff send -` does.
 fn task_text(task: String) -> Result<String> {
     if task != "-" {
@@ -70,13 +81,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
             };
             check_free(&held, replace)?;
             let new = New { plan: is_plan, parent, pane_id, pane_gen, project, task, title, state: st, result, reference, task_type, socket: here, owner, handoff: false, expects };
-            let (id, uid, result, plan) = insert(&mut db, &file, new)?;
-            let dir = one(&db, &uid)?.work_dir.unwrap_or_default();
-            println!("id {id}\nuid {uid}\nfolder {dir}\nresult {result}");
-            if let Some(p) = plan {
-                // A task under a hand-off names the hand-off.
-                println!("{} {p}", one(&db, &p).map(|r| r.kind).unwrap_or_else(|_| "plan".into()));
-            }
+            let uid = insert_and_print(&mut db, &file, new)?;
             if send {
                 let row = one(&db, &uid)?;
                 let code = send_row(socket, &db, &row, SendOpts { text: Vec::new(), enter, shell }).await?;
@@ -138,13 +143,7 @@ pub(super) async fn run_one(socket: &Path, cmd: LedgerCmd, person: bool) -> Resu
                 handoff: true,
                 expects,
             };
-            let (id, uid, result, plan) = insert(&mut db, &file, new)?;
-            let dir = one(&db, &uid)?.work_dir.unwrap_or_default();
-            println!("id {id}\nuid {uid}\nfolder {dir}\nresult {result}");
-            if let Some(p) = plan {
-                // A task under a hand-off names the hand-off.
-                println!("{} {p}", one(&db, &p).map(|r| r.kind).unwrap_or_else(|_| "plan".into()));
-            }
+            let uid = insert_and_print(&mut db, &file, new)?;
             let row = one(&db, &uid)?;
             if !no_brief {
                 if let Err(e) = write_brief(socket, &db, &row, &s.id, ps.created).await {

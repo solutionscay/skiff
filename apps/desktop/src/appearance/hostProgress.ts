@@ -15,6 +15,7 @@ import { button, h } from "../ui/dom";
 import { rune } from "../ui/runes";
 import { copyText } from "../platform/clipboard";
 import { t } from "../i18n";
+import type { RunDialogOptions } from "./hostShared";
 
 /** One event of the run, as Rust sends it (`install::Progress`). */
 type Progress =
@@ -25,31 +26,9 @@ type Progress =
 /** The step that switches to the new version: no Cancel from it on. */
 const SWITCH = 5;
 
-interface RunDialog<T> {
-  id: string;
-  /** Before the run: "Install Skiff on devbox?". */
-  title: string;
-  body: string;
-  /** The button that starts it: "Install Skiff". */
-  action: string;
-  /** While it runs: "Installing Skiff on devbox", and the button "Installing". */
-  runningTitle: string;
-  working: string;
-  /** "Install failed on devbox". */
-  failTitle: string;
-  /** The six steps' names, shown dim before each runs. */
-  steps: string[];
-  tone: "go" | "danger";
-  run: () => Promise<T>;
-  /** It worked: the dialog has closed. `secs`: how long it took. */
-  done: (result: T, secs: number, output: string) => void;
-  /** It failed and the person pressed Close. */
-  failed?: (cause: string, output: string) => void;
-}
-
 type Entry = { at: number; text: string; step?: number; bad?: boolean };
 
-export function runDialog<T>(o: RunDialog<T>) {
+export function runDialog<T>(o: RunDialogOptions<T>) {
   const back = document.activeElement as HTMLElement | null;
   const { overlay, panel } = dialogFrame("confirm-panel", o.tone === "danger" ? "alertdialog" : "dialog", o.title);
   const titleText = h("span", "", o.title);
