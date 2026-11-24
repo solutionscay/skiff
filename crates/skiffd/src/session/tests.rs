@@ -4,6 +4,19 @@ use super::{
 };
 use std::time::Instant;
 
+fn agent_test_session() -> (std::sync::Arc<super::SessionPool>, skiff_core::session::SessionInfo, std::sync::Arc<super::Session>) {
+    let pool = super::SessionPool::new();
+    let info = pool.create(skiff_core::session::SessionSpec {
+        command: Some("/bin/sleep".into()),
+        args: vec!["30".into()],
+        cols: 80,
+        rows: 24,
+        ..Default::default()
+    }).unwrap();
+    let session = pool.get(&info.id).unwrap();
+    (pool, info, session)
+}
+
 fn state() -> ScreenState {
     ScreenState {
         screen: Screen::new(40, 5),
@@ -373,20 +386,10 @@ fn only_text_counts_as_printing() {
 fn an_agents_reports_win_over_the_screen_and_the_timer() {
     use skiff_core::{
         protocol::Event,
-        session::{SessionSpec, SessionState},
+        session::SessionState,
     };
     use std::time::Duration;
-    let pool = super::SessionPool::new();
-    let info = pool
-        .create(SessionSpec {
-            command: Some("/bin/sleep".into()),
-            args: vec!["30".into()],
-            cols: 80,
-            rows: 24,
-            ..Default::default()
-        })
-        .unwrap();
-    let session = pool.get(&info.id).unwrap();
+    let (pool, info, session) = agent_test_session();
     pool.set_front(&session, Front::Agent("codex"));
     let mut events = pool.events.subscribe();
     // Each feed is scanned, as a read after a quiet moment is.
@@ -481,19 +484,9 @@ fn an_agents_reports_win_over_the_screen_and_the_timer() {
 fn idle_after_a_typed_turn_ends_it_for_a_program_that_never_says_done() {
     use skiff_core::{
         protocol::Event,
-        session::{SessionSpec, SessionState},
+        session::SessionState,
     };
-    let pool = super::SessionPool::new();
-    let info = pool
-        .create(SessionSpec {
-            command: Some("/bin/sleep".into()),
-            args: vec!["30".into()],
-            cols: 80,
-            rows: 24,
-            ..Default::default()
-        })
-        .unwrap();
-    let session = pool.get(&info.id).unwrap();
+    let (pool, info, session) = agent_test_session();
     pool.set_front(&session, Front::Agent("opencode"));
     let feed = |bytes: &[u8]| {
         std::thread::sleep(SCAN);
@@ -530,20 +523,10 @@ fn idle_after_a_typed_turn_ends_it_for_a_program_that_never_says_done() {
 fn reports_bind_to_their_program_and_yield_to_its_prompt() {
     use skiff_core::{
         protocol::Event,
-        session::{SessionSpec, SessionState},
+        session::SessionState,
     };
     use std::sync::atomic::Ordering::Relaxed;
-    let pool = super::SessionPool::new();
-    let info = pool
-        .create(SessionSpec {
-            command: Some("/bin/sleep".into()),
-            args: vec!["30".into()],
-            cols: 80,
-            rows: 24,
-            ..Default::default()
-        })
-        .unwrap();
-    let session = pool.get(&info.id).unwrap();
+    let (pool, info, session) = agent_test_session();
     pool.set_front(&session, Front::Agent("codex"));
     let feed = |bytes: &[u8]| {
         std::thread::sleep(SCAN);
