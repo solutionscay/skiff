@@ -1,8 +1,9 @@
 /**
- * Images: one library of this computer's image cache, newest first. Every
- * drop and Skiff Paste puts its image there. Settings › Images and the Images
- * dialog (`appearance/imagesPage.ts`, `appearance/imagesDialog.ts`) show it
- * as a gallery.
+ * Files: one library of the selected Host's file cache, newest first. Every
+ * drop and Skiff Paste puts its files there: images and any other file up to
+ * the size limit. Settings › Files and the Files dialog
+ * (`appearance/imagesPage.ts`, `appearance/imagesDialog.ts`) show it as a
+ * gallery: a thumbnail for an image, a type icon for another file.
  */
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -11,16 +12,20 @@ import { hostName, isRemote } from "../app/hosts";
 import { scheduleRender } from "../app/render";
 import { S, sessions } from "../app/state";
 import { accent } from "../app/stateQueries";
+import { copyText } from "../platform/clipboard";
 import { showError } from "../ui/alerts";
 import { h } from "../ui/dom";
+import { rune } from "../ui/runes";
+import { openPath } from "./peek";
 import { type Typed, typeFiles, whoOf } from "./terminalClipboard";
 import { panes } from "./terminalState";
 import { t } from "../i18n";
 import { compactWhen } from "../i18n/time";
 
-/** One library image, as `images` answers. */
+/** One library file, as `images` answers. */
 export interface Image {
   path: string;
+  /** Its key in the cache: `<hash>.png` for an image, `files/<hash>/<name>` for another file. */
   file: string;
   /** The dropped file's own name. Null: a paste, or a file Skiff has no entry for. */
   name: string | null;
@@ -73,6 +78,25 @@ function thumb(path: string, size: number): Promise<string> {
   return t;
 }
 
+/** An image, as the cache keeps it: not in `files/`. */
+export const isImage = (i: Image) => !i.file.startsWith("files/");
+
+/** The file's extension in capitals, from its own name: "PDF". Empty with none. */
+export function extOf(i: Image): string {
+  const name = i.name ?? i.file.split("/").pop() ?? "";
+  const dot = name.lastIndexOf(".");
+  return dot > 0 && dot < name.length - 1 ? name.slice(dot + 1).toUpperCase() : "";
+}
+
+/** The type icon of a file that is not an image: a file outline and its extension. */
+export function typeIcon(i: Image): HTMLElement {
+  const box = h("span", "lib-type");
+  box.append(rune("documents-file", 40));
+  const ext = extOf(i);
+  if (ext) box.append(h("span", "lib-ext", ext.length > 5 ? ext.slice(0, 5) : ext));
+  return box;
+}
+
 /** Fills `box` with the thumbnail when it is ready. */
 export function fillThumb(box: HTMLElement, path: string, size = 160) {
   void thumb(path, size).then((url) => {
@@ -92,11 +116,27 @@ export const imagesError = () => loadError;
 export const imageCount = () => list.length;
 export const allImages = (): readonly Image[] => list;
 
-/** Called after each load, so Settings › Images redraws too. */
+/** Called after each load, so Settings › Files redraws too. */
 const watchers = new Set<() => void>();
 export const onImagesChanged = (f: () => void) => watchers.add(f);
 
+/** This computer's size limit in MB for one cached file. Null until read. */
+let limit: number | null = null;
+export const limitMb = () => limit;
+
+/** Sets `[skiff_agent] cache_max_mb` on this computer. */
+export async function setLimitMb(mb: number) {
+  try {
+    await invoke("set_cache_max_mb", { mb });
+    limit = mb;
+  } catch (e) {
+    showError(e);
+  }
+  changed();
+}
+
 async function load() {
+  limit = await invoke<number>("cache_max_mb").catch(() => limit);
   try {
     list = await invoke<Image[]>("images");
     loadError = null;
@@ -109,7 +149,7 @@ async function load() {
   changed();
 }
 
-/** Redraws Settings › Images and the Images dialog from `list`. */
+/** Redraws Settings › Files and the Files dialog from `list`. */
 function changed() {
   scheduleRender("images");
   watchers.forEach((f) => f());
@@ -191,6 +231,7 @@ export function whoLine(i: Image, words: string[] = []): HTMLElement {
  *  never its cache hash. */
 export function shownName(i: Image): string {
   if (i.name) return i.name;
+  if (!isImage(i)) return i.file.split("/").pop() ?? i.file;
   if (i.session) return t("images.pasted");
   const ext = i.file.includes(".") ? i.file.split(".").pop()!.toUpperCase() : "";
   return ext ? t("images.ofType", { ext }) : t("images.image");
@@ -205,8 +246,17 @@ export function section(name: string, n: number): HTMLElement {
 /** "8", or "2 of 8" with a query. */
 export const countText = (n: number, words: string[]) => (words.length ? t("images.countOf", { n, total: list.length }) : String(list.length));
 
+/** An image opens with Settings › Open with › Images. Another local file
+ *  opens as a file row opens, so a terminal tool runs in the peek. A remote
+ *  Host's file opens from a local copy, in an app. */
 export function openImage(i: Image) {
+  if (!isImage(i) && !isRemote()) return openPath(i.path);
   invoke("open_image", { path: i.path }).catch(showError);
+}
+
+/** Copies the paths, one per line. On a remote Host they are that Host's paths. */
+export function copyPaths(files: readonly Image[]) {
+  copyText(files.map((i) => i.path).join("\n")).catch(showError);
 }
 
 /** Inserts the paths into `id`'s pane, as a drop of these files types them. False: it failed, and the error shows. */

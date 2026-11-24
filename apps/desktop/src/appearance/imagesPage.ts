@@ -1,13 +1,15 @@
+import { isRemote } from "../app/hosts";
 import { isMac } from "../app/keys";
 import { sessions } from "../app/state";
 import { accent, place } from "../app/stateQueries";
 import { confirmAction } from "../ui/confirm";
+import { picker } from "../ui/controls";
 import { h } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { taskTitle } from "../workspace/model";
 import {
-  type Image, allImages, countText, deleteImages, fillThumb, insertInto, insertTarget, marked, matches, openImage, ordered,
-  imagesError, pinImages, queryWords, searchField, section, shownName, when, whoLine,
+  type Image, allImages, copyPaths, countText, deleteImages, fillThumb, insertInto, insertTarget, isImage, limitMb, marked, matches, openImage, ordered,
+  imagesError, pinImages, queryWords, searchField, section, setLimitMb, shownName, typeIcon, when, whoLine,
 } from "../terminal/images";
 import { size } from "./skiffFolderDialog";
 import { t, tn } from "../i18n";
@@ -38,9 +40,33 @@ export interface Pick {
   target: () => string | null;
 }
 
+/** The size limit's choices, in MB. */
+const LIMITS = [10, 25, 50, 100, 250, 500, 1024];
+
+/** "100 MB", "1 GB". */
+const mbText = (mb: number) => (mb >= 1024 && mb % 1024 === 0 ? t("images.gb", { n: mb / 1024 }) : t("images.mb", { n: mb }));
+
+/** Settings › Files › Size limit: this computer's limit for one cached file. */
+function limitRow(): HTMLElement {
+  const row = h("div", "set-row set-agent img-limit");
+  const mb = limitMb();
+  const values = mb && !LIMITS.includes(mb) ? [...LIMITS, mb].sort((a, b) => a - b) : LIMITS;
+  const cell = h("span", "c-field");
+  cell.append(picker({
+    label: t("images.sizeLimit"),
+    value: String(mb ?? ""),
+    shows: mb ? mbText(mb) : "",
+    disabled: !mb,
+    entries: () => values.map((n) => ({ value: String(n), label: mbText(n) })),
+    pick: (v) => void setLimitMb(Number(v)),
+  }));
+  row.append(h("span", "c-name", t("images.sizeLimit")), cell, h("span"));
+  return row;
+}
+
 /**
- * Settings › Images: the library as a gallery. Search, select as in a file
- * manager, and act on the selection: Open, Insert, Pin, Delete.
+ * Settings › Files: the library as a gallery. Search, select as in a file
+ * manager, and act on the selection: Open, Insert, Pin, Copy path, Delete.
  * Insert closes Settings, so the pane shows the insert signals. `close`
  * closes Settings.
  *
@@ -70,17 +96,21 @@ export function imagesSection(st: ImagesState, close: () => void, pick?: Pick): 
   openB.textContent = t("menu.open");
   const insB = btn(" ins", () => void insert());
   const pinB = btn("", () => void pin());
+  const copyB = btn("", () => copyAll());
+  copyB.textContent = t("menu.copyPath");
   const delB = btn(" del", () => void remove());
   delB.textContent = t("images.delete");
-  if (pick) tools.append(find, insB, pinB, delB);
-  else tools.append(find, openB, insB, pinB, delB);
+  if (pick) tools.append(find, insB, pinB, copyB, delB);
+  else tools.append(find, openB, insB, pinB, copyB, delB);
 
   const scroll = h("div", "img-scroll");
   scroll.tabIndex = 0;
   scroll.setAttribute("role", "listbox");
   scroll.setAttribute("aria-multiselectable", "true");
   scroll.setAttribute("aria-label", t("images.title"));
-  main.append(head, tools, scroll);
+  // The limit is this computer's setting: a remote Host's page has no such row.
+  if (pick || isRemote()) main.append(head, tools, scroll);
+  else main.append(head, limitRow(), tools, scroll);
 
   const seen = new IntersectionObserver((es) => {
     for (const e of es) {
@@ -138,12 +168,13 @@ export function imagesSection(st: ImagesState, close: () => void, pick?: Pick): 
     t.dataset.path = i.path;
     const pic = h("div", "img-pic");
     pic.dataset.path = i.path;
-    seen.observe(pic);
+    if (isImage(i)) seen.observe(pic);
+    else pic.append(typeIcon(i));
     const cap = h("div", "img-cap");
     const name = h("span", "lib-name");
     name.append(...marked(shownName(i), words));
     cap.append(name, h("span", "lib-time", when(i.at)));
-    if (i.session) cap.append(whoLine(i, words));
+    cap.append(i.session ? whoLine(i, words) : h("span", "lib-who"), h("span", "lib-size", size(i.size)));
     t.append(pic, cap);
     t.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -173,6 +204,7 @@ export function imagesSection(st: ImagesState, close: () => void, pick?: Pick): 
     const none = !sel.length;
     openB.disabled = none;
     pinB.disabled = none;
+    copyB.disabled = none;
     delB.disabled = none;
     pinB.textContent = t(sel.length && sel.every((i) => i.pinned) ? "images.unpin" : "images.pin");
     // The label names the target: the project letters in their color, then the session title.
@@ -248,6 +280,11 @@ export function imagesSection(st: ImagesState, close: () => void, pick?: Pick): 
     for (const i of picked()) openImage(i);
   }
 
+  function copyAll() {
+    const sel = picked();
+    if (sel.length) copyPaths(sel);
+  }
+
   async function insert() {
     const id = target();
     const sel = picked();
@@ -274,14 +311,14 @@ export function imagesSection(st: ImagesState, close: () => void, pick?: Pick): 
     if (to) tiles.get(to)?.scrollIntoView({ block: "nearest" });
   }
 
-  /** One image goes at once, as in the drop-down. Two or more ask first. */
+  /** One file goes at once, as in the drop-down. Two or more ask first. */
   async function remove() {
     const sel = picked();
     if (!sel.length) return;
     if (sel.length > 1) {
       const pinned = sel.filter((i) => i.pinned).length;
       const bytes = sel.reduce((n, i) => n + i.size, 0);
-      const lines = [t("images.deleteBody", { images: tn("disk.images", sel.length), size: size(bytes) })];
+      const lines = [t("images.deleteBody", { images: tn("images.files", sel.length), size: size(bytes) })];
       if (pinned) lines.push(tn("images.pinnedOf", pinned));
       const ok = await confirmAction({ title: tn("images.deleteTitle", sel.length), body: lines.join("\n"), action: t("images.delete") });
       if (!ok) return;
@@ -378,6 +415,7 @@ export function imagesSection(st: ImagesState, close: () => void, pick?: Pick): 
     }
     else if (k === "i") void insert();
     else if (k === "p") void pin();
+    else if (k === "c") copyAll();
     else if (e.key === "Delete") void remove();
     else return;
     e.preventDefault();

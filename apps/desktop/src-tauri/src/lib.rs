@@ -206,6 +206,8 @@ pub fn run() {
             disk::disk_usage,
             disk::flush_disk,
             disk::set_cache_days,
+            disk::cache_max_mb,
+            disk::set_cache_max_mb,
             disk::disk_open,
             disk::disk_reveal,
             commands::list_sessions,
@@ -396,8 +398,8 @@ mod tests {
             "memory_usage", "get_keys", "trace_info", "trace_write", "trace_set", "system_load", "set_appearance", "set_language", "set_time_zone", "set_clock", "set_font_size", "set_mission_filter",
             "list_groups", "session_screen", "save_group", "delete_group", "order_groups", "subscribe_output", "ack_output", "unsubscribe_output", "subscribe_events", "subscribe_data_events",
             "workspace_read", "workspace_revision", "workspace_write", "workspace_launch_file", "workspace_took", "workspace_dir", "workspace_list", "workspace_rename",
-            // This computer's Disk use and Images, whichever Host is shown. A drop or an Insert on a remote Host's pane goes to that Host.
-            "disk_usage", "flush_disk", "set_cache_days",
+            // This computer's Disk use and Files, whichever Host is shown. A drop or an Insert on a remote Host's pane goes to that Host.
+            "disk_usage", "flush_disk", "set_cache_days", "cache_max_mb", "set_cache_max_mb",
             "drop_files", "clipboard_image", "images", "image_thumb", "image_insert", "image_pin", "image_delete", "open_image", "agent_cache_flags",
             // This app's own updater and restart, whichever Host is shown.
             "update_off", "relaunch_app",

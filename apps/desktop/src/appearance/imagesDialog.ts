@@ -1,7 +1,7 @@
 /**
- * The Images dialog: the library as a gallery in a centered modal. It shares
- * Settings › Images' grid (`imagesSection` with `pick`). Enter or a click
- * inserts the current image into the pane that had focus when the dialog
+ * The Files dialog: the library as a gallery in a centered modal. It shares
+ * Settings › Files' grid (`imagesSection` with `pick`). Enter or a click
+ * inserts the current file into the pane that had focus when the dialog
  * opened, then closes it. Esc or a click outside closes it.
  */
 import { S } from "../app/state";

@@ -105,7 +105,15 @@ pub struct SkiffAgent {
     /// `cache_days`: at app start, cache files older than this many days go.
     /// `0`: never. Absent: [`CACHE_DAYS`].
     pub cache_days: Option<u32>,
+    /// `cache_max_mb`: a dropped or pasted file larger than this many MB
+    /// keeps its own path. Absent: [`CACHE_MAX_MB`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_max_mb: Option<u32>,
 }
+
+/// The size limit, in MB, of one file the cache copies, unless
+/// `[skiff_agent] cache_max_mb` says otherwise.
+pub const CACHE_MAX_MB: u32 = 100;
 
 /// Cache files older than this many days go at app start, unless
 /// `[skiff_agent] cache_days` says otherwise.
@@ -136,6 +144,11 @@ impl SkiffAgent {
     /// The age in days at which auto flush removes a cache file. `0`: off.
     pub fn cache_days(&self) -> u32 {
         self.cache_days.unwrap_or(CACHE_DAYS)
+    }
+
+    /// The size limit, in MB, of one file the cache copies.
+    pub fn cache_max_mb(&self) -> u32 {
+        self.cache_max_mb.filter(|&n| n > 0).unwrap_or(CACHE_MAX_MB)
     }
 }
 

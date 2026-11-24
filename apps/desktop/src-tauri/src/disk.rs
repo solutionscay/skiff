@@ -94,7 +94,7 @@ pub async fn disk_usage(app: State<'_, App>, on_progress: Channel<Counting>) -> 
                 "mtime": now, "dir": true, "frame": true,
                 "state": { "kind": "prot", "why": "skiff-file", "label": "" },
                 "children": [{
-                    "name": "images/", "path": "images", "bytes": usage.image_bytes, "files": usage.images,
+                    "name": "files/", "path": "files", "bytes": usage.image_bytes, "files": usage.images,
                     "mtime": now, "dir": true, "frame": false,
                     "state": { "kind": "prot", "why": "image", "label": "" }
                 }]
@@ -126,6 +126,19 @@ pub async fn disk_usage(app: State<'_, App>, on_progress: Channel<Counting>) -> 
 pub async fn set_cache_days(days: u32) -> Result<(), String> {
     let _own = crate::projects_watch::OwnEdit::quiet();
     blocking(move || config::set_skiff_agent(config::SkiffAgentKey::CacheDays(days))).await
+}
+
+/// The size limit, in MB, of one file the cache copies on this computer.
+#[tauri::command]
+pub async fn cache_max_mb() -> Result<u32, String> {
+    Ok(config::load().unwrap_or_default().skiff_agent.cache_max_mb())
+}
+
+/// Sets the size limit in this computer's projects.toml.
+#[tauri::command]
+pub async fn set_cache_max_mb(mb: u32) -> Result<(), String> {
+    let _own = crate::projects_watch::OwnEdit::quiet();
+    blocking(move || config::set_skiff_agent(config::SkiffAgentKey::CacheMaxMb(mb))).await
 }
 
 /// Flushes the items the dialog showed. The flush counts again and removes

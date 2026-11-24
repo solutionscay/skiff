@@ -86,7 +86,8 @@ pub struct HostImage {
     pub bytes: Vec<u8>,
 }
 
-/// One image in the Host's cache. `path` is an opaque Host cache path: a
+/// One file in the Host's cache library: an image or any other dropped
+/// file (the name stays from the Images library). `path` is an opaque Host cache path: a
 /// client can give it back to this API, but must never open it itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostCacheImage {
@@ -105,7 +106,8 @@ pub struct HostCacheImage {
     pub size: u64,
 }
 
-/// The Host cache's total size and its image count and size.
+/// The Host cache's total size and its library's file count and size.
+/// `images` and `image_bytes` count every library file, images or not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostCacheUse {
     pub bytes: u64,

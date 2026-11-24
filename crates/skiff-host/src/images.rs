@@ -1,5 +1,7 @@
-//! `drops@1` and the image cache: files the app drops into a pane, and the
-//! list, pins and use of the cache that holds them.
+//! `drops@1` and the file cache: files the app drops into a pane, and the
+//! list, pins and use of the cache that holds them. The requests keep their
+//! image names (`ImageList`, `ImageRead`, ...): the library now holds every
+//! kind of file.
 use std::{
     collections::HashMap,
     path::Path,
@@ -124,14 +126,18 @@ fn host_cache_image(image: skiff_client::cache::Image) -> HostCacheImage {
     }
 }
 
-/// Reads only a direct image cache entry and gives the webview its MIME type.
+/// Reads only a library file and gives the webview its MIME type. A file
+/// that is not an image is `application/octet-stream`.
 fn cache_image(dir: &Path, path: &str) -> Result<(String, Vec<u8>), Error> {
     let bytes = skiff_client::cache::read(dir, Path::new(path)).map_err(refused)?;
+    if !skiff_client::cache::is_image(Path::new(path)) {
+        return Ok(("application/octet-stream".into(), bytes));
+    }
     let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or_default();
     let mime = match ext.to_ascii_lowercase().as_str() {
         "svg" => "image/svg+xml", "png" => "image/png", "jpg" => "image/jpeg", "gif" => "image/gif",
         "webp" => "image/webp", "bmp" => "image/bmp", "tif" => "image/tiff", "heic" => "image/heic", "avif" => "image/avif",
-        _ => return Err(Error::NotFound { message: "the image is not in this Host's cache".into() }),
+        _ => "application/octet-stream",
     };
     Ok((mime.into(), bytes))
 }

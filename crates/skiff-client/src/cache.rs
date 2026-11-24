@@ -1,19 +1,21 @@
-//! The image cache: images dropped or pasted on a pane are copied here, and
-//! the pane gets the copy's path: `<agent folder>/cache/<hash>.<ext>`. The
-//! cache does not need the Skiff agent to be on. Other files keep their own
-//! path.
+//! The file cache: files dropped or pasted on a pane are copied here, and
+//! the pane gets the copy's path. An image is `<agent folder>/cache/<hash>.<ext>`;
+//! any other file is `cache/files/<hash>/<name>`, so it keeps its name. The
+//! cache does not need the Skiff agent to be on. A folder, and a file over
+//! the size limit, keep their own path.
 //!
-//! The first bytes decide what is an image, not the extension. The name is
+//! The first bytes decide what is an image, not the extension. The hash is
 //! the first 16 hex characters of the SHA-256 of the bytes, so the same
-//! image is one file. A repeat sets the mtime to now and writes nothing.
+//! file is one copy. A repeat sets the mtime to now and writes nothing.
 //!
-//! The folder is the Images library, newest first. `images.json` beside the
-//! images keeps each one's own name, the session that last got it, and its
-//! pin. Flushes skip pinned images and the index.
+//! The folder is the Files library, newest first. `images.json` beside the
+//! files keeps each one's own name, the session that last got it, and its
+//! pin. Its name stays from the Images library, so old entries keep working.
+//! Flushes skip pinned files and the index.
 
 use std::{
     collections::HashSet,
-    io::{Read, Write},
+    io::Write,
     path::{Path, PathBuf},
     sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
@@ -30,11 +32,11 @@ use skiff_core::{
     tasks,
 };
 
-/// An image larger than this keeps its own path.
-pub const MAX_BYTES: u64 = 50 * 1024 * 1024;
-
-/// What `showError` says for an image over [`MAX_BYTES`].
-pub const TOO_LARGE: &str = "The image is larger than 50 MB. Skiff typed its path and did not copy it.";
+/// The size limit of one file, in bytes, from `[skiff_agent] cache_max_mb`.
+/// A larger file keeps its own path.
+pub fn max_bytes(cfg: &Config) -> u64 {
+    u64::from(cfg.skiff_agent.cache_max_mb()) * 1024 * 1024
+}
 
 /// The cache folder. It may not exist yet: [`ensure`] makes it.
 pub fn dir(cfg: &Config) -> Result<PathBuf> {
@@ -99,23 +101,41 @@ fn hash16(bytes: &[u8]) -> String {
 }
 
 /// A file a client sent for a pane on this Host (a drop or a paste on a
-/// remote pane): an image as [`store`] keeps it, any other file as
-/// `cache/files/<hash>/<name>`, so it keeps its name. `name` is one file
-/// name; anything else is refused.
+/// remote pane), kept as [`keep`] keeps it and recorded with its name.
+/// `name` is one file name; anything else is refused.
 pub fn put(cfg: &Config, name: &str, bytes: &[u8]) -> Result<PathBuf> {
     let name = name.trim();
-    if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\0']) {
+    if !is_file_name(name) {
         return Err(skiff_core::config::Refused::Invalid(format!("{name:?} is not a file name")).into());
     }
     let dir = ensure(cfg)?;
+    let path = keep(&dir, name, bytes)?;
+    // A failed record costs only the library line: the path still goes back.
+    if let Err(e) = record(&dir, &path, Some(name), None) {
+        eprintln!("skiff: files: {e:#}");
+    }
+    Ok(path)
+}
+
+/// One file name: not empty, no `/`, `\\`, NUL, `.` or `..`.
+fn is_file_name(name: &str) -> bool {
+    !(name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\0']))
+}
+
+/// Puts the file `name` in the cache: an image as [`store`] keeps it, any
+/// other file as `files/<hash>/<name>`. `name` must be one file name.
+pub fn keep(dir: &Path, name: &str, bytes: &[u8]) -> Result<PathBuf> {
     let ext = Path::new(name).extension().and_then(|e| e.to_str());
     if let Some(ext) = image_ext(bytes, ext) {
-        return store(&dir, bytes, ext);
+        return store(dir, bytes, ext);
     }
-    let sub = dir.join("files").join(hash16(bytes));
+    let sub = dir.join(FILES).join(hash16(bytes));
     std::fs::create_dir_all(&sub).with_context(|| format!("create {}", sub.display()))?;
     write_once(&sub.join(name), bytes)
 }
+
+/// The folder in the cache that holds files that are not images.
+const FILES: &str = "files";
 
 /// Writes `path` beside its name and renames it into place. An existing
 /// file gets a new mtime instead.
@@ -141,7 +161,7 @@ fn write_once(path: &Path, bytes: &[u8]) -> Result<PathBuf> {
     Ok(path)
 }
 
-/// An image Skiff put in the cache for a drop or a paste.
+/// A file Skiff put in the cache for a drop or a paste.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Stored {
     pub path: PathBuf,
@@ -154,58 +174,49 @@ pub struct Stored {
 pub struct Typed {
     /// Each file's word, quoted, in order.
     pub words: Vec<String>,
-    /// The images, in order.
-    pub images: Vec<Stored>,
-    /// An image was over [`MAX_BYTES`]: it kept its own path.
+    /// The cache copies, in order.
+    pub stored: Vec<Stored>,
+    /// A file was over the size limit: it kept its own path.
     pub too_large: bool,
 }
 
-/// The words for `paths`, in order: an image's cache copy, else the path as
-/// it is. A failed copy fails the whole drop, so nothing is typed.
-pub fn files(dir: &Path, paths: &[PathBuf]) -> Result<Typed> {
+/// The words for `paths`, in order: a file's cache copy, else the path as
+/// it is (a folder, a file Skiff cannot read, a file over `max` bytes). A
+/// failed copy fails the whole drop, so nothing is typed.
+pub fn files(dir: &Path, paths: &[PathBuf], max: u64) -> Result<Typed> {
     let mut out = Typed::default();
     for p in paths {
         let word = |p: &Path| quote_word(&p.to_string_lossy());
-        let Some((len, ext)) = image_of(p)? else {
+        let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).filter(|n| is_file_name(n));
+        let len = std::fs::metadata(p).ok().filter(|m| m.is_file()).map(|m| m.len());
+        let (Some(len), Some(name)) = (len, name) else {
             out.words.push(word(p));
             continue;
         };
-        if len > MAX_BYTES {
+        if len > max {
             out.too_large = true;
             out.words.push(word(p));
             continue;
         }
-        let bytes = std::fs::read(p).with_context(|| format!("read {}", p.display()))?;
-        let stored = store(dir, &bytes, ext)?;
+        let Ok(bytes) = std::fs::read(p) else {
+            out.words.push(word(p));
+            continue;
+        };
+        let stored = keep(dir, &name, &bytes)?;
         out.words.push(word(&stored));
-        out.images.push(Stored { path: stored, name: p.file_name().map(|n| n.to_string_lossy().into_owned()) });
+        out.stored.push(Stored { path: stored, name: Some(name) });
     }
     Ok(out)
-}
-
-/// A file's length and cache extension when it is an image. A folder, or a
-/// file Skiff cannot read, is not.
-fn image_of(p: &Path) -> Result<Option<(u64, &'static str)>> {
-    let Ok(m) = std::fs::metadata(p) else { return Ok(None) };
-    if !m.is_file() {
-        return Ok(None);
-    }
-    let Ok(f) = std::fs::File::open(p) else { return Ok(None) };
-    let mut head = Vec::with_capacity(4096);
-    if f.take(4096).read_to_end(&mut head).is_err() {
-        return Ok(None);
-    }
-    let file_ext = p.extension().and_then(|e| e.to_str());
-    Ok(image_ext(&head, file_ext).map(|e| (m.len(), e)))
 }
 
 /// The library's index, beside the images.
 pub const INDEX: &str = "images.json";
 
-/// One image of the library, as `images.json` keeps it.
+/// One file of the library, as `images.json` keeps it.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct Entry {
-    /// The cache file's name.
+    /// The cache file's path in the cache, `/` between parts: `<hash>.png`,
+    /// or `files/<hash>/<name>`.
     pub file: String,
     /// The dropped file's own name. `None`: a paste, or a file with no entry.
     #[serde(default)]
@@ -232,7 +243,7 @@ pub struct Who {
     pub project: Option<String>,
 }
 
-/// An image of the library: its path and its entry.
+/// A file of the library: its path and its entry.
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Image {
     pub path: String,
@@ -274,6 +285,16 @@ fn is_image_name(name: &str) -> bool {
     !name.starts_with('.') && !name.contains(".tmp-") && name.rsplit_once('.').is_some_and(|(_, e)| EXTS.contains(&e))
 }
 
+/// A hash folder's name under `files/`: 16 lower-case hex characters.
+fn is_hash(name: &str) -> bool {
+    name.len() == 16 && name.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// A kept file's name in its hash folder: no temp file.
+fn is_kept_name(name: &str) -> bool {
+    is_file_name(name) && !name.contains(".tmp-")
+}
+
 fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
@@ -288,35 +309,61 @@ fn write_index(dir: &Path, entries: Vec<Entry>) -> Result<()> {
     skiff_core::config::write_atomic(&dir.join(INDEX), &serde_json::to_string(&kept)?)
 }
 
-/// The cache file's name, when `file` is an image directly in `dir`.
+/// The file's key in the library, when `file` is an image directly in
+/// `dir` (`<hash>.png`) or a kept file in `dir/files/<hash>/`
+/// (`files/<hash>/<name>`). Anything else is refused.
 fn name_in(dir: &Path, file: &Path) -> Result<String> {
-    let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let inside = file.parent().is_some_and(|p| p == dir || p.canonicalize().ok() == dir.canonicalize().ok());
-    if !inside || !is_image_name(&name) {
-        anyhow::bail!("{} is not in the Images folder", file.display());
+    let same = |a: &Path, b: &Path| a == b || (a.canonicalize().ok().is_some() && a.canonicalize().ok() == b.canonicalize().ok());
+    let refused = || anyhow::anyhow!("{} is not in the Files folder", file.display());
+    let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).ok_or_else(refused)?;
+    let parent = file.parent().ok_or_else(refused)?;
+    if same(parent, dir) && is_image_name(&name) {
+        return Ok(name);
     }
-    Ok(name)
+    let hash = parent.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let files = parent.parent().ok_or_else(refused)?;
+    if is_hash(&hash) && is_kept_name(&name) && files.file_name().is_some_and(|n| n == FILES) && files.parent().is_some_and(|d| same(d, dir)) {
+        return Ok(format!("{FILES}/{hash}/{name}"));
+    }
+    Err(refused())
 }
 
-/// Every image in `dir`, newest first. A file with no entry shows with its
-/// mtime; an entry with no file is left out.
+/// Every file in `dir`, newest first: the images in `dir` and the kept
+/// files in `dir/files/<hash>/`. A file with no entry shows with its mtime
+/// (and, when kept, its name); an entry with no file is left out.
 pub fn list(dir: &Path) -> Vec<Image> {
     let index = read_index(dir);
-    let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
-    let mut out: Vec<Image> = rd
-        .flatten()
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
-        .filter_map(|e| {
-            let file = e.file_name().to_string_lossy().into_owned();
-            if !is_image_name(&file) {
-                return None;
+    let mut found: Vec<(String, PathBuf, Option<String>)> = Vec::new();
+    let files_of = |d: &Path| -> Vec<std::fs::DirEntry> {
+        std::fs::read_dir(d).map(|rd| rd.flatten().collect()).unwrap_or_default()
+    };
+    for e in files_of(dir) {
+        let file = e.file_name().to_string_lossy().into_owned();
+        if e.file_type().is_ok_and(|t| t.is_file()) && is_image_name(&file) {
+            found.push((file, e.path(), None));
+        }
+    }
+    for h in files_of(&dir.join(FILES)) {
+        let hash = h.file_name().to_string_lossy().into_owned();
+        if !is_hash(&hash) || !h.file_type().is_ok_and(|t| t.is_dir()) {
+            continue;
+        }
+        for e in files_of(&h.path()) {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if e.file_type().is_ok_and(|t| t.is_file()) && is_kept_name(&name) {
+                found.push((format!("{FILES}/{hash}/{name}"), e.path(), Some(name)));
             }
-            let meta = e.metadata().ok();
+        }
+    }
+    let mut out: Vec<Image> = found
+        .into_iter()
+        .map(|(file, path, name)| {
+            let meta = std::fs::metadata(&path).ok();
             let entry = index.iter().find(|x| x.file == file).cloned().unwrap_or_else(|| {
                 let at = meta.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(UNIX_EPOCH).ok());
-                Entry { file: file.clone(), at: at.map_or(0, |d| d.as_millis() as u64), ..Default::default() }
+                Entry { file: file.clone(), name, at: at.map_or(0, |d| d.as_millis() as u64), ..Default::default() }
             });
-            Some(Image { path: e.path().to_string_lossy().into_owned(), entry, size: meta.map_or(0, |m| m.len()) })
+            Image { path: path.to_string_lossy().into_owned(), entry, size: meta.map_or(0, |m| m.len()) }
         })
         .collect();
     out.sort_by(|a, b| b.entry.at.cmp(&a.entry.at).then_with(|| a.entry.file.cmp(&b.entry.file)));
@@ -350,7 +397,7 @@ pub fn record(dir: &Path, file: &Path, name: Option<&str>, who: Option<&Who>) ->
     write_index(dir, index)
 }
 
-/// Pins or unpins `file`. A flush never removes a pinned image.
+/// Pins or unpins `file`. A flush never removes a pinned file.
 pub fn pin(dir: &Path, file: &Path, on: bool) -> Result<()> {
     let key = name_in(dir, file)?;
     let _lock = lock(dir);
@@ -373,18 +420,29 @@ pub fn delete(dir: &Path, file: &Path) -> Result<()> {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e).with_context(|| format!("delete {}", file.display())),
         _ => {}
     }
+    // A kept file's hash folder goes with its last file.
+    if key.starts_with(FILES) {
+        if let Some(sub) = file.parent() {
+            let _ = std::fs::remove_dir(sub);
+        }
+    }
     let index = read_index(dir).into_iter().filter(|e| e.file != key).collect();
     write_index(dir, index)
 }
 
-/// Reads one image in this cache. The path must name a direct cache image;
+/// Reads one file in this cache. The path must name a library file;
 /// callers cannot use this to read another file in the agent folder.
 pub fn read(dir: &Path, file: &Path) -> Result<Vec<u8>> {
     let key = name_in(dir, file)?;
     std::fs::read(dir.join(key)).with_context(|| format!("read {}", file.display()))
 }
 
-/// The cache paths a flush keeps: the pinned images and the index.
+/// Whether `file` (a library path) is an image, by its cache name.
+pub fn is_image(file: &Path) -> bool {
+    file.file_name().is_some_and(|n| is_image_name(&n.to_string_lossy())) && file.parent().and_then(|p| p.file_name()).is_none_or(|p| !is_hash(&p.to_string_lossy()))
+}
+
+/// The cache paths a flush keeps: the pinned files and the index.
 pub fn kept(dir: &Path) -> HashSet<PathBuf> {
     let root = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
     read_index(dir).into_iter().filter(|e| e.pinned).map(|e| root.join(e.file)).chain([root.join(INDEX), root.join(LOCK_FILE)]).collect()
@@ -461,7 +519,7 @@ mod tests {
     }
 
     #[test]
-    fn drops_copy_images_once_and_keep_other_paths() {
+    fn drops_copy_every_file_under_the_limit_and_keep_folders() {
         let root = std::env::temp_dir().join(format!("skiff-cache-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let cache = root.join("cache");
@@ -470,20 +528,48 @@ mod tests {
         std::fs::write(&png, b"\x89PNG\r\n\x1a\nbody").unwrap();
         let note = root.join("note.txt");
         std::fs::write(&note, b"pelican").unwrap();
-        let t = files(&cache, &[png.clone(), note.clone(), root.clone(), png.clone()]).unwrap();
-        let copy = std::fs::read_dir(&cache).unwrap().map(|e| e.unwrap().path()).collect::<Vec<_>>();
-        let named = copy.len() == 1 && copy[0].file_name().unwrap().to_string_lossy().len() == 16 + 4;
+        let big = root.join("big.log");
+        std::fs::write(&big, vec![b'x'; 64]).unwrap();
+        let t = files(&cache, &[png.clone(), note.clone(), root.clone(), png.clone(), big.clone()], 32).unwrap();
+        let listed = list(&cache);
         std::fs::remove_dir_all(&root).unwrap();
-        assert!(named, "{copy:?}");
-        assert_eq!(t.images.len(), 2);
-        assert_eq!(t.images[0], t.images[1]);
-        assert_eq!(t.images[0].name.as_deref(), Some("shot one.png"));
-        assert_eq!(t.words[0], quote_word(&t.images[0].path.to_string_lossy()));
-        assert_eq!(t.words[1], note.to_string_lossy());
+        assert_eq!(t.stored.len(), 3);
+        assert_eq!(t.stored[0], t.stored[2]);
+        assert_eq!(t.stored[0].name.as_deref(), Some("shot one.png"));
+        assert_eq!(t.stored[0].path.file_name().unwrap().len(), 16 + 4);
+        assert_eq!(t.stored[1].path.file_name().unwrap(), "note.txt");
+        assert_eq!(t.words[0], quote_word(&t.stored[0].path.to_string_lossy()));
+        assert_eq!(t.words[1], quote_word(&t.stored[1].path.to_string_lossy()));
         assert_eq!(t.words[2], root.to_string_lossy());
-        assert!(!t.too_large);
+        assert_eq!(t.words[4], big.to_string_lossy());
+        assert!(t.too_large);
+        // The library lists the image and the kept file; the kept file shows its own name.
+        assert_eq!(listed.len(), 2);
+        let kept = listed.iter().find(|i| i.entry.file.starts_with("files/")).unwrap();
+        assert_eq!(kept.entry.name.as_deref(), Some("note.txt"));
         assert_eq!(quote_word("/a/shot one.png"), "'/a/shot one.png'");
         assert_eq!(quote_word("/a/it's"), r"'/a/it'\''s'");
+    }
+
+    #[test]
+    fn a_kept_file_records_pins_and_deletes_with_its_folder() {
+        let dir = std::env::temp_dir().join(format!("skiff-kept-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let pdf = keep(&dir, "spec.pdf", b"%PDF-1.7 body").unwrap();
+        record(&dir, &pdf, Some("spec.pdf"), None).unwrap();
+        pin(&dir, &pdf, true).unwrap();
+        let key = format!("files/{}/spec.pdf", pdf.parent().unwrap().file_name().unwrap().to_string_lossy());
+        assert!(kept(&dir).contains(&dir.canonicalize().unwrap().join(&key)));
+        assert_eq!(list(&dir)[0].entry.file, key);
+        assert!(list(&dir)[0].entry.pinned && !is_image(&pdf));
+        assert_eq!(read(&dir, &pdf).unwrap(), b"%PDF-1.7 body");
+        // Only a file in a hash folder under files/ is a library file.
+        assert!(read(&dir, &dir.join("files/zz/spec.pdf")).is_err());
+        delete(&dir, &pdf).unwrap();
+        assert!(!pdf.parent().unwrap().exists());
+        assert!(list(&dir).is_empty() && read_index(&dir).is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

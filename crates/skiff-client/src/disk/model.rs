@@ -168,7 +168,7 @@ pub fn words(v: &Verdict) -> String {
         "pane" => "a live pane works in it",
         "changed" => "it changed in the last 15 minutes",
         "skiff-file" => "it is a Skiff file",
-        "pinned" => "it is a pinned image",
+        "pinned" => "it is a pinned file",
         "unreadable" => "Skiff cannot read it",
         "dirty" => "a git checkout in it has changes",
         "ahead" => "a git checkout in it has commits that are not pushed",

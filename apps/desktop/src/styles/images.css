@@ -1,4 +1,4 @@
-/* Images: Settings › Images and the Images dialog. */
+/* Files: Settings › Files and the Files dialog. */
 .file-drop .drag-ghost { gap: calc(8 * var(--u)); padding-left: calc(4 * var(--u)); }
 /* A drop or paste to a remote Host: its upload line, in the pane's bottom left corner. */
 .upload-line { position: absolute; left: calc(8 * var(--u)); bottom: calc(8 * var(--u)); z-index: 5; padding: calc(6 * var(--u)) calc(8 * var(--u)); background: var(--bg-deep); border: 1px solid var(--rule-strong); color: var(--text-2); font: calc(12px * var(--zoom, 1)) var(--font); pointer-events: none; }
@@ -24,13 +24,13 @@
 .lib-proj { margin-right: calc(5 * var(--u)); font-size: calc(9px * var(--zoom, 1)); font-weight: 700; }
 .lib-who.ended .lib-proj { opacity: 0.6; }
 .lib-time { align-self: center; padding-right: calc(16 * var(--u)); font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); font-variant-numeric: tabular-nums; }
-/* The Images dialog: Settings › Images' page in a centered panel. */
+/* The Files dialog: Settings › Files' page in a centered panel. */
 .images-panel {
   width: calc(1040 * var(--u)); max-width: calc(100vw - calc(32 * var(--u))); height: calc(100vh - calc(64 * var(--u)));
   display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--rule-strong); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); outline: 0;
 }
 
-/* Settings › Images: a tool row, then the gallery. Tiles touch, with 1px rules between them. */
+/* Settings › Files: the size limit, a tool row, then the gallery. Tiles touch, with 1px rules between them. */
 .img-page { overflow: hidden; }
 /* In Settings a section head is a 40px band, as .set-band. */
 .img-page .lib-sec { height: var(--row); padding: 0 calc(12 * var(--u)); background: var(--bg-raised); font-size: calc(12px * var(--zoom, 1)); font-weight: 500; letter-spacing: 0; color: var(--text-2); }
@@ -55,7 +55,12 @@
 .img-pic img { position: absolute; inset: calc(8 * var(--u)) calc(12 * var(--u)); width: calc(100% - calc(24 * var(--u))); height: calc(100% - calc(16 * var(--u))); object-fit: contain; display: block; }
 .img-cap { height: var(--row); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-content: center; column-gap: calc(8 * var(--u)); padding: 0 calc(12 * var(--u)); line-height: 1.3; }
 .img-cap .lib-time { padding: 0; }
-.img-cap .lib-who { grid-column: 1 / -1; }
+.img-cap .lib-size { font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); font-variant-numeric: tabular-nums; text-align: right; }
+/* A file that is not an image: a file outline with its extension, centered in the picture cell. */
+.lib-type { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(6 * var(--u)); color: var(--text-3); }
+.lib-type .rune { width: calc(40 * var(--u)); height: calc(40 * var(--u)); }
+.lib-ext { font: 600 calc(11px * var(--zoom, 1)) var(--mono); letter-spacing: 0.06em; color: var(--text-2); }
+.img-limit { flex-shrink: 0; }
 .img-tile:hover:not(.sel) { background: color-mix(in srgb, var(--text) 6%, var(--bg)); }
 .img-tile.sel { background: color-mix(in srgb, var(--project-default) 22%, var(--bg)); box-shadow: inset 2px 0 0 var(--project-default), 0 0 0 1px var(--rule); }
 .img-tile.sel .img-pic { background: color-mix(in srgb, var(--project-default) 12%, var(--bg-deep)); box-shadow: inset 2px 0 0 var(--project-default); }

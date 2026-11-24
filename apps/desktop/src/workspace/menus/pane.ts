@@ -43,7 +43,7 @@ export function paneMenu(id: string, x: number, y: number) {
   }
   entries.push({ icon: "view-focus", label: t(S.focusMode ? "cmd.leaveFocusMode" : "cmd.focusMode"), hint: keyLabel("focus-mode"), run: toggleFocusMode });
   entries.push(themeEntry(s));
-  entries.push({ icon: "playback-image", label: t("cmd.images"), hint: keyLabel("images"), run: openImages });
+  entries.push({ icon: "documents-file", label: t("cmd.images"), hint: keyLabel("images"), run: openImages });
   if (shownIds().length > 1) {
     entries.push({ icon: "code-ungroup", label: t("cmd.removeFromGroup"), hint: keyLabel("close-pane"), disabled: !hostCan("session_groups"), run: () => removeFromGroup(id) });
   }

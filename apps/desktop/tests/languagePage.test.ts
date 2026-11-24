@@ -84,7 +84,7 @@ test("Task types is its own page, and the nav names the Host and the App", async
   const s = settingsPage();
   await s.settings.open("task-types");
   const names = s.root.all().filter((e) => e.className === "set-tab-name").map((e) => e.textContent);
-  assert.equal(names.join(), "Agents,Usage,Skippers,Task types,Schedules,Sessions,Disk use,Images,Appearance,Open with,Hosts");
+  assert.equal(names.join(), "Agents,Usage,Skippers,Task types,Schedules,Sessions,Disk use,Files,Appearance,Open with,Hosts");
   assert.equal(s.root.all().filter((e) => e.className === "set-band-title").map((e) => e.textContent).slice(0, 2).join(), "This computer (devbox),App");
   assert.ok(s.root.all().some((e) => e.className === "set-h" && e.textContent === "Task types"));
 });

@@ -1,12 +1,12 @@
 //! Files dropped on a pane, Skiff's Paste of a file list or an image, and
-//! the Images library. Images go to the cache ([`skiff_client::cache`]),
-//! which is the library. The page types the words with `term.paste()`, so an
-//! agent that reads a pasted path attaches the image. Skiff never presses
-//! Enter.
+//! the Files library. Each file up to the size limit goes to the cache
+//! ([`skiff_client::cache`]), which is the library. The page types the words
+//! with `term.paste()`, so an agent that reads a pasted path attaches the
+//! file. Skiff never presses Enter.
 //!
 //! On a remote Host's pane each file goes to that Host (`drops@1`), and the
-//! pane gets the Host path. An image also stays in this computer's cache,
-//! so Images lists it here. Insert from Images sends the file the same way.
+//! pane gets the Host path. That Host's cache records it, so Files lists it
+//! there. An image also stays in this computer's cache.
 
 use std::path::{Path, PathBuf};
 
@@ -18,14 +18,15 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::connection::{data_now, ensure_client, err, App};
 
-/// What the page types, and whether to say an image was too large.
+/// What the page types, and whether to say a file was too large.
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Typed {
     /// The words, one space apart, with one space after the last.
     text: String,
-    /// The text for `showError`, when an image kept its own path.
-    warning: Option<&'static str>,
-    /// The first library image typed: the pane's insert signals show it.
+    /// The size limit in MB, when a file over it kept its own path.
+    too_large: Option<u32>,
+    /// The first library file typed: the pane's insert signals show it.
     image: Option<String>,
 }
 
@@ -67,33 +68,42 @@ pub(crate) async fn project_image_upload(app: State<'_, App>, path: PathBuf, hos
     data::drop_send(&c, &name, bytes, host.as_deref()).await
 }
 
-/// Records the images for `who`, then builds the text. A failed record
-/// costs only the library line: the text is typed all the same.
-async fn finish(handle: &AppHandle, who: Who, t: cache::Typed) -> Result<Typed, String> {
-    let image = t.images.first().map(|i| i.path.to_string_lossy().into_owned());
-    if !t.images.is_empty() {
-        let images = t.images;
+/// Records the files for `who`, then builds the text. A failed record
+/// costs only the library line: the text is typed all the same. `remote`:
+/// the words are Host paths; only a local copy is recorded here.
+async fn finish(handle: &AppHandle, who: Who, t: cache::Typed, remote: bool) -> Result<Typed, String> {
+    let image = if remote { None } else { t.stored.first().map(|i| i.path.to_string_lossy().into_owned()) };
+    if !t.stored.is_empty() {
+        let stored = t.stored;
         let done = blocking(move || {
             let dir = cache_dir()?;
-            for i in &images {
+            for i in &stored {
                 cache::record(&dir, &i.path, i.name.as_deref(), Some(&who))?;
             }
             Ok(())
         })
         .await;
         if let Err(e) = done {
-            eprintln!("skiff: images: {e}");
+            eprintln!("skiff: files: {e}");
         }
-        let _ = handle.emit(IMAGES_CHANGED, ());
     }
+    // A remote Host's cache recorded its files too.
+    let _ = handle.emit(IMAGES_CHANGED, ());
     let text = t.words.iter().map(|w| format!("{w} ")).collect();
-    Ok(Typed { text, warning: t.too_large.then_some(cache::TOO_LARGE), image })
+    let limit = t.too_large.then(|| skiff_core::config::load().unwrap_or_default().skiff_agent.cache_max_mb());
+    Ok(Typed { text, too_large: limit, image: image.or_else(|| remote.then(|| t.words.first().cloned()).flatten()) })
 }
 
-/// The cache folder, made when an image needs it.
+/// The cache folder, made when a file needs it.
 fn cache_dir() -> anyhow::Result<PathBuf> {
     let cfg = skiff_core::config::load().unwrap_or_default();
     cache::ensure(&cfg)
+}
+
+/// The local drop: each file up to `[skiff_agent] cache_max_mb` goes to the cache.
+fn local_files(paths: &[PathBuf]) -> anyhow::Result<cache::Typed> {
+    let cfg = skiff_core::config::load().unwrap_or_default();
+    cache::files(&cache::ensure(&cfg)?, paths, cache::max_bytes(&cfg))
 }
 
 /// Files dropped on a session's pane, in drop order. `host` names a remote
@@ -108,13 +118,13 @@ pub(crate) async fn drop_files(handle: AppHandle, app: State<'_, App>, who: Who,
         let names = paths.iter().map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).collect();
         to_host(&app, files, names, host.as_deref(), upload.as_deref().map(|id| (&handle, id))).await?
     } else {
-        blocking(move || cache::files(&cache_dir()?, &paths)).await?
+        blocking(move || local_files(&paths)).await?
     };
-    finish(&handle, who, t).await
+    finish(&handle, who, t, app.remote()).await
 }
 
-/// Sends each file to the remote Host and types its Host path. An image
-/// is kept here too, for Images. `names`: each file's own name for Images,
+/// Sends each file to the remote Host and types its Host path. The Host
+/// records it in its library. An image is kept here too. `names`: each file's own name for Images,
 /// `None` for a paste. `report`: the page's upload line, told after each
 /// frame the Host takes.
 async fn to_host(app: &App, files: Vec<(String, Vec<u8>)>, names: Vec<Option<String>>, host: Option<&str>, report: Report<'_>) -> Result<cache::Typed, String> {
@@ -135,7 +145,7 @@ async fn to_host(app: &App, files: Vec<(String, Vec<u8>)>, names: Vec<Option<Str
         tell(&at);
         if let Some((ext, bytes)) = local {
             let stored = blocking(move || cache::store(&cache_dir()?, &bytes, ext)).await?;
-            out.images.push(cache::Stored { path: stored, name: own });
+            out.stored.push(cache::Stored { path: stored, name: own });
         }
         out.words.push(skiff_core::shell::quote_word(&path));
     }
@@ -165,20 +175,20 @@ pub(crate) async fn clipboard_image(handle: AppHandle, app: State<'_, App>, who:
             to_host(&app, files, names, host.as_deref(), report).await?
         }
         Clip::Png(bytes) if app.remote() => to_host(&app, vec![("clipboard.png".into(), bytes)], vec![None], host.as_deref(), report).await?,
-        Clip::Files(paths) => blocking(move || cache::files(&cache_dir()?, &paths)).await?,
+        Clip::Files(paths) => blocking(move || local_files(&paths)).await?,
         Clip::Png(bytes) => {
             blocking(move || {
                 let path = cache::store(&cache_dir()?, &bytes, "png")?;
                 Ok(cache::Typed {
                     words: vec![skiff_core::shell::quote_word(&path.to_string_lossy())],
-                    images: vec![cache::Stored { path, name: None }],
+                    stored: vec![cache::Stored { path, name: None }],
                     too_large: false,
                 })
             })
             .await?
         }
     };
-    finish(&handle, who, t).await.map(Some)
+    finish(&handle, who, t, app.remote()).await.map(Some)
 }
 
 /// GTK on the main thread, for the reason `clipboard.rs` gives.
@@ -224,7 +234,7 @@ async fn read_clip(handle: &AppHandle) -> Result<Clip, String> {
     .await
 }
 
-/// The selected Host's Images library, newest first. A remote list is Host
+/// The selected Host's Files library, newest first. A remote list is Host
 /// metadata only; this desktop never opens its paths.
 #[tauri::command]
 pub(crate) async fn images(app: State<'_, App>) -> Result<Vec<cache::Image>, String> {
@@ -244,23 +254,14 @@ pub(crate) async fn images(app: State<'_, App>) -> Result<Vec<cache::Image>, Str
     .await
 }
 
-/// Insert: the library images go to the top with `who` as their session, and
+/// Insert: the library files go to the top with `who` as their session, and
 /// the page types their paths as a drop of several files does. The first
-/// path ends up newest. On a remote Host's pane each file goes to the Host
-/// first, and the page types the Host paths.
+/// path ends up newest. On a remote Host the library is that Host's cache,
+/// so its paths are typed as they are.
 #[tauri::command]
 pub(crate) async fn image_insert(handle: AppHandle, app: State<'_, App>, paths: Vec<PathBuf>, who: Who, host: Option<String>) -> Result<Typed, String> {
-    let mut text = String::new();
-    if app.remote() {
-        let c = data_now(&app).await?;
-        for p in &paths {
-            let image = data::image_read(&c, &p.to_string_lossy()).await.map_err(data::message)?;
-            let name = p.file_name().map(|name| name.to_string_lossy()).unwrap_or_default();
-            text += &format!("{} ", skiff_core::shell::quote_word(&data::drop_send(&c, &name, image.bytes, host.as_deref()).await?));
-        }
-    } else {
-        text = paths.iter().map(|p| format!("{} ", skiff_core::shell::quote_word(&p.to_string_lossy()))).collect();
-    }
+    let _ = host;
+    let text = paths.iter().map(|p| format!("{} ", skiff_core::shell::quote_word(&p.to_string_lossy()))).collect();
     let image = paths.first().map(|p| p.to_string_lossy().into_owned());
     if !app.remote() {
         blocking(move || {
@@ -270,7 +271,7 @@ pub(crate) async fn image_insert(handle: AppHandle, app: State<'_, App>, paths: 
         .await?;
     }
     let _ = handle.emit(IMAGES_CHANGED, ());
-    Ok(Typed { text, warning: None, image })
+    Ok(Typed { text, too_large: None, image })
 }
 
 #[tauri::command]
@@ -309,7 +310,7 @@ pub(crate) async fn image_delete(handle: AppHandle, app: State<'_, App>, paths: 
     done
 }
 
-/// A library image's bytes, for its thumbnail. Only files in the cache. A
+/// A library image's bytes, for its thumbnail. Other files show a type icon. Only files in the cache. A
 /// remote Host scales it to `size` pixels on its long side first, so the
 /// link carries kilobytes, not the full image.
 #[tauri::command]
@@ -329,20 +330,63 @@ pub(crate) async fn image_thumb(app: State<'_, App>, path: PathBuf, size: u32) -
 }
 
 /// Opens a library image with `[open] image`, else the OS default app. It
-/// never runs in the peek.
+/// never runs in the peek. The page opens another local file as a file row
+/// opens. On a remote Host the file comes to a local copy first, and opens
+/// in an app: the peek on that Host cannot see the copy.
 #[tauri::command]
-pub(crate) async fn open_image(path: PathBuf) -> Result<(), String> {
+pub(crate) async fn open_image(app: State<'_, App>, path: PathBuf) -> Result<(), String> {
+    let path = if app.remote() {
+        let p = path.to_string_lossy().into_owned();
+        let (file, host) = crate::connection::data_read(&app, |c| async move {
+            let host = c.hello().host.host_id.as_str().to_string();
+            data::image_read(&c, &p).await.map(|f| (f, host))
+        })
+        .await?;
+        let copy = host_copy(&host, &path);
+        blocking(move || {
+            if let Some(dir) = copy.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            std::fs::write(&copy, &file.bytes)?;
+            Ok(copy)
+        })
+        .await?
+    } else {
+        path
+    };
     blocking(move || {
         if !path.is_file() {
-            anyhow::bail!("The image is gone: {}", path.display());
+            anyhow::bail!("The file is gone: {}", path.display());
         }
         let open = skiff_core::config::load().map(|c| c.open).unwrap_or_default();
-        match open.image.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
-            Some(cmd) => skiff_core::open::launch(cmd, &path),
-            None => skiff_core::open::open_default(&path),
+        if cache::is_image(&path) {
+            if let Some(cmd) = open.image.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+                return skiff_core::open::launch(cmd, &path);
+            }
+            return skiff_core::open::open_default(&path);
+        }
+        match skiff_core::open::plan_file(&path, &open) {
+            skiff_core::open::Plan::Run(script) if !skiff_core::open::previews_file(&path, &open) => {
+                let cwd = path.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
+                skiff_core::open::start(&script, &cwd).map(|_| ())
+            }
+            _ => skiff_core::open::open_default(&path),
         }
     })
     .await
+}
+
+/// `hosts/<host>/cache/<hash>/<name>` beside `projects.toml`: this desktop's
+/// copy of a remote Host's library file, for Open.
+fn host_copy(host: &str, path: &Path) -> PathBuf {
+    let safe = |s: &str| -> String { s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' }).collect() };
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let sub = path.parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let mut out = skiff_core::config::config_path().with_file_name("hosts").join(safe(host)).join("cache");
+    if sub.len() == 16 {
+        out = out.join(safe(&sub));
+    }
+    out.join(safe(&name).trim_start_matches('.'))
 }
 
 /// The image cache's read flag to type after `agent`'s resume line, with a

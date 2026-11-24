@@ -5,7 +5,7 @@
 //! `work_dir`) takes its folder's verdict: the folder is the task, and it
 //! goes as one unit. A file outside the work folders stands alone.
 //!
-//! - Protected always: Skiff's own files, pinned images, files Skiff cannot
+//! - Protected always: Skiff's own files, pinned library files, files Skiff cannot
 //!   read, and a git checkout that is dirty, ahead, has no upstream, or that
 //!   git cannot read, with the work folder that holds it.
 //! - In use: anything in a live pane's folder; a work folder whose row is

@@ -94,12 +94,13 @@ async function app() {
   let changed = () => {};
   const inserted: string[][] = [];
   const invoke = async (cmd: string, a: any) => {
+    if (cmd === "cache_max_mb") return 100;
     if (cmd === "image_insert") inserted.push([...a.paths]);
     if (cmd === "images") return store.map((i) => ({ ...i })).sort((x, y) => y.at - x.at);
     if (cmd === "image_pin") for (const i of store) if (a.paths.includes(i.path)) i.pinned = a.on;
     if (cmd === "image_insert") for (const i of store) if (a.paths.includes(i.path)) i.at = 500;
     changed();
-    return cmd === "image_insert" ? { text: "", warning: null, image: a.paths[0] } : null;
+    return cmd === "image_insert" ? { text: "", tooLarge: null, image: a.paths[0] } : null;
   };
   const S: any = { focused: "s1", projects: [] };
   const lib = moduleFromSource("../src/terminal/images.ts", {
@@ -113,6 +114,8 @@ async function app() {
     "../platform/clipboard": { copyText: async () => {} },
     "../ui/alerts": { showError: (e: unknown) => { throw e; } },
     "../ui/dom": { h, button },
+    "../ui/runes": { rune: () => h("svg") },
+    "./peek": { openPath() {} },
     "./terminalClipboard": { typeFiles() {}, whoOf: (session: string) => ({ session }) },
     "./terminalState": { panes: new Map([["s1", {}]]) },
   }, globals, "");
@@ -125,12 +128,14 @@ async function app() {
 async function gallery(mode?: { target: () => string | null }) {
   const a = await app();
   const page = moduleFromSource("../src/appearance/imagesPage.ts", {
+    "../app/hosts": { isRemote: () => false },
     "../app/keys": { isMac: false },
     "../app/state": { sessions: new Map() },
     "../app/stateQueries": { accent: () => "#3366cc", place: () => null },
     "../platform/clipboard": { copyText: async () => {} },
     "../ui/alerts": { showError: (e: unknown) => { throw e; } },
     "../ui/confirm": { confirmAction: async () => true },
+    "../ui/controls": { picker: () => h("button") },
     "../ui/dom": { h },
     "../ui/icons": { icon: () => h("svg") },
     "../workspace/model": { taskTitle: () => "" },

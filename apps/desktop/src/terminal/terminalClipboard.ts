@@ -15,6 +15,7 @@ import { taskTitle } from "../workspace/model";
 import { signalLine } from "./insertSignal";
 import { panes } from "./terminalState";
 import { UploadLine } from "./uploadProgress";
+import { t as tr } from "../i18n";
 
 let copyNoticeTimer: number | undefined;
 
@@ -50,8 +51,9 @@ export async function copySelection() {
 /** What the backend typed for a drop or a paste of files or an image. */
 export interface Typed {
   text: string;
-  warning: string | null;
-  /** The first library image typed. Null: no image, so no insert signals. */
+  /** The size limit in MB, when a file over it kept its own path. */
+  tooLarge: number | null;
+  /** The first library file typed. Null: none, so no insert signals. */
   image: string | null;
 }
 
@@ -67,7 +69,7 @@ export function typeFiles(id: string, t: Typed) {
   const pane = panes.get(id);
   if (pane && t.image) signalLine(pane.term, pane.el);
   pane?.term.paste(t.text);
-  if (t.warning) showError(t.warning);
+  if (t.tooLarge) showError(tr("files.tooLarge", { mb: t.tooLarge }));
 }
 
 /**
