@@ -12,7 +12,7 @@ import { size } from "../appearance/skiffFolderDialog";
 import { tn } from "../i18n";
 
 /** How far one upload is: files and bytes the Host took. */
-export interface Upload {
+interface Upload {
   id: string;
   done: number;
   count: number;

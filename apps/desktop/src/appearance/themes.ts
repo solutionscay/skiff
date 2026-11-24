@@ -35,7 +35,7 @@ export function projectThemesFrom(list: Project[]) {
 }
 
 /** The project's own theme id, or null when it follows the app. */
-export const projectTheme = (p: Project) => projectThemes.get(p.name) ?? null;
+const projectTheme = (p: Project) => projectThemes.get(p.name) ?? null;
 
 /** A project's theme, else the app theme; Ultraviolet if neither is set. */
 function themeFor(p: Project | null | undefined): string {

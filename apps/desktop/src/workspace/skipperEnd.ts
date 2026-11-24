@@ -17,7 +17,7 @@ import { skipperFace } from "./skipperFace";
 const scopeOf = (id: string) => coordinatorOf(id);
 
 /** Open Ledger tasks and hand-offs the scope owns: not done, in work that is not closed. */
-export function openTasks(scope: string): number {
+function openTasks(scope: string): number {
   return ledgerRows().filter((r) => r.kind !== "plan" && r.owner === scope && r.state !== "done" && !r.closed_at && r.bucket !== "finished").length;
 }
 

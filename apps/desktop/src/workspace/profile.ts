@@ -19,7 +19,6 @@ import { createWorkspaceState, trimPath, type Profile } from "./profile/state";
 import { workspaceDialog } from "./profile/dialogs";
 import { createTransitions } from "./profile/transitions";
 import { createStatus } from "./profile/status";
-export type { Profile } from "./profile/state";
 
 const state = createWorkspaceState();
 const membership = createMembership(state, { announce, changed, showView: (focus) => transitions.showView(focus) });

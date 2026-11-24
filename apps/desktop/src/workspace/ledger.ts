@@ -110,7 +110,7 @@ function openSeries(uid: string | null) {
   render();
   if (keys) requestAnimationFrame(light);
 }
-export type { Entry, State };
+export type { Entry };
 
 /** Reads the ledger now and on each change. main.ts calls it once. */
 export function startLedger() {

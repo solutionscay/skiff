@@ -153,7 +153,7 @@ export function hiddenSplit(projects: Project[]): { shown: SessionInfo[]; hidden
 export const isOpen = (key: string) => !folded.has(key);
 
 /** The user opens or folds a row. In a workspace, that is an edit. */
-export function setOpen(key: string, open: boolean) {
+function setOpen(key: string, open: boolean) {
   if (view) view.fold(key, !open);
   else if (open) savedFolds.delete(key);
   else savedFolds.add(key);

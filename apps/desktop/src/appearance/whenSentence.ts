@@ -15,7 +15,7 @@ export const WEEK: [number, string][] = [[1, "Mon"], [2, "Tue"], [3, "Wed"], [4,
 export const MINUTES = [5, 10, 15, 20, 30];
 export const HOURS = [1, 2, 3, 4, 6, 8, 12];
 
-export type At = [number, number];
+type At = [number, number];
 
 export type When =
   | { kind: "day"; at: At }

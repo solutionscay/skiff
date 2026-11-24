@@ -262,7 +262,7 @@ function handOver(fleet: string, taken: Taken[]) {
 }
 
 /** One project Skipper a takeover stops, as `fleet_takeover_preview` gives it. */
-export interface Taken {
+interface Taken {
   project: string;
   session: string;
   tasks: { uid: string; title: string }[];
