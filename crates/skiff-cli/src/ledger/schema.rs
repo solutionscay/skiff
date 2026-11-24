@@ -79,7 +79,7 @@ pub(super) const UIDS: &str = "CREATE TABLE IF NOT EXISTS uids (uid TEXT PRIMARY
 /// child's report typed into its parent. `evidence` stays empty when nothing
 /// settled it: the process ended between the two writes. A terminal write
 /// and a SQLite write are not one step, so no attempt claims exactly once.
-pub(super) const DELIVERIES: &str = "
+const DELIVERIES: &str = "
 CREATE TABLE IF NOT EXISTS deliveries (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   task        TEXT NOT NULL,

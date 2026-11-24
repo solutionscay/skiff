@@ -209,7 +209,7 @@ const READY: Duration = Duration::from_secs(90);
 
 /// Waits until the new agent in `id` shows its input box, then sends
 /// `text` with Enter. Returns `send`'s exit code.
-pub async fn greet(c: &Client, id: &str, text: &str) -> Result<i32> {
+async fn greet(c: &Client, id: &str, text: &str) -> Result<i32> {
     let s = ready(c, id).await?;
     crate::sessions::send_to(c, &s, crate::sessions::Send { text: &[text.to_string()], enter: true, raw: false, shell: false, stdin: false }).await
 }

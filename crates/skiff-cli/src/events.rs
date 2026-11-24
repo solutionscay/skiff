@@ -43,7 +43,7 @@ fn told(s: &SessionInfo) -> Told {
 }
 
 /// `blocked (permission): Allow Edit to hello.txt?`, `done (ended)`, `none`.
-pub fn status_text(p: Option<&ProgramStatus>) -> String {
+fn status_text(p: Option<&ProgramStatus>) -> String {
     let Some(p) = p else { return "none".into() };
     let mut t = p.state.clone();
     if let Some(kind) = &p.kind {

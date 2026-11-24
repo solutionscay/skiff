@@ -128,7 +128,7 @@ fn from_uri(word: &str) -> Option<PathBuf> {
 
 /// The pasted text as paths that exist on this computer: one or more
 /// absolute paths or `file://` URIs, and nothing else. None: other text.
-pub(crate) fn local_paths(text: &str) -> Option<Vec<PathBuf>> {
+fn local_paths(text: &str) -> Option<Vec<PathBuf>> {
     let paths: Vec<PathBuf> = words(text)?
         .iter()
         .map(|w| from_uri(w).unwrap_or_else(|| PathBuf::from(w)))

@@ -69,7 +69,7 @@ pub fn state(s: SessionState) -> &'static str {
 
 /// The state, with what the program reports about it (OSC 7501): what a
 /// waiting program waits for, a turn's result, its progress, a long silence.
-pub fn state_text(s: &SessionInfo) -> String {
+fn state_text(s: &SessionInfo) -> String {
     let word = state(s.state);
     let Some(p) = &s.program_status else { return word.to_string() };
     match p.state.as_str() {
@@ -315,7 +315,7 @@ fn is_coordinator(s: &SessionInfo) -> bool {
 }
 
 /// `kill`'s exit code when a session has an open ledger task.
-pub const KILL_HELD: i32 = 10;
+const KILL_HELD: i32 = 10;
 
 /// Resolves every argument first, so a typo kills nothing. A session with an
 /// open ledger task stops the whole kill, unless `force`.

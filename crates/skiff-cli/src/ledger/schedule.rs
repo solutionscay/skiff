@@ -321,7 +321,7 @@ fn check(d: &Draft) -> Result<()> {
 
 /// The target in words: `type fix`, `pane brief`, `Skipper`, `web Skipper`,
 /// `Harbor Skipper` (a fleet), `command`.
-pub fn target_words(s: &Schedule) -> String {
+fn target_words(s: &Schedule) -> String {
     match s.target.as_deref() {
         Some("type") => format!("type {}", s.task_type.as_deref().unwrap_or("?")),
         Some("pane") => format!("pane {}", s.pane.as_deref().unwrap_or("?")),
