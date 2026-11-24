@@ -402,11 +402,13 @@ pub(crate) async fn image_thumb(app: State<'_, App>, path: PathBuf, size: u32) -
 pub(crate) async fn open_image(app: State<'_, App>, path: PathBuf) -> Result<(), String> {
     let path = if app.remote() {
         let c = data_now(&app).await?;
-        let copy = host_copy(c.hello().host.host_id.as_str(), &path);
+        // Refused before anything is fetched, as Open with refuses.
+        let copy = host_copy(c.hello().host.host_id.as_str(), &path).map_err(err)?;
         if let Some(dir) = copy.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         }
         data::image_fetch(&c, &path.to_string_lossy(), &copy).await?;
+        crate::copies::seal(&copy).map_err(err)?;
         copy
     } else {
         path
@@ -434,16 +436,47 @@ pub(crate) async fn open_image(app: State<'_, App>, path: PathBuf) -> Result<(),
 }
 
 /// `hosts/<host>/cache/<hash>/<name>` beside `projects.toml`: this desktop's
-/// copy of a remote Host's library file, for Open.
-fn host_copy(host: &str, path: &Path) -> PathBuf {
-    let safe = |s: &str| -> String { s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' }).collect() };
+/// copy of a remote Host's library file, for Open. Refused for a type that
+/// `copies::copy_name` refuses, and for a part that is empty, `.` or `..`.
+fn host_copy(host: &str, path: &Path) -> anyhow::Result<PathBuf> {
+    let safe = |s: &str| -> anyhow::Result<String> {
+        let part: String = s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' }).collect();
+        if part.is_empty() || part == "." || part == ".." {
+            anyhow::bail!("The Host sent a file path that Skiff does not open: {}", path.display());
+        }
+        Ok(part)
+    };
+    crate::copies::copy_name(&path.to_string_lossy())?;
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = safe(safe(&name)?.trim_start_matches('.'))?;
+    crate::copies::copy_name(&name)?;
     let sub = path.parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let mut out = skiff_core::config::config_path().with_file_name("hosts").join(safe(host)).join("cache");
+    let mut out = skiff_core::config::config_path().with_file_name("hosts").join(safe(host)?).join("cache");
     if sub.len() == 16 {
-        out = out.join(safe(&sub));
+        out = out.join(safe(&sub)?);
     }
-    out.join(safe(&name).trim_start_matches('.'))
+    Ok(out.join(name))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_copy_refuses_what_runs_and_dot_parts() {
+        let lib = "/home/u/.skiff/images/0123456789abcdef";
+        let ok = host_copy("h1", &Path::new(lib).join("shot.png")).unwrap();
+        assert!(ok.ends_with("hosts/h1/cache/0123456789abcdef/shot.png"), "{}", ok.display());
+        for name in ["x.terminal", "x.JAR", "x.command", "..jar", "a b.sh"] {
+            let e = host_copy("h1", &Path::new(lib).join(name)).unwrap_err().to_string();
+            assert!(e.starts_with("Skiff does not open a copy of a ."), "{name}: {e}");
+        }
+        for host in [".", "..", ""] {
+            assert!(host_copy(host, &Path::new(lib).join("shot.png")).is_err(), "{host:?}");
+        }
+        assert!(host_copy("h1", Path::new("/lib/....../..")).is_err());
+        assert!(host_copy("h1", Path::new("/lib/0123456789abcdef/...")).is_err());
+    }
 }
 
 /// The image cache's read flag to type after `agent`'s resume line, with a

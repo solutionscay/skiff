@@ -126,6 +126,24 @@ pub(crate) fn save_in(base: &Path, host_file: &str, bytes: &[u8]) -> Result<Path
     Ok(path)
 }
 
+/// Gives a copy that another step wrote, a remote Host's library file for
+/// Open, what [`save_in`] gives its own: the quarantine flag, then `0400`.
+/// Never through a link.
+pub(crate) fn seal(path: &Path) -> Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .with_context(|| format!("open {}", path.display()))?;
+    if !file.metadata()?.is_file() {
+        bail!("{} is not a file", path.display());
+    }
+    quarantine(&file);
+    file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o400))?;
+    Ok(())
+}
+
 /// [`save_in`] the account's folder.
 pub(crate) fn save(host_file: &str, bytes: &[u8]) -> Result<PathBuf> {
     save_in(&base(), host_file, bytes)
@@ -310,6 +328,23 @@ mod tests {
         let d = std::env::temp_dir().join(format!("skiff-copies-test-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         d
+    }
+
+    #[test]
+    fn a_sealed_copy_is_read_only() {
+        let base = scratch("seal");
+        let _gone = Gone(base.clone());
+        std::fs::create_dir_all(&base).unwrap();
+        let a = base.join("shot.png");
+        std::fs::write(&a, b"x").unwrap();
+        std::fs::set_permissions(&a, std::fs::Permissions::from_mode(0o755)).unwrap();
+        seal(&a).unwrap();
+        assert_eq!(std::fs::metadata(&a).unwrap().permissions().mode() & 0o777, 0o400);
+        #[cfg(target_os = "macos")]
+        assert!(std::process::Command::new("xattr").arg("-p").arg("com.apple.quarantine").arg(&a).output().unwrap().status.success());
+        let link = base.join("link.png");
+        std::os::unix::fs::symlink(&a, &link).unwrap();
+        assert!(seal(&link).is_err());
     }
 
     #[test]
