@@ -130,13 +130,18 @@ async fn host_ledger(dir: PathBuf) {
     add(&db, "aaaa0001", "plan", None, "sent", Some(&at("plan-a/plan.md")), None, None);
     add(&db, "aaaa0002", "task", Some("aaaa0001"), "done", Some(&at("ok.md")), Some(&socket.to_string_lossy()), None);
     add(&db, "aaaa0003", "task", Some("aaaa0001"), "done", Some(&at("long.md")), Some(&other), None);
+    // #288: a path inside the folder is stored relative to it.
+    add(&db, "aaaa0004", "task", None, "done", Some("results/ok.md"), None, None);
+    // A relative path that leaves the folder after the join.
+    let depth = folder.strip_prefix(&dir).expect("the ledger's folder is in the test folder").components().count();
+    let escape = format!("{}outside/secret.md", "../".repeat(depth));
     let refused = [
         ("bbbb0001", at("link.md")),
         ("bbbb0002", at("dirlink/secret.md")),
         ("bbbb0003", at("pipe.md")),
         ("bbbb0004", outside.join("secret.md").to_string_lossy().into_owned()),
         ("bbbb0005", format!("{}/../../outside/secret.md", results.display())),
-        ("bbbb0006", "results/ok.md".into()),
+        ("bbbb0006", escape),
         ("bbbb0007", at("missing.md")),
         ("bbbb0008", at("plan-a")),
     ];
@@ -160,7 +165,7 @@ async fn host_ledger(dir: PathBuf) {
         let row = |uid: &str| rows.iter().find(|r| r.uid == uid).unwrap();
         assert_eq!(row("aaaa0001").state, "done", "a plan rolls up");
         assert!(!row("aaaa0002").elsewhere && row("aaaa0003").elsewhere, "elsewhere is the Host's skiffd");
-        for uid in ["aaaa0001", "aaaa0002", "aaaa0003"] {
+        for uid in ["aaaa0001", "aaaa0002", "aaaa0003", "aaaa0004"] {
             assert!(row(uid).result_exists, "{uid}");
         }
         for (uid, _) in &refused {
@@ -179,6 +184,7 @@ async fn host_ledger(dir: PathBuf) {
         let ok = data::ledger_result(c, "aaaa0002").await.unwrap();
         assert_eq!((ok.content, ok.text.as_deref()), (FileContent::Text, Some("# Done\n")));
         assert_eq!(data::ledger_result(c, "aaaa0001").await.unwrap().text.as_deref(), Some("# Plan\n"));
+        assert_eq!(data::ledger_result(c, "aaaa0004").await.unwrap().text.as_deref(), Some("# Done\n"), "a relative path joins the folder");
         let long = data::ledger_result(c, "aaaa0003").await.unwrap();
         assert!(long.truncated && long.text.unwrap().len() <= files::TEXT_LIMIT);
         let started = Instant::now();
