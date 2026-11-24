@@ -73,11 +73,3 @@ export function startUsage() {
   }, 30_000);
   void readUsage();
 }
-
-/** Another Host shows: its own values. */
-export function usageHostChanged() {
-  usage = [];
-  usageError = null;
-  tell();
-  void readUsage(pageOpen ? "stale" : "none");
-}
