@@ -7,9 +7,20 @@
 //! its own desktop does the work, against this Host's config and skiffd.
 //!
 //! The watcher is this service's to keep: [`supervise`] checks on Skipper's
-//! session now and then and starts `skiff watch` when none runs. It never
-//! stops or replaces a watcher; the lock beside the socket keeps it to one.
-use std::{path::PathBuf, time::Duration};
+//! session now and then and starts `skiff watch` when none runs. It replaces
+//! a stale watcher (an older version, or another build of this one) once per
+//! holder pid, and never a newer one; the lock beside the socket keeps it to
+//! one. A service built for an older skiffd than the one that runs starts no
+//! watcher.
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use skiff_client::{agent_folder, fleet, host::project_agent, skipper, Client};
 use skiff_core::{
@@ -91,7 +102,7 @@ pub async fn answer(request: Request) -> Result<Response, Error> {
                 None => skipper::Open::Start,
             };
             let Some(found) = skipper::open(&c, how).await.map_err(failed)? else { return Ok(Response::Ok) };
-            let watch_error = ensure_watch(found.session.id.clone()).await.err();
+            let watch_error = ensure_watch(found.session.id.clone(), Vec::new(), None).await.err();
             let session = skiff_client::host::project_session(found.session)?;
             Ok(Response::SkipperOpened {
                 opened: Box::new(SkipperOpened { session, created: found.created, typed: found.typed, watch_error }),
@@ -102,7 +113,7 @@ pub async fn answer(request: Request) -> Result<Response, Error> {
             if s.as_ref().map(|s| s.id.as_str()) != Some(session.as_str()) {
                 return Err(Error::NotFound { message: "This session is not Skipper's on this Host.".into() });
             }
-            let started = ensure_watch(session).await.map_err(|message| Error::OperationFailed { message })?;
+            let started = ensure_watch(session, Vec::new(), None).await.map_err(|message| Error::OperationFailed { message })?;
             Ok(Response::Watch { started })
         }
         Request::SkipperWatchLog => {
@@ -192,26 +203,102 @@ fn watch_log() -> Result<skiff_host_api::HostFile, Error> {
     Ok(host_file(read))
 }
 
-/// Keeps a watcher on Skipper's session while this service runs.
+/// Keeps a current watcher on Skipper's session while this service runs.
+/// A stale holder gets one replacement per pid. When another service
+/// replaced this one's watcher with one of the same version, this service
+/// does not take it back, so two builds of one version do not trade it.
 pub async fn supervise() {
     let mut tick = tokio::time::interval(WATCH_EVERY);
+    let mut tries = Tries::default();
+    let mut mine: Option<u32> = None;
     loop {
         tick.tick().await;
         let Ok(Some(s)) = coordinator().await else { continue };
-        if s.watch.is_none() {
-            let _ = ensure_watch(s.id).await;
+        let socket = skiff_core::state::socket();
+        let known: Vec<u32> = s.watch.as_ref().map(|w| w.pids.clone()).unwrap_or_default();
+        let holder = skipper::watch_status(&socket).ok().filter(|l| l.held).map(|l| l.holder);
+        let pid = match &holder {
+            Some(Some(h)) => {
+                if !skipper::stale_holder(h, &cli(), skipper::CLI_VERSION) {
+                    if h.version.as_deref() == Some(skipper::CLI_VERSION) {
+                        mine = Some(h.pid);
+                    }
+                    continue;
+                }
+                if mine.is_some_and(|m| m != h.pid) && h.version.as_deref() == Some(skipper::CLI_VERSION) {
+                    tries.flag(h.pid).store(true, Ordering::SeqCst);
+                }
+                Some(h.pid)
+            }
+            Some(None) => (known.len() == 1).then(|| known[0]),
+            None => None,
+        };
+        // A held lock whose pid was tried keeps its watcher, and the log is not said again.
+        if holder.is_some() && pid.is_none_or(|p| tries.taken(p)) {
+            continue;
+        }
+        let tried = pid.map(|p| tries.flag(p));
+        let _ = ensure_watch(s.id, known, tried.clone()).await;
+        // A holder it could not prove had its attempt too.
+        if let Some(t) = tried {
+            t.store(true, Ordering::SeqCst);
         }
     }
 }
 
-/// Starts `skiff watch` for `session` unless one runs. True when it started
-/// one. A failure is said in this service's log too. The watcher sends no
-/// desktop notification: the app that uses this Host sends them.
-async fn ensure_watch(session: String) -> Result<bool, String> {
+/// One replacement attempt per watcher pid, for one run of this service.
+#[derive(Default)]
+struct Tries(HashMap<u32, Arc<AtomicBool>>);
+
+impl Tries {
+    /// The attempt flag for `pid`, kept for the run.
+    fn flag(&mut self, pid: u32) -> Arc<AtomicBool> {
+        self.0.entry(pid).or_default().clone()
+    }
+
+    /// True when `pid` had its attempt.
+    fn taken(&self, pid: u32) -> bool {
+        self.0.get(&pid).is_some_and(|t| t.load(Ordering::SeqCst))
+    }
+}
+
+/// Why this service starts no watcher: it was built for an older skiffd
+/// than `daemon`, so its `skiff` predates the CLI that skiffd pairs with.
+fn too_old_for(daemon: &str) -> Option<String> {
+    (skiff_core::compare_versions(skiff_core::VERSION, daemon) == std::cmp::Ordering::Less)
+        .then(|| format!("This Host's skiff was built for skiffd {}, and skiffd is {daemon}. No watcher started.", skiff_core::VERSION))
+}
+
+/// Starts `skiff watch` for `session` unless one runs. With `tried`, a stale
+/// holder gets one replacement ([`skipper::ensure_watch`]); `known` holds the
+/// watcher pids skiffd registered. True when it started one. A failure is
+/// said in this service's log too, once for a service too old for skiffd.
+/// The watcher sends no desktop notification: the app that uses this Host
+/// sends them.
+async fn ensure_watch(session: String, known: Vec<u32>, tried: Option<Arc<AtomicBool>>) -> Result<bool, String> {
+    static SAID_OLD: AtomicBool = AtomicBool::new(false);
+    let daemon = match connect().await {
+        Ok(c) => c.daemon_info().await.ok().map(|i| i.version),
+        Err(_) => None,
+    };
+    if let Some(why) = daemon.as_deref().and_then(too_old_for) {
+        if !SAID_OLD.swap(true, Ordering::SeqCst) {
+            eprintln!("skiff watch: {why}");
+        }
+        return Err(why);
+    }
     let socket = skiff_core::state::socket();
-    let run = tokio::task::spawn_blocking(move || skipper::ensure_watch(&socket, &cli(), skipper::CLI_VERSION, &session, false, &[], None)).await;
+    let run = tokio::task::spawn_blocking(move || skipper::ensure_watch(&socket, &cli(), skipper::CLI_VERSION, &session, false, &known, tried.as_deref())).await;
     let out = match run {
-        Ok(Ok(o)) => Ok(matches!(o, skipper::WatchOutcome::Started | skipper::WatchOutcome::Replaced { .. })),
+        Ok(Ok(skipper::WatchOutcome::Replaced { pid })) => {
+            eprintln!("skiff watch: replaced the older watcher (pid {pid})");
+            Ok(true)
+        }
+        Ok(Ok(skipper::WatchOutcome::Kept(why))) => {
+            eprintln!("skiff watch not updated: {why}");
+            Ok(false)
+        }
+        Ok(Ok(o)) => Ok(matches!(o, skipper::WatchOutcome::Started)),
         Ok(Err(e)) => Err(format!("{e:#}")),
         Err(e) => Err(e.to_string()),
     };
@@ -285,4 +372,30 @@ fn invalid(e: anyhow::Error) -> Error {
 
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, Error> + Send + 'static) -> Result<T, Error> {
     tokio::task::spawn_blocking(f).await.unwrap_or_else(|e| Err(failed(e)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A service built for an older skiffd than the one that runs starts no
+    /// watcher. One built for this skiffd, or a newer one, may.
+    #[test]
+    fn starts_no_watcher_for_a_newer_skiffd() {
+        assert!(too_old_for("999.0.0").is_some_and(|w| w.contains("No watcher started")));
+        assert_eq!(too_old_for(skiff_core::VERSION), None);
+        assert_eq!(too_old_for("0.0.1"), None);
+    }
+
+    /// One attempt per holder pid: a pid that had its attempt stays taken,
+    /// and another pid gets its own.
+    #[test]
+    fn one_replacement_per_holder_pid() {
+        let mut tries = Tries::default();
+        assert!(!tries.taken(7));
+        assert!(!tries.flag(7).swap(true, Ordering::SeqCst));
+        assert!(tries.taken(7));
+        assert!(tries.flag(7).swap(true, Ordering::SeqCst));
+        assert!(!tries.taken(8));
+    }
 }
