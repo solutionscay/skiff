@@ -45,7 +45,7 @@ export const AVATAR_SWATCHES: readonly string[] = [
 ];
 
 /** A stored avatar color: "#rrggbb" in lower case, else null. */
-export const parseAvatarColor = (v: unknown): string | null =>
+const parseAvatarColor = (v: unknown): string | null =>
   typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : null;
 
 /** Hue in degrees and saturation, 0 to 1, of "#rrggbb". */

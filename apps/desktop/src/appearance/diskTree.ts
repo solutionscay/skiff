@@ -8,7 +8,7 @@ import { locale, type MessageKey, t, tn } from "../i18n";
 /** What the rule says of a file. */
 export type Kind = "use" | "held" | "prot" | "stale";
 
-export interface Verdict {
+interface Verdict {
   kind: Kind;
   /** The reason code: see `Verdict::why` in `skiff_client::disk`. */
   why: string;

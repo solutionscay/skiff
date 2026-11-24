@@ -7,9 +7,9 @@ import { en } from "./en";
 import { es } from "./es";
 import { zh } from "./zh";
 
-export type Messages = typeof en;
+type Messages = typeof en;
 export type MessageKey = keyof Messages;
-export type Vars = Record<string, string | number>;
+type Vars = Record<string, string | number>;
 
 const catalogs: Record<string, Partial<Record<MessageKey, string>>> = { en, es, zh };
 

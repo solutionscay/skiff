@@ -25,8 +25,8 @@ export const SHOW_MS = 400;
 /** The line redraws at most this often. */
 export const REDRAW_MS = 100;
 /** The result line stays this long. */
-export const DONE_MS = 2000;
-export const FAILED_MS = 5000;
+const DONE_MS = 2000;
+const FAILED_MS = 5000;
 
 /** The line while files go: the file that goes now, of all. */
 export const sendingLine = (u: Upload) =>

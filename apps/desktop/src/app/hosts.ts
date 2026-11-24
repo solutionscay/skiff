@@ -13,7 +13,7 @@ import { showError, showNotice } from "../ui/alerts";
 import { t } from "../i18n";
 import { linkLost } from "./badge";
 
-export interface KnownHost {
+interface KnownHost {
   id: string;
   name: string;
   destination: string;

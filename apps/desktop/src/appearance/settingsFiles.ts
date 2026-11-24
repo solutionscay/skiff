@@ -10,7 +10,7 @@ import { basename } from "../workspace/paths";
 import { fileSize } from "./taskTypes";
 
 /** An instruction file row. The types come from settings.ts, which imports the Host side. */
-export interface FileRow {
+interface FileRow {
   file: string;
   scope: { kind: "skipper" } | { kind: "fleet" | "project" | "type"; name: string };
   modified: number | null;
@@ -18,7 +18,7 @@ export interface FileRow {
 }
 
 /** A task type row. */
-export interface TypeRow {
+interface TypeRow {
   type: string;
   file: string;
 }
@@ -33,7 +33,7 @@ export interface FilesState<F extends FileRow = FileRow> {
 
 type TabName = "skippers" | "task-types";
 
-export interface FilesEnv<A> {
+interface FilesEnv<A> {
   /** A command on the app side. */
   ask<T>(cmd: string, args?: Record<string, unknown>): Promise<T>;
   /** Shows a file in the peek over Settings; `done` runs when the peek ends. */

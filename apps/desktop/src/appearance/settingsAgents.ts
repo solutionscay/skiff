@@ -11,9 +11,9 @@ import { pickProgram } from "./programPicker";
 import type { AgentInfo } from "../platform/types";
 
 /** The agents Skiff ships with. Restore defaults brings back any the user removed. */
-export const DEFAULT_AGENTS = ["claude", "codex", "gemini", "grok", "opencode", "hermes", "kimi"];
+const DEFAULT_AGENTS = ["claude", "codex", "gemini", "grok", "opencode", "hermes", "kimi"];
 
-export interface AgentsPageOptions {
+interface AgentsPageOptions {
   /** Read at call time: an edit replaces the list. */
   agents: () => AgentInfo[];
   error: string | null;

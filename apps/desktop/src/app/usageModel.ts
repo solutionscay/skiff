@@ -57,7 +57,7 @@ const PRODUCTS: Record<string, string> = {
 export const productName = (id: string) => PRODUCTS[id] ?? id;
 
 /** The window's name from its length, never from its place: "5-hour", "Daily", "Weekly". */
-export function spanName(minutes: number): string {
+function spanName(minutes: number): string {
   if (minutes === 1440) return t("usage.span.daily");
   if (minutes === 10080) return t("usage.span.weekly");
   if (minutes % 1440 === 0) return t("usage.span.days", { n: minutes / 1440 });

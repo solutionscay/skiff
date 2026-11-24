@@ -45,7 +45,7 @@ interface Preview {
 }
 
 /** What survives a redraw of the page. */
-export interface SchedulesState {
+interface SchedulesState {
   /** The schedule on the edit page: its uid, `new`, or null for the list. */
   editing: string | null;
   draft: Draft | null;
@@ -61,7 +61,7 @@ export interface SchedulesState {
 
 export const schedulesState = (): SchedulesState => ({ editing: null, draft: null, error: null, whenError: null, preview: null, promptError: null, saving: null });
 
-export interface SchedulesCtx {
+interface SchedulesCtx {
   render: () => void;
   /** The grand Skipper's name: Admiral, or the name Settings gives it. */
   mainName: () => string;

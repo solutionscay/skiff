@@ -20,7 +20,7 @@ import type { ClipTry } from "../platform/clipboard";
 import { isRemote } from "../app/hosts";
 import { tracing, traceLine } from "./latency";
 
-export type ClipRoute = "key" | "menu" | "osc52" | "peek" | "other";
+type ClipRoute = "key" | "menu" | "osc52" | "peek" | "other";
 
 /** The route of the copy or paste that runs next, noted by the key or menu handler. */
 let routeNote: { route: ClipRoute; at: number } | null = null;
@@ -41,7 +41,7 @@ function takeRoute(): ClipRoute {
 const SEED = crypto.getRandomValues(new Uint32Array(1))[0];
 
 /** FNV-1a, 32 bits, seeded, in hex: enough to tell two texts apart in a trace. */
-export function shortHash(s: string): string {
+function shortHash(s: string): string {
   let h = (0x811c9dc5 ^ SEED) >>> 0;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);

@@ -41,7 +41,7 @@ interface RowCol<R> {
   check?: (value: string) => string | null;
 }
 
-export interface RowTableSpec<R> {
+interface RowTableSpec<R> {
   /** The CSS class that sets the columns. */
   grid: string;
   /** The id of the section's heading. */

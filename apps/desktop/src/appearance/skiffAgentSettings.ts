@@ -16,7 +16,7 @@ import { AVATAR_SWATCHES, FINISHES, parseFinish } from "./skipperAvatar";
 import { scopeName } from "../workspace/model";
 
 /** A task type row as `set_skiff_agent` takes it. Null model: the agent's default. */
-export interface TaskEdit {
+interface TaskEdit {
   type: string;
   agent: string;
   model: string | null;
@@ -52,7 +52,7 @@ interface TypeFileActs {
 }
 
 /** What the Skippers page does with its rows. */
-export interface SkippersPageActs {
+interface SkippersPageActs {
   save: (e: SkiffAgentEdit) => void;
   /** Draws the page again after a face changes. */
   redraw: () => void;
@@ -60,7 +60,7 @@ export interface SkippersPageActs {
 }
 
 /** What the Task types page does with its rows. */
-export interface TaskTypesPageActs {
+interface TaskTypesPageActs {
   saveTask: (e: SkiffAgentEdit) => Promise<string | null>;
   render: () => void;
   tasksTable: RowTableState;

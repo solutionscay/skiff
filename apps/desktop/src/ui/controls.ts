@@ -14,7 +14,7 @@ export type PickEntry =
   | { head: string }
   | { sep: true };
 
-export interface PickOptions {
+interface PickOptions {
   /** The control's name, and the title of its menu. */
   label: string;
   /** The value in use. The menu marks it. */

@@ -1,7 +1,7 @@
 // Wire types from skiff-core, as the Tauri commands return them.
 
 export type SessionState = "working" | "waiting" | "idle" | "done";
-export type Role = "agent" | "task" | "server" | "shell";
+type Role = "agent" | "task" | "server" | "shell";
 
 export interface SessionInfo {
   id: string;
@@ -82,7 +82,7 @@ export interface ProgramStatus {
 }
 
 /** A record a program reports under its own: one of its sessions or subagents. */
-export interface ProgramChild {
+interface ProgramChild {
   id: string;
   state: string;
   kind?: string | null;
@@ -101,7 +101,7 @@ export interface DaemonMetrics {
 }
 
 /** The watchers registered for a session. */
-export interface WatchInfo {
+interface WatchInfo {
   /** Unix ms of the oldest live registration. */
   since: number;
   pids: number[];
@@ -111,7 +111,7 @@ export interface WatchInfo {
   follows?: string[] | null;
 }
 
-export interface WatchFailure {
+interface WatchFailure {
   /** "undelivered": a line was typed and no turn started. "ledger": the ledger could not be read. */
   kind: string;
   /** The watch log line. */

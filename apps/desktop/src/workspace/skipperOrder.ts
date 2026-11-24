@@ -16,7 +16,7 @@ import { treeSections } from "./tree";
 export type Entry = { kind: "admiral" | "fleet" | "project"; s: SessionInfo | null; name: string; scope: string | null; project: Project | null };
 
 /** `scopes` in tree order, set in the `stored` order. A scope not stored goes last, in tree order. */
-export function arrangeScopes(scopes: string[], stored: string[]): string[] {
+function arrangeScopes(scopes: string[], stored: string[]): string[] {
   const shown = new Set(scopes);
   const placed = new Set(stored);
   return [...new Set(stored)].filter((s) => shown.has(s)).concat(scopes.filter((s) => !placed.has(s)));

@@ -19,7 +19,7 @@ export interface Profile {
   selected: string | null;
 }
 
-export interface Doc {
+interface Doc {
   path: string;
   profile: Profile;
   /** The revision last read or written. */

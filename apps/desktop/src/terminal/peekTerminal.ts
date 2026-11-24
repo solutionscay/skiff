@@ -34,7 +34,7 @@ export interface Peek {
 }
 
 /** What `newPeek` needs. The facade passes the theme, font and size, so this file reads no app state. */
-export interface NewPeek {
+interface NewPeek {
   gen: number;
   kind: string;
   request: string;

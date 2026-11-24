@@ -6,7 +6,7 @@ import { t, type MessageKey } from "../i18n";
 export type OpenKey = "diff" | "text" | "markdown" | "html" | "image";
 export type OpenSettings = Record<OpenKey, string> & { default_diff: string; peek: string[] };
 /** One thing a row can pick. `command` is what `[open]` stores. */
-export interface OpenChoice { label: string; command: string }
+interface OpenChoice { label: string; command: string }
 /** What each row can pick, found on this computer. */
 export type OpenChoices = Partial<Record<OpenKey, { peek: OpenChoice[]; apps: OpenChoice[] }>>;
 
@@ -18,7 +18,7 @@ const OPEN_ROWS: { key: OpenKey; label: MessageKey }[] = [
   { key: "image", label: "settings.open.image" },
 ];
 
-export interface OpenWithActs {
+interface OpenWithActs {
   /** Stores a command, and whether it opens in the peek. Empty: the default. */
   set(key: OpenKey, command: string, peek: boolean): void;
   /** Stores a program from the file picker. */

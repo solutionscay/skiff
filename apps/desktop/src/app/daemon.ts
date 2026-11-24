@@ -398,7 +398,7 @@ let unplacedPending = false;
  * asked within the wait is read when it ends. Still outside every project,
  * the session stays under Other.
  */
-export function unplaced(s: SessionInfo) {
+function unplaced(s: SessionInfo) {
   if (S.dataState !== "ready" || place(s) || unplacedAsked.has(s.cwd)) return;
   unplacedAsked.add(s.cwd);
   if (unplacedCooling) unplacedPending = true;

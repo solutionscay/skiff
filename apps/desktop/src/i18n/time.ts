@@ -8,7 +8,7 @@
 import { locale, t } from "./index";
 
 /** `24`, `12`, or null for the app language's clock. */
-export type ClockSetting = "24" | "12" | null;
+type ClockSetting = "24" | "12" | null;
 
 let zone: string | undefined;
 let clockSet: ClockSetting = null;

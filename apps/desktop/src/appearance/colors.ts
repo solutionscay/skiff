@@ -1,4 +1,4 @@
-export type Rgb = [number, number, number];
+type Rgb = [number, number, number];
 export const rgb = (hex: string): Rgb => {
   const n = parseInt(hex.replace("#", "").slice(0, 6), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
@@ -11,7 +11,7 @@ export const mix = (a: string, b: string, t: number) => {
 };
 
 /** Relative luminance in linear sRGB. */
-export const luminance = (hex: string) => {
+const luminance = (hex: string) => {
   const [r, g, b] = rgb(hex).map((v) => {
     const c = v / 255;
     return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;

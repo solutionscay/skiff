@@ -7,7 +7,7 @@
  */
 
 /** About three frames at 60 Hz. */
-export const STALL_MS = 50;
+const STALL_MS = 50;
 /** Steps older than this cannot belong to a stall that is still open. */
 const KEEP_MS = 5000;
 

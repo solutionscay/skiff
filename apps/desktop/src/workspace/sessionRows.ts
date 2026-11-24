@@ -124,7 +124,7 @@ export function placedRows(block: HTMLElement, rows: [s: SessionInfo, color: str
 
 type RowOpts = { branch?: boolean; in?: Group; groupRail?: boolean; where?: string };
 
-export function sessionRow(s: SessionInfo, color: string, o: RowOpts): HTMLElement {
+function sessionRow(s: SessionInfo, color: string, o: RowOpts): HTMLElement {
   if (S.renamingSession === s.id) return renameRow(s, color);
   const cls = ["session-row"];
   if (o.in) cls.push("nested");

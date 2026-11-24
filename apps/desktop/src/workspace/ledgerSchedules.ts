@@ -24,7 +24,7 @@ const CHEV = '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-
 const BACK = '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M6.5 1.5 3 5l3.5 3.5"/></svg>';
 
 /** The schedule shows under the panel's filter: All projects, a fleet, or one project. */
-export function scheduleInView(s: Schedule, filter: string | null): boolean {
+function scheduleInView(s: Schedule, filter: string | null): boolean {
   if (filter === null) return true;
   const ps = [s.project, targetProject(s)].filter((p): p is string => !!p);
   const fleet = scopeFleet(filter);
@@ -50,20 +50,20 @@ const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
  * The next run, short, in the app's time zone: the time today, the weekday
  * and time this week, else the date. The cron runs on the Host's clock.
  */
-export function nextText(s: Pick<Schedule, "next" | "next_at">): string {
+function nextText(s: Pick<Schedule, "next" | "next_at">): string {
   const at = parseUtc(s.next_at);
   if (!Number.isNaN(at)) return aheadWhen(at);
   return s.next ? shortNext(s.next) : "";
 }
 
 /** A run's start in the app's time zone: "Nov 11, 01:30". An older Host's own text otherwise. */
-export function runAt(r: Run): string {
+function runAt(r: Run): string {
   const at = parseUtc(r.row.sent_at);
   return Number.isNaN(at) ? r.at : dateTime(at);
 }
 
 /** An older Host's `Nov 11 01:30` short: the time today, the weekday and time this week, else the date. */
-export function shortNext(next: string): string {
+function shortNext(next: string): string {
   const m = /^([A-Z][a-z]{2}) (\d{1,2}) (\d{2}:\d{2})$/.exec(next);
   if (!m) return next;
   const now = new Date();
@@ -93,7 +93,7 @@ export const lastWord = (last: Schedule["last"] | Run["status"]) => (last ? t(`s
 export const fleetSkipperName = (fleet: string) => `${fleet} ${skipperWord()}`;
 
 /** A Skipper by its owner key, as its session is named: "Admiral", "Harbor Skipper", "gesher Skipper". */
-export function skipperOwnerName(owner: string): string {
+function skipperOwnerName(owner: string): string {
   if (owner === "grand") return skiffAgentName();
   return owner.startsWith("fleet:") ? fleetSkipperName(owner.slice(6)) : `${owner} ${skipperWord()}`;
 }
@@ -133,7 +133,7 @@ function cols(): HTMLElement {
 }
 
 /** What a run row and an agent step row do on a click. */
-export interface SeriesActs {
+interface SeriesActs {
   /** The run's or step's result, when the Host has it. */
   result: (r: Entry) => (() => void) | null;
   /** The step's live pane. */
