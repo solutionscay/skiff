@@ -384,11 +384,7 @@ function closePeek(hold = false) {
   if (active) active.closed = true;
   clearCard();
   repaintPanes();
-  if (peekEnded() || !hadKeys) return;
-  // The keys go back to the row the user left.
-  const row = currentRow();
-  if (row) row.focus();
-  else if (S.focused) panes.get(S.focused)?.term.focus();
+  returnPeekKeys(hadKeys);
 }
 
 /**
@@ -406,6 +402,11 @@ export function closePreview() {
   if (p) drop(p, p.shown);
   repaintPanes();
   render();
+  returnPeekKeys(hadKeys);
+}
+
+/** End the peek and return the keys to the row or the focused pane. */
+function returnPeekKeys(hadKeys: boolean) {
   if (peekEnded() || !hadKeys) return;
   const row = currentRow();
   if (row) row.focus();
