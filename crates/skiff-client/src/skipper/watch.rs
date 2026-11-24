@@ -303,7 +303,8 @@ fn fresh_log(path: &Path) -> Result<std::fs::File> {
         old.push(".1");
         std::fs::rename(path, &old).context("keep the last watch log")?;
     }
-    std::fs::File::create(path).context("create the watch log")
+    // create_new: a link left at the path is refused, never followed.
+    std::fs::OpenOptions::new().write(true).create_new(true).open(path).context("create the watch log")
 }
 
 /// A command for `program` that outlives the login that starts it, an SSH

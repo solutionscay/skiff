@@ -34,8 +34,20 @@ os=$(uname -s)
 if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ]; then rt=$XDG_RUNTIME_DIR
 elif [ -d "/run/user/$uid" ]; then rt=/run/user/$uid
 elif [ "$os" = Darwin ] && g=$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null) && [ -n "$g" ]; then rt=$g
-else rt=${TMPDIR:-/tmp}; fi
+else rt=${TMPDIR:-/tmp}; rt=${rt%/}/skiff-$uid; shared=yes; fi
 rt=${rt%/}
+# With no runtime folder from the system, $rt is skiff-<uid> in the shared
+# temp dir. It and $rt/skiff must be real folders of this account with no
+# group or other bits, or a start refuses them, as skiffd does.
+private_dir() {
+  [ -d "$1" ] && [ ! -L "$1" ] || mkdir -m 700 "$1" 2>/dev/null
+  [ -d "$1" ] && [ ! -L "$1" ] && [ -O "$1" ] || return 1
+  case $(ls -ld "$1" 2>/dev/null) in d???------*) return 0 ;; *) return 1 ;; esac
+}
+sock_dir_ok() {
+  if [ "${shared:-}" = yes ]; then private_dir "$rt" || return 1; fi
+  private_dir "$rt/skiff"
+}
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d ' ' -f 1; else shasum -a 256 "$1" | cut -d ' ' -f 1; fi; }
 # One line for the person who waits in the app, on stderr, so a step
 # whose stdout is read in $(...) still shows. Not in install.sh's own run.
@@ -115,6 +127,7 @@ agent() {
 start() {
   sock=$rt/skiff/skiffd.sock
   [ -x "$d/current/skiffd" ] || { echo "skiff-start=missing"; return; }
+  sock_dir_ok || { step "$rt/skiff is not a private folder of this account"; echo "folder=$rt/skiff"; echo "skiff-start=unsafe"; return; }
   step "#6 Starting skiffd"
   if [ "$os" = Darwin ]; then
     agent "$label" '<dict>
@@ -161,7 +174,7 @@ start() {
   n=0
   while [ ! -S "$hs" ] && [ $n -lt 50 ] && host_alive; do sleep 0.1; n=$((n + 1)); done
   if [ -S "$hs" ] && host_alive; then step "skiff-host runs"; echo host=running; else step "skiff-host did not start"; echo host=stopped; fi
-  if [ -S "$sock" ]; then echo "skiff-start=running"; else echo "skiff-start=stopped"; fi
+  if [ -S "$sock" ] && [ -O "$sock" ]; then echo "skiff-start=running"; else echo "skiff-start=stopped"; fi
 }
 
 # skiff-host's user unit: enabled, started, restarted by systemd when it

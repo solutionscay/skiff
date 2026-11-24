@@ -132,15 +132,9 @@ async fn run(start: Start) -> Result<()> {
 }
 
 async fn bind(path: &std::path::Path) -> Result<UnixListener> {
-    // Only a directory we create gets locked down. Never chmod a shared one like /tmp.
-    if let Some(dir) = path.parent().filter(|d| !d.exists()) {
-        std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
-        }
-    }
+    // The default folder must be this account's alone; it is never repaired.
+    #[cfg(unix)]
+    skiff_core::socket::prepare_socket_dir(path).with_context(|| format!("skiffd does not listen at {}", path.display()))?;
     if path.exists() {
         // A live socket means another daemon. A dead one is leftover from a crash.
         if UnixStream::connect(path).await.is_ok() {

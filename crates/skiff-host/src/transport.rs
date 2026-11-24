@@ -32,18 +32,15 @@ pub struct BoundSocket {
     id: (u64, u64),
 }
 
-/// Binds the service socket at `path`. Only a folder it creates gets locked
-/// down (`0700`); the socket is `0600`. An entry already at `path` is:
+/// Binds the service socket at `path`. Its folder is made or checked by
+/// [`skiff_core::socket::prepare_socket_dir`]; the socket is `0600`. An entry already at `path` is:
 /// - a live socket: another service, so this one does not start
 /// - a stale socket of this account: a crash's leftover, removed
 /// - anything else (a file, a link, a folder, another account's socket):
 ///   refused and left as it is
 pub async fn bind(path: &Path) -> anyhow::Result<(UnixListener, BoundSocket)> {
     use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
-    if let Some(dir) = path.parent().filter(|d| !d.exists()) {
-        std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
-        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
-    }
+    skiff_core::socket::prepare_socket_dir(path).with_context(|| format!("skiff-host does not listen at {}", path.display()))?;
     match std::fs::symlink_metadata(path) {
         Ok(found) => {
             if !found.file_type().is_socket() {

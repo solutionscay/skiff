@@ -32,10 +32,16 @@ pub fn data_socket(session: &std::path::Path) -> PathBuf {
 /// The user's runtime folder, the same from the desktop and from an SSH
 /// login, where the environment can differ. On Linux, `$XDG_RUNTIME_DIR`,
 /// else `/run/user/<uid>` when it exists. On macOS, the per-user temp folder
-/// the system names, which is the desktop's `$TMPDIR`. Else the temp dir.
+/// the system names, which is the desktop's `$TMPDIR`. Else `skiff-<uid>` in
+/// the temp dir (see [`fallback_runtime_dir`]). `server.sh` picks the same.
 pub fn runtime_dir() -> PathBuf {
+    system_runtime_dir().unwrap_or_else(fallback_runtime_dir)
+}
+
+/// The runtime folder the system names for this account, if any.
+fn system_runtime_dir() -> Option<PathBuf> {
     if let Some(d) = dirs::runtime_dir() {
-        return d;
+        return Some(d);
     }
     #[cfg(target_os = "linux")]
     {
@@ -43,15 +49,76 @@ pub fn runtime_dir() -> PathBuf {
         if let Ok(m) = std::fs::metadata("/proc/self") {
             let d = PathBuf::from(format!("/run/user/{}", m.uid()));
             if d.is_dir() {
-                return d;
+                return Some(d);
             }
         }
     }
     #[cfg(target_os = "macos")]
     if let Some(d) = darwin_user_temp() {
-        return d;
+        return Some(d);
     }
-    std::env::temp_dir()
+    None
+}
+
+/// With no runtime folder from the system: `<temp dir>/skiff-<uid>`. The
+/// temp dir is shared by every account, so the name has the uid and
+/// [`prepare_socket_dir`] makes it private or refuses it.
+fn fallback_runtime_dir() -> PathBuf {
+    #[cfg(unix)]
+    // SAFETY: geteuid takes no arguments and cannot fail.
+    let uid = unsafe { libc::geteuid() };
+    #[cfg(not(unix))]
+    let uid = 0;
+    std::env::temp_dir().join(format!("skiff-{uid}"))
+}
+
+/// Makes the folder of a socket at `socket`, or checks it, before a bind.
+/// The default folder (`<runtime dir>/skiff`), and the fallback runtime
+/// folder above it, must each be a real folder of this account with no
+/// group or other bits: one is made `0700` if missing, and one that is not
+/// private is refused, never repaired. A folder `SKIFF_SOCKET` names is
+/// made `0700` if missing and otherwise used as it is.
+#[cfg(unix)]
+pub fn prepare_socket_dir(socket: &std::path::Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let Some(dir) = socket.parent() else { return Ok(()) };
+    let runtime = runtime_dir();
+    if dir != runtime.join("skiff") {
+        if !dir.exists() {
+            std::fs::create_dir_all(dir)?;
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+        }
+        return Ok(());
+    }
+    if runtime == fallback_runtime_dir() {
+        private_dir(&runtime)?;
+    } else if !runtime.exists() {
+        std::fs::create_dir_all(&runtime)?;
+    }
+    private_dir(dir)
+}
+
+/// A folder only this account can enter, made `0700` if missing. An
+/// existing one that is a link, another account's, or open to others is
+/// refused with an error that names it.
+#[cfg(unix)]
+fn private_dir(dir: &std::path::Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+    match std::fs::DirBuilder::new().mode(0o700).create(dir) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e),
+    }
+    let meta = std::fs::symlink_metadata(dir)?;
+    // SAFETY: geteuid takes no arguments and cannot fail.
+    let uid = unsafe { libc::geteuid() };
+    if !meta.is_dir() || meta.uid() != uid || meta.permissions().mode() & 0o077 != 0 {
+        return Err(std::io::Error::other(format!(
+            "{} is not a private folder of this account: it must be a folder, not a link, owned by uid {uid}, with mode 0700",
+            dir.display()
+        )));
+    }
+    Ok(())
 }
 
 /// `confstr(_CS_DARWIN_USER_TEMP_DIR)`: what launchd sets `$TMPDIR` to for
@@ -83,5 +150,31 @@ mod tests {
         assert_eq!(socket_path_from(Some(std::ffi::OsStr::new("/tmp/t/x.sock")), run), Path::new("/tmp/t/x.sock"));
         assert!(socket_path().file_name().is_some_and(|n| n == SOCKET_NAME) || std::env::var_os("SKIFF_SOCKET").is_some());
         assert!(crate::state::is_live(&socket_path_from(None, &runtime_dir())));
+    }
+
+    /// A socket folder that is a link, open to others, or another account's
+    /// is refused; a missing one is made 0700.
+    #[cfg(unix)]
+    #[test]
+    fn private_dir_refuses_a_shared_folder() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("skiff-private-dir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir(&root).unwrap();
+        let fresh = root.join("fresh");
+        private_dir(&fresh).unwrap();
+        assert_eq!(std::fs::metadata(&fresh).unwrap().permissions().mode() & 0o777, 0o700);
+        let open = root.join("open");
+        std::fs::create_dir(&open).unwrap();
+        std::fs::set_permissions(&open, std::fs::Permissions::from_mode(0o777)).unwrap();
+        assert!(private_dir(&open).is_err());
+        let link = root.join("link");
+        std::os::unix::fs::symlink(&fresh, &link).unwrap();
+        assert!(private_dir(&link).is_err());
+        // Owned by root, unless the test runs as root.
+        if unsafe { libc::geteuid() } != 0 {
+            assert!(private_dir(Path::new("/")).is_err());
+        }
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }
