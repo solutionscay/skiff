@@ -99,7 +99,7 @@ export function tookTerminal(p: Peek) {
 }
 
 /** The program `sh` could not find, from its message: dash, bash and busybox word it apart. */
-export function notFound(term: Terminal): string | null {
+function notFound(term: Terminal): string | null {
   const b = term.buffer.active;
   for (let y = 0; y < b.length; y++) {
     const m = b.getLine(y)?.translateToString(true).match(/([^\s:]+): (?:command )?not found/);
@@ -109,7 +109,7 @@ export function notFound(term: Terminal): string | null {
 }
 
 /** The terminal holds text: the command printed something. */
-export function printed(term: Terminal): boolean {
+function printed(term: Terminal): boolean {
   const b = term.buffer.active;
   for (let y = 0; y < b.length; y++) if (b.getLine(y)?.translateToString(true).trim()) return true;
   return false;

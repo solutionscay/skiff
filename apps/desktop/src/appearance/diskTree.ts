@@ -47,7 +47,7 @@ export interface Expected {
 const kids = (n: DiskNode) => n.children ?? [];
 
 /** The files of `n`: its leaves, a folded folder and an empty folder each count as one. */
-export function leaves(n: DiskNode, out: DiskNode[] = []): DiskNode[] {
+function leaves(n: DiskNode, out: DiskNode[] = []): DiskNode[] {
   if (!kids(n).length) out.push(n);
   else for (const c of kids(n)) leaves(c, out);
   return out;
