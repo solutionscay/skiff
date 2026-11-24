@@ -1,5 +1,5 @@
 import { ctxMenu } from "../../ui/contextMenu";
-import { launchIcon } from "../../appearance/agentIcon";
+import { launchEntries } from "./launch";
 import { confirmAction } from "../../ui/confirm";
 import { skipperEndLines } from "../skipperEnd";
 import { keyLabel } from "../../app/keys";
@@ -17,7 +17,6 @@ import { startRename } from "../rename";
 import { render } from "../../app/render";
 import { clearSelection } from "../selection";
 import { MAX_PANES, S, sessions } from "../../app/state";
-import { launchChoices, launchDigit } from "../../app/stateQueries";
 import { groupThemeMenu } from "../../appearance/themes";
 import { refocusTerminal, showGroup, unsplit } from "../view";
 import { resumeAllEntry } from "../../terminal/resume";
@@ -43,22 +42,15 @@ function groupStartEntries(g: Group): MenuEntry[] {
   const empty = slotsOf(g.layout)[0];
   const filled = filledOf(g.layout).filter((id) => sessions.has(id));
   const full = !empty && filled.length >= MAX_PANES;
-  const entries: MenuEntry[] = [{ head: upper(t("menu.newIn", { where })) }];
-  launchChoices().forEach((a, i) => {
-    entries.push({
-      glyph: launchIcon(a),
-      label: a?.id ?? t("menu.shell"),
-      hint: launchDigit(i),
-      disabled: full || !hostCan("session_lifecycle"),
-      run: () => {
-        if (g.id !== S.activeGroup) showGroup(g.id);
-        const target = g.focus && filled.includes(g.focus) ? g.focus : filled[0];
-        const place = empty ? { slot: empty } : { target, dir: "row" as const };
-        void newSession(cwd, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell", place).catch(showError);
-      },
-    });
-  });
-  return entries;
+  return [
+    { head: upper(t("menu.newIn", { where })) },
+    ...launchEntries((a) => {
+      if (g.id !== S.activeGroup) showGroup(g.id);
+      const target = g.focus && filled.includes(g.focus) ? g.focus : filled[0];
+      const place = empty ? { slot: empty } : { target, dir: "row" as const };
+      void newSession(cwd, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell", place).catch(showError);
+    }, full || !hostCan("session_lifecycle")),
+  ];
 }
 
 /** Drops the group. Its sessions keep running and go back under their worktrees. */

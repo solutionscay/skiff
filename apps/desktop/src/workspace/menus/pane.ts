@@ -1,7 +1,7 @@
 import { ctxMenu } from "../../ui/contextMenu";
 import { openImages } from "../../appearance/imagesDialog";
 import { canRestartWatch, isSkiffAgent, openWatchLog, restartWatch, skiffAgentFolder, skiffAgentName, skiffWatch, startSkiffWatch, watcherFailed } from "../../app/skiffAgent";
-import { launchIcon } from "../../appearance/agentIcon";
+import { launchEntries } from "./launch";
 import { keyLabel } from "../../app/keys";
 import { t, upper } from "../../i18n";
 import { toggleFocusMode, toggleMaximize } from "../../app/modes";
@@ -15,7 +15,7 @@ import { newSession } from "../../app/daemon";
 import { showError } from "../../ui/alerts";
 import { startSessionRename } from "../rename";
 import { S, sessions } from "../../app/state";
-import { launchChoices, launchDigit, place, shownIds, skipperSplit, splitFull } from "../../app/stateQueries";
+import { place, shownIds, skipperSplit, splitFull } from "../../app/stateQueries";
 import { focusPane, removeFromGroup } from "../view";
 import { resumeOffer, resumePane } from "../../terminal/resume";
 import { ledgerFolded, ledgerShown, toggleLedger } from "../ledger";
@@ -89,14 +89,9 @@ export function splitMenu(id: string, dir: SplitDir, x: number, y: number) {
   const at = place(s);
   const cwd = at ? at.worktree.path : s.cwd;
   const where = at ? branchName(at.worktree) : basename(s.cwd);
-  const entries: MenuEntry[] = [{ head: upper(t("menu.newIn", { where })) }];
-  launchChoices().forEach((a, i) => {
-    entries.push({
-      glyph: launchIcon(a),
-      label: a?.id ?? t("menu.shell"),
-      hint: launchDigit(i),
-      run: () => void newSession(cwd, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell", { target: id, dir }).catch(showError),
-    });
-  });
+  const entries: MenuEntry[] = [
+    { head: upper(t("menu.newIn", { where })) },
+    ...launchEntries((a) => void newSession(cwd, a?.command ?? null, a?.id ?? "", a ? "agent" : "shell", { target: id, dir }).catch(showError)),
+  ];
   ctxMenu.open(x, y, t(dir === "row" ? "menu.addPaneRightTitle" : "menu.addPaneBelowTitle"), entries);
 }
