@@ -222,6 +222,14 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
 
   const render = () => redrawKeeping(root, tab, draw);
 
+  function loadTab() {
+    if (tab === "skippers") void loadFiles();
+    if (tab === "task-types") void loadTypes();
+    if (tab === "schedules") void loadSchedulesPage(schedCtx);
+    if (tab === "disk") void countDisk(disk, render);
+    if (tab === "activity") startActivity(activity, render);
+  }
+
   function draw() {
     const nav = h("div", "set-nav");
     const head = h("div", "set-nav-head");
@@ -237,11 +245,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         if (tab === "usage" && id !== "usage") usagePage(false);
         tab = id;
         draw();
-        if (tab === "skippers") void loadFiles();
-        if (tab === "task-types") void loadTypes();
-        if (tab === "schedules") void loadSchedulesPage(schedCtx);
-        if (tab === "disk") void countDisk(disk, render);
-        if (tab === "activity") startActivity(activity, render);
+        loadTab();
         if (tab === "usage") usagePage(true);
         if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
       });
@@ -541,11 +545,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     if (tab !== "activity") stopActivity(activity);
     if (tab === "usage") usagePage(true);
     draw();
-    if (tab === "skippers") void loadFiles();
-    if (tab === "task-types") void loadTypes();
-    if (tab === "schedules") void loadSchedulesPage(schedCtx);
-    if (tab === "disk") void countDisk(disk, render);
-    if (tab === "activity") startActivity(activity, render);
+    loadTab();
     document.body.classList.add("kbd");
     root.querySelector<HTMLButtonElement>(".set-tab.active")?.focus();
   }
