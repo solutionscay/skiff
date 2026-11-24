@@ -1115,7 +1115,6 @@ export const es = {
   "images.pin": "Fijar",
   "images.unpin": "Desfijar",
   "images.selected": "{n} seleccionados",
-  "images.inserted": "Insertado",
   "images.countOf": "{n} de {total}",
   "images.none": "No hay archivos",
   "images.noMatch": "Ningún archivo coincide",

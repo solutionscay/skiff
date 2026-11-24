@@ -968,7 +968,6 @@ export const en = {
   "images.pin": "Pin",
   "images.unpin": "Unpin",
   "images.selected": "{n} selected",
-  "images.inserted": "Inserted",
   "images.countOf": "{n} of {total}",
   "images.none": "No files",
   "images.noMatch": "No files match",

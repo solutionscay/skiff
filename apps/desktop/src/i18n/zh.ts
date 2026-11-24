@@ -1059,7 +1059,6 @@ export const zh = {
   "images.pin": "固定",
   "images.unpin": "取消固定",
   "images.selected": "已选择 {n} 个",
-  "images.inserted": "已插入",
   "images.countOf": "{n} / {total}",
   "images.none": "没有文件",
   "images.noMatch": "没有匹配的文件",
