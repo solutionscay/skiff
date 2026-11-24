@@ -102,9 +102,8 @@
 .g-skip .c-who .ctl-field { flex-grow: 1; padding: 0; }
 .g-skip .c-who-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(13px * var(--zoom, 1)); }
 .g-skip .c-kind-all { width: calc(28 * var(--u)); text-align: center; font-size: calc(11px * var(--zoom, 1)); color: var(--text-3); }
-.g-skip .set-row > .c-dim, .g-skip .set-row > .c-own { display: block; line-height: calc(var(--row) - 1px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: calc(13px * var(--zoom, 1)); }
+.g-skip .set-row > .c-dim { display: block; line-height: calc(var(--row) - 1px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: calc(13px * var(--zoom, 1)); }
 .g-skip .c-dim { color: var(--text-3); }
-.g-skip .c-own { color: var(--text); font-weight: 500; }
 .g-skip .set-row > .c-file { gap: calc(8 * var(--u)); }
 .g-skip .c-state, .g-tasks .c-state { display: flex; align-items: center; gap: calc(8 * var(--u)); min-width: 0; font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
 .g-skip .c-state .sq, .g-tasks .c-state .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--ok); }
