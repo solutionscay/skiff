@@ -41,12 +41,11 @@ import { coverPanes, FONT, TERM_THEME } from "./terminalRuntime";
 import { t } from "../i18n";
 import { hostInvoke } from "../app/hostCaps";
 import { dataEpoch } from "../app/dataPlane";
-import { hostName } from "../app/hosts";
-import type { HostDiff, HostFile } from "../platform/types";
-import { allChanges, buildCard, cardAction, cardFrame, clearCard, mountCard, peekOverSettings, peekRoot, slot } from "./peekCard";
-import { diffBody } from "./diffView";
+import type { HostFile } from "../platform/types";
+import { allChanges, buildCard, cardAction, clearCard, mountCard, peekOverSettings, peekRoot, slot } from "./peekCard";
 import { exitAction, newPeek, tookTerminal, type Peek } from "./peekTerminal";
-import { hostFileFrame, renderHostFile, showHostView, type Gate } from "./peekHostView";
+import type { Gate } from "./peekHostView";
+import { showDiff, showFile, showRead } from "./peekHostReads";
 import { splitPath } from "../workspace/paths";
 
 /** Where to find tools for a row that has none. */
@@ -231,9 +230,9 @@ function begin(mine: number, preview: Preview, fresh = false) {
     const key = active!.key;
     showCard(mine, "diff", `${preview.wt}/${preview.file ?? allChanges(preview.base)}`, t("menu.reviewChanges"), () => startPreview(key, true, true));
   } else if (preview.kind === "host-diff") {
-    showHostDiff(mine, preview);
+    showDiff(gate(mine), closePreview, preview);
   } else if (preview.kind === "host-file") {
-    showHostFile(mine, preview);
+    showFile(gate(mine), closePreview, preview, openHostCopy);
   } else if (preview.kind === "diff" && preview.wait && !fresh) {
     // Landing on the row shows the card. Enter, or Review all changes, runs the diff.
     const key = active!.key;
@@ -440,27 +439,6 @@ function mount(el: HTMLElement) {
 /** What a Host view asks the controller about preview `mine`. */
 const gate = (mine: number): Gate => ({ live: () => live(mine), keys: () => !!active?.keys, epoch: dataEpoch, mount });
 
-type HostDiffPreview = Extract<Preview, { kind: "host-diff" }>;
-
-/**
- * A remote Host's diff: the viewer shows at once, says it loads, then shows
- * the Host's text or why there is none. A reply for a row the user left, or
- * from an older data connection, shows nothing; the latter is asked again.
- */
-function showHostDiff(mine: number, p: HostDiffPreview) {
-  const el = cardFrame("diff", `${p.wt}/${p.file ?? allChanges(p.base)}`, closePreview, "peek diff-view");
-  showHostView(
-    gate(mine),
-    el,
-    t("peek.loadingDiff", { host: hostName() }),
-    () => hostInvoke<HostDiff>("git_diff", "git_diff", { path: p.wt, file: p.file ?? null }),
-    (d) => diffBody(d, p.file, p.base),
-    t("peek.noDiff"),
-  );
-}
-
-type HostFilePreview = Extract<Preview, { kind: "host-file" }>;
-
 /**
  * Opens a local copy of a Host's file as Settings › Open with says: a
  * configured command (a peek tool runs here, over the row), else the
@@ -478,22 +456,6 @@ export function openHostCopy(wt: string, file: string) {
       handle(o, "file", name, wt);
     })
     .catch((e) => (live(mine) ? showError(e) : console.error(e)));
-}
-
-/**
- * A Host's file: the viewer shows at once, says it loads, then shows the
- * Host's bounded preview or why there is none. Enter opens a local copy as Open with says.
- * A reply for a row the user left shows nothing; one from an older data
- * connection is asked again.
- */
-function showHostFile(mine: number, p: HostFilePreview) {
-  const copy = p.copy ? () => openHostCopy(p.wt, p.file) : null;
-  showHostRead(mine, p.path, () => hostInvoke<HostFile>("files", "read_file", { worktree: p.wt, file: p.file }), copy);
-}
-
-/** The Host's bounded read `read` in the page's viewer, under `title`. `copy`: the Open a copy button. */
-function showHostRead(mine: number, title: string, read: () => Promise<HostFile>, copy: (() => void) | null) {
-  showHostView(gate(mine), hostFileFrame(title, closePreview, copy), t("peek.loadingFile", { host: hostName() }), read, renderHostFile, t("peek.noPreview"));
 }
 
 /**
@@ -516,12 +478,12 @@ export function openLedgerResult(uid: string, title: string) {
 export function openSkipperWatchLog() {
   const a = claim();
   a.result = undefined;
-  showHostRead(a.gen, t("peek.watchLog"), () => hostInvoke<HostFile>("skipper_watch_log", "skipper_watch_log"), null);
+  showRead(gate(a.gen), closePreview, t("peek.watchLog"), () => hostInvoke<HostFile>("skipper_watch_log", "skipper_watch_log"), null);
 }
 
 function showLedgerResult(mine: number, r: { uid: string; title: string }) {
   const { uid } = r;
-  showHostRead(mine, t("peek.result", { title: r.title }), () => hostInvoke<HostFile>("ledger", "ledger_result", { uid }), null);
+  showRead(gate(mine), closePreview, t("peek.result", { title: r.title }), () => hostInvoke<HostFile>("ledger", "ledger_result", { uid }), null);
 }
 
 /** The data plane is back: a Host diff, file or ledger result on screen is read again from it. */
@@ -530,8 +492,8 @@ export function refreshHostDiff() {
   // A result keeps its own uid and title: the row's preview does not replace it.
   if (active.result) return showLedgerResult(active.gen, active.result);
   const p = rowActs(active.key)?.preview;
-  if (p?.kind === "host-diff") showHostDiff(active.gen, p);
-  if (p?.kind === "host-file") showHostFile(active.gen, p);
+  if (p?.kind === "host-diff") showDiff(gate(active.gen), closePreview, p);
+  if (p?.kind === "host-file") showFile(gate(active.gen), closePreview, p, openHostCopy);
 }
 
 // ── Commands ────────────────────────────────────────────────────────────────

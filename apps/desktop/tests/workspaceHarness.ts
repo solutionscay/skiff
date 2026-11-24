@@ -60,7 +60,7 @@ const SPLIT: Record<string, Split> = {
   "../src/workspace/sidebar.ts": { kind: "sibling", children: ["sidebarFocus", "sessionRows", "skipperRows", "sidebarSig", "projectRows", "sectionRows"] },
   "../src/appearance/hostSettings.ts": { kind: "sibling", children: ["hostShared", "hostList", "hostCheck", "hostFixes", "hostForm"] },
   "../src/appearance/settings.ts": { kind: "sibling", children: ["settingsFocus", "settingsLanguage", "settingsAgents", "settingsFiles"] },
-  "../src/terminal/peek.ts": { kind: "sibling", children: ["peekCard", "peekHostView", "peekTerminal"] },
+  "../src/terminal/peek.ts": { kind: "sibling", children: ["peekCard", "peekHostView", "peekHostReads", "peekTerminal"] },
   "../src/app/daemon.ts": { kind: "sibling", children: ["sessionRemoval", "newSession"] },
   "../src/workspace/ledger.ts": { kind: "sibling", children: ["ledgerStore", "ledgerModel", "scheduleStore", "ledgerSchedules"] },
   "../src/workspace/treeDrag.ts": { kind: "sibling", children: ["rowDrag"] },
