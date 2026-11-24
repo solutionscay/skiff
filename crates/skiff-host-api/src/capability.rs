@@ -208,10 +208,25 @@ impl Capability {
     pub fn drops() -> Self {
         Self::new(DROPS, 1)
     }
+    /// What `drops@1` grants, with a framed upload up to the Host's own
+    /// `[skiff_agent] cache_max_mb` in place of 50 MB, and the session that
+    /// gets the file (`who`) in the Host's library. The request is the
+    /// same `drop_put`: a client reads this from Hello to pick its limit. A
+    /// Host that offers it offers `drops@1` too.
+    pub fn drops_limit() -> Self {
+        Self::new(DROPS, 2)
+    }
     /// List, preview, pin and delete the Host's own image cache. The client
     /// only handles bytes returned here; it never reads a Host cache path.
     pub fn image_cache() -> Self {
         Self::new(IMAGE_CACHE, 1)
+    }
+    /// What `image_cache@1` grants, a ranged `image_read`, so a file of any
+    /// size crosses in frames, and `image_touch`: an Insert that puts library
+    /// files at the top with a new mtime. Grants no other write. A Host that
+    /// offers it offers `image_cache@1` too.
+    pub fn image_cache_ranges() -> Self {
+        Self::new(IMAGE_CACHE, 2)
     }
     /// Attach/output, input, resize and detach of existing sessions; grants
     /// no create, kill, rename or inventory operation.

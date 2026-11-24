@@ -29,6 +29,7 @@ impl Request {
             Self::ProjectBackground { .. } => Some(Capability::project_assets()),
             Self::FolderHome | Self::FolderList { .. } | Self::FolderPlaces | Self::FolderCreate { .. } => Some(Capability::folders()),
             Self::DropPut { .. } => Some(Capability::drops()),
+            Self::ImageRead { offset: Some(_), .. } | Self::ImageTouch { .. } => Some(Capability::image_cache_ranges()),
             Self::ImageList | Self::ImageRead { .. } | Self::ImageDelete { .. } | Self::ImagePin { .. } | Self::CacheUse => Some(Capability::image_cache()),
             Self::LedgerRows | Self::LedgerStamp | Self::LedgerResult { .. } => Some(Capability::ledger_read()),
             Self::ScheduleList | Self::CronPreview { .. } | Self::ScheduleCall { .. } => Some(Capability::schedules()),
@@ -149,8 +150,6 @@ impl Request {
                 | Self::DropPut { .. }
                 | Self::ImageList
                 | Self::ImageRead { .. }
-                | Self::ImageDelete { .. }
-                | Self::ImagePin { .. }
                 | Self::CacheUse
                 | Self::LedgerRows
                 | Self::LedgerStamp

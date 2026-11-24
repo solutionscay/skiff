@@ -515,7 +515,7 @@ fn m5_files_and_assets_are_read_only_families_of_their_own() {
             target: None,
         }),
     };
-    let image = Response::Image { image: skiff_host_api::HostImage { mime: "image/png".into(), bytes: vec![] } };
+    let image = Response::Image { image: skiff_host_api::HostImage { mime: "image/png".into(), bytes: vec![], total: None } };
     for (key, cap) in [("file_requests", &files), ("asset_requests", &assets)] {
         for value in fixture[key].as_array().unwrap() {
             let request: Request = serde_json::from_value(value.clone()).unwrap();
@@ -843,4 +843,42 @@ fn usage_read_is_agent_usage() {
     // No refresh named reads nothing.
     let bare: Request = serde_json::from_value(json!({"cmd":"usage_read"})).unwrap();
     assert_eq!(bare, Request::UsageRead { refresh: UsageRefresh::None });
+}
+
+/// #169: `drops@2` and `image_cache@2` are additive. A ranged read and a
+/// touch need major 2; a plain read, a drop with `who`, a pin and a delete
+/// stay on major 1, so an older Host takes them (and ignores `who`).
+#[test]
+fn ranged_reads_touch_and_who_are_major_2_and_additive() {
+    use skiff_host_api::{chunks, DATA_CHUNK};
+    let (drops, ranges) = (Capability::drops_limit(), Capability::image_cache_ranges());
+    assert_eq!((drops.name.as_str(), drops.version), ("drops", 2));
+    assert_eq!((ranges.name.as_str(), ranges.version), ("image_cache", 2));
+    let image = Response::Image { image: skiff_host_api::HostImage { mime: "image/png".into(), bytes: vec![1], total: Some(9) } };
+    assert_eq!(serde_json::to_value(&image).unwrap(), json!({"kind":"image","image":{"mime":"image/png","bytes":"AQ==","total":9}}));
+    let cases = [
+        (json!({"cmd":"image_read","path":"/c/a.png","offset":4194304,"length":4194304}), ranges.clone(), true),
+        (json!({"cmd":"image_read","path":"/c/a.png"}), Capability::image_cache(), true),
+        (json!({"cmd":"image_touch","paths":["/c/a.png"],"who":{"session":"s1","title":"claude"}}), ranges.clone(), false),
+        (json!({"cmd":"image_pin","paths":["/c/a.png"],"on":true}), Capability::image_cache(), false),
+        (json!({"cmd":"image_delete","paths":["/c/a.png"]}), Capability::image_cache(), false),
+    ];
+    for (value, cap, reads) in cases {
+        let request: Request = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&request).unwrap(), value);
+        assert_eq!(request.capability(), Some(cap), "{value}");
+        assert_eq!(request.accepts(&image), reads, "{value}");
+        assert_eq!(request.accepts(&Response::Ok), !reads, "{value}");
+    }
+    // `who` rides on the drops@1 request; a reply without `total` is a whole file.
+    let put = json!({"cmd":"drop_put","name":"a.txt","bytes":"","offset":0,"finish":true,"who":{"session":"s1","title":"claude","project":"web"}});
+    let request: Request = serde_json::from_value(put.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&request).unwrap(), put);
+    assert_eq!(request.capability(), Some(Capability::drops()));
+    let whole: skiff_host_api::HostImage = serde_json::from_value(json!({"mime":"image/png","bytes":""})).unwrap();
+    assert_eq!(whole.total, None);
+    // The shared chunk helper: ordered, gap-free, one frame for an empty file.
+    assert_eq!(chunks(0).collect::<Vec<_>>(), vec![(0, 0)]);
+    assert_eq!(chunks(DATA_CHUNK).collect::<Vec<_>>(), vec![(0, DATA_CHUNK)]);
+    assert_eq!(chunks(DATA_CHUNK + 1).collect::<Vec<_>>(), vec![(0, DATA_CHUNK), (DATA_CHUNK, 1)]);
 }

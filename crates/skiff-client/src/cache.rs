@@ -101,18 +101,81 @@ fn hash16(bytes: &[u8]) -> String {
 }
 
 /// A file a client sent for a pane on this Host (a drop or a paste on a
-/// remote pane), kept as [`keep`] keeps it and recorded with its name.
-/// `name` is one file name; anything else is refused.
-pub fn put(cfg: &Config, name: &str, bytes: &[u8]) -> Result<PathBuf> {
+/// remote pane), kept as [`keep`] keeps it and recorded with its name and
+/// `who`. `name` is one file name; anything else is refused.
+pub fn put(cfg: &Config, name: &str, bytes: &[u8], who: Option<&Who>) -> Result<PathBuf> {
+    let (name, dir) = put_target(cfg, name)?;
+    let path = keep(&dir, name, bytes)?;
+    put_record(&dir, &path, name, who);
+    Ok(path)
+}
+
+/// [`put`] for a file a framed upload wrote to `src`, a temp file in the
+/// cache folder. It moves `src` into place without reading it into memory;
+/// a repeat deletes `src` and touches the copy that is there.
+pub fn put_file(cfg: &Config, name: &str, src: &Path, who: Option<&Who>) -> Result<PathBuf> {
+    let (name, dir) = put_target(cfg, name)?;
+    let path = keep_file(&dir, name, src)?;
+    put_record(&dir, &path, name, who);
+    Ok(path)
+}
+
+fn put_target<'a>(cfg: &Config, name: &'a str) -> Result<(&'a str, PathBuf)> {
     let name = name.trim();
     if !is_file_name(name) {
         return Err(skiff_core::config::Refused::Invalid(format!("{name:?} is not a file name")).into());
     }
-    let dir = ensure(cfg)?;
-    let path = keep(&dir, name, bytes)?;
-    // A failed record costs only the library line: the path still goes back.
-    if let Err(e) = record(&dir, &path, Some(name), None) {
+    Ok((name, ensure(cfg)?))
+}
+
+/// A failed record costs only the library line: the path still goes back.
+fn put_record(dir: &Path, path: &Path, name: &str, who: Option<&Who>) {
+    if let Err(e) = record(dir, path, Some(name), who) {
         eprintln!("skiff: files: {e:#}");
+    }
+}
+
+/// The first bytes [`keep_file`] reads to tell an image: enough for an SVG
+/// that starts with a long XML preamble.
+const HEAD: usize = 64 * 1024;
+
+/// [`keep`] for the file at `src`: hashes it as it reads, then renames it
+/// into place (or copies it, on another file system).
+fn keep_file(dir: &Path, name: &str, src: &Path) -> Result<PathBuf> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(src).with_context(|| format!("open {}", src.display()))?;
+    let mut hasher = Sha256::new();
+    let mut head = Vec::new();
+    let mut buf = vec![0; 1024 * 1024];
+    loop {
+        let n = f.read(&mut buf).with_context(|| format!("read {}", src.display()))?;
+        if n == 0 {
+            break;
+        }
+        if head.len() < HEAD {
+            head.extend_from_slice(&buf[..n.min(HEAD - head.len())]);
+        }
+        hasher.update(&buf[..n]);
+    }
+    let hash: String = hasher.finalize().iter().take(8).map(|b| format!("{b:02x}")).collect();
+    let ext = Path::new(name).extension().and_then(|e| e.to_str());
+    let path = match image_ext(&head, ext) {
+        Some(ext) => dir.join(format!("{hash}.{ext}")),
+        None => {
+            let sub = dir.join(FILES).join(&hash);
+            std::fs::create_dir_all(&sub).with_context(|| format!("create {}", sub.display()))?;
+            sub.join(name)
+        }
+    };
+    if path.is_file() {
+        let _ = std::fs::remove_file(src);
+        let f = std::fs::File::options().write(true).open(&path).with_context(|| format!("open {}", path.display()))?;
+        f.set_modified(SystemTime::now()).with_context(|| format!("touch {}", path.display()))?;
+        return Ok(path);
+    }
+    if std::fs::rename(src, &path).is_err() {
+        std::fs::copy(src, &path).with_context(|| format!("write {}", path.display()))?;
+        let _ = std::fs::remove_file(src);
     }
     Ok(path)
 }
@@ -437,6 +500,19 @@ pub fn read(dir: &Path, file: &Path) -> Result<Vec<u8>> {
     std::fs::read(dir.join(key)).with_context(|| format!("read {}", file.display()))
 }
 
+/// Reads at most `len` bytes of one library file from `offset`, and the
+/// file's whole length. Same rule as [`read`]: only a library file.
+pub fn read_range(dir: &Path, file: &Path, offset: u64, len: u64) -> Result<(Vec<u8>, u64)> {
+    use std::io::{Read, Seek, SeekFrom};
+    let key = name_in(dir, file)?;
+    let mut f = std::fs::File::open(dir.join(key)).with_context(|| format!("read {}", file.display()))?;
+    let total = f.metadata().with_context(|| format!("read {}", file.display()))?.len();
+    let mut bytes = Vec::with_capacity(len.min(total.saturating_sub(offset)) as usize);
+    f.seek(SeekFrom::Start(offset.min(total))).with_context(|| format!("read {}", file.display()))?;
+    f.take(len).read_to_end(&mut bytes).with_context(|| format!("read {}", file.display()))?;
+    Ok((bytes, total))
+}
+
 /// Whether `file` (a library path) is an image, by its cache name.
 pub fn is_image(file: &Path) -> bool {
     file.file_name().is_some_and(|n| is_image_name(&n.to_string_lossy())) && file.parent().and_then(|p| p.file_name()).is_none_or(|p| !is_hash(&p.to_string_lossy()))
@@ -486,10 +562,10 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let cfg = Config { skiff_agent: skiff_core::config::SkiffAgent { folder: Some(root.clone()), ..Default::default() }, ..Default::default() };
         // A folder outside home is refused: the put falls back to the /tmp cache, which is fine here.
-        let png = put(&cfg, "shot.png", b"\x89PNG\r\n\x1a\nbody").unwrap();
-        let note = put(&cfg, "note.txt", b"pelican").unwrap();
-        let again = put(&cfg, "note.txt", b"pelican").unwrap();
-        let bad = put(&cfg, "../x", b"x").is_err() && put(&cfg, "", b"x").is_err();
+        let png = put(&cfg, "shot.png", b"\x89PNG\r\n\x1a\nbody", None).unwrap();
+        let note = put(&cfg, "note.txt", b"pelican", None).unwrap();
+        let again = put(&cfg, "note.txt", b"pelican", None).unwrap();
+        let bad = put(&cfg, "../x", b"x", None).is_err() && put(&cfg, "", b"x", None).is_err();
         let note_text = std::fs::read(&note).unwrap();
         let _ = std::fs::remove_file(&png);
         let _ = std::fs::remove_dir_all(note.parent().unwrap());

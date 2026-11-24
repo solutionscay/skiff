@@ -65,7 +65,9 @@ pub fn capabilities() -> Vec<Capability> {
         Capability::agent_programs(),
         Capability::agent_usage(),
         Capability::drops(),
+        Capability::drops_limit(),
         Capability::image_cache(),
+        Capability::image_cache_ranges(),
     ]
 }
 
@@ -206,16 +208,17 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
                 .ok_or_else(|| Error::NotFound { message: format!("{project} has no background image on this Host") })?;
             // Opened again here, never through a link: not the path the row named.
             let (mime, bytes) = files::read_background(&p.path, configured).map_err(unread)?;
-            Ok(Response::Image { image: HostImage { mime, bytes } })
+            Ok(Response::Image { image: HostImage { mime, bytes, total: None } })
         }
         Request::FolderHome => Ok(Response::Path { path: folders::home()? }),
         Request::FolderList { path, hidden, filter } => Ok(Response::Folders { listing: folders::list(&path, hidden, filter.as_deref())? }),
         Request::FolderPlaces => Ok(Response::Places { places: folders::places()? }),
         Request::ProgramList { path } => Ok(Response::Programs { names: folders::programs(&path)? }),
         Request::FolderCreate { parent, name } => Ok(Response::Path { path: folders::create(&parent, &name)? }),
-        Request::DropPut { name, bytes, upload, total, offset, finish } => images::drop_put(name, bytes, upload, total, offset, finish),
+        Request::DropPut { name, bytes, upload, total, offset, finish, who } => images::drop_put(name, bytes, upload, total, offset, finish, who),
         Request::ImageList => images::image_list(),
-        Request::ImageRead { path, thumb } => images::image_read(path, thumb),
+        Request::ImageRead { path, thumb, offset, length } => images::image_read(path, thumb, offset, length),
+        Request::ImageTouch { paths, who } => images::image_touch(paths, who),
         Request::ImageDelete { paths } => images::image_delete(paths),
         Request::ImagePin { paths, on } => images::image_pin(paths, on),
         Request::CacheUse => images::cache_use(),

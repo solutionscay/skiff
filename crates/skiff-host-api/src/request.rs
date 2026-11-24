@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::wire::bytes;
-use crate::{AgentEdit, Group, HostFileScope, ProjectEdit, ProjectFleet, ReadPurpose, SessionSpec, SkipperEdit, UsageRefresh};
+use crate::{AgentEdit, Group, HostFileScope, HostWho, ProjectEdit, ProjectFleet, ReadPurpose, SessionSpec, SkipperEdit, UsageRefresh};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
@@ -242,6 +242,11 @@ pub enum Request {
     /// Answers `path`, the Host path to type. An image (by its first bytes)
     /// is `cache/<hash>.<ext>`; any other file is `cache/files/<hash>/<name>`.
     /// `name` is one file name, no `/`; a bad name is `invalid`.
+    ///
+    /// `drops@1` takes a file up to 50 MB. `drops@2` takes a framed upload
+    /// up to the Host's own `[skiff_agent] cache_max_mb`; a larger `total`
+    /// is `invalid` on its first frame. One frame carries at most
+    /// [`DATA_CHUNK`](crate::DATA_CHUNK) bytes.
     DropPut {
         name: String,
         #[serde(with = "bytes")]
@@ -257,6 +262,10 @@ pub enum Request {
         /// Only this frame stores the completed file in the Host cache.
         #[serde(default)]
         finish: bool,
+        /// The session that gets the file, for the library's session line.
+        /// Read on the final frame. A Host before `drops@2` ignores it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        who: Option<HostWho>,
     },
     /// Answers the Host's cache library (images and other files), newest first.
     ImageList,
@@ -264,10 +273,28 @@ pub enum Request {
     /// an image is `application/octet-stream`. `thumb`: a PNG or JPEG comes
     /// back scaled to at most this many pixels on its long side,
     /// in its own format. Absent, or a Host that predates it: the full image.
+    ///
+    /// `offset` makes it a ranged read (`image_cache@2`): at most `length`
+    /// bytes, and never more than [`DATA_CHUNK`](crate::DATA_CHUNK), from
+    /// `offset`, with the file's `total` length; `thumb` is ignored. An
+    /// offset past the end answers no bytes. Without `offset` the whole
+    /// file must fit one frame.
     ImageRead {
         path: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         thumb: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        offset: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        length: Option<u64>,
+    },
+    /// An Insert of Host library files into `who`'s pane (`image_cache@2`):
+    /// each goes to the top of the library with a new mtime, so a flush
+    /// keeps a file in use. The first path ends up newest. Answers `ok`.
+    ImageTouch {
+        paths: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        who: Option<HostWho>,
     },
     /// Deletes Host library files. Each path must be one returned by
     /// `image_list`; an absent image is already deleted.

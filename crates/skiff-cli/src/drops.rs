@@ -164,14 +164,14 @@ impl Drops {
         let Some(paths) = std::str::from_utf8(text).ok().and_then(local_paths) else { return Ok(same()) };
         let name = self.remote.name.clone();
         let on = Some(name.as_str());
+        let c = self.data().await?;
         let mut files = Vec::new();
         for p in &paths {
-            files.push(data::drop_file(p, on).await?);
+            files.push(data::drop_file(&c, p, on)?);
         }
-        let c = self.data().await?;
         let mut typed = Vec::new();
-        for (name, bytes) in files {
-            let path = data::drop_send(&c, &name, bytes, on).await?;
+        for f in &files {
+            let path = data::drop_send_file(&c, f, None, on, |_| {}).await?;
             typed.extend(format!("{} ", quote_word(&path)).into_bytes());
         }
         Ok([PASTE_START, &typed, PASTE_END].concat())

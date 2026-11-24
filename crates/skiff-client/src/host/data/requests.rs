@@ -107,7 +107,7 @@ pub async fn image_thumb(c: &HostConnection, path: &str, size: u32) -> Result<Ho
 }
 
 async fn image_get(c: &HostConnection, path: &str, thumb: Option<u32>) -> Result<HostImage, Error> {
-    match c.request(Request::ImageRead { path: path.into(), thumb }).await? {
+    match c.request(Request::ImageRead { path: path.into(), thumb, offset: None, length: None }).await? {
         Response::Image { image } => Ok(image),
         _ => unreachable!("checked by Request::accepts"),
     }

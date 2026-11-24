@@ -21,7 +21,7 @@ mod request_rules;
 mod response;
 mod wire;
 pub use agents::{AgentEdit, HostAgent};
-pub use files::{EntryKind, FileContent, HostCacheImage, HostCacheUse, HostEntry, HostFile, HostImage, HostListing, ReadPurpose};
+pub use files::{chunks, EntryKind, FileContent, HostCacheImage, HostCacheUse, HostEntry, HostFile, HostImage, HostListing, HostWho, ReadPurpose, DATA_CHUNK};
 pub use folders::{FolderEntry, FolderKind, FolderListing, FolderPlaces, FolderRepo, PlaceRepo};
 pub use groups::Group;
 pub use inventory::InventorySession;

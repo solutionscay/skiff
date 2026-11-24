@@ -41,7 +41,7 @@ pub use requests::{
     skipper_project, skipper_fleet, fleet_takeover_preview, fleet_takeover, fleet_rename, agent_edit,
 };
 pub use uploads::{
-    drop_put, DROP_MAX, drop_file, drop_send, drop_send_progress,
+    drop_put, DROP_MAX, DropFile, drop_file, drop_send, drop_send_file, image_fetch, image_touch,
 };
 
 /// How long the data-plane service may take to answer Hello, and every

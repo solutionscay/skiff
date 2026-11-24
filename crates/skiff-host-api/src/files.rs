@@ -84,6 +84,35 @@ pub struct HostImage {
     pub mime: String,
     #[serde(with = "crate::wire::bytes")]
     pub bytes: Vec<u8>,
+    /// The whole file's length, on a ranged `image_read` only
+    /// (`image_cache@2`). Absent: `bytes` is the whole file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total: Option<u64>,
+}
+
+/// The raw bytes of one framed `drop_put` or ranged `image_read`. Base64
+/// and JSON keep the frame below the 8 MiB frame limit.
+pub const DATA_CHUNK: u64 = 4 * 1024 * 1024;
+
+/// The frames of a `total`-byte file, in order: each frame's offset and
+/// length, [`DATA_CHUNK`] bytes or fewer. An empty file is one empty frame,
+/// so an upload always has a final frame.
+pub fn chunks(total: u64) -> impl Iterator<Item = (u64, u64)> {
+    let count = total.div_ceil(DATA_CHUNK).max(1);
+    (0..count).map(move |i| {
+        let offset = i * DATA_CHUNK;
+        (offset, DATA_CHUNK.min(total - offset))
+    })
+}
+
+/// The session that gets a file, as its pane shows it. The Host records it
+/// in its library, so the Files tile shows the session line.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HostWho {
+    pub session: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
 }
 
 /// One file in the Host's cache library: an image or any other dropped
