@@ -150,14 +150,7 @@ pub fn prompt_size(dir: &Path, uid: &str) -> Option<u64> {
 /// that is there. Returns the file.
 pub fn edit_prompt_file(dir: &Path, uid: &str, name: &str) -> Result<PathBuf> {
     let f = prompt_file(dir, uid)?;
-    let folder = dir.join(PROMPTS);
-    std::fs::create_dir_all(&folder).with_context(|| format!("make {}", folder.display()))?;
-    match std::fs::OpenOptions::new().write(true).create_new(true).open(&f) {
-        Ok(mut out) => std::io::Write::write_all(&mut out, stub(name).as_bytes()).with_context(|| format!("write {}", f.display()))?,
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-        Err(e) => return Err(e).with_context(|| format!("make {}", f.display())),
-    }
-    Ok(f)
+    skiff_core::tasks::edit_stub_file(&dir.join(PROMPTS), f, &stub(name))
 }
 
 /// Writes `text` as the prompt of schedule `uid`, under its `# <name>` line.

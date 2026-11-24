@@ -97,10 +97,14 @@ pub fn text(dir: &Path, name: &str) -> Option<String> {
 pub fn edit_file(dir: &Path, name: &str) -> Result<PathBuf> {
     let name = check_name(name)?;
     let f = file(dir, name);
-    let types = dir.join(TYPES);
-    std::fs::create_dir_all(&types).with_context(|| format!("make {}", types.display()))?;
+    edit_stub_file(&dir.join(TYPES), f, &stub(name))
+}
+
+/// Create an instruction file with a stub, unless it already exists.
+pub fn edit_stub_file(folder: &Path, f: PathBuf, text: &str) -> Result<PathBuf> {
+    std::fs::create_dir_all(folder).with_context(|| format!("make {}", folder.display()))?;
     match std::fs::OpenOptions::new().write(true).create_new(true).open(&f) {
-        Ok(mut out) => std::io::Write::write_all(&mut out, stub(name).as_bytes()).with_context(|| format!("write {}", f.display()))?,
+        Ok(mut out) => std::io::Write::write_all(&mut out, text.as_bytes()).with_context(|| format!("write {}", f.display()))?,
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e).with_context(|| format!("make {}", f.display())),
     }
