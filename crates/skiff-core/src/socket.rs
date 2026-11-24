@@ -72,12 +72,19 @@ fn fallback_runtime_dir() -> PathBuf {
     std::env::temp_dir().join(format!("skiff-{uid}"))
 }
 
-/// Makes the folder of a socket at `socket`, or checks it, before a bind.
-/// The default folder (`<runtime dir>/skiff`), and the fallback runtime
-/// folder above it, must each be a real folder of this account with no
-/// group or other bits: one is made `0700` if missing, and one that is not
-/// private is refused, never repaired. A folder `SKIFF_SOCKET` names is
-/// made `0700` if missing and otherwise used as it is.
+/// Makes the folder of a socket at `socket`, or checks it. skiffd and
+/// skiff-host call it before a bind, and the app and the CLI before they
+/// write a log or lock beside the socket, so every creator makes it `0700`.
+/// - The default folder (`<runtime dir>/skiff`) under a runtime folder the
+///   system names: made `0700` if missing; an existing one of this account
+///   that is a real folder is kept and loses any group or other bits. A
+///   link, a non-folder or another account's folder is refused.
+/// - The default folder under the shared temp fallback, and the fallback
+///   `skiff-<uid>` above it: made `0700` if missing; an existing one must
+///   already be a real folder of this account with no group or other bits.
+///   A folder that was ever open to others may hold planted entries, so it
+///   is refused, never repaired.
+/// - A folder `SKIFF_SOCKET` names: made `0700` if missing, else used as it is.
 #[cfg(unix)]
 pub fn prepare_socket_dir(socket: &std::path::Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
@@ -90,19 +97,38 @@ pub fn prepare_socket_dir(socket: &std::path::Path) -> std::io::Result<()> {
         }
         return Ok(());
     }
-    if runtime == fallback_runtime_dir() {
-        private_dir(&runtime)?;
+    let shared = runtime == fallback_runtime_dir();
+    if shared {
+        own_dir(&runtime, Loose::Refuse)?;
     } else if !runtime.exists() {
         std::fs::create_dir_all(&runtime)?;
     }
-    private_dir(dir)
+    own_dir(dir, if shared { Loose::Refuse } else { Loose::Tighten })
 }
 
-/// A folder only this account can enter, made `0700` if missing. An
-/// existing one that is a link, another account's, or open to others is
-/// refused with an error that names it.
+/// [`prepare_socket_dir`] where there are no Unix modes: the folder is made.
+#[cfg(not(unix))]
+pub fn prepare_socket_dir(socket: &std::path::Path) -> std::io::Result<()> {
+    socket.parent().map_or(Ok(()), std::fs::create_dir_all)
+}
+
+/// What [`own_dir`] does with a folder of this account that has group or
+/// other bits.
 #[cfg(unix)]
-fn private_dir(dir: &std::path::Path) -> std::io::Result<()> {
+#[derive(Clone, Copy, PartialEq)]
+enum Loose {
+    /// Set it to `0700`: its parent is private, so no other account could
+    /// reach the folder while it was open.
+    Tighten,
+    /// Refuse it: its parent is shared.
+    Refuse,
+}
+
+/// A folder of this account, made `0700` if missing. An existing one that
+/// is a link, not a folder, or another account's is refused with an error
+/// that names it; one with group or other bits is tightened or refused.
+#[cfg(unix)]
+fn own_dir(dir: &std::path::Path, loose: Loose) -> std::io::Result<()> {
     use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
     match std::fs::DirBuilder::new().mode(0o700).create(dir) {
         Ok(()) => {}
@@ -112,11 +138,16 @@ fn private_dir(dir: &std::path::Path) -> std::io::Result<()> {
     let meta = std::fs::symlink_metadata(dir)?;
     // SAFETY: geteuid takes no arguments and cannot fail.
     let uid = unsafe { libc::geteuid() };
-    if !meta.is_dir() || meta.uid() != uid || meta.permissions().mode() & 0o077 != 0 {
+    let open = meta.permissions().mode() & 0o077 != 0;
+    if !meta.is_dir() || meta.uid() != uid || (open && loose == Loose::Refuse) {
+        let mode = if loose == Loose::Refuse { ", with mode 0700" } else { "" };
         return Err(std::io::Error::other(format!(
-            "{} is not a private folder of this account: it must be a folder, not a link, owned by uid {uid}, with mode 0700",
+            "{} is not a private folder of this account: it must be a folder, not a link, owned by uid {uid}{mode}",
             dir.display()
         )));
+    }
+    if open {
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
     }
     Ok(())
 }
@@ -152,28 +183,33 @@ mod tests {
         assert!(crate::state::is_live(&socket_path_from(None, &runtime_dir())));
     }
 
-    /// A socket folder that is a link, open to others, or another account's
-    /// is refused; a missing one is made 0700.
+    /// A socket folder that is a link or another account's is refused; a
+    /// missing one is made 0700. One open to others is refused in the shared
+    /// temp fallback, and tightened to 0700 under a private runtime folder.
     #[cfg(unix)]
     #[test]
-    fn private_dir_refuses_a_shared_folder() {
+    fn own_dir_refuses_a_shared_folder() {
         use std::os::unix::fs::PermissionsExt;
         let root = std::env::temp_dir().join(format!("skiff-private-dir-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir(&root).unwrap();
         let fresh = root.join("fresh");
-        private_dir(&fresh).unwrap();
+        own_dir(&fresh, Loose::Refuse).unwrap();
         assert_eq!(std::fs::metadata(&fresh).unwrap().permissions().mode() & 0o777, 0o700);
         let open = root.join("open");
         std::fs::create_dir(&open).unwrap();
         std::fs::set_permissions(&open, std::fs::Permissions::from_mode(0o777)).unwrap();
-        assert!(private_dir(&open).is_err());
+        assert!(own_dir(&open, Loose::Refuse).is_err());
+        std::fs::set_permissions(&open, std::fs::Permissions::from_mode(0o775)).unwrap();
+        own_dir(&open, Loose::Tighten).unwrap();
+        assert_eq!(std::fs::metadata(&open).unwrap().permissions().mode() & 0o777, 0o700);
         let link = root.join("link");
         std::os::unix::fs::symlink(&fresh, &link).unwrap();
-        assert!(private_dir(&link).is_err());
+        assert!(own_dir(&link, Loose::Refuse).is_err());
+        assert!(own_dir(&link, Loose::Tighten).is_err());
         // Owned by root, unless the test runs as root.
         if unsafe { libc::geteuid() } != 0 {
-            assert!(private_dir(Path::new("/")).is_err());
+            assert!(own_dir(Path::new("/"), Loose::Tighten).is_err());
         }
         std::fs::remove_dir_all(&root).unwrap();
     }

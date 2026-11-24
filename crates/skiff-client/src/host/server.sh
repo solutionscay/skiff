@@ -36,17 +36,20 @@ elif [ -d "/run/user/$uid" ]; then rt=/run/user/$uid
 elif [ "$os" = Darwin ] && g=$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null) && [ -n "$g" ]; then rt=$g
 else rt=${TMPDIR:-/tmp}; rt=${rt%/}/skiff-$uid; shared=yes; fi
 rt=${rt%/}
-# With no runtime folder from the system, $rt is skiff-<uid> in the shared
-# temp dir. It and $rt/skiff must be real folders of this account with no
-# group or other bits, or a start refuses them, as skiffd does.
-private_dir() {
+# The socket folder $rt/skiff, by the rule skiffd keeps: a real folder of
+# this account, made 0700. Under a runtime folder the system names, a loose
+# one is set to 0700. With none, $rt is skiff-<uid> in the shared temp dir:
+# it and $rt/skiff must already have no group or other bits, or a start
+# refuses them.
+own_dir() {
   [ -d "$1" ] && [ ! -L "$1" ] || mkdir -m 700 "$1" 2>/dev/null
   [ -d "$1" ] && [ ! -L "$1" ] && [ -O "$1" ] || return 1
-  case $(ls -ld "$1" 2>/dev/null) in d???------*) return 0 ;; *) return 1 ;; esac
+  case $(ls -ld "$1" 2>/dev/null) in d???------*) return 0 ;; esac
+  [ "$2" = tighten ] && chmod 700 "$1"
 }
 sock_dir_ok() {
-  if [ "${shared:-}" = yes ]; then private_dir "$rt" || return 1; fi
-  private_dir "$rt/skiff"
+  if [ "${shared:-}" = yes ]; then own_dir "$rt" refuse && own_dir "$rt/skiff" refuse
+  else own_dir "$rt/skiff" tighten; fi
 }
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d ' ' -f 1; else shasum -a 256 "$1" | cut -d ' ' -f 1; fi; }
 # One line for the person who waits in the app, on stderr, so a step

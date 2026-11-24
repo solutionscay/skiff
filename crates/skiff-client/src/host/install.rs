@@ -483,8 +483,6 @@ mod tests {
         for d in [&bin, &run.join("skiff"), &home.join(".local/share/skiff/server/1.0.0")] {
             std::fs::create_dir_all(d).unwrap();
         }
-        // As skiffd makes it: a start refuses a socket folder open to others.
-        std::fs::set_permissions(run.join("skiff"), std::fs::Permissions::from_mode(0o700)).unwrap();
         std::os::unix::fs::symlink("1.0.0", home.join(".local/share/skiff/server/current")).unwrap();
         std::fs::write(home.join(".local/share/skiff/server/1.0.0/skiffd"), "").unwrap();
         std::fs::write(home.join(".local/share/skiff/server/installed-by"), "app\n").unwrap();

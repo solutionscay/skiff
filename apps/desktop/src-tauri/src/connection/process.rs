@@ -57,9 +57,8 @@ pub(super) fn copy_out(src: &std::path::Path, dir: &std::path::Path) -> anyhow::
 /// its errors in `log`. The log before it is kept as `.1`: it saw what the
 /// new one restores, or why the last one stopped.
 fn spawn_detached(mut cmd: std::process::Command, log: PathBuf) -> anyhow::Result<std::process::Child> {
-    if let Some(dir) = log.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
+    // The socket's folder: every creator makes it 0700, as skiffd does.
+    skiff_core::socket::prepare_socket_dir(&log)?;
     let _ = std::fs::rename(&log, log.with_extension("log.1"));
     let log = std::fs::File::create(&log)?;
     cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::from(log));

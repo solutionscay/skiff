@@ -265,9 +265,8 @@ async fn connect_or_start(socket: &Path) -> Result<Client> {
 /// when this process ends.
 async fn start_lock(socket: &Path) -> Result<std::fs::File> {
     let path = socket.with_extension("start.lock");
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
-    }
+    // The socket's folder: every creator makes it 0700, as skiffd does.
+    skiff_core::socket::prepare_socket_dir(&path).with_context(|| format!("prepare the folder of {}", socket.display()))?;
     let f = std::fs::File::options()
         .create(true)
         .truncate(false)
@@ -302,9 +301,8 @@ fn daemon_binary() -> PathBuf {
 /// outlives this terminal and an SSH logout. Logs beside the socket, as the app does.
 fn start_daemon(socket: &Path) -> Result<()> {
     let log = socket.with_extension("log");
-    if let Some(dir) = log.parent() {
-        std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
-    }
+    // The socket's folder: every creator makes it 0700, as skiffd does.
+    skiff_core::socket::prepare_socket_dir(&log).with_context(|| format!("prepare the folder of {}", socket.display()))?;
     // Keep the last daemon's log: it saw what the new one restores.
     let _ = std::fs::rename(&log, log.with_extension("log.1"));
     let file = std::fs::File::create(&log).with_context(|| format!("create {}", log.display()))?;
