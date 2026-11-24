@@ -388,7 +388,7 @@ pub(crate) async fn image_thumb(app: State<'_, App>, path: PathBuf, size: u32) -
     let dir = cache::dir(&cfg).map_err(|e| format!("{e:#}"))?.canonicalize().map_err(|e| e.to_string())?;
     let file = path.canonicalize().map_err(|e| format!("read {}: {e}", path.display()))?;
     if file.parent() != Some(dir.as_path()) {
-        return Err(format!("{} is not in the Images folder", path.display()));
+        return Err(format!("{} is not in the Files folder", path.display()));
     }
     let bytes = tokio::fs::read(&file).await.map_err(|e| format!("read {}: {e}", file.display()))?;
     Ok(tauri::ipc::Response::new(bytes))

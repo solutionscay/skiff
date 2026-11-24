@@ -1,7 +1,8 @@
 /**
  * Files dragged from another app onto a pane. While they are over a pane,
  * its body shows the drop look and one label. On drop, the backend copies
- * each image to the cache and Skiff types the paths as a paste. The drop
+ * each file to the cache and Skiff types the paths as a paste. A folder or
+ * a file over the size limit keeps its own path. The drop
  * focuses the pane; the current row stays. Anywhere else, a drop does nothing.
  */
 import { invoke } from "@tauri-apps/api/core";
