@@ -413,4 +413,53 @@ mod tests {
         let end = b"\x1b[201~";
         assert_eq!(out.windows(end.len()).filter(|w| w == end).count(), 1);
     }
+
+    /// `unblock` ends a wait that a send set, and types nothing. An
+    /// approval prompt, a question, a bell, a title or a blocked report
+    /// stays for the person.
+    #[test]
+    fn unblock_ends_only_a_wait_that_a_send_set_and_types_nothing() {
+        use skiff_core::session::{ProgramStatus, SessionSpec, SessionState};
+        let pool = super::SessionPool::new();
+        let info = pool
+            .create(SessionSpec { command: Some("/bin/sleep".into()), args: vec!["30".into()], ..Default::default() })
+            .unwrap();
+        let id = info.id.clone();
+        let session = pool.get(&id).unwrap();
+        let wait = |cause: &str| {
+            let mut i = session.info.lock().unwrap();
+            i.state = SessionState::Waiting;
+            i.waiting_cause = Some(cause.into());
+            session.belled.store(true, std::sync::atomic::Ordering::Relaxed);
+        };
+        let now = || {
+            let i = session.info();
+            (i.state, i.waiting_cause, i.input_gen)
+        };
+        pool.needs_you(&id, "send not confirmed: paste (nothing showed)".into()).unwrap();
+        pool.unblock(&id).unwrap();
+        assert_eq!(now(), (SessionState::Idle, None, 0));
+        assert!(!session.belled.load(std::sync::atomic::Ordering::Relaxed));
+        assert!(!session.echoing(), "unblock typed into the pane");
+        for cause in ["prompt", "bell", "title", "report", "approval or question"] {
+            wait(cause);
+            let e = pool.unblock(&id).unwrap_err().to_string();
+            assert!(e.contains("waits for the person"), "{cause}: {e}");
+            assert_eq!(now(), (SessionState::Waiting, Some(cause.into()), 0), "{cause}");
+        }
+        // A program that reports its state decides where the wait goes.
+        let report = |state: &str| ProgramStatus { state: state.into(), kind: Some("question".into()), msg: None, title: None, progress: None, app: None, stalled: false, ended: false, children: Default::default() };
+        session.info.lock().unwrap().program_status = Some(report("working"));
+        wait("send not confirmed: enter");
+        pool.unblock(&id).unwrap();
+        assert_eq!(now(), (SessionState::Working, None, 0));
+        session.info.lock().unwrap().program_status = Some(report("blocked"));
+        wait("send not confirmed: enter");
+        pool.unblock(&id).unwrap();
+        assert_eq!(now(), (SessionState::Waiting, Some("report".into()), 0));
+        // Not waiting: nothing to end.
+        session.info.lock().unwrap().state = SessionState::Idle;
+        assert!(pool.unblock(&id).unwrap_err().to_string().contains("not waiting"));
+        pool.kill(&id).unwrap();
+    }
 }

@@ -48,7 +48,13 @@ pub(super) fn refusal(s: &SessionInfo, here: Option<&str>, shell_ok: bool, calle
 }
 
 /// The message for a session that needs a person: `send` and `wait` share it.
+/// A wait that a send set names `skiff unblock`.
 pub fn waiting_msg(name: &str, id: &str, cause: Option<&str>) -> String {
+    let short = print::short_id(id);
+    if cause.is_some_and(|c| c.starts_with(skiff_core::protocol::SEND_NOT_CONFIRMED)) {
+        let cause = cause.unwrap_or_default();
+        return format!("{name} ({short}) is waiting: {cause}. Check its pane with skiff peek {short}. skiff unblock {short} ends this wait and types nothing.");
+    }
     let why = match cause {
         Some("bell") => "it rang the bell",
         Some("prompt") => "a prompt on screen asks for an answer",
@@ -58,7 +64,7 @@ pub fn waiting_msg(name: &str, id: &str, cause: Option<&str>) -> String {
         // A daemon older than `waiting_cause`, or it no longer waits.
         None => "approval prompt or bell",
     };
-    format!("{name} ({}) is waiting: {why}. Check its pane in Skiff.", print::short_id(id))
+    format!("{name} ({short}) is waiting: {why}. Check its pane in Skiff.")
 }
 
 const SHELLS: [&str; 9] = ["bash", "zsh", "fish", "sh", "dash", "ksh", "tcsh", "csh", "nu"];
@@ -106,6 +112,7 @@ impl Unconfirmed {
     /// The pane's waiting cause. Each starts with `send not confirmed: `
     /// and the step.
     pub fn cause(self) -> &'static str {
+        // Each starts with skiff_core::protocol::SEND_NOT_CONFIRMED.
         match self {
             Unconfirmed::Paste(Miss::BoxChanged) => "send not confirmed: paste (the input box changed)",
             Unconfirmed::Paste(Miss::NoChange) => "send not confirmed: paste (nothing showed)",

@@ -291,6 +291,59 @@ pub async fn seen(c: &Client, arg: &str) -> Result<()> {
     c.seen(&s.id).await
 }
 
+/// Ends the wait of the session `arg` when a send set it (`send not
+/// confirmed: …`), and types nothing. Exit codes: 0 the wait ended, or the
+/// session does not wait; 1 an error, or skiffd too old for it; 3 a wait
+/// with another cause, kept for the person.
+pub async fn unblock(c: &Client, socket: &Path, arg: &str) -> Result<i32> {
+    let all = c.list_sessions().await?;
+    let s = resolve::session(&all, arg)?;
+    let who = format!("{} ({})", resolve::display_name(s), print::short_id(&s.id));
+    if let Some((code, msg)) = unblock_refusal(s) {
+        eprintln!("skiff: {msg}");
+        return Ok(code);
+    }
+    if let Err(e) = c.unblock(&s.id).await {
+        let (code, msg) = unblock_failed(&who, &format!("{e:#}"));
+        eprintln!("skiff: {msg}");
+        return Ok(code);
+    }
+    println!("{who}: the wait ended. Nothing was typed.");
+    // The task keeps its state: the text may or may not be in the box.
+    if let Ok(open) = ledger::open_tasks() {
+        for (_, r) in held(std::slice::from_ref(&s.id), &open, socket).into_iter().filter(|(_, r)| r.state == "blocked") {
+            println!("Task {} stays blocked. Send it again with skiff ledger send {} --enter.", r.uid, r.uid);
+        }
+    }
+    Ok(0)
+}
+
+/// `unblock`'s exit code and message when skiffd refused the request with
+/// `error`. A skiffd older than the request cannot read it: "bad request".
+pub(super) fn unblock_failed(who: &str, error: &str) -> (i32, String) {
+    if error.starts_with("bad request") {
+        return (1, "this skiffd has no unblock. Run `skiff daemon reload` after the update: it keeps every session. Nothing changed.".into());
+    }
+    // The wait changed after the check: another cause, kept for the person.
+    let code = if error.contains("waits for the person") { 3 } else { 1 };
+    (code, format!("{who}: {error}. Nothing changed."))
+}
+
+/// Why `unblock` must not end the wait of `s`, as an exit code and a
+/// message. Only a wait that a send set ends; a person answers any other.
+pub(super) fn unblock_refusal(s: &SessionInfo) -> Option<(i32, String)> {
+    let who = format!("{} ({})", resolve::display_name(s), print::short_id(&s.id));
+    if s.state != SessionState::Waiting {
+        return Some((0, format!("{who} is not waiting. Nothing changed.")));
+    }
+    let cause = s.waiting_cause.as_deref();
+    if cause.is_some_and(|c| c.starts_with(skiff_core::protocol::SEND_NOT_CONFIRMED)) {
+        return None;
+    }
+    let msg = send::waiting_msg(&resolve::display_name(s), &s.id, cause);
+    Some((3, format!("{msg} unblock ends only a wait that a send set. Nothing changed.")))
+}
+
 /// The exit code of `new` or `group new` from a Skipper with no `--name`.
 pub const UNNAMED: i32 = 2;
 
@@ -418,7 +471,7 @@ mod tests {
     use skiff_core::session::{SessionInfo, SessionState};
     use std::path::Path;
 
-    use super::{agent_line, held, is_coordinator, numbered, skipper_question, New};
+    use super::{agent_line, held, is_coordinator, numbered, skipper_question, unblock_failed, unblock_refusal, New};
     use super::send::{paste_left, paste_seen, refusal, Miss, Seen};
     use skiff_core::{
         config::{TaskRow, TaskTypes},
@@ -734,6 +787,38 @@ mod tests {
         let pasted = screen(&["❯ Reply with ok."]);
         assert!(paste_left(&after, &screen(&["ok", "", &rule, "❯", &rule]), &pasted));
         assert!(!paste_left(&after, &after, &pasted));
+    }
+
+    #[test]
+    fn unblock_ends_only_a_wait_that_a_send_set() {
+        use SessionState::{Idle, Waiting};
+        let waiting = |cause: Option<&str>| SessionInfo { waiting_cause: cause.map(String::from), ..s("agent", Waiting, Some("claude")) };
+        for cause in ["send not confirmed: paste (the input box changed)", "send not confirmed: paste (nothing showed)", "send not confirmed: enter", "send not confirmed: paste"] {
+            assert_eq!(unblock_refusal(&waiting(Some(cause))), None, "{cause}");
+        }
+        for cause in [Some("prompt"), Some("bell"), Some("title"), Some("report"), None] {
+            let (code, msg) = unblock_refusal(&waiting(cause)).expect("refused");
+            assert_eq!(code, 3, "{cause:?}");
+            assert!(msg.contains("Nothing changed"), "{msg}");
+        }
+        assert_eq!(unblock_refusal(&s("agent", Idle, Some("claude"))).map(|r| r.0), Some(0));
+        // The exit 3 of send and wait names unblock only for a send's wait.
+        assert!(super::waiting_msg("x", "abcdef0123", Some("send not confirmed: paste (nothing showed)")).contains("skiff unblock abcdef01"));
+        assert!(!super::waiting_msg("x", "abcdef0123", Some("prompt")).contains("unblock"));
+    }
+
+    /// A skiffd older than `unblock` answers it as it answers any request it
+    /// cannot read: "bad request: unknown variant …". Its protocol is the same.
+    #[test]
+    fn an_older_skiffd_refuses_unblock_and_the_cli_says_to_reload() {
+        let line = serde_json::to_string(&skiff_core::protocol::Request::Unblock { session: "abc".into() }).unwrap();
+        assert_eq!(line, r#"{"cmd":"unblock","session":"abc"}"#);
+        let unknown = serde_json::from_str::<skiff_core::protocol::Request>(&line.replace("unblock", "no_such_request")).unwrap_err();
+        let (code, msg) = unblock_failed("x (abc)", &format!("bad request: {unknown}"));
+        assert_eq!(code, 1);
+        assert!(msg.contains("skiff daemon reload"), "{msg}");
+        assert_eq!(unblock_failed("x (abc)", "session abc waits for the person: prompt. A person answers it in the pane").0, 3);
+        assert_eq!(unblock_failed("x (abc)", "no such session: abc").0, 1);
     }
 
     #[test]

@@ -4,7 +4,7 @@ use super::{wait_log, Front, Session, SessionPool};
 use super::reducer::{self, Effects, Input};
 use crate::program_status::Records;
 use crate::screen::{title_state, TitleState};
-use skiff_core::protocol::Event;
+use skiff_core::protocol::{Event, SEND_NOT_CONFIRMED};
 use skiff_core::session::{now_ms, SessionInfo, SessionState};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -58,6 +58,42 @@ impl SessionPool {
         };
         if changed {
             let _ = self.events.send(Event::State { session: info.id.clone(), state: SessionState::Waiting });
+        }
+        let _ = self.events.send(Event::SessionUpdated { session: info });
+        Ok(())
+    }
+
+    /// Ends a wait that a send set ([`Self::needs_you`]) and types nothing.
+    /// The state goes where the program's report puts it, as after the
+    /// person's input; with no report, idle: no input went in. A wait with
+    /// any other cause is refused and kept: a person answers it.
+    pub fn unblock(&self, id: &str) -> anyhow::Result<()> {
+        let _change = self.change()?;
+        let session = self.get(id).ok_or_else(|| anyhow::anyhow!("no such session: {id}"))?;
+        let (target, info) = {
+            let mut info = session.info.lock().unwrap();
+            let cause = info.waiting_cause.clone();
+            if info.state != SessionState::Waiting {
+                anyhow::bail!("session {id} is not waiting");
+            }
+            if !cause.as_deref().is_some_and(|c| c.starts_with(SEND_NOT_CONFIRMED)) {
+                anyhow::bail!("session {id} waits for the person: {}. A person answers it in the pane", cause.as_deref().unwrap_or("no cause"));
+            }
+            let report = info.program_status.as_ref().filter(|p| !p.ended).map(|p| p.state.clone());
+            let target = match report.as_deref() {
+                Some("working") => SessionState::Working,
+                // The program itself says it is blocked: its wait stays.
+                Some("blocked") => SessionState::Waiting,
+                _ => SessionState::Idle,
+            };
+            tracing::info!("session {id} unblocked: {}", cause.unwrap_or_default());
+            info.state = target;
+            info.waiting_cause = (target == SessionState::Waiting).then(|| REPORT.to_string());
+            session.belled.store(false, Ordering::Relaxed);
+            (target, info.clone())
+        };
+        if target != SessionState::Waiting {
+            let _ = self.events.send(Event::State { session: info.id.clone(), state: target });
         }
         let _ = self.events.send(Event::SessionUpdated { session: info });
         Ok(())
