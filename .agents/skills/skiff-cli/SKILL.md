@@ -99,7 +99,7 @@ States: `working`, `waiting`, `idle`, `done`.
 ## Send a task
 
 1. Find the pane in the JSON. Use its id. Confirm its working directory.
-2. Run `skiff peek S -n 40`. Check the current result and the input box. If the task already runs or is complete, report that. Do not send it again. A known agent can show a prompt suggestion in an empty input box. `peek` hides a dim suggestion (Claude Code), but prints a colored one (Antigravity) as text. The person did not type it.
+2. Run `skiff peek S -n 40`. Check the current result and the input box. If the task already runs or is complete, report that. Do not send it again. A known agent can show a prompt suggestion in an empty input box. `peek` hides a dim suggestion (Claude Code), but prints a colored one (Antigravity, off by default since #295) as text. The person did not type it.
 3. Write a clear task: the result, the scope, the context, the permitted actions, and what to report. An investigation request permits an investigation only. Pass on a permission to fix or deploy only when the user gave it.
 4. For a long prompt, write a file and send it with `skiff send S - --enter < file`. Keep shell syntax and user text apart.
 
@@ -122,7 +122,7 @@ Skiff has no message queue. A refused send types nothing. Do not wait and retry.
 | 0 | Sent and confirmed | |
 | 1 | Error, for example no match or more than one | |
 
-`--shell` relaxes only exit 5. After the text goes in to a known agent (Claude Code, Codex, Gemini, Antigravity, Grok, opencode, Hermes), two more checks apply:
+`--shell` relaxes only exit 5. After the text goes in to a known agent (Claude Code, Codex, Gemini, Grok, opencode, Hermes; Antigravity too, and it is off by default since #295), two more checks apply:
 
 | Exit | Condition | What to do |
 |---|---|---|
@@ -148,7 +148,7 @@ Keep monitoring after a send when the user wants the result. A request only to d
 - Do not stop reading `skiff events` early with `grep -m1`, `head -n1` or a `while read ... break` loop. An older `skiff` keeps running until its next write, and an idle pane writes nothing. Use `--until`.
 - After each `wait` exit 0 and each event, run `peek`. `idle` means quiet, not done.
 - An empty prompt in `peek`, or a bare `idle`, proves neither work nor completion. Read the result on the screen.
-- An agent that reports its state (OSC 7501: Claude Code, Codex, Grok, Antigravity) says more. In `ls --json`, `program_status.state` is `working`, `blocked` (with `kind`: `permission`, `question` or `auth`, and `msg`), `idle`, `done` or `error`. `done` and `error` end a turn. `skiff wait S --for turn` waits for that end, and exits 4 when it was an error. Still read the screen: the report says the turn ended, not what it did.
+- An agent that reports its state (OSC 7501: Claude Code, Codex, Grok; Antigravity too, and it is off by default since #295) says more. In `ls --json`, `program_status.state` is `working`, `blocked` (with `kind`: `permission`, `question` or `auth`, and `msg`), `idle`, `done` or `error`. `done` and `error` end a turn. `skiff wait S --for turn` waits for that end, and exits 4 when it was an error. Still read the screen: the report says the turn ended, not what it did.
 - Collect the result, the checks and any blocker. Do not report a task as done from the state alone.
 - For a deployment, get the agent's deployment result before you call it live. Keep local checks apart from production checks.
 - A child leaves its result on screen. For a long result, give the child a file path.

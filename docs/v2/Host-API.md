@@ -2298,7 +2298,8 @@ project`, a hand edit) showed only after a restart or reconnect.
 
 A program reports its own state to the terminal with OSC 7501, the Program
 Status Protocol (rev 0.4). skiffd reads these reports and puts them into the
-session data. Claude Code, Codex, Grok and Antigravity send them.
+session data. Claude Code, Codex and Grok send them. Antigravity sends them too,
+and it is off by default (#295).
 
 ### The capability
 
