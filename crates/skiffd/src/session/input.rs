@@ -457,6 +457,13 @@ mod tests {
         wait("send not confirmed: enter");
         pool.unblock(&id).unwrap();
         assert_eq!(now(), (SessionState::Waiting, Some("report".into()), 0));
+        // A prompt or an asking title came after the send's wait: kept.
+        session.info.lock().unwrap().program_status = None;
+        *session.title_state.lock().unwrap() = Some(crate::screen::TitleState::Action);
+        wait("send not confirmed: paste (nothing showed)");
+        assert!(pool.unblock(&id).unwrap_err().to_string().contains("waits for the person"));
+        assert_eq!(now(), (SessionState::Waiting, Some("send not confirmed: paste (nothing showed)".into()), 0));
+        *session.title_state.lock().unwrap() = None;
         // Not waiting: nothing to end.
         session.info.lock().unwrap().state = SessionState::Idle;
         assert!(pool.unblock(&id).unwrap_err().to_string().contains("not waiting"));

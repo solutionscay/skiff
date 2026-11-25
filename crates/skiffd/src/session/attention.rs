@@ -66,7 +66,9 @@ impl SessionPool {
     /// Ends a wait that a send set ([`Self::needs_you`]) and types nothing.
     /// The state goes where the program's report puts it, as after the
     /// person's input; with no report, idle: no input went in. A wait with
-    /// any other cause is refused and kept: a person answers it.
+    /// any other cause is refused and kept: a person answers it. So is a
+    /// send's wait while the screen shows a prompt or the title asks: a
+    /// wait already set keeps its first cause, so the cause alone can be stale.
     pub fn unblock(&self, id: &str) -> anyhow::Result<()> {
         let _change = self.change()?;
         let session = self.get(id).ok_or_else(|| anyhow::anyhow!("no such session: {id}"))?;
@@ -78,6 +80,10 @@ impl SessionPool {
             }
             if !cause.as_deref().is_some_and(|c| c.starts_with(SEND_NOT_CONFIRMED)) {
                 anyhow::bail!("session {id} waits for the person: {}. A person answers it in the pane", cause.as_deref().unwrap_or("no cause"));
+            }
+            let asks = *session.title_state.lock().unwrap() == Some(TitleState::Action);
+            if session.prompt_match.lock().unwrap().is_some() || asks {
+                anyhow::bail!("session {id} waits for the person: a prompt on screen asks for an answer. A person answers it in the pane");
             }
             let report = info.program_status.as_ref().filter(|p| !p.ended).map(|p| p.state.clone());
             let target = match report.as_deref() {
