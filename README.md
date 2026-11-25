@@ -34,6 +34,10 @@ Skiff stays out of your agents' setup. It installs no hooks or plugins. It reads
 session's state from its screen and from the program in front of the terminal. All
 settings live in one file, `projects.toml`.
 
+Antigravity (agy) is off by default, and Skiff does not read its usage. Google's
+Antigravity terms and FAQ do not allow third-party apps to wrap agy on consumer plans
+([#295](https://github.com/solutionscay/skiff/issues/295)).
+
 ## Install
 
 Download the latest [release](https://github.com/solutionscay/skiff/releases/latest):
