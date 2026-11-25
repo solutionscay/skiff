@@ -803,3 +803,27 @@ fn a_first_report_before_the_watcher_sees_its_program_counts() {
     assert_eq!(s.info().state, SessionState::Working);
     pool.kill(&info.id).unwrap();
 }
+
+/// #287: a saved project Skipper restores with its mark, at most one per scope.
+#[test]
+fn a_saved_skipper_restores_with_its_mark() {
+    let dir = std::env::temp_dir().join(format!("skiff-287-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("workspace.json");
+    let saved = |id: &str| serde_json::json!({
+        "id": id, "name": "skiff Skipper", "cwd": dir, "cols": 80, "rows": 24, "skipper": "skiff",
+    });
+    let ws = serde_json::json!({ "sessions": [saved("s287a"), saved("s287b")] });
+    std::fs::write(&file, ws.to_string()).unwrap();
+    let pool = super::SessionPool::new();
+    pool.restore_from(&file);
+    let mark = |id: &str| pool.get(id).unwrap().info().skipper;
+    assert_eq!(mark("s287a").as_deref(), Some("skiff"));
+    assert_eq!(mark("s287b"), None);
+    let again = crate::workspace::SavedSession::from(&pool.get("s287a").unwrap().info());
+    assert_eq!(again.skipper.as_deref(), Some("skiff"));
+    for id in ["s287a", "s287b"] {
+        let _ = pool.kill(id);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

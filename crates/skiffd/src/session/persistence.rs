@@ -76,8 +76,11 @@ impl SessionPool {
     /// with saved sessions of which none starts: that says more about this
     /// start than about the sessions.
     pub fn restore(self: &Arc<Self>) {
-        let file = paths::state();
-        let ws = match workspace::load(&file) {
+        self.restore_from(&paths::state());
+    }
+
+    pub(super) fn restore_from(self: &Arc<Self>, file: &Path) {
+        let ws = match workspace::load(file) {
             Ok(ws) => ws,
             Err(e) => {
                 tracing::error!("restore workspace: {e:#}. The file stays as it is until skiffd restarts");
@@ -91,11 +94,14 @@ impl SessionPool {
         let mut first_error = None;
         // At most one coordinator, whatever the file holds.
         let mut coordinator = false;
+        // At most one Skipper per scope, too.
+        let mut scopes = std::collections::HashSet::new();
         for saved in ws.sessions {
             // A worktree removed meanwhile: start in the home folder instead.
             let cwd = saved.cwd.is_dir().then(|| saved.cwd.clone());
             let first = saved.coordinator && !coordinator;
             coordinator |= first;
+            let skipper = saved.skipper.clone().filter(|p| !first && !p.trim().is_empty() && scopes.insert(p.clone()));
             let spec = SessionSpec {
                 label: String::new(),
                 name: saved.name.clone(),
@@ -106,6 +112,7 @@ impl SessionPool {
                 cols: saved.cols,
                 rows: saved.rows,
                 coordinator: first,
+                skipper,
                 ..Default::default()
             };
             match self.spawn(spec, Some(saved.id.clone())) {

@@ -73,7 +73,7 @@ pub struct SessionSpec {
     pub coordinator: bool,
     /// A project or fleet Skipper: its scope, a project's name or
     /// `fleet:<fleet>`. The CLI starts it with at most one live per scope.
-    /// Not saved: a restore brings the pane back as a plain shell.
+    /// Saved: a restore marks the pane again, at most one per scope.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skipper: Option<String>,
     #[serde(default = "default_cols")]
@@ -166,7 +166,7 @@ pub struct SessionInfo {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub coordinator: bool,
     /// A project or fleet Skipper: its scope. See [`SessionSpec::skipper`].
-    /// A reload keeps it; a restore does not.
+    /// A reload and a restore keep it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skipper: Option<String>,
     /// A Skipper a fleet Skipper took over. Its mark is gone, and skiffd

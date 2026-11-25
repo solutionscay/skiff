@@ -48,6 +48,10 @@ pub struct SavedSession {
     /// The Skiff agent's session.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub coordinator: bool,
+    /// A project or fleet Skipper: its scope. A restore marks the pane
+    /// again, so its ledger writes and its watcher keep working.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skipper: Option<String>,
 }
 
 impl From<&SessionInfo> for SavedSession {
@@ -66,6 +70,7 @@ impl From<&SessionInfo> for SavedSession {
             cols: info.cols,
             rows: info.rows,
             coordinator: info.coordinator,
+            skipper: info.skipper.clone(),
         }
     }
 }
