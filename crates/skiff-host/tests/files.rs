@@ -73,6 +73,10 @@ async fn files_and_backgrounds_come_from_the_host_bounded_and_inside_its_worktre
     let absbg = dir.join("absbg");
     repo(&absbg);
     let absolute = outside.canonicalize().unwrap().join("bg.png");
+    // A plain folder project: in no Git repository.
+    let loose = dir.join("loose");
+    std::fs::create_dir_all(loose.join("sub")).unwrap();
+    std::fs::write(loose.join("notes.txt"), "notes\n").unwrap();
 
     let config = skiff_core::config::config_path();
     std::fs::create_dir_all(config.parent().unwrap()).unwrap();
@@ -84,14 +88,16 @@ async fn files_and_backgrounds_come_from_the_host_bounded_and_inside_its_worktre
              [[project]]\nname = \"closed\"\npath = \"{}\"\nclosed = true\n\n\
              [[project]]\nname = \"linkbg\"\npath = \"{}\"\nbackground = \"bg-link.png\"\n\n\
              [[project]]\nname = \"dirbg\"\npath = \"{}\"\nbackground = \"art/bg.png\"\n\n\
-             [[project]]\nname = \"absbg\"\npath = \"{}\"\nbackground = \"{}\"\n",
+             [[project]]\nname = \"absbg\"\npath = \"{}\"\nbackground = \"{}\"\n\n\
+             [[project]]\nname = \"loose\"\npath = \"{}\"\n",
             app.display(),
             plain.display(),
             closed.display(),
             linkbg.display(),
             dirbg.display(),
             absbg.display(),
-            absolute.display()
+            absolute.display(),
+            loose.display()
         ),
     )
     .unwrap();
@@ -178,6 +184,16 @@ async fn files_and_backgrounds_come_from_the_host_bounded_and_inside_its_worktre
         assert!(matches!(data::file_list(&r, &w, "", false).await, Err(Error::NotFound { .. })), "{w}");
         assert!(matches!(data::file_read(&r, &w, "a.txt", ReadPurpose::Copy).await, Err(Error::NotFound { .. })), "{w}");
     }
+
+    // A plain folder project's folder is its worktree for files, never for
+    // Git; a folder under it is not a worktree.
+    let lw = loose.to_string_lossy().into_owned();
+    let listed = data::file_list(&r, &lw, "", false).await.unwrap();
+    assert!(listed.entries.iter().any(|e| e.name == "notes.txt"), "{listed:?}");
+    assert!(data::file_read(&r, &lw, "notes.txt", ReadPurpose::Preview).await.unwrap().text.is_some());
+    assert!(matches!(data::git_changes(&r, &lw).await, Err(Error::NotFound { .. })));
+    let sub = loose.join("sub").to_string_lossy().into_owned();
+    assert!(matches!(data::file_list(&r, &sub, "", false).await, Err(Error::NotFound { .. })), "{sub}");
 
     // Backgrounds: bytes the Host checked, never a path.
     let bg = data::project_background(&r, "plain").await.unwrap();

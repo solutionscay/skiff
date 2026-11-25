@@ -277,8 +277,11 @@ const folds = (root: string, path: string, set: Set<string>) => (open?: boolean)
   if (open === undefined || open !== set.has(path)) toggle(root, path, set);
 };
 
+/** One 20px line. A long error is cut short; its tooltip holds all of it. */
 function note(text: string, depth: number, error = false): HTMLElement {
-  const n = h("div", "file-note" + (error ? " error" : ""), text);
+  const n = h("div", "file-note" + (error ? " error" : ""));
+  n.appendChild(h("span", "file-name", text));
+  if (error) n.title = text;
   n.style.setProperty("--depth", String(depth));
   return n;
 }

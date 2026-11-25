@@ -160,7 +160,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             // Held open before the check, so a folder swapped in after it
             // is refused rather than read.
             let root = git::Root::open(Path::new(&worktree));
-            let worktree = known_worktree(&worktree)?;
+            let worktree = known_worktree(&worktree, Reach::Git)?;
             let read = git::changes_in(&root.map_err(failed)?, &worktree).map_err(failed)?;
             Ok(Response::Changes { changes: read.files.into_iter().map(host_change).collect(), base: read.base })
         }
@@ -168,7 +168,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
             // As for GitChanges: the folder held open before the check is
             // the one git and the untracked read must still name.
             let root = git::Root::open(Path::new(&worktree));
-            let worktree = known_worktree(&worktree)?;
+            let worktree = known_worktree(&worktree, Reach::Git)?;
             if let Some(f) = file.as_deref().filter(|f| !git::is_relative_file(f)) {
                 return Err(Error::NotFound { message: format!("{f} is not a file path in this worktree") });
             }
@@ -178,13 +178,13 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         Request::FileList { worktree, dir, follow_links, cursor } => {
             // As for GitChanges: held before the check, named after it.
             let root = git::Root::open(Path::new(&worktree));
-            let worktree = known_worktree(&worktree)?;
+            let worktree = known_worktree(&worktree, Reach::Files)?;
             let listing = files::list_page(&root.map_err(failed)?, &worktree, &dir, follow_links, cursor.unwrap_or(0)).map_err(unread)?;
             Ok(Response::Files { listing: host_listing(listing) })
         }
         Request::FileRead { worktree, file, purpose } => {
             let root = git::Root::open(Path::new(&worktree));
-            let worktree = known_worktree(&worktree)?;
+            let worktree = known_worktree(&worktree, Reach::Files)?;
             let purpose = match purpose {
                 ReadPurpose::Preview => files::Purpose::Preview,
                 ReadPurpose::Copy => files::Purpose::Copy,
@@ -194,7 +194,7 @@ pub async fn answer(request: Request, hello: &Hello) -> Result<Response, Error> 
         }
         Request::FileReveal { worktree, file } => {
             let root = git::Root::open(Path::new(&worktree));
-            let worktree = known_worktree(&worktree)?;
+            let worktree = known_worktree(&worktree, Reach::Files)?;
             let path = match file {
                 Some(file) => files::reveal_in(&root.map_err(failed)?, &worktree, &file).map_err(unread)?,
                 None => worktree,
@@ -386,14 +386,34 @@ fn config() -> Result<Vec<ProjectConfig>, Error> {
     Ok(skiff_core::config::load().map_err(failed)?.projects)
 }
 
+/// What a request reads in a worktree: Git, or only its files.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Reach {
+    Git,
+    Files,
+}
+
 /// `path` as a worktree of one of the Host's open projects, or `not_found`.
-/// The service runs git in no other folder, whatever a client names.
-fn known_worktree(path: &str) -> Result<std::path::PathBuf, Error> {
+/// A plain folder project's folder is its only worktree: its files can be
+/// read, Git cannot. The service reads in no other folder, whatever a client
+/// names.
+fn known_worktree(path: &str, reach: Reach) -> Result<std::path::PathBuf, Error> {
     let wanted = Path::new(path);
     for p in config()?.into_iter().filter(|p| !p.closed && p.path.is_dir()) {
-        let Ok(worktrees) = git::list_worktrees(&p.path) else { continue };
-        if let Some(w) = worktrees.into_iter().find(|w| project::same_path(&w.path, wanted)) {
-            return Ok(w.path);
+        match git::list_worktrees(&p.path) {
+            Ok(worktrees) => {
+                if let Some(w) = worktrees.into_iter().find(|w| project::same_path(&w.path, wanted)) {
+                    return Ok(w.path);
+                }
+            }
+            // As `Project::from_config` decides it: in no repository, a plain folder.
+            Err(_) if project::same_path(&p.path, wanted) && matches!(git::in_repository(&p.path), Ok(false)) => {
+                return match reach {
+                    Reach::Files => Ok(p.path),
+                    Reach::Git => Err(Error::NotFound { message: format!("{path} is not a Git repository") }),
+                };
+            }
+            Err(_) => {}
         }
     }
     Err(Error::NotFound { message: format!("{path} is not a worktree of a project on this Host") })
