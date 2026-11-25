@@ -221,6 +221,15 @@ impl Client {
         .await
     }
 
+    /// Ends a wait that a send set, and types nothing. See
+    /// [`Request::Unblock`].
+    pub async fn unblock(&self, session: &str) -> Result<()> {
+        self.expect_ok(Request::Unblock {
+            session: session.to_string(),
+        })
+        .await
+    }
+
     pub async fn seen(&self, session: &str) -> Result<()> {
         self.expect_ok(Request::Seen {
             session: session.to_string(),

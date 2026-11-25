@@ -123,6 +123,9 @@ async fn run(cli: Cli) -> Result<i32> {
     if let Cmd::Kill { sessions: ids, force } = &cli.cmd {
         return sessions::kill(&c, &socket, ids, *force).await;
     }
+    if let Cmd::Unblock { session } = &cli.cmd {
+        return sessions::unblock(&c, &socket, session).await;
+    }
     let unnamed = match &cli.cmd {
         Cmd::New { name: None, .. } => Some(false),
         Cmd::Group(GroupCmd::New { name: None, .. }) => Some(true),
@@ -147,7 +150,7 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Seen { session } => sessions::seen(&c, &session).await,
         Cmd::Agents { json } => info::agents(&c, json).await,
         Cmd::Theme { cmd: ThemeCmd::Session { cmd } } => theme::session(&c, cmd).await,
-        Cmd::Status { .. } | Cmd::Daemon(_) | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::OpenWith { .. } | Cmd::Ledger { .. } | Cmd::Schedule { .. } | Cmd::Wait { .. } | Cmd::Events { .. } | Cmd::Watch { .. } | Cmd::Send { .. } | Cmd::Kill { .. } | Cmd::Skipper { .. } | Cmd::Skill(_) => {
+        Cmd::Status { .. } | Cmd::Daemon(_) | Cmd::Projects { .. } | Cmd::Theme { .. } | Cmd::OpenWith { .. } | Cmd::Ledger { .. } | Cmd::Schedule { .. } | Cmd::Wait { .. } | Cmd::Events { .. } | Cmd::Watch { .. } | Cmd::Send { .. } | Cmd::Kill { .. } | Cmd::Unblock { .. } | Cmd::Skipper { .. } | Cmd::Skill(_) => {
             unreachable!()
         }
     }

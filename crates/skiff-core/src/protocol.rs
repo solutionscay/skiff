@@ -27,6 +27,11 @@ pub mod b64 {
     }
 }
 
+/// The start of a `waiting_cause` that `skiff send` sets when it cannot
+/// confirm its send ([`Request::NeedsYou`]). Only such a wait takes
+/// [`Request::Unblock`].
+pub const SEND_NOT_CONFIRMED: &str = "send not confirmed";
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Request {
@@ -101,6 +106,12 @@ pub enum Request {
     NeedsYou {
         session: SessionId,
         cause: String,
+    },
+    /// Ends a wait whose `waiting_cause` starts with [`SEND_NOT_CONFIRMED`],
+    /// and types nothing. A wait with any other cause is refused: a person
+    /// answers it in the pane. `skiff unblock` sends it.
+    Unblock {
+        session: SessionId,
     },
     /// The last `rows` rows of the session's text above the agent's input
     /// box, for mission control. Answers [`Response::Screen`].
@@ -425,6 +436,7 @@ impl Request {
             Request::SetSessionTheme { .. } => "set_session_theme",
             Request::Seen { .. } => "seen",
             Request::NeedsYou { .. } => "needs_you",
+            Request::Unblock { .. } => "unblock",
             Request::Screen { .. } => "screen",
             Request::Kill { .. } => "kill",
             Request::ListAgents => "list_agents",

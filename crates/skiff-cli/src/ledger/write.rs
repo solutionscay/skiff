@@ -489,19 +489,25 @@ pub(super) async fn send_row(socket: &Path, db: &Connection, row: &Row, o: SendO
     };
     let attempt = delivery::start(db, &row.uid, "send", &s.id, gen(s), &text)?;
     // The text is read already: `-` here is the text itself, not stdin.
-    let sent = sessions::send_to(&c, s, sessions::Send { text: std::slice::from_ref(&text), enter: o.enter, raw: false, shell: o.shell, stdin: false }).await;
-    let code = match sent {
-        Ok(code) => code,
+    let sent = sessions::send_to_outcome(&c, s, sessions::Send { text: std::slice::from_ref(&text), enter: o.enter, raw: false, shell: o.shell, stdin: false }).await;
+    let sent = match sent {
+        Ok(sent) => sent,
         Err(e) => {
             // It may have typed before it failed: neither sent nor not.
             delivery::end_uncertain(db, attempt, &format!("{e:#}"))?;
             return Err(e);
         }
     };
-    let e = delivery::Evidence::of(code, o.enter && sessions::is_agent(s));
+    let code = sent.code;
+    let e = delivery::Evidence::of_outcome(&sent, o.enter && sessions::is_agent(s));
     delivery::end(db, attempt, e)?;
     let (bytes, sha) = delivery::identity(&text);
-    println!("delivery {attempt}: {bytes} bytes, sha256 {}, {}", &sha[..12], e.word());
+    let held = match sent.exact {
+        Some(true) => ", box: exact",
+        Some(false) => ", box: start",
+        None => "",
+    };
+    println!("delivery {attempt}: {bytes} bytes, sha256 {}, {}{held}", &sha[..12], e.word());
     match state_after(code) {
         Some(st) => {
             // Only from the state read: a send that raced this one keeps its own.
@@ -509,7 +515,7 @@ pub(super) async fn send_row(socket: &Path, db: &Connection, row: &Row, o: SendO
                 &format!("UPDATE tasks SET state = ?2, pane_gen = ?3, updated_at = {NOW} WHERE id = ?1 AND state = ?4"),
                 params![row.id, st, gen(s), row.state],
             )?;
-            if let Some(step) = sessions::Unconfirmed::of(code) {
+            if let Some(step) = sent.unconfirmed {
                 eprintln!("skiff: task {} is blocked: {}. Its pane needs the person. Send it again with skiff ledger send {} --enter", row.uid, step.cause(), row.uid);
                 tell_blocked(db, row, s, step);
             } else if st != "sent" {

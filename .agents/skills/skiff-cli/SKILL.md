@@ -66,6 +66,7 @@ Use the report to show the user what is open. Use the JSON to pick a target or m
 | Wait for the first turn end, exit or block | `skiff events --json S --until turn,exit,blocked,waiting [--timeout SECS]` |
 | Rename, clear the name | `skiff rename S "name"`, `skiff rename S ""` |
 | Mark seen | `skiff seen S` |
+| End a wait that a send set | `skiff unblock S` |
 | Stop | `skiff kill S... [--force]` |
 | Groups | `g new [--name N] [--cwd DIR] [--dir row\|col] [S...]`, `g add G S [--split right\|down\|left\|up] [--of S]`, `g rm G S`, `g rename G N`, `g delete G...` |
 | Themes | `skiff theme ls`, `theme session\|project\|app set ... ID`, `clear` |
@@ -103,7 +104,7 @@ States: `working`, `waiting`, `idle`, `done`.
 3. Write a clear task: the result, the scope, the context, the permitted actions, and what to report. An investigation request permits an investigation only. Pass on a permission to fix or deploy only when the user gave it.
 4. For a long prompt, write a file and send it with `skiff send S - --enter < file`. Keep shell syntax and user text apart.
 
-`send` types the text as a paste. Newlines stay in the text. To a known agent, `send` confirms each step before the next. First it pastes, and the screen must show the text or a paste placeholder within 2 seconds. Then, with `--enter`, it presses Enter once, and a turn must start within 10 seconds. A step that is not confirmed is not delivered: the pane goes to "needs you", with the cause `send not confirmed: paste` or `send not confirmed: enter`, and a desktop notification shows.
+`send` types the text as a paste. Newlines stay in the text. To a known agent, `send` confirms each step before the next. First it pastes, and the agent's input box must show the text or a paste placeholder within 5 seconds. Then, with `--enter`, it presses Enter once, and a turn must start within 10 seconds. A step that is not confirmed is not delivered: the pane goes to "needs you", with the cause `send not confirmed: paste (the input box changed)`, `send not confirmed: paste (nothing showed)` or `send not confirmed: enter`, and a desktop notification shows.
 
 Skiff has no message queue. A refused send types nothing. Do not wait and retry. Do not interrupt the pane to make room. Report that the task was not delivered.
 
@@ -130,6 +131,7 @@ Skiff has no message queue. A refused send types nothing. Do not wait and retry.
 | 8 | Send not confirmed: enter. Enter went in, but no turn started in 10 seconds | Report it at once: name the pane (name and id) and the failed step. The text can be in the input box. Do not end your turn silently. |
 
 - After exit 11 or 8 the pane shows "needs you". Do not send again until the user has handled the pane.
+- `skiff unblock S` ends a wait whose cause starts with `send not confirmed`. It types nothing into the pane. Run it only when the user asks, for example when they read the pane with `skiff peek` from away. It exits 3 and changes nothing for any other wait (an approval prompt, a bell, a title or a blocked report). A task the send was for stays `blocked`: send it again with `skiff ledger send UID --enter`.
 - `send` never presses Enter a second time.
 - There is no exit 11 or 8 with `--raw`, or when the program in front is not a known agent. There is no exit 8 without `--enter`.
 - A turn that starts and ends in under 10 seconds with no output and no change on the screen can also give exit 8.

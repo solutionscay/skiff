@@ -71,7 +71,7 @@ A send to a known agent has two steps. First it pastes the text and confirms
 that the screen shows it. Then it presses Enter and confirms that a turn
 starts. A step that is not confirmed is not delivered: exit 11 for the paste,
 exit 8 for Enter. The task goes `blocked`, and the pane shows "needs you" with
-the cause `send not confirmed: paste` or `send not confirmed: enter`.
+a cause that starts with `send not confirmed: paste` or `send not confirmed: enter`.
 
 When a send is not delivered:
 
@@ -79,7 +79,9 @@ When a send is not delivered:
    failed step.
 2. Do not end your turn silently, and do not send again.
 3. After the user has handled the pane, send it again with
-   `skiff ledger send UID --enter`.
+   `skiff ledger send UID --enter`. A user away from the pane can end the
+   wait with `skiff unblock S`, which types nothing. Run it only when the
+   user asks.
 
 A `[watch]` line also tells you, and Admiral, about each send that was not
 delivered.
