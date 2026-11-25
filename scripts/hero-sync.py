@@ -32,7 +32,7 @@ def text(s):
 
 def main():
     html, origin = site_html("--live" in sys.argv)
-    hero = re.search(r'<div class="hero">(.*?)<div class="shot">', html, re.S)
+    hero = re.search(r'<div class="hero">(.*?)<div class="shot[ "]', html, re.S)
     if not hero:
         print(f"no hero in {origin}")
         return 1
