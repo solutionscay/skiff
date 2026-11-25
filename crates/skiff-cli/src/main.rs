@@ -113,8 +113,8 @@ async fn run(cli: Cli) -> Result<i32> {
         }
         return wait::wait(&c, sessions, *target, *any, t).await;
     }
-    if let Cmd::Events { sessions, json, timeout } = &cli.cmd {
-        return events::events(&c, sessions, *json, *timeout).await;
+    if let Cmd::Events { sessions, json, timeout, until } = &cli.cmd {
+        return events::events(&c, sessions, *json, *timeout, until).await;
     }
     if let Cmd::Send { session, text, enter, raw, shell } = &cli.cmd {
         let o = sessions::Send { text, enter: *enter, raw: *raw, shell: *shell, stdin: true };

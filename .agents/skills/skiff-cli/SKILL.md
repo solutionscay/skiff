@@ -63,6 +63,7 @@ Use the report to show the user what is open. Use the JSON to pick a target or m
 | Wait for the first of several | `skiff wait S1 S2 --any --for idle` |
 | Wait for a turn's end | `skiff wait S --for turn` |
 | Follow state changes | `skiff events --json [S...] [--timeout SECS]` |
+| Wait for the first turn end, exit or block | `skiff events --json S --until turn,exit,blocked,waiting [--timeout SECS]` |
 | Rename, clear the name | `skiff rename S "name"`, `skiff rename S ""` |
 | Mark seen | `skiff seen S` |
 | Stop | `skiff kill S... [--force]` |
@@ -143,7 +144,8 @@ Keep monitoring after a send when the user wants the result. A request only to d
 - In a Skiff pane, or with no terminal on stdout, `wait` stops after 45 seconds. A `--timeout` above 60 becomes 60. On a timeout, read the screen and wait again while the task runs.
 - For several children, use `skiff wait S1 S2 S3 --any --for idle`. It prints the id, name and state of the first one. Read that screen, then wait on the rest.
 - To keep your turn free, run `skiff events --json [S...]` as a background job. It has no time limit. In the foreground, give `--timeout`. With no names, it follows every session, new ones too. `events` prints only what happens after it starts: a turn that ended before gives no line.
-- Do not pipe `skiff events` into `grep -m1`. The pipeline ends only when `events` writes again.
+- `skiff events --until KIND[,KIND]` prints the first line of one of those kinds, from any named session, then exits 0. Kinds: `turn`, `exit`, `removed`, `blocked` (a `status blocked` line), `waiting` (a `waiting` state line). On `--timeout` it exits 1. When every named session is removed first, it exits 2. Only changes after the start count.
+- Do not stop reading `skiff events` early with `grep -m1`, `head -n1` or a `while read ... break` loop. An older `skiff` keeps running until its next write, and an idle pane writes nothing. Use `--until`.
 - After each `wait` exit 0 and each event, run `peek`. `idle` means quiet, not done.
 - An empty prompt in `peek`, or a bare `idle`, proves neither work nor completion. Read the result on the screen.
 - An agent that reports its state (OSC 7501: Claude Code, Codex, Grok, Antigravity) says more. In `ls --json`, `program_status.state` is `working`, `blocked` (with `kind`: `permission`, `question` or `auth`, and `msg`), `idle`, `done` or `error`. `done` and `error` end a turn. `skiff wait S --for turn` waits for that end, and exits 4 when it was an error. Still read the screen: the report says the turn ended, not what it did.
