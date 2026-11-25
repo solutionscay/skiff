@@ -403,6 +403,10 @@ pub const KNOWN_AGENTS: [(&str, &str); 7] = [
     ("kimi", "kimi"),
 ];
 
+/// Known agents that stay off until the person turns them on, though found
+/// on PATH. A saved `[agents] enabled` list decides for them as for any other.
+pub const OFF_BY_DEFAULT: [&str; 1] = ["gemini"];
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct AgentInfo {
     pub id: String,
@@ -516,7 +520,10 @@ pub fn agents_in(cfg: &crate::config::Agents, installed: impl Fn(&str, &str) -> 
             };
             let installed = installed(id, &command).unwrap_or(path.is_some());
             let custom = !KNOWN_AGENTS.iter().any(|&(k, _)| k == id);
-            let on = cfg.enabled.as_ref().is_none_or(|e| e.iter().any(|x| x == id));
+            let on = match &cfg.enabled {
+                Some(e) => e.iter().any(|x| x == id),
+                None => !OFF_BY_DEFAULT.contains(&id),
+            };
             AgentInfo {
                 id: id.to_string(),
                 command,
@@ -552,4 +559,22 @@ pub fn same_path(a: &Path, b: &Path) -> bool {
             (a.canonicalize(), b.canonicalize()),
             (Ok(x), Ok(y)) if x == y
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detected_agy_is_not_enabled_by_default() {
+        let on = |cfg: &crate::config::Agents, id: &str| agents_in(cfg, |_, _| Some(true)).into_iter().find(|a| a.id == id).unwrap();
+        // No saved list: agy is found and listed, but off; the others are on.
+        let fresh = crate::config::Agents::default();
+        let agy = on(&fresh, "gemini");
+        assert!(agy.installed && !agy.enabled);
+        assert!(on(&fresh, "claude").enabled);
+        // A saved list that has it keeps it on.
+        let saved = crate::config::Agents { enabled: Some(vec!["gemini".into()]), ..Default::default() };
+        assert!(on(&saved, "gemini").enabled);
+    }
 }

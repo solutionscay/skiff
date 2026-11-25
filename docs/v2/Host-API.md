@@ -1286,7 +1286,7 @@ local-only.
   executable files in a Host folder, for Settings › Agents › Change… on a remote
   Host. It grants no change and no run.
 - **`agent_usage@1`** (#276): `usage_read { refresh }` answers `usage`: each
-  installed agent with a usage reader (Claude Code, Codex, Antigravity, Grok),
+  installed agent with a usage reader (Claude Code, Codex, Grok),
   in Settings › Agents order, with its plan when the source gives one, the
   time of its last read that worked, its windows, Codex's credits, the last
   failed read and whether a read runs now. Each window has a group, a length
@@ -1297,7 +1297,7 @@ local-only.
   waits for a read. `skiff-host` also reads an agent when one of its panes
   ends a turn (at most once per 60 s) and every 15 minutes while it has a
   running pane, from the paired skiffd's events. Each read runs the agent's
-  own command (`codex app-server`, `agy -p /usage`, `grok agent stdio`,
+  own command (`codex app-server`, `grok agent stdio`,
   `claude -p /usage --no-session-persistence`); no reader opens a credential
   file or calls a vendor endpoint. Read-only; grants no session or setting.
 

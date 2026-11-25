@@ -53,12 +53,13 @@ test("a Host without agent_usage shows its refusal only: no agent rows and no co
 test("a Host with agent_usage: readers wait for their first read, the rest have no usage command", () => {
   const p = page(true);
   assert.doesNotMatch(p.text, /does not offer/);
-  // Installed agents only, in Settings › Agents order; Kimi is not installed.
-  assert.deepEqual(p.bands, ["Claude Codeclaude", "Codexcodex", "Antigravityagy", "Grokgrok", "OpenCodeopencode", "copilotcopilot"]);
-  for (const name of ["Claude Code", "Codex", "Antigravity", "Grok"]) assert.doesNotMatch(p.text, new RegExp(`${name} has no usage command`));
+  // Installed agents only, in Settings › Agents order; Kimi is not installed. Antigravity has no row.
+  assert.deepEqual(p.bands, ["Claude Codeclaude", "Codexcodex", "Grokgrok", "OpenCodeopencode", "copilotcopilot"]);
+  assert.doesNotMatch(p.text, /Antigravity/);
+  for (const name of ["Claude Code", "Codex", "Grok"]) assert.doesNotMatch(p.text, new RegExp(`${name} has no usage command`));
   assert.match(p.text, /No usage read\. OpenCode has no usage command\./);
   assert.match(p.text, /No usage read\. copilot has no usage command\./);
-  assert.equal(p.count, "0 of 6");
+  assert.equal(p.count, "0 of 5");
 });
 
 test("a read shows its windows as percent used, and the count names the agents with a reader", () => {
@@ -68,5 +69,5 @@ test("a read shows its windows as percent used, and the count names the agents w
   assert.match(p.text, /Weekly/);
   assert.match(p.text, /2%/);
   assert.equal(p.root.all().find((e) => e.className === "u-meter")?.title, "2% used · 98% left");
-  assert.equal(p.count, "1 of 6");
+  assert.equal(p.count, "1 of 5");
 });

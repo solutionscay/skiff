@@ -1,12 +1,11 @@
 //! Agent plan usage (`agent_usage@1`). Each reader runs the agent's own usage
 //! command on this Host and turns its answer into windows of percent used:
-//! Codex, Antigravity, Grok and Claude Code. No reader opens an agent's
+//! Codex, Grok and Claude Code. No reader opens an agent's
 //! credential or data file, and none calls a vendor endpoint itself.
 //!
 //! When to read is [`schedule`]'s: page open and Read now from a request, a
 //! turn end and the running panes from the paired skiffd's events, and a poll
 //! tick here. The last values of each agent stay in this process.
-mod agy;
 mod claude;
 mod codex;
 mod grok;
@@ -34,7 +33,7 @@ use schedule::{Clock, Trigger};
 use crate::SESSIONS_TIMEOUT;
 
 /// The agents with a reader, by Settings › Agents id.
-pub const READERS: [&str; 4] = ["claude", "codex", "gemini", "grok"];
+pub const READERS: [&str; 3] = ["claude", "codex", "grok"];
 /// How often the poll looks for a running agent whose read is due.
 const TICK: Duration = Duration::from_secs(30);
 /// How long the watcher waits before it tries skiffd again.
@@ -176,7 +175,6 @@ async fn read(id: &str, program: &Program) -> Result<Read, String> {
     match id {
         "claude" => claude::read(program).await,
         "codex" => codex::read(program).await,
-        "gemini" => agy::read(program).await,
         "grok" => grok::read(program).await,
         other => Err(format!("{other} has no usage read")),
     }

@@ -143,7 +143,8 @@ fn unremove(t: &mut toml_edit::Table, id: &str) {
     }
 }
 
-/// Edits `[agents] enabled` when it is set. Absent means every installed agent.
+/// Edits `[agents] enabled` when it is set. Absent means every installed
+/// agent but [`crate::project::OFF_BY_DEFAULT`].
 fn enabled_list(t: &mut toml_edit::Table, f: impl FnOnce(&mut toml_edit::Array)) {
     if let Some(l) = t.get_mut("enabled").and_then(|e| e.as_array_mut()) {
         f(l);

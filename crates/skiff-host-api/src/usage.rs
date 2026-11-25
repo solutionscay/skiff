@@ -23,7 +23,7 @@ pub enum UsageRefresh {
 /// One agent with a usage reader, as its last read left it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentUsage {
-    /// The agent id, as Settings › Agents has it: "claude", "codex", "gemini", "grok".
+    /// The agent id, as Settings › Agents has it: "claude", "codex", "grok".
     pub agent: String,
     /// The plan, only when the source gives one ("Pro Lite", "SuperGrok").
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -49,7 +49,7 @@ pub struct AgentUsage {
 /// One limit window.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UsageWindow {
-    /// The vendor's group or model name ("Gemini Models", "Fable"). `None`
+    /// The vendor's group or model name ("Fable"). `None`
     /// for the agent's main limit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,

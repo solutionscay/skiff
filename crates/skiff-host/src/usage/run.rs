@@ -53,10 +53,8 @@ fn did_not_start(label: &str, e: &std::io::Error) -> String {
 
 /// Runs `args` to the end and answers its stdout as JSON. A non-zero exit
 /// with no JSON is a failed read.
-pub async fn json_output(program: &Program, args: &[&str], env: &[(&str, &str)], label: &str) -> Result<Value, String> {
-    let mut cmd = program.command(args);
-    cmd.envs(env.iter().copied());
-    let mut child = cmd.spawn().map_err(|e| did_not_start(label, &e))?;
+pub async fn json_output(program: &Program, args: &[&str], label: &str) -> Result<Value, String> {
+    let mut child = program.command(args).spawn().map_err(|e| did_not_start(label, &e))?;
     let mut out = Vec::new();
     let stdout = child.stdout.take().ok_or_else(|| format!("{label} gave no output"))?;
     let read = async {

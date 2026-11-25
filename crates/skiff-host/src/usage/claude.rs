@@ -22,7 +22,7 @@ use super::{
 const LABEL: &str = "claude -p /usage";
 
 pub async fn read(program: &Program) -> Result<Read, String> {
-    let out = json_output(program, &["-p", "/usage", "--output-format", "json", "--no-session-persistence"], &[], LABEL).await?;
+    let out = json_output(program, &["-p", "/usage", "--output-format", "json", "--no-session-persistence"], LABEL).await?;
     parse(&out, now_ms())
 }
 

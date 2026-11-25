@@ -209,7 +209,8 @@ impl<'de> Deserialize<'de> for TaskTypes {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 pub struct Agents {
-    /// Agent ids the + menu offers. Absent: every installed agent.
+    /// Agent ids the + menu offers. Absent: every installed agent but
+    /// [`crate::project::OFF_BY_DEFAULT`].
     pub enabled: Option<Vec<String>>,
     /// Command lines that replace the defaults, by agent id.
     #[serde(default)]

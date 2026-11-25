@@ -7,7 +7,7 @@ import { t } from "../i18n";
 import { clockTime, weekdayTime } from "../i18n/time";
 
 export interface UsageWindow {
-  /** The vendor's group or model name: "Gemini Models", "Fable". */
+  /** The vendor's group or model name: "Fable". */
   group?: string;
   /** The window's length: 300 is 5 hours, 10080 a week. */
   minutes: number;

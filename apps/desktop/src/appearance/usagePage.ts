@@ -13,7 +13,12 @@ import { hostCan } from "../app/hostCaps";
 import { type AgentUsage, type UsageWindow, countdown, level, live, pace, productName, readClock, resetClock, usedLeft, windowName } from "../app/usageModel";
 
 /** The agents the Host has a reader for. */
-const READERS = new Set(["claude", "codex", "gemini", "grok"]);
+const READERS = new Set(["claude", "codex", "grok"]);
+/** The agents the page leaves out: Antigravity (gemini) has no usage row. */
+const UNLISTED = new Set(["gemini"]);
+
+/** The agents the page lists: installed, and not left out. */
+const listed = (agents: AgentInfo[]) => agents.filter((a) => a.installed && !UNLISTED.has(a.id));
 
 /** The program of an agent's command line, as the band shows it: "claude". */
 const program = (a: AgentInfo) => (a.command.trim().split(/\s+/)[0] ?? a.id).split("/").pop() || a.id;
@@ -22,7 +27,7 @@ const program = (a: AgentInfo) => (a.command.trim().split(/\s+/)[0] ?? a.id).spl
 export function usageCount(agents: AgentInfo[]): string {
   // A Host without usage reads gives no count.
   if (!hostCan("agent_usage")) return "";
-  const shown = agents.filter((a) => a.installed);
+  const shown = listed(agents);
   if (!shown.length) return "";
   return t("settings.ofCount", { on: shown.filter((a) => usage.some((u) => u.agent === a.id)).length, all: shown.length });
 }
@@ -49,7 +54,7 @@ export function usageSection(agents: AgentInfo[]): HTMLElement {
   main.append(cols);
   const now = Date.now();
   // Not installed: not shown, as Settings › Agents "Not found".
-  for (const a of agents.filter((x) => x.installed)) main.append(...agentRows(a, usage.find((u) => u.agent === a.id), now));
+  for (const a of listed(agents)) main.append(...agentRows(a, usage.find((u) => u.agent === a.id), now));
   return main;
 }
 
