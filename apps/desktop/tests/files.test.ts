@@ -9,7 +9,9 @@ import { flush, moduleFromSource } from "./workspaceHarness.ts";
 function el(tag: string, cls = "", text = ""): any {
   const kids: any[] = [];
   return {
-    tag, className: cls, textContent: text, dataset: {} as Record<string, string>, kids,
+    tag, className: cls, dataset: {} as Record<string, string>, kids,
+    // As the DOM's: the element's own text, then its children's.
+    get textContent(): string { return text + kids.map((k) => k.textContent).join(""); },
     style: { setProperty() {} }, setAttribute() {}, addEventListener() {},
     appendChild: (c: any) => kids.push(c), append: (...c: any[]) => kids.push(...c),
   };
