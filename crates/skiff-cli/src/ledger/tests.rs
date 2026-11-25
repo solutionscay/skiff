@@ -1201,7 +1201,8 @@ fn rows_one(dir: &Path) -> Row {
 
 #[test]
 fn a_delivery_is_recorded_before_and_settled_after() {
-    use super::delivery::{end, end_uncertain, identity, of, start, Evidence, UNCERTAIN};
+    use super::delivery::{end, end_uncertain, identity, of, start, undelivered, Evidence, UNCERTAIN};
+    use crate::sessions::Miss;
     let dir = scratch("delivery");
     let file = dir.join("ledger.db");
     let mut db = open_at(&file).unwrap();
@@ -1212,11 +1213,11 @@ fn a_delivery_is_recorded_before_and_settled_after() {
     let a = start(&db, &uid, "send", "websk0000000", Some(7), "-").unwrap();
     let got = of(&db, &uid).unwrap();
     assert_eq!((got[0].bytes, got[0].session_gen, got[0].shown_evidence()), (1, Some(7), UNCERTAIN));
-    end(&db, a, Evidence::of(0, true)).unwrap();
+    end(&db, a, Evidence::of(0, true, None)).unwrap();
     let b = start(&db, &uid, "send", "websk0000000", Some(7), "the task").unwrap();
-    end(&db, b, Evidence::of(8, true)).unwrap();
+    end(&db, b, Evidence::of(8, true, None)).unwrap();
     let c = start(&db, &uid, "send", "websk0000000", Some(7), "the task").unwrap();
-    end(&db, c, Evidence::of(4, true)).unwrap();
+    end(&db, c, Evidence::of(4, true, None)).unwrap();
     let d = start(&db, &uid, "report", "grand0000000", None, "[watch] reported").unwrap();
     end_uncertain(&db, d, "skiffd closed the connection").unwrap();
     let got = of(&db, &uid).unwrap();
@@ -1224,7 +1225,11 @@ fn a_delivery_is_recorded_before_and_settled_after() {
     assert_eq!(seen, [("send", "turn started", Some(0)), ("send", "no turn", Some(8)), ("send", "refused", Some(4)), ("report", UNCERTAIN, None)]);
     assert_eq!(got[2].failure.as_deref(), Some("the session is working, or shows its busy line"));
     // Text in without Enter to a known agent: accepted, not a turn.
-    assert_eq!(Evidence::of(0, false).word(), "text accepted");
+    assert_eq!(Evidence::of(0, false, None).word(), "text accepted");
+    // A paste not confirmed names its class; a record from before has none.
+    let paste = |m| Evidence::of(11, true, Some(m)).word();
+    assert_eq!((paste(Miss::BoxChanged), paste(Miss::NoChange)), ("paste not confirmed: box changed", "paste not confirmed: no change"));
+    assert!(["paste not confirmed", paste(Miss::BoxChanged), paste(Miss::NoChange)].into_iter().all(undelivered));
     // A removed row takes its attempts with it.
     db.execute("DELETE FROM tasks WHERE uid = ?1", [&uid]).unwrap();
     assert!(of(&db, &uid).unwrap().is_empty());

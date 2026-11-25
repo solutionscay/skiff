@@ -16,7 +16,7 @@ use crate::{callsign::callsign, groups, layout::Side, ledger, print, resolve};
 
 mod send;
 
-pub use send::{agent_send, is_agent, send, send_to, waiting_msg, Send, Unconfirmed, NO_TURN, PASTE_UNSEEN};
+pub use send::{agent_send, is_agent, send, send_to, send_to_outcome, waiting_msg, Miss, Outcome, Send, Unconfirmed, NO_TURN, PASTE_UNSEEN};
 
 /// Sessions in a stable order: oldest first, then by id. Tools in the app's
 /// peek are not sessions to the user, so they are left out.
@@ -419,7 +419,7 @@ mod tests {
     use std::path::Path;
 
     use super::{agent_line, held, is_coordinator, numbered, skipper_question, New};
-    use super::send::{paste_left, paste_rows, refusal};
+    use super::send::{paste_left, paste_seen, refusal, Miss, Seen};
     use skiff_core::{
         config::{TaskRow, TaskTypes},
         project::AgentInfo,
@@ -596,19 +596,135 @@ mod tests {
         lines.iter().map(|l| l.to_string()).collect()
     }
 
+    /// A capture in `tests/fixtures/paste`: the screen before the paste,
+    /// the screen after it, and the text.
+    macro_rules! capture {
+        ($name:literal) => {
+            (
+                screen(&include_str!(concat!("../tests/fixtures/paste/", $name, ".before")).lines().collect::<Vec<_>>()),
+                screen(&include_str!(concat!("../tests/fixtures/paste/", $name, ".after")).lines().collect::<Vec<_>>()),
+                include_str!(concat!("../tests/fixtures/paste/", $name, ".txt")),
+            )
+        };
+    }
+
+    fn exact(seen: &Seen) -> Option<bool> {
+        match seen {
+            Seen::Shown { exact, .. } => Some(*exact),
+            Seen::Missed(_) => None,
+        }
+    }
+
     #[test]
     fn the_paste_is_confirmed_by_new_rows_with_its_text() {
         let rule = "─".repeat(40);
         let before = screen(&["❯ Reply with ok.", "ok", &rule, "❯", &rule, "  ? for shortcuts"]);
         // The same text again: the input row is new, though the transcript has the text.
         let typed = screen(&["❯ Reply with ok.", "ok", &rule, "❯ Reply  with ok.", &rule]);
-        assert_eq!(paste_rows(&before, &typed, "Reply with ok.\n"), ["❯ Reply  with ok."]);
+        assert_eq!(paste_seen(&before, &typed, "Reply with ok.\n", "claude"), Seen::Shown { rows: screen(&["❯ Reply  with ok."]), exact: true });
         let placeholder = screen(&["ok", &rule, "❯ [Pasted text #1 +12 lines]", &rule]);
-        assert_eq!(paste_rows(&before, &placeholder, "line one\nline two"), ["❯ [Pasted text #1 +12 lines]"]);
+        assert_eq!(exact(&paste_seen(&before, &placeholder, "line one\nline two", "claude")), Some(false));
         // agy's colored hint, and a screen with no change: not confirmed.
         let hint = screen(&["╭──────────────╮", "│ > Auto mode: edits auto-approved │", "╰──────────────╯"]);
-        assert!(paste_rows(&hint, &hint, "Reply with ok.").is_empty());
-        assert!(paste_rows(&before, &before, "Reply with ok.").is_empty());
+        assert_eq!(paste_seen(&hint, &hint, "Reply with ok.", "gemini"), Seen::Missed(Miss::NoChange));
+        assert_eq!(paste_seen(&before, &before, "Reply with ok.", "claude"), Seen::Missed(Miss::NoChange));
+    }
+
+    /// #300: Claude Code wrapped a short lead-in and a long path, so no one
+    /// row held the start of the text. The 658-byte task text and the box of
+    /// the pane it stuck in, at 120 columns.
+    #[test]
+    fn a_paste_wrapped_after_a_short_lead_in_is_confirmed_exactly() {
+        let (before, after, text) = capture!("claude-A");
+        assert_eq!(text.len(), 658);
+        let Seen::Shown { rows, exact } = paste_seen(&before, &after, text, "claude") else { panic!("not confirmed") };
+        assert!(exact);
+        assert_eq!(rows.len(), 8);
+        // Claude Code draws a no-break space after its prompt mark.
+        assert_eq!(rows[0], "❯\u{a0}Read the rules in");
+    }
+
+    /// Each Claude Code capture of the repro (#300) is confirmed, and the box
+    /// holds exactly the text: word wraps inside the start (B, L), a narrow
+    /// pane (J), a long word cut in place (B0, E, I), one short row (F), a
+    /// newline (G) and a placeholder whose line count fits (H).
+    #[test]
+    fn each_captured_claude_paste_is_confirmed_exactly() {
+        let all = [
+            ("B", capture!("claude-B")),
+            ("B0", capture!("claude-B0")),
+            ("C", capture!("claude-C")),
+            ("D", capture!("claude-D")),
+            ("E", capture!("claude-E")),
+            ("F", capture!("claude-F")),
+            ("G", capture!("claude-G")),
+            ("H", capture!("claude-H")),
+            ("I", capture!("claude-I")),
+            ("J", capture!("claude-J")),
+            ("K", capture!("claude-K")),
+            ("L", capture!("claude-L")),
+            ("M", capture!("claude-M")),
+        ];
+        for (name, (before, after, text)) in all {
+            assert_eq!(exact(&paste_seen(&before, &after, text, "claude")), Some(true), "case {name}");
+        }
+    }
+
+    #[test]
+    fn a_paste_is_not_confirmed_by_text_outside_the_box_and_not_exact_beside_other_text() {
+        let (empty, after, text) = capture!("claude-B");
+        let (_, placeholder, _) = capture!("claude-H");
+        let rule = "─".repeat(120);
+        let at_box = |rows: &[&str]| {
+            let mut s = screen(&["", &rule]);
+            s.extend(screen(rows));
+            s.extend(screen(&[&rule, "  ⏵⏵ bypass permissions on (shift+tab to cycle)"]));
+            s
+        };
+        let path = "/Users/jose/skiff-agent/projects/fm-object-clip/results/a6ce6db0-build-the-wiki/efb826cc-build-wiki-and-docs-branch";
+        // A placeholder whose line count does not fit: confirmed, not exact.
+        assert_eq!(exact(&paste_seen(&empty, &placeholder, "Line one of two.\nLine two of two.", "claude")), Some(false));
+        // A placeholder or the text in the transcript, the box empty.
+        let mut transcript = screen(&["❯ [Pasted text #1 +29 lines]", &format!("❯ {}", text.trim())]);
+        transcript.extend(empty.clone());
+        assert_eq!(paste_seen(&empty, &transcript, text, "claude"), Seen::Missed(Miss::NoChange));
+        // A person's draft, then the text: confirmed by its start, not exact.
+        let draft = at_box(&["❯ my draft"]);
+        let both = at_box(&["❯ my draft Say ok then stop", &format!("  {path}"), "  and say no more."]);
+        assert_eq!(exact(&paste_seen(&draft, &both, text, "claude")), Some(false));
+        // The text twice, also when the box held it once already.
+        let twice = at_box(&["❯ Say ok then stop", &format!("  {path}"), "  and say no more.Say ok then stop", &format!("  {path}"), "  and say no more."]);
+        assert_eq!(exact(&paste_seen(&empty, &twice, text, "claude")), Some(false));
+        assert_eq!(exact(&paste_seen(&after, &twice, text, "claude")), Some(false));
+        // A box that already held the text, unchanged: not new.
+        assert_eq!(paste_seen(&after, &after, text, "claude"), Seen::Missed(Miss::NoChange));
+        // A dim suggestion in the box, before and after.
+        let hint = at_box(&["❯ Try \"refactor send.rs\""]);
+        assert_eq!(paste_seen(&hint, &hint, text, "claude"), Seen::Missed(Miss::NoChange));
+        // Other text in the box: it changed, without the text.
+        assert_eq!(paste_seen(&empty, &at_box(&["❯ Say ok"]), text, "claude"), Seen::Missed(Miss::BoxChanged));
+    }
+
+    /// One wrapped capture each from Codex and OpenCode (a placeholder, with
+    /// no box Skiff knows), and agy's bordered box.
+    #[test]
+    fn other_agents_show_a_wrapped_paste_in_their_own_box() {
+        let (before, after, text) = capture!("codex");
+        assert_eq!(exact(&paste_seen(&before, &after, text, "codex")), Some(true));
+        let (before, after, text) = capture!("opencode");
+        assert_eq!(exact(&paste_seen(&before, &after, text, "opencode")), Some(true));
+        let edge = |l: char, r: char| format!("{l}{}{r}", "─".repeat(78));
+        let row = |t: &str| format!("│ {t:<77}│");
+        let agy = |rows: &[&str]| {
+            let mut s = screen(&["", &edge('╭', '╮')]);
+            s.extend(rows.iter().map(|t| row(t)));
+            s.push(edge('╰', '╯'));
+            s
+        };
+        let before = agy(&["> "]);
+        let after = agy(&["> Do the task in", "  /Users/jose/skiff-agent/projects/fm-object-clip/results/a6ce6db0-build-the-", "  wiki/brief-build.md."]);
+        let text = "Do the task in /Users/jose/skiff-agent/projects/fm-object-clip/results/a6ce6db0-build-the-wiki/brief-build.md.";
+        assert_eq!(exact(&paste_seen(&before, &after, text, "gemini")), Some(true));
     }
 
     #[test]

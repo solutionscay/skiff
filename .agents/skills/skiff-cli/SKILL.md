@@ -103,7 +103,7 @@ States: `working`, `waiting`, `idle`, `done`.
 3. Write a clear task: the result, the scope, the context, the permitted actions, and what to report. An investigation request permits an investigation only. Pass on a permission to fix or deploy only when the user gave it.
 4. For a long prompt, write a file and send it with `skiff send S - --enter < file`. Keep shell syntax and user text apart.
 
-`send` types the text as a paste. Newlines stay in the text. To a known agent, `send` confirms each step before the next. First it pastes, and the screen must show the text or a paste placeholder within 2 seconds. Then, with `--enter`, it presses Enter once, and a turn must start within 10 seconds. A step that is not confirmed is not delivered: the pane goes to "needs you", with the cause `send not confirmed: paste` or `send not confirmed: enter`, and a desktop notification shows.
+`send` types the text as a paste. Newlines stay in the text. To a known agent, `send` confirms each step before the next. First it pastes, and the agent's input box must show the text or a paste placeholder within 5 seconds. Then, with `--enter`, it presses Enter once, and a turn must start within 10 seconds. A step that is not confirmed is not delivered: the pane goes to "needs you", with the cause `send not confirmed: paste (the input box changed)`, `send not confirmed: paste (nothing showed)` or `send not confirmed: enter`, and a desktop notification shows.
 
 Skiff has no message queue. A refused send types nothing. Do not wait and retry. Do not interrupt the pane to make room. Report that the task was not delivered.
 

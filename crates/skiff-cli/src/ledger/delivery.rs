@@ -54,23 +54,33 @@ pub enum Evidence {
     /// The text and Enter went in, but no turn started in time: exit 8.
     NoTurn,
     /// The text went in, but did not show on the agent's screen, so Enter
-    /// was not pressed: exit 11.
-    PasteUnseen,
+    /// was not pressed: exit 11. What the screen showed instead.
+    PasteUnseen(sessions::Miss),
     /// Nothing was typed: a refusal, with `send`'s exit code.
     Refused(i32),
 }
 
 impl Evidence {
     /// From `send`'s exit code. `turn`: a known agent got Enter, so exit 0
-    /// means a turn started.
-    pub fn of(code: i32, turn: bool) -> Self {
+    /// means a turn started. `miss`: what the screen showed of a paste not
+    /// confirmed; without it, a changed box, the class that claims less.
+    pub fn of(code: i32, turn: bool, miss: Option<sessions::Miss>) -> Self {
         match code {
             0 if turn => Evidence::TurnStarted,
             0 => Evidence::Accepted,
             sessions::NO_TURN => Evidence::NoTurn,
-            sessions::PASTE_UNSEEN => Evidence::PasteUnseen,
+            sessions::PASTE_UNSEEN => Evidence::PasteUnseen(miss.unwrap_or(sessions::Miss::BoxChanged)),
             c => Evidence::Refused(c),
         }
+    }
+
+    /// From what came of a send.
+    pub fn of_outcome(o: &sessions::Outcome, turn: bool) -> Self {
+        let miss = match o.unconfirmed {
+            Some(sessions::Unconfirmed::Paste(m)) => Some(m),
+            _ => None,
+        };
+        Evidence::of(o.code, turn, miss)
     }
 
     pub fn word(self) -> &'static str {
@@ -78,7 +88,8 @@ impl Evidence {
             Evidence::TurnStarted => "turn started",
             Evidence::Accepted => "text accepted",
             Evidence::NoTurn => "no turn",
-            Evidence::PasteUnseen => "paste not confirmed",
+            Evidence::PasteUnseen(sessions::Miss::BoxChanged) => "paste not confirmed: box changed",
+            Evidence::PasteUnseen(sessions::Miss::NoChange) => "paste not confirmed: no change",
             Evidence::Refused(_) => "refused",
         }
     }
@@ -88,7 +99,12 @@ impl Evidence {
         Some(match self {
             Evidence::TurnStarted | Evidence::Accepted => return None,
             Evidence::NoTurn => "send not confirmed: enter: no turn started; the text can be in the input box",
-            Evidence::PasteUnseen => "send not confirmed: paste: the text did not show on the screen; Enter was not pressed",
+            Evidence::PasteUnseen(sessions::Miss::BoxChanged) => {
+                "send not confirmed: paste (the input box changed): the box does not show the text; Enter was not pressed"
+            }
+            Evidence::PasteUnseen(sessions::Miss::NoChange) => {
+                "send not confirmed: paste (nothing showed): the screen did not change; Enter was not pressed"
+            }
             Evidence::Refused(3) => "the session waits for the person",
             Evidence::Refused(4) => "the session is working, or shows its busy line",
             Evidence::Refused(5) => "a shell or an unknown program is in front",
@@ -106,16 +122,17 @@ impl Evidence {
         match self {
             Evidence::TurnStarted | Evidence::Accepted => 0,
             Evidence::NoTurn => sessions::NO_TURN,
-            Evidence::PasteUnseen => sessions::PASTE_UNSEEN,
+            Evidence::PasteUnseen(_) => sessions::PASTE_UNSEEN,
             Evidence::Refused(c) => c,
         }
     }
 }
 
 /// An attempt with this evidence word delivered nothing the agent took:
-/// refused, or not confirmed. Its task can be sent again.
+/// refused, or not confirmed. Its task can be sent again. A paste not
+/// confirmed matches by prefix: older records have no class after it.
 pub fn undelivered(word: &str) -> bool {
-    matches!(word, "refused" | "no turn" | "paste not confirmed")
+    matches!(word, "refused" | "no turn") || word.starts_with("paste not confirmed")
 }
 
 /// The payload's size and SHA-256, in hex: the text exactly as it was
