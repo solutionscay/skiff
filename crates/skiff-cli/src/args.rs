@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use skiff_core::session::Role;
 
-use crate::{layout::Side, wait};
+use crate::{events, layout::Side, wait};
 
 #[derive(Parser)]
 #[command(
@@ -206,9 +206,9 @@ pub(super) enum Cmd {
         timeout: Option<f64>,
     },
     /// Print each state change, exit, removal, program status and turn end
-    /// as one line, for every session or for the named ones. Runs until Ctrl+C or --timeout.
+    /// as one line, for every session or for the named ones. Runs until Ctrl+C, --timeout or --until.
     #[command(
-        after_help = "Lines: a state change prints the new state, an exit prints `exit` and the code, a closed session prints `removed`. No output or screen text prints.\nWith --json, each line is one JSON object:\n  {\"event\":\"state\",\"session\":ID,\"name\":NAME,\"state\":\"idle\"}\n  {\"event\":\"exit\",\"session\":ID,\"name\":NAME,\"code\":0}\n  {\"event\":\"removed\",\"session\":ID,\"name\":NAME}\n  {\"event\":\"status\",\"session\":ID,\"name\":NAME,\"program_status\":{\"state\":\"blocked\",\"kind\":\"permission\",\"msg\":\"…\"}}\n  {\"event\":\"turn\",\"session\":ID,\"name\":NAME}\nA `status` line prints when what the program reports (OSC 7501) changes its state, what it waits for or its message: `status blocked (permission): MSG`, `status done`, `status none` once it reports nothing. `program_status` is null then. A `turn` line (`turn ended`) prints when a turn ends: a result to read.\nExit codes:\n  0  --timeout ran out, or every named session was removed\n  1  error\n  2  a name matches no session\nRun it in the background so your own turn stays free. idle means quiet, not done. After any line, read the screen with `skiff peek`."
+        after_help = "Lines: a state change prints the new state, an exit prints `exit` and the code, a closed session prints `removed`. No output or screen text prints.\nWith --json, each line is one JSON object:\n  {\"event\":\"state\",\"session\":ID,\"name\":NAME,\"state\":\"idle\"}\n  {\"event\":\"exit\",\"session\":ID,\"name\":NAME,\"code\":0}\n  {\"event\":\"removed\",\"session\":ID,\"name\":NAME}\n  {\"event\":\"status\",\"session\":ID,\"name\":NAME,\"program_status\":{\"state\":\"blocked\",\"kind\":\"permission\",\"msg\":\"…\"}}\n  {\"event\":\"turn\",\"session\":ID,\"name\":NAME}\nA `status` line prints when what the program reports (OSC 7501) changes its state, what it waits for or its message: `status blocked (permission): MSG`, `status done`, `status none` once it reports nothing. `program_status` is null then. A `turn` line (`turn ended`) prints when a turn ends: a result to read.\n--until KIND[,KIND] prints the first line of one of those kinds, from any of the sessions, then exits 0. Kinds: turn (a `turn` line), exit, removed, blocked (a `status blocked` line), waiting (a `waiting` state line). Only changes after the start count: a session that is already waiting or blocked prints nothing.\nskiff events exits when its stdout closes, also with no line to write: `| head -n1` or a read loop that stops ends it.\nExit codes:\n  0  --timeout ran out, every named session was removed, or stdout closed. With --until: a line matched, or stdout closed.\n  1  error. With --until: --timeout ran out first.\n  2  a name matches no session. With --until: every named session was removed first.\nRun it in the background so your own turn stays free. idle means quiet, not done. After any line, read the screen with `skiff peek`."
     )]
     Events {
         /// Default: every session, also the ones started later.
@@ -219,6 +219,9 @@ pub(super) enum Cmd {
         /// Stop after this many seconds.
         #[arg(long, value_name = "SECS")]
         timeout: Option<f64>,
+        /// Print the first line of one of these kinds, then exit.
+        #[arg(long, value_enum, value_delimiter = ',', value_name = "KIND")]
+        until: Vec<events::Until>,
     },
     /// Follow the open tasks in the Skiff agent's ledger for that agent.
     /// Skiff starts it with the agent's session; it stops when that session

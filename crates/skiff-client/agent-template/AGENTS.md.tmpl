@@ -173,8 +173,11 @@ the commands:
 - To wait for one pane, read `skiff ls --json` first (`state`,
   `program_status`). Then run `skiff wait S --for turn --timeout N`. It
   returns at once for a turn that ended and is unread.
-- Do not pipe `skiff events` into `grep -m1`. The pipeline ends only when
-  `events` writes again.
+- Do not stop reading `skiff events` early with `grep -m1`, `head -n1` or a
+  `while read ... break` loop. An older `skiff` keeps running until its next
+  write, and an idle pane writes nothing. Use `--until`:
+  `skiff events --json S --until turn,exit,blocked,waiting`. It prints the
+  first matching line and exits 0, or exits 1 on `--timeout`.
 - An empty prompt in `skiff peek`, or a bare idle, proves neither work nor
   completion. Read the result on the screen.
 - A `[watch]` line that says a pane is gone names the tasks skiff set `done`

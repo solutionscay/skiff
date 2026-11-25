@@ -58,10 +58,73 @@ fn status_text(p: Option<&ProgramStatus>) -> String {
     t
 }
 
-/// Runs until Ctrl+C, the timeout, or until every named session is gone.
+/// A kind of line that ends `skiff events --until`.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Until {
+    /// A `turn` line: a turn ended.
+    Turn,
+    /// An `exit` line.
+    Exit,
+    /// A `removed` line.
+    Removed,
+    /// A `status` line whose state is `blocked`.
+    Blocked,
+    /// A state line whose state is `waiting`.
+    Waiting,
+}
+
+impl Until {
+    fn matches(self, line: &Line) -> bool {
+        match (self, line) {
+            (Self::Turn, Line::Turn) | (Self::Exit, Line::Exit(_)) | (Self::Removed, Line::Removed) => true,
+            (Self::Blocked, Line::Status(Some(p))) => p.state == "blocked",
+            (Self::Waiting, Line::State(s)) => *s == SessionState::Waiting,
+            _ => false,
+        }
+    }
+}
+
+/// Resolves when stdout is a pipe or socket and its reader closed it. A
+/// writer learns that only on its next write, and an idle session writes
+/// nothing. Never resolves for a terminal or a file.
+async fn stdout_closed() {
+    // SAFETY: fstat and poll on fd 1 read only kernel state.
+    let piped = unsafe {
+        let mut st: libc::stat = std::mem::zeroed();
+        libc::fstat(libc::STDOUT_FILENO, &mut st) == 0
+            && matches!(st.st_mode & libc::S_IFMT, libc::S_IFIFO | libc::S_IFSOCK)
+    };
+    if !piped {
+        return std::future::pending().await;
+    }
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    // A plain thread: the process exits without waiting for it.
+    std::thread::spawn(move || loop {
+        // macOS reports POLLHUP only when it is asked for; Linux reports
+        // POLLERR on a pipe whose reader is gone.
+        let mut fd = libc::pollfd { fd: libc::STDOUT_FILENO, events: libc::POLLHUP | libc::POLLERR, revents: 0 };
+        let n = unsafe { libc::poll(&mut fd, 1, -1) };
+        if n > 0 && fd.revents & (libc::POLLHUP | libc::POLLERR | libc::POLLNVAL) != 0 {
+            let _ = tx.send(());
+            return;
+        }
+        if n < 0 && std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
+            return;
+        }
+    });
+    if rx.await.is_err() {
+        std::future::pending::<()>().await;
+    }
+}
+
+/// Runs until Ctrl+C, the timeout, until every named session is gone, or
+/// until stdout closes. With `until`, the first line of one of those kinds,
+/// from any session, prints and ends it.
 /// Exit codes: 0 at the end, 1 on an error, 2 when a name matches no session.
+/// With `until`: 0 on a match, 1 when the timeout ends first, 2 when every
+/// named session is gone first.
 /// With no names, it follows every session, also the ones made later.
-pub async fn events(c: &Client, args: &[String], json: bool, timeout: Option<f64>) -> Result<i32> {
+pub async fn events(c: &Client, args: &[String], json: bool, timeout: Option<f64>, until: &[Until]) -> Result<i32> {
     // Listen before the list, so no change falls between the two.
     let mut events = c.events();
     let all = sessions::sorted(c).await?;
@@ -99,8 +162,7 @@ pub async fn events(c: &Client, args: &[String], json: bool, timeout: Option<f64
     let deadline = timeout
         .and_then(|t| Duration::try_from_secs_f64(t.max(0.0)).ok())
         .and_then(|d| Instant::now().checked_add(d));
-    let emit = |id: &str, name: Option<&String>, line: Line| {
-        let name = name.map_or("", String::as_str);
+    let print_line = |id: &str, name: &str, line: Line| {
         if json {
             let v = match line {
                 Line::State(s) => json!({ "event": "state", "session": id, "name": name, "state": s }),
@@ -122,10 +184,13 @@ pub async fn events(c: &Client, args: &[String], json: bool, timeout: Option<f64
             print::table(&["", "", ""], &[vec![print::short_id(id).to_string(), name.to_string(), what]]);
         }
     };
+    let mut closed = std::pin::pin!(stdout_closed());
+    // The lines one event makes, printed after it is read.
+    let mut out: Vec<(String, Line)> = Vec::new();
 
     loop {
         if only.as_ref().is_some_and(|ids| ids.iter().all(|id| !last.contains_key(id))) {
-            return Ok(0);
+            return Ok(if until.is_empty() { 0 } else { 2 });
         }
         let next = async {
             match deadline {
@@ -133,8 +198,12 @@ pub async fn events(c: &Client, args: &[String], json: bool, timeout: Option<f64
                 None => Some(events.recv().await),
             }
         };
-        let Some(e) = next.await else {
-            return Ok(0);
+        let e = tokio::select! {
+            e = next => e,
+            () = &mut closed => return Ok(0),
+        };
+        let Some(e) = e else {
+            return Ok(if until.is_empty() { 0 } else { 1 });
         };
         match e {
             Ok(Event::SessionCreated { session } | Event::SessionUpdated { session }) if follows(&session.id) => {
@@ -144,26 +213,26 @@ pub async fn events(c: &Client, args: &[String], json: bool, timeout: Option<f64
                 let before = reports.insert(session.id.clone(), now.clone());
                 // A new session says nothing until it reports.
                 if before.unwrap_or(None) != now {
-                    emit(&session.id, names.get(&session.id), Line::Status(session.program_status.clone()));
+                    out.push((session.id.clone(), Line::Status(session.program_status.clone())));
                 }
             }
             Ok(Event::TurnEnded { session }) if follows(&session) && !removed.contains(&session) => {
-                emit(&session, names.get(&session), Line::Turn);
+                out.push((session.clone(), Line::Turn));
             }
             Ok(Event::State { session, .. } | Event::Exit { session, .. }) if removed.contains(&session) => {}
             Ok(Event::State { session, state }) if follows(&session) => {
                 // The daemon can repeat a state. Print changes only.
                 if last.insert(session.clone(), state) != Some(state) {
-                    emit(&session, names.get(&session), Line::State(state));
+                    out.push((session.clone(), Line::State(state)));
                 }
             }
             Ok(Event::Exit { session, code, .. }) if follows(&session) => {
-                emit(&session, names.get(&session), Line::Exit(code));
+                out.push((session.clone(), Line::Exit(code)));
             }
             Ok(Event::SessionRemoved { session }) if follows(&session) => {
                 removed.insert(session.clone());
                 if last.remove(&session).is_some() {
-                    emit(&session, names.get(&session), Line::Removed);
+                    out.push((session.clone(), Line::Removed));
                 }
             }
             Ok(_) => {}
@@ -174,19 +243,26 @@ pub async fn events(c: &Client, args: &[String], json: bool, timeout: Option<f64
                 for id in gone {
                     last.remove(&id);
                     removed.insert(id.clone());
-                    emit(&id, names.get(&id), Line::Removed);
+                    out.push((id.clone(), Line::Removed));
                 }
                 for s in all.iter().filter(|s| follows(&s.id)) {
                     know(&mut names, s);
                     if last.insert(s.id.clone(), s.state) != Some(s.state) {
-                        emit(&s.id, names.get(&s.id), Line::State(s.state));
+                        out.push((s.id.clone(), Line::State(s.state)));
                     }
                     if reports.insert(s.id.clone(), told(s)).is_some_and(|b| b != told(s)) {
-                        emit(&s.id, names.get(&s.id), Line::Status(s.program_status.clone()));
+                        out.push((s.id.clone(), Line::Status(s.program_status.clone())));
                     }
                 }
             }
             Err(RecvError::Closed) => bail!("skiffd closed the connection"),
+        }
+        for (id, line) in out.drain(..) {
+            let hit = until.iter().any(|u| u.matches(&line));
+            print_line(&id, names.get(&id).map_or("", String::as_str), line);
+            if hit {
+                return Ok(0);
+            }
         }
     }
 }
