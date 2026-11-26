@@ -10,7 +10,7 @@ type Answer = { selected: string | null; localName?: string; hosts: Host[]; clip
  *  window's live connection accepted and the file as it is now. */
 function hosts(answer: Answer, live = { clipboard: answer.clipboard }) {
   const calls: [string, unknown][] = [];
-  const listeners = new Map<string, () => void>();
+  const listeners = new Map<string, (e: unknown) => void>();
   let reloads = 0;
   const invoke = async (command: string, args?: unknown) => {
     calls.push([command, args]);
@@ -22,7 +22,7 @@ function hosts(answer: Answer, live = { clipboard: answer.clipboard }) {
     "../src/app/hosts.ts",
     {
       "@tauri-apps/api/core": { invoke },
-      "@tauri-apps/api/event": { listen: async (name: string, run: () => void) => void listeners.set(name, run) },
+      "@tauri-apps/api/event": { listen: async (name: string, run: (e: unknown) => void) => void listeners.set(name, run) },
       "../ui/contextMenu": { ctxMenu: { open() {} } },
       "../ui/confirm": { confirmAction: async () => true },
       "./badge": { linkLost() {} },
@@ -158,14 +158,14 @@ test("a lost link turns input off once and starts one recovery", async () => {
   );
   await flush();
   const lost = h.listeners.get("skiff:host-lost")!;
-  lost();
+  lost({ payload: { entry: 1, endpoint: "h_dev", host: "fixture", generation: 1 } });
   assert.equal(h.mod.hostConnected(), false);
   assert.equal(reconnects, 1);
   finish();
   await flush();
   assert.equal(h.mod.hostConnected(), true);
   assert.equal(onlines, 1);
-  lost();
+  lost({ payload: { entry: 1, endpoint: "h_dev", host: "fixture", generation: 1 } });
   assert.equal(reconnects, 2);
 });
 
@@ -174,13 +174,13 @@ test("a lost link turns input off once and starts one recovery", async () => {
  *  The loss is kept, the whole recovery runs again, and only the second,
  *  clean run turns input back on and shows the Host connected. */
 test("a second loss during recovery runs the whole recovery again before input is on", async () => {
-  let lost!: () => void;
+  let lost!: (e: unknown) => void;
   const immediate = (f: () => void) => setImmediate(f);
   const hostsMod = moduleFromSource(
     "../src/app/hosts.ts",
     {
       "@tauri-apps/api/core": { invoke: async () => ({ selected: "fixture", hosts: [] }) },
-      "@tauri-apps/api/event": { listen: async (_: string, cb: () => void) => void (lost = cb) },
+      "@tauri-apps/api/event": { listen: async (_: string, cb: (e: unknown) => void) => void (lost = cb) },
       "./badge": { linkLost() {} },
     },
     { document: { title: "", getElementById: () => null }, Promise, setTimeout: immediate, console: { error() {} } },
@@ -221,7 +221,7 @@ test("a second loss during recovery runs the whole recovery again before input i
         hostCan: () => false,
         hostInvoke: async (_: string, cmd: string) => {
           if (cmd === "subscribe_events" && ++subscribes === 1) {
-            lost();
+            lost({ payload: { entry: 1, endpoint: "h_dev", host: "fixture", generation: 1 } });
             throw Error("second connection dropped during resubscribe");
           }
           if (cmd === "list_sessions") return [];
@@ -236,7 +236,7 @@ test("a second loss during recovery runs the whole recovery again before input i
     reconnects++;
     await daemon.reconnectRemote();
   }, daemon.hostOnline);
-  lost();
+  lost({ payload: { entry: 1, endpoint: "h_dev", host: "fixture", generation: 1 } });
   for (let i = 0; i < 20; i++) await flush();
   assert.equal(reconnects, 2, "the failed recovery ran again");
   assert.equal(subscribes, 2, "events were subscribed again");
@@ -245,4 +245,32 @@ test("a second loss during recovery runs the whole recovery again before input i
   assert.equal(muted, false);
   // Input stayed off until the end: never on between the two runs.
   assert.deepEqual(mutes, [true, true, false]);
+});
+
+test("a late ledger reply and terminal subscription cannot reach the next connection", async () => {
+  const { sameRoute, advances } = await import("../src/platform/hostRoute.ts");
+  const initial = { entry: 1, endpoint: "h_dev", host: "devbox", generation: 1 };
+  const listeners = new Map<string, (event: { payload: typeof initial }) => void>();
+  let finish!: (rows: string[]) => void;
+  const bridge = moduleFromSource("../src/platform/invoke.ts", {
+    "./hostRoute": { sameRoute, advances },
+    "@tauri-apps/api/event": { listen: async (name: string, run: (event: { payload: typeof initial }) => void) => listeners.set(name, run) },
+    "@tauri-apps/api/core": { invoke: async (cmd: string, args?: { route: typeof initial }) => {
+      if (cmd === "host_route") return initial;
+      assert.equal(cmd, "ledger_rows");
+      assert.deepEqual(args?.route, initial);
+      return new Promise<string[]>((resolve) => { finish = resolve; });
+    } },
+  }, {}, "");
+  const pending = bridge.invoke("ledger_rows");
+  await flush();
+  const subscription = bridge.pageRoute();
+  const next = { ...initial, generation: 2 };
+  listeners.get("skiff:host-route")!({ payload: next });
+  finish(["old result"]);
+  await assert.rejects(pending, /Host changed/);
+  assert.equal(bridge.accepts(subscription), false);
+  assert.equal(bridge.accepts(next), true);
+  listeners.get("skiff:host-removed")!({ payload: next });
+  assert.equal(bridge.accepts(next), false);
 });

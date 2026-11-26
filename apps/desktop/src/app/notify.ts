@@ -7,7 +7,7 @@
  *  (`notify_show`): one per session, with a subtitle, removed when the pane is
  *  seen. Elsewhere, or when that fails, the notification plugin sends. */
 
-import { invoke } from "@tauri-apps/api/core";
+import { accepts, invoke, pageRoute } from "../platform/invoke";
 import { listen } from "@tauri-apps/api/event";
 import { onAction, removeActive, sendNotification } from "@tauri-apps/plugin-notification";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -64,10 +64,10 @@ function send(id: string) {
   const body = question(s) ?? t("notify.waiting");
   if (!isMac) return sendPlugin(id, s, body);
   shown.set(id, "center");
-  invoke("notify_show", { session: id, title: nameOf(s), subtitle: subtitle(s), body })
+  invoke("notify_show", { session: notificationId(id), thread: notificationKey(id), title: nameOf(s), subtitle: subtitle(s), body })
     .then(() => {
       // The first one waits for the permission answer: the pane may have been seen meanwhile.
-      if (shown.get(id) !== "center") invoke("notify_remove", { session: id }).catch(console.error);
+      if (shown.get(id) !== "center") invoke("notify_remove", { session: notificationId(id) }).catch(console.error);
     })
     .catch((e) => {
       console.warn("notify: the notification center did not take it, the plugin sends:", e);
@@ -88,8 +88,8 @@ function sendPlugin(id: string, s: SessionInfo, body: string) {
     title: project ? t("notify.title", { name, project }) : name,
     body,
     // On the desktop the plugin ignores the thread. The session id is kept for a click.
-    group: id,
-    extra: { session: id },
+    group: notificationId(id),
+    extra: { session: notificationKey(id) },
     ...(isMac ? { sound: "NSUserNotificationDefaultSoundName" } : {}),
   });
 }
@@ -100,7 +100,7 @@ export function paneSeen(id: string) {
   const n = shown.get(id);
   if (n === undefined) return;
   shown.delete(id);
-  if (n === "center") invoke("notify_remove", { session: id }).catch(console.error);
+  if (n === "center") invoke("notify_remove", { session: notificationId(id) }).catch(console.error);
   else removeActive([{ id: n }]).catch(() => {});
 }
 
@@ -116,7 +116,22 @@ export function watchNotificationClicks() {
   if (isMac) listen<string>("skiff:notify-click", (e) => opened(e.payload)).catch(console.error);
 }
 
-function opened(id: unknown) {
+function notificationId(id: string) {
+  return JSON.stringify([pageRoute()?.host, id]);
+}
+
+function notificationKey(id: string) {
+  return JSON.stringify([pageRoute(), id]);
+}
+
+function opened(key: unknown) {
+  if (typeof key !== "string") return;
+  let id: unknown;
+  try {
+    const [route, session] = JSON.parse(key);
+    if (!accepts(route)) return;
+    id = session;
+  } catch { return; }
   if (typeof id !== "string" || !sessions.has(id)) return;
   const w = getCurrentWindow();
   void w

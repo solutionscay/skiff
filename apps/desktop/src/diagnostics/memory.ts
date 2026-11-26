@@ -1,5 +1,5 @@
 /** The status bar's memory reading: the app with WebKit, plus skiffd. */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { $, setAttr } from "../ui/dom";
 import { rune } from "../ui/runes";
 import { t } from "../i18n";

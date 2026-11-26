@@ -11,7 +11,7 @@ import { createSwitcher, type SwitchItem } from "../ui/switcher";
 import { type MessageKey, t, tn } from "../i18n";
 import type { MenuEntry } from "../ui/menu";
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { hostCan } from "./hostCaps";
 import { isRemote } from "./hosts";
 import { listen } from "@tauri-apps/api/event";

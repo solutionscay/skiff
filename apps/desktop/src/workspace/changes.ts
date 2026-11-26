@@ -9,7 +9,7 @@ import { sectionHeader } from "../ui/sectionHeader";
  * remote Host's diffs are its git's text, in the page's own viewer; its files
  * are never opened here.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, pageRoute } from "../platform/invoke";
 import type { Project, Worktree } from "../platform/types";
 import { h } from "../ui/dom";
 import { keyLabel } from "../app/keys";
@@ -92,7 +92,7 @@ function load(wt: string) {
 function diffPreview(w: Worktree, file?: string): Preview | undefined {
   const base = { wt: w.path, branch: branchName(w), base: lists.get(w.path)?.base ?? undefined, file, wait: file === undefined ? true : undefined };
   if (!isRemote()) return { kind: "diff", ...base };
-  return hostCan("git_diff") ? { kind: "host-diff", ...base } : undefined;
+  return hostCan("git_diff") ? { kind: "host-diff", hostId: pageRoute()?.host ?? undefined, ...base } : undefined;
 }
 
 /** Reads the known worktrees in `only` again, or every known worktree without it. */

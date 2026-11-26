@@ -1,5 +1,5 @@
 import { type Action } from "./keys";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { showError } from "../ui/alerts";
 
 import { $ } from "../ui/dom";

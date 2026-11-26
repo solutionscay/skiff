@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 
 import { agentKind } from "../appearance/agentIcon";
 import { S, sessions } from "../app/state";

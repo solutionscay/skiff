@@ -1,3 +1,4 @@
+import { pageRoute } from "../platform/invoke";
 /** Groups (named splits): persistence through skiffd. */
 import { isSlot, PRESETS } from "../workspace/layoutSlots";
 import { sessionsOf, shapeName } from "../workspace/layout";
@@ -50,6 +51,7 @@ export function syncTemplateName(g: Group) {
 }
 
 export function saveGroup(g: Group) {
+  g.hostId ??= pageRoute()?.host ?? undefined;
   syncTemplateName(g);
   persist(async () => {
     if (!S.groups.includes(g) || unsure.has(g)) return;
@@ -58,7 +60,7 @@ export function saveGroup(g: Group) {
     try {
       saved = await hostInvoke<Group>("session_groups", "save_group", {
         group: { id: creating ? "" : g.id, name: g.name, layout: g.layout, focus: g.focus, cwd: g.cwd ?? null },
-      });
+      }, g.hostId);
     } catch (e) {
       if (creating) {
         unsure.add(g);
@@ -94,7 +96,7 @@ export function deleteGroup(g: Group) {
   if (S.renaming?.id === g.id) S.renaming = null;
   persist(async () => {
     if (g.id.startsWith("tmp-")) return;
-    await hostInvoke("session_groups", "delete_group", { group: g.id }).catch((e) => console.warn(e));
+    await hostInvoke("session_groups", "delete_group", { group: g.id }, g.hostId).catch((e) => console.warn(e));
   });
 }
 
@@ -121,6 +123,7 @@ export async function loadGroups() {
     return;
   }
   for (const g of list) {
+    g.hostId = pageRoute()?.host ?? undefined;
     // Pane focus is local; the daemon keeps the one from the last save.
     const old = S.groups.find((x) => x.id === g.id);
     if (old?.focus && sessionsOf(g.layout).includes(old.focus)) g.focus = old.focus;
@@ -131,7 +134,7 @@ export async function loadGroups() {
   const next = list.filter((g) => !stale.includes(g));
   // The same list keeps its objects: the tree compares groups by identity and keeps its rows.
   if (JSON.stringify(next) !== JSON.stringify(S.groups)) S.groups = next;
-  for (const g of stale) persist(() => hostInvoke("session_groups", "delete_group", { group: g.id }));
+  for (const g of stale) persist(() => hostInvoke("session_groups", "delete_group", { group: g.id }, g.hostId));
   const was = S.activeGroup;
   if (S.activeGroup && !activeGroupObj()) {
     S.activeGroup = null;

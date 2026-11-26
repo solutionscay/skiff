@@ -34,7 +34,7 @@
  * opens and closes it.
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 
 import type { Project, SessionInfo } from "../platform/types";
 import { keyLabel } from "../app/keys";

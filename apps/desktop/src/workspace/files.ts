@@ -1,3 +1,4 @@
+import { pageRoute } from "../platform/invoke";
 import { open, openFolder, reveal, copy } from "../platform/fileActions";
 import { copyPathEntry, revealEntry } from "./fileMenu";
 import { setRowActs, type Preview } from "./rowActs";
@@ -219,8 +220,9 @@ const folderPreview = (path: string): Preview => ({ kind: "folder", path, local:
 function filePreview(e: Entry, root: string, path: string): { preview: Preview; open?: () => void } {
   const file = relative(root, path);
   if (!isRemote() && e.kind === "file") return { preview: { kind: "file", path }, open: () => open(path) };
+  const hostId = pageRoute()?.host ?? undefined;
   const copy = isRemote() && e.kind === "file";
-  return { preview: { kind: "host-file", wt: root, file, path, copy }, open: copy ? () => openHostCopy(root, file) : undefined };
+  return { preview: { kind: "host-file", hostId, wt: root, file, path, copy }, open: copy ? () => openHostCopy(root, file, hostId) : undefined };
 }
 
 function row(e: Entry, root: string, path: string, depth: number): HTMLElement {

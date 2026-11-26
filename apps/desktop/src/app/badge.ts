@@ -3,7 +3,7 @@
  *  shows it on the Dock tile (`setBadgeCount`). On Linux, Rust sends the
  *  Unity launcher signal that docks read (`set_waiting_badge`). */
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isMac } from "./keys";
 import { BadgeCount } from "./waits";

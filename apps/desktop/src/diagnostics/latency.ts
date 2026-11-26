@@ -27,7 +27,7 @@
  * cause and each step's runs and total ms, every 2 s (`tally`, `steps`). scripts/latency.py summarizes the
  * file; Help → Copy latency report summarizes this run.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { copyText } from "../platform/clipboard";
 import { button, h } from "../ui/dom";
 import { showError } from "../ui/alerts";

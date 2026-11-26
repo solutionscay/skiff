@@ -8,7 +8,7 @@
  * its loss, is a new data epoch: a reply asked for in an older epoch is not
  * shown.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 
 interface DataStatus {
   ready: boolean;
@@ -50,6 +50,8 @@ interface DataHooks {
 }
 
 let last: DataStatus | null = null;
+/** Ignore queued invalidations from a service the status check has replaced. */
+export const acceptsDataConnection = (connection: number) => !last || connection >= last.connection;
 let timer: number | undefined;
 let checking = false;
 /** The last reload failed: the next ready check reads again. */

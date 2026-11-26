@@ -1,4 +1,5 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { accepts, pageRoute } from "../platform/invoke";
+import { Channel, invoke } from "../platform/invoke";
 import { h } from "../ui/dom";
 import { smallButton, switchButton } from "../ui/controls";
 import { isRemote } from "../app/hosts";
@@ -116,9 +117,10 @@ export function countDisk(s: DiskState, redraw: () => void, keepError = false): 
   redraw();
   // Totals from this count only: a late one after its answer changes nothing.
   let runs = true;
+  const route = pageRoute();
   const totals = new Channel<Counting>();
   totals.onmessage = (p) => {
-    if (!runs) return;
+    if (!runs || !accepts(route)) return;
     // The drawn page takes the new totals in place.
     s.progress = p;
     s.paint?.();

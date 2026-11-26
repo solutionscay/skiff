@@ -11,7 +11,7 @@
  * The choices are this Mac's, as project icons are: a remote Host shows the
  * generated faces.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { admiralAvatar, AVATAR_SWATCHES, avatarColor, avatarStyle, DEFAULT_FINISH, FINISH_DEFS_ID, finishDefs, parseFinish, skipperAvatar, type Finish } from "../appearance/skipperAvatar";
 import { place } from "../app/stateQueries";
 import { S } from "../app/state";

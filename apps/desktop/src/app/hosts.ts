@@ -1,9 +1,10 @@
+import { accepts, type HostRoute } from "../platform/invoke";
 /** The Host this window shows, and the picker. "This Mac" is the local Host.
  *  A remote Host has a local id, a shown name and an SSH destination; its
  *  one skiffd socket is found on connect. Settings › Hosts adds, edits and
  *  removes them. Picking
  *  another Host reloads the page: no view mixes two Hosts. */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { listen } from "@tauri-apps/api/event";
 import { ctxMenu } from "../ui/contextMenu";
 import type { MenuEntry } from "../ui/menu";
@@ -231,7 +232,8 @@ let lostAgain = false;
  *  and `online` turns input back on, only after a full recovery with no loss
  *  in it. Tries wait 1 s, then twice as long each time, up to 30 s. */
 export function watchHostLink(reconnect: () => Promise<void>, online: () => void) {
-  void listen("skiff:host-lost", () => {
+  void listen<HostRoute>("skiff:host-lost", ({ payload }) => {
+    if (!accepts(payload)) return;
     if (recovering) {
       lostAgain = true;
       return;

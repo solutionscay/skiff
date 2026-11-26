@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { showError } from "../ui/alerts";
 import { updateDaemon } from "./daemon";
 import type { AgentInfo, DaemonStatus, SessionInfo } from "../platform/types";

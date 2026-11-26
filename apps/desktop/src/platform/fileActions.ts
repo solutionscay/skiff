@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
 import { showError } from "../ui/alerts";
 import { openPath } from "./os";
 export { openPath as open } from "../terminal/peek";

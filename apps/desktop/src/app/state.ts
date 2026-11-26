@@ -1,3 +1,4 @@
+import { hostStore, pageRoute } from "../platform/invoke";
 /** Shared app state. Query functions live in stateQueries.ts. */
 
 import type { AgentInfo, Group, Layout, Project, SessionInfo, TerminalTheme } from "../platform/types";
@@ -7,7 +8,7 @@ import { t } from "../i18n";
 /** Accent for sessions outside every project, and projects without `color`. */
 export const DEFAULT_ACCENT = "var(--project-default)";
 
-export const sessions = new Map<string, SessionInfo>();
+export let sessions: Map<string, SessionInfo>;
 
 /** Selected worktree path per project name. */
 export const selectedWorktree = new Map<string, string>();
@@ -23,10 +24,11 @@ export const removing = new Set<string>();
  * daemon update with a new state notes the time, board open or not. A session
  * first seen in a state has no time: the daemon does not say when it began.
  */
-export const stateSince = new Map<string, number>();
+export let stateSince: Map<string, number>;
 
 /** Merge a daemon copy into the known session, so menus and closures holding it see the change. */
 export function upsert(info: SessionInfo) {
+  info.hostId = pageRoute()?.host ?? undefined;
   const known = sessions.get(info.id);
   if (known && known.state !== info.state) stateSince.set(info.id, Date.now());
   // skiffd leaves `watch` out when no watcher runs: that clears it.
@@ -43,10 +45,10 @@ export const MAX_PANES = 4;
 export const fullHint = () => t("view.fullHint", { max: MAX_PANES });
 
 /** Sessions the daemon removed. A list taken before the removal must not bring them back. */
-export const gone = new Set<string>();
+export let gone: Set<string>;
 
 /** One set per list_sessions in flight: sessions created meanwhile, which that list cannot hold. */
-export const born = new Set<Set<string>>();
+export let born: Set<Set<string>>;
 
 export const FONT_DEFAULT = 13;
 
@@ -59,7 +61,7 @@ function savedFontSize(): number {
 }
 
 /** State that several modules reassign. */
-export const S = {
+const makeState = () => ({
   /** The pane that gets the keys. Always one of the shown sessions, or null. */
   focused: null as string | null,
   /** The group whose row is the sidebar selection. Its terminals are shown but none is picked. */
@@ -127,4 +129,13 @@ export const S = {
   /** Settings shows: the app wears the app theme, not the selected project's. */
   settingsShown: false,
   fontSize: savedFontSize(),
-};
+});
+
+export let S: ReturnType<typeof makeState>;
+hostStore(() => ({
+  state: makeState(), sessions: new Map<string, SessionInfo>(), stateSince: new Map<string, number>(),
+  gone: new Set<string>(), born: new Set<Set<string>>(),
+}), (store) => {
+  S = store.state;
+  ({ sessions, stateSince, gone, born } = store);
+});

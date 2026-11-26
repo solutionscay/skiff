@@ -3,7 +3,7 @@ import { newSession } from "./newSession";
 import { work } from "../diagnostics/stalls";
 
 import type { AgentInfo, Appearance, DaemonEvent, DaemonStatus, Project, Reloaded, SessionInfo } from "../platform/types";
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { accepts, Channel, invoke, pageRoute, type HostEvent, type HostRoute } from "../platform/invoke";
 import { listen } from "@tauri-apps/api/event";
 import { $, h } from "../ui/dom";
 import { rune } from "../ui/runes";
@@ -28,7 +28,7 @@ import { reattachPanes } from "../terminal/terminalRuntime";
 import { t } from "../i18n";
 import { hostCan, hostInvoke, loadHostCaps } from "./hostCaps";
 import { hostName, isRemote, shownHost } from "./hosts";
-import { watchDataPlane } from "./dataPlane";
+import { acceptsDataConnection, watchDataPlane } from "./dataPlane";
 import { refreshHostDiff } from "../terminal/peek";
 import { reloadFiles } from "../workspace/files";
 import { reloadBackdrops } from "../appearance/backdrop";
@@ -76,9 +76,9 @@ let dataEventStream = 0;
 /** Streams daemon events to `onEvent`. Replaces an earlier subscription. */
 export async function subscribeEvents() {
   const n = ++eventStream;
-  const events = new Channel<DaemonEvent>();
+  const events = new Channel<HostEvent<DaemonEvent>>();
   events.onmessage = (e) => {
-    if (n === eventStream) onEvent(e);
+    if (n === eventStream && accepts(e.route)) onEvent(e.value);
   };
   await hostInvoke("session_updates", "subscribe_events", { onEvent: events });
 }
@@ -87,9 +87,9 @@ export async function subscribeEvents() {
 export async function subscribeDataEvents() {
   if (!hostCan("data_events")) return;
   const n = ++dataEventStream;
-  const events = new Channel<{ projects: boolean; worktrees: string[]; tasks: boolean; gap: boolean }>();
-  events.onmessage = (e) => {
-    if (n !== dataEventStream) return;
+  const events = new Channel<HostEvent<{ connection: number; projects: boolean; worktrees: string[]; tasks: boolean; gap: boolean }>>();
+  events.onmessage = ({ route, value: e }) => {
+    if (!accepts(route) || !acceptsDataConnection(e.connection) || n !== dataEventStream) return;
     if (e.projects || e.gap) void loadProjects();
     if (e.tasks || e.gap) void loadLedger();
     if (e.gap) { reloadFiles(); reloadChanges(); }
@@ -239,6 +239,7 @@ async function loadAppTheme() {
 }
 
 export async function loadProjects() {
+  const route = pageRoute();
   const seq = ++projectsSeq;
   void loadSkipperAvatars();
   // The agents are the selected Host's own, from its account: a remote
@@ -253,7 +254,7 @@ export async function loadProjects() {
   if (remote && !hostCan("projects")) {
     // Skipper is the Host's own (`skipper@1`), with or without projects there.
     await loadSkiffAgent();
-    if (seq !== projectsSeq) return;
+    if (seq !== projectsSeq || !accepts(route)) return;
     S.projects = [];
     S.closedProjects = [];
     S.projectsError = null;
@@ -274,7 +275,7 @@ export async function loadProjects() {
     err = String(e);
   }
   // A later call started while this one waited: its answer is newer.
-  if (seq !== projectsSeq) return;
+  if (seq !== projectsSeq || !accepts(route)) return;
   if (list) {
     // Files, Changes and theme are the Host's project settings, read with its rows.
     filesFrom(list);
@@ -365,10 +366,11 @@ async function reloadProjectsOf(paths: Set<string>) {
   // A plain folder has no git to read after a turn. A full read still finds a new .git.
   const names = S.projects.filter((p) => !isFolder(p) && p.worktrees.some((w) => paths.has(w.path))).map((p) => p.name);
   if (!names.length) return;
+  const route = pageRoute();
   const seq = projectsSeq;
   const fresh = await Promise.all(names.map((name) => invoke<Project>("get_project", { name }).catch(() => null)));
   // A full read started meanwhile: its answer is newer.
-  if (seq !== projectsSeq) return;
+  if (seq !== projectsSeq || !accepts(route)) return;
   let next = S.projects;
   for (const p of fresh) {
     const i = p ? next.findIndex((o) => o.name === p.name) : -1;
@@ -427,7 +429,7 @@ let windowAway = !document.hasFocus();
 
 // projects.toml or a worktree changed: an edit of the app's, or one from
 // outside it that the projects watcher saw (`skiff projects add`, a hand edit).
-void listen("skiff:projects-changed", () => void loadProjects());
+void listen<HostRoute>("skiff:projects-changed", ({ payload }) => { if (accepts(payload)) void loadProjects(); });
 window.addEventListener("blur", () => {
   windowAway = true;
   for (const s of sessions.values()) if (s.state === "working") for (const p of worktreesOf(s)) workedAway.add(p);
@@ -467,6 +469,7 @@ const shownSessions = () => JSON.stringify([...sessions.values()].map((s) => ({ 
  * Drops what the daemon no longer has. True when something shown changed.
  */
 export async function refreshSessions(): Promise<boolean> {
+  const route = pageRoute();
   const before = shownSessions();
   const fresh = new Set<string>();
   born.add(fresh);
@@ -480,6 +483,7 @@ export async function refreshSessions(): Promise<boolean> {
   // peek's was left behind, or is an app that runs on.
   if (list.some((s) => s.peek)) {
     const me = await peekOwner();
+    if (!accepts(route)) return false;
     for (const s of list) if (s.peek) strayPeek(s, me);
   }
   list = list.filter((s) => !s.peek);

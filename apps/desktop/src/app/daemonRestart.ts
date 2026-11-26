@@ -1,5 +1,5 @@
 /** A daemon that differs from the app: the top-bar badge, and the restart it offers. */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import type { DaemonWarning, SessionInfo } from "../platform/types";
 import { muteInput } from "../terminal/terminalRuntime";
 import { showError } from "../ui/alerts";

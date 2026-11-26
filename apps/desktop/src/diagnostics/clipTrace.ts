@@ -15,7 +15,7 @@
  * peek (a preview terminal), other (the palette, or no route noted).
  */
 import type { Terminal } from "@xterm/xterm";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import type { ClipTry } from "../platform/clipboard";
 import { isRemote } from "../app/hosts";
 import { tracing, traceLine } from "./latency";

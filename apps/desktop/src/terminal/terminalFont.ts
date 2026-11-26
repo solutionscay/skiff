@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, pageRoute } from "../platform/invoke";
 
 import { h } from "../ui/dom";
 import { host } from "./terminalHost";
@@ -38,28 +38,35 @@ export function setFontSize(n: number, save = true) {
 
 /** Each session's steps away from the app size, so an app zoom scales it too. */
 const PANE_KEY = "skiff.paneFont";
-const offsets: Record<string, number> = loadOffsets();
+let key = "";
+let offsets: Record<string, number> = {};
 
-function loadOffsets(): Record<string, number> {
+function loadOffsets() {
+  const host = pageRoute()?.host;
+  const next = host ? `${PANE_KEY}.${host}` : PANE_KEY;
+  if (next === key) return;
+  key = next;
   try {
-    return JSON.parse(localStorage.getItem(PANE_KEY) ?? "{}") as Record<string, number>;
+    offsets = JSON.parse(localStorage.getItem(key) ?? localStorage.getItem(PANE_KEY) ?? "{}") as Record<string, number>;
   } catch {
-    return {};
+    offsets = {};
   }
 }
 
 /** The text size of one session's terminal. */
 export function paneFontSize(id: string): number {
+  loadOffsets();
   return clamp(S.fontSize + (offsets[id] ?? 0));
 }
 
 /** Changes one terminal only. `step` 0 gives it the app size again. */
 export function stepPaneFont(id: string, step: -1 | 0 | 1) {
+  loadOffsets();
   const size = step ? clamp(paneFontSize(id) + step) : S.fontSize;
   if (size === S.fontSize) delete offsets[id];
   else offsets[id] = size - S.fontSize;
   try {
-    localStorage.setItem(PANE_KEY, JSON.stringify(offsets));
+    localStorage.setItem(key, JSON.stringify(offsets));
   } catch {
     /* a private window keeps the size for this run only */
   }

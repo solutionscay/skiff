@@ -1,5 +1,5 @@
 /** The workspace list, the status bar switcher and the start. */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../../platform/invoke";
 import { listen } from "@tauri-apps/api/event";
 import { render } from "../../app/renderRequest";
 import { shownHost } from "../../app/hosts";

@@ -12,7 +12,7 @@ import { keyLabel, setKeymap } from "./app/keys";
 import { t } from "./i18n";
 import { bySessionPriority } from "./workspace/model";
 import type { Appearance, DaemonStatus } from "./platform/types";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, pageRoute } from "./platform/invoke";
 import { switcher } from "./app/commands";
 import { failureLine, followDataPlane, hostOnline, loadProjects, reconnectRemote, refreshSessions, reloadDaemon, setDaemon, subscribeDataEvents, subscribeEvents, untilConnected } from "./app/daemon";
 import { connectAttempt, connectDone, connectFailed } from "./app/connectPanel";
@@ -179,7 +179,7 @@ async function boot() {
   await loadGroups();
   restorePlace(placeHost);
   await startWorkspaces();
-  trackPlace(placeHost);
+  trackPlace(placeHost, pageRoute()?.host ?? undefined);
   warmPanes();
   startUpdates();
 
@@ -196,7 +196,7 @@ async function boot() {
 /** Back to the project, session and group open when the app last ran. Without
  *  one, the first session by priority. */
 function restorePlace(host: string | null) {
-  const last = loadPlace(host);
+  const last = loadPlace(host, pageRoute()?.host ?? undefined);
   const s = last.session ? sessions.get(last.session) : undefined;
   const lastGroup = last.group ? S.groups.find((x) => x.id === last.group) : undefined;
   const hasProject = !!last.project && S.projects.some((p) => p.name === last.project);

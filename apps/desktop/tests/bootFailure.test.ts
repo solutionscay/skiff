@@ -46,7 +46,7 @@ test("a boot that fails shows its error with Try again, which runs boot again fr
   page(
     {
       // This Mac's daemon answers; only the Host's own reads fail.
-      "@tauri-apps/api/core": { invoke: async () => ({ connected: true }) },
+      "./platform/invoke": { invoke: async () => ({ connected: true }) },
       "./i18n": { t: (key: string) => key },
       "./ui/alerts": { showError: (e: unknown, action?: any) => void shown.push({ e, action }) },
       "./app/hostCaps": { loadHostCaps: () => Promise.reject(new Error("no Host")) },

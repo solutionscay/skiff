@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { contrast, isLight, mix, readable } from "./colors";
 import type { TerminalTheme } from "../platform/types";
 

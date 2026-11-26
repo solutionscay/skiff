@@ -9,7 +9,7 @@
  *    comes from a real gesture.
  * 3. The Tauri plugin. On Linux it reaches for X11 and fails on Wayland.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 /** For the clipboard trace: the path that ran, and the errors of the paths tried before it. */

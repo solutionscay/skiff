@@ -4,7 +4,7 @@ import { pickBackgroundOpacity } from "../../appearance/backdropOpacity";
 import { t } from "../../i18n";
 import { type MenuEntry } from "../../ui/menu";
 import type { Project } from "../../platform/types";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../../platform/invoke";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
 import { showError } from "../../ui/alerts";
 import { refocusTerminal } from "../view";

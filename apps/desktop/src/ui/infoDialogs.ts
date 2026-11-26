@@ -4,7 +4,7 @@ import { type MessageKey, t, upper } from "../i18n";
 
 import type { DaemonStatus } from "../platform/types";
 import { getVersion } from "@tauri-apps/api/app";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 
 import { h } from "./dom";
 

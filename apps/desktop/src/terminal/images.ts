@@ -1,3 +1,4 @@
+import { accepts, type HostRoute } from "../platform/invoke";
 /**
  * Files: one library of the selected Host's file cache, newest first. Every
  * drop and Skiff Paste puts its files there: images and any other file up to
@@ -5,7 +6,7 @@
  * (`appearance/imagesPage.ts`, `appearance/imagesDialog.ts`) show it as a
  * gallery: a thumbnail for an image, a type icon for another file.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { listen } from "@tauri-apps/api/event";
 
 import { hostName, isRemote } from "../app/hosts";
@@ -158,7 +159,7 @@ function changed() {
 /** Loads the library and follows its changes. main.ts calls it once, after every module has loaded: load() draws through render.ts. */
 export function startImages() {
   void load();
-  void listen("skiff:images-changed", () => void load());
+  void listen<HostRoute>("skiff:images-changed", ({ payload }) => { if (accepts(payload)) void load(); });
 }
 
 /** The gallery's search field: placeholder "Search". */
