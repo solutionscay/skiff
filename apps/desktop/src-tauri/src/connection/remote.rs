@@ -33,8 +33,8 @@ pub(super) async fn connect_remote(app: &HostState, selection: &HostSelection, g
                 tauri::async_runtime::spawn_blocking(move || crate::hosts::note_login(&t, true));
             }
             *app.changed.lock().unwrap() = None;
+            app.address.accepted(host.connection().hello().host.host_id.clone())?;
             *app.live.lock().unwrap() = Some(host.connection());
-            app.address.accepted(host.connection().hello().host.host_id.clone());
             *guard = Some(host.clone());
             Ok((host, false))
         }

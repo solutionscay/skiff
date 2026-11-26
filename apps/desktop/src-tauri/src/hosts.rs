@@ -43,7 +43,7 @@ use store::*;
 pub(crate) use form::HostForm;
 pub(crate) use list::{note, note_login, watch, HostList};
 pub(crate) use provision::{found_socket, update_on_connect, version_warning, Arrival};
-pub(crate) use store::{pin_first, remote, selected};
+pub(crate) use store::{pin_first, remote};
 
 #[tauri::command]
 pub(crate) async fn list_hosts(app: Routed) -> Result<HostList, String> {
@@ -95,8 +95,8 @@ pub(crate) async fn add_host(form: HostForm) -> Result<String, String> {
 /// pin stay: if another machine answers there now, the pin catches it. The
 /// shown Host keeps its connection, so only its name can change.
 #[tauri::command]
-pub(crate) async fn edit_host(app: Routed, id: String, form: HostForm) -> Result<(), String> {
-    let shown = shown_id(&app);
+pub(crate) async fn edit_host(handle: tauri::AppHandle, id: String, form: HostForm) -> Result<(), String> {
+    let shown = handle.state::<crate::routes::Routes>().entries().into_iter().any(|e| e.address.get().endpoint.as_ref() == Some(&id));
     blocking(move || {
         let (name, target) = form.parse()?;
         update(&path(), |hosts| {
@@ -104,7 +104,7 @@ pub(crate) async fn edit_host(app: Routed, id: String, form: HostForm) -> Result
             let h = known(hosts, &id)?;
             // Another login: the next connect or check finds its socket.
             let moved = !h.logs_in_as(&target);
-            anyhow::ensure!(!(moved && shown.as_deref() == Some(id.as_str())), "This window shows {}. Pick another Host first, then change its server.", h.name);
+            anyhow::ensure!(!(moved && shown), "This window shows {}. Pick another Host first, then change its server.", h.name);
             if moved {
                 forget_check(&id);
                 memo(&id, |m| m.socket = None);
@@ -139,8 +139,8 @@ pub(crate) async fn rename_host(id: String, name: String) -> Result<(), String> 
 /// `uninstall`: first stop Skiff's services on the server and delete the
 /// managed install. If that fails, the Host stays in the list.
 #[tauri::command]
-pub(crate) async fn remove_host(app: Routed, id: String, uninstall: Option<bool>) -> Result<(), String> {
-    if shown_id(&app).as_deref() == Some(id.as_str()) {
+pub(crate) async fn remove_host(handle: tauri::AppHandle, id: String, uninstall: Option<bool>) -> Result<(), String> {
+    if handle.state::<crate::routes::Routes>().entries().into_iter().any(|e| e.address.get().endpoint.as_ref() == Some(&id)) {
         return Err("This window shows that Host. Pick another Host first.".into());
     }
     if uninstall == Some(true) {
@@ -456,32 +456,34 @@ pub(crate) async fn fix_permissions(id: String, password: String) -> Result<(), 
     }
 }
 
-/// Shows another Host in this window: the old connection, its streams and
-/// any held input go first, so nothing typed for one Host reaches another.
-/// The page reloads after it. `None`: this Mac.
 #[tauri::command]
-pub(crate) async fn select_host(handle: tauri::AppHandle, app: Routed, id: Option<String>) -> Result<(), String> {
+pub(crate) fn host_routes(routes: tauri::State<'_, crate::routes::Routes>) -> Vec<crate::routes::Route> {
+    routes.entries().iter().map(|e| e.address.get()).collect()
+}
+
+#[tauri::command]
+pub(crate) async fn connect_host(handle: tauri::AppHandle, id: Option<String>) -> Result<crate::routes::Route, String> {
+    let selection = match &id {
+        Some(id) => remote(&host_by_id(id).await?)?,
+        None => crate::connection::local_selection(),
+    };
     let routes = handle.state::<crate::routes::Routes>();
     let _switch = routes.switch.lock().await;
-    if !std::sync::Arc::ptr_eq(&app.state, &routes.selected()) { return Err(crate::routes::CHANGED.into()); }
-    let (selection, endpoint) = blocking(move || {
-        update(&path(), |hosts| {
-            if let Some(id) = &id {
-                let h = hosts.find(id).ok_or_else(|| anyhow::anyhow!("That Host is not in the list any more."))?;
-                remote(h).map_err(anyhow::Error::msg)?;
-            }
-            hosts.selected = id;
-            Ok((selected(&hosts, crate::connection::local_selection), hosts.selected.clone()))
-        })
-    })
-    .await?;
-    let next = routes.replace(selection, endpoint);
-    crate::connection::disconnect(&app).await;
-    // A launch on a remote Host skipped this Mac's Skipper setup.
-    if !next.remote() {
-        std::thread::spawn(move || crate::skiff_agent::sync(&next));
-    }
-    Ok(())
+    Ok(routes.connect(selection, id).address.get())
+}
+
+#[tauri::command]
+pub(crate) fn remember_hosts(routes: tauri::State<'_, crate::routes::Routes>) -> Result<(), String> {
+    routes.remember()
+}
+
+#[tauri::command]
+pub(crate) async fn disconnect_host(handle: tauri::AppHandle, app: Routed) -> Result<(), String> {
+    let routes = handle.state::<crate::routes::Routes>();
+    let _switch = routes.switch.lock().await;
+    routes.remove(&app.state)?;
+    tauri::async_runtime::spawn(async move { crate::connection::disconnect(&app).await });
+    routes.remember()
 }
 
 /// Allows or stops OSC 52 clipboard writes from a remote Host's terminals.
@@ -502,7 +504,7 @@ pub(crate) async fn set_host_clipboard(app: Routed, id: String, allow: bool) -> 
 pub(crate) async fn accept_host_identity(handle: tauri::AppHandle, app: Routed, id: String) -> Result<(), String> {
     let routes = handle.state::<crate::routes::Routes>();
     let _switch = routes.switch.lock().await;
-    if !std::sync::Arc::ptr_eq(&app.state, &routes.selected()) { return Err(crate::routes::CHANGED.into()); }
+    if routes.resolve(&app.route).is_none() { return Err(crate::routes::CHANGED.into()); }
     let changed = app.changed.lock().unwrap().clone();
     if shown_id(&app).as_deref() != Some(id.as_str()) {
         return Err("This window shows another Host now.".into());
@@ -510,12 +512,13 @@ pub(crate) async fn accept_host_identity(handle: tauri::AppHandle, app: Routed, 
     let Some((_, received)) = changed.filter(|(d, _)| app.selection().ssh_target().is_some_and(|t| t.destination == *d)) else {
         return Err("This Host reported no new identity to accept.".into());
     };
-    let (selection, endpoint) = blocking(move || {
-        let hosts = accept_identity(&path(), &id, &received)?;
-        Ok((selected(&hosts, crate::connection::local_selection), hosts.selected.clone()))
+    let pin = received.clone();
+    blocking(move || {
+        let _hosts = accept_identity(&path(), &id, &received)?;
+        Ok(())
     })
     .await?;
-    routes.replace(selection, endpoint);
+    app.selection().repin(pin);
     crate::connection::disconnect(&app).await;
     Ok(())
 }

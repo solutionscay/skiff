@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 
 use crate::connection::{data_now, data_read, HostState};
 
@@ -92,11 +92,11 @@ struct Seen {
 /// when the selected Host's `projects.toml` changes in a way the app did
 /// not make itself. It asks only over a live session plane and never
 /// starts skiffd.
-pub fn watch(app: AppHandle) {
+pub fn watch(app: AppHandle, state: std::sync::Arc<HostState>) {
     tauri::async_runtime::spawn(async move {
         let mut seen = Seen::default();
         loop {
-            let state = app.state::<crate::routes::Routes>().selected();
+            if state.retired.load(std::sync::atomic::Ordering::Acquire) { return; }
             let route = state.address.get();
             let tick = if state.remote() { REMOTE_TICK } else { TICK };
             if look(&state, &mut seen).await {

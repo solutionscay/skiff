@@ -7,7 +7,7 @@
 use std::{sync::atomic::Ordering, time::Duration};
 
 use skiff_host_api::{HostFile, HostLedgerRow};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use crate::routes::Routed;
 
 use crate::connection::{data_now, data_read, HostState};
@@ -41,11 +41,11 @@ type Seen = Option<(u64, String)>;
 /// the selected Host's ledger stamp changes, or when a new data connection
 /// (a reconnect, a Host switch, a restarted `skiff-host`) may bring other
 /// rows. It asks only over a live session plane and never starts skiffd.
-pub fn watch(app: AppHandle) {
+pub fn watch(app: AppHandle, state: std::sync::Arc<HostState>) {
     tauri::async_runtime::spawn(async move {
         let mut last = None;
         loop {
-            let state = app.state::<crate::routes::Routes>().selected();
+            if state.retired.load(std::sync::atomic::Ordering::Acquire) { return; }
             let route = state.address.get();
             let tick = if state.remote() { REMOTE_TICK } else { TICK };
             if look(&state, &mut last).await {

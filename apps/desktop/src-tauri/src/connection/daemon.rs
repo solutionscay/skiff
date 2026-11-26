@@ -251,7 +251,14 @@ pub(crate) async fn restart_daemon(app: Routed) -> Result<crate::routes::HostEve
 
 #[tauri::command]
 pub(crate) async fn daemon_status(app: Routed) -> Result<crate::routes::HostEvent<DaemonStatus>, String> {
-    let (value, route) = status_at(&app).await;
+    let cancel = app.cancel.notified();
+    tokio::pin!(cancel);
+    cancel.as_mut().enable();
+    if app.retired.load(std::sync::atomic::Ordering::Acquire) { return Err(crate::routes::CHANGED.into()); }
+    let (value, route) = tokio::select! {
+        result = status_at(&app) => result,
+        _ = cancel => return Err(crate::routes::CHANGED.into()),
+    };
     Ok(crate::routes::HostEvent { route: route.ok_or(crate::routes::CHANGED)?, value })
 }
 

@@ -198,7 +198,6 @@ pub(crate) async fn subscribe_events(handle: AppHandle, app: Routed, on_event: C
     let route = app.route.clone();
     let connection = host.connection();
     let mut updates = skiff_client::host::local::legacy_updates(&connection).map_err(err)?;
-    let remote = app.remote();
     let link = connection.clone();
     let task = tauri::async_runtime::spawn(async move {
         // The stream does not end when the link drops: look each second.
@@ -212,11 +211,7 @@ pub(crate) async fn subscribe_events(handle: AppHandle, app: Routed, on_event: C
                 _ = tick.tick() => if link.is_closed() { break },
             }
         }
-        // A remote Host's page reconnects on this: handshake, identity,
-        // then fresh subscriptions and snapshots. This Mac keeps its policy.
-        if remote {
-            let _ = handle.emit(HOST_LOST, &route);
-        }
+        let _ = handle.emit(HOST_LOST, &route);
     });
     // A switch while this ran replaced the selection: this task would keep
     // the old Host's link open, so it goes, and the reloaded page subscribes.

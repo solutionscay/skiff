@@ -315,8 +315,8 @@ pub(super) async fn connect_session(app: &HostState, recovering: bool) -> Result
                 if let Err(e) = host.client().request(owner).await {
                     eprintln!("peek owner: {e:#}");
                 }
+                app.address.accepted(host.connection().hello().host.host_id.clone())?;
                 *app.live.lock().unwrap() = Some(host.connection());
-                app.address.accepted(host.connection().hello().host.host_id.clone());
                 *guard = Some(host.clone());
                 return Ok((host, spawned));
             }

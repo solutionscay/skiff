@@ -41,6 +41,7 @@ pub(crate) type Revision = std::sync::Mutex<Option<String>>;
 #[derive(Default)]
 pub(crate) struct HostState {
     pub(crate) process: Arc<LocalProcessState>,
+    pub(crate) cancel: tokio::sync::Notify,
     pub(crate) retired: AtomicBool,
     pub(crate) address: crate::routes::Address,
     pub(crate) host: Mutex<Option<Arc<SelectedHost>>>,

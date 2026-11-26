@@ -304,9 +304,11 @@ async fn run(app: &HostState, plan: &Plan) -> Outcome {
         task.abort();
     }
     let terminal = host.connection();
+    if let Err(error) = app.address.accepted(terminal.hello().host.host_id.clone()) {
+        return Outcome { error: Some(error), ..Default::default() };
+    }
     *guard = Some(host);
     *app.live.lock().unwrap() = Some(terminal.clone());
-    app.address.accepted(terminal.hello().host.host_id.clone());
 
     let mut error = None;
     let mut proven = true;
