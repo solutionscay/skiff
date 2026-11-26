@@ -8,7 +8,7 @@ import type { Project, SessionInfo } from "../platform/types";
 import { fleetSkipperOf, projectSkipperOf, skiffAgentFolder, skiffAgentName, skiffAgentSession } from "../app/skiffAgent";
 import { hostInvoke } from "../app/hostCaps";
 import { render } from "../app/renderRequest";
-import { S } from "../app/state";
+import { S, sessions } from "../app/state";
 import { showError } from "../ui/alerts";
 import { treeSections } from "./tree";
 
@@ -38,9 +38,9 @@ export function movedScopes(scopes: string[], stored: string[], moving: string, 
 const storedOrder = () => S.skiffAgent?.skippers_order ?? [];
 
 /** The Skiff agent first, then each fleet Skipper and project Skipper in the list's order. */
-export function skipperEntries(): Entry[] {
+export function skipperEntries(allProjects = false): Entry[] {
   const rows = new Map<string, Entry>();
-  for (const sec of treeSections()) {
+  for (const sec of treeSections(allProjects)) {
     const fs = sec.fleet ? fleetSkipperOf(sec.fleet) : null;
     if (fs && sec.fleet) rows.set(`fleet:${sec.fleet}`, { kind: "fleet", s: fs, name: sec.fleet, scope: `fleet:${sec.fleet}`, project: null });
     for (const p of sec.projects) {
@@ -48,7 +48,17 @@ export function skipperEntries(): Entry[] {
       if (ps) rows.set(p.name, { kind: "project", s: ps, name: p.name, scope: p.name, project: p });
     }
   }
-  const admiral: Entry[] = skiffAgentFolder() ? [{ kind: "admiral", s: skiffAgentSession(), name: skiffAgentName(), scope: null, project: null }] : [];
+  // Live marks can arrive before the project inventory, or outlast a removed project.
+  if (allProjects) {
+    for (const s of sessions.values()) {
+      if (!s.skipper || s.coordinator || s.retiring || s.state === "done" || rows.has(s.skipper)) continue;
+      const fleet = s.skipper.startsWith("fleet:");
+      rows.set(s.skipper, { kind: fleet ? "fleet" : "project", s, scope: s.skipper,
+        name: fleet ? s.skipper.slice(6) : s.skipper, project: null });
+    }
+  }
+  const admiralSession = skiffAgentSession() ?? (allProjects ? [...sessions.values()].find(s => s.coordinator && s.state !== "done") : null);
+  const admiral: Entry[] = skiffAgentFolder() || admiralSession ? [{ kind: "admiral", s: admiralSession ?? null, name: skiffAgentName(), scope: null, project: null }] : [];
   return admiral.concat(arrangeScopes([...rows.keys()], storedOrder()).map((scope) => rows.get(scope)!));
 }
 
@@ -60,7 +70,7 @@ export async function moveSkipper(moving: string, anchor: string, side: "before"
   const agent = S.skiffAgent;
   if (!agent) return;
   const before = agent.skippers_order;
-  const scopes = skipperEntries().flatMap((e) => (e.scope ? [e.scope] : []));
+  const scopes = skipperEntries(true).flatMap((e) => (e.scope ? [e.scope] : []));
   const value = movedScopes(scopes, storedOrder(), moving, anchor, side);
   agent.skippers_order = value;
   render("skippers-order");

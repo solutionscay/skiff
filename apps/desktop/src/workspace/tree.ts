@@ -69,12 +69,12 @@ export interface Section {
 }
 
 /** Projects in no fleet first, then each fleet where its first project stands. */
-export function treeSections(): Section[] {
+export function treeSections(allProjects = false): Section[] {
   const loose: Project[] = [];
   const fleets = new Map<string, Project[]>();
   // A workspace shows some projects. A fleet with none of them shown has no head.
   for (const p of S.projects) {
-    if (view && !view.shows(p)) continue;
+    if (!allProjects && view && !view.shows(p)) continue;
     if (!p.fleet) loose.push(p);
     else if (fleets.has(p.fleet)) fleets.get(p.fleet)!.push(p);
     else fleets.set(p.fleet, [p]);
