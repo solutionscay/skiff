@@ -8,7 +8,7 @@ import { namesFor } from "./flatNames";
  *  (`notify_show`): one per session, with a subtitle, removed when the pane is
  *  seen. Elsewhere, or when that fails, the notification plugin sends. */
 
-import { accepts, hostFields, invoke, pageRoute } from "../platform/invoke";
+import { foreground, hostFields, invokeAt, pageRoute, withinHost, type HostRoute } from "../platform/invoke";
 import { listen } from "@tauri-apps/api/event";
 import { onAction, removeActive, sendNotification } from "@tauri-apps/plugin-notification";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -22,7 +22,7 @@ import { place } from "./stateQueries";
 import { Waits } from "./waits";
 import { reported } from "../workspace/programStatus";
 import { basename, samePath, taskTitle } from "../workspace/model";
-import { revealSession } from "../workspace/view";
+import { liveRoute, openAttention } from "./attention";
 
 let waits = new Waits();
 
@@ -47,9 +47,9 @@ function question(s: SessionInfo): string | null {
 
 /** A session's `state` event. */
 export function stateMoved(id: string, state: string) {
-  if (!waits.moved(id, state, Date.now(), hasKeys(id))) return;
+  if (!waits.moved(id, state, Date.now(), foreground() && hasKeys(id))) return;
   const route = pageRoute();
-  setTimeout(() => { if (accepts(route)) send(id); }, SETTLE_MS);
+  setTimeout(() => { if (route && liveRoute(route)) withinHost(route, () => send(route,id)); }, SETTLE_MS);
 }
 
 /** `project · dir`, or the one of them there is. The folder is left out at the
@@ -61,22 +61,27 @@ function subtitle(s: SessionInfo): string {
   return dir ? t("notify.subtitle", { project: at.project.name, dir }) : at.project.name;
 }
 
-function send(id: string) {
+function send(route: HostRoute, id: string) {
   const s = sessions.get(id);
-  if (!s || s.state !== "waiting" || hasKeys(id)) return;
+  if (!s || s.state !== "waiting" || (foreground() && hasKeys(id))) return;
   const body = question(s) ?? t("notify.waiting");
   if (!isMac) return sendPlugin(id, s, body);
   shown.set(id, "center");
-  invoke("notify_show", { session: notificationId(id), thread: notificationKey(id), title: nameOf(s), subtitle: subtitle(s), body })
+  const owner = shown;
+  const request = notificationId(id);
+  invokeAt(route, "notify_show", { session: request, thread: notificationKey(id), title: nameOf(s), subtitle: subtitle(s), body })
     .then(() => {
       // The first one waits for the permission answer: the pane may have been seen meanwhile.
-      if (shown.get(id) !== "center") invoke("notify_remove", { session: notificationId(id) }).catch(console.error);
+      if (owner.get(id) !== "center") invokeAt(route, "notify_remove", { session: request }).catch(console.error);
     })
     .catch((e) => {
       console.warn("notify: the notification center did not take it, the plugin sends:", e);
-      if (shown.get(id) === "center") shown.delete(id);
-      const now = sessions.get(id);
-      if (now && now.state === "waiting" && !hasKeys(id)) sendPlugin(id, now, body);
+      if (owner.get(id) !== "center" || !liveRoute(route)) return;
+      owner.delete(id);
+      withinHost(route, () => {
+        const now = sessions.get(id);
+        if (now?.state === "waiting" && !(foreground() && hasKeys(id))) sendPlugin(id, now, body);
+      });
     });
 }
 
@@ -103,7 +108,10 @@ export function paneSeen(id: string) {
   const n = shown.get(id);
   if (n === undefined) return;
   shown.delete(id);
-  if (n === "center") invoke("notify_remove", { session: notificationId(id) }).catch(console.error);
+  if (n === "center") {
+    const route = pageRoute();
+    if (route) invokeAt(route,"notify_remove", { session: notificationId(id) }).catch(console.error);
+  }
   else removeActive([{ id: n }]).catch(() => {});
 }
 
@@ -129,18 +137,14 @@ function notificationKey(id: string) {
 
 function opened(key: unknown) {
   if (typeof key !== "string") return;
-  let id: unknown;
   try {
     const [route, session] = JSON.parse(key);
-    if (!accepts(route)) return;
-    id = session;
+    if (!route || typeof session !== "string" || !openAttention(route, session)) return;
   } catch { return; }
-  if (typeof id !== "string" || !sessions.has(id)) return;
   const w = getCurrentWindow();
   void w
     .unminimize()
     .then(() => w.show())
     .then(() => w.setFocus())
     .catch(console.error);
-  revealSession(id);
 }

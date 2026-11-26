@@ -1,3 +1,4 @@
+import { nextAttention } from "./app/attention";
 import { startConnections } from "./app/connections";
 import { configureRender } from "./app/renderRequest";
 import { configurePaneActions } from "./terminal/paneActions";
@@ -35,8 +36,8 @@ import { loadPlace } from "./app/stored";
 import { startMemory } from "./diagnostics/memory";
 import { renderUsage, watchStatusbar } from "./workspace/status";
 import { toggleFocusMode, toggleMaximize } from "./app/modes";
-import { nextUnread, nextWaiting, selectProject, showGroup, showSingle } from "./workspace/view";
-import { closeMission, goToSession } from "./workspace/missionMotion";
+import { selectProject, showGroup, showSingle } from "./workspace/view";
+import { closeMission } from "./workspace/missionMotion";
 import { missionOpen, restoreRunning } from "./workspace/missionControl";
 import { startLedger } from "./workspace/ledger";
 import { watchNotificationClicks } from "./app/notify";
@@ -97,8 +98,8 @@ async function boot() {
     badge.title = "Development build (tauri dev)";
     $("statusbar").prepend(badge);
   }
-  $("next-waiting").addEventListener("click", () => goToSession(nextWaiting()));
-  $("next-unread").addEventListener("click", () => goToSession(nextUnread()));
+  $("next-waiting").addEventListener("click", () => nextAttention("waiting"));
+  $("next-unread").addEventListener("click", () => nextAttention("unread"));
   $("open-switcher").addEventListener("click", () => switcher.open());
   $("open-settings").addEventListener("click", () => {
     if (missionOpen()) closeMission();

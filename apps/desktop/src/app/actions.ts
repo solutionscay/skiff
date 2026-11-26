@@ -1,3 +1,4 @@
+import { nextAttention } from "./attention";
 import { type Action } from "./keys";
 import { invoke } from "../platform/invoke";
 import { showError } from "../ui/alerts";
@@ -30,7 +31,7 @@ import { fontTarget, setFontSize, stepPaneFont } from "../terminal/terminalFont"
 
 import { modeGate, modeKeyBlocked, toggleFocusMode, toggleMaximize } from "./modes";
 import { ledgerKey } from "../workspace/ledger";
-import { closePane, goBack, moveFocus, nextWaiting, removeFromGroup } from "../workspace/view";
+import { closePane, goBack, moveFocus, removeFromGroup } from "../workspace/view";
 import { switcher } from "./commandUi";
 import { missionKey, missionOpen, toggleRunning, toggleSearch } from "../workspace/missionControl";
 import { closeMission, goToSession, maximizeLit, toggleMission } from "../workspace/missionMotion";
@@ -143,7 +144,7 @@ export function runAction(a: Action) {
     }
     // Over a file or diff, the key closes the preview, even when a terminal tool has the keys.
     case "close-pane": return previewOnScreen() ? closePreview() : closeKey(!!shown);
-    case "next-waiting": return goToSession(nextWaiting());
+    case "next-waiting": return nextAttention("waiting");
     case "skiff-agent": {
       const s = skiffAgentSession();
       if (s && missionOpen()) return goToSession(s.id);

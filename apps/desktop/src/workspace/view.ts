@@ -5,7 +5,7 @@ import { coordinatorOf, isSkiffAgent } from "../app/skiffAgent";
 import { beginDrag, type DropTarget, type RowTarget } from "./drag";
 import { build, type Direction, leaf, neighbor, removePane, replacePane, sessionsOf, shape, splitPane, swapPanes } from "./layout";
 
-import { branchName, bySessionPriority, isUnread, locate, scopeFleet, taskTitle } from "./model";
+import { branchName, bySessionPriority, locate, scopeFleet, taskTitle } from "./model";
 import type { Group, Layout, Project, SplitDir, Worktree } from "../platform/types";
 import { focusFirstSlot } from "./canvas";
 import { filledOf, isSlot, slot, slotsOf } from "./layoutSlots";
@@ -648,18 +648,6 @@ export function selectProject(name: string) {
   const w = p.worktrees.find((x) => x.path === path) ?? p.worktrees.find((x) => x.is_main) ?? p.worktrees[0];
   if (w) selectWorktree(p, w);
   else unfocus();
-}
-
-/** The next session that waits or has unread output. */
-export function nextWaiting(): string | undefined {
-  // Bells first, then unread results: the sort ranks waiting ahead of unread.
-  const waiting = [...sessions.values()].filter((s) => s.state === "waiting" || isUnread(s)).sort(bySessionPriority);
-  return (waiting.find((s) => s.id !== S.focused) ?? waiting[0])?.id;
-}
-
-export function nextUnread(): string | undefined {
-  const unread = [...sessions.values()].filter(isUnread).sort(bySessionPriority);
-  return (unread.find((s) => s.id !== S.focused) ?? unread[0])?.id;
 }
 
 export function goBack() {

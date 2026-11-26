@@ -14,6 +14,7 @@ import {
   type HostRoute,
 } from "../platform/invoke";
 import type { DaemonEvent, DaemonStatus, Group, Project, SessionInfo } from "../platform/types";
+import { stateMoved, sessionGone } from "./notify";
 import { S, sessions, upsert } from "./state";
 import { reloadDaemon, onEvent, loadProjects, setDaemon, subscribeDataEvents } from "./daemon";
 import { setHostConnected, hostLabel, knownHosts, loadHosts } from "./hosts";
@@ -153,17 +154,29 @@ async function refreshFocused(route: HostRoute) {
   }
 }
 
+// A state change or removal received during a snapshot wins over that snapshot.
+const inventoryChanges = new WeakMap<Connection, Set<string>>();
+
 async function inventory(c: Connection, route: HostRoute) {
   const generation = c.attempt;
-  const list = await invokeAt<SessionInfo[]>(route, "list_sessions");
-  const groups = await invokeAt<Group[]>(route, "list_groups").catch(() => null);
-  if (!connections.has(c.entry) || generation !== c.attempt || routeOf(c.entry)?.generation !== route.generation) return;
-  withinHost(route, () => {
-    const live = new Set(list.filter((s) => !s.peek).map((s) => s.id));
-    for (const id of sessions.keys()) if (!live.has(id)) sessions.delete(id);
-    for (const s of list) if (!s.peek) upsert(s);
-    if (groups) S.groups = groups.map((g) => ({ ...g, hostId: route.host ?? undefined }));
-  });
+  const touched = new Set<string>();
+  inventoryChanges.set(c, touched);
+  try {
+    const list = await invokeAt<SessionInfo[]>(route, "list_sessions");
+    const groups = await invokeAt<Group[]>(route, "list_groups").catch(() => null);
+    if (!connections.has(c.entry) || generation !== c.attempt || routeOf(c.entry)?.generation !== route.generation) return;
+    withinHost(route, () => {
+      const live = new Set(list.filter(s => !s.peek).map(s => s.id));
+      for (const id of sessions.keys()) if (!live.has(id) && !touched.has(id)) {
+        sessions.delete(id);
+        sessionGone(id);
+      }
+      for (const s of list) if (!s.peek && !touched.has(s.id)) upsert(s);
+      if (groups) S.groups = groups.map(g => ({ ...g, hostId: route.host ?? undefined }));
+    });
+  } finally {
+    if (inventoryChanges.get(c) === touched) inventoryChanges.delete(c);
+  }
 }
 
 async function readBackground(c: Connection, route: HostRoute) {
@@ -220,15 +233,29 @@ async function attempt(c: Connection) {
     const events = new Channel<HostEvent<DaemonEvent>>();
     events.onmessage = ({ route: from, value }) => {
       if (!current() || from.generation !== routeOf(c.entry)?.generation) return;
+      if (inventoryChanges.has(c) && "session" in value) {
+        const id = typeof value.session === "string" ? value.session : value.session.id;
+        if (value.event === "session_removed" || value.event === "session_created" || withinHost(from, () => sessions.has(id))) {
+          inventoryChanges.get(c)?.add(id);
+        }
+      }
       if (accepts(from)) onEvent(value);
       else
         withinHost(from, () => {
           if (value.event === "session_created" || value.event === "session_updated") {
             if (!value.session.peek) upsert(value.session);
-          } else if (value.event === "session_removed") sessions.delete(value.session);
-          else if (value.event === "state") {
+          } else if (value.event === "session_removed") {
+            sessions.delete(value.session);
+            sessionGone(value.session);
+          } else if (value.event === "exit") {
             const s = sessions.get(value.session);
-            if (s) s.state = value.state;
+            if (s) s.state = "done";
+          } else if (value.event === "state") {
+            const s = sessions.get(value.session);
+            if (s) {
+              s.state = value.state;
+              stateMoved(s.id,value.state);
+            }
           } else if (value.event === "title") {
             const s = sessions.get(value.session);
             if (s) s.title = value.title;

@@ -1,4 +1,4 @@
-import { isUnread } from "./model";
+import { hostCounts, liveTrees } from "../app/attention";
 
 import { $, h, setHidden, setText } from "../ui/dom";
 import { tn } from "../i18n";
@@ -9,23 +9,20 @@ import { sessions } from "../app/state";
 import { waitingCount } from "../app/badge";
 
 import { renderWelcome } from "./welcome";
-/** The top bar's Waiting count; the app icon shows the same number. */
-export const waitingNow = () => [...sessions.values()].filter((s) => s.state === "waiting").length;
-
 export function renderCounts() {
-  const all = [...sessions.values()];
-  const waiting = waitingNow();
-  const working = all.filter((s) => s.state === "working").length;
-  const unread = all.filter(isUnread).length;
+  const local = hostCounts();
+  const trees = liveTrees(hostCounts);
+  const waiting = trees.reduce((n, h) => n + h.waiting, 0);
+  const unread = trees.reduce((n, h) => n + h.unread, 0);
   setText($("counts"), [
-    tn("status.sessions", all.length),
-    tn("status.waiting", waiting),
-    tn("status.unread", unread),
-    tn("status.working", working),
+    tn("status.sessions", sessions.size),
+    tn("status.waiting", local.waiting),
+    tn("status.unread", local.unread),
+    tn("status.working", local.working),
   ].join(" · "));
   setHidden($("next-waiting"), waiting === 0);
   setText($("waiting-count"), String(waiting));
-  waitingCount(waiting);
+  waitingCount(waiting, trees.length > 0);
   setHidden($("next-unread"), unread === 0);
   setText($("unread-count"), String(unread));
 

@@ -303,3 +303,69 @@ test("disconnect removes only that Host's panes and protects the remaining conne
   assert.equal(mod.connection(1), a);
   assert.equal(mod.connection(2), undefined);
 });
+
+test("attention walks live Hosts and a background notification opens its own folded tree", async () => {
+  const routes = await import("../src/platform/hostRoute.ts");
+  const bridge = moduleFromSource("../src/platform/invoke.ts", { "./hostRoute": routes }, {}, "");
+  const model = moduleFromSource("../src/workspace/model.ts", {}, {}, "");
+  const hosts = [1, 2, 3].map(entry => ({
+    entry, host: "host-" + entry, endpoint: String(entry), generation: 1,
+    phase: entry === 3 ? "connecting" : "up", folded: true,
+  }));
+  const state: any = {};
+  bridge.hostStore(() => ({ sessions: new Map(), S: { focused: null } }), (store: object) => Object.assign(state,store));
+  for (const host of hosts) {
+    bridge.registerRoute(host);
+    bridge.showRoute(host);
+    state.sessions.set("same", {id:"same", state:"waiting", last_output_at:1});
+  }
+  bridge.showRoute(hosts[0]);
+  state.sessions.set("other", {id:"other", state:"waiting", last_output_at:2});
+  state.sessions.set("unread", {id:"unread", state:"idle", unread:true});
+  const opened: string[] = [];
+  const attention = moduleFromSource("../src/app/attention.ts", {
+    "../platform/invoke": bridge, "../platform/hostRoute": routes, "./state": state, "../workspace/model": model,
+    "./connections": {
+      orderedConnections: () => hosts, connection: (entry: number) => hosts.find(h => h.entry === entry),
+      focusConnection: (h: typeof hosts[number]) => bridge.showRoute(h),
+    },
+    "../terminal/peek": { closePreview() {} },
+    "../workspace/missionMotion": { goToSession(id: string) { state.S.focused = id; opened.push(bridge.pageRoute().host + "/" + id); } },
+  }, {}, "");
+  const counts = attention.liveTrees(attention.hostCounts);
+  assert.deepEqual(JSON.parse(JSON.stringify(counts)), [
+    {waiting:2,working:0,unread:1}, {waiting:1,working:0,unread:0},
+  ]);
+  for (let i = 0; i < 4; i++) attention.nextAttention("waiting");
+  assert.deepEqual(opened, ["host-1/other", "host-1/same", "host-2/same", "host-1/other"]);
+  attention.nextAttention("unread");
+  assert.equal(opened.at(-1), "host-1/unread");
+
+  let settle!: () => void;
+  let click!: (action: unknown) => void;
+  let payload: any;
+  const window = { unminimize: async () => {}, show: async () => {}, setFocus: async () => {} };
+  const notify = moduleFromSource("../src/app/notify.ts", {
+    "../platform/invoke": bridge, "./state": state, "./attention": attention,
+    "./waits": await import("../src/app/waits.ts"), "./seen": {hasKeys: () => true},
+    "./flatNames": {namesFor: () => () => "host-2/same"}, "./stateQueries": {place: () => null},
+    "../workspace/model": {taskTitle: () => "same"}, "../workspace/programStatus": {reported: () => null},
+    "@tauri-apps/api/window": {getCurrentWindow: () => window},
+    "@tauri-apps/plugin-notification": {
+      onAction: async (handler: typeof click) => { click = handler; },
+      sendNotification: (notification: unknown) => { payload = notification; },
+    },
+  }, { setTimeout: (fn: () => void) => { settle = fn; } }, "");
+  hosts[1].folded = true;
+  notify.watchNotificationClicks();
+  bridge.withinHost(hosts[1], () => notify.stateMoved("same","waiting"));
+  settle();
+  assert.equal(bridge.pageRoute().entry, 1);
+  click({notification:payload});
+  assert.equal(opened.at(-1), "host-2/same");
+  assert.equal(hosts[1].folded, false);
+  const before = opened.length;
+  bridge.registerRoute({...hosts[1], generation:2});
+  click({notification:payload});
+  assert.equal(opened.length, before);
+});

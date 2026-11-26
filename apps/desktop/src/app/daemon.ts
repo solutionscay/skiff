@@ -38,8 +38,6 @@ import { muteInput } from "../terminal/terminalRuntime";
 import { connectAttempt, connectDone, connectFailed, connectWait } from "./connectPanel";
 import { dropSession } from "./sessionRemoval";
 import { sessionGone, stateMoved } from "./notify";
-import { linkLost, listRead } from "./badge";
-import { waitingNow } from "../workspace/status";
 
 export { newSession };
 
@@ -63,7 +61,6 @@ export function setDaemon(status: DaemonStatus) {
   if (status.pid) socket.replaceChildren(t("daemon.socketPid", { socket: status.socket, pid: status.pid }), pidCopy(status.pid));
   else socket.textContent = status.socket;
   daemonBadge(status.warning);
-  if (!status.connected) linkLost();
   noteDaemon(status);
   // The welcome page names the version gap the badge shows.
   if (isRemote()) scheduleRender();
@@ -490,7 +487,6 @@ export async function refreshSessions(): Promise<boolean> {
   const listed = new Set(list.map((s) => s.id));
   for (const s of list) if (!gone.has(s.id)) upsert(s);
   for (const id of [...sessions.keys()]) if (!listed.has(id) && !fresh.has(id)) dropSession(id);
-  listRead(waitingNow());
   return shownSessions() !== before;
 }
 

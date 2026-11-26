@@ -1,3 +1,4 @@
+import { hostCounts } from "../app/attention";
 import { button } from "../ui/dom";
 import { ctxMenu } from "../ui/contextMenu";
 import type { MenuEntry } from "../ui/menu";
@@ -82,8 +83,8 @@ export function renderSidebar() {
     const counts = head.querySelector(".tree-roll");
     counts?.remove();
     if (c.folded && c.phase === "up") withinHost(route,() => {
-      const all = [...sessions.values()];
-      const marks = rollCounts(all.filter(s => s.state === "waiting").length,all.filter(s => s.state === "working").length,all.filter(s => s.unread).length);
+      const { waiting, working, unread } = hostCounts();
+      const marks = rollCounts(waiting, working, unread);
       if (marks) head.querySelector(".host-chevron")!.before(marks);
     });
     head.querySelector(".host-chevron")!.textContent = c.folded ? "▸" : "▾";
