@@ -19,9 +19,9 @@ import { S, sessions, upsert } from "./state";
 import { reloadDaemon, onEvent, loadProjects, setDaemon, subscribeDataEvents } from "./daemon";
 import { setHostConnected, hostLabel, knownHosts, loadHosts } from "./hosts";
 import { render, scheduleRender } from "./render";
-import { loadHostCaps } from "./hostCaps";
+import { hostCan, loadHostCaps, setHostCaps } from "./hostCaps";
 import { restoreWorkspace } from "../workspace/profile";
-import { loadLedger } from "../workspace/ledgerStore";
+import { loadLedger, storeLedgerRows, type Entry } from "../workspace/ledgerStore";
 import { view } from "../terminal/terminal";
 import { muteInput, parkPane, reattachPanes } from "../terminal/terminalRuntime";
 import { panes } from "../terminal/terminalState";
@@ -180,9 +180,10 @@ async function inventory(c: Connection, route: HostRoute) {
 }
 
 async function readBackground(c: Connection, route: HostRoute) {
-  const [projects, agent] = await Promise.all([
+  const [projects, agent, ledger] = await Promise.all([
     invokeAt<Project[]>(route, "list_projects").catch(() => null),
     invokeAt<SkiffAgentSettings>(route, "get_skiff_agent").catch(() => null),
+    withinHost(route, () => hostCan("ledger")) ? invokeAt<Entry[]>(route, "ledger_rows").catch(() => null) : null,
   ]);
   if (!connections.has(c.entry) || routeOf(c.entry)?.generation !== route.generation || accepts(route)) return;
   withinHost(route, () => {
@@ -192,6 +193,7 @@ async function readBackground(c: Connection, route: HostRoute) {
       S.closedProjects = projects.filter((p) => p.closed);
       filesFrom(projects);
     }
+    if (ledger) storeLedgerRows(ledger, null, route.host);
     if (agent) S.skiffAgent = agent;
   });
 }
@@ -279,7 +281,12 @@ async function attempt(c: Connection) {
         reattachPanes();
         reattachPeeks();
       }
-    } else await readBackground(c, route);
+    } else {
+      const caps = await invokeAt<string[]>(route, "host_capabilities").catch(() => null);
+      if (!current()) return;
+      if (caps) withinHost(route, () => setHostCaps(caps));
+      await readBackground(c, route);
+    }
     if (!current()) return;
     void invokeAt(route, "remember_hosts").catch(console.error);
     poll(c);

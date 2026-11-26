@@ -2,12 +2,14 @@
  *  marks, labels and Mission control. Only when the Host offers
  *  `program_status@1`. The program's text is plain text: it goes into
  *  `textContent` and attributes, never into markup. */
+import { hostFields } from "../platform/invoke";
 import { type MessageKey, t, tn } from "../i18n";
 import type { ProgramStatus, SessionInfo } from "../platform/types";
 
 /** The Host offers `program_status@1`. `hostCaps` sets it with each answer;
  *  before the first one, a surface stays as it is. */
 let offered = true;
+hostFields(() => ({ offered: true }), () => ({ offered }), fields => { offered = fields.offered; });
 export function offerReports(on: boolean) {
   offered = on;
 }

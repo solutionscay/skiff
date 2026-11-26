@@ -112,16 +112,20 @@ export async function loadLedger() {
     err = String(e);
   }
   if (!accepts(route) || mine !== asked || at !== dataEpoch()) return;
+  if (storeLedgerRows(next, err, route?.host)) render("ledger");
+}
+
+export function storeLedgerRows(next: Entry[], err: string | null, host?: string | null) {
   const data = JSON.stringify([next, err]);
   // Keep both the generation and row objects for repeated, unchanged replies.
-  if (loaded && data === rowData) return;
+  if (loaded && data === rowData) return false;
   rowData = data;
-  for (const row of next) row.hostId = route?.host ?? undefined;
+  for (const row of next) row.hostId = host ?? undefined;
   rows = next;
   error = err;
   loaded = true;
   generation++;
-  render("ledger");
+  return true;
 }
 
 /**

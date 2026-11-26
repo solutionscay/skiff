@@ -126,15 +126,17 @@ hostFields(() => ({ caps: null as Set<string> | null, loading: null as Promise<v
 /** Asks the selected Host again: at launch and after the daemon reloads. */
 export function loadHostCaps(): Promise<void> {
   const load: Promise<void> = invoke<string[]>("host_capabilities")
-    .then((list) => {
-      caps = new Set(list);
-      offerReports(hostCan("program_status"));
-    })
+    .then(setHostCaps)
     .finally(() => {
       if (loading === load) loading = null;
     });
   loading = load;
   return load;
+}
+
+export function setHostCaps(list: string[]) {
+  caps = new Set(list);
+  offerReports(hostCan("program_status"));
 }
 
 /** The Host offers `cap`. Before the first answer, a surface stays as it is;
