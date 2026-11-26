@@ -1,3 +1,4 @@
+import { hostFields } from "../platform/invoke";
 /** What the tree draws, as signatures: when a block rebuilds. */
 import { worktreeLines, type LineIndex } from "./sidebarLines";
 import { filledOf } from "./layoutSlots";
@@ -22,6 +23,8 @@ import { skipperSig } from "./skipperRows";
 let lastProjects: Project[] | null = null;
 let lastGroups: Group[] | null = null;
 let listGen = 0;
+hostFields(() => ({lastProjects:null as Project[] | null,lastGroups:null as Group[] | null,listGen:0}),
+  () => ({lastProjects,lastGroups,listGen}), f => { ({lastProjects,lastGroups,listGen} = f); });
 
 export const AGENT_BLOCK = "agent";
 export const OTHER_BLOCK = "other";

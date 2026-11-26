@@ -1,3 +1,4 @@
+import { hostFields } from "../platform/invoke";
 /**
  * What a sidebar row does, by row key. Rows declare it when they render; the
  * keys and the preview controller read it. A row starts nothing by itself.
@@ -27,7 +28,10 @@ interface RowActs {
   open?: () => void;
 }
 
-const acts = new Map<string, RowActs>();
+let acts = new Map<string, RowActs>();
+
+hostFields(() => ({ acts: new Map<string,RowActs>() }), () => ({ acts }),
+  (f) => { ({ acts } = f); });
 
 export const setRowActs = (key: string, a: RowActs) => void acts.set(key, a);
 export const rowActs = (key: string | null | undefined): RowActs | undefined => (key ? acts.get(key) : undefined);

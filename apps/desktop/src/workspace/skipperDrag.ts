@@ -30,7 +30,7 @@ export function dragSkipper(down: MouseEvent, source: HTMLElement, scope: string
       if (last === source || x < box.left || x > box.right || y < last.getBoundingClientRect().bottom || y > box.bottom) return null;
       return { anchor: last.dataset.scope!, side: "after", el: last, mark: "drop-after" };
     }
-    if (el === source) return null;
+    if (!list.contains(el) || el === source) return null;
     const anchor = el.dataset.scope;
     if (!anchor) {
       const first = movable()[0];

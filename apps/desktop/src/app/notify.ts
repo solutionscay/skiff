@@ -1,3 +1,4 @@
+import { namesFor } from "./flatNames";
 /** Desktop notifications from the app: a session waits, and its pane does not
  *  have the keys. They go through the system as Skiff, with its icon. The
  *  rule is in `waits.ts`. The app starts `skiff watch` with `--no-notify`, so
@@ -7,7 +8,7 @@
  *  (`notify_show`): one per session, with a subtitle, removed when the pane is
  *  seen. Elsewhere, or when that fails, the notification plugin sends. */
 
-import { accepts, invoke, pageRoute } from "../platform/invoke";
+import { accepts, hostFields, invoke, pageRoute } from "../platform/invoke";
 import { listen } from "@tauri-apps/api/event";
 import { onAction, removeActive, sendNotification } from "@tauri-apps/plugin-notification";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -23,19 +24,20 @@ import { reported } from "../workspace/programStatus";
 import { basename, samePath, taskTitle } from "../workspace/model";
 import { revealSession } from "../workspace/view";
 
-const waits = new Waits();
+let waits = new Waits();
 
 /** The notification shown for each session: `"center"` for the system
  *  notification center, or its id in the plugin. */
-const shown = new Map<string, "center" | number>();
+let shown = new Map<string, "center" | number>();
 let nextId = 1;
+hostFields(() => ({waits:new Waits(),shown:new Map<string,"center" | number>()}), () => ({waits,shown}), f => { ({waits,shown} = f); });
 
 /** Waits this long before it sends, so the report that comes with the wait
  *  (its question) is in, and a pane that took the keys meanwhile is left out. */
 const SETTLE_MS = 250;
 
 /** The pane's name, as the tree shows it. */
-const nameOf = (s: SessionInfo) => (s.coordinator ? skiffAgentName() : taskTitle(s));
+const nameOf = (s: SessionInfo) => namesFor("session")(s.id,s.coordinator ? skiffAgentName() : taskTitle(s));
 
 /** The agent's question, when it reported one. */
 function question(s: SessionInfo): string | null {
@@ -46,7 +48,8 @@ function question(s: SessionInfo): string | null {
 /** A session's `state` event. */
 export function stateMoved(id: string, state: string) {
   if (!waits.moved(id, state, Date.now(), hasKeys(id))) return;
-  setTimeout(() => send(id), SETTLE_MS);
+  const route = pageRoute();
+  setTimeout(() => { if (accepts(route)) send(id); }, SETTLE_MS);
 }
 
 /** `project · dir`, or the one of them there is. The folder is left out at the

@@ -1,3 +1,4 @@
+import { startConnections } from "./app/connections";
 import { configureRender } from "./app/renderRequest";
 import { configurePaneActions } from "./terminal/paneActions";
 import { configureActionDispatch } from "./app/actionDispatch";
@@ -11,14 +12,12 @@ import "./styles.css";
 import { keyLabel, setKeymap } from "./app/keys";
 import { t } from "./i18n";
 import { bySessionPriority } from "./workspace/model";
-import type { Appearance, DaemonStatus } from "./platform/types";
+import type { Appearance } from "./platform/types";
 import { invoke, pageRoute } from "./platform/invoke";
 import { switcher } from "./app/commands";
-import { failureLine, followDataPlane, hostOnline, loadProjects, reconnectRemote, refreshSessions, reloadDaemon, setDaemon, subscribeDataEvents, subscribeEvents, untilConnected } from "./app/daemon";
-import { connectAttempt, connectDone, connectFailed } from "./app/connectPanel";
-import { isRemote, loadHosts, onHostsChanged, onManageHosts, setHostConnected, shownHost, watchHostLink, watchHosts } from "./app/hosts";
-import { muteInput, openPane, panesDrawn, warmPanes } from "./terminal/terminalRuntime";
-import { loadHostCaps } from "./app/hostCaps";
+import { followDataPlane, refreshSessions } from "./app/daemon";
+import { loadHosts, onHostsChanged, onManageHosts, watchHosts } from "./app/hosts";
+import { openPane, panesDrawn, warmPanes } from "./terminal/terminalRuntime";
 import { onUsage, startUsage, usage } from "./app/usage";
 import { $ } from "./ui/dom";
 import { showError } from "./ui/alerts";
@@ -32,7 +31,7 @@ import { isSlot } from "./workspace/layoutSlots";
 
 import { setFontSize } from "./terminal/terminalFont";
 import { loadThemes } from "./appearance/themes";
-import { loadPlace, trackPlace } from "./app/stored";
+import { loadPlace } from "./app/stored";
 import { startMemory } from "./diagnostics/memory";
 import { renderUsage, watchStatusbar } from "./workspace/status";
 import { toggleFocusMode, toggleMaximize } from "./app/modes";
@@ -89,7 +88,6 @@ async function boot() {
   staticText();
   // Which Host this window shows decides everything below.
   await loadHosts().catch(showError);
-  const placeHost = shownHost();
   watchHosts();
   // `tauri dev` build: a badge in the status bar tells it apart from an installed Skiff.
   if (import.meta.env.DEV) {
@@ -117,45 +115,16 @@ async function boot() {
   startMemory();
   startImages();
   watchStatusbar();
-  if (isRemote()) connectAttempt();
-  let status = await invoke<DaemonStatus>("daemon_status");
-  setDaemon(status);
-  if (isRemote() && status.connected) connectDone();
-  // An older skiffd that can reload moves onto the app's own first. Its sessions keep running.
-  if (status.reload) {
-    status = await reloadDaemon();
-    // A slow adoption answers late. Keep asking, so the page loads without a restart.
-    while (!status.connected) {
-      await new Promise((r) => setTimeout(r, 2000));
-      status = await invoke<DaemonStatus>("daemon_status").catch(() => status);
-    }
-    setDaemon(status);
-  }
-  if (!status.connected) {
-    if (!isRemote()) return;
-    // A remote Host that is down at launch: wait for it, input off.
-    setHostConnected(false);
-    muteInput(true);
-    connectFailed(failureLine(status), 1000);
-    status = await untilConnected(1000);
-    muteInput(false);
-    setHostConnected(true);
-  }
-  watchHostLink(reconnectRemote, hostOnline);
-
-  // What the selected Host offers decides which session surfaces it gets.
-  await loadHostCaps().catch(console.error);
+  await startConnections(restorePlace);
   // Agent usage on the shown Host: the top bar cell near a limit (#276).
   onUsage(() => renderUsage(usage, toggleUsage));
   startUsage();
   // The selected Host's ledger (M6), This Mac's or a remote one's.
   startLedger();
   watchNotificationClicks();
-  await subscribeEvents();
 
-  await refreshSessions();
+
   await Promise.all([
-    loadProjects(),
     loadThemes(),
     invoke<Appearance>("get_appearance")
       .then((a) => {
@@ -175,11 +144,10 @@ async function boot() {
   if (hint) hint.textContent = t("switcher.hint");
   // Projects and Git come back on their own when skiff-host starts late or restarts.
   followDataPlane();
-  await subscribeDataEvents().catch(console.error);
   await loadGroups();
-  restorePlace(placeHost);
+
   await startWorkspaces();
-  trackPlace(placeHost, pageRoute()?.host ?? undefined);
+
   warmPanes();
   startUpdates();
 

@@ -1,3 +1,4 @@
+import { pageRoute } from "../platform/invoke";
 /**
  * What the Ledger shows: where each task stands, the items of a view, their
  * sections and counts. It reads the rows, the sessions and the view, and draws
@@ -63,7 +64,7 @@ export function projectionKey(): number {
   indexRows();
   const scope = ledgerScope();
   const key = JSON.stringify([
-    generation, scope ? [...scope.names].sort() : null,
+    pageRoute()?.entry, generation, scope ? [...scope.names].sort() : null,
     S.projects.map((p) => [p.name, p.fleet]), skipperWord(), language(),
   ]);
   let changed = key !== projectionInputs;

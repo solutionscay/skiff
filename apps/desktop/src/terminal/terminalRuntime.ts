@@ -1,4 +1,4 @@
-import { accepts, pageRoute } from "../platform/invoke";
+import { accepts, invokeAt, pageRoute } from "../platform/invoke";
 import { Channel } from "@tauri-apps/api/core";
 
 import { FitAddon } from "@xterm/addon-fit";
@@ -67,7 +67,8 @@ export function openPane(id: string): Promise<Pane> {
   if (existing) return Promise.resolve(existing);
   let pending = opening.get(id);
   if (!pending) {
-    pending = createPane(id).finally(() => opening.delete(id));
+    const requests = opening;
+    pending = createPane(id).finally(() => requests.delete(id));
     opening.set(id, pending);
   }
   return pending;
@@ -133,7 +134,9 @@ const fontReady = Promise.all(
 ).catch(() => undefined);
 
 async function createPane(id: string): Promise<Pane> {
+  const route = pageRoute();
   await fontReady;
+  if (route && !accepts(route)) throw new Error("The Host changed. The page subscribes again.");
   const el = document.createElement("div");
   el.className = "pane";
   park.appendChild(el);
@@ -197,7 +200,7 @@ async function createPane(id: string): Promise<Pane> {
     throw e;
   }
   // session_removed may have arrived during the await.
-  if (!sessions.has(id)) {
+  if ((route && !accepts(route)) || !sessions.has(id)) {
     drop();
     throw new Error(`session ${id} is gone`);
   }
@@ -276,7 +279,8 @@ export function parkPane(id: string, pane: Pane) {
   if (pane.parked) return;
   pane.parked = true;
   pane.stream++;
-  pane.sub = pane.sub.then(() => hostInvoke<void>("session_terminal", "unsubscribe_output", { session: id }, pane.hostId)).catch(console.error);
+  const route = pageRoute();
+  if (route) pane.sub = pane.sub.then(() => invokeAt<void>(route, "unsubscribe_output", { session: id })).catch(console.error);
 }
 
 /**

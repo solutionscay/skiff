@@ -18,9 +18,9 @@
 .mission-side-head { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-3); }
 
 /* ---- 3. Frames: the same boxes, drawn in the quiet rule, on one ground ---- */
-#sidebar-scroll:has(> .tree-head) { background: var(--bg-panel); }
-#sidebar-scroll > .tree-head { border-color: var(--rule); color: var(--text-3); }
-#sidebar-scroll > .tree-head + :is(.tree-kids, .sessions-block) { border-color: var(--rule); }
+:is(#sidebar-scroll, .host-tree):has(> .tree-head) { background: var(--bg-panel); }
+:is(#sidebar-scroll, .host-tree) > .tree-head { border-color: var(--rule); color: var(--text-3); }
+:is(#sidebar-scroll, .host-tree) > .tree-head + :is(.tree-kids, .sessions-block) { border-color: var(--rule); }
 .session-row.skiff-agent-row { background-color: transparent; border-bottom-color: var(--rule); }
 
 /* ---- 4. Names: the size ladder stays, one step down in weight ---- */

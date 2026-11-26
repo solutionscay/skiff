@@ -1,4 +1,4 @@
-import { pageRoute } from "../platform/invoke";
+import { pageRoute, routeOf, withinHost, hostStore } from "../platform/invoke";
 /** Groups (named splits): persistence through skiffd. */
 import { isSlot, PRESETS } from "../workspace/layoutSlots";
 import { sessionsOf, shapeName } from "../workspace/layout";
@@ -14,9 +14,9 @@ import { inBackground, unfocus } from "../workspace/view";
 import { hostCan, hostInvoke } from "./hostCaps";
 
 /** Group writes run one at a time, so a new group has its id before the next save. */
-let groupQueue = Promise.resolve();
-let groupWrites = 0;
-let reloadGroups = false;
+const makeQueue = () => ({ tail: Promise.resolve(), writes: 0, reload: false });
+let queue: ReturnType<typeof makeQueue>;
+hostStore(makeQueue, store => { queue = store; });
 /** New groups whose create failed: the Host may have made one anyway, with
  *  the reply lost. Their later saves are dropped, never sent as a second
  *  create; the reload after the queue shows what the Host holds. */
@@ -32,16 +32,17 @@ export function autoName(ids: string[]): string {
 }
 
 function persist(op: () => Promise<void>) {
-  groupWrites++;
-  groupQueue = groupQueue
-    .then(op)
-    .catch(showError)
-    .finally(() => {
-      if (--groupWrites === 0 && reloadGroups) {
-        reloadGroups = false;
-        void loadGroups();
-      }
-    });
+  const route = pageRoute();
+  const jobs = queue;
+  jobs.writes++;
+  jobs.tail = jobs.tail.then(() => {
+    if (!route) return op();
+    if (routeOf(route.entry)?.generation === route.generation) return withinHost(route,op);
+  }).catch(showError).finally(() => {
+    if (--jobs.writes || !jobs.reload) return;
+    jobs.reload = false;
+    if (queue === jobs) void loadGroups();
+  });
 }
 
 /** A group still named after a template follows its shape when panes come and go. */
@@ -52,6 +53,7 @@ export function syncTemplateName(g: Group) {
 
 export function saveGroup(g: Group) {
   g.hostId ??= pageRoute()?.host ?? undefined;
+  const jobs = queue;
   syncTemplateName(g);
   persist(async () => {
     if (!S.groups.includes(g) || unsure.has(g)) return;
@@ -64,7 +66,7 @@ export function saveGroup(g: Group) {
     } catch (e) {
       if (creating) {
         unsure.add(g);
-        reloadGroups = true;
+        jobs.reload = true;
       }
       throw e;
     }
@@ -101,8 +103,8 @@ export function deleteGroup(g: Group) {
 }
 
 export async function loadGroups() {
-  if (groupWrites > 0) {
-    reloadGroups = true;
+  if (queue.writes > 0) {
+    queue.reload = true;
     return;
   }
   // A remote Host's groups come in M3; its sessions show without them.
@@ -118,8 +120,8 @@ export async function loadGroups() {
     return;
   }
   // A local change started during the await: its own reload follows.
-  if (groupWrites > 0) {
-    reloadGroups = true;
+  if (queue.writes > 0) {
+    queue.reload = true;
     return;
   }
   for (const g of list) {

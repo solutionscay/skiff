@@ -79,6 +79,7 @@ export function moduleFromSource(path: string, imports: Record<string, unknown>,
     if (Object.hasOwn(imports, name)) return imports[name];
     if (name.endsWith("/platform/invoke") || name === "./invoke") {
       return { ...imports["@tauri-apps/api/core"] as object, accepts: () => true, pageRoute: () => null,
+        foreground: () => true, hostFields: (make: () => unknown, _read: unknown, select: (store: unknown) => void) => select(make()),
         hostStore: (make: () => unknown, select: (store: unknown) => void) => select(make()) };
     }
     return words(name) ?? pure(name) ?? {};

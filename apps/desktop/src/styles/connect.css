@@ -30,3 +30,54 @@
 .confirm-act.go.busy { display: flex; align-items: center; justify-content: center; gap: calc(8 * var(--u)); cursor: default; }
 .confirm-act.go.busy .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); background: var(--on-working); }
 .confirm-cancel:disabled { color: var(--text-dim); cursor: default; background: transparent; }
+
+.hosts-panel { position: fixed; z-index: 100; width: min(96vw, calc(420 * var(--u))); max-height: 82vh; overflow: auto; border: 1px solid var(--rule-strong); background: var(--bg-panel); color: var(--text); }
+.hp-title, .hp-foot, .hp-row, .host-head { display: flex; align-items: center; min-height: var(--row); border-bottom: 1px solid var(--rule); }
+.hp-title, .hp-foot, .hp-row, .hp-note, .hp-lines, .hp-time, .hp-error { padding-inline: calc(12 * var(--u)); }
+.hp-title, .host-head { background: var(--bg-raised); font-weight: 600; }
+.hp-row, .host-head { gap: calc(8 * var(--u)); }
+.hp-row { padding-right: 0; }
+.hp-state, .hp-time, .hp-note { color: var(--text-3); }
+.hp-name, .host-head-name { flex: 1; }
+.hp-act { align-self: stretch; border-left: 1px solid var(--rule); padding-inline: calc(12 * var(--u)); }
+.hp-act:disabled { opacity: .45; }
+.hp-foot { width: 100%; text-align: left; }
+.hp-act:hover:not(:disabled), .hp-foot:hover, .host-head button:hover { background: var(--bg-panel); }
+.hp-note { display: none; padding-block: calc(8 * var(--u)); }
+.hp-row:has(.hp-act:is(:hover,:focus-visible):not(:disabled)) + .hp-note { display: block; }
+.hp-lines { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); }
+.hp-error { color: var(--error); }
+.host-icon { display: inline-flex; color: var(--text-3); }
+.host-icon svg { width: calc(14 * var(--u)); height: calc(14 * var(--u)); fill: none; stroke: currentColor; stroke-width: 1.6; }
+.host-square { width: calc(6 * var(--u)); height: calc(6 * var(--u)); background: var(--text-3); }
+.host-square.up { background: var(--state-idle, var(--text-2)); }
+.host-square.failed { background: var(--error); }
+.host-head { border-block: 1px solid var(--rule-strong); }
+.host-head button { display: flex; align-items: center; gap: calc(8 * var(--u)); padding-inline: calc(12 * var(--u)); height: var(--row); }
+.host-head .host-fold { flex: 1; text-align: left; }
+.host-tree.offline { opacity: .45; }
+.host-tree.offline :is(.state-mark,.unread-flag,.working-skiff) { visibility: hidden; }
+.hosts-panel { background: var(--bg-raised); box-shadow: 0 calc(12 * var(--u)) calc(32 * var(--u)) var(--scrim); }
+.hosts-panel button, .host-head button { appearance: none; background: transparent; color: var(--text-2); font: inherit; border: 0; }
+.hosts-panel .hp-act { width: calc(108 * var(--u)); flex-shrink: 0; border-left: 1px solid var(--rule); }
+.hp-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.hp-title, .hp-state, .hp-note, .hp-time, .hp-error { font-size: calc(12px * var(--zoom, 1)); }
+.hp-title { color: var(--text-3); font-weight: 500; }
+.hp-title, .hp-foot, .hp-row { padding-left: calc(16 * var(--u)); }
+.hp-note, .hp-error, .hp-time { background: var(--bg-panel); padding-left: calc(50 * var(--u)); }
+.hp-lines { background: var(--bg-deep); padding-left: calc(50 * var(--u)); font-size: calc(12px * var(--zoom, 1)); line-height: calc(20 * var(--u)); }
+.hp-act:disabled { color: var(--text-dim); }
+.host-square.up { background: var(--state-working); }
+.hp-foot + .hp-foot { border-top: 1px solid var(--rule); }
+.host-more { visibility: hidden; }
+.host-head:is(:hover,:focus-within) .host-more { visibility: visible; }
+.hp-row:has(.hp-act:is(:hover,:focus-visible):not(:disabled)) { background: var(--bg-panel); box-shadow: inset 2px 0 0 var(--text-2); }
+
+.host-head .host-head-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.host-head .host-fold { min-width: 0; }
+.host-head:not(:hover,:focus-within) [aria-expanded="true"] .host-chevron { visibility: hidden; }
+.hp-row:has(.host-square.off) .hp-name { color: var(--text-3); }
+.hp-row:has(.host-square.failed) .hp-state { color: var(--error-text); }
+.host-section:has(.offline) .host-head-name { color: var(--text-dim); }
+.host-cell:has(.dot.error) .host-name { color: var(--text-dim); }
+.hosts-panel .cp-acts { padding-left: calc(34 * var(--u)); background: var(--bg-panel); }

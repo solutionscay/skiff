@@ -1,3 +1,4 @@
+import { hostFields } from "../platform/invoke";
 /**
  * The selected Host's data plane (`skiff-host`): it serves projects and Git,
  * apart from skiffd's sessions and terminals. The page checks it on its own
@@ -56,6 +57,9 @@ let timer: number | undefined;
 let checking = false;
 /** The last reload failed: the next ready check reads again. */
 let unfinished = false;
+
+hostFields(() => ({ epoch: 0, last: null as DataStatus | null, unfinished: false }), () => ({ epoch, last, unfinished }),
+  (f) => { ({ epoch, last, unfinished } = f); });
 
 /** One check, and what it changes. Returns the status, or null when the check failed. */
 export async function checkDataPlane(hooks: DataHooks): Promise<DataStatus | null> {

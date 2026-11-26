@@ -131,16 +131,19 @@ test("OSC 52 follows the live identity Rust checks on each write, not the loaded
   assert.deepEqual(t3.copied, []);
 });
 
-test("picking a Host saves it, then reloads the page; the shown Host does nothing", async () => {
-  const h = hosts({ selected: null, hosts: [devbox] });
-  await h.mod.loadHosts();
-  h.mod.__pick(null);
-  await flush();
-  assert.equal(h.calls.filter(([c]) => c === "select_host").length, 0);
-  h.mod.__pick("h_dev");
-  await flush();
-  assert.equal(JSON.stringify(h.calls.at(-1)), JSON.stringify(["select_host", { id: "h_dev" }]));
-  assert.equal(h.reloads(), 1);
+test("flat names qualify only cross-Host collisions and distinguish old duplicates", async () => {
+  const { flatNames } = await import("../src/platform/hostNames.ts");
+  const a = {entry:1,host:"dev",id:"aa11",name:"shell",path:"/work"};
+  const b = {...a,id:"aa22"};
+  const c = {...a,entry:2,host:"build"};
+  const d = {...a,id:"aa33",name:"lint"};
+  const e = {...d,id:"aa44",path:"/tools"};
+  const unique = {...a,id:"aa55",name:"release"};
+  const labels = flatNames([a,b,c,d,e,unique]);
+  assert.deepEqual([a,b,c,d,e,unique].map(x => labels.get(x)),[
+    "dev:shell · aa11","dev:shell · aa22","build:shell","lint · /work","lint · /tools","release",
+  ]);
+  assert.equal(flatNames([a]).get(a),"shell");
 });
 
 test("a lost link turns input off once and starts one recovery", async () => {
@@ -271,6 +274,32 @@ test("a late ledger reply and terminal subscription cannot reach the next connec
   await assert.rejects(pending, /Host changed/);
   assert.equal(bridge.accepts(subscription), false);
   assert.equal(bridge.accepts(next), true);
-  listeners.get("skiff:host-removed")!({ payload: next });
+  bridge.forgetRoute(next.entry);
   assert.equal(bridge.accepts(next), false);
+});
+
+test("disconnect removes only that Host's panes and protects the remaining connection", async () => {
+  const routes = [1, 2].map(entry => ({ entry, host: "host-" + entry, endpoint: entry === 1 ? null : "ssh", generation: 1 }));
+  const disposed: number[] = [];
+  const commands: string[] = [];
+  let shown = routes[0];
+  const mod = moduleFromSource("../src/app/connections.ts", {
+    "../platform/invoke": {
+      registerRoute() {}, routeOf: (id: number) => routes.find(r => r.entry === id),
+      pageRoute: () => shown,
+      invokeAt: async (_route: unknown, command: string) => commands.push(command),
+      withinHost(route: typeof shown, run: () => void) { const old = shown; shown = route; try { run(); } finally { shown = old; } },
+      forgetRoute() {},
+    },
+    "../terminal/terminalState": { panes: new Map([["same-id", {stream: 0, term: { dispose: () => disposed.push(shown.entry) }, el: { remove() {} }}]]) },
+    "./render": { scheduleRender() {} },
+  }, { clearTimeout, window: { dispatchEvent() {} }, Event }, "\nexports.add = add;");
+  const [a,b] = routes.map(r => mod.add(r));
+  a.phase = b.phase = "up";
+  await mod.disconnect(b);
+  await mod.disconnect(a);
+  assert.deepEqual(commands, ["disconnect_host"]);
+  assert.deepEqual(disposed, [2]);
+  assert.equal(mod.connection(1), a);
+  assert.equal(mod.connection(2), undefined);
 });

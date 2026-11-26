@@ -1,3 +1,4 @@
+import { hostFields } from "../platform/invoke";
 /** The selected Host's capabilities. Every session and terminal call goes
  *  through `hostInvoke`, which refuses a call the Host does not offer, and
  *  every surface asks `hostCan` before it offers an action. The Host
@@ -118,6 +119,9 @@ const OFFERS: Record<HostCap, MessageKey> = {
 /** `name@major` of the selected Host. `null` until the first answer. */
 let caps: Set<string> | null = null;
 let loading: Promise<void> | null = null;
+
+hostFields(() => ({ caps: null as Set<string> | null, loading: null as Promise<void> | null }), () => ({ caps, loading }),
+  (f) => { ({ caps, loading } = f); });
 
 /** Asks the selected Host again: at launch and after the daemon reloads. */
 export function loadHostCaps(): Promise<void> {

@@ -10,7 +10,7 @@ export function sameRoute(a: HostRoute | null, b: HostRoute | null): boolean {
   return !!a && !!b && a.entry === b.entry && a.endpoint === b.endpoint && a.host === b.host && a.generation === b.generation;
 }
 
-/** A Host switch reloads the document. Only a reconnect can advance this page's route. */
+/** Only a new connection to the same endpoint can advance its generation. */
 export function advances(current: HostRoute, next: HostRoute): boolean {
   return current.entry === next.entry && current.endpoint === next.endpoint && next.generation > current.generation;
 }

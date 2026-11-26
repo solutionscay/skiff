@@ -2,6 +2,7 @@
 # A Host-owned path, process, project, file, ledger or Skipper operation belongs
 # behind HostConnection; a new direct user must be classified here deliberately.
 [local]
+"apps/desktop/src/app/connections.ts" = "Manages the window’s Host connection entries, subscriptions and retry timers."
 "apps/desktop/src/app/actions.ts" = "Runs local Open with actions on fetched copies, never a Host path."
 "apps/desktop/src/app/badge.ts" = "Shows the waiting count on this desktop's app icon."
 "apps/desktop/src/app/commands.ts" = "Bridges UI commands and window events to the selected Host."

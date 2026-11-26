@@ -7,6 +7,7 @@
  * Writes only. A query (`?`) would hand the clipboard to whatever runs in
  * the pane, so it gets no answer.
  */
+import { pageRoute } from "../platform/invoke";
 import type { Terminal } from "@xterm/xterm";
 import { copyText } from "../platform/clipboard";
 import { showError } from "../ui/alerts";
@@ -18,7 +19,9 @@ const MAX = 8 << 20;
 
 /** `sid`: the session in the terminal, for the clipboard trace. */
 export function handleOsc52(term: Terminal, sid: string | null = null) {
+  const owner = pageRoute()?.entry;
   term.parser.registerOscHandler(52, (data) => {
+    if (pageRoute()?.entry !== owner) return true;
     const payload = data.slice(data.indexOf(";") + 1);
     if (!data.includes(";") || !payload || payload === "?" || payload.length > MAX) return true;
     let text: string;

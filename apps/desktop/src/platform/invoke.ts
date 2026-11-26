@@ -6,70 +6,107 @@ export { Channel, type InvokeArgs } from "@tauri-apps/api/core";
 export type { HostRoute };
 export interface HostEvent<T> { route: HostRoute; value: T }
 
+const routes = new Map<number, HostRoute>();
 let current: HostRoute | null = null;
-let removed = false;
 let starting: Promise<void> | undefined;
-const bindings = new Set<(host: string) => void>();
+const bindings = new Set<(key: number) => void>();
+const forget = new Set<(key: number) => void>();
 
 export const pageRoute = () => current;
-export const accepts = (route: HostRoute | null) => !removed && sameRoute(route, current);
+export const accepts = (r: HostRoute | null) => !!r && routes.has(r.entry) && sameRoute(r, current);
+export const routeOf = (entry: number) => routes.get(entry);
+export const allRoutes = () => [...routes.values()];
 
+let visible: number | undefined;
+export const foreground = () => current?.entry === visible;
+export function showRoute(route: HostRoute) {
+  visible = route.entry;
+  bind(route);
+}
 function bind(route: HostRoute) {
-  if (removed) return;
-  if (current && !advances(current, route)) return;
-  if (current?.host && current.host !== route.host) {
-    removed = true;
-    location.reload();
-    return;
-  }
-  current = route;
-  if (route.host !== null) for (const run of bindings) run(route.host);
+  current = routes.get(route.entry) ?? route;
+  for (const bind of bindings) bind(current.entry);
 }
 
-/** The outer key is the accepted Host. Inside each store, IDs stay Host-local. */
+/** A synchronous read or update of another Host's cached tree. */
+export function withinHost<T>(route: HostRoute, read: () => T): T {
+  const previous = current;
+  bind(route);
+  try { return read(); }
+  finally { if (previous) bind(previous); }
+}
+
+export function registerRoute(route: HostRoute) {
+  const old = routes.get(route.entry);
+  if (!old || advances(old, route)) routes.set(route.entry, route);
+  if (current?.entry === route.entry) current = routes.get(route.entry)!;
+}
+
+export function forgetRoute(entry: number) {
+  routes.delete(entry);
+  for (const remove of forget) remove(entry);
+}
+
 export function hostStore<T>(create: () => T, select: (store: T) => void): void {
-  const pending = create();
-  const hosts = new Map<string, T>();
-  const bindHost = (host: string) => {
-    const store = hosts.get(host) ?? (hosts.size ? create() : pending);
-    hosts.set(host, store);
-    select(store);
+  const initial = create();
+  const stores = new Map<number, T>();
+  let first = true;
+  const bind = (key: number) => {
+    if (!stores.has(key)) {
+      stores.set(key, first ? initial : create());
+      first = false;
+    }
+    select(stores.get(key)!);
   };
-  select(pending);
-  bindings.add(bindHost);
-  if (current?.host) bindHost(current.host);
+  select(initial);
+  bindings.add(bind);
+  forget.add((key) => stores.delete(key));
+  if (current) bind(current.entry);
 }
 
 async function start() {
-  let newest: HostRoute | null = null;
-  await listen<HostRoute>("skiff:host-removed", ({ payload }) => {
-    if (current?.entry === payload.entry) removed = true;
-  });
   await listen<HostRoute>("skiff:host-route", ({ payload }) => {
-    if (current) bind(payload);
-    else newest = payload;
+    if (routes.has(payload.entry)) registerRoute(payload);
   });
-  bind(await send<HostRoute>("host_route"));
-  if (newest) bind(newest);
+  const route = await send<HostRoute>("host_route");
+  registerRoute(route);
+  showRoute(route);
+}
+
+const CHANGED = "The Host changed. The page subscribes again.";
+const connectionCommands = new Set(["daemon_status", "restart_daemon", "reload_daemon", "update_daemon"]);
+
+export async function invokeAt<T = void>(route: HostRoute, cmd: string, args?: InvokeArgs): Promise<T> {
+  if (!sameRoute(route, routes.get(route.entry) ?? null)) throw new Error(CHANGED);
+  const payload = { ...args, route };
+  if (connectionCommands.has(cmd)) {
+    const reply = await send<HostEvent<T>>(cmd, payload);
+    if (!routes.has(route.entry)) throw new Error(CHANGED);
+    registerRoute(reply.route);
+    if (!sameRoute(reply.route, routes.get(route.entry)!)) throw new Error(CHANGED);
+    return reply.value;
+  }
+  const result = await send<T>(cmd, payload);
+  if (!sameRoute(route, routes.get(route.entry) ?? null)) throw new Error(CHANGED);
+  return result;
 }
 
 export async function invoke<T = void>(cmd: string, args?: InvokeArgs, hostId?: string): Promise<T> {
   if (!current) await (starting ??= start());
   const route = current!;
-  if (removed || (hostId !== undefined && hostId !== route.host)) throw new Error(CHANGED);
-  const payload = { ...args, route };
-  if (connectionCommands.has(cmd)) {
-    const reply = await send<HostEvent<T>>(cmd, payload);
-    bind(reply.route);
-    if (!accepts(reply.route)) throw new Error(CHANGED);
-    return reply.value;
-  }
-  const result = await send<T>(cmd, payload);
-  if (cmd === "select_host" || cmd === "accept_host_identity") return result;
-  if (cmd === "list_hosts" && !removed && route.entry === current?.entry && !accepts(route)) return invoke<T>(cmd, args);
-  if (!accepts(route)) throw new Error(CHANGED);
-  return result;
+  if (hostId !== undefined && hostId !== route.host) throw new Error(CHANGED);
+  const value = await invokeAt<T>(route, cmd, args);
+  if (current?.entry !== route.entry) throw new Error(CHANGED);
+  return value;
 }
 
-const CHANGED = "The Host changed. The page subscribes again.";
-const connectionCommands = new Set(["daemon_status", "restart_daemon", "reload_daemon", "update_daemon"]);
+/** Modules with mutable scalar fields save them alongside their Host-local maps. */
+export function hostFields<T extends object>(make: () => T, read: () => T, write: (fields: T) => void) {
+  let previous: T | undefined;
+  hostStore(make, fields => {
+    if (fields === previous) return;
+    if (previous) Object.assign(previous, read());
+    previous = fields;
+    write(fields);
+  });
+}

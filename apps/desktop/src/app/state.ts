@@ -11,13 +11,13 @@ export const DEFAULT_ACCENT = "var(--project-default)";
 export let sessions: Map<string, SessionInfo>;
 
 /** Selected worktree path per project name. */
-export const selectedWorktree = new Map<string, string>();
-export const collapsed = new Set<string>();
+export let selectedWorktree: Map<string, string>;
+export let collapsed: Set<string>;
 
-export const removeErrors = new Map<string, string>();
+export let removeErrors: Map<string, string>;
 
 /** Worktrees with a remove in flight. */
-export const removing = new Set<string>();
+export let removing: Set<string>;
 
 /**
  * When each session came into its state, as this app saw the change: a
@@ -61,6 +61,15 @@ function savedFontSize(): number {
 }
 
 /** State that several modules reassign. */
+const appearance = {
+  themes: [] as TerminalTheme[],
+  /** `[appearance] theme`: a theme id, or null for Harbor. It colors the app and every terminal without its own. */
+  appTheme: null as string | null,
+  /** Settings shows: the app wears the app theme, not the selected project's. */
+  settingsShown: false,
+  fontSize: savedFontSize(),
+};
+
 const makeState = () => ({
   /** The pane that gets the keys. Always one of the shown sessions, or null. */
   focused: null as string | null,
@@ -123,19 +132,26 @@ const makeState = () => ({
 
   /** Numbers the groups not saved yet. */
   tmpSeq: 0,
-  themes: [] as TerminalTheme[],
-  /** `[appearance] theme`: a theme id, or null for Harbor. It colors the app and every terminal without its own. */
-  appTheme: null as string | null,
-  /** Settings shows: the app wears the app theme, not the selected project's. */
-  settingsShown: false,
-  fontSize: savedFontSize(),
+  get themes() { return appearance.themes; },
+  set themes(value: typeof appearance.themes) { appearance.themes = value; },
+  get appTheme() { return appearance.appTheme; },
+  set appTheme(value: typeof appearance.appTheme) { appearance.appTheme = value; },
+  get settingsShown() { return appearance.settingsShown; },
+  set settingsShown(value: typeof appearance.settingsShown) { appearance.settingsShown = value; },
+  get fontSize() { return appearance.fontSize; },
+  set fontSize(value: typeof appearance.fontSize) { appearance.fontSize = value; },
+
 });
 
 export let S: ReturnType<typeof makeState>;
 hostStore(() => ({
+  selectedWorktree: new Map<string, string>(),
+  collapsed: new Set<string>(),
+  removeErrors: new Map<string, string>(),
+  removing: new Set<string>(),
   state: makeState(), sessions: new Map<string, SessionInfo>(), stateSince: new Map<string, number>(),
   gone: new Set<string>(), born: new Set<Set<string>>(),
 }), (store) => {
   S = store.state;
-  ({ sessions, stateSince, gone, born } = store);
+  ({ sessions, stateSince, gone, born, selectedWorktree, collapsed, removeErrors, removing } = store);
 });

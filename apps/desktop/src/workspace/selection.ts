@@ -61,7 +61,7 @@ export function keepRow(id: string, group?: string | null) {
 
 /** Shift+Up/Down: the selection is the rows from the anchor to the row the cursor moves to. */
 export function extendSelection(dir: 1 | -1, el: HTMLElement) {
-  const order = [...document.querySelectorAll<HTMLElement>("#sidebar-scroll button.session-row")].filter((r) => r.dataset.session);
+  const order = [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .focused-host button.session-row")].filter((r) => r.dataset.session);
   const to = order.indexOf(el) + dir;
   if (to < 0 || to >= order.length) return;
   const anchor = selectAnchor && order.some((r) => r.dataset.session === selectAnchor) ? selectAnchor : el.dataset.session!;
@@ -76,7 +76,7 @@ export function extendSelection(dir: 1 | -1, el: HTMLElement) {
 
 /** Shift+click: add every row from the anchor to `id`, in the order shown. */
 export function selectRange(id: string) {
-  const order = [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .session-row")]
+  const order = [...document.querySelectorAll<HTMLElement>("#sidebar-scroll .focused-host .session-row")]
     .map((r) => r.dataset.session!)
     .filter(Boolean);
   const from = [selectAnchor, S.focused].find((x) => x && order.includes(x)) ?? id;

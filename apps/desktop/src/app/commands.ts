@@ -1,3 +1,5 @@
+import { acrossTrees, namesFor } from "./flatNames";
+import { connection, focusConnection } from "./connections";
 import { runAction, openProjectMenu } from "./actions";
 import { settings } from "./panels";
 import { showAbout } from "../ui/infoDialogs";
@@ -272,49 +274,61 @@ function subLeaves(entries: MenuEntry[], path: string[]): { path: string[]; run:
 
 export const switcher = createSwitcher(() => {
   const items: SwitchItem[] = paletteCommands();
+  const sessionLabel = namesFor("session");
+  const projectLabel = namesFor("project");
+  const worktreeLabel = namesFor("worktree");
+  items.push(...acrossTrees((route) => {
+    const rows: SwitchItem[] = [];
+    const choose = (run: () => void) => () => {
+      const c = connection(route.entry);
+      if (c?.phase === "up") { focusConnection(c,false); run(); }
+    };
   const found: SwitchItem[] = [...sessions.values()].sort(bySessionPriority).map((s) => {
+    const title = sessionLabel(s.id,taskTitle(s));
     const at = place(s);
     const where = at ? `${at.project.name} / ${branchName(at.worktree)}` : `other / ${s.cwd}`;
     return {
       kind: "session",
       color: accent(at?.project),
-      primary: `${agentName(s)} · ${taskTitle(s)}`,
+      primary: `${agentName(s)} · ${title}`,
       secondary: where,
       state: s.state,
       meta: s.state === "waiting" || s.state === "idle" ? t(`state.${s.state}`) : "",
       // The state matches by its shown word and by its English id.
-      text: `${where} ${agentName(s)} ${taskTitle(s)} ${t(`state.${s.state}`)} ${s.state}`,
-      run: () => revealSession(s.id),
+      text: `${where} ${agentName(s)} ${title} ${t(`state.${s.state}`)} ${s.state}`,
+      run: choose(() => revealSession(s.id)),
     };
   });
-  items.push(...found);
+  rows.push(...found);
   for (const p of S.closedProjects) {
-    const primary = t("palette.openProject", { name: p.name });
+    const primary = t("palette.openProject", { name: projectLabel(p.path,p.name) });
     const secondary = t("palette.closed");
-    items.push({
+    rows.push({
       kind: "command",
       color: accent(p),
       primary,
       secondary,
       meta: "",
       text: `${primary} ${secondary}`,
-      run: () => void openClosedProject(p),
+      run: choose(() => void openClosedProject(p)),
     });
   }
   // A plain folder has no worktrees to pick: its project entry opens it.
   for (const p of S.projects.filter((p) => !isFolder(p))) {
     for (const w of p.worktrees) {
-      items.push({
+      rows.push({
         kind: "worktree",
         color: accent(p),
-        primary: branchName(w),
-        secondary: p.name,
+        primary: worktreeLabel(w.path,branchName(w)),
+        secondary: projectLabel(p.path,p.name),
         meta: tn("palette.sessions", worktreeSessions(w).length),
-        text: `${p.name} / ${branchName(w)} ${t("switcher.kind.worktree")} worktree`,
-        run: () => selectWorktree(p, w),
+        text: `${p.name} / ${worktreeLabel(w.path,branchName(w))} ${t("switcher.kind.worktree")} worktree`,
+        run: choose(() => selectWorktree(p, w)),
       });
     }
   }
+    return rows;
+  }));
   return items;
 }, refocusTerminal);
 

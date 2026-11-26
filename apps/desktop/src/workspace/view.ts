@@ -1,3 +1,4 @@
+import { hostStore } from "../platform/invoke";
 /** What the terminal area shows and which pane has the keys. */
 import { noteSelected } from "./profile";
 import { coordinatorOf, isSkiffAgent } from "../app/skiffAgent";
@@ -130,7 +131,7 @@ export function showGroup(id: string, pick = false, focus?: string) {
     return;
   }
   if (pick) {
-    requestAnimationFrame(() => document.querySelector<HTMLElement>(`#sidebar-scroll .group-pick[data-group="${id}"]`)?.focus());
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`#sidebar-scroll .focused-host .group-pick[data-group="${id}"]`)?.focus());
   }
 }
 
@@ -427,7 +428,7 @@ function pairUp(with_: string, ids: string[]) {
   showGroup(g.id, false, ids[0]);
 }
 
-const rowsIn = (sel: string) => [...document.querySelectorAll<HTMLElement>(`#sidebar-scroll ${sel}`)];
+const rowsIn = (sel: string) => [...document.querySelectorAll<HTMLElement>(`#sidebar-scroll .focused-host ${sel}`)];
 
 /** The worktree a worktree row or a bare project's row stands for. */
 const rowWorktree = (el: HTMLElement) => el.querySelector<HTMLElement>(".wt-pick[data-wt], .wt-plus[data-wt]")?.dataset.wt ?? null;
@@ -599,7 +600,8 @@ export function dragSessions(e: MouseEvent, ids: string[]) {
  * in its group if it has one. No session: nothing has the keys.
  */
 /** The session last focused in each worktree, by path. A return to the worktree opens it again. */
-const lastFocus = new Map<string, string>();
+let lastFocus: Map<string,string>;
+hostStore(() => new Map<string,string>(), store => { lastFocus = store; });
 
 /** Notes where the keys are before a project or worktree switch moves them. */
 function noteFocus() {

@@ -1,3 +1,4 @@
+import { hostFields } from "../platform/invoke";
 /**
  * The Skippers view: the side panel's second view, beside the tree. One flat
  * list: the Skiff agent (Admiral) first, then each fleet Skipper and project
@@ -218,6 +219,9 @@ window.addEventListener("keyup", syncMods, true);
 window.addEventListener("blur", () => document.body.classList.remove("mods-held"));
 
 let kept = new Map<string, [sig: string, row: HTMLElement]>();
+
+hostFields(() => ({ kept: new Map<string,[string,HTMLElement]>() }), () => ({ kept }),
+  (f) => { ({ kept } = f); });
 
 /** Draws the Skippers list into the side panel. Unchanged rows stay. */
 export function renderSkippers(side: HTMLElement) {

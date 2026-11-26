@@ -19,7 +19,9 @@ The desktop routes each request to a connection entry. Hello binds that entry
 to its HostId. Each session reconnect advances the entry's generation. Desktop
 IPC carries this route so the page can discard late replies and events.
 Session, group and ledger IDs are local to their Host. The Host protocol uses
-the same IDs and messages as before.
+the same IDs and messages as before. The desktop remembers connected endpoints
+and opens their links again at launch. It reads each tree from its Host.
+Disconnecting removes that tree and its panes from the window. Sessions keep running.
 
 The historical M0–M6 sections below explain the contract and compatibility
 decisions that shipped; they are not an unreleased roadmap.

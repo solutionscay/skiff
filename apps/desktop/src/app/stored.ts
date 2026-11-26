@@ -70,7 +70,8 @@ export function loadPlace(host: string | null, identity?: string): Partial<Place
 const identityPlaceKey = (id: string) => `skiff.place.identity.${id}`;
 
 export function trackPlace(host: string | null, identity?: string) {
-  trackedPlaceKey ??= identity ? identityPlaceKey(identity) : placeKey(host);
+  trackedPlaceKey = identity ? identityPlaceKey(identity) : placeKey(host);
+  placeSig = "";
 }
 
 export function savePlace(p: Place) {

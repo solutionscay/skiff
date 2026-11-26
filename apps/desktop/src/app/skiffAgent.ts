@@ -1,3 +1,4 @@
+import { hostFields } from "../platform/invoke";
 import { invoke } from "../platform/invoke";
 import { showError } from "../ui/alerts";
 import { updateDaemon } from "./daemon";
@@ -240,7 +241,7 @@ export function skipperCreated(s: SessionInfo) {
 }
 
 /** Project Skipper sessions that a takeover hands to a fleet Skipper, and the fleet. */
-const handedTo = new Map<string, string>();
+let handedTo = new Map<string, string>();
 
 /**
  * Session `id` ends. When it has the keys, they go to the fleet Skipper that
@@ -427,7 +428,7 @@ function noteAsk(id: string, error: string | null) {
 const RETRY_WAITS = [5_000, 15_000, 45_000];
 
 /** For each Skipper whose watcher is failed or missing: the tries so far, and when the next one may run. */
-const retries = new Map<string, { tries: number; next: number }>();
+let retries = new Map<string, { tries: number; next: number }>();
 let retryTimer = 0;
 
 /** True after Skiff's own tries to bring back this Skipper's watcher failed. */
@@ -627,7 +628,7 @@ function projectSkipperName(s: SessionInfo): string {
 }
 
 /** Restored panes Skiff already asked skiffd to continue. Once each. */
-const continued = new Set<string>();
+let continued = new Set<string>();
 
 /**
  * Runs on each render. A restored Skiff agent pane continues the last
@@ -664,6 +665,9 @@ export function syncSkiffAgent() {
 /** The name the last render saw, so a change from Settings shows. */
 let shownName: string | null = null;
 let shownWord: string | null = null;
+
+hostFields(() => ({ shownName: null as string | null, shownWord: null as string | null, awaited: null as string | null, continued: new Set<string>(), retries: new Map<string,{tries:number;next:number}>(), handedTo: new Map<string,string>(), startError: null as string | null, remoteSeen: {id:"",at:0}, watchAsked: {id:"",at:0}, daemon: {protocol:null as number | null,at:0} }), () => ({ shownName, shownWord, awaited, continued, retries, handedTo, startError, remoteSeen, watchAsked, daemon }),
+  (f) => { ({ shownName, shownWord, awaited, continued, retries, handedTo, startError, remoteSeen, watchAsked, daemon } = f); });
 
 function rename(id: string, name: string) {
   hostInvoke<SessionInfo>("session_lifecycle", "rename_session", { session: id, name })

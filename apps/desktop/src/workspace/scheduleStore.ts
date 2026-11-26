@@ -1,3 +1,4 @@
+import { accepts, hostFields, pageRoute } from "../platform/invoke";
 /**
  * The selected Host's schedules (#262, `schedules@2`), each with its newest
  * runs. Read with the ledger: a run, an edit and a pause each change the
@@ -53,6 +54,9 @@ export let scheduleGeneration = 0;
 export let scheduleError: string | null = null;
 let data = "";
 let asked = 0;
+hostFields(() => ({ schedules: [] as Schedule[], scheduleGeneration: 0, scheduleError: null as string | null, data: "", asked: 0 }),
+  () => ({schedules, scheduleGeneration, scheduleError, data, asked}),
+  state => { ({schedules, scheduleGeneration, scheduleError, data, asked} = state); });
 
 /** Reads the schedules again. A Host without `schedules@2` has none. */
 export async function loadSchedules() {
@@ -65,6 +69,7 @@ export async function loadSchedules() {
     }
     return;
   }
+  const route = pageRoute();
   const mine = ++asked;
   const at = dataEpoch();
   let next: Schedule[] = [];
@@ -74,7 +79,7 @@ export async function loadSchedules() {
   } catch (e) {
     err = String(e);
   }
-  if (mine !== asked || at !== dataEpoch()) return;
+  if ((route && !accepts(route)) || mine !== asked || at !== dataEpoch()) return;
   const now = JSON.stringify([next, err]);
   if (now === data) return;
   data = now;

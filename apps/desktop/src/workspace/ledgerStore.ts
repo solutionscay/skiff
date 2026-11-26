@@ -1,3 +1,4 @@
+import { hostFields } from "../platform/invoke";
 import { accepts, hostStore, pageRoute } from "../platform/invoke";
 /**
  * The Ledger's rows as the selected Host gives them, and their index. Nothing
@@ -93,6 +94,9 @@ export let error: string | null = null;
 export let loaded = false;
 /** The last read asked for. Only its reply shows. */
 let asked = 0;
+
+hostFields(() => ({ rows: [] as Entry[], generation: 0, rowData: "", indexedGeneration: -1, loaded: false, error: null as string | null, asked: 0 }), () => ({ rows, generation, rowData, indexedGeneration, loaded, error, asked }),
+  (f) => { ({ rows, generation, rowData, indexedGeneration, loaded, error, asked } = f); });
 
 /** Reads the rows again. A reply shows only when no read was asked since and
  *  the data connection it came on is still the one on screen. */

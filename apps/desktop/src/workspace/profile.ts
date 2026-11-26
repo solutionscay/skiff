@@ -77,4 +77,4 @@ export const editWorkspace = () => dialog(false);
 // ── Menus and the status bar ───────────────────────────────────────────────
 
 const status = createStatus(state, transitions, { home, newWorkspace, editWorkspace });
-export const { recentWorkspaceEntries, workspaceNotice, renderWorkspaceStatus, startWorkspaces } = status;
+export const { recentWorkspaceEntries, workspaceNotice, renderWorkspaceStatus, startWorkspaces, restoreWorkspace } = status;
