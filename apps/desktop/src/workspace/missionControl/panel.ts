@@ -4,7 +4,9 @@ import { stateIcon } from "../../appearance/stateIcon";
 import { DEFAULT_THEME, isLight } from "../../appearance/colors";
 import { themeIdFor, xtermTheme } from "../../appearance/themes";
 import { keyLabel } from "../../app/keys";
-import { hostCan, hostInvoke } from "../../app/hostCaps";
+import { liveRoute } from "../../app/attention";
+import { hostCan } from "../../app/hostCaps";
+import { invokeAt, pageRoute } from "../../platform/invoke";
 import { skiffAgentName, skiffAgentSession } from "../../app/skiffAgent";
 import { S, sessions } from "../../app/state";
 import { place } from "../../app/stateQueries";
@@ -17,7 +19,7 @@ import { refill } from "./render";
 import type { BoardState } from "../missionControl";
 
 export function createPanel(missionState: BoardState, panel: HTMLElement, screen: HTMLElement, hooks: {
-  saveKept: () => void; drawTicks: () => void; cardName: (s: SessionInfo) => string;
+  onToggle: () => void; saveKept: () => void; drawTicks: () => void; cardName: (s: SessionInfo) => string;
   stateWord: (s: SessionInfo) => string; ownerOf: (owner: string, admiral: SessionInfo | null) => SessionInfo | null;
 }) {
   const { saveKept, drawTicks, cardName, stateWord, ownerOf } = hooks;
@@ -51,7 +53,7 @@ export function createPanel(missionState: BoardState, panel: HTMLElement, screen
   foldBtn.type = "button";
   foldBtn.tabIndex = -1;
   foldBtn.innerHTML = FOLD_SVG;
-  foldBtn.addEventListener("click", togglePanel);
+  foldBtn.addEventListener("click", hooks.onToggle);
 
   /** The panel: its nodes stay; a part is replaced only when its text changes. Folded, only the head updates. */
   function drawPanel() {
@@ -123,16 +125,18 @@ export function createPanel(missionState: BoardState, panel: HTMLElement, screen
   /** Reads the lit card's screen. One read a second, for that card only. */
   async function read() {
     const id = missionState.screenFor;
-    if (!id || missionState.reading || !missionState.panelOpen || missionState.paused) return;
+    const route = pageRoute();
+    if (!route || !id || missionState.reading || !missionState.panelOpen || missionState.paused) return;
     missionState.reading = true;
     try {
-      const lines = await hostInvoke<string[]>("session_screen", "session_screen", { session: id, rows: ROWS });
-      if (missionState.paused || missionState.screenFor !== id) return;
+      if (!hostCan("session_screen")) throw new Error(t("hostCaps.refusal", { what: t("hostCaps.session_screen") }));
+      const lines = await invokeAt<string[]>(route, "session_screen", { session: id, rows: ROWS });
+      if (missionState.paused || missionState.screenFor !== id || !liveRoute(route)) return;
       const text = lines.join("\n");
       if (screen.textContent !== text) screen.textContent = text;
       screen.classList.remove("note");
     } catch (e) {
-      if (missionState.paused || missionState.screenFor !== id) return;
+      if (missionState.paused || missionState.screenFor !== id || !liveRoute(route)) return;
       // An older skiffd does not know the request.
       screen.textContent = /unknown variant|bad request/.test(String(e)) ? t("mission.updateDaemon") : String(e);
       screen.classList.add("note");

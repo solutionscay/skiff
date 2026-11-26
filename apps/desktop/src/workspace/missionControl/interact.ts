@@ -1,7 +1,6 @@
 /** Pointer pan, zoom and selection on the board. */
 import type { BoardState } from "../missionControl";
 import * as G from "../missionLayout";
-import * as T from "./terminal";
 import { ctxMenu } from "../../ui/contextMenu";
 import { closeMission, goToSession } from "../missionMotion";
 import { type Action, actionFor } from "../../app/keys";
@@ -98,7 +97,7 @@ export function attachPointer(missionState: BoardState, canvas: HTMLElement, roo
   }
 
   export function createNavigation(missionState: BoardState, dom: { canvas: HTMLElement; world: HTMLElement; zoomLevel: HTMLElement; zoomBar: HTMLElement; find: HTMLElement; root: HTMLElement }, hooks: {
-    appZoom: () => number; zoomBtn: (text: string, title: string, run: () => void) => HTMLElement;
+    open: (id: string, max: boolean) => void; appZoom: () => number; zoomBtn: (text: string, title: string, run: () => void) => HTMLElement;
     drawTicks: () => void; drawPanel: () => void; read: () => Promise<void>;
 }) {
   const { canvas, world, zoomLevel, zoomBar, find, root } = dom;
@@ -157,23 +156,21 @@ export function attachPointer(missionState: BoardState, canvas: HTMLElement, roo
   // ---- The light, and the moves ----
 
   /** `pan`: bring the card into view, for keys. The pointer is already on it. */
-  function light(id: string | null, pan = true) {
-    if (!id) return;
+  function light(id: string | null, pan = true, readScreen = true) {
+    if (!id || !missionState.cards.has(id)) return;
     missionState.lit = id;
     for (const [k, el] of missionState.cards) el.classList.toggle("lit", k === id);
     for (const [k, el] of missionState.clusters) el.classList.toggle("lit", k === id);
-    for (const el of T.faceLayer.children) el.classList.toggle("lit", (el as HTMLElement).dataset.id === id);
+    for (const el of world.querySelectorAll(".mission-face")) el.classList.toggle("lit", (el as HTMLElement).dataset.id === id);
     find.style.setProperty("--pc", missionState.cards.get(id)?.style.getPropertyValue("--pc") ?? missionState.clusters.get(id)?.style.getPropertyValue("--pc") ?? "");
     if (pan) panTo(id);
     drawPanel();
-    void read();
+    if (readScreen) void read();
   }
-
-  const isCluster = (id: string) => id.startsWith("project:") || id.startsWith("fleet:");
 
   /** The next waiting card after the lit one, around the board. */
   function nextWaitingCard(): string | null {
-    const ids = [...missionState.cards].filter(([id, el]) => el.classList.contains("waiting") && !isCluster(id)).map(([id]) => id);
+    const ids = [...missionState.cards].filter(([, el]) => el.classList.contains("waiting")).map(([id]) => id);
     if (!ids.length) return null;
     const i = ids.indexOf(missionState.lit ?? "");
     return ids[(i + 1) % ids.length];
@@ -182,13 +179,13 @@ export function attachPointer(missionState: BoardState, canvas: HTMLElement, roo
   /** The lit card's session. `null` with nothing to go to. */
   function litSession(): string | null {
     const id = missionState.lit;
-    return id && missionState.m.sess.has(id) ? id : null;
+    return id && missionState.cards.has(id) ? id : null;
   }
 
   /** To the lit card's session, maximized or not. */
   function go(max = false) {
     const id = litSession();
-    if (id) closeMission(id, max);
+    if (id) hooks.open(id, max);
   }
 
   /** The board menu: the layout as a whole. */
@@ -208,7 +205,7 @@ export function attachPointer(missionState: BoardState, canvas: HTMLElement, roo
   }
 
 
-    return { applyView, fit, openView, zoomBy, rectOf, light, nextWaitingCard, litSession, go, openMenu };
+    return { applyView, fit, openView, zoomBy, light, nextWaitingCard, go, openMenu };
   }
 
   export function createKeyboard(missionState: BoardState, dom: { root: HTMLElement; find: HTMLElement; search: HTMLInputElement }, hooks: {

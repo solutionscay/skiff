@@ -116,8 +116,7 @@ export function closeMission(go?: string, max = false) {
 
 /** Ctrl+Shift+Enter here: the lit session, maximized. */
 export function maximizeLit() {
-  const lit = board.lit();
-  if (lit) closeMission(lit, true);
+  board.go(true);
 }
 
 /** To a session: from the board, it closes on that session; else the session shows. */

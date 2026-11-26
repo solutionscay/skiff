@@ -3,8 +3,6 @@ import type { SessionInfo } from "../../platform/types";
 import { agentIcon } from "../../appearance/agentIcon";
 import { stateIcon } from "../../appearance/stateIcon";
 import { childrenNote, stateLabel, statusNote } from "../programStatus";
-import { hostCan } from "../../app/hostCaps";
-import { hostName } from "../../app/hosts";
 import { accent, place } from "../../app/stateQueries";
 import { h } from "../../ui/dom";
 import { ledgerTitle } from "../ledger";
@@ -15,7 +13,7 @@ import { t, tn } from "../../i18n";
 import { sinceText } from "./model";
 import * as T from "./terminal";
 import { placeGraph, route } from "./grid";
-import { drawConnectors, type Link } from "./connectors";
+import { createConnectors, type Link } from "./connectors";
 import { stateParts } from "./state";
 import type { BoardState } from "../missionControl";
 
@@ -31,14 +29,15 @@ export function refill(el: HTMLElement, parts: HTMLElement[]) {
 }
 
 
-export function createRenderer(missionState: BoardState, dom: { items: HTMLElement; strings: SVGElement; find: HTMLElement; fault: HTMLElement }, hooks: {
-  model: () => BoardState["m"]; boardSignature: (now: number) => string;
+export function createRenderer(missionState: BoardState, dom: { items: HTMLElement; strings: SVGSVGElement }, hooks: {
+  model: () => BoardState["m"];
   isRunning: (s: SessionInfo) => boolean; dimmed: (s: SessionInfo) => boolean;
   stateWord: (s: SessionInfo) => string; cardName: (s: SessionInfo) => string;
-  lookOf: (id: string) => 1 | -1; counts: () => void; drawTicks: () => void; drawPanel: () => void;
+  lookOf: (id: string) => 1 | -1; key: (id: string) => string; faces: ReturnType<typeof T.createFaces>; numberOffset: () => number;
 }) {
-  const { items, strings, find, fault } = dom;
-  const { model, boardSignature, isRunning, dimmed, stateWord, cardName, lookOf, counts, drawTicks, drawPanel } = hooks;
+  const { items, strings } = dom;
+  const drawConnectors = createConnectors(strings);
+  const { model, isRunning, dimmed, stateWord, cardName, lookOf, faces } = hooks;
   /** A session card's meta line: the task and its uid, a shell's program, or the state. */
   function metaOf(s: SessionInfo): HTMLElement {
     const el = h("span", "m");
@@ -94,15 +93,11 @@ export function createRenderer(missionState: BoardState, dom: { items: HTMLEleme
   /** Draws the graph as the model has it now: cards, clusters, plans and strings, keyed so what stays stays. */
   function draw() {
     const now = Date.now();
-    missionState.drawnSig = boardSignature(now);
     missionState.m = model();
-    const was = missionState.placed.cards.get(missionState.lit ?? "");
     missionState.placed = placeGraph(missionState.m.g);
-    // The light is on a card. A card that left the board hands it to the card now nearest its place, else the top left.
-    if (!missionState.placed.cards.has(missionState.lit ?? "")) missionState.lit = G.navNearest(missionState.placed.cards, was ? { x: was.x + was.w / 2, y: was.y + was.h / 2 } : { x: 0, y: 0 });
 
     // The list's numbers, also for a Skipper with no card: one number picks one Skipper in both places.
-    missionState.numbered = numberedSkippers().map((e) => e.s!.id);
+    missionState.numbered = numberedSkippers().slice(0, Math.max(0, 9 - hooks.numberOffset())).map((e) => e.s!.id);
     const seen = new Set<string>();
     // Cards: sessions, Skippers and Admiral.
     const putCard = (id: string, r: G.Rect, parts: HTMLElement[] | G.Rung, cls: string, pc: string, dim: boolean) => {
@@ -110,7 +105,7 @@ export function createRenderer(missionState: BoardState, dom: { items: HTMLEleme
       let el = missionState.cards.get(id);
       if (!el) {
         el = h("div", "mission-card");
-        el.dataset.id = id;
+        el.dataset.id = hooks.key(id);
         missionState.cards.set(id, el);
         items.appendChild(el);
       }
@@ -131,7 +126,7 @@ export function createRenderer(missionState: BoardState, dom: { items: HTMLEleme
       putCard(id, r, rung ?? cardParts(s, now), cls, rung ? "var(--accent)" : accent(place(s)?.project ?? null), dimmed(s));
       if (rung) {
         const w = T.windowOf(missionState.cards.get(id)!, rung, s);
-        refill(w.head, T.windowHead(s, cardName(s), missionState.numbered.indexOf(id) + 1));
+        refill(w.head, T.windowHead(s, cardName(s), missionState.numbered.includes(id) ? hooks.numberOffset() + missionState.numbered.indexOf(id) + 1 : 0));
         refill(w.state, stateParts(s, now, missionState.m.idx));
       }
       const label2 = t("mission.tileLabel", { title: cardName(s), state: stateLabel(s) });
@@ -150,7 +145,7 @@ export function createRenderer(missionState: BoardState, dom: { items: HTMLEleme
       let el = missionState.clusters.get(key);
       if (!el) {
         el = h("div", "mission-cluster");
-        el.dataset.id = key;
+        el.dataset.id = hooks.key(key);
         el.appendChild(h("div", "mission-cluster-head"));
         missionState.clusters.set(key, el);
         items.appendChild(el);
@@ -193,13 +188,8 @@ export function createRenderer(missionState: BoardState, dom: { items: HTMLEleme
     }
 
     drawStrings();
-    T.placeFaces(missionState.placed, missionState.m.sess, lookOf, (id) => `${id === missionState.lit ? "lit" : ""} ${missionState.cards.get(id)?.classList.contains("dim") ? "dim" : ""}`);
-    counts();
-    find.style.setProperty("--pc", missionState.cards.get(missionState.lit ?? "")?.style.getPropertyValue("--pc") ?? missionState.clusters.get(missionState.lit ?? "")?.style.getPropertyValue("--pc") ?? "");
-    fault.hidden = hostCan("ledger");
-    if (!fault.hidden) fault.textContent = t("mission.noLedgerFault", { host: hostName() });
-    drawTicks();
-    drawPanel();
+    faces.placeFaces(missionState.placed, missionState.m.sess, lookOf, (id) => `${id === missionState.lit ? "lit" : ""} ${missionState.cards.get(id)?.classList.contains("dim") ? "dim" : ""}`);
+
   }
 
   /**
