@@ -2,14 +2,14 @@
 
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use skiff_client::host::local::{HostSelection, SelectedHost};
-use super::{App, Warning};
+use super::{HostState, Warning};
 
 /// A remote Host: connect through its forward, check the identity it reports
 /// against its pin, and never start, reload, stop or replace anything. A
 /// version mismatch is reported, not acted on. Every failure leaves its cause
 /// in the warning, so the status and the picker say why, in words that never
 /// repeat ssh's own output.
-pub(super) async fn connect_remote(app: &App, selection: &HostSelection, guard: &mut Option<Arc<SelectedHost>>) -> Result<(Arc<SelectedHost>, bool), String> {
+pub(super) async fn connect_remote(app: &HostState, selection: &HostSelection, guard: &mut Option<Arc<SelectedHost>>) -> Result<(Arc<SelectedHost>, bool), String> {
     let destination = selection.ssh_target().map(|t| t.destination.clone()).unwrap_or_default();
     let arrival = match selection.ssh_target() {
         Some(t) => {
@@ -34,6 +34,7 @@ pub(super) async fn connect_remote(app: &App, selection: &HostSelection, guard: 
             }
             *app.changed.lock().unwrap() = None;
             *app.live.lock().unwrap() = Some(host.connection());
+            app.address.accepted(host.connection().hello().host.host_id.clone());
             *guard = Some(host.clone());
             Ok((host, false))
         }
@@ -108,7 +109,7 @@ pub(super) fn remote_failure(e: &anyhow::Error, destination: &str) -> (Option<Wa
 /// How long a remote skiffd may take to answer the first Ping.
 pub(super) const REMOTE_HELLO_TIMEOUT: Duration = Duration::from_secs(15);
 
-pub(super) async fn try_remote(app: &App, selection: &HostSelection, destination: &str, arrival: Option<&crate::hosts::Arrival>, file: PathBuf) -> anyhow::Result<Arc<SelectedHost>> {
+pub(super) async fn try_remote(app: &HostState, selection: &HostSelection, destination: &str, arrival: Option<&crate::hosts::Arrival>, file: PathBuf) -> anyhow::Result<Arc<SelectedHost>> {
     let mut c = selection.connect().await?;
     let info = match tokio::time::timeout(REMOTE_HELLO_TIMEOUT, c.daemon_info()).await {
         Ok(info) => info?,
@@ -157,7 +158,7 @@ impl std::error::Error for RemoteSilent {}
 
 #[cfg(test)]
 mod tests {
-    use crate::connection::{ensure_host, data_now, local_selection, replace_selection, status_now};
+    use crate::connection::{ensure_host, data_now, status_now};
 
     /// A remote Host is reached, never managed: a failing SSH endpoint gets
     /// an explanation, and the app starts, reloads and signals nothing here.
@@ -181,7 +182,7 @@ mod tests {
         std::env::set_var("SKIFF_DAEMON", mark("skiffd"));
         let old_data = std::env::var_os("SKIFF_HOST_BIN");
         std::env::set_var("SKIFF_HOST_BIN", mark("skiff-host"));
-        let app = App::default();
+        let app = HostState::default();
         let target = skiff_client::host::ssh::SshTarget::new("devbox", "/run/user/1/skiff/skiffd.sock");
         // Review P2: an unknown host key from a fresh state reaches the status.
         let ssh = mark("ssh");
@@ -211,8 +212,8 @@ mod tests {
         assert!(data_now(&app).await.is_err());
         assert!(!dir.join("skiff-host.ran").exists(), "the data-plane binary ran for a remote Host");
         // Switching back to this Mac drops the remote selection and its forward.
-        replace_selection(&app, local_selection()).await;
-        assert!(!app.remote());
+        crate::connection::disconnect(&app).await;
+        assert!(app.live_identity().is_none());
         match old_daemon {
             Some(v) => std::env::set_var("SKIFF_DAEMON", v),
             None => std::env::remove_var("SKIFF_DAEMON"),
@@ -308,7 +309,7 @@ mod tests {
         let disk_pin = || crate::hosts::load(&file).unwrap().hosts[0].host_id.clone();
         let changed = |r: &anyhow::Result<Arc<SelectedHost>>| matches!(r.as_ref().err().and_then(|e| e.downcast_ref()), Some(skiff_host_api::Error::IdentityChanged { .. }));
         tokio::runtime::Runtime::new().unwrap().block_on(async {
-            let app = App::default();
+            let app = HostState::default();
             let first = selection(None);
             // Only the store fails: the new file cannot be written beside.
             let obstruction = file.with_extension(format!("toml.{}.tmp", std::process::id()));

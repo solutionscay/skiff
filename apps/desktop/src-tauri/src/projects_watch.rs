@@ -18,7 +18,7 @@ use std::{
 
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::connection::{data_now, data_read, App};
+use crate::connection::{data_now, data_read, HostState};
 
 /// The page reloads projects on this event.
 pub(crate) const PROJECTS_CHANGED: &str = "skiff:projects-changed";
@@ -39,13 +39,13 @@ static BUSY: AtomicU64 = AtomicU64::new(0);
 /// ends: done, refused, unknown or dropped. When it ends, the page reads the
 /// projects again, once, unless it is [`OwnEdit::quiet`]. The watcher does
 /// not count it as an edit from outside the app.
-pub(crate) struct OwnEdit(Option<AppHandle>);
+pub(crate) struct OwnEdit(Option<(AppHandle, crate::routes::Route)>);
 
 impl OwnEdit {
     /// An edit the page shows: it reloads the projects when the edit ends.
-    pub(crate) fn begin(app: &AppHandle) -> Self {
+    pub(crate) fn begin(app: &AppHandle, state: &HostState) -> Self {
         BUSY.fetch_add(1, Ordering::SeqCst);
-        Self(Some(app.clone()))
+        Self(Some((app.clone(), state.address.get())))
     }
 
     /// An edit of the file that the projects do not show, such as the
@@ -61,8 +61,8 @@ impl Drop for OwnEdit {
         // OWN first: a tick that sees BUSY fall has seen OWN rise.
         OWN.fetch_add(1, Ordering::SeqCst);
         BUSY.fetch_sub(1, Ordering::SeqCst);
-        if let Some(app) = &self.0 {
-            let _ = app.emit(PROJECTS_CHANGED, ());
+        if let Some((app, route)) = &self.0 {
+            let _ = app.emit(PROJECTS_CHANGED, &route);
         }
     }
 }
@@ -96,10 +96,11 @@ pub fn watch(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut seen = Seen::default();
         loop {
-            let state = app.state::<App>();
+            let state = app.state::<crate::routes::Routes>().selected();
+            let route = state.address.get();
             let tick = if state.remote() { REMOTE_TICK } else { TICK };
             if look(&state, &mut seen).await {
-                let _ = app.emit(PROJECTS_CHANGED, ());
+                let _ = app.emit(PROJECTS_CHANGED, &route);
             }
             tokio::time::sleep(tick).await;
         }
@@ -107,7 +108,7 @@ pub fn watch(app: AppHandle) {
 }
 
 /// One tick. True when the projects changed from outside the app.
-async fn look(app: &App, seen: &mut Seen) -> bool {
+async fn look(app: &HostState, seen: &mut Seen) -> bool {
     if app.live_session().await.is_none() {
         return false;
     }

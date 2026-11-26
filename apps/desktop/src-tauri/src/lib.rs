@@ -4,6 +4,7 @@ mod badge;
 mod cli_path;
 mod clipboard;
 mod connection;
+mod routes;
 mod commands;
 mod config;
 mod copies;
@@ -28,7 +29,7 @@ mod open_apps;
 #[cfg(target_os = "linux")]
 mod header_bar;
 
-use connection::App;
+
 use tauri::{Emitter, Manager};
 
 /// The renderer switch Skiff sets for its own webview. Sessions must not
@@ -78,13 +79,14 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
-        .manage(App::default())
+        .manage(routes::Routes::default())
         // The window starts hidden: GTK takes a header bar only before it shows.
         .setup(|app| {
+            app.state::<routes::Routes>().start(app.handle().clone());
             // Copies of Host files left by an app that did not quit cleanly.
             std::thread::spawn(copies::sweep);
             // Endpoint-local lifecycle: a remote Host's CLI is its own.
-            if let Some(local) = app.state::<App>().selection().process_control() {
+            if let Some(local) = app.state::<crate::routes::Routes>().selected().selection().process_control() {
                 std::thread::spawn(move || cli_path::sync(&local));
             }
             // This computer's agent folder and its image cache, Skipper on
@@ -96,26 +98,13 @@ pub fn run() {
             // This Mac's Skipper skill. A remote Host syncs its own copy in
             // skiff-host when that service starts.
             let handle = app.handle().clone();
-            std::thread::spawn(move || skiff_agent::sync(&handle.state::<App>()));
+            std::thread::spawn(move || skiff_agent::sync(&handle.state::<crate::routes::Routes>().selected()));
             let handle = app.handle().clone();
             ledger::watch(handle);
             notify::install(app.handle());
             // Edits to the Host's projects.toml from outside the app.
             projects_watch::watch(app.handle().clone());
             hosts::watch(app.handle().clone());
-            // A remote connect's live lines, for the connecting panel.
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                use tauri::Emitter;
-                let mut lines = skiff_client::host::ssh::connect_log();
-                loop {
-                    match lines.recv().await {
-                        Ok(line) => drop(handle.emit("skiff:connect-line", line)),
-                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                        Err(_) => break,
-                    }
-                }
-            });
             let Some(window) = app.get_webview_window("main") else { return Ok(()) };
             #[cfg(target_os = "linux")]
             if header_bar::wanted() {
@@ -128,6 +117,7 @@ pub fn run() {
             let _ = app.emit("skiff:menu", event.id().as_ref());
         })
         .invoke_handler(local_only(tauri::generate_handler![
+            routes::host_route,
             native_menu::set_menu,
             quit::quit_app,
             notify::notify_show,
@@ -340,9 +330,15 @@ fn local_only<R: tauri::Runtime>(
     handler: impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static,
 ) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
     move |invoke| {
-        if LOCAL_ONLY.contains(&invoke.message.command()) && invoke.message.webview().state::<App>().remote() {
-            invoke.resolver.reject(LOCAL_ONLY_REFUSED);
-            return true;
+        if invoke.message.command() != "host_route" {
+            let Some(entry) = routes::target(&invoke.message) else {
+                invoke.resolver.reject(routes::CHANGED);
+                return true;
+            };
+            if LOCAL_ONLY.contains(&invoke.message.command()) && entry.remote() {
+                invoke.resolver.reject(LOCAL_ONLY_REFUSED);
+                return true;
+            }
         }
         handler(invoke)
     }
@@ -387,7 +383,7 @@ mod tests {
             assert!(super::LOCAL_ONLY.contains(&local), "{local}");
         }
         // A command added later must be placed on one side or the other.
-        let allowed = ["set_menu", "quit_app", "menu_layout", "set_menu_layout", "set_window_dark", "clipboard_write", "clipboard_read",
+        let allowed = ["host_route", "set_menu", "quit_app", "menu_layout", "set_menu_layout", "set_window_dark", "clipboard_write", "clipboard_read",
             "peek_owner", "daemon_status", "host_capabilities", "list_hosts", "add_host", "edit_host", "rename_host", "remove_host", "uninstall_preview", "ssh_aliases", "resolve_ssh", "check_host", "host_key_scan", "host_key_trust", "make_key", "unlock_key", "show_public_key", "install_key", "fix_permissions", "install_skiff", "cancel_install", "start_skiff", "turn_on_linger", "update_skiff", "set_host_auto_update", "select_host", "set_host_clipboard", "host_clipboard", "accept_host_identity",
             "list_sessions", "daemon_metrics", "create_session", "pty_write", "pty_resize", "session_seen", "kill_session", "rename_session", "set_session_theme", "list_agents", "list_projects", "get_project", "git_changes", "git_diff", "data_plane_status", "list_files", "read_file", "reveal_host_file", "open_file_copy", "project_background", "project_image_upload",
             "ledger_rows", "ledger_result", "schedule_list", "cron_preview", "schedule_call", "skipper_watch_log", "get_skiff_agent", "add_worktree", "list_branches", "remove_worktree", "add_project", "inspect_folder", "init_host_repository", "folder_home", "folder_list", "folder_create", "folder_places", "set_project_short", "set_project_fleet", "set_project_color", "set_project_closed", "remove_project", "set_project_icon", "set_project_background", "set_project_background_opacity", "set_project_changes", "set_project_files", "set_project_theme", "reorder_projects",

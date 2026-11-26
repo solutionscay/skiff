@@ -4,7 +4,7 @@ use std::{path::PathBuf, sync::Arc};
 use skiff_client::host::{data, local::HostSelection};
 use skiff_host_api::ProjectEdit;
 
-use crate::connection::{project_write, App, DATA_UNREAD};
+use crate::connection::{project_write, HostState, DATA_UNREAD};
 
 /// A change is made from the last read of this Host's projects, sent
 /// once, and after a conflict not again until the projects are read.
@@ -48,7 +48,7 @@ fn project_changes_are_made_from_the_last_read_and_never_resent() {
         hello.host.host_id = skiff_host_api::HostId::try_from("A".to_string()).unwrap();
         let listener = tokio::net::UnixListener::bind(skiff_core::socket::data_socket(&session)).unwrap();
         let service = tokio::spawn(skiff_host::serve(listener, Arc::new(hello)));
-        let app = App::default();
+        let app = HostState::default();
         app.set_selection(HostSelection::new(session.clone(), dir.join("bootstrap-id")));
         let app = &app;
         let color = |hex: &'static str| {

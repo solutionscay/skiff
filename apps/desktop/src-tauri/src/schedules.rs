@@ -4,24 +4,24 @@
 
 use skiff_client::host::data;
 use skiff_host_api::{HostCronPreview, HostSchedule};
-use tauri::State;
+use crate::routes::Routed;
 
-use crate::connection::{data_read, data_write, App};
+use crate::connection::{data_read, data_write};
 
 /// Every schedule by name, each with its newest runs.
 #[tauri::command]
-pub async fn schedule_list(app: State<'_, App>) -> Result<Vec<HostSchedule>, String> {
+pub async fn schedule_list(app: Routed) -> Result<Vec<HostSchedule>, String> {
     data_read(&app, |c| async move { data::schedule_list(&c).await }).await
 }
 
 /// The next runs of a cron line in the Host's local time, or its error line.
 #[tauri::command]
-pub async fn cron_preview(app: State<'_, App>, cron: String) -> Result<HostCronPreview, String> {
+pub async fn cron_preview(app: Routed, cron: String) -> Result<HostCronPreview, String> {
     data_read(&app, |c| async move { data::cron_preview(&c, &cron).await }).await
 }
 
 /// `skiff schedule ARGS` on the Host: add, edit, rm, pause, resume, run-now.
 #[tauri::command]
-pub async fn schedule_call(app: State<'_, App>, args: Vec<String>) -> Result<(), String> {
+pub async fn schedule_call(app: Routed, args: Vec<String>) -> Result<(), String> {
     data_write(&app, |c| async move { data::schedule_call(&c, args).await }).await
 }

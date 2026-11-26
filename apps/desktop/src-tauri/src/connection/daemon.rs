@@ -1,8 +1,8 @@
 use std::{sync::atomic::Ordering, time::Duration};
 use skiff_client::{Client, host::{local::{connection_status, ProcessControl}}};
 use skiff_core::session::SessionState;
-use tauri::State;
-use super::{ensure_host, process::daemon_binary, App, DaemonStatus, Warning, HELLO_TIMEOUT};
+use crate::routes::Routed;
+use super::{process::daemon_binary, HostState, DaemonStatus, Warning, HELLO_TIMEOUT};
 use crate::reload::{self, NoPlan};
 
 pub(crate) enum Check {
@@ -21,13 +21,13 @@ pub(crate) enum Check {
 /// daemon is never replaced. One that does not stop, or has live sessions,
 /// keeps running: this records a warning that says the update is not
 /// finished.
-pub(crate) async fn check_daemon(app: &App, c: &Client, may_replace: bool) -> Check {
+pub(crate) async fn check_daemon(app: &HostState, c: &Client, may_replace: bool) -> Check {
     let info = tokio::time::timeout(HELLO_TIMEOUT, c.daemon_info()).await.ok().and_then(|r| r.ok());
     check_info(app, c, info, may_replace).await
 }
 
 /// [`check_daemon`] with the daemon's `pong` already read; `None`: no answer.
-pub(super) async fn check_info(app: &App, c: &Client, info: Option<skiff_client::DaemonInfo>, may_replace: bool) -> Check {
+pub(super) async fn check_info(app: &HostState, c: &Client, info: Option<skiff_client::DaemonInfo>, may_replace: bool) -> Check {
     let Some(info) = info else {
         *app.warning.lock().await = Some(Warning {
             kind: "hung",
@@ -52,7 +52,7 @@ pub(super) async fn check_info(app: &App, c: &Client, info: Option<skiff_client:
     // skiffd and replacing signals the daemon: endpoint-local only.
     let control = app.selection().process_control();
     let mut old_build = None;
-    let planned = order.is_lt() && !app.reload_tried.load(Ordering::Relaxed);
+    let planned = order.is_lt() && !app.process.reload_tried.load(Ordering::Relaxed);
     if let (true, Some(local)) = (planned, &control) {
         match reload::plan(local, &info).await {
             Ok(plan) => {
@@ -63,11 +63,11 @@ pub(super) async fn check_info(app: &App, c: &Client, info: Option<skiff_client:
             Err(NoPlan::Stale(bundled)) => old_build = Some(bundled),
             Err(NoPlan::Other(why)) => {
                 eprintln!("skiffd {version} does not reload: {why}");
-                *app.no_reload.lock().unwrap() = Some(why);
+                *app.process.no_reload.lock().unwrap() = Some(why);
             }
         }
     }
-    let why = app.no_reload.lock().unwrap().clone().filter(|_| order.is_lt());
+    let why = app.process.no_reload.lock().unwrap().clone().filter(|_| order.is_lt());
     let live = tokio::time::timeout(HELLO_TIMEOUT, c.list_sessions())
         .await
         .ok()
@@ -172,7 +172,11 @@ pub(super) async fn stop_daemon(_local: &ProcessControl, pid: i32, escalate: boo
     false
 }
 
-pub(crate) async fn status_now(app: &App) -> DaemonStatus {
+pub(crate) async fn status_now(app: &HostState) -> DaemonStatus {
+    status_at(app).await.0
+}
+
+async fn status_at(app: &HostState) -> (DaemonStatus, Option<crate::routes::Route>) {
     let selection = app.selection();
     // A remote Host shows as its destination and socket. Its forward's peer
     // pid is this Mac's `ssh`, never the daemon: it is not shown.
@@ -181,7 +185,9 @@ pub(crate) async fn status_now(app: &App) -> DaemonStatus {
         None => selection.socket().display().to_string(),
     };
     let local = selection.is_local();
-    match ensure_host(app).await {
+    let connection = super::data_plane::connect_session(app, true).await;
+    let route = app.address.snapshot();
+    let status = match connection {
         Ok((host, spawned)) => {
             let c = host.client();
             let hello = tokio::time::timeout(HELLO_TIMEOUT, connection_status(&host.connection())).await.ok().and_then(|r| r.ok());
@@ -208,12 +214,13 @@ pub(crate) async fn status_now(app: &App) -> DaemonStatus {
             replaced: None,
             reload: false,
         },
-    }
+    };
+    (status, route)
 }
 
 /// Stops the running daemon, which ends its sessions, and starts a new one.
 #[tauri::command]
-pub(crate) async fn restart_daemon(app: State<'_, App>) -> Result<DaemonStatus, String> {
+pub(crate) async fn restart_daemon(app: Routed) -> Result<crate::routes::HostEvent<DaemonStatus>, String> {
     {
         let mut guard = app.host.lock().await;
         // A peer pid is the local socket's peer: signal it only for a local endpoint.
@@ -224,6 +231,7 @@ pub(crate) async fn restart_daemon(app: State<'_, App>) -> Result<DaemonStatus, 
             None => selection.connect().await.ok().and_then(|c| c.client().daemon_pid),
         };
         *guard = None;
+        *app.data.lock().await = None;
         *app.live.lock().unwrap() = None;
         if let Some(pid) = pid {
             if !stop_daemon(&control, pid, true).await {
@@ -232,7 +240,7 @@ pub(crate) async fn restart_daemon(app: State<'_, App>) -> Result<DaemonStatus, 
         }
         *app.warning.lock().await = None;
         *app.failed.lock().unwrap() = None;
-        *app.no_reload.lock().unwrap() = None;
+        *app.process.no_reload.lock().unwrap() = None;
         *app.reload.lock().await = None;
     }
     for (_, task) in app.subs.lock().await.drain() {
@@ -242,8 +250,9 @@ pub(crate) async fn restart_daemon(app: State<'_, App>) -> Result<DaemonStatus, 
 }
 
 #[tauri::command]
-pub(crate) async fn daemon_status(app: State<'_, App>) -> Result<DaemonStatus, String> {
-    Ok(status_now(&app).await)
+pub(crate) async fn daemon_status(app: Routed) -> Result<crate::routes::HostEvent<DaemonStatus>, String> {
+    let (value, route) = status_at(&app).await;
+    Ok(crate::routes::HostEvent { route: route.ok_or(crate::routes::CHANGED)?, value })
 }
 
 #[cfg(test)]
@@ -416,9 +425,9 @@ mod tests {
         std::env::set_var("SKIFF_DAEMON", &bin);
         std::env::set_var("SKIFF_SOCKET", &socket);
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let app = super::App::default();
+        let app = super::HostState::default();
         app.set_selection(HostSelection::new(socket.clone(), dir.join("local-host-id")));
-        let result = rt.block_on(super::ensure_host(&app));
+        let result = rt.block_on(crate::connection::ensure_host(&app));
         for (var, old) in [("SKIFF_DAEMON", old_daemon), ("SKIFF_SOCKET", old_socket)] {
             match old {
                 Some(v) => std::env::set_var(var, v),

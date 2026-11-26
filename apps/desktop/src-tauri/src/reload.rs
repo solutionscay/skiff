@@ -17,8 +17,8 @@ use skiff_client::{host::local::ProcessControl, update::{self, Handover}, Daemon
 #[cfg(test)]
 use skiff_client::Client;
 use skiff_core::session::{SessionInfo, SessionState};
-use tauri::State;
-use crate::connection::{check_daemon, compare_versions, daemon_binary, restart_warning, status_now, App, DaemonStatus, Warning, HELLO_TIMEOUT};
+use crate::routes::Routed;
+use crate::connection::{check_daemon, compare_versions, daemon_binary, restart_warning, status_now, HostState, DaemonStatus, Warning, HELLO_TIMEOUT};
 
 /// The new image adopts the sessions and answers within this.
 const RECONNECT: Duration = Duration::from_secs(15);
@@ -108,8 +108,9 @@ pub(crate) struct Reloaded {
 /// Reloads the daemon `daemon_status` planned for. Without a plan, it only
 /// reports the status.
 #[tauri::command]
-pub(crate) async fn reload_daemon(app: State<'_, App>) -> Result<Reloaded, String> {
-    Ok(reload_planned(&app).await)
+pub(crate) async fn reload_daemon(app: Routed) -> Result<crate::routes::HostEvent<Reloaded>, String> {
+    let value = reload_planned(&app).await;
+    Ok(crate::routes::HostEvent { route: app.address.get(), value })
 }
 
 /// Update skiffd, from the page: moves this Mac's older skiffd onto the
@@ -117,7 +118,7 @@ pub(crate) async fn reload_daemon(app: State<'_, App>) -> Result<Reloaded, Strin
 /// be older than this app's skiffd and able to hand over, else nothing
 /// changes and the answer says why.
 #[tauri::command]
-pub(crate) async fn update_daemon(app: State<'_, App>) -> Result<Reloaded, String> {
+pub(crate) async fn update_daemon(app: Routed) -> Result<crate::routes::HostEvent<Reloaded>, String> {
     let Some(control) = app.selection().process_control() else {
         return Err("Skiff updates only this computer's skiffd. Update a Host in Settings › Hosts.".into());
     };
@@ -134,15 +135,15 @@ pub(crate) async fn update_daemon(app: State<'_, App>) -> Result<Reloaded, Strin
     let out = reload_planned(&app).await;
     match &out.error {
         Some(e) => Err(format!("The update did not finish: {e}")),
-        None => Ok(out),
+        None => Ok(crate::routes::HostEvent { route: app.address.get(), value: out }),
     }
 }
 
-async fn reload_planned(app: &App) -> Reloaded {
+async fn reload_planned(app: &HostState) -> Reloaded {
     let plan = app.reload.lock().await.take();
     let mut out = Outcome::default();
     if let Some(plan) = plan {
-        app.reload_tried.store(true, Ordering::Relaxed);
+        app.process.reload_tried.store(true, Ordering::Relaxed);
         out = run(app, &plan).await;
     }
     Reloaded {
@@ -170,8 +171,8 @@ fn listed(list: &[SessionInfo]) -> Listed {
 }
 
 /// Keeps the pids of registered watchers: the reload drops the registrations.
-pub(crate) fn note_watchers(app: &App, list: &[SessionInfo]) {
-    let mut kept = app.watch_pids.lock().unwrap();
+pub(crate) fn note_watchers(app: &HostState, list: &[SessionInfo]) {
+    let mut kept = app.process.watch_pids.lock().unwrap();
     for pid in list.iter().filter_map(|s| s.watch.as_ref()).flat_map(|w| w.pids.iter()) {
         if !kept.contains(pid) {
             kept.push(*pid);
@@ -197,12 +198,12 @@ fn same(before: &Listed, after: &Listed, id: &str) -> bool {
     }
 }
 
-async fn run(app: &App, plan: &Plan) -> Outcome {
+async fn run(app: &HostState, plan: &Plan) -> Outcome {
     // No other call connects, or starts a daemon, until the reload ends.
     let mut guard = app.host.lock().await;
     // A reload that ends before the request keeps the restart of #27.
     let keep = |why: &str, live: Option<usize>| {
-        *app.no_reload.lock().unwrap() = Some(why.to_string());
+        *app.process.no_reload.lock().unwrap() = Some(why.to_string());
         restart_warning(&plan.from, plan.protocol, live, Some(why))
     };
     // Reload is endpoint-local lifecycle: only a local endpoint may run it.
@@ -260,6 +261,7 @@ async fn run(app: &App, plan: &Plan) -> Outcome {
         _ => {}
     }
     *guard = None;
+    *app.data.lock().await = None;
     *app.live.lock().unwrap() = None;
     drop(old);
     drop(old_terminal);
@@ -304,6 +306,7 @@ async fn run(app: &App, plan: &Plan) -> Outcome {
     let terminal = host.connection();
     *guard = Some(host);
     *app.live.lock().unwrap() = Some(terminal.clone());
+    app.address.accepted(terminal.hello().host.host_id.clone());
 
     let mut error = None;
     let mut proven = true;
@@ -346,7 +349,7 @@ async fn run(app: &App, plan: &Plan) -> Outcome {
 
 /// Connects again and asks the daemon what it is. Never starts a daemon.
 /// Waits up to [`RECONNECT`], and up to [`ADOPT_LIMIT`] while `pid` lives.
-async fn reconnect(app: &App, pid: u32) -> Result<(skiff_client::host::local::PendingConnection, DaemonInfo), String> {
+async fn reconnect(app: &HostState, pid: u32) -> Result<(skiff_client::host::local::PendingConnection, DaemonInfo), String> {
     let start = Instant::now();
     loop {
         let last = match app.selection().connect().await {
@@ -444,7 +447,7 @@ pub(crate) mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| rt.block_on(async {
             wait_for(&socket).await;
-            let app = App::default();
+            let app = HostState::default();
             let (c, _) = ensure_client(&app).await.unwrap();
             let pid = c.daemon_info().await.unwrap().pid.unwrap();
             // The Hello is skiffd's own, from the Ping the connect already sent.
@@ -636,7 +639,7 @@ pub(crate) mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| rt.block_on(async {
             wait_for(&socket).await;
-            let app = App::default();
+            let app = HostState::default();
             // The launch, as main.ts runs it: the status first.
             let status = serde_json::to_value(status_now(&app).await).unwrap();
             assert_eq!((&status["version"], &status["reload"]), (&"0.0.1".into(), &true.into()), "{status}");
@@ -760,7 +763,7 @@ os.execv("/bin/cat", ["skiff", "watch"])
             assert!(shell(&["ledger", "ls", "--json"]).contains(&uid));
 
             // The next launch, a new app run, changes nothing.
-            let next = App::default();
+            let next = HostState::default();
             let status = serde_json::to_value(status_now(&next).await).unwrap();
             assert_eq!((&status["reload"], &status["replaced"]), (&false.into(), &serde_json::Value::Null), "{status}");
             assert!(status["warning"].is_null(), "{status}");

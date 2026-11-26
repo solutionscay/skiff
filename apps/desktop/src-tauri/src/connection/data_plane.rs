@@ -3,8 +3,9 @@
 use std::{sync::{atomic::Ordering, Arc}, time::Duration};
 use serde::Serialize;
 use skiff_client::host::{HostConnection, data::{DataError, DataPlane}, local::{HostSelection, ProcessControl, SelectedHost}};
-use tauri::{ipc::Channel, State};
-use super::{err, host_now, App, HELLO_TIMEOUT};
+use tauri::{ipc::Channel};
+use crate::routes::Routed;
+use super::{err, host_now, HostState, HELLO_TIMEOUT};
 use super::daemon::{check_info, stop_daemon, Check};
 use super::process::{data_binary, spawn_daemon, spawn_data_service, DATA_START_WAIT};
 use super::remote::connect_remote;
@@ -22,19 +23,19 @@ use super::remote::connect_remote;
 /// that does not come back within 5 s is an error for this read: the next
 /// read starts it as for any missing service. Only for a local endpoint
 /// (`_local` proves it).
-pub(super) async fn replace_older_data_service(app: &App, _local: &ProcessControl, selection: &HostSelection, host: &skiff_host_api::HostId, plane: DataPlane) -> Result<DataPlane, String> {
+pub(super) async fn replace_older_data_service(app: &HostState, _local: &ProcessControl, selection: &HostSelection, host: &skiff_host_api::HostId, plane: DataPlane) -> Result<DataPlane, String> {
     let theirs = plane.connection().hello().service_versions.get("skiff-host").cloned().unwrap_or_default();
     let Some(pid) = plane.pid() else { return Ok(plane) };
-    let unreadable = app.data_unreadable.load(Ordering::SeqCst);
+    let unreadable = app.process.data_unreadable.load(Ordering::SeqCst);
     if !unreadable && !stale_service(&theirs).await {
         return Ok(plane);
     }
     let most = if cfg!(debug_assertions) { DEBUG_REPLACES } else { 1 };
-    if app.data_replaces.fetch_add(1, Ordering::SeqCst) >= most {
+    if app.process.data_replaces.fetch_add(1, Ordering::SeqCst) >= most {
         return Ok(plane);
     }
-    app.data_replaced.store(true, Ordering::SeqCst);
-    app.data_unreadable.store(false, Ordering::SeqCst);
+    app.process.data_replaced.store(true, Ordering::SeqCst);
+    app.process.data_unreadable.store(false, Ordering::SeqCst);
     eprintln!("skiff-host {theirs} is not this app's build ({}): replacing it", skiff_core::VERSION);
     drop(plane);
     restart_data_service(app, _local, selection, host, pid).await
@@ -45,13 +46,13 @@ pub(super) async fn replace_older_data_service(app: &App, _local: &ProcessContro
 const DEBUG_REPLACES: u32 = 3;
 
 /// Stops this computer's `skiff-host` at `pid` and starts the bundled one.
-pub(super) async fn restart_data_service(app: &App, _local: &ProcessControl, selection: &HostSelection, host: &skiff_host_api::HostId, pid: u32) -> Result<DataPlane, String> {
+pub(super) async fn restart_data_service(app: &HostState, _local: &ProcessControl, selection: &HostSelection, host: &skiff_host_api::HostId, pid: u32) -> Result<DataPlane, String> {
     if !stop_daemon(_local, pid as i32, false).await {
         eprintln!("skiff-host (pid {pid}) did not stop; it keeps running");
         return selection.connect_data(host).await.map_err(|e| data_failure(&e, selection));
     }
     spawn_data_service(_local, selection.socket()).map_err(start_failure)?;
-    *app.data_started.lock().unwrap() = Some(std::time::Instant::now());
+    *app.process.data_started.lock().unwrap() = Some(std::time::Instant::now());
     let mut last = None;
     for _ in 0..50 {
         match selection.connect_data(host).await {
@@ -92,7 +93,7 @@ pub(super) fn start_failure(e: anyhow::Error) -> String {
 /// One data-plane read. Its reply is used only if the connection it came on
 /// is still the selected Host's data connection: a reply from a connection
 /// that a Host switch or a reconnect replaced is never shown.
-pub(crate) async fn data_read<T, F, Fut>(app: &App, read: F) -> Result<T, String>
+pub(crate) async fn data_read<T, F, Fut>(app: &HostState, read: F) -> Result<T, String>
 where
     F: FnOnce(Arc<HostConnection>) -> Fut,
     Fut: std::future::Future<Output = Result<T, skiff_host_api::Error>>,
@@ -109,35 +110,42 @@ where
 /// A data-plane read error as the page shows it. An unreadable reply from
 /// this computer's `skiff-host` marks it for a replace at the next
 /// connection, once per run.
-fn read_err(app: &App, e: skiff_host_api::Error) -> String {
+fn read_err(app: &HostState, e: skiff_host_api::Error) -> String {
     let skiff_host_api::Error::MalformedContract { .. } = e else { return data_err(e) };
     match app.selection().ssh_target().map(|t| t.destination.clone()) {
         Some(d) => format!("Skiff cannot read the replies from the projects service on {d}. Update Skiff… in Settings › Hosts updates it."),
-        None if app.data_replaced.load(Ordering::SeqCst) => {
+        None if app.process.data_replaced.load(Ordering::SeqCst) => {
             "Skiff cannot read the replies from the projects service on this computer, also after a restart. Skiff checks again on its own.".into()
         }
         None => {
-            app.data_unreadable.store(true, Ordering::SeqCst);
+            app.process.data_unreadable.store(true, Ordering::SeqCst);
             "Skiff cannot read the replies from the projects service on this computer. It starts the service again.".into()
         }
     }
 }
 
 /// Keeps the revision of a project read or change from the Host `c` names.
-pub(crate) fn keep_revision(app: &App, c: &HostConnection, revision: Option<String>) {
-    *app.revision.lock().unwrap() = revision.map(|r| (c.hello().host.host_id.clone(), r));
+pub(crate) async fn keep_revision(app: &HostState, slot: &super::Revision, c: &Arc<HostConnection>, revision: Option<String>) {
+    let plane = app.data.lock().await;
+    if plane.as_ref().is_some_and(|d| Arc::ptr_eq(&d.connection(), c)) {
+        *slot.lock().unwrap() = revision;
+    }
 }
 
 /// One data-plane change, sent once and never again: not after a lost
 /// connection or a late reply, whose outcome is then unknown.
-pub(crate) async fn data_write<T, F, Fut>(app: &App, write: F) -> Result<T, String>
+pub(crate) async fn data_write<T, F, Fut>(app: &HostState, write: F) -> Result<T, String>
 where
     F: FnOnce(Arc<HostConnection>) -> Fut,
     Fut: std::future::Future<Output = Result<T, skiff_host_api::Error>>,
 {
     use skiff_host_api::Error as E;
     let c = data_now(app).await?;
-    match write(c).await {
+    let result = write(c.clone()).await;
+    if !app.data.lock().await.as_ref().is_some_and(|d| Arc::ptr_eq(&d.connection(), &c)) {
+        return Err(DATA_UNCERTAIN.into());
+    }
+    match result {
         Ok(out) => Ok(out),
         Err(E::TransportLost | E::TimedOut) => Err(DATA_UNCERTAIN.into()),
         Err(e) => Err(data_err(e)),
@@ -148,24 +156,23 @@ where
 /// without one nothing is sent. Its answer's revision is kept for the next
 /// change. A conflict forgets it, so the next change waits for the page to
 /// read the projects again; the change is not sent again.
-pub(crate) async fn project_write<T, F, Fut>(app: &App, write: F) -> Result<T, String>
+pub(crate) async fn project_write<T, F, Fut>(app: &HostState, write: F) -> Result<T, String>
 where
     F: FnOnce(Arc<HostConnection>, String) -> Fut,
     Fut: std::future::Future<Output = Result<(T, String), skiff_host_api::Error>>,
 {
     data_write(app, |c| async move {
-        let host = c.hello().host.host_id.clone();
-        let revision = app.revision.lock().unwrap().clone().filter(|(h, _)| *h == host).map(|(_, r)| r);
+        let revision = app.revision.lock().unwrap().clone();
         let Some(revision) = revision else {
             return Err(skiff_host_api::Error::Invalid { message: DATA_UNREAD.into() });
         };
         match write(c.clone(), revision).await {
             Ok((out, revision)) => {
-                keep_revision(app, &c, Some(revision));
+                keep_revision(app, &app.revision, &c, Some(revision)).await;
                 Ok(out)
             }
             Err(skiff_host_api::Error::Conflict { message }) => {
-                keep_revision(app, &c, None);
+                keep_revision(app, &app.revision, &c, None).await;
                 Err(skiff_host_api::Error::Conflict { message: format!("{message} Skiff reads them again: try again if it is still needed.") })
             }
             Err(e) => Err(e),
@@ -189,7 +196,7 @@ pub(crate) struct DataPlaneStatus {
     pub(super) message: Option<String>,
 }
 
-pub(super) async fn data_status(app: &App) -> DataPlaneStatus {
+pub(super) async fn data_status(app: &HostState) -> DataPlaneStatus {
     let live = app.live_session().await;
     let mut status = DataPlaneStatus {
         ready: false,
@@ -253,17 +260,24 @@ pub(super) fn capability_names(c: &HostConnection) -> Vec<String> {
     c.hello().capabilities.iter().map(|c| format!("{}@{}", c.name, c.version)).collect()
 }
 
-pub(crate) async fn ensure_host(app: &App) -> Result<(Arc<SelectedHost>, bool), String> {
+pub(crate) async fn ensure_host(app: &HostState) -> Result<(Arc<SelectedHost>, bool), String> {
+    connect_session(app, false).await
+}
+
+pub(super) async fn connect_session(app: &HostState, recovering: bool) -> Result<(Arc<SelectedHost>, bool), String> {
     let mut guard = app.host.lock().await;
+    if app.retired.load(Ordering::Acquire) { return Err(crate::routes::CHANGED.into()); }
     if let Some(host) = guard.as_ref() {
         if !host.connection().is_closed() {
             return Ok((host.clone(), false));
         }
+        if app.remote() && !recovering { return Err(crate::commands::INPUT_OFF.into()); }
+        *app.data.lock().await = None;
     }
     *guard = None;
     let selection = app.selection();
     if !selection.is_local() {
-        return connect_remote(app, &selection, &mut guard).await;
+        return skiff_client::host::ssh::with_connect_log(app.address.connect_log(), connect_remote(app, &selection, &mut guard)).await;
     }
     let path = selection.socket();
     // Starting a daemon is endpoint-local lifecycle. Without it this only connects.
@@ -302,6 +316,7 @@ pub(crate) async fn ensure_host(app: &App) -> Result<(Arc<SelectedHost>, bool), 
                     eprintln!("peek owner: {e:#}");
                 }
                 *app.live.lock().unwrap() = Some(host.connection());
+                app.address.accepted(host.connection().hello().host.host_id.clone());
                 *guard = Some(host.clone());
                 return Ok((host, spawned));
             }
@@ -319,7 +334,7 @@ pub(crate) async fn ensure_host(app: &App) -> Result<(Arc<SelectedHost>, bool), 
 /// one the session plane accepted, so data from another Host never shows
 /// under this one. This Mac's service is started when none answers (a
 /// local endpoint's lifecycle); a remote Host's never is.
-pub(crate) async fn data_now(app: &App) -> Result<Arc<HostConnection>, String> {
+pub(crate) async fn data_now(app: &HostState) -> Result<Arc<HostConnection>, String> {
     let session = host_now(app).await?;
     let host = session.hello().host.host_id.clone();
     let mut guard = app.data.lock().await;
@@ -332,14 +347,14 @@ pub(crate) async fn data_now(app: &App) -> Result<Arc<HostConnection>, String> {
     *guard = None;
     let selection = app.selection();
     let not_running = |e: &anyhow::Error| matches!(e.downcast_ref(), Some(DataError::NotRunning));
-    let plane = match selection.connect_data(&host).await {
+    let plane = match skiff_client::host::ssh::with_connect_log(app.address.connect_log(), selection.connect_data(&host)).await {
         Ok(plane) => plane,
         Err(e) if not_running(&e) && selection.process_control().is_some() => {
             let control = selection.process_control().expect("checked");
             // One that stops right after it starts is tried again later,
             // not on every read: its log stays readable meanwhile.
             let too_soon = {
-                let mut started = app.data_started.lock().unwrap();
+                let mut started = app.process.data_started.lock().unwrap();
                 let soon = started.is_some_and(|at| at.elapsed() < DATA_START_WAIT);
                 if !soon {
                     *started = Some(std::time::Instant::now());
@@ -370,7 +385,7 @@ pub(crate) async fn data_now(app: &App) -> Result<Arc<HostConnection>, String> {
         Err(e) if unreadable(&e) && selection.process_control().is_some() => {
             let control = selection.process_control().expect("checked");
             match data_service_pid(&selection).await {
-                Some(pid) if !app.data_replaced.swap(true, Ordering::SeqCst) => {
+                Some(pid) if !app.process.data_replaced.swap(true, Ordering::SeqCst) => {
                     eprintln!("skiff-host (pid {pid}) is from a build this app cannot read: replacing it");
                     restart_data_service(app, &control, &selection, &host, pid).await?
                 }
@@ -384,6 +399,9 @@ pub(crate) async fn data_now(app: &App) -> Result<Arc<HostConnection>, String> {
         None => plane,
     };
     let c = plane.connection();
+    *app.revision.lock().unwrap() = None;
+    *app.agent_revision.lock().unwrap() = None;
+    if let Some(task) = app.data_events.lock().await.take() { task.abort(); }
     *guard = Some(plane);
     app.data_gen.fetch_add(1, Ordering::SeqCst);
     Ok(c)
@@ -402,22 +420,29 @@ pub(crate) const DATA_UNCERTAIN: &str =
 /// or starts skiffd, and never touches a terminal stream. On This Mac a
 /// missing `skiff-host` starts, as for any data read.
 #[tauri::command]
-pub(crate) async fn data_plane_status(app: State<'_, App>) -> Result<DataPlaneStatus, String> {
+pub(crate) async fn data_plane_status(app: Routed) -> Result<DataPlaneStatus, String> {
     Ok(data_status(&app).await)
 }
 
 #[derive(Serialize, Clone)]
-pub(crate) struct DataEvent { pub projects: bool, pub worktrees: Vec<String>, pub tasks: bool, pub gap: bool }
+pub(crate) struct DataEvent { pub connection: u64, pub projects: bool, pub worktrees: Vec<String>, pub tasks: bool, pub gap: bool }
 
 #[tauri::command]
-pub(crate) async fn subscribe_data_events(app: State<'_, App>, on_event: Channel<DataEvent>) -> Result<(), String> {
+pub(crate) async fn subscribe_data_events(app: Routed, on_event: Channel<crate::routes::HostEvent<DataEvent>>) -> Result<(), String> {
     let c = data_now(&app).await?;
     c.hello().require(&skiff_host_api::Capability::data_events()).map_err(data_err)?;
+    let plane = app.data.lock().await;
+    if !plane.as_ref().is_some_and(|p| Arc::ptr_eq(&p.connection(), &c)) || app.address.get() != app.route {
+        return Err(DATA_REPLACED.into());
+    }
+    let connection = app.data_gen.load(Ordering::SeqCst);
+    let route = app.route.clone();
+    let send = move |value| on_event.send(crate::routes::HostEvent { route: route.clone(), value });
     let mut events = c.events().map_err(data_err)?;
     let task = tauri::async_runtime::spawn(async move {
         loop { match events.recv().await {
-            Ok(skiff_host_api::Event::DataChanged { projects, worktrees, tasks, .. }) => if on_event.send(DataEvent { projects, worktrees, tasks, gap: false }).is_err() { return },
-            Ok(skiff_host_api::Event::DataGap { .. }) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => if on_event.send(DataEvent { projects: true, worktrees: vec![], tasks: true, gap: true }).is_err() { return },
+            Ok(skiff_host_api::Event::DataChanged { projects, worktrees, tasks, .. }) => if send(DataEvent { connection, projects, worktrees, tasks, gap: false }).is_err() { return },
+            Ok(skiff_host_api::Event::DataGap { .. }) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => if send(DataEvent { connection, projects: true, worktrees: vec![], tasks: true, gap: true }).is_err() { return },
             Ok(_) => {}, Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
         }}
     });
@@ -467,7 +492,7 @@ mod tests {
                     });
                 }
             });
-            let app = App::default();
+            let app = HostState::default();
             app.set_selection(HostSelection::new(session.clone(), dir.join("bootstrap-id")));
             // The launcher's build is the bundled service's: the service is current.
             let version = format!("{}+{}", skiff_core::VERSION, skiff_client::host::data::build_of(&launcher).unwrap());

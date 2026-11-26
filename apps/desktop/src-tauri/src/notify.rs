@@ -33,12 +33,12 @@ pub(crate) fn install(app: &tauri::AppHandle) {
 /// Shows the session's notification and replaces its older one. The first call
 /// asks for permission. An error means the page sends through the plugin.
 #[tauri::command]
-pub(crate) async fn notify_show(session: String, title: String, subtitle: String, body: String) -> Result<(), String> {
+pub(crate) async fn notify_show(session: String, thread: String, title: String, subtitle: String, body: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    return center::show(&request_id(&session), &session, &title, &subtitle, &body).await;
+    return center::show(&request_id(&session), &thread, &title, &subtitle, &body).await;
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (session, title, subtitle, body);
+        let _ = (session, thread, title, subtitle, body);
         Err("No notification center on this system.".into())
     }
 }

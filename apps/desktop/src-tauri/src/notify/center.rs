@@ -65,8 +65,9 @@ define_class!(
             done: &DynBlock<dyn Fn()>,
         ) {
             let request = response.notification().request().identifier().to_string();
-            if let Some(session) = session_of(&request) {
-                let _ = self.ivars().app.emit(CLICK_EVENT, session);
+            if session_of(&request).is_some() {
+                let target = response.notification().request().content().threadIdentifier().to_string();
+                let _ = self.ivars().app.emit(CLICK_EVENT, target);
             }
             done.call(());
         }

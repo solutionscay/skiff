@@ -165,7 +165,7 @@ pub(crate) fn watch(app: tauri::AppHandle) {
 }
 
 /// The shown Host's id, as the file names it now. None: this Mac.
-pub(super) fn shown_id(app: &App) -> Option<String> {
+pub(super) fn shown_id(app: &HostState) -> Option<String> {
     let t = app.selection().ssh_target()?.clone();
     load(&path()).ok()?.find_login(&t).map(|h| h.id.clone())
 }

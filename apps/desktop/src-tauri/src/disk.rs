@@ -9,9 +9,10 @@ use skiff_client::{
     ledger, skipper,
 };
 use skiff_core::{config, session::SessionInfo};
-use tauri::{ipc::Channel, AppHandle, Emitter, State};
+use tauri::{ipc::Channel, AppHandle, Emitter};
+use crate::routes::Routed;
 
-use crate::{commands::Opened, connection::App};
+use crate::{commands::Opened, connection::HostState};
 
 /// The tree, with the auto flush setting for its row.
 #[derive(Serialize)]
@@ -26,7 +27,7 @@ pub struct Usage {
 /// This computer's sessions, on the open connection. `None` when the daemon
 /// does not answer, or while a remote Host is shown: its sessions are not
 /// this computer's. Never starts a daemon.
-async fn sessions(app: &App) -> Option<Vec<SessionInfo>> {
+async fn sessions(app: &HostState) -> Option<Vec<SessionInfo>> {
     if app.remote() {
         return None;
     }
@@ -82,7 +83,7 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Sen
 /// The tree. `on_progress` gets the running totals at once and then each
 /// [`TICK`] until the tree is sent.
 #[tauri::command]
-pub async fn disk_usage(app: State<'_, App>, on_progress: Channel<Counting>) -> Result<serde_json::Value, String> {
+pub async fn disk_usage(app: Routed, on_progress: Channel<Counting>) -> Result<serde_json::Value, String> {
     if app.remote() {
         let usage = crate::connection::data_read(&app, |c| async move { skiff_client::host::data::cache_use(&c).await }).await?;
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
@@ -145,7 +146,7 @@ pub async fn set_cache_max_mb(mb: u32) -> Result<(), String> {
 /// only what is still stale and unchanged. Refused when the daemon does not
 /// answer: the rule needs the session list.
 #[tauri::command]
-pub async fn flush_disk(handle: AppHandle, app: State<'_, App>, items: Vec<Expected>) -> Result<Flushed, String> {
+pub async fn flush_disk(handle: AppHandle, app: Routed, items: Vec<Expected>) -> Result<Flushed, String> {
     let Some(s) = sessions(&app).await else {
         return Err("Skiff cannot reach skiffd. A flush needs the session list.".into());
     };
@@ -154,7 +155,7 @@ pub async fn flush_disk(handle: AppHandle, app: State<'_, App>, items: Vec<Expec
         Ok(disk::flush(&folder, &cache, &ledger, Some(&s), &skiff_core::state::socket(), &items))
     })
     .await;
-    let _ = handle.emit(crate::drops::IMAGES_CHANGED, ());
+    let _ = handle.emit(crate::drops::IMAGES_CHANGED, &app.route);
     out
 }
 
