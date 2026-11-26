@@ -597,6 +597,20 @@ mod tests {
     }
 
     #[test]
+    fn remote_alias_uses_live_project_then_fleet_marks() {
+        let mut project = s("agent", SessionState::Idle, None);
+        project.skipper = Some("remote-only".into());
+        let mut fleet = project.clone();
+        fleet.id = "fleet-id".into();
+        fleet.skipper = Some(skiff_client::skipper::fleet_scope("remote-only"));
+        let mut inventory = [fleet, project];
+        let alias = "remote-only Skipper";
+        assert_eq!(crate::resolve::remote_session(&inventory, alias).unwrap().id, inventory[1].id);
+        inventory[1].exit_code = Some(0);
+        assert_eq!(crate::resolve::remote_session(&inventory, alias).unwrap().id, inventory[0].id);
+    }
+
+    #[test]
     fn the_state_says_what_the_program_reports() {
         let with = |state, status: serde_json::Value| {
             let mut x = s("agent", state, None);
