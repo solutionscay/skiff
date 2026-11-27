@@ -59,7 +59,8 @@ pub(super) struct Watcher {
     /// by pane key, as last read. Its idle line waits for the plan.
     plan_of: HashMap<String, String>,
     /// Each plan in `plan_of`: how many of its sent tasks ended, of how
-    /// many, and its pending uids. A pending task does not hold the plan.
+    /// many, its pending uids and its waiting uids. A pending or a waiting
+    /// task does not hold the plan.
     pub(super) plans: HashMap<String, Plan>,
     /// The first read of this run, or after a lag, is done. That read tells
     /// an idle pane with a sent task, though seen: a line held before a
@@ -67,9 +68,9 @@ pub(super) struct Watcher {
     recalled: bool,
 }
 
-/// How far a plan is: its tasks that ended, of its tasks not pending, and
-/// its pending uids, oldest first.
-pub(super) type Plan = (usize, usize, Vec<String>);
+/// How far a plan is: its tasks that ended, of its tasks neither pending
+/// nor waiting, its pending uids and its waiting uids, oldest first.
+pub(super) type Plan = (usize, usize, Vec<String>, Vec<String>);
 
 impl Watcher {
     /// Events from skiffd were lost: the next read tells each idle pane with
@@ -109,6 +110,7 @@ fn fleet_line(fleet: &str, old: &[String], now: &[String]) -> String {
 /// its pane ended its turn, exited, restarted or is gone. A pending task, a
 /// pane that works or waits, a hand-off not done and a task on another
 /// daemon still run. `r.elsewhere` marks a task on another daemon.
+/// [`waiting`] tells apart a task that waits for the person.
 pub(super) fn ended(r: &ledger::Row, all: &[SessionInfo]) -> bool {
     match r.state.as_str() {
         "done" | "blocked" => true,
@@ -118,6 +120,17 @@ pub(super) fn ended(r: &ledger::Row, all: &[SessionInfo]) -> bool {
         }
         _ => false,
     }
+}
+
+/// A `sent` task of a plan whose pane waits for the person: a question, an
+/// approval or a bell. A hand-off waits when its Skipper waits. It does not
+/// hold the plan: only the person moves it on.
+pub(super) fn waiting(r: &ledger::Row, all: &[SessionInfo]) -> bool {
+    if r.state != "sent" || r.elsewhere {
+        return false;
+    }
+    let s = r.pane_id.as_deref().and_then(|p| resolve::session(all, p).ok());
+    (r.is_handoff() || !r.interrupted_in(s)) && Now::of(s, false) == Now::Waiting
 }
 
 /// The plan of the pane `g`: the one plan that holds all its open tasks,
@@ -130,10 +143,12 @@ fn plan_of(g: &Group, tasks: &[ledger::Row], plans: &HashSet<&str>) -> Option<St
     (first.state == "sent" && rows.all(|t| t.state == "sent" && t.parent.as_deref() == Some(plan))).then(|| plan.to_string())
 }
 
-/// The line for a plan whose tasks all ended, but the pending ones, with
-/// the panes whose idle lines waited for it.
-fn plan_line(plan: &str, (ended, total, pending): &Plan, wakes: &[&Wake]) -> String {
-    let tasks = if *total == 1 { "task" } else { "tasks" };
+/// The line for a plan whose tasks all ended, but the pending and the
+/// waiting ones, with the panes whose idle lines waited for it.
+fn plan_line(plan: &str, (ended, total, pending, waiting): &Plan, wakes: &[&Wake]) -> String {
+    // A waiting task was sent: it counts in the sent tasks, not as ended.
+    let total = total + waiting.len();
+    let tasks = if total == 1 { "task" } else { "tasks" };
     let panes: Vec<String> = wakes
         .iter()
         .map(|w| {
@@ -142,19 +157,23 @@ fn plan_line(plan: &str, (ended, total, pending): &Plan, wakes: &[&Wake]) -> Str
         })
         .collect();
     let seen = if panes.len() == 1 { "mark its pane seen" } else { "mark each pane seen" };
-    if pending.is_empty() {
+    if pending.is_empty() && waiting.is_empty() {
         return format!(
             "plan {plan}: {ended} of {total} {tasks} ended: {}. Read the results, {seen} and set each task done, then run skiff ledger report {plan}.",
             panes.join(", ")
         );
     }
-    // The report waits for the pending tasks: the plan line comes again.
-    format!(
-        "plan {plan}: {ended} of {total} sent {tasks} ended: {}; {} pending: {}. Read the results, {seen} and set each ended task done. Send each pending task when it is ready.",
-        panes.join(", "),
-        pending.len(),
-        pending.join(", ")
-    )
+    // The report waits for the pending and the waiting tasks: the plan line comes again.
+    let mut rest = String::new();
+    if !waiting.is_empty() {
+        rest += &format!("; {} waiting: {}", waiting.len(), waiting.join(", "));
+    }
+    if !pending.is_empty() {
+        rest += &format!("; {} pending: {}", pending.len(), pending.join(", "));
+    }
+    let wait = if waiting.is_empty() { "" } else if waiting.len() == 1 { " Tell the person the waiting task needs them." } else { " Tell the person the waiting tasks need them." };
+    let send = if pending.is_empty() { "" } else { " Send each pending task when it is ready." };
+    format!("plan {plan}: {ended} of {total} sent {tasks} ended: {}{rest}. Read the results, {seen} and set each ended task done.{wait}{send}", panes.join(", "))
 }
 
 /// The open tasks whose panes are on `here`, and a log line for the others.
@@ -359,18 +378,23 @@ impl Watcher {
 
     /// Takes the live pane of a Skipper with hand-offs at work. Its exit, and
     /// its restart while it is a bare shell, are told once, with every
-    /// hand-off. A Skipper that comes back (an agent in front again, or the
-    /// hand-offs moved to a new pane) clears the told fact. Idle and waiting
-    /// are not told; a pending hand-off on the same pane keeps its line.
+    /// hand-off. A wait for the person (a question, an approval, a bell) is
+    /// told once per waiting stretch, with every hand-off. A Skipper that
+    /// comes back (an agent in front again, the hand-offs moved to a new
+    /// pane, or the wait answered) clears the told fact. Idle is not told;
+    /// a pending hand-off on the same pane keeps its line.
     fn skipper(&mut self, g: &Group, scope: &str, s: &SessionInfo) -> Option<Wake> {
         let bare = s.agent_exit.is_some() || s.resume.is_some();
         let now = match Now::of(Some(s), false) {
             Now::Exit => Now::Exit,
             _ if g.restarted && bare => Now::Interrupted,
+            Now::Waiting => Now::Waiting,
             _ => {
-                if let Some(p) = self.panes.get_mut(&g.key).filter(|p| matches!(p.told, Some(Fact::Exit | Fact::Interrupted))) {
+                if let Some(p) = self.panes.get_mut(&g.key).filter(|p| matches!(p.told, Some(Fact::Exit | Fact::Interrupted | Fact::Waiting))) {
                     p.told = None;
                 }
+                // The wait was answered: its held line is old news.
+                self.held.retain(|h| !(h.pane == g.key && h.fact == Fact::Waiting));
                 if g.pending.is_empty() {
                     return None;
                 }
@@ -541,17 +565,19 @@ impl Watcher {
             .map(|p| {
                 let (pending, rows): (Vec<&ledger::Row>, Vec<&ledger::Row>) =
                     plan_rows.iter().filter(|r| r.parent.as_deref() == Some(p.as_str())).partition(|r| r.state == "pending");
-                let pending = pending.iter().map(|r| r.uid.clone()).collect();
-                (p.clone(), (rows.iter().filter(|r| ended(r, all)).count(), rows.len(), pending))
+                let (waiting, rows): (Vec<&ledger::Row>, Vec<&ledger::Row>) = rows.into_iter().partition(|r| waiting(r, all));
+                let uids = |rs: Vec<&ledger::Row>| rs.iter().map(|r| r.uid.clone()).collect();
+                (p.clone(), (rows.iter().filter(|r| ended(r, all)).count(), rows.len(), uids(pending), uids(waiting)))
             })
             .collect();
     }
 
     /// The plan a held line waits for: an idle line of a pane in a plan
-    /// whose tasks not pending have not all ended. `None`: the line can go.
+    /// whose tasks neither pending nor waiting have not all ended. `None`:
+    /// the line can go.
     pub(super) fn waits_for(&self, h: &Wake) -> Option<&str> {
         let p = self.plan_held(h)?;
-        self.plans.get(p).is_none_or(|(n, total, _)| n < total).then_some(p)
+        self.plans.get(p).is_none_or(|(n, total, _, _)| n < total).then_some(p)
     }
 
     /// The plan whose line carries the held line `h`: an idle line, not a

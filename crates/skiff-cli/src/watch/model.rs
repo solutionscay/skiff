@@ -135,8 +135,9 @@ pub struct Wake {
     pub task: Option<String>,
     /// An idle pane whose program reported its turn ended in an error (OSC 7501).
     pub failed: bool,
-    /// The scope of the project or fleet Skipper that exited or restarted
-    /// with hand-offs at work: `task` holds them. `None` for any other pane.
+    /// The scope of the project or fleet Skipper that exited, restarted or
+    /// waits with hand-offs at work: `task` holds them. `None` for any
+    /// other pane.
     pub skipper: Option<String>,
 }
 
@@ -165,8 +166,8 @@ impl Wake {
     }
 }
 
-/// The one line the agent gets for all held wakes. A Skipper that exited
-/// or restarted comes last, in its own sentence.
+/// The one line the agent gets for all held wakes. A Skipper that exited,
+/// restarted or waits comes last, in its own sentence.
 pub fn wake_line(wakes: &[Wake]) -> String {
     let skippers: Vec<String> = wakes.iter().filter_map(|w| w.skipper.as_deref().map(|scope| skipper_part(w, scope))).collect();
     let rest: Vec<Wake> = wakes.iter().filter(|w| w.skipper.is_none()).cloned().collect();
@@ -180,10 +181,13 @@ pub fn wake_line(wakes: &[Wake]) -> String {
     }
 }
 
-/// The sentence for a Skipper that exited or restarted with hand-offs at
-/// work. The person decides on the restart; the restart moves the
-/// hand-offs back to pending.
+/// The sentence for a Skipper that exited, restarted or waits with
+/// hand-offs at work. The person decides on the restart; the restart moves
+/// the hand-offs back to pending. Only the person answers a wait.
 fn skipper_part(w: &Wake, scope: &str) -> String {
+    if w.fact == Fact::Waiting {
+        return format!("the {} {}{}. Tell the person it needs them in its pane.", w.name, w.phrase(), w.tail());
+    }
     let quote = |n: &str| if n.contains(char::is_whitespace) { format!("\"{n}\"") } else { n.to_string() };
     let start = match skiff_client::skipper::scope_fleet(scope) {
         Some(f) => format!("--fleet {}", quote(f)),

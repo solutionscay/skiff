@@ -167,11 +167,14 @@ the commands:
   seen, set each task `done`, give the user one report, then run
   `skiff ledger report UID`. A pane that exits, restarts or is gone, or is idle
   with a pending task, still gets its own line at once.
-- A `pending` task does not hold its plan. When the sent tasks have ended, the
-  line names the pending tasks: `[watch] plan UID: N of M sent tasks ended:
-  ...; K pending: UID2`. Set only the ended tasks `done`. Do not report the
-  plan yet. Send each pending task when it is ready. The plan line comes again
-  when the sent tasks end.
+- A `pending` task does not hold its plan. A waiting task does not hold it
+  either: a `sent` task whose pane waits, or a `sent` hand-off whose Skipper
+  waits. A hand-off whose Skipper works holds the plan. When the other tasks
+  have ended, the line names the waiting and the pending tasks:
+  `[watch] plan UID: N of M sent tasks ended: ...; K waiting: UID2;
+  J pending: UID3`. Set only the ended tasks `done`. Do not report the plan
+  yet. Tell the person which task waits for them. Send each pending task when
+  it is ready. The plan line comes again when the other tasks end.
 - To wait for one pane, read `skiff ls --json` first (`state`,
   `program_status`). Then run `skiff wait S --for turn --timeout N`. It
   returns at once for a turn that ended and is unread.
@@ -212,6 +215,10 @@ projects. Hand work to one when it stays in that project or that fleet:
   `skiff skipper --project P --no-attach` (`--fleet F` for a fleet). Its open
   hand-offs then go back to pending: resend each with
   `skiff ledger send UID --enter`.
+- When that Skipper waits for the person (a question, an approval or a bell)
+  with a hand-off open, you get one `[watch]` line for each waiting stretch:
+  `[watch] the P Skipper is waiting: hand-off UID is open`. Tell the person
+  that it needs them in its pane. Its idle time gives no line.
 - Its tasks' `[watch]` lines go to it, not to you.
 - A project in a fleet whose Skipper runs has no project Skipper. A hand-off
   to that project is refused: hand off to the fleet.

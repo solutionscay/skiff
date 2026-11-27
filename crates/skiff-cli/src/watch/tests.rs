@@ -162,7 +162,7 @@ fn a_plan_gives_one_line_when_every_task_ended() {
     let open: Vec<ledger::Row> = tasks.iter().cloned().chain([alone]).collect();
     let mut ws = Watchers::default();
     // Two plan panes end their turns and the third works: their lines wait.
-    // A task with no plan, and a waiting plan pane, are told at once.
+    // A task with no plan is told at once.
     let all = [grand.clone(), info("cccc3333", "idle", true), info("dddd4444", "idle", true), info("eeee5555", "working", false), info("ffff6666", "idle", true)];
     route(&mut ws, &targets(&all), &open, &[], &[], &tasks, &all);
     assert_eq!(ws["grand"].ready_line().as_deref(), Some("[watch] pane ffff6666 ffff6666 is idle. Read it, then mark it seen."));
@@ -172,15 +172,23 @@ fn a_plan_gives_one_line_when_every_task_ended() {
     let all = [grand.clone(), info("cccc3333", "idle", true), info("dddd4444", "idle", true), info("eeee5555", "waiting", false)];
     let told = route(&mut ws, &targets(&all), &tasks, &[], &[], &tasks, &all);
     assert_eq!(told.iter().map(|(_, w)| w.fact).collect::<Vec<_>>(), [Fact::Waiting]);
-    assert_eq!(ws["grand"].ready_line(), None);
-    // The last one ends its turn: one line for the plan.
+    // A waiting pane does not hold the plan: the line names it.
+    assert_eq!(
+        ws["grand"].ready_line().as_deref(),
+        Some(
+            "[watch] plan p1: 2 of 3 sent tasks ended: pane cccc3333 cccc3333, pane dddd4444 dddd4444; 1 waiting: t3. \
+             Read the results, mark each pane seen and set each ended task done. Tell the person the waiting task needs them."
+        )
+    );
+    ws.get_mut("grand").unwrap().delivered(Delivery::Taken, "");
+    // The last one ends its turn: the plan line comes again.
     let all = [grand, info("cccc3333", "idle", true), info("dddd4444", "idle", true), info("eeee5555", "idle", true)];
     route(&mut ws, &targets(&all), &tasks, &[], &[], &tasks, &all);
     assert_eq!(
         ws["grand"].ready_line().as_deref(),
         Some(
-            "[watch] plan p1: 3 of 3 tasks ended: pane cccc3333 cccc3333, pane dddd4444 dddd4444, pane eeee5555 eeee5555. \
-             Read the results, mark each pane seen and set each task done, then run skiff ledger report p1."
+            "[watch] plan p1: 3 of 3 tasks ended: pane eeee5555 eeee5555. \
+             Read the results, mark its pane seen and set each task done, then run skiff ledger report p1."
         )
     );
     ws.get_mut("grand").unwrap().delivered(Delivery::Taken, "");
@@ -837,4 +845,69 @@ fn admiral_hears_once_when_its_skipper_exits_or_restarts() {
     assert_eq!(step(&mut ws, &back), [("grand".to_string(), Fact::Interrupted)]);
     assert!(wake_line(&ws["grand"].held).starts_with("[watch] the skiff Skipper restarted: hand-offs a1b2c3d4, e5f6a7b8 are open."));
     assert!(step(&mut ws, &back).is_empty());
+}
+
+#[test]
+fn admiral_hears_once_per_waiting_stretch_of_its_skipper() {
+    let mut grand = info("aaaa1111", "idle", false);
+    grand.coordinator = true;
+    let mut k12 = born(info("bbbb2222", "working", false), 1);
+    k12.skipper = Some("k12".into());
+    k12.name = Some("k12 Skipper".into());
+    let rows = [ledger::Row { kind: "handoff".into(), project: "k12".into(), ..row(1, "a1b2c3d4", "bbbb2222", "sent", Some(1)) }];
+    let step = |ws: &mut Watchers, s: &SessionInfo| {
+        let all = [grand.clone(), s.clone()];
+        let told = route(ws, &targets(&all), &rows, &[], &[], &[], &all);
+        told.into_iter().map(|(o, w)| (o, w.fact)).collect::<Vec<_>>()
+    };
+    let mut ws = Watchers::default();
+    assert!(step(&mut ws, &k12).is_empty());
+    // A question: one line to Admiral, with the hand-off.
+    k12.state = SessionState::Waiting;
+    assert_eq!(step(&mut ws, &k12), [("grand".to_string(), Fact::Waiting)]);
+    assert_eq!(
+        ws["grand"].ready_line().as_deref(),
+        Some("[watch] the k12 Skipper is waiting: hand-off a1b2c3d4 is open. Tell the person it needs them in its pane.")
+    );
+    assert!(step(&mut ws, &k12).is_empty());
+    ws.get_mut("grand").unwrap().delivered(Delivery::Taken, "");
+    // Idle stays untold. A new wait is told again.
+    k12.state = SessionState::Idle;
+    k12.unread = true;
+    assert!(step(&mut ws, &k12).is_empty());
+    k12.state = SessionState::Waiting;
+    assert_eq!(step(&mut ws, &k12), [("grand".to_string(), Fact::Waiting)]);
+    // Answered before the line went: the held line goes.
+    k12.state = SessionState::Working;
+    assert!(step(&mut ws, &k12).is_empty());
+    assert_eq!(ws["grand"].ready_line(), None);
+}
+
+#[test]
+fn a_waiting_row_does_not_hold_its_plan() {
+    let mut grand = info("aaaa1111", "idle", false);
+    grand.coordinator = true;
+    let mut k12 = info("bbbb2222", "waiting", false);
+    k12.skipper = Some("k12".into());
+    let in_plan = |id, uid: &str, pane: &str| ledger::Row { parent: Some("p1".into()), ..row(id, uid, pane, "sent", None) };
+    let hand = ledger::Row { kind: "handoff".into(), project: "k12".into(), ..in_plan(3, "h1", "bbbb2222") };
+    let tasks = [in_plan(1, "t1", "cccc3333"), in_plan(2, "t2", "dddd4444"), hand, in_plan(4, "t4", "eeee5555")];
+    let mut ws = Watchers::default();
+    // The hand-off's Skipper and t4's pane wait; t1 and t2 end: the plan line names the waiting rows.
+    let all = [grand.clone(), k12.clone(), info("cccc3333", "idle", true), info("dddd4444", "idle", true), info("eeee5555", "waiting", false)];
+    route(&mut ws, &targets(&all), &tasks, &[], &[], &tasks, &all);
+    let line = ws["grand"].ready_line().unwrap();
+    assert!(
+        line.ends_with(
+            "plan p1: 2 of 4 sent tasks ended: pane cccc3333 cccc3333, pane dddd4444 dddd4444; 2 waiting: h1, t4. \
+             Read the results, mark each pane seen and set each ended task done. Tell the person the waiting tasks need them."
+        ),
+        "{line}"
+    );
+    // A hand-off whose Skipper works holds the plan.
+    let mut ws = Watchers::default();
+    k12.state = SessionState::Working;
+    let all = [grand, k12, info("cccc3333", "idle", true), info("dddd4444", "idle", true), info("eeee5555", "idle", true)];
+    route(&mut ws, &targets(&all), &tasks, &[], &[], &tasks, &all);
+    assert_eq!(ws["grand"].ready_line(), None);
 }
