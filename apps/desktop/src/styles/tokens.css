@@ -37,6 +37,9 @@
   /* The Skiff agent's rank stripes in the Skippers list. */
   --rank: #e8c46a;
   --scrim: rgba(5, 7, 10, 0.72);
+  /* A skin's highlight and shade, for its gradients. appTheme.ts sets both per theme. */
+  --gloss: #e6e8eb26;
+  --shade: #00000059;
   /* Text on a filled --state-working button. */
   --on-working: #0b0e12;
   --u: calc(1px * var(--zoom, 1));
@@ -86,4 +89,51 @@
   --skin-key-bevel: inset 0 calc(-6 * var(--u)) 0;
   --skin-outer-frame-strong: 0 0 0 2px;
   --skin-search-frame: inset 0 0 0 calc(2 * var(--u));
+  --skin-bubble-radius: 0;
+  --skin-box-radius: 0;
+  --skin-box-surface: var(--bg-panel);
+  --skin-box-shadow: none;
+  --skin-band-gradient: none;
+  --skin-statusbar-gradient: none;
+  --skin-dialog-shadow: none;
+  --skin-bar-rule: var(--rule);
+  --skin-bar-inset: 0;
+  --skin-bar-gap: 0;
+  --skin-content-inset: 0;
+  --skin-foot-gap: 0;
+}
+
+/* Bubble: glossy bars, round buttons, light panels in a tinted frame. Every color comes from the theme. */
+:root[data-skin="bubble"] {
+  --skin-gloss-bar: linear-gradient(180deg, var(--gloss) 0%, color-mix(in srgb, var(--gloss) 40%, transparent) 50%, transparent 52%, var(--shade) 100%);
+  --skin-tint: linear-gradient(color-mix(in srgb, var(--bg-deep) 75%, transparent), color-mix(in srgb, var(--bg-deep) 75%, transparent));
+  --skin-soft-top: linear-gradient(180deg, var(--gloss), transparent calc(56 * var(--u)));
+  --font: Tahoma, Verdana, "Segoe UI", "DejaVu Sans", Cantarell, sans-serif;
+  --skin-wordmark-font: "Lilita One", var(--font);
+  --skin-button-radius: calc(5 * var(--u));
+  --skin-bubble-radius: calc(16 * var(--u));
+  --skin-input-radius: calc(5 * var(--u));
+  --skin-menu-radius: calc(8 * var(--u));
+  --skin-panel-radius: calc(8 * var(--u));
+  --skin-box-radius: calc(8 * var(--u));
+  --skin-button-gradient: var(--skin-gloss-bar);
+  --skin-input-gradient: linear-gradient(180deg, var(--shade), transparent calc(8 * var(--u)));
+  --skin-menu-gradient: var(--skin-soft-top);
+  --skin-panel-gradient: var(--skin-soft-top);
+  --skin-sidebar-gradient: linear-gradient(180deg, var(--gloss), transparent calc(240 * var(--u)));
+  --skin-tab-gradient: var(--skin-gloss-bar);
+  --skin-titlebar-gradient: var(--skin-gloss-bar);
+  --skin-band-gradient: var(--skin-gloss-bar), var(--skin-tint);
+  --skin-statusbar-gradient: var(--skin-gloss-bar);
+  --skin-button-shadow: 0 1px 2px var(--shade);
+  --skin-input-shadow: inset 0 1px 2px var(--shade);
+  --skin-box-surface: var(--bg);
+  --skin-box-shadow: 0 1px 3px var(--shade);
+  --skin-floating-shadow: 0 6px 18px rgb(0 0 0 / 0.3);
+  --skin-dialog-shadow: 0 10px 30px rgb(0 0 0 / 0.35);
+  --skin-bar-rule: transparent;
+  --skin-bar-inset: calc(8 * var(--u));
+  --skin-bar-gap: calc(3 * var(--u));
+  --skin-content-inset: calc(6 * var(--u));
+  --skin-foot-gap: calc(8 * var(--u));
 }

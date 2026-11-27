@@ -1,21 +1,21 @@
 /* Confirm dialog for actions that cannot be undone. */
 /* Its own compositing layer, as the menus have, so no overlay scrollbar paints over it. */
 .confirm-overlay { transform: translateZ(0); isolation: isolate; position: fixed; inset: 0; z-index: 66; display: flex; align-items: center; justify-content: center; background: var(--scrim); }
-.confirm-panel { width: calc(480 * var(--u)); max-width: calc(100vw - calc(32 * var(--u))); display: flex; flex-direction: column; background: var(--skin-panel-gradient) var(--bg-panel); border: var(--skin-border) var(--rule-strong); border-radius: var(--skin-panel-radius); }
-.confirm-title { height: calc(56 * var(--u)); display: flex; align-items: center; padding: 0 calc(20 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(16px * var(--zoom, 1)); font-weight: 700; }
+.confirm-panel { width: calc(480 * var(--u)); max-width: calc(100vw - calc(32 * var(--u))); display: flex; flex-direction: column; background: var(--skin-panel-gradient) var(--bg-panel); border: var(--skin-border) var(--rule-strong); border-radius: var(--skin-panel-radius); box-shadow: var(--skin-dialog-shadow); overflow: clip; }
+.confirm-title { height: calc(56 * var(--u)); display: flex; align-items: center; padding: 0 calc(20 * var(--u)); border-bottom: 1px solid var(--rule); background: var(--skin-titlebar-gradient); font-size: calc(16px * var(--zoom, 1)); font-weight: 700; }
 .confirm-title > .skipper-face { margin-right: calc(12 * var(--u)); flex: none; }
 .confirm-skippers { border-bottom: 1px solid var(--rule); }
 .confirm-skipper { height: var(--row); display: flex; align-items: center; gap: calc(10 * var(--u)); padding: 0 calc(20 * var(--u)); font-size: calc(13px * var(--zoom, 1)); color: var(--text); }
 .confirm-skipper + .confirm-skipper { border-top: 1px solid var(--rule); }
 .confirm-body { padding: calc(16 * var(--u)) calc(20 * var(--u)); font-size: calc(13px * var(--zoom, 1)); line-height: 1.6; color: var(--text-2); border-bottom: 1px solid var(--rule); white-space: pre-line; }
-.confirm-foot { height: calc(56 * var(--u)); display: flex; }
+.confirm-foot { height: calc(56 * var(--u)); display: flex; gap: var(--skin-foot-gap); padding: var(--skin-foot-gap); }
 /* The buttons split the foot evenly. */
-.confirm-cancel, .confirm-act { flex: 1 1 0; min-width: 0; border: 0; border-left: 1px solid var(--rule); font-size: calc(13px * var(--zoom, 1)); }
+.confirm-cancel, .confirm-act { flex: 1 1 0; min-width: 0; border: 0; border-radius: var(--skin-bubble-radius); border-left: 1px solid var(--rule); font-size: calc(13px * var(--zoom, 1)); }
 .confirm-foot > :first-child { border-left: 0; }
-.confirm-cancel { background: transparent; color: var(--text-2); }
-.confirm-cancel:hover { background: var(--bg-raised); }
-.confirm-act { background: var(--danger); color: var(--danger-text); font-weight: 600; }
-.confirm-act:hover { background: var(--danger-hover); }
+.confirm-cancel { background: var(--skin-button-gradient) transparent; box-shadow: var(--skin-button-shadow); color: var(--text-2); }
+.confirm-cancel:hover { background-color: var(--bg-raised); }
+.confirm-act { background: var(--skin-button-gradient) var(--danger); box-shadow: var(--skin-button-shadow); color: var(--danger-text); font-weight: 600; }
+.confirm-act:hover { background-color: var(--danger-hover); }
 /* The background opacity dialog: a slider and its value on one row. */
 .opacity-row { height: var(--row); display: flex; align-items: center; gap: calc(16 * var(--u)); padding: 0 calc(20 * var(--u)); border-bottom: 1px solid var(--rule); }
 .opacity-slider { flex-grow: 1; min-width: 0; appearance: none; -webkit-appearance: none; height: 100%; margin: 0; background: transparent; cursor: pointer; }

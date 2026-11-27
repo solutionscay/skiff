@@ -85,6 +85,7 @@ const BUILTIN: &[(&str, &str)] = &[
     ("plumb-line", include_str!("../themes/plumb-line.toml")),
     ("sailcloth", include_str!("../themes/sailcloth.toml")),
     ("morning-watch", include_str!("../themes/morning-watch.toml")),
+    ("clear-sky", include_str!("../themes/clear-sky.toml")),
 ];
 
 /// The ids of the bundled themes, such as `builtin:foot`.
@@ -395,9 +396,9 @@ mod tests {
         assert_eq!(t.background, "#08001a");
         assert_eq!(t.palette.len(), 16);
         assert_eq!(t.palette[9], "#ff1111");
-        assert_eq!(builtin_count(), 40);
+        assert_eq!(builtin_count(), 41);
         let (foot_set, quiet): (Vec<_>, Vec<_>) = list().into_iter().filter(|t| t.source == "built-in").partition(|t| t.ui.is_none());
-        assert_eq!(quiet.len(), 6);
+        assert_eq!(quiet.len(), 7);
         for theme in &quiet {
             assert!(theme.color_family.is_some(), "{}", theme.name);
             assert!(theme.main_color.is_some(), "{}", theme.name);

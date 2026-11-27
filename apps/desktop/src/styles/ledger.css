@@ -15,7 +15,7 @@
 body.ledger-keys #ledger::after { content: ""; position: absolute; inset: 0; border: calc(2 * var(--u)) solid var(--pc, var(--project-default)); pointer-events: none; z-index: 5; }
 body.ledger-keys #ledger .lg-name { color: var(--pc, var(--project-default)); }
 body.ledger-keys .cell.focused::after { display: none; }
-body.ledger-keys .cell.focused .cell-head { background: var(--bg-panel); }
+body.ledger-keys .cell.focused .cell-head { background-color: var(--bg-panel); }
 .lg-head {
   height: var(--row); flex-shrink: 0;
   display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(16 * var(--u));

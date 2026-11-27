@@ -5,8 +5,8 @@
 #topbar .wordmark { font-size: calc(17px * var(--zoom, 1)); letter-spacing: 0.05em; }
 #topbar .search, #topbar .tb-cell.mission-find { background: var(--bg-panel); }
 #topbar .nx { color: var(--text-3); }
-#topbar .nx-waiting { background: var(--state-waiting-bg); box-shadow: var(--skin-underline) var(--state-waiting); color: var(--state-waiting-text); font-weight: 600; }
-#topbar .nx-waiting:hover { background: var(--state-waiting-bg); color: var(--state-waiting-text); }
+#topbar .nx-waiting { background-color: var(--state-waiting-bg); box-shadow: var(--skin-underline) var(--state-waiting); color: var(--state-waiting-text); font-weight: 600; }
+#topbar .nx-waiting:hover { background-color: var(--state-waiting-bg); color: var(--state-waiting-text); }
 #topbar .nx-unread svg, #topbar .nx-unread .num { color: var(--text-3); }
 #topbar .host-cell, #topbar .gear { color: var(--text-3); }
 
@@ -52,7 +52,7 @@
 
 /* ---- 8. Panes: the title drops to body size, the head loses its tint ---- */
 .cell-head .title { font-size: calc(13px * var(--zoom, 1)); }
-.cell.focused .cell-head { background: color-mix(in srgb, var(--pc) 5%, var(--bg-panel)); }
+.cell.focused .cell-head { background-color: color-mix(in srgb, var(--pc) 5%, var(--bg-panel)); }
 .cell-head.st-waiting .title { font-weight: 600; }
 #statusbar { color: var(--text-3); }
 

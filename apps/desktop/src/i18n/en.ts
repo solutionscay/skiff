@@ -781,6 +781,7 @@ export const en = {
   "settings.agents.missing": "Not found",
   "settings.appSkin": "App skin",
   "skin.default": "Default",
+  "skin.bubble": "Bubble",
   "settings.appTheme": "App theme",
   "settings.noApp": "No app opens {file}.",
   "settings.reset.everySkipper": "Every Skipper reads",

@@ -67,7 +67,7 @@ button.file-preview-key:active:not(:disabled) { background-image: none; box-shad
 /* xterm's scrollbar fades by itself, for up to 800ms, over the terminal. It shows and goes at once. */
 .xterm .xterm-scrollable-element > .scrollbar { transition: none !important; }
 #terminal-host .zoom-badge { position: absolute; top: calc(12 * var(--u)); left: 50%; transform: translateX(-50%); z-index: 20; padding: calc(4 * var(--u)) calc(10 * var(--u)); background: var(--bg-raised); border: 1px solid var(--rule-strong); color: var(--text); font-family: var(--mono); font-size: 12px; pointer-events: none; white-space: nowrap; }
-#terminal-host .layout { position: absolute; inset: 0; display: flex; }
+#terminal-host .layout { position: absolute; inset: var(--skin-content-inset); display: flex; border-radius: var(--skin-panel-radius); overflow: clip; }
 #terminal-host .layout > * { flex: 1 1 0; min-width: 0; min-height: 0; }
 .split { display: flex; min-width: 0; min-height: 0; }
 .split.row { flex-direction: row; }
@@ -96,11 +96,11 @@ body.dragging-col .cell-body, body.dragging-row .cell-body { pointer-events: non
 .cell-head {
   height: var(--row); flex-shrink: 0;
   display: flex; align-items: center; gap: calc(10 * var(--u)); padding-left: calc(14 * var(--u));
-  background: var(--bg-panel); border-bottom: 1px solid var(--rule);
+  background: var(--skin-tab-gradient) var(--bg-panel); border-bottom: 1px solid var(--rule);
   font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); white-space: nowrap; overflow: hidden;
 }
 /* Picked in the list: the same tint and bar as its session row. */
-.cell.selected .cell-head { background: color-mix(in srgb, var(--state-working) 16%, var(--bg-panel)); box-shadow: var(--skin-row-mark) var(--state-working); }
+.cell.selected .cell-head { background-color: color-mix(in srgb, var(--state-working) 16%, var(--bg-panel)); box-shadow: var(--skin-row-mark) var(--state-working); }
 .cell.selected .cell-head .title { color: var(--text); }
 .cell { position: relative; }
 .cell.focused::after { content: ""; position: absolute; inset: 0; border: calc(2 * var(--u)) solid var(--pc); pointer-events: none; z-index: 5; }

@@ -89,13 +89,15 @@ body.kbd #sidebar-scroll .project-row:has(> .project-pick.current:focus) { outli
 #sidebar-scroll:has(> .tree-head) { padding-bottom: calc(8 * var(--u)); }
 #sidebar-scroll > .tree-head {
   width: auto; height: var(--row); margin: calc(8 * var(--u)) calc(8 * var(--u)) 0; padding: 0 0 0 calc(8 * var(--u)); align-items: center;
-  background: var(--bg-panel);
+  background: var(--skin-band-gradient) var(--skin-box-surface);
   border: 1px solid var(--rule-strong);
+  border-radius: var(--skin-box-radius); box-shadow: var(--skin-box-shadow);
 }
-#sidebar-scroll > .tree-head:has(+ :is(.tree-kids, .sessions-block)) { border-bottom: 0; }
+#sidebar-scroll > .tree-head:has(+ :is(.tree-kids, .sessions-block)) { border-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 #sidebar-scroll > .tree-head + :is(.tree-kids, .sessions-block) {
-  margin: 0 calc(8 * var(--u)); background: var(--bg-panel);
+  margin: 0 calc(8 * var(--u)); background: var(--skin-box-surface);
   border: 1px solid var(--rule-strong); border-top: 0;
+  border-radius: 0 0 var(--skin-box-radius) var(--skin-box-radius); box-shadow: var(--skin-box-shadow);
 }
 /* Other's rows set their own height: the frame goes outside it. */
 #sidebar-scroll > .tree-head + .sessions-block { box-sizing: content-box; }

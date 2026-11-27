@@ -61,7 +61,7 @@
 .set-note { flex-shrink: 0; padding: 0 calc(12 * var(--u)); line-height: var(--row); border-bottom: 1px solid var(--rule); font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
 .set-note[hidden] { display: none; }
 /* A section head is a 40px tinted band. */
-.set-band { height: var(--row); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: calc(12 * var(--u)); padding: 0 calc(12 * var(--u)); background: var(--bg-raised); border-bottom: 1px solid var(--rule); }
+.set-band { height: var(--row); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: calc(12 * var(--u)); padding: 0 calc(12 * var(--u)); background: var(--skin-band-gradient) var(--bg-raised); border-bottom: 1px solid var(--rule); }
 .set-band-title { font-size: calc(12px * var(--zoom, 1)); font-weight: 500; color: var(--text-2); }
 .set-band-count { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Settings tables (appearance/rowTable.ts). Each cell is a span; a control fills its cell. */

@@ -23,7 +23,7 @@
 .ctl-field:focus { box-shadow: var(--skin-underline) var(--state-working); }
 .ctl-field[aria-invalid="true"], .ctl-field[aria-invalid="true"]:focus { box-shadow: var(--skin-underline) var(--error); }
 
-.ctl-btn { height: calc(26 * var(--u)); flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; padding: 0 calc(10 * var(--u)); border: var(--skin-border) var(--rule); border-radius: var(--skin-button-radius); background: var(--skin-button-gradient) transparent; box-shadow: var(--skin-button-shadow); color: var(--text-3); font: calc(12px * var(--zoom, 1)) var(--font); white-space: nowrap; cursor: pointer; }
+.ctl-btn { height: calc(26 * var(--u)); flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; padding: 0 calc(10 * var(--u)); border: var(--skin-border) var(--rule); border-radius: var(--skin-bubble-radius); background: var(--skin-button-gradient) transparent; box-shadow: var(--skin-button-shadow); color: var(--text-3); font: calc(12px * var(--zoom, 1)) var(--font); white-space: nowrap; cursor: pointer; }
 .ctl-btn:hover:not(:disabled) { border-color: var(--text-3); color: var(--text); }
 .ctl-btn:disabled { opacity: 0.5; cursor: default; }
 .ctl-btn.icon { width: calc(26 * var(--u)); padding: 0; }
