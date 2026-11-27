@@ -265,7 +265,7 @@ body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset:
 .set-daemon .set-row > .c-name { font-size: calc(13px * var(--zoom, 1)); color: var(--text); }
 .set-daemon .c-state { gap: calc(8 * var(--u)); }
 .set-daemon .c-num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
-.set-daemon-row.out { box-shadow: var(--skin-row-mark) var(--error); }
+.set-daemon-row.out { box-shadow: var(--skin-row-mark) var(--error), var(--skin-row-fill) color-mix(in srgb, var(--error) 16%, transparent); }
 .set-daemon .bad { color: var(--error-text); }
 /* Reveal reads as a word in its cell. */
 .set-daemon .set-row > .c-acts { padding: 0; }

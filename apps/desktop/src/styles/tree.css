@@ -39,7 +39,7 @@ body:has(#ctx-menu:not([hidden]), #launch-menu:not([hidden]), #switcher:not([hid
 .wt.selected { box-shadow: var(--skin-group-mark) var(--pc); }
 /* Worktrees part with space, not a rule. The project strip runs through it. */
 .wt { padding-bottom: calc(12 * var(--u)); }
-.wt-row { position: relative; height: var(--row); display: flex; background: linear-gradient(to right, transparent 0 3px, color-mix(in srgb, var(--bg-panel) 72%, var(--bg)) 3px); }
+.wt-row { position: relative; height: var(--row); display: flex; background: linear-gradient(to right, transparent 0 var(--skin-strip-gap), color-mix(in srgb, var(--bg-panel) 72%, var(--bg)) var(--skin-strip-gap)); }
 .wt-pick {
   flex-grow: 1; min-width: 0;
   display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(12 * var(--u)) 0 calc(10 * var(--u));
