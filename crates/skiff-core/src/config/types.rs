@@ -22,6 +22,8 @@ pub struct Appearance {
     /// The theme id the app and every terminal without its own theme use.
     /// Absent: Harbor.
     pub theme: Option<String>,
+    /// The app frame skin. Absent: default.
+    pub skin: Option<String>,
     /// Terminal text size in points; the app text scales with it. Absent: 13.
     pub font_size: Option<u8>,
     /// Linux: `header-bar` or `menu-bar`. Absent: the header bar on GNOME,

@@ -1,3 +1,5 @@
+import { applySkin, skins } from "./skin";
+import { picker } from "../ui/controls";
 import { DEFAULT_THEME } from "./colors";
 import { escapeButton } from "../ui/dialogParts";
 import { h } from "../ui/dom";
@@ -90,6 +92,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   let openSet: OpenSettings | null = null;
   let openFound: OpenChoices = {};
   let menuSet: MenuLayout | null = null;
+  let skinSet: string | null = null;
   /** `[appearance] language`: a code, or null for the system language. */
   let langSet: string | null = null;
   /** `[appearance] time_zone` and `clock`: null for Auto. */
@@ -357,7 +360,28 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       err.setAttribute("role", "alert");
       main.appendChild(err);
     }
-    main.append(finishRow(draw, sampleSeeds), sectionHead(t("settings.appTheme"), undefined, String(look.themes().length)), cards);
+    const skinRow = h("div", "set-row set-open set-agent on");
+    const cell = h("span", "c-field");
+    const skin = skins.find((item) => item.id === skinSet);
+    cell.append(picker({
+      label: t("settings.appSkin"),
+      value: skin?.id ?? "",
+      shows: t((skin ?? skins[0]).label),
+      entries: () => skins.map(({ id, label }) => ({ value: id, label: t(label) })),
+      pick: async (id) => {
+        try {
+          await invoke("set_skin", { skin: id });
+          skinSet = id;
+          applySkin(id);
+          error = null;
+        } catch (e) {
+          error = String(e);
+        }
+        render();
+      },
+    }));
+    skinRow.append(h("span", "c-name", t("settings.appSkin")), cell);
+    main.append(finishRow(draw, sampleSeeds), skinRow, sectionHead(t("settings.appTheme"), undefined, String(look.themes().length)), cards);
     return main;
   }
 
@@ -650,6 +674,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       openFound = await invoke<OpenChoices>("open_choices").catch(() => ({}));
       menuSet = await invoke<MenuLayout>("menu_layout").catch(() => null);
       const app = await invoke<Appearance>("get_appearance").catch(() => null);
+      skinSet = app?.skin ?? null;
       langSet = app?.language ?? null;
       zoneSet = app?.time_zone ?? null;
       clockSet = app?.clock ?? null;

@@ -3,11 +3,12 @@
 #topbar {
   height: calc(48 * var(--u)); flex-shrink: 0;
   display: flex; align-items: stretch;
-  background: var(--bg-deep);
-  border-bottom: 1px solid var(--rule);
+  background: var(--skin-titlebar-gradient) var(--bg-deep);
+  border-bottom: var(--skin-border) var(--rule);
+  border-radius: var(--skin-titlebar-radius);
 }
 #topbar .tb-cell { display: flex; align-items: center; padding: 0 calc(16 * var(--u)); border-right: 1px solid var(--rule); }
-#topbar .wordmark { width: calc(356 * var(--u)); font-family: "Lilita One", "Space Grotesk", var(--font); font-weight: 400; border-right: 0; }
+#topbar .wordmark { width: calc(356 * var(--u)); font-family: var(--skin-wordmark-font); font-weight: 400; border-right: 0; }
 /* Centered on the window, as in VS Code. A narrow window pushes it right against the wordmark. */
 #topbar .search {
   flex-grow: 1; min-width: 0; max-width: calc(560 * var(--u)); gap: calc(10 * var(--u));
@@ -41,7 +42,7 @@ body.header-bar #topbar .search { display: none; }
 #body { flex-grow: 1; min-height: 0; display: flex; position: relative; }
 
 /* A new fleet's name, under its head in the tree. */
-.fleet-name { position: fixed; z-index: 15; width: calc(232 * var(--u)); display: flex; flex-direction: column; background: var(--bg-raised); border: 1px solid var(--rule-strong); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); }
+.fleet-name { position: fixed; z-index: 15; width: calc(232 * var(--u)); display: flex; flex-direction: column; background: var(--bg-raised); border: 1px solid var(--rule-strong); box-shadow: var(--skin-floating-shadow); }
 .fleet-name-label { height: calc(20 * var(--u)); display: flex; align-items: flex-end; padding: 0 calc(12 * var(--u)); font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
-.fleet-name input { height: calc(32 * var(--u)); margin: calc(4 * var(--u)) calc(12 * var(--u)) 0; padding: 0 calc(8 * var(--u)); background: var(--bg); border: 1px solid var(--state-working); border-radius: 0; color: var(--text); font: inherit; font-size: calc(13px * var(--zoom, 1)); outline: 0; }
+.fleet-name input { height: calc(32 * var(--u)); margin: calc(4 * var(--u)) calc(12 * var(--u)) 0; padding: 0 calc(8 * var(--u)); background: var(--bg); border: 1px solid var(--state-working); border-radius: var(--skin-input-radius); color: var(--text); font: inherit; font-size: calc(13px * var(--zoom, 1)); outline: 0; }
 .fleet-name-hint { min-height: calc(28 * var(--u)); display: flex; align-items: center; padding: 0 calc(12 * var(--u)); font-size: calc(11px * var(--zoom, 1)); color: var(--text-3); }

@@ -915,6 +915,8 @@ export const es = {
   "settings.agents.name": "nombre",
   "settings.agents.installed": "Instalado",
   "settings.agents.missing": "No encontrado",
+  "settings.appSkin": "Estilo de la app",
+  "skin.default": "Predeterminado",
   "settings.appTheme": "Tema de la app",
   "settings.noApp": "Ninguna app abre {file}.",
   "settings.reset.everySkipper": "Cada Skipper lo lee",

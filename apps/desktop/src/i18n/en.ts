@@ -779,6 +779,8 @@ export const en = {
   "settings.agents.name": "name",
   "settings.agents.installed": "Installed",
   "settings.agents.missing": "Not found",
+  "settings.appSkin": "App skin",
+  "skin.default": "Default",
   "settings.appTheme": "App theme",
   "settings.noApp": "No app opens {file}.",
   "settings.reset.everySkipper": "Every Skipper reads",

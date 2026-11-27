@@ -27,7 +27,7 @@
 /* The Files dialog: Settings › Files' page in a centered panel. */
 .images-panel {
   width: calc(1040 * var(--u)); max-width: calc(100vw - calc(32 * var(--u))); height: calc(100vh - calc(64 * var(--u)));
-  display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--rule-strong); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); outline: 0;
+  display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--rule-strong); box-shadow: var(--skin-floating-shadow); outline: 0;
 }
 
 /* Settings › Files: the size limit, a tool row, then the gallery. Tiles touch, with 1px rules between them. */
@@ -37,7 +37,7 @@
 .img-page .lib-sec span { color: var(--text-3); font-size: calc(12px * var(--zoom, 1)); }
 .img-tools { height: var(--row); flex-shrink: 0; display: flex; border-bottom: 1px solid var(--rule); }
 .img-tools .lib-head { flex: 1; min-width: 0; border-bottom: 0; }
-.img-tools .lib-search:focus { box-shadow: inset 0 -1px 0 var(--text-3); }
+.img-tools .lib-search:focus { box-shadow: var(--skin-bottom-rule) var(--text-3); }
 .img-btn {
   height: 100%; flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(14 * var(--u)); border: 0; border-left: 1px solid var(--rule);
   background: transparent; color: var(--text-2); font-size: calc(12px * var(--zoom, 1)); white-space: nowrap;
@@ -50,7 +50,7 @@
 .img-btn.del:hover:not(:disabled) { color: var(--error-text); }
 .img-scroll { flex: 1; min-height: 0; overflow-y: auto; outline: 0; scrollbar-width: thin; scrollbar-color: var(--rule-strong) transparent; }
 .img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(208 * var(--u)), 1fr)); gap: 1px; padding-bottom: 1px; }
-.img-tile { position: relative; display: flex; flex-direction: column; background: var(--bg); box-shadow: 0 0 0 1px var(--rule); cursor: default; user-select: none; }
+.img-tile { position: relative; display: flex; flex-direction: column; background: var(--bg); box-shadow: var(--skin-outer-frame) var(--rule); cursor: default; user-select: none; }
 .img-pic { position: relative; height: calc(160 * var(--u)); background: var(--bg-deep); border-bottom: 1px solid var(--rule); }
 .img-pic img { position: absolute; inset: calc(8 * var(--u)) calc(12 * var(--u)); width: calc(100% - calc(24 * var(--u))); height: calc(100% - calc(16 * var(--u))); object-fit: contain; display: block; }
 .img-cap { height: var(--row); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-content: center; column-gap: calc(8 * var(--u)); padding: 0 calc(12 * var(--u)); line-height: 1.3; }
@@ -62,6 +62,6 @@
 .lib-ext { font: 600 calc(11px * var(--zoom, 1)) var(--mono); letter-spacing: 0.06em; color: var(--text-2); }
 .img-limit { flex-shrink: 0; }
 .img-tile:hover:not(.sel) { background: color-mix(in srgb, var(--text) 6%, var(--bg)); }
-.img-tile.sel { background: color-mix(in srgb, var(--project-default) 22%, var(--bg)); box-shadow: inset 2px 0 0 var(--project-default), 0 0 0 1px var(--rule); }
-.img-tile.sel .img-pic { background: color-mix(in srgb, var(--project-default) 12%, var(--bg-deep)); box-shadow: inset 2px 0 0 var(--project-default); }
+.img-tile.sel { background: color-mix(in srgb, var(--project-default) 22%, var(--bg)); box-shadow: var(--skin-row-mark) var(--project-default), var(--skin-outer-frame) var(--rule); }
+.img-tile.sel .img-pic { background: color-mix(in srgb, var(--project-default) 12%, var(--bg-deep)); box-shadow: var(--skin-row-mark) var(--project-default); }
 body.kbd .img-scroll:focus .img-tile.now::after { content: ""; position: absolute; inset: 0; outline: 1px solid var(--text-3); outline-offset: -1px; pointer-events: none; }

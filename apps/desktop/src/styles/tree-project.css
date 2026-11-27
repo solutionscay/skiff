@@ -44,7 +44,7 @@
 .project-row .wt-plus { visibility: hidden; }
 .project-row:hover .wt-plus, .project-row > .current ~ .wt-plus, .project-row .wt-plus[aria-expanded="true"] { visibility: visible; }
 /* The project row is current: the whole row lights, its buttons included. */
-#sidebar-scroll .project-row:has(> .project-pick.current) { box-shadow: inset 2px 0 0 var(--pc); }
+#sidebar-scroll .project-row:has(> .project-pick.current) { box-shadow: var(--skin-row-mark) var(--pc); }
 #sidebar-scroll .project-pick.current, body.kbd #sidebar-scroll .project-pick.current:focus { background: transparent; box-shadow: none; }
 body.kbd #sidebar-scroll .project-row:has(> .project-pick.current:focus) { outline: 1px solid var(--rule-strong); outline-offset: -1px; }
 
@@ -113,13 +113,13 @@ body.kbd #sidebar-scroll .project-row:has(> .project-pick.current:focus) { outli
 /* Drag a project or a fleet: a 2px line where it lands, or a frame around the row it joins. */
 body.dragging-tree, body.dragging-tree * { cursor: grabbing !important; user-select: none; }
 #sidebar-scroll .dragging { opacity: 0.4; }
-#sidebar-scroll .drop-before { box-shadow: inset 0 2px 0 var(--text); }
-#sidebar-scroll .drop-after { box-shadow: inset 0 -2px 0 var(--text); }
-#sidebar-scroll .drop-into { background: var(--bg-raised); box-shadow: inset 0 0 0 2px var(--text); }
+#sidebar-scroll .drop-before { box-shadow: var(--skin-drop-before) var(--text); }
+#sidebar-scroll .drop-after { box-shadow: var(--skin-underline) var(--text); }
+#sidebar-scroll .drop-into { background: var(--bg-raised); box-shadow: var(--skin-inset-frame-strong) var(--text); }
 .tree-ghost { position: fixed; z-index: 20; display: flex; align-items: center; gap: calc(8 * var(--u)); pointer-events: none; }
 .tree-ghost-name, .tree-ghost-label {
   height: calc(24 * var(--u)); padding: 0 calc(8 * var(--u)); display: flex; align-items: center;
-  background: var(--bg-raised); border: 1px solid var(--rule-strong); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  background: var(--bg-raised); border: 1px solid var(--rule-strong); box-shadow: var(--skin-floating-shadow);
   font-size: calc(12px * var(--zoom, 1)); color: var(--text); white-space: nowrap;
 }
 .tree-ghost-name { font-weight: 600; }

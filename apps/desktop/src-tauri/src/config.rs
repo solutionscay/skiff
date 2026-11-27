@@ -408,6 +408,11 @@ pub(crate) async fn set_appearance(theme: Option<String>) -> Result<Appearance, 
     .await
 }
 
+#[tauri::command]
+pub(crate) async fn set_skin(skin: String) -> Result<(), String> {
+    blocking(move || config::set_skin(&skin)).await
+}
+
 /// Sets the text size: points, or `null` for the default.
 #[tauri::command]
 pub(crate) async fn set_font_size(size: Option<u8>) -> Result<Appearance, String> {

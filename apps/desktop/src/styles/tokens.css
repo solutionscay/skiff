@@ -39,12 +39,51 @@
   --scrim: rgba(5, 7, 10, 0.72);
   /* Text on a filled --state-working button. */
   --on-working: #0b0e12;
-  --font: "IBM Plex Sans", system-ui, sans-serif;
-  --mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
   --u: calc(1px * var(--zoom, 1));
   /* Motion: every one-off animation uses these. ui/motion.ts reads them. Light layers only, opacity and transform only. */
   --motion-fade: 100ms;
   --motion-move: 120ms;
   --motion-ease: cubic-bezier(.2, .6, .2, 1);
   --row: calc(40 * var(--u));
+}
+
+/* Frame styles. Shadow geometry takes its color at the element, where project and state colors apply. */
+:root,
+:root[data-skin="default"] {
+  --font: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  --skin-wordmark-font: "Lilita One", "Space Grotesk", var(--font);
+  --skin-border: 1px solid;
+  --skin-button-radius: 0;
+  --skin-input-radius: 0;
+  --skin-menu-radius: 0;
+  --skin-panel-radius: 0;
+  --skin-sidebar-radius: 0;
+  --skin-tab-radius: 0;
+  --skin-titlebar-radius: 0;
+  --skin-button-gradient: none;
+  --skin-input-gradient: none;
+  --skin-menu-gradient: none;
+  --skin-panel-gradient: none;
+  --skin-sidebar-gradient: none;
+  --skin-tab-gradient: none;
+  --skin-titlebar-gradient: none;
+  --skin-button-shadow: none;
+  --skin-input-shadow: none;
+  --skin-alert-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+  --skin-drag-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --skin-floating-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --skin-underline: inset 0 -2px 0;
+  --skin-row-mark: inset 2px 0 0;
+  --skin-drop-before: inset 0 2px 0;
+  --skin-inset-frame-strong: inset 0 0 0 2px;
+  --skin-bottom-rule: inset 0 -1px 0;
+  --skin-inset-frame: inset 0 0 0 1px;
+  --skin-group-mark: inset 3px 0 0;
+  --skin-waiting-mark: inset calc(3 * var(--u)) 0 0;
+  --skin-top-rule: inset 0 1px 0;
+  --skin-outer-frame: 0 0 0 1px;
+  --skin-key-bevel: inset 0 calc(-6 * var(--u)) 0;
+  --skin-outer-frame-strong: 0 0 0 2px;
+  --skin-search-frame: inset 0 0 0 calc(2 * var(--u));
 }

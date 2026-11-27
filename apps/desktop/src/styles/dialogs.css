@@ -1,7 +1,7 @@
 /* Confirm dialog for actions that cannot be undone. */
 /* Its own compositing layer, as the menus have, so no overlay scrollbar paints over it. */
 .confirm-overlay { transform: translateZ(0); isolation: isolate; position: fixed; inset: 0; z-index: 66; display: flex; align-items: center; justify-content: center; background: var(--scrim); }
-.confirm-panel { width: calc(480 * var(--u)); max-width: calc(100vw - calc(32 * var(--u))); display: flex; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--rule-strong); }
+.confirm-panel { width: calc(480 * var(--u)); max-width: calc(100vw - calc(32 * var(--u))); display: flex; flex-direction: column; background: var(--skin-panel-gradient) var(--bg-panel); border: var(--skin-border) var(--rule-strong); border-radius: var(--skin-panel-radius); }
 .confirm-title { height: calc(56 * var(--u)); display: flex; align-items: center; padding: 0 calc(20 * var(--u)); border-bottom: 1px solid var(--rule); font-size: calc(16px * var(--zoom, 1)); font-weight: 700; }
 .confirm-title > .skipper-face { margin-right: calc(12 * var(--u)); flex: none; }
 .confirm-skippers { border-bottom: 1px solid var(--rule); }
