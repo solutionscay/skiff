@@ -1,0 +1,28 @@
+# Lilac frame, white panels, tinted terminal ground, plum text, purple accent. Muted ANSI colors.
+name = "Wisteria"
+color_family = "Purple"
+main_color = "#7b4bb7"
+
+[terminal]
+foreground = "#2e1a4f"
+background = "#f4effd"
+cursor = "#2e1a4f"
+cursor_foreground = "#f4effd"
+selection = "#e2d6f7"
+selection_foreground = "#2e1a4f"
+regular = ["#2e1a4f", "#b8322a", "#2e7a36", "#8f6400", "#2f5fb8", "#7b4bb7", "#0f7a80", "#ddd5ea"]
+bright = ["#6f5f8c", "#cf4437", "#3a8f42", "#a87708", "#3a72c8", "#9461cc", "#14949b", "#fdfcff"]
+
+[ui]
+# The app panels stay white. The terminal ground has a faint tint of the frame.
+background = "#ffffff"
+sidebar = "#e9e0f8"
+tertiary = "#dccdf3"
+secondary = "#f2ecfb"
+border = "#c4b0e6"
+mutedForeground = "#5f4f80"
+sidebarForeground = "#3a2660"
+primary = "#7b4bb7"
+working = "#2f62b8"
+warning = "#a35f00"
+destructive = "#c2302a"

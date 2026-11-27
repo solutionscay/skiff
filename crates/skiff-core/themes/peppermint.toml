@@ -1,19 +1,21 @@
-# Mint green frame, white panels, deep green text, raspberry accent. Muted ANSI colors.
+# Mint green frame, white panels, tinted terminal ground, deep green text, raspberry accent. Muted ANSI colors.
 name = "Peppermint"
 color_family = "Green"
 main_color = "#c2255c"
 
 [terminal]
 foreground = "#123d2e"
-background = "#ffffff"
+background = "#eaf7f0"
 cursor = "#123d2e"
-cursor_foreground = "#ffffff"
+cursor_foreground = "#eaf7f0"
 selection = "#bfe8d3"
 selection_foreground = "#123d2e"
 regular = ["#123d2e", "#b8322a", "#2b7a3d", "#8f6400", "#1f62b5", "#9c3a8a", "#0b7a72", "#d2e3da"]
 bright = ["#58776b", "#cf4437", "#378f4a", "#a87708", "#2f74d0", "#b04ca0", "#119083", "#f3faf6"]
 
 [ui]
+# The app panels stay white. The terminal ground has a faint tint of the frame.
+background = "#ffffff"
 sidebar = "#d3f0e1"
 tertiary = "#bbe5cf"
 secondary = "#e7f7ee"

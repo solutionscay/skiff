@@ -144,3 +144,21 @@
   --skin-content-inset: calc(6 * var(--u));
   --skin-foot-gap: calc(8 * var(--u));
 }
+
+/* Bubble: a pane head wears the pane's own theme (terminal/headTheme.ts sets --head-* and data-head on the cell).
+   Every head rule reads these names, so focus, selection and state marks mix with the head's color. Waiting keeps
+   the app's amber band. The gloss is drawn here, so it takes the head theme's highlight and shade. */
+:root[data-skin="bubble"] .cell[data-head] .cell-head {
+  --bg-panel: var(--head-bg);
+  --text: var(--head-text);
+  --text-2: var(--head-text-2);
+  --text-3: var(--head-text-3);
+  --text-dim: var(--head-text-dim);
+  --rule: var(--head-rule);
+  --state-working: var(--head-working);
+  --state-done: var(--head-done);
+  --hover: var(--head-hover);
+  --gloss: var(--head-gloss);
+  --shade: var(--head-shade);
+  --skin-tab-gradient: linear-gradient(180deg, var(--gloss) 0%, color-mix(in srgb, var(--gloss) 40%, transparent) 50%, transparent 52%, var(--shade) 100%);
+}

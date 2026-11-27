@@ -177,6 +177,13 @@ export function signatureColor(t: TerminalTheme): string {
   return t.main_color ?? t.foreground;
 }
 
+/** A session's own theme id: its session theme, else its project's. `null`: it follows the app. */
+export function ownThemeId(s: SessionInfo): string | null {
+  const p = place(s)?.project;
+  const own = s.theme ?? (p ? projectThemes.get(p.name) : undefined);
+  return own ? knownTheme(own) : null;
+}
+
 /** The theme this terminal was given by hand, or null when it follows the app. */
 export function ownTheme(s: SessionInfo): TerminalTheme | null {
   const id = s.theme;

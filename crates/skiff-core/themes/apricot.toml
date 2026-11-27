@@ -1,19 +1,21 @@
-# Peach frame, white panels, dark brown text, teal accent. Muted ANSI colors.
+# Peach frame, white panels, tinted terminal ground, dark brown text, teal accent. Muted ANSI colors.
 name = "Apricot"
 color_family = "Orange"
 main_color = "#1f7a80"
 
 [terminal]
 foreground = "#4a2414"
-background = "#ffffff"
+background = "#fff1e4"
 cursor = "#4a2414"
-cursor_foreground = "#ffffff"
+cursor_foreground = "#fff1e4"
 selection = "#fbd6b8"
 selection_foreground = "#4a2414"
 regular = ["#4a2414", "#b8322a", "#3a7a2e", "#8f5f00", "#2b5fb0", "#9a3d86", "#1f7a80", "#eadbd0"]
 bright = ["#85604f", "#cf4437", "#4a8f3a", "#a87208", "#3a72c8", "#b04f9c", "#24909a", "#fdf7f2"]
 
 [ui]
+# The app panels stay white. The terminal ground has a faint tint of the frame.
+background = "#ffffff"
 sidebar = "#fde3cc"
 tertiary = "#f8cfaa"
 secondary = "#fff0e3"
