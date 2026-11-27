@@ -1,0 +1,26 @@
+# Mint green frame, white panels, deep green text, raspberry accent. Muted ANSI colors.
+name = "Peppermint"
+color_family = "Green"
+main_color = "#c2255c"
+
+[terminal]
+foreground = "#123d2e"
+background = "#ffffff"
+cursor = "#123d2e"
+cursor_foreground = "#ffffff"
+selection = "#bfe8d3"
+selection_foreground = "#123d2e"
+regular = ["#123d2e", "#b8322a", "#2b7a3d", "#8f6400", "#1f62b5", "#9c3a8a", "#0b7a72", "#d2e3da"]
+bright = ["#58776b", "#cf4437", "#378f4a", "#a87708", "#2f74d0", "#b04ca0", "#119083", "#f3faf6"]
+
+[ui]
+sidebar = "#d3f0e1"
+tertiary = "#bbe5cf"
+secondary = "#e7f7ee"
+border = "#9fd2b8"
+mutedForeground = "#486c5e"
+sidebarForeground = "#1a4a39"
+primary = "#c2255c"
+working = "#1b6ec2"
+warning = "#a35f00"
+destructive = "#c92a2a"
