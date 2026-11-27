@@ -1,0 +1,26 @@
+# Peach frame, white panels, dark brown text, teal accent. Muted ANSI colors.
+name = "Apricot"
+color_family = "Orange"
+main_color = "#1f7a80"
+
+[terminal]
+foreground = "#4a2414"
+background = "#ffffff"
+cursor = "#4a2414"
+cursor_foreground = "#ffffff"
+selection = "#fbd6b8"
+selection_foreground = "#4a2414"
+regular = ["#4a2414", "#b8322a", "#3a7a2e", "#8f5f00", "#2b5fb0", "#9a3d86", "#1f7a80", "#eadbd0"]
+bright = ["#85604f", "#cf4437", "#4a8f3a", "#a87208", "#3a72c8", "#b04f9c", "#24909a", "#fdf7f2"]
+
+[ui]
+sidebar = "#fde3cc"
+tertiary = "#f8cfaa"
+secondary = "#fff0e3"
+border = "#ebba92"
+mutedForeground = "#7a5242"
+sidebarForeground = "#5a2e1a"
+primary = "#1f7a80"
+working = "#2f62b8"
+warning = "#b05a00"
+destructive = "#c2302a"

@@ -19,7 +19,7 @@
 #ctx-menu .lm-item:has(.lm-mark) .lm-name { flex: 0 0 auto; max-width: 55%; }
 #ctx-menu .lm-item:has(.lm-mark) .lm-hint { flex: 1 1 0; min-width: 0; text-align: right; }
 /* The item in use (the pane on screen): the 2px bar without the tint. */
-.lm-item.current { box-shadow: var(--skin-row-mark) var(--pc, var(--project-default)), var(--skin-row-fill) color-mix(in srgb, var(--pc, var(--project-default)) 16%, transparent); }
+.lm-item.current { box-shadow: var(--skin-row-mark) var(--pc, var(--project-default)); }
 .lm-item:disabled, .lm-item:disabled:hover { opacity: 0.4; cursor: default; background-image: none; }
 /* Section heads and separators carry the only breaks between items. */
 .lm-item + .lm-head { border-top: 1px solid var(--rule); }

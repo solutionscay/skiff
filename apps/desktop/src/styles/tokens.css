@@ -101,7 +101,6 @@
   --skin-bar-gap: 0;
   --skin-content-inset: 0;
   --skin-foot-gap: 0;
-  --skin-row-fill: 0 0 0 0;
   --skin-strip-gap: 3px;
 }
 
@@ -119,11 +118,10 @@
   --skin-menu-radius: calc(4 * var(--u));
   --skin-panel-radius: calc(4 * var(--u));
   --skin-box-radius: calc(4 * var(--u));
-  /* No edge stripes: a row shows its state with a flat tint. */
+  /* No edge stripes: only the selected row and waiting rows keep their flat tint. */
   --skin-row-mark: inset 0 0 0;
   --skin-group-mark: inset 0 0 0;
   --skin-waiting-mark: inset 0 0 0;
-  --skin-row-fill: inset 0 0 0 100vmax;
   --skin-strip-gap: 0px;
   --skin-button-gradient: var(--skin-gloss-bar);
   --skin-input-gradient: linear-gradient(180deg, var(--shade), transparent calc(8 * var(--u)));
