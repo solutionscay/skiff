@@ -9,7 +9,6 @@ import { rune, type RuneName } from "../ui/runes";
 import { branchName, isProjectSkipper, scopeName, skipperBase, taskTitle } from "../workspace/model";
 import { faceSig, skipperFace } from "../workspace/skipperFace";
 import { stateIcon } from "../appearance/stateIcon";
-import { paintHead } from "./headTheme";
 import { progressOf, statusNote, statusSig } from "../workspace/programStatus";
 
 import { button, h } from "../ui/dom";
@@ -49,7 +48,6 @@ export function paneHead(id: string, head: HTMLElement, cell: HTMLElement) {
   const s = sessions.get(id);
   const at = s ? place(s) : null;
   cell.style.setProperty("--pc", accent(at?.project));
-  paintHead(cell, s);
   cell.classList.toggle("focused", id === S.focused);
   // A session picked in the list shows in its pane too, so a picked pair reads as one.
   cell.classList.toggle("selected", S.selection.includes(id));

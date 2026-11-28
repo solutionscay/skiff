@@ -4,11 +4,10 @@
   height: calc(32 * var(--u)); flex-shrink: 0;
   display: grid; grid-template-columns: 1fr 1fr;
   border-bottom: 1px solid var(--rule);
-  background: var(--skin-band-gradient);
 }
 .sv-tab {
   display: flex; align-items: center; justify-content: center; gap: calc(6 * var(--u));
-  border: 0; border-radius: var(--skin-tab-radius); color: var(--text-dim);
+  border: 0; color: var(--text-dim);
 }
 .sv-tab + .sv-tab { border-left: 1px solid var(--rule); }
 .sv-tab:hover { color: var(--text-2); }

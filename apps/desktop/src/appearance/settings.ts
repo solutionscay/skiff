@@ -1,5 +1,4 @@
-import { applySkin, skins } from "./skin";
-import { picker, smallButton } from "../ui/controls";
+import { smallButton } from "../ui/controls";
 import { DEFAULT_THEME } from "./colors";
 import { escapeButton } from "../ui/dialogParts";
 import { h } from "../ui/dom";
@@ -93,7 +92,6 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   let openSet: OpenSettings | null = null;
   let openFound: OpenChoices = {};
   let menuSet: MenuLayout | null = null;
-  let skinSet: string | null = null;
   /** `[appearance] language`: a code, or null for the system language. */
   let langSet: string | null = null;
   /** `[appearance] time_zone` and `clock`: null for Auto. */
@@ -364,27 +362,6 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       err.setAttribute("role", "alert");
       main.appendChild(err);
     }
-    const skinRow = h("div", "set-row set-open set-agent on");
-    const cell = h("span", "c-field");
-    const skin = skins.find((item) => item.id === skinSet);
-    cell.append(picker({
-      label: t("settings.appSkin"),
-      value: skin?.id ?? "",
-      shows: t((skin ?? skins[0]).label),
-      entries: () => skins.map(({ id, label }) => ({ value: id, label: t(label) })),
-      pick: async (id) => {
-        try {
-          await invoke("set_skin", { skin: id });
-          skinSet = id;
-          applySkin(id);
-          error = null;
-        } catch (e) {
-          error = String(e);
-        }
-        render();
-      },
-    }));
-    skinRow.append(h("span", "c-name", t("settings.appSkin")), cell);
     const themeHead = sectionHead(t("settings.appTheme"));
     const label = themeApplying ? t("settings.themeApplying") : t("settings.resetHostThemes");
     const reset = smallButton(label, () => {
@@ -401,7 +378,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     const result = h("span", "set-band-count", themeResult === null ? "" : tn("settings.themeCleared", themeResult));
     result.setAttribute("role", "status");
     themeHead.append(result, reset);
-    main.append(finishRow(draw, sampleSeeds), skinRow, themeHead, cards);
+    main.append(finishRow(draw, sampleSeeds), themeHead, cards);
     return main;
   }
 
@@ -691,7 +668,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       }
       // Themes are loaded at startup. Show them before any Settings reads.
       const openingAppearance = tab === "appearance";
-      const beforeAppearance = JSON.stringify([look.themes(), menuSet, skinSet, langSet, zoneSet, clockSet]);
+      const beforeAppearance = JSON.stringify([look.themes(), menuSet, langSet, zoneSet, clockSet]);
       if (openingAppearance) {
         render();
         root.querySelector<HTMLInputElement>(".tc-search")?.focus();
@@ -703,11 +680,10 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         invoke<Appearance>("get_appearance").catch(() => null),
       ]).then(([, menu, app]) => {
         menuSet = menu;
-        skinSet = app?.skin ?? null;
         langSet = app?.language ?? null;
         zoneSet = app?.time_zone ?? null;
         clockSet = app?.clock ?? null;
-        const after = JSON.stringify([look.themes(), menuSet, skinSet, langSet, zoneSet, clockSet]);
+        const after = JSON.stringify([look.themes(), menuSet, langSet, zoneSet, clockSet]);
         if (!root.hidden && tab === "appearance" && (!openingAppearance || beforeAppearance !== after)) {
           // Keep the cards at the same place if the menu row appears or goes.
           const main = root.querySelector<HTMLElement>(".set-main");

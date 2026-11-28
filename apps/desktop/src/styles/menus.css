@@ -1,9 +1,9 @@
 /* Menus are solid whatever the theme: a panel color with alpha would show the list through them.
    Their own compositing layer keeps the sidebar's overlay scrollbar and the dividers from painting over them. */
 #launch-menu, #ctx-menu, #ctx-sub { --menu-bg: linear-gradient(var(--bg-panel), var(--bg-panel)), linear-gradient(var(--bg), var(--bg)) #000; transform: translateZ(0); isolation: isolate; }
-#launch-menu, #ctx-menu { position: fixed; z-index: 64; width: calc(280 * var(--u)); background: var(--skin-menu-gradient), var(--menu-bg); border-radius: var(--skin-menu-radius); border: var(--skin-border) var(--rule-strong); box-shadow: var(--skin-floating-shadow); }
+#launch-menu, #ctx-menu { position: fixed; z-index: 64; width: calc(280 * var(--u)); background: var(--menu-bg); border: 1px solid var(--rule-strong); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); }
 #launch-menu[hidden], #ctx-menu[hidden] { display: none; }
-#ctx-sub { position: fixed; z-index: 65; width: calc(280 * var(--u)); max-height: calc(100vh - calc(16 * var(--u))); overflow-y: auto; background: var(--skin-menu-gradient), var(--menu-bg); border-radius: var(--skin-menu-radius); border: var(--skin-border) var(--rule-strong); box-shadow: var(--skin-floating-shadow); }
+#ctx-sub { position: fixed; z-index: 65; width: calc(280 * var(--u)); max-height: calc(100vh - calc(16 * var(--u))); overflow-y: auto; background: var(--menu-bg); border: 1px solid var(--rule-strong); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); }
 #ctx-sub[hidden] { display: none; }
 #ctx-sub .lm-key, #ctx-menu .lm-key { width: calc(14 * var(--u)); font-size: calc(12px * var(--zoom, 1)); }
 #ctx-sub .lm-name, #ctx-menu .lm-name { font-size: calc(13px * var(--zoom, 1)); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -19,7 +19,7 @@
 #ctx-menu .lm-item:has(.lm-mark) .lm-name { flex: 0 0 auto; max-width: 55%; }
 #ctx-menu .lm-item:has(.lm-mark) .lm-hint { flex: 1 1 0; min-width: 0; text-align: right; }
 /* The item in use (the pane on screen): the 2px bar without the tint. */
-.lm-item.current { box-shadow: var(--skin-row-mark) var(--pc, var(--project-default)); }
+.lm-item.current { box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); }
 .lm-item:disabled, .lm-item:disabled:hover { opacity: 0.4; cursor: default; background-image: none; }
 /* Section heads and separators carry the only breaks between items. */
 .lm-item + .lm-head { border-top: 1px solid var(--rule); }
@@ -29,14 +29,14 @@
    right-click or Ctrl+Shift+M gives the menu. The pointer moves focus (menu.ts). */
 .lm-item:focus, .lm-item[aria-expanded="true"], .prompt-opt.active, .slot-item:hover, .slot-item:focus {
   background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent);
-  box-shadow: var(--skin-row-mark) var(--pc, var(--project-default));
+  box-shadow: inset 2px 0 0 var(--pc, var(--project-default));
 }
 body.kbd .lm-item:focus, body.kbd .slot-item:focus { outline: 0; }
 /* A destructive item lights in the error colour, not the project's: a saturated project colour under red text is muddy. */
 .lm-item.danger:focus, .lm-item.danger:hover {
   color: var(--error-text);
   background: color-mix(in srgb, var(--error-text) 12%, transparent);
-  box-shadow: var(--skin-row-mark) var(--error-text);
+  box-shadow: inset 2px 0 0 var(--error-text);
 }
 .lm-key { width: calc(10 * var(--u)); font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); }
 .lm-key:has(.rune) { display: inline-flex; align-items: center; justify-content: center; }

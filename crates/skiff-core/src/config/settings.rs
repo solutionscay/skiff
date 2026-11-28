@@ -176,14 +176,6 @@ pub fn set_app_theme(theme: Option<&str>) -> Result<()> {
     })
 }
 
-/// Sets the app frame skin in client.toml.
-pub fn set_skin(skin: &str) -> Result<()> {
-    super::client::edit_table("appearance", |t| {
-        t["skin"] = toml_edit::value(skin);
-        Ok(())
-    })
-}
-
 /// Sets `[appearance] font_size`, or removes it for the default.
 pub fn set_font_size(size: Option<u8>) -> Result<()> {
     super::client::edit_table("appearance", |t| {

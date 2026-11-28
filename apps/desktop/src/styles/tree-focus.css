@@ -1,13 +1,13 @@
 /* Where we are: one row in the session list carries this, whatever its kind.
    Focused, it adds a top and bottom rule in the same accent instead of an
    outline, so it reads as more of the same highlight, not a second state. */
-#sidebar-scroll .current { box-shadow: var(--skin-row-mark) var(--pc); color: var(--text); }
+#sidebar-scroll .current { box-shadow: inset 2px 0 0 var(--pc); color: var(--text); }
 #sidebar-scroll .current :is(.title, .branch, .file-name, .group-name) { color: var(--text); }
 body.kbd #sidebar-scroll .current:focus {
   outline: 0;
-  box-shadow: var(--skin-row-mark) var(--pc), var(--skin-top-rule) var(--pc), var(--skin-bottom-rule) var(--pc);
+  box-shadow: inset 2px 0 0 var(--pc), inset 0 1px 0 var(--pc), inset 0 -1px 0 var(--pc);
 }
 /* The pane on screen while the keys are on another row, as after Ctrl+Shift+1 or Ctrl+Shift+Left:
    its row keeps the bar without the tint. */
-#sidebar-scroll .shown { box-shadow: var(--skin-row-mark) var(--pc); color: var(--text); }
+#sidebar-scroll .shown { box-shadow: inset 2px 0 0 var(--pc); color: var(--text); }
 #sidebar-scroll .shown .title { color: var(--text); }

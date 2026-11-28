@@ -259,7 +259,6 @@ export interface AgentInfo {
 
 /** `[appearance]` in the daemon config. `font_size` is absent from an older daemon. */
 export interface Appearance {
-  skin?: string | null;
   theme: string | null;
   font_size?: number | null;
   /** Mission control's filter: `running` or `all`. Absent: `running`. */

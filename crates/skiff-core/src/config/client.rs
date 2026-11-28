@@ -205,8 +205,9 @@ mod tests {
         let (projects, client) = (d.0.join("projects.toml"), d.0.join("client.toml"));
         std::fs::write(&projects, V1[2].1).unwrap();
 
-        // A client file edited after the copy keeps its edits.
-        std::fs::write(&client, "schema = 2\n[appearance]\nfont_size = 17\n").unwrap();
+        // A client file edited after the copy keeps its edits. A key Skiff no longer reads, such as
+        // the old `skin`, still loads.
+        std::fs::write(&client, "schema = 2\n[appearance]\nskin = \"default\"\nfont_size = 17\n").unwrap();
         assert_eq!(migrate(&projects, &client).unwrap(), Migration::Current);
         assert_eq!(load_from(&projects, &client).unwrap().appearance.font_size, Some(17));
 
