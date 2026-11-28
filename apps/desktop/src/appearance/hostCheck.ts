@@ -83,7 +83,8 @@ export function createHostCheck(env: HostsEnv, st: HostsState, deps: { reload():
     const again = button("set-form-act", t(running ? "hosts.checking" : "hosts.checkAgain"), () => void runCheck(c.id));
     again.disabled = running;
     acts.append(again, h("span", "set-fill"));
-    if (c.report?.ok && x && env.hosts.shownHost() !== x.id) acts.append(button("set-form-go", t("hosts.connectTo", { name }), () => env.hosts.pick(x.id)));
+    // Connect only for a Host with no connection. A connected Host has its own tree; a click there focuses it.
+    if (c.report?.ok && x && !env.hosts.isConnected(x.id)) acts.append(button("set-form-go", t("hosts.connectTo", { name }), () => env.hosts.pick(x.id)));
     acts.append(button("set-form-act", t("hosts.done"), () => ((st.check = null), env.redraw())));
     main.append(acts);
     return main;

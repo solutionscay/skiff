@@ -1,4 +1,4 @@
-import { connection, connectEndpoint, retry } from "./connections";
+import { connection, connectEndpoint, orderedConnections, retry } from "./connections";
 import { openHostsPanel, hostIcon } from "./hostsPanel";
 import { pageRoute, invokeAt, accepts, type HostRoute } from "../platform/invoke";
 /** Saved SSH endpoints and controls for the focused Host. */
@@ -146,6 +146,9 @@ function renderHostLabel() {
   cell.title = t("settings.tab.hosts");
   cell.setAttribute("aria-label", cell.title + " · " + name);
 }
+
+/** True when the Host has a tree in the side panel: connected, connecting or needing attention. */
+export const isConnected = (id: string | null) => orderedConnections().some((c) => c.endpoint === id);
 
 /** Shows another Host in this window. Settings › Hosts picks with it too. */
 export function pick(id: string | null) {

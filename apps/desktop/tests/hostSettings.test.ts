@@ -49,7 +49,7 @@ function pickFromMenu(x: ReturnType<typeof tab>, label: string) {
   x.menus.at(-1)!.entries.find((e: any) => e.label === label)!.run();
 }
 
-function tab(report?: unknown) {
+function tab(report?: unknown, connected: string[] = []) {
   const calls: [string, unknown][] = [];
   const steps: ((e: unknown) => void)[] = [];
   const runs: any[] = [];
@@ -85,7 +85,7 @@ function tab(report?: unknown) {
       "../ui/contextMenu": { ctxMenu: { open: (_x: number, _y: number, title: string, entries: any[]) => void menus.push({ title, entries }) } },
       "@tauri-apps/api/app": { getVersion: async () => "2.0.0" },
       "../platform/clipboard": { copyText: async (t: string) => void calls.push(["copy", t]) },
-      "../app/hosts": { knownHosts: () => hosts, loadHosts: async () => {}, localHostName: () => "This computer", shownHost: () => null, pick: (id: string) => void calls.push(["pick", id]) },
+      "../app/hosts": { knownHosts: () => hosts, loadHosts: async () => {}, localHostName: () => "This computer", shownHost: () => null, isConnected: (id: string | null) => connected.includes(id as string), pick: (id: string) => void calls.push(["pick", id]) },
     },
     { document: { getElementById: () => null, querySelector: () => null }, setTimeout, clearTimeout, Promise, Map },
     "",
@@ -293,4 +293,21 @@ test("Update Skiff asks once; when sessions would end, a red dialog names them f
     JSON.stringify(x.calls.filter(([c]) => c === "update_skiff")),
     JSON.stringify([["update_skiff", { id: "h_dev", endSessions: false, reinstall: false }], ["update_skiff", { id: "h_dev", endSessions: true, reinstall: false }]]),
   );
+});
+
+test("the check list offers Connect to <Host> only while the Host has no connection", async () => {
+  const report = { ok: true, rows: [{ row: "reach", title: "Reach the server", state: "passed", text: "devbox.lan answers. 12 ms." }] };
+  for (const connected of [[], ["h_dev"]]) {
+    const x = tab(report, connected);
+    await x.t.load();
+    x.t.open({ check: "h_dev" });
+    for (let i = 0; i < 4; i++) await flush();
+    x.redraw();
+    const go = x.page().find("Connect to devbox");
+    if (connected.length) assert.equal(go, undefined, "a connected Host that is not focused shows no Connect");
+    else {
+      go!.click();
+      assert.ok(x.calls.some(([c, a]) => c === "pick" && a === "h_dev"));
+    }
+  }
 });

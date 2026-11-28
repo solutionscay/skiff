@@ -7,7 +7,7 @@ import { createHostCheck } from "./hostCheck";
 import { createHostForm } from "./hostForm";
 import { createHostList } from "./hostList";
 import { type Alias, type HostsEnv, type HostsState } from "./hostShared";
-import { type HostsPage, knownHosts, loadHosts, localHostName, pick, shownHost } from "../app/hosts";
+import { type HostsPage, knownHosts, loadHosts, localHostName, pick, shownHost, isConnected } from "../app/hosts";
 
 /**
  * Settings › Hosts: the known Hosts, the form that adds or edits one, and
@@ -36,7 +36,7 @@ export function createHostsTab(redraw: () => void) {
   const env: HostsEnv = {
     ask: invoke,
     redraw,
-    hosts: { knownHosts, loadHosts, localHostName, shownHost, pick },
+    hosts: { knownHosts, loadHosts, localHostName, shownHost, isConnected, pick },
     copyText,
     runDialog,
     openMenu: (left, top, title, entries, onClose) => ctxMenu.open(left, top, title, entries, onClose),
