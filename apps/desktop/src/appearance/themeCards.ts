@@ -58,12 +58,15 @@ const SWATCH: Record<string, string> = {
   Unclassified: "#8a8f98",
 };
 
+export type ThemeMode = "Light" | "Dark";
+
 export interface ThemeFilters {
   query: string;
   family: string | null;
+  mode?: ThemeMode | null;
 }
 
-const pickerFilters: ThemeFilters = { query: "", family: null };
+const pickerFilters: ThemeFilters = { query: "", family: null, mode: null };
 
 interface CardOpts {
   /** The id shown as active. */
@@ -87,7 +90,7 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
   search.placeholder = t("theme.search");
   search.setAttribute("aria-label", t("theme.searchAria"));
   search.value = filters.query;
-  // One swatch per color family. "All" clears the filter.
+  // One swatch per color family in the list. "All" clears the filter.
   const swatches = h("div", "tc-swatches");
   swatches.setAttribute("role", "group");
   swatches.setAttribute("aria-label", t("theme.color"));
@@ -105,8 +108,28 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
     });
     return b;
   };
-  swatches.append(swatch(null), ...COLOR_FAMILIES.map(swatch));
-  tools.append(search, swatches);
+  const drawSwatches = () => {
+    const present = new Set(themes.map((t) => themeProfile(t).family));
+    if (filters.family && !present.has(filters.family as ColorFamily)) filters.family = null;
+    swatches.replaceChildren(swatch(null), ...COLOR_FAMILIES.filter((f) => present.has(f)).map(swatch));
+  };
+  drawSwatches();
+  // Light and Dark. A second click on the pressed one clears the filter.
+  const modes = h("div", "tc-modes");
+  modes.setAttribute("role", "group");
+  modes.setAttribute("aria-label", t("theme.mode"));
+  for (const value of ["Light", "Dark"] as const) {
+    const b = h("button", "tc-mode", t(value === "Light" ? "theme.light" : "theme.dark"));
+    b.type = "button";
+    b.setAttribute("aria-pressed", String(filters.mode === value));
+    b.addEventListener("click", () => {
+      filters.mode = filters.mode === value ? null : value;
+      for (const m of modes.children) m.setAttribute("aria-pressed", String(m === b && filters.mode === value));
+      draw();
+    });
+    modes.appendChild(b);
+  }
+  tools.append(search, swatches, modes);
   const status = h("div", "tc-status");
   status.setAttribute("role", "status");
   const grid = h("div", "tc-grid");
@@ -149,7 +172,8 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
       // A color matches by its English id and by its name in the current language.
       const text = `${t.name} ${p.family} ${familyName(p.family)}`.toLowerCase();
       return words.every((word) => text.includes(word))
-        && (!filters.family || filters.family === p.family);
+        && (!filters.family || filters.family === p.family)
+        && (!filters.mode || filters.mode === p.mode);
     });
     for (const t of shown) {
       const p = themeProfile(t);
@@ -175,7 +199,7 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
     };
     const add = tool(t("theme.import"), '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"></path>');
     const folder = tool(t("theme.openFolder"), '<path d="M3 6h6l2 2h10v11H3z"></path>');
-    const reload = async () => { themes = await o.reload!(); draw(); };
+    const reload = async () => { themes = await o.reload!(); drawSwatches(); draw(); };
     add.addEventListener("click", async () => {
       try {
         const paths = await open({ multiple: true, title: t("theme.importTitle") });

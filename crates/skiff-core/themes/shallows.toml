@@ -1,0 +1,28 @@
+# Aqua frame, white panels, tinted terminal ground, deep teal text, burnt orange accent. Clear, cool ANSI colors.
+name = "Shallows"
+color_family = "Cyan"
+main_color = "#b4501f"
+
+[terminal]
+foreground = "#0b3b42"
+background = "#e8f8f8"
+cursor = "#b4501f"
+cursor_foreground = "#e8f8f8"
+selection = "#b6e6e8"
+selection_foreground = "#0b3b42"
+regular = ["#0b3b42", "#b3303a", "#23794a", "#875f00", "#1d5fa8", "#8c3f96", "#007982", "#cfe3e4"]
+bright = ["#4f7479", "#c9414b", "#2d8d58", "#9c7008", "#2a72c0", "#a052ab", "#008f99", "#f4fbfb"]
+
+[ui]
+# The app panels stay white. The terminal ground has a faint tint of the frame.
+background = "#ffffff"
+sidebar = "#cdf0f1"
+tertiary = "#aee3e6"
+secondary = "#e4f6f7"
+border = "#86cfd4"
+mutedForeground = "#3e6a70"
+sidebarForeground = "#0d4750"
+primary = "#b4501f"
+working = "#1e64b4"
+warning = "#a05c00"
+destructive = "#c02a35"
