@@ -129,7 +129,7 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
     });
     modes.appendChild(b);
   }
-  tools.append(search, swatches, modes);
+  tools.append(search, modes, swatches);
   const status = h("div", "tc-status");
   status.setAttribute("role", "status");
   const grid = h("div", "tc-grid");
