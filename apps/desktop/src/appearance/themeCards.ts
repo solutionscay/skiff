@@ -157,7 +157,7 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
         c.classList.toggle("active", active);
         c.setAttribute("aria-pressed", String(active));
         c.querySelector(".tc-state")?.remove();
-        if (active) c.querySelector(".tc-foot")?.appendChild(h("span", "tc-state", "✓ Active"));
+        if (active) c.querySelector(".tc-foot")?.appendChild(h("span", "tc-state", t("theme.active")));
       }
       o.pick(id);
     });

@@ -39,7 +39,7 @@ body.kbd .tc-card:focus { outline: 0; border-color: var(--text); box-shadow: 0 0
 .tc-term { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; padding: 9px 10px; font: 10px/1.35 var(--mono); white-space: nowrap; overflow: hidden; }
 .tc-line { display: block; overflow: hidden; text-overflow: clip; }
 .tc-cursor { display: inline-block; width: 6px; height: 11px; vertical-align: -2px; }
-.tc-foot { min-height: var(--row); display: flex; flex-wrap: wrap; align-items: center; gap: calc(8 * var(--u)); padding: calc(8 * var(--u)) calc(12 * var(--u)); border-top: 1px solid var(--rule); }
+.tc-foot { min-height: var(--row); display: flex; flex-wrap: nowrap; align-items: center; gap: calc(8 * var(--u)); padding: calc(8 * var(--u)) calc(12 * var(--u)); border-top: 1px solid var(--rule); }
 .tc-signature { width: calc(10 * var(--u)); height: calc(10 * var(--u)); flex-shrink: 0; }
 .tc-name { flex-grow: 1; min-width: 0; font-size: calc(13px * var(--zoom, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tc-badge { flex-shrink: 0; font-size: calc(10px * var(--zoom, 1)); padding: 1px 6px; border: 1px solid var(--rule-strong); color: var(--text-3); }
@@ -60,8 +60,7 @@ body.kbd .tc-card:focus { outline: 0; border-color: var(--text); box-shadow: 0 0
 .set-cards .tc-card { border: 0; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); background: transparent; }
 .set-cards .tc-preview { height: calc(119 * var(--u)); }
 .set-cards .tc-card.active { border-color: var(--rule); box-shadow: none; }
-/* A scope label takes its own 20px line, so a foot is 40px or 60px; each foot in a row fills to the tallest. */
-.set-cards .tc-foot { flex-grow: 1; min-height: var(--row); height: auto; flex-wrap: wrap; align-content: center; padding: 0 calc(12 * var(--u)); }
-.set-cards .tc-in-scope { line-height: calc(20 * var(--u)); }
+/* A foot is one 40px row: a scope label sits after the name, and both cut with an ellipsis. */
+.set-cards .tc-foot { height: var(--row); padding: 0 calc(12 * var(--u)); }
 .set-cards .tc-state { color: var(--text-2); }
-.tc-in-scope { flex-basis: 100%; min-width: 0; font-size: calc(11px * var(--zoom, 1)); font-weight: 600; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-in-scope { flex: 0 1 auto; max-width: 50%; min-width: 0; font-size: calc(11px * var(--zoom, 1)); font-weight: 600; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
