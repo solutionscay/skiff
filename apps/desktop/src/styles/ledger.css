@@ -44,7 +44,7 @@ body.ledger-keys .cell.focused .cell-head { background-color: var(--bg-panel); }
 .lg-rail-need::before { content: ""; width: calc(6 * var(--u)); height: calc(6 * var(--u)); border-radius: 50%; background: var(--state-waiting); }
 .lg-rail-need[hidden] { display: none; }
 .lg-rail-need:hover { background: var(--hover); }
-.lg-list { position: relative; flex-grow: 1; min-height: 0; overflow-y: auto; padding: calc(6 * var(--u)) 0 calc(10 * var(--u)); }
+.lg-list { position: relative; flex-grow: 1; min-height: 0; overflow-y: auto; padding: 0 0 calc(10 * var(--u)); }
 .lg-row {
   position: relative;
   height: calc(20 * var(--u)); padding: 0 calc(16 * var(--u));
@@ -83,14 +83,14 @@ body.ledger-keys .cell.focused .cell-head { background-color: var(--bg-panel); }
 .lg-row.need .lg-pane { color: var(--state-waiting-text); }
 .lg-row:is(.s-interrupted, .s-gone).need .lg-dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--state-waiting); }
 
-/* A section label: Working, Open, Finished. The first one sits at the top with no rule. */
+/* A section label: Working, Open, Finished. A 1px rule parts it from the rows above, with no gap; the first one has no rule. */
 .lg-sec {
-  height: calc(20 * var(--u)); margin-top: calc(10 * var(--u)); padding: 0 calc(16 * var(--u));
+  height: calc(20 * var(--u)); padding: 0 calc(16 * var(--u));
   display: flex; align-items: center;
   border-top: 1px solid var(--rule);
   font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim);
 }
-.lg-list > .lg-sec:first-child { margin-top: 0; border-top: 0; }
+.lg-list > .lg-sec:first-child { border-top: 0; }
 .lg-row.fin { opacity: 0.55; }
 .lg-row.fin .lg-dot { background: var(--state-done); box-shadow: none; }
 .lg-row.fin :is(.lg-title, .lg-pane, .lg-n) { color: var(--text-dim); }
@@ -125,12 +125,13 @@ body.ledger-keys .cell.focused .cell-head { background-color: var(--bg-panel); }
 /* The row of the child pane in the Skipper split: the 2px bar, no tint. */
 .lg-row.shown, .lg-row.need.shown { box-shadow: var(--skin-row-mark) var(--pc); }
 
-/* Tasks | Schedules in the head (#262): the tab on screen is bold, with a 2px bar under it. */
-.lg-tabs { flex: 1 0 auto; display: flex; align-items: stretch; align-self: stretch; gap: calc(14 * var(--u)); }
-.lg-tab { display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0; border: 0; background: var(--skin-tab-gradient) transparent; cursor: pointer; font: 400 calc(13px * var(--zoom, 1)) var(--font); color: var(--text-3); border-radius: var(--skin-tab-radius); }
+/* Tasks | Schedules in the head (#262): the tab on screen is bold and tinted. */
+/* The tabs start at the panel's left edge and touch; a 1px rule closes each one. */
+.lg-tabs { flex: 1 0 auto; display: flex; align-items: stretch; align-self: stretch; margin-left: calc(-16 * var(--u)); }
+.lg-tab { display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(16 * var(--u)); border: 0; border-right: 1px solid var(--rule); background: var(--skin-tab-gradient) transparent; cursor: pointer; font: 400 calc(13px * var(--zoom, 1)) var(--font); color: var(--text-3); border-radius: 0; }
 .lg-tab[hidden] { display: none; }
 .lg-tab:hover { color: var(--text); }
-.lg-tab.on { font-weight: 600; color: var(--text); box-shadow: var(--skin-underline) var(--pc, var(--project-default)); }
+.lg-tab.on { font-weight: 600; color: var(--text); background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); }
 .lg-tab-n { font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); }
 body.ledger-keys #ledger .lg-tabs { color: inherit; }
 body.ledger-keys #ledger .lg-tab.on { color: var(--pc, var(--project-default)); }
@@ -138,7 +139,6 @@ body.ledger-keys #ledger .lg-tab.on { color: var(--pc, var(--project-default)); 
 /* The Schedules list: one schedule is two 20px lines on one column grid. */
 .sc-cols, .lg-row.sc-row { display: grid; grid-template-columns: calc(15 * var(--u)) minmax(0, 1fr) calc(64 * var(--u)) calc(72 * var(--u)) calc(12 * var(--u)); column-gap: calc(8 * var(--u)); padding: 0 calc(16 * var(--u)); }
 .sc-cols { height: calc(20 * var(--u)); align-items: center; font-size: calc(11px * var(--zoom, 1)); color: var(--text-dim); border-bottom: 1px solid var(--rule); }
-.lg-list > .sc-cols:first-child { margin-top: calc(-6 * var(--u)); }
 .lg-row.sc-row { height: var(--row); grid-template-rows: calc(20 * var(--u)) calc(20 * var(--u)); align-items: center; gap: 0 calc(8 * var(--u)); border-bottom: 1px solid var(--rule); }
 .sc-row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sc-dot { grid-row: 1; grid-column: 1; width: calc(7 * var(--u)); height: calc(7 * var(--u)); border-radius: 50%; }
