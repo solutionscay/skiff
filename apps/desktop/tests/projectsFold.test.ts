@@ -47,6 +47,10 @@ class El {
   focus() {
     focused.at = this;
   }
+  /** One Host tree: no row sits in a .host-section. */
+  closest() {
+    return null;
+  }
   all(): El[] {
     return [this, ...this.children.flatMap((c) => c.all())];
   }

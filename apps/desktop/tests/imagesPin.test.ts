@@ -105,7 +105,8 @@ async function app() {
   const S: any = { focused: "s1", projects: [] };
   const lib = moduleFromSource("../src/terminal/images.ts", {
     "@tauri-apps/api/core": { invoke },
-    "@tauri-apps/api/event": { listen: async (_: string, f: () => void) => (changed = f) },
+    // The Host's change event names its route; the page accepts it.
+    "@tauri-apps/api/event": { listen: async (_: string, f: (e: { payload: unknown }) => void) => (changed = () => f({ payload: { entry: 0, generation: 1 } })) },
     // v2 only: Insert names the Host of a remote pane.
     "../app/hosts": { isRemote: () => false, hostName: () => null },
     "../app/render": { scheduleRender() {} },

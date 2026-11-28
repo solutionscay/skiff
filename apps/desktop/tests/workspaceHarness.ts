@@ -82,7 +82,8 @@ export function moduleFromSource(path: string, imports: Record<string, unknown>,
         foreground: () => true, hostFields: (make: () => unknown, _read: unknown, select: (store: unknown) => void) => select(make()),
         hostStore: (make: () => unknown, select: (store: unknown) => void) => select(make()) };
     }
-    return words(name) ?? pure(name) ?? {};
+    // A test's Proxy import map (withStubs) answers the names it does not list.
+    return words(name) ?? pure(name) ?? imports[name] ?? {};
   };
   const split = SPLIT[path];
   const folder = path.slice(0, path.lastIndexOf("/") + 1);

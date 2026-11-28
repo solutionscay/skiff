@@ -35,6 +35,7 @@ class El {
   }
   getBoundingClientRect() { return this.box; }
   *all(): Generator<El> { for (const c of this.children) { yield c; yield* c.all(); } }
+  contains(el: El | null) { for (; el; el = el.parent) if (el === this) return true; return false; }
   /** The last class of each comma part: enough for the selectors these two modules write. */
   closest(sel: string): El | null {
     const want = sel.split(",").map((s) => s.trim().split(/[ >]+/).pop()!.slice(1));

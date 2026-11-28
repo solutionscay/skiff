@@ -37,9 +37,9 @@ function page(over: Record<string, unknown>, globals: Record<string, unknown>) {
   vm.runInNewContext(code, { exports: {}, require, document: stub(), setTimeout: () => 0, setInterval: () => 0, console: { error() {}, warn() {} }, ...globals });
 }
 
-// A launch whose Host answers late: the capabilities read fails, then the
-// event stream fails with it, so boot stops half way. Later clicks reach the
-// Host, but nothing runs boot's rest again: no events, no poll, no projects.
+// A launch whose Host answers late: the Host routes read fails, so boot stops
+// half way. Later clicks reach the Host, but nothing runs boot's rest again:
+// no events, no poll, no projects.
 test("a boot that fails shows its error with Try again, which runs boot again from the start", async () => {
   const shown: { e: unknown; action?: { label: string; run: () => Promise<void> } }[] = [];
   let reloads = 0;
@@ -49,9 +49,9 @@ test("a boot that fails shows its error with Try again, which runs boot again fr
       "./platform/invoke": { invoke: async () => ({ connected: true }) },
       "./i18n": { t: (key: string) => key },
       "./ui/alerts": { showError: (e: unknown, action?: any) => void shown.push({ e, action }) },
-      "./app/hostCaps": { loadHostCaps: () => Promise.reject(new Error("no Host")) },
-      "./app/daemon": new Proxy({}, {
-        get: (_, key) => (key === "subscribeEvents" ? () => Promise.reject(new Error("no Host")) : key === "then" ? undefined : () => stub()),
+      // Boot reads the Host routes and connects them in startConnections (#263).
+      "./app/connections": new Proxy({}, {
+        get: (_, key) => (key === "startConnections" ? () => Promise.reject(new Error("no Host")) : key === "then" ? undefined : () => stub()),
       }),
     },
     { location: { reload: () => void reloads++ } },

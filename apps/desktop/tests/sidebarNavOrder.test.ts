@@ -9,10 +9,11 @@ interface Row {
   dataset: Record<string, string>;
   tabIndex: number;
   focus(): void;
+  closest(sel: string): null;
 }
 
 function row(label: string, cls: string, dataset: Record<string, string>): Row {
-  return { label, classList: { contains: (c) => c === cls, toggle() {} }, dataset, tabIndex: -1, focus() {} };
+  return { label, classList: { contains: (c) => c === cls, toggle() {} }, dataset, tabIndex: -1, focus() {}, closest: () => null };
 }
 
 // The tree in the bug report's video (migrate-karbonfm): the project Skipper's own

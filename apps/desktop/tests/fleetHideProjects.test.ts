@@ -127,6 +127,9 @@ function app(host: string | null = null) {
   moduleFromSource("../src/app/commands.ts", withStubs({
     "../ui/switcher": { createSwitcher: (items: () => any[]) => (palette = items) },
     "./state": state, "./stateQueries": orStub(stateQueries), "../workspace/model": model, "../workspace/view": view,
+    // One Host tree, connected: the local one.
+    "./flatNames": { acrossTrees: (fn: (r: unknown) => unknown[]) => fn({ entry: 0, host: "local" }), namesFor: () => (_id: string, base: string) => base },
+    "./connections": { connection: () => ({ phase: "up" }), focusConnection() {} },
   }), globals, "");
   const harbor = () => ({ fleet: "Harbor", projects: projects.slice(0, 2) });
   // The fleet head as the tree draws it now, with the rows under it.
