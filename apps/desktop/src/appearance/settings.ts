@@ -6,8 +6,8 @@ import { invoke } from "../platform/invoke";
 import { imageCount } from "../terminal/images";
 import { size as byteSize } from "./skiffFolderDialog";
 import type { AgentInfo, Appearance, TerminalTheme } from "../platform/types";
-import { type MessageKey, t, tn } from "../i18n";
-import { nextCard, themeGrid, type ThemeFilters } from "./themeCards";
+import { language, type MessageKey, t, tn } from "../i18n";
+import { nextCard, themeBrowser, type ThemeBrowser, type ThemeFilters } from "./themeCards";
 import { type Action, actionFor, isMac } from "../app/keys";
 import { editField, fieldEditKey, textField } from "../ui/fieldClipboard";
 import { mainName, type InstructionFile, type SkiffAgentSettings, type TaskType } from "../app/skiffAgent";
@@ -109,9 +109,11 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   // The draft rows and their error lines survive every redraw.
   const agentsTable = tableState();
   const tasksTable = tableState();
-  const hostsTab = createHostsTab(() => render());
+  // A late read or count redraws only its own page: never the page shown after a tab change.
+  const renderOn = (at: Tab) => () => { if (tab === at) render(); };
+  const hostsTab = createHostsTab(renderOn("hosts"));
   const sched = schedulesState();
-  const schedCtx = { render: () => render(), mainName: () => mainName(agentSet?.name), editPrompt };
+  const schedCtx = { render: renderOn("schedules"), mainName: () => mainName(agentSet?.name), editPrompt };
 
   /**
    * An Edit's file in the peek over Settings. Settings stays on its page.
@@ -230,8 +232,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     if (tab === "skippers") void loadFiles();
     if (tab === "task-types") void loadTypes();
     if (tab === "schedules") void loadSchedulesPage(schedCtx);
-    if (tab === "disk") void countDisk(disk, render);
-    if (tab === "activity") startActivity(activity, render);
+    if (tab === "disk") void countDisk(disk, renderOn("disk"));
+    if (tab === "activity") startActivity(activity, renderOn("activity"));
   }
 
   function draw() {
@@ -289,7 +291,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       // A file opens as Settings › Open with says: a terminal tool in the peek over this tab.
       const opener = {
         local: !isRemote(),
-        peek: (script: string, cwd: string, name: string) => peekOver(script, cwd, `${cwd}/${name}`, () => countDisk(disk, render)),
+        peek: (script: string, cwd: string, name: string) => peekOver(script, cwd, `${cwd}/${name}`, () => countDisk(disk, renderOn("disk"))),
       };
       main.append(...diskUseSection(disk, render, (days) => void setCacheDays(days), opener, agentSet && !(isRemote() && !hostCan("skipper_config")) ? folderRows(agentSet, hostCan("skipper_folder_move") ? moveFolder : null) : []));
       root.replaceChildren(nav, pinClose(main));
@@ -331,32 +333,80 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     return main;
   }
 
+  /**
+   * The theme grid, built once. Every draw of Appearance moves the same element into
+   * the page and brings its cards up to date in place. A new UI language builds it again.
+   */
+  let themeBox: ThemeBrowser | null = null;
+  let themeBoxLang = "";
+  function themeCards(): HTMLElement {
+    const themes = look.themes();
+    const cur = look.current() ?? null;
+    const active = themes.some((x) => x.id === cur) ? cur : DEFAULT_THEME;
+    if (themeBox && themeBoxLang === language()) {
+      themeBox.update(themes, active, look.overrides?.());
+      return themeBox.el;
+    }
+    themeBoxLang = language();
+    themeBox = themeBrowser(themes, {
+      active,
+      filters: themeFilters,
+      scopes: look.overrides?.(),
+      reload: async () => { await look.load(); return look.themes(); },
+      pick: (id) => {
+        themeResult = null;
+        look.set(id === DEFAULT_THEME ? null : id);
+      },
+    });
+    return themeBox.el;
+  }
+
+  /** The Appearance rows a read can change, and the values each one shows. */
+  type LookRows = { lang: HTMLElement; zone: HTMLElement; clock: HTMLElement; menu: HTMLElement | null; shows: string[] };
+  let lookRows: LookRows | null = null;
+  function appearanceRows(): LookRows {
+    return {
+      lang: languageRow(langSet, (code) => void setLanguageSetting(code)),
+      zone: timeZoneRow(zoneSet, (zone) => void setTimeSetting("set_time_zone", { zone }, () => (zoneSet = zone))),
+      clock: clockRow(clockSet, (clock) => void setTimeSetting("set_clock", { clock }, () => (clockSet = clock))),
+      menu: menuSet?.available ? menuLayout(menuSet, (v) => void setMenuLayout(v)) : null,
+      shows: [JSON.stringify(langSet), JSON.stringify(zoneSet), JSON.stringify(clockSet), JSON.stringify(menuSet)],
+    };
+  }
+
+  /**
+   * A late read on the shown Appearance page: the rows whose value changed are replaced
+   * in place, and the theme grid takes the new themes in place. The grid keeps its place on screen.
+   */
+  function refreshAppearance() {
+    if (root.hidden || tab !== "appearance" || !lookRows || !root.contains(lookRows.lang)) return;
+    const main = root.querySelector<HTMLElement>(".set-main");
+    const grid = themeBox?.el;
+    const top = main?.scrollTop && grid ? grid.getBoundingClientRect().top : undefined;
+    const old = lookRows;
+    const next = appearanceRows();
+    if (old.shows[0] !== next.shows[0]) old.lang.replaceWith(next.lang); else next.lang = old.lang;
+    if (old.shows[1] !== next.shows[1]) old.zone.replaceWith(next.zone); else next.zone = old.zone;
+    if (old.shows[2] !== next.shows[2]) old.clock.replaceWith(next.clock); else next.clock = old.clock;
+    if (old.shows[3] === next.shows[3]) next.menu = old.menu;
+    else if (old.menu && next.menu) old.menu.replaceWith(next.menu);
+    else if (old.menu) old.menu.remove();
+    else if (next.menu) next.clock.after(next.menu);
+    lookRows = next;
+    themeCards();
+    if (main && grid && top !== undefined) main.scrollTop += grid.getBoundingClientRect().top - top;
+  }
+
   /** App colors made from a terminal theme. A click applies it. */
   function appearance(): HTMLElement {
     const main = h("div", "set-main");
     const intro = h("div", "set-head");
     intro.append(h("div", "set-h", t("settings.tab.appearance")));
-    const cur = look.current() ?? null;
     const cards = h("div", "set-cards");
-    cards.appendChild(
-      themeGrid(look.themes(), {
-        active: look.themes().some((t) => t.id === cur) ? cur : DEFAULT_THEME,
-        filters: themeFilters,
-        scopes: look.overrides?.(),
-        reload: async () => { await look.load(); return look.themes(); },
-        pick: (id) => {
-          themeResult = null;
-          look.set(id === DEFAULT_THEME ? null : id);
-        },
-      }),
-    );
-    main.append(
-      intro,
-      languageRow(langSet, (code) => void setLanguageSetting(code)),
-      timeZoneRow(zoneSet, (zone) => void setTimeSetting("set_time_zone", { zone }, () => (zoneSet = zone))),
-      clockRow(clockSet, (clock) => void setTimeSetting("set_clock", { clock }, () => (clockSet = clock))),
-    );
-    if (menuSet?.available) main.appendChild(menuLayout(menuSet, (v) => void setMenuLayout(v)));
+    cards.appendChild(themeCards());
+    lookRows = appearanceRows();
+    main.append(intro, lookRows.lang, lookRows.zone, lookRows.clock);
+    if (lookRows.menu) main.appendChild(lookRows.menu);
     if (error) {
       const err = h("div", "set-error", error);
       err.setAttribute("role", "alert");
@@ -694,7 +744,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       // Disk use shows at once and starts its count: the loads below can take a while.
       if (tab === "disk") {
         render();
-        void countDisk(disk, render);
+        void countDisk(disk, renderOn("disk"));
       }
       // Usage shows the last values at once and reads the stale agents.
       if (tab === "usage") {
@@ -702,9 +752,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         usagePage(true);
       }
       // Themes are loaded at startup. Show them before any Settings reads.
-      const openingAppearance = tab === "appearance";
-      const beforeAppearance = JSON.stringify([look.themes(), menuSet, langSet, zoneSet, clockSet]);
-      if (openingAppearance) {
+      if (tab === "appearance") {
         render();
         root.querySelector<HTMLInputElement>(".tc-search")?.focus();
       }
@@ -718,16 +766,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         langSet = app?.language ?? null;
         zoneSet = app?.time_zone ?? null;
         clockSet = app?.clock ?? null;
-        const after = JSON.stringify([look.themes(), menuSet, langSet, zoneSet, clockSet]);
-        if (!root.hidden && tab === "appearance" && (!openingAppearance || beforeAppearance !== after)) {
-          // Keep the cards at the same place if the menu row appears or goes.
-          const main = root.querySelector<HTMLElement>(".set-main");
-          const top = main?.scrollTop ? root.querySelector<HTMLElement>(".tc-grid")?.getBoundingClientRect().top : undefined;
-          render();
-          const next = root.querySelector<HTMLElement>(".set-main");
-          const nextTop = root.querySelector<HTMLElement>(".tc-grid")?.getBoundingClientRect().top;
-          if (next && top !== undefined && nextTop !== undefined) next.scrollTop += nextTop - top;
-        }
+        // Appearance may be on screen, opened here or from its tab: the read changes rows in place.
+        refreshAppearance();
       });
       const otherReads = Promise.all([
         invoke<OpenSettings>("open_settings").catch(() => null),
@@ -747,8 +787,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       if (tab === "hosts") hostsTab.focusServer();
       if (tab === "skippers") void loadFiles();
       if (tab === "schedules") void loadSchedulesPage(schedCtx);
-      if (tab === "disk") void countDisk(disk, render);
-      if (tab === "activity") startActivity(activity, render);
+      if (tab === "disk") void countDisk(disk, renderOn("disk"));
+      if (tab === "activity") startActivity(activity, renderOn("activity"));
       if (tab === "images") root.querySelector<HTMLInputElement>(".img-page .lib-search")?.focus();
       else if (tab !== "appearance") root.querySelector<HTMLButtonElement>(".set-agent .c-on:not(:disabled)")?.focus();
     },

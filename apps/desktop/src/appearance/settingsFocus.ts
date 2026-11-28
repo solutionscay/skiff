@@ -69,7 +69,7 @@ export function arrowKeys(root: HTMLElement, hooks: { stepTab(dir: 1 | -1): void
       if (up ? v.lastIndexOf("\n", el.selectionStart - 1) >= 0 : v.indexOf("\n", el.selectionEnd) >= 0) return;
     }
     // The current skiffd session row is a stop too: Left/Right go between it and its Reveal.
-    const stops = [...root.querySelectorAll<HTMLElement>(".set-main :is(button, input, textarea, .set-daemon-row[tabindex='0']):not(:disabled, .set-x)")];
+    const stops = [...root.querySelectorAll<HTMLElement>(".set-main :is(button, input, textarea, .set-daemon-row[tabindex='0']):not(:disabled, .set-x, [hidden])")];
     const at = stops.indexOf(el);
     if (at < 0) return;
     e.preventDefault();

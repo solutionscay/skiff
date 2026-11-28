@@ -11,19 +11,59 @@ import { t, tn } from "../i18n";
 /** A color family in the current language. */
 const familyName = (f: ColorFamily) => t(`family.${f}`);
 
+/** The colors of a card preview. */
+interface PreviewColors {
+  bg: string; side: string; sideRule: string; bar: string; fg: string;
+  warn: string; dim: string; err: string; cursor: string;
+}
+
+/** A theme's id, name and colors: the key of its cached preview colors and card. */
+const themeKeys = new WeakMap<TerminalTheme, string>();
+function themeKey(t: TerminalTheme): string {
+  let k = themeKeys.get(t);
+  if (k === undefined) {
+    k = JSON.stringify([t.id, t.name, t.background, t.foreground, t.cursor ?? null, t.palette]);
+    themeKeys.set(t, k);
+  }
+  return k;
+}
+
+/** Preview colors, computed once for each theme id and its colors. */
+const previewCache = new Map<string, PreviewColors>();
+function previewColors(t: TerminalTheme): PreviewColors {
+  const key = themeKey(t);
+  const hit = previewCache.get(key);
+  if (hit) return hit;
+  const light = isLight(t.background);
+  const ink = (c: string) => (light ? readable(c, [t.background], 7) : c);
+  const fg = ink(t.foreground);
+  const c: PreviewColors = {
+    bg: t.background,
+    side: mix(t.background, t.foreground, 0.06),
+    sideRule: `1px solid ${mix(t.background, t.foreground, 0.16)}`,
+    bar: mix(t.background, t.foreground, 0.35),
+    fg,
+    warn: ink(t.palette[3]),
+    dim: readable(mix(fg, t.background, 0.3), [t.background], 4.5),
+    err: ink(t.palette[1]),
+    cursor: t.cursor ?? t.foreground,
+  };
+  previewCache.set(key, c);
+  return c;
+}
+
 /** A small Skiff window in the theme's colors: a sidebar and a few terminal lines. */
 function preview(t: TerminalTheme): HTMLElement {
-  const p = t.palette.map((c) => isLight(t.background) ? readable(c, [t.background], 7) : c);
-  const fg = isLight(t.background) ? readable(t.foreground, [t.background], 7) : t.foreground;
+  const c = previewColors(t);
   const box = h("span", "tc-preview");
-  box.style.background = t.background;
+  box.style.background = c.bg;
   const side = h("span", "tc-side");
-  side.style.background = mix(t.background, t.foreground, 0.06);
-  side.style.borderRight = `1px solid ${mix(t.background, t.foreground, 0.16)}`;
+  side.style.background = c.side;
+  side.style.borderRight = c.sideRule;
   for (const w of [70, 50, 60]) {
     const bar = h("span", "tc-bar");
     bar.style.width = `${w}%`;
-    bar.style.background = mix(t.background, t.foreground, 0.35);
+    bar.style.background = c.bar;
     side.appendChild(bar);
   }
   const term = h("span", "tc-term");
@@ -36,15 +76,15 @@ function preview(t: TerminalTheme): HTMLElement {
     }
     term.appendChild(l);
   };
-  line([["~/skiff main $ cargo test", fg]]);
-  line([["   Compiling skiffd", fg]]);
-  line([["warning", p[3]], [": unused var", readable(mix(fg, t.background, 0.3), [t.background], 4.5)]]);
-  line([["error", p[1]], ["[E0308] types", fg]]);
+  line([["~/skiff main $ cargo test", c.fg]]);
+  line([["   Compiling skiffd", c.fg]]);
+  line([["warning", c.warn], [": unused var", c.dim]]);
+  line([["error", c.err], ["[E0308] types", c.fg]]);
   const cursor = h("span", "tc-cursor");
-  cursor.style.background = t.cursor ?? t.foreground;
+  cursor.style.background = c.cursor;
   const last = h("span", "tc-line");
   const prompt = h("span", "", "$ ");
-  prompt.style.color = fg;
+  prompt.style.color = c.fg;
   last.append(prompt, cursor);
   term.appendChild(last);
   box.append(side, term);
@@ -80,8 +120,23 @@ interface CardOpts {
   scopes?: { id: string; label: string }[];
 }
 
+/** A grid of theme cards and the call that brings it up to date in place. */
+export interface ThemeBrowser {
+  el: HTMLElement;
+  /** New themes, active id or scope labels. Cards whose theme did not change stay the same elements. */
+  update(themes: TerminalTheme[], active: string | null, scopes?: { id: string; label: string }[]): void;
+}
+
 /** A grid of theme cards. A click picks; nothing previews on hover. */
 export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
+  return themeBrowser(themes, o).el;
+}
+
+/**
+ * A grid of theme cards, built once. A filter shows and hides cards, a pick moves
+ * the marks, and an update builds only the cards of new or changed themes.
+ */
+export function themeBrowser(themes: TerminalTheme[], o: CardOpts): ThemeBrowser {
   const filters = o.filters ?? { query: "", family: null };
   const browser = h("div", "tc-browser");
   const tools = h("div", "tc-tools");
@@ -108,9 +163,13 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
     });
     return b;
   };
+  let families = "";
   const drawSwatches = () => {
     const present = new Set(themes.map((t) => themeProfile(t).family));
     if (filters.family && !present.has(filters.family as ColorFamily)) filters.family = null;
+    const now = COLOR_FAMILIES.filter((f) => present.has(f)).join() + "|" + filters.family;
+    if (now === families) return;
+    families = now;
     swatches.replaceChildren(swatch(null), ...COLOR_FAMILIES.filter((f) => present.has(f)).map(swatch));
   };
   drawSwatches();
@@ -133,7 +192,26 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
   const status = h("div", "tc-status");
   status.setAttribute("role", "status");
   const grid = h("div", "tc-grid");
+  /** Built cards by theme key, label and badge. Each one keeps its theme id. */
+  const built = new Map<string, HTMLButtonElement>();
+  /** Each card's foot and the spans that always lead it: the signature, the name and the badge. */
+  const feet = new WeakMap<HTMLButtonElement, { foot: HTMLElement; lead: HTMLElement[] }>();
+  /** The active mark and the scope labels of one card, set in place. */
+  const mark = (b: HTMLButtonElement) => {
+    const id = b.dataset.theme || null;
+    const on = o.active === id;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", String(on));
+    const { foot, lead } = feet.get(b)!;
+    const tail: HTMLElement[] = [];
+    if (on) tail.push(h("span", "tc-state", t("theme.active")));
+    for (const s of o.scopes ?? []) if (s.id === id) tail.push(h("span", "tc-in-scope", s.label));
+    foot.replaceChildren(...lead, ...tail);
+  };
   const card = (theme: TerminalTheme, id: string | null, label: string, badge: string) => {
+    const key = `${id === null ? "none" : "theme"}\n${themeKey(theme)}\n${label}\n${badge}`;
+    const had = built.get(key);
+    if (had) return had;
     const on = o.active === id;
     const b = h("button", "tc-card" + (on ? " active" : ""));
     b.type = "button";
@@ -144,42 +222,48 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
     const signature = h("span", "tc-signature");
     signature.style.background = themeProfile(theme).color;
     signature.setAttribute("aria-hidden", "true");
-    foot.appendChild(signature);
-    foot.append(h("span", "tc-name", label), h("span", "tc-badge", badge));
+    const lead = [signature, h("span", "tc-name", label), h("span", "tc-badge", badge)];
+    foot.append(...lead);
+    feet.set(b, { foot, lead });
     if (on) foot.appendChild(h("span", "tc-state", t("theme.active")));
     for (const s of o.scopes ?? []) if (s.id === id) foot.appendChild(h("span", "tc-in-scope", s.label));
     b.appendChild(foot);
     b.addEventListener("click", () => {
       o.active = id;
-      // Update the mark in place. Keep the filter, scroll and focused card.
-      for (const c of grid.querySelectorAll<HTMLButtonElement>(".tc-card")) {
-        const active = c.dataset.theme === (id ?? "");
-        c.classList.toggle("active", active);
-        c.setAttribute("aria-pressed", String(active));
-        c.querySelector(".tc-state")?.remove();
-        if (active) c.querySelector(".tc-foot")?.appendChild(h("span", "tc-state", t("theme.active")));
-      }
+      // Update the marks in place. Keep the filter, scroll and focused card.
+      for (const c of built.values()) mark(c);
       o.pick(id);
     });
+    built.set(key, b);
     return b;
   };
+  /** The cards in list order: the same elements on every call while their themes stay the same. */
+  let order: HTMLButtonElement[] = [];
   const draw = () => {
-    grid.replaceChildren();
-    if (o.none?.theme) grid.appendChild(card(o.none.theme, null, o.none.label, t("theme.default")));
     const words = filters.query.toLowerCase().trim().split(/\s+/);
-    const shown = themes.filter((t) => {
-      const p = themeProfile(t);
+    const next: HTMLButtonElement[] = [];
+    if (o.none?.theme) next.push(card(o.none.theme, null, o.none.label, t("theme.default")));
+    let shown = 0;
+    for (const theme of themes) {
+      const p = themeProfile(theme);
+      const c = card(theme, theme.id, theme.name, familyName(p.family));
       // A color matches by its English id and by its name in the current language.
-      const text = `${t.name} ${p.family} ${familyName(p.family)}`.toLowerCase();
-      return words.every((word) => text.includes(word))
+      const text = `${theme.name} ${p.family} ${familyName(p.family)}`.toLowerCase();
+      const match = words.every((word) => text.includes(word))
         && (!filters.family || filters.family === p.family)
         && (!filters.mode || filters.mode === p.mode);
-    });
-    for (const t of shown) {
-      const p = themeProfile(t);
-      grid.appendChild(card(t, t.id, t.name, familyName(p.family)));
+      c.hidden = !match;
+      if (match) shown++;
+      next.push(c);
     }
-    status.textContent = tn("theme.count", themes.length, { n: shown.length });
+    // Only a new, changed or removed theme changes the grid's children.
+    if (next.length !== order.length || next.some((c, i) => c !== order[i])) {
+      grid.replaceChildren(...next);
+      const keep = new Set(next);
+      for (const [k, c] of built) if (!keep.has(c)) built.delete(k);
+      order = next;
+    }
+    status.textContent = tn("theme.count", themes.length, { n: shown });
   };
   search.addEventListener("input", () => {
     filters.query = search.value;
@@ -221,7 +305,20 @@ export function themeGrid(themes: TerminalTheme[], o: CardOpts): HTMLElement {
   tools.append(status);
   browser.append(tools, grid);
   draw();
-  return browser;
+  return {
+    el: browser,
+    update(list, active, scopes) {
+      const marks = active !== o.active || JSON.stringify(scopes ?? []) !== JSON.stringify(o.scopes ?? []);
+      o.active = active;
+      o.scopes = scopes;
+      if (list !== themes) {
+        themes = list;
+        drawSwatches();
+      }
+      draw();
+      if (marks) for (const c of built.values()) mark(c);
+    },
+  };
 }
 
 const KEYS: Record<string, "left" | "right" | "up" | "down" | "first" | "last"> = {
@@ -295,7 +392,7 @@ export function pickTheme(title: string, scope: string, themes: TerminalTheme[],
     }
     const step = KEYS[e.key];
     if (!step || e.ctrlKey || e.altKey || e.metaKey || !(e.target instanceof HTMLElement)) return;
-    const cards = [...body.querySelectorAll<HTMLButtonElement>(".tc-card")];
+    const cards = [...body.querySelectorAll<HTMLButtonElement>(".tc-card:not([hidden])")];
     const search = body.querySelector<HTMLInputElement>(".tc-search");
     // Down from the search goes into the cards, at the active theme. Left and right stay in the text.
     if (e.target === search) {
