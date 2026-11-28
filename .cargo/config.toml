@@ -1,0 +1,9 @@
+# The bundled SQLite (rusqlite "bundled", libsqlite3-sys) without the
+# extensions no Skiff code uses: full-text search (FTS3/4, FTS5) and R-tree.
+# Cargo reads this file for every command run from inside the repository,
+# for every target: cargo build, cargo zigbuild, tauri build and
+# scripts/server-bundle/build.sh. A command run from outside it, with
+# --manifest-path, does not. An outer LIBSQLITE3_FLAGS replaces this value.
+# A database with such a table still opens; only that table fails.
+[env]
+LIBSQLITE3_FLAGS = "-USQLITE_ENABLE_FTS3 -USQLITE_ENABLE_FTS3_PARENTHESIS -USQLITE_ENABLE_FTS5 -USQLITE_ENABLE_RTREE"
