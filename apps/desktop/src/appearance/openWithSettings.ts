@@ -46,8 +46,8 @@ interface OpenWithActs {
  */
 /** The picker value of a program: one string per program and arguments. */
 const runValue = (r: OpenCommand) => "run:" + JSON.stringify([r.program, r.args]);
-/** A program as its words. */
-const runWords = (r: OpenCommand) => [r.program, ...r.args].join(" ");
+/** A program as it runs: its words, after the Git it reads from when it has Git options. */
+const runWords = (r: OpenCommand) => (r.git_args?.length ? `git diff ${r.git_args.join(" ")} {target} | ` : "") + [r.program, ...r.args].join(" ");
 
 /** One word as the command field shows it: in quotes when it has a space or a quote. */
 const quoteWord = (w: string) => (w !== "" && !/[\s'"]/.test(w) ? w : w.includes("'") ? `"${w}"` : `'${w}'`);

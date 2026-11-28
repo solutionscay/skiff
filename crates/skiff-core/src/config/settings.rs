@@ -305,17 +305,20 @@ pub fn set_open(key: &str, command: Option<&str>) -> Result<()> {
     if !OPEN_KEYS.contains(&key) {
         anyhow::bail!("unknown [open] key: {key}");
     }
-    super::client::edit_table("open", |t| {
-        match command {
-            Some(v) => t[key] = toml_edit::value(v),
-            None => {
-                t.remove(key);
-            }
+    super::client::edit_table("open", |t| write_open(t, key, command))
+}
+
+/// Writes one `[open]` command line, or removes it. It replaces the key's
+/// program: a key has one setting.
+fn write_open(t: &mut toml_edit::Table, key: &str, command: Option<&str>) -> Result<()> {
+    match command {
+        Some(v) => t[key] = toml_edit::value(v),
+        None => {
+            t.remove(key);
         }
-        // A command line replaces the key's program, so the line runs.
-        drop_open_command(t, key);
-        Ok(())
-    })
+    }
+    drop_open_command(t, key);
+    Ok(())
 }
 
 /// Sets one `[open.commands.<key>]` program, which Skiff runs with no
@@ -620,6 +623,30 @@ mod open_command_tests {
         assert_eq!(open.commands.get("diff"), None);
         assert_eq!(open.commands.get("text"), Some(&text));
         assert_eq!(text.line("{path}"), "'/opt/my tools/ed' -n {path} 'it'\\''s'");
+    }
+
+    /// #303: an older Skiff left a preset line beside a program for one
+    /// key. It reads as the program alone; a preset or Default then
+    /// replaces both, and a program replaces both too.
+    #[test]
+    fn a_key_has_one_setting() {
+        let file = "[open]\ndiff = \"git -c core.pager=delta diff {target}\"\ntext = \"micro\"\n\n[open.commands.diff]\nprogram = \"delta\"\nargs = [\"--side-by-sude\"]\ninput = \"patch\"\n";
+        let open: crate::config::Open = toml::from_str::<toml::Table>(file).unwrap()["open"].clone().try_into().unwrap();
+        assert_eq!(open.diff, None, "the program is the one setting");
+        assert_eq!(open.commands["diff"].args, ["--side-by-sude"]);
+        assert_eq!(open.text.as_deref(), Some("micro"));
+        let mut doc: toml_edit::DocumentMut = file.parse().unwrap();
+        let t = doc["open"].as_table_mut().unwrap();
+        write_open(t, "diff", Some("git -c core.pager=delta diff {target}")).unwrap();
+        assert!(t.get("commands").is_none(), "a preset clears the program: {doc}");
+        let mut doc: toml_edit::DocumentMut = file.parse().unwrap();
+        let t = doc["open"].as_table_mut().unwrap();
+        write_open(t, "diff", None).unwrap();
+        assert!(t.get("diff").is_none() && t.get("commands").is_none(), "Default clears both: {doc}");
+        let mut doc: toml_edit::DocumentMut = file.parse().unwrap();
+        let t = doc["open"].as_table_mut().unwrap();
+        write_open_command(t, "diff", Some(&OpenCommand { program: "delta".into(), args: vec![], opens: None, git_args: vec![] })).unwrap();
+        assert!(t.get("diff").is_none() && t.get("text").is_some(), "a program clears the line: {doc}");
     }
 
     /// An `input` from an older Skiff reads as the words it stood for, and

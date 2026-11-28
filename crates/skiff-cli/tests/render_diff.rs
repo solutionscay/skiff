@@ -157,6 +157,17 @@ fn each_failing_stage_has_its_code() {
     let (code, _, err) = render(&wt, &plan(&wt, Some("f"), Path::new("no-such-renderer"), &[]), &out);
     assert_eq!((code, err.trim()), (render_exit::MISSING, "no-such-renderer: not found"));
 
+    // A renderer that refuses its options: its own error and code show, and
+    // nothing runs in its place.
+    let picky = d.0.join("picky.sh");
+    std::fs::write(&picky, "#!/bin/sh\necho \"error: unexpected argument '$1' found\" >&2\nexit 2\n").unwrap();
+    std::fs::set_permissions(&picky, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    std::fs::write(wt.join("f"), "2\n").unwrap();
+    let (code, stdout, err) = render(&wt, &plan(&wt, Some("f"), &picky, &["--side-by-sude"]), &out);
+    assert_eq!(code, 2, "{err}");
+    assert_eq!(err.trim(), "error: unexpected argument '--side-by-sude' found");
+    assert_eq!(stdout, format!("{DONE}2\x07"), "no other diff shows");
+
     let gone = d.0.join("gone");
     std::fs::create_dir(&gone).unwrap();
     let json = serde_json::to_string(&plan(&wt, Some("f"), &rec, &[])).unwrap();

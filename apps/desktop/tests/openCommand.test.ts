@@ -187,3 +187,14 @@ test("a line that needs the shell opens as it is, with no note, and saves unchan
   await tick();
   assert.deepEqual([p.calls, stored.diff, p.editor()], [["line"], "git diff {target} | delta | cat", undefined]);
 });
+
+test("a row shows the program that runs, with its Git options, and edits that one", () => {
+  const stored = settings();
+  stored.commands.diff = { program: "delta", args: ["--side-by-sude"] };
+  const p = page(stored);
+  assert.equal((p.picker("Diffs") as any).shows, "delta --side-by-sude");
+  p.item("Diffs", "Edit command…").run();
+  assert.equal(p.field().value, "delta --side-by-sude");
+  const q = page({ ...settings(), commands: { diff: { program: "delta", args: [], git_args: ["--color=always"] } } });
+  assert.equal((q.picker("Diffs") as any).shows, "git diff --color=always {target} | delta");
+});

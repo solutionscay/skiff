@@ -41,8 +41,10 @@ pub struct Appearance {
     pub clock: Option<String>,
 }
 
-/// Which apps Skiff hands things to.
+/// Which apps Skiff hands things to. One setting for each key: a key in
+/// `[open.commands]` and in `[open]` both reads as its program.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+#[serde(from = "StoredOpen")]
 pub struct Open {
     /// File kinds that open on selection in the peek.
     #[serde(default)]
@@ -64,6 +66,37 @@ pub struct Open {
     /// shell. One for a key replaces that key's command line.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub commands: std::collections::BTreeMap<String, OpenCommand>,
+}
+
+/// `[open]` as a file can hold it: an older Skiff wrote a command line
+/// beside a program for the same key.
+#[derive(Deserialize)]
+struct StoredOpen {
+    #[serde(default)]
+    peek: Vec<String>,
+    diff: Option<String>,
+    text: Option<String>,
+    markdown: Option<String>,
+    html: Option<String>,
+    #[serde(default)]
+    image: Option<String>,
+    #[serde(default)]
+    commands: std::collections::BTreeMap<String, OpenCommand>,
+}
+
+impl From<StoredOpen> for Open {
+    fn from(s: StoredOpen) -> Self {
+        let line = |key: &str, v: Option<String>| v.filter(|_| !s.commands.contains_key(key));
+        Open {
+            diff: line("diff", s.diff),
+            text: line("text", s.text),
+            markdown: line("markdown", s.markdown),
+            html: line("html", s.html),
+            image: line("image", s.image),
+            peek: s.peek,
+            commands: s.commands,
+        }
+    }
 }
 
 /// A program that an `[open]` row runs, with no shell between: the program,

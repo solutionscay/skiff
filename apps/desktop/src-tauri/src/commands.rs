@@ -209,7 +209,7 @@ pub(crate) async fn open_file_copy(app: Routed, worktree: String, file: String) 
     let read = crate::connection::data_read(&app, |c| async move { skiff_client::host::data::file_read(&c, &worktree, &file, ReadPurpose::Copy).await }).await?;
     let bytes = read.bytes.ok_or("The Host sent no bytes for this file.")?;
     let copy = blocking(move || crate::copies::save(&name, &bytes)).await?;
-    let open = skiff_core::config::client::load().map(|c| c.open).unwrap_or_default();
+    let open = skiff_core::config::client::load().map_err(err)?.open;
     let cwd = copy.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
     let plan = skiff_core::open::plan_file(&copy, &open);
     // The peek of a remote Host runs on that Host, where the copy is not.
@@ -289,7 +289,7 @@ pub(crate) async fn open_diff(path: PathBuf, file: Option<String>) -> Result<Ope
     if !path.is_dir() {
         return Err(format!("The worktree folder is gone: {}", path.display()));
     }
-    let open = skiff_core::config::client::load().map(|c| c.open).unwrap_or_default();
+    let open = skiff_core::config::client::load().map_err(err)?.open;
     let dir = path.clone();
     let plan = tokio::task::spawn_blocking(move || skiff_core::open::plan_diff(&dir, file.as_deref(), &open))
         .await
@@ -431,7 +431,7 @@ pub(crate) async fn preview_file(path: PathBuf) -> Result<FilePreview, String> {
 /// Opens a file with its `[open]` command, else in its default app.
 #[tauri::command]
 pub(crate) async fn open_file(path: PathBuf) -> Result<Opened, String> {
-    let open = skiff_core::config::client::load().map(|c| c.open).unwrap_or_default();
+    let open = skiff_core::config::client::load().map_err(err)?.open;
     let file = path.clone();
     let plan = tokio::task::spawn_blocking(move || skiff_core::open::plan_file(&file, &open))
         .await
