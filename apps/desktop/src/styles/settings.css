@@ -13,6 +13,14 @@
 .set-tab-bad { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--error); }
 /* The current row, as in the tree. */
 .set-tab.active { background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); box-shadow: var(--skin-row-mark) var(--pc, var(--project-default)); }
+/* Bubble: a group head is a label, not a bar: flat, muted, its words at the foot of the row so space opens above.
+   The pages stay glossy buttons. The current page is a white surface in bold, as the TREE | SKIPPERS tab: Settings
+   has no project, so no project color. */
+:root[data-skin="bubble"] .set-nav .set-band { align-items: flex-end; padding-bottom: calc(6 * var(--u)); background: none; border-bottom: 0; }
+:root[data-skin="bubble"] .set-nav .set-band-title { font-size: calc(11px * var(--zoom, 1)); font-weight: 600; color: var(--text-3); }
+:root[data-skin="bubble"] .set-nav .set-band + .set-tab { border-top: var(--skin-border) var(--rule); }
+:root[data-skin="bubble"] .set-tab:hover:not(.active) { background-color: var(--hover); }
+:root[data-skin="bubble"] .set-tab.active { background: var(--skin-tab-gradient) var(--bg); box-shadow: none; font-weight: 700; }
 .set-x { position: absolute; top: 0; right: 0; height: var(--row); display: flex; align-items: center; padding: 0 calc(12 * var(--u)); border: 0; background: transparent; }
 .set-x:hover kbd { border-color: var(--text-3); color: var(--text); }
 .tc-x { align-self: stretch; display: flex; align-items: center; margin-right: -20px; padding: 0 20px; border: 0; background: transparent; }
@@ -66,6 +74,9 @@
 /* A band with a button: the count and the button sit at the right edge, as row actions. */
 .set-band > .set-band-count:has(+ .ctl-btn) { margin-left: auto; }
 .set-band-title { font-size: calc(12px * var(--zoom, 1)); font-weight: 500; color: var(--text-2); }
+/* Bubble: a section head in a page is a flat tinted band, with no gloss, so it does not read as a button. */
+:root[data-skin="bubble"] .set-main .set-band { background: var(--skin-tint) var(--bg-raised); }
+:root[data-skin="bubble"] .set-main .set-band-title { font-weight: 600; }
 .set-band-count { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Settings tables (appearance/rowTable.ts). Each cell is a span; a control fills its cell. */
 .set-table { flex-shrink: 0; display: flex; flex-direction: column; }

@@ -140,8 +140,8 @@ function renderHostLabel() {
     settings.before(cell);
   }
   if (!cell) return;
-  const state = connected ? "connected" : "error";
-  cell.replaceChildren(h("span", `dot ${state}`), hostIcon(isRemote()), h("span", "host-name", name));
+  // The icon names the Host's kind. A dot shows only while the link is down.
+  cell.replaceChildren(...(connected ? [] : [h("span", "dot error")]), hostIcon(isRemote()), h("span", "host-name", name));
   cell.classList.toggle("remote", isRemote());
   cell.title = t("settings.tab.hosts");
   cell.setAttribute("aria-label", cell.title + " · " + name);

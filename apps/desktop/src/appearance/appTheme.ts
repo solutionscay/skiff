@@ -1,5 +1,5 @@
 import { invoke } from "../platform/invoke";
-import { contrast, isLight, mix, readable } from "./colors";
+import { contrast, isLight, mix, readable, rgb } from "./colors";
 import type { TerminalTheme } from "../platform/types";
 
 /** The surfaces text and marks sit on: bg, panel, raised. Stylesheet defaults until a theme applies. */
@@ -64,8 +64,24 @@ function keepStartBg(bg: string | undefined) {
   }
 }
 
+/** The theme the app wears, so a skin change can apply it again. */
+let worn: TerminalTheme | null = null;
+/** True while the Bubble frame wears a light frame made from a dark theme. */
+let lit = false;
+
+/** Whether the app chrome wears a light frame made from a dark theme (Bubble only). Pane heads then take the real theme. */
+export const litFrame = () => lit;
+
+/** The app theme again, after a skin change. */
+export function reapplyAppTheme() {
+  if (worn) applyAppTheme(worn);
+}
+
 export function applyAppTheme(t: TerminalTheme | null) {
   const root = document.documentElement.style;
+  worn = t;
+  lit = !!t && document.documentElement.dataset.skin === "bubble" && !isLight(t.ui?.background ?? t.background);
+  if (lit) t = lightFrame(t!);
   if (!t) {
     keepStartBg(undefined);
     for (const v of VARS) root.removeProperty(v);
@@ -145,6 +161,56 @@ function themeVars(t: TerminalTheme): Record<string, string> {
   set["--gloss"] = lightScheme ? mix(set["--bg"], "#ffffff", 0.6) + "e0" : set["--text"] + "26";
   set["--shade"] = lightScheme ? set["--text"] + "29" : "#00000059";
   return set;
+}
+
+/** Hue (0-360), saturation and lightness (0-1) of a hex color. */
+function hsl(hex: string): [number, number, number] {
+  const [r, g, b] = rgb(hex).map((v) => v / 255);
+  const hi = Math.max(r, g, b), lo = Math.min(r, g, b), l = (hi + lo) / 2, d = hi - lo;
+  if (!d) return [0, 0, l];
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h = hi === r ? ((g - b) / d) % 6 : hi === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [(h * 60 + 360) % 360, s, l];
+}
+
+/** A hex color from hue, saturation and lightness. */
+function hex(h: number, s: number, l: number): string {
+  const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+  const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return "#" + [r, g, b].map((v) => Math.round((v + m) * 255).toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Bubble's frame for a dark theme: a light ground tinted with the theme's own
+ * color (its main color, else its foreground), white panels and dark text, on
+ * the steps of the light built-in themes (Peppermint's frame is about 88%
+ * light, its text 15%). The palette stays: the contrast checks push its state
+ * colors to read on the light surfaces. Terminals keep the real theme.
+ */
+function lightFrame(t: TerminalTheme): TerminalTheme {
+  const [h, s0] = hsl(t.main_color ?? t.foreground);
+  const s = Math.min(s0, 0.65);
+  const tone = (sat: number, l: number) => hex(h, s * sat, l);
+  const bg = "#ffffff";
+  const fg = tone(1, 0.15);
+  return {
+    ...t,
+    background: bg,
+    foreground: fg,
+    ui: {
+      background: bg,
+      sidebar: tone(1, 0.88),
+      tertiary: tone(0.9, 0.82),
+      secondary: tone(1, 0.95),
+      border: tone(0.7, 0.72),
+      mutedForeground: tone(0.6, 0.38),
+      sidebarForeground: tone(1, 0.2),
+      primary: t.ui?.primary ?? t.main_color ?? t.palette[5],
+      working: t.ui?.working ?? t.palette[4],
+      warning: t.palette[3],
+      destructive: t.palette[1],
+    },
+  };
 }
 
 /** Error banners, the destructive button, the ok dot, and the modal scrim, from the theme's red and green. */

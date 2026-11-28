@@ -132,6 +132,8 @@ body.ledger-keys .cell.focused .cell-head { background-color: var(--bg-panel); }
 .lg-tab[hidden] { display: none; }
 .lg-tab:hover { color: var(--text); }
 .lg-tab.on { font-weight: 600; color: var(--text); background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); }
+/* Bubble: the tab on screen is a white surface, as the TREE | SKIPPERS tab. The project color means nothing here. */
+:root[data-skin="bubble"] .lg-tab.on { background: var(--skin-tab-gradient) var(--bg); }
 .lg-tab-n { font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); }
 body.ledger-keys #ledger .lg-tabs { color: inherit; }
 body.ledger-keys #ledger .lg-tab.on { color: var(--pc, var(--project-default)); }

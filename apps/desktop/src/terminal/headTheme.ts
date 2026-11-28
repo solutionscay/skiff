@@ -2,13 +2,15 @@
  * A pane head in the pane's own theme: the session theme, else the project
  * theme. The cell gets that theme's frame, text, rule, state and gloss colors
  * as `--head-*`, from `appThemeVars`, as mission control paints its windows.
- * A pane that follows the app theme gets none. Only the Bubble skin reads
- * them (`styles/tokens.css`); Default heads keep the app colors.
+ * A pane that follows the app theme gets none, unless Bubble wears a light
+ * frame made from that dark theme: then the head keeps the real theme too.
+ * Only the Bubble skin reads them (`styles/tokens.css`); Default heads keep
+ * the app colors.
  */
 import type { SessionInfo } from "../platform/types";
 import { S } from "../app/state";
-import { appThemeVars } from "../appearance/appTheme";
-import { ownThemeId } from "../appearance/themes";
+import { appThemeVars, litFrame } from "../appearance/appTheme";
+import { ownThemeId, themeIdFor } from "../appearance/themes";
 
 /** App variable, then the cell variable that carries it. */
 const KEYS: [string, string][] = [
@@ -22,7 +24,7 @@ const made = new Map<string, Record<string, string>>();
 
 /** Gives `cell` the head colors of `s`'s own theme, or takes them away when it follows the app. */
 export function paintHead(cell: HTMLElement, s: SessionInfo | undefined) {
-  const id = s ? ownThemeId(s) : null;
+  const id = s ? ownThemeId(s) ?? (litFrame() ? themeIdFor(s) : null) : null;
   const t = id ? S.themes.find((x) => x.id === id) : undefined;
   const key = t ? `${t.id} ${t.background} ${t.foreground} ${t.palette.join(",")} ${JSON.stringify(t.ui ?? null)}` : "";
   if ((cell.dataset.head ?? "") === key) return;
