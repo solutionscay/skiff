@@ -85,6 +85,11 @@ pub struct OpenCommand {
     /// Where it shows: `peek` or `app`. Absent: the peek.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub opens: Option<String>,
+    /// Options of `git diff` before the target, for the `patch` input:
+    /// `--color=always`. Kept from a command line that piped `git diff`
+    /// into the program.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub git_args: Vec<String>,
 }
 
 impl OpenCommand {

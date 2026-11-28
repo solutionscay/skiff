@@ -167,7 +167,7 @@ pub fn plan_diff(dir: &Path, file: Option<&str>, open: &Open) -> Result<DiffPlan
         if c.input != crate::config::OpenCommand::PATCH {
             bail!("Open with › Diffs: Skiff cannot give {} the input {:?}", c.program, c.input);
         }
-        return Ok(render(Vec::new(), [&[c.program.trim().to_string()][..], &c.args].concat()));
+        return Ok(render(c.git_args.clone(), [&[c.program.trim().to_string()][..], &c.args].concat()));
     }
     let line = open.diff.as_deref().map(str::trim).filter(|c| !c.is_empty());
     if let Some((git_opts, renderer)) = line.and_then(patch_pipeline) {
@@ -416,7 +416,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let mut open = Open { diff: Some("git diff --color=always {target} | delta --paging=never".into()), ..Open::default() };
         let mapped = plan_diff(&dir, Some("f"), &open).unwrap();
-        open.commands.insert("diff".into(), crate::config::OpenCommand { program: "rec".into(), args: vec!["-x".into()], input: "patch".into(), opens: None });
+        open.commands.insert("diff".into(), crate::config::OpenCommand { program: "rec".into(), args: vec!["-x".into()], input: "patch".into(), opens: None, git_args: vec!["--color=always".into()] });
         let program = plan_diff(&dir, Some("f"), &open).unwrap();
         open.commands.clear();
         open.diff = Some("my-diff {target}".into());
@@ -425,7 +425,7 @@ mod tests {
         let DiffPlan::Render(mapped) = mapped else { panic!("{mapped:?}") };
         assert_eq!(mapped.renderer, words(&["delta", "--paging=never"]));
         assert!(mapped.producer.starts_with(&words(&["git", "--no-pager"])) && mapped.producer.contains(&"--color=always".to_string()));
-        assert!(matches!(program, DiffPlan::Render(r) if r.renderer == words(&["rec", "-x"])));
+        assert!(matches!(program, DiffPlan::Render(r) if r.renderer == words(&["rec", "-x"]) && r.producer.contains(&"--color=always".to_string())));
         assert!(matches!(shell, DiffPlan::Shell(s) if s.starts_with("my-diff ")));
     }
 }

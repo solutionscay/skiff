@@ -1306,6 +1306,8 @@ export const es = {
   "settings.open.inputTarget": "Destino de Git como argumentos",
   "settings.open.save": "Guardar",
   "settings.open.reset": "Restablecer",
+  "settings.open.cancel": "Cancelar",
+  "settings.open.inShell": "Este comando se ejecuta en la shell.",
   "settings.open.cmdEmpty": "El comando está vacío. Escriba un programa y sus argumentos.",
   "settings.open.cmdQuote": "Una comilla no está cerrada. Cierre la comilla.",
   "settings.open.cmdShell": "Skiff ejecuta el programa sin shell. Quite {sign}.",

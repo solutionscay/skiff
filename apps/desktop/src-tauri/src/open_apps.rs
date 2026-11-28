@@ -152,7 +152,7 @@ fn tools_on(dirs: &[PathBuf]) -> Choices {
     let mut out: Choices = KEYS.iter().map(|k| (*k, Row::default())).collect();
     for (label, program) in RENDERERS {
         if on_path(dirs, program) {
-            let run = OpenCommand { program: (*program).into(), args: Vec::new(), input: OpenCommand::PATCH.into(), opens: None };
+            let run = OpenCommand { program: (*program).into(), args: Vec::new(), input: OpenCommand::PATCH.into(), opens: None, git_args: Vec::new() };
             out.entry("diff").or_default().peek.push(Choice { label: (*label).into(), command: (*program).into(), run: Some(run) });
         }
     }

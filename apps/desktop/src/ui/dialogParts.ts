@@ -70,8 +70,6 @@ export function actionDialog(o: {
   focus?: HTMLElement;
   /** A face before the title: a Skipper's avatar. */
   face?: HTMLElement;
-  /** A second action before Cancel, such as Reset to default. It closes as the action does. */
-  also?: { label: string; run: () => void | Promise<void> };
 }) {
   const back = document.activeElement as HTMLElement | null;
   const { overlay, panel } = dialogFrame("confirm-panel", o.tone === "danger" ? "alertdialog" : "dialog", o.title);
@@ -80,11 +78,6 @@ export function actionDialog(o: {
   const error = h("div", "prompt-error");
   error.setAttribute("role", "alert");
   const { foot, cancel, act } = dialogActions(o.action, o.tone === "go" ? "confirm-act go" : "confirm-act");
-  const also = o.also ? h("button", "confirm-cancel", o.also.label) : null;
-  if (also) {
-    also.type = "button";
-    foot.prepend(also);
-  }
   panel.append(title, ...(o.body ? [h("div", "confirm-body", o.body)] : []), ...(o.content ?? []), error, foot);
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
@@ -98,28 +91,21 @@ export function actionDialog(o: {
     if (o.onClose) o.onClose();
     else back?.focus?.();
   };
-  const run = async (job: () => void | Promise<void> = o.submit, button: HTMLButtonElement = act) => {
+  const run = async () => {
     if (busy) return;
-    const text = button.textContent;
     busy = act.disabled = true;
-    if (also) also.disabled = true;
-    button.textContent = "…";
+    act.textContent = "…";
     error.textContent = "";
     try {
-      await job();
+      await o.submit();
       close();
     } catch (e) {
       busy = act.disabled = false;
-      if (also) also.disabled = false;
-      button.textContent = text;
+      act.textContent = o.action;
       error.textContent = String(e);
     }
   };
   cancel.addEventListener("click", () => !busy && close());
-  if (also && o.also) {
-    const job = o.also.run;
-    also.addEventListener("click", () => void run(job, also));
-  }
   act.addEventListener("click", () => void run());
   overlay.addEventListener("mousedown", (e) => {
     if (e.target === overlay && !busy) close();
@@ -129,7 +115,7 @@ export function actionDialog(o: {
     if (e.key === "Escape") {
       if (!busy) close();
     } else if (e.key === "Enter") {
-      if (document.activeElement === cancel || (also && document.activeElement === also)) return;
+      if (document.activeElement === cancel) return;
       void run();
     } else if (e.key === "Tab") {
       const stops = [...panel.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled)")];
@@ -139,5 +125,5 @@ export function actionDialog(o: {
     e.preventDefault();
   });
   (o.focus ?? act).focus();
-  return { close, error, run: () => run() };
+  return { close, error, run };
 }

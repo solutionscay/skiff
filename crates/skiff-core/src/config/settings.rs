@@ -354,6 +354,9 @@ fn write_open_command(t: &mut toml_edit::Table, key: &str, command: Option<&supe
     if let Some(opens) = &c.opens {
         row["opens"] = toml_edit::value(opens.as_str());
     }
+    if !c.git_args.is_empty() {
+        row["git_args"] = toml_edit::value(c.git_args.iter().map(String::as_str).collect::<toml_edit::Array>());
+    }
     let commands = t.entry("commands").or_insert_with(|| {
         let mut table = toml_edit::Table::new();
         table.set_implicit(true);
@@ -608,8 +611,8 @@ mod open_command_tests {
         std::fs::create_dir_all(&dir).unwrap();
         let (projects, client) = (dir.join("projects.toml"), dir.join("client.toml"));
         std::fs::write(&client, "schema = 2\n\n[open]\ntext = \"code\"\npeek = [\"text\"]\n").unwrap();
-        let diff = OpenCommand { program: "difft".into(), args: vec!["--color=always".into(), "{target}".into()], input: OpenCommand::TARGET.into(), opens: None };
-        let text = OpenCommand { program: "/opt/my tools/ed".into(), args: vec!["-n".into(), "{path}".into(), "it's".into()], input: OpenCommand::PATH.into(), opens: Some("app".into()) };
+        let diff = OpenCommand { program: "difft".into(), args: vec!["--color=always".into(), "{target}".into()], input: OpenCommand::TARGET.into(), opens: None, git_args: vec![] };
+        let text = OpenCommand { program: "/opt/my tools/ed".into(), args: vec!["-n".into(), "{path}".into(), "it's".into()], input: OpenCommand::PATH.into(), opens: Some("app".into()), git_args: vec![] };
         super::super::persistence::edit_table_in(&client, "open", |t| write_open_command(t, "diff", Some(&diff))).unwrap();
         super::super::persistence::edit_table_in(&client, "open", |t| write_open_command(t, "text", Some(&text))).unwrap();
         let open = super::super::client::load_from(&projects, &client).unwrap().open;

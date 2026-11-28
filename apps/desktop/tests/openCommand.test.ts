@@ -2,41 +2,57 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { moduleFromSource } from "./workspaceHarness.ts";
 
-// #303: Settings › Open with › Custom command… and Edit command…: Save stores
-// the program, its words, its input and its place; Cancel stores nothing;
-// Reset to default clears the row; the editor shows its errors.
+// #303: Settings › Open with › Custom command… and Edit command… open an
+// editor in the table, under the row. Save stores the program, its words, its
+// input and its place; Cancel and Esc store nothing and give the keys back to
+// the row's picker; Reset to default clears the row; the editor shows its
+// errors. A saved pipeline that Skiff runs as Git and a renderer opens as the
+// renderer with the patch on standard input.
 class El {
+  tag: string;
   className: string;
   textContent: string;
   children: El[] = [];
+  parent: El | null = null;
   value = "";
   placeholder = "";
-  constructor(_tag: string, cls = "", text = "") { this.className = cls; this.textContent = text; }
-  append(...kids: El[]) { this.children.push(...kids); }
-  appendChild(k: El) { this.children.push(k); return k; }
-  replaceChild(k: El, old: El) { this.children[this.children.indexOf(old)] = k; }
-  get lastChild() { return this.children[this.children.length - 1]; }
-  setAttribute() {}
+  hidden = false;
+  disabled = false;
+  attrs: Record<string, string> = {};
+  on: Record<string, ((e: any) => void)[]> = {};
+  enter?: () => void;
+  click?: () => void;
+  constructor(tag: string, cls = "", text = "") { this.tag = tag; this.className = cls; this.textContent = text; }
+  append(...kids: El[]) { for (const k of kids) { k.parent = this; this.children.push(k); } }
+  appendChild(k: El) { this.append(k); return k; }
+  replaceChildren(...kids: El[]) { this.children = []; this.append(...kids); }
+  after(k: El) { const p = this.parent!; k.parent = p; p.children.splice(p.children.indexOf(this) + 1, 0, k); }
+  remove() { if (this.parent) this.parent.children.splice(this.parent.children.indexOf(this), 1); this.parent = null; }
+  setAttribute(k: string, v: string) { this.attrs[k] = v; }
+  removeAttribute(k: string) { delete this.attrs[k]; }
+  addEventListener(type: string, f: (e: any) => void) { (this.on[type] ??= []).push(f); }
+  focus() { focused = this; }
+  querySelector(sel: string): El | null { for (const k of this.children) { if (k.tag === sel) return k; const f = k.querySelector(sel); if (f) return f; } return null; }
+  all(): El[] { return this.children.flatMap((k) => [k, ...k.all()]); }
 }
+let focused: El | null = null;
 /** A value from the page's realm, as plain data. */
 const plain = (x: unknown) => JSON.parse(JSON.stringify(x));
 const h = (tag: string, cls = "", text = "") => new El(tag, cls, text);
+const tick = () => new Promise((r) => setTimeout(r, 0));
 
-type Pick = { label: string; value: string; entries: () => any[]; pick: (v: string) => void };
-type Dialog = { title: string; content: El[]; submit: () => Promise<void>; also: { label: string; run: () => Promise<void> } };
+type Pick = { label: string; value: string; entries: () => any[]; pick: (v: string) => void; el: El };
 
 function page(stored: any) {
   const picks: Pick[] = [];
-  const dialogs: Dialog[] = [];
-  const fields: El[] = [];
   const calls: string[] = [];
   const mod = moduleFromSource("../src/appearance/openWithSettings.ts", {
     "../ui/dom": { h },
     "../ui/controls": {
-      picker: (o: Pick) => { picks.push(o); return h("button", "ctl-pick"); },
-      textBox: (o: { value: string; placeholder: string }) => { const f = h("input", "ctl-field"); f.value = o.value; f.placeholder = o.placeholder; fields.push(f); return f; },
+      picker: (o: Pick) => { o.el = h("button", "ctl-pick"); picks.push(o); return o.el; },
+      textBox: (o: { value: string; placeholder: string; enter: () => void }) => { const f = h("input", "ctl-field"); f.value = o.value; f.placeholder = o.placeholder; f.enter = o.enter; return f; },
+      smallButton: (text: string, run: () => void) => { const b = h("button", "ctl-btn", text); b.click = run; return b; },
     },
-    "../ui/dialogParts": { actionDialog: (o: Dialog) => { dialogs.push(o); return {}; } },
     "@tauri-apps/plugin-dialog": {},
   }, {}, "");
   const acts = {
@@ -48,68 +64,124 @@ function page(stored: any) {
       stored.commands = { ...stored.commands, [key]: run };
       stored[key] = "";
     },
+    async saveLine(key: string, line: string) {
+      calls.push("line");
+      stored[key] = line;
+    },
     async reset(key: string) {
       calls.push("reset");
       delete stored.commands?.[key];
       stored[key] = "";
     },
   };
-  mod.openWithPage(stored, {}, null, acts);
-  const menu = (label: string) => picks.find((p) => p.label === label)!.entries();
-  const item = (label: string, name: string) => menu(label).find((e) => e.label === name);
-  return { mod, picks, dialogs, fields, calls, item };
+  const main = mod.openWithPage(stored, {}, null, acts) as El;
+  const picker = (label: string) => picks.find((p) => p.label === label)!;
+  const item = (label: string, name: string) => picker(label).entries().find((e: any) => e.label === name);
+  const editor = () => main.children.find((k) => k.className === "open-edit");
+  const field = () => editor()!.querySelector("input")!;
+  const button = (text: string) => editor()!.all().find((k) => k.tag === "button" && k.textContent === text)!;
+  const shown = (cls: string) => editor()!.children.find((k) => k.className === cls && !k.hidden)?.textContent;
+  const key = (k: string) => editor()!.on.keydown.forEach((f) => f({ key: k, preventDefault() {}, stopPropagation() {} }));
+  return { main, calls, picker, item, editor, field, button, shown, key };
 }
 
 const settings = () => ({ diff: "", text: "code", markdown: "", html: "", image: "", default_diff: "git diff", peek: ["text"], commands: {} as Record<string, unknown> });
 
-test("Custom command… saves the program, its words in order and the Git target input", async () => {
+test("Custom command… opens under the row and saves the program, its words and the Git target input", async () => {
   const stored = settings();
   const p = page(stored);
   assert.equal(p.item("Diffs", "Edit command…"), undefined, "the default has nothing to edit");
   p.item("Diffs", "Custom command…").run();
-  const d = p.dialogs[0];
-  assert.equal(d.title, "Diffs: command");
-  p.fields[0].value = `difft --color=always '/my dir/x' {target}`;
-  p.picks.find((x) => x.label === "Input")!.pick("target");
-  assert.equal(p.fields[0].placeholder, "difft {target}");
-  await d.submit();
+  const rows = p.main.children;
+  assert.equal(rows[rows.indexOf(p.editor()!) - 1].children[0].textContent, "Diffs", "the editor is in the table, under its row");
+  assert.equal(focused, p.field());
+  p.field().value = `difft --color=always '/my dir/x' {target}`;
+  p.button("Git target as arguments").click!();
+  assert.equal(p.button("Git target as arguments").attrs["aria-pressed"], "true");
+  assert.equal(p.field().placeholder, "difft {target}");
+  p.button("Save").click!();
+  await tick();
   assert.deepEqual(plain(stored.commands.diff), { program: "difft", args: ["--color=always", "/my dir/x", "{target}"], input: "target" });
+  assert.equal(p.editor(), undefined, "Save closes the editor");
 });
 
-test("Cancel stores nothing, and Reset to default clears the row", async () => {
+test("Cancel and Esc store nothing and give the keys back to the picker; Reset to default clears the row", async () => {
   const stored = settings();
   const p = page(stored);
   p.item("Text files", "Custom command…").run();
-  p.fields[0].value = "vim";
-  // Cancel closes the dialog without its submit.
-  assert.deepEqual([p.calls, stored.commands, stored.text], [[], {}, "code"]);
-  await p.dialogs[0].also.run();
-  assert.equal(p.dialogs[0].also.label, "Reset to default");
-  assert.deepEqual([p.calls, stored.text], [["reset"], ""]);
+  p.field().value = "vim";
+  p.button("Cancel").click!();
+  assert.deepEqual([p.calls, stored.commands, stored.text, p.editor()], [[], {}, "code", undefined]);
+  assert.equal(focused, p.picker("Text files").el);
+  p.item("Text files", "Edit command…").run();
+  p.field().value = "vim";
+  p.key("Escape");
+  assert.deepEqual([p.calls, stored.text, p.editor()], [[], "code", undefined]);
+  assert.equal(focused, p.picker("Text files").el);
+  p.item("Text files", "Edit command…").run();
+  p.button("Reset to default").click!();
+  await tick();
+  assert.deepEqual([p.calls, stored.text, p.editor()], [["reset"], "", undefined]);
 });
 
-test("Edit command… opens with the current program and keeps its place", async () => {
+test("Edit command… opens with the current program, keeps its place, and Enter saves", async () => {
   const stored = settings();
   stored.commands.text = { program: "/opt/my ed", args: ["-n", "{path}"], input: "path", opens: "app" };
   const p = page(stored);
   p.item("Text files", "Edit command…").run();
-  assert.equal(p.fields[0].value, "'/opt/my ed' -n {path}");
-  assert.equal(p.picks.find((x) => x.label === "Opens in")!.value, "app");
-  p.picks.find((x) => x.label === "Opens in")!.pick("peek");
-  p.fields[0].value += " --wait";
-  await p.dialogs[0].submit();
+  assert.equal(p.field().value, "'/opt/my ed' -n {path}");
+  assert.equal(p.button("External app").attrs["aria-pressed"], "true");
+  p.button("Peek").click!();
+  p.field().value += " --wait";
+  p.field().enter!();
+  await tick();
   assert.deepEqual(plain(stored.commands.text), { program: "/opt/my ed", args: ["-n", "{path}", "--wait"], input: "path", opens: "peek" });
 });
 
-test("the editor shows an empty command, an open quote, a shell sign and a missing program", async () => {
+test("opening another row's editor closes the first one", () => {
+  const p = page(settings());
+  p.item("Diffs", "Custom command…").run();
+  p.item("Markdown", "Custom command…").run();
+  assert.equal(p.main.children.filter((k) => k.className === "open-edit").length, 1);
+  assert.equal(p.picker("Markdown").label, "Markdown");
+  const rows = p.main.children;
+  assert.equal(rows[rows.indexOf(p.editor()!) - 1].children[0].textContent, "Markdown");
+});
+
+test("the editor shows an empty command, an open quote, a shell sign and a missing program under the field", async () => {
   const stored = settings();
   const p = page(stored);
   p.item("Diffs", "Custom command…").run();
-  const d = p.dialogs[0];
-  const fails = async (line: string) => { p.fields[0].value = line; return d.submit().then(() => "saved", (e) => String(e)); };
+  const fails = async (line: string) => { p.field().value = line; p.button("Save").click!(); await tick(); return p.shown("set-error"); };
   assert.equal(await fails("   "), "The command is empty. Type a program and its arguments.");
   assert.equal(await fails("delta 'x"), "A quote is not closed. Close the quote.");
   assert.equal(await fails("delta | less"), "Skiff runs the program without a shell. Remove |.");
   assert.equal(await fails("nope --x"), "nope is not found. Install it or type its full path.");
   assert.deepEqual([p.calls, stored.commands], [["save"], {}]);
+});
+
+test("a saved pipeline opens as the renderer with the patch on standard input, and saves so with its Git options", async () => {
+  const stored = settings();
+  stored.diff = "git diff --color=always {target} | delta --paging=never";
+  const p = page(stored);
+  p.item("Diffs", "Edit command…").run();
+  assert.equal(p.field().value, "delta --paging=never");
+  assert.equal(p.button("Patch on standard input").attrs["aria-pressed"], "true");
+  assert.equal(p.shown("set-note"), undefined);
+  p.button("Save").click!();
+  await tick();
+  assert.deepEqual(plain(stored.commands.diff), { program: "delta", args: ["--paging=never"], input: "patch", git_args: ["--color=always"] });
+  assert.equal(stored.diff, "");
+});
+
+test("a line that needs the shell opens as it is, marked, and saves unchanged", async () => {
+  const stored = settings();
+  stored.diff = "git diff {target} | delta | cat";
+  const p = page(stored);
+  p.item("Diffs", "Edit command…").run();
+  assert.equal(p.field().value, "git diff {target} | delta | cat");
+  assert.equal(p.shown("set-note"), "This command runs in the shell.");
+  p.button("Save").click!();
+  await tick();
+  assert.deepEqual([p.calls, stored.diff, p.editor()], [["line"], "git diff {target} | delta | cat", undefined]);
 });

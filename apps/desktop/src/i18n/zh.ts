@@ -1267,6 +1267,8 @@ export const zh = {
   "settings.open.inputTarget": "Git 目标作为参数",
   "settings.open.save": "保存",
   "settings.open.reset": "恢复默认",
+  "settings.open.cancel": "取消",
+  "settings.open.inShell": "此命令在 shell 中运行。",
   "settings.open.cmdEmpty": "命令为空。请输入程序及其参数。",
   "settings.open.cmdQuote": "有引号未闭合。请闭合引号。",
   "settings.open.cmdShell": "Skiff 不通过 shell 运行程序。请删除 {sign}。",

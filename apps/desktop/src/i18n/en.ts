@@ -1361,6 +1361,8 @@ export const en = {
   "settings.open.inputTarget": "Git target as arguments",
   "settings.open.save": "Save",
   "settings.open.reset": "Reset to default",
+  "settings.open.cancel": "Cancel",
+  "settings.open.inShell": "This command runs in the shell.",
   "settings.open.cmdEmpty": "The command is empty. Type a program and its arguments.",
   "settings.open.cmdQuote": "A quote is not closed. Close the quote.",
   "settings.open.cmdShell": "Skiff runs the program without a shell. Remove {sign}.",
