@@ -7,7 +7,7 @@ use crate::{resolve, sessions};
 use anyhow::Context;
 use anyhow::{bail, Result};
 use rusqlite::{params, Connection, TransactionBehavior};
-use skiff_client::ledger::{gen, heads, path, rows, stored, Row, GRAND, INTERRUPTED_OUTCOME, UNOBSERVED};
+use skiff_client::ledger::{gen, heads, main_name, path, rows, skipper_name, stored, Row, GRAND, INTERRUPTED_OUTCOME, UNOBSERVED};
 use skiff_core::{
     session::{Role, SessionInfo},
     state,
@@ -305,14 +305,6 @@ pub(super) fn who(owner: &str) -> String {
         (_, Some(f)) => format!("the {f} fleet {}", skipper_name()),
         (p, _) => format!("the {p} project {}", skipper_name()),
     }
-}
-
-fn main_name() -> String {
-    skiff_client::skipper::name(&skiff_core::config::load().unwrap_or_default())
-}
-
-fn skipper_name() -> String {
-    skiff_core::config::load().unwrap_or_default().skiff_agent.skipper_word()
 }
 
 /// A fleet Skipper sends only into the projects of its fleet, as
