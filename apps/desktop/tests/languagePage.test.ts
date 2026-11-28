@@ -30,7 +30,7 @@ class El {
 }
 const h = (tag: string, cls = "", text = "") => new El(tag, cls, text);
 
-function settingsPage(backend?: (cmd: string, args: any) => unknown) {
+function settingsPage(backend?: (cmd: string, args: any) => unknown, themes: any[] = []) {
   const body = h("div");
   const picks: { names: string[]; label: string; shows: string; pick: (v: string) => void }[] = [];
   const controls = realControls(h);
@@ -43,7 +43,7 @@ function settingsPage(backend?: (cmd: string, args: any) => unknown) {
     "@tauri-apps/api/core": { invoke },
     "../ui/dom": { h },
     "../ui/dialogParts": { escapeButton: () => h("button", "set-x") },
-    "./themeCards": { themeGrid: () => h("div", "tc-grid") },
+    "./themeCards": { themeGrid: (items: any[]) => h("div", "tc-grid", String(items.length)) },
     "./hostSettings": { createHostsTab: () => ({ draw: () => h("div"), load: async () => {}, open() {}, focusServer() {} }) },
     "./diskUse": { diskState: () => ({}) },
     "./imagesPage": { imagesState: () => ({}) },
@@ -67,7 +67,7 @@ function settingsPage(backend?: (cmd: string, args: any) => unknown) {
     navigator: { language: "en-US" },
     HTMLElement: El, HTMLInputElement: class {}, HTMLButtonElement: class {},
   }, "");
-  const look = { themes: () => [], current: () => null, load: async () => {}, set() {} };
+  const look = { themes: () => themes, current: () => null, load: async () => {}, set() {} };
   const settings = mod.createSettings(() => {}, () => {}, look);
   const root = body.children[0];
   return { settings, root, picks };
@@ -112,4 +112,15 @@ test("a pick on Diffs or Images stores the command and shows it; the rows with a
     assert.equal(s.picks.findLast((p) => p.label === label)!.shows, `tool-${key}`, label);
   }
   assert.equal(peekCalls.join(), "text");
+});
+
+test("Appearance shows cached theme cards before other settings reads finish", async () => {
+  let finish!: (value: unknown) => void;
+  const waiting = new Promise((resolve) => { finish = resolve; });
+  const page = settingsPage((cmd) => cmd === "open_settings" ? waiting : null, [{ id: "cached" }]);
+  const opening = page.settings.open("appearance");
+  const count = page.root.all().find((e) => e.className === "tc-grid")?.textContent ?? "absent";
+  finish(null);
+  await opening;
+  assert.equal(count, "1");
 });

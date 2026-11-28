@@ -689,30 +689,57 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         render();
         usagePage(true);
       }
-      await look.load();
-      openSet = await invoke<OpenSettings>("open_settings").catch(() => null);
-      openFound = await invoke<OpenChoices>("open_choices").catch(() => ({}));
-      menuSet = await invoke<MenuLayout>("menu_layout").catch(() => null);
-      const app = await invoke<Appearance>("get_appearance").catch(() => null);
-      skinSet = app?.skin ?? null;
-      langSet = app?.language ?? null;
-      zoneSet = app?.time_zone ?? null;
-      clockSet = app?.clock ?? null;
-      agentSet = await hostInvoke<SkiffAgentSettings>("skipper", "get_skiff_agent").catch(() => null);
-      agents = await loadAgents().catch((e) => {
-        error = String(e);
-        return [];
+      // Themes are loaded at startup. Show them before any Settings reads.
+      const openingAppearance = tab === "appearance";
+      const beforeAppearance = JSON.stringify([look.themes(), menuSet, skinSet, langSet, zoneSet, clockSet]);
+      if (openingAppearance) {
+        render();
+        root.querySelector<HTMLInputElement>(".tc-search")?.focus();
+      }
+      // The local settings and Host reads do not depend on one another.
+      const appearanceRead = Promise.all([
+        look.load(),
+        invoke<MenuLayout>("menu_layout").catch(() => null),
+        invoke<Appearance>("get_appearance").catch(() => null),
+      ]).then(([, menu, app]) => {
+        menuSet = menu;
+        skinSet = app?.skin ?? null;
+        langSet = app?.language ?? null;
+        zoneSet = app?.time_zone ?? null;
+        clockSet = app?.clock ?? null;
+        const after = JSON.stringify([look.themes(), menuSet, skinSet, langSet, zoneSet, clockSet]);
+        if (!root.hidden && tab === "appearance" && (!openingAppearance || beforeAppearance !== after)) {
+          // Keep the cards at the same place if the menu row appears or goes.
+          const main = root.querySelector<HTMLElement>(".set-main");
+          const top = main?.scrollTop ? root.querySelector<HTMLElement>(".tc-grid")?.getBoundingClientRect().top : undefined;
+          render();
+          const next = root.querySelector<HTMLElement>(".set-main");
+          const nextTop = root.querySelector<HTMLElement>(".tc-grid")?.getBoundingClientRect().top;
+          if (next && top !== undefined && nextTop !== undefined) next.scrollTop += nextTop - top;
+        }
       });
-      await hostsTab.load();
-      render();
+      const otherReads = Promise.all([
+        invoke<OpenSettings>("open_settings").catch(() => null),
+        invoke<OpenChoices>("open_choices").catch(() => ({})),
+        hostInvoke<SkiffAgentSettings>("skipper", "get_skiff_agent").catch(() => null),
+        loadAgents().catch((e) => { error = String(e); return []; }),
+        hostsTab.load(),
+      ]).then(([open, found, agent, list]) => {
+        openSet = open;
+        openFound = found;
+        agentSet = agent;
+        agents = list;
+      });
+      await Promise.all([appearanceRead, otherReads]);
+      if (root.hidden) return;
+      if (tab !== "appearance") render();
       if (tab === "hosts") hostsTab.focusServer();
       if (tab === "skippers") void loadFiles();
       if (tab === "schedules") void loadSchedulesPage(schedCtx);
       if (tab === "disk") void countDisk(disk, render);
       if (tab === "activity") startActivity(activity, render);
-      if (tab === "appearance") root.querySelector<HTMLInputElement>(".tc-search")?.focus();
-      else if (tab === "images") root.querySelector<HTMLInputElement>(".img-page .lib-search")?.focus();
-      else root.querySelector<HTMLButtonElement>(".set-agent .c-on:not(:disabled)")?.focus();
+      if (tab === "images") root.querySelector<HTMLInputElement>(".img-page .lib-search")?.focus();
+      else if (tab !== "appearance") root.querySelector<HTMLButtonElement>(".set-agent .c-on:not(:disabled)")?.focus();
     },
     close,
     /** The native menu runs its accelerators here, not through the keydown above. */
