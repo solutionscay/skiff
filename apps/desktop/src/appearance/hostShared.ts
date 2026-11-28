@@ -131,6 +131,7 @@ export interface HostsEnv {
     loadHosts(): Promise<void>;
     localHostName(): string;
     shownHost(): string | null;
+    isConnected(id: string | null): boolean;
     pick(id: string): void;
   };
   copyText(text: string): Promise<void>;
