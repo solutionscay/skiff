@@ -1,3 +1,4 @@
+import { connection, focusConnection } from "./connections";
 /** App keys, Tab order, F6 regions, arrows in the lists. */
 import { isSkiffAgent, projectSkipperOf } from "./skiffAgent";
 import { pickSkipperRow, skippersOn } from "../workspace/skippersView";
@@ -119,7 +120,7 @@ export function listItems(): HTMLElement[] {
  */
 export function findRow(items: HTMLElement[], key: string | null | undefined): HTMLElement | undefined {
   if (!key) return undefined;
-  const rows = items.filter((x) => itemKey(x) === key);
+  const rows = items.filter((x) => itemKey(x) === key && (!x.closest(".host-section") || x.closest(".focused-host")));
   if (rows.length < 2) return rows[0];
   const group = S.roveAt?.key === key ? S.roveAt.group : null;
   return rows.find((x) => (x.dataset.inGroup ?? null) === group) ?? rows[0];
@@ -137,7 +138,7 @@ export function roveTo(el: HTMLElement) {
 export function currentRow(items = listItems()): HTMLElement | undefined {
   const roved = findRow(items, S.roveKey);
   if (roved) return roved;
-  if (S.groupPicked) return items.find((x) => x.dataset.group === S.groupPicked);
+  if (S.groupPicked) return items.find((x) => x.dataset.group === S.groupPicked && (!x.closest(".host-section") || x.closest(".focused-host")));
   return findRow(items, S.focused);
 }
 
@@ -154,7 +155,7 @@ export function markCurrent() {
   const cur = editing ? undefined : currentRow(items);
   for (const x of items) x.classList.toggle("current", x === cur);
   editing?.classList.add("current");
-  for (const x of document.querySelectorAll<HTMLElement>("#sidebar-scroll [data-session]")) x.classList.toggle("shown", !!S.focused && x.dataset.session === S.focused && x !== cur);
+  for (const x of document.querySelectorAll<HTMLElement>("#sidebar-scroll [data-session]")) x.classList.toggle("shown", !!S.focused && x.dataset.session === S.focused && x !== cur && (!x.closest(".host-section") || !!x.closest(".focused-host")));
   // The worktree marker goes with it: on the project row, no worktree is marked.
   const mark = editing ?? cur;
   if (mark) for (const w of document.querySelectorAll("#sidebar-scroll .wt")) w.classList.toggle("selected", w.contains(mark));
@@ -267,6 +268,11 @@ export function toMainWorktree() {
  *  the keys. A file or change shows its preview, which takes the keys. Changes,
  *  Files and folders show theirs with the row keeping the keys. Other rows take focus. */
 function landOn(next: HTMLElement) {
+  const owner = next.closest<HTMLElement>("[data-host-entry]");
+  if (owner) {
+    const host = connection(Number(owner.dataset.hostEntry));
+    if (host) focusConnection(host,false);
+  }
   const key = itemKey(next);
   document.body.classList.add("kbd");
   if (next.dataset.session) {

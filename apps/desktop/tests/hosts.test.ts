@@ -10,7 +10,7 @@ type Answer = { selected: string | null; localName?: string; hosts: Host[]; clip
  *  window's live connection accepted and the file as it is now. */
 function hosts(answer: Answer, live = { clipboard: answer.clipboard }) {
   const calls: [string, unknown][] = [];
-  const listeners = new Map<string, () => void>();
+  const listeners = new Map<string, (e: unknown) => void>();
   let reloads = 0;
   const invoke = async (command: string, args?: unknown) => {
     calls.push([command, args]);
@@ -22,7 +22,7 @@ function hosts(answer: Answer, live = { clipboard: answer.clipboard }) {
     "../src/app/hosts.ts",
     {
       "@tauri-apps/api/core": { invoke },
-      "@tauri-apps/api/event": { listen: async (name: string, run: () => void) => void listeners.set(name, run) },
+      "@tauri-apps/api/event": { listen: async (name: string, run: (e: unknown) => void) => void listeners.set(name, run) },
       "../ui/contextMenu": { ctxMenu: { open() {} } },
       "../ui/confirm": { confirmAction: async () => true },
       "./badge": { linkLost() {} },
@@ -131,16 +131,19 @@ test("OSC 52 follows the live identity Rust checks on each write, not the loaded
   assert.deepEqual(t3.copied, []);
 });
 
-test("picking a Host saves it, then reloads the page; the shown Host does nothing", async () => {
-  const h = hosts({ selected: null, hosts: [devbox] });
-  await h.mod.loadHosts();
-  h.mod.__pick(null);
-  await flush();
-  assert.equal(h.calls.filter(([c]) => c === "select_host").length, 0);
-  h.mod.__pick("h_dev");
-  await flush();
-  assert.equal(JSON.stringify(h.calls.at(-1)), JSON.stringify(["select_host", { id: "h_dev" }]));
-  assert.equal(h.reloads(), 1);
+test("flat names qualify only cross-Host collisions and distinguish old duplicates", async () => {
+  const { flatNames } = await import("../src/platform/hostNames.ts");
+  const a = {entry:1,host:"dev",id:"aa11",name:"shell",path:"/work"};
+  const b = {...a,id:"aa22"};
+  const c = {...a,entry:2,host:"build"};
+  const d = {...a,id:"aa33",name:"lint"};
+  const e = {...d,id:"aa44",path:"/tools"};
+  const unique = {...a,id:"aa55",name:"release"};
+  const labels = flatNames([a,b,c,d,e,unique]);
+  assert.deepEqual([a,b,c,d,e,unique].map(x => labels.get(x)),[
+    "dev:shell · aa11","dev:shell · aa22","build:shell","lint · /work","lint · /tools","release",
+  ]);
+  assert.equal(flatNames([a]).get(a),"shell");
 });
 
 test("a lost link turns input off once and starts one recovery", async () => {
@@ -158,14 +161,14 @@ test("a lost link turns input off once and starts one recovery", async () => {
   );
   await flush();
   const lost = h.listeners.get("skiff:host-lost")!;
-  lost();
+  lost({ payload: { entry: 1, endpoint: "h_dev", host: "fixture", generation: 1 } });
   assert.equal(h.mod.hostConnected(), false);
   assert.equal(reconnects, 1);
   finish();
   await flush();
   assert.equal(h.mod.hostConnected(), true);
   assert.equal(onlines, 1);
-  lost();
+  lost({ payload: { entry: 1, endpoint: "h_dev", host: "fixture", generation: 1 } });
   assert.equal(reconnects, 2);
 });
 
@@ -174,13 +177,13 @@ test("a lost link turns input off once and starts one recovery", async () => {
  *  The loss is kept, the whole recovery runs again, and only the second,
  *  clean run turns input back on and shows the Host connected. */
 test("a second loss during recovery runs the whole recovery again before input is on", async () => {
-  let lost!: () => void;
+  let lost!: (e: unknown) => void;
   const immediate = (f: () => void) => setImmediate(f);
   const hostsMod = moduleFromSource(
     "../src/app/hosts.ts",
     {
       "@tauri-apps/api/core": { invoke: async () => ({ selected: "fixture", hosts: [] }) },
-      "@tauri-apps/api/event": { listen: async (_: string, cb: () => void) => void (lost = cb) },
+      "@tauri-apps/api/event": { listen: async (_: string, cb: (e: unknown) => void) => void (lost = cb) },
       "./badge": { linkLost() {} },
     },
     { document: { title: "", getElementById: () => null }, Promise, setTimeout: immediate, console: { error() {} } },
@@ -221,7 +224,7 @@ test("a second loss during recovery runs the whole recovery again before input i
         hostCan: () => false,
         hostInvoke: async (_: string, cmd: string) => {
           if (cmd === "subscribe_events" && ++subscribes === 1) {
-            lost();
+            lost({ payload: { entry: 1, endpoint: "h_dev", host: "fixture", generation: 1 } });
             throw Error("second connection dropped during resubscribe");
           }
           if (cmd === "list_sessions") return [];
@@ -236,7 +239,7 @@ test("a second loss during recovery runs the whole recovery again before input i
     reconnects++;
     await daemon.reconnectRemote();
   }, daemon.hostOnline);
-  lost();
+  lost({ payload: { entry: 1, endpoint: "h_dev", host: "fixture", generation: 1 } });
   for (let i = 0; i < 20; i++) await flush();
   assert.equal(reconnects, 2, "the failed recovery ran again");
   assert.equal(subscribes, 2, "events were subscribed again");
@@ -245,4 +248,124 @@ test("a second loss during recovery runs the whole recovery again before input i
   assert.equal(muted, false);
   // Input stayed off until the end: never on between the two runs.
   assert.deepEqual(mutes, [true, true, false]);
+});
+
+test("a late ledger reply and terminal subscription cannot reach the next connection", async () => {
+  const { sameRoute, advances } = await import("../src/platform/hostRoute.ts");
+  const initial = { entry: 1, endpoint: "h_dev", host: "devbox", generation: 1 };
+  const listeners = new Map<string, (event: { payload: typeof initial }) => void>();
+  let finish!: (rows: string[]) => void;
+  const bridge = moduleFromSource("../src/platform/invoke.ts", {
+    "./hostRoute": { sameRoute, advances },
+    "@tauri-apps/api/event": { listen: async (name: string, run: (event: { payload: typeof initial }) => void) => listeners.set(name, run) },
+    "@tauri-apps/api/core": { invoke: async (cmd: string, args?: { route: typeof initial }) => {
+      if (cmd === "host_route") return initial;
+      assert.equal(cmd, "ledger_rows");
+      assert.deepEqual(args?.route, initial);
+      return new Promise<string[]>((resolve) => { finish = resolve; });
+    } },
+  }, {}, "");
+  const pending = bridge.invoke("ledger_rows");
+  await flush();
+  const subscription = bridge.pageRoute();
+  const next = { ...initial, generation: 2 };
+  listeners.get("skiff:host-route")!({ payload: next });
+  finish(["old result"]);
+  await assert.rejects(pending, /Host changed/);
+  assert.equal(bridge.accepts(subscription), false);
+  assert.equal(bridge.accepts(next), true);
+  bridge.forgetRoute(next.entry);
+  assert.equal(bridge.accepts(next), false);
+});
+
+test("disconnect removes only that Host's panes and protects the remaining connection", async () => {
+  const routes = [1, 2].map(entry => ({ entry, host: "host-" + entry, endpoint: entry === 1 ? null : "ssh", generation: 1 }));
+  const disposed: number[] = [];
+  const commands: string[] = [];
+  let shown = routes[0];
+  const mod = moduleFromSource("../src/app/connections.ts", {
+    "../platform/invoke": {
+      registerRoute() {}, routeOf: (id: number) => routes.find(r => r.entry === id),
+      pageRoute: () => shown,
+      invokeAt: async (_route: unknown, command: string) => commands.push(command),
+      withinHost(route: typeof shown, run: () => void) { const old = shown; shown = route; try { run(); } finally { shown = old; } },
+      forgetRoute() {},
+    },
+    "../terminal/terminalState": { panes: new Map([["same-id", {stream: 0, term: { dispose: () => disposed.push(shown.entry) }, el: { remove() {} }}]]) },
+    "./render": { scheduleRender() {} },
+  }, { clearTimeout, window: { dispatchEvent() {} }, Event }, "\nexports.add = add;");
+  const [a,b] = routes.map(r => mod.add(r));
+  a.phase = b.phase = "up";
+  await mod.disconnect(b);
+  await mod.disconnect(a);
+  assert.deepEqual(commands, ["disconnect_host"]);
+  assert.deepEqual(disposed, [2]);
+  assert.equal(mod.connection(1), a);
+  assert.equal(mod.connection(2), undefined);
+});
+
+test("attention walks live Hosts and a background notification opens its own folded tree", async () => {
+  const routes = await import("../src/platform/hostRoute.ts");
+  const bridge = moduleFromSource("../src/platform/invoke.ts", { "./hostRoute": routes }, {}, "");
+  const model = moduleFromSource("../src/workspace/model.ts", {}, {}, "");
+  const hosts = [1, 2, 3].map(entry => ({
+    entry, host: "host-" + entry, endpoint: String(entry), generation: 1,
+    phase: entry === 3 ? "connecting" : "up", folded: true,
+  }));
+  const state: any = {};
+  bridge.hostStore(() => ({ sessions: new Map(), S: { focused: null } }), (store: object) => Object.assign(state,store));
+  for (const host of hosts) {
+    bridge.registerRoute(host);
+    bridge.showRoute(host);
+    state.sessions.set("same", {id:"same", state:"waiting", last_output_at:1});
+  }
+  bridge.showRoute(hosts[0]);
+  state.sessions.set("other", {id:"other", state:"waiting", last_output_at:2});
+  state.sessions.set("unread", {id:"unread", state:"idle", unread:true});
+  const opened: string[] = [];
+  const attention = moduleFromSource("../src/app/attention.ts", {
+    "../platform/invoke": bridge, "../platform/hostRoute": routes, "./state": state, "../workspace/model": model,
+    "./connections": {
+      orderedConnections: () => hosts, connection: (entry: number) => hosts.find(h => h.entry === entry),
+      focusConnection: (h: typeof hosts[number]) => bridge.showRoute(h),
+    },
+    "../terminal/peek": { closePreview() {} },
+    "../workspace/missionMotion": { goToSession(id: string) { state.S.focused = id; opened.push(bridge.pageRoute().host + "/" + id); } },
+  }, {}, "");
+  const counts = attention.liveTrees(attention.hostCounts);
+  assert.deepEqual(JSON.parse(JSON.stringify(counts)), [
+    {waiting:2,working:0,unread:1}, {waiting:1,working:0,unread:0},
+  ]);
+  for (let i = 0; i < 4; i++) attention.nextAttention("waiting");
+  assert.deepEqual(opened, ["host-1/other", "host-1/same", "host-2/same", "host-1/other"]);
+  attention.nextAttention("unread");
+  assert.equal(opened.at(-1), "host-1/unread");
+
+  let settle!: () => void;
+  let click!: (action: unknown) => void;
+  let payload: any;
+  const window = { unminimize: async () => {}, show: async () => {}, setFocus: async () => {} };
+  const notify = moduleFromSource("../src/app/notify.ts", {
+    "../platform/invoke": bridge, "./state": state, "./attention": attention,
+    "./waits": await import("../src/app/waits.ts"), "./seen": {hasKeys: () => true},
+    "./flatNames": {namesFor: () => () => "host-2/same"}, "./stateQueries": {place: () => null},
+    "../workspace/model": {taskTitle: () => "same"}, "../workspace/programStatus": {reported: () => null},
+    "@tauri-apps/api/window": {getCurrentWindow: () => window},
+    "@tauri-apps/plugin-notification": {
+      onAction: async (handler: typeof click) => { click = handler; },
+      sendNotification: (notification: unknown) => { payload = notification; },
+    },
+  }, { setTimeout: (fn: () => void) => { settle = fn; } }, "");
+  hosts[1].folded = true;
+  notify.watchNotificationClicks();
+  bridge.withinHost(hosts[1], () => notify.stateMoved("same","waiting"));
+  settle();
+  assert.equal(bridge.pageRoute().entry, 1);
+  click({notification:payload});
+  assert.equal(opened.at(-1), "host-2/same");
+  assert.equal(hosts[1].folded, false);
+  const before = opened.length;
+  bridge.registerRoute({...hosts[1], generation:2});
+  click({notification:payload});
+  assert.equal(opened.length, before);
 });

@@ -115,7 +115,7 @@ function place(moving: Project[], d: Drop): string | null {
  * already: Enter, Esc or a click away keeps what the field holds.
  */
 export function nameFleet(name: string) {
-  const head = () => document.querySelector<HTMLElement>(`#sidebar-scroll .fleet-pick[data-key="${CSS.escape(`fleet:${name}`)}"]`);
+  const head = () => document.querySelector<HTMLElement>(`#sidebar-scroll .focused-host .fleet-pick[data-key="${CSS.escape(`fleet:${name}`)}"]`);
   const tile = head();
   if (!tile) return;
   const box = h("div", "fleet-name");

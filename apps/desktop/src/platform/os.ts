@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./invoke";
 
 /** Opens a file or folder in the OS default app. */
 export const openPath = (path: string) => invoke<void>("open_path", { path });

@@ -1,5 +1,5 @@
 /** The workspace file on disk (read, write, revision, rename), Skiff's own workspace folder, and the recent list in localStorage. */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../../platform/invoke";
 import type { Profile } from "./state";
 import { basename } from "../paths";
 import { shownHost } from "../../app/hosts";

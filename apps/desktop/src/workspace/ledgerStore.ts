@@ -1,3 +1,5 @@
+import { hostFields } from "../platform/invoke";
+import { accepts, hostStore, pageRoute } from "../platform/invoke";
 /**
  * The Ledger's rows as the selected Host gives them, and their index. Nothing
  * here draws. `ledger.ts` keeps the public names.
@@ -8,6 +10,7 @@ import { dataEpoch } from "../app/dataPlane";
 
 /** A ledger row as `ledger_rows` returns it. */
 export interface Entry {
+  hostId?: string;
   id: number;
   uid: string;
   kind: "task" | "plan" | "handoff";
@@ -52,10 +55,15 @@ export let rows: Entry[] = [];
 export let generation = 0;
 let rowData = "";
 let indexedGeneration = -1;
-export const byUid = new Map<string, Entry>();
-export const children = new Map<string, Entry[]>();
-export const paneIds = new Set<string>();
-const workTitles = new Map<string, string>();
+export let byUid: Map<string, Entry>;
+export let children: Map<string, Entry[]>;
+export let paneIds: Set<string>;
+let workTitles: Map<string, string>;
+
+hostStore(() => ({
+  byUid: new Map<string, Entry>(), children: new Map<string, Entry[]>(),
+  paneIds: new Set<string>(), workTitles: new Map<string, string>(),
+}), (store) => { ({ byUid, children, paneIds, workTitles } = store); });
 
 /** Index the Host's data once per changed reply, including the fallback hand-offs. */
 export function indexRows() {
@@ -87,9 +95,13 @@ export let loaded = false;
 /** The last read asked for. Only its reply shows. */
 let asked = 0;
 
+hostFields(() => ({ rows: [] as Entry[], generation: 0, rowData: "", indexedGeneration: -1, loaded: false, error: null as string | null, asked: 0 }), () => ({ rows, generation, rowData, indexedGeneration, loaded, error, asked }),
+  (f) => { ({ rows, generation, rowData, indexedGeneration, loaded, error, asked } = f); });
+
 /** Reads the rows again. A reply shows only when no read was asked since and
  *  the data connection it came on is still the one on screen. */
 export async function loadLedger() {
+  const route = pageRoute();
   const mine = ++asked;
   const at = dataEpoch();
   let next: Entry[] = [];
@@ -99,16 +111,21 @@ export async function loadLedger() {
   } catch (e) {
     err = String(e);
   }
-  if (mine !== asked || at !== dataEpoch()) return;
+  if (!accepts(route) || mine !== asked || at !== dataEpoch()) return;
+  if (storeLedgerRows(next, err, route?.host)) render("ledger");
+}
+
+export function storeLedgerRows(next: Entry[], err: string | null, host?: string | null) {
   const data = JSON.stringify([next, err]);
   // Keep both the generation and row objects for repeated, unchanged replies.
-  if (loaded && data === rowData) return;
+  if (loaded && data === rowData) return false;
   rowData = data;
+  for (const row of next) row.hostId = host ?? undefined;
   rows = next;
   error = err;
   loaded = true;
   generation++;
-  render("ledger");
+  return true;
 }
 
 /**

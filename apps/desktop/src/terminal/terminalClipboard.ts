@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 
 import { copyText, pasteText } from "../platform/clipboard";
 import { traceCopy, traceEmptyCopy, tracePaste } from "../diagnostics/clipTrace";

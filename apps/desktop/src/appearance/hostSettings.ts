@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { getVersion } from "@tauri-apps/api/app";
 import { ctxMenu } from "../ui/contextMenu";
 import { runDialog } from "./hostProgress";

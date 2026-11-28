@@ -6,7 +6,7 @@ import { sessionsOf } from "../workspace/layout";
 import { scopeFleet, taskTitle } from "../workspace/model";
 import { pickTheme } from "./themeCards";
 import type { Group, Project, SessionInfo, TerminalTheme } from "../platform/types";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { showError } from "../ui/alerts";
 import { render } from "../app/renderRequest";
 import { S, sessions } from "../app/state";

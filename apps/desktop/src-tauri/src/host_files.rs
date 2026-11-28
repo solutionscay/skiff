@@ -19,7 +19,7 @@ use skiff_client::host::data;
 use skiff_host_api::{Error as E, HostFileScope, HostId};
 use tauri::{AppHandle, Manager};
 
-use crate::connection::{data_now, data_read, App};
+use crate::connection::{data_now, data_read, HostState};
 
 /// How often the watcher looks at the copy.
 const EVERY: Duration = Duration::from_secs(1);
@@ -35,11 +35,11 @@ pub(crate) struct FileError {
 }
 
 /// The saves that did not go back since the page last read them.
-static ERRORS: Mutex<Vec<FileError>> = Mutex::new(Vec::new());
+static ERRORS: std::sync::LazyLock<Mutex<HashMap<HostId, Vec<FileError>>>> = std::sync::LazyLock::new(Default::default);
 
 /// The saves that did not go back since the last call, oldest first.
-pub(crate) fn take_errors() -> Vec<FileError> {
-    std::mem::take(&mut *ERRORS.lock().unwrap())
+pub(crate) fn take_errors(host: Option<&HostId>) -> Vec<FileError> {
+    host.and_then(|id| ERRORS.lock().unwrap().remove(id)).unwrap_or_default()
 }
 
 /// The watcher each copy has now. A new Edit of the same copy stops the old one.
@@ -47,7 +47,7 @@ static WATCHING: Mutex<Option<HashMap<PathBuf, u64>>> = Mutex::new(None);
 
 /// Fetches the file of `scope` from the selected Host into its local copy,
 /// starts the watcher, and returns the copy's path.
-pub(crate) async fn fetch(app: &App, handle: AppHandle, scope: HostFileScope) -> Result<PathBuf, String> {
+pub(crate) async fn fetch(app: &HostState, handle: AppHandle, scope: HostFileScope) -> Result<PathBuf, String> {
     let s = scope.clone();
     let (file, host) = data_read(app, |c| async move {
         let host = c.hello().host.host_id.clone();
@@ -85,7 +85,7 @@ fn stamp(p: &Path) -> Option<SystemTime> {
 /// Stops on a conflict, when the copy goes, or when a new Edit takes it.
 async fn watch(handle: AppHandle, host: HostId, scope: HostFileScope, rel: String, copy: PathBuf, mut revision: String, gen: u64) {
     let mut seen = stamp(&copy);
-    let error = |conflict: bool, message: String| ERRORS.lock().unwrap().push(FileError { file: rel.clone(), conflict, message });
+    let error = |conflict: bool, message: String| ERRORS.lock().unwrap().entry(host.clone()).or_default().push(FileError { file: rel.clone(), conflict, message });
     loop {
         tokio::time::sleep(EVERY).await;
         if WATCHING.lock().unwrap().as_ref().and_then(|m| m.get(&copy)) != Some(&gen) {
@@ -100,7 +100,9 @@ async fn watch(handle: AppHandle, host: HostId, scope: HostFileScope, rel: Strin
         }
         seen = now;
         let Ok(text) = std::fs::read_to_string(&copy) else { continue };
-        let app = handle.state::<App>();
+        let Some(app) = handle.state::<crate::routes::Routes>().host(&host) else {
+            return error(false, "Another Host is on screen. Your copy was not sent.".into());
+        };
         let c = match data_now(&app).await {
             Ok(c) => c,
             Err(e) => {

@@ -1,3 +1,4 @@
+import { accepts, pageRoute } from "../platform/invoke";
 /**
  * The peek: what the main area shows over the panes for a file, folder or
  * change row. It is not a session to the user: no sidebar row, no group, no
@@ -19,7 +20,7 @@
  * - It prints nothing and exits, or keeps running without the terminal: an
  *   app with a window of its own. The peek never shows, and the app runs on.
  */
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "../platform/invoke";
 import { handleOsc52 } from "./osc52";
 import { copyText, pasteText } from "../platform/clipboard";
 import { traceCopy, tracePaste } from "../diagnostics/clipTrace";
@@ -70,7 +71,7 @@ interface Active {
   keys: boolean;
   closed: boolean;
   /** A ledger result shown over the row: its own preview, read again on a new data connection. */
-  result?: { uid: string; title: string };
+  result?: { uid: string; title: string; hostId?: string };
 }
 
 let active: Active | null = null;
@@ -99,7 +100,8 @@ const released = new Set<string>();
 /** Where this page keeps its commands for the next page after a reload. */
 const STORE = "skiff.peekSessions";
 /** The last page's commands, by session. Each is a `run` request. */
-const reloaded = new Map<string, string>(readStore());
+let storeKey = "";
+const reloaded = new Map<string, string>();
 /** Terminal tools of the last page that still run, by request. Their row shows them again. */
 const orphans = new Map<string, string>();
 /**
@@ -111,12 +113,21 @@ let held: { p: Peek; key: string } | null = null;
 /** One number per subscription, as panes count theirs. */
 let stream = 0;
 
-function readStore(): [string, string][] {
+function readStore() {
+  const host = pageRoute()?.host;
+  const key = host ? `${STORE}.${host}` : STORE;
+  if (storeKey === key) return;
+  storeKey = key;
+  reloaded.clear();
   try {
-    return Object.entries(JSON.parse(sessionStorage.getItem(STORE) ?? "{}") as Record<string, string>);
-  } catch {
-    return [];
-  }
+    const raw = sessionStorage.getItem(key) ?? sessionStorage.getItem(STORE);
+    if (!raw) return;
+    for (const [id, request] of Object.entries(JSON.parse(raw) as Record<string, string>)) reloaded.set(id, request);
+    if (key !== STORE && sessionStorage.getItem(key) === null) {
+      sessionStorage.setItem(key, raw);
+      sessionStorage.removeItem(STORE);
+    }
+  } catch { /* No saved tools. */ }
 }
 
 /** Keeps what the next page needs if this one reloads. */
@@ -125,7 +136,8 @@ function saveStore() {
   for (const [request, session] of orphans) kept[session] = request;
   for (const p of [open, ...parked.values()]) if (p?.session) kept[p.session] = p.request;
   try {
-    sessionStorage.setItem(STORE, JSON.stringify(kept));
+    readStore();
+    sessionStorage.setItem(storeKey, JSON.stringify(kept));
   } catch (e) {
     console.error(e);
   }
@@ -165,6 +177,7 @@ export function strayPeek(s: SessionInfo, me: string) {
   if (s.peek_owner && s.peek_owner !== me) return;
   // A start is in flight: this can be its command, ahead of the reply.
   if (open && !open.session) return;
+  readStore();
   const request = reloaded.get(s.id);
   if (request) {
     if (s.peek_owner === me && s.interactive && s.state !== "done") return void orphans.set(request, s.id);
@@ -446,13 +459,13 @@ const gate = (mine: number): Gate => ({ live: () => live(mine), keys: () => !!ac
  * configured command (a peek tool runs here, over the row), else the
  * default app. Only the copy's path reaches an opener, never the Host's.
  */
-export function openHostCopy(wt: string, file: string) {
+export function openHostCopy(wt: string, file: string, hostId?: string) {
   const a = claim();
   a.result = undefined;
   const mine = a.gen;
   if (open) open.gen = mine;
   const { name } = splitPath(file);
-  hostInvoke<Opened>("files", "open_file_copy", { worktree: wt, file })
+  hostInvoke<Opened>("files", "open_file_copy", { worktree: wt, file }, hostId)
     .then((o) => {
       if (!live(mine)) return;
       handle(o, "file", name, wt);
@@ -465,9 +478,9 @@ export function openHostCopy(wt: string, file: string) {
  * selected Host reads the path its row records (`ledger@1`). No path is
  * named or opened on this Mac. `title` names the work.
  */
-export function openLedgerResult(uid: string, title: string) {
+export function openLedgerResult(uid: string, title: string, hostId?: string) {
   const a = claim();
-  a.result = { uid, title };
+  a.result = { uid, title, hostId };
   // A tool on screen gives way to the result.
   const p = open;
   open = null;
@@ -483,9 +496,9 @@ export function openSkipperWatchLog() {
   showRead(gate(a.gen), closePreview, t("peek.watchLog"), () => hostInvoke<HostFile>("skipper_watch_log", "skipper_watch_log"), null);
 }
 
-function showLedgerResult(mine: number, r: { uid: string; title: string }) {
+function showLedgerResult(mine: number, r: { uid: string; title: string; hostId?: string }) {
   const { uid } = r;
-  showRead(gate(mine), closePreview, t("peek.result", { title: r.title }), () => hostInvoke<HostFile>("ledger", "ledger_result", { uid }), null);
+  showRead(gate(mine), closePreview, t("peek.result", { title: r.title }), () => hostInvoke<HostFile>("ledger", "ledger_result", { uid }, r.hostId), null);
 }
 
 /** The data plane is back: a Host diff, file or ledger result on screen is read again from it. */
@@ -667,13 +680,17 @@ async function run(kind: string, title: string, where: string, script: string, c
 /** Puts the session's output in the command's terminal. */
 async function follow(p: Peek, session: string) {
   const n = ++stream;
+  const route = pageRoute();
   const channel = new Channel<unknown>();
   channel.onmessage = (m) => {
+    if (!accepts(route)) return;
     if (open !== p && held?.p !== p && parked.get(p.request) !== p) return;
     if (traceEcho(session, m)) return;
     const bytes = toBytes(m);
     if (bytes.length) p.got = true;
-    p.term.write(bytes, () => invoke("ack_output", { session, stream: n, bytes: bytes.length }).catch(console.error));
+    p.term.write(bytes, () => {
+      if (accepts(route)) void invoke("ack_output", { session, stream: n, bytes: bytes.length }).catch(console.error);
+    });
   };
   await hostInvoke("session_terminal", "subscribe_output", { session, stream: n, onOutput: channel }).catch(showError);
 }
@@ -720,6 +737,7 @@ function reclaim({ p, key }: { p: Peek; key: string }) {
 /** skiffd says a peek command ended. True when the session was a peek's. */
 export function peekExited(id: string, code: number | null): boolean {
   // A tool of the last page ended before its row showed it again.
+  readStore();
   const request = reloaded.get(id);
   if (request && orphans.get(request) === id) {
     orphans.delete(request);

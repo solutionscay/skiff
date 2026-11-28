@@ -4,7 +4,7 @@
  * Images drop-down, come out in that language. A change to the language
  * shows when the window opens again.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./platform/invoke";
 import { setLanguage } from "./i18n";
 import { setTimeDisplay } from "./i18n/time";
 import type { Appearance } from "./platform/types";

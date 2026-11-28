@@ -116,8 +116,8 @@ pub(super) fn local_control() -> ProcessControl {
 
 /// An app that shows this Mac, whatever the user's `hosts.toml` selects.
 #[cfg(test)]
-pub(super) fn local_app() -> super::App {
-    let app = super::App::default();
+pub(super) fn local_app() -> super::HostState {
+    let app = super::HostState::default();
     app.set_selection(super::local_selection());
     app
 }

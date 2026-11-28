@@ -15,16 +15,16 @@ export function showDiff(gate: Gate, close: () => void, p: Extract<Preview, { ki
     gate,
     el,
     t("peek.loadingDiff", { host: hostName() }),
-    () => hostInvoke<HostDiff>("git_diff", "git_diff", { path: p.wt, file: p.file ?? null }),
+    () => hostInvoke<HostDiff>("git_diff", "git_diff", { path: p.wt, file: p.file ?? null }, p.hostId),
     (d) => diffBody(d, p.file, p.base),
     t("peek.noDiff"),
   );
 }
 
 /** Shows a bounded Host file, with an action to open a local copy when allowed. */
-export function showFile(gate: Gate, close: () => void, p: Extract<Preview, { kind: "host-file" }>, openCopy: (wt: string, file: string) => void) {
-  const copy = p.copy ? () => openCopy(p.wt, p.file) : null;
-  showRead(gate, close, p.path, () => hostInvoke<HostFile>("files", "read_file", { worktree: p.wt, file: p.file }), copy);
+export function showFile(gate: Gate, close: () => void, p: Extract<Preview, { kind: "host-file" }>, openCopy: (wt: string, file: string, hostId?: string) => void) {
+  const copy = p.copy ? () => openCopy(p.wt, p.file, p.hostId) : null;
+  showRead(gate, close, p.path, () => hostInvoke<HostFile>("files", "read_file", { worktree: p.wt, file: p.file }, p.hostId), copy);
 }
 
 /** Shows a bounded Host read in the file viewer. */

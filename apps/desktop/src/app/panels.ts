@@ -5,7 +5,7 @@ import { glyph } from "../workspace/layoutIcon";
 import { createAddProject } from "../workspace/addProject";
 import { createLaunchMenu } from "../ui/launchMenu";
 import { createSettings } from "../appearance/settings";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { hostInvoke } from "./hostCaps";
 import { loadProjects, newSession } from "./daemon";
 import { host } from "../terminal/terminalHost";

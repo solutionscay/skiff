@@ -1,3 +1,4 @@
+import { hostFields } from "../platform/invoke";
 /** The side panel's tree: fleets as section heads, projects as rows, each folded or open (#87). */
 
 import { coordinatorOf, fleetSkipperOf } from "../app/skiffAgent";
@@ -14,7 +15,13 @@ import { h } from "../ui/dom";
 import { icon } from "../ui/icons";
 
 /** Folded rows in All projects: `fleet:<name>`, `project:<name>` and the Projects head (`sectionKey`). Every row starts open. */
-const savedFolds = storedSet("skiff.tree.folded");
+const foldSets = new Map<string, Set<string>>();
+function savedFolds() {
+  const key = shownHost() ?? "";
+  let folds = foldSets.get(key);
+  if (!folds) { folds = storedSet(key ? "skiff.tree.folded." + key : "skiff.tree.folded"); foldSets.set(key,folds); }
+  return folds;
+}
 
 /**
  * What an open workspace (#154) puts over the tree: which projects show, and
@@ -37,14 +44,14 @@ export function useTreeView(v: TreeView | null) {
 
 /** The folded rows the tree draws now. */
 export const folded = {
-  has: (key: string) => (view ? view.isFolded(key) : savedFolds.has(key)),
-  keys: () => (view ? view.keys() : [...savedFolds]),
+  has: (key: string) => (view ? view.isFolded(key) : savedFolds().has(key)),
+  keys: () => (view ? view.keys() : [...savedFolds()]),
 };
 
 /** Opens a row with no edit to a workspace: the keys or the screen went there. */
 function autoOpen(key: string) {
   if (view) view.autoOpen(key);
-  else savedFolds.delete(key);
+  else savedFolds().delete(key);
 }
 
 export const fleetKey = (name: string) => `fleet:${name}`;
@@ -62,12 +69,12 @@ export interface Section {
 }
 
 /** Projects in no fleet first, then each fleet where its first project stands. */
-export function treeSections(): Section[] {
+export function treeSections(allProjects = false): Section[] {
   const loose: Project[] = [];
   const fleets = new Map<string, Project[]>();
   // A workspace shows some projects. A fleet with none of them shown has no head.
   for (const p of S.projects) {
-    if (view && !view.shows(p)) continue;
+    if (!allProjects && view && !view.shows(p)) continue;
     if (!p.fleet) loose.push(p);
     else if (fleets.has(p.fleet)) fleets.get(p.fleet)!.push(p);
     else fleets.set(p.fleet, [p]);
@@ -155,12 +162,13 @@ export const isOpen = (key: string) => !folded.has(key);
 /** The user opens or folds a row. In a workspace, that is an edit. */
 function setOpen(key: string, open: boolean) {
   if (view) view.fold(key, !open);
-  else if (open) savedFolds.delete(key);
-  else savedFolds.add(key);
+  else if (open) savedFolds().delete(key);
+  else savedFolds().add(key);
 }
 
 /** The session on screen moved into a folded project or section: open them, so its row shows. */
 let shownFor: string | null = null;
+hostFields(() => ({view:null as TreeView | null,shownFor:null as string | null}), () => ({view,shownFor}), f => { ({view,shownFor} = f); });
 export function openToFocused() {
   if (S.focused === shownFor) return;
   shownFor = S.focused;

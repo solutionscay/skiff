@@ -1,5 +1,5 @@
 /**
- * Mission control (#88): the Host's whole agent hierarchy as a graph on a
+ * Mission control (#88): each Host's agent hierarchy as a graph on a
  * canvas, over the whole window. Admiral at the top, the fleet and project
  * Skippers under it, each project a framed cluster of session cards, Other
  * last. The strings come from the ledger: Admiral to a Skipper (a hand-off),
@@ -34,12 +34,12 @@
  * opens and closes it.
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, pageRoute, routeOf, withinHost } from "../platform/invoke";
 
 import type { Project, SessionInfo } from "../platform/types";
 import { keyLabel } from "../app/keys";
 import { hostCan } from "../app/hostCaps";
-import { hostName, shownHost } from "../app/hosts";
+import { hostName, hostPrefix } from "../app/hosts";
 import { skiffAgentName, skiffAgentSession } from "../app/skiffAgent";
 import { S, sessions } from "../app/state";
 import { h } from "../ui/dom";
@@ -48,11 +48,14 @@ import { fuzzy, taskTitle } from "./model";
 import * as G from "./missionLayout";
 import { worktreeLines } from "./sidebarLines";
 import { treeSections } from "./tree";
-import { t } from "../i18n";
+import { t, tn } from "../i18n";
 import { matchText, sinceText } from "./missionControl/model";
 import * as T from "./missionControl/terminal";
 import { clearEdges, drawEdges, type Edge, mountEdges } from "./missionControl/edges";
-import { clearConnectors, mountConnectors } from "./missionControl/connectors";
+import { focusConnection, orderedConnections, titleOfHost, type Connection } from "../app/connections";
+import { hostIcon } from "../app/hostsPanel";
+import { hostCounts, liveRoute } from "../app/attention";
+import { closeMission } from "./missionMotion";
 import { indexLedger, type LedgerIndex } from "./missionControl/state";
 import { createPersistence } from "./missionControl/persistence";
 import { createRenderer } from "./missionControl/render";
@@ -76,12 +79,6 @@ const fault = h("div", "mission-fault");
 fault.hidden = true;
 const canvas = h("div", "mission-canvas");
 const world = h("div", "mission-world");
-const strings = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-strings.setAttribute("class", "mission-strings");
-// One solid path per link, keyed, in three state layers (missionControl/connectors.ts).
-mountConnectors(strings);
-const items = h("div", "mission-items");
-world.append(strings, T.faceLayer, items);
 const ticks = h("div", "mission-ticks");
 mountEdges(ticks);
 const zoomBar = h("div", "mission-zoom");
@@ -96,9 +93,8 @@ const zoomBtn = (text: string, title: string, run: () => void) => {
   return b;
 };
 canvas.append(world, ticks, zoomBar);
-const panel = h("div", "mission-panel");
-root.append(fault, canvas, panel);
-const missionState = {
+root.append(fault, canvas);
+const createState = () => ({
   lit: null as string | null,
   timer: undefined as number | undefined,
   reading: false,
@@ -117,16 +113,12 @@ const missionState = {
   drawnSig: "",
   pan: null as Pan | null,
   pointer: "",
-};
+});
+const missionState = createState();
 
 export type BoardState = typeof missionState;
 
-const screen = h("pre", "mission-screen");
 const appZoom = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--zoom")) || 1;
-
-// ---- What persists on this computer, per Host ----
-
-const { loadKept, saveKept } = createPersistence(missionState, () => shownHost());
 
 // ---- The search and Running / All, in the app's top bar ----
 
@@ -240,8 +232,8 @@ function ownerOf(owner: string, admiral: SessionInfo | null): SessionInfo | null
   return [...sessions.values()].find((s) => s.skipper === owner && s.state !== "done") ?? null;
 }
 
-function model(): Model {
-  const admiral = skiffAgentSession();
+function model(allHosts: boolean): Model {
+  const admiral = skiffAgentSession() ?? (allHosts ? [...sessions.values()].find(s => s.coordinator && s.state !== "done") ?? null : null);
   const sess = new Map<string, SessionInfo>();
   const projects = new Map<string, Project | null>();
   const members = new Map<string, SessionInfo[]>();
@@ -249,6 +241,7 @@ function model(): Model {
   const ledger = hostCan("ledger") ? ledgerRows().filter((r) => r.bucket !== "finished") : [];
   for (const r of ledger) if (r.kind === "task" && r.pane_id) rows.set(r.pane_id, r);
   const q = search.value.trim();
+  const prefix = allHosts ? hostPrefix(pageRoute()!.endpoint) + ":" : "";
   const found = q ? new Set<string>() : null;
   if (admiral) sess.set(admiral.id, admiral);
 
@@ -260,7 +253,7 @@ function model(): Model {
     members.set(key, list);
     for (const s of list) {
       sess.set(s.id, s);
-      if (found && fuzzy(q, matchText(s, p, rows.get(s.id))) >= 0) found.add(s.id);
+      if (found && fuzzy(q, prefix + matchText(s, p, rows.get(s.id))) >= 0) found.add(s.id);
     }
     if (skipper) sess.set(skipper.id, skipper);
     // A plan heads the cards of its tasks in this cluster.
@@ -276,7 +269,7 @@ function model(): Model {
   };
 
   const g: G.Graph = { admiral: admiral?.id ?? null, fleets: [], projects: [] };
-  for (const sec of treeSections()) {
+  for (const sec of treeSections(allHosts)) {
     if (sec.fleet) {
       const skipper = [...sessions.values()].find((s) => s.skipper === `fleet:${sec.fleet}` && s.state !== "done") ?? null;
       if (skipper) sess.set(skipper.id, skipper);
@@ -286,7 +279,7 @@ function model(): Model {
     }
   }
   if (projectSessions(null).length) g.projects.push(cluster(null, null));
-  if (found) for (const s of sess.values()) if (s.coordinator || !!s.skipper) if (fuzzy(q, `${cardName(s)} ${s.state}`) >= 0) found.add(s.id);
+  if (found) for (const s of sess.values()) if (s.coordinator || !!s.skipper) if (fuzzy(q, `${prefix}${cardName(s)} ${s.state}`) >= 0) found.add(s.id);
 
   // The strings. A hand-off ties Admiral to the Skipper it went to; a task ties its owner to its pane.
   // A result the parent reported has no string.
@@ -304,27 +297,173 @@ function model(): Model {
 
 /** A card's name: Admiral's, "Skipper · gesher" for a Skipper, else the session's title. */
 const cardName = (s: SessionInfo) => (s.coordinator ? skiffAgentName() : taskTitle(s));
-const dimmed = (s: SessionInfo) => (missionState.running && !isRunning(s)) || (!!missionState.m.found && !missionState.m.found.has(s.id));
 const stateWord = (s: SessionInfo) => t(s.state === "working" ? "state.working" : s.state === "waiting" ? "state.waiting" : s.state === "done" ? "state.done" : "state.idle");
 
-const { draw } = createRenderer(missionState, { items, strings, find, fault }, {
-  model, boardSignature, isRunning, dimmed, stateWord, cardName, lookOf, counts, drawTicks,
-  drawPanel: () => drawPanel(),
-});
+type HostFrame = ReturnType<typeof createFrame>;
+const frames = new Map<number, HostFrame>();
+const targets = new Map<string, { frame: HostFrame; id: string }>();
+const keyOf = (entry: number, id: string) => JSON.stringify([entry, id]);
 
-/** The side a waiting window's face turns to: toward the task it waits on, else its first. */
-function lookOf(id: string): 1 | -1 {
-  const kids = missionState.m.strs.filter((x) => x.from === id).map((x) => missionState.m.sess.get(x.to)!);
-  const k = rectOf((kids.find((c) => c.state === "waiting") ?? kids[0])?.id ?? null);
-  const r = missionState.placed.cards.get(id)!;
-  return k && k.x + k.w / 2 < r.x + r.w / 2 ? -1 : 1;
+function createFrame(c: Connection) {
+  const state = createState();
+  const key = (id: string) => keyOf(c.entry, id);
+  const el = h("section", "mission-host");
+  const head = h("header", "mission-host-head");
+  const body = h("div", "mission-host-body");
+  const items = h("div", "mission-items");
+  const strings = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  strings.setAttribute("class", "mission-strings");
+  const faces = T.createFaces(key);
+  body.append(strings, faces.faceLayer, items);
+  el.append(head, body);
+  world.append(el);
+  const panel = h("div", "mission-panel");
+  root.append(panel);
+  const kept = createPersistence(state, () => c.endpoint);
+  kept.loadKept();
+  const detail = createPanel(state, panel, h("pre", "mission-screen"), {
+    ...kept, drawTicks, cardName, stateWord, ownerOf, onToggle: togglePanel,
+  });
+  const renderer = createRenderer(state, { items, strings }, {
+    model: () => model(frames.size > 1), isRunning, stateWord, cardName, faces, key,
+    numberOffset: () => missionState.numbered.length,
+    dimmed: s => (state.running && !isRunning(s)) || (!!state.m.found && !state.m.found.has(s.id)),
+    lookOf(id) {
+      const kids = state.m.strs.filter(x => x.from === id).map(x => state.m.sess.get(x.to)!);
+      const child = kids.find(s => s.state === "waiting") ?? kids[0];
+      const k = child && state.placed.cards.get(child.id);
+      const r = state.placed.cards.get(id)!;
+      return k && k.x + k.w / 2 < r.x + r.w / 2 ? -1 : 1;
+    },
+  });
+  return { c, state, key, el, head, body, panel, detail, renderer, route: routeOf(c.entry)! };
 }
 
-/** The top bar's counts: Running and All, of what the search leaves. */
-function counts() {
-  const all = [...missionState.m.sess.values()].filter((s) => !missionState.m.found || missionState.m.found.has(s.id));
-  allCount.textContent = String(all.length);
-  runningCount.textContent = String(all.filter(isRunning).length);
+function drawHostHead({ c, head }: HostFrame) {
+  const name = titleOfHost(c);
+  const status = h("span", "mission-roll");
+  if (c.phase === "up") {
+    const { waiting, working } = hostCounts();
+    if (waiting) status.append(h("span", "w", tn("mission.wait", waiting)));
+    if (waiting && working) status.append(" · ");
+    if (working) status.append(h("span", "g", tn("mission.working", working)));
+  } else {
+    status.textContent = t(c.phase === "failed" ? "hosts.needsAttention" : "connect.connecting", { host: name });
+  }
+  head.replaceChildren(hostIcon(c.endpoint !== null), h("span", "name", name), status);
+}
+
+/** The graph stays in Host coordinates. Only navigation and fit use canvas coordinates. */
+function placeFrame(f: HostFrame, { box, dx, dy }: ReturnType<typeof G.hostFrameLayout>[number], framed: boolean) {
+  Object.assign(f.el.style, { left: `${box.x}px`, top: `${box.y}px`, width: `${box.w}px`, height: `${box.h}px` });
+  Object.assign(f.body.style, { left: `${dx}px`, top: `${dy}px` });
+  if (framed) missionState.placed.clusters.set(JSON.stringify([f.c.entry]), { ...box, fleet: false });
+  if (f.c.phase !== "up") {
+    for (const el of f.el.querySelectorAll(".lit")) el.classList.remove("lit");
+    return;
+  }
+  const offset = <R extends G.Rect>(r: R) => ({ ...r, x: r.x + box.x + dx, y: r.y + box.y + dy });
+  for (const [id, r] of f.state.placed.cards) {
+    const key = f.key(id);
+    targets.set(key, { frame: f, id });
+    missionState.cards.set(key, f.state.cards.get(id)!);
+    missionState.placed.cards.set(key, offset(r));
+  }
+  for (const [id, r] of f.state.placed.clusters) {
+    missionState.clusters.set(f.key(id), f.state.clusters.get(id)!);
+    missionState.placed.clusters.set(f.key(id), offset(r));
+  }
+}
+
+function draw() {
+  const connections = orderedConnections();
+  const multi = connections.length > 1;
+  const framed = multi || connections[0]?.phase !== "up";
+  for (const [entry, f] of frames) {
+    if (connections.includes(f.c)) continue;
+    f.state.paused = true;
+    f.el.remove();
+    f.panel.remove();
+    frames.delete(entry);
+  }
+  for (const c of connections) if (!frames.has(c.entry)) frames.set(c.entry, createFrame(c));
+  const ordered = connections.map(c => frames.get(c.entry)!);
+  const old = missionState.placed.cards.get(missionState.lit ?? "");
+  targets.clear();
+  missionState.cards.clear();
+  missionState.clusters.clear();
+  missionState.placed.cards.clear();
+  missionState.placed.clusters.clear();
+  missionState.numbered = [];
+  let all = 0;
+  let running = 0;
+  const faults: string[] = [];
+  for (const f of ordered) {
+    const { state, c } = f;
+    const up = c.phase === "up";
+    f.route = routeOf(c.entry)!;
+    withinHost(f.route, () => {
+      state.running = missionState.running;
+      const sig = boardSignature(Date.now(), multi, c, f.route.generation);
+      if (sig !== state.drawnSig) {
+        f.renderer.draw();
+        state.drawnSig = sig;
+        drawHostHead(f);
+      }
+      if (!up) return;
+      for (const s of state.m.sess.values()) {
+        if (state.m.found && !state.m.found.has(s.id)) continue;
+        all++;
+        if (isRunning(s)) running++;
+      }
+      missionState.numbered.push(...state.numbered.map(f.key));
+      if (!hostCan("ledger")) faults.push(t("mission.noLedgerFault", { host: hostName() }));
+    });
+    f.el.classList.toggle("framed", framed);
+    f.el.classList.toggle("offline", !up);
+    f.body.inert = !up;
+    f.head.hidden = !framed;
+  }
+  const layout = G.hostFrameLayout(ordered.map(f => G.bounds(f.state.placed)), framed);
+  ordered.forEach((f, i) => placeFrame(f, layout[i], framed));
+  if (!missionState.cards.has(missionState.lit ?? "")) {
+    missionState.lit = G.navNearest(missionState.placed.cards, old ? { x: old.x + old.w / 2, y: old.y + old.h / 2 } : { x: 0, y: 0 });
+  }
+  allCount.textContent = String(all);
+  runningCount.textContent = String(running);
+  fault.hidden = !faults.length;
+  fault.textContent = faults.join(" · ");
+  if (missionState.lit) light(missionState.lit, false, false);
+  else drawPanel();
+  drawTicks();
+}
+
+function selected() { return targets.get(missionState.lit ?? ""); }
+function drawPanel() {
+  const target = selected();
+  for (const f of frames.values()) {
+    f.state.lit = target?.frame === f ? target.id : null;
+    f.panel.hidden = f !== (target?.frame ?? frames.values().next().value);
+    f.state.paused = f.panel.hidden || missionState.paused || !liveRoute(f.route);
+    if (!f.panel.hidden) withinHost(f.route, f.detail.drawPanel);
+  }
+}
+async function read() {
+  const f = selected()?.frame;
+  if (f && liveRoute(f.route)) await withinHost(f.route, f.detail.read);
+}
+function togglePanel() {
+  const f = selected()?.frame ?? frames.values().next().value;
+  if (f) withinHost(f.route, f.detail.togglePanel);
+}
+function openCard(key: string, max: boolean) {
+  const target = targets.get(key);
+  if (!target) return;
+  const { frame, id } = target;
+  if (!liveRoute(frame.route) || !withinHost(frame.route, () => sessions.has(id))) return;
+  frame.c.folded = false;
+  focusConnection(frame.c, false);
+  closeMission(id, max);
 }
 
 /** A waiting card out of view: a tick at the edge of the view, toward it. */
@@ -344,29 +483,22 @@ function drawTicks() {
 
 // ---- The view ----
 
-const { applyView, fit, openView, zoomBy, rectOf, light, nextWaitingCard, litSession, go, openMenu } = createNavigation(missionState, { canvas, world, zoomLevel, zoomBar, find, root }, {
-  appZoom, zoomBtn, drawTicks, drawPanel: () => drawPanel(), read: () => read(),
+const { applyView, fit, openView, zoomBy, light, nextWaitingCard, go, openMenu } = createNavigation(missionState, { canvas, world, zoomLevel, zoomBar, find, root }, {
+  appZoom, zoomBtn, drawTicks, drawPanel, read, open: openCard,
 });
 
-// ---- The panel under the canvas ----
-
-const { drawPanel, read, togglePanel } = createPanel(missionState, panel, screen, { saveKept, drawTicks, cardName, stateWord, ownerOf });
-
 /** What the board shows, as one string: the sessions, the ledger, the tree, the filter, the search and the time text. */
-function boardSignature(now: number): string {
-  const secs = treeSections().map((sec) => [sec.fleet ?? "", sec.projects.map((p) => p.name)]);
+function boardSignature(now: number, multi: boolean, c: Connection, generation: number): string {
+  const secs = treeSections(multi).map((sec) => [sec.fleet ?? "", sec.projects.map((p) => p.name)]);
   const ledger = hostCan("ledger") ? ledgerRows() : [];
   const since = [...sessions.values()].map((s) => sinceText(s, now));
-  return JSON.stringify([[...sessions.values()], ledger, secs, since, missionState.running, search.value, hostCan("ledger"), hostName(), missionState.view, missionState.lit, S.skiffAgent?.skippers_order]);
+  return JSON.stringify([[...sessions.values()], ledger, secs, since, missionState.running, search.value, hostCan("ledger"), hostName(), multi, c.phase, generation, missionState.numbered.length, S.skiffAgent?.skippers_order]);
 }
 
 function tick() {
   if (missionState.paused) return;
   // A pan draws its own frames. The model and layout rebuild only when an input or the time text changed.
-  if (!missionState.pan?.moved) {
-    const sig = boardSignature(Date.now());
-    if (sig !== missionState.drawnSig) draw();
-  }
+  if (!missionState.pan?.moved) draw();
   void read();
 }
 
@@ -378,11 +510,6 @@ attachPointer(missionState, canvas, root, { light, go, applyView, zoomBy });
 
 export function missionOpen(): boolean {
   return !root.hidden;
-}
-
-/** A session's card, for the fly of the focus frame. */
-function tileOf(id: string | null): HTMLElement | null {
-  return id && missionState.placed.cards.has(id) ? (missionState.cards.get(id) ?? null) : null;
 }
 
 export const { missionKey, pickSkipper, toggleSearch } = createKeyboard(missionState, { root, find, search }, {
@@ -397,24 +524,25 @@ const topbar = () => document.getElementById("topbar");
  */
 export const board = {
   root,
-  lit: litSession,
-  tile: tileOf,
+  go,
   /** Builds the board lit on `focus` and reads its screen once. Shows nothing. */
   async prepare(focus: string | null) {
     missionState.paused = false;
-    loadKept();
+
     search.title = t("mission.searchTip", { key: keyLabel("palette") });
     scope.title = t("mission.scopeTip", { key: keyLabel("focus-mode") });
-    missionState.lit = focus;
+    const route = pageRoute();
+    missionState.lit = focus && route ? keyOf(route.entry, focus) : null;
     draw();
-    await read();
+    if (frames.size === 1) await read();
   },
   /** With the root shown: fit the view, bring the lit card in, and keep the graph fresh. */
   start() {
     missionState.paused = false;
     // Focus mode and maximize leave the top bar inert. The board shows it, and its search is in it.
     topbar()?.toggleAttribute("inert", false);
-    openView();
+    if (frames.size > 1) fit();
+    else openView();
     light(missionState.lit, false);
     window.clearInterval(missionState.timer);
     missionState.timer = window.setInterval(tick, TICK);
@@ -422,6 +550,7 @@ export const board = {
   /** No draw or read from here on: the board is about to go. */
   stop() {
     missionState.paused = true;
+    for (const f of frames.values()) f.state.paused = true;
     window.clearInterval(missionState.timer);
   },
   /** Empty and hidden. */
@@ -431,13 +560,15 @@ export const board = {
     root.hidden = true;
     missionState.pan = null;
     canvas.classList.remove("panning");
-    missionState.screenFor = null;
-    for (const el of [...missionState.cards.values(), ...missionState.clusters.values(), ...missionState.plans.values()]) el.remove();
+    for (const f of frames.values()) {
+      f.state.paused = true;
+      f.el.remove();
+      f.panel.remove();
+    }
+    frames.clear();
+    targets.clear();
     missionState.cards.clear();
     missionState.clusters.clear();
-    missionState.plans.clear();
-    clearConnectors();
     clearEdges();
-    T.clearFaces();
   },
 };

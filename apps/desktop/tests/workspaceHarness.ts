@@ -75,7 +75,15 @@ export function moduleFromSource(path: string, imports: Record<string, unknown>,
   const code = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  const find = (name: string) => (Object.hasOwn(imports, name) ? imports[name] : words(name) ?? pure(name) ?? imports[name] ?? {});
+  const find = (name: string) => {
+    if (Object.hasOwn(imports, name)) return imports[name];
+    if (name.endsWith("/platform/invoke") || name === "./invoke") {
+      return { ...imports["@tauri-apps/api/core"] as object, accepts: () => true, pageRoute: () => null,
+        foreground: () => true, hostFields: (make: () => unknown, _read: unknown, select: (store: unknown) => void) => select(make()),
+        hostStore: (make: () => unknown, select: (store: unknown) => void) => select(make()) };
+    }
+    return words(name) ?? pure(name) ?? {};
+  };
   const split = SPLIT[path];
   const folder = path.slice(0, path.lastIndexOf("/") + 1);
   const children = new Map<string, unknown>();

@@ -8,6 +8,7 @@
  * failure it stays with every line, the cause, and Check…, Try again and
  * Copy output, until the next try starts.
  */
+import { accepts, type HostEvent } from "../platform/invoke";
 import { listen } from "@tauri-apps/api/event";
 import { $, button, h } from "../ui/dom";
 import { rune } from "../ui/runes";
@@ -35,9 +36,9 @@ const secs = (ms: number) => (ms / 1000).toFixed(1);
 function ensureListener() {
   if (listening) return;
   listening = true;
-  void listen<string>("skiff:connect-line", (e) => {
-    if (!active || failed) return;
-    lines.push({ at: Date.now() - start, text: e.payload });
+  void listen<HostEvent<string>>("skiff:connect-line", ({ payload }) => {
+    if (!active || failed || !accepts(payload.route)) return;
+    lines.push({ at: Date.now() - start, text: payload.value });
     if (lines.length > 200) lines = lines.slice(-200);
     render();
   });

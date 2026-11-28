@@ -1,9 +1,10 @@
 use std::{future::Future, pin::Pin, sync::{Arc, atomic::{AtomicUsize, Ordering}}};
 use skiff_client::host::{local::{legacy_attach, legacy_detach, legacy_output}, OutputGap, TerminalFrame};
 use skiff_core::protocol::Event;
-use tauri::{ipc::{Channel, InvokeResponseBody}, AppHandle, Emitter, State};
+use tauri::{ipc::{Channel, InvokeResponseBody}, AppHandle, Emitter};
+use crate::routes::Routed;
 use tokio::sync::Notify;
-use crate::connection::{App, ensure_host, err, host_now};
+use crate::connection::{ensure_host, err, host_now};
 
 /// One write to the page holds at most this much, so xterm can yield to the
 /// page between pieces instead of parsing one long chunk.
@@ -54,7 +55,7 @@ impl Flow {
 /// catches up, a snapshot redraws the screen. Nothing is replayed.
 #[tauri::command]
 pub(crate) async fn subscribe_output(
-    app: State<'_, App>,
+    app: Routed,
     session: String,
     stream: u32,
     on_output: Channel<InvokeResponseBody>,
@@ -68,6 +69,10 @@ pub(crate) async fn subscribe_output(
         parsed: AtomicUsize::new(0),
         acked: Notify::new(),
     });
+    let mut subs = app.subs.lock().await;
+    if app.retired.load(Ordering::Acquire) || app.address.get() != app.route {
+        return Err(crate::routes::CHANGED.into());
+    }
     app.flows.lock().unwrap().insert(session.clone(), flow.clone());
     let sid = session.clone();
     // Weak, so a replaced Host connection still drops and closes `rx`.
@@ -152,7 +157,7 @@ pub(crate) async fn subscribe_output(
             }
         }
     });
-    if let Some(old) = app.subs.lock().await.insert(session, task) {
+    if let Some(old) = subs.insert(session, task) {
         old.abort();
     }
     Ok(())
@@ -160,7 +165,7 @@ pub(crate) async fn subscribe_output(
 
 /// The page's xterm parsed `bytes` more of stream `stream`.
 #[tauri::command]
-pub(crate) fn ack_output(app: State<'_, App>, session: String, stream: u32, bytes: usize) {
+pub(crate) fn ack_output(app: Routed, session: String, stream: u32, bytes: usize) {
     let Some(flow) = app.flows.lock().unwrap().get(&session).cloned() else { return };
     if flow.stream != stream {
         return;
@@ -170,7 +175,7 @@ pub(crate) fn ack_output(app: State<'_, App>, session: String, stream: u32, byte
 }
 
 #[tauri::command]
-pub(crate) async fn unsubscribe_output(app: State<'_, App>, session: String) -> Result<(), String> {
+pub(crate) async fn unsubscribe_output(app: Routed, session: String) -> Result<(), String> {
     app.flows.lock().unwrap().remove(&session);
     if let Some(task) = app.subs.lock().await.remove(&session) {
         task.abort();
@@ -185,14 +190,14 @@ pub(crate) const HOST_LOST: &str = "skiff:host-lost";
 /// Streams every non-output event: state changes, exits, created, removed.
 /// The client routes output elsewhere, so a busy terminal cannot make this lag.
 #[tauri::command]
-pub(crate) async fn subscribe_events(handle: AppHandle, app: State<'_, App>, on_event: Channel<Event>) -> Result<(), String> {
+pub(crate) async fn subscribe_events(handle: AppHandle, app: Routed, on_event: Channel<crate::routes::HostEvent<Event>>) -> Result<(), String> {
     // Through the selected Host; a lag is skipped there, as it was here.
     // Both from the one connection, so a Host switch between the two
     // cannot pair one Host's updates with another's link.
     let (host, _) = ensure_host(&app).await?;
+    let route = app.route.clone();
     let connection = host.connection();
     let mut updates = skiff_client::host::local::legacy_updates(&connection).map_err(err)?;
-    let remote = app.remote();
     let link = connection.clone();
     let task = tauri::async_runtime::spawn(async move {
         // The stream does not end when the link drops: look each second.
@@ -200,26 +205,23 @@ pub(crate) async fn subscribe_events(handle: AppHandle, app: State<'_, App>, on_
         loop {
             tokio::select! {
                 e = updates.recv() => match e {
-                    Some(e) => if on_event.send(e).is_err() { return },
+                    Some(e) => if on_event.send(crate::routes::HostEvent { route: route.clone(), value: e }).is_err() { return },
                     None => break,
                 },
                 _ = tick.tick() => if link.is_closed() { break },
             }
         }
-        // A remote Host's page reconnects on this: handshake, identity,
-        // then fresh subscriptions and snapshots. This Mac keeps its policy.
-        if remote {
-            let _ = handle.emit(HOST_LOST, ());
-        }
+        let _ = handle.emit(HOST_LOST, &route);
     });
     // A switch while this ran replaced the selection: this task would keep
     // the old Host's link open, so it goes, and the reloaded page subscribes.
+    let mut events = app.events.lock().await;
     let same = app.live.lock().unwrap().as_ref().is_some_and(|live| Arc::ptr_eq(live, &connection));
-    if !same {
+    if !same || app.address.get() != app.route || app.retired.load(Ordering::Acquire) {
         task.abort();
         return Err("The Host changed. The page subscribes again.".into());
     }
-    if let Some(old) = app.events.lock().await.replace(task) {
+    if let Some(old) = events.replace(task) {
         old.abort();
     }
     Ok(())

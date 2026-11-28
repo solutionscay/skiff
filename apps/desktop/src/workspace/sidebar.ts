@@ -1,3 +1,12 @@
+import { hostCounts } from "../app/attention";
+import { button } from "../ui/dom";
+import { ctxMenu } from "../ui/contextMenu";
+import type { MenuEntry } from "../ui/menu";
+import { showError } from "../ui/alerts";
+import { canDisconnect, connection, disconnect, focusConnection, orderedConnections, titleOfHost } from "../app/connections";
+import { clipboardAllowed, loadHosts, manageHost, toggleClipboard } from "../app/hosts";
+import { hostIcon } from "../app/hostsPanel";
+import { pageRoute, routeOf, withinHost } from "../platform/invoke";
 import { lineIndex, worktreeLines } from "./sidebarLines";
 /** The session tree and its focus, caret, and hover restoration. */
 import { agentKind } from "../appearance/agentIcon";
@@ -8,7 +17,7 @@ import { launchMenu } from "../app/panels";
 import { itemKey, listItems } from "../app/keyboard";
 import { DEFAULT_ACCENT, S, selectedWorktree, sessions } from "../app/state";
 import { accent, currentWorktree, place } from "../app/stateQueries";
-import { bareWorktree, fleetKey, hiddenSplit, isOpen, openToFocused, outsideSessions, projectsHidden, sectionKey, treeDrag, treeSections } from "./tree";
+import { bareWorktree, fleetKey, hiddenSplit, isOpen, openToFocused, outsideSessions, rollCounts, projectsHidden, sectionKey, treeDrag, treeSections } from "./tree";
 import { renderWorkspaceStatus, shows, workspaceOpen } from "./profile";
 import { fleetScope, fleetSkipperOf, skiffAgentFolder, syncSkiffAgent } from "../app/skiffAgent";
 import { step, tally } from "../diagnostics/stalls";
@@ -21,34 +30,99 @@ import { AGENT_BLOCK, OTHER_BLOCK, OUTSIDE_BLOCK, listGeneration, outsideSig, pr
 import { bareBlock, projectBlock, worktreeBlock } from "./projectRows";
 import { otherHead, outsideBlock, outsideHead, projectsNote, sectionHead, shownBlock } from "./sectionRows";
 
-let lastSig = "";
-
-/** What each kept block draws, by its key: the agent row, a section head, a project, Other. */
-let blockSigs = new Map<string, string>();
-/** The blocks the last render drew, by the same keys, and each section's rows. */
-let blocks = new Map<string, HTMLElement>();
-const sectionKids = new Map<string, HTMLElement>();
-
+interface TreeCache {
+  lastSig: string;
+  blocks: Map<string, HTMLElement>;
+  blockSigs: Map<string, string>;
+  sectionKids: Map<string, HTMLElement>;
+}
+const trees = new WeakMap<HTMLElement, TreeCache>();
+const sections = new Map<number, HTMLElement>();
 export function renderSidebar() {
-  const side = $<HTMLElement>("sidebar-scroll");
   if (treeDrag.active) return;
   renderWorkspaceStatus();
   syncSkiffAgent();
   renderViewToggle();
+  const side = $<HTMLElement>("sidebar-scroll");
+  const hosts = orderedConnections();
+  if (!hosts.length) return drawTree(side, true);
+  const active = pageRoute()?.entry;
+  const nodes: HTMLElement[] = [];
+  for (const c of hosts) {
+    const route = routeOf(c.entry)!;
+    let section = sections.get(c.entry);
+    if (!section) {
+      section = h("section","host-section");
+      section.dataset.hostEntry = String(c.entry);
+      const head = h("div","host-head");
+      const fold = button("host-fold","",() => { c.folded = !c.folded; renderSidebar(); });
+      fold.append(hostIcon(c.endpoint !== null),h("span","host-head-name"),h("span","hp-state"),h("span","host-chevron"));
+      const more = button("host-more","⋯",() => {
+        const box = more.getBoundingClientRect();
+        const entries: MenuEntry[] = [];
+        if (c.endpoint) entries.push({label:t("hosts.checkHost",{name:titleOfHost(c)}),run:() => manageHost({check:c.endpoint!})});
+        if (c.endpoint && c.phase === "up") entries.push({label:t(pageRoute()?.entry === c.entry && clipboardAllowed() ? "hosts.clipboardBlock" : "hosts.clipboardAllow"),run:async () => { focusConnection(c); await loadHosts(); await toggleClipboard(); }});
+        entries.push({label:t("hosts.disconnect"),disabled:!canDisconnect(c),run:() => void disconnect(c).catch(showError)},
+          {label:t("hosts.manage"),run:() => manageHost({})});
+        ctxMenu.open(box.left,box.bottom,titleOfHost(c),entries);
+      });
+      head.append(fold,more);
+      const tree = h("div","host-tree");
+      for (const event of ["pointerdown","focusin","contextmenu","click"]) {
+        tree.addEventListener(event,() => focusConnection(c,false),true);
+      }
+      section.append(head,tree);
+      sections.set(c.entry,section);
+    }
+    const head = section.firstElementChild as HTMLElement;
+    const tree = section.lastElementChild as HTMLElement;
+    head.hidden = hosts.length === 1;
+    head.style.display = head.hidden ? "none" : "";
+    head.querySelector(".host-head-name")!.textContent = titleOfHost(c);
+    head.querySelector(".hp-state")!.textContent = c.phase === "up" ? "" : t(c.phase === "failed" ? "hosts.needsAttention" : "connect.connecting",{host:titleOfHost(c)});
+    const counts = head.querySelector(".tree-roll");
+    counts?.remove();
+    if (c.folded && c.phase === "up") withinHost(route,() => {
+      const { waiting, working, unread } = hostCounts();
+      const marks = rollCounts(waiting, working, unread);
+      if (marks) head.querySelector(".host-chevron")!.before(marks);
+    });
+    head.querySelector(".host-chevron")!.textContent = c.folded ? "▸" : "▾";
+    head.querySelector("button")!.setAttribute("aria-expanded",String(!c.folded));
+    tree.hidden = hosts.length > 1 && c.folded;
+    tree.classList.toggle("offline",c.phase !== "up" && !!route.host);
+    section.classList.toggle("focused-host",active === c.entry);
+    if (!tree.hidden) {
+      if (route.host) withinHost(route,() => drawTree(tree,active === c.entry));
+      else tree.replaceChildren(h("div","note-row",t("sidebar.waitingFor",{host:titleOfHost(c)})));
+    }
+    nodes.push(section);
+  }
+  for (const id of sections.keys()) if (!connection(id)) sections.delete(id);
+  setChildren(side,nodes);
+}
+
+function drawTree(side: HTMLElement, foreground: boolean) {
+  let cache = trees.get(side);
+  if (!cache) {
+    cache = { lastSig:"", blocks:new Map(), blockSigs:new Map(), sectionKids:new Map() };
+    trees.set(side,cache);
+  }
+  const {blocks,blockSigs,sectionKids} = cache;
   if (skippersOn()) {
     // The tree draws whole again when it comes back.
-    lastSig = "";
+    cache.lastSig = "";
     const active = document.activeElement as HTMLElement | null;
     const key = active?.closest("#sidebar-scroll") ? active.dataset.session ?? active.dataset.key : undefined;
     renderSkippers(side);
-    restoreFocus(side, key, null, []);
+    if (foreground) restoreFocus(side, key, null, []);
     return;
   }
-  openToFocused();
+  if (foreground) openToFocused();
   const index = lineIndex();
   const sig = step("render.sidebar.sig", () => sidebarSig(index));
-  if (lastSig === sig.all) return tally("sidebar.same");
-  lastSig = sig.all;
+  if (cache.lastSig === sig.all) return tally("sidebar.same");
+  cache.lastSig = sig.all;
   tally("sidebar.drawn");
   // Keep focus and the selected range in an inline control across re-renders,
   // so a render while a rename is open does not undo its select-all.
@@ -68,7 +142,7 @@ export function renderSidebar() {
   let near: string[] = [];
   let anchor: Anchor | null = null;
   const takeAnchor = () => {
-    if (items) return;
+    if (!foreground || items) return;
     items = listItems();
     const at = active ? items.indexOf(active) : -1;
     near = at < 0 ? [] : [...items.slice(at + 1), ...items.slice(0, at).reverse()].map(itemKey);
@@ -168,8 +242,8 @@ export function renderSidebar() {
       applyLook(row, s);
     }
   }
-  blocks = next;
-  blockSigs = sigs;
+  cache.blocks = next;
+  cache.blockSigs = sigs;
   if (anchor) keepAnchor(side, anchor);
   if (items) restoreFocus(side, activeKey, caret, near);
 }

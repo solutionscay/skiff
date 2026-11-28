@@ -5,7 +5,7 @@
  * a file over the size limit keeps its own path. The drop
  * focuses the pane; the current row stays. Anywhere else, a drop does nothing.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 import { isRemote, hostName } from "../app/hosts";

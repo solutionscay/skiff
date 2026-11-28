@@ -25,11 +25,11 @@ export function dragTree(down: MouseEvent, source: HTMLElement, moving: Project[
   const p = fleet ? null : moving[0];
 
   const into = (name: string | null) => (name ? t("fleet.dropAdd", { name }) : p?.fleet ? t("fleet.dropOut", { name: p.fleet }) : "");
-  const headOf = (name: string) => document.querySelector<HTMLElement>(`#sidebar-scroll .fleet-pick[data-key="${CSS.escape(`fleet:${name}`)}"]`)?.parentElement ?? null;
-  const kidsOf = (name: string) => document.querySelector<HTMLElement>(`#sidebar-scroll [data-kids="${CSS.escape(`fleet:${name}`)}"]`);
+  const headOf = (name: string) => document.querySelector<HTMLElement>(`#sidebar-scroll .focused-host .fleet-pick[data-key="${CSS.escape(`fleet:${name}`)}"]`)?.parentElement ?? null;
+  const kidsOf = (name: string) => document.querySelector<HTMLElement>(`#sidebar-scroll .focused-host [data-kids="${CSS.escape(`fleet:${name}`)}"]`);
 
   function dropAt(x: number, y: number): Drop | null {
-    const el = document.elementFromPoint(x, y)?.closest<HTMLElement>("#sidebar-scroll .project-row, #sidebar-scroll > .tree-head");
+    const el = document.elementFromPoint(x, y)?.closest<HTMLElement>("#sidebar-scroll .focused-host .project-row, .focused-host > .host-tree > .tree-head");
     if (!el) return null;
     const box = el.getBoundingClientRect();
     const at = (y - box.top) / box.height;

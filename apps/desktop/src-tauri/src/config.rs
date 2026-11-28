@@ -11,32 +11,33 @@ use skiff_core::{
     git,
     project::AgentInfo,
 };
-use tauri::{AppHandle, State};
+use tauri::AppHandle;
+use crate::routes::Routed;
 
 use skiff_client::host::data;
 use skiff_host_api::{AgentEdit, HostFolder, HostProject, HostWorktree, ProjectEdit, ProjectFleet};
 
 use crate::{
-    connection::{blocking, data_read, data_write, keep_revision, project_write, App},
+    connection::{blocking, data_read, data_write, keep_revision, project_write, HostState},
     projects_watch::OwnEdit,
 };
 
 /// Runs a project change as the app's own edit: once it was tried (done,
 /// refused or unknown), the page reads the projects again, and the projects
 /// watcher does not count it as an edit from outside the app.
-async fn changed<T>(handle: &AppHandle, change: impl std::future::Future<Output = Result<T, String>>) -> Result<T, String> {
-    let _own = OwnEdit::begin(handle);
+async fn changed<T>(handle: &AppHandle, app: &HostState, change: impl std::future::Future<Output = Result<T, String>>) -> Result<T, String> {
+    let _own = OwnEdit::begin(handle, app);
     change.await
 }
 
 /// A client-owned setting which has not moved to the Host yet.
-async fn local_edit(handle: &AppHandle, f: impl FnOnce() -> anyhow::Result<()> + Send + 'static) -> Result<(), String> {
-    changed(handle, blocking(f)).await
+async fn local_edit(handle: &AppHandle, app: &HostState, f: impl FnOnce() -> anyhow::Result<()> + Send + 'static) -> Result<(), String> {
+    changed(handle, app, blocking(f)).await
 }
 
 /// One key of one Host project (`project_config@1`).
-async fn edit(handle: &AppHandle, app: &App, project: String, edit: ProjectEdit) -> Result<(), String> {
-    changed(handle, project_write(app, |c, revision| async move {
+async fn edit(handle: &AppHandle, app: &HostState, project: String, edit: ProjectEdit) -> Result<(), String> {
+    changed(handle, app, project_write(app, |c, revision| async move {
         data::project_edit(&c, &revision, &project, edit).await.map(|r| ((), r))
     }))
     .await
@@ -46,14 +47,14 @@ async fn edit(handle: &AppHandle, app: &App, project: String, edit: ProjectEdit)
 /// this Mac's `skiff-host` here, a remote Host's own there. Never read here.
 /// Their revision is kept for the next change.
 #[tauri::command]
-pub(crate) async fn list_projects(app: State<'_, App>) -> Result<Vec<HostProject>, String> {
+pub(crate) async fn list_projects(app: Routed) -> Result<Vec<HostProject>, String> {
     read_projects(&app).await
 }
 
-async fn read_projects(app: &App) -> Result<Vec<HostProject>, String> {
+async fn read_projects(app: &HostState) -> Result<Vec<HostProject>, String> {
     data_read(app, |c| async move {
         let (rows, revision) = data::project_rows(&c).await?;
-        keep_revision(app, &c, revision);
+        keep_revision(app, &app.revision, &c, revision).await;
         Ok(rows)
     })
     .await
@@ -61,7 +62,7 @@ async fn read_projects(app: &App) -> Result<Vec<HostProject>, String> {
 
 /// One project read again: git runs in it only, not in every project.
 #[tauri::command]
-pub(crate) async fn get_project(app: State<'_, App>, name: String) -> Result<HostProject, String> {
+pub(crate) async fn get_project(app: Routed, name: String) -> Result<HostProject, String> {
     data_read(&app, |c| async move { data::project_get(&c, &name).await }).await
 }
 
@@ -70,19 +71,19 @@ pub(crate) async fn get_project(app: State<'_, App>, name: String) -> Result<Hos
 #[tauri::command]
 pub(crate) async fn add_worktree(
     handle: AppHandle,
-    app: State<'_, App>,
+    app: Routed,
     project: String,
     branch: String,
     base: Option<String>,
     checkout: Option<bool>,
 ) -> Result<HostWorktree, String> {
     let checkout = checkout.unwrap_or(false);
-    changed(&handle, data_write(&app, |c| async move { data::worktree_add(&c, &project, &branch, base.as_deref(), checkout).await })).await
+    changed(&handle, &app, data_write(&app, |c| async move { data::worktree_add(&c, &project, &branch, base.as_deref(), checkout).await })).await
 }
 
 /// The project's branches for New worktree, from the Host's git.
 #[tauri::command]
-pub(crate) async fn list_branches(app: State<'_, App>, project: String) -> Result<skiff_host_api::HostBranches, String> {
+pub(crate) async fn list_branches(app: Routed, project: String) -> Result<skiff_host_api::HostBranches, String> {
     data_read(&app, |c| async move { data::branch_list(&c, &project).await }).await
 }
 
@@ -91,25 +92,25 @@ pub(crate) async fn list_branches(app: State<'_, App>, project: String) -> Resul
 #[tauri::command]
 pub(crate) async fn remove_worktree(
     handle: AppHandle,
-    app: State<'_, App>,
+    app: Routed,
     project: String,
     path: String,
     force: bool,
 ) -> Result<(), String> {
-    changed(&handle, data_write(&app, |c| async move { data::worktree_remove(&c, &project, &path, force).await })).await
+    changed(&handle, &app, data_write(&app, |c| async move { data::worktree_remove(&c, &project, &path, force).await })).await
 }
 
 /// Adds the git repository that contains `path`, or the plain folder, a folder on the Host.
 #[tauri::command]
 pub(crate) async fn add_project(
     handle: AppHandle,
-    app: State<'_, App>,
+    app: Routed,
     path: String,
     name: Option<String>,
     short: Option<String>,
     color: Option<String>,
 ) -> Result<HostProject, String> {
-    changed(&handle, project_write(&app, |c, revision| async move {
+    changed(&handle, &app, project_write(&app, |c, revision| async move {
         data::project_add(&c, &revision, &path, name, short, color).await
     }))
     .await
@@ -124,20 +125,20 @@ pub(crate) async fn init_repository(path: PathBuf) -> Result<(), String> {
 
 /// What `add_project` would do for `path`, a folder on the Host. Writes nothing.
 #[tauri::command]
-pub(crate) async fn inspect_folder(app: State<'_, App>, path: String) -> Result<HostFolder, String> {
+pub(crate) async fn inspect_folder(app: Routed, path: String) -> Result<HostFolder, String> {
     data_read(&app, |c| async move { data::project_inspect(&c, &path).await }).await
 }
 
 /// Runs `git init` in `path`, a folder on the Host, through the Host
 /// (`project_config@1`). Answers what `add_project` would do there now.
 #[tauri::command]
-pub(crate) async fn init_host_repository(app: State<'_, App>, path: String) -> Result<HostFolder, String> {
+pub(crate) async fn init_host_repository(app: Routed, path: String) -> Result<HostFolder, String> {
     data_write(&app, |c| async move { data::project_init(&c, &path).await }).await
 }
 
 /// A `folders@1` call with the Host's typed error, so the page words each
 /// cause itself. A connection failure is `operation_failed`.
-async fn folder_call<T, F, Fut>(app: &App, call: F) -> Result<T, skiff_host_api::Error>
+async fn folder_call<T, F, Fut>(app: &HostState, call: F) -> Result<T, skiff_host_api::Error>
 where
     F: FnOnce(std::sync::Arc<skiff_client::host::HostConnection>) -> Fut,
     Fut: std::future::Future<Output = Result<T, skiff_host_api::Error>>,
@@ -150,7 +151,7 @@ where
 
 /// The Host account's home folder, for the folder picker.
 #[tauri::command]
-pub(crate) async fn folder_home(app: State<'_, App>) -> Result<String, skiff_host_api::Error> {
+pub(crate) async fn folder_home(app: Routed) -> Result<String, skiff_host_api::Error> {
     folder_call(&app, |c| async move { data::folder_home(&c).await }).await
 }
 
@@ -158,7 +159,7 @@ pub(crate) async fn folder_home(app: State<'_, App>) -> Result<String, skiff_hos
 /// only: nothing here reads or opens them on this Mac.
 #[tauri::command]
 pub(crate) async fn folder_list(
-    app: State<'_, App>,
+    app: Routed,
     path: String,
     hidden: bool,
     filter: Option<String>,
@@ -169,7 +170,7 @@ pub(crate) async fn folder_list(
 /// The programs in `path` on the Host, for an agent's program picker. Host
 /// paths only: nothing here reads or opens them on this Mac.
 #[tauri::command]
-pub(crate) async fn program_list(app: State<'_, App>, path: String) -> Result<Vec<String>, skiff_host_api::Error> {
+pub(crate) async fn program_list(app: Routed, path: String) -> Result<Vec<String>, skiff_host_api::Error> {
     folder_call(&app, |c| async move { data::program_list(&c, &path).await }).await
 }
 
@@ -177,24 +178,24 @@ pub(crate) async fn program_list(app: State<'_, App>, path: String) -> Result<Ve
 /// top bar cell. `refresh`: "none", "stale" (the page opened) or "all"
 /// (Read now). The Host runs the reads; this Mac runs none.
 #[tauri::command]
-pub(crate) async fn usage_read(app: State<'_, App>, refresh: skiff_host_api::UsageRefresh) -> Result<Vec<skiff_host_api::AgentUsage>, skiff_host_api::Error> {
+pub(crate) async fn usage_read(app: Routed, refresh: skiff_host_api::UsageRefresh) -> Result<Vec<skiff_host_api::AgentUsage>, skiff_host_api::Error> {
     folder_call(&app, |c| async move { data::usage_read(&c, refresh).await }).await
 }
 
 /// The picker's Recent and Git repos, from the Host.
 #[tauri::command]
-pub(crate) async fn folder_places(app: State<'_, App>) -> Result<skiff_host_api::FolderPlaces, skiff_host_api::Error> {
+pub(crate) async fn folder_places(app: Routed) -> Result<skiff_host_api::FolderPlaces, skiff_host_api::Error> {
     folder_call(&app, |c| async move { data::folder_places(&c).await }).await
 }
 
 /// Makes the folder `name` in `parent` on the Host.
 #[tauri::command]
-pub(crate) async fn folder_create(app: State<'_, App>, parent: String, name: String) -> Result<String, skiff_host_api::Error> {
+pub(crate) async fn folder_create(app: Routed, parent: String, name: String) -> Result<String, skiff_host_api::Error> {
     folder_call(&app, |c| async move { data::folder_create(&c, &parent, &name).await }).await
 }
 
 #[tauri::command]
-pub(crate) async fn set_project_icon(handle: AppHandle, app: State<'_, App>, project: String, icon: Option<String>) -> Result<(), String> {
+pub(crate) async fn set_project_icon(handle: AppHandle, app: Routed, project: String, icon: Option<String>) -> Result<(), String> {
     edit(&handle, &app, project, ProjectEdit::Icon { icon }).await
 }
 
@@ -281,8 +282,8 @@ pub(crate) async fn skipper_avatars() -> Result<Vec<SkipperAvatar>, String> {
 
 /// This Mac only, as the icon: the generated avatar `seed` for the Skipper.
 #[tauri::command]
-pub(crate) async fn set_skipper_avatar(handle: AppHandle, scope: String, seed: u32) -> Result<(), String> {
-    local_edit(&handle, move || {
+pub(crate) async fn set_skipper_avatar(app: Routed, handle: AppHandle, scope: String, seed: u32) -> Result<(), String> {
+    local_edit(&handle, &app, move || {
         use anyhow::Context;
         let dir = skipper_dir(&config::load()?, &scope)?;
         std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
@@ -295,8 +296,8 @@ pub(crate) async fn set_skipper_avatar(handle: AppHandle, scope: String, seed: u
 /// This Mac only, as the icon: the Skipper's avatar color, `#rrggbb`. None
 /// removes it, so the face takes its derived color again. The face stays.
 #[tauri::command]
-pub(crate) async fn set_skipper_avatar_color(handle: AppHandle, scope: String, color: Option<String>) -> Result<(), String> {
-    local_edit(&handle, move || {
+pub(crate) async fn set_skipper_avatar_color(app: Routed, handle: AppHandle, scope: String, color: Option<String>) -> Result<(), String> {
+    local_edit(&handle, &app, move || {
         use anyhow::Context;
         let color = match color.as_deref() {
             None => None,
@@ -313,7 +314,7 @@ pub(crate) async fn set_skipper_avatar_color(handle: AppHandle, scope: String, c
 #[tauri::command]
 pub(crate) async fn set_project_background(
     handle: AppHandle,
-    app: State<'_, App>,
+    app: Routed,
     project: String,
     background: Option<String>,
 ) -> Result<(), String> {
@@ -321,19 +322,19 @@ pub(crate) async fn set_project_background(
 }
 
 #[tauri::command]
-pub(crate) async fn set_project_fleet(handle: AppHandle, app: State<'_, App>, project: String, fleet: String) -> Result<(), String> {
+pub(crate) async fn set_project_fleet(handle: AppHandle, app: Routed, project: String, fleet: String) -> Result<(), String> {
     edit(&handle, &app, project, ProjectEdit::Fleet { fleet }).await
 }
 
 #[tauri::command]
-pub(crate) async fn set_project_short(handle: AppHandle, app: State<'_, App>, project: String, short: String) -> Result<(), String> {
+pub(crate) async fn set_project_short(handle: AppHandle, app: Routed, project: String, short: String) -> Result<(), String> {
     edit(&handle, &app, project, ProjectEdit::Short { short }).await
 }
 
 #[tauri::command]
 pub(crate) async fn set_project_background_opacity(
     handle: AppHandle,
-    app: State<'_, App>,
+    app: Routed,
     project: String,
     percent: Option<u8>,
 ) -> Result<(), String> {
@@ -341,48 +342,48 @@ pub(crate) async fn set_project_background_opacity(
 }
 
 #[tauri::command]
-pub(crate) async fn set_project_color(handle: AppHandle, app: State<'_, App>, project: String, color: String) -> Result<(), String> {
+pub(crate) async fn set_project_color(handle: AppHandle, app: Routed, project: String, color: String) -> Result<(), String> {
     edit(&handle, &app, project, ProjectEdit::Color { color }).await
 }
 
 #[tauri::command]
-pub(crate) async fn set_project_changes(handle: AppHandle, app: State<'_, App>, project: String, on: bool) -> Result<(), String> {
+pub(crate) async fn set_project_changes(handle: AppHandle, app: Routed, project: String, on: bool) -> Result<(), String> {
     edit(&handle, &app, project, ProjectEdit::Changes { on }).await
 }
 
 #[tauri::command]
-pub(crate) async fn set_project_files(handle: AppHandle, app: State<'_, App>, project: String, on: bool) -> Result<(), String> {
+pub(crate) async fn set_project_files(handle: AppHandle, app: Routed, project: String, on: bool) -> Result<(), String> {
     edit(&handle, &app, project, ProjectEdit::Files { on }).await
 }
 
 #[tauri::command]
-pub(crate) async fn set_project_theme(handle: AppHandle, app: State<'_, App>, project: String, theme: Option<String>) -> Result<(), String> {
+pub(crate) async fn set_project_theme(handle: AppHandle, app: Routed, project: String, theme: Option<String>) -> Result<(), String> {
     edit(&handle, &app, project, ProjectEdit::Theme { theme }).await
 }
 
 #[tauri::command]
 pub(crate) async fn reorder_projects(
     handle: AppHandle,
-    app: State<'_, App>,
+    app: Routed,
     order: Vec<String>,
     fleets: Option<Vec<(String, String)>>,
 ) -> Result<(), String> {
     let fleets = fleets.unwrap_or_default().into_iter().map(|(project, fleet)| ProjectFleet { project, fleet }).collect();
-    changed(&handle, project_write(&app, |c, revision| async move {
+    changed(&handle, &app, project_write(&app, |c, revision| async move {
         data::project_arrange(&c, &revision, order, fleets).await.map(|r| ((), r))
     }))
     .await
 }
 
 #[tauri::command]
-pub(crate) async fn set_project_closed(handle: AppHandle, app: State<'_, App>, project: String, closed: bool) -> Result<(), String> {
+pub(crate) async fn set_project_closed(handle: AppHandle, app: Routed, project: String, closed: bool) -> Result<(), String> {
     edit(&handle, &app, project, ProjectEdit::Closed { closed }).await
 }
 
 /// Drops the project and its settings from the Host's config. The folder stays.
 #[tauri::command]
-pub(crate) async fn remove_project(handle: AppHandle, app: State<'_, App>, project: String) -> Result<(), String> {
-    changed(&handle, project_write(&app, |c, revision| async move {
+pub(crate) async fn remove_project(handle: AppHandle, app: Routed, project: String) -> Result<(), String> {
+    changed(&handle, &app, project_write(&app, |c, revision| async move {
         data::project_remove(&c, &revision, &project).await.map(|r| ((), r))
     }))
     .await
@@ -449,7 +450,7 @@ pub(crate) async fn set_clock(clock: Option<String>) -> Result<(), String> {
 /// depends on the sessions' PATH and aliases, which the app does not have:
 /// skiffd answers that for each agent whose command it read the same. An
 /// agent it does not know, or no skiffd, falls back to the app's PATH.
-pub(crate) async fn local_agents(app: &App) -> Result<Vec<AgentInfo>, String> {
+pub(crate) async fn local_agents(app: &HostState) -> Result<Vec<AgentInfo>, String> {
     let daemon = match crate::connection::host_now(app).await {
         Ok(c) => skiff_client::host::local::legacy_agents(&c).await.unwrap_or_default(),
         Err(_) => Vec::new(),
@@ -474,7 +475,7 @@ pub(crate) async fn local_agents(app: &App) -> Result<Vec<AgentInfo>, String> {
 /// from the config just written ([`local_agents`]). A remote Host makes the
 /// change itself (`agent_config@1`), from the revision of its last agent read.
 async fn agents_after(
-    app: &State<'_, App>,
+    app: &Routed,
     edit: AgentEdit,
     f: impl FnOnce() -> anyhow::Result<()> + Send + 'static,
 ) -> Result<Vec<AgentInfo>, String> {
@@ -493,14 +494,14 @@ const AGENTS_UNREAD: &str = "Skiff has not read this Host's agents yet. It reads
 /// The agent list for Settings, with the revision of a remote Host's
 /// `[agents]` kept for the next change. This Mac's comes from its config.
 #[tauri::command]
-pub(crate) async fn agent_config(app: State<'_, App>) -> Result<Vec<AgentInfo>, String> {
+pub(crate) async fn agent_config(app: Routed) -> Result<Vec<AgentInfo>, String> {
     if !app.remote() {
         return local_agents(&app).await;
     }
     let app = &*app;
     data_read(app, |c| async move {
         let (agents, revision) = data::agent_config(&c).await?;
-        *app.agent_revision.lock().unwrap() = Some((c.hello().host.host_id.clone(), revision));
+        keep_revision(app, &app.agent_revision, &c, Some(revision)).await;
         Ok(agents.into_iter().map(skiff_client::host::restore_agent).collect())
     })
     .await
@@ -509,21 +510,20 @@ pub(crate) async fn agent_config(app: State<'_, App>) -> Result<Vec<AgentInfo>, 
 /// One `[agents]` change on a remote Host, sent once, as a project change
 /// is. A conflict forgets the revision, so the next change waits for the page
 /// to read the agents again.
-async fn agent_write(app: &App, edit: AgentEdit) -> Result<Vec<AgentInfo>, String> {
+async fn agent_write(app: &HostState, edit: AgentEdit) -> Result<Vec<AgentInfo>, String> {
     use skiff_host_api::Error as E;
     data_write(app, |c| async move {
-        let host = c.hello().host.host_id.clone();
-        let revision = app.agent_revision.lock().unwrap().clone().filter(|(h, _)| *h == host).map(|(_, r)| r);
+        let revision = app.agent_revision.lock().unwrap().clone();
         let Some(revision) = revision else {
             return Err(E::Invalid { message: AGENTS_UNREAD.into() });
         };
         match data::agent_edit(&c, &revision, edit).await {
             Ok((agents, revision)) => {
-                *app.agent_revision.lock().unwrap() = Some((host, revision));
+                keep_revision(app, &app.agent_revision, &c, Some(revision)).await;
                 Ok(agents.into_iter().map(skiff_client::host::restore_agent).collect())
             }
             Err(E::Conflict { message }) => {
-                *app.agent_revision.lock().unwrap() = None;
+                keep_revision(app, &app.agent_revision, &c, None).await;
                 Err(E::Conflict { message: format!("{message} Skiff reads them again: try again if it is still needed.") })
             }
             Err(e) => Err(e),
@@ -534,33 +534,33 @@ async fn agent_write(app: &App, edit: AgentEdit) -> Result<Vec<AgentInfo>, Strin
 
 /// Saves which agents the + menu offers.
 #[tauri::command]
-pub(crate) async fn set_agents(app: State<'_, App>, enabled: Vec<String>) -> Result<Vec<AgentInfo>, String> {
+pub(crate) async fn set_agents(app: Routed, enabled: Vec<String>) -> Result<Vec<AgentInfo>, String> {
     let edit = AgentEdit::Enabled { agents: enabled.clone() };
     agents_after(&app, edit, move || config::set_enabled_agents(&enabled)).await
 }
 
 /// Replaces an agent's command line. Empty restores the default.
 #[tauri::command]
-pub(crate) async fn set_agent_command(app: State<'_, App>, agent: String, command: String) -> Result<Vec<AgentInfo>, String> {
+pub(crate) async fn set_agent_command(app: Routed, agent: String, command: String) -> Result<Vec<AgentInfo>, String> {
     let edit = AgentEdit::Command { agent: agent.clone(), command: command.clone() };
     agents_after(&app, edit, move || config::set_agent_command(&agent, &command)).await
 }
 
 #[tauri::command]
-pub(crate) async fn rename_agent(app: State<'_, App>, agent: String, name: String) -> Result<Vec<AgentInfo>, String> {
+pub(crate) async fn rename_agent(app: Routed, agent: String, name: String) -> Result<Vec<AgentInfo>, String> {
     let edit = AgentEdit::Rename { agent: agent.clone(), name: name.clone() };
     agents_after(&app, edit, move || config::rename_agent(&agent, &name)).await
 }
 
 #[tauri::command]
-pub(crate) async fn remove_agent(app: State<'_, App>, agent: String) -> Result<Vec<AgentInfo>, String> {
+pub(crate) async fn remove_agent(app: Routed, agent: String) -> Result<Vec<AgentInfo>, String> {
     let edit = AgentEdit::Remove { agent: agent.clone() };
     agents_after(&app, edit, move || config::remove_agent(&agent)).await
 }
 
 /// Brings back the default agents the user removed.
 #[tauri::command]
-pub(crate) async fn restore_agents(app: State<'_, App>) -> Result<Vec<AgentInfo>, String> {
+pub(crate) async fn restore_agents(app: Routed) -> Result<Vec<AgentInfo>, String> {
     agents_after(&app, AgentEdit::Restore, config::restore_agents).await
 }
 

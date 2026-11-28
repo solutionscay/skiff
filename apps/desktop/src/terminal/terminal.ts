@@ -199,7 +199,7 @@ function fitNow() {
       if (!sizeChanged(id, p)) continue;
       const { cols, rows } = p.term;
       sentSize.set(id, [cols, rows]);
-      hostInvoke("session_terminal", "pty_resize", { session: id, cols, rows }).catch((e) => {
+      hostInvoke("session_terminal", "pty_resize", { session: id, cols, rows }, p.hostId).catch((e) => {
         console.error(e);
         // The pty kept its size (skiffd reloads, or the connection dropped):
         // the next fit sends again. A later size sent meanwhile stays.

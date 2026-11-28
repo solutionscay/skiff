@@ -1,22 +1,22 @@
 use std::path::PathBuf;
 use skiff_core::{group::Group, project::AgentInfo, session::{SessionInfo, SessionSpec}};
-use tauri::{AppHandle, Manager, State};
+use crate::routes::Routed;
 use skiff_client::host::local::{legacy_agents, legacy_create, legacy_delete_group, legacy_groups, legacy_order_groups, legacy_kill, legacy_rename, legacy_save_group, legacy_seen, legacy_set_theme};
-use crate::{connection::{blocking, App, ensure_client, err}, input::Sent};
+use crate::{connection::{blocking, ensure_client, err}, input::Sent};
 
 #[tauri::command]
-pub(crate) async fn list_sessions(app: State<'_, App>) -> Result<Vec<SessionInfo>, String> {
+pub(crate) async fn list_sessions(app: Routed) -> Result<Vec<SessionInfo>, String> {
     crate::connection::inventory_now(&app).await
 }
 
 #[tauri::command]
-pub(crate) async fn daemon_metrics(app: State<'_, App>) -> Result<skiff_core::protocol::DaemonMetrics, String> {
+pub(crate) async fn daemon_metrics(app: Routed) -> Result<skiff_core::protocol::DaemonMetrics, String> {
     let (c, _) = ensure_client(&app).await?;
     c.daemon_metrics().await.map_err(err)
 }
 
 #[tauri::command]
-pub(crate) async fn create_session(app: State<'_, App>, mut spec: SessionSpec) -> Result<SessionInfo, String> {
+pub(crate) async fn create_session(app: Routed, mut spec: SessionSpec) -> Result<SessionInfo, String> {
     let c = crate::connection::host_now(&app).await?;
     // The + menu's agent gets the image cache's read flag at the end of its line.
     // This computer's cache only: a remote Host's cache is its own.
@@ -34,7 +34,7 @@ pub(crate) async fn create_session(app: State<'_, App>, mut spec: SessionSpec) -
 /// While a reload runs, or before a connection is up, the input waits in
 /// the bridge, in order.
 #[tauri::command]
-pub(crate) fn pty_write(handle: AppHandle, app: State<'_, App>, session: String, data: String) -> Result<(), String> {
+pub(crate) fn pty_write(app: Routed, session: String, data: String) -> Result<(), String> {
     let live = app.live.lock().unwrap().clone().filter(|c| !c.is_closed());
     if app.remote() {
         return remote_input(live.as_deref(), &session, data.into_bytes());
@@ -44,7 +44,6 @@ pub(crate) fn pty_write(handle: AppHandle, app: State<'_, App>, session: String,
         // No connection yet. Rare: connect, then send what waits.
         Sent::Connect => {
             tauri::async_runtime::spawn(async move {
-                let app = handle.state::<App>();
                 let c = crate::connection::host_now(&app).await.ok();
                 app.input.connected(c.as_deref());
             });
@@ -72,7 +71,7 @@ pub(crate) const INPUT_OFF: &str = "Input is off: the remote Host is disconnecte
 
 #[tauri::command]
 pub(crate) async fn pty_resize(
-    app: State<'_, App>,
+    app: Routed,
     session: String,
     cols: u16,
     rows: u16,
@@ -83,7 +82,7 @@ pub(crate) async fn pty_resize(
 
 #[tauri::command]
 pub(crate) async fn set_session_theme(
-    app: State<'_, App>,
+    app: Routed,
     session: String,
     theme: Option<String>,
 ) -> Result<SessionInfo, String> {
@@ -93,7 +92,7 @@ pub(crate) async fn set_session_theme(
 
 #[tauri::command]
 pub(crate) async fn rename_session(
-    app: State<'_, App>,
+    app: Routed,
     session: String,
     name: String,
 ) -> Result<SessionInfo, String> {
@@ -103,19 +102,19 @@ pub(crate) async fn rename_session(
 
 /// The session's pane has the keys: its unread flag and agent exit go.
 #[tauri::command]
-pub(crate) async fn session_seen(app: State<'_, App>, session: String) -> Result<(), String> {
+pub(crate) async fn session_seen(app: Routed, session: String) -> Result<(), String> {
     let c = crate::connection::host_now(&app).await?;
     legacy_seen(&c, &session).await.map_err(err)
 }
 
 /// Mission control's text for one session (#88).
 #[tauri::command]
-pub(crate) async fn session_screen(app: State<'_, App>, session: String, rows: u16) -> Result<Vec<String>, String> {
+pub(crate) async fn session_screen(app: Routed, session: String, rows: u16) -> Result<Vec<String>, String> {
     crate::connection::screen_now(&app, &session, rows).await
 }
 
 #[tauri::command]
-pub(crate) async fn kill_session(app: State<'_, App>, session: String) -> Result<(), String> {
+pub(crate) async fn kill_session(app: Routed, session: String) -> Result<(), String> {
     let c = crate::connection::host_now(&app).await?;
     legacy_kill(&c, &session).await.map_err(err)
 }
@@ -166,7 +165,7 @@ pub(crate) async fn open_theme_folder() -> Result<(), String> {
 /// A project's background image from the selected Host (`project_assets@1`):
 /// bytes the Host checked, never a path read here. The page makes a blob URL.
 #[tauri::command]
-pub(crate) async fn project_background(app: State<'_, App>, project: String) -> Result<tauri::ipc::Response, String> {
+pub(crate) async fn project_background(app: Routed, project: String) -> Result<tauri::ipc::Response, String> {
     let image = crate::connection::data_read(&app, |c| async move { skiff_client::host::data::project_background(&c, &project).await }).await?;
     Ok(tauri::ipc::Response::new(image.bytes))
 }
@@ -176,7 +175,7 @@ pub(crate) async fn project_background(app: State<'_, App>, project: String) -> 
 /// On This Mac links are followed, so a linked folder expands; on a remote
 /// Host they are not.
 #[tauri::command]
-pub(crate) async fn list_files(app: State<'_, App>, worktree: String, dir: String, cursor: Option<usize>) -> Result<skiff_host_api::HostListing, String> {
+pub(crate) async fn list_files(app: Routed, worktree: String, dir: String, cursor: Option<usize>) -> Result<skiff_host_api::HostListing, String> {
     let follow = !app.remote();
     crate::connection::data_read(&app, |c| async move { skiff_client::host::data::file_list_page(&c, &worktree, &dir, follow, cursor).await }).await
 }
@@ -184,14 +183,14 @@ pub(crate) async fn list_files(app: State<'_, App>, worktree: String, dir: Strin
 /// Reveals a scoped Host file or worktree in the Host's own file manager.
 /// Neither string reaches a local opener when the selected Host is remote.
 #[tauri::command]
-pub(crate) async fn reveal_host_file(app: State<'_, App>, worktree: String, file: Option<String>) -> Result<(), String> {
+pub(crate) async fn reveal_host_file(app: Routed, worktree: String, file: Option<String>) -> Result<(), String> {
     crate::connection::data_read(&app, |c| async move { skiff_client::host::data::file_reveal(&c, &worktree, file.as_deref()).await }).await
 }
 
 /// A file's preview from the selected Host: bounded text, an image's bytes,
 /// or what it is. Nothing is read or opened on this Mac.
 #[tauri::command]
-pub(crate) async fn read_file(app: State<'_, App>, worktree: String, file: String) -> Result<skiff_host_api::HostFile, String> {
+pub(crate) async fn read_file(app: Routed, worktree: String, file: String) -> Result<skiff_host_api::HostFile, String> {
     use skiff_host_api::ReadPurpose;
     crate::connection::data_read(&app, |c| async move { skiff_client::host::data::file_read(&c, &worktree, &file, ReadPurpose::Preview).await }).await
 }
@@ -202,7 +201,7 @@ pub(crate) async fn read_file(app: State<'_, App>, worktree: String, file: Strin
 /// the page), else in this Mac's default app. Only the copy's path reaches
 /// an opener; the Host's path never does.
 #[tauri::command]
-pub(crate) async fn open_file_copy(app: State<'_, App>, worktree: String, file: String) -> Result<Opened, String> {
+pub(crate) async fn open_file_copy(app: Routed, worktree: String, file: String) -> Result<Opened, String> {
     use skiff_host_api::ReadPurpose;
     // Refused before anything is fetched.
     crate::copies::copy_name(&file).map_err(err)?;
@@ -219,7 +218,7 @@ pub(crate) async fn open_file_copy(app: State<'_, App>, worktree: String, file: 
 /// The changed files of one worktree, for the sidebar's Changes section:
 /// on a branch, since it left the default branch; else the uncommitted ones.
 #[tauri::command]
-pub(crate) async fn git_changes(app: State<'_, App>, path: String) -> Result<skiff_host_api::HostChanges, String> {
+pub(crate) async fn git_changes(app: Routed, path: String) -> Result<skiff_host_api::HostChanges, String> {
     crate::connection::data_read(&app, |c| async move { skiff_client::host::data::git_changes(&c, &path).await }).await
 }
 
@@ -227,7 +226,7 @@ pub(crate) async fn git_changes(app: State<'_, App>, path: String) -> Result<ski
 /// Host's git (`git_diff@1`), for the page's own viewer. `path` and `file`
 /// are the Host's: nothing here reads or opens them on this Mac.
 #[tauri::command]
-pub(crate) async fn git_diff(app: State<'_, App>, path: String, file: Option<String>) -> Result<skiff_host_api::HostDiff, String> {
+pub(crate) async fn git_diff(app: Routed, path: String, file: Option<String>) -> Result<skiff_host_api::HostDiff, String> {
     crate::connection::data_read(&app, |c| async move { skiff_client::host::data::git_diff(&c, &path, file.as_deref()).await }).await
 }
 
@@ -433,7 +432,7 @@ pub(crate) fn reveal(path: &std::path::Path) -> anyhow::Result<()> {
 /// never this Mac's for a remote Host (`session_agents@1`). This Mac's are
 /// read from the config this app writes.
 #[tauri::command]
-pub(crate) async fn list_agents(app: State<'_, App>) -> Result<Vec<AgentInfo>, String> {
+pub(crate) async fn list_agents(app: Routed) -> Result<Vec<AgentInfo>, String> {
     if !app.remote() {
         return crate::config::local_agents(&app).await;
     }
@@ -442,25 +441,25 @@ pub(crate) async fn list_agents(app: State<'_, App>) -> Result<Vec<AgentInfo>, S
 }
 
 #[tauri::command]
-pub(crate) async fn list_agent_sessions(app: State<'_, App>, command: Vec<String>, cwd: String) -> Result<String, String> {
+pub(crate) async fn list_agent_sessions(app: Routed, command: Vec<String>, cwd: String) -> Result<String, String> {
     let (c, _) = ensure_client(&app).await?;
     c.list_agent_sessions(command, cwd.into()).await.map_err(err)
 }
 
 #[tauri::command]
-pub(crate) async fn list_groups(app: State<'_, App>) -> Result<Vec<Group>, String> {
+pub(crate) async fn list_groups(app: Routed) -> Result<Vec<Group>, String> {
     let c = crate::connection::host_now(&app).await?;
     legacy_groups(&c).await.map_err(err)
 }
 
 #[tauri::command]
-pub(crate) async fn save_group(app: State<'_, App>, group: Group) -> Result<Group, String> {
+pub(crate) async fn save_group(app: Routed, group: Group) -> Result<Group, String> {
     let c = crate::connection::host_now(&app).await?;
     legacy_save_group(&c, group).await.map_err(err)
 }
 
 #[tauri::command]
-pub(crate) async fn delete_group(app: State<'_, App>, group: String) -> Result<(), String> {
+pub(crate) async fn delete_group(app: Routed, group: String) -> Result<(), String> {
     let c = crate::connection::host_now(&app).await?;
     legacy_delete_group(&c, &group).await.map_err(err)
 }
@@ -474,7 +473,7 @@ mod tests {
 }
 
 #[tauri::command]
-pub(crate) async fn order_groups(app: State<'_, App>, groups: Vec<String>) -> Result<(), String> {
+pub(crate) async fn order_groups(app: Routed, groups: Vec<String>) -> Result<(), String> {
     let c = crate::connection::host_now(&app).await?;
     legacy_order_groups(&c, groups).await.map_err(err)
 }

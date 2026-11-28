@@ -3,8 +3,9 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
-use crate::connection::{ensure_client, App};
+use tauri::{AppHandle, Manager};
+use crate::routes::Routed;
+use crate::connection::ensure_client;
 
 /// The page's latency trace is on: output streams carry skiffd's echo times.
 static TRACING: AtomicBool = AtomicBool::new(false);
@@ -16,7 +17,7 @@ pub(crate) fn tracing_on() -> bool {
 /// Turns the echo times on or off. Returns the builds, as
 /// `app debug, skiffd release`, so a trace can compare the two.
 #[tauri::command]
-pub(crate) async fn trace_set(app: State<'_, App>, on: bool) -> Result<String, String> {
+pub(crate) async fn trace_set(app: Routed, on: bool) -> Result<String, String> {
     TRACING.store(on, Ordering::Relaxed);
     let build = |debug: bool| if debug { "debug" } else { "release" };
     let daemon = match ensure_client(&app).await {

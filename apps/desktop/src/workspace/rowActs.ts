@@ -1,3 +1,4 @@
+import { hostFields } from "../platform/invoke";
 /**
  * What a sidebar row does, by row key. Rows declare it when they render; the
  * keys and the preview controller read it. A row starts nothing by itself.
@@ -11,11 +12,11 @@ export type Preview =
    */
   | { kind: "diff"; wt: string; branch: string; base?: string; file?: string; wait?: boolean }
   /** A remote Host's diff: its git's text, in the page's own viewer. No command runs here. */
-  | { kind: "host-diff"; wt: string; branch: string; base?: string; file?: string; wait?: boolean }
+  | { kind: "host-diff"; hostId?: string; wt: string; branch: string; base?: string; file?: string; wait?: boolean }
   | { kind: "file"; path: string }
   /** A Host's file: its bounded preview from the Host, in the page's own viewer.
    *  `path` is the Host's, shown only. `copy`: Enter opens a local copy. */
-  | { kind: "host-file"; wt: string; file: string; path: string; copy: boolean }
+  | { kind: "host-file"; hostId?: string; wt: string; file: string; path: string; copy: boolean }
   /** `local: false`: a remote Host's folder, with no file manager here to show it in. */
   | { kind: "folder"; path: string; local?: boolean };
 
@@ -27,7 +28,10 @@ interface RowActs {
   open?: () => void;
 }
 
-const acts = new Map<string, RowActs>();
+let acts = new Map<string, RowActs>();
+
+hostFields(() => ({ acts: new Map<string,RowActs>() }), () => ({ acts }),
+  (f) => { ({ acts } = f); });
 
 export const setRowActs = (key: string, a: RowActs) => void acts.set(key, a);
 export const rowActs = (key: string | null | undefined): RowActs | undefined => (key ? acts.get(key) : undefined);

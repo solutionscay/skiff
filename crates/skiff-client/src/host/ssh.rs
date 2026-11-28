@@ -252,23 +252,36 @@ pub fn batch_args(target: &SshTarget, options: &SshOptions, command: String) -> 
 /// One shell word in single quotes, for sh, bash, zsh and fish alike.
 pub use skiff_core::shell::shell_quote as quote;
 
-/// Lines a connect shows as it goes: ssh's allowlisted lines from each
-/// forward, and the replies the app notes. One stream for this app run.
-static CONNECT_LOG: std::sync::OnceLock<tokio::sync::broadcast::Sender<String>> =
-    std::sync::OnceLock::new();
+type ConnectLog = Arc<dyn Fn(String) + Send + Sync>;
 
-fn connect_log_tx() -> &'static tokio::sync::broadcast::Sender<String> {
-    CONNECT_LOG.get_or_init(|| tokio::sync::broadcast::channel(64).0)
+tokio::task_local! { static CONNECT_LOG: ConnectLog; }
+
+/// Send progress from this connection attempt to its caller.
+pub async fn with_connect_log<T>(
+    log: impl Fn(String) + Send + Sync + 'static,
+    connect: impl std::future::Future<Output = T>,
+) -> T {
+    CONNECT_LOG.scope(Arc::new(log), connect).await
 }
 
-/// Every connect line from now on.
+fn all_lines() -> &'static tokio::sync::broadcast::Sender<String> {
+    static LINES: std::sync::OnceLock<tokio::sync::broadcast::Sender<String>> = std::sync::OnceLock::new();
+    LINES.get_or_init(|| tokio::sync::broadcast::channel(64).0)
+}
+
+/// Subscribe to connect progress for all forwards opened by this process.
 pub fn connect_log() -> tokio::sync::broadcast::Receiver<String> {
-    connect_log_tx().subscribe()
+    all_lines().subscribe()
 }
 
-/// Adds one line to the connect log, such as a skiffd reply.
+fn report_line(log: Option<&ConnectLog>, line: String) {
+    if let Some(log) = log { log(line.clone()); }
+    let _ = all_lines().send(line);
+}
+
 pub fn connect_note(line: impl Into<String>) {
-    let _ = connect_log_tx().send(line.into());
+    let log = CONNECT_LOG.try_with(Arc::clone).ok();
+    report_line(log.as_ref(), line.into());
 }
 
 /// The longest wait between two tries to open a forward.
@@ -554,11 +567,12 @@ impl SshForward {
         let stderr = Arc::new(Mutex::new(String::new()));
         if let Some(err) = err {
             let keep = stderr.clone();
+            let log = CONNECT_LOG.try_with(Arc::clone).ok();
             tokio::spawn(async move {
                 let mut lines = BufReader::new(err).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
                     if let Some(shown) = shown_line(&line) {
-                        connect_note(shown);
+                        report_line(log.as_ref(), shown);
                     }
                     let mut kept = keep.lock().unwrap();
                     kept.push_str(&line);

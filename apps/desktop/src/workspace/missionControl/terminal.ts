@@ -55,45 +55,43 @@ export function windowHead(s: SessionInfo, name: string, num: number): HTMLEleme
 
 // ---- The faces ----
 
-export const faceLayer = h("div", "mission-faces");
-const faces = new Map<string, { el: HTMLElement; sig: string }>();
+export function createFaces(key: (id: string) => string) {
+  const faceLayer = h("div", "mission-faces");
+  const faces = new Map<string, { el: HTMLElement; sig: string }>();
 
-/**
- * Puts each window's face at its place, in its state. `look`: the side a
- * waiting face turns to, toward the task it waits on. `dim` and `lit` follow
- * the window's own.
- */
-export function placeFaces(placed: G.Placed, sess: Map<string, SessionInfo>, look: (id: string) => 1 | -1, cls: (id: string) => string) {
-  for (const [id, rung] of placed.rungs) {
-    const s = sess.get(id);
-    const r = placed.cards.get(id);
-    if (!s || !r) continue;
-    const px = G.WINDOW[rung].face;
-    const sig = JSON.stringify([faceSig(scopeOf(s)), px]);
-    let f = faces.get(id);
-    if (!f || f.sig !== sig) {
-      f?.el.remove();
-      const el = h("div", "mission-face");
-      el.dataset.id = id;
-      el.appendChild(skipperFace(scopeOf(s), px));
-      f = { el, sig };
-      faces.set(id, f);
-      faceLayer.appendChild(el);
+  /**
+   * Puts each window's face at its place, in its state. `look`: the side a
+   * waiting face turns to, toward the task it waits on. `dim` and `lit` follow
+   * the window's own.
+   */
+  function placeFaces(placed: G.Placed, sess: Map<string, SessionInfo>, look: (id: string) => 1 | -1, cls: (id: string) => string) {
+    for (const [id, rung] of placed.rungs) {
+      const s = sess.get(id);
+      const r = placed.cards.get(id);
+      if (!s || !r) continue;
+      const px = G.WINDOW[rung].face;
+      const sig = JSON.stringify([faceSig(scopeOf(s)), px]);
+      let f = faces.get(id);
+      if (!f || f.sig !== sig) {
+        f?.el.remove();
+        const el = h("div", "mission-face");
+        el.dataset.id = key(id);
+        el.appendChild(skipperFace(scopeOf(s), px));
+        f = { el, sig };
+        faces.set(id, f);
+        faceLayer.appendChild(el);
+      }
+      const at = G.faceBox(r, rung);
+      f.el.className = `mission-face st-${s.state} ${cls(id)}`;
+      f.el.style.left = `${at.x}px`;
+      f.el.style.top = `${at.y}px`;
+      f.el.style.setProperty("--look", String(look(id)));
     }
-    const at = G.faceBox(r, rung);
-    f.el.className = `mission-face st-${s.state} ${cls(id)}`;
-    f.el.style.left = `${at.x}px`;
-    f.el.style.top = `${at.y}px`;
-    f.el.style.setProperty("--look", String(look(id)));
+    for (const [id, f] of faces) {
+      if (placed.rungs.has(id) && sess.has(id)) continue;
+      f.el.remove();
+      faces.delete(id);
+    }
   }
-  for (const [id, f] of faces) {
-    if (placed.rungs.has(id) && sess.has(id)) continue;
-    f.el.remove();
-    faces.delete(id);
-  }
-}
-
-export function clearFaces() {
-  faceLayer.replaceChildren();
-  faces.clear();
+  return { faceLayer, placeFaces };
 }

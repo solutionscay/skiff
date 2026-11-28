@@ -1,3 +1,4 @@
+import { hostFields } from "../../platform/invoke";
 /** The one open workspace and what follows from it: the profile, shows, the ledger scope, missing references and the tree view. */
 import { render } from "../../app/renderRequest";
 import { S } from "../../app/state";
@@ -42,7 +43,7 @@ export const emptyProfile = (): Profile => ({ projects: [], fleets: [], folded_p
 export function createWorkspaceState() {
   let doc: Doc | null = null;
   /** Rows the screen opened in this workspace. Not saved. */
-  const autoOpened = new Set<string>();
+  let autoOpened = new Set<string>();
   /** Above 0 while the app, not the user, moves the selection. */
   let quiet = 0;
   /** Off until the launch has opened its workspace: the first restore is no change. */
@@ -51,6 +52,9 @@ export function createWorkspaceState() {
   let allWork = false;
   let announce = (_text: string) => {};
   let changed = () => {};
+
+  hostFields(() => ({ doc:null as Doc | null, autoOpened:new Set<string>(), ready:false, quiet:0, allWork:false }),
+    () => ({doc, autoOpened, ready, quiet, allWork}), f => { ({doc, autoOpened, ready, quiet, allWork} = f); });
 
   const workspaceOpen = () => doc !== null;
   const workspaceName = () => (doc ? nameOf(doc.path) : t("workspace.allProjects"));
@@ -176,7 +180,7 @@ export function createWorkspaceState() {
     get allWork() { return allWork; },
     set allWork(next: boolean) { allWork = next; },
     setHooks(next: { announce: (text: string) => void; changed: () => void }) { ({ announce, changed } = next); },
-    autoOpened, workspaceOpen, workspaceName, shows, ledgerScope, ledgerAllWork, setLedgerAllWork,
+    get autoOpened() { return autoOpened; }, workspaceOpen, workspaceName, shows, ledgerScope, ledgerAllWork, setLedgerAllWork,
     missing, treeView, noteSelected, quietly,
   };
 }

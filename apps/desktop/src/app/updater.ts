@@ -5,7 +5,7 @@
  * clicks ×. Only the person's click downloads and restarts the app. The new
  * app hands skiffd over at its launch, so sessions keep running.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "../platform/os";

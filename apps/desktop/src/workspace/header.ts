@@ -1,3 +1,4 @@
+import { namesFor } from "../app/flatNames";
 import { slotsOf } from "./layoutSlots";
 
 import { sessionsOf } from "./layout";
@@ -23,14 +24,15 @@ export function renderHeader() {
   const g = activeGroupObj();
   const groupLabel = $("group-label");
   // Renders run many times a second: the label is rebuilt only when it changes.
-  const sig = g ? JSON.stringify([g.name, g.layout]) : "";
+  const groupName = g ? namesFor("group")(g.id,g.name) : "";
+  const sig = g ? JSON.stringify([groupName, g.layout]) : "";
   if (groupLabel.dataset.sig !== sig) {
     groupLabel.dataset.sig = sig;
     groupLabel.replaceChildren();
     if (g) {
       const n = sessionsOf(g.layout).length;
       const empty = slotsOf(g.layout).length;
-      groupLabel.append(glyph(g.layout), h("span", "", g.name), h("span", "dim", empty ? t("topbar.emptyOf", { empty, n }) : tn("topbar.panes", n)));
+      groupLabel.append(glyph(g.layout), h("span", "", groupName), h("span", "dim", empty ? t("topbar.emptyOf", { empty, n }) : tn("topbar.panes", n)));
     }
   }
   if (!s) {
@@ -39,7 +41,8 @@ export function renderHeader() {
     return;
   }
   setText(keysTo, t("topbar.keysGoTo"));
+  const title = namesFor("session")(s.id,taskTitle(s));
   setText(label, at
-    ? `${at.project.name} / ${branchName(at.worktree)} / ${taskTitle(s)}`
-    : `${s.cwd} / ${taskTitle(s)}`);
+    ? `${namesFor("project")(at.project.path,at.project.name)} / ${namesFor("worktree")(at.worktree.path,branchName(at.worktree))} / ${title}`
+    : `${s.cwd} / ${title}`);
 }

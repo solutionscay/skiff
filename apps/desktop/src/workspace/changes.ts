@@ -1,3 +1,4 @@
+import { foreground, hostFields } from "../platform/invoke";
 import { open, reveal, copy } from "../platform/fileActions";
 import { copyPathEntry, revealEntry } from "./fileMenu";
 import { sectionHeader } from "../ui/sectionHeader";
@@ -9,7 +10,7 @@ import { sectionHeader } from "../ui/sectionHeader";
  * remote Host's diffs are its git's text, in the page's own viewer; its files
  * are never opened here.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, pageRoute } from "../platform/invoke";
 import type { Project, Worktree } from "../platform/types";
 import { h } from "../ui/dom";
 import { keyLabel } from "../app/keys";
@@ -51,13 +52,17 @@ export async function setShowChanges(p: Project, show: boolean) {
 }
 
 /** The last read of each worktree. The sidebar renders from here, never waiting. */
-const lists = new Map<string, Changes>();
-const loading = new Set<string>();
+let lists = new Map<string, Changes>();
+let loading = new Set<string>();
 /** Worktrees whose Changes section is open. Closed by default. */
-const shown = storedSet("skiff.changesOpen");
+let shown: Set<string>;
+hostFields(() => ({ shown: storedSet("skiff.changesOpen" + (pageRoute()?.endpoint ? "." + pageRoute()!.endpoint : "")) }), () => ({ shown }), f => { shown = f.shown; });
 
 /** Counts the reads that brought a list different from the last one. */
 let version = 0;
+
+hostFields(() => ({ lists: new Map<string,Changes>(), loading: new Set<string>(), version: 0 }), () => ({ lists, loading, version }),
+  (f) => { ({ lists, loading, version } = f); });
 
 /** What the Changes section and the counts draw for `w`, as a string. Equal strings mean an equal section. */
 export const changesSig = (w: Worktree) => `${shown.has(w.path) ? "open" : "closed"}:${version}`;
@@ -72,14 +77,18 @@ function store(wt: string, list: Changes): boolean {
 }
 
 function load(wt: string) {
+  if (!foreground()) return;
   if (loading.has(wt)) return;
+  const route = pageRoute();
+  const pending = loading;
   loading.add(wt);
   const at = dataEpoch();
   invoke<Changes>("git_changes", { path: wt })
     // Not a repository, or git is missing: the worktree shows no changes.
     .catch((): Changes => ({ changes: [] }))
     .then((list) => {
-      loading.delete(wt);
+      pending.delete(wt);
+      if (route !== pageRoute()) return;
       // Asked on a data connection that is gone since: ask the new one.
       if (at !== dataEpoch()) return load(wt);
       // Each turn that ends reads its worktrees again, mostly to the same list.
@@ -92,7 +101,7 @@ function load(wt: string) {
 function diffPreview(w: Worktree, file?: string): Preview | undefined {
   const base = { wt: w.path, branch: branchName(w), base: lists.get(w.path)?.base ?? undefined, file, wait: file === undefined ? true : undefined };
   if (!isRemote()) return { kind: "diff", ...base };
-  return hostCan("git_diff") ? { kind: "host-diff", ...base } : undefined;
+  return hostCan("git_diff") ? { kind: "host-diff", hostId: pageRoute()?.host ?? undefined, ...base } : undefined;
 }
 
 /** Reads the known worktrees in `only` again, or every known worktree without it. */

@@ -52,6 +52,7 @@ impl Known for KnownHost {
 
 /// The selection the file names. A selected Host that is not in the list
 /// is this Mac: the file never points at an unknown endpoint.
+#[cfg(test)]
 pub(crate) fn selected(hosts: &Hosts, local: impl FnOnce() -> HostSelection) -> HostSelection {
     match hosts.selected.as_deref().and_then(|d| hosts.find(d)) {
         Some(h) => remote(h).unwrap_or_else(|_| local()),

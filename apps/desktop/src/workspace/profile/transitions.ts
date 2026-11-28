@@ -39,7 +39,8 @@ export function createTransitions(state: State, hooks: { announce: (text: string
     const want = here ? undefined : state.doc?.profile.selected ? shown.find((p) => trimPath(p.path) === trimPath(state.doc!.profile.selected!)) : undefined;
     const target = want ?? (S.selectedProject && shown.some((p) => p.name === S.selectedProject) ? undefined : shown[0]);
     state.quietly(() => {
-      if (target) selectProject(target.name);
+      // A restored workspace can omit the pane just opened from another Host.
+      if (target && !(keep && S.focused)) selectProject(target.name);
       render();
     });
     announce(state.doc ? t("workspace.openedSay", { name: state.workspaceName() }) : t("workspace.allProjects"));

@@ -270,3 +270,22 @@ export function boardCommand(key: string, action: string | null, inSearch: boole
   if (key === "-") return "zoom-out";
   return null;
 }
+
+/** Frame origins and graph offsets in Host order. A lone graph keeps its original coordinates. */
+export function hostFrameLayout(graphs: Rect[], framed = graphs.length > 1) {
+  if (!framed && graphs.length === 1) return [{ box: { ...graphs[0], x: 0, y: 0 }, dx: 0, dy: 0 }];
+  const widths = [0, 0];
+  const heights: number[] = [];
+  for (const [i, g] of graphs.entries()) {
+    const row = Math.floor(i / 2);
+    widths[i % 2] = Math.max(widths[i % 2], 300, g.w + 64);
+    heights[row] = Math.max(heights[row] ?? 160, g.h + 96);
+  }
+  let y = 0;
+  return graphs.map((g, i) => {
+    const row = Math.floor(i / 2);
+    if (i && i % 2 === 0) y += heights[row - 1] + 40;
+    return { box: { x: i % 2 ? widths[0] + 40 : 0, y, w: widths[i % 2], h: heights[row] },
+      dx: 32 - g.x, dy: 64 - g.y };
+  });
+}

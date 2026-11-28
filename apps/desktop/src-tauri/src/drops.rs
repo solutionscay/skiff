@@ -17,9 +17,10 @@ use skiff_client::{
     host::data::{self, DropFile},
 };
 use skiff_host_api::HostWho;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter};
+use crate::routes::Routed;
 
-use crate::connection::{data_now, ensure_client, err, App};
+use crate::connection::{data_now, ensure_client, err, HostState};
 
 /// What the page types, and whether to say a file was too large.
 #[derive(serde::Serialize)]
@@ -62,7 +63,7 @@ type Report<'a> = Option<(&'a AppHandle, &'a str)>;
 /// A picture selected for a project on a remote Host. The Host owns the
 /// resulting cache path; the desktop never writes that Host's projects.toml.
 #[tauri::command]
-pub(crate) async fn project_image_upload(app: State<'_, App>, path: PathBuf, host: Option<String>) -> Result<String, String> {
+pub(crate) async fn project_image_upload(app: Routed, path: PathBuf, host: Option<String>) -> Result<String, String> {
     if !app.remote() {
         return Ok(path.to_string_lossy().into_owned());
     }
@@ -85,8 +86,8 @@ enum Item {
 /// Records the files for `who`, then builds the text. A failed record
 /// costs only the library line: the text is typed all the same. `remote`:
 /// the words are Host paths; only a local copy is recorded here.
-async fn finish(handle: &AppHandle, who: Who, t: cache::Typed, remote: bool) -> Result<Typed, String> {
-    let image = if remote { None } else { t.stored.first().map(|i| i.path.to_string_lossy().into_owned()) };
+async fn finish(handle: &AppHandle, app: &Routed, who: Who, t: cache::Typed) -> Result<Typed, String> {
+    let image = if app.remote() { None } else { t.stored.first().map(|i| i.path.to_string_lossy().into_owned()) };
     if !t.stored.is_empty() {
         let stored = t.stored;
         let done = blocking(move || {
@@ -102,10 +103,10 @@ async fn finish(handle: &AppHandle, who: Who, t: cache::Typed, remote: bool) -> 
         }
     }
     // A remote Host's cache recorded its files too.
-    let _ = handle.emit(IMAGES_CHANGED, ());
+    let _ = handle.emit(IMAGES_CHANGED, &app.route);
     let text = t.words.iter().map(|w| format!("{w} ")).collect();
     let limit = t.too_large.then(|| skiff_core::config::load().unwrap_or_default().skiff_agent.cache_max_mb());
-    Ok(Typed { text, too_large: limit, image: image.or_else(|| remote.then(|| t.words.first().cloned()).flatten()) })
+    Ok(Typed { text, too_large: limit, image: image.or_else(|| app.remote().then(|| t.words.first().cloned()).flatten()) })
 }
 
 /// The cache folder, made when a file needs it.
@@ -123,13 +124,13 @@ fn local_files(paths: &[PathBuf]) -> anyhow::Result<cache::Typed> {
 /// Files dropped on a session's pane, in drop order. `host` names a remote
 /// Host for its messages.
 #[tauri::command]
-pub(crate) async fn drop_files(handle: AppHandle, app: State<'_, App>, who: Who, paths: Vec<PathBuf>, host: Option<String>, upload: Option<String>) -> Result<Typed, String> {
+pub(crate) async fn drop_files(handle: AppHandle, app: Routed, who: Who, paths: Vec<PathBuf>, host: Option<String>, upload: Option<String>) -> Result<Typed, String> {
     let t = if app.remote() {
         to_host(&app, Picked::Paths(&paths), &who, host.as_deref(), upload.as_deref().map(|id| (&handle, id))).await?
     } else {
         blocking(move || local_files(&paths)).await?
     };
-    finish(&handle, who, t, app.remote()).await
+    finish(&handle, &app, who, t).await
 }
 
 /// What a remote drop or paste sends: local files, or a pasted picture.
@@ -142,7 +143,7 @@ enum Picked<'a> {
 /// records it in its library with `who`. An image is kept here too, with
 /// its own name for Files; a paste has none. `report`: the page's upload
 /// line, told after each frame the Host takes.
-async fn to_host(app: &App, picked: Picked<'_>, who: &Who, host: Option<&str>, report: Report<'_>) -> Result<cache::Typed, String> {
+async fn to_host(app: &HostState, picked: Picked<'_>, who: &Who, host: Option<&str>, report: Report<'_>) -> Result<cache::Typed, String> {
     let c = data_now(app).await?;
     let items: Vec<(Item, Option<String>)> = match picked {
         Picked::Paths(paths) => {
@@ -158,7 +159,8 @@ async fn to_host(app: &App, picked: Picked<'_>, who: &Who, host: Option<&str>, r
     };
     let size = items.iter().map(|(i, _)| match i { Item::File(f) => f.size, Item::Bytes(_, b) => b.len() as u64 }).sum();
     let mut at = Upload { id: report.map_or("", |r| r.1), done: 0, count: items.len(), sent: 0, size };
-    let tell = |at: &Upload| if let Some((handle, _)) = report { let _ = handle.emit(UPLOAD, at.clone()); };
+    let route = app.address.get();
+    let tell = |at: &Upload| if let Some((handle, _)) = report { let _ = handle.emit(UPLOAD, crate::routes::HostEvent { route: route.clone(), value: at }); };
     tell(&at);
     let mut out = cache::Typed::default();
     for (item, own) in items {
@@ -227,7 +229,7 @@ enum Clip {
 /// Skiff's Paste with no text on the clipboard: a file list does what a
 /// drop does; an image is saved as PNG in the cache. `None`: neither.
 #[tauri::command]
-pub(crate) async fn clipboard_image(handle: AppHandle, app: State<'_, App>, who: Who, host: Option<String>, upload: Option<String>) -> Result<Option<Typed>, String> {
+pub(crate) async fn clipboard_image(handle: AppHandle, app: Routed, who: Who, host: Option<String>, upload: Option<String>) -> Result<Option<Typed>, String> {
     let report = upload.as_deref().map(|id| (&handle, id));
     let t = match read_clip(&handle).await? {
         Clip::Nothing => return Ok(None),
@@ -246,7 +248,7 @@ pub(crate) async fn clipboard_image(handle: AppHandle, app: State<'_, App>, who:
             .await?
         }
     };
-    finish(&handle, who, t, app.remote()).await.map(Some)
+    finish(&handle, &app, who, t).await.map(Some)
 }
 
 /// GTK on the main thread, for the reason `clipboard.rs` gives.
@@ -295,7 +297,7 @@ async fn read_clip(handle: &AppHandle) -> Result<Clip, String> {
 /// The selected Host's Files library, newest first. A remote list is Host
 /// metadata only; this desktop never opens its paths.
 #[tauri::command]
-pub(crate) async fn images(app: State<'_, App>) -> Result<Vec<cache::Image>, String> {
+pub(crate) async fn images(app: Routed) -> Result<Vec<cache::Image>, String> {
     if app.remote() {
         return crate::connection::data_read(&app, |c| async move { skiff_client::host::data::image_list(&c).await })
             .await
@@ -318,7 +320,7 @@ pub(crate) async fn images(app: State<'_, App>) -> Result<Vec<cache::Image>, Str
 /// so its paths are typed as they are, and that Host records the Insert
 /// (`image_cache@2`). A failed record there costs only the library line.
 #[tauri::command]
-pub(crate) async fn image_insert(handle: AppHandle, app: State<'_, App>, paths: Vec<PathBuf>, who: Who, host: Option<String>) -> Result<Typed, String> {
+pub(crate) async fn image_insert(handle: AppHandle, app: Routed, paths: Vec<PathBuf>, who: Who, host: Option<String>) -> Result<Typed, String> {
     let _ = host;
     let text = paths.iter().map(|p| format!("{} ", skiff_core::shell::quote_word(&p.to_string_lossy()))).collect();
     let image = paths.first().map(|p| p.to_string_lossy().into_owned());
@@ -335,16 +337,16 @@ pub(crate) async fn image_insert(handle: AppHandle, app: State<'_, App>, paths: 
         })
         .await?;
     }
-    let _ = handle.emit(IMAGES_CHANGED, ());
+    let _ = handle.emit(IMAGES_CHANGED, &app.route);
     Ok(Typed { text, too_large: None, image })
 }
 
 #[tauri::command]
-pub(crate) async fn image_pin(handle: AppHandle, app: State<'_, App>, paths: Vec<PathBuf>, on: bool) -> Result<(), String> {
+pub(crate) async fn image_pin(handle: AppHandle, app: Routed, paths: Vec<PathBuf>, on: bool) -> Result<(), String> {
     if app.remote() {
         let paths = paths.into_iter().map(|path| path.to_string_lossy().into_owned()).collect();
         crate::connection::data_read(&app, |c| async move { data::image_pin(&c, paths, on).await }).await?;
-        let _ = handle.emit(IMAGES_CHANGED, ());
+        let _ = handle.emit(IMAGES_CHANGED, &app.route);
         return Ok(());
     }
     blocking(move || {
@@ -352,17 +354,17 @@ pub(crate) async fn image_pin(handle: AppHandle, app: State<'_, App>, paths: Vec
         paths.iter().try_for_each(|p| cache::pin(&dir, p, on))
     })
     .await?;
-    let _ = handle.emit(IMAGES_CHANGED, ());
+    let _ = handle.emit(IMAGES_CHANGED, &app.route);
     Ok(())
 }
 
 /// Deletes the files. The page asks first only for two or more.
 #[tauri::command]
-pub(crate) async fn image_delete(handle: AppHandle, app: State<'_, App>, paths: Vec<PathBuf>) -> Result<(), String> {
+pub(crate) async fn image_delete(handle: AppHandle, app: Routed, paths: Vec<PathBuf>) -> Result<(), String> {
     if app.remote() {
         let paths = paths.into_iter().map(|path| path.to_string_lossy().into_owned()).collect();
         crate::connection::data_read(&app, |c| async move { data::image_delete(&c, paths).await }).await?;
-        let _ = handle.emit(IMAGES_CHANGED, ());
+        let _ = handle.emit(IMAGES_CHANGED, &app.route);
         return Ok(());
     }
     let done = blocking(move || {
@@ -371,7 +373,7 @@ pub(crate) async fn image_delete(handle: AppHandle, app: State<'_, App>, paths: 
     })
     .await;
     // Some files can be gone before a later one fails.
-    let _ = handle.emit(IMAGES_CHANGED, ());
+    let _ = handle.emit(IMAGES_CHANGED, &app.route);
     done
 }
 
@@ -379,7 +381,7 @@ pub(crate) async fn image_delete(handle: AppHandle, app: State<'_, App>, paths: 
 /// remote Host scales it to `size` pixels on its long side first, so the
 /// link carries kilobytes, not the full image.
 #[tauri::command]
-pub(crate) async fn image_thumb(app: State<'_, App>, path: PathBuf, size: u32) -> Result<tauri::ipc::Response, String> {
+pub(crate) async fn image_thumb(app: Routed, path: PathBuf, size: u32) -> Result<tauri::ipc::Response, String> {
     if app.remote() {
         let image = crate::connection::data_read(&app, |c| async move { data::image_thumb(&c, &path.to_string_lossy(), size).await }).await?;
         return Ok(tauri::ipc::Response::new(image.bytes));
@@ -399,7 +401,7 @@ pub(crate) async fn image_thumb(app: State<'_, App>, path: PathBuf, size: u32) -
 /// opens. On a remote Host the file comes to a local copy first, and opens
 /// in an app: the peek on that Host cannot see the copy.
 #[tauri::command]
-pub(crate) async fn open_image(app: State<'_, App>, path: PathBuf) -> Result<(), String> {
+pub(crate) async fn open_image(app: Routed, path: PathBuf) -> Result<(), String> {
     let path = if app.remote() {
         let c = data_now(&app).await?;
         // Refused before anything is fetched, as Open with refuses.
@@ -482,7 +484,7 @@ mod tests {
 /// The image cache's read flag to type after `agent`'s resume line, with a
 /// space in front. Empty for an agent that gets none.
 #[tauri::command]
-pub(crate) async fn agent_cache_flags(app: State<'_, App>, agent: String) -> Result<String, String> {
+pub(crate) async fn agent_cache_flags(app: Routed, agent: String) -> Result<String, String> {
     if app.remote() {
         return crate::connection::data_read(&app, |c| async move {
             let (agents, _) = data::agent_config(&c).await?;

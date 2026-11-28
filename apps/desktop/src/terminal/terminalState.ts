@@ -1,8 +1,10 @@
+import { hostStore } from "../platform/invoke";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import type { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 export interface Pane {
+  hostId?: string;
   el: HTMLDivElement;
   term: Terminal;
   fit: FitAddon;
@@ -25,7 +27,10 @@ export interface Pane {
   sub: Promise<void>;
 }
 
-export const panes = new Map<string, Pane>();
+export let panes: Map<string, Pane>;
 
 /** Opens in flight, so focus calls share one terminal and subscription. */
-export const opening = new Map<string, Promise<Pane>>();
+export let opening: Map<string, Promise<Pane>>;
+
+hostStore(() => ({ panes: new Map<string, Pane>(), opening: new Map<string, Promise<Pane>>() }),
+  (store) => { ({ panes, opening } = store); });

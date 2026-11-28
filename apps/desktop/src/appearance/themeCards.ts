@@ -1,6 +1,6 @@
 import { isLight, mix, readable } from "./colors";
 import { COLOR_FAMILIES, type ColorFamily, themeProfile } from "./themeProfile";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { open } from "@tauri-apps/plugin-dialog";
 import { dialogFrame, dialogHeader } from "../ui/dialogParts";
 import { h } from "../ui/dom";

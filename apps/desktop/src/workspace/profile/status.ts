@@ -1,5 +1,5 @@
 /** The workspace list, the status bar switcher and the start. */
-import { invoke } from "@tauri-apps/api/core";
+import { accepts, invoke, pageRoute } from "../../platform/invoke";
 import { listen } from "@tauri-apps/api/event";
 import { render } from "../../app/renderRequest";
 import { shownHost } from "../../app/hosts";
@@ -147,6 +147,15 @@ export function createStatus(state: ReturnType<typeof createWorkspaceState>, tra
     void refreshOwn();
 
     const launch = await invoke<string | null>("workspace_launch_file").catch(() => null);
+    await restoreWorkspace(launch);
+    // A file the OS sent while the first one opened.
+    const late = await invoke<string | null>("workspace_launch_file").catch(() => null);
+    if (late) void openWorkspace(late);
+  }
+
+  async function restoreWorkspace(launch: string | null = null) {
+    if (state.ready && !launch) return;
+    const route = pageRoute();
     let last: string | null = null;
     try {
       last = lastPath();
@@ -158,6 +167,7 @@ export function createStatus(state: ReturnType<typeof createWorkspaceState>, tra
       try {
         commit(await read(path), false, true);
       } catch (e) {
+        if (route && !accepts(route)) return;
         forgetLast();
         const known = recents().includes(path);
         showError(t("workspace.cannotOpenStart", { error: String(e) }), known ? { label: t("workspace.removeRecent"), run: async () => forget(path, render) } : undefined);
@@ -165,10 +175,7 @@ export function createStatus(state: ReturnType<typeof createWorkspaceState>, tra
     }
     state.ready = true;
     render();
-    // A file the OS sent while the first one opened.
-    const late = await invoke<string | null>("workspace_launch_file").catch(() => null);
-    if (late) void openWorkspace(late);
   }
 
-  return { recentWorkspaceEntries, workspaceNotice, renderWorkspaceStatus, startWorkspaces, workspaceMenu, refreshOwn };
+  return { recentWorkspaceEntries, workspaceNotice, renderWorkspaceStatus, startWorkspaces, restoreWorkspace, workspaceMenu, refreshOwn };
 }

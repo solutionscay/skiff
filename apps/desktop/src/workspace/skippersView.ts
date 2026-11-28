@@ -1,5 +1,7 @@
+import { liveTrees } from "../app/attention";
+import { hostFields } from "../platform/invoke";
 /**
- * The Skippers view: the side panel's second view, beside the tree. One flat
+ * The Skippers view: the side panel's second view, beside the tree. Each Host has its own
  * list: the Skiff agent (Admiral) first, then each fleet Skipper and project
  * Skipper in tree order. A row is the Skipper's avatar, its project or fleet,
  * the time of its last output, and the latest line of its work. A click or
@@ -22,7 +24,7 @@ import { isMac } from "../app/keys";
 import { rowMenu, skiffAgentMenu } from "./menus";
 import { revealSession } from "./view";
 import { clearSelection, keepRow } from "./selection";
-import { openSkiffAgent, projectWatch, SKIFF_AGENT_KEY, skiffAgentChoice, skiffWatch, watcherFailed, type WatchState } from "../app/skiffAgent";
+import { openSkiffAgent, projectWatch, SKIFF_AGENT_KEY, skiffAgentChoice, skiffAgentFolder, skiffWatch, watcherFailed, type WatchState } from "../app/skiffAgent";
 import { dragSkipper } from "./skipperDrag";
 import { numberedSkippers as numbered, skipperEntries, type Entry } from "./skipperOrder";
 import { accent } from "../app/stateQueries";
@@ -63,7 +65,7 @@ export function setSidebarView(v: SidebarView) {
 }
 
 /** The Skippers that wait on the person: the count on the toggle. */
-const waitingSkippers = () => skipperEntries().filter((e) => e.s?.state === "waiting").length;
+const waitingSkippers = () => liveTrees(() => skipperEntries(true).filter(e => e.s?.state === "waiting").length).reduce((sum,n) => sum + n, 0);
 
 /** The ledger owner of a Skipper: "grand" for the Skiff agent, else its project or fleet scope. */
 const ownerOf = (e: Entry) => (e.kind === "admiral" ? "grand" : e.scope);
@@ -137,6 +139,7 @@ function openEntry(e: Entry) {
   const s = e.s;
   clearSelection();
   if (e.kind === "admiral") {
+    if (s && !skiffAgentFolder()) return revealSession(s.id);
     if (!s) keepRow(SKIFF_AGENT_KEY);
     return openSkiffAgent();
   }
@@ -146,7 +149,7 @@ function openEntry(e: Entry) {
 
 /** Ctrl+Shift+1..9 in the Skippers list: the Skipper with that number. */
 export function pickSkipperRow(n: number) {
-  const e = numbered()[n - 1];
+  const e = numbered(skipperEntries(true))[n - 1];
   if (!e) return;
   openEntry(e);
   lightRow(e.s!.id);
@@ -156,7 +159,7 @@ export function pickSkipperRow(n: number) {
 function lightRow(id: string) {
   requestAnimationFrame(() => {
     keepRow(id);
-    document.querySelector(`.sk-row[data-session="${id}"]`)?.scrollIntoView({ block: "nearest" });
+    document.querySelector(`.focused-host .sk-row[data-session="${id}"]`)?.scrollIntoView({ block: "nearest" });
   });
 }
 
@@ -219,11 +222,14 @@ window.addEventListener("blur", () => document.body.classList.remove("mods-held"
 
 let kept = new Map<string, [sig: string, row: HTMLElement]>();
 
+hostFields(() => ({ kept: new Map<string,[string,HTMLElement]>() }), () => ({ kept }),
+  (f) => { ({ kept } = f); });
+
 /** Draws the Skippers list into the side panel. Unchanged rows stay. */
 export function renderSkippers(side: HTMLElement) {
   const next = new Map<string, [string, HTMLElement]>();
   const rows: HTMLElement[] = [];
-  const all = skipperEntries();
+  const all = skipperEntries(true);
   const nums = numbered(all);
   for (const e of all) {
     const key = e.s?.id ?? SKIFF_AGENT_KEY;

@@ -1,3 +1,4 @@
+import { hostStore, pageRoute } from "../platform/invoke";
 /** Shared app state. Query functions live in stateQueries.ts. */
 
 import type { AgentInfo, Group, Layout, Project, SessionInfo, TerminalTheme } from "../platform/types";
@@ -7,26 +8,27 @@ import { t } from "../i18n";
 /** Accent for sessions outside every project, and projects without `color`. */
 export const DEFAULT_ACCENT = "var(--project-default)";
 
-export const sessions = new Map<string, SessionInfo>();
+export let sessions: Map<string, SessionInfo>;
 
 /** Selected worktree path per project name. */
-export const selectedWorktree = new Map<string, string>();
-export const collapsed = new Set<string>();
+export let selectedWorktree: Map<string, string>;
+export let collapsed: Set<string>;
 
-export const removeErrors = new Map<string, string>();
+export let removeErrors: Map<string, string>;
 
 /** Worktrees with a remove in flight. */
-export const removing = new Set<string>();
+export let removing: Set<string>;
 
 /**
  * When each session came into its state, as this app saw the change: a
  * daemon update with a new state notes the time, board open or not. A session
  * first seen in a state has no time: the daemon does not say when it began.
  */
-export const stateSince = new Map<string, number>();
+export let stateSince: Map<string, number>;
 
 /** Merge a daemon copy into the known session, so menus and closures holding it see the change. */
 export function upsert(info: SessionInfo) {
+  info.hostId = pageRoute()?.host ?? undefined;
   const known = sessions.get(info.id);
   if (known && known.state !== info.state) stateSince.set(info.id, Date.now());
   // skiffd leaves `watch` out when no watcher runs: that clears it.
@@ -43,10 +45,10 @@ export const MAX_PANES = 4;
 export const fullHint = () => t("view.fullHint", { max: MAX_PANES });
 
 /** Sessions the daemon removed. A list taken before the removal must not bring them back. */
-export const gone = new Set<string>();
+export let gone: Set<string>;
 
 /** One set per list_sessions in flight: sessions created meanwhile, which that list cannot hold. */
-export const born = new Set<Set<string>>();
+export let born: Set<Set<string>>;
 
 export const FONT_DEFAULT = 13;
 
@@ -59,7 +61,16 @@ function savedFontSize(): number {
 }
 
 /** State that several modules reassign. */
-export const S = {
+const appearance = {
+  themes: [] as TerminalTheme[],
+  /** `[appearance] theme`: a theme id, or null for Harbor. It colors the app and every terminal without its own. */
+  appTheme: null as string | null,
+  /** Settings shows: the app wears the app theme, not the selected project's. */
+  settingsShown: false,
+  fontSize: savedFontSize(),
+};
+
+const makeState = () => ({
   /** The pane that gets the keys. Always one of the shown sessions, or null. */
   focused: null as string | null,
   /** The group whose row is the sidebar selection. Its terminals are shown but none is picked. */
@@ -121,10 +132,26 @@ export const S = {
 
   /** Numbers the groups not saved yet. */
   tmpSeq: 0,
-  themes: [] as TerminalTheme[],
-  /** `[appearance] theme`: a theme id, or null for Harbor. It colors the app and every terminal without its own. */
-  appTheme: null as string | null,
-  /** Settings shows: the app wears the app theme, not the selected project's. */
-  settingsShown: false,
-  fontSize: savedFontSize(),
-};
+  get themes() { return appearance.themes; },
+  set themes(value: typeof appearance.themes) { appearance.themes = value; },
+  get appTheme() { return appearance.appTheme; },
+  set appTheme(value: typeof appearance.appTheme) { appearance.appTheme = value; },
+  get settingsShown() { return appearance.settingsShown; },
+  set settingsShown(value: typeof appearance.settingsShown) { appearance.settingsShown = value; },
+  get fontSize() { return appearance.fontSize; },
+  set fontSize(value: typeof appearance.fontSize) { appearance.fontSize = value; },
+
+});
+
+export let S: ReturnType<typeof makeState>;
+hostStore(() => ({
+  selectedWorktree: new Map<string, string>(),
+  collapsed: new Set<string>(),
+  removeErrors: new Map<string, string>(),
+  removing: new Set<string>(),
+  state: makeState(), sessions: new Map<string, SessionInfo>(), stateSince: new Map<string, number>(),
+  gone: new Set<string>(), born: new Set<Set<string>>(),
+}), (store) => {
+  S = store.state;
+  ({ sessions, stateSince, gone, born, selectedWorktree, collapsed, removeErrors, removing } = store);
+});

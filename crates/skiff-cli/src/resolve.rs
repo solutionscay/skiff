@@ -36,6 +36,33 @@ pub fn display_name(s: &SessionInfo) -> Cow<'_, str> {
 /// One session for `arg`. No match or more than one is an error that names
 /// the candidates.
 pub fn session<'a>(all: &'a [SessionInfo], arg: &str) -> Result<&'a SessionInfo> {
+    resolve_session(all, arg, |scope| {
+        let cfg = skiff_core::config::load().unwrap_or_default();
+        if cfg.projects.iter().any(|p| p.name == scope) {
+            Some(scope.to_string())
+        } else if cfg.projects.iter().any(|p| p.fleet.as_deref() == Some(scope)) {
+            Some(skiff_client::skipper::fleet_scope(scope))
+        } else {
+            None
+        }
+        .and_then(|mark| all.iter().find(|s| s.skipper.as_deref() == Some(&mark) && !s.coordinator))
+    })
+}
+
+/// Remote names come from the selected Host's live inventory.
+pub fn remote_session<'a>(all: &'a [SessionInfo], arg: &str) -> Result<&'a SessionInfo> {
+    resolve_session(all, arg, |scope| {
+        let marked = |mark: &str| all.iter().find(|s| {
+            s.exit_code.is_none() && !s.coordinator && s.skipper.as_deref() == Some(mark)
+        });
+        marked(scope).or_else(|| marked(&skiff_client::skipper::fleet_scope(scope)))
+    })
+}
+
+fn resolve_session<'a>(
+    all: &'a [SessionInfo], arg: &str,
+    alias: impl FnOnce(&str) -> Option<&'a SessionInfo>,
+) -> Result<&'a SessionInfo> {
     if arg.is_empty() {
         bail!("empty session argument");
     }
@@ -46,22 +73,8 @@ pub fn session<'a>(all: &'a [SessionInfo], arg: &str) -> Result<&'a SessionInfo>
     if let Some(s) = all.iter().find(|s| s.id == arg) {
         return Ok(s);
     }
-    // The default spelling is a stable CLI alias. A main Skipper is never
-    // considered: only a session marked for that project or fleet can win.
-    if let Some(scope) = arg.strip_suffix(" Skipper") {
-        let cfg = skiff_core::config::load().unwrap_or_default();
-        let mark = if cfg.projects.iter().any(|p| p.name == scope) {
-            Some(scope.to_string())
-        } else if cfg.projects.iter().any(|p| p.fleet.as_deref() == Some(scope)) {
-            Some(skiff_client::skipper::fleet_scope(scope))
-        } else {
-            None
-        };
-        if let Some(mark) = mark {
-            if let Some(s) = all.iter().find(|s| s.skipper.as_deref() == Some(mark.as_str()) && !s.coordinator) {
-                return Ok(s);
-            }
-        }
+    if let Some(s) = arg.strip_suffix(" Skipper").and_then(alias) {
+        return Ok(s);
     }
     let found: Vec<&SessionInfo> = all
         .iter()

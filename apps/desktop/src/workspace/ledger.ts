@@ -1,3 +1,4 @@
+import { accepts, type HostRoute } from "../platform/invoke";
 import { animate } from "./ledgerMotion";
 import { still } from "../ui/motion";
 /**
@@ -116,7 +117,7 @@ export type { Entry };
 export function startLedger() {
   const panel = document.getElementById("ledger");
   panel?.addEventListener("keydown", rowKey);
-  void listen("skiff:ledger-changed", () => void loadLedger());
+  void listen<HostRoute>("skiff:ledger-changed", ({ payload }) => { if (accepts(payload)) void loadLedger(); });
   void loadLedger();
 }
 
@@ -201,7 +202,7 @@ let ours = 0;
 const result = (r: Entry) =>
   r.result_exists
     ? () => {
-        openLedgerResult(r.uid, titleOf(r));
+        openLedgerResult(r.uid, titleOf(r), r.hostId);
         ours = previewToken();
       }
     : null;

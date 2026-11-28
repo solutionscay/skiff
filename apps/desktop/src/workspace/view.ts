@@ -1,10 +1,11 @@
+import { hostStore } from "../platform/invoke";
 /** What the terminal area shows and which pane has the keys. */
 import { noteSelected } from "./profile";
 import { coordinatorOf, isSkiffAgent } from "../app/skiffAgent";
 import { beginDrag, type DropTarget, type RowTarget } from "./drag";
 import { build, type Direction, leaf, neighbor, removePane, replacePane, sessionsOf, shape, splitPane, swapPanes } from "./layout";
 
-import { branchName, bySessionPriority, isUnread, locate, scopeFleet, taskTitle } from "./model";
+import { branchName, bySessionPriority, locate, scopeFleet, taskTitle } from "./model";
 import type { Group, Layout, Project, SplitDir, Worktree } from "../platform/types";
 import { focusFirstSlot } from "./canvas";
 import { filledOf, isSlot, slot, slotsOf } from "./layoutSlots";
@@ -130,7 +131,7 @@ export function showGroup(id: string, pick = false, focus?: string) {
     return;
   }
   if (pick) {
-    requestAnimationFrame(() => document.querySelector<HTMLElement>(`#sidebar-scroll .group-pick[data-group="${id}"]`)?.focus());
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`#sidebar-scroll .focused-host .group-pick[data-group="${id}"]`)?.focus());
   }
 }
 
@@ -427,7 +428,7 @@ function pairUp(with_: string, ids: string[]) {
   showGroup(g.id, false, ids[0]);
 }
 
-const rowsIn = (sel: string) => [...document.querySelectorAll<HTMLElement>(`#sidebar-scroll ${sel}`)];
+const rowsIn = (sel: string) => [...document.querySelectorAll<HTMLElement>(`#sidebar-scroll .focused-host ${sel}`)];
 
 /** The worktree a worktree row or a bare project's row stands for. */
 const rowWorktree = (el: HTMLElement) => el.querySelector<HTMLElement>(".wt-pick[data-wt], .wt-plus[data-wt]")?.dataset.wt ?? null;
@@ -599,7 +600,8 @@ export function dragSessions(e: MouseEvent, ids: string[]) {
  * in its group if it has one. No session: nothing has the keys.
  */
 /** The session last focused in each worktree, by path. A return to the worktree opens it again. */
-const lastFocus = new Map<string, string>();
+let lastFocus: Map<string,string>;
+hostStore(() => new Map<string,string>(), store => { lastFocus = store; });
 
 /** Notes where the keys are before a project or worktree switch moves them. */
 function noteFocus() {
@@ -646,18 +648,6 @@ export function selectProject(name: string) {
   const w = p.worktrees.find((x) => x.path === path) ?? p.worktrees.find((x) => x.is_main) ?? p.worktrees[0];
   if (w) selectWorktree(p, w);
   else unfocus();
-}
-
-/** The next session that waits or has unread output. */
-export function nextWaiting(): string | undefined {
-  // Bells first, then unread results: the sort ranks waiting ahead of unread.
-  const waiting = [...sessions.values()].filter((s) => s.state === "waiting" || isUnread(s)).sort(bySessionPriority);
-  return (waiting.find((s) => s.id !== S.focused) ?? waiting[0])?.id;
-}
-
-export function nextUnread(): string | undefined {
-  const unread = [...sessions.values()].filter(isUnread).sort(bySessionPriority);
-  return (unread.find((s) => s.id !== S.focused) ?? unread[0])?.id;
 }
 
 export function goBack() {

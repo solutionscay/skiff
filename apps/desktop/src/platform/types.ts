@@ -4,6 +4,8 @@ export type SessionState = "working" | "waiting" | "idle" | "done";
 type Role = "agent" | "task" | "server" | "shell";
 
 export interface SessionInfo {
+  /** Owning Host on the page, assigned when its data arrives. */
+  hostId?: string;
   id: string;
   label: string;
   role: Role;
@@ -371,6 +373,8 @@ export type Layout =
 
 /** A named split kept by the daemon. `id` is empty until the daemon assigns one. */
 export interface Group {
+  /** Owning Host on the page, assigned when its data arrives. */
+  hostId?: string;
   id: string;
   name: string;
   layout: Layout;

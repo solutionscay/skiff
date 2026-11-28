@@ -7,9 +7,10 @@
 use std::{sync::atomic::Ordering, time::Duration};
 
 use skiff_host_api::{HostFile, HostLedgerRow};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter};
+use crate::routes::Routed;
 
-use crate::connection::{data_now, data_read, App};
+use crate::connection::{data_now, data_read, HostState};
 
 /// The page reads the ledger again on this event.
 const LEDGER_CHANGED: &str = "skiff:ledger-changed";
@@ -22,14 +23,14 @@ const REMOTE_TICK: Duration = Duration::from_secs(3);
 /// Every row the panel shows, oldest first. Plans carry the state their
 /// tasks give them. A Host with no `ledger.db` gives none.
 #[tauri::command]
-pub async fn ledger_rows(app: State<'_, App>) -> Result<Vec<HostLedgerRow>, String> {
+pub async fn ledger_rows(app: Routed) -> Result<Vec<HostLedgerRow>, String> {
     data_read(&app, |c| async move { skiff_client::host::data::ledger_rows(&c).await }).await
 }
 
 /// A row's result, read by the Host from the path its row records, for the
 /// page's own viewer. No path is named here, and nothing is opened on this Mac.
 #[tauri::command]
-pub async fn ledger_result(app: State<'_, App>, uid: String) -> Result<HostFile, String> {
+pub async fn ledger_result(app: Routed, uid: String) -> Result<HostFile, String> {
     data_read(&app, |c| async move { skiff_client::host::data::ledger_result(&c, &uid).await }).await
 }
 
@@ -40,14 +41,15 @@ type Seen = Option<(u64, String)>;
 /// the selected Host's ledger stamp changes, or when a new data connection
 /// (a reconnect, a Host switch, a restarted `skiff-host`) may bring other
 /// rows. It asks only over a live session plane and never starts skiffd.
-pub fn watch(app: AppHandle) {
+pub fn watch(app: AppHandle, state: std::sync::Arc<HostState>) {
     tauri::async_runtime::spawn(async move {
         let mut last = None;
         loop {
-            let state = app.state::<App>();
+            if state.retired.load(std::sync::atomic::Ordering::Acquire) { return; }
+            let route = state.address.get();
             let tick = if state.remote() { REMOTE_TICK } else { TICK };
             if look(&state, &mut last).await {
-                let _ = app.emit(LEDGER_CHANGED, ());
+                let _ = app.emit(LEDGER_CHANGED, &route);
             }
             tokio::time::sleep(tick).await;
         }
@@ -55,11 +57,11 @@ pub fn watch(app: AppHandle) {
 }
 
 /// One tick. True when the ledger may have changed since the last tick.
-async fn look(app: &App, last: &mut Seen) -> bool {
-    if data_now(app).await.is_ok_and(|c| c.hello().require(&skiff_host_api::Capability::data_events()).is_ok()) { return false; }
+async fn look(app: &HostState, last: &mut Seen) -> bool {
     if app.live_session().await.is_none() {
         return false;
     }
+    if data_now(app).await.is_ok_and(|c| c.hello().require(&skiff_host_api::Capability::data_events()).is_ok()) { return false; }
     let stamp = data_read(app, |c| async move { skiff_client::host::data::ledger_stamp(&c).await }).await;
     let Ok(stamp) = stamp else { return false };
     seen(last, (app.data_gen.load(Ordering::SeqCst), stamp))

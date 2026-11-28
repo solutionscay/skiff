@@ -8,7 +8,7 @@
  * title, bar and the failing line turn red, every line stays, one plain
  * line gives the cause, and Close, Copy output and Try again follow.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { listen } from "@tauri-apps/api/event";
 import { dialogFrame } from "../ui/dialogParts";
 import { button, h } from "../ui/dom";

@@ -172,7 +172,9 @@ enum End {
 /// through the same ssh forward the app uses.
 pub async fn attach_remote(host: &str, arg: &str) -> Result<()> {
     let hosts = skiff_client::host::known::load(&skiff_client::host::known::path())?;
-    let Some(h) = hosts.named(host) else { bail!("no Host named {host} in Settings › Hosts") };
+    let mut matches = hosts.hosts.iter().filter(|h| h.name == host || h.id == host || h.destination == host);
+    let Some(h) = matches.next() else { bail!("no Host named {host} in Settings › Hosts") };
+    if matches.next().is_some() { bail!("ambiguous Host {host} in Settings › Hosts"); }
     // The identity the person accepted in the app. The CLI accepts none.
     if h.host_id.is_none() {
         bail!("open {} in the app first: Skiff has not accepted its identity yet", h.name);
@@ -187,7 +189,7 @@ pub async fn attach_remote(host: &str, arg: &str) -> Result<()> {
 
 pub async fn attach(c: &Client, arg: &str, mut drops: Option<Drops>) -> Result<()> {
     let all = sessions::sorted(c).await?;
-    let s = resolve::session(&all, arg)?;
+    let s = if drops.is_some() { resolve::remote_session(&all, arg)? } else { resolve::session(&all, arg)? };
     let id = s.id.clone();
     let name = resolve::display_name(s).to_string();
     if s.exit_code.is_some() {

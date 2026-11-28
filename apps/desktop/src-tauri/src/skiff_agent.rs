@@ -13,10 +13,11 @@ use skiff_client::{
 };
 use skiff_core::{config, session::SessionInfo};
 use skiff_host_api::{HostSkipper, SkipperEdit, SkipperFolderMoved, TakenSkipper};
-use tauri::{AppHandle, State};
+use tauri::AppHandle;
+use crate::routes::Routed;
 
 use crate::{
-    connection::{blocking, bundled, data_read, data_write, ensure_client, err, App},
+    connection::{blocking, bundled, data_read, data_write, ensure_client, err, HostState},
     projects_watch::OwnEdit,
 };
 use skiff_client::host::local::ProcessControl;
@@ -34,7 +35,7 @@ pub(crate) fn make_folder() {
 /// Never prompts. Copies the built-in `skiff-cli` skill out when it changed:
 /// this Mac's Skipper setup, so only while this Mac is the shown Host, and
 /// once per app run. True when it ran now.
-pub(crate) fn sync(app: &App) -> bool {
+pub(crate) fn sync(app: &HostState) -> bool {
     use std::sync::atomic::{AtomicBool, Ordering};
     static DONE: AtomicBool = AtomicBool::new(false);
     if app.remote() || DONE.swap(true, Ordering::SeqCst) {
@@ -55,7 +56,7 @@ fn cli() -> PathBuf {
 /// daemon. The page calls it on every start and every restore. True when it
 /// started one. A remote Host starts its own, which its `skiff-host` keeps.
 #[tauri::command]
-pub async fn start_skiff_watch(app: State<'_, App>, session: String) -> Result<bool, String> {
+pub async fn start_skiff_watch(app: Routed, session: String) -> Result<bool, String> {
     let Some(local) = app.selection().process_control() else {
         return data_write(&app, |c| async move { data::skipper_watch(&c, &session).await }).await;
     };
@@ -67,11 +68,11 @@ pub async fn start_skiff_watch(app: State<'_, App>, session: String) -> Result<b
 /// It signals only a live `skiff watch` for this socket. A remote Host keeps
 /// its own watcher, so there it only asks for one, as Start watcher does.
 #[tauri::command]
-pub async fn restart_skiff_watch(app: State<'_, App>, session: String) -> Result<bool, String> {
+pub async fn restart_skiff_watch(app: Routed, session: String) -> Result<bool, String> {
     if app.selection().process_control().is_none() {
         return data_write(&app, |c| async move { data::skipper_watch(&c, &session).await }).await;
     }
-    let _one = app.watch_gate.lock().await;
+    let _one = app.process.watch_gate.lock().await;
     let socket = app.selection().socket().to_path_buf();
     let cli = cli();
     blocking(move || skipper::restart_watch(&socket, &cli, &session, false)).await
@@ -84,15 +85,15 @@ pub async fn restart_skiff_watch(app: State<'_, App>, session: String) -> Result
 /// finished, and nothing asks the user. One check runs at a time. It starts
 /// and signals processes, so only a local endpoint may: `_local` proves it.
 /// The watcher sends no desktop notification: the app sends them.
-pub(crate) async fn ensure_watch(app: &App, _local: &ProcessControl, cli: PathBuf, session: String) -> Result<bool, String> {
-    let _one = app.watch_gate.lock().await;
-    let mut known = app.watch_pids.lock().unwrap().clone();
+pub(crate) async fn ensure_watch(app: &HostState, _local: &ProcessControl, cli: PathBuf, session: String) -> Result<bool, String> {
+    let _one = app.process.watch_gate.lock().await;
+    let mut known = app.process.watch_pids.lock().unwrap().clone();
     if let Ok(list) = crate::connection::inventory_now(app).await {
         known.extend(list.iter().filter(|s| s.id == session).filter_map(|s| s.watch.as_ref()).flat_map(|w| w.pids.iter().copied()));
     }
     // Only the bundled CLI replaces a watcher: a bare `skiff` from PATH is
     // not known to be this app's build.
-    let tried = cli.is_absolute().then(|| app.watch_tried.clone());
+    let tried = cli.is_absolute().then(|| app.process.watch_tried.clone());
     let socket = app.selection().socket().to_path_buf();
     let out = blocking(move || skipper::ensure_watch(&socket, &cli, skipper::CLI_VERSION, &session, false, &known, tried.as_deref())).await?;
     match out {
@@ -112,7 +113,7 @@ pub(crate) async fn ensure_watch(app: &App, _local: &ProcessControl, cli: PathBu
 /// Skipper's watcher log from the selected Host. The Host chooses and reads
 /// it; no Host path reaches this computer.
 #[tauri::command]
-pub async fn skipper_watch_log(app: State<'_, App>) -> Result<skiff_host_api::HostFile, String> {
+pub async fn skipper_watch_log(app: Routed) -> Result<skiff_host_api::HostFile, String> {
     data_read(&app, |c| async move { data::skipper_watch_log(&c).await }).await
 }
 
@@ -133,7 +134,7 @@ pub enum ProjectStart {
 /// refuses first when its skiffd is too old to mark one; a remote Host does
 /// it there, through its `skiff-host` (`skipper_run@1`).
 #[tauri::command]
-pub async fn start_project_skipper(app: State<'_, App>, project: String) -> Result<ProjectStart, String> {
+pub async fn start_project_skipper(app: Routed, project: String) -> Result<ProjectStart, String> {
     if app.selection().process_control().is_none() {
         let s = data_write(&app, |c| async move { data::skipper_project(&c, &project).await }).await?;
         return Ok(ProjectStart::Started { id: s.id });
@@ -164,7 +165,7 @@ pub struct Opened {
 /// says. `null` when there is nothing to open. A remote Host does it all
 /// there, through its `skiff-host`.
 #[tauri::command]
-pub async fn open_skiff_agent(app: State<'_, App>, restore: Option<u64>) -> Result<Option<Opened>, String> {
+pub async fn open_skiff_agent(app: Routed, restore: Option<u64>) -> Result<Option<Opened>, String> {
     if app.remote() {
         let opened = data_write(&app, |c| async move { data::skipper_open(&c, restore).await }).await?;
         return Ok(opened.map(|o| Opened {
@@ -195,7 +196,7 @@ pub async fn open_skiff_agent(app: State<'_, App>, restore: Option<u64>) -> Resu
 /// with the same function skiff-host uses, so a change always reads back:
 /// an older local skiff-host does not know every setting.
 #[tauri::command]
-pub async fn get_skiff_agent(app: State<'_, App>) -> Result<HostSkipper, String> {
+pub async fn get_skiff_agent(app: Routed) -> Result<HostSkipper, String> {
     if app.remote() {
         return crate::connection::data_read(&app, |c| async move { data::skipper_settings(&c).await }).await;
     }
@@ -212,8 +213,8 @@ fn local() -> anyhow::Result<HostSkipper> {
 /// just written, so an old or stopped skiff-host cannot fail the change.
 /// The page reloads its projects on the event, so the row follows at once.
 #[tauri::command]
-pub async fn set_skiff_agent(app: State<'_, App>, handle: AppHandle, edit: SkipperEdit) -> Result<HostSkipper, String> {
-    let _own = OwnEdit::begin(&handle);
+pub async fn set_skiff_agent(app: Routed, handle: AppHandle, edit: SkipperEdit) -> Result<HostSkipper, String> {
+    let _own = OwnEdit::begin(&handle, &app);
     if app.remote() {
         let settings = data_write(&app, |c| async move { data::skipper_edit(&c, edit).await }).await?;
         return Ok(settings);
@@ -230,21 +231,21 @@ pub async fn set_skiff_agent(app: State<'_, App>, handle: AppHandle, edit: Skipp
 /// line written when it is missing, on the selected Host. It opens as a
 /// Skipper's file does.
 #[tauri::command]
-pub async fn edit_task_type_file(app: State<'_, App>, handle: AppHandle, name: String) -> Result<crate::commands::Opened, String> {
+pub async fn edit_task_type_file(app: Routed, handle: AppHandle, name: String) -> Result<crate::commands::Opened, String> {
     edit_skipper_file(app, handle, skiff_host_api::HostFileScope::Type(name)).await
 }
 
 /// Settings › Schedules › Prompt: the schedule's `schedules/<uid>.md`, as
 /// Task types › Edit opens a type's file.
 #[tauri::command]
-pub async fn edit_schedule_prompt(app: State<'_, App>, handle: AppHandle, uid: String) -> Result<crate::commands::Opened, String> {
+pub async fn edit_schedule_prompt(app: Routed, handle: AppHandle, uid: String) -> Result<crate::commands::Opened, String> {
     edit_skipper_file(app, handle, skiff_host_api::HostFileScope::Schedule(uid)).await
 }
 
 /// Settings › Skippers › Instructions: each Skipper's file and its
 /// status, on the selected Host (`skipper@1` carries them for a remote one).
 #[tauri::command]
-pub async fn skipper_files(app: State<'_, App>) -> Result<Vec<skiff_host_api::HostInstruction>, String> {
+pub async fn skipper_files(app: Routed) -> Result<Vec<skiff_host_api::HostInstruction>, String> {
     if app.remote() {
         let s = crate::connection::data_read(&app, |c| async move { data::skipper_settings(&c).await }).await?;
         return Ok(s.instructions);
@@ -258,7 +259,7 @@ pub async fn skipper_files(app: State<'_, App>) -> Result<Vec<skiff_host_api::Ho
 /// (`skipper_file@1`). The page shows a peek command; an app or the
 /// default app starts here.
 #[tauri::command]
-pub async fn edit_skipper_file(app: State<'_, App>, handle: AppHandle, scope: skiff_host_api::HostFileScope) -> Result<crate::commands::Opened, String> {
+pub async fn edit_skipper_file(app: Routed, handle: AppHandle, scope: skiff_host_api::HostFileScope) -> Result<crate::commands::Opened, String> {
     let remote = app.remote();
     let path = if remote { crate::host_files::fetch(&app, handle, scope).await? } else { blocking(move || skipper::edit_host_file(&config::load()?, &scope)).await? };
     crate::commands::open_text(path, remote).await
@@ -267,14 +268,14 @@ pub async fn edit_skipper_file(app: State<'_, App>, handle: AppHandle, scope: sk
 /// The saves of a remote Host's copy that did not go back since the last
 /// call, for one line under each row.
 #[tauri::command]
-pub fn skipper_file_errors() -> Vec<crate::host_files::FileError> {
-    crate::host_files::take_errors()
+pub fn skipper_file_errors(app: Routed) -> Vec<crate::host_files::FileError> {
+    crate::host_files::take_errors(app.route.host.as_ref())
 }
 
 /// Reset…: the template again, the old file in `<name>.bak`, on the
 /// selected Host.
 #[tauri::command]
-pub async fn reset_skipper_file(app: State<'_, App>, scope: skiff_host_api::HostFileScope) -> Result<(), String> {
+pub async fn reset_skipper_file(app: Routed, scope: skiff_host_api::HostFileScope) -> Result<(), String> {
     if app.remote() {
         return data_write(&app, |c| async move { data::skipper_file_reset(&c, scope).await }).await;
     }
@@ -289,7 +290,7 @@ pub async fn reset_skipper_file(app: State<'_, App>, scope: skiff_host_api::Host
 /// Skipper; a remote Host does it there, through its `skiff-host`
 /// (`skipper_run@2`).
 #[tauri::command]
-pub async fn start_fleet_skipper(app: State<'_, App>, fleet: String) -> Result<String, String> {
+pub async fn start_fleet_skipper(app: Routed, fleet: String) -> Result<String, String> {
     if app.selection().process_control().is_none() {
         let s = data_write(&app, |c| async move { data::skipper_fleet(&c, &fleet).await }).await?;
         return Ok(s.id);
@@ -306,7 +307,7 @@ pub async fn start_fleet_skipper(app: State<'_, App>, fleet: String) -> Result<S
 /// The project Skippers a takeover of `fleet` would stop, for the confirm:
 /// those of its projects, and of `join` when it joins. Changes nothing.
 #[tauri::command]
-pub async fn fleet_takeover_preview(app: State<'_, App>, fleet: String, join: Option<String>) -> Result<Vec<TakenSkipper>, String> {
+pub async fn fleet_takeover_preview(app: Routed, fleet: String, join: Option<String>) -> Result<Vec<TakenSkipper>, String> {
     if app.remote() {
         return crate::connection::data_read(&app, |c| async move { data::fleet_takeover_preview(&c, &fleet, join.as_deref()).await }).await;
     }
@@ -319,8 +320,8 @@ pub async fn fleet_takeover_preview(app: State<'_, App>, fleet: String, join: Op
 /// running fleet Skipper of `fleet` takes `join`'s project Skipper over,
 /// then `join` joins the fleet. A remote Host does it there.
 #[tauri::command]
-pub async fn fleet_takeover(app: State<'_, App>, handle: AppHandle, fleet: String, join: String) -> Result<(), String> {
-    let _own = OwnEdit::begin(&handle);
+pub async fn fleet_takeover(app: Routed, handle: AppHandle, fleet: String, join: String) -> Result<(), String> {
+    let _own = OwnEdit::begin(&handle, &app);
     if app.remote() {
         data_write(&app, |c| async move { data::fleet_takeover(&c, &fleet, &join).await }).await.map(|_| ())
     } else {
@@ -333,8 +334,8 @@ pub async fn fleet_takeover(app: State<'_, App>, handle: AppHandle, fleet: Strin
 /// Rename fleet…: the fleet, its Skipper's folder, rows, session and mark.
 /// A remote Host does it there.
 #[tauri::command]
-pub async fn rename_fleet(app: State<'_, App>, handle: AppHandle, old: String, new: String) -> Result<(), String> {
-    let _own = OwnEdit::begin(&handle);
+pub async fn rename_fleet(app: Routed, handle: AppHandle, old: String, new: String) -> Result<(), String> {
+    let _own = OwnEdit::begin(&handle, &app);
     if app.remote() {
         data_write(&app, |c| async move { data::fleet_rename(&c, &old, &new).await }).await
     } else {
@@ -348,8 +349,8 @@ pub async fn rename_fleet(app: State<'_, App>, handle: AppHandle, old: String, n
 /// against the Host's home folder. The Host refuses while ledger work is
 /// open or an agent session works, and ends the Skipper sessions first.
 #[tauri::command]
-pub async fn move_skiff_folder(app: State<'_, App>, handle: AppHandle, path: String) -> Result<SkipperFolderMoved, String> {
-    let _own = OwnEdit::begin(&handle);
+pub async fn move_skiff_folder(app: Routed, handle: AppHandle, path: String) -> Result<SkipperFolderMoved, String> {
+    let _own = OwnEdit::begin(&handle, &app);
     if app.remote() {
         return data_write(&app, |c| async move { data::skipper_folder_move(&c, &path).await }).await;
     }
@@ -374,7 +375,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let old = std::env::var_os("SKIFF_CONFIG");
         std::env::set_var("SKIFF_CONFIG", dir.join("projects.toml"));
-        let app = crate::connection::App::default();
+        let app = crate::connection::HostState::default();
         let target = skiff_client::host::ssh::SshTarget::new("devbox", "/s.sock");
         let options = skiff_client::host::ssh::SshOptions { program: "/nonexistent/ssh".into(), config: None };
         app.set_selection(skiff_client::host::local::HostSelection::ssh(target, options, dir.join("fwd"), None).unwrap());

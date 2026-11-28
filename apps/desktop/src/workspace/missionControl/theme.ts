@@ -11,6 +11,7 @@
  * The render path repaints the windows (`repaintWindows`, a step after the
  * panes' themes), so a theme pick shows on the board when it shows in the pane.
  */
+import { hostStore } from "../../platform/invoke";
 import type { SessionInfo } from "../../platform/types";
 import { S, sessions } from "../../app/state";
 import { appThemeVars } from "../../appearance/appTheme";
@@ -21,7 +22,8 @@ import { themeIdFor, xtermTheme } from "../../appearance/themes";
 const KEYS = ["--rule", "--text-2", "--text-3", "--text-dim", "--state-working", "--state-waiting", "--state-waiting-text", "--state-done", "--state-idle", "color-scheme"];
 
 /** Each window's body, by session, while the board shows it. */
-const bodies = new Map<string, HTMLElement>();
+let bodies: Map<string, HTMLElement>;
+hostStore(() => new Map<string, HTMLElement>(), store => { bodies = store; });
 /** Each theme's colors, by id and the colors it was made from: a theme file edit makes new ones. */
 const made = new Map<string, Record<string, string>>();
 

@@ -46,11 +46,12 @@ const placeKey = (host: string | null) => host === null ? "skiff.place.local" : 
 let trackedPlaceKey: string | null = null;
 let placeSig = "";
 
-export function loadPlace(host: string | null): Partial<Place> {
-  const key = placeKey(host);
+export function loadPlace(host: string | null, identity?: string): Partial<Place> {
+  const key = identity ? identityPlaceKey(identity) : placeKey(host);
   try {
     const saved = localStorage.getItem(key);
-    const legacy = saved === null && host === null ? localStorage.getItem(LEGACY_PLACE_KEY) : null;
+    const prior = saved === null && identity ? localStorage.getItem(placeKey(host)) : null;
+    const legacy = prior ?? (saved === null && host === null ? localStorage.getItem(LEGACY_PLACE_KEY) : null);
     const v: unknown = JSON.parse(saved ?? legacy ?? "{}");
     if (!v || typeof v !== "object") return {};
     if (legacy !== null) {
@@ -66,8 +67,11 @@ export function loadPlace(host: string | null): Partial<Place> {
   }
 }
 
-export function trackPlace(host: string | null) {
-  trackedPlaceKey ??= placeKey(host);
+const identityPlaceKey = (id: string) => `skiff.place.identity.${id}`;
+
+export function trackPlace(host: string | null, identity?: string) {
+  trackedPlaceKey = identity ? identityPlaceKey(identity) : placeKey(host);
+  placeSig = "";
 }
 
 export function savePlace(p: Place) {

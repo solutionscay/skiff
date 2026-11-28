@@ -2,7 +2,8 @@ use std::{collections::HashMap, sync::{atomic::AtomicBool, Arc}, time::Duration}
 use serde::Serialize;
 use skiff_client::{Client, host::{HostConnection, data::DataPlane, local::{HostSelection, SelectedHost}}};
 use skiff_core::socket::socket_path;
-use tauri::{async_runtime::JoinHandle, State};
+use tauri::{async_runtime::JoinHandle};
+use crate::routes::Routed;
 use tokio::sync::Mutex;
 use crate::{input::Input, reload::Plan, streaming::Flow};
 
@@ -35,39 +36,27 @@ pub(crate) fn peek_owner() -> &'static str {
     peek_owner_id()
 }
 
+pub(crate) type Revision = std::sync::Mutex<Option<String>>;
+
 #[derive(Default)]
-pub(crate) struct App {
+pub(crate) struct HostState {
+    pub(crate) process: Arc<LocalProcessState>,
+    pub(crate) cancel: tokio::sync::Notify,
+    pub(crate) retired: AtomicBool,
+    pub(crate) address: crate::routes::Address,
     pub(crate) host: Mutex<Option<Arc<SelectedHost>>>,
     /// M4: the selected Host's data-plane service (`skiff-host`), checked
     /// against the session plane's Host id on every connection.
     pub(crate) data: Mutex<Option<DataPlane>>,
-    /// This run replaced a local `skiff-host` of another build already:
-    /// once per run.
-    pub(crate) data_replaced: AtomicBool,
-    /// How many times this run replaced a local `skiff-host` that was not
-    /// its build. A release app does it once; a debug app up to
-    /// `DEBUG_REPLACES`, so an installed app that put its own back once is
-    /// replaced again, and two dev builds do not loop.
-    pub(crate) data_replaces: std::sync::atomic::AtomicU32,
-    /// A reply from the local `skiff-host` was unreadable: the next
-    /// connection replaces it, whatever its build.
-    pub(crate) data_unreadable: AtomicBool,
-    /// When this app run last started `skiff-host`: one that stops right
-    /// after it starts is not started again every read.
-    pub(crate) data_started: std::sync::Mutex<Option<std::time::Instant>>,
     /// Counts the data-plane connections made: a new one may bring other
     /// data than the page shows (`data_plane_status`).
     pub(crate) data_gen: std::sync::atomic::AtomicU64,
-    /// The Host id and the `[[project]]` revision of the last project read or
-    /// change: what the next project change is made from.
-    pub(crate) revision: std::sync::Mutex<Option<(skiff_host_api::HostId, String)>>,
-    /// The Host id and the `[agents]` revision of the last agent read or
-    /// change of a remote Host: what the next agent change is made from.
-    pub(crate) agent_revision: std::sync::Mutex<Option<(skiff_host_api::HostId, String)>>,
-    /// The one endpoint this window reaches: this Mac, or the remote Host
-    /// `hosts.toml` selects. Only `select_host` changes it, never a reconnect.
-    /// Legacy paths only borrow its accepted Client.
-    selection: std::sync::Mutex<Option<HostSelection>>,
+    /// The project revision read from the current data connection.
+    pub(crate) revision: Revision,
+    /// The agents revision read from the current data connection.
+    pub(crate) agent_revision: Revision,
+    /// The endpoint this entry connects to.
+    selection: std::sync::OnceLock<HostSelection>,
     /// The same selected Host connection, for keystrokes, which must not
     /// wait on a lock.
     pub(crate) live: std::sync::Mutex<Option<Arc<HostConnection>>>,
@@ -89,15 +78,33 @@ pub(crate) struct App {
     /// An older daemon that can reload onto the bundled one. The page starts
     /// the reload with `reload_daemon`.
     pub(crate) reload: Mutex<Option<Plan>>,
+    /// Why the daemon is gone after a reload. No daemon starts on its own
+    /// while it is set: only an explicit restart starts one.
+    pub(crate) failed: std::sync::Mutex<Option<String>>,
+}
+
+#[derive(Default)]
+pub(crate) struct LocalProcessState {
+    /// This run replaced a local `skiff-host` of another build already:
+    /// once per run.
+    pub(crate) data_replaced: AtomicBool,
+    /// How many times this run replaced a local `skiff-host` that was not
+    /// its build. A release app does it once; a debug app up to
+    /// `DEBUG_REPLACES`, so an installed app that put its own back once is
+    /// replaced again, and two dev builds do not loop.
+    pub(crate) data_replaces: std::sync::atomic::AtomicU32,
+    /// A reply from the local `skiff-host` was unreadable: the next
+    /// connection replaces it, whatever its build.
+    pub(crate) data_unreadable: AtomicBool,
+    /// When this app run last started `skiff-host`: one that stops right
+    /// after it starts is not started again every read.
+    pub(crate) data_started: std::sync::Mutex<Option<std::time::Instant>>,
     /// A reload ran. The app does not start another one on its own.
     pub(crate) reload_tried: AtomicBool,
     /// Why the daemon cannot move onto the bundled skiffd with its sessions:
     /// no handover, or a reload it refused. The warning says it on each
     /// check, including after a reconnect.
     pub(crate) no_reload: std::sync::Mutex<Option<String>>,
-    /// Why the daemon is gone after a reload. No daemon starts on its own
-    /// while it is set: only an explicit restart starts one.
-    pub(crate) failed: std::sync::Mutex<Option<String>>,
     /// Watcher pids skiffd registered, from its peer credentials, kept from
     /// before a reload, which drops the registrations. They identify a
     /// watcher from before the lock record.
@@ -110,25 +117,19 @@ pub(crate) struct App {
     pub(crate) watch_gate: Mutex<()>,
 }
 
-impl App {
+impl HostState {
+    pub(crate) fn for_selection(selection: HostSelection, process: Arc<LocalProcessState>) -> Self {
+        Self { process, selection: std::sync::OnceLock::from(selection), ..Self::default() }
+    }
+
     /// The selected Host's session connection, while it is open.
     pub(crate) async fn live_session(&self) -> Option<Arc<HostConnection>> {
         self.host.lock().await.as_ref().map(|h| h.connection()).filter(|c| !c.is_closed())
     }
 
-    /// The selected endpoint, from `hosts.toml` on first use. A file that
-    /// cannot be read selects this Mac.
+    /// The endpoint belongs to this entry through every reconnect.
     pub(crate) fn selection(&self) -> HostSelection {
-        let mut selection = self.selection.lock().unwrap();
-        let selection = selection.get_or_insert_with(|| {
-            crate::hosts::load(&crate::hosts::path())
-                .map(|hosts| crate::hosts::selected(&hosts, local_selection))
-                .unwrap_or_else(|e| {
-                    eprintln!("hosts.toml: {e:#}; showing this computer");
-                    local_selection()
-                })
-        });
-        selection.clone()
+        self.selection.get_or_init(local_selection).clone()
     }
 
     /// The window shows a remote Host. Commands that read this Mac's data
@@ -144,7 +145,7 @@ impl App {
 
     #[cfg(test)]
     pub(crate) fn set_selection(&self, selection: HostSelection) {
-        *self.selection.lock().unwrap() = Some(selection);
+        assert!(self.selection.set(selection).is_ok());
     }
 }
 
@@ -155,7 +156,7 @@ pub(crate) fn local_selection() -> HostSelection {
 
 /// Shows another endpoint. The old connection, its streams and any held
 /// input go first: nothing typed for one Host reaches another.
-pub(crate) async fn replace_selection(app: &App, selection: HostSelection) {
+pub(crate) async fn disconnect(app: &HostState) {
     let mut guard = app.host.lock().await;
     *guard = None;
     *app.data.lock().await = None;
@@ -173,7 +174,7 @@ pub(crate) async fn replace_selection(app: &App, selection: HostSelection) {
     *app.reload.lock().await = None;
     *app.failed.lock().unwrap() = None;
     *app.changed.lock().unwrap() = None;
-    *app.selection.lock().unwrap() = Some(selection);
+    if let Some(task) = app.data_events.lock().await.take() { task.abort(); }
 }
 
 
@@ -211,26 +212,26 @@ pub(crate) const HELLO_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Reuses a live connection, else connects, else starts the daemon and connects.
 /// A live connection costs no round trip: every keystroke comes through here.
-pub(crate) async fn ensure_client(app: &App) -> Result<(Arc<Client>, bool), String> {
+pub(crate) async fn ensure_client(app: &HostState) -> Result<(Arc<Client>, bool), String> {
     let (host, spawned) = ensure_host(app).await?;
     Ok((host.client(), spawned))
 }
 
 /// The one M1b read path: same owner and legacy result, through HostConnection.
-pub(crate) async fn screen_now(app: &App, session: &str, rows: u16) -> Result<Vec<String>, String> {
+pub(crate) async fn screen_now(app: &HostState, session: &str, rows: u16) -> Result<Vec<String>, String> {
     let (host, _) = ensure_host(app).await?;
     skiff_client::host::local::legacy_screen(&host.connection(), session, rows).await.map_err(err)
 }
 
 /// The one M1c read path; lifecycle compatibility checks still use Client.
-pub(crate) async fn inventory_now(app: &App) -> Result<Vec<skiff_core::session::SessionInfo>, String> {
+pub(crate) async fn inventory_now(app: &HostState) -> Result<Vec<skiff_core::session::SessionInfo>, String> {
     let (host, _) = ensure_host(app).await?;
     skiff_client::host::local::legacy_inventory(&host.connection()).await.map_err(err)
 }
 
 /// The selected owner's Host connection: the M1e terminal plane and the M1g
 /// session lifecycle and groups. The caller keeps no Client of its own.
-pub(crate) async fn host_now(app: &App) -> Result<Arc<HostConnection>, String> {
+pub(crate) async fn host_now(app: &HostState) -> Result<Arc<HostConnection>, String> {
     let (host, _) = ensure_host(app).await?;
     Ok(host.connection())
 }
@@ -248,7 +249,7 @@ pub(crate) async fn host_now(app: &App) -> Result<Arc<HostConnection>, String> {
 /// local adapter writes them (`config.rs`, `skiff_agent.rs`), so they are
 /// offered whatever skiff-host answers, or whether one answers at all.
 #[tauri::command]
-pub(crate) async fn host_capabilities(app: State<'_, App>) -> Result<Vec<String>, String> {
+pub(crate) async fn host_capabilities(app: Routed) -> Result<Vec<String>, String> {
     let c = host_now(&app).await?;
     let mut names = capability_names(&c);
     match data_now(&app).await {
@@ -321,7 +322,7 @@ mod tests {
         let ledger = dir.join("ledger.db");
         std::fs::write(&config, "# existing config\n").unwrap();
         std::fs::write(&ledger, b"existing ledger fixture").unwrap();
-        let app = App::default();
+        let app = HostState::default();
         app.set_selection(HostSelection::new(socket.clone(), dir.join("local-host-id")));
         let inventory_fixture: serde_json::Value = serde_json::from_str(include_str!("../../../../crates/skiff-host-api/tests/fixtures/m1c.json")).unwrap();
         let inventory = inventory_fixture["reply"]["sessions"].clone();

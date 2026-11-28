@@ -11,6 +11,7 @@ const sections = () => {
   return [{ fleet: null, projects: loose }, { fleet: "web", projects: projects.filter((p) => p.fleet === "web") }];
 };
 const wrote: unknown[] = [];
+const sessions = new Map();
 const O: any = moduleFromSource(
   "../src/workspace/skipperOrder.ts",
   {
@@ -23,7 +24,7 @@ const O: any = moduleFromSource(
     },
     "../app/hostCaps": { hostInvoke: async (_cap: string, _cmd: string, args: any) => void wrote.push(args.edit) },
     "../app/renderRequest": { render() {} },
-    "../app/state": { S },
+    "../app/state": { S, sessions },
     "../ui/alerts": { showError() {} },
     "./tree": { treeSections: sections },
   },
@@ -54,4 +55,12 @@ test("the Skippers list's order and the tree's order do not change each other", 
   S.skiffAgent.skippers_order = ["gone", "b", "c", "a"];
   assert.deepEqual(list().slice(1, 3), ["b", "a"]);
   assert.deepEqual(plain(O.movedScopes(["b", "a", "d"], ["gone", "b", "c", "a"], "d", "b", "before")), ["gone", "d", "b", "c", "a"]);
+});
+
+
+test("the Skippers view includes a live scope absent from the tree", () => {
+  sessions.set("hidden", {id:"hidden", skipper:"omitted", state:"waiting"});
+  const rows = O.skipperEntries(true);
+  assert.equal(rows[0].kind, "admiral");
+  assert.equal(rows.find((e: any) => e.scope === "omitted").s.id, "hidden");
 });

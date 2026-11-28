@@ -1,3 +1,4 @@
+import { accepts, invokeAt, pageRoute } from "../platform/invoke";
 import { Channel } from "@tauri-apps/api/core";
 
 import { FitAddon } from "@xterm/addon-fit";
@@ -66,7 +67,8 @@ export function openPane(id: string): Promise<Pane> {
   if (existing) return Promise.resolve(existing);
   let pending = opening.get(id);
   if (!pending) {
-    pending = createPane(id).finally(() => opening.delete(id));
+    const requests = opening;
+    pending = createPane(id).finally(() => requests.delete(id));
     opening.set(id, pending);
   }
   return pending;
@@ -132,7 +134,9 @@ const fontReady = Promise.all(
 ).catch(() => undefined);
 
 async function createPane(id: string): Promise<Pane> {
+  const route = pageRoute();
   await fontReady;
+  if (route && !accepts(route)) throw new Error("The Host changed. The page subscribes again.");
   const el = document.createElement("div");
   el.className = "pane";
   park.appendChild(el);
@@ -180,11 +184,11 @@ async function createPane(id: string): Promise<Pane> {
   term.onData((data) => {
     if (inputOff) return;
     const sent = traceSend(id);
-    hostInvoke("session_terminal", "pty_write", { session: id, data }).then(sent, console.error);
+    hostInvoke("session_terminal", "pty_write", { session: id, data }, info?.hostId).then(sent, console.error);
   });
   term.onRender(() => traceRender(id));
 
-  const pane: Pane = { el, term, fit, search, parked: false, stream: 0, wrote: 0, unacked: 0, acking: false, sub: Promise.resolve() };
+  const pane: Pane = { hostId: info?.hostId, el, term, fit, search, parked: false, stream: 0, wrote: 0, unacked: 0, acking: false, sub: Promise.resolve() };
   const drop = () => {
     term.dispose();
     el.remove();
@@ -196,7 +200,7 @@ async function createPane(id: string): Promise<Pane> {
     throw e;
   }
   // session_removed may have arrived during the await.
-  if (!sessions.has(id)) {
+  if ((route && !accepts(route)) || !sessions.has(id)) {
     drop();
     throw new Error(`session ${id} is gone`);
   }
@@ -212,10 +216,12 @@ async function createPane(id: string): Promise<Pane> {
  */
 function streamOutput(id: string, pane: Pane, fromBottom = 0): Promise<void> {
   const n = ++pane.stream;
+  const route = pageRoute();
   const channel = new Channel<unknown>();
   let parsing = 0;
   let first = true;
   channel.onmessage = (m) => {
+    if (!accepts(route)) return;
     // A chunk can still arrive after a park, or after session_removed
     // disposed the terminal.
     const s = sessions.get(id);
@@ -233,7 +239,7 @@ function streamOutput(id: string, pane: Pane, fromBottom = 0): Promise<void> {
       traced?.();
       // xterm parses in slices between frames: a long wait here is output it fell behind on.
       work(`xterm parse ${bytes.length} B`, performance.now() - queued);
-      if (pane.stream !== n) return;
+      if (!accepts(route) || pane.stream !== n) return;
       if (--parsing === 0 && fromBottom > 0) {
         const b = pane.term.buffer.active;
         pane.term.scrollToLine(Math.max(0, b.baseY - fromBottom));
@@ -245,7 +251,7 @@ function streamOutput(id: string, pane: Pane, fromBottom = 0): Promise<void> {
     s.last_output_at = Date.now();
   };
   pane.unacked = 0;
-  return hostInvoke("session_terminal", "subscribe_output", { session: id, stream: n, onOutput: channel });
+  return hostInvoke("session_terminal", "subscribe_output", { session: id, stream: n, onOutput: channel }, pane.hostId);
 }
 
 /**
@@ -258,7 +264,7 @@ function ackOutput(id: string, pane: Pane, stream: number, bytes: number) {
   pane.acking = true;
   const sent = pane.unacked;
   pane.unacked = 0;
-  hostInvoke("session_terminal", "ack_output", { session: id, stream, bytes: sent })
+  hostInvoke("session_terminal", "ack_output", { session: id, stream, bytes: sent }, pane.hostId)
     .catch(console.error)
     .finally(() => {
       pane.acking = false;
@@ -273,7 +279,8 @@ export function parkPane(id: string, pane: Pane) {
   if (pane.parked) return;
   pane.parked = true;
   pane.stream++;
-  pane.sub = pane.sub.then(() => hostInvoke<void>("session_terminal", "unsubscribe_output", { session: id })).catch(console.error);
+  const route = pageRoute();
+  if (route) pane.sub = pane.sub.then(() => invokeAt<void>(route, "unsubscribe_output", { session: id })).catch(console.error);
 }
 
 /**

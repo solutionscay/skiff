@@ -173,3 +173,12 @@ body:has(.mission-search:focus) .mission-card.lit { box-shadow: none; }
 .mission-scope-n { font-family: var(--mono); font-size: calc(11px * var(--zoom, 1)); font-weight: 400; color: var(--text-dim); }
 .mission-scope-btn[aria-pressed="true"] .mission-scope-n { color: var(--text-2); }
 .mission-scope-dot { width: calc(7 * var(--u)); height: calc(7 * var(--u)); border-radius: 50%; background: var(--state-working); }
+
+.mission-host, .mission-host-body { position: absolute; }
+.mission-host.framed { outline: 1px solid var(--rule-strong); background: color-mix(in srgb, var(--bg-panel) 40%, var(--bg)); isolation: isolate; overflow: hidden; }
+.mission-host-head { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-bottom: 1px solid var(--rule-strong); background: var(--bg-raised); color: var(--text); font-size: 13px; font-weight: 600; }
+.mission-host-head svg { width: 16px; height: 16px; }
+.mission-host-head .mission-roll { gap: 4px; font: 400 12px var(--sans, sans-serif); }
+.mission-host.offline { opacity: .45; }
+.mission-host.offline .mission-host-body { pointer-events: none; }
+.mission-host-head[hidden], .mission-panel[hidden] { display: none; }

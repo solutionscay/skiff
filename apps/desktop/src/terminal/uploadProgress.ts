@@ -1,3 +1,4 @@
+import { accepts, type HostEvent } from "../platform/invoke";
 /**
  * The upload line of a drop or a paste to a remote Host. It sits in the
  * pane's bottom left corner: "Uploading 3 of 6 files (4.2 MB of 11.0 MB)…",
@@ -112,4 +113,6 @@ export class UploadLine {
   }
 }
 
-void listen<Upload>("skiff:upload", ({ payload }) => lines.get(payload.id)?.update(payload));
+void listen<HostEvent<Upload>>("skiff:upload", ({ payload }) => {
+  if (accepts(payload.route)) lines.get(payload.value.id)?.update(payload.value);
+});

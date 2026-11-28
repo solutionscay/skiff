@@ -1,3 +1,5 @@
+import { foreground, hostFields } from "../platform/invoke";
+import { pageRoute } from "../platform/invoke";
 import { open, openFolder, reveal, copy } from "../platform/fileActions";
 import { copyPathEntry, revealEntry } from "./fileMenu";
 import { setRowActs, type Preview } from "./rowActs";
@@ -32,20 +34,25 @@ type Entry = HostEntry;
 type Listing = HostListing | { error: string };
 
 /** Projects whose Host says they show files. */
-const on = new Set<string>();
+let on = new Set<string>();
 /** The last listing of each folder read. The sidebar renders from here, never waiting. */
-const listings = new Map<string, Listing>();
+let listings = new Map<string, Listing>();
 /** Worktrees whose Files section is open. Closed by default. */
-const shown = storedSet("skiff.filesOpen");
+let shown: Set<string>;
+hostFields(() => ({ shown: storedSet("skiff.filesOpen" + (pageRoute()?.endpoint ? "." + pageRoute()!.endpoint : "")) }), () => ({ shown }), f => { shown = f.shown; });
 /** Open folders, by path. */
-const expanded = storedSet("skiff.foldersOpen");
+let expanded: Set<string>;
+hostFields(() => ({ expanded: storedSet("skiff.foldersOpen" + (pageRoute()?.endpoint ? "." + pageRoute()!.endpoint : "")) }), () => ({ expanded }), f => { expanded = f.expanded; });
 /** Folders being read. */
-const reading = new Set<string>();
+let reading = new Set<string>();
 /** The worktree each folder read belongs to: the Host lists by worktree and relative folder. */
-const roots = new Map<string, string>();
+let roots = new Map<string, string>();
 
 /** Counts the reads that brought a listing different from the last one, and the folders opened or closed. */
 let version = 0;
+
+hostFields(() => ({ on: new Set<string>(), listings: new Map<string, Listing>(), reading: new Set<string>(), roots: new Map<string,string>(), version: 0 }), () => ({ on, listings, reading, roots, version }),
+  (f) => { ({ on, listings, reading, roots, version } = f); });
 
 const join = (dir: string, name: string) => `${dir}/${name}`;
 
@@ -85,13 +92,16 @@ export async function setShowFiles(p: Project, show: boolean) {
 }
 
 function load(root: string, dir: string, cursor?: number) {
+  if (!foreground()) return;
   if (reading.has(dir)) return;
+  const route = pageRoute();
+  const pending = reading;
   reading.add(dir);
   roots.set(dir, root);
   const at = dataEpoch();
   hostInvoke<HostListing>("files", "list_files", { worktree: root, dir: relative(root, dir), cursor: cursor ?? null })
     .then((l) => {
-      if (at !== dataEpoch()) return;
+      if (at !== dataEpoch() || route !== pageRoute()) return;
       if (cursor === undefined) store(dir, l);
       else {
         const before = listings.get(dir);
@@ -103,7 +113,7 @@ function load(root: string, dir: string, cursor?: number) {
       }
     })
     .catch((e) => {
-      if (at !== dataEpoch()) return;
+      if (at !== dataEpoch() || route !== pageRoute()) return;
       const msg = String(e);
       // Deleted since its parent was read: forget it and read the parent
       // again, so its row goes. No note.
@@ -116,7 +126,8 @@ function load(root: string, dir: string, cursor?: number) {
       } else store(dir, { error: msg });
     })
     .finally(() => {
-      reading.delete(dir);
+      pending.delete(dir);
+      if (route !== pageRoute()) return;
       // Asked on a data connection that is gone since: ask the new one.
       if (at !== dataEpoch()) load(root, dir);
       render("files");
@@ -219,8 +230,9 @@ const folderPreview = (path: string): Preview => ({ kind: "folder", path, local:
 function filePreview(e: Entry, root: string, path: string): { preview: Preview; open?: () => void } {
   const file = relative(root, path);
   if (!isRemote() && e.kind === "file") return { preview: { kind: "file", path }, open: () => open(path) };
+  const hostId = pageRoute()?.host ?? undefined;
   const copy = isRemote() && e.kind === "file";
-  return { preview: { kind: "host-file", wt: root, file, path, copy }, open: copy ? () => openHostCopy(root, file) : undefined };
+  return { preview: { kind: "host-file", hostId, wt: root, file, path, copy }, open: copy ? () => openHostCopy(root, file, hostId) : undefined };
 }
 
 function row(e: Entry, root: string, path: string, depth: number): HTMLElement {

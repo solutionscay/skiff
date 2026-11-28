@@ -1,7 +1,7 @@
 import { DEFAULT_THEME } from "./colors";
 import { escapeButton } from "../ui/dialogParts";
 import { h } from "../ui/dom";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../platform/invoke";
 import { imageCount } from "../terminal/images";
 import { size as byteSize } from "./skiffFolderDialog";
 import type { AgentInfo, Appearance, TerminalTheme } from "../platform/types";

@@ -1,8 +1,9 @@
+import { hostFields } from "../platform/invoke";
 /** The selected Host's capabilities. Every session and terminal call goes
  *  through `hostInvoke`, which refuses a call the Host does not offer, and
  *  every surface asks `hostCan` before it offers an action. The Host
  *  connection checks each request again; nothing falls back to local data. */
-import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
+import { accepts, invoke, pageRoute, type InvokeArgs } from "../platform/invoke";
 import { type MessageKey, t } from "../i18n";
 import { offerReports } from "../workspace/programStatus";
 
@@ -119,18 +120,23 @@ const OFFERS: Record<HostCap, MessageKey> = {
 let caps: Set<string> | null = null;
 let loading: Promise<void> | null = null;
 
+hostFields(() => ({ caps: null as Set<string> | null, loading: null as Promise<void> | null }), () => ({ caps, loading }),
+  (f) => { ({ caps, loading } = f); });
+
 /** Asks the selected Host again: at launch and after the daemon reloads. */
 export function loadHostCaps(): Promise<void> {
   const load: Promise<void> = invoke<string[]>("host_capabilities")
-    .then((list) => {
-      caps = new Set(list);
-      offerReports(hostCan("program_status"));
-    })
+    .then(setHostCaps)
     .finally(() => {
       if (loading === load) loading = null;
     });
   loading = load;
   return load;
+}
+
+export function setHostCaps(list: string[]) {
+  caps = new Set(list);
+  offerReports(hostCan("program_status"));
 }
 
 /** The Host offers `cap`. Before the first answer, a surface stays as it is;
@@ -141,8 +147,12 @@ export function hostCan(cap: HostCap): boolean {
 
 /** `invoke`, only when the selected Host offers `cap`. Once the
  *  capabilities are known it calls at once, so keystrokes keep their order. */
-export async function hostInvoke<T = void>(cap: HostCap, cmd: string, args?: InvokeArgs): Promise<T> {
-  if (!caps) await (loading ?? loadHostCaps());
+export async function hostInvoke<T = void>(cap: HostCap, cmd: string, args?: InvokeArgs, hostId?: string): Promise<T> {
+  const route = pageRoute();
+  if (!caps) {
+    await (loading ?? loadHostCaps());
+    if (route?.host && !accepts(route)) throw new Error("The Host changed. The page subscribes again.");
+  }
   if (!hostCan(cap)) throw new Error(t("hostCaps.refusal", { what: t(OFFERS[cap]) }));
-  return invoke<T>(cmd, args);
+  return invoke<T>(cmd, args, hostId);
 }
