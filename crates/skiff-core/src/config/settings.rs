@@ -328,11 +328,6 @@ pub fn set_open_command(key: &str, command: Option<&super::OpenCommand>) -> Resu
         if c.program.trim().is_empty() {
             anyhow::bail!("the program is empty");
         }
-        use super::OpenCommand as C;
-        let inputs: &[&str] = if key == "diff" { &[C::PATCH, C::TARGET] } else { &[C::PATH] };
-        if !inputs.contains(&c.input.as_str()) {
-            anyhow::bail!("{key} cannot take the input {:?}: use {}", c.input, inputs.join(" or "));
-        }
         if c.opens.as_deref().is_some_and(|o| o != "peek" && o != "app") {
             anyhow::bail!("opens is peek or app");
         }
@@ -350,7 +345,6 @@ fn write_open_command(t: &mut toml_edit::Table, key: &str, command: Option<&supe
     let mut row = toml_edit::Table::new();
     row["program"] = toml_edit::value(c.program.trim());
     row["args"] = toml_edit::value(c.args.iter().map(String::as_str).collect::<toml_edit::Array>());
-    row["input"] = toml_edit::value(c.input.as_str());
     if let Some(opens) = &c.opens {
         row["opens"] = toml_edit::value(opens.as_str());
     }
@@ -603,7 +597,7 @@ mod open_command_tests {
     use crate::config::OpenCommand;
 
     /// #303: a custom command from Settings › Open with is in the file after
-    /// a restart, with its words, input and place; a reset takes it out.
+    /// a restart, with its words and place; a reset takes it out.
     #[test]
     fn a_custom_open_command_round_trips_through_the_config_file() {
         let dir = std::env::temp_dir().join(format!("skiff-open-cmd-{}", std::process::id()));
@@ -611,8 +605,8 @@ mod open_command_tests {
         std::fs::create_dir_all(&dir).unwrap();
         let (projects, client) = (dir.join("projects.toml"), dir.join("client.toml"));
         std::fs::write(&client, "schema = 2\n\n[open]\ntext = \"code\"\npeek = [\"text\"]\n").unwrap();
-        let diff = OpenCommand { program: "difft".into(), args: vec!["--color=always".into(), "{target}".into()], input: OpenCommand::TARGET.into(), opens: None, git_args: vec![] };
-        let text = OpenCommand { program: "/opt/my tools/ed".into(), args: vec!["-n".into(), "{path}".into(), "it's".into()], input: OpenCommand::PATH.into(), opens: Some("app".into()), git_args: vec![] };
+        let diff = OpenCommand { program: "difft".into(), args: vec!["--color=always".into(), "{target}".into()], opens: None, git_args: vec![] };
+        let text = OpenCommand { program: "/opt/my tools/ed".into(), args: vec!["-n".into(), "{path}".into(), "it's".into()], opens: Some("app".into()), git_args: vec![] };
         super::super::persistence::edit_table_in(&client, "open", |t| write_open_command(t, "diff", Some(&diff))).unwrap();
         super::super::persistence::edit_table_in(&client, "open", |t| write_open_command(t, "text", Some(&text))).unwrap();
         let open = super::super::client::load_from(&projects, &client).unwrap().open;
@@ -626,5 +620,20 @@ mod open_command_tests {
         assert_eq!(open.commands.get("diff"), None);
         assert_eq!(open.commands.get("text"), Some(&text));
         assert_eq!(text.line("{path}"), "'/opt/my tools/ed' -n {path} 'it'\\''s'");
+    }
+
+    /// An `input` from an older Skiff reads as the words it stood for, and
+    /// the next save leaves it out.
+    #[test]
+    fn an_old_input_reads_as_its_words() {
+        let read = |row: &str| toml::from_str::<OpenCommand>(row).unwrap();
+        let target = read("program = \"difft\"\nargs = [\"--color=always\"]\ninput = \"target\"\n");
+        assert_eq!(target.args, ["--color=always", "{target}"]);
+        assert!(target.takes_target());
+        assert_eq!(read("program = \"difft\"\nargs = [\"{target}\", \"-x\"]\ninput = \"target\"\n").args, ["{target}", "-x"]);
+        assert!(!read("program = \"delta\"\ninput = \"patch\"\n").takes_target());
+        let mut t = toml_edit::Table::new();
+        write_open_command(&mut t, "diff", Some(&target)).unwrap();
+        assert!(!t.to_string().contains("input"), "{t}");
     }
 }

@@ -67,38 +67,60 @@ pub struct Open {
 }
 
 /// A program that an `[open]` row runs, with no shell between: the program,
-/// its arguments in order, what it reads, and where it shows.
+/// its arguments in order, and where it shows. What it reads follows from
+/// its words. A diff program with `{target}` takes what `git diff` compares
+/// there, as arguments; one without it reads the patch on its standard
+/// input. Any other row takes the file at `{path}` or at the end.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(from = "StoredOpenCommand")]
 pub struct OpenCommand {
     /// A program name, found on the PATH of skiffd's environment, or a path.
     pub program: String,
     /// The arguments, each one word, in order.
     #[serde(default)]
     pub args: Vec<String>,
-    /// What the program reads. `patch`: Skiff runs `git diff` and writes the
-    /// patch to the program's standard input. `target`: what `git diff`
-    /// compares, as arguments, at `{target}` or at the end. `path`: the
-    /// file, at `{path}` or at the end. Kept as text, so a value from
-    /// a newer Skiff does not stop the file from loading.
-    #[serde(default = "OpenCommand::patch")]
-    pub input: String,
     /// Where it shows: `peek` or `app`. Absent: the peek.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub opens: Option<String>,
-    /// Options of `git diff` before the target, for the `patch` input:
-    /// `--color=always`. Kept from a command line that piped `git diff`
-    /// into the program.
+    /// Options of `git diff` before the target, for a program that reads
+    /// the patch: `--color=always`. Kept from a command line that piped
+    /// `git diff` into the program.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub git_args: Vec<String>,
 }
 
+/// `[open.commands.<key>]` as a file can hold it. An older Skiff wrote
+/// `input`: `target` without `{target}` put the target at the end, so it
+/// reads as the same words with `{target}` last.
+#[derive(Deserialize)]
+struct StoredOpenCommand {
+    program: String,
+    #[serde(default)]
+    args: Vec<String>,
+    #[serde(default)]
+    input: Option<String>,
+    #[serde(default)]
+    opens: Option<String>,
+    #[serde(default)]
+    git_args: Vec<String>,
+}
+
+impl From<StoredOpenCommand> for OpenCommand {
+    fn from(s: StoredOpenCommand) -> Self {
+        let mut c = OpenCommand { program: s.program, args: s.args, opens: s.opens, git_args: s.git_args };
+        if s.input.as_deref() == Some("target") && !c.takes_target() {
+            c.args.push("{target}".into());
+        }
+        c
+    }
+}
+
 impl OpenCommand {
-    /// The input for a diff renderer.
-    pub const PATCH: &'static str = "patch";
-    /// The input for a diff program that takes Git's target as arguments.
-    pub const TARGET: &'static str = "target";
-    /// The input for a program that takes the file as an argument.
-    pub const PATH: &'static str = "path";
+    /// Whether a diff program takes Git's target at `{target}`. Without it,
+    /// it reads the patch on its standard input.
+    pub fn takes_target(&self) -> bool {
+        self.args.iter().any(|a| a.contains("{target}"))
+    }
 
     /// The program and its arguments as one shell line, each word quoted.
     /// A word that is only `placeholder` stays bare, so it can take more
@@ -109,10 +131,6 @@ impl OpenCommand {
             .map(|w| if w == placeholder { w.to_string() } else { crate::shell::quote_word(w) })
             .collect::<Vec<_>>()
             .join(" ")
-    }
-
-    fn patch() -> String {
-        Self::PATCH.to_string()
     }
 }
 

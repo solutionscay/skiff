@@ -45,7 +45,7 @@ fn key_for(file: &Path) -> Option<&'static str> {
 /// The command set for `key`, trimmed, if any. A program in
 /// `[open.commands]` that reads the file wins, as a line with `{path}`.
 fn command(open: &Open, key: &str) -> Option<String> {
-    if let Some(c) = open.commands.get(key).filter(|c| key != "diff" && c.input == crate::config::OpenCommand::PATH) {
+    if let Some(c) = open.commands.get(key).filter(|_| key != "diff") {
         return Some(c.line("{path}"));
     }
     let cmd = match key {
@@ -146,11 +146,12 @@ pub mod render_exit {
 /// its output is in the terminal once this comes.
 pub const RENDER_DONE_OSC: u32 = 7750;
 
-/// How the diff opens. `[open.commands.diff]` is a renderer that reads the
-/// patch. A command line that pipes `git diff {target}` into one program,
-/// or that sets Git's pager for one `git diff {target}`, runs the same way,
-/// with its words. Any other command line runs in the shell, with
-/// `{target}` for what to compare: see [`crate::git::diff_script`].
+/// How the diff opens. A command with `{target}` runs in the shell, with
+/// what Git compares there: see [`crate::git::diff_script`]. A command
+/// without it reads the patch on its standard input. A command line that
+/// pipes `git diff {target}` into one program, or that sets Git's pager for
+/// one `git diff {target}`, reads the patch too, with its words. A line
+/// that runs Git without `{target}` gets the target at the end.
 pub fn plan_diff(dir: &Path, file: Option<&str>, open: &Open) -> Result<DiffPlan> {
     let render = |git_opts: Vec<String>, renderer: Vec<String>| {
         let target = crate::git::diff_target(dir, file);
@@ -161,11 +162,8 @@ pub fn plan_diff(dir: &Path, file: Option<&str>, open: &Open) -> Result<DiffPlan
         DiffPlan::Render(Render { producer, producer_ok: if no_index { vec![0, 1] } else { vec![0] }, renderer })
     };
     if let Some(c) = open.commands.get("diff") {
-        if c.input == crate::config::OpenCommand::TARGET {
+        if c.takes_target() {
             return Ok(DiffPlan::Shell(crate::git::diff_script(dir, file, Some(&c.line("{target}")))));
-        }
-        if c.input != crate::config::OpenCommand::PATCH {
-            bail!("Open with › Diffs: Skiff cannot give {} the input {:?}", c.program, c.input);
         }
         return Ok(render(c.git_args.clone(), [&[c.program.trim().to_string()][..], &c.args].concat()));
     }
@@ -173,7 +171,27 @@ pub fn plan_diff(dir: &Path, file: Option<&str>, open: &Open) -> Result<DiffPlan
     if let Some((git_opts, renderer)) = line.and_then(patch_pipeline) {
         return Ok(render(git_opts, renderer));
     }
+    if let Some(renderer) = line.and_then(patch_reader) {
+        return Ok(render(Vec::new(), renderer));
+    }
     Ok(DiffPlan::Shell(crate::git::diff_script(dir, file, line)))
+}
+
+/// A diff command line without `{target}` reads the patch on its standard
+/// input: its words, or `sh -c LINE` when it needs the shell. A line that
+/// runs Git makes the diff itself, with the target at the end: `None`.
+fn patch_reader(line: &str) -> Option<Vec<String>> {
+    if line.contains("{target}") {
+        return None;
+    }
+    match shell_words(line) {
+        Some(words) if words.iter().all(Option::is_some) => {
+            let words: Vec<String> = words.into_iter().flatten().collect();
+            (words.first().is_some_and(|w| w != "git")).then_some(words)
+        }
+        _ if line.split_whitespace().next() == Some("git") => None,
+        _ => Some(vec!["sh".into(), "-c".into(), line.to_string()]),
+    }
 }
 
 /// A command line that only feeds `git diff` to one renderer, as its words:
@@ -387,7 +405,9 @@ mod tests {
     /// #303: a saved command line that only feeds `git diff {target}` to one
     /// renderer runs as Skiff's own Git and renderer, with its words: the
     /// pipeline from #249 and the old Delta preset. Anything more for the
-    /// shell stays a shell command. A program in `[open.commands]` wins.
+    /// shell stays a shell command. A program in `[open.commands]` wins. A
+    /// command with `{target}` takes the target there; one without it reads
+    /// the patch on its standard input.
     #[test]
     fn a_patch_pipeline_runs_without_the_shell() {
         let words = |w: &[&str]| w.iter().map(|s| s.to_string()).collect::<Vec<_>>();
@@ -416,12 +436,24 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let mut open = Open { diff: Some("git diff --color=always {target} | delta --paging=never".into()), ..Open::default() };
         let mapped = plan_diff(&dir, Some("f"), &open).unwrap();
-        open.commands.insert("diff".into(), crate::config::OpenCommand { program: "rec".into(), args: vec!["-x".into()], input: "patch".into(), opens: None, git_args: vec!["--color=always".into()] });
+        open.commands.insert("diff".into(), crate::config::OpenCommand { program: "rec".into(), args: vec!["-x".into()], opens: None, git_args: vec!["--color=always".into()] });
         let program = plan_diff(&dir, Some("f"), &open).unwrap();
+        open.commands.insert("diff".into(), crate::config::OpenCommand { program: "difft".into(), args: vec!["{target}".into()], opens: None, git_args: vec![] });
+        let target_program = plan_diff(&dir, Some("f"), &open).unwrap();
         open.commands.clear();
         open.diff = Some("my-diff {target}".into());
         let shell = plan_diff(&dir, Some("f"), &open).unwrap();
+        open.diff = Some("my-diff --wide".into());
+        let reader = plan_diff(&dir, Some("f"), &open).unwrap();
+        open.diff = Some("my-diff | less".into());
+        let reader_shell = plan_diff(&dir, Some("f"), &open).unwrap();
+        open.diff = Some("git diff --stat".into());
+        let git = plan_diff(&dir, Some("f"), &open).unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
+        assert!(matches!(target_program, DiffPlan::Shell(s) if s.starts_with("difft ")));
+        assert!(matches!(reader, DiffPlan::Render(r) if r.renderer == words(&["my-diff", "--wide"])));
+        assert!(matches!(reader_shell, DiffPlan::Render(r) if r.renderer == words(&["sh", "-c", "my-diff | less"])));
+        assert!(matches!(git, DiffPlan::Shell(s) if s.starts_with("git diff --stat ")));
         let DiffPlan::Render(mapped) = mapped else { panic!("{mapped:?}") };
         assert_eq!(mapped.renderer, words(&["delta", "--paging=never"]));
         assert!(mapped.producer.starts_with(&words(&["git", "--no-pager"])) && mapped.producer.contains(&"--color=always".to_string()));

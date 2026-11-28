@@ -58,7 +58,7 @@ fn recorder(d: &Path) -> PathBuf {
 
 fn plan(wt: &Path, file: Option<&str>, program: &Path, args: &[&str]) -> Render {
     let mut open = Open::default();
-    open.commands.insert("diff".into(), OpenCommand { program: program.to_string_lossy().into(), args: args.iter().map(|a| a.to_string()).collect(), input: "patch".into(), opens: None, git_args: Vec::new() });
+    open.commands.insert("diff".into(), OpenCommand { program: program.to_string_lossy().into(), args: args.iter().map(|a| a.to_string()).collect(), opens: None, git_args: Vec::new() });
     match plan_diff(wt, file, &open).unwrap() {
         DiffPlan::Render(r) => r,
         DiffPlan::Shell(s) => panic!("a renderer runs in the shell: {s}"),

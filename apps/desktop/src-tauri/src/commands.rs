@@ -389,7 +389,12 @@ pub(crate) async fn open_choices() -> Result<crate::open_apps::Choices, String> 
 #[tauri::command]
 pub(crate) fn set_open_app(key: String, path: String) -> Result<OpenSettings, String> {
     let _own = crate::projects_watch::OwnEdit::quiet();
-    skiff_core::config::set_open(&key, Some(&crate::open_apps::command_for_app(&path))).map_err(err)?;
+    // A diff app takes what Git compares as arguments.
+    let mut command = crate::open_apps::command_for_app(&path);
+    if key == "diff" {
+        command.push_str(" {target}");
+    }
+    skiff_core::config::set_open(&key, Some(&command)).map_err(err)?;
     if skiff_core::config::open_has_peek_setting(&key) {
         skiff_core::config::set_open_peek(&key, false).map_err(err)?;
     }

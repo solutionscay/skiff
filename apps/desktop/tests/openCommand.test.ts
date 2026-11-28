@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import { moduleFromSource } from "./workspaceHarness.ts";
 
 // #303: Settings › Open with › Custom command… and Edit command… open an
-// editor in the table, under the row. Save stores the program, its words, its
-// input and its place; Cancel and Esc store nothing and give the keys back to
+// editor in the table, under the row: the command field and its buttons, no
+// other choice. Save stores the program and its words, and keeps its place;
+// a diff program with {target} takes the Git target there, one without it
+// reads the patch. Cancel and Esc store nothing and give the keys back to
 // the row's picker; Reset to default clears the row; the editor shows its
 // errors. A saved pipeline that Skiff runs as Git and a renderer opens as the
-// renderer with the patch on standard input.
+// renderer.
 class El {
   tag: string;
   className: string;
@@ -50,7 +52,7 @@ function page(stored: any) {
     "../ui/dom": { h },
     "../ui/controls": {
       picker: (o: Pick) => { o.el = h("button", "ctl-pick"); picks.push(o); return o.el; },
-      textBox: (o: { value: string; placeholder: string; enter: () => void }) => { const f = h("input", "ctl-field"); f.value = o.value; f.placeholder = o.placeholder; f.enter = o.enter; return f; },
+      textBox: (o: { value: string; placeholder?: string; enter: () => void }) => { const f = h("input", "ctl-field"); f.value = o.value; f.placeholder = o.placeholder ?? ""; f.enter = o.enter; return f; },
       smallButton: (text: string, run: () => void) => { const b = h("button", "ctl-btn", text); b.click = run; return b; },
     },
     "@tauri-apps/plugin-dialog": {},
@@ -87,7 +89,7 @@ function page(stored: any) {
 
 const settings = () => ({ diff: "", text: "code", markdown: "", html: "", image: "", default_diff: "git diff", peek: ["text"], commands: {} as Record<string, unknown> });
 
-test("Custom command… opens under the row and saves the program, its words and the Git target input", async () => {
+test("Custom command… opens under the row and saves the program and its words; {target} takes the Git target", async () => {
   const stored = settings();
   const p = page(stored);
   assert.equal(p.item("Diffs", "Edit command…"), undefined, "the default has nothing to edit");
@@ -95,13 +97,12 @@ test("Custom command… opens under the row and saves the program, its words and
   const rows = p.main.children;
   assert.equal(rows[rows.indexOf(p.editor()!) - 1].children[0].textContent, "Diffs", "the editor is in the table, under its row");
   assert.equal(focused, p.field());
+  assert.deepEqual(p.editor()!.all().filter((k) => k.tag === "button").map((k) => k.textContent), ["Reset to default", "Cancel", "Save"]);
+  assert.equal(p.field().placeholder, "");
   p.field().value = `difft --color=always '/my dir/x' {target}`;
-  p.button("Git target as arguments").click!();
-  assert.equal(p.button("Git target as arguments").attrs["aria-pressed"], "true");
-  assert.equal(p.field().placeholder, "difft {target}");
   p.button("Save").click!();
   await tick();
-  assert.deepEqual(plain(stored.commands.diff), { program: "difft", args: ["--color=always", "/my dir/x", "{target}"], input: "target" });
+  assert.deepEqual(plain(stored.commands.diff), { program: "difft", args: ["--color=always", "/my dir/x", "{target}"] });
   assert.equal(p.editor(), undefined, "Save closes the editor");
 });
 
@@ -126,16 +127,14 @@ test("Cancel and Esc store nothing and give the keys back to the picker; Reset t
 
 test("Edit command… opens with the current program, keeps its place, and Enter saves", async () => {
   const stored = settings();
-  stored.commands.text = { program: "/opt/my ed", args: ["-n", "{path}"], input: "path", opens: "app" };
+  stored.commands.text = { program: "/opt/my ed", args: ["-n", "{path}"], opens: "app" };
   const p = page(stored);
   p.item("Text files", "Edit command…").run();
   assert.equal(p.field().value, "'/opt/my ed' -n {path}");
-  assert.equal(p.button("External app").attrs["aria-pressed"], "true");
-  p.button("Peek").click!();
   p.field().value += " --wait";
   p.field().enter!();
   await tick();
-  assert.deepEqual(plain(stored.commands.text), { program: "/opt/my ed", args: ["-n", "{path}", "--wait"], input: "path", opens: "peek" });
+  assert.deepEqual(plain(stored.commands.text), { program: "/opt/my ed", args: ["-n", "{path}", "--wait"], opens: "app" });
 });
 
 test("opening another row's editor closes the first one", () => {
@@ -160,27 +159,30 @@ test("the editor shows an empty command, an open quote, a shell sign and a missi
   assert.deepEqual([p.calls, stored.commands], [["save"], {}]);
 });
 
-test("a saved pipeline opens as the renderer with the patch on standard input, and saves so with its Git options", async () => {
+test("a saved pipeline opens as the renderer and saves so with its Git options; {target} drops them", async () => {
   const stored = settings();
   stored.diff = "git diff --color=always {target} | delta --paging=never";
   const p = page(stored);
   p.item("Diffs", "Edit command…").run();
   assert.equal(p.field().value, "delta --paging=never");
-  assert.equal(p.button("Patch on standard input").attrs["aria-pressed"], "true");
-  assert.equal(p.shown("set-note"), undefined);
   p.button("Save").click!();
   await tick();
-  assert.deepEqual(plain(stored.commands.diff), { program: "delta", args: ["--paging=never"], input: "patch", git_args: ["--color=always"] });
+  assert.deepEqual(plain(stored.commands.diff), { program: "delta", args: ["--paging=never"], git_args: ["--color=always"] });
   assert.equal(stored.diff, "");
+  p.item("Diffs", "Edit command…").run();
+  p.field().value = "difft {target}";
+  p.button("Save").click!();
+  await tick();
+  assert.deepEqual(plain(stored.commands.diff), { program: "difft", args: ["{target}"] });
 });
 
-test("a line that needs the shell opens as it is, marked, and saves unchanged", async () => {
+test("a line that needs the shell opens as it is, with no note, and saves unchanged", async () => {
   const stored = settings();
   stored.diff = "git diff {target} | delta | cat";
   const p = page(stored);
   p.item("Diffs", "Edit command…").run();
   assert.equal(p.field().value, "git diff {target} | delta | cat");
-  assert.equal(p.shown("set-note"), "This command runs in the shell.");
+  assert.equal(p.editor()!.children.length, 3, "the command row, the error and the buttons");
   p.button("Save").click!();
   await tick();
   assert.deepEqual([p.calls, stored.diff, p.editor()], [["line"], "git diff {target} | delta | cat", undefined]);
