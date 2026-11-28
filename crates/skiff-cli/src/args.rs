@@ -399,6 +399,13 @@ pub(super) enum OpenWithCmd {
         #[arg(value_enum)]
         key: OpenKey,
     },
+    /// The peek's program for a diff: runs Git and its renderer from a plan
+    /// that the app makes. Not for a shell.
+    #[command(hide = true)]
+    Render {
+        /// The plan, as JSON.
+        plan: String,
+    },
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]

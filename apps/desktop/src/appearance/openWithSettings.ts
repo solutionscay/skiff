@@ -4,9 +4,11 @@ import { open as openFile } from "@tauri-apps/plugin-dialog";
 import { t, type MessageKey } from "../i18n";
 
 export type OpenKey = "diff" | "text" | "markdown" | "html" | "image";
-export type OpenSettings = Record<OpenKey, string> & { default_diff: string; peek: string[] };
-/** One thing a row can pick. `command` is what `[open]` stores. */
-interface OpenChoice { label: string; command: string }
+/** `[open.commands.<key>]`: a program Skiff runs with no shell. `input: "patch"`: the diff on its standard input. */
+export interface OpenCommand { program: string; args: string[]; input: string; opens?: string }
+export type OpenSettings = Record<OpenKey, string> & { default_diff: string; peek: string[]; commands?: Partial<Record<OpenKey, OpenCommand>> };
+/** One thing a row can pick. `command` is what `[open]` stores, unless `run` is set: then `[open.commands]` stores `run`. */
+interface OpenChoice { label: string; command: string; run?: OpenCommand }
 /** What each row can pick, found on this computer. */
 export type OpenChoices = Partial<Record<OpenKey, { peek: OpenChoice[]; apps: OpenChoice[] }>>;
 
@@ -21,6 +23,8 @@ const OPEN_ROWS: { key: OpenKey; label: MessageKey }[] = [
 interface OpenWithActs {
   /** Stores a command, and whether it opens in the peek. Empty: the default. */
   set(key: OpenKey, command: string, peek: boolean): void;
+  /** Stores a program that Skiff runs with no shell. */
+  setCommand(key: OpenKey, run: OpenCommand): void;
   /** Stores a program from the file picker. */
   setApp(key: OpenKey, path: string): void;
 }
@@ -30,6 +34,11 @@ interface OpenWithActs {
  * tools and apps found on this computer, then the file picker. Where it opens
  * follows the choice. A command set by hand in projects.toml shows as it is.
  */
+/** The picker value of a program: one string per program, arguments and input. */
+const runValue = (r: OpenCommand) => "run:" + JSON.stringify([r.program, r.args, r.input]);
+/** A program as its words. */
+const runWords = (r: OpenCommand) => [r.program, ...r.args].join(" ");
+
 export function openWithPage(o: OpenSettings | null, found: OpenChoices, error: string | null, acts: OpenWithActs): HTMLElement {
   const main = h("div", "set-main");
   const intro = h("div", "set-head");
@@ -42,22 +51,30 @@ export function openWithPage(o: OpenSettings | null, found: OpenChoices, error: 
     const row = h("div", "set-row set-open set-agent on");
     const list = found[key] ?? { peek: [], apps: [] };
     const none = key === "diff" ? t("settings.open.gitDiff") : t("settings.open.defaultApp");
-    const known = [...list.peek, ...list.apps].find((c) => c.command === o[key]);
+    const run = o.commands?.[key];
+    const value = run ? runValue(run) : o[key];
+    const choiceValue = (c: OpenChoice) => (c.run ? runValue(c.run) : c.command);
+    const all = [...list.peek, ...list.apps];
+    const known = all.find((c) => choiceValue(c) === value);
     const entries = (): PickEntry[] => [
       { value: "", label: none },
-      ...(list.peek.length ? [{ head: t("settings.open.inPeek") }, ...list.peek.map((c) => ({ value: c.command, label: c.label }))] : []),
-      ...(list.apps.length ? [{ head: t("settings.open.inWindow") }, ...list.apps.map((c) => ({ value: c.command, label: c.label }))] : []),
+      ...(list.peek.length ? [{ head: t("settings.open.inPeek") }, ...list.peek.map((c) => ({ value: choiceValue(c), label: c.label }))] : []),
+      ...(list.apps.length ? [{ head: t("settings.open.inWindow") }, ...list.apps.map((c) => ({ value: choiceValue(c), label: c.label }))] : []),
       { sep: true as const },
       { label: t("settings.open.chooseApp"), run: () => void chooseApp().then((path) => { if (path) acts.setApp(key, path); }) },
     ];
     const cell = h("span", "c-field");
     cell.append(picker({
       label,
-      value: o[key],
-      shows: o[key] ? (known?.label ?? o[key]) : none,
-      quiet: !o[key],
+      value,
+      shows: value ? (known?.label ?? (run ? runWords(run) : o[key])) : none,
+      quiet: !value,
       entries,
-      pick: (v) => acts.set(key, v, list.peek.some((c) => c.command === v)),
+      pick: (v) => {
+        const c = all.find((c) => choiceValue(c) === v);
+        if (c?.run) acts.setCommand(key, c.run);
+        else acts.set(key, v, list.peek.some((c) => c.command === v));
+      },
     }));
     // Diffs run in the peek unless the pick is an app with a window. Images always open in an app.
     const inPeek = key === "diff" ? !list.apps.some((c) => c.command === o[key]) : key !== "image" && o.peek.includes(key);

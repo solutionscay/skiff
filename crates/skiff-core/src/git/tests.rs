@@ -150,7 +150,7 @@ fn a_branch_counts_its_commits_from_the_fork_point() {
         ]
     );
     assert_eq!(base.branch, "main");
-    assert_eq!(script, format!("git diff {} -- {}", base.sha, shell_quote("gone.txt")));
+    assert_eq!(script, format!("git diff {} -- {}", base.sha, shell_quote(":(literal)gone.txt")));
     assert!(a.text.contains("-2\n+two\n") && !a.untracked, "{a:?}");
     assert!(gone.text.contains("deleted file mode") && gone.text.contains("-x\n"), "{gone:?}");
     assert_eq!(same, Diff::default());

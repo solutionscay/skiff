@@ -12,7 +12,7 @@ use diff::{GIT_TIMEOUT, PREFLIGHT_LIMIT, STATUS_LIMIT};
 #[cfg(test)]
 use diff::{diff_within, untracked_diff};
 pub(crate) use diff::cap;
-pub use diff::{diff_in, diff_script, diff_text, is_relative_file, Diff, DEFAULT_DIFF, DIFF_LIMIT};
+pub use diff::{diff_in, diff_script, diff_target, diff_text, is_relative_file, Diff, DEFAULT_DIFF, DIFF_LIMIT};
 use repository::{branch_base_with, git};
 #[cfg(test)]
 use repository::classify_repository;

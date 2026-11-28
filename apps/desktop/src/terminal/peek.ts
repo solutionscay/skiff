@@ -12,13 +12,19 @@ import { accepts, pageRoute } from "../platform/invoke";
  * A preview is a card (folder, an app that opens the file, or a placeholder),
  * a command in a terminal (a diff, a terminal tool), or a card with a command
  * over it. A remote Host's diff is a card too: its git's text, drawn by
- * diffView.ts, with no command on this Mac. A command starts hidden, and what it does decides what shows:
+ * diffView.ts, with no command on this Mac. A local diff with a renderer
+ * (Settings › Open with › Diffs) runs Skiff's diff runner (`skiff open-with
+ * render`): a terminal tool from the start, it shows at once, its row owns
+ * it, and it ends with its preview. Any other command starts hidden, and
+ * what it does decides what shows:
  * - It takes the terminal (raw input or the alternate screen), as `micro`,
  *   `less` or a pager does: a terminal tool. The peek shows. When the tool
  *   exits, the peek closes.
  * - It prints and exits: the peek shows the output until a key.
  * - It prints nothing and exits, or keeps running without the terminal: an
  *   app with a window of its own. The peek never shows, and the app runs on.
+ *   If it prints and exits later, while its row is still current, its
+ *   output shows then.
  */
 import { Channel, invoke } from "../platform/invoke";
 import { handleOsc52 } from "./osc52";
@@ -55,9 +61,18 @@ const TOOLS_URL = "https://github.com/solutionscay/skiff/wiki/Open-with";
 
 /** A command that has not taken the terminal by now is an app with its own window. */
 const APP_AFTER_MS = 3000;
+/** The diff runner's last output: `skiff_core::open::RENDER_DONE_OSC`. */
+const RENDER_DONE_OSC = 7750;
+/** The diff runner's exit codes that name a stage: `skiff_core::open::render_exit`. */
+const RENDER_EXIT = { cannotRun: 126, producer: 90, cwd: 91, signal: 92, interrupted: 130 } as const;
+/** After an exit, output still on its way comes within this. A runner's done mark ends the wait sooner. */
+const DRAIN_MAX_MS = 2000;
+/** With no done mark, output is drained once none came for this long. */
+const DRAIN_QUIET_MS = 150;
 
 type Opened =
   | { kind: "run"; script: string; cwd: string }
+  | { kind: "render"; program: string; args: string[]; cwd: string; label: string }
   | { kind: "default" }
   | { kind: "no_app"; message: string };
 
@@ -263,7 +278,7 @@ function begin(mine: number, preview: Preview, fresh = false) {
     showCard(mine, "file", path);
     void invoke<FilePreview>("preview_file", { path }).then((p) => {
       if (!live(mine)) return;
-      if (p.peek && p.script) return void run("file", name, dir, p.script, p.cwd);
+      if (p.peek && p.script) return void run("file", name, dir, shellLaunch(p.script, p.cwd, "file"));
       // Selection starts terminal tools only. An app waits for an explicit open.
       showCard(mine, "file", path, t("peek.openIn", { app: p.app }), () => openPath(path));
     }).catch(failed(mine));
@@ -524,29 +539,31 @@ function drop(p: Peek, end: boolean) {
   p.el.remove();
   if (!p.session) return;
   saveStore();
-  if (end || p.exited) hostInvoke("session_lifecycle", "kill_session", { session: p.session }).catch(console.error);
+  if (end || p.exited || p.render) hostInvoke("session_lifecycle", "kill_session", { session: p.session }).catch(console.error);
   else released.add(p.session);
 }
 
 /** A command whose preview is gone: an editor parks, a shown command ends, one still starting runs on as an app. */
 function retire(p: Peek) {
-  if (p.kind === "file" && p.interactive && !p.exited) {
+  if (p.kind === "file" && p.interactive && !p.exited && !p.render) {
     p.el.hidden = true;
     parked.set(p.request, p);
   } else drop(p, p.shown);
 }
 
-function frame(mine: number, kind: string, title: string, where: string, program: string, request: string): Peek {
+function frame(mine: number, kind: string, title: string, where: string, program: string, request: string, render: boolean): Peek {
   const wasShown = open?.shown;
   if (open) retire(open);
   open = null;
   // A replacement command starts hidden. The panes can show until it takes the terminal.
   if (wasShown && (!slot.el || slot.el.hidden)) repaintPanes();
   const p = newPeek({
-    gen: mine, kind, request, title, where, program, close: closePreview,
+    gen: mine, kind, request, title, where, program, render, close: closePreview,
     theme: TERM_THEME, font: FONT, fontSize: S.fontSize, prepare: handleOsc52, onResize: resized,
   });
   const term = p.term;
+  // The runner's last output: what came before it is all there is.
+  if (render) term.parser.registerOscHandler(RENDER_DONE_OSC, () => (p.done = true));
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== "keydown") return true;
     // After the command ends, any key closes the peek.
@@ -612,11 +629,30 @@ function resized(p: Peek) {
   if (p.session && !p.exited) hostInvoke("session_terminal", "pty_resize", { session: p.session, cols: p.term.cols, rows: p.term.rows }).catch(console.error);
 }
 
-/** Starts `script` for the active preview, hidden. What it does decides whether the peek shows. */
-async function run(kind: string, title: string, where: string, script: string, cwd: string) {
+/** What a peek command runs. */
+interface Launch {
+  command: string;
+  args: string[];
+  cwd: string;
+  /** The program, for prompts and messages. */
+  program: string;
+  /** Skiff's diff runner: it shows at once and ends with its preview. */
+  render: boolean;
+}
+
+/** A shell script, as the peek ran every command before the diff runner. */
+const shellLaunch = (script: string, cwd: string, kind: string): Launch =>
+  ({ command: "/bin/sh", args: ["-c", script], cwd, program: script.trim().split(/\s+/)[0] ?? kind, render: false });
+
+/**
+ * Starts a command for the active preview. A shell command starts hidden,
+ * and what it does decides whether the peek shows. The diff runner shows at
+ * once; the keys stay where they are until the user enters the preview.
+ */
+async function run(kind: string, title: string, where: string, launch: Launch) {
   if (!active || active.closed) return;
   const mine = active.gen;
-  const request = JSON.stringify([kind, title, where, script, cwd]);
+  const request = JSON.stringify([kind, title, where, launch.command, launch.args, launch.cwd]);
   if (open?.request === request && !open.exited) return show(open);
   const saved = parked.get(request);
   if (saved) {
@@ -626,8 +662,9 @@ async function run(kind: string, title: string, where: string, script: string, c
     open = saved;
     return show(saved);
   }
-  const program = script.trim().split(/\s+/)[0] ?? kind;
-  const p = frame(mine, kind, title, where, program, request);
+  const { program } = launch;
+  const p = frame(mine, kind, title, where, program, request, launch.render);
+  if (launch.render) show(p);
   const back = orphans.get(request);
   if (back) {
     orphans.delete(request);
@@ -642,7 +679,7 @@ async function run(kind: string, title: string, where: string, script: string, c
   try {
     const peek_owner = await peekOwner();
     info = await hostInvoke<SessionInfo>("session_lifecycle", "create_session", {
-      spec: { label: program, role: "task", cwd, command: "/bin/sh", args: ["-c", script], peek: true, peek_owner, cols: p.term.cols, rows: p.term.rows },
+      spec: { label: program, role: "task", cwd: launch.cwd, command: launch.command, args: launch.args, peek: true, peek_owner, cols: p.term.cols, rows: p.term.rows },
     });
   } catch (e) {
     if (open !== p) return console.error(e);
@@ -650,9 +687,11 @@ async function run(kind: string, title: string, where: string, script: string, c
     return showError(e);
   }
   // The row changed meanwhile, or a newer command came: this one runs on its own.
+  // The runner has no window: nothing shows it, so it ends.
   if (open !== p) {
     earlyInteractive.delete(info.id);
-    if (info.interactive) hostInvoke("session_lifecycle", "kill_session", { session: info.id }).catch(console.error);
+    early.delete(info.id);
+    if (info.interactive || launch.render) hostInvoke("session_lifecycle", "kill_session", { session: info.id }).catch(console.error);
     else released.add(info.id);
     return;
   }
@@ -665,7 +704,7 @@ async function run(kind: string, title: string, where: string, script: string, c
   p.session = info.id;
   saveStore();
   // Still hidden and still running: an app with its own window. Let it go, but keep watching.
-  p.timer = window.setTimeout(() => {
+  if (!launch.render) p.timer = window.setTimeout(() => {
     if (open === p && !p.shown && !p.exited) closePeek(true);
   }, APP_AFTER_MS);
   await follow(p, info.id);
@@ -687,8 +726,13 @@ async function follow(p: Peek, session: string) {
     if (open !== p && held?.p !== p && parked.get(p.request) !== p) return;
     if (traceEcho(session, m)) return;
     const bytes = toBytes(m);
-    if (bytes.length) p.got = true;
+    if (bytes.length) {
+      p.got = true;
+      p.lastOutput = Date.now();
+    }
+    p.writing++;
     p.term.write(bytes, () => {
+      p.writing--;
       if (accepts(route)) void invoke("ack_output", { session, stream: n, bytes: bytes.length }).catch(console.error);
     });
   };
@@ -725,13 +769,35 @@ export function peekUpdated(info: SessionInfo) {
  * It shows when its row is still current and nothing opened since. Else
  * nothing can show it, and it ends.
  */
-function reclaim({ p, key }: { p: Peek; key: string }) {
+function reclaim({ p, key }: { p: Peek; key: string }): boolean {
   held = null;
-  if (open || p.gen !== gen || currentKey() !== key) return drop(p, true);
+  if (open || p.gen !== gen || currentKey() !== key) {
+    drop(p, true);
+    return false;
+  }
   if (!active || active.closed) active = { key, gen: p.gen, keys: true, closed: false };
   open = p;
-  tookTerminal(p);
+  if (!p.exited) tookTerminal(p);
   show(p);
+  return true;
+}
+
+/**
+ * Resolves once the command's output is in its terminal: the runner's done
+ * mark is parsed, or no output came for {@link DRAIN_QUIET_MS} and every
+ * write is parsed. Output and the exit come on separate channels.
+ */
+function drained(p: Peek): Promise<void> {
+  const began = Date.now();
+  return new Promise((resolve) => {
+    const check = () => {
+      const now = Date.now();
+      const quiet = now - Math.max(p.lastOutput, began) >= DRAIN_QUIET_MS && p.writing === 0;
+      if ((p.render ? p.done && p.writing === 0 : quiet) || now - began >= DRAIN_MAX_MS) return resolve();
+      window.setTimeout(check, 25);
+    };
+    check();
+  });
 }
 
 /** skiffd says a peek command ended. True when the session was a peek's. */
@@ -750,10 +816,19 @@ export function peekExited(id: string, code: number | null): boolean {
     hostInvoke("session_lifecycle", "kill_session", { session: id }).catch(console.error);
     return true;
   }
-  // A held app ended. What it printed was for no one.
+  // A held command ended. Output, or an error, shows on its row if that row
+  // is still current and nothing opened since: a quiet command that printed
+  // late. An app that printed nothing ends unseen.
   if (held?.p.session === id) {
-    held.p.exited = true;
-    drop(held.p, true);
+    const h = held;
+    h.p.exited = true;
+    h.p.el.classList.remove("busy");
+    void drained(h.p).then(() => {
+      if (held !== h) return;
+      const action = exitAction(h.p, code);
+      if (action === "close" || typeof action === "object" || !reclaim(h)) return void (held === h && drop(h.p, true));
+      if (h.p.shown) h.p.term.write(`\r\n\x1b[2m${exitLine(h.p, code)}\x1b[0m`);
+    });
     return true;
   }
   const saved = [...parked.values()].find((p) => p.session === id);
@@ -773,7 +848,7 @@ export function peekExited(id: string, code: number | null): boolean {
   p.exited = true;
   p.el.classList.remove("busy");
   // The last output can still be on its way: it comes on another channel.
-  window.setTimeout(() => {
+  void drained(p).then(() => {
     if (open !== p) return;
     const action = exitAction(p, code);
     if (action === "close") return closePeek();
@@ -783,19 +858,31 @@ export function peekExited(id: string, code: number | null): boolean {
     }
     show(p);
     if (p.shown) p.term.write(`\r\n\x1b[2m${exitLine(p, code)}\x1b[0m`);
-  }, 150);
+  });
   return true;
 }
 
 /** Only a code from the program blames the program. */
 function exitLine(p: Peek, code: number | null): string {
   if (code === null) return t("peek.ended");
+  // The runner names the stage that failed. Git's own text is above.
+  if (p.render) {
+    if (code === RENDER_EXIT.producer) return t("peek.gitFailed");
+    if (code === RENDER_EXIT.cwd) return t("peek.folderGone");
+    if (code === RENDER_EXIT.signal) return t("peek.signaled", { program: p.program });
+    if (code === RENDER_EXIT.cannotRun) return t("peek.cannotRun", { program: p.program });
+    if (code === RENDER_EXIT.interrupted) return t("peek.ended");
+  }
   return code ? t("peek.exited", { program: p.program, code }) : t("peek.pressKey");
 }
 
 function handle(o: Opened, kind: string, title: string, where: string) {
   if (o.kind === "run") {
-    void run(kind, title, where, o.script, o.cwd);
+    void run(kind, title, where, shellLaunch(o.script, o.cwd, kind));
+    return;
+  }
+  if (o.kind === "render") {
+    void run(kind, title, where, { command: o.program, args: o.args, cwd: o.cwd, program: o.label || kind, render: true });
     return;
   }
   if (o.kind === "no_app") {

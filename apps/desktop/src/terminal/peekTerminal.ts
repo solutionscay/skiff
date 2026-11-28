@@ -32,6 +32,14 @@ export interface Peek {
   /** Output came. The terminal may not have parsed it yet. */
   got: boolean;
   timer: number;
+  /** Skiff's diff runner: a terminal tool from the start. It shows at once and is never let go as an app. */
+  render: boolean;
+  /** The runner's done mark was parsed: all its output is in the terminal. */
+  done: boolean;
+  /** When the last output came, in ms. */
+  lastOutput: number;
+  /** Writes the terminal has not parsed yet. */
+  writing: number;
 }
 
 /** What `newPeek` needs. The facade passes the theme, font and size, so this file reads no app state. */
@@ -42,6 +50,7 @@ interface NewPeek {
   title: string;
   where: string;
   program: string;
+  render: boolean;
   close: () => void;
   theme: ITheme;
   font: string;
@@ -82,6 +91,7 @@ export function newPeek(o: NewPeek): Peek {
   const p: Peek = {
     gen: o.gen, kind: o.kind, request: o.request, el, term, fit, resize: new ResizeObserver(() => o.onResize(p)),
     session: null, program: o.program, shown: false, exited: false, interactive: false, got: false, timer: 0,
+    render: o.render, done: false, lastOutput: 0, writing: 0,
   };
   p.resize.observe(box);
   return p;

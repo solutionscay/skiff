@@ -306,8 +306,60 @@ pub fn set_open(key: &str, command: Option<&str>) -> Result<()> {
                 t.remove(key);
             }
         }
+        // A command line replaces the key's program, so the line runs.
+        drop_open_command(t, key);
         Ok(())
     })
+}
+
+/// Sets one `[open.commands.<key>]` program, which Skiff runs with no
+/// shell, or removes it. It replaces the key's command line.
+pub fn set_open_command(key: &str, command: Option<&super::OpenCommand>) -> Result<()> {
+    if !OPEN_KEYS.contains(&key) {
+        anyhow::bail!("unknown [open] key: {key}");
+    }
+    if let Some(c) = command {
+        if c.program.trim().is_empty() {
+            anyhow::bail!("the program is empty");
+        }
+    }
+    super::client::edit_table("open", |t| {
+        let Some(c) = command else {
+            drop_open_command(t, key);
+            return Ok(());
+        };
+        t.remove(key);
+        let mut row = toml_edit::Table::new();
+        row["program"] = toml_edit::value(c.program.trim());
+        row["args"] = toml_edit::value(c.args.iter().map(String::as_str).collect::<toml_edit::Array>());
+        row["input"] = toml_edit::value(c.input.as_str());
+        if let Some(opens) = &c.opens {
+            row["opens"] = toml_edit::value(opens.as_str());
+        }
+        let commands = t.entry("commands").or_insert_with(|| {
+            let mut table = toml_edit::Table::new();
+            table.set_implicit(true);
+            toml_edit::Item::Table(table)
+        });
+        let Some(commands) = commands.as_table_mut() else {
+            anyhow::bail!("[open] commands is not a table");
+        };
+        commands[key] = toml_edit::Item::Table(row);
+        Ok(())
+    })
+}
+
+fn drop_open_command(t: &mut toml_edit::Table, key: &str) {
+    let empty = match t.get_mut("commands").and_then(|c| c.as_table_like_mut()) {
+        Some(commands) => {
+            commands.remove(key);
+            commands.is_empty()
+        }
+        None => false,
+    };
+    if empty {
+        t.remove("commands");
+    }
 }
 
 /// One `[skiff_agent]` key. `None` removes it, so its default applies.

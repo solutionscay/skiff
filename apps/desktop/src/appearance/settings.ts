@@ -17,7 +17,7 @@ import { moveSkiffFolder } from "./skiffFolderDialog";
 import { sectionHead, tableState } from "./rowTable";
 import { type HostsPage, hostName, isRemote, knownHosts } from "../app/hosts";
 import { createHostsTab } from "./hostSettings";
-import { openWithPage, type OpenChoices, type OpenSettings, type OpenKey } from "./openWithSettings";
+import { openWithPage, type OpenChoices, type OpenCommand, type OpenSettings, type OpenKey } from "./openWithSettings";
 import { hostCan, hostInvoke } from "../app/hostCaps";
 
 import { countDisk, diskState, diskUseSection } from "./diskUse";
@@ -261,7 +261,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       return;
     }
     if (tab === "open") {
-      root.replaceChildren(nav, pinClose(openWithPage(openSet, openFound, error, { set: (key, command, peek) => void setOpen(key, command, peek), setApp: (key, path) => void setOpenApp(key, path) })));
+      root.replaceChildren(nav, pinClose(openWithPage(openSet, openFound, error, { set: (key, command, peek) => void setOpen(key, command, peek), setCommand: (key, command) => void setOpenCommand(key, command), setApp: (key, path) => void setOpenApp(key, path) })));
       return;
     }
     if (tab === "skippers") {
@@ -424,6 +424,17 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       openSet = await invoke<OpenSettings>("set_open", { key, command });
       // Diffs and Images have no peek setting: set_open_peek refuses them.
       if (key !== "diff" && key !== "image") openSet = await invoke<OpenSettings>("set_open_peek", { key, peek });
+    } catch (e) {
+      error = String(e);
+    }
+    render();
+  }
+
+  /** One Open with row: a program that Skiff runs with no shell. It replaces the row's command. */
+  async function setOpenCommand(key: OpenKey, command: OpenCommand) {
+    error = null;
+    try {
+      openSet = await invoke<OpenSettings>("set_open_command", { key, command });
     } catch (e) {
       error = String(e);
     }

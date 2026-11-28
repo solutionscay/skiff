@@ -180,3 +180,24 @@ fn open_with_lists_what_it_set_before_and_after_the_copy() {
     assert_eq!((open.text, open.markdown.as_deref(), open.peek), (None, Some("md {file}"), vec!["html".to_string()]));
     assert_eq!(std::fs::read_to_string(&file).unwrap(), source);
 }
+
+/// #303: `[open.commands]` is the program Skiff runs with no shell. It
+/// shows in `open-with ls`; `set` puts a command line in its place and
+/// `clear` removes it. An input from a newer Skiff still loads.
+#[test]
+fn open_with_set_and_clear_replace_a_program() {
+    let d = dir("open-commands");
+    let file = d.0.join("projects.toml");
+    std::fs::write(&file, "[[project]]\nname = \"app\"\npath = \"/private/fixture\"\n").unwrap();
+    let client = d.0.join("client.toml");
+    std::fs::write(&client, "schema = 2\n\n[open]\ndiff = \"git diff {target} | delta\"\n\n[open.commands.diff]\nprogram = \"delta\"\nargs = [\"--side-by-side\", \"a b\"]\ninput = \"patch\"\n\n[open.commands.text]\nprogram = \"later\"\ninput = \"path\"\nopens = \"app\"\n").unwrap();
+
+    assert_eq!(row(&d.0, &file, "diff").0.as_deref(), Some("delta --side-by-side 'a b'"));
+    assert_eq!(row(&d.0, &file, "text").0.as_deref(), Some("later"));
+    ok(skiff(&d.0, &file).args(["open-with", "set", "diff", "git diff {target}"]).output().unwrap());
+    assert_eq!(row(&d.0, &file, "diff").0.as_deref(), Some("git diff {target}"));
+    ok(skiff(&d.0, &file).args(["open-with", "clear", "text"]).output().unwrap());
+    let open = config::client::load_from(&file, &client).unwrap().open;
+    assert_eq!((open.diff.as_deref(), open.commands.len()), (Some("git diff {target}"), 0));
+    assert!(!std::fs::read_to_string(&client).unwrap().contains("commands"));
+}
