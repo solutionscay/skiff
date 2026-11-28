@@ -18,7 +18,7 @@ import { faceSig, skipperFace } from "./skipperFace";
 import { BELL, FAILED, FLAG, workingIcon } from "../appearance/stateIcon";
 import { icon } from "../ui/icons";
 import { agentIcon, launchIcon } from "../appearance/agentIcon";
-import { ledgerOpen, ledgerWorkTitle } from "./ledger";
+import { ledgerWaiting, ledgerWorkTitle } from "./ledger";
 import { reported } from "./programStatus";
 import { isMac } from "../app/keys";
 import { rowMenu, skiffAgentMenu } from "./menus";
@@ -98,7 +98,7 @@ const mark = (paths: string) => () => icon(paths) as unknown as HTMLElement;
 /**
  * The row's one state word. The most urgent wins: Needs you, Watcher failed,
  * Working, Waiting on N, Done, Idle, Agent exited. Waiting on N: the watcher
- * runs, the Skipper is idle, and N of its ledger tasks are open.
+ * runs, the Skipper is idle, and N of its ledger tasks are sent or pending.
  */
 function wordOf(e: Entry, watch: { state: WatchState } | null): Word {
   const s = e.s;
@@ -108,8 +108,8 @@ function wordOf(e: Entry, watch: { state: WatchState } | null): Word {
   if (s.state === "working") return { key: "working", text: t("skippers.wordWorking"), mark: workingIcon };
   const exited = s.state === "done" || s.agent_exit != null;
   const owner = ownerOf(e);
-  const open = owner ? ledgerOpen(owner) : 0;
-  if (!exited && watch?.state === "runs" && open > 0) return { key: "waiting-on", text: tn("skippers.wordWaitingOn", open), mark: mark(CLOCK) };
+  const waits = owner ? ledgerWaiting(owner) : 0;
+  if (!exited && watch?.state === "runs" && waits > 0) return { key: "waiting-on", text: tn("skippers.wordWaitingOn", waits), mark: mark(CLOCK) };
   if (s.unread) return { key: "done", text: t("skippers.wordDone"), mark: mark(FLAG) };
   if (!exited) return { key: "idle", text: t("skippers.wordIdle"), mark: () => null };
   return { key: "exited", text: t("skippers.wordExited"), mark: mark(SHELL) };
