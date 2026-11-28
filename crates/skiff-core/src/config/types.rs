@@ -60,6 +60,38 @@ pub struct Open {
     /// default app. Never in the peek.
     #[serde(default)]
     pub image: Option<String>,
+    /// `[open.commands.<key>]`: a program that Skiff runs itself, with no
+    /// shell. One for a key replaces that key's command line.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub commands: std::collections::BTreeMap<String, OpenCommand>,
+}
+
+/// A program that an `[open]` row runs, with no shell between: the program,
+/// its arguments in order, what it reads, and where it shows.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct OpenCommand {
+    /// A program name, found on the PATH of skiffd's environment, or a path.
+    pub program: String,
+    /// The arguments, each one word, in order.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// What the program reads. `patch`: Skiff runs `git diff` and writes the
+    /// patch to the program's standard input. Kept as text, so a value from
+    /// a newer Skiff does not stop the file from loading.
+    #[serde(default = "OpenCommand::patch")]
+    pub input: String,
+    /// Where it shows: `peek` or `app`. Absent: the peek.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opens: Option<String>,
+}
+
+impl OpenCommand {
+    /// The input for a diff renderer.
+    pub const PATCH: &'static str = "patch";
+
+    fn patch() -> String {
+        Self::PATCH.to_string()
+    }
 }
 
 /// `[skiff_agent]`: the one agent session that coordinates the others. The

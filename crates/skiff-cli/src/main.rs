@@ -20,6 +20,7 @@ mod open_with;
 mod peek;
 mod print;
 mod projects;
+mod render;
 mod resolve;
 mod sessions;
 mod skipper;
@@ -81,6 +82,7 @@ async fn run(cli: Cli) -> Result<i32> {
         Cmd::Theme { cmd: ThemeCmd::Ls { json } } => return theme::ls(json).map(|_| 0),
         Cmd::Theme { cmd: ThemeCmd::App { cmd } } => return theme::app(cmd).map(|_| 0),
         Cmd::Theme { cmd: ThemeCmd::Project { cmd } } => return theme::project(cmd).map(|_| 0),
+        Cmd::OpenWith { cmd: args::OpenWithCmd::Render { plan } } => return Ok(render::run(&plan)),
         Cmd::OpenWith { cmd } => return open_with::run(cmd).map(|_| 0),
         Cmd::Ledger { person, cmd } => return ledger::run(&socket, cmd, person).await,
         Cmd::Schedule { person, cmd } => return ledger::schedule::run(&socket, cmd, person).await,

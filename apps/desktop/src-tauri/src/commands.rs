@@ -212,7 +212,27 @@ pub(crate) async fn open_file_copy(app: Routed, worktree: String, file: String) 
     let open = skiff_core::config::client::load().map(|c| c.open).unwrap_or_default();
     let cwd = copy.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
     let plan = skiff_core::open::plan_file(&copy, &open);
+    // The peek of a remote Host runs on that Host, where the copy is not.
+    // The copy opens on this computer: an app here, else the default app.
+    if app.remote() {
+        return open_copy_here(plan, skiff_core::open::previews_file(&copy, &open), cwd, copy).await;
+    }
     run_plan(plan, cwd, copy).await
+}
+
+/// Opens a remote Host file's local copy on this computer, never in the
+/// Host's peek: a configured app starts here with the copy's path; a peek
+/// tool, which has no terminal here, gives way to the default app.
+async fn open_copy_here(plan: skiff_core::open::Plan, peek_tool: bool, cwd: PathBuf, copy: PathBuf) -> Result<Opened, String> {
+    use skiff_core::open::Plan;
+    match plan {
+        Plan::Run(script) if !peek_tool => tokio::task::spawn_blocking(move || skiff_core::open::start(&script, &cwd))
+            .await
+            .map_err(|e| e.to_string())?
+            .map(|_| Opened::Default)
+            .map_err(|e| format!("{e:#}")),
+        _ => run_plan(Plan::Default, cwd, copy).await,
+    }
 }
 
 /// The changed files of one worktree, for the sidebar's Changes section:
@@ -237,6 +257,10 @@ pub(crate) enum Opened {
     /// The page runs `script` in the peek, in `cwd`. It shows only if the
     /// script turns out to be a terminal tool.
     Run { script: String, cwd: PathBuf },
+    /// The page runs `program` with `args` in the peek, in `cwd`, and shows
+    /// it at once: Skiff's diff runner with its plan. `label` names the
+    /// renderer.
+    Render { program: PathBuf, args: Vec<String>, cwd: PathBuf, label: String },
     /// No command is set, and the default app took the file.
     Default,
     /// No command is set, and the OS has no app for the file.
@@ -257,14 +281,39 @@ pub(crate) async fn run_plan(plan: skiff_core::open::Plan, cwd: PathBuf, file: P
 }
 
 /// Shows a changed file's diff, or the whole worktree's, with `[open] diff`.
+/// A renderer runs through the `skiff` CLI beside this app: see
+/// [`skiff_core::open::Render`]. A command line runs in the shell.
 #[tauri::command]
 pub(crate) async fn open_diff(path: PathBuf, file: Option<String>) -> Result<Opened, String> {
+    use skiff_core::open::DiffPlan;
+    if !path.is_dir() {
+        return Err(format!("The worktree folder is gone: {}", path.display()));
+    }
     let open = skiff_core::config::client::load().map(|c| c.open).unwrap_or_default();
     let dir = path.clone();
     let plan = tokio::task::spawn_blocking(move || skiff_core::open::plan_diff(&dir, file.as_deref(), &open))
         .await
-        .map_err(|e| e.to_string())?;
-    run_plan(plan, path.clone(), path).await
+        .map_err(|e| e.to_string())?
+        .map_err(err)?;
+    match plan {
+        DiffPlan::Shell(script) => Ok(Opened::Run { script, cwd: path }),
+        DiffPlan::Render(render) => {
+            let program = render_program()?;
+            let label = render.renderer.first().and_then(|r| std::path::Path::new(r).file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let plan = serde_json::to_string(&render).map_err(|e| e.to_string())?;
+            Ok(Opened::Render { program, args: vec!["open-with".into(), "render".into(), plan], cwd: path, label })
+        }
+    }
+}
+
+/// The `skiff` CLI of this build, beside the app binary: it runs a diff's
+/// renderer. `SKIFF_RENDER_CLI` names another, for tests.
+fn render_program() -> Result<PathBuf, String> {
+    let cli = match std::env::var_os("SKIFF_RENDER_CLI") {
+        Some(p) => PathBuf::from(p),
+        None => std::env::current_exe().map_err(|e| e.to_string())?.with_file_name("skiff"),
+    };
+    if cli.is_file() { Ok(cli) } else { Err(format!("Skiff's CLI is missing: {}", cli.display())) }
 }
 
 /// The `[open]` commands, empty for a default, and the default diff command.
@@ -276,6 +325,8 @@ pub(crate) struct OpenSettings {
     markdown: String,
     html: String,
     image: String,
+    /// `[open.commands]`: the programs Skiff runs with no shell, by key.
+    commands: std::collections::BTreeMap<String, skiff_core::config::OpenCommand>,
     default_diff: &'static str,
 }
 
@@ -288,6 +339,7 @@ fn open_settings_now() -> Result<OpenSettings, String> {
         markdown: o.markdown.unwrap_or_default(),
         html: o.html.unwrap_or_default(),
         image: o.image.unwrap_or_default(),
+        commands: o.commands,
         default_diff: skiff_core::git::DEFAULT_DIFF,
     })
 }
@@ -303,6 +355,15 @@ pub(crate) fn set_open(key: String, command: String) -> Result<OpenSettings, Str
     let c = command.trim();
     let _own = crate::projects_watch::OwnEdit::quiet();
     skiff_core::config::set_open(&key, (!c.is_empty()).then_some(c)).map_err(err)?;
+    open_settings_now()
+}
+
+/// Sets one `[open.commands]` program, which Skiff runs with no shell. It
+/// replaces the key's command line.
+#[tauri::command]
+pub(crate) fn set_open_command(key: String, command: skiff_core::config::OpenCommand) -> Result<OpenSettings, String> {
+    let _own = crate::projects_watch::OwnEdit::quiet();
+    skiff_core::config::set_open_command(&key, Some(&command)).map_err(err)?;
     open_settings_now()
 }
 

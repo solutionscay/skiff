@@ -2,7 +2,7 @@
 
 use super::{branch_base, branch_base_with, git, git_bounded, open_beneath, Beneath, Deadline, Root};
 
-use crate::shell::shell_quote;
+use crate::shell::quote_word;
 
 use std::{
     path::Path,
@@ -45,28 +45,41 @@ pub fn diff_text(dir: &Path, file: Option<&str>, command: Option<&str>, width: u
 }
 
 /// The shell script that shows a changed file's diff against the worktree's
-/// base, or the whole worktree's, with `command`, else `git diff`. The base
-/// is the branch's fork point, else HEAD: see [`branch_base`]. `{target}` in
-/// the command becomes what to compare; without it, the target goes at the
-/// end. An untracked file compares with an empty file.
+/// base, or the whole worktree's, with `command`, else `git diff`. `{target}`
+/// in the command becomes [`diff_target`], each word quoted; without it, the
+/// target goes at the end.
 pub fn diff_script(dir: &Path, file: Option<&str>, command: Option<&str>) -> String {
-    let base = branch_base(dir).map(|b| b.sha);
-    let against = base.as_deref().unwrap_or("HEAD");
-    // Known to git in the index, or at the base: a file a commit deleted is still a diff.
-    let known = |f: &str| {
-        git(dir, &["ls-files", "--error-unmatch", "--", f]).is_ok()
-            || base.as_ref().is_some_and(|b| git(dir, &["cat-file", "-e", &format!("{b}:{f}")]).is_ok())
-    };
-    let target = match file {
-        None => against.to_string(),
-        Some(f) if known(f) => format!("{against} -- {}", shell_quote(f)),
-        Some(f) => format!("--no-index -- /dev/null {}", shell_quote(f)),
-    };
+    let target = diff_target(dir, file).iter().map(|w| quote_word(w)).collect::<Vec<_>>().join(" ");
     let command = command.map(str::trim).filter(|c| !c.is_empty()).unwrap_or(DEFAULT_DIFF);
     if command.contains("{target}") {
         command.replace("{target}", &target)
     } else {
         format!("{command} {target}")
+    }
+}
+
+/// What `git diff` compares for a changed file, or for the whole worktree,
+/// as separate words. The base is the branch's fork point, else HEAD, else
+/// (no commit yet) the empty tree. A file known to git, in the index or at
+/// the base, is a literal pathspec after `--`, so `*`, `:` and a leading
+/// `-` stay part of its name. An untracked file compares with an empty
+/// file: `--no-index -- /dev/null FILE`. The whole worktree leaves
+/// untracked files out.
+pub fn diff_target(dir: &Path, file: Option<&str>) -> Vec<String> {
+    let base = branch_base(dir).map(|b| b.sha).or_else(|| {
+        git(dir, &["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]).ok().map(|h| h.trim().to_string()).filter(|h| !h.is_empty())
+    });
+    let against = base.clone().or_else(|| git(dir, &["hash-object", "-t", "tree", "/dev/null"]).ok().map(|t| t.trim().to_string()));
+    let against = against.unwrap_or_else(|| "HEAD".to_string());
+    let Some(f) = file else { return vec![against] };
+    let spec = format!(":(literal){f}");
+    // In the index, or at the base: a file a commit or `git rm` deleted is still a diff.
+    let known = git(dir, &["ls-files", "--error-unmatch", "--", &spec]).is_ok()
+        || base.as_ref().is_some_and(|b| git(dir, &["cat-file", "-e", &format!("{b}:{f}")]).is_ok());
+    if known {
+        vec![against, "--".into(), spec]
+    } else {
+        vec!["--no-index".into(), "--".into(), "/dev/null".into(), f.to_string()]
     }
 }
 

@@ -10,8 +10,12 @@ use crate::print;
 #[derive(serde::Serialize)]
 struct Row {
     key: &'static str,
-    /// The command set, or `None` for the default.
+    /// The command set, or `None` for the default. A program from
+    /// `[open.commands]` shows as its words.
     command: Option<String>,
+    /// `[open.commands.<key>]`: the program Skiff runs with no shell.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    program: Option<config::OpenCommand>,
     /// What selecting the file does: `peek` runs the command, `app` shows
     /// an Open button. Settings › Open with › OPENS IN. A diff is always `peek`.
     opens: &'static str,
@@ -30,9 +34,13 @@ fn rows() -> Result<Vec<Row>> {
                 "image" => &o.image,
                 _ => &o.html,
             };
-            let command = cmd.as_deref().map(str::trim).filter(|c| !c.is_empty()).map(String::from);
+            let program = o.commands.get(key).cloned();
+            let command = match &program {
+                Some(p) => Some(std::iter::once(&p.program).chain(&p.args).map(|w| skiff_core::shell::quote_word(w)).collect::<Vec<_>>().join(" ")),
+                None => cmd.as_deref().map(str::trim).filter(|c| !c.is_empty()).map(String::from),
+            };
             let opens = if key == "image" { "app" } else if key == "diff" || o.peek.iter().any(|k| k == key) { "peek" } else { "app" };
-            Row { key, command, opens }
+            Row { key, command, program, opens }
         })
         .collect())
 }
@@ -81,6 +89,10 @@ pub fn run(cmd: OpenWithCmd) -> Result<()> {
             }
             Ok(())
         }
-        OpenWithCmd::Clear { key } => config::set_open(key.name(), None),
+        OpenWithCmd::Clear { key } => {
+            config::set_open(key.name(), None)?;
+            config::set_open_command(key.name(), None)
+        }
+        OpenWithCmd::Render { plan } => std::process::exit(crate::render::run(&plan)),
     }
 }

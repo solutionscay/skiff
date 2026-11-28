@@ -11,13 +11,18 @@ use std::{
 };
 
 use serde::Serialize;
+use skiff_core::config::OpenCommand;
 use skiff_core::shell::shell_quote;
 
-/// One thing a row can pick. `command` is what `[open]` stores.
+/// One thing a row can pick. `command` is what `[open]` stores, unless
+/// `run` is set: then `[open.commands]` stores `run`, and `command` only
+/// tells the choices apart.
 #[derive(Serialize, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Choice {
     pub label: String,
     pub command: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run: Option<OpenCommand>,
 }
 
 /// One row's list. `peek`: terminal tools. `apps`: a window of their own.
@@ -31,9 +36,12 @@ pub(crate) type Choices = BTreeMap<&'static str, Row>;
 
 const KEYS: [&str; 5] = ["diff", "text", "markdown", "html", "image"];
 
+/// The diff renderers Skiff runs itself, with the patch on their input:
+/// label, program. Their output and pager keep the peek's terminal.
+const RENDERERS: &[(&str, &str)] = &[("delta", "delta")];
+
 /// The terminal tools Skiff knows: row, label, program, command.
 const TOOLS: &[(&str, &str, &str, &str)] = &[
-    ("diff", "delta", "delta", "git -c core.pager=delta diff {target}"),
     ("diff", "difftastic", "difft", "git -c diff.external=difft diff {target}"),
     ("text", "nvim", "nvim", "nvim"),
     ("text", "vim", "vim", "vim"),
@@ -60,7 +68,7 @@ pub(crate) fn read() -> Choices {
     let mut out = tools_on(&dirs);
     for (label, program, command) in DIFF_APPS {
         if on_path(&dirs, program) {
-            out.entry("diff").or_default().apps.push(Choice { label: (*label).into(), command: (*command).into() });
+            out.entry("diff").or_default().apps.push(Choice { label: (*label).into(), command: (*command).into(), run: None });
         }
     }
     let home = dirs::home_dir().unwrap_or_default();
@@ -133,9 +141,15 @@ fn on_path(dirs: &[PathBuf], program: &str) -> bool {
 
 fn tools_on(dirs: &[PathBuf]) -> Choices {
     let mut out: Choices = KEYS.iter().map(|k| (*k, Row::default())).collect();
+    for (label, program) in RENDERERS {
+        if on_path(dirs, program) {
+            let run = OpenCommand { program: (*program).into(), args: Vec::new(), input: OpenCommand::PATCH.into(), opens: None };
+            out.entry("diff").or_default().peek.push(Choice { label: (*label).into(), command: (*program).into(), run: Some(run) });
+        }
+    }
     for (key, label, program, command) in TOOLS {
         if on_path(dirs, program) {
-            out.entry(key).or_default().peek.push(Choice { label: (*label).into(), command: (*command).into() });
+            out.entry(key).or_default().peek.push(Choice { label: (*label).into(), command: (*command).into(), run: None });
         }
     }
     out
@@ -238,7 +252,7 @@ fn parse_entry(text: &str) -> Option<Found> {
     if command.is_empty() {
         return None;
     }
-    Some(Found { choice: Choice { label: name?.into(), command: command.join(" ") }, keys, terminal })
+    Some(Found { choice: Choice { label: name?.into(), command: command.join(" "), run: None }, keys, terminal })
 }
 
 /// The `applications` folders, the user's first, as the XDG spec orders them.
@@ -327,7 +341,7 @@ fn parse_bundle(app: &Path) -> Option<Found> {
     }
     let text = |k: &str| info.get(k).and_then(|v| v.as_string()).map(str::to_string).filter(|s| !s.is_empty());
     let label = text("CFBundleDisplayName").or_else(|| text("CFBundleName")).or_else(|| app.file_stem().map(|s| s.to_string_lossy().into_owned()))?;
-    Some(Found { choice: Choice { label, command: format!("open -a {}", shell_quote(&app.to_string_lossy())) }, keys, terminal: false })
+    Some(Found { choice: Choice { label, command: format!("open -a {}", shell_quote(&app.to_string_lossy())), run: None }, keys, terminal: false })
 }
 
 /// Every `.app` in the folders the Finder lists as Applications.
@@ -350,7 +364,7 @@ mod tests {
     #[test]
     fn a_desktop_file_gives_its_app_with_the_file_where_it_asks() {
         let f = parse_entry("[Desktop Entry]\nType=Application\nName=Zed\nExec=zed --wait %F\nMimeType=text/plain;text/html;\n[Desktop Action new]\nName=New\nExec=zed --new\n").unwrap();
-        assert_eq!(f.choice, Choice { label: "Zed".into(), command: "zed --wait {path}".into() });
+        assert_eq!(f.choice, Choice { label: "Zed".into(), command: "zed --wait {path}".into(), run: None });
         assert_eq!(f.keys, BTreeSet::from(["text", "markdown", "html"]));
         assert!(!f.terminal);
     }
@@ -364,7 +378,7 @@ mod tests {
     #[test]
     fn a_terminal_desktop_file_goes_to_the_peek_list_once() {
         let mut out: Choices = BTreeMap::new();
-        out.entry("text").or_default().peek.push(Choice { label: "vim".into(), command: "vim".into() });
+        out.entry("text").or_default().peek.push(Choice { label: "vim".into(), command: "vim".into(), run: None });
         add_entry(&mut out, parse_entry("[Desktop Entry]\nType=Application\nName=Vim\nExec=vim %F\nTerminal=true\nMimeType=text/plain;\n").unwrap());
         assert_eq!(out["text"].peek.len(), 1);
         assert!(out["text"].apps.is_empty());
