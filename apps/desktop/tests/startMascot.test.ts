@@ -21,7 +21,7 @@ test("the clip is in index.html and tries H.264, then VP9", () => {
 });
 
 test("the poster is the still", () => {
-  assert.match(start, /<video [^>]*poster="\.\/src\/assets\/start-mascot\.jpg"/);
+  assert.match(start, /<video [^>]*poster="\.\/src\/assets\/start-mascot\.webp"/);
 });
 
 test("reduced motion keeps the still", () => {
