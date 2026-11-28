@@ -24,8 +24,7 @@ body.header-bar #topbar .search { display: none; }
 /* Quiet cells: the tree carries the motion, the top bar only counts. */
 #topbar .nx { gap: calc(8 * var(--u)); border: 0; background-color: transparent; }
 #topbar .nx:hover { background-color: var(--bg-raised); color: var(--text); }
-/* A skin's one bubble button in the bar: the gear. The counts and the Host cell stay quiet; the band carries the gloss. */
-#topbar .gear { margin: var(--skin-bar-inset) var(--skin-bar-gap); border-radius: var(--skin-bubble-radius); background-image: var(--skin-button-gradient); box-shadow: var(--skin-button-shadow); }
+/* The gear is a quiet cell like the counts and the Host cell (shell-actions.css): no gloss, only hover. The band carries the gloss. */
 #topbar .nx svg { flex-shrink: 0; width: calc(13 * var(--u)); height: calc(13 * var(--u)); }
 #topbar .nx .num { font: 600 calc(12px * var(--zoom, 1)) var(--mono); font-variant-numeric: tabular-nums; }
 #topbar .nx-waiting svg { color: var(--state-waiting); }

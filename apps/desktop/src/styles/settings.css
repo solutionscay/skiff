@@ -16,7 +16,7 @@
 /* Bubble: a group head is a label, not a bar: flat, muted, its words at the foot of the row so space opens above.
    The pages stay glossy buttons. The current page is a white surface in bold, as the TREE | SKIPPERS tab: Settings
    has no project, so no project color. */
-:root[data-skin="bubble"] .set-nav .set-band { align-items: flex-end; padding-bottom: calc(6 * var(--u)); background: none; border-bottom: 0; }
+:root[data-skin="bubble"] .set-nav .set-band { align-items: center; background: none; border-bottom: 0; }
 :root[data-skin="bubble"] .set-nav .set-band-title { font-size: calc(11px * var(--zoom, 1)); font-weight: 600; color: var(--text-3); }
 :root[data-skin="bubble"] .set-nav .set-band + .set-tab { border-top: var(--skin-border) var(--rule); }
 :root[data-skin="bubble"] .set-tab:hover:not(.active) { background-color: var(--hover); }
