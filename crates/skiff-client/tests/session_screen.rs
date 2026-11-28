@@ -90,25 +90,7 @@ async fn screen_capability_is_independent_and_failures_never_dispatch_or_fall_ba
         );
     }
     let connection = connect(&source, hello()).unwrap();
-    for request in [
-        Request::AgentList,
-        Request::TerminalInput {
-            session: "s".into(),
-            data: vec![],
-            paste: false,
-        },
-        Request::TerminalResize {
-            session: "s".into(),
-            cols: 1,
-            rows: 1,
-        },
-        Request::TerminalAttach {
-            session: "s".into(),
-        },
-        Request::TerminalDetach {
-            session: "s".into(),
-        },
-    ] {
+    for request in common::agent_and_terminal_requests() {
         assert!(matches!(
             connection.request(request).await,
             Err(Error::UnsupportedCapability { .. })

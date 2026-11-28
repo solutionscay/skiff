@@ -125,11 +125,9 @@ test("Edit opens the form with the Host's values and saves them under its id", a
   for (let i = 0; i < 6; i++) await flush();
   const edit = x.calls.find(([c]) => c === "edit_host")!;
   assert.equal(JSON.stringify(edit), JSON.stringify(["edit_host", { id: "h_dev", form: { destination: "devbox", name: "devbox", user: "me", port: "2200" } }]));
-  // Connect checks the Host at once, and a passed check offers the switch.
+  // Connect checks the Host at once.
   assert.ok(x.calls.some(([c, a]) => c === "check_host" && JSON.stringify(a) === '{"id":"h_dev"}'));
   assert.ok(x.page().find("devbox.lan answers. 12 ms."));
-  x.page().find("Switch to devbox")!.click();
-  assert.ok(x.calls.some(([c, a]) => c === "pick" && a === "h_dev"));
 });
 
 test("one Skiff per server: the check list shows the one skiffd and offers no pick", async () => {

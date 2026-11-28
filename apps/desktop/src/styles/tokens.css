@@ -55,7 +55,7 @@
 :root[data-skin="default"] {
   --font: "IBM Plex Sans", system-ui, sans-serif;
   --mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
-  --skin-wordmark-font: "Lilita One", "Space Grotesk", var(--font);
+  --skin-wordmark-font: "Skiff Wordmark", var(--font);
   --skin-border: 1px solid;
   --skin-button-radius: 0;
   --skin-input-radius: 0;
@@ -110,7 +110,7 @@
   --skin-tint: linear-gradient(color-mix(in srgb, var(--bg-deep) 75%, transparent), color-mix(in srgb, var(--bg-deep) 75%, transparent));
   --skin-soft-top: linear-gradient(180deg, var(--gloss), transparent calc(56 * var(--u)));
   --font: Tahoma, Verdana, "Segoe UI", "DejaVu Sans", Cantarell, sans-serif;
-  --skin-wordmark-font: "Lilita One", var(--font);
+  --skin-wordmark-font: "Skiff Wordmark", var(--font);
   --skin-button-radius: 0;
   --skin-bubble-radius: calc(3 * var(--u));
   --skin-tab-radius: calc(3 * var(--u));

@@ -242,11 +242,13 @@ pub fn owner_name(owner: &str) -> String {
     }
 }
 
-fn main_name() -> String {
+/// The Skiff agent's name from `projects.toml`: "Admiral" by default.
+pub fn main_name() -> String {
     crate::skipper::name(&skiff_core::config::load().unwrap_or_default())
 }
 
-fn skipper_name() -> String {
+/// The word for a Skipper from `projects.toml`: "Skipper" by default.
+pub fn skipper_name() -> String {
     skiff_core::config::load().unwrap_or_default().skiff_agent.skipper_word()
 }
 

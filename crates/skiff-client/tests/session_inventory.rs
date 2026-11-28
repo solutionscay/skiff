@@ -92,25 +92,7 @@ async fn inventory_has_no_broad_sessions_permission_or_fallback_on_capability_ve
         );
     }
     let host = connect(&source, hello()).unwrap();
-    for request in [
-        Request::AgentList,
-        Request::TerminalInput {
-            session: "s".into(),
-            data: vec![],
-            paste: false,
-        },
-        Request::TerminalResize {
-            session: "s".into(),
-            cols: 1,
-            rows: 1,
-        },
-        Request::TerminalAttach {
-            session: "s".into(),
-        },
-        Request::TerminalDetach {
-            session: "s".into(),
-        },
-    ] {
+    for request in common::agent_and_terminal_requests() {
         assert!(matches!(
             host.request(request).await,
             Err(Error::UnsupportedCapability { .. })

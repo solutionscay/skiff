@@ -1,42 +1,16 @@
 //! `Watching` registers a connection as the Skiff agent's watcher until it closes.
 
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use skiff_core::{
-    protocol::{Event, Response, ServerMessage},
+    protocol::{Event, Response},
     session::{SessionInfo, SessionSpec},
 };
 use skiffd::session::SessionPool;
-use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines},
-    net::{unix::OwnedReadHalf, unix::OwnedWriteHalf, UnixStream},
-    sync::broadcast,
-};
+use tokio::sync::broadcast;
 
-struct Conn {
-    rd: Lines<BufReader<OwnedReadHalf>>,
-    wr: OwnedWriteHalf,
-}
-
-fn connect(pool: &Arc<SessionPool>) -> Conn {
-    let (ours, theirs) = UnixStream::pair().unwrap();
-    tokio::spawn(skiffd::server::handle(theirs, pool.clone()));
-    let (rd, wr) = ours.into_split();
-    Conn { rd: BufReader::new(rd).lines(), wr }
-}
-
-impl Conn {
-    /// Sends one request and returns its reply, skipping events.
-    async fn ask(&mut self, json: &str) -> Response {
-        self.wr.write_all(format!("{json}\n").as_bytes()).await.unwrap();
-        loop {
-            let line = tokio::time::timeout(Duration::from_secs(5), self.rd.next_line()).await.unwrap().unwrap().unwrap();
-            if let ServerMessage::Reply(r) = serde_json::from_str(&line).unwrap() {
-                return r.response;
-            }
-        }
-    }
-}
+mod conn;
+use conn::connect;
 
 /// The next `SessionUpdated` for `id`.
 async fn updated(events: &mut broadcast::Receiver<Event>, id: &str) -> SessionInfo {

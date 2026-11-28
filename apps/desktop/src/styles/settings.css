@@ -52,7 +52,8 @@
 .set-agent.on { color: var(--text); }
 .set-row .c-on { width: 100%; height: 100%; }
 .set-agent .c-name { font-size: calc(13px * var(--zoom, 1)); font-weight: 500; }
-.set-agent .c-state .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--ok); }
+/* The state square of an agent, a Skipper, a task type, a schedule and a prompt file. Each table sets its other states after this rule. */
+.set-agent .c-state .sq, .g-skip .c-state .sq, .g-tasks .c-state .sq, .g-sched .sq, .prompt-row .c-state .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--ok); }
 .set-agent.missing .c-state { color: var(--text-dim); }
 .set-agent.missing .c-state .sq { background: var(--rule-strong); }
 .set-row .c-mode { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
@@ -108,7 +109,6 @@
 .g-skip .c-dim { color: var(--text-3); }
 .g-skip .set-row > .c-file { gap: calc(8 * var(--u)); }
 .g-skip .c-state, .g-tasks .c-state { display: flex; align-items: center; gap: calc(8 * var(--u)); min-width: 0; font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
-.g-skip .c-state .sq, .g-tasks .c-state .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--ok); }
 .g-skip .c-state.tpl .sq { background: var(--text-dim); }
 .g-skip .c-state.none, .g-tasks .c-state.none { color: var(--text-dim); }
 .g-skip .c-state.none .sq, .g-tasks .c-state.none .sq { background: var(--rule-strong); }
@@ -307,7 +307,6 @@ body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset:
 .set-table.g-sched .set-row { grid-template-columns: calc(40 * var(--u)) calc(170 * var(--u)) minmax(0, 1fr) calc(190 * var(--u)) calc(130 * var(--u)) calc(130 * var(--u)) calc(300 * var(--u)); }
 .set-table.g-sched .set-row > * { overflow: hidden; white-space: nowrap; }
 .g-sched .c-lead { justify-content: center; padding: 0; }
-.g-sched .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--ok); }
 .g-sched .sq.off { background: var(--rule-strong); }
 .g-sched .c-name { font-size: calc(13px * var(--zoom, 1)); font-weight: 500; text-overflow: ellipsis; }
 .g-sched .c-words { gap: calc(10 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); }
@@ -336,7 +335,6 @@ body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset:
 /* The prompt file, as a task type's instructions: the square, the size or none, then the file. */
 .set-main > .set-row.prompt-row > .c-field { padding: 0 calc(12 * var(--u)); }
 .prompt-row .c-state { display: flex; align-items: center; gap: calc(8 * var(--u)); min-width: 0; font-size: calc(12px * var(--zoom, 1)); white-space: nowrap; }
-.prompt-row .c-state .sq { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--ok); }
 .prompt-row .c-state.none { color: var(--text-dim); }
 .prompt-row .c-state.none .sq { background: var(--rule-strong); }
 .prompt-row .c-file { min-width: 0; overflow: hidden; text-overflow: ellipsis; font: calc(12px * var(--zoom, 1)) var(--mono); color: var(--text-3); }

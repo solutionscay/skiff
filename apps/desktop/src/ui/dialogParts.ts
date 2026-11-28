@@ -11,6 +11,20 @@ export function dialogFrame(panelClass: string, role: "dialog" | "alertdialog" =
   return { overlay, panel };
 }
 
+/** A click on the backdrop or Esc closes. No key reaches the app behind the overlay. */
+export function closeOnBackdropOrEscape(overlay: HTMLElement, close: () => void) {
+  overlay.addEventListener("mousedown", (e) => {
+    if (e.target === overlay) close();
+  });
+  overlay.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Escape") {
+      e.preventDefault();
+      close();
+    }
+  });
+}
+
 export function dialogActions(action: string, actionClass = "confirm-act") {
   const foot = h("div", "confirm-foot");
   const cancel = h("button", "confirm-cancel", t("dialog.cancel"));

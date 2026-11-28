@@ -41,7 +41,7 @@ Test every change with three questions:
 - **Central controls.** A menu, a picker, a field, a button or a switch comes from `ui/controls.ts`. No native dropdown and no datalist. A control fills its cell, so rows stay flush. A native file dialog stays where the app uses one.
 - **Everything zooms.** Write lengths as `calc(N * var(--u))` and font sizes as `calc(Npx * var(--zoom, 1))`. Rules and small accent bars use fixed pixel widths. Measured positions use pixels.
 - **Tokens only.** Colors come from `styles/tokens.css`. A theme changes the tokens. The color picker uses fixed white and black for its cursor contrast.
-- **Typefaces.** IBM Plex Sans for the UI: 13px body, 11 to 12px for meta text and hints, weights 500 to 700 for emphasis. JetBrains Mono for terminals and code. The wordmark uses Space Grotesk.
+- **Typefaces.** IBM Plex Sans for the UI: 13px body, 11 to 12px for meta text and hints, weights 500 to 700 for emphasis. JetBrains Mono for terminals and code. The wordmark uses Skiff Wordmark, a subset of Lilita One with the letters of SKIFF only.
 - **Each color has one job.**
   - Project color (`--pc`) shows location: the project badge in the tree, the current row, the lit menu item and the focused pane's frame. The tree has no project bars.
   - State colors show session state: amber for waiting, blue for working, grey for done and idle. Project colors stay away from state colors.
