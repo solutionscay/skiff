@@ -3,7 +3,7 @@ import { invoke } from "../platform/invoke";
 import type { DaemonWarning, SessionInfo } from "../platform/types";
 import { muteInput } from "../terminal/terminalRuntime";
 import { showError } from "../ui/alerts";
-import { dialogFrame } from "../ui/dialogParts";
+import { closeOnBackdropOrEscape, dialogFrame } from "../ui/dialogParts";
 import { $, button, h } from "../ui/dom";
 import { opensAtOnce } from "./daemonNotice";
 import { acceptHostIdentity, updateShownHost } from "./hosts";
@@ -193,14 +193,6 @@ function restartDialog() {
     overlay.remove();
     back?.focus?.();
   }
-  overlay.addEventListener("mousedown", (e) => {
-    if (e.target === overlay) done();
-  });
-  overlay.addEventListener("keydown", (e) => {
-    e.stopPropagation();
-    if (e.key !== "Escape") return;
-    e.preventDefault();
-    done();
-  });
+  closeOnBackdropOrEscape(overlay, done);
   cancel.focus();
 }

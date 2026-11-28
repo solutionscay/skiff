@@ -5,7 +5,7 @@
  * opened, then closes it. Esc or a click outside closes it.
  */
 import { S } from "../app/state";
-import { dialogFrame, escapeButton } from "../ui/dialogParts";
+import { closeOnBackdropOrEscape, dialogFrame, escapeButton } from "../ui/dialogParts";
 import { onImagesChanged } from "../terminal/images";
 import { panes } from "../terminal/terminalState";
 import { refocusTerminal } from "../workspace/view";
@@ -43,16 +43,7 @@ export function openImages() {
   shut = close;
   redraw = draw;
 
-  overlay.addEventListener("mousedown", (e) => {
-    if (e.target === overlay) close();
-  });
-  overlay.addEventListener("keydown", (e) => {
-    e.stopPropagation();
-    if (e.key === "Escape") {
-      e.preventDefault();
-      close();
-    }
-  });
+  closeOnBackdropOrEscape(overlay, close);
   document.body.appendChild(overlay);
   draw();
   // The empty library has no field to take the keys: the panel holds them, so Esc works.

@@ -19,7 +19,7 @@ import { projectSkipperOf, skiffAgentSession } from "../app/skiffAgent";
 import { appThemeOf, signatureColor, themeIdFor } from "../appearance/themes";
 import { DEFAULT_THEME } from "../appearance/colors";
 import { render } from "../app/renderRequest";
-import { dialogFrame, dialogHeader } from "../ui/dialogParts";
+import { closeOnBackdropOrEscape, dialogFrame, dialogHeader } from "../ui/dialogParts";
 import { pickColor } from "../appearance/colorPicker";
 import { button, h } from "../ui/dom";
 import { t } from "../i18n";
@@ -284,16 +284,7 @@ export function setAvatarDialog(scope: string | null, name: string, done: () => 
   acts.append(shuffle, custom, reset);
   panel.append(dialogHeader(title, close), grid, swatches, acts, error);
   overlay.appendChild(panel);
-  overlay.addEventListener("mousedown", (e) => {
-    if (e.target === overlay) close();
-  });
-  overlay.addEventListener("keydown", (e) => {
-    e.stopPropagation();
-    if (e.key === "Escape") {
-      e.preventDefault();
-      close();
-    }
-  });
+  closeOnBackdropOrEscape(overlay, close);
   document.body.appendChild(overlay);
   draw();
   (grid.querySelector<HTMLButtonElement>('[aria-pressed="true"]') ?? grid.querySelector<HTMLButtonElement>(".av-opt"))?.focus();
