@@ -104,7 +104,9 @@
   --skin-strip-gap: 3px;
 }
 
-/* Bubble: glossy bars, small rounded corners, light panels in a tinted frame. Every color comes from the theme. */
+/* Bubble: glossy bars, small rounded corners, light panels in a tinted frame. Every color comes from the theme. The
+   frame is always light: on a dark theme appearance/appTheme.ts makes it from the theme's own color, and the terminals
+   and pane heads keep the dark theme. */
 :root[data-skin="bubble"] {
   --skin-gloss-bar: linear-gradient(180deg, var(--gloss) 0%, color-mix(in srgb, var(--gloss) 40%, transparent) 50%, transparent 52%, var(--shade) 100%);
   --skin-tint: linear-gradient(color-mix(in srgb, var(--bg-deep) 75%, transparent), color-mix(in srgb, var(--bg-deep) 75%, transparent));
@@ -144,6 +146,10 @@
   --skin-content-inset: calc(6 * var(--u));
   --skin-foot-gap: calc(8 * var(--u));
 }
+
+/* Bubble: a pane in its own theme keeps that theme's ground behind its terminal, so a dark pane in the light frame
+   shows no frame color at its edges. */
+:root[data-skin="bubble"] .cell[data-head] { background: var(--head-bg); }
 
 /* Bubble: a pane head wears the pane's own theme (terminal/headTheme.ts sets --head-* and data-head on the cell).
    Every head rule reads these names, so focus, selection and state marks mix with the head's color. Waiting keeps
