@@ -99,3 +99,40 @@ test("the card a project or session uses names that scope", async () => {
   a.S.focused = null;
   assert.equal(a.themes.themeOverrides().length, 0);
 });
+
+
+test("apply clears workspace project and session overrides after a project refusal", async () => {
+  const projects: any[] = [
+    { name: "refused", theme: "one" }, { name: "open", theme: "two" },
+    { name: "closed", theme: "three", closed: true }, { name: "outside", theme: "four" },
+  ];
+  const sessions = new Map<string, any>([
+    ["inside", { id: "inside", theme: "one", project: projects[1] }],
+    ["outside", { id: "outside", theme: "two", project: projects[3] }],
+  ]);
+  const route = { host: "host", entry: 1 };
+  const calls: string[] = [];
+  const mod = moduleFromSource("../src/appearance/themes.ts", {
+    "../platform/invoke": { pageRoute: () => route, accepts: (r: unknown) => r === route },
+    "../workspace/profile": { shows: (p: any) => p.name !== "outside" },
+    "../app/hostCaps": { hostInvoke: async (_: string, cmd: string, args: any) => {
+      calls.push(args.project ?? args.session);
+      if (args.project === "refused") throw new Error("refused");
+    } },
+    "./colors": { DEFAULT_THEME: "ultraviolet", isLight: () => false },
+    "./appTheme": { applyAppTheme() {} },
+    "../app/state": { S: { projects: [projects[0], projects[1], projects[3]], closedProjects: [projects[2]], themes: [], appTheme: null, settingsShown: true }, sessions },
+    "../app/stateQueries": { currentProject: () => null, place: (s: any) => ({ project: s.project }) },
+    "../terminal/terminalState": { panes: new Map() },
+    "../app/renderRequest": { render() {} },
+  }, {}, "");
+  mod.projectThemesFrom(projects);
+  assert.equal(await mod.resetHostThemes(), 3);
+  assert.equal(calls.join(","), "refused,open,closed,inside");
+  assert.equal(projects[0].theme, "one");
+  assert.equal(projects[1].theme, null);
+  assert.equal(projects[2].theme, null);
+  assert.equal(projects[3].theme, "four");
+  assert.equal(sessions.get("inside").theme, null);
+  assert.equal(sessions.get("outside").theme, "two");
+});

@@ -7,7 +7,7 @@
 .set-title { font-size: calc(13px * var(--zoom, 1)); font-weight: 700; }
 .set-nav .set-band { padding: 0 calc(16 * var(--u)); }
 .set-nav .set-band-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); }
-.set-tab { height: var(--row); flex-shrink: 0; min-width: 0; display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(16 * var(--u)); border: 0; border-bottom: var(--skin-border) var(--rule); background: var(--skin-tab-gradient) transparent; color: var(--text); font-size: calc(13px * var(--zoom, 1)); text-align: left; border-radius: var(--skin-tab-radius); }
+.set-tab { height: var(--row); flex-shrink: 0; min-width: 0; display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(16 * var(--u)); border: 0; border-bottom: var(--skin-border) var(--rule); background: var(--skin-tab-gradient) transparent; color: var(--text); font-size: calc(13px * var(--zoom, 1)); text-align: left; border-radius: 0; }
 .set-tab-name { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .set-tab-count { flex-shrink: 0; font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .set-tab-bad { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--error); }
@@ -62,6 +62,8 @@
 .set-note[hidden] { display: none; }
 /* A section head is a 40px tinted band. */
 .set-band { height: var(--row); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: calc(12 * var(--u)); padding: 0 calc(12 * var(--u)); background: var(--skin-band-gradient) var(--bg-raised); border-bottom: 1px solid var(--rule); }
+/* A band with a button: the count and the button sit at the right edge, as row actions. */
+.set-band > .set-band-count:has(+ .ctl-btn) { margin-left: auto; }
 .set-band-title { font-size: calc(12px * var(--zoom, 1)); font-weight: 500; color: var(--text-2); }
 .set-band-count { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Settings tables (appearance/rowTable.ts). Each cell is a span; a control fills its cell. */
@@ -378,3 +380,7 @@ body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset:
 .u-reset { gap: calc(8 * var(--u)); font-size: calc(12px * var(--zoom, 1)); color: var(--text-2); white-space: nowrap; }
 .u-in { color: var(--text-3); }
 .u-text { font: calc(12px * var(--zoom, 1)) var(--mono); color: var(--text-2); }
+
+/* Settings controls stay square and use a tint for selection. */
+#settings :is(button, input, textarea) { border-radius: 0; }
+#settings .ctl-pick:focus, #settings .ctl-field:focus { box-shadow: none; }

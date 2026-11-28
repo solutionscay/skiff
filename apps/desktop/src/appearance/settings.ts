@@ -1,5 +1,5 @@
 import { applySkin, skins } from "./skin";
-import { picker } from "../ui/controls";
+import { picker, smallButton } from "../ui/controls";
 import { DEFAULT_THEME } from "./colors";
 import { escapeButton } from "../ui/dialogParts";
 import { h } from "../ui/dom";
@@ -7,7 +7,7 @@ import { invoke } from "../platform/invoke";
 import { imageCount } from "../terminal/images";
 import { size as byteSize } from "./skiffFolderDialog";
 import type { AgentInfo, Appearance, TerminalTheme } from "../platform/types";
-import { type MessageKey, t } from "../i18n";
+import { type MessageKey, t, tn } from "../i18n";
 import { nextCard, themeGrid, type ThemeFilters } from "./themeCards";
 import { type Action, actionFor, isMac } from "../app/keys";
 import { editField, fieldEditKey, textField } from "../ui/fieldClipboard";
@@ -50,6 +50,7 @@ interface AppearanceHooks {
   /** A theme id, or null for the default Foot theme. */
   current: () => string | null;
   load: () => Promise<void>;
+  reset: () => Promise<number>;
   set: (id: string | null) => void;
   /** Themes that replace the app theme on screen, each with a label that names its scope. */
   overrides?: () => { id: string; label: string }[];
@@ -104,6 +105,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   // Settings › Skippers › Instructions, and one error line per row.
   const fs: FilesState<InstructionFile> = { files: [], fileErrors: new Map(), typeErrors: new Map() };
   let error: string | null = null;
+  let themeApplying = false;
+  let themeResult: number | null = null;
   let saving = false;
   // The draft rows and their error lines survive every redraw.
   const agentsTable = tableState();
@@ -344,6 +347,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
         scopes: look.overrides?.(),
         reload: async () => { await look.load(); return look.themes(); },
         pick: (id) => {
+          themeResult = null;
           look.set(id === DEFAULT_THEME ? null : id);
         },
       }),
@@ -381,7 +385,23 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       },
     }));
     skinRow.append(h("span", "c-name", t("settings.appSkin")), cell);
-    main.append(finishRow(draw, sampleSeeds), skinRow, sectionHead(t("settings.appTheme"), undefined, String(look.themes().length)), cards);
+    const themeHead = sectionHead(t("settings.appTheme"));
+    const label = themeApplying ? t("settings.themeApplying") : t("settings.resetHostThemes");
+    const reset = smallButton(label, () => {
+      themeApplying = true;
+      themeResult = null;
+      error = null;
+      render();
+      void look.reset().then((count) => { themeResult = count; }, (e) => { error = String(e); }).finally(() => {
+        themeApplying = false;
+        render();
+      });
+    });
+    reset.disabled = themeApplying || !hostCan("project_config") || !hostCan("session_lifecycle");
+    const result = h("span", "set-band-count", themeResult === null ? "" : tn("settings.themeCleared", themeResult));
+    result.setAttribute("role", "status");
+    themeHead.append(result, reset);
+    main.append(finishRow(draw, sampleSeeds), skinRow, themeHead, cards);
     return main;
   }
 

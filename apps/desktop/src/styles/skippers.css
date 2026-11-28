@@ -95,7 +95,7 @@ body.mods-held .sk-num { display: inline-block; }
 .av-opt:nth-child(6n + 1) { border-left: 0; }
 .av-opt:nth-child(n + 7) { border-top: 1px solid var(--rule); }
 .av-opt:hover { background: var(--bg-raised); }
-.av-opt[aria-pressed="true"] { background: color-mix(in srgb, var(--pc) 22%, transparent); box-shadow: var(--skin-row-mark) var(--pc); }
+.av-opt[aria-pressed="true"] { background: color-mix(in srgb, var(--pc) 22%, transparent); box-shadow: none; }
 .av-act { height: var(--row); border: 0; background: transparent; color: var(--text-2); font-size: calc(13px * var(--zoom, 1)); }
 .av-act:hover { background: var(--bg-raised); color: var(--text); }
 
@@ -107,7 +107,9 @@ body.mods-held .sk-num { display: inline-block; }
 .av-swatch:nth-child(n + 7) { border-top: 1px solid var(--rule); }
 .av-swatch::before { content: ""; width: calc(20 * var(--u)); height: calc(20 * var(--u)); background: color-mix(in srgb, var(--sw) 85%, #000); }
 .av-swatch:hover { background: var(--bg-raised); }
-.av-swatch[aria-pressed="true"] { background: color-mix(in srgb, var(--sw) 22%, transparent); box-shadow: var(--skin-row-mark) var(--sw); }
+.av-swatch[aria-pressed="true"] { background: color-mix(in srgb, var(--sw) 22%, transparent); box-shadow: none; }
 .av-acts { display: grid; grid-template-columns: repeat(3, 1fr); }
 .av-acts .av-act + .av-act { border-left: 1px solid var(--rule); }
 .av-act:disabled, .av-act:disabled:hover { color: var(--text-3); background: transparent; }
+
+.av-panel button { border-radius: 0; }

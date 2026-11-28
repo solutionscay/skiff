@@ -14,7 +14,7 @@ import { render, scheduleRender } from "./render";
 import { collapsed, S, selectedWorktree } from "./state";
 import { launchChoices } from "./stateQueries";
 
-import { loadThemes, themeOverrides } from "../appearance/themes";
+import { loadThemes, themeOverrides, resetHostThemes } from "../appearance/themes";
 import { refocusTerminal, selectProject } from "../workspace/view";
 import { includeAdded } from "../workspace/profile";
 import { skipperStart } from "../workspace/menus";
@@ -38,6 +38,7 @@ export function initPanels() {
       themes: () => S.themes,
       current: () => S.appTheme,
       overrides: themeOverrides,
+      reset: resetHostThemes,
       load: loadThemes,
       set: (id) => {
         S.appTheme = id;

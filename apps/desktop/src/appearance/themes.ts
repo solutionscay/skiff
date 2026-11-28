@@ -2,11 +2,12 @@ import { DEFAULT_THEME, isLight, mix, readable } from "./colors";
 /** Terminal and app themes. */
 import { applyAppTheme } from "./appTheme";
 import { sessionsOf } from "../workspace/layout";
+import { shows } from "../workspace/profile";
 
 import { scopeFleet, taskTitle } from "../workspace/model";
 import { pickTheme } from "./themeCards";
 import type { Group, Project, SessionInfo, TerminalTheme } from "../platform/types";
-import { invoke } from "../platform/invoke";
+import { accepts, invoke, pageRoute } from "../platform/invoke";
 import { showError } from "../ui/alerts";
 import { render } from "../app/renderRequest";
 import { S, sessions } from "../app/state";
@@ -90,6 +91,60 @@ export function themeOverrides(): { id: string; label: string }[] {
   const s = S.focused ? sessions.get(S.focused) : undefined;
   if (s?.theme && knownTheme(s.theme) !== app) out.push({ id: knownTheme(s.theme), label: t("theme.scopeSession", { name: taskTitle(s) }) });
   return out;
+}
+
+/** Clear overrides in the active workspace, continuing past individual refusals. */
+export async function resetHostThemes(): Promise<number> {
+  const route = pageRoute();
+  const projects = [...S.projects, ...S.closedProjects].filter(shows);
+  const projectNames = new Set(projects.map((p) => p.name));
+  const targets = [...sessions.values()].filter((s) => {
+    const project = place(s)?.project;
+    return !!s.theme && (!project || projectNames.has(project.name));
+  });
+  let cleared = 0;
+  let failedSessions = 0;
+  const checkRoute = () => {
+    if (!accepts(route)) throw new Error("The Host changed. The page subscribes again.");
+  };
+  try {
+    checkRoute();
+    for (const project of projects) {
+      if (!projectThemes.has(project.name)) continue;
+      checkRoute();
+      try {
+        await hostInvoke("project_config", "set_project_theme", { project: project.name, theme: null }, route?.host ?? undefined);
+      } catch {
+        checkRoute();
+        continue;
+      }
+      checkRoute();
+      projectThemes.delete(project.name);
+      project.theme = null;
+      cleared++;
+    }
+    for (const session of targets) {
+      checkRoute();
+      try {
+        await hostInvoke("session_lifecycle", "set_session_theme", { session: session.id, theme: null }, route?.host ?? undefined);
+      } catch {
+        checkRoute();
+        failedSessions++;
+        continue;
+      }
+      checkRoute();
+      session.theme = null;
+      cleared++;
+    }
+    if (failedSessions && !cleared) throw new Error(t("settings.themeApplyFailed"));
+    return cleared;
+  } finally {
+    if (accepts(route)) {
+      applyThemes();
+      applyApp();
+      render();
+    }
+  }
 }
 
 /** The theme id the app colors come from. Icons are inked against it. */
