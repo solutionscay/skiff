@@ -5,14 +5,14 @@
 #topbar .wordmark { font-size: calc(17px * var(--zoom, 1)); letter-spacing: 0.05em; }
 #topbar .search, #topbar .tb-cell.mission-find { background: var(--bg-panel); }
 #topbar .nx { color: var(--text-3); }
-#topbar .nx-waiting { background: var(--state-waiting-bg); box-shadow: inset 0 -2px 0 var(--state-waiting); color: var(--state-waiting-text); font-weight: 600; }
-#topbar .nx-waiting:hover { background: var(--state-waiting-bg); color: var(--state-waiting-text); }
+#topbar .nx-waiting { background-color: var(--state-waiting-bg); box-shadow: var(--skin-underline) var(--state-waiting); color: var(--state-waiting-text); font-weight: 600; }
+#topbar .nx-waiting:hover { background-color: var(--state-waiting-bg); color: var(--state-waiting-text); }
 #topbar .nx-unread svg, #topbar .nx-unread .num { color: var(--text-3); }
 #topbar .host-cell, #topbar .gear { color: var(--text-3); }
 
 /* ---- 2. No HUD labels: section heads and tabs read as words ---- */
-.sv-tab { font: 500 calc(12px * var(--zoom, 1)) var(--font); letter-spacing: 0; text-transform: none; background: var(--bg-deep); }
-.sv-tab.on { background: var(--bg-panel); color: var(--text); }
+.sv-tab { font: 500 calc(12px * var(--zoom, 1)) var(--font); letter-spacing: 0; text-transform: none; background: var(--skin-tab-gradient) var(--bg-deep); }
+.sv-tab.on { background: var(--skin-tab-gradient) var(--bg-panel); color: var(--text); }
 .tree-head { font-size: calc(12px * var(--zoom, 1)); font-weight: 500; letter-spacing: 0; text-transform: none; }
 .mission-cluster.fleet > .mission-cluster-head { text-transform: none; letter-spacing: 0; font-size: 12px; }
 .mission-side-head { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-3); }
@@ -41,18 +41,18 @@
 /* ---- 6. The current row: same bar, half the tint ---- */
 #sidebar-scroll .current { background: color-mix(in srgb, var(--pc) 10%, transparent); }
 #sidebar-scroll .project-row:has(> .project-pick.current) { background: color-mix(in srgb, var(--pc) 10%, var(--bg-panel)); }
-#sidebar-scroll .wt-row:has(> .wt-pick.current) { background: linear-gradient(to right, transparent 0 3px, color-mix(in srgb, var(--pc) 10%, transparent) 3px); }
+#sidebar-scroll .wt-row:has(> .wt-pick.current) { background: linear-gradient(to right, transparent 0 var(--skin-strip-gap), color-mix(in srgb, var(--pc) 10%, transparent) var(--skin-strip-gap)); }
 .mission-card.window.lit .win-head { background: color-mix(in srgb, var(--pc) 6%, var(--bg-panel)); }
 
 /* ---- 7. Waiting: the one thing that fills a band, in every view ---- */
-#sidebar-scroll .session-row.st-waiting { background: var(--state-waiting-bg); box-shadow: inset 2px 0 0 var(--state-waiting); }
+#sidebar-scroll .session-row.st-waiting { background: var(--state-waiting-bg); box-shadow: var(--skin-row-mark) var(--state-waiting); }
 .session-row.st-waiting .title, .session-row.st-waiting .time { color: var(--state-waiting-text); }
 .session-row .belled, .cell-head .belled, .mission-card .belled, .mission-panel-head .belled { color: var(--state-waiting); }
 .mission-card.waiting .head { background: var(--state-waiting-bg); border-bottom-color: var(--state-waiting-rule); }
 
 /* ---- 8. Panes: the title drops to body size, the head loses its tint ---- */
 .cell-head .title { font-size: calc(13px * var(--zoom, 1)); }
-.cell.focused .cell-head { background: color-mix(in srgb, var(--pc) 5%, var(--bg-panel)); }
+.cell.focused .cell-head { background-color: color-mix(in srgb, var(--pc) 5%, var(--bg-panel)); }
 .cell-head.st-waiting .title { font-weight: 600; }
 #statusbar { color: var(--text-3); }
 

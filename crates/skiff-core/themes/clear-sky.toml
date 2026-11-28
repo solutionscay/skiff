@@ -1,0 +1,28 @@
+# Sky blue frame, white panels, tinted terminal ground, navy text. Muted ANSI colors.
+name = "Clear Sky"
+color_family = "Blue"
+main_color = "#5a4fcf"
+
+[terminal]
+foreground = "#13284f"
+background = "#ecf4fd"
+cursor = "#13284f"
+cursor_foreground = "#ecf4fd"
+selection = "#bcd7f5"
+selection_foreground = "#13284f"
+regular = ["#13284f", "#b8322a", "#2e7a36", "#8f6400", "#1f5fbf", "#7e3fa8", "#00788a", "#d3dcea"]
+bright = ["#5b6b88", "#cf4437", "#3a8f42", "#a87708", "#2f74e0", "#9452c0", "#0a8fa3", "#f4f8fd"]
+
+[ui]
+# The app panels stay white. The terminal ground has a faint tint of the frame.
+background = "#ffffff"
+sidebar = "#d3e6f9"
+tertiary = "#b9d7f4"
+secondary = "#e6f0fb"
+border = "#a3c3e6"
+mutedForeground = "#4b6186"
+sidebarForeground = "#1b3463"
+primary = "#5a4fcf"
+working = "#1c6fd1"
+warning = "#b06800"
+destructive = "#c22a2a"

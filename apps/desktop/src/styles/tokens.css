@@ -37,14 +37,128 @@
   /* The Skiff agent's rank stripes in the Skippers list. */
   --rank: #e8c46a;
   --scrim: rgba(5, 7, 10, 0.72);
+  /* A skin's highlight and shade, for its gradients. appTheme.ts sets both per theme. */
+  --gloss: #e6e8eb26;
+  --shade: #00000059;
   /* Text on a filled --state-working button. */
   --on-working: #0b0e12;
-  --font: "IBM Plex Sans", system-ui, sans-serif;
-  --mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
   --u: calc(1px * var(--zoom, 1));
   /* Motion: every one-off animation uses these. ui/motion.ts reads them. Light layers only, opacity and transform only. */
   --motion-fade: 100ms;
   --motion-move: 120ms;
   --motion-ease: cubic-bezier(.2, .6, .2, 1);
   --row: calc(40 * var(--u));
+}
+
+/* Frame styles. Shadow geometry takes its color at the element, where project and state colors apply. */
+:root,
+:root[data-skin="default"] {
+  --font: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  --skin-wordmark-font: "Lilita One", "Space Grotesk", var(--font);
+  --skin-border: 1px solid;
+  --skin-button-radius: 0;
+  --skin-input-radius: 0;
+  --skin-menu-radius: 0;
+  --skin-panel-radius: 0;
+  --skin-sidebar-radius: 0;
+  --skin-tab-radius: 0;
+  --skin-titlebar-radius: 0;
+  --skin-button-gradient: none;
+  --skin-input-gradient: none;
+  --skin-menu-gradient: none;
+  --skin-panel-gradient: none;
+  --skin-sidebar-gradient: none;
+  --skin-tab-gradient: none;
+  --skin-titlebar-gradient: none;
+  --skin-button-shadow: none;
+  --skin-input-shadow: none;
+  --skin-alert-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+  --skin-drag-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --skin-floating-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --skin-underline: inset 0 -2px 0;
+  --skin-row-mark: inset 2px 0 0;
+  --skin-drop-before: inset 0 2px 0;
+  --skin-inset-frame-strong: inset 0 0 0 2px;
+  --skin-bottom-rule: inset 0 -1px 0;
+  --skin-inset-frame: inset 0 0 0 1px;
+  --skin-group-mark: inset 3px 0 0;
+  --skin-waiting-mark: inset calc(3 * var(--u)) 0 0;
+  --skin-top-rule: inset 0 1px 0;
+  --skin-outer-frame: 0 0 0 1px;
+  --skin-key-bevel: inset 0 calc(-6 * var(--u)) 0;
+  --skin-outer-frame-strong: 0 0 0 2px;
+  --skin-search-frame: inset 0 0 0 calc(2 * var(--u));
+  --skin-bubble-radius: 0;
+  --skin-box-radius: 0;
+  --skin-box-surface: var(--bg-panel);
+  --skin-box-shadow: none;
+  --skin-band-gradient: none;
+  --skin-statusbar-gradient: none;
+  --skin-dialog-shadow: none;
+  --skin-bar-rule: var(--rule);
+  --skin-bar-inset: 0;
+  --skin-bar-gap: 0;
+  --skin-content-inset: 0;
+  --skin-foot-gap: 0;
+  --skin-strip-gap: 3px;
+}
+
+/* Bubble: glossy bars, small rounded corners, light panels in a tinted frame. Every color comes from the theme. */
+:root[data-skin="bubble"] {
+  --skin-gloss-bar: linear-gradient(180deg, var(--gloss) 0%, color-mix(in srgb, var(--gloss) 40%, transparent) 50%, transparent 52%, var(--shade) 100%);
+  --skin-tint: linear-gradient(color-mix(in srgb, var(--bg-deep) 75%, transparent), color-mix(in srgb, var(--bg-deep) 75%, transparent));
+  --skin-soft-top: linear-gradient(180deg, var(--gloss), transparent calc(56 * var(--u)));
+  --font: Tahoma, Verdana, "Segoe UI", "DejaVu Sans", Cantarell, sans-serif;
+  --skin-wordmark-font: "Lilita One", var(--font);
+  --skin-button-radius: 0;
+  --skin-bubble-radius: calc(3 * var(--u));
+  --skin-tab-radius: calc(3 * var(--u));
+  --skin-input-radius: calc(3 * var(--u));
+  --skin-menu-radius: calc(4 * var(--u));
+  --skin-panel-radius: calc(4 * var(--u));
+  --skin-box-radius: calc(4 * var(--u));
+  /* No edge stripes: only the selected row and waiting rows keep their flat tint. */
+  --skin-row-mark: inset 0 0 0;
+  --skin-group-mark: inset 0 0 0;
+  --skin-waiting-mark: inset 0 0 0;
+  --skin-strip-gap: 0px;
+  --skin-button-gradient: var(--skin-gloss-bar);
+  --skin-input-gradient: linear-gradient(180deg, var(--shade), transparent calc(8 * var(--u)));
+  --skin-menu-gradient: var(--skin-soft-top);
+  --skin-panel-gradient: var(--skin-soft-top);
+  --skin-sidebar-gradient: linear-gradient(180deg, var(--gloss), transparent calc(240 * var(--u)));
+  --skin-tab-gradient: var(--skin-gloss-bar);
+  --skin-titlebar-gradient: var(--skin-gloss-bar);
+  --skin-band-gradient: var(--skin-gloss-bar), var(--skin-tint);
+  --skin-statusbar-gradient: var(--skin-gloss-bar);
+  --skin-button-shadow: 0 1px 2px var(--shade);
+  --skin-input-shadow: inset 0 1px 2px var(--shade);
+  --skin-box-surface: var(--bg);
+  --skin-box-shadow: 0 1px 3px var(--shade);
+  --skin-floating-shadow: 0 6px 18px rgb(0 0 0 / 0.3);
+  --skin-dialog-shadow: 0 10px 30px rgb(0 0 0 / 0.35);
+  --skin-bar-rule: transparent;
+  --skin-bar-inset: calc(8 * var(--u));
+  --skin-bar-gap: calc(3 * var(--u));
+  --skin-content-inset: calc(6 * var(--u));
+  --skin-foot-gap: calc(8 * var(--u));
+}
+
+/* Bubble: a pane head wears the pane's own theme (terminal/headTheme.ts sets --head-* and data-head on the cell).
+   Every head rule reads these names, so focus, selection and state marks mix with the head's color. Waiting keeps
+   the app's amber band. The gloss is drawn here, so it takes the head theme's highlight and shade. */
+:root[data-skin="bubble"] .cell[data-head] .cell-head {
+  --bg-panel: var(--head-bg);
+  --text: var(--head-text);
+  --text-2: var(--head-text-2);
+  --text-3: var(--head-text-3);
+  --text-dim: var(--head-text-dim);
+  --rule: var(--head-rule);
+  --state-working: var(--head-working);
+  --state-done: var(--head-done);
+  --hover: var(--head-hover);
+  --gloss: var(--head-gloss);
+  --shade: var(--head-shade);
+  --skin-tab-gradient: linear-gradient(180deg, var(--gloss) 0%, color-mix(in srgb, var(--gloss) 40%, transparent) 50%, transparent 52%, var(--shade) 100%);
 }

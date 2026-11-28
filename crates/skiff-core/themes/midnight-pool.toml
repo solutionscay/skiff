@@ -1,0 +1,26 @@
+# Deep navy night, lit blue rules, violet accent. Muted ANSI colors.
+name = "Midnight Pool"
+color_family = "Blue"
+main_color = "#b38cff"
+
+[terminal]
+foreground = "#dce8ff"
+background = "#0c1526"
+cursor = "#dce8ff"
+cursor_foreground = "#0c1526"
+selection = "#2a4675"
+selection_foreground = "#ffffff"
+regular = ["#0c1526", "#ff7a7a", "#7ad69a", "#f5c76b", "#6cb4ff", "#c49bff", "#5fd4d4", "#c9d6ee"]
+bright = ["#4b5f86", "#ff9a9a", "#97e6b2", "#ffd98f", "#90c8ff", "#d6b8ff", "#86e6e6", "#f2f6ff"]
+
+[ui]
+sidebar = "#14233d"
+tertiary = "#0a1222"
+secondary = "#1d3155"
+border = "#2a4270"
+mutedForeground = "#8aa0c8"
+sidebarForeground = "#c2d2f0"
+primary = "#b38cff"
+working = "#4dabf7"
+warning = "#fcc419"
+destructive = "#ff6b6b"

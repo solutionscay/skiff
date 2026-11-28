@@ -4,10 +4,11 @@
   height: calc(32 * var(--u)); flex-shrink: 0;
   display: grid; grid-template-columns: 1fr 1fr;
   border-bottom: 1px solid var(--rule);
+  background: var(--skin-band-gradient);
 }
 .sv-tab {
   display: flex; align-items: center; justify-content: center; gap: calc(6 * var(--u));
-  border: 0; border-radius: 0; color: var(--text-dim);
+  border: 0; border-radius: var(--skin-tab-radius); color: var(--text-dim);
 }
 .sv-tab + .sv-tab { border-left: 1px solid var(--rule); }
 .sv-tab:hover { color: var(--text-2); }
@@ -94,7 +95,7 @@ body.mods-held .sk-num { display: inline-block; }
 .av-opt:nth-child(6n + 1) { border-left: 0; }
 .av-opt:nth-child(n + 7) { border-top: 1px solid var(--rule); }
 .av-opt:hover { background: var(--bg-raised); }
-.av-opt[aria-pressed="true"] { background: color-mix(in srgb, var(--pc) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc); }
+.av-opt[aria-pressed="true"] { background: color-mix(in srgb, var(--pc) 22%, transparent); box-shadow: var(--skin-row-mark) var(--pc); }
 .av-act { height: var(--row); border: 0; background: transparent; color: var(--text-2); font-size: calc(13px * var(--zoom, 1)); }
 .av-act:hover { background: var(--bg-raised); color: var(--text); }
 
@@ -106,7 +107,7 @@ body.mods-held .sk-num { display: inline-block; }
 .av-swatch:nth-child(n + 7) { border-top: 1px solid var(--rule); }
 .av-swatch::before { content: ""; width: calc(20 * var(--u)); height: calc(20 * var(--u)); background: color-mix(in srgb, var(--sw) 85%, #000); }
 .av-swatch:hover { background: var(--bg-raised); }
-.av-swatch[aria-pressed="true"] { background: color-mix(in srgb, var(--sw) 22%, transparent); box-shadow: inset 2px 0 0 var(--sw); }
+.av-swatch[aria-pressed="true"] { background: color-mix(in srgb, var(--sw) 22%, transparent); box-shadow: var(--skin-row-mark) var(--sw); }
 .av-acts { display: grid; grid-template-columns: repeat(3, 1fr); }
 .av-acts .av-act + .av-act { border-left: 1px solid var(--rule); }
 .av-act:disabled, .av-act:disabled:hover { color: var(--text-3); background: transparent; }

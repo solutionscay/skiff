@@ -1,7 +1,7 @@
 .group-row { --gc: var(--text-3); }
 .group-row .glyph { color: var(--gc); }
-.group-row { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--gc) 45%, transparent); }
-.cell-head.st-waiting { background: var(--state-waiting-bg) !important; border-bottom-color: var(--state-waiting-rule); box-shadow: inset calc(3 * var(--u)) 0 0 var(--state-waiting) !important; }
+.group-row { box-shadow: var(--skin-group-mark) color-mix(in srgb, var(--gc) 45%, transparent); }
+.cell-head.st-waiting { background-color: var(--state-waiting-bg) !important; border-bottom-color: var(--state-waiting-rule); box-shadow: var(--skin-waiting-mark) var(--state-waiting) !important; }
 .cell-head.st-waiting .title { color: var(--state-waiting-text) !important; }
 .cell-head.st-done .title { opacity: 0.5; }
 

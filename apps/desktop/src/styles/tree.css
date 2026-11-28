@@ -3,9 +3,10 @@
   display: flex; flex-direction: column;
   /* Fixed width, stretched height: a row added here lays out no other column, and theirs none here. */
   contain: size layout;
-  background: var(--bg-panel);
-  border-right: 1px solid var(--rule);
+  background: var(--skin-sidebar-gradient) var(--bg-panel);
+  border-right: var(--skin-border) var(--rule);
   overflow: hidden;
+  border-radius: var(--skin-sidebar-radius);
 }
 /* A narrow window: the side panel gives the terminal room. */
 @media (max-width: 700px) { #sidebar { width: calc(232 * var(--u)); } }
@@ -28,17 +29,17 @@ body:has(#ctx-menu:not([hidden]), #launch-menu:not([hidden]), #switcher:not([hid
 
 .form-input {
   flex-grow: 1; min-width: 0; height: 100%;
-  padding: 0 calc(16 * var(--u)); border: 0; border-radius: 0; outline: 0;
+  padding: 0 calc(16 * var(--u)); border: 0; border-radius: var(--skin-input-radius); outline: 0;
   background: transparent; color: var(--text); font: calc(13px * var(--zoom, 1)) var(--mono);
 }
-.form-input:focus { box-shadow: inset 0 -2px 0 var(--state-working); }
+.form-input:focus { box-shadow: var(--skin-underline) var(--state-working); }
 
 /* Keep horizontal rules clear of the worktree theme strip. */
-.wt { position: relative; flex-shrink: 0; display: flex; flex-direction: column; box-shadow: inset 3px 0 0 color-mix(in srgb, var(--pc) 45%, transparent); }
-.wt.selected { box-shadow: inset 3px 0 0 var(--pc); }
+.wt { position: relative; flex-shrink: 0; display: flex; flex-direction: column; box-shadow: var(--skin-group-mark) color-mix(in srgb, var(--pc) 45%, transparent); }
+.wt.selected { box-shadow: var(--skin-group-mark) var(--pc); }
 /* Worktrees part with space, not a rule. The project strip runs through it. */
 .wt { padding-bottom: calc(12 * var(--u)); }
-.wt-row { position: relative; height: var(--row); display: flex; background: linear-gradient(to right, transparent 0 3px, color-mix(in srgb, var(--bg-panel) 72%, var(--bg)) 3px); }
+.wt-row { position: relative; height: var(--row); display: flex; background: linear-gradient(to right, transparent 0 var(--skin-strip-gap), color-mix(in srgb, var(--bg-panel) 72%, var(--bg)) var(--skin-strip-gap)); }
 .wt-pick {
   flex-grow: 1; min-width: 0;
   display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(12 * var(--u)) 0 calc(10 * var(--u));
@@ -130,7 +131,7 @@ body:has(#ctx-menu:not([hidden]), #launch-menu:not([hidden]), #switcher:not([hid
 .finished.failed { color: var(--state-waiting-text); }
 @media (prefers-reduced-motion: reduce) { .session-row .busy, .cell-head .busy, .session-row .busy svg, .cell-head .busy svg { animation: none; } }
 .session-row { position: relative; user-select: none; }
-.session-row.selected { background: color-mix(in srgb, var(--state-working) 16%, transparent); box-shadow: inset 2px 0 0 var(--state-working); }
+.session-row.selected { background: color-mix(in srgb, var(--state-working) 16%, transparent); box-shadow: var(--skin-row-mark) var(--state-working); }
 
 /* Groups: named splits, above every project. */
 .group-row { height: var(--row); flex-shrink: 0; display: flex; align-items: stretch; border-bottom: 1px solid var(--rule); --pc: var(--project-default); }
@@ -147,7 +148,7 @@ body:has(#ctx-menu:not([hidden]), #launch-menu:not([hidden]), #switcher:not([hid
 .sel-label.warn { background: var(--state-waiting-bg); color: var(--state-waiting-text); border-bottom-color: var(--state-waiting-rule); }
 .sel-actions { height: var(--row); display: flex; }
 .sel-open { flex-grow: 1; min-width: 0; padding: 0 calc(10 * var(--u)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; background: var(--state-working); color: var(--on-working); font-weight: 600; }
-.sel-open:disabled { background: transparent; color: var(--text-dim); font-weight: 500; cursor: not-allowed; box-shadow: inset 0 0 0 1px var(--rule); }
+.sel-open:disabled { background: transparent; color: var(--text-dim); font-weight: 500; cursor: not-allowed; box-shadow: var(--skin-inset-frame) var(--rule); }
 .sel-clear { width: calc(96 * var(--u)); flex-shrink: 0; border: 0; border-left: 1px solid var(--rule-strong); background: transparent; color: var(--text-2); }
 
 .dot { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--state-idle); }
