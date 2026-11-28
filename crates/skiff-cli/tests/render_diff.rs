@@ -193,6 +193,8 @@ fn spawn(wt: &Path, plan: &Render, cols: u16, rows: u16, env: &[(&str, &str)]) -
     // SAFETY: openpty writes two fds.
     assert_eq!(unsafe { libc::openpty(&mut m, &mut s, std::ptr::null_mut(), std::ptr::null(), &ws) }, 0);
     let slave = unsafe { OwnedFd::from_raw_fd(s) };
+    // The runner must not hold its own master, or a closed master never hangs it up.
+    unsafe { libc::fcntl(m, libc::F_SETFD, libc::FD_CLOEXEC) };
     let mut c = Command::new(SKIFF);
     pager_overrides(c.args(["open-with", "render", &serde_json::to_string(plan).unwrap()]).current_dir(wt))
         .env("TERM", "xterm-256color")
@@ -219,6 +221,14 @@ fn spawn(wt: &Path, plan: &Render, cols: u16, rows: u16, env: &[(&str, &str)]) -
     let master = unsafe { std::fs::File::from_raw_fd(m) };
     unsafe { libc::fcntl(master.as_raw_fd(), libc::F_SETFL, libc::O_NONBLOCK) };
     Pty { master, child, seen: Vec::new() }
+}
+
+/// A failed test still ends the runner, delta and less.
+impl Drop for Pty {
+    fn drop(&mut self) {
+        unsafe { libc::kill(-(self.child.id() as libc::pid_t), libc::SIGKILL) };
+        let _ = self.child.wait();
+    }
 }
 
 impl Pty {
