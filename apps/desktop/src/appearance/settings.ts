@@ -261,7 +261,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       return;
     }
     if (tab === "open") {
-      root.replaceChildren(nav, pinClose(openWithPage(openSet, openFound, error, { set: (key, command, peek) => void setOpen(key, command, peek), setCommand: (key, command) => void setOpenCommand(key, command), setApp: (key, path) => void setOpenApp(key, path) })));
+      root.replaceChildren(nav, pinClose(openWithPage(openSet, openFound, error, { set: (key, command, peek) => void setOpen(key, command, peek), setCommand: (key, command) => void setOpenCommand(key, command), setApp: (key, path) => void setOpenApp(key, path), saveCommand: saveOpenCommand, reset: resetOpen })));
       return;
     }
     if (tab === "skippers") {
@@ -438,6 +438,20 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     } catch (e) {
       error = String(e);
     }
+    render();
+  }
+
+  /** One Open with row, from the command editor. The editor shows the error. */
+  async function saveOpenCommand(key: OpenKey, command: OpenCommand) {
+    openSet = await invoke<OpenSettings>("set_open_command", { key, command });
+    error = null;
+    render();
+  }
+
+  /** One Open with row back to its default: no command line and no program. */
+  async function resetOpen(key: OpenKey) {
+    openSet = await invoke<OpenSettings>("set_open", { key, command: "" });
+    error = null;
     render();
   }
 

@@ -134,6 +134,15 @@ fn login_path() -> Option<String> {
     None
 }
 
+/// Whether `program` runs: a path to a program, or a name on the PATH the
+/// peek runs with.
+pub(crate) fn program_found(program: &str) -> bool {
+    if program.contains('/') {
+        return on_path(&[PathBuf::new()], program);
+    }
+    on_path(&path_dirs(), program)
+}
+
 fn on_path(dirs: &[PathBuf], program: &str) -> bool {
     use std::os::unix::fs::PermissionsExt;
     dirs.iter().any(|d| std::fs::metadata(d.join(program)).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0))

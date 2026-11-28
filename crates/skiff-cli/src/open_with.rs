@@ -39,7 +39,7 @@ fn rows() -> Result<Vec<Row>> {
                 Some(p) => Some(std::iter::once(&p.program).chain(&p.args).map(|w| skiff_core::shell::quote_word(w)).collect::<Vec<_>>().join(" ")),
                 None => cmd.as_deref().map(str::trim).filter(|c| !c.is_empty()).map(String::from),
             };
-            let opens = if key == "image" { "app" } else if key == "diff" || o.peek.iter().any(|k| k == key) { "peek" } else { "app" };
+            let opens = if key == "image" { "app" } else if key == "diff" || skiff_core::open::in_peek(&o, key) { "peek" } else { "app" };
             Row { key, command, program, opens }
         })
         .collect())

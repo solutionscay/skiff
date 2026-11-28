@@ -76,7 +76,9 @@ pub struct OpenCommand {
     #[serde(default)]
     pub args: Vec<String>,
     /// What the program reads. `patch`: Skiff runs `git diff` and writes the
-    /// patch to the program's standard input. Kept as text, so a value from
+    /// patch to the program's standard input. `target`: what `git diff`
+    /// compares, as arguments, at `{target}` or at the end. `path`: the
+    /// file, at `{path}` or at the end. Kept as text, so a value from
     /// a newer Skiff does not stop the file from loading.
     #[serde(default = "OpenCommand::patch")]
     pub input: String,
@@ -88,6 +90,21 @@ pub struct OpenCommand {
 impl OpenCommand {
     /// The input for a diff renderer.
     pub const PATCH: &'static str = "patch";
+    /// The input for a diff program that takes Git's target as arguments.
+    pub const TARGET: &'static str = "target";
+    /// The input for a program that takes the file as an argument.
+    pub const PATH: &'static str = "path";
+
+    /// The program and its arguments as one shell line, each word quoted.
+    /// A word that is only `placeholder` stays bare, so it can take more
+    /// than one word.
+    pub fn line(&self, placeholder: &str) -> String {
+        std::iter::once(self.program.trim())
+            .chain(self.args.iter().map(String::as_str))
+            .map(|w| if w == placeholder { w.to_string() } else { crate::shell::quote_word(w) })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
 
     fn patch() -> String {
         Self::PATCH.to_string()
