@@ -359,9 +359,13 @@ pub(crate) fn set_open(key: String, command: String) -> Result<OpenSettings, Str
 }
 
 /// Sets one `[open.commands]` program, which Skiff runs with no shell. It
-/// replaces the key's command line.
+/// replaces the key's command line. A program that is not there fails
+/// with `program-missing`.
 #[tauri::command]
 pub(crate) fn set_open_command(key: String, command: skiff_core::config::OpenCommand) -> Result<OpenSettings, String> {
+    if !command.program.trim().is_empty() && !crate::open_apps::program_found(command.program.trim()) {
+        return Err("program-missing".into());
+    }
     let _own = crate::projects_watch::OwnEdit::quiet();
     skiff_core::config::set_open_command(&key, Some(&command)).map_err(err)?;
     open_settings_now()

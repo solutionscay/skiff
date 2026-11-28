@@ -290,6 +290,12 @@ pub fn set_open_peek(key: &str, peek: bool) -> Result<()> {
         kinds.retain(|v| v.as_str() != Some(key));
         if peek { kinds.push(key); }
         t["peek"] = toml_edit::value(kinds);
+        // A program's own `opens` wins over the list, so it follows too.
+        if let Some(row) = t.get_mut("commands").and_then(|c| c.as_table_like_mut()).and_then(|c| c.get_mut(key)).and_then(|r| r.as_table_like_mut()) {
+            if row.contains_key("opens") {
+                row.insert("opens", toml_edit::value(if peek { "peek" } else { "app" }));
+            }
+        }
         Ok(())
     })
 }
@@ -322,31 +328,42 @@ pub fn set_open_command(key: &str, command: Option<&super::OpenCommand>) -> Resu
         if c.program.trim().is_empty() {
             anyhow::bail!("the program is empty");
         }
-    }
-    super::client::edit_table("open", |t| {
-        let Some(c) = command else {
-            drop_open_command(t, key);
-            return Ok(());
-        };
-        t.remove(key);
-        let mut row = toml_edit::Table::new();
-        row["program"] = toml_edit::value(c.program.trim());
-        row["args"] = toml_edit::value(c.args.iter().map(String::as_str).collect::<toml_edit::Array>());
-        row["input"] = toml_edit::value(c.input.as_str());
-        if let Some(opens) = &c.opens {
-            row["opens"] = toml_edit::value(opens.as_str());
+        use super::OpenCommand as C;
+        let inputs: &[&str] = if key == "diff" { &[C::PATCH, C::TARGET] } else { &[C::PATH] };
+        if !inputs.contains(&c.input.as_str()) {
+            anyhow::bail!("{key} cannot take the input {:?}: use {}", c.input, inputs.join(" or "));
         }
-        let commands = t.entry("commands").or_insert_with(|| {
-            let mut table = toml_edit::Table::new();
-            table.set_implicit(true);
-            toml_edit::Item::Table(table)
-        });
-        let Some(commands) = commands.as_table_mut() else {
-            anyhow::bail!("[open] commands is not a table");
-        };
-        commands[key] = toml_edit::Item::Table(row);
-        Ok(())
-    })
+        if c.opens.as_deref().is_some_and(|o| o != "peek" && o != "app") {
+            anyhow::bail!("opens is peek or app");
+        }
+    }
+    super::client::edit_table("open", |t| write_open_command(t, key, command))
+}
+
+/// Writes `[open.commands.<key>]` into the `[open]` table, or removes it.
+fn write_open_command(t: &mut toml_edit::Table, key: &str, command: Option<&super::OpenCommand>) -> Result<()> {
+    let Some(c) = command else {
+        drop_open_command(t, key);
+        return Ok(());
+    };
+    t.remove(key);
+    let mut row = toml_edit::Table::new();
+    row["program"] = toml_edit::value(c.program.trim());
+    row["args"] = toml_edit::value(c.args.iter().map(String::as_str).collect::<toml_edit::Array>());
+    row["input"] = toml_edit::value(c.input.as_str());
+    if let Some(opens) = &c.opens {
+        row["opens"] = toml_edit::value(opens.as_str());
+    }
+    let commands = t.entry("commands").or_insert_with(|| {
+        let mut table = toml_edit::Table::new();
+        table.set_implicit(true);
+        toml_edit::Item::Table(table)
+    });
+    let Some(commands) = commands.as_table_mut() else {
+        anyhow::bail!("[open] commands is not a table");
+    };
+    commands[key] = toml_edit::Item::Table(row);
+    Ok(())
 }
 
 fn drop_open_command(t: &mut toml_edit::Table, key: &str) {
@@ -575,4 +592,36 @@ fn drop_empty(t: &mut toml_edit::Table, key: &str) {
 
 fn edit_agents(f: impl FnOnce(&mut toml_edit::Table) -> Result<()>) -> Result<()> {
     edit_table("agents", f)
+}
+
+#[cfg(test)]
+mod open_command_tests {
+    use super::*;
+    use crate::config::OpenCommand;
+
+    /// #303: a custom command from Settings › Open with is in the file after
+    /// a restart, with its words, input and place; a reset takes it out.
+    #[test]
+    fn a_custom_open_command_round_trips_through_the_config_file() {
+        let dir = std::env::temp_dir().join(format!("skiff-open-cmd-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (projects, client) = (dir.join("projects.toml"), dir.join("client.toml"));
+        std::fs::write(&client, "schema = 2\n\n[open]\ntext = \"code\"\npeek = [\"text\"]\n").unwrap();
+        let diff = OpenCommand { program: "difft".into(), args: vec!["--color=always".into(), "{target}".into()], input: OpenCommand::TARGET.into(), opens: None };
+        let text = OpenCommand { program: "/opt/my tools/ed".into(), args: vec!["-n".into(), "{path}".into(), "it's".into()], input: OpenCommand::PATH.into(), opens: Some("app".into()) };
+        super::super::persistence::edit_table_in(&client, "open", |t| write_open_command(t, "diff", Some(&diff))).unwrap();
+        super::super::persistence::edit_table_in(&client, "open", |t| write_open_command(t, "text", Some(&text))).unwrap();
+        let open = super::super::client::load_from(&projects, &client).unwrap().open;
+        assert_eq!(open.commands.get("diff"), Some(&diff));
+        assert_eq!(open.commands.get("text"), Some(&text));
+        assert_eq!(open.text, None, "the program replaces the command line");
+        assert!(!crate::open::in_peek(&open, "text"), "its opens wins over the peek list");
+        super::super::persistence::edit_table_in(&client, "open", |t| write_open_command(t, "diff", None)).unwrap();
+        let open = super::super::client::load_from(&projects, &client).unwrap().open;
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(open.commands.get("diff"), None);
+        assert_eq!(open.commands.get("text"), Some(&text));
+        assert_eq!(text.line("{path}"), "'/opt/my tools/ed' -n {path} 'it'\\''s'");
+    }
 }

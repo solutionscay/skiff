@@ -42,8 +42,12 @@ fn key_for(file: &Path) -> Option<&'static str> {
     }
 }
 
-/// The command set for `key`, trimmed, if any.
+/// The command set for `key`, trimmed, if any. A program in
+/// `[open.commands]` that reads the file wins, as a line with `{path}`.
 fn command(open: &Open, key: &str) -> Option<String> {
+    if let Some(c) = open.commands.get(key).filter(|c| key != "diff" && c.input == crate::config::OpenCommand::PATH) {
+        return Some(c.line("{path}"));
+    }
     let cmd = match key {
         "diff" => open.diff.as_ref(),
         "text" => open.text.as_ref(),
@@ -60,9 +64,18 @@ pub fn command_for(file: &Path, open: &Open) -> Option<String> {
     command(open, key_for(file)?)
 }
 
+/// Whether `key` opens in the peek on selection: the program's `opens`,
+/// else the `peek` list.
+pub fn in_peek(open: &Open, key: &str) -> bool {
+    match open.commands.get(key).and_then(|c| c.opens.as_deref()) {
+        Some(opens) => opens == "peek",
+        None => open.peek.iter().any(|k| k == key),
+    }
+}
+
 /// Selection may start only commands explicitly configured for the peek.
 pub fn previews_file(file: &Path, open: &Open) -> bool {
-    key_for(file).is_some_and(|key| open.peek.iter().any(|k| k == key) && command(open, key).is_some())
+    key_for(file).is_some_and(|key| key != "image" && in_peek(open, key) && command(open, key).is_some())
 }
 
 /// How `file` opens. `{path}` in the command becomes the file; without it,
@@ -84,7 +97,7 @@ pub fn plan_text(file: &Path, open: &Open) -> Plan {
 
 /// Text files open in the peek: the `text` row has a command and the peek.
 pub fn previews_text(open: &Open) -> bool {
-    open.peek.iter().any(|k| k == "text") && command(open, "text").is_some()
+    in_peek(open, "text") && command(open, "text").is_some()
 }
 
 /// How a diff opens.
@@ -148,6 +161,9 @@ pub fn plan_diff(dir: &Path, file: Option<&str>, open: &Open) -> Result<DiffPlan
         DiffPlan::Render(Render { producer, producer_ok: if no_index { vec![0, 1] } else { vec![0] }, renderer })
     };
     if let Some(c) = open.commands.get("diff") {
+        if c.input == crate::config::OpenCommand::TARGET {
+            return Ok(DiffPlan::Shell(crate::git::diff_script(dir, file, Some(&c.line("{target}")))));
+        }
         if c.input != crate::config::OpenCommand::PATCH {
             bail!("Open with › Diffs: Skiff cannot give {} the input {:?}", c.program, c.input);
         }
