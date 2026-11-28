@@ -1,18 +1,11 @@
-/* The fontsource faces, woff2 only: every webview Skiff runs in reads it. */
+/* The font faces, woff2 only: every webview Skiff runs in reads it. */
+/* The wordmark only: Lilita One cut to the letters of SKIFF, renamed as its licence asks (assets/fonts/OFL.txt). */
 @font-face {
-  font-family: 'Space Grotesk';
-  font-style: normal;
-  font-display: swap;
-  font-weight: 700;
-  src: url(@fontsource/space-grotesk/files/space-grotesk-latin-700-normal.woff2) format('woff2');
-}
-/* The wordmark only. */
-@font-face {
-  font-family: 'Lilita One';
+  font-family: 'Skiff Wordmark';
   font-style: normal;
   font-display: swap;
   font-weight: 400;
-  src: url(@fontsource/lilita-one/files/lilita-one-latin-400-normal.woff2) format('woff2');
+  src: url(../assets/fonts/skiff-wordmark.woff2) format('woff2');
 }
 @font-face {
   font-family: 'JetBrains Mono';
