@@ -3,7 +3,7 @@
 #topbar {
   height: calc(48 * var(--u)); flex-shrink: 0;
   display: flex; align-items: stretch;
-  background: var(--bg-deep);
+  background: var(--frame);
   border-bottom: 1px solid var(--rule);
 }
 #topbar .tb-cell { display: flex; align-items: center; padding: 0 calc(16 * var(--u)); border-right: 1px solid var(--rule); }

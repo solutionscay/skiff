@@ -4,7 +4,7 @@
   display: flex; flex-direction: column;
   /* As the sidebar: its rows lay out no other column, and theirs none here. */
   contain: size layout;
-  background: var(--bg-panel);
+  background: var(--item);
   border-left: 1px solid var(--rule-strong);
   overflow: hidden;
 }
@@ -14,7 +14,7 @@
 body.ledger-keys #ledger::after { content: ""; position: absolute; inset: 0; border: calc(2 * var(--u)) solid var(--pc, var(--project-default)); pointer-events: none; z-index: 5; }
 body.ledger-keys #ledger .lg-name { color: var(--pc, var(--project-default)); }
 body.ledger-keys .cell.focused::after { display: none; }
-body.ledger-keys .cell.focused .cell-head { background-color: var(--bg-panel); }
+body.ledger-keys .cell.focused .cell-head { background-color: var(--head); }
 .lg-head {
   height: var(--row); flex-shrink: 0;
   display: flex; align-items: center; gap: calc(8 * var(--u)); padding: 0 calc(16 * var(--u));
@@ -54,7 +54,7 @@ body.ledger-keys .cell.focused .cell-head { background-color: var(--bg-panel); }
 /* A task under a plan: its dot sits under the plan's title. */
 .lg-row.kid { padding-left: calc(31 * var(--u)); }
 /* The lit row while the Ledger has the keys: as the current row in the list. */
-.lg-row.lit, .lg-row.need.lit { background-color: color-mix(in srgb, var(--pc, var(--project-default)) 22%, var(--bg-panel)); box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); outline: none; }
+.lg-row.lit, .lg-row.need.lit { background-color: var(--sel); box-shadow: inset 2px 0 0 var(--sel-bar); outline: none; }
 .lg-row:focus { outline: none; }
 /* A row whose click does nothing does not light on hover. */
 .lg-row.dead { cursor: default; }
@@ -122,18 +122,18 @@ body.ledger-keys .cell.focused .cell-head { background-color: var(--bg-panel); }
 /* A fleet has no color: its letters in the dim text, in a 1px frame. */
 .lg-tag.fleet { color: var(--text-3); background: none; box-shadow: inset 0 0 0 1px var(--rule-strong); }
 /* The row of the child pane in the Skipper split: the 2px bar, no tint. */
-.lg-row.shown, .lg-row.need.shown { box-shadow: inset 2px 0 0 var(--pc); }
+.lg-row.shown, .lg-row.need.shown { box-shadow: inset 2px 0 0 var(--sel-bar); }
 
 /* Tasks | Schedules in the head (#262): the tab on screen is bold and tinted. */
 /* The tabs start at the panel's left edge and touch; a 1px rule closes each one. */
 .lg-tabs { flex: 1 0 auto; display: flex; align-items: stretch; align-self: stretch; margin-left: calc(-16 * var(--u)); }
-.lg-tab { display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(16 * var(--u)); border: 0; border-right: 1px solid var(--rule); background: transparent; cursor: pointer; font: 400 calc(13px * var(--zoom, 1)) var(--font); color: var(--text-3); }
+.lg-tab { display: flex; align-items: center; gap: calc(6 * var(--u)); padding: 0 calc(16 * var(--u)); border: 0; border-right: 1px solid var(--rule); background: var(--item); cursor: pointer; font: 400 calc(13px * var(--zoom, 1)) var(--font); color: var(--text-3); }
 .lg-tab[hidden] { display: none; }
 .lg-tab:hover { color: var(--text); }
-.lg-tab.on { font-weight: 600; color: var(--text); background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); }
+.lg-tab.on { font-weight: 600; color: var(--text); background: var(--sel); box-shadow: inset 0 -2px 0 var(--sel-bar); }
 .lg-tab-n { font: calc(11px * var(--zoom, 1)) var(--mono); color: var(--text-dim); }
 body.ledger-keys #ledger .lg-tabs { color: inherit; }
-body.ledger-keys #ledger .lg-tab.on { color: var(--pc, var(--project-default)); }
+
 
 /* The Schedules list: one schedule is two 20px lines on one column grid. */
 .sc-cols, .lg-row.sc-row { display: grid; grid-template-columns: calc(15 * var(--u)) minmax(0, 1fr) calc(64 * var(--u)) calc(72 * var(--u)) calc(12 * var(--u)); column-gap: calc(8 * var(--u)); padding: 0 calc(16 * var(--u)); }

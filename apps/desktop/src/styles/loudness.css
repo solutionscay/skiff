@@ -11,17 +11,17 @@
 #topbar .host-cell, #topbar .gear { color: var(--text-3); }
 
 /* ---- 2. No HUD labels: section heads and tabs read as words ---- */
-.sv-tab { font: 500 calc(12px * var(--zoom, 1)) var(--font); letter-spacing: 0; text-transform: none; background: var(--bg-deep); }
-.sv-tab.on { background: var(--bg-panel); color: var(--text); }
-.tree-head { font-size: calc(12px * var(--zoom, 1)); font-weight: 500; letter-spacing: 0; text-transform: none; }
+.sv-tab { font: 500 calc(12px * var(--zoom, 1)) var(--font); letter-spacing: 0; text-transform: none; background: var(--item); }
+.sv-tab.on { background: var(--sel); box-shadow: inset 0 -2px 0 var(--sel-bar); color: var(--text); font-weight: 600; }
+.tree-head { font-size: calc(11px * var(--zoom, 1)); font-weight: 600; letter-spacing: 0; text-transform: none; }
 .mission-cluster.fleet > .mission-cluster-head { text-transform: none; letter-spacing: 0; font-size: 12px; }
 .mission-side-head { font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-3); }
 
-/* ---- 3. Frames: the same boxes, drawn in the quiet rule, on one ground ---- */
-:is(#sidebar-scroll, .host-tree):has(> .tree-head) { background: var(--bg-panel); }
+/* ---- 3. Frames: the same boxes, drawn in the quiet rule, on the frame ground ---- */
+:is(#sidebar-scroll, .host-tree):has(> .tree-head) { background: var(--frame); }
 :is(#sidebar-scroll, .host-tree) > .tree-head { border-color: var(--rule); color: var(--text-3); }
 :is(#sidebar-scroll, .host-tree) > .tree-head + :is(.tree-kids, .sessions-block) { border-color: var(--rule); }
-.session-row.skiff-agent-row { background-color: transparent; border-bottom-color: var(--rule); }
+.session-row.skiff-agent-row { background-color: var(--item); border-bottom-color: var(--rule); }
 
 /* ---- 4. Names: the size ladder stays, one step down in weight ---- */
 .skiff-agent-row .skiff-agent-name { font-size: calc(14px * var(--zoom, 1)); font-weight: 500; }
@@ -38,10 +38,10 @@
 /* ---- 5. Marks: one grey for what needs no one. Shape and motion still tell them apart ---- */
 .session-row .unread, .cell-head .unread, .mission-card .unread, .mission-panel-head .unread, .roll-unread { color: var(--text-3); }
 
-/* ---- 6. The current row: same bar, half the tint ---- */
-#sidebar-scroll .current { background: color-mix(in srgb, var(--pc) 10%, transparent); }
-#sidebar-scroll .project-row:has(> .project-pick.current) { background: color-mix(in srgb, var(--pc) 10%, var(--bg-panel)); }
-#sidebar-scroll .wt-row:has(> .wt-pick.current) { background: linear-gradient(to right, transparent 0 3px, color-mix(in srgb, var(--pc) 10%, transparent) 3px); }
+/* ---- 6. The current row: the selection mark, never the project color ---- */
+#sidebar-scroll .current { background: var(--sel); }
+#sidebar-scroll .project-row:has(> .project-pick.current) { background: var(--sel); }
+#sidebar-scroll .wt-row:has(> .wt-pick.current) { background: linear-gradient(to right, transparent 0 3px, var(--sel) 3px); }
 .mission-card.window.lit .win-head { background: color-mix(in srgb, var(--pc) 6%, var(--bg-panel)); }
 
 /* ---- 7. Waiting: the one thing that fills a band, in every view ---- */
@@ -52,7 +52,7 @@
 
 /* ---- 8. Panes: the title drops to body size, the head loses its tint ---- */
 .cell-head .title { font-size: calc(13px * var(--zoom, 1)); }
-.cell.focused .cell-head { background-color: color-mix(in srgb, var(--pc) 5%, var(--bg-panel)); }
+.cell.focused .cell-head { background-color: color-mix(in srgb, var(--pc) 5%, var(--head)); }
 .cell-head.st-waiting .title { font-weight: 600; }
 #statusbar { color: var(--text-3); }
 

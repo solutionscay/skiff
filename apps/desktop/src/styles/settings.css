@@ -2,7 +2,7 @@
 #settings { position: absolute; top: 0; bottom: 0; left: 0; right: 0; z-index: 12; display: flex; background: var(--bg); }
 #settings[hidden] { display: none; }
 /* The page list: the title, then a band and its pages for each group. Every line is on the row grid. */
-.set-nav { width: calc(284 * var(--u)); flex-shrink: 0; display: flex; flex-direction: column; overflow-y: auto; background: var(--bg-panel); border-right: 1px solid var(--rule); }
+.set-nav { width: calc(284 * var(--u)); flex-shrink: 0; display: flex; flex-direction: column; overflow-y: auto; background: var(--item); border-right: 1px solid var(--rule); }
 .set-nav-head { height: var(--row); flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(16 * var(--u)); border-bottom: 1px solid var(--rule); }
 .set-title { font-size: calc(13px * var(--zoom, 1)); font-weight: 700; }
 .set-nav .set-band { padding: 0 calc(16 * var(--u)); }
@@ -11,8 +11,8 @@
 .set-tab-name { flex-grow: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .set-tab-count { flex-shrink: 0; font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .set-tab-bad { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex-shrink: 0; background: var(--error); }
-/* The current row, as in the tree. */
-.set-tab.active { background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); }
+/* The current page: the selection mark, as in the tree. */
+.set-tab.active { background: var(--sel); box-shadow: inset 2px 0 0 var(--sel-bar); }
 .set-x { position: absolute; top: 0; right: 0; height: var(--row); display: flex; align-items: center; padding: 0 calc(12 * var(--u)); border: 0; background: transparent; }
 .set-x:hover kbd { border-color: var(--text-3); color: var(--text); }
 .tc-x { align-self: stretch; display: flex; align-items: center; margin-right: -20px; padding: 0 20px; border: 0; background: transparent; }
@@ -62,10 +62,10 @@
 .set-note { flex-shrink: 0; padding: 0 calc(12 * var(--u)); line-height: var(--row); border-bottom: 1px solid var(--rule); font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); }
 .set-note[hidden] { display: none; }
 /* A section head is a 40px tinted band. */
-.set-band { height: var(--row); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: calc(12 * var(--u)); padding: 0 calc(12 * var(--u)); background: var(--bg-raised); border-bottom: 1px solid var(--rule); }
+.set-band { height: var(--row); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: calc(12 * var(--u)); padding: 0 calc(12 * var(--u)); background: var(--head); border-bottom: 1px solid var(--rule); }
 /* A band with a button: the count and the button sit at the right edge, as row actions. */
 .set-band > .set-band-count:has(+ .ctl-btn) { margin-left: auto; }
-.set-band-title { font-size: calc(12px * var(--zoom, 1)); font-weight: 500; color: var(--text-2); }
+.set-band-title { font-size: calc(11px * var(--zoom, 1)); font-weight: 600; color: var(--text-3); }
 .set-band-count { font-size: calc(12px * var(--zoom, 1)); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Settings tables (appearance/rowTable.ts). Each cell is a span; a control fills its cell. */
 .set-table { flex-shrink: 0; display: flex; flex-direction: column; }
@@ -140,7 +140,7 @@ body.kbd .set-folder .ctl-field:focus { box-shadow: inset 0 -1px 0 var(--rule-st
 .set-host.act { cursor: default; }
 .set-host.act:hover { background: var(--bg-raised); }
 /* The lit row: the current-row tint and bar. */
-.set-host.act:focus, .set-host.act:focus-within { outline: 0; background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); }
+.set-host.act:focus, .set-host.act:focus-within { outline: 0; background: var(--sel); box-shadow: inset 2px 0 0 var(--sel-bar); }
 .set-host .c-menu { width: 100%; height: 100%; border: 0; background: transparent; color: var(--text-3); font-size: calc(16px * var(--zoom, 1)); visibility: hidden; }
 .set-host.act:is(:hover, :focus, :focus-within) .c-menu { visibility: visible; }
 .set-host .c-menu:hover { color: var(--text); background: var(--bg-raised); }
@@ -206,7 +206,7 @@ body.kbd .set-folder .ctl-field:focus { box-shadow: inset 0 -1px 0 var(--rule-st
 .set-disk-row { cursor: default; outline: 0; }
 .set-disk-row:hover { background: var(--bg-raised); }
 /* The current row: the current-row tint and bar. The focus line only after keys. */
-.set-disk-row.cur { background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); box-shadow: inset 2px 0 0 var(--pc, var(--project-default)); }
+.set-disk-row.cur { background: var(--sel); box-shadow: inset 2px 0 0 var(--sel-bar); }
 body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset: -1px; }
 .set-disk-row .c-name { gap: calc(6 * var(--u)); font-size: calc(13px * var(--zoom, 1)); font-weight: 400; }
 .set-disk-row.root .disk-name { font-weight: 600; }
@@ -277,7 +277,7 @@ body.kbd .set-disk-row:focus { outline: 1px solid var(--text-3); outline-offset:
 /* A selected row: the current-row tint and bar. A row out of the workspace keeps its red bar. */
 .set-daemon-row[data-id] { cursor: default; }
 .set-daemon-row[data-id]:hover:not(.sel) { background: color-mix(in srgb, var(--text) 6%, var(--bg)); }
-.set-daemon-row.sel { background: color-mix(in srgb, var(--project-default) 22%, var(--bg)); box-shadow: inset 2px 0 0 var(--project-default); }
+.set-daemon-row.sel { background: var(--sel); box-shadow: inset 2px 0 0 var(--sel-bar); }
 .set-daemon-row.out.sel { box-shadow: inset 2px 0 0 var(--error); }
 /* Sink: at the band's right end, red when lit. */
 .set-daemon-band .set-daemon-picked { margin-left: auto; color: var(--text-3); }

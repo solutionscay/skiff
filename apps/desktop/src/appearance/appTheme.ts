@@ -40,6 +40,7 @@ const TEXT_MIN: Record<string, number> = {
 /** The CSS variables the app theme sets. The stylesheet provides the loading fallback. */
 const VARS = [
   "--bg", "--bg-deep", "--bg-panel", "--bg-raised", "--rule", "--rule-strong",
+  "--frame", "--head", "--item", "--sel", "--sel-bar",
   "--text", "--text-2", "--text-3", "--text-dim",
   "--state-working", "--state-waiting", "--state-waiting-text", "--state-waiting-bg", "--state-waiting-rule",
   "--state-done", "--state-idle", "--error", "--project-default", "--accent",
@@ -127,10 +128,14 @@ function themeVars(t: TerminalTheme): Record<string, string> {
     "--project-default": magenta,
   };
   set["--accent"] = set["--project-default"];
+  Object.assign(set, roles(set));
   // Enforce contrast last, so theme files and derived mixes both pass.
-  surfaces = [set["--bg"], set["--bg-panel"], set["--bg-raised"]];
+  surfaces = [set["--bg"], set["--bg-panel"], set["--bg-raised"], set["--head"]];
   lightScheme = isLight(set["--bg"]);
   for (const [k, min] of Object.entries(TEXT_MIN)) set[k] = legible(set[k], min);
+  // The selection takes the theme's ink: a calm mark in every theme, never its accent or a project color.
+  set["--sel"] = mix(set["--item"], set["--text"], lightScheme ? 0.1 : 0.12);
+  set["--sel-bar"] = set["--text"];
   Object.assign(set, alerts(set, t.palette[2]));
   // The watcher's teal takes the theme's cyan.
   set["--watch"] = legible(t.palette[6], 3);
@@ -142,6 +147,19 @@ function themeVars(t: TerminalTheme): Record<string, string> {
   set["--hover"] = lightScheme ? "rgba(0, 0, 0, 0.05)" : "rgba(255, 255, 255, 0.05)";
   set["--press"] = lightScheme ? "rgba(0, 0, 0, 0.09)" : "rgba(255, 255, 255, 0.09)";
   return set;
+}
+
+/** Lightness for sorting: a lighter color stands further from black. */
+const lightness = (c: string) => contrast("#000000", c);
+
+/**
+ * The value scale, one role per step: the frame is the darkest of the theme's
+ * surfaces, the item (a row, page or tab you can press) the lightest, and a
+ * section head halfway between. Light and dark themes take the same order.
+ */
+function roles(v: Record<string, string>): Record<string, string> {
+  const [frame, , item] = [v["--bg"], v["--bg-deep"], v["--bg-panel"]].sort((a, b) => lightness(a) - lightness(b));
+  return { "--frame": frame, "--item": item, "--head": mix(frame, item, 0.5) };
 }
 
 /** Error banners, the destructive button, the ok dot, and the modal scrim, from the theme's red and green. */

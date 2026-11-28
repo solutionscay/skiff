@@ -44,7 +44,7 @@
 .project-row .wt-plus { visibility: hidden; }
 .project-row:hover .wt-plus, .project-row > .current ~ .wt-plus, .project-row .wt-plus[aria-expanded="true"] { visibility: visible; }
 /* The project row is current: the whole row lights, its buttons included. */
-#sidebar-scroll .project-row:has(> .project-pick.current) { box-shadow: inset 2px 0 0 var(--pc); }
+#sidebar-scroll .project-row:has(> .project-pick.current) { box-shadow: inset 2px 0 0 var(--sel-bar); }
 #sidebar-scroll .project-pick.current, body.kbd #sidebar-scroll .project-pick.current:focus { background: transparent; box-shadow: none; }
 body.kbd #sidebar-scroll .project-row:has(> .project-pick.current:focus) { outline: 1px solid var(--rule-strong); outline-offset: -1px; }
 
@@ -89,12 +89,12 @@ body.kbd #sidebar-scroll .project-row:has(> .project-pick.current:focus) { outli
 :is(#sidebar-scroll, .host-tree):has(> .tree-head) { padding-bottom: calc(8 * var(--u)); }
 :is(#sidebar-scroll, .host-tree) > .tree-head {
   width: auto; height: var(--row); margin: calc(8 * var(--u)) calc(8 * var(--u)) 0; padding: 0 0 0 calc(8 * var(--u)); align-items: center;
-  background: var(--bg-panel);
+  background: var(--head);
   border: 1px solid var(--rule-strong);
 }
 :is(#sidebar-scroll, .host-tree) > .tree-head:has(+ :is(.tree-kids, .sessions-block)) { border-bottom: 0; }
 :is(#sidebar-scroll, .host-tree) > .tree-head + :is(.tree-kids, .sessions-block) {
-  margin: 0 calc(8 * var(--u)); background: var(--bg-panel);
+  margin: 0 calc(8 * var(--u)); background: var(--item);
   border: 1px solid var(--rule-strong); border-top: 0;
 }
 /* Other's rows set their own height: the frame goes outside it. */

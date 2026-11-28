@@ -30,7 +30,8 @@ body.kbd .tc-tool:focus { outline: 2px solid var(--text); outline-offset: -2px; 
 .tc-card { display: flex; flex-direction: column; padding: 0; border: 1px solid var(--rule-strong); background: var(--bg-panel); color: var(--text-2); text-align: left; cursor: pointer; position: relative; }
 .tc-card:hover .tc-name, .tc-card:focus-visible .tc-name { color: var(--text); }
 body.kbd .tc-card:focus { outline: 0; border-color: var(--text); box-shadow: 0 0 0 1px var(--text); }
-.tc-card.active { border-color: var(--state-working); box-shadow: 0 0 0 1px var(--state-working); }
+.tc-card.active { border-color: var(--sel-bar); box-shadow: 0 0 0 1px var(--sel-bar); }
+.tc-card.active .tc-foot { background: var(--sel); box-shadow: inset 2px 0 0 var(--sel-bar); }
 .tc-card.active .tc-name { color: var(--text); }
 .tc-preview { height: 104px; display: flex; overflow: hidden; }
 .tc-side { width: 36px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; padding: 10px 6px; }
@@ -42,7 +43,7 @@ body.kbd .tc-card:focus { outline: 0; border-color: var(--text); box-shadow: 0 0
 .tc-signature { width: calc(10 * var(--u)); height: calc(10 * var(--u)); flex-shrink: 0; }
 .tc-name { flex-grow: 1; min-width: 0; font-size: calc(13px * var(--zoom, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tc-badge { flex-shrink: 0; font-size: calc(10px * var(--zoom, 1)); padding: 1px 6px; border: 1px solid var(--rule-strong); color: var(--text-3); }
-.tc-state { flex-shrink: 0; font-size: calc(11px * var(--zoom, 1)); font-weight: 600; color: var(--state-working); }
+.tc-state { flex-shrink: 0; font-size: calc(11px * var(--zoom, 1)); font-weight: 600; color: var(--text); }
 .tc-panel { width: 920px; max-width: calc(100vw - 32px); max-height: calc(100vh - 64px); display: flex; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--rule-strong); }
 .tc-head { height: 56px; flex-shrink: 0; display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid var(--rule); }
 .tc-title { flex-grow: 1; font-size: calc(16px * var(--zoom, 1)); font-weight: 700; }
@@ -59,7 +60,6 @@ body.kbd .tc-card:focus { outline: 0; border-color: var(--text); box-shadow: 0 0
 .set-cards .tc-card { border: 0; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); background: transparent; }
 .set-cards .tc-preview { height: calc(119 * var(--u)); }
 .set-cards .tc-card.active { border-color: var(--rule); box-shadow: none; }
-.set-cards .tc-card.active .tc-foot { background: color-mix(in srgb, var(--pc, var(--project-default)) 22%, transparent); box-shadow: none; }
 /* A scope label takes its own 20px line, so a foot is 40px or 60px; each foot in a row fills to the tallest. */
 .set-cards .tc-foot { flex-grow: 1; min-height: var(--row); height: auto; flex-wrap: wrap; align-content: center; padding: 0 calc(12 * var(--u)); }
 .set-cards .tc-in-scope { line-height: calc(20 * var(--u)); }

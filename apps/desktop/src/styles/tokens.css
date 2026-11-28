@@ -6,6 +6,14 @@
   --bg-raised: #1b2129;
   --rule: #232a33;
   --rule-strong: #2f3742;
+  /* One value scale, one role per step (appearance/appTheme.ts sets them per theme). --frame is the ground: the top
+     bar, the status bar and the gutters. --head is a section head. --item is a row, a page or a tab you can press.
+     --sel is the selected item, with a 2px bar in --sel-bar. Hover is --hover over the item. */
+  --frame: #0b0e12;
+  --head: #0f1217;
+  --item: #13171c;
+  --sel: #2c3035;
+  --sel-bar: #e6e8eb;
   --text: #e6e8eb;
   --text-2: #c3c9d1;
   --text-3: #9aa3ae;
