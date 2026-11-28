@@ -91,6 +91,7 @@ const FIXED_SHORTCUTS: FixedShortcut[] = [
   ["section.settings", "fixed.settings.move", "↑ / ↓ / ← / →"],
   ["section.settings", "fixed.settings.back", "←"],
   ["section.settings", "fixed.settings.cut", isMac ? "⌘+X / ⌘+A" : "Ctrl+X / Ctrl+A"],
+  ["section.settings", "fixed.settings.list", isMac ? "Option+↓ / F4" : "Alt+↓ / F4"],
   ["section.panes", "fixed.panes.buttons", { words: "fixed.key.headerButtons" }],
   ["section.panes", "fixed.panes.doubleClick", { words: "fixed.key.doubleClick" }],
   ["section.panes", "fixed.panes.menu", { words: "fixed.key.rightClick" }],

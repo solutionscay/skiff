@@ -65,7 +65,7 @@ function settingsPage(backend?: (cmd: string, args: any) => unknown, themes: any
     "../app/usage": { onUsage() {}, usagePage() {} },
     "./daemonActivity": { activityState: () => ({}), stopActivity() {} },
     "../ui/controls": { ...controls, picker },
-    "./openWithSettings": moduleFromSource("../src/appearance/openWithSettings.ts", { "../ui/dom": { h }, "../ui/controls": { ...controls, picker }, "@tauri-apps/plugin-dialog": {} }, {}, ""),
+    "./openWithSettings": moduleFromSource("../src/appearance/openWithSettings.ts", { "../ui/dom": { h }, "../ui/controls": { ...controls, comboBox: (o: { value: string } & Parameters<typeof picker>[0]) => { picker({ ...o, shows: o.value }); return h("span", "ctl-combo"); } }, "@tauri-apps/plugin-dialog": {} }, {}, ""),
     "./settingsLanguage": moduleFromSource("../src/appearance/settingsLanguage.ts", { "../ui/dom": { h }, "../ui/controls": { ...controls, picker } }, { navigator: { language: "en-US" } }, ""),
     "./rowTable": { tableState: () => ({}), sectionHead: (title: string) => { const b = h("div", "set-band"); b.append(h("span", "set-band-title", title)); return b; } },
     "./skiffAgentSettings": { finishRow: () => h("div", "set-finish"), skippersPage: () => h("div", "g-skip"), taskTable: () => h("div", "g-tasks"), addTaskButton: () => h("button", "ctl-btn") },

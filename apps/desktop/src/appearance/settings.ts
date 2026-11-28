@@ -263,7 +263,7 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
       return;
     }
     if (tab === "open") {
-      root.replaceChildren(nav, pinClose(openWithPage(openSet, openFound, error, { set: (key, command, peek) => void setOpen(key, command, peek), setCommand: (key, command) => void setOpenCommand(key, command), setApp: (key, path) => void setOpenApp(key, path), saveCommand: saveOpenCommand, saveLine: saveOpenLine, reset: resetOpen })));
+      root.replaceChildren(nav, pinClose(openWithPage(openSet, openFound, error, { set: (key, command, peek) => void setOpen(key, command, peek), setCommand: (key, command) => void setOpenCommand(key, command), setApp: (key, path) => void setOpenApp(key, path), saveCommand: saveOpenCommand, saveLine: saveOpenLine })));
       return;
     }
     if (tab === "skippers") {
@@ -491,24 +491,17 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
     render();
   }
 
-  /** One Open with row, from the command editor. The editor shows the error. */
+  /** One Open with row: a typed program. The row's field shows the error. */
   async function saveOpenCommand(key: OpenKey, command: OpenCommand) {
     openSet = await invoke<OpenSettings>("set_open_command", { key, command });
     error = null;
     render();
   }
 
-  /** One Open with row, from the command editor: a line that needs the shell. The editor shows the error. */
+  /** One Open with row: a typed command line, or empty for the default. The row's field shows the error. */
   async function saveOpenLine(key: OpenKey, command: string, peek: boolean) {
     openSet = await invoke<OpenSettings>("set_open", { key, command });
     if (key !== "diff" && key !== "image") openSet = await invoke<OpenSettings>("set_open_peek", { key, peek });
-    error = null;
-    render();
-  }
-
-  /** One Open with row back to its default: no command line and no program. */
-  async function resetOpen(key: OpenKey) {
-    openSet = await invoke<OpenSettings>("set_open", { key, command: "" });
     error = null;
     render();
   }
@@ -696,8 +689,8 @@ export function createSettings(onAgents: (a: AgentInfo[]) => void, onClose: () =
   window.addEventListener("keydown", (e) => {
     if (root.hidden || e.defaultPrevented || document.querySelector("#ctx-menu:not([hidden]), #launch-menu:not([hidden]), .confirm-overlay")) return;
     if (e.target instanceof Element && e.target.closest(".peek")) return;
-    // Esc in an Open with row editor closes the editor, not Settings.
-    if (e.key === "Escape" && e.target instanceof Element && e.target.closest(".open-edit")) return;
+    // Esc in a command field with changed text or an error puts the saved text back, and Settings stays.
+    if (e.key === "Escape" && e.target instanceof Element && e.target.closest(".ctl-combo.edited")) return;
     if (runKey(actionFor(e))) return e.preventDefault();
     // Cut on macOS. The webview needs an Edit menu item for it.
     const edit = fieldEditKey(e, isMac);
