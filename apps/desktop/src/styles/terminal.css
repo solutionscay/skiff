@@ -62,7 +62,7 @@ button.file-preview-key:active:not(:disabled) { background-image: none; box-shad
 /* The pane head names the focused session and layout. The hidden element stays for the code that fills it. */
 #banner { display: none; }
 
-#terminal-host { flex-grow: 1; min-height: 0; position: relative; background: var(--skin-frame); }
+#terminal-host { flex-grow: 1; min-height: 0; position: relative; background: var(--bg-deep); }
 #terminal-host .park { display: none; }
 /* xterm's scrollbar fades by itself, for up to 800ms, over the terminal. It shows and goes at once. */
 .xterm .xterm-scrollable-element > .scrollbar { transition: none !important; }
