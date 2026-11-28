@@ -56,7 +56,7 @@ let projectionInputs = "";
 let projectionVersion = 0;
 const paneInputs = new Map<string, { state: SessionInfo["state"] | undefined; started: SessionInfo["started_at"] | undefined; title: string | null }>();
 const projections = new Map<string | null, Unit[]>();
-let counts: { need: number; owners: Map<string, { need: number; working: number }>; open: Map<string, number> } | null = null;
+let counts: { need: number; owners: Map<string, { need: number; working: number }>; waiting: Map<string, number> } | null = null;
 
 /** Session events can change a task without a ledger write. Read only the
  *  session fields and workspace membership that affect the projection. */
@@ -236,9 +236,12 @@ export function ledgerCounts(project: string): { need: number; working: number }
   return ledgerSummary().owners.get(project) ?? { need: 0, working: 0 };
 }
 
-/** A coordinator's open tasks: "grand" for the Skiff agent, else its project or fleet scope. */
-export function ledgerOpen(owner: string): number {
-  return ledgerSummary().open.get(owner) ?? 0;
+/** The states a coordinator waits on an agent for: sent, or not sent yet. Done and the needs do not count. */
+const WAITS: Partial<Record<State, true>> = { sent: true, pending: true };
+
+/** The tasks a coordinator waits on, for "Waiting on N": "grand" for the Skiff agent, else its project or fleet scope. */
+export function ledgerWaiting(owner: string): number {
+  return ledgerSummary().waiting.get(owner) ?? 0;
 }
 
 /** Share one count pass across the tree signatures, rows, and the panel. */
@@ -246,16 +249,16 @@ function ledgerSummary() {
   projectionKey();
   if (counts) return counts;
   const owners = new Map<string, { need: number; working: number }>();
-  const open = new Map<string, number>();
+  const waiting = new Map<string, number>();
   let need = 0;
   for (const l of openLooks(units(null))) {
-    open.set(l.r.owner, (open.get(l.r.owner) ?? 0) + 1);
+    if (WAITS[l.st]) waiting.set(l.r.owner, (waiting.get(l.r.owner) ?? 0) + 1);
     const count = owners.get(l.r.owner) ?? { need: 0, working: 0 };
     if (NEED[l.st]) { count.need++; need++; }
     if (l.st === "sent") count.working++;
     owners.set(l.r.owner, count);
   }
-  return counts = { need, owners, open };
+  return counts = { need, owners, waiting };
 }
 
 /** The coordinator whose pane is the one pane on screen, or the left pane of its Skipper split: "grand" or a project. */

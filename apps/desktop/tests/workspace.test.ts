@@ -264,6 +264,28 @@ test("every row files by its work's bucket: a closed hand-off's tasks show in Fi
   assert.deepEqual(Array.from(x.finished.find((u: any) => u.r.uid === "db975634").look.kids, (k: any) => k.r.uid), ["230ff854"]);
 });
 
+test("Waiting on N counts a plan's sent tasks, not its done ones", () => {
+  const sessions = new Map([["p1", { id: "p1", state: "working" }], ["p2", { id: "p2", state: "working" }]]);
+  const ledger = moduleFromSource("../src/workspace/ledger.ts", {
+    "../app/skiffAgent": { skipperWord: () => "Skipper", coordinatorOf: () => null, projectSkipperOf: () => null, skiffAgentSession: () => null },
+    "./model": MODEL,
+    "./profile": { ledgerScope: () => null },
+    "../app/state": { S: { projects: [] }, sessions },
+    "../app/stateQueries": { shownIds: () => [], skipperSplit: () => null, accent: () => "" },
+  }, {
+    document: { addEventListener() {} }, window: { addEventListener() {} }, localStorage: { getItem: () => null },
+  }, "\nimport { rows } from \"./ledgerStore\";\nexport const review = { setRows: (r: Entry[]) => { rows = r; }, ledgerWaiting };\n");
+  const row = (uid: string, kind: string, parent: string | null, state: string, pane: string | null = null) =>
+    ({ id: 1, uid, kind, project: "skiff", owner: "grand", parent, state, closed_at: null, pane_id: pane, pane_gen: null, task: uid, title: null });
+  ledger.review.setRows([
+    row("plan", "plan", null, "sent"),
+    row("a", "task", "plan", "sent", "p1"),
+    row("b", "task", "plan", "sent", "p2"),
+    ...["c", "d", "e", "f"].map((uid) => row(uid, "task", "plan", "done")),
+  ]);
+  assert.equal(ledger.review.ledgerWaiting("grand"), 2);
+});
+
 test("the fleet filter shows its Skipper's rows, the hand-offs to it and its projects' rows", () => {
   const projects = [{ name: "web", fleet: "Harbor" }, { name: "api", fleet: "Harbor" }, { name: "gesher" }];
   const ledger = moduleFromSource("../src/workspace/ledger.ts", {
