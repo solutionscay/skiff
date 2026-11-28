@@ -1,6 +1,6 @@
 /* Theme cards: a grid split by 1px rules, a small window preview, name and badge. */
 .tc-tools { display: flex; flex-wrap: wrap; gap: calc(8 * var(--u)); }
-.tc-search, .tc-tool, .tc-swatches { height: var(--row); border: 1px solid var(--rule-strong); background: var(--bg-panel); color: var(--text); font: inherit; }
+.tc-search, .tc-tool, .tc-swatches, .tc-modes { height: var(--row); border: 1px solid var(--rule-strong); background: var(--bg-panel); color: var(--text); font: inherit; }
 .tc-search { flex: 1; min-width: calc(240 * var(--u)); padding: 0 calc(12 * var(--u)); }
 /* The swatches wrap in a narrow page: each line adds one row. */
 .tc-swatches { display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: calc(20 * var(--u)) calc(4 * var(--u)); height: auto; min-height: var(--row); max-width: 100%; padding: calc(9 * var(--u)) calc(8 * var(--u)); }
@@ -13,6 +13,13 @@
 .tc-swatch[aria-pressed="true"] { border-color: var(--text); box-shadow: var(--skin-inset-frame-strong) var(--bg-panel); }
 .tc-swatch.all[aria-pressed="true"] { color: var(--text); font-weight: 600; box-shadow: none; text-decoration: underline; text-underline-offset: 3px; }
 body.kbd .tc-swatch:focus { outline: 2px solid var(--text); outline-offset: 1px; }
+/* Light and Dark: words like "All". Pressed: bold and underlined. */
+.tc-modes { display: flex; align-items: stretch; padding: 0; }
+.tc-mode { padding: 0 calc(10 * var(--u)); border: 0; background: none; color: var(--text-3); font: inherit; font-size: calc(12px * var(--zoom, 1)); cursor: pointer; }
+.tc-mode + .tc-mode { border-left: 1px solid var(--rule); }
+.tc-mode:hover { color: var(--text); }
+.tc-mode[aria-pressed="true"] { color: var(--text); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+body.kbd .tc-mode:focus { outline: 2px solid var(--text); outline-offset: -2px; }
 .tc-tool { width: var(--row); display: flex; align-items: center; justify-content: center; padding: 0; color: var(--text-3); cursor: pointer; }
 .tc-tool:hover { background: var(--bg-raised); color: var(--text); }
 body.kbd .tc-tool:focus { outline: 2px solid var(--text); outline-offset: -2px; color: var(--text); }
@@ -45,6 +52,7 @@ body.kbd .tc-card:focus { outline: 0; border-color: var(--text); box-shadow: var
 .set-cards .tc-tools { height: var(--row); gap: 0; flex-wrap: nowrap; align-items: stretch; border-bottom: 1px solid var(--rule); }
 .set-cards .tc-search { order: 0; min-width: 0; height: 100%; border: 0; background: transparent; }
 .set-cards .tc-swatches { order: 1; height: 100%; min-height: 0; flex-wrap: nowrap; flex-shrink: 0; border: 0; border-left: 1px solid var(--rule); background: transparent; padding: 0 calc(10 * var(--u)); }
+.set-cards .tc-modes { order: 1; height: 100%; flex-shrink: 0; border: 0; border-left: 1px solid var(--rule); background: transparent; }
 .set-cards .tc-tool { order: 2; height: 100%; flex-shrink: 0; border: 0; border-left: 1px solid var(--rule); background: transparent; }
 .set-cards .tc-status { order: 3; flex-shrink: 0; display: flex; align-items: center; padding: 0 calc(12 * var(--u)); border-left: 1px solid var(--rule); white-space: nowrap; }
 .set-cards .tc-grid { gap: 0; }

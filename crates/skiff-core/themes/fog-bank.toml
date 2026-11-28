@@ -1,0 +1,28 @@
+# Cool grey frame, white panels, near-white terminal ground, graphite text, indigo accent. Plain ANSI colors.
+name = "Fog Bank"
+color_family = "Neutral"
+main_color = "#4b4fb3"
+
+[terminal]
+foreground = "#24272c"
+background = "#f6f7f8"
+cursor = "#4b4fb3"
+cursor_foreground = "#f6f7f8"
+selection = "#d6d8f0"
+selection_foreground = "#24272c"
+regular = ["#24272c", "#b0353a", "#357437", "#7f6205", "#2c5c9e", "#81468f", "#1f6f78", "#d8dadd"]
+bright = ["#6b7078", "#c4474b", "#428745", "#93730f", "#3a6db3", "#9458a3", "#2a818b", "#fbfbfc"]
+
+[ui]
+# The app panels stay white. The terminal ground is a step off white.
+background = "#ffffff"
+sidebar = "#e4e6ea"
+tertiary = "#d3d6dc"
+secondary = "#eef0f2"
+border = "#bcc0c7"
+mutedForeground = "#5b6068"
+sidebarForeground = "#2c3036"
+primary = "#4b4fb3"
+working = "#2b63b0"
+warning = "#a35f00"
+destructive = "#bf2f33"

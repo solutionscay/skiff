@@ -1,0 +1,28 @@
+# Brick red frame, white panels, warm terminal ground, maroon text, navy accent. Strong ANSI colors.
+name = "Red Ensign"
+color_family = "Red"
+main_color = "#23447a"
+
+[terminal]
+foreground = "#3d1410"
+background = "#fbefec"
+cursor = "#23447a"
+cursor_foreground = "#fbefec"
+selection = "#f2cdc5"
+selection_foreground = "#3d1410"
+regular = ["#3d1410", "#b0221e", "#3b7225", "#865c00", "#23447a", "#8e3a7c", "#1d6e70", "#e6d6d2"]
+bright = ["#80564f", "#c8332d", "#4a8630", "#9c6d05", "#33589a", "#a54d93", "#268385", "#fdf8f6"]
+
+[ui]
+# The app panels stay white. The terminal ground has a faint tint of the frame.
+background = "#ffffff"
+sidebar = "#f4cdc6"
+tertiary = "#ebafa4"
+secondary = "#fbe9e5"
+border = "#d98b7d"
+mutedForeground = "#74403a"
+sidebarForeground = "#4f1813"
+primary = "#23447a"
+working = "#2a62b0"
+warning = "#9a5a00"
+destructive = "#b0221e"

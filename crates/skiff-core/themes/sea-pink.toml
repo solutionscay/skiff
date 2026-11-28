@@ -1,0 +1,28 @@
+# Thrift pink frame, white panels, blush terminal ground, wine text, sea green accent. Soft ANSI colors.
+name = "Sea Pink"
+color_family = "Pink"
+main_color = "#23764f"
+
+[terminal]
+foreground = "#4a1530"
+background = "#fdf0f5"
+cursor = "#4a1530"
+cursor_foreground = "#fdf0f5"
+selection = "#f7cfe0"
+selection_foreground = "#4a1530"
+regular = ["#4a1530", "#b72f3c", "#23764f", "#8a5d00", "#3459a8", "#a6307a", "#18737c", "#ead8e0"]
+bright = ["#87586e", "#cc414e", "#2e8a5e", "#a06e08", "#456bbf", "#bf4590", "#1f8790", "#fef8fb"]
+
+[ui]
+# The app panels stay white. The terminal ground has a faint tint of the frame.
+background = "#ffffff"
+sidebar = "#fadbe8"
+tertiary = "#f5c3d8"
+secondary = "#fdecf3"
+border = "#eaa6c4"
+mutedForeground = "#7c4862"
+sidebarForeground = "#5c1d3d"
+primary = "#23764f"
+working = "#2f5fb4"
+warning = "#a35800"
+destructive = "#c1283a"

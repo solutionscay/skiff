@@ -1,0 +1,28 @@
+# Oilskin yellow frame, white panels, cream terminal ground, olive brown text, violet accent. Earthy ANSI colors.
+name = "Sou'wester"
+color_family = "Yellow"
+main_color = "#6a3d9a"
+
+[terminal]
+foreground = "#352c08"
+background = "#fdf8e1"
+cursor = "#352c08"
+cursor_foreground = "#fdf8e1"
+selection = "#f5e59a"
+selection_foreground = "#352c08"
+regular = ["#352c08", "#ac3524", "#4a7120", "#8a5800", "#2f5a9c", "#6a3d9a", "#1c6f6a", "#e5dcb8"]
+bright = ["#776d48", "#c1462f", "#58852a", "#a06a05", "#3d6cb2", "#7f51b0", "#25837d", "#fefcf0"]
+
+[ui]
+# The app panels stay white. The terminal ground has a faint tint of the frame.
+background = "#ffffff"
+sidebar = "#fbeca0"
+tertiary = "#f6de72"
+secondary = "#fdf5d2"
+border = "#e3c64e"
+mutedForeground = "#6a5a1c"
+sidebarForeground = "#3f3408"
+primary = "#6a3d9a"
+working = "#2c5fa8"
+warning = "#9a5200"
+destructive = "#b8302a"
