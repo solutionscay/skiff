@@ -30,7 +30,7 @@ const label = new El("span");
 
 function panel() {
   let now = 0;
-  let line!: (e: { payload: string }) => void;
+  let line!: (e: { payload: { route: { entry: number; generation: number }; value: string } }) => void;
   const calls: string[] = [];
   const mod = moduleFromSource(
     "../src/app/connectPanel.ts",
@@ -51,7 +51,7 @@ function panel() {
     },
     "",
   );
-  return { mod, calls, tick: (ms: number) => (now += ms), line: (t: string) => line({ payload: t }) };
+  return { mod, calls, tick: (ms: number) => (now += ms), line: (t: string) => line({ payload: { route: { entry: 0, generation: 1 }, value: t } }) };
 }
 
 test("the connecting panel shows after 1 s, keeps the newest lines, and fails with the cause and its buttons", async () => {
