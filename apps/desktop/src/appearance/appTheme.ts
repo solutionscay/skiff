@@ -43,7 +43,7 @@ const VARS = [
   "--text", "--text-2", "--text-3", "--text-dim",
   "--state-working", "--state-waiting", "--state-waiting-text", "--state-waiting-bg", "--state-waiting-rule",
   "--state-done", "--state-idle", "--error", "--project-default", "--accent",
-  "--hover", "--press", "--gloss", "--shade",
+  "--hover", "--press", "--gloss", "--shade", "--rim", "--glass",
   "--error-bg", "--error-bg-hover", "--error-rule", "--error-text",
   "--danger", "--danger-hover", "--danger-text", "--ok", "--scrim", "--on-working", "--watch", "--rank",
   "--diff-add", "--diff-del",
@@ -70,6 +70,7 @@ export function applyAppTheme(t: TerminalTheme | null) {
     keepStartBg(undefined);
     for (const v of VARS) root.removeProperty(v);
     root.removeProperty("color-scheme");
+    document.documentElement.dataset.scheme = "dark";
     surfaces = ["#0f1216", "#13171c", "#1b2129"];
     lightScheme = false;
     inked.clear();
@@ -81,6 +82,7 @@ export function applyAppTheme(t: TerminalTheme | null) {
   inked.clear();
   for (const [k, v] of Object.entries(set)) root.setProperty(k, v);
   root.setProperty("color-scheme", lightScheme ? "light" : "dark");
+  document.documentElement.dataset.scheme = lightScheme ? "light" : "dark";
   // The GNOME header bar and its menu follow the app theme.
   void invoke("set_window_dark", { dark: !lightScheme }).catch(() => {});
 }
@@ -141,9 +143,14 @@ function themeVars(t: TerminalTheme): Record<string, string> {
   set["--diff-del"] = lightScheme ? legible(t.palette[1], 4.5) : "#ff8a80";
   set["--hover"] = lightScheme ? "rgba(0, 0, 0, 0.05)" : "rgba(255, 255, 255, 0.05)";
   set["--press"] = lightScheme ? "rgba(0, 0, 0, 0.09)" : "rgba(255, 255, 255, 0.09)";
-  // A skin's highlight and shade: the ground toward white on a light theme, the text on a dark one.
-  set["--gloss"] = lightScheme ? mix(set["--bg"], "#ffffff", 0.6) + "e0" : set["--text"] + "26";
+  // A skin's highlight and shade: the ground toward white on a light theme. On a dark one the light comes from
+  // above: a gloss toward a white lit by the theme's own color, a top rim, and a glass tint of that color. The
+  // theme's color, not the accent: many dark themes share one palette magenta.
+  const lit = t.main_color ?? set["--accent"];
+  set["--gloss"] = lightScheme ? mix(set["--bg"], "#ffffff", 0.6) + "e0" : mix(set["--bg"], mix("#ffffff", lit, 0.35), 0.2) + "cc";
   set["--shade"] = lightScheme ? set["--text"] + "29" : "#00000059";
+  set["--rim"] = lightScheme ? "transparent" : mix("#ffffff", lit, 0.3) + "40";
+  set["--glass"] = lightScheme ? "transparent" : lit + "24";
   return set;
 }
 

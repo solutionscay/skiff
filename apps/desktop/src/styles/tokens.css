@@ -38,8 +38,11 @@
   --rank: #e8c46a;
   --scrim: rgba(5, 7, 10, 0.72);
   /* A skin's highlight and shade, for its gradients. appTheme.ts sets both per theme. */
-  --gloss: #e6e8eb26;
+  --gloss: #3a3a45cc;
   --shade: #00000059;
+  /* A skin's night light on a dark theme: the top rim and the glass tint, from the accent. */
+  --rim: #e9e1ff40;
+  --glass: #b69cff24;
   /* Text on a filled --state-working button. */
   --on-working: #0b0e12;
   --u: calc(1px * var(--zoom, 1));
@@ -102,6 +105,9 @@
   --skin-content-inset: 0;
   --skin-foot-gap: 0;
   --skin-strip-gap: 3px;
+  --skin-frame: var(--bg-deep);
+  --skin-sidebar-surface: var(--bg-panel);
+  --skin-row-tint: 10%;
 }
 
 /* Bubble: glossy bars, small rounded corners, light panels in a tinted frame. Every color comes from the theme. */
@@ -145,6 +151,27 @@
   --skin-foot-gap: calc(8 * var(--u));
 }
 
+/* Bubble at night, on a dark theme: light from above, not a shadow below. A 1px rim of light tops each bar,
+   button, tab and box; the bars are colored glass from the accent; the frame goes darker and the panels one step
+   brighter, so the two layers stay apart. A light theme keeps the day recipe above. */
+:root[data-skin="bubble"][data-scheme="dark"] {
+  --skin-rim: linear-gradient(180deg, var(--rim) 0 1px, transparent 1px);
+  --skin-glass: linear-gradient(var(--glass), var(--glass));
+  --skin-glass-bar: var(--skin-rim), var(--skin-gloss-bar), var(--skin-glass);
+  --skin-tint: linear-gradient(color-mix(in srgb, var(--skin-frame) 75%, transparent), color-mix(in srgb, var(--skin-frame) 75%, transparent));
+  --skin-frame: color-mix(in srgb, var(--bg-deep) 70%, #000000);
+  --skin-box-surface: var(--bg-raised);
+  --skin-sidebar-surface: var(--skin-frame);
+  --skin-row-tint: 18%;
+  --skin-tab-gradient: var(--skin-glass-bar);
+  --skin-titlebar-gradient: var(--skin-glass-bar);
+  --skin-statusbar-gradient: var(--skin-glass-bar);
+  --skin-band-gradient: var(--skin-rim), var(--skin-gloss-bar), var(--skin-glass), var(--skin-tint);
+  --skin-button-shadow: inset 0 1px 0 var(--rim), 0 1px 2px var(--shade);
+  --skin-input-shadow: inset 0 1px 2px var(--shade), 0 1px 0 var(--rim);
+  --skin-box-shadow: inset 0 1px 0 var(--rim), 0 1px 3px var(--shade);
+}
+
 /* Bubble: a pane head wears the pane's own theme (terminal/headTheme.ts sets --head-* and data-head on the cell).
    Every head rule reads these names, so focus, selection and state marks mix with the head's color. Waiting keeps
    the app's amber band. The gloss is drawn here, so it takes the head theme's highlight and shade. */
@@ -161,4 +188,12 @@
   --gloss: var(--head-gloss);
   --shade: var(--head-shade);
   --skin-tab-gradient: linear-gradient(180deg, var(--gloss) 0%, color-mix(in srgb, var(--gloss) 40%, transparent) 50%, transparent 52%, var(--shade) 100%);
+}
+/* A dark head theme takes the night recipe, in a light app theme too. A light head theme keeps the day one. */
+:root[data-skin="bubble"] .cell[data-head-scheme="dark"] .cell-head {
+  --rim: var(--head-rim);
+  --glass: var(--head-glass);
+  --skin-tab-gradient: linear-gradient(180deg, var(--rim) 0 1px, transparent 1px),
+    linear-gradient(180deg, var(--gloss) 0%, color-mix(in srgb, var(--gloss) 40%, transparent) 50%, transparent 52%, var(--shade) 100%),
+    linear-gradient(var(--glass), var(--glass));
 }

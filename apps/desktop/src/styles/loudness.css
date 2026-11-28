@@ -39,9 +39,9 @@
 .session-row .unread, .cell-head .unread, .mission-card .unread, .mission-panel-head .unread, .roll-unread { color: var(--text-3); }
 
 /* ---- 6. The current row: same bar, half the tint ---- */
-#sidebar-scroll .current { background: color-mix(in srgb, var(--pc) 10%, transparent); }
-#sidebar-scroll .project-row:has(> .project-pick.current) { background: color-mix(in srgb, var(--pc) 10%, var(--bg-panel)); }
-#sidebar-scroll .wt-row:has(> .wt-pick.current) { background: linear-gradient(to right, transparent 0 var(--skin-strip-gap), color-mix(in srgb, var(--pc) 10%, transparent) var(--skin-strip-gap)); }
+#sidebar-scroll .current { background: color-mix(in srgb, var(--pc) var(--skin-row-tint), transparent); }
+#sidebar-scroll .project-row:has(> .project-pick.current) { background: color-mix(in srgb, var(--pc) var(--skin-row-tint), var(--bg-panel)); }
+#sidebar-scroll .wt-row:has(> .wt-pick.current) { background: linear-gradient(to right, transparent 0 var(--skin-strip-gap), color-mix(in srgb, var(--pc) var(--skin-row-tint), transparent) var(--skin-strip-gap)); }
 .mission-card.window.lit .win-head { background: color-mix(in srgb, var(--pc) 6%, var(--bg-panel)); }
 
 /* ---- 7. Waiting: the one thing that fills a band, in every view ---- */

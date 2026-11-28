@@ -1,7 +1,8 @@
 /**
  * A pane head in the pane's own theme: the session theme, else the project
  * theme. The cell gets that theme's frame, text, rule, state and gloss colors
- * as `--head-*`, from `appThemeVars`, as mission control paints its windows.
+ * as `--head-*`, and its scheme as `data-head-scheme`, from `appThemeVars`,
+ * as mission control paints its windows.
  * A pane that follows the app theme gets none. Only the Bubble skin reads
  * them (`styles/tokens.css`); Default heads keep the app colors.
  */
@@ -14,7 +15,8 @@ import { ownThemeId } from "../appearance/themes";
 const KEYS: [string, string][] = [
   ["--bg-deep", "--head-bg"], ["--text", "--head-text"], ["--text-2", "--head-text-2"], ["--text-3", "--head-text-3"],
   ["--text-dim", "--head-text-dim"], ["--rule", "--head-rule"], ["--state-working", "--head-working"], ["--state-done", "--head-done"],
-  ["--gloss", "--head-gloss"], ["--shade", "--head-shade"], ["--hover", "--head-hover"],
+  ["--gloss", "--head-gloss"], ["--shade", "--head-shade"], ["--rim", "--head-rim"], ["--glass", "--head-glass"],
+  ["--hover", "--head-hover"],
 ];
 
 /** Each theme's colors, by id and the colors it was made from: a theme file edit makes new ones. */
@@ -28,6 +30,7 @@ export function paintHead(cell: HTMLElement, s: SessionInfo | undefined) {
   if ((cell.dataset.head ?? "") === key) return;
   if (!t) {
     delete cell.dataset.head;
+    delete cell.dataset.headScheme;
     for (const [, k] of KEYS) cell.style.removeProperty(k);
     return;
   }
@@ -35,4 +38,5 @@ export function paintHead(cell: HTMLElement, s: SessionInfo | undefined) {
   let v = made.get(key);
   if (!v) made.set(key, (v = appThemeVars(t)));
   for (const [from, to] of KEYS) cell.style.setProperty(to, v[from] ?? "");
+  cell.dataset.headScheme = v["color-scheme"];
 }
